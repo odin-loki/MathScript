@@ -27,6 +27,9 @@ option(MS_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
 # libFuzzer targets (requires Clang or MSVC with /fsanitize=fuzzer)
 option(MS_BUILD_FUZZ "Build libFuzzer targets" OFF)
 
+# Use libc++ on Linux CI/dev when libstdc++ lacks full C++23 (e.g. std::expected)
+option(MS_USE_LIBCXX "Use libc++ standard library on Linux" OFF)
+
 # Verbose dispatch logging
 option(MS_VERBOSE_DISPATCH "Log dispatch decisions at runtime" OFF)
 
@@ -40,4 +43,14 @@ if(MS_ENABLE_AVX512)
     add_compile_definitions(MS_ENABLE_AVX512=1)
 else()
     add_compile_definitions(MS_ENABLE_AVX512=0)
+endif()
+
+if(MS_BUILD_FUZZ AND NOT MSVC)
+    add_compile_options(-fsanitize=fuzzer-no-link,address -g -O1 -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=fuzzer-no-link,address)
+endif()
+
+if(MS_USE_LIBCXX AND MS_PLATFORM STREQUAL "linux")
+    add_compile_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++ -lc++abi)
 endif()

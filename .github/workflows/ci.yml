@@ -1,149 +1,156 @@
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  build-test-windows:
-    name: Build & test (Windows MSVC)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Configure
-        run: >
-          cmake -S . -B build-msvc -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DMS_BUILD_TESTS=ON
-          -DMS_ENABLE_CUDA=OFF
-
-      - name: Build
-        run: cmake --build build-msvc --config Release
-
-      - name: Test
-        run: ctest --test-dir build-msvc --output-on-failure
-
-      - name: Install smoke
-        run: |
-          cmake --install build-msvc --prefix install-smoke
-          if (-not (Test-Path install-smoke/bin/mathscript-repl.exe)) { throw "mathscript-repl missing" }
-
-  build-test-linux:
-    name: Build & test (Linux Clang)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build
-
-      - name: Configure
-        run: >
-          cmake -S . -B build-linux -G Ninja
-          -DCMAKE_C_COMPILER=clang
-          -DCMAKE_CXX_COMPILER=clang++
-          -DCMAKE_BUILD_TYPE=Release
-          -DMS_BUILD_TESTS=ON
-          -DMS_ENABLE_CUDA=OFF
-
-      - name: Build
-        run: cmake --build build-linux
-
-      - name: Test
-        run: ctest --test-dir build-linux --output-on-failure
-
-      - name: Install smoke
-        run: |
-          cmake --install build-linux --prefix install-smoke
-          test -x install-smoke/bin/mathscript-repl
-          test -f install-smoke/lib/libms_core.a
-
-      - name: Package smoke
-        run: |
-          cmake --build build-linux --target package
-          ls -la build-linux/mathscript-*.tar.gz build-linux/mathscript-*.zip
-
-      - name: Unsafe surface audit
-        run: |
-          sudo apt-get install -y ripgrep
-          bash scripts/unsafe_report.sh build-linux/unsafe_report.txt
-
-  coverage-linux:
-    name: Coverage (Linux Clang)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build lcov
-
-      - name: Configure
-        run: >
-          cmake -S . -B build-cov -G Ninja
-          -DCMAKE_C_COMPILER=clang
-          -DCMAKE_CXX_COMPILER=clang++
-          -DCMAKE_BUILD_TYPE=Debug
-          -DMS_BUILD_TESTS=ON
-          -DMS_ENABLE_CUDA=OFF
-          -DMS_ENABLE_COVERAGE=ON
-
-      - name: Build
-        run: cmake --build build-cov
-
-      - name: Test
-        run: ctest --test-dir build-cov --output-on-failure
-
-      - name: Coverage report
-        env:
-          MS_COVERAGE_MIN: "50"
-        run: bash scripts/coverage_report.sh build-cov
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: build-cov/coverage.info
-          if-no-files-found: error
-
-  fuzz-linux:
-    name: libFuzzer smoke (Linux Clang)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build
-
-      - name: Configure
-        run: >
-          cmake -S . -B build-fuzz -G Ninja
-          -DCMAKE_C_COMPILER=clang
-          -DCMAKE_CXX_COMPILER=clang++
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          -DMS_BUILD_TESTS=ON
-          -DMS_BUILD_FUZZ=ON
-          -DMS_ENABLE_CUDA=OFF
-
-      - name: Build fuzz target
-        run: cmake --build build-fuzz --target fuzz_special_fns
-
-      - name: Run fuzz smoke
-        run: ./build-fuzz/tests/fuzz/fuzz_special_fns -runs=4096 -max_total_time=30
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MS_CI_LINUX_FLAGS: >-
+    -DMS_BUILD_TESTS=ON
+    -DMS_ENABLE_CUDA=OFF
+    -DMS_ENABLE_AVX512=OFF
+    -DMS_USE_LIBCXX=ON
+    -DCMAKE_CXX_FLAGS=-stdlib=libc++
+    -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -lc++abi
+    -DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ -lc++abi
+
+jobs:
+  build-test-windows:
+    name: Build & test (Windows MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-msvc -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DMS_BUILD_TESTS=ON
+          -DMS_ENABLE_CUDA=OFF
+          -DMS_ENABLE_AVX512=OFF
+
+      - name: Build
+        run: cmake --build build-msvc --config Release
+
+      - name: Test
+        run: ctest --test-dir build-msvc --output-on-failure
+
+      - name: Install smoke
+        run: |
+          cmake --install build-msvc --prefix install-smoke
+          if (-not (Test-Path install-smoke/bin/mathscript-repl.exe)) { throw "mathscript-repl missing" }
+
+  build-test-linux:
+    name: Build & test (Linux Clang)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build libc++-dev libc++abi-dev ripgrep
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-linux -G Ninja
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release
+          ${MS_CI_LINUX_FLAGS}
+
+      - name: Build
+        run: cmake --build build-linux
+
+      - name: Test
+        run: ctest --test-dir build-linux --output-on-failure
+
+      - name: Install smoke
+        run: |
+          cmake --install build-linux --prefix install-smoke
+          test -x install-smoke/bin/mathscript-repl
+          test -f install-smoke/lib/libms_core.a
+
+      - name: Package smoke
+        run: |
+          cpack -G TGZ --config build-linux/CPackConfig.cmake
+          cpack -G ZIP --config build-linux/CPackConfig.cmake
+          ls -la build-linux/mathscript-*.tar.gz build-linux/mathscript-*.zip
+
+      - name: Unsafe surface audit
+        run: bash scripts/unsafe_report.sh build-linux/unsafe_report.txt
+
+  coverage-linux:
+    name: Coverage (Linux Clang)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build lcov libc++-dev libc++abi-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-cov -G Ninja
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Debug
+          -DMS_ENABLE_COVERAGE=ON
+          ${MS_CI_LINUX_FLAGS}
+
+      - name: Build
+        run: cmake --build build-cov
+
+      - name: Test
+        run: ctest --test-dir build-cov --output-on-failure
+
+      - name: Coverage report
+        env:
+          MS_COVERAGE_MIN: "50"
+        run: bash scripts/coverage_report.sh build-cov
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build-cov/coverage.info
+          if-no-files-found: error
+
+  fuzz-linux:
+    name: libFuzzer smoke (Linux Clang)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build libc++-dev libc++abi-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-fuzz -G Ninja
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DMS_BUILD_FUZZ=ON
+          ${MS_CI_LINUX_FLAGS}
+
+      - name: Build fuzz target
+        run: cmake --build build-fuzz --target fuzz_special_fns
+
+      - name: Run fuzz smoke
+        run: ./build-fuzz/tests/fuzz/fuzz_special_fns -runs=4096 -max_total_time=30

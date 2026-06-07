@@ -14,7 +14,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFO="${BUILD_DIR}/coverage.info"
 
 lcov --quiet --capture --directory "${BUILD_DIR}" --output-file "${INFO}" \
-    --rc lcov_branch_coverage=0
+    --rc lcov_branch_coverage=0 --ignore-errors source,gcov,empty
 
 lcov --quiet --remove "${INFO}" '/usr/*' '*/tests/*' '*/googletest/*' \
     --output-file "${INFO}"
