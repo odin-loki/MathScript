@@ -1,0 +1,49 @@
+add_subdirectory(plugin)
+add_subdirectory(core)
+add_subdirectory(runtime)
+add_subdirectory(linalg)
+add_subdirectory(fft)
+add_subdirectory(stats)
+add_subdirectory(prob)
+add_subdirectory(optim)
+add_subdirectory(signal)
+add_subdirectory(special)
+add_subdirectory(simd)
+add_subdirectory(cuda)
+add_subdirectory(interp)
+add_subdirectory(ode)
+add_subdirectory(pde)
+add_subdirectory(poly)
+add_subdirectory(symbolic)
+add_subdirectory(domain)
+add_subdirectory(distributed)
+add_subdirectory(frameworks)
+add_subdirectory(gui)
+add_subdirectory(exe)
+
+add_library(mathscript INTERFACE)
+target_link_libraries(mathscript INTERFACE
+    ms_core
+    ms_linalg
+    ms_runtime
+    ms_fft
+    ms_stats
+    ms_prob
+    ms_optim
+    ms_signal
+    ms_special
+    ms_simd
+    ms_cuda
+    ms_interp
+    ms_ode
+    ms_pde
+    ms_poly
+    ms_symbolic
+    ms_domain
+    ms_distributed
+    ms_frameworks
+)
+target_include_directories(mathscript INTERFACE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/include
+)

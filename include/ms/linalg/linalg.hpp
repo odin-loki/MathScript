@@ -1,0 +1,119 @@
+#pragma once
+
+#include "ms/core/operations.hpp"
+#include <vector>
+
+namespace ms {
+
+struct EigResult {
+    Matrix<double> values;
+    Matrix<double> vectors;
+};
+
+struct SvdResult {
+    Matrix<double> U;
+    Matrix<double> S;
+    Matrix<double> V;
+};
+
+struct LdlResult {
+    Matrix<double> L;
+    Matrix<double> D;
+    Matrix<double> P;
+};
+
+struct SchurResult {
+    Matrix<double> T;
+    Matrix<double> Q;
+};
+
+struct BidiagResult {
+    Matrix<double> U;
+    Matrix<double> B;
+    Matrix<double> V;
+};
+
+// Construction
+template<typename S, template<typename> class Alloc = std::allocator>
+Matrix<S, StorageOrder::ColMajor, Alloc> rand(size_t m, size_t n, unsigned seed = 42);
+
+template<typename S, template<typename> class Alloc = std::allocator>
+Matrix<S, StorageOrder::ColMajor, Alloc> randn(size_t m, size_t n, unsigned seed = 42);
+
+template<typename S, template<typename> class Alloc = std::allocator>
+Matrix<S, StorageOrder::ColMajor, Alloc> diag(const std::vector<S>& v);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+std::vector<S> diag(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> tril(const Matrix<S, OA, Alloc>& A, int k = 0);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> triu(const Matrix<S, OA, Alloc>& A, int k = 0);
+
+// Basic operations
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<S> rank(const Matrix<S, OA, Alloc>& A, S tol = S(0));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<S> cond(const Matrix<S, OA, Alloc>& A, int p = 2);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> lsq(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b);
+
+// Decompositions
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<LdlResult> ldl(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> hess(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<BidiagResult> bidiag(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<EigResult> eig(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<EigResult> eig_sym(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<SchurResult> schur(const Matrix<S, OA, Alloc>& A);
+
+// Matrix functions
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> logm(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> sqrtm(const Matrix<S, OA, Alloc>& A);
+
+// Iterative solvers
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> cg(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> bicgstab(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> gmres(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t restart = 20,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+} // namespace ms

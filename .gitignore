@@ -1,0 +1,53 @@
+# Build trees
+/build/
+/build-*/
+/out/
+/cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+install_manifest.cmake
+compile_commands.json
+*.cmake.user
+
+# Binaries and libraries
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+
+# MSVC / IDE
+.vs/
+*.vcxproj*
+*.sln
+*.user
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+coverage/
+*.profraw
+*.profdata
+
+# Python
+__pycache__/
+*.pyc
+.venv/

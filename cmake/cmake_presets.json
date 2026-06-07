@@ -1,0 +1,65 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug",
+      "toolchainFile": "cmake/toolchains/linux-clang-x64.cmake",
+      "binaryDir": "${sourceDir}/build/linux-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MS_BUILD_TESTS": "ON",
+        "MS_BUILD_GUI": "ON",
+        "MS_ENABLE_CUDA": "ON"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux Release",
+      "toolchainFile": "cmake/toolchains/linux-clang-cuda.cmake",
+      "binaryDir": "${sourceDir}/build/linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MS_BUILD_TESTS": "OFF",
+        "MS_BUILD_GUI": "ON",
+        "MS_ENABLE_CUDA": "ON"
+      }
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug",
+      "toolchainFile": "cmake/toolchains/windows-clang-cl.cmake",
+      "binaryDir": "${sourceDir}/build/windows-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MS_BUILD_TESTS": "ON",
+        "MS_BUILD_GUI": "ON",
+        "MS_ENABLE_CUDA": "ON"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release",
+      "toolchainFile": "cmake/toolchains/windows-cuda.cmake",
+      "binaryDir": "${sourceDir}/build/windows-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MS_BUILD_TESTS": "OFF",
+        "MS_BUILD_GUI": "ON",
+        "MS_ENABLE_CUDA": "ON"
+      }
+    },
+    {
+      "name": "headless-server",
+      "displayName": "Headless Server (No GUI)",
+      "toolchainFile": "cmake/toolchains/linux-clang-cuda.cmake",
+      "binaryDir": "${sourceDir}/build/server",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MS_BUILD_GUI": "OFF",
+        "MS_ENABLE_CUDA": "ON",
+        "MS_ENABLE_MPI": "ON"
+      }
+    }
+  ]
+}

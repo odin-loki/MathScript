@@ -1,0 +1,193 @@
+// MathScript Special Functions Header
+
+#pragma once
+
+namespace ms {
+
+// Error functions and related
+double erf(double x);
+double erfc(double x);
+double erfi(double x);
+double erfcx(double x);
+double dawson(double x);
+double dawsonx(double x);
+
+// Fresnel integrals
+double fresnel_c(double x);
+double fresnel_s(double x);
+
+// Gamma family
+double gamma_func(double x);
+double log_gamma(double x);
+double beta_func(double a, double b);
+double digamma(double x);
+
+// Combinatorial constants
+double bernoulli_number(int n);
+double euler_number(int n);
+
+// Airy functions
+double airy_ai(double x);
+double airy_bi(double x);
+double airy_aip(double x);
+double airy_bip(double x);
+
+// Bessel functions (integer order)
+double bessel_j(int nu, double x);
+double bessel_y(int nu, double x);
+double bessel_i(int nu, double x);
+double bessel_k(int nu, double x);
+double bessel_j0(double x);
+double bessel_j1(double x);
+double bessel_y0(double x);
+double bessel_y1(double x);
+
+// Legacy aliases
+double bessel_h(int nu, double x);
+double bessel_hy(int nu, double x);
+double bessel_l(int nu, double x);
+double bessel_lu(int nu, double x);
+
+// Spherical Bessel functions
+double spherical_jn(int n, double x);
+double spherical_yn(int n, double x);
+double spherical_in(int n, double x);
+double spherical_kn(int n, double x);
+
+// Bessel function zeros (n is 1-based index)
+double bessel_zero_jnu(int nu, int n);
+double bessel_zero_ynu(int nu, int n);
+
+// Struve functions
+double struve_h(int nu, double x);
+double struve_l(int nu, double x);
+double struve_k(int nu, double x);
+double struve_hn(int nu, double x);
+double struve_yn(int nu, double x);
+
+// Anger and Weber functions
+double anger_j(int nu, double x);
+double weber_e(int nu, double x);
+
+// Kelvin functions
+double kelvin_ber(int nu, double x);
+double kelvin_bei(int nu, double x);
+double kelvin_ker(int nu, double x);
+double kelvin_kei(int nu, double x);
+
+// Orthogonal polynomials
+double legendre_p(int n, double x);
+double legendre_q(int n, double x);
+double legendre_pn(int n, int m, double x);
+double hermite_h(int n, double x);
+double hermite_hf(int n, double x);
+double hermite_hn(int n, double x);
+double laguerre_l(int n, double x);
+double laguerre_ln(int n, int k, double x);
+double chebyshev_t(int n, double x);
+double chebyshev_u(int n, double x);
+double chebyshev_tn(int n, int k, double x);
+double chebyshev_un(int n, int k, double x);
+
+// Extended orthogonal polynomials
+double hermite_he(int n, double x);
+double laguerre_la(int n, double a, double x);
+double chebyshev_v(int n, double x);
+double chebyshev_w(int n, double x);
+double gegenbauer_c(int n, double lambda, double x);
+double jacobi_p(int n, double alpha, double beta, double x);
+double sph_harm(int l, int m, double theta, double phi);
+
+// Elliptic integrals (k is the modulus, |k| < 1)
+double ellip_k(double k);
+double ellip_e(double k);
+double ellip_pi(double n, double k);
+double ellip_f(double phi, double k);
+double ellip_e_inc(double phi, double k);
+double ellip_d(double k);
+
+// Jacobi elliptic functions
+double jacobi_sn(double u, double k);
+double jacobi_cn(double u, double k);
+double jacobi_dn(double u, double k);
+double jacobi_am(double u, double k);
+double jacobi_sc(double u, double k);
+double jacobi_sd(double u, double k);
+double jacobi_nd(double u, double k);
+double jacobi_nc(double u, double k);
+double jacobi_dc(double u, double k);
+double jacobi_cs(double u, double k);
+double jacobi_ns(double u, double k);
+double jacobi_ds(double u, double k);
+double jacobi_cd(double u, double k);
+
+// Theta functions (q is the nome, |q| < 1)
+double theta1(double z, double q);
+double theta2(double z, double q);
+double theta3(double z, double q);
+double theta4(double z, double q);
+double theta1_prime(double z, double q);
+double jacobi_theta(int n, double z, double tau);
+
+// Weierstrass elliptic functions (short series near the origin)
+double weierstrass_p(double z, double g2, double g3);
+double weierstrass_pprime(double z, double g2, double g3);
+double weierstrass_zeta(double z, double g2, double g3);
+double weierstrass_sigma(double z, double g2, double g3);
+
+// Zeta and related functions
+double zeta(double s);
+double zeta_hurwitz(double s, double a);
+double lerch_phi(double z, double s, double a);
+double eta_dirichlet(double s);
+double beta_dirichlet(double s);
+double polylog(int n, double z);
+double clausen(double x);
+
+// Mathieu functions (x in radians)
+double mathieu_a(int n, double q);
+double mathieu_b(int n, double q);
+double mathieu_ce(int n, double q, double x);
+double mathieu_se(int n, double q, double x);
+double mathieu_mc(int n, double q, double x);
+double mathieu_ms(int n, double q, double x);
+
+// Spheroidal wave functions (prolate, m >= 0, n >= m)
+double spheroidal_lambda(int n, int m, double c);
+double spheroidal_s1(int n, int m, double c, double x);
+double spheroidal_s2(int n, int m, double c, double x);
+
+// Parabolic cylinder functions
+double pcf_u(double a, double x);
+double pcf_v(double a, double x);
+double pcf_w(double a, double x);
+
+// Hypergeometric functions
+double hypergeo_0f1(double b, double z);
+double hypergeo_1f1(double a, double z);
+double hypergeo_2f1(double a, double b, double c, double z);
+double kummer_m(double a, double b, double z);
+double tricomi_u(double a, double b, double z);
+double whittaker_m(double kappa, double mu, double z);
+double whittaker_w(double kappa, double mu, double z);
+double meijer_g(double a, double b, double z);
+double fox_h(double a, double b, double z);
+double hypergeo_0f1n(int n, double a, double z);
+double hypergeo_1f1n(int n, double a, double z);
+
+// Heun functions (fundamental solution y(z0)=1, y'(z0)=0 via numerical ODE)
+double heun_g(double a, double q, double alpha, double beta, double gamma, double delta, double z);
+double heun_c(double q, double alpha, double beta, double gamma, double delta, double z);
+double heun_d(double q, double alpha, double gamma, double delta, double z);
+double heun_b(double q, double alpha, double beta, double delta, double z);
+double heun_t(double q, double alpha, double beta, double gamma, double z);
+
+// Painlevé transcendents (y0, yp0 are initial data at the regular point x0)
+double painleve1(double x, double y0, double yp0);
+double painleve2(double x, double y0, double yp0, double alpha);
+double painleve3(double x, double y0, double yp0, double alpha, double beta);
+double painleve4(double x, double y0, double yp0, double alpha, double beta);
+double painleve5(double x, double y0, double yp0, double alpha, double beta, double gamma, double delta);
+double painleve6(double x, double y0, double yp0, double alpha, double beta, double gamma, double delta);
+
+} // namespace ms
