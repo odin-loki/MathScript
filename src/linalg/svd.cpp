@@ -33,10 +33,10 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
         std::vector<double> sigma(static_cast<std::size_t>(k));
 
         if (cpu::lapack::dgesvd(im, in, work.data(), im, sigma.data(), U.data(), im, VT.data(), in) == 0) {
-            Matrix<double> S(r, 1, 0.0);
+            Matrix<double> sing_vals(r, 1, 0.0);
             Matrix<double> V(n, r);
             for (int j = 0; j < k; ++j) {
-                S(static_cast<std::size_t>(j), 0) = sigma[static_cast<std::size_t>(j)];
+                sing_vals(static_cast<std::size_t>(j), 0) = sigma[static_cast<std::size_t>(j)];
                 for (int i = 0; i < in; ++i) {
                     if (im >= in) {
                         V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
@@ -47,7 +47,7 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
                     }
                 }
             }
-            return SvdResult{U, S, V};
+            return SvdResult{U, sing_vals, V};
         }
     }
 
@@ -72,9 +72,9 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
         return eig_result->values(a, 0) > eig_result->values(b, 0);
     });
 
-    Matrix<double> S(r, 1, 0.0);
+    Matrix<double> sing_vals(r, 1, 0.0);
     for (size_t j = 0; j < r; ++j) {
-        S(j, 0) = std::sqrt((std::max)(0.0, eig_result->values(order[j], 0)));
+        sing_vals(j, 0) = std::sqrt((std::max)(0.0, eig_result->values(order[j], 0)));
     }
 
     if (m >= n) {
@@ -86,7 +86,7 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
         }
         Matrix<double> left_vectors(m, r);
         for (size_t j = 0; j < r; ++j) {
-            if (S(j, 0) < 1e-14) {
+            if (sing_vals(j, 0) < 1e-14) {
                 continue;
             }
             for (size_t i = 0; i < m; ++i) {
@@ -94,10 +94,10 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
                 for (size_t t = 0; t < n; ++t) {
                     sum += A(i, t) * right_vectors(t, j);
                 }
-                left_vectors(i, j) = sum / S(j, 0);
+                left_vectors(i, j) = sum / sing_vals(j, 0);
             }
         }
-        return SvdResult{left_vectors, S, right_vectors};
+        return SvdResult{left_vectors, sing_vals, right_vectors};
     }
 
     Matrix<double> left_vectors(m, r);
@@ -108,7 +108,7 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
     }
     Matrix<double> right_vectors(n, r);
     for (size_t j = 0; j < r; ++j) {
-        if (S(j, 0) < 1e-14) {
+        if (sing_vals(j, 0) < 1e-14) {
             continue;
         }
         for (size_t i = 0; i < n; ++i) {
@@ -116,10 +116,10 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
             for (size_t t = 0; t < m; ++t) {
                 sum += A(t, i) * left_vectors(t, j);
             }
-            right_vectors(i, j) = sum / S(j, 0);
+            right_vectors(i, j) = sum / sing_vals(j, 0);
         }
     }
-    return SvdResult{left_vectors, S, right_vectors};
+    return SvdResult{left_vectors, sing_vals, right_vectors};
 }
 
 template auto svd<double>(const Matrix<double>&) -> Result<SvdResult>;

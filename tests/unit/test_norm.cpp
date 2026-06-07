@@ -1,6 +1,7 @@
 // MathScript Matrix Norm Unit Test
 
 #include <gtest/gtest.h>
+#include <cmath>
 #include "ms/core/matrix.hpp"
 #include "ms/core/operations.hpp"
 

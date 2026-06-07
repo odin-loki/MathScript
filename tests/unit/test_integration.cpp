@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 #include "ms/fft/fft.hpp"
 #include "ms/linalg/linalg.hpp"
 #include "ms/stats/stats.hpp"

@@ -48,7 +48,7 @@ jobs:
           if (-not (Test-Path install-smoke/bin/mathscript-repl.exe)) { throw "mathscript-repl missing" }
 
   build-test-linux:
-    name: Build & test (Linux Clang)
+    name: Build & test (Linux GCC 13)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -56,10 +56,10 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build g++-13 ripgrep
+          sudo apt-get install -y g++-13 ninja-build ripgrep
 
       - name: Configure
-        run: cmake -S . -B build-linux -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release ${{ env.MS_CI_LINUX_FLAGS }}
+        run: cmake -S . -B build-linux -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Release ${{ env.MS_CI_LINUX_FLAGS }}
 
       - name: Build
         run: cmake --build build-linux
@@ -83,7 +83,7 @@ jobs:
         run: bash scripts/unsafe_report.sh build-linux/unsafe_report.txt
 
   coverage-linux:
-    name: Coverage (Linux Clang)
+    name: Coverage (Linux GCC 13)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -91,10 +91,10 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build g++-13 lcov
+          sudo apt-get install -y g++-13 ninja-build lcov
 
       - name: Configure
-        run: cmake -S . -B build-cov -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DMS_ENABLE_COVERAGE=ON ${{ env.MS_CI_LINUX_FLAGS }}
+        run: cmake -S . -B build-cov -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Debug -DMS_ENABLE_COVERAGE=ON ${{ env.MS_CI_LINUX_FLAGS }}
 
       - name: Build
         run: cmake --build build-cov

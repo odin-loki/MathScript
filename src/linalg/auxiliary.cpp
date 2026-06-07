@@ -91,14 +91,14 @@ Result<Matrix<S, OA, Alloc>> lsq(
     }
 
     const auto& U = svd_result->U;
-    const auto& S = svd_result->S;
+    const auto& sigma = svd_result->S;
     const auto& V = svd_result->V;
 
     auto Ut = transpose_copy(U);
     auto Utb = multiply(Ut, b);
-    Matrix<double> Sinv(S.rows(), 1);
-    for (size_t i = 0; i < S.rows(); ++i) {
-        Sinv(i, 0) = S(i, 0) > 1e-14 ? 1.0 / S(i, 0) : 0.0;
+    Matrix<double> Sinv(sigma.rows(), 1);
+    for (size_t i = 0; i < sigma.rows(); ++i) {
+        Sinv(i, 0) = sigma(i, 0) > 1e-14 ? 1.0 / sigma(i, 0) : 0.0;
     }
 
     Matrix<double> weighted(Utb.rows(), Utb.cols());

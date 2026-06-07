@@ -49,7 +49,7 @@ std::tuple<double, double, double> minimize_with_constraints(
 
 std::tuple<std::vector<double>, double> simplex_solver(
     std::vector<double>, std::vector<std::vector<double>>, std::vector<double>) {
-    return {{}, 0.0};
+    return std::tuple<std::vector<double>, double>{std::vector<double>{}, 0.0};
 }
 
 double golden_section(Func1D f, double a, double b, double tol) {
