@@ -105,8 +105,15 @@ jobs:
 
       - name: Coverage report
         env:
-          MS_COVERAGE_MIN: "50"
+          MS_COVERAGE_MIN: "58"
         run: bash scripts/coverage_report.sh build-cov
+
+      - name: Upload coverage summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: build-cov/coverage-summary.txt
+          if-no-files-found: error
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -134,3 +141,24 @@ jobs:
 
       - name: Run fuzz smoke
         run: ./build-fuzz/tests/fuzz/fuzz_special_fns -runs=4096 -max_total_time=30
+
+  valgrind-linux:
+    name: Valgrind memcheck (Linux GCC 13)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 ninja-build valgrind
+
+      - name: Configure
+        run: cmake -S . -B build-valgrind -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Debug ${{ env.MS_CI_LINUX_FLAGS }}
+
+      - name: Build
+        run: cmake --build build-valgrind
+
+      - name: Memcheck
+        run: bash scripts/valgrind_tests.sh build-valgrind

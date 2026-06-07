@@ -1,0 +1,33 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+jobs:
+  fuzz-extended:
+    name: libFuzzer extended (Linux Clang)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      MS_CI_LINUX_FLAGS: >-
+        -DMS_BUILD_TESTS=ON
+        -DMS_ENABLE_CUDA=OFF
+        -DMS_ENABLE_AVX512=OFF
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build g++-13
+
+      - name: Configure
+        run: cmake -S . -B build-fuzz -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
+
+      - name: Build fuzz target
+        run: cmake --build build-fuzz --target fuzz_special_fns
+
+      - name: Run extended fuzz session
+        run: ./build-fuzz/tests/fuzz/fuzz_special_fns -max_total_time=3600 -print_final_stats=1

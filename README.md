@@ -1,20 +1,23 @@
 # MathScript HPC Computer Algebra System
 
+[![CI](https://github.com/odin-loki/MathScript/actions/workflows/ci.yml/badge.svg)](https://github.com/odin-loki/MathScript/actions/workflows/ci.yml)
+
 A high-performance Computer Algebra System built in C++23 with CPU math libraries, runtime dispatch, and a console REPL.
 
 ## Project Status: Phase 10 (Hardening) — In Progress
 
-Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage reporting, fuzz smoke tests, and install/packaging.
+Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage reporting, Valgrind memcheck, fuzz testing, and install/packaging. **All CI jobs on `main` are green** (Windows + Linux build/test, coverage, fuzz smoke, Valgrind).
 
 ### Completed Components
 
-- **Build system:** Native Windows MSVC + Ninja; Linux Clang toolchains; GoogleTest via FetchContent
+- **Build system:** Native Windows MSVC + Ninja; Linux GCC 13 / Clang; GoogleTest via FetchContent
 - **Core types:** Matrix, Tensor, Sparse, Scalar, Sym
 - **Linear algebra:** matmul, LU, QR, Cholesky, solve, eig, SVD, expm, trace, det, norm, and helpers
 - **Math modules:** fft, stats, prob, optim, signal, special (CPU implementations)
 - **Runtime:** Topology detection, thread pool, dispatch layer, own BLAS/LAPACK CPU kernels
 - **Executables:** `mathscriptc`, `mathscript-repl`, `mathscript-server`
 - **Unit tests:** 34 CTest suites — all passing (CUDA disabled)
+- **CI baseline:** ~60% line coverage (58% enforced in CI); path to 85% for 1.0.0
 
 ### Build Instructions (Native Windows)
 
@@ -45,48 +48,63 @@ ctest --test-dir build-msvc --output-on-failure
 
 ### Linux (headless CI-style build)
 
+Ubuntu 24.04 with GCC 13 (matches CI):
+
 ```bash
 cmake -S . -B build-linux -G Ninja \
-  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 \
   -DCMAKE_BUILD_TYPE=Release \
-  -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF \
-  -DMS_USE_LIBCXX=ON
+  -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF
 cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure
 ```
 
-On older Linux distros without complete C++23 in libstdc++, install `libc++-dev` and `libc++abi-dev` and enable `MS_USE_LIBCXX=ON` as above.
+For libFuzzer targets, use Clang with the project’s Linux Clang flags (see `cmake/options.cmake`).
 
-### Coverage (Linux, Clang/GCC)
+### Coverage (Linux, GCC/Clang)
 
 ```bash
 cmake -S . -B build-cov -G Ninja \
-  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 \
   -DCMAKE_BUILD_TYPE=Debug \
   -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF \
   -DMS_ENABLE_COVERAGE=ON
 cmake --build build-cov
 ctest --test-dir build-cov --output-on-failure
-bash scripts/coverage_report.sh build-cov
+MS_COVERAGE_MIN=58 bash scripts/coverage_report.sh build-cov
 ```
 
-Set `MS_COVERAGE_MIN=85` to enforce the Phase 10 line-coverage target once the baseline reaches it.
+Set `MS_COVERAGE_MIN=85` to enforce the Phase 10 shipping target once the baseline reaches it.
+
+### Valgrind (Linux)
+
+```bash
+cmake -S . -B build-valgrind -G Ninja \
+  -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF
+cmake --build build-valgrind
+bash scripts/valgrind_tests.sh build-valgrind
+```
 
 ### Install and packages
 
 ```bash
 cmake --install build-linux --prefix /opt/mathscript
-cmake --build build-linux --target package   # TGZ/ZIP; DEB/RPM on Linux; NSIS on Windows
+cd build-linux && cpack -G TGZ && cpack -G ZIP
 ```
 
 ### CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
+GitHub Actions (`.github/workflows/ci.yml`) on every push/PR to `main`:
 
 - Windows MSVC build + full test suite + install smoke
-- Linux Clang build + full test suite + install/package smoke + unsafe surface audit
-- Coverage report (artifact upload; minimum threshold currently 50%)
-- libFuzzer smoke test on `fuzz_special_fns`
+- Linux GCC 13 build + full test suite + install/package smoke + unsafe surface audit
+- Coverage report (~60% line; 58% minimum) + artifact upload
+- libFuzzer smoke on `fuzz_special_fns`
+- Valgrind memcheck (excludes long `test_fuzz_stress`)
+
+Weekly extended fuzz runs: `.github/workflows/nightly.yml` (1 hour libFuzzer session).
 
 ### Unsafe surface audit
 

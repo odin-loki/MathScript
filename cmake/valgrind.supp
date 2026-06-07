@@ -1,0 +1,8 @@
+# Valgrind suppressions for third-party and platform noise in CI memcheck runs.
+
+{
+   gtest_leak_on_exit
+   Memcheck:Leak
+   ...
+   fun:_ZN7testing*
+}
