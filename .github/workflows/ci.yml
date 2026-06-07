@@ -75,9 +75,10 @@ jobs:
 
       - name: Package smoke
         run: |
-          cpack -G TGZ --config build-linux/CPackConfig.cmake
-          cpack -G ZIP --config build-linux/CPackConfig.cmake
-          ls -la build-linux/mathscript-*.tar.gz build-linux/mathscript-*.zip
+          cd build-linux
+          cpack -G TGZ
+          cpack -G ZIP
+          ls -la mathscript-*.tar.gz mathscript-*.zip
 
       - name: Unsafe surface audit
         run: bash scripts/unsafe_report.sh build-linux/unsafe_report.txt
