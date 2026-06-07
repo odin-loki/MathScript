@@ -29,6 +29,7 @@ if(MS_BUILD_TESTS)
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
     enable_testing()
 endif()
@@ -38,3 +39,5 @@ add_subdirectory(src)
 if(MS_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
+
+include(cmake/install.cmake)

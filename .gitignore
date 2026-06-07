@@ -1,6 +1,7 @@
 # Build trees
 /build/
 /build-*/
+/install-smoke/
 /out/
 /cmake-build-*/
 
