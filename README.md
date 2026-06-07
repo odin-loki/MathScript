@@ -50,9 +50,7 @@ cmake -S . -B build-linux -G Ninja \
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
   -DCMAKE_BUILD_TYPE=Release \
   -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF \
-  -DMS_USE_LIBCXX=ON \
-  -DCMAKE_CXX_FLAGS="-stdlib=libc++" \
-  -DCMAKE_EXE_LINKER_FLAGS="-stdlib=libc++ -lc++abi"
+  -DMS_USE_LIBCXX=ON
 cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure
 ```
