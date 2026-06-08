@@ -45,3 +45,26 @@ TEST(ReplSessionTest, hist_command_sets_bar_plot) {
     EXPECT_EQ(interp.plot().kind, PlotSeries::Kind::Bar);
     EXPECT_EQ(interp.plot().y.size(), 10u);
 }
+
+TEST(ReplSessionTest, empty_matrix_save_load_roundtrip) {
+    const auto path = std::filesystem::temp_directory_path() / "mathscript_empty_matrix.ms";
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("E = []").has_value());
+    ASSERT_TRUE(interp.save_session(path.string()).has_value());
+
+    Interpreter loaded;
+    ASSERT_TRUE(loaded.load_session(path.string()).has_value());
+    EXPECT_EQ(loaded.state().matrices.at("E").rows(), 0u);
+    EXPECT_EQ(loaded.state().matrices.at("E").cols(), 0u);
+
+    std::filesystem::remove(path);
+}
+
+TEST(ReplSessionTest, hist_via_named_matrix) {
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("D = [1, 3, 3, 9]").has_value());
+    ASSERT_TRUE(interp.execute("hist(D)").has_value());
+    EXPECT_TRUE(interp.has_plot());
+    EXPECT_EQ(interp.plot().kind, PlotSeries::Kind::Bar);
+}

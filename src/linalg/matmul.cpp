@@ -97,5 +97,9 @@ template Result<Matrix<double>> matmul(
     const Matrix<double>&, const Matrix<double>&, int);
 template Result<Matrix<float>> matmul(
     const Matrix<float>&, const Matrix<float>&, int);
+template Result<Matrix<double>> matmul(
+    const Matrix<double, StorageOrder::RowMajor>&,
+    const Matrix<double, StorageOrder::RowMajor>&,
+    int);
 
 } // namespace ms

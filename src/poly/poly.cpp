@@ -22,6 +22,18 @@ std::vector<double> poly_add(const std::vector<double>& a, const std::vector<dou
     return out;
 }
 
+std::vector<double> poly_sub(const std::vector<double>& a, const std::vector<double>& b) {
+    const size_t n = (a.size() > b.size()) ? a.size() : b.size();
+    std::vector<double> out(n, 0.0);
+    for (size_t i = 0; i < a.size(); ++i) {
+        out[i] += a[i];
+    }
+    for (size_t i = 0; i < b.size(); ++i) {
+        out[i] -= b[i];
+    }
+    return out;
+}
+
 std::vector<double> poly_mul(const std::vector<double>& a, const std::vector<double>& b) {
     if (a.empty() || b.empty()) {
         return {};

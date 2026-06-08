@@ -174,26 +174,29 @@ SymExpr sym_simplify(SymExpr expr) {
         }
         break;
     case SymOp::Sin:
-        if (expr.left->op == SymOp::Const && expr.left->value == 0.0) {
-            return sym_const(0.0);
+        if (expr.left->op == SymOp::Const) {
+            return sym_const(std::sin(expr.left->value));
         }
         break;
     case SymOp::Cos:
-        if (expr.left->op == SymOp::Const && expr.left->value == 0.0) {
-            return sym_const(1.0);
+        if (expr.left->op == SymOp::Const) {
+            return sym_const(std::cos(expr.left->value));
         }
         break;
     case SymOp::Exp:
-        if (expr.left->op == SymOp::Const && expr.left->value == 0.0) {
-            return sym_const(1.0);
+        if (expr.left->op == SymOp::Log) {
+            return clone_expr(*expr.left->left);
+        }
+        if (expr.left->op == SymOp::Const) {
+            return sym_const(std::exp(expr.left->value));
         }
         break;
     case SymOp::Log:
-        if (expr.left->op == SymOp::Const && expr.left->value == 1.0) {
-            return sym_const(0.0);
-        }
         if (expr.left->op == SymOp::Exp) {
             return clone_expr(*expr.left->left);
+        }
+        if (expr.left->op == SymOp::Const && expr.left->value > 0.0) {
+            return sym_const(std::log(expr.left->value));
         }
         break;
     case SymOp::Pow:

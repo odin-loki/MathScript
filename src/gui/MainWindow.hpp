@@ -5,12 +5,14 @@
 #include <QMainWindow>
 #include <QPlainTextEdit>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QTimer>
 
 #include "ms/interp/repl_engine.hpp"
 
 class PlotWidget;
+class PlotSurfWidget;
 class QDockWidget;
 class QTreeView;
 class QFileSystemModel;
@@ -30,6 +32,7 @@ private:
     void append_output(const QString& text);
     void refresh_variables();
     void refresh_plot();
+    void export_plot_png();
     void setup_menus();
     void apply_dark_theme();
 
@@ -38,7 +41,9 @@ private:
     QPlainTextEdit* editor_ = nullptr;
     QLineEdit* input_ = nullptr;
     QListWidget* variables_ = nullptr;
-    PlotWidget* plot_ = nullptr;
+    QStackedWidget* plot_stack_ = nullptr;
+    PlotWidget* plot_2d_ = nullptr;
+    PlotSurfWidget* plot_3d_ = nullptr;
     QDockWidget* files_dock_ = nullptr;
     QTreeView* file_tree_ = nullptr;
     QFileSystemModel* file_model_ = nullptr;

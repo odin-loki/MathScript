@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Static unsafe-surface audit for Phase 10 hardening.
 # Full [[ms::unsafe]] enforcement requires MS_BUILD_PLUGIN (Clang plugin).
+# MS_UNSAFE(reason) macro: include/ms/unsafe/unsafe.hpp (included from error_types.hpp).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

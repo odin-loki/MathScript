@@ -1,0 +1,1 @@
+D, V = eig_sym(S)

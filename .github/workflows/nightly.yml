@@ -26,8 +26,49 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-fuzz -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
 
-      - name: Build fuzz target
-        run: cmake --build build-fuzz --target fuzz_special_fns
+      - name: Build fuzz targets
+        run: >
+          cmake --build build-fuzz --target
+          fuzz_special_fns fuzz_matrix_ops fuzz_repl_input
+          fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message
 
-      - name: Run extended fuzz session
-        run: ./build-fuzz/tests/fuzz/fuzz_special_fns -max_total_time=3600 -print_final_stats=1
+      - name: Run extended fuzz sessions
+        run: |
+          for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
+            fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
+            ./build-fuzz/tests/fuzz/${target} -max_total_time=900 -print_final_stats=1
+          done
+
+  fuzz-marathon:
+    name: libFuzzer marathon (manual dispatch)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 480
+    env:
+      MS_CI_LINUX_FLAGS: >-
+        -DMS_BUILD_TESTS=ON
+        -DMS_ENABLE_CUDA=OFF
+        -DMS_ENABLE_AVX512=OFF
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build g++-13
+
+      - name: Configure
+        run: cmake -S . -B build-fuzz-marathon -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
+
+      - name: Build fuzz targets
+        run: >
+          cmake --build build-fuzz-marathon --target
+          fuzz_special_fns fuzz_matrix_ops fuzz_repl_input
+          fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message
+
+      - name: Run marathon fuzz sessions
+        run: |
+          for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
+            fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
+            ./build-fuzz-marathon/tests/fuzz/${target} -max_total_time=3600 -print_final_stats=1
+          done

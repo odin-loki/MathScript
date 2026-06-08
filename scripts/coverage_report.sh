@@ -17,6 +17,7 @@ lcov --quiet --capture --directory "${BUILD_DIR}" --output-file "${INFO}" \
     --rc lcov_branch_coverage=0 --ignore-errors source,gcov,empty,mismatch
 
 lcov --quiet --remove "${INFO}" '/usr/*' '*/tests/*' '*/googletest/*' \
+    '*/src/cuda/solver.cpp' '*/src/cuda/nvml.cpp' \
     --output-file "${INFO}"
 
 echo "=== Line coverage summary ==="

@@ -1,5 +1,8 @@
 // MathScript Symbolic Expression Implementation
 
+#include <cstdlib>
+#include <limits>
+
 #include "ms/core/sym.hpp"
 
 namespace ms {
@@ -60,9 +63,18 @@ Sym Sym::operator/(const Sym& other) const {
 }
 
 double Sym::eval() const {
-    if (has_value_) return value_;
-    // Simplified - would parse and evaluate expression
-    return 0.0;
+    if (has_value_) {
+        return value_;
+    }
+    if (expr_.empty()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    char* end = nullptr;
+    const double parsed = std::strtod(expr_.c_str(), &end);
+    if (end == expr_.c_str() + expr_.size()) {
+        return parsed;
+    }
+    return std::numeric_limits<double>::quiet_NaN();
 }
 
 std::string Sym::to_string() const {

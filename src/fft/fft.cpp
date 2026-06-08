@@ -101,7 +101,46 @@ Result<std::vector<double>> ifft(const std::vector<std::complex<double>>& x) {
 }
 
 Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<double>>& data) {
-    return data;
+    if (data.empty()) {
+        return std::vector<std::complex<double>>{};
+    }
+
+    const size_t n = data.size();
+    size_t cols = 1;
+    const size_t root = static_cast<size_t>(std::sqrt(static_cast<double>(n)));
+    for (size_t c = root; c >= 1; --c) {
+        if (n % c == 0) {
+            cols = c;
+            break;
+        }
+    }
+    const size_t rows = n / cols;
+
+    std::vector<std::complex<double>> out = data;
+
+    for (size_t r = 0; r < rows; ++r) {
+        std::vector<std::complex<double>> row(cols);
+        for (size_t c = 0; c < cols; ++c) {
+            row[c] = out[r * cols + c];
+        }
+        row = fft_recursive(std::move(row));
+        for (size_t c = 0; c < cols; ++c) {
+            out[r * cols + c] = row[c];
+        }
+    }
+
+    for (size_t c = 0; c < cols; ++c) {
+        std::vector<std::complex<double>> col(rows);
+        for (size_t r = 0; r < rows; ++r) {
+            col[r] = out[r * cols + c];
+        }
+        col = fft_recursive(std::move(col));
+        for (size_t r = 0; r < rows; ++r) {
+            out[r * cols + c] = col[r];
+        }
+    }
+
+    return out;
 }
 
 Result<std::vector<std::complex<double>>> dft(std::span<const double> data) {

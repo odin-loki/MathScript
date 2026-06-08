@@ -63,3 +63,11 @@ TEST(SolveTest, singular_matrix) {
     auto result = solve(A, b);
     EXPECT_FALSE(result.has_value());
 }
+
+TEST(SolveTest, dimension_mismatch_matrix_and_rhs) {
+    DMatrix A{{1, 2, 3}, {4, 5, 6}};
+    DMatrix b{{1}, {2}};
+    EXPECT_FALSE(solve(A, b).has_value());
+    DMatrix B{{1, 2}, {3, 4}, {5, 6}};
+    EXPECT_FALSE(solve(A, B).has_value());
+}

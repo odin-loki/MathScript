@@ -1,4 +1,9 @@
 # Build MathScript on native Windows (MSVC + Ninja)
+# Usage: .\build.ps1 [-Test]
+
+param(
+    [switch]$Test
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -18,7 +23,7 @@ if (-not $VsDevCmd) {
 
 $BuildCmd = @(
     "`"$VsDevCmd`" -arch=amd64",
-    "cmake -S `"$Root`" -B `"$BuildDir`" -G Ninja -DCMAKE_BUILD_TYPE=Release -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF",
+    "cmake -S `"$Root`" -B `"$BuildDir`" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF",
     "cmake --build `"$BuildDir`" --config Release"
 ) -join " && "
 
@@ -28,3 +33,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Build complete. Binaries in $BuildDir\bin"
+
+if ($Test) {
+    ctest --test-dir $BuildDir -C Release --output-on-failure
+    if ($LASTEXITCODE -ne 0) {
+        throw "CTest failed with exit code $LASTEXITCODE"
+    }
+    Write-Host "All tests passed."
+}

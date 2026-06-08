@@ -123,5 +123,6 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
 }
 
 template auto svd<double>(const Matrix<double>&) -> Result<SvdResult>;
+template auto svd<double, StorageOrder::RowMajor>(const RowMatrix<double>&) -> Result<SvdResult>;
 
 } // namespace ms

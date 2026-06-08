@@ -28,6 +28,16 @@ jobs:
         with:
           arch: x64
 
+      - name: Ensure NSIS
+        run: |
+          if (Get-Command makensis -ErrorAction SilentlyContinue) {
+            Write-Host "makensis already available"
+          } else {
+            Write-Host "makensis not found; installing NSIS via Chocolatey"
+            choco install nsis -y --no-progress
+            $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
+          }
+
       - name: Configure
         run: >
           cmake -S . -B build-msvc -G Ninja
@@ -43,9 +53,31 @@ jobs:
         run: ctest --test-dir build-msvc --output-on-failure
 
       - name: Install smoke
+        run: pwsh -NoProfile -File scripts/package_smoke.ps1 build-msvc install-smoke
+
+      - name: NSIS package smoke
         run: |
-          cmake --install build-msvc --prefix install-smoke
-          if (-not (Test-Path install-smoke/bin/mathscript-repl.exe)) { throw "mathscript-repl missing" }
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            Write-Host "makensis not found; skipping NSIS package"
+            exit 0
+          }
+          Push-Location build-msvc
+          cpack -G NSIS
+          Get-ChildItem mathscript-*.exe
+          Pop-Location
+
+      - name: WiX package smoke
+        run: |
+          $hasCandle = Get-Command candle -ErrorAction SilentlyContinue
+          $hasLight = Get-Command light -ErrorAction SilentlyContinue
+          if (-not $hasCandle -or -not $hasLight) {
+            Write-Host "WiX tools (candle/light) not found; skipping WIX package"
+            exit 0
+          }
+          Push-Location build-msvc
+          cpack -G WIX
+          Get-ChildItem mathscript-*.msi
+          Pop-Location
 
   build-test-linux:
     name: Build & test (Linux GCC 13)
@@ -56,7 +88,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build ripgrep
+          sudo apt-get install -y g++-13 ninja-build ripgrep rpm
 
       - name: Configure
         run: cmake -S . -B build-linux -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Release ${{ env.MS_CI_LINUX_FLAGS }}
@@ -68,10 +100,7 @@ jobs:
         run: ctest --test-dir build-linux --output-on-failure
 
       - name: Install smoke
-        run: |
-          cmake --install build-linux --prefix install-smoke
-          test -x install-smoke/bin/mathscript-repl
-          test -f install-smoke/lib/libms_core.a
+        run: bash scripts/package_smoke.sh build-linux install-smoke
 
       - name: Package smoke
         run: |
@@ -79,9 +108,27 @@ jobs:
           cpack -G TGZ
           cpack -G ZIP
           ls -la mathscript-*.tar.gz mathscript-*.zip
+          if command -v dpkg-deb >/dev/null 2>&1; then
+            cpack -G DEB
+            ls -la mathscript-*.deb
+          else
+            echo "dpkg-deb not found; skipping DEB package"
+          fi
+          if command -v rpmbuild >/dev/null 2>&1; then
+            cpack -G RPM
+            ls -la mathscript-*.rpm
+          else
+            echo "rpmbuild not found; skipping RPM package"
+          fi
 
       - name: Unsafe surface audit
         run: bash scripts/unsafe_report.sh build-linux/unsafe_report.txt
+
+      - name: Unsafe surface delta
+        run: bash scripts/unsafe_delta.sh build-linux/unsafe_report.txt
+
+      - name: Vendor checksum verify
+        run: bash scripts/verify_vendor.sh
 
   coverage-linux:
     name: Coverage (Linux GCC 13)
@@ -105,7 +152,7 @@ jobs:
 
       - name: Coverage report
         env:
-          MS_COVERAGE_MIN: "58"
+          MS_COVERAGE_MIN: "90"
         run: bash scripts/coverage_report.sh build-cov
 
       - name: Upload coverage summary
@@ -136,11 +183,18 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-fuzz -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
 
-      - name: Build fuzz target
-        run: cmake --build build-fuzz --target fuzz_special_fns
+      - name: Build fuzz targets
+        run: >
+          cmake --build build-fuzz --target
+          fuzz_special_fns fuzz_matrix_ops fuzz_repl_input
+          fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message
 
       - name: Run fuzz smoke
-        run: ./build-fuzz/tests/fuzz/fuzz_special_fns -runs=4096 -max_total_time=30
+        run: |
+          for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
+            fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
+            ./build-fuzz/tests/fuzz/${target} -runs=4096 -max_total_time=30
+          done
 
   valgrind-linux:
     name: Valgrind memcheck (Linux GCC 13)
@@ -162,3 +216,90 @@ jobs:
 
       - name: Memcheck
         run: bash scripts/valgrind_tests.sh build-valgrind
+
+  plugin-linux:
+    name: Clang plugin smoke (Linux Clang + LLVM)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build llvm-18-dev libclang-18-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-plugin -G Ninja
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release
+          -DMS_BUILD_TESTS=ON
+          -DMS_BUILD_PLUGIN=ON
+          -DMS_ENABLE_CUDA=OFF
+          -DMS_ENABLE_AVX512=OFF
+          -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+          -DClang_DIR=/usr/lib/llvm-18/lib/cmake/clang
+
+      - name: Build plugin and smoke test
+        run: cmake --build build-plugin --target ms_plugin test_plugin_smoke
+
+      - name: Test plugin and compliance
+        run: ctest --test-dir build-plugin -R 'test_plugin_smoke|compliance_' --output-on-failure
+
+  jit-linux:
+    name: LLVM ORC JIT smoke (Linux Clang + LLVM)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build llvm-18-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-jit -G Ninja
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release
+          -DMS_BUILD_TESTS=ON
+          -DMS_BUILD_JIT=ON
+          -DMS_ENABLE_CUDA=OFF
+          -DMS_ENABLE_AVX512=OFF
+          -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+
+      - name: Build and test JIT backend
+        run: |
+          cmake --build build-jit --target test_jit_backend test_plot_console
+          ctest --test-dir build-jit -R 'test_jit_backend|test_plot_console' --output-on-failure
+
+  benchmark-linux:
+    name: Benchmark regression (Linux GCC 13)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-bench -G Ninja
+          -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+          -DCMAKE_BUILD_TYPE=Release
+          -DMS_BUILD_TESTS=OFF
+          -DMS_BUILD_BENCHMARKS=ON
+          -DMS_ENABLE_CUDA=OFF
+          -DMS_ENABLE_AVX512=OFF
+
+      - name: Build benchmarks
+        run: cmake --build build-bench --target bench_matmul bench_fft
+
+      - name: Benchmark regression
+        env:
+          MS_BENCH_REGRESSION: on
+          MS_BENCH_TOLERANCE: "10"
+        run: bash scripts/bench_regression.sh build-bench

@@ -21,6 +21,23 @@ TEST(PolyTest, multiply) {
     EXPECT_NEAR(c[2], -1.0, 1e-12);
 }
 
+TEST(PolyTest, subtract_and_add_mismatch) {
+    auto a = std::vector<double>{5.0, 2.0, 1.0};
+    auto b = std::vector<double>{1.0, 1.0};
+    auto diff = poly_sub(a, b);
+    EXPECT_NEAR(diff[0], 4.0, 1e-12);
+    EXPECT_NEAR(diff[1], 1.0, 1e-12);
+    EXPECT_NEAR(diff[2], 1.0, 1e-12);
+    auto sum = poly_add(diff, b);
+    EXPECT_NEAR(poly_eval(sum, 0.0)[0], poly_eval(a, 0.0)[0], 1e-12);
+}
+
+TEST(PolyTest, edge_empty_and_constant) {
+    EXPECT_TRUE(poly_mul({}, {1.0, 2.0}).empty());
+    EXPECT_NEAR(poly_eval(poly_deriv({7.0}), 5.0)[0], 0.0, 1e-12);
+    EXPECT_NEAR(poly_eval({}, 99.0)[0], 0.0, 1e-12);
+}
+
 TEST(SymbolicTest, to_string) {
     auto expr = sym_add(sym_var("x"), sym_const(1.0));
     EXPECT_EQ(sym_to_string(expr), "(x + 1.000000)");

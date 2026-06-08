@@ -1,5 +1,6 @@
 #include "ms/simd/simd.hpp"
 #include <cmath>
+#include <cstdlib>
 #include <immintrin.h>
 
 namespace ms::simd {
@@ -138,6 +139,9 @@ void exp_map_avx2(std::span<const double> x, std::span<double> out) {
 }
 
 Kernel active_kernel() {
+    if (const char* force = std::getenv("MS_SIMD_FORCE_SCALAR"); force != nullptr && force[0] != '\0' && force[0] != '0') {
+        return Kernel::Scalar;
+    }
     if (cached_isa().avx2) {
         return Kernel::Avx2;
     }

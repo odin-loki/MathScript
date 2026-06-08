@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "ms/unsafe/unsafe.hpp"
+
 #include <expected>
 #include <string>
 #include <string_view>

@@ -6,6 +6,9 @@ option(MS_BUILD_GUI "Build Qt6 IDE" OFF)
 # Tests
 option(MS_BUILD_TESTS "Build test suite" ON)
 
+# Performance benchmarks (Google Benchmark)
+option(MS_BUILD_BENCHMARKS "Build performance benchmarks" OFF)
+
 # CUDA
 option(MS_ENABLE_CUDA "Enable CUDA GPU backend" OFF)
 
@@ -26,6 +29,12 @@ option(MS_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
 
 # libFuzzer targets (requires Clang or MSVC with /fsanitize=fuzzer)
 option(MS_BUILD_FUZZ "Build libFuzzer targets" OFF)
+
+# Clang AST enforcement plugin (requires LLVM/Clang dev packages)
+option(MS_BUILD_PLUGIN "Build Clang enforcement plugin (requires LLVM)" OFF)
+
+# LLVM ORC JIT backend (requires LLVM dev packages; Linux CI optional job)
+option(MS_BUILD_JIT "Build LLVM ORC JIT backend when LLVM is available" OFF)
 
 # Use libc++ on Linux CI/dev when libstdc++ lacks full C++23 (e.g. std::expected)
 option(MS_USE_LIBCXX "Use libc++ standard library on Linux" OFF)

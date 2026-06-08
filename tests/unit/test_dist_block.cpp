@@ -101,3 +101,46 @@ TEST(DistBlockTest, distributed_eig_matches_local) {
     }
     finalize(ctx);
 }
+
+TEST(DistBlockTest, block_extent_edge_cases) {
+    const auto empty_rows = block_row_extent(0, 0, 4);
+    EXPECT_EQ(empty_rows.start, 0u);
+    EXPECT_EQ(empty_rows.count, 0u);
+
+    const auto invalid_procs = block_row_extent(10, 0, 0);
+    EXPECT_EQ(invalid_procs.count, 0u);
+
+    size_t total = 0;
+    for (int r = 0; r < 3; ++r) {
+        total += block_row_extent(7, r, 3).count;
+    }
+    EXPECT_EQ(total, 7u);
+}
+
+TEST(DistBlockTest, block_cyclic_edge_cases) {
+    EXPECT_TRUE(block_cyclic_row_indices(0, 0, 4).empty());
+    EXPECT_TRUE(block_cyclic_row_indices(5, 0, 0).empty());
+
+    const auto rank0 = block_cyclic_row_indices(5, 0, 2);
+    ASSERT_EQ(rank0.size(), 3u);
+    EXPECT_EQ(rank0[0], 0u);
+    EXPECT_EQ(rank0[1], 2u);
+    EXPECT_EQ(rank0[2], 4u);
+}
+
+TEST(DistBlockTest, uneven_block_scatter_rank) {
+    auto ctx = init(0, nullptr);
+    ctx.size = 3;
+    ctx.rank = 2;
+
+    ColMatrix<double> global(7, 1);
+    for (size_t i = 0; i < 7; ++i) {
+        global(i, 0) = static_cast<double>(i + 1);
+    }
+
+    const auto ext = block_row_extent(7, 2, 3);
+    auto dist = scatter(global, ctx, Distribution::Block).value();
+    EXPECT_EQ(dist.local.rows(), ext.count);
+    EXPECT_DOUBLE_EQ(dist.local(0, 0), global(ext.start, 0));
+    finalize(ctx);
+}

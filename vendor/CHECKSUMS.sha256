@@ -1,0 +1,3 @@
+# SHA-256 checksums for files under vendor/
+# Format: <hash>  <path-relative-to-repo-root>
+# Regenerate when vendored sources change; see vendor/README.md

@@ -3,9 +3,10 @@
 
 #include "ms/interp/repl_engine.hpp"
 #include "ms/ms.hpp"
+#include "ms/version.hpp"
 
 int main() {
-    std::cout << "MathScript REPL v0.2 (console mode)\n";
+    std::cout << "MathScript REPL " << ms::VERSION_STRING << " (console mode)\n";
     std::cout << "Type 'help' for commands, 'exit' to quit.\n";
 
     ms::interp::Interpreter interp;

@@ -1,0 +1,42 @@
+name: Fuzz 24h
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fuzz-24h:
+    name: libFuzzer 24h (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1500
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_special_fns
+          - fuzz_matrix_ops
+          - fuzz_repl_input
+          - fuzz_sym_parser
+          - fuzz_poly_ops
+          - fuzz_bignum
+          - fuzz_mpi_message
+    env:
+      MS_CI_LINUX_FLAGS: >-
+        -DMS_BUILD_TESTS=ON
+        -DMS_ENABLE_CUDA=OFF
+        -DMS_ENABLE_AVX512=OFF
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build g++-13
+
+      - name: Configure
+        run: cmake -S . -B build-fuzz-24h -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
+
+      - name: Build fuzz target
+        run: cmake --build build-fuzz-24h --target ${{ matrix.target }}
+
+      - name: Run 24h fuzz session
+        run: ./build-fuzz-24h/tests/fuzz/${{ matrix.target }} -max_total_time=86400 -print_final_stats=1

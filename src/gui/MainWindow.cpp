@@ -1,4 +1,5 @@
 #include "gui/MainWindow.hpp"
+#include "gui/PlotSurfWidget.hpp"
 #include "gui/PlotWidget.hpp"
 
 #include <QApplication>
@@ -39,8 +40,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     output_->setPlaceholderText("MathScript output");
     center_layout->addWidget(output_, 2);
 
-    plot_ = new PlotWidget(center);
-    center_layout->addWidget(plot_);
+    plot_stack_ = new QStackedWidget(center);
+    plot_2d_ = new PlotWidget(plot_stack_);
+    plot_3d_ = new PlotSurfWidget(plot_stack_);
+    plot_stack_->addWidget(plot_2d_);
+    plot_stack_->addWidget(plot_3d_);
+    center_layout->addWidget(plot_stack_);
 
     auto* row = new QHBoxLayout();
     input_ = new QLineEdit(center);
@@ -112,6 +117,7 @@ void MainWindow::setup_menus() {
     auto* open_action = file_menu->addAction("Open...");
     auto* save_session_action = file_menu->addAction("Save Session...");
     auto* load_session_action = file_menu->addAction("Load Session...");
+    auto* export_plot_action = file_menu->addAction("Export Plot as PNG...");
     file_menu->addSeparator();
     auto* quit_action = file_menu->addAction("Quit");
 
@@ -152,6 +158,7 @@ void MainWindow::setup_menus() {
             append_output("error: " + QString::fromStdString(ms::format_error(result.error())) + "\n");
         }
     });
+    connect(export_plot_action, &QAction::triggered, this, &MainWindow::export_plot_png);
     connect(quit_action, &QAction::triggered, qApp, &QApplication::quit);
 }
 
@@ -189,14 +196,43 @@ void MainWindow::refresh_variables() {
 }
 
 void MainWindow::refresh_plot() {
-    if (interp_.has_plot()) {
-        const auto& series = interp_.plot();
-        plot_->set_series(
-            series.x,
-            series.y,
-            series.kind == ms::interp::PlotSeries::Kind::Bar);
+    if (!interp_.has_plot()) {
+        plot_2d_->clear_plot();
+        plot_3d_->clear_surface();
+        plot_stack_->setCurrentWidget(plot_2d_);
+        return;
+    }
+
+    const auto& plot = interp_.plot();
+    if (plot.kind == ms::interp::PlotSeries::Kind::Surface3D) {
+        plot_3d_->set_surface(plot);
+        plot_stack_->setCurrentWidget(plot_3d_);
+        return;
+    }
+
+    plot_2d_->set_plot(plot);
+    plot_stack_->setCurrentWidget(plot_2d_);
+}
+
+void MainWindow::export_plot_png() {
+    if (!interp_.has_plot()) {
+        append_output("error: no plot to export\n");
+        return;
+    }
+
+    const QString path =
+        QFileDialog::getSaveFileName(this, "Export Plot", {}, "PNG Image (*.png)");
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const bool ok = interp_.plot().kind == ms::interp::PlotSeries::Kind::Surface3D
+                          ? plot_3d_->export_png(path)
+                          : plot_2d_->export_png(path);
+    if (ok) {
+        append_output("exported plot to " + path + "\n");
     } else {
-        plot_->clear_series();
+        append_output("error: failed to export plot to " + path + "\n");
     }
 }
 

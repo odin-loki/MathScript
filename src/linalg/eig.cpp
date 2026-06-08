@@ -151,7 +151,7 @@ Result<EigResult> eig_sym(const Matrix<S, OA, Alloc>& A) {
         }
     }
 
-    Matrix<double> Ad = copy(A);
+    Matrix<double> Ad = to_col_major(A);
     Matrix<double> V;
     Matrix<double> values = jacobi_eigen_symmetric(Ad, V);
     sort_eig_descending(values, V);
@@ -168,7 +168,7 @@ Result<EigResult> eig(const Matrix<S, OA, Alloc>& A) {
         return eig_sym(A);
     }
 
-    Matrix<double> Ad = copy(A);
+    Matrix<double> Ad = to_col_major(A);
     Matrix<double> V;
     Matrix<double> values = qr_eigenvalues_general(Ad, V);
     sort_eig_descending(values, V);
@@ -177,5 +177,8 @@ Result<EigResult> eig(const Matrix<S, OA, Alloc>& A) {
 
 template auto eig_sym<double>(const Matrix<double>&) -> Result<EigResult>;
 template auto eig<double>(const Matrix<double>&) -> Result<EigResult>;
+template auto eig_sym<double, StorageOrder::RowMajor>(const Matrix<double, StorageOrder::RowMajor>&)
+    -> Result<EigResult>;
+template auto eig<double, StorageOrder::RowMajor>(const Matrix<double, StorageOrder::RowMajor>&) -> Result<EigResult>;
 
 } // namespace ms

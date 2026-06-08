@@ -48,7 +48,8 @@ void dorgbr(
     int ldq);
 
 /// Apply Q, Q**T, P, or P**T from a dgebrd factorization to C.
-void dormbr(
+/// Returns 0 on success, 1 when arguments are invalid or unsupported.
+int dormbr(
     char vect,
     char side,
     char trans,

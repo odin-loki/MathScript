@@ -26,6 +26,7 @@ enum class DiagnosticID {
     NoDetach,
     NoSignedUnsignedMix,
     NoRawPtrArithmetic,
+    NoGoto,
     UnsafeAudit
 };
 

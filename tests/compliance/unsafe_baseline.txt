@@ -1,0 +1,9 @@
+# MathScript unsafe baseline — one reviewed site per line (file:line:match)
+# Regenerate: bash scripts/unsafe_delta.sh --write-baseline [REPORT_PATH]
+# Matches approved_sites: 6 in UNSAFE_REVIEW.md
+src/cuda/fft.cpp:85:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
+src/cuda/fft.cpp:86:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
+src/cuda/fft.cpp:145:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
+src/cuda/fft.cpp:146:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
+src/plugin/unsafe_registry.hpp:1:// MathScript Unsafe Registry - Tracks [[ms::unsafe]] annotation sites
+src/plugin/unsafe_registry.hpp:39:#define UNSAFE_SITE(reason) ms::plugin::record_unsafe_annotation(__FILE__, __LINE__, reason)
