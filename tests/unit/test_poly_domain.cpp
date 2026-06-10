@@ -44,6 +44,39 @@ TEST(SymbolicTest, to_string) {
 }
 
 TEST(DomainTest, combinatorics) {
-    EXPECT_EQ(nchoosek(5, 2), 10);
-    EXPECT_EQ(gcd(12, 8), 4);
+    EXPECT_EQ(nchoosek(5, 2), 10u);
+    EXPECT_EQ(gcd(12, 8), 4u);
+}
+
+TEST(DomainTest, factorial) {
+    EXPECT_EQ(factorial(0), 1u);
+    EXPECT_EQ(factorial(1), 1u);
+    EXPECT_EQ(factorial(5), 120u);
+    EXPECT_EQ(factorial(10), 3628800u);
+}
+
+TEST(DomainTest, nchoosek_edge_cases) {
+    EXPECT_EQ(nchoosek(5, 0), 1u);
+    EXPECT_EQ(nchoosek(5, 5), 1u);
+    EXPECT_EQ(nchoosek(10, 3), 120u);
+}
+
+TEST(DomainTest, gcd_edge_cases) {
+    EXPECT_EQ(gcd(0, 5), 5u);
+    EXPECT_EQ(gcd(7, 7), 7u);
+    EXPECT_EQ(gcd(48, 18), 6u);
+}
+
+TEST(DomainTest, graph_num_edges) {
+    Graph g;
+    g.n = 3;
+    g.adj = {{1, 2}, {0, 2}, {0, 1}};
+    EXPECT_EQ(graph_num_edges(g), 3u);
+}
+
+TEST(DomainTest, graph_empty) {
+    Graph g;
+    g.n = 5;
+    g.adj.resize(5);
+    EXPECT_EQ(graph_num_edges(g), 0u);
 }
