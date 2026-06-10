@@ -64,7 +64,7 @@ run_json_suite() {
     local merged="${BENCH_JSON_DIR}/bench_results.json"
     echo '{"benchmarks":[]}' > "${merged}"
 
-    for bench in bench_matmul bench_fft bench_linalg bench_repl; do
+    for bench in bench_matmul bench_fft bench_linalg bench_repl bench_special; do
         local path
         path="$(bench_path "${bench}")"
         if [[ ! -x "${path}" ]]; then

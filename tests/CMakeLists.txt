@@ -108,6 +108,7 @@ add_ms_test(test_topology unit/test_topology.cpp)
 add_ms_test(test_construction unit/test_construction.cpp)
 add_ms_test(test_linalg_decomp_ext unit/test_linalg_decomp_ext.cpp)
 add_ms_test(test_simd_vector_ops unit/test_simd_vector_ops.cpp)
+add_ms_test(test_scalar_type unit/test_scalar_type.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
