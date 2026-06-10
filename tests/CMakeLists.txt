@@ -127,6 +127,8 @@ add_ms_test(test_repl_error_paths unit/test_repl_error_paths.cpp)
 add_ms_test(test_axiom_gria_ext unit/test_axiom_gria_ext.cpp)
 add_ms_test(test_cellai_cypha_ext unit/test_cellai_cypha_ext.cpp)
 add_ms_test(test_tensor_lb_numa unit/test_tensor_lb_numa.cpp)
+add_ms_test(test_optim_result_types unit/test_optim_result_types.cpp)
+add_ms_test(test_simd_extended unit/test_simd_extended.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)

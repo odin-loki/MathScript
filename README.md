@@ -16,7 +16,7 @@ Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage r
 - **Math modules:** fft, stats, prob, optim, signal, special (CPU implementations)
 - **Runtime:** Topology detection, thread pool, dispatch layer, own BLAS/LAPACK CPU kernels
 - **Executables:** `mathscriptc`, `mathscript-repl`, `mathscript-server`
-- **Unit tests:** 115 CTest suites, 1339 test cases — all passing (CUDA disabled)
+- **Unit tests:** 119 CTest suites, 1433 test cases — all passing (CUDA disabled)
 - **CI baseline:** ~91% line coverage (**90%** enforced in CI)
 
 ### Build Instructions (Native Windows)
