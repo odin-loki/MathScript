@@ -7352,7 +7352,7 @@ Replace all Class A transitional libraries with own implementations. This runs i
 **Exit criterion:** Version 1.0.0 tag. All CI stages green. Unsafe surface report approved. Packages buildable on clean machines.
 
 <!-- Phase 10 tracking (see README "Phase 10 checklist"):
-DONE: CI green (Win/Linux), ~91% coverage (90% gate), 56 CTest suites, Valgrind memcheck,
+DONE: CI green (Win/Linux), ~91% coverage (90% gate), 57 CTest suites, Valgrind memcheck,
       libFuzzer smoke (7 targets) + fuzz-24h manual workflow (86400 s×7, workflow_dispatch),
       fuzz_repl_input seed corpus, unsafe surface audit + delta baseline (blocking in CI),
       install/package smoke (DEB/RPM/NSIS/WiX), benchmark regression gate (benchmark-linux, 10% tolerance),
