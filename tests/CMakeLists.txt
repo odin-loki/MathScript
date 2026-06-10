@@ -113,6 +113,7 @@ add_ms_test(test_sparse_ext unit/test_sparse_ext.cpp)
 add_ms_test(test_poly_ext unit/test_poly_ext.cpp)
 add_ms_test(test_domain_types unit/test_domain_types.cpp)
 add_ms_test(test_pde_extended unit/test_pde_extended.cpp)
+add_ms_test(test_signal_windows unit/test_signal_windows.cpp)
 add_ms_test(test_linalg_edge unit/test_linalg_edge.cpp)
 add_ms_test(test_repl_error_paths unit/test_repl_error_paths.cpp)
 
