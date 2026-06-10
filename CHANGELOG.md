@@ -3,7 +3,18 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.0.0] — 2026-06-10
+## [1.0.0] — 2026-06-10 (Wave 29)
+
+### Added (Wave 29 — Hardening Iteration)
+- `tests/numerical/test_special_advanced_ref.cpp`: 30 numerical reference tests for `erfi`, `erfcx`, `dawsonx`, `log_gamma`, `bernoulli_number`, `euler_number`, Airy functions (`airy_ai`, `airy_bi`, `airy_aip`, `airy_bip`)
+- `tests/numerical/test_fft_dct_prob_ref.cpp`: 30 numerical tests for DCT-2/IDCT-2/DST-2 roundtrip/size, `fftshift`/`ifftshift`, session RNG fixture, `norm_pdf`, `exp_pdf`, `binom_pdf`, `t_pdf`, `t_cdf`
+- `tests/numerical/test_signal_correlate_ode_ref.cpp`: 18 numerical tests for `correlate` (peak detection, shift, zero-input) and ODE solvers (`ode_euler`/`ode_rk4` accuracy, step count, logistic growth, RK4 vs Euler comparison)
+- `tests/unit/test_gria_advanced.cpp`: 15+ tests for `matrix_alpha`, `is_critical`, `classify`, `generate_field`, `langton_lambda`, `alpha_ca`, `alpha_lfsr`
+- `tests/unit/test_izaac_advanced.cpp`: 15+ tests for `keygen`, `prove`, `fill`, `next_u64`, `next_f64`, `next_normal`, `randn_matrix`, `rand_matrix`, `estimate_pi`
+- `tests/performance/bench_signal_linalg.cpp`: Google Benchmark suite for `convolve`, `correlate`, `moving_average`, `lowpass`, `solve`, `lu`, `qr`, `chol`, `det`, `trace` — bridging prior benchmark coverage gaps
+- **Total: 129 CTest suites, 1673 test cases — all passing**
+
+## [1.0.0-rc] — 2026-06-10
 
 ### Added
 - GitHub Actions CI: Windows MSVC and Linux GCC build/test, install smoke, packaging
