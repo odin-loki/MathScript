@@ -35,7 +35,7 @@ bash scripts/package_smoke.sh build-linux install-smoke
 
 ## Fuzz marathon (required before v1.0.0)
 
-The nightly workflow runs **15 min × 7** targets for smoke. Phase 10 exit requires the manual **24 h × 7** campaign with zero crashes:
+The nightly workflow runs **15 min × 7** targets on schedule. Manual **`fuzz-marathon`** runs **60 min × 7**. Phase 10 exit requires the separate **24 h × 7** campaign with zero crashes:
 
 1. Open GitHub → Actions → **Fuzz 24h** → **Run workflow**, or:
    ```bash
@@ -49,8 +49,27 @@ Helper: `bash scripts/fuzz_24h_dispatch.sh` (wraps `gh workflow run` + prints mo
 
 Pre-tag read-only gate: `bash scripts/tag_1.0.0_checklist.sh` (does not bump version).
 
+## Final release procedure
+
+Run these steps **in order** after tag criteria are met:
+
+1. **Fuzz marathon** — `gh workflow run fuzz-24h.yml`; confirm **zero crashes** in all **7** jobs (`gh run list --workflow=fuzz-24h.yml`).
+2. **Version bump** — set `project(MathScript VERSION …)` in `CMakeLists.txt` to **1.0.0**, reconfigure, then:
+   - Windows: `.\build.ps1 -Test`
+   - Linux: `ctest --test-dir build-linux --output-on-failure`
+3. **Changelog** — edit `CHANGELOG.md`: change `## [Unreleased]` to `## [1.0.0] - <YYYY-MM-DD>` (tag date) and remove the `### Remaining (Phase 10)` section if still present.
+4. **Pre-release gate** — `bash scripts/pre_release.sh` (Linux); review warnings.
+5. **Push** — push to `main` and confirm CI is green on the push.
+6. **Tag** — `git tag v1.0.0 && git push origin v1.0.0`
+
+## Post-tag
+
+After `v1.0.0` is on `main`:
+
+1. **GitHub release** — create a release from the `v1.0.0` tag (GitHub → Releases → Draft a new release → choose tag `v1.0.0`).
+2. **Artifacts** — attach TGZ/ZIP (and DEB/RPM on Linux CI artifacts if needed) from the green packaging jobs, or build locally with `cpack` and upload.
+3. **Announce** — publish release notes summarizing Phase 10 hardening and link to `CHANGELOG.md` for the full **1.0.0** change list.
+
 ## Remaining before 1.0.0
 
-See README **Remaining** under the Phase 10 checklist: extended 24 h fuzz marathon,
-full ORC JIT v2 matrix LLVM IR lowering (native dispatch for all REPL call forms today),
-and version bump to **1.0.0** after fuzz marathon completes.
+See README **Remaining** under the Phase 10 checklist: extended **24 h × 7** fuzz marathon (zero crashes) and version bump to **1.0.0** after it completes.

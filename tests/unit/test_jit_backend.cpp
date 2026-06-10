@@ -128,6 +128,25 @@ TEST(JitBackendTest, try_parse_scalar_expr_assignment) {
               (std::vector<std::string>{"a", "b"}));
     EXPECT_EQ(Interpreter::list_scalar_expr_variables("sin(x) + 1"), (std::vector<std::string>{"x"}));
     EXPECT_EQ(Interpreter::list_scalar_expr_variables("pow(a, b)"), (std::vector<std::string>{"a", "b"}));
+    EXPECT_EQ(Interpreter::list_scalar_expr_variables("-a + b"), (std::vector<std::string>{"a", "b"}));
+    EXPECT_EQ(Interpreter::list_scalar_expr_variables("+a - b"), (std::vector<std::string>{"a", "b"}));
+}
+
+TEST(JitBackendTest, orc_jit_unary_minus_scalar_expr) {
+    auto backend = create_backend(Backend::OrcJit);
+    const auto caps = backend->capabilities();
+    if (!caps.can_compile) {
+        GTEST_SKIP() << "LLVM JIT compile unavailable";
+    }
+    ASSERT_TRUE(backend->execute("pi = 3.14159265358979323846").has_value());
+    ASSERT_TRUE(backend->execute("x = -sin(pi/2)").has_value());
+    EXPECT_NEAR(backend->state().scalars.at("x"), -1.0, 1e-12);
+    ASSERT_TRUE(backend->execute("y = 2 * -3").has_value());
+    EXPECT_DOUBLE_EQ(backend->state().scalars.at("y"), -6.0);
+    ASSERT_TRUE(backend->execute("a = 5").has_value());
+    ASSERT_TRUE(backend->execute("b = 0").has_value());
+    ASSERT_TRUE(backend->execute("z = -a + b").has_value());
+    EXPECT_DOUBLE_EQ(backend->state().scalars.at("z"), -5.0);
 }
 
 TEST(JitBackendTest, orc_jit_scalar_call) {
@@ -259,7 +278,8 @@ TEST(JitBackendTest, orc_jit_stub_capabilities) {
         EXPECT_TRUE(backend->backend_name() == "orc-jit" ||
                     backend->backend_name() == "orc-jit-llvm-fallback");
         if (caps.can_compile) {
-            EXPECT_NE(caps.notes.find("scalar/matrix call dispatch"), std::string::npos);
+            EXPECT_NE(caps.notes.find("scalar exprs: LLVM IR"), std::string::npos);
+            EXPECT_NE(caps.notes.find("native C++ dispatch"), std::string::npos);
         } else {
             EXPECT_FALSE(caps.can_compile);
             EXPECT_NE(caps.notes.find("LLVM"), std::string::npos);

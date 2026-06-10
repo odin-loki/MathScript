@@ -9,3 +9,6 @@ endfunction()
 
 add_ms_bench(bench_matmul bench_matmul.cpp)
 add_ms_bench(bench_fft bench_fft.cpp)
+add_ms_bench(bench_linalg bench_linalg.cpp)
+add_ms_bench(bench_repl bench_repl.cpp)
+target_link_libraries(bench_repl PRIVATE ms_interp)

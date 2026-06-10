@@ -18,6 +18,18 @@ GoogleTest is fetched automatically when `MS_BUILD_TESTS=ON`.
 .\build.ps1
 ```
 
+Configure only (no compile):
+
+```powershell
+.\build.ps1 -Configure
+```
+
+Clean rebuild:
+
+```powershell
+.\build.ps1 -Clean
+```
+
 Or manually with Ninja after loading the VS developer environment (see `README.md`).
 
 ### Linux (GCC 13, CI-style)

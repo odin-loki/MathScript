@@ -282,6 +282,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
     if (parse_number(text, literal)) {
         return false;
     }
+    if (text.front() == '-' || text.front() == '+') {
+        return is_scalar_expression_rhs(text.substr(1));
+    }
     if (const auto call = parse_scalar_call(text)) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "solve" || fn == "transpose" || fn == "chol" || fn == "det" ||
@@ -364,6 +367,11 @@ void append_unique_var(std::vector<std::string>& vars, const std::string& name) 
 void collect_scalar_expr_variables(const std::string& expr_text, std::vector<std::string>& vars) {
     const std::string expr = strip_outer_parens(expr_text);
     if (expr.empty()) {
+        return;
+    }
+
+    if (expr.front() == '-' || expr.front() == '+') {
+        collect_scalar_expr_variables(expr.substr(1), vars);
         return;
     }
 

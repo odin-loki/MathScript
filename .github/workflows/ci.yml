@@ -222,6 +222,35 @@ jobs:
       - name: Memcheck
         run: bash scripts/valgrind_tests.sh build-valgrind
 
+  sanitizer-linux:
+    name: AddressSanitizer + UBSan (Linux GCC 13)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-sanitizer -G Ninja
+          -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+          -DCMAKE_BUILD_TYPE=Debug
+          -DMS_ENABLE_ASAN=ON
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          ${{ env.MS_CI_LINUX_FLAGS }}
+
+      - name: Build
+        run: cmake --build build-sanitizer
+
+      - name: Test
+        run: >
+          ctest --test-dir build-sanitizer --output-on-failure
+          -E "test_fuzz_stress|test_cuda_matmul|test_cuda_stub"
+
   plugin-linux:
     name: Clang plugin smoke (Linux Clang + LLVM)
     runs-on: ubuntu-24.04
@@ -301,7 +330,7 @@ jobs:
           -DMS_ENABLE_AVX512=OFF
 
       - name: Build benchmarks
-        run: cmake --build build-bench --target bench_matmul bench_fft
+        run: cmake --build build-bench --target bench_matmul bench_fft bench_linalg bench_repl
 
       - name: Benchmark regression
         env:

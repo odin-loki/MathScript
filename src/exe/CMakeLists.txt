@@ -1,7 +1,7 @@
 # MathScript Executables
 
 add_executable(mathscriptc mathscriptc.cpp)
-target_link_libraries(mathscriptc PRIVATE mathscript)
+target_link_libraries(mathscriptc PRIVATE mathscript ms_interp)
 target_include_directories(mathscriptc PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
 
 add_executable(mathscript-repl repl.cpp)

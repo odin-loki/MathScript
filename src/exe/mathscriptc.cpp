@@ -1,25 +1,27 @@
-// MathScript Headless Compiler
-// Compiles .cpp files to executable
+// MathScript script runner
+// Executes .ms files as REPL command sequences
 
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <string>
-#include <string_view>
 
+#include "ms/error/error_types.hpp"
+#include "ms/interp/repl_engine.hpp"
 #include "ms/version.hpp"
 
 namespace {
 
 void print_usage(std::ostream& out) {
-    out << "MathScript batch compiler (mathscriptc)\n\n"
+    out << "MathScript script runner (mathscriptc)\n\n"
         << "Usage:\n"
         << "  mathscriptc [options]\n"
-        << "  mathscriptc <source.cpp> [options]\n\n"
+        << "  mathscriptc <file.ms> [options]\n\n"
         << "Options:\n"
         << "  -h, --help     Show this help message\n"
         << "      --version  Show version information\n\n"
-        << "Compiles MathScript C++ profile sources into standalone executables.\n"
-        << "The batch compiler is not yet implemented.\n";
+        << "Executes a .ms file as a sequence of REPL commands (one per line).\n"
+        << "Empty lines and lines starting with '#' are skipped.\n";
 }
 
 void print_version(std::ostream& out) {
@@ -31,6 +33,35 @@ void print_version(std::ostream& out) {
 bool is_option(const char* arg, const char* long_opt, const char* short_opt = nullptr) {
     return std::strcmp(arg, long_opt) == 0
         || (short_opt != nullptr && std::strcmp(arg, short_opt) == 0);
+}
+
+bool run_script_file(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) {
+        std::cerr << "mathscriptc: cannot open file: " << path << '\n';
+        return false;
+    }
+
+    ms::interp::Interpreter interp;
+    bool all_ok = true;
+    std::string line;
+    while (std::getline(in, line)) {
+        const std::string trimmed = ms::interp::Interpreter::trim(line);
+        if (trimmed.empty() || trimmed[0] == '#') {
+            continue;
+        }
+
+        auto result = interp.execute(trimmed);
+        if (result) {
+            if (!result->empty()) {
+                std::cout << *result;
+            }
+        } else {
+            std::cerr << "error: " << ms::format_error(result.error()) << '\n';
+            all_ok = false;
+        }
+    }
+    return all_ok;
 }
 
 } // namespace
@@ -69,9 +100,5 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::cerr << "mathscriptc: batch compiler is not yet implemented.\n"
-              << "  Source: " << source << '\n'
-              << "  Planned output: "
-              << source.substr(0, source.length() > 4 ? source.length() - 4 : 0) << ".exe\n";
-    return 2;
+    return run_script_file(source) ? 0 : 1;
 }

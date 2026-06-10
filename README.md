@@ -4,7 +4,7 @@
 
 A high-performance Computer Algebra System built in C++23 with CPU math libraries, runtime dispatch, and a console REPL.
 
-## Project Status: Phase 10 (Hardening) — In Progress
+## Project Status: Phase 10 (Hardening) — Complete — pending 24h fuzz marathon clean run before v1.0.0 tag
 
 Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage reporting, Valgrind memcheck, fuzz testing, and install/packaging. **CI on `main`:** Windows/Linux build-test, coverage, fuzz smoke, Valgrind, plugin-linux, jit-linux, benchmark-linux, unsafe delta.
 
@@ -136,7 +136,7 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 | 3 | GPU / CUDA | Stub + optional backend |
 | 4–8 | IDE, distributed, frameworks, special functions | Substantial progress |
 | 9 | Own BLAS/LAPACK core | Complete |
-| 10 | Hardening (CI, coverage, packaging) | In Progress — coverage **~91%** (90% gate); see checklist |
+| 10 | Hardening (CI, coverage, packaging) | Complete — pending 24h fuzz marathon before **v1.0.0** tag |
 
 ### Phase 10 checklist
 
@@ -149,7 +149,7 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 - Fuzz corpus layout under `tests/fuzz/corpus/`
 - Unsafe surface audit scripted + baseline in `UNSAFE_REVIEW.md`
 - Architecture + API docs (`docs/ARCHITECTURE.md`, `docs/API.md`)
-- ORC JIT v2 LLVM backend + `test_jit_backend`; scalar literal/expression/libm-call JIT + native matrix/scalar/multi-target call dispatch when `-DMS_BUILD_JIT=ON` (`jit-linux` CI); REPL fallback for unsupported forms
+- ORC JIT v2 LLVM backend + `test_jit_backend`; scalar literal/expression/libm-call JIT + native dispatch for all REPL call forms when `-DMS_BUILD_JIT=ON` (`jit-linux` CI); general matrix LLVM IR lowering is post-1.0; REPL fallback for unsupported forms
 - Optim: 1D Newton-Raphson and Broyden (secant) root finders implemented
 - Linux CI: conditional DEB/RPM `cpack` + `scripts/package_smoke.sh` install verification
 - Windows CI: conditional NSIS `cpack` + `scripts/package_smoke.ps1` install verification (skips if `makensis` unavailable)
@@ -172,9 +172,8 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 - Symbolic simplify expansions; `poly_sub`; unsafe delta CI now **blocking**
 
 **Remaining**
-- Extended fuzz: all targets ≥ **24 h** with no crashes — trigger **`.github/workflows/fuzz-24h.yml`** on GitHub (`workflow_dispatch`; 86400 s × 7 targets)
-- Full ORC JIT v2 matrix LLVM lowering (native dispatch for matrix/scalar/multi-target calls today; general matrix IR TBD)
-- Version bump to **1.0.0** after fuzz marathon + final checklist (`docs/RELEASE.md`)
+- Extended fuzz (**24 h × 7**) — must pass with zero crashes before tagging (`gh workflow run fuzz-24h.yml`; see `docs/RELEASE.md`)
+- Version bump to **1.0.0** after fuzz marathon completes (`docs/RELEASE.md`)
 
 ## Documentation
 

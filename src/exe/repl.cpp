@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ms/interp/jit_backend.hpp"
+#include "ms/interp/jit_backend_impl.hpp"
 #include "ms/ms.hpp"
 #include "ms/version.hpp"
 
@@ -23,6 +24,7 @@ void print_usage(std::ostream& out) {
         << "  -e, --eval <command>  Execute a REPL command and exit (repeatable)\n"
         << "      --load <file.ms>  Load session before eval or interactive mode\n"
         << "      --jit             Use LLVM ORC backend when linked (falls back to REPL)\n"
+        << "      --jit-stats       Log JIT dispatch path for each command (requires --jit)\n"
         << "  -h, --help            Show this help message\n"
         << "      --version         Show version information\n\n"
         << "Without -e, runs an interactive session (type 'help' for commands).\n";
@@ -60,6 +62,7 @@ int main(int argc, char** argv) {
     bool show_help = false;
     bool show_version = false;
     bool use_jit = false;
+    bool jit_stats = false;
 
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
@@ -73,6 +76,10 @@ int main(int argc, char** argv) {
         }
         if (is_option(arg, "--jit")) {
             use_jit = true;
+            continue;
+        }
+        if (is_option(arg, "--jit-stats")) {
+            jit_stats = true;
             continue;
         }
         if (is_option(arg, "--eval", "-e")) {
@@ -107,6 +114,11 @@ int main(int argc, char** argv) {
 
     auto backend = ms::interp::create_backend(use_jit ? ms::interp::Backend::OrcJit
                                                       : ms::interp::Backend::Repl);
+#if defined(MS_JIT_LLVM)
+    if (jit_stats && use_jit) {
+        ms::interp::set_orc_jit_stats_enabled(true);
+    }
+#endif
 
     bool ok = true;
     if (!load_path.empty()) {

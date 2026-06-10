@@ -96,9 +96,10 @@ Triggered on push/PR to `main`:
 3. **coverage-linux** — Debug + `MS_ENABLE_COVERAGE`, 90% minimum line coverage enforced
 4. **fuzz-linux** — libFuzzer smoke on all 7 targets (Clang)
 5. **valgrind-linux** — Debug memcheck over the suite (excludes `test_fuzz_stress`)
-6. **plugin-linux** — Clang + LLVM 18, `MS_BUILD_PLUGIN=ON`; builds `ms_plugin`, runs `test_plugin_smoke`, and compliance rule tests (`compliance_*`). **Twenty** compile-fail rules enforced (all `DiagnosticID`s in `diagnostics.hpp` except partial **`UnsafeAudit`** via `MS_UNSAFE` + `scripts/unsafe_report.sh`). Each rule has `fail.cpp` + `ok.cpp`; `[[ms::unsafe]]` escape where applicable. When `MS_UNSAFE` is defined, also runs `compliance_unsafe_annotation`.
-7. **jit-linux** — Clang + LLVM 18, `-DMS_BUILD_JIT=ON`; links ORC LLJIT, runs `test_jit_backend` and `test_plot_console`. LLVM backend JIT-compiles scalar assignments; matrix calls (`matmul`, `solve`, `transpose`, `chol`, multi-target `lu`/`qr`/`svd`/`eig_sym`, scalar `det`/…) dispatch to native kernels; other lines delegate to REPL when unsupported.
-8. **benchmark-linux** — Google Benchmark smoke (`bench_matmul`, `bench_fft`) when `MS_BUILD_BENCHMARKS=ON`
+6. **sanitizer-linux** — Debug + AddressSanitizer/UBSan (GCC 13); full `ctest` excluding `test_fuzz_stress`, `test_cuda_matmul`, and `test_cuda_stub`
+7. **plugin-linux** — Clang + LLVM 18, `MS_BUILD_PLUGIN=ON`; builds `ms_plugin`, runs `test_plugin_smoke`, and compliance rule tests (`compliance_*`). **Twenty** compile-fail rules enforced (all `DiagnosticID`s in `diagnostics.hpp` except partial **`UnsafeAudit`** via `MS_UNSAFE` + `scripts/unsafe_report.sh`). Each rule has `fail.cpp` + `ok.cpp`; `[[ms::unsafe]]` escape where applicable. When `MS_UNSAFE` is defined, also runs `compliance_unsafe_annotation`.
+8. **jit-linux** — Clang + LLVM 18, `-DMS_BUILD_JIT=ON`; links ORC LLJIT, runs `test_jit_backend` and `test_plot_console`. LLVM backend JIT-compiles scalar assignments; matrix calls (`matmul`, `solve`, `transpose`, `chol`, multi-target `lu`/`qr`/`svd`/`eig_sym`, scalar `det`/…) dispatch to native kernels; other lines delegate to REPL when unsupported.
+9. **benchmark-linux** — Google Benchmark smoke (`bench_matmul`, `bench_fft`, `bench_linalg`, `bench_repl`) when `MS_BUILD_BENCHMARKS=ON`
 
 ### Performance benchmarks
 
@@ -116,7 +117,7 @@ bash scripts/bench_regression.sh --write-baseline build-bench   # refresh baseli
 
 Baselines are captured with `--benchmark_out=… --benchmark_out_format=json` (wrapped by `bench_regression.sh`). Calibrate on the target runner profile (Linux GCC 13 Release) before enabling the CI regression gate.
 
-Weekly extended fuzz: `.github/workflows/nightly.yml` (15 min × 7 targets scheduled; manual `fuzz-marathon` job runs **60 min**/target). All fuzz jobs use `tests/fuzz/corpus/<target>` when present.
+Weekly extended fuzz: `.github/workflows/nightly.yml` — **15 min/target × 7** scheduled; **60 min/target** (manual `fuzz-marathon`) × 7. All fuzz jobs use `tests/fuzz/corpus/<target>` when present.
 
 Manual Phase 10 fuzz campaign: `.github/workflows/fuzz-24h.yml` (`workflow_dispatch` only) — 7 parallel jobs, **86400 s (24 h) per target**, **1500 min** job timeout each. Required before tagging **v1.0.0** (zero crashes). Trigger from GitHub Actions UI or `gh workflow run fuzz-24h.yml`.
 

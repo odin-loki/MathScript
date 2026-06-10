@@ -10,6 +10,7 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <iostream>
 #include <map>
 #include <optional>
 #include <vector>
@@ -522,6 +523,40 @@ std::optional<std::vector<double>> collect_expr_args(const SessionState& state,
     return args;
 }
 
+enum class JitDispatchPath { JitCompiled, NativeDispatch, ReplFallback };
+
+const char* jit_dispatch_path_name(JitDispatchPath path) {
+    switch (path) {
+    case JitDispatchPath::JitCompiled:
+        return "jit-compiled";
+    case JitDispatchPath::NativeDispatch:
+        return "native-dispatch";
+    case JitDispatchPath::ReplFallback:
+        return "repl-fallback";
+    }
+    return "unknown";
+}
+
+bool g_jit_stats_enabled = false;
+JitDispatchStats g_jit_stats{};
+
+void record_jit_dispatch(JitDispatchPath path, const std::string& line) {
+    switch (path) {
+    case JitDispatchPath::JitCompiled:
+        ++g_jit_stats.jit_compiled;
+        break;
+    case JitDispatchPath::NativeDispatch:
+        ++g_jit_stats.native_dispatch;
+        break;
+    case JitDispatchPath::ReplFallback:
+        ++g_jit_stats.repl_fallback;
+        break;
+    }
+    if (g_jit_stats_enabled) {
+        std::cerr << "[jit-stats] " << jit_dispatch_path_name(path) << ": " << line << '\n';
+    }
+}
+
 bool jit_compile_smoke(llvm::orc::LLJIT& jit) {
     if (!compile_const_fn(jit, "ms_jit_smoke", 42.0)) {
         return false;
@@ -550,6 +585,7 @@ public:
                 if (compile_const_fn(*jit_, symbol, value)) {
                     const auto compiled = call_jit_fn0(*jit_, symbol);
                     if (compiled.has_value()) {
+                        record_jit_dispatch(JitDispatchPath::JitCompiled, line);
                         return interp_.assign_scalar(name, *compiled);
                     }
                 }
@@ -557,16 +593,19 @@ public:
 
             MatrixCallAssign matrix_call{};
             if (Interpreter::try_parse_matrix_call_assignment(line, matrix_call)) {
+                record_jit_dispatch(JitDispatchPath::NativeDispatch, line);
                 return interp_.assign_matrix_call(matrix_call);
             }
 
             MultiMatrixCallAssign multi_call{};
             if (Interpreter::try_parse_multi_matrix_call_assignment(line, multi_call)) {
+                record_jit_dispatch(JitDispatchPath::NativeDispatch, line);
                 return interp_.assign_multi_matrix_call(multi_call);
             }
 
             ScalarMatrixCallAssign scalar_matrix_call{};
             if (Interpreter::try_parse_scalar_matrix_call_assignment(line, scalar_matrix_call)) {
+                record_jit_dispatch(JitDispatchPath::NativeDispatch, line);
                 return interp_.assign_scalar_matrix_call(scalar_matrix_call);
             }
 
@@ -579,12 +618,14 @@ public:
                     if (compile_scalar_expr_fn(*jit_, symbol, expr, params)) {
                         const auto compiled = call_jit_dynamic(*jit_, symbol, *args);
                         if (compiled.has_value()) {
+                            record_jit_dispatch(JitDispatchPath::JitCompiled, line);
                             return interp_.assign_scalar(name, *compiled);
                         }
                     }
                 }
             }
         }
+        record_jit_dispatch(JitDispatchPath::ReplFallback, line);
         return interp_.execute(line);
     }
 
@@ -595,12 +636,14 @@ public:
     void reset() override {
         interp_.reset();
         jit_sym_counter_ = 0;
+        g_jit_stats = {};
     }
 
     JitCapabilities capabilities() const override {
         if (jit_ && can_compile_) {
             return {true, true,
-                    "LLVM ORC LLJIT linked; scalar/matrix call dispatch; REPL fallback otherwise"};
+                    "scalar exprs: LLVM IR; matrix/scalar/multi-target calls: native C++ dispatch; "
+                    "other: REPL fallback"};
         }
         if (jit_) {
             return {true, false, "LLVM ORC LLJIT linked; smoke compile failed; REPL fallback"};
@@ -619,6 +662,14 @@ private:
 
 std::unique_ptr<JitBackend> create_orc_jit_llvm_backend() {
     return std::make_unique<OrcJitLlvmBackend>();
+}
+
+void set_orc_jit_stats_enabled(bool enabled) {
+    g_jit_stats_enabled = enabled;
+}
+
+const JitDispatchStats& orc_jit_stats() {
+    return g_jit_stats;
 }
 
 } // namespace ms::interp
