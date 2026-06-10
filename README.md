@@ -16,7 +16,7 @@ Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage r
 - **Math modules:** fft, stats, prob, optim, signal, special (CPU implementations)
 - **Runtime:** Topology detection, thread pool, dispatch layer, own BLAS/LAPACK CPU kernels
 - **Executables:** `mathscriptc`, `mathscript-repl`, `mathscript-server`
-- **Unit tests:** 57 CTest suites — all passing (CUDA disabled)
+- **Unit tests:** 72 CTest suites — all passing (CUDA disabled)
 - **CI baseline:** ~91% line coverage (**90%** enforced in CI)
 
 ### Build Instructions (Native Windows)
@@ -141,7 +141,7 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 ### Phase 10 checklist
 
 **Done**
-- **57** CTest suites passing (CUDA off in CI)
+- **72** CTest suites passing (CUDA off in CI)
 - CI green: Windows MSVC + Linux GCC build/test, install/package smoke
 - Coverage **~91%** line (**90%** enforced in CI)
 - Valgrind memcheck on test suite (excludes long `test_fuzz_stress`)
@@ -170,6 +170,15 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 - REPL matrix-call + multi-target **`lu`/`qr`/`svd`/`eig_sym`** assignments (`matmul`, `solve`, `transpose`, `chol`, scalar `det`/…)
 - **`docs/CONTRIBUTING.md`** — build, test, coverage, plugin (LLVM 18), compliance layout
 - Symbolic simplify expansions; `poly_sub`; unsafe delta CI now **blocking**
+- `tests/numerical/` — NIST DLMF accuracy regression tests: Bessel J/Y/I/K, LU/SVD/solve/chol/eig_sym, FFT, special functions erf/gamma/digamma (26 reference tests, 4 CTest targets)
+- `tests/integration/` — Cross-module pipeline tests: REPL→plot→save, session roundtrip, mathscriptc multi-line, JIT/REPL parity (5 targets)
+- Typed unit tests: float/double parameterized LU, solve, chol per design brief §14.2
+- `mathscript-repl --debug` trace mode (per-line timing, variable state diff, parse category)
+- `mathscript-repl --eval-file <path>` script execution flag
+- `tests/unit/test_memory`, `test_error_types`, `test_runtime`, `test_data_driven` — allocator, error formatting, ThreadPool, parameterized data-driven coverage
+- `test_core_matrix`, `test_server_cli` — direct Matrix API and server CLI coverage
+- Real bugs fixed by tests: `det()` sign error, `trace()` non-square guard, `cg`/`gmres` ConvergenceFail, `bicgstab`/`gmres` dimension guard, `erf()` in scalar assignments
+- `scripts/run_tests.ps1` — Windows test runner with -Filter/-Verbose
 
 **Remaining**
 - Extended fuzz (**24 h × 7**) — must pass with zero crashes before tagging (`gh workflow run fuzz-24h.yml`; see `docs/RELEASE.md`)

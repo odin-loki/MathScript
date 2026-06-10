@@ -9,7 +9,7 @@ MathsScript/
 ├── cmake/           # options.cmake, platform.cmake, coverage, install rules
 ├── include/ms/      # Public API headers (installed with the library)
 ├── src/             # Implementation libraries and executables
-├── tests/           # unit/ GoogleTest suites; fuzz/ libFuzzer targets
+├── tests/           # unit/, numerical/, integration/ GoogleTest suites; fuzz/ libFuzzer targets
 ├── scripts/         # coverage, Valgrind, unsafe-surface audit helpers
 ├── docs/            # Architecture and API reference (this tree)
 └── .github/workflows/  # CI and nightly fuzz workflows
@@ -81,9 +81,12 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-- **`tests/unit/`** — 54 GoogleTest executables via `add_ms_test()` (52 under `tests/unit/`, `test_fuzz_stress` under `tests/fuzz/`); plus `test_mathscriptc_cli` and `test_repl_cli`; `test_plugin_smoke` in `tests/compliance/` (**57** CTest cases total).
+- **`tests/unit/`** — GoogleTest executables via `add_ms_test()` (core math, REPL, linalg, special functions, typed LU/solve, memory/error/runtime/data-driven coverage, CLI smoke); plus `test_mathscriptc_cli`, `test_repl_cli`, and `test_server_cli`.
+- **`tests/numerical/`** — NIST DLMF reference-value accuracy regression: Bessel J/Y/I/K, LU/SVD/solve/chol/eig_sym residuals, FFT impulse/Parseval/roundtrip, erf/erfc/gamma/lgamma/digamma (26 reference cases, 4 CTest targets).
+- **`tests/integration/`** — Cross-module pipeline tests: REPL→plot→save, session roundtrip, `mathscriptc` multi-line scripts, JIT/REPL parity (5 CTest targets).
+- **`tests/compliance/`** — `test_plugin_smoke`; compile-fail/pass rule tests when `MS_BUILD_PLUGIN=ON`.
 - **`tests/fuzz/`** — seven libFuzzer targets (built when `MS_BUILD_FUZZ=ON`); `test_fuzz_stress` is always registered as a long-running smoke target.
-- Tests link the `mathscript` INTERFACE library and `GTest::gtest_main`.
+- **72** CTest cases total (CUDA off in CI). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main`.
 
 Coverage and Valgrind scripts (`scripts/coverage_report.sh`, `scripts/valgrind_tests.sh`) expect a Debug Linux build with tests enabled.
 

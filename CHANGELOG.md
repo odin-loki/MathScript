@@ -41,6 +41,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - `collect_scalar_expr_variables` now recurses through unary `+`/`-` prefixes (e.g. `z = -a + b` JIT variable collection)
 - `dormbr('P','L',...)` heap corruption: guard when `m < n`; reflector-order bug in `apply_p_left_tall`
+- `det()` permutation sign computation (was incorrect for non-trivial permutations)
+- `trace()` now returns `DimensionMismatch` for non-square matrices
+- `cg`, `gmres` return `ConvergenceFail` when max iterations exceeded without convergence
+- `bicgstab`, `gmres` validate dimension match between A and b
+- `erf()` is now available in REPL scalar assignment expressions (`y = erf(0.5)`)
 
 ### Changed
 - ORC JIT capabilities note clarifies: scalar exprs via LLVM IR; matrix/scalar/multi-target calls via native C++ dispatch; other forms via REPL fallback

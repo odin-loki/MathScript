@@ -7352,7 +7352,7 @@ Replace all Class A transitional libraries with own implementations. This runs i
 **Exit criterion:** Version 1.0.0 tag. All CI stages green. Unsafe surface report approved. Packages buildable on clean machines.
 
 <!-- Phase 10 tracking (see README "Phase 10 checklist"):
-DONE: CI green (Win/Linux), ~91% coverage (90% gate), 57 CTest suites, Valgrind memcheck,
+DONE: CI green (Win/Linux), ~91% coverage (90% gate), 72 CTest suites, Valgrind memcheck,
       libFuzzer smoke (7 targets) + fuzz-24h manual workflow (86400 s×7, workflow_dispatch),
       fuzz_repl_input seed corpus, unsafe surface audit + delta baseline (blocking in CI),
       install/package smoke (DEB/RPM/NSIS/WiX), benchmark regression gate (benchmark-linux, 10% tolerance),
@@ -7361,7 +7361,12 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 57 CTest suites, Valgrind 
       dormbr heap corruption fix, REPL version + plot stubs + saveplot, OpenGL PlotSurfWidget,
       ORC JIT scalar expr + native matrix/scalar/multi-target call dispatch,
       multi-target lu/qr/svd/eig_sym assignments, docs/API.md + docs/ARCHITECTURE.md + docs/RELEASE.md,
-      scripts/pre_release.sh + tag_1.0.0_checklist.sh/.ps1, build.ps1 -Test.
+      scripts/pre_release.sh + tag_1.0.0_checklist.sh/.ps1, build.ps1 -Test,
+      tests/numerical/ DLMF reference tests, tests/integration/ cross-module pipeline,
+      typed tests (float/double LU/solve/chol), REPL debugger (--debug, --eval-file),
+      memory/error/runtime/data-driven coverage, test_core_matrix + test_server_cli,
+      real bugs fixed via test-driven discovery (det sign, trace guard, cg/gmres/bicgstab, erf REPL),
+      scripts/run_tests.ps1 Windows test runner.
 REMAINING: 24h fuzz executed with no crashes (fuzz-24h.yml workflow_dispatch),
       full ORC JIT v2 matrix LLVM IR lowering, version bump to 1.0.0 after fuzz marathon. -->
 

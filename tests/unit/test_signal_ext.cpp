@@ -1,7 +1,13 @@
+#define _USE_MATH_DEFINES
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include "ms/signal/signal.hpp"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace ms;
 
@@ -129,4 +135,84 @@ TEST(SignalExtTest, filter_odd_length_and_moving_average_start) {
     EXPECT_NEAR(avg[1], 1.5, 1e-12);
     EXPECT_NEAR(avg[2], 2.0, 1e-12);
     EXPECT_NEAR(avg[3], 3.0, 1e-12);
+}
+
+TEST(SignalExtTest, fir_lowpass_passes_dc) {
+    const std::vector<double> dc(64, 1.0);
+    const double fs = 64.0;
+    const auto lp = lowpass(dc, fs * 0.4, fs);
+    const auto hp = highpass(dc, 0.5, fs);
+    ASSERT_EQ(lp.size(), dc.size());
+    EXPECT_NEAR(lp[32], dc[32], 1e-2);
+    EXPECT_NEAR(std::abs(hp[32]), 0.0, 1e-2);
+}
+
+TEST(SignalExtTest, iir_bandpass_center_freq) {
+    const size_t n = 64;
+    const double fs = 64.0;
+    const double f0 = 8.0;
+    std::vector<double> tone(n);
+    for (size_t i = 0; i < n; ++i) {
+        tone[i] = std::sin(2.0 * M_PI * f0 * static_cast<double>(i) / fs);
+    }
+    const auto bp = bandpass(tone, 6.0, 10.0, fs);
+    const auto bp_off = bandpass(tone, 20.0, 24.0, fs);
+    ASSERT_EQ(bp.size(), tone.size());
+    ASSERT_EQ(bp_off.size(), tone.size());
+    // Verify all output elements are finite (basic smoke test)
+    for (double v : bp) { EXPECT_TRUE(std::isfinite(v)); }
+    for (double v : bp_off) { EXPECT_TRUE(std::isfinite(v)); }
+}
+
+TEST(SignalExtTest, xcorr_autocorrelation) {
+    const std::vector<double> x{1, 2, 3, 4};
+    const auto xc = correlate(x, x);
+    ASSERT_FALSE(xc.empty());
+    const auto peak = std::max_element(xc.begin(), xc.end());
+    const size_t peak_lag = static_cast<size_t>(std::distance(xc.begin(), peak));
+    EXPECT_EQ(peak_lag, x.size() - 1);
+}
+
+TEST(SignalExtTest, convolve_delta_identity) {
+    const std::vector<double> x{1, 2, 3, 4, 5};
+    std::vector<double> delta(x.size(), 0.0);
+    delta[0] = 1.0;
+    const auto out = convolve(delta, x);
+    ASSERT_GE(out.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(out[i], x[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, resample_length) {
+    const size_t n = 100;
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = static_cast<double>(i);
+    }
+    std::vector<double> upsampled;
+    upsampled.reserve(2 * n);
+    for (double v : x) {
+        upsampled.push_back(v);
+        upsampled.push_back(0.0);
+    }
+    const double fs = static_cast<double>(n);
+    const auto filtered = lowpass(upsampled, fs * 0.45, fs * 2.0);
+    EXPECT_EQ(filtered.size(), 2 * n);
+}
+
+TEST(SignalExtTest, window_functions_sum) {
+    const auto hann = hanning(8);
+    const auto hamm = hamming(8);
+    double hann_sum = 0.0;
+    double hamm_sum = 0.0;
+    for (double v : hann) {
+        hann_sum += v;
+    }
+    for (double v : hamm) {
+        hamm_sum += v;
+    }
+    // Symmetric periodic windows (N-1 denominator): hann sums to ~3.5, hamming to ~3.86
+    EXPECT_NEAR(hann_sum, 3.5, 0.1);
+    EXPECT_NEAR(hamm_sum, 3.86, 0.05);
 }

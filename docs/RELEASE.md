@@ -8,7 +8,7 @@ item list lives in the README under **[Phase 10 checklist](../README.md#phase-10
 All of the following must be true before `git tag v1.0.0`:
 
 1. **CI green** — every job in `.github/workflows/ci.yml` passes on `main` without `continue-on-error` overrides.
-2. **Tests** — full CTest suite passing (currently **57** suites; CUDA optional/off in CI).
+2. **Tests** — full CTest suite passing (currently **72** suites; CUDA optional/off in CI).
 3. **Coverage** — line coverage ≥ **90%** enforced in CI (target **~91%**; see `coverage-linux` job).
 4. **Memory** — Valgrind memcheck clean on the test suite (`valgrind-linux` job).
 5. **Fuzz** — all libFuzzer targets run ≥ **24 hours** total with **no crashes** (see `fuzz-24h.yml` and nightly workflows).

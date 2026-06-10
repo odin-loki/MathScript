@@ -95,6 +95,10 @@ endif()
 
 add_ms_test(test_lu_typed unit/test_lu_typed.cpp)
 add_ms_test(test_solve_typed unit/test_solve_typed.cpp)
+add_ms_test(test_chol_typed unit/test_chol_typed.cpp)
+add_ms_test(test_fft_typed unit/test_fft_typed.cpp)
+add_ms_test(test_repl_advanced unit/test_repl_advanced.cpp)
+add_ms_test(test_symbolic_advanced unit/test_symbolic_advanced.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
