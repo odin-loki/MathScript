@@ -81,3 +81,61 @@ TEST(MatrixTest, MatrixOnes_AllOne) {
         }
     }
 }
+
+TEST(MatrixTest, add_operator) {
+    DMatrix A{{1, 2}, {3, 4}};
+    DMatrix B{{5, 6}, {7, 8}};
+    const DMatrix C = A + B;
+    EXPECT_DOUBLE_EQ(C(0, 0), 6.0);
+    EXPECT_DOUBLE_EQ(C(0, 1), 8.0);
+    EXPECT_DOUBLE_EQ(C(1, 0), 10.0);
+    EXPECT_DOUBLE_EQ(C(1, 1), 12.0);
+}
+
+TEST(MatrixTest, sub_operator) {
+    DMatrix A{{5, 6}, {7, 8}};
+    DMatrix B{{1, 2}, {3, 4}};
+    const DMatrix C = A - B;
+    EXPECT_DOUBLE_EQ(C(0, 0), 4.0);
+    EXPECT_DOUBLE_EQ(C(1, 1), 4.0);
+}
+
+TEST(MatrixTest, data_pointer_not_null) {
+    DMatrix A(3, 3, 1.0);
+    EXPECT_NE(A.data(), nullptr);
+}
+
+TEST(MatrixTest, row_major_storage_order) {
+    RowMatrix<double> R{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_DOUBLE_EQ(R(0, 0), 1.0);
+    EXPECT_DOUBLE_EQ(R(1, 2), 6.0);
+    EXPECT_EQ(R.rows(), 2u);
+    EXPECT_EQ(R.cols(), 3u);
+}
+
+TEST(MatrixTest, copy_construction) {
+    DMatrix A{{1, 2}, {3, 4}};
+    DMatrix B = A;  // copy
+    B(0, 0) = 99.0;
+    EXPECT_DOUBLE_EQ(A(0, 0), 1.0);  // original unchanged
+    EXPECT_DOUBLE_EQ(B(0, 0), 99.0);
+}
+
+TEST(MatrixTest, move_construction) {
+    DMatrix A{{1, 2}, {3, 4}};
+    const double val_before = A(1, 1);
+    DMatrix B = std::move(A);
+    EXPECT_DOUBLE_EQ(B(1, 1), val_before);
+}
+
+TEST(MatrixTest, initializer_list_ctor) {
+    DMatrix A{{1.5, 2.5, 3.5}};
+    EXPECT_EQ(A.rows(), 1u);
+    EXPECT_EQ(A.cols(), 3u);
+    EXPECT_DOUBLE_EQ(A(0, 2), 3.5);
+}
+
+TEST(MatrixTest, size_equals_rows_times_cols) {
+    DMatrix A(4, 5);
+    EXPECT_EQ(A.size(), 20u);
+}
