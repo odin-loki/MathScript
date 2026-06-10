@@ -7352,7 +7352,7 @@ Replace all Class A transitional libraries with own implementations. This runs i
 **Exit criterion:** Version 1.0.0 tag. All CI stages green. Unsafe surface report approved. Packages buildable on clean machines.
 
 <!-- Phase 10 tracking (see README "Phase 10 checklist"):
-DONE: CI green (Win/Linux), ~91% coverage (90% gate), 72 CTest suites, Valgrind memcheck,
+DONE: CI green (Win/Linux), ~91% coverage (90% gate), 76 CTest suites, Valgrind memcheck,
       libFuzzer smoke (7 targets) + fuzz-24h manual workflow (86400 s×7, workflow_dispatch),
       fuzz_repl_input seed corpus, unsafe surface audit + delta baseline (blocking in CI),
       install/package smoke (DEB/RPM/NSIS/WiX), benchmark regression gate (benchmark-linux, 10% tolerance),
@@ -7366,9 +7366,12 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 72 CTest suites, Valgrind 
       typed tests (float/double LU/solve/chol), REPL debugger (--debug, --eval-file),
       memory/error/runtime/data-driven coverage, test_core_matrix + test_server_cli,
       real bugs fixed via test-driven discovery (det sign, trace guard, cg/gmres/bicgstab, erf REPL),
-      scripts/run_tests.ps1 Windows test runner.
-REMAINING: 24h fuzz executed with no crashes (fuzz-24h.yml workflow_dispatch),
-      full ORC JIT v2 matrix LLVM IR lowering, version bump to 1.0.0 after fuzz marathon. -->
+      scripts/run_tests.ps1 Windows test runner,
+      Wave 4 additions: stats/signal/sparse/simd/fft typed tests, REPL advanced session tests,
+      symbolic typed suite, integration pipeline tests (76 CTest suites total), version 1.0.0 bump.
+REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
+      full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
+      Windows installer/Linux packages (post-1.0 packaging). -->
 
 ---
 

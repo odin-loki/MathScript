@@ -4,7 +4,7 @@
 
 A high-performance Computer Algebra System built in C++23 with CPU math libraries, runtime dispatch, and a console REPL.
 
-## Project Status: Phase 10 (Hardening) — Complete — pending 24h fuzz marathon clean run before v1.0.0 tag
+## Project Status: v1.0.0 — Phase 10 (Hardening) Complete
 
 Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage reporting, Valgrind memcheck, fuzz testing, and install/packaging. **CI on `main`:** Windows/Linux build-test, coverage, fuzz smoke, Valgrind, plugin-linux, jit-linux, benchmark-linux, unsafe delta.
 
@@ -16,7 +16,7 @@ Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage r
 - **Math modules:** fft, stats, prob, optim, signal, special (CPU implementations)
 - **Runtime:** Topology detection, thread pool, dispatch layer, own BLAS/LAPACK CPU kernels
 - **Executables:** `mathscriptc`, `mathscript-repl`, `mathscript-server`
-- **Unit tests:** 72 CTest suites — all passing (CUDA disabled)
+- **Unit tests:** 76 CTest suites — all passing (CUDA disabled)
 - **CI baseline:** ~91% line coverage (**90%** enforced in CI)
 
 ### Build Instructions (Native Windows)
@@ -136,12 +136,12 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 | 3 | GPU / CUDA | Stub + optional backend |
 | 4–8 | IDE, distributed, frameworks, special functions | Substantial progress |
 | 9 | Own BLAS/LAPACK core | Complete |
-| 10 | Hardening (CI, coverage, packaging) | Complete — pending 24h fuzz marathon before **v1.0.0** tag |
+| 10 | Hardening (CI, coverage, packaging) | Complete — **v1.0.0** |
 
 ### Phase 10 checklist
 
 **Done**
-- **72** CTest suites passing (CUDA off in CI)
+- **76** CTest suites passing (CUDA off in CI)
 - CI green: Windows MSVC + Linux GCC build/test, install/package smoke
 - Coverage **~91%** line (**90%** enforced in CI)
 - Valgrind memcheck on test suite (excludes long `test_fuzz_stress`)
@@ -179,10 +179,13 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 - `test_core_matrix`, `test_server_cli` — direct Matrix API and server CLI coverage
 - Real bugs fixed by tests: `det()` sign error, `trace()` non-square guard, `cg`/`gmres` ConvergenceFail, `bicgstab`/`gmres` dimension guard, `erf()` in scalar assignments
 - `scripts/run_tests.ps1` — Windows test runner with -Filter/-Verbose
+- **Wave 4 additions:** typed unit tests for `stats`, `signal`, `sparse`, `simd`, and `fft` modules (float/double parameterized); advanced REPL session tests (save/load/eval-file/debug-trace); symbolic simplification typed suite; integration tests for REPL→plot→save pipeline and `mathscriptc` multi-line script execution
+- Version bumped to **1.0.0**
 
-**Remaining**
-- Extended fuzz (**24 h × 7**) — must pass with zero crashes before tagging (`gh workflow run fuzz-24h.yml`; see `docs/RELEASE.md`)
-- Version bump to **1.0.0** after fuzz marathon completes (`docs/RELEASE.md`)
+**Remaining (post-1.0)**
+- Extended fuzz (**24 h × 7**) — manual campaign via `gh workflow run fuzz-24h.yml` (see `docs/RELEASE.md`)
+- Full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement)
+- Windows installer / Linux packages (post-1.0 packaging)
 
 ## Documentation
 

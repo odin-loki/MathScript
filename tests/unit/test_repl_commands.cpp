@@ -487,3 +487,52 @@ TEST(ReplCommandsTest, special_binary_nonnumeric_parse_errors) {
     expect_error_contains(interp, "theta3(z, q)", "expected theta3(z,q)");
     expect_error_contains(interp, "polylog(n, z)", "expected polylog(n,z)");
 }
+
+TEST(ReplCommandsTest, zeros_eye_ones_assign) {
+    Interpreter interp;
+    expect_ok(interp, "Z = zeros(3)");
+    ASSERT_TRUE(interp.state().matrices.count("Z") > 0);
+    EXPECT_EQ(interp.state().matrices.at("Z").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Z").cols(), 3u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("Z")(1, 1), 0.0);
+
+    expect_ok(interp, "I = eye(4)");
+    ASSERT_TRUE(interp.state().matrices.count("I") > 0);
+    EXPECT_EQ(interp.state().matrices.at("I").rows(), 4u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("I")(0, 0), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("I")(0, 1), 0.0);
+
+    expect_ok(interp, "O = ones(2, 3)");
+    ASSERT_TRUE(interp.state().matrices.count("O") > 0);
+    EXPECT_EQ(interp.state().matrices.at("O").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("O").cols(), 3u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("O")(0, 0), 1.0);
+}
+
+TEST(ReplCommandsTest, expm_via_repl) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0,1;0,0]");
+    expect_ok(interp, "E = expm(A)");
+    ASSERT_TRUE(interp.state().matrices.count("E") > 0);
+    EXPECT_EQ(interp.state().matrices.at("E").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("E")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("E")(0, 1), 1.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, rand_randn_assign) {
+    Interpreter interp;
+    expect_ok(interp, "R = rand(3, 4)");
+    ASSERT_TRUE(interp.state().matrices.count("R") > 0);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("R").cols(), 4u);
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 4; ++j) {
+            const double v = interp.state().matrices.at("R")(i, j);
+            EXPECT_GE(v, 0.0);
+            EXPECT_LT(v, 1.0);
+        }
+    }
+    expect_ok(interp, "N = randn(2, 2)");
+    ASSERT_TRUE(interp.state().matrices.count("N") > 0);
+    EXPECT_EQ(interp.state().matrices.at("N").rows(), 2u);
+}

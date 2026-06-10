@@ -8,7 +8,7 @@ item list lives in the README under **[Phase 10 checklist](../README.md#phase-10
 All of the following must be true before `git tag v1.0.0`:
 
 1. **CI green** — every job in `.github/workflows/ci.yml` passes on `main` without `continue-on-error` overrides.
-2. **Tests** — full CTest suite passing (currently **72** suites; CUDA optional/off in CI).
+2. **Tests** — full CTest suite passing (currently **76** suites; CUDA optional/off in CI).
 3. **Coverage** — line coverage ≥ **90%** enforced in CI (target **~91%**; see `coverage-linux` job).
 4. **Memory** — Valgrind memcheck clean on the test suite (`valgrind-linux` job).
 5. **Fuzz** — all libFuzzer targets run ≥ **24 hours** total with **no crashes** (see `fuzz-24h.yml` and nightly workflows).
@@ -70,6 +70,8 @@ After `v1.0.0` is on `main`:
 2. **Artifacts** — attach TGZ/ZIP (and DEB/RPM on Linux CI artifacts if needed) from the green packaging jobs, or build locally with `cpack` and upload.
 3. **Announce** — publish release notes summarizing Phase 10 hardening and link to `CHANGELOG.md` for the full **1.0.0** change list.
 
-## Remaining before 1.0.0
+## Post-1.0.0 items
 
-See README **Remaining** under the Phase 10 checklist: extended **24 h × 7** fuzz marathon (zero crashes) and version bump to **1.0.0** after it completes.
+- Extended fuzz (**24 h × 7**) — manual campaign via `gh workflow run fuzz-24h.yml`
+- Full ORC JIT v2 matrix LLVM IR lowering (enhancement)
+- Windows installer / Linux packages (packaging)

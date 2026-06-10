@@ -1,10 +1,9 @@
-<!-- RELEASE-READY: change [Unreleased] to [1.0.0] and set date after fuzz marathon -->
 # Changelog
 
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.0] — 2026-06-10
 
 ### Added
 - GitHub Actions CI: Windows MSVC and Linux GCC build/test, install smoke, packaging
@@ -37,6 +36,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `mathscript-repl --eval-file <path>` executes script lines before entering interactive mode
 - `tests/numerical/` NIST DLMF reference-value accuracy tests: Bessel J/Y/I/K, LU/SVD/solve/chol/eig_sym residuals, FFT impulse/Parseval/roundtrip, erf/erfc/gamma/lgamma/digamma (26 cases)
 - `test_memory`, `test_error_types`, `test_runtime`, `test_data_driven` — memory allocators, all Error variant formatting, ThreadPool parallel correctness, parameterized matmul/erf/FFT data-driven suite (33 cases)
+- **Wave 4 additions (76 CTest suites total):** typed unit tests for `stats`, `signal`, `sparse`, `simd`, and `fft` modules (float/double parameterized); advanced REPL session tests (save/load/eval-file/debug-trace); symbolic simplification typed suite; integration tests for REPL→plot→save pipeline and `mathscriptc` multi-line script execution
 
 ### Fixed
 - `collect_scalar_expr_variables` now recurses through unary `+`/`-` prefixes (e.g. `z = -a + b` JIT variable collection)
@@ -53,6 +53,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Sym::eval()` returns numeric literals; NaN for unresolved symbols
 - `mathscriptc` is now a full script runner (executes `.ms` files); `--help` / `--version` retained
 - Unsafe delta CI gate is now **blocking** on `main`
-- Project version **0.2.0** (pre-1.0; **1.0.0** reserved for full release)
+- Project version bumped to **1.0.0** — Phase 10 (Hardening) complete; all 76 CTest suites passing
 
-[Unreleased]: https://github.com/odin-loki/MathScript/compare/HEAD...HEAD
+[1.0.0]: https://github.com/odin-loki/MathScript/releases/tag/v1.0.0

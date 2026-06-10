@@ -76,10 +76,10 @@ TEST(CoreExtTest, sym_eval_numeric) {
 }
 
 TEST(CoreExtTest, version_header) {
-    EXPECT_EQ(VERSION_MAJOR, 0);
-    EXPECT_EQ(VERSION_MINOR, 2);
+    EXPECT_EQ(VERSION_MAJOR, 1);
+    EXPECT_EQ(VERSION_MINOR, 0);
     EXPECT_EQ(VERSION_PATCH, 0);
-    EXPECT_EQ(VERSION_STRING, "0.2.0");
+    EXPECT_EQ(VERSION_STRING, "1.0.0");
 }
 
 TEST(CoreExtTest, sparse_rectangular_spmv) {
