@@ -68,7 +68,48 @@ static void BM_chol(benchmark::State& state) {
         state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n) * static_cast<int64_t>(n) / 3);
 }
 
+static void BM_eig_sym(benchmark::State& state) {
+    const auto n = static_cast<size_t>(state.range(0));
+    const auto A = make_spd(n, 48);
+
+    for (auto _ : state) {
+        auto result = eig_sym(A);
+        benchmark::DoNotOptimize(result);
+    }
+
+    state.SetItemsProcessed(
+        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n) * static_cast<int64_t>(n));
+}
+
+static void BM_expm(benchmark::State& state) {
+    const auto n = static_cast<size_t>(state.range(0));
+    const auto A = rand<double>(n, n, 49);
+
+    for (auto _ : state) {
+        auto result = expm(A);
+        benchmark::DoNotOptimize(result);
+    }
+
+    state.SetItemsProcessed(
+        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n));
+}
+
+static void BM_norm(benchmark::State& state) {
+    const auto n = static_cast<size_t>(state.range(0));
+    const auto A = rand<double>(n, n, 50);
+
+    for (auto _ : state) {
+        auto result = norm(A);
+        benchmark::DoNotOptimize(result);
+    }
+    state.SetItemsProcessed(
+        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n));
+}
+
 BENCHMARK(BM_lu)->Arg(64)->Arg(128);
 BENCHMARK(BM_solve)->Arg(64);
 BENCHMARK(BM_svd)->Arg(32);
 BENCHMARK(BM_chol)->Arg(64);
+BENCHMARK(BM_eig_sym)->Arg(32);
+BENCHMARK(BM_expm)->Arg(16)->Arg(32);
+BENCHMARK(BM_norm)->Arg(128)->Arg(256);

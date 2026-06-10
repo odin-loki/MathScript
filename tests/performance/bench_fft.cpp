@@ -23,4 +23,21 @@ static void BM_fft(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n));
 }
 
-BENCHMARK(BM_fft)->Arg(256)->Arg(1024);
+static void BM_ifft(benchmark::State& state) {
+    const auto n = static_cast<size_t>(state.range(0));
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = static_cast<double>(i) * 0.001;
+    }
+    const auto spec = fft(x).value();
+
+    for (auto _ : state) {
+        auto result = ifft(spec);
+        benchmark::DoNotOptimize(result);
+    }
+
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n));
+}
+
+BENCHMARK(BM_fft)->Arg(256)->Arg(1024)->Arg(4096);
+BENCHMARK(BM_ifft)->Arg(256)->Arg(1024);
