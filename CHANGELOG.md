@@ -53,6 +53,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Sym::eval()` returns numeric literals; NaN for unresolved symbols
 - `mathscriptc` is now a full script runner (executes `.ms` files); `--help` / `--version` retained
 - Unsafe delta CI gate is now **blocking** on `main`
-- Project version bumped to **1.0.0** — Phase 10 (Hardening) complete; all 76 CTest suites passing
+- Project version bumped to **1.0.0** — Phase 10 (Hardening) complete; all 86 CTest suites passing
 
 [1.0.0]: https://github.com/odin-loki/MathScript/releases/tag/v1.0.0
