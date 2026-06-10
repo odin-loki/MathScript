@@ -7352,7 +7352,7 @@ Replace all Class A transitional libraries with own implementations. This runs i
 **Exit criterion:** Version 1.0.0 tag. All CI stages green. Unsafe surface report approved. Packages buildable on clean machines.
 
 <!-- Phase 10 tracking (see README "Phase 10 checklist"):
-DONE: CI green (Win/Linux), ~91% coverage (90% gate), 76 CTest suites, Valgrind memcheck,
+DONE: CI green (Win/Linux), ~91% coverage (90% gate), 90 CTest suites, Valgrind memcheck,
       libFuzzer smoke (7 targets) + fuzz-24h manual workflow (86400 s×7, workflow_dispatch),
       fuzz_repl_input seed corpus, unsafe surface audit + delta baseline (blocking in CI),
       install/package smoke (DEB/RPM/NSIS/WiX), benchmark regression gate (benchmark-linux, 10% tolerance),
@@ -7362,13 +7362,18 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 76 CTest suites, Valgrind 
       ORC JIT scalar expr + native matrix/scalar/multi-target call dispatch,
       multi-target lu/qr/svd/eig_sym assignments, docs/API.md + docs/ARCHITECTURE.md + docs/RELEASE.md,
       scripts/pre_release.sh + tag_1.0.0_checklist.sh/.ps1, build.ps1 -Test,
-      tests/numerical/ DLMF reference tests, tests/integration/ cross-module pipeline,
+      tests/numerical/ DLMF reference tests, tests/integration/ cross-module scientific pipeline,
       typed tests (float/double LU/solve/chol), REPL debugger (--debug, --eval-file),
       memory/error/runtime/data-driven coverage, test_core_matrix + test_server_cli,
       real bugs fixed via test-driven discovery (det sign, trace guard, cg/gmres/bicgstab, erf REPL),
       scripts/run_tests.ps1 Windows test runner,
-      Wave 4 additions: stats/signal/sparse/simd/fft typed tests, REPL advanced session tests,
-      symbolic typed suite, integration pipeline tests (76 CTest suites total), version 1.0.0 bump.
+      Wave 4: stats/signal/sparse/simd/fft typed tests, REPL advanced, symbolic typed suite (76→82 suites),
+      Wave 5: rng/tensor/transpose/topology/construction, REPL zeros/eye/ones/expm/inv/rand (82 suites),
+      Version 1.0.0 bump, Wave 6: test_core_sym + ODE/PDE/optim ext (82 suites),
+      Wave 7: JIT factory/linalg decomp ext/SIMD vector ops tests (85 suites),
+      Wave 8: scalar type tests, bench_special in CI/scripts, baseline sync (86 suites),
+      Wave 9: sparse ext/poly ext/domain types/graph+factorial/memory pinned coverage (89 suites),
+      Wave 10: scientific integration pipeline (ODE/FFT/linalg/stats/special end-to-end) (90 suites).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging). -->
