@@ -81,7 +81,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-- **`tests/unit/`** — **56** GoogleTest executables registered via `add_ms_test()` in `tests/CMakeLists.txt`; each binary is one CTest case.
+- **`tests/unit/`** — **57** GoogleTest executables registered via `add_ms_test()` in `tests/CMakeLists.txt`; each binary is one CTest case.
 - **`tests/fuzz/`** — seven libFuzzer targets (built when `MS_BUILD_FUZZ=ON`); `test_fuzz_stress` is always registered as a long-running smoke target.
 - Tests link the `mathscript` INTERFACE library and `GTest::gtest_main`.
 
@@ -127,7 +127,7 @@ Vendor integrity: `scripts/verify_vendor.sh` + `vendor/CHECKSUMS.sha256` (empty 
 | Binary | Purpose |
 |--------|---------|
 | `mathscriptc` | Batch/script driver linked to full `mathscript` |
-| `mathscript-repl` | Interactive console (`ms_interp` + core math) |
+| `mathscript-repl` | Interactive console or one-shot `-e` / `--eval` (`ms_interp` + core math) |
 | `mathscript-gui` | Qt6 IDE (`MS_BUILD_GUI=ON`): REPL + `PlotWidget` / OpenGL `PlotSurfWidget` (PNG export via File menu) |
 | `mathscript-server` | Distributed/MPI-oriented server entry point |
 

@@ -88,7 +88,7 @@ echo "Benchmark build: ${BENCH_PATH} (optional; mirrors benchmark-linux CI)"
 echo "Fuzz marathon: trigger fuzz-24h.yml in GitHub Actions before tagging (see docs/RELEASE.md)"
 echo
 
-echo "--- 1/5: CTest (56 suites, CUDA off) ---"
+echo "--- 1/5: CTest (57 suites, CUDA off) ---"
 if [[ ! -d "${BUILD_PATH}" ]]; then
     warn "Build directory missing: ${BUILD_PATH} — configure per header comments or docs/RELEASE.md"
 else

@@ -30,6 +30,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Parentheses in scalar expressions (`(1 + 2) * 3`)
 - Scalar matrix-call assignments: **`d = det(A)`**, **`trace`**, **`norm`**, **`rank`**, **`cond`**
 - Multi-target matrix assignments extended: **`U, S, V = svd(A)`**, **`D, V = eig_sym(A)`**
+- `mathscript-repl -e <command>` for non-interactive one-shot evaluation
 - `scripts/tag_1.0.0_checklist.sh` read-only pre-tag gate
 
 ### Fixed

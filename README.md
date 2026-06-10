@@ -44,6 +44,8 @@ ctest --test-dir build-msvc --output-on-failure
 #### Run REPL
 ```powershell
 .\build-msvc\bin\mathscript-repl.exe
+# one-shot (non-interactive):
+.\build-msvc\bin\mathscript-repl.exe -e "surf([1, 2; 3, 4])"
 ```
 
 ### Linux (headless CI-style build)
@@ -135,7 +137,7 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 ### Phase 10 checklist
 
 **Done**
-- **56** CTest suites passing (CUDA off in CI)
+- **57** CTest suites passing (CUDA off in CI)
 - CI green: Windows MSVC + Linux GCC build/test, install/package smoke
 - Coverage **~91%** line (**90%** enforced in CI)
 - Valgrind memcheck on test suite (excludes long `test_fuzz_stress`)
@@ -158,7 +160,7 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 - Optim: box-constraint `minimize_with_constraints`, 2D Nelder-Mead `simplex_solver`
 - **`docs/RELEASE.md`** — 1.0.0 tag checklist; `scripts/pre_release.sh` / `tag_1.0.0_checklist.sh` (Linux) and `tag_1.0.0_checklist.ps1` (Windows); `build.ps1 -Test`
 - Clang plugin compliance rules (**20 enforced**, all `DiagnosticID`s except partial `UnsafeAudit`): **`no_raw_new`**, **`no_malloc`**, **`no_cstyle_cast`**, **`no_throw`**, **`no_catch`**, **`no_const_cast`**, **`no_goto`**, **`no_raw_ptr_arithmetic`**, **`no_unsafe_reinterpret`**, **`no_detach`**, **`no_vla`**, **`narrowing`**, **`no_signed_unsigned_mix`**, **`no_raw_thread`**, **`no_raw_mutex_lock`**, **`no_uninit`**, **`no_stored_span`**, **`no_volatile_sync`**, **`no_owning_raw_ptr`**, **`unused_expected`** (+ fail/ok tests on `plugin-linux`; `UnsafeAudit` via `MS_UNSAFE` + `scripts/unsafe_report.sh`)
-- REPL **`version`** command + banner uses `ms/version.hpp`; plot stubs: **`scatter`**, **`imshow`**, **`spy`**, **`surf`** with console ASCII previews + **`show`**
+- **`mathscript-repl -e <cmd>`** — one-shot REPL evaluation (repeatable `-e`; exits non-zero on error)
 - Qt **`PlotWidget`** + OpenGL **`PlotSurfWidget`** (`MS_BUILD_GUI=ON`): 2D plots; shaded 3D surf with lighting, drag rotation, wheel zoom, GUI PNG export
 - REPL **`saveplot <file>`** writes ASCII plot preview; scalar **`pow`/`min`/`max`/`atan2`** and unary libm calls in expressions
 - REPL matrix-call + multi-target **`lu`/`qr`/`svd`/`eig_sym`** assignments (`matmul`, `solve`, `transpose`, `chol`, scalar `det`/…)
