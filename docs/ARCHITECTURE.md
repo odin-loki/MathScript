@@ -81,7 +81,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-- **`tests/unit/`** — **57** GoogleTest executables registered via `add_ms_test()` in `tests/CMakeLists.txt`; each binary is one CTest case.
+- **`tests/unit/`** — 54 GoogleTest executables via `add_ms_test()` (52 under `tests/unit/`, `test_fuzz_stress` under `tests/fuzz/`); plus `test_mathscriptc_cli` and `test_repl_cli`; `test_plugin_smoke` in `tests/compliance/` (**57** CTest cases total).
 - **`tests/fuzz/`** — seven libFuzzer targets (built when `MS_BUILD_FUZZ=ON`); `test_fuzz_stress` is always registered as a long-running smoke target.
 - Tests link the `mathscript` INTERFACE library and `GTest::gtest_main`.
 
@@ -102,7 +102,7 @@ Triggered on push/PR to `main`:
 
 ### Performance benchmarks
 
-Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). CI runs a fast smoke via `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=off`.
+Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). CI **`benchmark-linux`** runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`.
 
 Regression detection compares JSON output from Google Benchmark against `tests/performance/baselines/linux-gcc13.json`. A run more than 10% slower than the stored median fails (`MS_BENCH_TOLERANCE`, default 10). Skip compare for smoke-only runs: `MS_BENCH_REGRESSION=off`.
 
@@ -116,7 +116,7 @@ bash scripts/bench_regression.sh --write-baseline build-bench   # refresh baseli
 
 Baselines are captured with `--benchmark_out=… --benchmark_out_format=json` (wrapped by `bench_regression.sh`). Calibrate on the target runner profile (Linux GCC 13 Release) before enabling the CI regression gate.
 
-Weekly extended fuzz: `.github/workflows/nightly.yml` (15 min × 7 targets; manual dispatch also runs a 30 min/target marathon).
+Weekly extended fuzz: `.github/workflows/nightly.yml` (15 min × 7 targets scheduled; manual `fuzz-marathon` job runs **60 min**/target). All fuzz jobs use `tests/fuzz/corpus/<target>` when present.
 
 Manual Phase 10 fuzz campaign: `.github/workflows/fuzz-24h.yml` (`workflow_dispatch` only) — 7 parallel jobs, **86400 s (24 h) per target**, **1500 min** job timeout each. Required before tagging **v1.0.0** (zero crashes). Trigger from GitHub Actions UI or `gh workflow run fuzz-24h.yml`.
 
@@ -127,7 +127,7 @@ Vendor integrity: `scripts/verify_vendor.sh` + `vendor/CHECKSUMS.sha256` (empty 
 | Binary | Purpose |
 |--------|---------|
 | `mathscriptc` | Batch/script driver linked to full `mathscript` |
-| `mathscript-repl` | Interactive console or one-shot `-e` / `--eval` (`ms_interp` + core math) |
+| `mathscript-repl` | Interactive console or one-shot `-e` / `--eval`, `--load`, `--jit` (`ms_interp` + core math) |
 | `mathscript-gui` | Qt6 IDE (`MS_BUILD_GUI=ON`): REPL + `PlotWidget` / OpenGL `PlotSurfWidget` (PNG export via File menu) |
 | `mathscript-server` | Distributed/MPI-oriented server entry point |
 

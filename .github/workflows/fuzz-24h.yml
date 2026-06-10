@@ -39,4 +39,10 @@ jobs:
         run: cmake --build build-fuzz-24h --target ${{ matrix.target }}
 
       - name: Run 24h fuzz session
-        run: ./build-fuzz-24h/tests/fuzz/${{ matrix.target }} -max_total_time=86400 -print_final_stats=1
+        run: |
+          CORPUS="tests/fuzz/corpus/${{ matrix.target }}"
+          ARGS=(-max_total_time=86400 -print_final_stats=1)
+          if [ -d "${CORPUS}" ]; then
+            ARGS+=(-corpus_dir="${CORPUS}")
+          fi
+          ./build-fuzz-24h/tests/fuzz/${{ matrix.target }} "${ARGS[@]}"

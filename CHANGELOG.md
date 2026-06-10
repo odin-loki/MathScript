@@ -31,6 +31,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Scalar matrix-call assignments: **`d = det(A)`**, **`trace`**, **`norm`**, **`rank`**, **`cond`**
 - Multi-target matrix assignments extended: **`U, S, V = svd(A)`**, **`D, V = eig_sym(A)`**
 - `mathscript-repl -e <command>` for non-interactive one-shot evaluation
+- `mathscript-repl --load` / `--jit`; unary `-` in scalar expressions; plot state in session save/load
+- Fuzz corpus seeds for all 7 targets; CI/nightly/fuzz-24h use `-corpus_dir` when present
 - `scripts/tag_1.0.0_checklist.sh` read-only pre-tag gate
 
 ### Fixed

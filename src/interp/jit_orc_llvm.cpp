@@ -84,6 +84,18 @@ bool parse_scalar_operand(const std::string& text, ScalarOperand& out) {
     return false;
 }
 
+bool is_binary_minus(const std::string& expr, size_t index) {
+    size_t j = index;
+    while (j > 0 && std::isspace(static_cast<unsigned char>(expr[j - 1]))) {
+        --j;
+    }
+    if (j == 0) {
+        return false;
+    }
+    const char prev = expr[j - 1];
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+}
+
 std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops) {
     int depth = 0;
     std::optional<std::pair<size_t, char>> last;
@@ -96,6 +108,9 @@ std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr
         } else if (depth == 0) {
             for (const char* p = ops; *p != '\0'; ++p) {
                 if (c == *p) {
+                    if (c == '-' && !is_binary_minus(expr, i)) {
+                        continue;
+                    }
                     last = std::pair{i, *p};
                 }
             }
@@ -318,9 +333,20 @@ llvm::Value* emit_scalar_call(ScalarEmitCtx& ctx, const std::string& name,
 }
 
 llvm::Value* emit_scalar_expr(ScalarEmitCtx& ctx, const std::string& expr_text) {
-    const std::string expr = strip_outer_parens(expr_text);
+    const std::string expr = trim_copy(strip_outer_parens(expr_text));
     if (expr.empty()) {
         return nullptr;
+    }
+
+    if (expr.front() == '-') {
+        llvm::Value* inner = emit_scalar_expr(ctx, expr.substr(1));
+        if (!inner) {
+            return nullptr;
+        }
+        return ctx.builder->CreateFNeg(inner);
+    }
+    if (expr.front() == '+') {
+        return emit_scalar_expr(ctx, expr.substr(1));
     }
 
     if (const auto call = parse_scalar_call(expr)) {

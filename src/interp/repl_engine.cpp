@@ -120,6 +120,18 @@ bool parse_scalar_operand(const std::string& text, ScalarOperand& out) {
     return false;
 }
 
+bool is_binary_minus(const std::string& expr, size_t index) {
+    size_t j = index;
+    while (j > 0 && std::isspace(static_cast<unsigned char>(expr[j - 1]))) {
+        --j;
+    }
+    if (j == 0) {
+        return false;
+    }
+    const char prev = expr[j - 1];
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+}
+
 std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops) {
     int depth = 0;
     std::optional<std::pair<size_t, char>> last;
@@ -132,6 +144,9 @@ std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr
         } else if (depth == 0) {
             for (const char* p = ops; *p != '\0'; ++p) {
                 if (c == *p) {
+                    if (c == '-' && !is_binary_minus(expr, i)) {
+                        continue;
+                    }
                     last = std::pair{i, *p};
                 }
             }
@@ -290,9 +305,20 @@ Result<double> resolve_scalar_operand(const SessionState& state, const ScalarOpe
 }
 
 Result<double> eval_scalar_expr(const SessionState& state, const std::string& expr_text) {
-    const std::string expr = strip_outer_parens(expr_text);
+    const std::string expr = trim_copy(strip_outer_parens(expr_text));
     if (expr.empty()) {
         return std::unexpected(DomainError{"eval", "empty expression"});
+    }
+
+    if (expr.front() == '-') {
+        auto inner = eval_scalar_expr(state, expr.substr(1));
+        if (!inner) {
+            return std::unexpected(inner.error());
+        }
+        return -(*inner);
+    }
+    if (expr.front() == '+') {
+        return eval_scalar_expr(state, expr.substr(1));
     }
 
     if (const auto call = parse_scalar_call(expr)) {
@@ -995,6 +1021,78 @@ std::string matrix_to_line(const Matrix<double>& m) {
     return out.str();
 }
 
+const char* plot_kind_name(PlotSeries::Kind kind) {
+    switch (kind) {
+    case PlotSeries::Kind::Line:
+        return "line";
+    case PlotSeries::Kind::Bar:
+        return "bar";
+    case PlotSeries::Kind::Scatter:
+        return "scatter";
+    case PlotSeries::Kind::Heatmap:
+        return "heatmap";
+    case PlotSeries::Kind::Spy:
+        return "spy";
+    case PlotSeries::Kind::Surface3D:
+        return "surface3d";
+    }
+    return "line";
+}
+
+std::optional<PlotSeries::Kind> parse_plot_kind(const std::string& text) {
+    const std::string kind = lower(trim_copy(text));
+    if (kind == "line") {
+        return PlotSeries::Kind::Line;
+    }
+    if (kind == "bar") {
+        return PlotSeries::Kind::Bar;
+    }
+    if (kind == "scatter") {
+        return PlotSeries::Kind::Scatter;
+    }
+    if (kind == "heatmap") {
+        return PlotSeries::Kind::Heatmap;
+    }
+    if (kind == "spy") {
+        return PlotSeries::Kind::Spy;
+    }
+    if (kind == "surface3d" || kind == "surface") {
+        return PlotSeries::Kind::Surface3D;
+    }
+    return std::nullopt;
+}
+
+std::vector<double> parse_double_list(const std::string& text) {
+    std::vector<double> values;
+    std::stringstream stream(text);
+    std::string cell;
+    while (std::getline(stream, cell, ',')) {
+        cell = trim_copy(cell);
+        if (cell.empty()) {
+            continue;
+        }
+        double value = 0.0;
+        if (parse_number(cell, value)) {
+            values.push_back(value);
+        }
+    }
+    return values;
+}
+
+void write_double_list(std::ostream& out, const char* label, const std::vector<double>& values) {
+    if (values.empty()) {
+        return;
+    }
+    out << label;
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            out << ',';
+        }
+        out << values[i];
+    }
+    out << '\n';
+}
+
 Result<std::string> Interpreter::set_plot(const Matrix<double>& xs, const Matrix<double>& ys,
                                           PlotSeries::Kind kind) {
     const size_t n = ys.rows() * ys.cols();
@@ -1043,7 +1141,8 @@ Result<std::string> Interpreter::set_plot(const Matrix<double>& xs, const Matrix
     state_.plot.grid = Matrix<double>{};
     state_.plot.valid = true;
     const char* label = kind == PlotSeries::Kind::Scatter ? "scatter" : "plot";
-    return std::string{label} + " updated (" + std::to_string(state_.plot.y.size()) + " points)\n";
+    return std::string{label} + " updated (" + std::to_string(state_.plot.y.size()) + " points)\n" +
+           format_plot_preview(state_.plot);
 }
 
 Result<std::string> Interpreter::set_plot_heatmap(const Matrix<double>& m) {
@@ -1128,7 +1227,8 @@ Result<std::string> Interpreter::set_plot_bars(std::vector<double> x, std::vecto
     state_.plot.kind = PlotSeries::Kind::Bar;
     state_.plot.grid = Matrix<double>{};
     state_.plot.valid = true;
-    return "histogram updated (" + std::to_string(state_.plot.y.size()) + " bins)\n";
+    return "histogram updated (" + std::to_string(state_.plot.y.size()) + " bins)\n" +
+           format_plot_preview(state_.plot);
 }
 
 Result<void> Interpreter::save_session(const std::string& path) const {
@@ -1143,6 +1243,16 @@ Result<void> Interpreter::save_session(const std::string& path) const {
     for (const auto& [name, matrix] : state_.matrices) {
         out << "matrix " << name << " = " << matrix_to_line(matrix) << "\n";
     }
+    if (state_.plot.valid) {
+        out << "plot meta valid=1 kind=" << plot_kind_name(state_.plot.kind)
+            << " rows=" << state_.plot.matrix_rows << " cols=" << state_.plot.matrix_cols
+            << " nnz=" << state_.plot.nnz << "\n";
+        write_double_list(out, "plot x ", state_.plot.x);
+        write_double_list(out, "plot y ", state_.plot.y);
+        if (state_.plot.grid.rows() > 0 && state_.plot.grid.cols() > 0) {
+            out << "plot grid = " << matrix_to_line(state_.plot.grid) << "\n";
+        }
+    }
     return {};
 }
 
@@ -1152,10 +1262,52 @@ Result<void> Interpreter::load_session(const std::string& path) {
         return std::unexpected(DomainError{"load", "cannot open: " + path});
     }
     reset();
+    PlotSeries pending_plot{};
+    bool have_plot = false;
     std::string line;
     while (std::getline(in, line)) {
         line = trim(line);
         if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        if (line.rfind("plot meta ", 0) == 0) {
+            const std::string meta = trim(line.substr(10));
+            have_plot = meta.find("valid=1") != std::string::npos;
+            if (const auto kind_pos = meta.find("kind="); kind_pos != std::string::npos) {
+                const auto kind_end = meta.find(' ', kind_pos + 5);
+                const std::string kind_text = meta.substr(kind_pos + 5, kind_end - (kind_pos + 5));
+                if (const auto kind = parse_plot_kind(kind_text)) {
+                    pending_plot.kind = *kind;
+                }
+            }
+            if (const auto rows_pos = meta.find("rows="); rows_pos != std::string::npos) {
+                pending_plot.matrix_rows =
+                    static_cast<size_t>(std::strtoull(meta.c_str() + rows_pos + 5, nullptr, 10));
+            }
+            if (const auto cols_pos = meta.find("cols="); cols_pos != std::string::npos) {
+                pending_plot.matrix_cols =
+                    static_cast<size_t>(std::strtoull(meta.c_str() + cols_pos + 5, nullptr, 10));
+            }
+            if (const auto nnz_pos = meta.find("nnz="); nnz_pos != std::string::npos) {
+                pending_plot.nnz =
+                    static_cast<size_t>(std::strtoull(meta.c_str() + nnz_pos + 4, nullptr, 10));
+            }
+            continue;
+        }
+        if (line.rfind("plot x ", 0) == 0) {
+            pending_plot.x = parse_double_list(trim(line.substr(7)));
+            continue;
+        }
+        if (line.rfind("plot y ", 0) == 0) {
+            pending_plot.y = parse_double_list(trim(line.substr(7)));
+            continue;
+        }
+        if (line.rfind("plot grid = ", 0) == 0) {
+            auto grid = parse_matrix(trim(line.substr(12)));
+            if (!grid) {
+                return std::unexpected(grid.error());
+            }
+            pending_plot.grid = *grid;
             continue;
         }
         const auto eq = line.find('=');
@@ -1184,6 +1336,10 @@ Result<void> Interpreter::load_session(const std::string& path) {
             state_.matrices[name] = *matrix;
         }
     }
+    if (have_plot) {
+        pending_plot.valid = true;
+        state_.plot = std::move(pending_plot);
+    }
     return {};
 }
 
@@ -1199,7 +1355,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         return std::string{
             "Commands:\n"
             "  help, vars, version, show, saveplot, clear, topology, simd, dispatch, balance, gpu, mpi, frameworks, exit\n"
-            "  izaac seed <n>   gria alpha [data]   axiom evolve\n"
+            "  izaac seed <n>   gria(M)   axiom evolve\n"
             "  save <file.ms>  load <file.ms>\n"
             "  name = [1, 2; 3, 4]     matrix assignment\n"
             "  name = 3.14              scalar assignment\n"
@@ -1212,8 +1368,6 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = det(A)            scalar matrix call (det, trace, norm, rank, cond)\n"
             "  L, U, P = lu(A)          LU factors (L, U only also supported)\n"
             "  Q, R = qr(A)             QR factors\n"
-            "  U, S, V = svd(A)         SVD factors (U, S only also supported)\n"
-            "  D, V = eig_sym(A)        symmetric eigenvalues and eigenvectors\n"
             "  U, S, V = svd(A)         SVD factors (U, S only also supported)\n"
             "  D, V = eig_sym(A)        symmetric eigenvalues and eigenvectors\n"
             "  plot([y...])  plot([x...], [y...])  scatter([x...], [y...])  hist([...])\n"
@@ -1337,8 +1491,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
     if (lcmd == "frameworks") {
         return std::string{
-            "loaded: GRIA, Izaac, CyphaDIF, CellAI, AXIOM\n"
-            "  gria alpha [..]  izaac seed N  axiom evolve\n"};
+            "frameworks: GRIA (gria matrix ops), Izaac (seed), AXIOM (evolve)\n"
+            "  gria(M)  izaac seed N  axiom evolve\n"};
     }
     if (lcmd.rfind("izaac seed ", 0) == 0) {
         const std::string arg = trim(cmd.substr(11));

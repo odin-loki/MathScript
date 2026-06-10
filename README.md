@@ -6,7 +6,7 @@ A high-performance Computer Algebra System built in C++23 with CPU math librarie
 
 ## Project Status: Phase 10 (Hardening) — In Progress
 
-Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage reporting, Valgrind memcheck, fuzz testing, and install/packaging. **All CI jobs on `main` are green** (Windows + Linux build/test, coverage, fuzz smoke, Valgrind).
+Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage reporting, Valgrind memcheck, fuzz testing, and install/packaging. **CI on `main`:** Windows/Linux build-test, coverage, fuzz smoke, Valgrind, plugin-linux, jit-linux, benchmark-linux, unsafe delta.
 
 ### Completed Components
 
@@ -16,7 +16,7 @@ Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage r
 - **Math modules:** fft, stats, prob, optim, signal, special (CPU implementations)
 - **Runtime:** Topology detection, thread pool, dispatch layer, own BLAS/LAPACK CPU kernels
 - **Executables:** `mathscriptc`, `mathscript-repl`, `mathscript-server`
-- **Unit tests:** 55 CTest suites — all passing (CUDA disabled)
+- **Unit tests:** 57 CTest suites — all passing (CUDA disabled)
 - **CI baseline:** ~91% line coverage (**90%** enforced in CI)
 
 ### Build Instructions (Native Windows)
@@ -46,6 +46,10 @@ ctest --test-dir build-msvc --output-on-failure
 .\build-msvc\bin\mathscript-repl.exe
 # one-shot (non-interactive):
 .\build-msvc\bin\mathscript-repl.exe -e "surf([1, 2; 3, 4])"
+# optional LLVM ORC backend when linked:
+.\build-msvc\bin\mathscript-repl.exe --jit -e "x = 1 + 2"
+# load saved session:
+.\build-msvc\bin\mathscript-repl.exe --load session.ms
 ```
 
 ### Linux (headless CI-style build)
@@ -160,7 +164,7 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 - Optim: box-constraint `minimize_with_constraints`, 2D Nelder-Mead `simplex_solver`
 - **`docs/RELEASE.md`** — 1.0.0 tag checklist; `scripts/pre_release.sh` / `tag_1.0.0_checklist.sh` (Linux) and `tag_1.0.0_checklist.ps1` (Windows); `build.ps1 -Test`
 - Clang plugin compliance rules (**20 enforced**, all `DiagnosticID`s except partial `UnsafeAudit`): **`no_raw_new`**, **`no_malloc`**, **`no_cstyle_cast`**, **`no_throw`**, **`no_catch`**, **`no_const_cast`**, **`no_goto`**, **`no_raw_ptr_arithmetic`**, **`no_unsafe_reinterpret`**, **`no_detach`**, **`no_vla`**, **`narrowing`**, **`no_signed_unsigned_mix`**, **`no_raw_thread`**, **`no_raw_mutex_lock`**, **`no_uninit`**, **`no_stored_span`**, **`no_volatile_sync`**, **`no_owning_raw_ptr`**, **`unused_expected`** (+ fail/ok tests on `plugin-linux`; `UnsafeAudit` via `MS_UNSAFE` + `scripts/unsafe_report.sh`)
-- **`mathscript-repl -e <cmd>`** — one-shot REPL evaluation (repeatable `-e`; exits non-zero on error)
+- **`mathscript-repl -e` / `--load` / `--jit`** — one-shot eval, session load, optional ORC backend
 - Qt **`PlotWidget`** + OpenGL **`PlotSurfWidget`** (`MS_BUILD_GUI=ON`): 2D plots; shaded 3D surf with lighting, drag rotation, wheel zoom, GUI PNG export
 - REPL **`saveplot <file>`** writes ASCII plot preview; scalar **`pow`/`min`/`max`/`atan2`** and unary libm calls in expressions
 - REPL matrix-call + multi-target **`lu`/`qr`/`svd`/`eig_sym`** assignments (`matmul`, `solve`, `transpose`, `chol`, scalar `det`/…)

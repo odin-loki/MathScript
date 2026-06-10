@@ -193,7 +193,12 @@ jobs:
         run: |
           for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
             fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
-            ./build-fuzz/tests/fuzz/${target} -runs=4096 -max_total_time=30
+            CORPUS="tests/fuzz/corpus/${target}"
+            ARGS=(-runs=4096 -max_total_time=30)
+            if [ -d "${CORPUS}" ]; then
+              ARGS+=(-corpus_dir="${CORPUS}")
+            fi
+            ./build-fuzz/tests/fuzz/${target} "${ARGS[@]}"
           done
 
   valgrind-linux:

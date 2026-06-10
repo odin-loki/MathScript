@@ -71,7 +71,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `fft/fft.hpp` | `fft`, `ifft`, `rfft`, `dft`, `dct2`/`dst2`, and shift helpers |
 | `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression |
 | `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma, uniform |
-| `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, simplex stubs |
+| `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, zeta, Painlevé, etc. |
 | `ode/ode.hpp` | `ode_euler` and `ode_rk4` for scalar ODEs `dy/dt = f(t, y)` |
@@ -124,7 +124,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes preview to disk. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. With `MS_BUILD_GUI=ON`, the IDE adds **Export Plot as PNG** for 2D and OpenGL surf views.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`). CLI: `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, and plot state.
 
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 

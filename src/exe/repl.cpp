@@ -1,9 +1,10 @@
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "ms/interp/repl_engine.hpp"
+#include "ms/interp/jit_backend.hpp"
 #include "ms/ms.hpp"
 #include "ms/version.hpp"
 
@@ -20,6 +21,8 @@ void print_usage(std::ostream& out) {
         << "  mathscript-repl [options]\n\n"
         << "Options:\n"
         << "  -e, --eval <command>  Execute a REPL command and exit (repeatable)\n"
+        << "      --load <file.ms>  Load session before eval or interactive mode\n"
+        << "      --jit             Use LLVM ORC backend when linked (falls back to REPL)\n"
         << "  -h, --help            Show this help message\n"
         << "      --version         Show version information\n\n"
         << "Without -e, runs an interactive session (type 'help' for commands).\n";
@@ -31,13 +34,13 @@ void print_version(std::ostream& out) {
         << ", built " << ms::BUILD_DATE << ")\n";
 }
 
-bool run_command(ms::interp::Interpreter& interp, const std::string& line) {
+bool run_command(ms::interp::JitBackend& backend, const std::string& line) {
     const std::string trimmed = ms::interp::Interpreter::trim(line);
     if (trimmed.empty()) {
         return true;
     }
 
-    auto result = interp.execute(trimmed);
+    auto result = backend.execute(trimmed);
     if (result) {
         if (!result->empty()) {
             std::cout << *result;
@@ -53,8 +56,10 @@ bool run_command(ms::interp::Interpreter& interp, const std::string& line) {
 
 int main(int argc, char** argv) {
     std::vector<std::string> eval_lines;
+    std::string load_path;
     bool show_help = false;
     bool show_version = false;
+    bool use_jit = false;
 
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
@@ -66,12 +71,24 @@ int main(int argc, char** argv) {
             show_version = true;
             continue;
         }
+        if (is_option(arg, "--jit")) {
+            use_jit = true;
+            continue;
+        }
         if (is_option(arg, "--eval", "-e")) {
             if (i + 1 >= argc) {
                 std::cerr << "mathscript-repl: option requires an argument: " << arg << '\n';
                 return 1;
             }
             eval_lines.push_back(argv[++i]);
+            continue;
+        }
+        if (is_option(arg, "--load")) {
+            if (i + 1 >= argc) {
+                std::cerr << "mathscript-repl: option requires an argument: " << arg << '\n';
+                return 1;
+            }
+            load_path = argv[++i];
             continue;
         }
         std::cerr << "mathscript-repl: unknown option: " << arg << '\n'
@@ -88,18 +105,26 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    ms::interp::Interpreter interp;
+    auto backend = ms::interp::create_backend(use_jit ? ms::interp::Backend::OrcJit
+                                                      : ms::interp::Backend::Repl);
+
+    bool ok = true;
+    if (!load_path.empty()) {
+        ok = run_command(*backend, "load " + load_path) && ok;
+    }
 
     if (!eval_lines.empty()) {
-        bool ok = true;
         for (const auto& line : eval_lines) {
-            ok = run_command(interp, line) && ok;
+            ok = run_command(*backend, line) && ok;
         }
         return ok ? 0 : 1;
     }
 
-    std::cout << "MathScript REPL " << ms::VERSION_STRING << " (console mode)\n";
-    std::cout << "Type 'help' for commands, 'exit' to quit.\n";
+    std::cout << "MathScript REPL " << ms::VERSION_STRING << " (console mode)";
+    if (use_jit) {
+        std::cout << " [" << backend->backend_name() << "]";
+    }
+    std::cout << "\nType 'help' for commands, 'exit' to quit.\n";
 
     std::string line;
     while (true) {
@@ -114,7 +139,7 @@ int main(int argc, char** argv) {
         if (trimmed.empty()) {
             continue;
         }
-        (void)run_command(interp, line);
+        (void)run_command(*backend, line);
     }
 
     return 0;

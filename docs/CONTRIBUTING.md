@@ -86,7 +86,7 @@ ctest --test-dir build-plugin -R 'test_plugin_smoke|compliance_' --output-on-fai
 
 ## LLVM ORC JIT (Linux, LLVM 18)
 
-Optional JIT backend (`-DMS_BUILD_JIT=ON`). Links ORC LLJIT and JIT-compiles scalar REPL assignments: literals, full arithmetic expressions (with parentheses), and libm calls (`sin`, `pow`, `min`, …). Matrix and scalar call assignments (`C = matmul(A,B)`, `d = det(A)`, multi-target `L, U = lu(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`, …) dispatch to native kernels; unsupported lines delegate to the interpreted REPL.
+Optional JIT backend (`-DMS_BUILD_JIT=ON`). Links ORC LLJIT and JIT-compiles scalar REPL assignments: literals, full arithmetic expressions (with parentheses and unary `-`), and libm calls (`sin`, `pow`, `min`, …). Matrix and scalar call assignments dispatch to native kernels; unsupported lines delegate to the interpreted REPL. Enable in the CLI with `mathscript-repl --jit`.
 
 ```bash
 cmake -S . -B build-jit -G Ninja \
@@ -152,6 +152,8 @@ Before tagging **v1.0.0** (after the 24 h fuzz marathon completes with zero cras
 
 - Linux: `bash scripts/tag_1.0.0_checklist.sh` then `bash scripts/pre_release.sh`
 - Windows: `.\build.ps1 -Test` then `.\scripts\tag_1.0.0_checklist.ps1`
+
+Local fuzz corpus: `tests/fuzz/corpus/<target>/` (used by CI when present). Dispatch 24 h marathon: `bash scripts/fuzz_24h_dispatch.sh`.
 
 See `docs/RELEASE.md` for the full tag criteria.
 

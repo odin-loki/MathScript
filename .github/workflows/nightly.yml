@@ -36,7 +36,12 @@ jobs:
         run: |
           for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
             fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
-            ./build-fuzz/tests/fuzz/${target} -max_total_time=900 -print_final_stats=1
+            CORPUS="tests/fuzz/corpus/${target}"
+            ARGS=(-max_total_time=900 -print_final_stats=1)
+            if [ -d "${CORPUS}" ]; then
+              ARGS+=(-corpus_dir="${CORPUS}")
+            fi
+            ./build-fuzz/tests/fuzz/${target} "${ARGS[@]}"
           done
 
   fuzz-marathon:
@@ -70,5 +75,10 @@ jobs:
         run: |
           for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
             fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
-            ./build-fuzz-marathon/tests/fuzz/${target} -max_total_time=3600 -print_final_stats=1
+            CORPUS="tests/fuzz/corpus/${target}"
+            ARGS=(-max_total_time=3600 -print_final_stats=1)
+            if [ -d "${CORPUS}" ]; then
+              ARGS+=(-corpus_dir="${CORPUS}")
+            fi
+            ./build-fuzz-marathon/tests/fuzz/${target} "${ARGS[@]}"
           done
