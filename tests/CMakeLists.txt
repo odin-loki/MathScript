@@ -140,6 +140,7 @@ add_ms_test(test_topology_dispatch_adv unit/test_topology_dispatch_adv.cpp)
 add_ms_test(test_repl_session_adv unit/test_repl_session_adv.cpp)
 add_ms_test(test_repl_interp_adv unit/test_repl_interp_adv.cpp)
 add_ms_test(test_distributed_adv unit/test_distributed_adv.cpp)
+add_ms_test(test_optim_adv unit/test_optim_adv.cpp)
 add_ms_test(test_tensor_adv unit/test_tensor_adv.cpp)
 
 add_subdirectory(compliance)
