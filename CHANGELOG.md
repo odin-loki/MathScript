@@ -44,6 +44,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Wave 9 additions (89 CTest suites):** sparse matrix `to_dense`/`spmv` ext tests, polynomial ext tests (degree-0/1/2, add/sub/mul/deriv), domain types full coverage (`factorial`, `nchoosek`, `gcd`, `Graph`/`graph_num_edges`), pinned allocator tests
 - **Wave 10 additions (90 CTest suites):** scientific integration pipeline — ODE Euler vs RK4 accuracy, FFT dominant-frequency detection, linear-algebra residual verification, statistics on known sequences, erf Gaussian-CDF relation
 
+- **Wave 22 additions (115 CTest suites, 1339 test cases):**
+  - `numerical_linalg_basic`: tril/triu/diag/det/trace/rank/cond/lsq/solve (25+ tests); `ms::inv` identified as missing API, replaced by `solve`
+  - `numerical_iterative`: CG/BiCGSTAB convergence on SPD systems, GMRES interface smoke, norm function tests
+  - `numerical_core_ops`: matmul (identity, zeros, rectangular, associativity), LU/QR/Chol reconstruction, expm accuracy, constructor tests
+  - `integration_pipeline`: 10 end-to-end pipeline scenarios: QR+solve, stats regression, FFT→IFFT, convolution+stats, polynomial eval+deriv, golden-section optimization, CDF↔PPF, erf↔CDF, LU solve residual, polynomial root via Newton
+
 ### Fixed
 - `collect_scalar_expr_variables` now recurses through unary `+`/`-` prefixes (e.g. `z = -a + b` JIT variable collection)
 - `dormbr('P','L',...)` heap corruption: guard when `m < n`; reflector-order bug in `apply_p_left_tall`

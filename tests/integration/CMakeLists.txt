@@ -1,3 +1,4 @@
+add_ms_test(integration_pipeline test_pipeline_integration.cpp)
 add_ms_test(integration_repl_pipeline test_repl_pipeline.cpp)
 add_ms_test(integration_jit_repl_parity test_jit_repl_parity.cpp)
 add_ms_test(integration_scientific_pipeline test_scientific_pipeline.cpp)
