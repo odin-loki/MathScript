@@ -35,6 +35,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `sanitizer-linux` CI job: Debug + AddressSanitizer + UBSan (GCC 13)
 - `mathscript-repl --debug` trace mode: per-line timing, variable diff, parse category to stderr
 - `mathscript-repl --eval-file <path>` executes script lines before entering interactive mode
+- `tests/numerical/` NIST DLMF reference-value accuracy tests: Bessel J/Y/I/K, LU/SVD/solve/chol/eig_sym residuals, FFT impulse/Parseval/roundtrip, erf/erfc/gamma/lgamma/digamma (26 cases)
+- `test_memory`, `test_error_types`, `test_runtime`, `test_data_driven` — memory allocators, all Error variant formatting, ThreadPool parallel correctness, parameterized matmul/erf/FFT data-driven suite (33 cases)
 
 ### Fixed
 - `collect_scalar_expr_variables` now recurses through unary `+`/`-` prefixes (e.g. `z = -a + b` JIT variable collection)

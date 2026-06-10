@@ -80,6 +80,10 @@ add_ms_test(test_blas_lapack unit/test_blas_lapack.cpp)
 add_ms_test(test_symbolic unit/test_symbolic.cpp)
 add_ms_test(test_fuzz_stress fuzz/fuzz_stress.cpp)
 add_ms_test(test_core_matrix unit/test_core_matrix.cpp)
+add_ms_test(test_memory unit/test_memory.cpp)
+add_ms_test(test_error_types unit/test_error_types.cpp)
+add_ms_test(test_runtime unit/test_runtime.cpp)
+add_ms_test(test_data_driven unit/test_data_driven.cpp)
 
 if(TARGET mathscript-server)
     add_executable(test_server_cli unit/test_server_cli.cpp)
@@ -90,6 +94,7 @@ if(TARGET mathscript-server)
 endif()
 
 add_subdirectory(compliance)
+add_subdirectory(numerical)
 
 if(MS_BUILD_FUZZ)
     add_subdirectory(fuzz)
