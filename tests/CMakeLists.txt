@@ -129,6 +129,7 @@ add_ms_test(test_cellai_cypha_ext unit/test_cellai_cypha_ext.cpp)
 add_ms_test(test_tensor_lb_numa unit/test_tensor_lb_numa.cpp)
 add_ms_test(test_optim_result_types unit/test_optim_result_types.cpp)
 add_ms_test(test_simd_extended unit/test_simd_extended.cpp)
+add_ms_test(test_error_types_extended unit/test_error_types_extended.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
