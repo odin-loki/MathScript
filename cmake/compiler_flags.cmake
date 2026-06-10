@@ -41,12 +41,14 @@ set(MS_CXX_FLAGS_SHIPPING
     -D_FORTIFY_SOURCE=3
 )
 
-# Global flags - exceptions and RTTI off
-add_compile_options(
-    -fno-exceptions
-    -fno-rtti
-    -fno-strict-aliasing
-)
+# Global flags - exceptions and RTTI off (GCC/Clang only; MSVC uses /EHs-c- etc.)
+if(NOT MSVC)
+    add_compile_options(
+        -fno-exceptions
+        -fno-rtti
+        -fno-strict-aliasing
+    )
+endif()
 
 # Linker flags for Release/Shipping on Linux
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

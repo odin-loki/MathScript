@@ -60,5 +60,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `mathscriptc` is now a full script runner (executes `.ms` files); `--help` / `--version` retained
 - Unsafe delta CI gate is now **blocking** on `main`
 - Project version bumped to **1.0.0** — Phase 10 (Hardening) complete; all 95 CTest suites passing (932 test cases)
+- **Wave 18 additions (106 CTest suites, 1180 test cases, 28 benchmarks):** dispatch unit tests; signal numerical reference tests (convolve/correlate/filter); symbolic math extended tests (30 tests: eval, diff, simplify chains); linalg decomposition numerical tests (Hessenberg/Bidiag/Schur/LDL reconstruction); optimisation extended tests (golden_section/newton_1d/gradient_descent/simplex); polynomial extended tests (25+ eval/deriv/add/sub/mul tests); `bench_rng_dispatch` benchmark suite; **bug fixes**: `norm_ppf` upgraded to Beasley-Springer-Moro rational approximation; `t_cdf` now returns 0.5 at x=0 by symmetry; GCC-only `-fno-exceptions/-fno-rtti` flags now guarded by `if(NOT MSVC)` in `cmake/compiler_flags.cmake`
 
 [1.0.0]: https://github.com/odin-loki/MathScript/releases/tag/v1.0.0
