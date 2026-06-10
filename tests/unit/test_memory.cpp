@@ -2,6 +2,7 @@
 
 #include "ms/memory/aligned_allocator.hpp"
 #include "ms/memory/arena.hpp"
+#include "ms/memory/pinned_allocator.hpp"
 #include "ms/memory/policy.hpp"
 #include "ms/memory/pool_allocator.hpp"
 
@@ -88,4 +89,10 @@ TEST(MemoryTest, aligned_size_policy) {
     EXPECT_EQ(aligned_size(1, 64), 64u);
     EXPECT_EQ(aligned_size(64, 64), 64u);
     EXPECT_EQ(aligned_size(65, 64), 128u);
+}
+
+TEST(MemoryTest, pinned_allocator_alloc_free) {
+    PinnedAllocator::value_type* data = PinnedAllocator::allocate(4);
+    ASSERT_NE(data, nullptr);
+    PinnedAllocator::deallocate(data, 4);
 }
