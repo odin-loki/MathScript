@@ -289,7 +289,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "solve" || fn == "transpose" || fn == "chol" || fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
-            fn == "qr" || fn == "svd" || fn == "eig_sym") {
+            fn == "qr" || fn == "svd" || fn == "eig_sym" ||
+            fn == "zeros" || fn == "eye" || fn == "ones" ||
+            fn == "rand" || fn == "randn" || fn == "expm" || fn == "inv") {
             return false;
         }
     }
@@ -523,15 +525,21 @@ bool Interpreter::try_parse_scalar_expr_assignment(const std::string& line, std:
 }
 
 bool is_matrix_call_callee(const std::string& callee) {
-    return callee == "matmul" || callee == "solve" || callee == "transpose" || callee == "chol";
+    return callee == "matmul" || callee == "solve" || callee == "transpose" || callee == "chol" ||
+           callee == "zeros" || callee == "eye" || callee == "ones" ||
+           callee == "rand" || callee == "randn" ||
+           callee == "expm" || callee == "inv";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
-    if (callee == "matmul" || callee == "solve") {
+    if (callee == "matmul" || callee == "solve" || callee == "rand" || callee == "randn") {
         return arity == 2;
     }
-    if (callee == "transpose" || callee == "chol") {
+    if (callee == "transpose" || callee == "chol" || callee == "expm" || callee == "inv") {
         return arity == 1;
+    }
+    if (callee == "zeros" || callee == "eye" || callee == "ones") {
+        return arity == 1 || arity == 2;
     }
     return false;
 }
@@ -868,6 +876,84 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(matrix.error());
         }
         result = chol(*matrix);
+    } else if (assign.callee == "expm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = expm(*matrix);
+    } else if (assign.callee == "inv" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        // inv via LU solve: A * inv(A) = I
+        const size_t n = matrix->rows();
+        auto I = eye<double>(n);
+        result = solve(*matrix, I);
+    } else if ((assign.callee == "zeros" || assign.callee == "eye" || assign.callee == "ones") &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        double m_d = 0.0, n_d = 0.0;
+        if (!parse_number(assign.args[0], m_d)) {
+            // try resolving as scalar variable
+            auto it = state_.scalars.find(assign.args[0]);
+            if (it != state_.scalars.end()) {
+                m_d = it->second;
+            } else {
+                return std::unexpected(DomainError{assign.callee, "expected numeric size argument"});
+            }
+        }
+        if (assign.args.size() == 2) {
+            if (!parse_number(assign.args[1], n_d)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    n_d = it->second;
+                } else {
+                    return std::unexpected(DomainError{assign.callee, "expected numeric size argument"});
+                }
+            }
+        } else {
+            n_d = m_d;
+        }
+        const size_t rows = static_cast<size_t>(m_d);
+        const size_t cols = static_cast<size_t>(n_d);
+        if (assign.callee == "zeros") {
+            result = zeros<double>(rows, cols);
+        } else if (assign.callee == "eye") {
+            auto I = eye<double>(rows);
+            result = I;
+        } else {
+            result = ones<double>(rows, cols);
+        }
+    } else if ((assign.callee == "rand" || assign.callee == "randn") && assign.args.size() == 2) {
+        double m_d = 0.0, n_d = 0.0;
+        if (!parse_number(assign.args[0], m_d)) {
+            auto it = state_.scalars.find(assign.args[0]);
+            if (it != state_.scalars.end()) m_d = it->second;
+            else return std::unexpected(DomainError{assign.callee, "expected numeric size"});
+        }
+        if (!parse_number(assign.args[1], n_d)) {
+            auto it = state_.scalars.find(assign.args[1]);
+            if (it != state_.scalars.end()) n_d = it->second;
+            else return std::unexpected(DomainError{assign.callee, "expected numeric size"});
+        }
+        const size_t rows = static_cast<size_t>(m_d);
+        const size_t cols = static_cast<size_t>(n_d);
+        if (assign.callee == "rand") {
+            auto R = rand<double>(rows, cols, 0u);
+            Matrix<double> stored(rows, cols);
+            for (size_t i = 0; i < rows; ++i)
+                for (size_t j = 0; j < cols; ++j)
+                    stored(i, j) = R(i, j);
+            result = stored;
+        } else {
+            auto R = randn<double>(rows, cols, 0u);
+            Matrix<double> stored(rows, cols);
+            for (size_t i = 0; i < rows; ++i)
+                for (size_t j = 0; j < cols; ++j)
+                    stored(i, j) = R(i, j);
+            result = stored;
+        }
     }
     if (!result) {
         return std::unexpected(result.error());
