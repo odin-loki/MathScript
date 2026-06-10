@@ -36,7 +36,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `mathscript-repl --eval-file <path>` executes script lines before entering interactive mode
 - `tests/numerical/` NIST DLMF reference-value accuracy tests: Bessel J/Y/I/K, LU/SVD/solve/chol/eig_sym residuals, FFT impulse/Parseval/roundtrip, erf/erfc/gamma/lgamma/digamma (26 cases)
 - `test_memory`, `test_error_types`, `test_runtime`, `test_data_driven` — memory allocators, all Error variant formatting, ThreadPool parallel correctness, parameterized matmul/erf/FFT data-driven suite (33 cases)
-- **Wave 4 additions (76 CTest suites total):** typed unit tests for `stats`, `signal`, `sparse`, `simd`, and `fft` modules (float/double parameterized); advanced REPL session tests (save/load/eval-file/debug-trace); symbolic simplification typed suite; integration tests for REPL→plot→save pipeline and `mathscriptc` multi-line script execution
+- **Wave 4 additions (76 CTest suites):** typed unit tests for `stats`, `signal`, `sparse`, `simd`, and `fft` modules (float/double parameterized); advanced REPL session tests (save/load/eval-file/debug-trace); symbolic simplification typed suite; integration tests for REPL→plot→save pipeline and `mathscriptc` multi-line script execution
+- **Wave 5 additions (82 CTest suites):** unit tests for `rng`, `tensor`, `transpose`, `topology`, `construction`; REPL extended with `zeros`, `eye`, `ones`, `expm`, `inv`, `rand`, `randn` assignment commands
+- **Wave 6 additions:** `test_core_sym` (symbolic math correctness), extended PDE/ODE/optim tests (Euler + gradient descent scenarios)
+- **Wave 7 additions (85 CTest suites):** JIT factory tests (`create_backend` Repl/OrcJit), extended linalg decomposition tests (LDL/Hessenberg/bidiag/LSQ/eig), SIMD dispatch and vector-op tests
+- **Wave 8 additions (86 CTest suites):** `ms::Scalar` physical-unit type tests, `bench_special` wired into CI benchmark job and regression scripts, baseline JSON updated
+- **Wave 9 additions (89 CTest suites):** sparse matrix `to_dense`/`spmv` ext tests, polynomial ext tests (degree-0/1/2, add/sub/mul/deriv), domain types full coverage (`factorial`, `nchoosek`, `gcd`, `Graph`/`graph_num_edges`), pinned allocator tests
+- **Wave 10 additions (90 CTest suites):** scientific integration pipeline — ODE Euler vs RK4 accuracy, FFT dominant-frequency detection, linear-algebra residual verification, statistics on known sequences, erf Gaussian-CDF relation
 
 ### Fixed
 - `collect_scalar_expr_variables` now recurses through unary `+`/`-` prefixes (e.g. `z = -a + b` JIT variable collection)
@@ -53,6 +59,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Sym::eval()` returns numeric literals; NaN for unresolved symbols
 - `mathscriptc` is now a full script runner (executes `.ms` files); `--help` / `--version` retained
 - Unsafe delta CI gate is now **blocking** on `main`
-- Project version bumped to **1.0.0** — Phase 10 (Hardening) complete; all 86 CTest suites passing
+- Project version bumped to **1.0.0** — Phase 10 (Hardening) complete; all 90 CTest suites passing
 
 [1.0.0]: https://github.com/odin-loki/MathScript/releases/tag/v1.0.0
