@@ -330,7 +330,7 @@ jobs:
           -DMS_ENABLE_AVX512=OFF
 
       - name: Build benchmarks
-        run: cmake --build build-bench --target bench_matmul bench_fft bench_linalg bench_repl bench_special
+        run: cmake --build build-bench --target bench_matmul bench_fft bench_linalg bench_repl bench_special bench_stats
 
       - name: Benchmark regression
         env:

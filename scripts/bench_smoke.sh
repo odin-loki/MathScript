@@ -16,7 +16,7 @@ if [[ ! -d "${BUILD_PATH}" ]]; then
     exit 1
 fi
 
-for bench in bench_matmul bench_fft bench_linalg bench_repl bench_special; do
+for bench in bench_matmul bench_fft bench_linalg bench_repl bench_special bench_stats; do
     path="${BUILD_PATH}/tests/performance/${bench}"
     if [[ ! -x "${path}" ]]; then
         echo "Missing benchmark executable: ${path}" >&2
