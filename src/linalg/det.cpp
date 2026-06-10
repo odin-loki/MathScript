@@ -1,5 +1,6 @@
 #include "ms/core/operations.hpp"
 #include <cmath>
+#include <vector>
 
 namespace ms {
 
@@ -22,9 +23,20 @@ Result<S> det(const Matrix<S, OA, Alloc>& A) {
     }
 
     S sign = S(1);
-    for (size_t k = 0; k < n; ++k) {
-        if (P(k, k) != S(1)) {
-            sign = -sign;
+    std::vector<size_t> perm(n);
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            if (P(i, j) == S(1)) {
+                perm[i] = j;
+                break;
+            }
+        }
+    }
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = i + 1; j < n; ++j) {
+            if (perm[i] > perm[j]) {
+                sign = -sign;
+            }
         }
     }
 

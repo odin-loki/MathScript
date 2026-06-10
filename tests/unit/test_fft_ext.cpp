@@ -86,3 +86,45 @@ TEST(FftExtTest, irfft_hermitian_extension) {
 TEST(FftExtTest, fft2_empty_guard) {
     EXPECT_TRUE(fft2({}).value().empty());
 }
+
+TEST(FftExtTest, dst2_inverse) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const auto coeffs = dst2(x).value();
+    const auto back = dst2(coeffs).value();
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(back[i], x[i], 1e-6);
+    }
+
+    const std::vector<double> zeros(4, 0.0);
+    const auto zero_dst = dst2(zeros).value();
+    for (double v : zero_dst) {
+        EXPECT_DOUBLE_EQ(v, 0.0);
+    }
+}
+
+TEST(FftExtTest, rfft_irfft_roundtrip) {
+    const std::vector<double> signal{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+    const auto spec = rfft(signal).value();
+    const auto back = irfft(spec, signal.size()).value();
+    ASSERT_EQ(back.size(), signal.size());
+    for (size_t i = 0; i < signal.size(); ++i) {
+        EXPECT_NEAR(back[i], signal[i], 1e-6);
+    }
+}
+
+TEST(FftExtTest, fftshift_ifftshift_roundtrip) {
+    const std::vector<std::complex<double>> x{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}};
+    const auto shifted = fftshift(x);
+    const auto restored = ifftshift(shifted);
+    ASSERT_EQ(restored.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(restored[i].real(), x[i].real());
+        EXPECT_DOUBLE_EQ(restored[i].imag(), x[i].imag());
+    }
+}
+
+TEST(FftExtTest, empty_input_dct2) {
+    const auto result = dct2({});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
+}

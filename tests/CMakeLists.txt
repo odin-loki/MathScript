@@ -79,6 +79,15 @@ add_ms_test(test_blas_dgemm unit/test_blas_dgemm.cpp)
 add_ms_test(test_blas_lapack unit/test_blas_lapack.cpp)
 add_ms_test(test_symbolic unit/test_symbolic.cpp)
 add_ms_test(test_fuzz_stress fuzz/fuzz_stress.cpp)
+add_ms_test(test_core_matrix unit/test_core_matrix.cpp)
+
+if(TARGET mathscript-server)
+    add_executable(test_server_cli unit/test_server_cli.cpp)
+    target_link_libraries(test_server_cli PRIVATE GTest::gtest_main)
+    target_compile_definitions(test_server_cli PRIVATE "MATHSCRIPT_SERVER_PATH=\"$<TARGET_FILE:mathscript-server>\"")
+    add_dependencies(test_server_cli mathscript-server)
+    add_test(NAME test_server_cli COMMAND test_server_cli)
+endif()
 
 add_subdirectory(compliance)
 

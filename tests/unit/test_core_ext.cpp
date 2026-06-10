@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include "ms/core/operations.hpp"
 #include "ms/core/rng.hpp"
 #include "ms/core/scalar.hpp"
 #include "ms/core/sparse.hpp"
@@ -152,4 +153,59 @@ TEST(CoreExtTest, dispatch_execute_smoke) {
 
 TEST(CoreExtTest, ms_unsafe_macro_compiles) {
     EXPECT_EQ(ms_unsafe_macro_smoke(), 42);
+}
+
+TEST(ExpmTest, NilpotentMatrix) {
+    ColMatrix<double> A{{0, 1}, {0, 0}};
+    const auto E = expm(A);
+    ASSERT_TRUE(E.has_value());
+    EXPECT_NEAR((*E)(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR((*E)(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR((*E)(1, 0), 0.0, 1e-9);
+    EXPECT_NEAR((*E)(1, 1), 1.0, 1e-9);
+}
+
+TEST(ExpmTest, DiagonalMatchesExp) {
+    ColMatrix<double> A{{1, 0}, {0, 2}};
+    const auto E = expm(A);
+    ASSERT_TRUE(E.has_value());
+    EXPECT_NEAR((*E)(0, 0), std::exp(1.0), 2e-6);
+    EXPECT_NEAR((*E)(1, 1), std::exp(2.0), 2e-6);
+    EXPECT_NEAR((*E)(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR((*E)(1, 0), 0.0, 1e-9);
+}
+
+TEST(DetTest, DirectApi_2x2) {
+    ColMatrix<double> A{{1, 2}, {3, 4}};
+    const auto d = det(A);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_NEAR(*d, -2.0, 1e-9);
+}
+
+TEST(DetTest, SingularReturnsError) {
+    ColMatrix<double> A{{1, 2}, {2, 4}};
+    EXPECT_FALSE(det(A).has_value());
+}
+
+TEST(TraceTest, DirectApi) {
+    ColMatrix<double> A{{1, 2}, {3, 4}};
+    const auto t = trace(A);
+    ASSERT_TRUE(t.has_value());
+    EXPECT_NEAR(*t, 5.0, 1e-9);
+}
+
+TEST(TraceTest, NonSquareError) {
+    ColMatrix<double> A{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_FALSE(trace(A).has_value());
+}
+
+TEST(OnesTest, ShapeAndValues) {
+    const ColMatrix<double> O = ones<double>(2, 3);
+    EXPECT_EQ(O.rows(), 2u);
+    EXPECT_EQ(O.cols(), 3u);
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_DOUBLE_EQ(O(i, j), 1.0);
+        }
+    }
 }

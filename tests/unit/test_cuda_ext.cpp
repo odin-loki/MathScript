@@ -27,3 +27,31 @@ TEST(CudaElementwiseTest, add_inplace) {
     cuda::fill(a, 0.0);
     EXPECT_DOUBLE_EQ(a[1], 0.0);
 }
+
+TEST(CudaFftTest, ifft_roundtrip) {
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (!cuda::available()) {
+        GTEST_SKIP() << "CUDA device not available";
+    }
+#else
+    GTEST_SKIP() << "CUDA disabled at build time";
+#endif
+
+    const std::vector<double> signal{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+    const auto spectrum = cuda::fft(signal);
+    ASSERT_TRUE(spectrum.has_value());
+
+    const size_t n = spectrum->size();
+    std::vector<std::complex<double>> trimmed(n);
+    for (size_t i = 0; i < n; ++i) {
+        trimmed[i] = (*spectrum)[i];
+    }
+
+    const auto restored = cuda::ifft(trimmed);
+    ASSERT_TRUE(restored.has_value());
+    ASSERT_GE(restored->size(), signal.size());
+
+    for (size_t i = 0; i < signal.size(); ++i) {
+        EXPECT_NEAR((*restored)[i], signal[i], 1e-9);
+    }
+}

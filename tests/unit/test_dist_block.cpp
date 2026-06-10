@@ -144,3 +144,15 @@ TEST(DistBlockTest, uneven_block_scatter_rank) {
     EXPECT_DOUBLE_EQ(dist.local(0, 0), global(ext.start, 0));
     finalize(ctx);
 }
+
+TEST(DistBlockTest, distributed_svd_smoke) {
+    auto ctx = init(0, nullptr);
+    ColMatrix<double> A{{3, 1}, {1, 2}};
+    auto dA = scatter(A, ctx).value();
+    auto result = distributed::svd(dA, ctx);
+    ASSERT_TRUE(result.has_value());
+    for (size_t i = 0; i < result->S.rows(); ++i) {
+        EXPECT_GE(result->S(i, 0), 0.0);
+    }
+    finalize(ctx);
+}

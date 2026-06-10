@@ -290,3 +290,34 @@ TEST(JitBackendTest, orc_jit_stub_capabilities) {
         EXPECT_EQ(caps.notes, "ORC JIT stub — delegates to REPL until LLVM ORC v2 is wired");
     }
 }
+
+TEST(JitBackendTest, reset_clears_orc_state) {
+    auto backend = create_backend(Backend::OrcJit);
+    ASSERT_TRUE(backend->execute("x = 42").has_value());
+    EXPECT_DOUBLE_EQ(backend->state().scalars.at("x"), 42.0);
+
+    backend->reset();
+
+    EXPECT_TRUE(backend->state().scalars.empty());
+    EXPECT_TRUE(backend->state().matrices.empty());
+}
+
+TEST(JitBackendTest, execute_after_reset) {
+    auto backend = create_backend(Backend::OrcJit);
+    ASSERT_TRUE(backend->execute("x = 42").has_value());
+    backend->reset();
+    ASSERT_TRUE(backend->execute("y = 7").has_value());
+    EXPECT_DOUBLE_EQ(backend->state().scalars.at("y"), 7.0);
+}
+
+TEST(JitBackendTest, capabilities_not_empty) {
+    auto backend = create_backend(Backend::OrcJit);
+    const auto caps = backend->capabilities();
+    EXPECT_FALSE(caps.notes.empty());
+}
+
+TEST(JitBackendTest, orc_jit_negative_parse) {
+    auto backend = create_backend(Backend::OrcJit);
+    const auto result = backend->execute("not valid @@@ input");
+    EXPECT_FALSE(result.has_value());
+}

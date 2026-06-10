@@ -4,9 +4,11 @@ namespace ms {
 
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<S> trace(const Matrix<S, OA, Alloc>& A) {
+    if (A.rows() != A.cols()) {
+        return std::unexpected(DimensionMismatch{A.rows(), A.cols()});
+    }
     S result = S(0);
-    const size_t n = std::min(A.rows(), A.cols());
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; i < A.rows(); ++i) {
         result += A(i, i);
     }
     return result;

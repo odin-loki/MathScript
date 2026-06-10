@@ -38,3 +38,33 @@ TEST(QrWideTest, underdetermined_modified_gram_schmidt) {
         }
     }
 }
+
+TEST(IterativeExtTest, GmresTest_NonConvergent) {
+    DMatrix A{{1, 1e-8}, {1e-8, 1}};
+    DMatrix b{{1}, {1}};
+    const auto x = gmres(A, b, 1, 1, 1e-15);
+    EXPECT_FALSE(x.has_value());
+}
+
+TEST(IterativeExtTest, BicgstabTest_DimMismatch) {
+    DMatrix A{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    DMatrix b{{1}, {2}};
+    EXPECT_FALSE(bicgstab(A, b).has_value());
+}
+
+TEST(IterativeExtTest, CgTest_MaxIterExceeded) {
+    DMatrix A{{4, 1, 0}, {1, 4, 1}, {0, 1, 4}};
+    DMatrix b{{1}, {2}, {3}};
+    const auto x = cg(A, b, 1, 1e-15);
+    EXPECT_FALSE(x.has_value());
+}
+
+TEST(IterativeExtTest, RankTest_CustomTolerance) {
+    DMatrix A{{1, 0}, {0, 1e-5}};
+    const auto r_default = rank(A, 0.0);
+    const auto r_tol = rank(A, 0.1);
+    ASSERT_TRUE(r_default.has_value());
+    ASSERT_TRUE(r_tol.has_value());
+    EXPECT_EQ(static_cast<size_t>(*r_default), 2u);
+    EXPECT_EQ(static_cast<size_t>(*r_tol), 1u);
+}

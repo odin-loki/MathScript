@@ -328,3 +328,34 @@ TEST(SvdTest, tall_and_wide_reconstruction) {
         }
     }
 }
+
+TEST(ConstructionTest, TrilTest_Offset) {
+    DMatrix A{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+    const DMatrix L1 = tril(A, 1);
+    EXPECT_NEAR(L1(0, 1), 2.0, 1e-12);
+    EXPECT_NEAR(L1(0, 2), 0.0, 1e-12);
+    const DMatrix Lm1 = tril(A, -1);
+    EXPECT_NEAR(Lm1(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(Lm1(1, 0), 4.0, 1e-12);
+}
+
+TEST(ConstructionTest, TriuTest_Offset) {
+    DMatrix A{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+    const DMatrix Um1 = triu(A, -1);
+    EXPECT_NEAR(Um1(1, 0), 4.0, 1e-12);
+    EXPECT_NEAR(Um1(2, 0), 0.0, 1e-12);
+    EXPECT_NEAR(Um1(0, 0), 1.0, 1e-12);
+}
+
+TEST(MatrixFuncTest, LogmTest_ViaExpm) {
+    DMatrix B{{0.05, 0.02}, {0.02, -0.04}};
+    const auto A = expm(B);
+    ASSERT_TRUE(A.has_value());
+    const auto L = logm(*A);
+    ASSERT_TRUE(L.has_value());
+    for (size_t i = 0; i < B.rows(); ++i) {
+        for (size_t j = 0; j < B.cols(); ++j) {
+            EXPECT_NEAR((*L)(i, j), B(i, j), 1e-4);
+        }
+    }
+}

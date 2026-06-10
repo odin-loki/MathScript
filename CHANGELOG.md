@@ -33,6 +33,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Additional benchmarks: `bench_linalg` (LU/solve/SVD/Chol), `bench_repl` (scalar expr, matrix assign+det); all wired to CI `benchmark-linux`
 - `build.ps1 -Configure` (configure only) and `-Clean` (wipe `build-msvc` first) switches
 - `sanitizer-linux` CI job: Debug + AddressSanitizer + UBSan (GCC 13)
+- `mathscript-repl --debug` trace mode: per-line timing, variable diff, parse category to stderr
+- `mathscript-repl --eval-file <path>` executes script lines before entering interactive mode
 
 ### Fixed
 - `collect_scalar_expr_variables` now recurses through unary `+`/`-` prefixes (e.g. `z = -a + b` JIT variable collection)

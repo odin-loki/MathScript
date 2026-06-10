@@ -57,13 +57,13 @@ Result<Matrix<S, OA, Alloc>> cg(
         r = axpy(-alpha, Ap, r);
         const double rsnew = dotvec(r, r);
         if (std::sqrt(rsnew) < tol) {
-            break;
+            return x;
         }
         p = axpy(rsnew / rsold, p, r);
         rsold = rsnew;
     }
 
-    return x;
+    return std::unexpected(ConvergenceFail{max_iter, std::sqrt(rsold)});
 }
 
 template<typename S, StorageOrder OA, template<typename> class Alloc>
@@ -72,6 +72,10 @@ Result<Matrix<S, OA, Alloc>> bicgstab(
     const Matrix<S, OA, Alloc>& b,
     size_t max_iter,
     S tol) {
+    if (A.rows() != A.cols() || A.rows() != b.rows()) {
+        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+
     Matrix<double> x(b.rows(), b.cols(), 0.0);
     Matrix<double> r = copy(b);
     Matrix<double> r0 = copy(r);
@@ -121,13 +125,17 @@ Result<Matrix<S, OA, Alloc>> gmres(
     size_t restart,
     size_t max_iter,
     S tol) {
+    if (A.rows() != A.cols() || A.rows() != b.rows()) {
+        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+
     Matrix<double> x(b.rows(), b.cols(), 0.0);
     Matrix<double> r = copy(b);
 
     for (size_t outer = 0; outer < max_iter; outer += restart) {
         const double beta = std::sqrt(dotvec(r, r));
         if (beta < tol) {
-            break;
+            return x;
         }
 
         std::vector<Matrix<double>> V(restart + 1);
@@ -191,11 +199,11 @@ Result<Matrix<S, OA, Alloc>> gmres(
 
         r = axpy(-1.0, matvec(A, x), b);
         if (std::sqrt(dotvec(r, r)) < tol) {
-            break;
+            return x;
         }
     }
 
-    return x;
+    return std::unexpected(ConvergenceFail{max_iter, std::sqrt(dotvec(r, r))});
 }
 
 template auto cg<double>(const Matrix<double>&, const Matrix<double>&, size_t, double)

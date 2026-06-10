@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
+#include <cmath>
 #include <filesystem>
+#include <sstream>
 #include "ms/interp/repl_engine.hpp"
 #include "ms/cuda/nccl.hpp"
 
+using namespace ms;
 using namespace ms::interp;
 
 TEST(ReplSessionTest, save_and_load_roundtrip) {
@@ -92,4 +95,64 @@ TEST(ReplSessionTest, unary_minus_scalar_expr) {
     EXPECT_DOUBLE_EQ(interp.state().scalars.at("x"), 0.0);
     ASSERT_TRUE(interp.execute("y = 2 * -3").has_value());
     EXPECT_DOUBLE_EQ(interp.state().scalars.at("y"), -6.0);
+}
+
+TEST(ReplEngineTest, reset_clears_state) {
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("x = 5").has_value());
+    ASSERT_TRUE(interp.execute("M = [1, 2; 3, 4]").has_value());
+    ASSERT_TRUE(interp.execute("plot([1, 2, 3])").has_value());
+    EXPECT_TRUE(interp.has_plot());
+
+    interp.reset();
+
+    EXPECT_TRUE(interp.state().scalars.empty());
+    EXPECT_TRUE(interp.state().matrices.empty());
+    EXPECT_FALSE(interp.has_plot());
+}
+
+TEST(ReplEngineTest, print_matrix_formats_output) {
+    Matrix<double> M{{{1.0, 2.0}, {3.0, 4.0}}};
+    std::ostringstream os;
+    print_matrix(os, M);
+    EXPECT_NE(os.str().find("1"), std::string::npos);
+    EXPECT_NE(os.str().find("4"), std::string::npos);
+}
+
+TEST(ReplEngineTest, eval_scalar_call_erf) {
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("y = erf(0.5)").has_value());
+    EXPECT_NEAR(interp.state().scalars.at("y"), 0.5205, 0.001);
+}
+
+TEST(ReplEngineTest, eval_scalar_call_unknown) {
+    Interpreter interp;
+    const auto result = interp.execute("z = nosuch(1.0)");
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(interp.state().scalars.count("z"), 0u);
+}
+
+TEST(ReplEngineTest, divide_by_zero_scalar) {
+    Interpreter interp;
+    const auto result = interp.execute("w = 1 / 0");
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(interp.state().scalars.count("w"), 0u);
+}
+
+TEST(ReplEngineTest, assign_overwrite) {
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("x = 3").has_value());
+    ASSERT_TRUE(interp.execute("x = 7").has_value());
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("x"), 7.0);
+}
+
+TEST(ReplEngineTest, multiline_independence) {
+    Interpreter first;
+    Interpreter second;
+    ASSERT_TRUE(first.execute("x = 99").has_value());
+    EXPECT_DOUBLE_EQ(first.state().scalars.at("x"), 99.0);
+    EXPECT_EQ(second.state().scalars.count("x"), 0u);
+    ASSERT_TRUE(second.execute("x = 1").has_value());
+    EXPECT_DOUBLE_EQ(second.state().scalars.at("x"), 1.0);
+    EXPECT_DOUBLE_EQ(first.state().scalars.at("x"), 99.0);
 }

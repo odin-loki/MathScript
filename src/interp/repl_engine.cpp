@@ -752,6 +752,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "ceil") {
             return std::ceil(arg);
         }
+        if (fn == "erf") {
+            return ms::erf(arg);
+        }
     }
     if (args.size() == 2) {
         if (fn == "pow") {

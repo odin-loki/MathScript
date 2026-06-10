@@ -192,3 +192,54 @@ TEST(LinalgDecompTest, svd_row_major_wide_rank_deficient) {
     EXPECT_NEAR(result->S(1, 0), 0.0, 1e-10);
     EXPECT_GT(result->S(0, 0), 0.0);
 }
+
+TEST(LinalgDecompTest, SchurTest_ReconstructionQTQt) {
+    DMatrix A{{4, 3}, {6, 3}};
+    const auto decomp = schur(A);
+    ASSERT_TRUE(decomp.has_value());
+    const DMatrix reconstructed = decomp->Q * decomp->T * transpose(decomp->Q);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            EXPECT_NEAR(reconstructed(i, j), A(i, j), 1e-6);
+        }
+    }
+}
+
+TEST(LinalgDecompTest, SqrtmTest_SPD_Roundtrip) {
+    DMatrix A{{4, 1}, {1, 3}};
+    const auto S = sqrtm(A);
+    ASSERT_TRUE(S.has_value());
+    const DMatrix roundtrip = (*S) * (*S);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            EXPECT_NEAR(roundtrip(i, j), A(i, j), 1e-9);
+        }
+    }
+}
+
+TEST(LinalgDecompTest, LogmTest_NonDiagonal_2x2) {
+    DMatrix B{{0.05, 0.02}, {0.02, -0.03}};
+    const auto A = expm(B);
+    ASSERT_TRUE(A.has_value());
+    const auto L = logm(*A);
+    ASSERT_TRUE(L.has_value());
+    for (size_t i = 0; i < B.rows(); ++i) {
+        for (size_t j = 0; j < B.cols(); ++j) {
+            EXPECT_NEAR((*L)(i, j), B(i, j), 1e-4);
+        }
+    }
+}
+
+TEST(LinalgDecompTest, SchurTest_EigenvaluesOnDiagonal) {
+    DMatrix A{{4, 3}, {6, 3}};
+    const auto decomp = schur(A);
+    ASSERT_TRUE(decomp.has_value());
+    const auto evals = eig(A);
+    ASSERT_TRUE(evals.has_value());
+    const double t00 = decomp->T(0, 0);
+    const double t11 = decomp->T(1, 1);
+    const double e0 = evals->values(0, 0);
+    const double e1 = evals->values(1, 0);
+    EXPECT_NEAR(t00, e0, 1e-4);
+    EXPECT_NEAR(t11, e1, 1e-4);
+}

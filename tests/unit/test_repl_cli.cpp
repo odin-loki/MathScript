@@ -50,3 +50,7 @@ TEST(ReplCliTest, eval_load_flag_exits_zero) {
     std::filesystem::remove(filename);
     EXPECT_EQ(status, 0);
 }
+
+TEST(ReplCliTest, debug_flag_exits_zero) {
+    EXPECT_EQ(run_repl("--debug -e x=1"), 0);
+}

@@ -48,3 +48,46 @@ TEST(PlotConsoleTest, invalid_plot_message) {
     PlotSeries plot;
     EXPECT_EQ(format_plot_preview(plot), "(no plot)\n");
 }
+
+TEST(PlotConsoleTest, line_preview_not_empty) {
+    PlotSeries plot;
+    plot.valid = true;
+    plot.kind = PlotSeries::Kind::Line;
+    plot.x = {0.0, 1.0, 2.0};
+    plot.y = {1.0, 3.0, 2.0};
+
+    const auto text = format_plot_preview(plot);
+    EXPECT_FALSE(text.empty());
+    EXPECT_NE(text.find("plot"), std::string::npos);
+}
+
+TEST(PlotConsoleTest, scatter_preview_not_empty) {
+    PlotSeries plot;
+    plot.valid = true;
+    plot.kind = PlotSeries::Kind::Scatter;
+    plot.x = {0.0, 1.0, 2.0};
+    plot.y = {1.0, 2.0, 3.0};
+
+    const auto text = format_plot_preview(plot);
+    EXPECT_FALSE(text.empty());
+    EXPECT_NE(text.find("scatter"), std::string::npos);
+}
+
+TEST(PlotConsoleTest, bar_preview_not_empty) {
+    PlotSeries plot;
+    plot.valid = true;
+    plot.kind = PlotSeries::Kind::Bar;
+    plot.x = {1.0, 2.0, 3.0};
+    plot.y = {5.0, 3.0, 7.0};
+
+    const auto text = format_plot_preview(plot);
+    EXPECT_FALSE(text.empty());
+    EXPECT_NE(text.find("histogram"), std::string::npos);
+}
+
+TEST(PlotConsoleTest, invalid_series_no_data) {
+    PlotSeries plot;
+    EXPECT_FALSE(plot.valid);
+    const auto text = format_plot_preview(plot);
+    EXPECT_NE(text.find("(no plot)"), std::string::npos);
+}

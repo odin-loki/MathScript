@@ -2,7 +2,10 @@
 #include "ms/core/operations.hpp"
 #include "ms/cuda/buffer.hpp"
 #include "ms/cuda/blas.hpp"
+#include "ms/cuda/fft.hpp"
+#include "ms/cuda/solver.hpp"
 #include "ms/runtime/dispatch.hpp"
+#include <complex>
 
 using namespace ms;
 
@@ -40,4 +43,33 @@ TEST(CudaStubTest, matmul_matches_cpu) {
             EXPECT_NEAR((*gpu)(i, j), (*cpu)(i, j), 1e-9);
         }
     }
+}
+
+TEST(CudaStubTest, ifft_stub) {
+    const std::vector<std::complex<double>> spectrum{{1.0, 0.5}, {2.0, -0.5}, {3.0, 0.0}, {0.0, 1.0}};
+    const auto result = cuda::ifft(spectrum);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->size(), spectrum.size());
+    for (size_t i = 0; i < spectrum.size(); ++i) {
+        EXPECT_DOUBLE_EQ((*result)[i], spectrum[i].real());
+    }
+}
+
+TEST(CudaStubTest, lu_stub) {
+    ColMatrix<double> A{{4, 1}, {1, 3}};
+    const auto result = cuda::lu(A);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(CudaStubTest, solve_stub) {
+    ColMatrix<double> A{{4, 1}, {1, 3}};
+    ColMatrix<double> b{{1}, {2}};
+    const auto result = cuda::solve(A, b);
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (cuda::available()) {
+        ASSERT_TRUE(result.has_value());
+        return;
+    }
+#endif
+    EXPECT_FALSE(result.has_value());
 }
