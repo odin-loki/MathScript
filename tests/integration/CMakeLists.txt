@@ -4,6 +4,7 @@ add_ms_test(integration_jit_repl_parity test_jit_repl_parity.cpp)
 add_ms_test(integration_scientific_pipeline test_scientific_pipeline.cpp)
 add_ms_test(integration_framework_pipeline test_framework_pipeline.cpp)
 add_ms_test(integration_symbolic_optim_pipeline test_symbolic_optim_pipeline.cpp)
+add_ms_test(integration_repl_linalg_pipeline test_repl_linalg_pipeline.cpp)
 add_ms_test(integration_ode_pde_pipeline test_ode_pde_pipeline.cpp)
 
 add_executable(integration_mathscriptc_pipeline test_mathscriptc_pipeline.cpp)
