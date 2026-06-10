@@ -6,6 +6,7 @@ add_ms_test(integration_framework_pipeline test_framework_pipeline.cpp)
 add_ms_test(integration_symbolic_optim_pipeline test_symbolic_optim_pipeline.cpp)
 add_ms_test(integration_repl_linalg_pipeline test_repl_linalg_pipeline.cpp)
 add_ms_test(integration_ode_pde_pipeline test_ode_pde_pipeline.cpp)
+add_ms_test(integration_signal_fft_pipeline test_signal_fft_pipeline.cpp)
 
 add_executable(integration_mathscriptc_pipeline test_mathscriptc_pipeline.cpp)
 target_link_libraries(integration_mathscriptc_pipeline PRIVATE mathscript GTest::gtest_main)
