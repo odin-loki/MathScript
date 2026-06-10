@@ -30,3 +30,19 @@ TEST(OptimExtTest, newton_1d) {
     const double xmin = newton_1d(f, 0.0);
     EXPECT_NEAR(xmin, 3.0, 1e-4);
 }
+
+TEST(OdeTest, euler_method_smoke) {
+    auto result = ode_euler([](double, double y) { return -y; }, 0.0, 1.0, 1.0, 10);
+    EXPECT_GT(result.y.size(), 0u);
+    EXPECT_TRUE(std::isfinite(result.y.back()));
+    EXPECT_LT(result.y.back(), 1.0);  // exponential decay
+}
+
+TEST(OptimExtTest, gradient_descent_quadratic) {
+    auto f = [](double x, double y) {
+        return (x - 1.0) * (x - 1.0) + (y - 2.0) * (y - 2.0);
+    };
+    auto result = gradient_descent(f, 5.0, 5.0, 0.1, 1000);
+    EXPECT_NEAR(result.x, 1.0, 0.1);
+    EXPECT_NEAR(result.y, 2.0, 0.1);
+}
