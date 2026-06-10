@@ -93,8 +93,12 @@ if(TARGET mathscript-server)
     add_test(NAME test_server_cli COMMAND test_server_cli)
 endif()
 
+add_ms_test(test_lu_typed unit/test_lu_typed.cpp)
+add_ms_test(test_solve_typed unit/test_solve_typed.cpp)
+
 add_subdirectory(compliance)
 add_subdirectory(numerical)
+add_subdirectory(integration)
 
 if(MS_BUILD_FUZZ)
     add_subdirectory(fuzz)
