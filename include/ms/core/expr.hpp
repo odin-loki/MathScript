@@ -17,6 +17,9 @@ public:
     size_t rows() const { return self().rows_impl(); }
     size_t cols() const { return self().cols_impl(); }
 
+    // CRTP forwarder: allows derived expressions to call eval_at on MatExpr<X>
+    auto eval_at(size_t r, size_t c) const { return self().eval_at(r, c); }
+
     // Force evaluation to an owning Matrix
     template<typename S, StorageOrder O, template<typename> class A>
     operator Matrix<S, O, A>() const {
