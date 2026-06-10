@@ -1,0 +1,454 @@
+{
+  "tests": 27,
+  "failures": 7,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2026-06-10T23:34:05Z",
+  "time": "0.021s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "SpecialGroup2",
+      "tests": 27,
+      "failures": 7,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-06-10T23:34:05Z",
+      "time": "0.021s",
+      "testsuite": [
+        {
+          "name": "HermiteHn_LowDegree",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 23,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2",
+          "failures": [
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:25\nThe difference between hermite_hn(0, x) and 1.0 is 0.24887445553505749, which exceeds 1e-12, where\nhermite_hn(0, x) evaluates to 0.75112554446494251,\n1.0 evaluates to 1, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:26\nThe difference between hermite_hn(1, x) and 2.0 * x is 0.74662336660517248, which exceeds 1e-12, where\nhermite_hn(1, x) evaluates to 2.2533766333948275,\n2.0 * x evaluates to 3, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:27\nThe difference between hermite_hn(2, x) and 4.0*x*x - 2.0 is 3.2821182379048106, which exceeds 1e-12, where\nhermite_hn(2, x) evaluates to 3.7178817620951894,\n4.0*x*x - 2.0 evaluates to 7, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:28\nThe difference between hermite_hn(3, x) and 8.0*x*x*x - 12.0*x is 6.2401885249360403, which exceeds 1e-10, where\nhermite_hn(3, x) evaluates to 2.7598114750639597,\n8.0*x*x*x - 12.0*x evaluates to 9, and\n1e-10 evaluates to 1e-10.\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "HermiteHn_AtZero",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 31,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2",
+          "failures": [
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:33\nThe difference between hermite_hn(0, 0.0) and 1.0 is 0.24887445553505749, which exceeds 1e-12, where\nhermite_hn(0, 0.0) evaluates to 0.75112554446494251,\n1.0 evaluates to 1, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:35\nThe difference between hermite_hn(2, 0.0) and -2.0 is 0.93774806797280319, which exceeds 1e-12, where\nhermite_hn(2, 0.0) evaluates to -1.0622519320271968,\n-2.0 evaluates to -2, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "HermiteHn_SmokeHighDegree",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 39,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "HermiteHf_LowDegree",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 50,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2",
+          "failures": [
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:52\nThe difference between hermite_hf(0, x) and 1.0 is 0.98168436111126578, which exceeds 1e-12, where\nhermite_hf(0, x) evaluates to 0.018315638888734179,\n1.0 evaluates to 1, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:53\nThe difference between hermite_hf(1, x) and x is 1.9267374444450633, which exceeds 1e-12, where\nhermite_hf(1, x) evaluates to 0.073262555554936715,\nx evaluates to 2, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:54\nThe difference between hermite_hf(2, x) and x*x - 1.0 is 2.7435810555577214, which exceeds 1e-12, where\nhermite_hf(2, x) evaluates to 0.25641894444227853,\nx*x - 1.0 evaluates to 3, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:55\nThe difference between hermite_hf(3, x) and x*x*x - 3.0*x is 1.267374444450633, which exceeds 1e-10, where\nhermite_hf(3, x) evaluates to 0.73262555554936715,\nx*x*x - 3.0*x evaluates to 2, and\n1e-10 evaluates to 1e-10.\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "HermiteHf_AtZero",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 58,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2",
+          "failures": [
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:61\nThe difference between hermite_hf(2, 0.0) and -1.0 is 1, which exceeds 1e-12, where\nhermite_hf(2, 0.0) evaluates to -2,\n-1.0 evaluates to -1, and\n1e-12 evaluates to 9.9999999999999998e-13.\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "Hypergeo0F1_AtZero",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 70,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "Hypergeo0F1_CosRelation",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 77,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "Hypergeo2F1_AtZero",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 85,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "Hypergeo2F1_LogIdentity",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 92,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "Weierstrass_P_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 108,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "Weierstrass_Sigma_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 115,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "Weierstrass_Zeta_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 122,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "MathieuCe_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 134,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0.013s",
+          "classname": "SpecialGroup2",
+          "failures": [
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(0, 0, 0) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(0, 0, 0.78539816339744828) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(0, 0, 1.5707963267948966) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(0, 0, 3.1415926535897931) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(1, 0, 0) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(1, 0, 0.78539816339744828) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(1, 0, 1.5707963267948966) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(1, 0, 3.1415926535897931) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(2, 0, 0) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(2, 0, 0.78539816339744828) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(2, 0, 1.5707963267948966) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(2, 0, 3.1415926535897931) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(3, 0, 0) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(3, 0, 0.78539816339744828) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(3, 0, 1.5707963267948966) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:137\nValue of: std::isfinite(mathieu_ce(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_ce(3, 0, 3.1415926535897931) not finite\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "MathieuSe_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 145,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2",
+          "failures": [
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(1, 0, 0.52359877559829882) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(1, 0, 1.0471975511965976) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(1, 0, 1.5707963267948966) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(2, 0, 0.52359877559829882) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(2, 0, 1.0471975511965976) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(2, 0, 1.5707963267948966) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(3, 0, 0.52359877559829882) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(3, 0, 1.0471975511965976) not finite\n",
+              "type": ""
+            },
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:148\nValue of: std::isfinite(mathieu_se(n, 0.0, z))\n  Actual: false\nExpected: true\nmathieu_se(3, 0, 1.5707963267948966) not finite\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "MathieuB_CharacteristicAtZeroQ",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 155,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "MathieuA_And_B_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 161,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0.002s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "KelvinKer_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 172,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "KelvinKei_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 180,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "KelvinBer_Bei_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 187,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "Clausen_KnownValues",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 197,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2",
+          "failures": [
+            {
+              "failure": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp:199\nThe difference between clausen(3.14159265358979323846 \/ 3.0) and 1.01494 is 0.067591754730548237, which exceeds 1e-4, where\nclausen(3.14159265358979323846 \/ 3.0) evaluates to 1.0825317547305482,\n1.01494 evaluates to 1.01494, and\n1e-4 evaluates to 0.0001.\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "Clausen_Symmetry",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 202,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0.004s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "StruveH_AtZero",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 217,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "StruveH_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 222,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "StruveHn_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 232,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "StruveL_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 239,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "StruveK_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 250,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        },
+        {
+          "name": "StruveYn_Finite",
+          "file": "C:\\Users\\odinl\\OneDrive\\Desktop\\MathsScript\\tests\\numerical\\test_special_group2_ref.cpp",
+          "line": 257,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-06-10T23:34:05Z",
+          "time": "0s",
+          "classname": "SpecialGroup2"
+        }
+      ]
+    }
+  ]
+}

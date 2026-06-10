@@ -137,6 +137,7 @@ add_ms_test(test_thread_pool_linalg_adv unit/test_thread_pool_linalg_adv.cpp)
 add_ms_test(test_memory_allocators_adv unit/test_memory_allocators_adv.cpp)
 add_ms_test(test_cpu_blas_kernel unit/test_cpu_blas_kernel.cpp)
 add_ms_test(test_topology_dispatch_adv unit/test_topology_dispatch_adv.cpp)
+add_ms_test(test_repl_session_adv unit/test_repl_session_adv.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
