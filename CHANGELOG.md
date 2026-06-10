@@ -3,6 +3,27 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-06-10 (Waves 34-37)
+
+### Added (Waves 34-37 — Hardening Continuation)
+- **Waves 34-37**: 11 new test suites, 9 new benchmark files, integration tests, and coverage expansions
+- `tests/unit/test_distributed_adv.cpp`: MPI distributed module tests (MPIContext, block_cyclic_row_indices, block_row_extent, allreduce_sum)
+- `tests/numerical/test_special_group3_ref.cpp`, `test_special_group4_ref.cpp`: Remaining special function coverage (theta, Heun, Lerch, Fox-H, elliptic integrals)
+- `tests/numerical/test_fft_prob_remaining.cpp`: FFT2 extended, chi-squared/uniform/Poisson distribution coverage, idct2 roundtrip
+- `tests/numerical/test_special_painleve_ref.cpp`: Painlevé P3-P6 transcendent smoke tests
+- `tests/numerical/test_iterative_solvers_ref.cpp`: CG, BiCGSTAB, GMRES numerical accuracy tests
+- `tests/numerical/test_linalg_decomp_ref.cpp`: expm, logm, sqrtm, tril, triu numerical tests
+- `tests/unit/test_simd_isa_adv.cpp`: ISA detection and isa_summary coverage (11 tests)
+- `tests/unit/test_optim_adv.cpp`: newton_1d, broyden, minimize_with_constraints, GradientDescentResult, simplex (28 tests)
+- `tests/unit/test_repl_interp_adv.cpp`: 95+ REPL interpreter tests (assign_scalar, eval_scalar_call, PlotSeries, SessionState, print_matrix)
+- `tests/unit/test_tensor_adv.cpp`: Tensor class advanced tests (15 tests)
+- `tests/integration/test_repl_linalg_pipeline.cpp`: REPL+linalg integration pipeline
+- `tests/integration/test_signal_fft_pipeline.cpp`: Signal processing + FFT integration pipeline
+- `tests/performance/bench_optim_symbolic.cpp`: Optimization, symbolic, polynomial, and domain benchmarks
+- `tests/performance/bench_special_memory.cpp`: Special functions and memory allocator benchmarks
+- **Bug fix**: `include/ms/memory/aligned_allocator.hpp` — corrected `_aligned_malloc(size, align)` argument order (was reversed)
+- **Total: 152 CTest suites, 2158 test cases — all passing**
+
 ## [1.0.0] — 2026-06-10 (Wave 29)
 
 ### Added (Wave 29 — Hardening Iteration)
