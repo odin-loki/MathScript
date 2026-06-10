@@ -2429,3 +2429,49 @@ TEST(LapackDormbrTest, dormbr_lowercase_side_and_trans) {
     EXPECT_FALSE(std::isnan(Cq(0, 0)));
     EXPECT_FALSE(std::isnan(Cp(0, 0)));
 }
+
+// ---------------------------------------------------------------------------
+// Direct BLAS dgemm tests (raw API level)
+// ---------------------------------------------------------------------------
+
+TEST(BlasDgemmTest, identity_multiply) {
+    // C = 1.0 * I * A + 0.0 * C should give A
+    constexpr int N = 3;
+    const std::vector<double> I = {1,0,0, 0,1,0, 0,0,1};  // ColMajor identity
+    const std::vector<double> A = {1,4,7, 2,5,8, 3,6,9};   // ColMajor 3x3
+    std::vector<double> C(N * N, 0.0);
+
+    cpu::blas::dgemm('N', 'N', N, N, N, 1.0, I.data(), N, A.data(), N, 0.0, C.data(), N);
+
+    for (int i = 0; i < N * N; ++i) {
+        EXPECT_NEAR(C[i], A[i], 1e-12);
+    }
+}
+
+TEST(BlasDgemmTest, zero_alpha_zeroes_C) {
+    constexpr int N = 2;
+    const std::vector<double> A = {1, 2, 3, 4};
+    const std::vector<double> B = {5, 6, 7, 8};
+    std::vector<double> C = {10, 20, 30, 40};  // existing C
+
+    // alpha=0, beta=0 -> C should be zero
+    cpu::blas::dgemm('N', 'N', N, N, N, 0.0, A.data(), N, B.data(), N, 0.0, C.data(), N);
+    for (double v : C) EXPECT_DOUBLE_EQ(v, 0.0);
+}
+
+TEST(BlasDgemmTest, multiply_2x2) {
+    // [1,2;3,4] * [5,6;7,8] = [19,22;43,50] (row math)
+    // In ColMajor: A = [1,3,2,4], B = [5,7,6,8]
+    constexpr int N = 2;
+    const std::vector<double> A = {1, 3, 2, 4};   // ColMajor [1,2;3,4]
+    const std::vector<double> B = {5, 7, 6, 8};   // ColMajor [5,6;7,8]
+    std::vector<double> C(4, 0.0);
+
+    cpu::blas::dgemm('N', 'N', N, N, N, 1.0, A.data(), N, B.data(), N, 0.0, C.data(), N);
+
+    // ColMajor result: C[0,0]=19, C[1,0]=43, C[0,1]=22, C[1,1]=50
+    EXPECT_NEAR(C[0], 19.0, 1e-12);  // (0,0)
+    EXPECT_NEAR(C[1], 43.0, 1e-12);  // (1,0)
+    EXPECT_NEAR(C[2], 22.0, 1e-12);  // (0,1)
+    EXPECT_NEAR(C[3], 50.0, 1e-12);  // (1,1)
+}
