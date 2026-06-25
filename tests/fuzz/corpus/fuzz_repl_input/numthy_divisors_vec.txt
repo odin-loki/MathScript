@@ -1,0 +1,1 @@
+numthy_divisors_vec(12)

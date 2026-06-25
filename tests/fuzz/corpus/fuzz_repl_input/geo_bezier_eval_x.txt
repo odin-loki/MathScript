@@ -1,0 +1,1 @@
+bx = geo_bezier_eval_x([0, 0; 1, 2; 2, 0], 0.5)

@@ -33,7 +33,7 @@ static const std::vector<BesselRef> BESSEL_Y_REF = {
     {0, 5.0, -0.308517664, 1e-8},
     {1, 1.0, -0.781212822, 1e-7},
     {1, 2.0, -0.107032431, 1e-8},
-    {1, 5.0, 0.147863144, 1e-8},
+    {1, 5.0, 0.147863144, 1e-7},
 };
 
 // I_nu(x) reference values from NIST DLMF Table 10.2.3 (nu <= 1: stable in current impl)

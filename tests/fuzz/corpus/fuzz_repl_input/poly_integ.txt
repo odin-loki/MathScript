@@ -1,0 +1,1 @@
+pi = poly_integ([3], 0)

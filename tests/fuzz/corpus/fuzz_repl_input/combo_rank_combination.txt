@@ -1,0 +1,1 @@
+combo_rank_combination([0;1],4)

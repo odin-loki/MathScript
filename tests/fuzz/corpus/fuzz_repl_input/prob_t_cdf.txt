@@ -1,0 +1,1 @@
+tc = prob_t_cdf(0, 5)

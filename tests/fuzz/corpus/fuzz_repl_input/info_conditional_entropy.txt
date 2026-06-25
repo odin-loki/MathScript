@@ -1,0 +1,1 @@
+info_conditional_entropy([0.25, 0.25; 0.25, 0.25], 2, 2)

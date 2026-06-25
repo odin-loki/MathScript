@@ -1,0 +1,1 @@
+P = numthy_primes(1, 20)

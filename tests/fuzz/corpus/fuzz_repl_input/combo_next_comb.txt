@@ -1,0 +1,1 @@
+v2 = combo_next_comb([0; 1], 4)

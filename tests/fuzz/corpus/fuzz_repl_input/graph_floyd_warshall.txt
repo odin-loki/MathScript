@@ -1,0 +1,1 @@
+D = graph_floyd_warshall([0, 1, 5; 0, 0, 1; 0, 0, 0])

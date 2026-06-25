@@ -1,0 +1,1 @@
+w = signal_parzen(8)

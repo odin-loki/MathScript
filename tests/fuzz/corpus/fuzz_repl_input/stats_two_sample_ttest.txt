@@ -1,0 +1,1 @@
+t2 = stats_two_sample_ttest([1; 2; 3], [4; 5; 6])

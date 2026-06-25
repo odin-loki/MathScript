@@ -77,11 +77,18 @@ int dgesvd_tall(int m, int n, const double* A, int lda, double* S, double* U, in
         return 1;
     }
 
+    std::vector<double> bidiag(static_cast<std::size_t>(m) * static_cast<std::size_t>(n));
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < m; ++i) {
+            bidiag[static_cast<std::size_t>(i + j * lda)] = work[static_cast<std::size_t>(i + j * lda)];
+        }
+    }
+
     std::vector<double> qfac(static_cast<std::size_t>(m) * static_cast<std::size_t>(n));
-    dorgbr('Q', m, n, n, work.data(), lda, tauq.data(), qfac.data(), m);
+    dorgbr('Q', m, n, n, bidiag.data(), lda, tauq.data(), qfac.data(), m);
 
     std::vector<double> pt(static_cast<std::size_t>(n) * static_cast<std::size_t>(n));
-    dorgbr('P', n, n, n, work.data(), lda, taup.data(), pt.data(), n);
+    dorgbr('P', n, n, n, bidiag.data(), lda, taup.data(), pt.data(), n);
 
     std::vector<double> ub(static_cast<std::size_t>(n) * static_cast<std::size_t>(n));
     std::vector<double> vbt(static_cast<std::size_t>(n) * static_cast<std::size_t>(n));
@@ -101,7 +108,7 @@ int dgesvd_tall(int m, int n, const double* A, int lda, double* S, double* U, in
 
     for (int j = 0; j < n; ++j) {
         for (int i = 0; i < n; ++i) {
-            VT[static_cast<std::size_t>(j) * static_cast<std::size_t>(ldvt) + static_cast<std::size_t>(i)] =
+            VT[static_cast<std::size_t>(i) + static_cast<std::size_t>(j) * static_cast<std::size_t>(ldvt)] =
                 v[static_cast<std::size_t>(i) + static_cast<std::size_t>(j) * static_cast<std::size_t>(n)];
         }
     }
@@ -137,7 +144,8 @@ int dgesvd_wide(int m, int n, const double* A, int lda, double* S, double* U, in
         if (dgebrd(m, n, work.data(), lda, D.data(), E.data(), tauq.data(), taup.data()) != 0) {
             return 1;
         }
-        return bidiag_singular_values_steqr(m, D.data(), E.data(), S);
+        (void)bidiag_singular_values_steqr(m, D.data(), E.data(), S);
+        return 1;
     }
 
     for (int j = 0; j < m; ++j) {
@@ -149,7 +157,7 @@ int dgesvd_wide(int m, int n, const double* A, int lda, double* S, double* U, in
 
     for (int q = 0; q < n; ++q) {
         for (int k = 0; k < m; ++k) {
-            VT[static_cast<std::size_t>(q) * static_cast<std::size_t>(m) + static_cast<std::size_t>(k)] =
+            VT[static_cast<std::size_t>(k) + static_cast<std::size_t>(q) * static_cast<std::size_t>(ldvt)] =
                 ut[static_cast<std::size_t>(q) + static_cast<std::size_t>(k) * static_cast<std::size_t>(n)];
         }
     }

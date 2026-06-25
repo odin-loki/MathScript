@@ -1,0 +1,1 @@
+gm = control_gain_margin([1], [1, 1])

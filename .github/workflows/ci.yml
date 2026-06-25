@@ -55,6 +55,13 @@ jobs:
       - name: Install smoke
         run: pwsh -NoProfile -File scripts/package_smoke.ps1 build-msvc install-smoke
 
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mathscript-windows-zip
+          path: build-msvc/mathscript-*.zip
+          if-no-files-found: error
+
       - name: NSIS package smoke
         run: |
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
@@ -101,6 +108,13 @@ jobs:
 
       - name: Install smoke
         run: bash scripts/package_smoke.sh build-linux install-smoke
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mathscript-linux-tgz
+          path: build-linux/mathscript-*.tar.gz
+          if-no-files-found: error
 
       - name: Package smoke
         run: |

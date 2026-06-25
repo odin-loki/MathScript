@@ -1,0 +1,2 @@
+mp = finance_bs_call(100, 100, 1, 0.05, 0.2)
+iv = finance_bs_implied_vol(mp, 100, 100, 1, 0.05, 1)

@@ -1,0 +1,1 @@
+tau = numthy_num_divisors(12)

@@ -1,0 +1,1 @@
+gm = stats_geometric_mean([2; 8])

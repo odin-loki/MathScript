@@ -1,0 +1,1 @@
+f = combo_factorial(5)

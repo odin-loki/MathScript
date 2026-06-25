@@ -1,0 +1,1 @@
+finance_pmt_annuity(0,5,-50,0)

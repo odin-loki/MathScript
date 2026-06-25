@@ -1,0 +1,1 @@
+combo_stirling1(4, 2)

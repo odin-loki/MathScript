@@ -1,0 +1,1 @@
+combo_rank_permutation([2;1;0])

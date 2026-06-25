@@ -1,0 +1,1 @@
+numthy_lcm(4, 6)

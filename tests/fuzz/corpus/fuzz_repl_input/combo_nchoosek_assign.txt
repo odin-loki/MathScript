@@ -1,0 +1,1 @@
+c=combo_nchoosek(5,2)

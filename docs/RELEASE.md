@@ -8,12 +8,12 @@ item list lives in the README under **[Phase 10 checklist](../README.md#phase-10
 All of the following must be true before `git tag v1.0.0`:
 
 1. **CI green** — every job in `.github/workflows/ci.yml` passes on `main` without `continue-on-error` overrides.
-2. **Tests** — full CTest suite passing (currently **76** suites; CUDA optional/off in CI).
+2. **Tests** — full CTest suite passing (currently **348** suites; CUDA optional/off in CI). **Wave 172** adds REPL `geo_voronoi`/`numthy_convergents`/`ml_mat_transpose`, Wave 63–172 integration pipeline, and fuzz repl corpus seeds for Wave 172 bindings. **Wave 171** adds REPL `combo_next_perm`/`cplx_mobius_re`/`boxfilter`, Wave 63–171 integration pipeline, and fuzz repl corpus seeds for Wave 171 bindings. **Wave 170** adds REPL `geo_kdtree_nearest`/`topo_pairwise_distances`/`numthy_continued_fraction`, Wave 63–170 integration pipeline, and fuzz repl corpus seeds for Wave 170 bindings. **Wave 169** adds REPL `prob_chi2_pdf`/`stats_two_sample_ttest`/`stats_chi2_gof`, Wave 63–169 integration pipeline, and fuzz repl corpus seeds for Wave 169 bindings.
 3. **Coverage** — line coverage ≥ **90%** enforced in CI (target **~91%**; see `coverage-linux` job).
 4. **Memory** — Valgrind memcheck clean on the test suite (`valgrind-linux` job).
 5. **Fuzz** — all libFuzzer targets run ≥ **24 hours** total with **no crashes** (see `fuzz-24h.yml` and nightly workflows).
 6. **Unsafe surface** — every site in `UNSAFE_REVIEW.md` reviewed; `scripts/unsafe_report.sh` and `scripts/unsafe_delta.sh` report no new unreviewed sites.
-7. **Packaging** — install smoke + TGZ/ZIP/DEB/RPM (Linux) and NSIS/WiX (Windows) build on clean CI runners.
+7. **Packaging** — install smoke + TGZ/ZIP/DEB/RPM (Linux) and ZIP (+ optional NSIS/WiX) on Windows; verified via `scripts/package_smoke.sh` / `scripts/package_smoke.ps1`.
 8. **Performance** — `benchmark-linux` regression gate within **10%** of `linux-gcc13.json` baseline.
 9. **Compliance** — `plugin-linux` job green with `MS_BUILD_PLUGIN=ON` and **twenty** enforced compile-fail rules (all `DiagnosticID`s in `diagnostics.hpp` except partial `UnsafeAudit` via `MS_UNSAFE` + audit scripts) plus compliance tests passing.
 10. **JIT** — `jit-linux` job green with `-DMS_BUILD_JIT=ON` (ORC LLJIT smoke; scalar literal/expression/libm-call JIT; native dispatch for matrix/scalar/multi-target REPL call assignments).
@@ -32,6 +32,16 @@ bash scripts/unsafe_report.sh build-linux/unsafe_report.txt
 bash scripts/unsafe_delta.sh build-linux/unsafe_report.txt
 bash scripts/package_smoke.sh build-linux install-smoke
 ```
+
+## Pre-tag commands (Windows packaging)
+
+After a Release configure/build of `build-msvc`:
+
+```powershell
+pwsh -NoProfile -File scripts/package_smoke.ps1 build-msvc install-smoke
+```
+
+This runs `cmake --install`, checks the install tree, then `cpack -G ZIP` and verifies `mathscript-*.zip` in the build directory. On Linux, `scripts/package_smoke.sh` also runs `cpack -G TGZ` and verifies `mathscript-*.tar.gz`. Equivalent manual step: `cmake --build build-msvc --target package` (generates all configured CPack artifacts).
 
 ## Fuzz marathon (required before v1.0.0)
 
@@ -67,7 +77,7 @@ Run these steps **in order** after tag criteria are met:
 After `v1.0.0` is on `main`:
 
 1. **GitHub release** — create a release from the `v1.0.0` tag (GitHub → Releases → Draft a new release → choose tag `v1.0.0`).
-2. **Artifacts** — attach TGZ/ZIP (and DEB/RPM on Linux CI artifacts if needed) from the green packaging jobs, or build locally with `cpack` and upload.
+2. **Artifacts** — download `mathscript-linux-tgz` / `mathscript-windows-zip` from the green `build-test-linux` / `build-test-windows` CI jobs (uploaded after `package_smoke`), or build locally with `cpack` and upload.
 3. **Announce** — publish release notes summarizing Phase 10 hardening and link to `CHANGELOG.md` for the full **1.0.0** change list.
 
 ## Post-1.0.0 items

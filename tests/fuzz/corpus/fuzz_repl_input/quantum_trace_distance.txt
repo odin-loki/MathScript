@@ -1,0 +1,1 @@
+quantum_trace_distance([1,0;0,0],[1,0;0,0])

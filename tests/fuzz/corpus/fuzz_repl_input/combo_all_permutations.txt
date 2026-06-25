@@ -1,0 +1,1 @@
+p3 = combo_all_permutations(3)

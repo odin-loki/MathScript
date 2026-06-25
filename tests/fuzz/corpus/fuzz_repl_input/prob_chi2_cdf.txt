@@ -1,0 +1,1 @@
+cc = prob_chi2_cdf(1, 1)

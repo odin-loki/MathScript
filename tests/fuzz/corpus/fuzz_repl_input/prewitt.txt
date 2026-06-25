@@ -1,0 +1,2 @@
+M = ones(5, 5)
+E = prewitt(M)

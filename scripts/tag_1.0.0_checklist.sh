@@ -20,7 +20,7 @@ echo "Current: ${VERSION_LINE:-unknown}"
 echo
 echo "Required before tagging (see docs/RELEASE.md):"
 echo "  [ ] CI green on main (.github/workflows/ci.yml)"
-echo "  [ ] 100/100 CTest suites passing"
+echo "  [ ] 351 CTest suites passing"
 echo "  [ ] Coverage >= 90% (coverage-linux)"
 echo "  [ ] Valgrind clean (valgrind-linux)"
 echo "  [ ] fuzz-24h.yml: 86400 s x 7 targets, zero crashes"
@@ -29,10 +29,13 @@ echo "  [ ] plugin-linux + jit-linux green"
 echo "  [ ] benchmark-linux within tolerance"
 echo "  [ ] unsafe_delta clean"
 echo "  [ ] CHANGELOG + docs current"
+echo "  [ ] Packaging smoke (scripts/package_smoke.sh or scripts/package_smoke.ps1)"
 echo
 echo "Fuzz marathon: bash scripts/fuzz_24h_dispatch.sh"
 echo "Local gate:    bash scripts/pre_release.sh"
+echo "Packaging:     bash scripts/package_smoke.sh build-linux install-smoke"
 echo "Windows:       .\\build.ps1 -Test ; .\\scripts\\tag_1.0.0_checklist.ps1"
+echo "               pwsh -NoProfile -File scripts/package_smoke.ps1 build-msvc install-smoke"
 echo
 if [[ "${VERSION_LINE}" == *"1.0.0"* ]]; then
     echo "NOTE: CMakeLists.txt already references 1.0.0 — verify fuzz marathon completed."

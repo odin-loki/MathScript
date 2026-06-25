@@ -1,0 +1,2 @@
+d = fft_dct2([1; 2; 3; 4])
+x = fft_idct2(d)

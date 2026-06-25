@@ -1,0 +1,3 @@
+X = quantum_pauli_x()
+Z = quantum_pauli_z()
+C = quantum_commutator(X, Z)

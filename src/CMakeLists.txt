@@ -18,6 +18,22 @@ add_subdirectory(symbolic)
 add_subdirectory(domain)
 add_subdirectory(distributed)
 add_subdirectory(frameworks)
+add_subdirectory(numthy)
+add_subdirectory(combo)
+add_subdirectory(info)
+add_subdirectory(finance)
+add_subdirectory(control)
+add_subdirectory(graph)
+add_subdirectory(cplx)
+add_subdirectory(quantum)
+add_subdirectory(geo)
+add_subdirectory(diffgeo)
+add_subdirectory(topo)
+add_subdirectory(tensorops)
+add_subdirectory(ml)
+add_subdirectory(image)
+add_subdirectory(compress)
+add_subdirectory(bignum)
 add_subdirectory(gui)
 add_subdirectory(exe)
 
@@ -42,6 +58,22 @@ target_link_libraries(mathscript INTERFACE
     ms_domain
     ms_distributed
     ms_frameworks
+    ms_numthy
+    ms_combo
+    ms_info
+    ms_finance
+    ms_control
+    ms_graph
+    ms_cplx
+    ms_quantum
+    ms_geo
+    ms_diffgeo
+    ms_topo
+    ms_tensorops
+    ms_ml
+    ms_image
+    ms_compress
+    ms_bignum
 )
 target_include_directories(mathscript INTERFACE
     ${CMAKE_SOURCE_DIR}/include

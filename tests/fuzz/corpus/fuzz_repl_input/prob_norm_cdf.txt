@@ -1,0 +1,1 @@
+p = prob_norm_cdf(0, 0, 1)

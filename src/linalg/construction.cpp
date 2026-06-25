@@ -105,4 +105,55 @@ template std::vector<float> diag<float>(const Matrix<float>&);
 template Matrix<double> tril<double>(const Matrix<double>&, int);
 template Matrix<double> triu<double>(const Matrix<double>&, int);
 
+// --- kron, linspace, repmat ---
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> kron(const Matrix<S, OA, Alloc>& A,
+                           const Matrix<S, OA, Alloc>& B) {
+    const size_t ma = A.rows(), na = A.cols();
+    const size_t mb = B.rows(), nb = B.cols();
+    Matrix<S, OA, Alloc> K(ma * mb, na * nb, S(0));
+    for (size_t i = 0; i < ma; ++i) {
+        for (size_t j = 0; j < na; ++j) {
+            for (size_t p = 0; p < mb; ++p) {
+                for (size_t q = 0; q < nb; ++q) {
+                    K(i * mb + p, j * nb + q) = A(i, j) * B(p, q);
+                }
+            }
+        }
+    }
+    return K;
+}
+
+template<typename S>
+std::vector<S> linspace(S a, S b, size_t n) {
+    if (n == 0) return {};
+    if (n == 1) return {a};
+    std::vector<S> v(n);
+    for (size_t i = 0; i < n; ++i) {
+        v[i] = a + static_cast<S>(i) * (b - a) / static_cast<S>(n - 1);
+    }
+    return v;
+}
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> repmat(const Matrix<S, OA, Alloc>& A, size_t p, size_t q) {
+    Matrix<S, OA, Alloc> R(A.rows() * p, A.cols() * q, S(0));
+    for (size_t pi = 0; pi < p; ++pi) {
+        for (size_t qi = 0; qi < q; ++qi) {
+            for (size_t i = 0; i < A.rows(); ++i) {
+                for (size_t j = 0; j < A.cols(); ++j) {
+                    R(pi * A.rows() + i, qi * A.cols() + j) = A(i, j);
+                }
+            }
+        }
+    }
+    return R;
+}
+
+template Matrix<double> kron<double>(const Matrix<double>&, const Matrix<double>&);
+template std::vector<double> linspace<double>(double, double, size_t);
+template std::vector<float> linspace<float>(float, float, size_t);
+template Matrix<double> repmat<double>(const Matrix<double>&, size_t, size_t);
+
 } // namespace ms

@@ -1,0 +1,1 @@
+numthy_legendre_symbol(2, 7)

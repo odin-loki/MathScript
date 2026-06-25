@@ -1,0 +1,1 @@
+chi = topo_euler_tetrahedron()

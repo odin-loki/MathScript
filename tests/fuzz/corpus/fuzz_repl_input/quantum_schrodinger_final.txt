@@ -1,0 +1,1 @@
+psi = quantum_schrodinger_final([0.5,0;0,-0.5],[1;0],0,3.14159,100)

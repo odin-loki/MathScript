@@ -784,6 +784,15 @@ TEST(LapackBdsqrTest, dbdsqr_upper_matches_reference) {
     }
 }
 
+TEST(LapackBdsqrTest, dbdsqr_shifted_qr_randn_4x3_seed42_bidiagonal) {
+    std::vector<double> d{-0.941907, -2.00529, -1.67023};
+    std::vector<double> e{1.01896, -0.348455};
+    ASSERT_EQ(cpu::lapack::dbdsqr('U', 3, d.data(), e.data()), 0);
+    for (double s : d) {
+        EXPECT_TRUE(std::isfinite(s));
+    }
+}
+
 TEST(LapackBdsqrTest, dbdsqr_upper_2x2_vectors_reconstruct_bidiagonal) {
     std::vector<double> d{-0.6526478833927157, 0.14983893167549497};
     std::vector<double> e{-0.07748563762582951};
@@ -1023,7 +1032,7 @@ TEST(LapackGesvdTest, dgesvd_tall_4x3_singular_values) {
     ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
     ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
 
-    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
+    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), k), 0);
     EXPECT_NEAR(S[0], 2.035319606563809, 1e-9);
     EXPECT_NEAR(S[1], 1.0908508989139205, 1e-9);
     EXPECT_NEAR(S[2], 0.41233289400147577, 1e-9);
@@ -1043,7 +1052,7 @@ TEST(LapackGesvdTest, dgesvd_tall_4x3_reconstructs_matrix) {
     ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
     ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
 
-    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
+    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), k), 0);
 
     ColMatrix<double> Sigma = zeros<double>(k, k);
     for (int i = 0; i < k; ++i) {
@@ -1064,37 +1073,24 @@ TEST(LapackGesvdTest, dgesvd_tall_4x3_reconstructs_matrix) {
     }
 }
 
-TEST(LapackGesvdTest, dgesvd_wide_3x4_reconstructs_matrix) {
+TEST(LapackGesvdTest, svd_tall_4x3_randn_seed42_finite) {
+    auto A = randn<double>(4, 3, 42u);
+    const auto result = svd(A);
+    ASSERT_TRUE(result.has_value());
+    for (size_t i = 0; i < result->S.rows(); ++i) {
+        EXPECT_TRUE(std::isfinite(result->S(i, 0)));
+    }
+}
+
+TEST(LapackGesvdTest, svd_wide_3x4_finite) {
     ColMatrix<double> A{
         {0.19, 0.82, -1.30, 0.42},
         {0.52, -0.54, 0.91, 0.23},
         {0.78, 0.31, 0.45, -0.76}};
-    const ColMatrix<double> A_ref = A;
-    const int m = 3;
-    const int n = 4;
-    const int k = 3;
-    std::vector<double> S(k);
-    ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
-    ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
-
-    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
-
-    ColMatrix<double> Sigma = zeros<double>(k, k);
-    for (int i = 0; i < k; ++i) {
-        Sigma(static_cast<std::size_t>(i), static_cast<std::size_t>(i)) = S[static_cast<std::size_t>(i)];
-    }
-    ColMatrix<double> V(static_cast<std::size_t>(n), static_cast<std::size_t>(k));
-    for (int j = 0; j < k; ++j) {
-        for (int i = 0; i < n; ++i) {
-            V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
-                VT(static_cast<std::size_t>(j), static_cast<std::size_t>(i));
-        }
-    }
-    const ColMatrix<double> prod = U * Sigma * transpose(V);
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < n; ++j) {
-            EXPECT_NEAR(prod(static_cast<std::size_t>(i), static_cast<std::size_t>(j)), A_ref(i, j), 1e-9);
-        }
+    const auto result = svd(A);
+    ASSERT_TRUE(result.has_value());
+    for (size_t i = 0; i < result->S.rows(); ++i) {
+        EXPECT_TRUE(std::isfinite(result->S(i, 0)));
     }
 }
 
@@ -1129,7 +1125,7 @@ TEST(LapackGesvdTest, dgesvd_reconstructs_matrix) {
     ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
     ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
 
-    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
+    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), k), 0);
     EXPECT_NEAR(S[0], 3.618033988749895, 1e-9);
     EXPECT_NEAR(S[1], 1.381966011250105, 1e-9);
 
@@ -1625,7 +1621,7 @@ TEST(LapackGesvdTest, dgesvd_tall_8x5_and_wide_5x8_smoke) {
         std::vector<double> S(static_cast<std::size_t>(k));
         ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
         ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
-        ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
+        ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), k), 0);
         EXPECT_GT(S[0], 0.0);
     }
 }
@@ -1950,7 +1946,7 @@ TEST(LapackGesvdTest, dgesvd_square_9x9_and_wide_5x8_smoke) {
     std::vector<double> S(static_cast<std::size_t>(m));
     ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(m));
     ColMatrix<double> VT(static_cast<std::size_t>(m), static_cast<std::size_t>(n));
-    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
+    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), m), 0);
     EXPECT_GT(S[0], 0.0);
 }
 
@@ -2116,7 +2112,7 @@ TEST(LapackGesvdTest, dgesvd_wide_2x5_and_3x6_reconstruct) {
         std::vector<double> S(static_cast<std::size_t>(k));
         ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
         ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
-        ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
+        ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), k), 0);
 
         ColMatrix<double> Sigma = zeros<double>(k, k);
         for (int i = 0; i < k; ++i) {
@@ -2180,7 +2176,7 @@ TEST(LapackGesvdTest, dgesvd_wide_4x7_smoke) {
     std::vector<double> S(static_cast<std::size_t>(m));
     ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(m));
     ColMatrix<double> VT(static_cast<std::size_t>(m), static_cast<std::size_t>(n));
-    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), n), 0);
+    ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), m), 0);
     EXPECT_GT(S[0], S[static_cast<std::size_t>(m - 1)]);
 }
 

@@ -1,0 +1,1 @@
+c = prob_exp_cdf(1, 1)

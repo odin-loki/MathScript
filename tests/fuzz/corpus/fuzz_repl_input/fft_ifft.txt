@@ -1,0 +1,2 @@
+S = fft_dft([1; 0; -1; 0])
+x = fft_ifft(S)

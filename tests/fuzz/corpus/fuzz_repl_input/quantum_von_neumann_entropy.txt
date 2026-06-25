@@ -1,0 +1,1 @@
+quantum_von_neumann_entropy([1,0;0,0])

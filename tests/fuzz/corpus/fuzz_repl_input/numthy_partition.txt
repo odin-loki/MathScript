@@ -1,0 +1,1 @@
+p = numthy_partition(5)

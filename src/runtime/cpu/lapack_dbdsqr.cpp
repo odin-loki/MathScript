@@ -560,6 +560,13 @@ int dbdsqr_upper(
 
         iter += m - ll;
 
+        if (shift != 0.0) {
+            if ((idir == 1 && std::abs(d[ll]) <= thresh) ||
+                (idir == 2 && std::abs(d[m - 1]) <= thresh)) {
+                shift = 0.0;
+            }
+        }
+
         if (shift == 0.0) {
             if (idir == 1) {
                 double cs = 1.0;
@@ -612,7 +619,9 @@ int dbdsqr_upper(
                 }
             }
         } else if (idir == 1) {
-            double f = (std::abs(d[ll]) - shift) * (std::copysign(1.0, d[ll]) + shift / d[ll]);
+            const double dll = d[ll];
+            const double shift_ratio = (std::abs(dll) > thresh) ? (shift / dll) : 0.0;
+            double f = (std::abs(dll) - shift) * (std::copysign(1.0, dll) + shift_ratio);
             double g = e[ll];
             for (int i = ll; i <= m - 2; ++i) {
                 double cosr = 0.0;
@@ -647,7 +656,9 @@ int dbdsqr_upper(
                 apply_block_updates(ll, m, work.data(), work.data() + nm1, work.data() + nm12, work.data() + nm13, false);
             }
         } else {
-            double f = (std::abs(d[m - 1]) - shift) * (std::copysign(1.0, d[m - 1]) + shift / d[m - 1]);
+            const double dmm = d[m - 1];
+            const double shift_ratio = (std::abs(dmm) > thresh) ? (shift / dmm) : 0.0;
+            double f = (std::abs(dmm) - shift) * (std::copysign(1.0, dmm) + shift_ratio);
             double g = e[m - 2];
             for (int i = m - 1; i >= ll + 1; --i) {
                 double cosr = 0.0;
@@ -668,7 +679,7 @@ int dbdsqr_upper(
                 d[i] = r;
                 f = cosl * ((i > 0) ? e[i - 1] : 0.0) + sinl * d[i - 1];
                 d[i - 1] = cosl * d[i - 1] - sinl * ((i > 0) ? e[i - 1] : 0.0);
-                if (i > ll) {
+                if (i > ll + 1) {
                     g = sinl * e[i - 2];
                     e[i - 2] = cosl * e[i - 2];
                 }

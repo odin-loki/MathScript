@@ -1,0 +1,1 @@
+pk = prob_binom_pdf(2, 4, 0.5)

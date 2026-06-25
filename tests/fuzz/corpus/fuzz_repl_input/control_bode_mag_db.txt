@@ -1,0 +1,1 @@
+bodeDb = control_bode_mag_db([1], [1, 1], 1)

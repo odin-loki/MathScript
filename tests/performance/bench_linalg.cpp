@@ -1,115 +1,206 @@
-// MathScript linear algebra benchmarks
+// MathScript: Linear Algebra Decomposition Benchmarks (Wave 46)
+// Benchmarks for SVD, EIG, QR, LU, CHOL on various matrix sizes
 
+#include <benchmark/benchmark.h>
+#include <cmath>
 #include "ms/linalg/linalg.hpp"
 #include "ms/core/matrix.hpp"
-#include <benchmark/benchmark.h>
+#include "ms/core/operations.hpp"
 
 using namespace ms;
-using DMatrix = ColMatrix<double>;
+using DMatrix = Matrix<double>;
 
-static DMatrix make_spd(size_t n, unsigned seed) {
-    const auto M = rand<double>(n, n, seed);
-    const auto Mt = transpose(M);
-    const auto MtM = matmul(M, Mt).value();
-    const auto I = eye<double>(n);
-    return MtM + static_cast<double>(n) * I;
-}
-
-static void BM_lu(benchmark::State& state) {
-    const auto n = static_cast<size_t>(state.range(0));
-    const auto A = rand<double>(n, n, 42);
-
-    for (auto _ : state) {
-        auto result = lu(A);
-        benchmark::DoNotOptimize(result);
+// Helper: create a symmetric positive definite matrix of size n
+static DMatrix make_spd(size_t n) {
+    DMatrix A(n, n, 0.0);
+    for (size_t i = 0; i < n; ++i) {
+        A(i, i) = static_cast<double>(n) + 2.0;  // Strong diagonal dominance
+        if (i + 1 < n) {
+            A(i, i + 1) = 1.0;
+            A(i + 1, i) = 1.0;
+        }
     }
-
-    state.SetItemsProcessed(
-        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n) * static_cast<int64_t>(n));
+    return A;
 }
 
-static void BM_solve(benchmark::State& state) {
-    const auto n = static_cast<size_t>(state.range(0));
-    const auto A = rand<double>(n, n, 44);
-    const auto b = rand<double>(n, 1, 45);
+// Helper: create a random-ish square matrix of size n
+static DMatrix make_general(size_t n) {
+    DMatrix A(n, n, 0.0);
+    for (size_t i = 0; i < n; ++i)
+        for (size_t j = 0; j < n; ++j)
+            A(i, j) = std::sin(static_cast<double>(i * n + j + 1));
+    A(0, 0) += static_cast<double>(n);  // ensure non-singular
+    return A;
+}
 
+// ---------------------------------------------------------------------------
+// QR decomposition benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_QR_4x4(benchmark::State& state) {
+    auto A = make_general(4);
     for (auto _ : state) {
-        auto result = solve(A, b);
-        benchmark::DoNotOptimize(result);
+        auto r = qr(A);
+        benchmark::DoNotOptimize(r);
     }
-
-    state.SetItemsProcessed(
-        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n));
 }
+BENCHMARK(BM_QR_4x4);
 
-static void BM_svd(benchmark::State& state) {
-    const auto n = static_cast<size_t>(state.range(0));
-    const auto A = rand<double>(n, n, 46);
-
+static void BM_QR_8x8(benchmark::State& state) {
+    auto A = make_general(8);
     for (auto _ : state) {
-        auto result = svd(A);
-        benchmark::DoNotOptimize(result);
+        auto r = qr(A);
+        benchmark::DoNotOptimize(r);
     }
-
-    state.SetItemsProcessed(
-        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n) * static_cast<int64_t>(n));
 }
+BENCHMARK(BM_QR_8x8);
 
-static void BM_chol(benchmark::State& state) {
-    const auto n = static_cast<size_t>(state.range(0));
-    const auto A = make_spd(n, 47);
-
+static void BM_QR_16x16(benchmark::State& state) {
+    auto A = make_general(16);
     for (auto _ : state) {
-        auto result = chol(A);
-        benchmark::DoNotOptimize(result);
+        auto r = qr(A);
+        benchmark::DoNotOptimize(r);
     }
-
-    state.SetItemsProcessed(
-        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n) * static_cast<int64_t>(n) / 3);
 }
+BENCHMARK(BM_QR_16x16);
 
-static void BM_eig_sym(benchmark::State& state) {
-    const auto n = static_cast<size_t>(state.range(0));
-    const auto A = make_spd(n, 48);
-
+static void BM_QR_32x32(benchmark::State& state) {
+    auto A = make_general(32);
     for (auto _ : state) {
-        auto result = eig_sym(A);
-        benchmark::DoNotOptimize(result);
+        auto r = qr(A);
+        benchmark::DoNotOptimize(r);
     }
-
-    state.SetItemsProcessed(
-        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n) * static_cast<int64_t>(n));
 }
+BENCHMARK(BM_QR_32x32);
 
-static void BM_expm(benchmark::State& state) {
-    const auto n = static_cast<size_t>(state.range(0));
-    const auto A = rand<double>(n, n, 49);
+// ---------------------------------------------------------------------------
+// LU decomposition benchmarks
+// ---------------------------------------------------------------------------
 
+static void BM_LU_4x4(benchmark::State& state) {
+    auto A = make_general(4);
     for (auto _ : state) {
-        auto result = expm(A);
-        benchmark::DoNotOptimize(result);
+        auto r = lu(A);
+        benchmark::DoNotOptimize(r);
     }
-
-    state.SetItemsProcessed(
-        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n));
 }
+BENCHMARK(BM_LU_4x4);
 
-static void BM_norm(benchmark::State& state) {
-    const auto n = static_cast<size_t>(state.range(0));
-    const auto A = rand<double>(n, n, 50);
-
+static void BM_LU_8x8(benchmark::State& state) {
+    auto A = make_general(8);
     for (auto _ : state) {
-        auto result = norm(A);
-        benchmark::DoNotOptimize(result);
+        auto r = lu(A);
+        benchmark::DoNotOptimize(r);
     }
-    state.SetItemsProcessed(
-        state.iterations() * static_cast<int64_t>(n) * static_cast<int64_t>(n));
 }
+BENCHMARK(BM_LU_8x8);
 
-BENCHMARK(BM_lu)->Arg(64)->Arg(128);
-BENCHMARK(BM_solve)->Arg(64);
-BENCHMARK(BM_svd)->Arg(32);
-BENCHMARK(BM_chol)->Arg(64);
-BENCHMARK(BM_eig_sym)->Arg(32);
-BENCHMARK(BM_expm)->Arg(16)->Arg(32);
-BENCHMARK(BM_norm)->Arg(128)->Arg(256);
+static void BM_LU_16x16(benchmark::State& state) {
+    auto A = make_general(16);
+    for (auto _ : state) {
+        auto r = lu(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_LU_16x16);
+
+// ---------------------------------------------------------------------------
+// Cholesky benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_Chol_4x4(benchmark::State& state) {
+    auto A = make_spd(4);
+    for (auto _ : state) {
+        auto r = chol(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_Chol_4x4);
+
+static void BM_Chol_8x8(benchmark::State& state) {
+    auto A = make_spd(8);
+    for (auto _ : state) {
+        auto r = chol(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_Chol_8x8);
+
+static void BM_Chol_16x16(benchmark::State& state) {
+    auto A = make_spd(16);
+    for (auto _ : state) {
+        auto r = chol(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_Chol_16x16);
+
+// ---------------------------------------------------------------------------
+// SVD benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_SVD_4x4(benchmark::State& state) {
+    auto A = make_general(4);
+    for (auto _ : state) {
+        auto r = svd(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SVD_4x4);
+
+static void BM_SVD_8x8(benchmark::State& state) {
+    auto A = make_general(8);
+    for (auto _ : state) {
+        auto r = svd(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SVD_8x8);
+
+// ---------------------------------------------------------------------------
+// EIG benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_Eig_4x4(benchmark::State& state) {
+    auto A = make_spd(4);
+    for (auto _ : state) {
+        auto r = eig(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_Eig_4x4);
+
+static void BM_Eig_8x8(benchmark::State& state) {
+    auto A = make_spd(8);
+    for (auto _ : state) {
+        auto r = eig(A);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_Eig_8x8);
+
+// ---------------------------------------------------------------------------
+// Solve benchmarks (direct solve)
+// ---------------------------------------------------------------------------
+
+static void BM_Solve_4x4(benchmark::State& state) {
+    auto A = make_spd(4);
+    DMatrix b(4, 1, 1.0);
+    for (auto _ : state) {
+        auto r = solve(A, b);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_Solve_4x4);
+
+static void BM_Solve_16x16(benchmark::State& state) {
+    auto A = make_spd(16);
+    DMatrix b(16, 1, 1.0);
+    for (auto _ : state) {
+        auto r = solve(A, b);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_Solve_16x16);
+
+BENCHMARK_MAIN();

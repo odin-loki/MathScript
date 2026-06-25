@@ -1,0 +1,1 @@
+numthy_jacobi_symbol(2, 7)

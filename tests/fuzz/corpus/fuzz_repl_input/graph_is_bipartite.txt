@@ -1,0 +1,2 @@
+Apath = [0, 1, 0, 0; 1, 0, 1, 0; 0, 1, 0, 1; 0, 0, 1, 0]
+bp = graph_is_bipartite(Apath)

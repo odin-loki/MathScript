@@ -1,0 +1,1 @@
+d = prob_norm_pdf(0, 0, 1)

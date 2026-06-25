@@ -1,0 +1,1 @@
+info_sample_entropy([1; 2; 3; 4; 5], 2, 0.5)

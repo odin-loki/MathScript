@@ -1,0 +1,1 @@
+cplx_hyperbolic_distance(0, 0, 0.5, 0)

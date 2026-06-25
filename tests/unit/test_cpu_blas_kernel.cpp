@@ -36,16 +36,12 @@ TEST(BLASKernel, Available_ReturnsBool) {
 // ---------------------------------------------------------------------------
 
 TEST(BLASKernel, DGEMM_Identity_Times_Any) {
-    // C = 1 * I * A + 0 * C => C = A
-    // 2x2 test
+    if (!blas::available()) GTEST_SKIP() << "AVX-512 not available on this machine";
     const int m = 2, n = 2, k = 2;
-    // A = identity
-    double A[4] = {1, 0, 0, 1};  // row-major
-    // B = arbitrary matrix
+    double A[4] = {1, 0, 0, 1};
     double B[4] = {1, 2, 3, 4};
     double C[4] = {0, 0, 0, 0};
     blas::dgemm_nn(m, n, k, 1.0, A, k, B, n, 0.0, C, n);
-    // C should equal B
     EXPECT_NEAR(C[0], 1.0, 1e-10);
     EXPECT_NEAR(C[1], 2.0, 1e-10);
     EXPECT_NEAR(C[2], 3.0, 1e-10);
@@ -53,10 +49,10 @@ TEST(BLASKernel, DGEMM_Identity_Times_Any) {
 }
 
 TEST(BLASKernel, DGEMM_ScalarMultiply) {
-    // C = alpha * A * B, where A=B=I => C = alpha * I
+    if (!blas::available()) GTEST_SKIP() << "AVX-512 not available on this machine";
     const int m = 2, n = 2, k = 2;
-    double A[4] = {1, 0, 0, 1};  // identity
-    double B[4] = {1, 0, 0, 1};  // identity
+    double A[4] = {1, 0, 0, 1};
+    double B[4] = {1, 0, 0, 1};
     double C[4] = {0, 0, 0, 0};
     double alpha = 3.14;
     blas::dgemm_nn(m, n, k, alpha, A, k, B, n, 0.0, C, n);
@@ -67,21 +63,20 @@ TEST(BLASKernel, DGEMM_ScalarMultiply) {
 }
 
 TEST(BLASKernel, DGEMM_Accumulate_With_Beta) {
-    // C = 1 * I * I + 2 * C_init = I + 2*C_init
+    if (!blas::available()) GTEST_SKIP() << "AVX-512 not available on this machine";
     const int m = 2, n = 2, k = 2;
     double A[4] = {1, 0, 0, 1};
     double B[4] = {1, 0, 0, 1};
-    double C[4] = {1, 1, 1, 1};  // initial C
+    double C[4] = {1, 1, 1, 1};
     blas::dgemm_nn(m, n, k, 1.0, A, k, B, n, 2.0, C, n);
-    // C = I + 2*[[1,1],[1,1]] = [[3,2],[2,3]]
-    EXPECT_NEAR(C[0], 3.0, 1e-10);  // 1 + 2*1
-    EXPECT_NEAR(C[1], 2.0, 1e-10);  // 0 + 2*1
+    EXPECT_NEAR(C[0], 3.0, 1e-10);
+    EXPECT_NEAR(C[1], 2.0, 1e-10);
     EXPECT_NEAR(C[2], 2.0, 1e-10);
     EXPECT_NEAR(C[3], 3.0, 1e-10);
 }
 
 TEST(BLASKernel, DGEMM_3x3_FiniteOutput) {
-    // 3x3 smoke test - just verify finite output
+    if (!blas::available()) GTEST_SKIP() << "AVX-512 not available on this machine";
     const int m = 3, n = 3, k = 3;
     double A[9] = {1,2,3, 4,5,6, 7,8,9};
     double B[9] = {9,8,7, 6,5,4, 3,2,1};
@@ -89,20 +84,18 @@ TEST(BLASKernel, DGEMM_3x3_FiniteOutput) {
     blas::dgemm_nn(m, n, k, 1.0, A, k, B, n, 0.0, C, n);
     for (int i = 0; i < 9; ++i)
         EXPECT_TRUE(std::isfinite(C[i]));
-    // Sum should be positive (not all-zero)
     double sum = 0.0;
     for (int i = 0; i < 9; ++i) sum += std::abs(C[i]);
     EXPECT_GT(sum, 0.0);
 }
 
 TEST(BLASKernel, DGEMM_Zero_Alpha_PreservesC) {
-    // alpha=0 => C = 0*A*B + beta*C = beta*C
+    if (!blas::available()) GTEST_SKIP() << "AVX-512 not available on this machine";
     const int m = 2, n = 2, k = 2;
     double A[4] = {1, 2, 3, 4};
     double B[4] = {5, 6, 7, 8};
-    double C[4] = {1, 2, 3, 4};  // initial C
+    double C[4] = {1, 2, 3, 4};
     blas::dgemm_nn(m, n, k, 0.0, A, k, B, n, 2.0, C, n);
-    // C should be 2 * C_initial
     EXPECT_NEAR(C[0], 2.0, 1e-10);
     EXPECT_NEAR(C[1], 4.0, 1e-10);
     EXPECT_NEAR(C[2], 6.0, 1e-10);
@@ -110,6 +103,7 @@ TEST(BLASKernel, DGEMM_Zero_Alpha_PreservesC) {
 }
 
 TEST(BLASKernel, DGEMM_ZeroOutput_When_AlphaAndBetaZero) {
+    if (!blas::available()) GTEST_SKIP() << "AVX-512 not available on this machine";
     const int m = 3, n = 3, k = 3;
     double A[9] = {1,2,3, 4,5,6, 7,8,9};
     double B[9] = {9,8,7, 6,5,4, 3,2,1};

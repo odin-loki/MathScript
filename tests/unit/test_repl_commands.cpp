@@ -1,3 +1,4 @@
+#include <cmath>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <filesystem>
@@ -535,4 +536,3962 @@ TEST(ReplCommandsTest, rand_randn_assign) {
     expect_ok(interp, "N = randn(2, 2)");
     ASSERT_TRUE(interp.state().matrices.count("N") > 0);
     EXPECT_EQ(interp.state().matrices.at("N").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, pinv_null_orth_kron_linspace_repmat) {
+    Interpreter interp;
+
+    // pinv(A) on small square matrix
+    expect_ok(interp, "A = [3, 1; 1, 2]");
+    expect_ok(interp, "P = pinv(A)");
+    ASSERT_TRUE(interp.state().matrices.count("P") > 0);
+    EXPECT_EQ(interp.state().matrices.at("P").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("P").cols(), 2u);
+    expect_ok(interp, "AP = matmul(A, P)");
+    const auto& ap = interp.state().matrices.at("AP");
+    EXPECT_NEAR(ap(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(ap(1, 1), 1.0, 1e-9);
+    EXPECT_NEAR(ap(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR(ap(1, 0), 0.0, 1e-9);
+
+    // null(A) on rank-deficient 2x4 matrix
+    expect_ok(interp, "W = [1, 2, 3, 4; 2, 4, 6, 8]");
+    expect_ok(interp, "N = null(W)");
+    ASSERT_TRUE(interp.state().matrices.count("N") > 0);
+    const auto& n = interp.state().matrices.at("N");
+    EXPECT_EQ(n.rows(), 4u);
+    EXPECT_GE(n.cols(), 1u);
+    expect_ok(interp, "WN = matmul(W, N)");
+    const auto& wn = interp.state().matrices.at("WN");
+    for (size_t i = 0; i < wn.rows(); ++i) {
+        for (size_t j = 0; j < wn.cols(); ++j) {
+            EXPECT_NEAR(wn(i, j), 0.0, 1e-8);
+        }
+    }
+
+    // orth(A) on full-rank 5x3 matrix
+    expect_ok(interp, "M = [1, 0, 0; 0, 1, 0; 0, 0, 1; 1, 1, 0; 0, 1, 1]");
+    expect_ok(interp, "Q = orth(M)");
+    ASSERT_TRUE(interp.state().matrices.count("Q") > 0);
+    const auto& q = interp.state().matrices.at("Q");
+    EXPECT_EQ(q.rows(), 5u);
+    ASSERT_EQ(q.cols(), 3u);
+    for (size_t i = 0; i < q.cols(); ++i) {
+        for (size_t j = 0; j < q.cols(); ++j) {
+            double dot = 0.0;
+            for (size_t r = 0; r < q.rows(); ++r) {
+                dot += q(r, i) * q(r, j);
+            }
+            EXPECT_NEAR(dot, (i == j) ? 1.0 : 0.0, 1e-8);
+        }
+    }
+
+    // kron(eye(2), eye(2)) -> 4x4 identity
+    expect_ok(interp, "K = kron(eye(2), eye(2))");
+    ASSERT_TRUE(interp.state().matrices.count("K") > 0);
+    const auto& k = interp.state().matrices.at("K");
+    EXPECT_EQ(k.rows(), 4u);
+    EXPECT_EQ(k.cols(), 4u);
+    for (size_t i = 0; i < 4; ++i) {
+        for (size_t j = 0; j < 4; ++j) {
+            EXPECT_NEAR(k(i, j), (i == j) ? 1.0 : 0.0, 1e-12);
+        }
+    }
+
+    // linspace(0, 1, 5) -> 5x1 column
+    expect_ok(interp, "V = linspace(0, 1, 5)");
+    ASSERT_TRUE(interp.state().matrices.count("V") > 0);
+    const auto& v = interp.state().matrices.at("V");
+    EXPECT_EQ(v.rows(), 5u);
+    EXPECT_EQ(v.cols(), 1u);
+    EXPECT_NEAR(v(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(v(4, 0), 1.0, 1e-12);
+    for (size_t i = 0; i < 5; ++i) {
+        EXPECT_NEAR(v(i, 0), static_cast<double>(i) * 0.25, 1e-12);
+    }
+
+    // repmat([1,2;3,4], 2, 2) -> 4x4 tiled
+    expect_ok(interp, "R = repmat([1, 2; 3, 4], 2, 2)");
+    ASSERT_TRUE(interp.state().matrices.count("R") > 0);
+    const auto& r = interp.state().matrices.at("R");
+    EXPECT_EQ(r.rows(), 4u);
+    EXPECT_EQ(r.cols(), 4u);
+    const double tile[2][2] = {{1.0, 2.0}, {3.0, 4.0}};
+    for (size_t i = 0; i < 4; ++i) {
+        for (size_t j = 0; j < 4; ++j) {
+            EXPECT_DOUBLE_EQ(r(i, j), tile[i % 2][j % 2]);
+        }
+    }
+}
+
+TEST(ReplCommandsTest, wave60_rgb2gray_and_rle_roundtrip) {
+    Interpreter interp;
+    expect_contains(interp, "help", "rgb2gray(M)");
+    expect_contains(interp, "help", "rle_encode_vec(M)");
+    expect_contains(interp, "help", "bigint(\"495\")");
+
+    // Pure red and pure green pixels in [0,1]
+    expect_ok(interp, "RGB = [1, 0, 0; 0, 1, 0]");
+    expect_ok(interp, "G = rgb2gray(RGB)");
+    ASSERT_TRUE(interp.state().matrices.count("G") > 0);
+    const auto& gray = interp.state().matrices.at("G");
+    EXPECT_EQ(gray.rows(), 2u);
+    EXPECT_EQ(gray.cols(), 1u);
+    EXPECT_NEAR(gray(0, 0), 0.299, 1e-6);
+    EXPECT_NEAR(gray(1, 0), 0.587, 1e-6);
+
+    // RLE roundtrip on a small byte matrix
+    expect_ok(interp, "B = [1, 1, 2, 2; 2, 2, 3, 3]");
+    expect_ok(interp, "E = rle_encode_vec(B)");
+    expect_ok(interp, "R = rle_decode_vec(E)");
+    ASSERT_TRUE(interp.state().matrices.count("R") > 0);
+    const auto& restored = interp.state().matrices.at("R");
+    EXPECT_EQ(restored.rows(), 8u);
+    EXPECT_EQ(restored.cols(), 1u);
+    const double expected[] = {1, 1, 2, 2, 2, 2, 3, 3};
+    for (size_t i = 0; i < 8; ++i) {
+        EXPECT_DOUBLE_EQ(restored(i, 0), expected[i]);
+    }
+
+    expect_ok(interp, "x = bigint(\"495\")");
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("x"), 495.0);
+    expect_error_contains(interp, "y = bigint(\"9007199254740993\")", "too large");
+}
+
+TEST(ReplCommandsTest, wave60_image_filters_and_resize) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imgaussfilt(M,s)");
+    expect_contains(interp, "help", "laplacian(M)");
+    expect_contains(interp, "help", "imresize(M,r,c)");
+
+    expect_ok(interp, "G = [0, 0.5, 1; 0.25, 0.75, 0.5; 1, 0, 0.25]");
+    expect_ok(interp, "B = imgaussfilt(G, 1)");
+    expect_ok(interp, "L = laplacian(G)");
+    expect_ok(interp, "H = histeq(G)");
+    expect_ok(interp, "S = sharpen(G)");
+    expect_ok(interp, "T = threshold_otsu(G)");
+    expect_ok(interp, "R = imresize(G, 2, 2)");
+
+    ASSERT_TRUE(interp.state().matrices.count("B") > 0);
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("B").cols(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("R").cols(), 2u);
+}
+
+TEST(ReplCommandsTest, wave60_delta_encode_roundtrip) {
+    Interpreter interp;
+    expect_contains(interp, "help", "delta_encode_vec(M)");
+
+    expect_ok(interp, "B = [10, 12, 15, 20]");
+    expect_ok(interp, "E = delta_encode_vec(B)");
+    expect_ok(interp, "R = delta_decode_vec(E)");
+    ASSERT_TRUE(interp.state().matrices.count("R") > 0);
+    const auto& restored = interp.state().matrices.at("R");
+    EXPECT_EQ(restored.rows(), 4u);
+    const double expected[] = {10, 12, 15, 20};
+    for (size_t i = 0; i < 4; ++i) {
+        EXPECT_DOUBLE_EQ(restored(i, 0), expected[i]);
+    }
+}
+
+TEST(ReplCommandsTest, wave60_ml_metrics) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_accuracy(p,t)");
+    expect_contains(interp, "help", "ml_rmse(p,t)");
+
+    expect_ok(interp, "yp = [1; 0; 1; 1]");
+    expect_ok(interp, "yt = [1; 0; 0; 1]");
+    expect_ok(interp, "acc = ml_accuracy(yp, yt)");
+    expect_ok(interp, "rmse = ml_rmse([1; 2; 3], [1; 2; 4])");
+    expect_ok(interp, "mse = ml_mse([1; 2; 3], [1; 2; 4])");
+    expect_ok(interp, "r2 = ml_r2([1; 2; 3], [1; 2; 4])");
+    expect_ok(interp, "f1 = ml_f1([1; 0; 1], [1; 0; 0])");
+
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("acc"), 0.75);
+    EXPECT_NEAR(interp.state().scalars.at("rmse"), 1.0 / std::sqrt(3.0), 1e-9);
+    EXPECT_NEAR(interp.state().scalars.at("mse"), 1.0 / 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().scalars.at("f1"), 2.0 / 3.0, 1e-9);
+
+    expect_contains(interp, "ml_accuracy([1,0,1,1], [1,0,0,1])", "0.75");
+}
+
+TEST(ReplCommandsTest, wave60_bignum_ops) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bigint_factorial(n)");
+    expect_contains(interp, "help", "bigint_gcd(\"a\",\"b\")");
+
+    expect_ok(interp, "f = bigint_factorial(10)");
+    expect_ok(interp, "fib = bigint_fib(10)");
+    expect_ok(interp, "g = bigint_gcd(\"48\", \"18\")");
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("f"), 3628800.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("fib"), 55.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("g"), 6.0);
+
+    expect_contains(interp, "bigint_factorial(5)", "120");
+    expect_contains(interp, "bigint_gcd(\"48\", \"18\")", "6");
+}
+
+TEST(ReplCommandsTest, wave57_59_graph_geo_combo_numthy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_pagerank(A)");
+    expect_contains(interp, "help", "geo_dist2d(x1,y1,x2,y2)");
+    expect_contains(interp, "help", "combo_nchoosek(n,k)");
+    expect_contains(interp, "help", "numthy_gcd(a,b)");
+
+    expect_contains(interp, "geo_dist2d(0, 0, 3, 4)", "5");
+    expect_contains(interp, "combo_nchoosek(5, 2)", "10");
+    expect_contains(interp, "numthy_gcd(48, 18)", "6");
+
+    expect_ok(interp, "A = [0, 4, 1, 0, 0; 0, 0, 0, 1, 0; 0, 2, 0, 5, 0; 0, 0, 0, 0, 3; 0, 0, 0, 0, 0]");
+    expect_contains(interp, "graph_dijkstra_dist(A, 0, 4)", "7");
+    expect_ok(interp, "pr = graph_pagerank(A)");
+    ASSERT_TRUE(interp.state().matrices.count("pr") > 0);
+    EXPECT_EQ(interp.state().matrices.at("pr").rows(), 5u);
+
+    expect_ok(interp, "sq = [0, 0; 1, 0; 1, 1; 0, 1]");
+    expect_ok(interp, "area = geo_convex_hull_area(sq)");
+    EXPECT_NEAR(interp.state().scalars.at("area"), 1.0, 1e-9);
+    expect_contains(interp, "geo_convex_hull_area(sq)", "1");
+}
+
+TEST(ReplCommandsTest, wave57_59_control_quantum) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_step_final(num,den)");
+    expect_contains(interp, "help", "quantum_hadamard(psi)");
+
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_ok(interp, "yfinal = control_step_final(num, den)");
+    EXPECT_NEAR(interp.state().scalars.at("yfinal"), 1.0, 0.05);
+    expect_contains(interp, "control_step_final([1], [1, 1])", "\n");
+
+    expect_ok(interp, "psi = [1; 0]");
+    expect_ok(interp, "hpsi = quantum_hadamard(psi)");
+    ASSERT_TRUE(interp.state().matrices.count("hpsi") > 0);
+    const auto& hpsi = interp.state().matrices.at("hpsi");
+    EXPECT_EQ(hpsi.rows(), 2u);
+    EXPECT_NEAR(hpsi(0, 0), 1.0 / std::sqrt(2.0), 1e-6);
+    EXPECT_NEAR(hpsi(1, 0), 1.0 / std::sqrt(2.0), 1e-6);
+    expect_contains(interp, "quantum_hadamard([1; 0])", "state =");
+}
+
+TEST(ReplCommandsTest, wave64_finance_info_bindings) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_call(S,K,T,r,sigma)");
+    expect_contains(interp, "help", "finance_npv(rate,cf)");
+    expect_contains(interp, "help", "finance_sharpe(r)");
+    expect_contains(interp, "help", "info_entropy(p)");
+
+    expect_contains(interp, "finance_npv(0.1, [-100, 50, 60])", "-4.958");
+
+    expect_ok(interp, "cf = [100, 50, 60]");
+    expect_ok(interp, "v = finance_npv(0.1, cf)");
+    EXPECT_NEAR(interp.state().scalars.at("v"), 100.0 + 50.0 / 1.1 + 60.0 / 1.21, 1e-6);
+
+    expect_ok(interp, "h = info_entropy([0.5; 0.5])");
+    EXPECT_NEAR(interp.state().scalars.at("h"), 1.0, 1e-9);
+
+    expect_ok(interp, "sh = finance_sharpe([0.1; 0.2; -0.05])");
+    EXPECT_GT(interp.state().scalars.at("sh"), 0.0);
+
+    expect_contains(interp, "info_entropy([0.5, 0.5])", "1");
+}
+
+TEST(ReplCommandsTest, wave64_cplx_bindings) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_joukowski(re,im)");
+    expect_contains(interp, "help", "cplx_cross_ratio(z1re,z1im");
+
+    expect_ok(interp, "j = cplx_joukowski(2, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("j"), 2.5, 1e-9);
+    expect_contains(interp, "cplx_joukowski(2, 0)", "2.5");
+
+    expect_ok(interp, "cr = cplx_cross_ratio(0, 0, 1, 0, 2, 0, 3, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("cr"), 4.0 / 3.0, 1e-9);
+    expect_contains(interp, "cplx_cross_ratio(0, 0, 1, 0, 2, 0, 3, 0)", "1.33333");
+}
+
+TEST(ReplCommandsTest, wave64_tensorops_and_finance_bs) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_norm(T)");
+
+    expect_ok(interp, "n = tensorops_norm([3; 4])");
+    EXPECT_NEAR(interp.state().scalars.at("n"), 5.0, 1e-9);
+    expect_contains(interp, "tensorops_norm([3, 4])", "5");
+
+    expect_ok(interp, "c = finance_bs_call(100, 100, 1, 0.05, 0.2)");
+    EXPECT_GT(interp.state().scalars.at("c"), 0.0);
+    expect_contains(interp, "finance_bs_call(100, 100, 1, 0.05, 0.2)", "\n");
+}
+
+TEST(ReplCommandsTest, wave65_diffgeo_sphere_curvatures) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_gaussian_sphere()");
+    expect_contains(interp, "help", "diffgeo_mean_sphere()");
+
+    expect_ok(interp, "K = diffgeo_gaussian_sphere()");
+    EXPECT_NEAR(interp.state().scalars.at("K"), 1.0, 0.05);
+    expect_contains(interp, "diffgeo_gaussian_sphere()", "\n");
+
+    expect_ok(interp, "H = diffgeo_mean_sphere()");
+    EXPECT_NEAR(std::abs(interp.state().scalars.at("H")), 1.0, 0.08);
+    expect_contains(interp, "diffgeo_mean_sphere()", "\n");
+}
+
+TEST(ReplCommandsTest, wave65_topo_euler_tetrahedron) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_euler_tetrahedron()");
+
+    expect_ok(interp, "chi = topo_euler_tetrahedron()");
+    EXPECT_NEAR(interp.state().scalars.at("chi"), 1.0, 1e-9);
+    expect_contains(interp, "topo_euler_tetrahedron()", "1");
+}
+
+TEST(ReplCommandsTest, wave66_tensorops_matmul) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_matmul(A,B)");
+
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "B = [5, 6; 7, 8]");
+    expect_ok(interp, "C = tensorops_matmul(A, B)");
+    const auto& C = interp.state().matrices.at("C");
+    EXPECT_NEAR(C(0, 0), 19.0, 1e-9);
+    EXPECT_NEAR(C(0, 1), 22.0, 1e-9);
+    EXPECT_NEAR(C(1, 0), 43.0, 1e-9);
+    EXPECT_NEAR(C(1, 1), 50.0, 1e-9);
+    expect_contains(interp, "tensorops_matmul([1, 2; 3, 4], [5, 6; 7, 8])", "19");
+}
+
+TEST(ReplCommandsTest, wave66_combo_numthy_finance_scalars) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_factorial(n)");
+    expect_contains(interp, "help", "numthy_partition(n)");
+    expect_contains(interp, "help", "finance_bond_price(c,y,n,fv)");
+
+    expect_ok(interp, "f = combo_factorial(5)");
+    EXPECT_NEAR(interp.state().scalars.at("f"), 120.0, 1e-9);
+    expect_contains(interp, "combo_factorial(5)", "120");
+
+    expect_ok(interp, "p = numthy_partition(5)");
+    EXPECT_NEAR(interp.state().scalars.at("p"), 7.0, 1e-9);
+    expect_contains(interp, "numthy_partition(5)", "7");
+
+    expect_ok(interp, "bp = finance_bond_price(0.05, 0.05, 10)");
+    EXPECT_NEAR(interp.state().scalars.at("bp"), 100.0, 1e-6);
+    expect_contains(interp, "finance_bond_price(0.05, 0.05, 10)", "100");
+}
+
+TEST(ReplCommandsTest, wave67_tensorops_einsum) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_einsum(A,B)");
+
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "B = [5, 6; 7, 8]");
+    expect_ok(interp, "C = tensorops_einsum(A, B)");
+    const auto& C = interp.state().matrices.at("C");
+    EXPECT_NEAR(C(0, 0), 19.0, 1e-9);
+    EXPECT_NEAR(C(0, 1), 22.0, 1e-9);
+    EXPECT_NEAR(C(1, 0), 43.0, 1e-9);
+    EXPECT_NEAR(C(1, 1), 50.0, 1e-9);
+    expect_contains(interp, "tensorops_einsum([1, 2; 3, 4], [5, 6; 7, 8])", "19");
+}
+
+TEST(ReplCommandsTest, wave67_geo_polygon_area) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_polygon_area(P)");
+
+    expect_ok(interp, "P = [0, 0; 1, 0; 1, 1; 0, 1]");
+    expect_ok(interp, "a = geo_polygon_area(P)");
+    EXPECT_NEAR(interp.state().scalars.at("a"), 1.0, 1e-9);
+    expect_contains(interp, "geo_polygon_area(P)", "1");
+
+    expect_ok(interp, "T = [0, 0; 2, 0; 1, 2]");
+    expect_ok(interp, "ta = geo_polygon_area(T)");
+    EXPECT_NEAR(interp.state().scalars.at("ta"), 2.0, 1e-9);
+    expect_contains(interp, "geo_polygon_area([0, 0; 2, 0; 1, 2])", "2");
+}
+
+TEST(ReplCommandsTest, wave68_finance_irr) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_irr(cf)");
+
+    expect_contains(interp, "finance_irr([-100, 110])", "0.1");
+
+    expect_ok(interp, "cf = [-100; 110]");
+    expect_ok(interp, "r = finance_irr(cf)");
+    EXPECT_NEAR(interp.state().scalars.at("r"), 0.1, 1e-6);
+
+    expect_ok(interp, "r2 = finance_irr([-100, 110])");
+    EXPECT_NEAR(interp.state().scalars.at("r2"), 0.1, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave68_info_kl_divergence) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_kl_divergence(p,q)");
+
+    expect_ok(interp, "p = [0.3; 0.4; 0.3]");
+    expect_ok(interp, "kl0 = info_kl_divergence(p, p)");
+    EXPECT_NEAR(interp.state().scalars.at("kl0"), 0.0, 1e-9);
+
+    expect_ok(interp, "kl = info_kl_divergence([0.4; 0.6], [0.5; 0.5])");
+    EXPECT_GT(interp.state().scalars.at("kl"), 0.0);
+    EXPECT_NEAR(interp.state().scalars.at("kl"), 0.029049, 1e-4);
+
+    expect_contains(interp, "info_kl_divergence([0.4, 0.6], [0.5, 0.5])", "0.029");
+}
+
+TEST(ReplCommandsTest, wave69_control_dcgain) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_dcgain(num,den)");
+
+    expect_contains(interp, "control_dcgain([1], [1, 1])", "1");
+
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_ok(interp, "g = control_dcgain(num, den)");
+    EXPECT_NEAR(interp.state().scalars.at("g"), 1.0, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave69_info_cross_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_cross_entropy(p,q)");
+
+    expect_ok(interp, "p = [0.5; 0.5]");
+    expect_ok(interp, "q = [0.25; 0.75]");
+    expect_ok(interp, "ce = info_cross_entropy(p, q)");
+    EXPECT_GT(interp.state().scalars.at("ce"), 0.0);
+
+    expect_contains(interp, "info_cross_entropy([0.5, 0.5], [0.25, 0.75])", "1.");
+}
+
+TEST(ReplCommandsTest, wave69_matrix_literal_negative) {
+    Interpreter interp;
+    expect_ok(interp, "cf = [-100, 110]");
+    EXPECT_EQ(interp.state().matrices.at("cf").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("cf").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("cf")(0, 0), -100.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cf")(0, 1), 110.0, 1e-9);
+
+    expect_ok(interp, "cf = [-100; 110]");
+    EXPECT_EQ(interp.state().matrices.at("cf").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("cf").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("cf")(0, 0), -100.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cf")(1, 0), 110.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave70_control_is_stable) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_is_stable(num,den)");
+
+    expect_contains(interp, "control_is_stable([1], [1, 1])", "1");
+
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_ok(interp, "s = control_is_stable(num, den)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 1.0, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave70_finance_var) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_var(r)");
+
+    expect_ok(interp, "r = [0.1; -0.05; 0.2]");
+    expect_ok(interp, "v = finance_var(r)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("v")));
+
+    expect_contains(interp, "finance_var([0.1; -0.05; 0.2])", "0.");
+}
+
+TEST(ReplCommandsTest, wave70_info_mutual_info) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_mutual_info(joint)");
+
+    expect_ok(interp, "J = [0.25, 0.25; 0.25, 0.25]");
+    expect_ok(interp, "mi = info_mutual_info(J)");
+    EXPECT_NEAR(interp.state().scalars.at("mi"), 0.0, 1e-9);
+
+    expect_contains(interp, "info_mutual_info([0.25, 0; 0, 0.25])", "1");
+}
+
+TEST(ReplCommandsTest, wave70_combo_nchoosek_assignment) {
+    Interpreter interp;
+    expect_ok(interp, "c = combo_nchoosek(5, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("c"), 10.0, 1e-9);
+    expect_contains(interp, "combo_nchoosek(5, 2)", "10");
+}
+
+TEST(ReplCommandsTest, wave70_numthy_gcd_assignment) {
+    Interpreter interp;
+    expect_ok(interp, "g = numthy_gcd(48, 18)");
+    EXPECT_NEAR(interp.state().scalars.at("g"), 6.0, 1e-9);
+    expect_contains(interp, "numthy_gcd(48, 18)", "6");
+}
+
+TEST(ReplCommandsTest, wave71_finance_cvar) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_cvar(r)");
+
+    expect_ok(interp, "r = [0.1; -0.05; 0.2]");
+    expect_ok(interp, "cv = finance_cvar(r)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("cv")));
+
+    expect_contains(interp, "finance_cvar([0.1; -0.05; 0.2])", "0.");
+}
+
+TEST(ReplCommandsTest, wave71_info_js_divergence) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_js_divergence(p,q)");
+
+    expect_ok(interp, "p = [1; 0]");
+    expect_ok(interp, "q = [0; 1]");
+    expect_ok(interp, "js = info_js_divergence(p, q)");
+    EXPECT_NEAR(interp.state().scalars.at("js"), 1.0, 1e-9);
+
+    expect_contains(interp, "info_js_divergence([1, 0], [0, 1])", "1");
+}
+
+TEST(ReplCommandsTest, wave71_quantum_von_neumann_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_von_neumann_entropy(rho)");
+
+    expect_ok(interp, "rho = [1, 0; 0, 0]");
+    expect_ok(interp, "S = quantum_von_neumann_entropy(rho)");
+    EXPECT_NEAR(interp.state().scalars.at("S"), 0.0, 1e-9);
+
+    expect_contains(interp, "quantum_von_neumann_entropy([1, 0; 0, 0])", "0");
+}
+
+TEST(ReplCommandsTest, wave72_finance_sortino) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_sortino(r)");
+
+    expect_ok(interp, "ret = [0.1; -0.05; 0.2]");
+    expect_ok(interp, "sortino = finance_sortino(ret)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("sortino")));
+    EXPECT_GT(interp.state().scalars.at("sortino"), 0.0);
+
+    expect_contains(interp, "finance_sortino([0.1; -0.05; 0.2])", "1.666");
+}
+
+TEST(ReplCommandsTest, wave72_info_tv_distance) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_tv_distance(p,q)");
+
+    expect_ok(interp, "p = [0.5; 0.5]");
+    expect_ok(interp, "q = [1; 0]");
+    expect_ok(interp, "tv = info_tv_distance(p, q)");
+    EXPECT_NEAR(interp.state().scalars.at("tv"), 0.5, 1e-9);
+
+    expect_contains(interp, "info_tv_distance([0.5; 0.5], [1; 0])", "0.5");
+}
+
+TEST(ReplCommandsTest, wave72_quantum_fidelity) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_fidelity(rho,sigma)");
+
+    expect_ok(interp, "rho = [1, 0; 0, 0]");
+    expect_ok(interp, "F = quantum_fidelity(rho, rho)");
+    EXPECT_NEAR(interp.state().scalars.at("F"), 1.0, 1e-6);
+
+    expect_contains(interp, "quantum_fidelity([1, 0; 0, 0], [1, 0; 0, 0])", "1");
+}
+
+TEST(ReplCommandsTest, wave73_finance_max_drawdown) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_max_drawdown(equity)");
+
+    expect_ok(interp, "equity = [100; 110; 105; 120; 90; 95]");
+    expect_ok(interp, "mdd = finance_max_drawdown(equity)");
+    EXPECT_NEAR(interp.state().scalars.at("mdd"), 0.25, 1e-6);
+
+    expect_contains(interp, "finance_max_drawdown([100; 110; 105; 120; 90; 95])", "0.25");
+}
+
+TEST(ReplCommandsTest, wave73_info_hellinger_dist) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_hellinger_dist(p,q)");
+
+    expect_ok(interp, "p = [1; 0]");
+    expect_ok(interp, "q = [0; 1]");
+    expect_ok(interp, "hd = info_hellinger_dist(p, q)");
+    EXPECT_NEAR(interp.state().scalars.at("hd"), 1.0, 1e-9);
+
+    expect_contains(interp, "info_hellinger_dist([1; 0], [0; 1])", "1");
+}
+
+TEST(ReplCommandsTest, wave73_quantum_trace_distance) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_trace_distance(rho,sigma)");
+
+    expect_ok(interp, "rho = [1, 0; 0, 0]");
+    expect_ok(interp, "T = quantum_trace_distance(rho, rho)");
+    EXPECT_NEAR(interp.state().scalars.at("T"), 0.0, 1e-9);
+
+    expect_contains(interp, "quantum_trace_distance([1, 0; 0, 0], [1, 0; 0, 0])", "0");
+}
+
+TEST(ReplCommandsTest, wave74_finance_kelly_fraction) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_kelly_fraction(p,b)");
+
+    expect_ok(interp, "kelly = finance_kelly_fraction(0.6, 2.0)");
+    EXPECT_NEAR(interp.state().scalars.at("kelly"), 0.4, 1e-9);
+
+    expect_contains(interp, "finance_kelly_fraction(0.6, 2.0)", "0.4");
+}
+
+TEST(ReplCommandsTest, wave74_info_renyi_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_renyi_entropy(alpha,p)");
+
+    expect_ok(interp, "p = [0.25; 0.25; 0.25; 0.25]");
+    expect_ok(interp, "r2 = info_renyi_entropy(2.0, p)");
+    EXPECT_NEAR(interp.state().scalars.at("r2"), 2.0, 1e-9);
+
+    expect_contains(interp, "info_renyi_entropy(2.0, [0.25; 0.25; 0.25; 0.25])", "2");
+}
+
+TEST(ReplCommandsTest, wave74_quantum_concurrence) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_concurrence(rho)");
+
+    expect_ok(interp, "rho4 = [1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0]");
+    expect_ok(interp, "Cq = quantum_concurrence(rho4)");
+    EXPECT_NEAR(interp.state().scalars.at("Cq"), 0.0, 1e-9);
+
+    expect_contains(interp,
+                    "quantum_concurrence([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0])",
+                    "0");
+}
+
+TEST(ReplCommandsTest, wave75_finance_compound) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_compound(principal,rate,n_periods,compounds_per_period)");
+
+    expect_ok(interp, "fv = finance_compound(100, 0.1, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("fv"), 133.1, 1e-6);
+
+    expect_contains(interp, "finance_compound(100, 0.1, 3)", "133.1");
+}
+
+TEST(ReplCommandsTest, wave75_info_redundancy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_redundancy(p)");
+
+    expect_ok(interp, "p = [0.9; 0.1]");
+    expect_ok(interp, "red = info_redundancy(p)");
+    EXPECT_GT(interp.state().scalars.at("red"), 0.0);
+
+    expect_contains(interp, "info_redundancy([0.9; 0.1])", "0.5");
+}
+
+TEST(ReplCommandsTest, wave75_quantum_entanglement_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_entanglement_entropy(psi,dim_a,dim_b)");
+
+    expect_ok(interp, "psi = [1; 0; 0; 0]");
+    expect_ok(interp, "Ee = quantum_entanglement_entropy(psi, 2, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("Ee"), 0.0, 1e-9);
+
+    expect_contains(interp, "quantum_entanglement_entropy([1; 0; 0; 0], 2, 2)", "0");
+}
+
+TEST(ReplCommandsTest, wave76_finance_continuous_compound) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_continuous_compound(principal,rate,t)");
+
+    expect_ok(interp, "cc = finance_continuous_compound(100, 0.1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("cc"), 100.0 * std::exp(0.1), 1e-6);
+
+    expect_contains(interp, "finance_continuous_compound(100, 0.1, 1)", "110.517");
+}
+
+TEST(ReplCommandsTest, wave76_info_efficiency) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_efficiency(p)");
+
+    expect_ok(interp, "p = [0.5; 0.5]");
+    expect_ok(interp, "eff = info_efficiency(p)");
+    EXPECT_NEAR(interp.state().scalars.at("eff"), 1.0, 1e-9);
+
+    expect_contains(interp, "info_efficiency([0.5; 0.5])", "1");
+}
+
+TEST(ReplCommandsTest, wave76_quantum_expectation) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_expectation(psi,A)");
+
+    expect_ok(interp, "ex = quantum_expectation([1; 0], [1, 0; 0, -1])");
+    EXPECT_NEAR(interp.state().scalars.at("ex"), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_expectation([1; 0], [1, 0; 0, -1])", "1");
+}
+
+TEST(ReplCommandsTest, wave77_finance_pv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_pv(rate,n,pmt,fv)");
+
+    expect_ok(interp, "pv0 = finance_pv(0, 5, -10, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("pv0"), 50.0, 1e-9);
+
+    expect_contains(interp, "finance_pv(0, 5, -10, 0)", "50");
+}
+
+TEST(ReplCommandsTest, wave77_info_channel_capacity_bsc) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_channel_capacity_bsc(p_error)");
+
+    expect_ok(interp, "cap = info_channel_capacity_bsc(0)");
+    EXPECT_NEAR(interp.state().scalars.at("cap"), 1.0, 1e-9);
+
+    expect_contains(interp, "info_channel_capacity_bsc(0)", "1");
+}
+
+TEST(ReplCommandsTest, wave77_quantum_expectation_dm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_expectation_dm(rho,op)");
+
+    expect_ok(interp, "rho = [1, 0; 0, 0]");
+    expect_ok(interp, "exdm = quantum_expectation_dm(rho, [1, 0; 0, -1])");
+    EXPECT_NEAR(interp.state().scalars.at("exdm"), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_expectation_dm([1, 0; 0, 0], [1, 0; 0, -1])", "1");
+}
+
+TEST(ReplCommandsTest, wave78_finance_fv_annuity) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_fv_annuity(rate,n,pmt,pv0)");
+
+    expect_ok(interp, "fv0 = finance_fv_annuity(0, 5, -10, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("fv0"), 50.0, 1e-9);
+
+    expect_contains(interp, "finance_fv_annuity(0, 5, -10, 0)", "50");
+}
+
+TEST(ReplCommandsTest, wave78_info_channel_capacity_bec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_channel_capacity_bec(epsilon)");
+
+    expect_ok(interp, "capbec = info_channel_capacity_bec(0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("capbec"), 0.5, 1e-9);
+
+    expect_contains(interp, "info_channel_capacity_bec(0.5)", "0.5");
+}
+
+TEST(ReplCommandsTest, wave78_quantum_inner) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_inner(bra,ket)");
+
+    expect_ok(interp, "inn = quantum_inner([1; 0], [1; 0])");
+    EXPECT_NEAR(interp.state().scalars.at("inn"), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_inner([1; 0], [1; 0])", "1");
+}
+
+TEST(ReplCommandsTest, wave79_finance_pmt_annuity) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_pmt_annuity(rate,n,pv0,fv)");
+
+    expect_ok(interp, "pmt = finance_pmt_annuity(0, 5, -50, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("pmt"), 10.0, 1e-9);
+
+    expect_contains(interp, "finance_pmt_annuity(0, 5, -50, 0)", "10");
+}
+
+TEST(ReplCommandsTest, wave79_info_shannon_hartley) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_shannon_hartley(bandwidth_hz,snr_linear)");
+
+    expect_ok(interp, "sh = info_shannon_hartley(1000000, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sh"), 1e6, 1.0);
+
+    expect_contains(interp, "info_shannon_hartley(1000000, 1)", "1000000");
+}
+
+TEST(ReplCommandsTest, wave79_quantum_ket_normalise) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_ket_normalise(psi)");
+
+    expect_ok(interp, "psi_n = quantum_ket_normalise([2; 0])");
+    ASSERT_TRUE(interp.state().matrices.count("psi_n") > 0);
+    const auto& psi_n = interp.state().matrices.at("psi_n");
+    EXPECT_EQ(psi_n.rows(), 2u);
+    EXPECT_EQ(psi_n.cols(), 1u);
+    EXPECT_NEAR(psi_n(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(psi_n(1, 0), 0.0, 1e-9);
+    double psi_norm_sq = 0.0;
+    for (size_t i = 0; i < psi_n.rows(); ++i) {
+        psi_norm_sq += psi_n(i, 0) * psi_n(i, 0);
+    }
+    EXPECT_NEAR(std::sqrt(psi_norm_sq), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_ket_normalise([2; 0])", "state =");
+}
+
+TEST(ReplCommandsTest, wave80_finance_binomial_call) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_binomial_call(S,K,T,r,sigma,steps)");
+
+    expect_ok(interp, "bin_c = finance_binomial_call(100, 100, 1, 0.05, 0.2, 200)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("bin_c")));
+    EXPECT_GT(interp.state().scalars.at("bin_c"), 0.0);
+
+    expect_contains(interp, "finance_binomial_call(100, 100, 1, 0.05, 0.2, 200)", "10.");
+}
+
+TEST(ReplCommandsTest, wave80_info_differential_entropy_gaussian) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_differential_entropy_gaussian(sigma)");
+
+    expect_ok(interp, "hgauss = info_differential_entropy_gaussian(1)");
+    EXPECT_NEAR(interp.state().scalars.at("hgauss"), 1.4189385332046727, 1e-3);
+
+    expect_contains(interp, "info_differential_entropy_gaussian(1)", "1.418");
+}
+
+TEST(ReplCommandsTest, wave80_quantum_partial_trace) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_partial_trace(rho,d1,d2,subsystem)");
+
+    expect_ok(interp, "rho4 = [1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0]");
+    expect_ok(interp, "rhoA = quantum_partial_trace(rho4, 2, 2, 0)");
+    ASSERT_TRUE(interp.state().matrices.count("rhoA") > 0);
+    const auto& rhoA = interp.state().matrices.at("rhoA");
+    EXPECT_EQ(rhoA.rows(), 2u);
+    EXPECT_EQ(rhoA.cols(), 2u);
+    EXPECT_NEAR(rhoA(0, 0), 1.0, 1e-9);
+
+    expect_contains(interp,
+                    "quantum_partial_trace([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0], 2, 2, 0)",
+                    "rho =");
+}
+
+TEST(ReplCommandsTest, wave81_finance_binomial_put) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_binomial_put(S,K,T,r,sigma,steps)");
+
+    expect_ok(interp, "bin_p = finance_binomial_put(100, 100, 1, 0.05, 0.2, 200)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("bin_p")));
+    EXPECT_GT(interp.state().scalars.at("bin_p"), 0.0);
+
+    expect_contains(interp, "finance_binomial_put(100, 100, 1, 0.05, 0.2, 200)", "5.56");
+}
+
+TEST(ReplCommandsTest, wave81_info_differential_entropy_uniform) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_differential_entropy_uniform(a,b)");
+
+    expect_ok(interp, "hu = info_differential_entropy_uniform(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("hu"), 0.0, 1e-9);
+
+    expect_contains(interp, "info_differential_entropy_uniform(0, 1)", "0");
+}
+
+TEST(ReplCommandsTest, wave81_finance_bs_put) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_put(S,K,T,r,sigma)");
+
+    expect_ok(interp, "bs_p = finance_bs_put(100, 100, 1, 0.05, 0.2)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("bs_p")));
+    EXPECT_GT(interp.state().scalars.at("bs_p"), 0.0);
+
+    expect_contains(interp, "finance_bs_put(100, 100, 1, 0.05, 0.2)", "5.57");
+}
+
+TEST(ReplCommandsTest, wave82_finance_bs_gamma) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_gamma(S,K,T,r,sigma)");
+
+    expect_ok(interp, "g = finance_bs_gamma(100, 100, 1, 0.05, 0.2)");
+    EXPECT_GT(interp.state().scalars.at("g"), 0.0);
+
+    expect_contains(interp, "finance_bs_gamma(100, 100, 1, 0.05, 0.2)", "0.018762");
+}
+
+TEST(ReplCommandsTest, wave82_finance_bond_duration) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bond_duration(c,y,n)");
+
+    expect_ok(interp, "dur = finance_bond_duration(0, 0.05, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("dur"), 5.0, 1e-6);
+
+    expect_contains(interp, "finance_bond_duration(0, 0.05, 5)", "5");
+}
+
+TEST(ReplCommandsTest, wave82_info_rate_distortion_gaussian) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_rate_distortion_gaussian(variance,distortion)");
+
+    expect_ok(interp, "rd = info_rate_distortion_gaussian(1, 0.25)");
+    EXPECT_NEAR(interp.state().scalars.at("rd"), 1.0, 1e-9);
+
+    expect_contains(interp, "info_rate_distortion_gaussian(1, 0.25)", "1");
+}
+
+TEST(ReplCommandsTest, wave83_finance_bs_delta) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_delta(S,K,T,r,sigma,call)");
+
+    expect_ok(interp, "d = finance_bs_delta(100, 100, 1, 0.05, 0.2, 1)");
+    EXPECT_GT(interp.state().scalars.at("d"), 0.0);
+    EXPECT_LT(interp.state().scalars.at("d"), 1.0);
+
+    expect_contains(interp, "finance_bs_delta(100, 100, 1, 0.05, 0.2, 1)", "0.636831");
+}
+
+TEST(ReplCommandsTest, wave83_finance_bs_vega) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_vega(S,K,T,r,sigma)");
+
+    expect_ok(interp, "v = finance_bs_vega(100, 100, 1, 0.05, 0.2)");
+    EXPECT_GT(interp.state().scalars.at("v"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("v")));
+
+    expect_contains(interp, "finance_bs_vega(100, 100, 1, 0.05, 0.2)", "37.524035");
+}
+
+TEST(ReplCommandsTest, wave83_finance_bond_modified_duration) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bond_modified_duration(c,y,n)");
+
+    expect_ok(interp, "mdur = finance_bond_modified_duration(0, 0.05, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("mdur"), 5.0 / 1.05, 1e-6);
+
+    expect_contains(interp, "finance_bond_modified_duration(0, 0.05, 5)", "4.761905");
+}
+
+TEST(ReplCommandsTest, wave84_finance_bs_theta) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_theta(S,K,T,r,sigma,call)");
+
+    expect_ok(interp, "th = finance_bs_theta(100, 100, 1, 0.05, 0.2, 1)");
+    EXPECT_LT(interp.state().scalars.at("th"), 0.0);
+
+    expect_contains(interp, "finance_bs_theta(100, 100, 1, 0.05, 0.2, 1)", "-6.414028");
+}
+
+TEST(ReplCommandsTest, wave84_finance_bs_rho) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_rho(S,K,T,r,sigma,call)");
+
+    expect_ok(interp, "rh = finance_bs_rho(100, 100, 1, 0.05, 0.2, 1)");
+    EXPECT_GT(interp.state().scalars.at("rh"), 0.0);
+
+    expect_contains(interp, "finance_bs_rho(100, 100, 1, 0.05, 0.2, 1)", "53.232482");
+}
+
+TEST(ReplCommandsTest, wave84_finance_bond_convexity) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bond_convexity(c,y,n)");
+
+    expect_ok(interp, "conv = finance_bond_convexity(0, 0.05, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("conv"), 30.0 / (1.05 * 1.05), 1e-6);
+
+    expect_contains(interp, "finance_bond_convexity(0, 0.05, 5)", "27.210884");
+}
+
+TEST(ReplCommandsTest, wave85_finance_bond_ytm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bond_ytm(price,c,n)");
+
+    expect_ok(interp, "bp = finance_bond_price(0.05, 0.07, 10)");
+    expect_ok(interp, "ytm = finance_bond_ytm(bp, 0.05, 10)");
+    EXPECT_NEAR(interp.state().scalars.at("ytm"), 0.07, 1e-5);
+
+    expect_contains(interp, "finance_bond_ytm(85.952837, 0.05, 10)", "0.07");
+}
+
+TEST(ReplCommandsTest, wave85_info_source_coding_rate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_source_coding_rate(p)");
+
+    expect_ok(interp, "p = [0.5; 0.5]");
+    expect_ok(interp, "scr = info_source_coding_rate(p)");
+    EXPECT_NEAR(interp.state().scalars.at("scr"), 1.0, 1e-9);
+
+    expect_contains(interp, "info_source_coding_rate([0.5; 0.5])", "1");
+}
+
+TEST(ReplCommandsTest, wave85_info_tsallis_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_tsallis_entropy(q,p)");
+
+    expect_ok(interp, "p = [0.5; 0.5]");
+    expect_ok(interp, "ts = info_tsallis_entropy(2.0, p)");
+    EXPECT_NEAR(interp.state().scalars.at("ts"), 0.5, 1e-9);
+
+    expect_contains(interp, "info_tsallis_entropy(2.0, [0.5; 0.5])", "0.5");
+}
+
+TEST(ReplCommandsTest, wave86_finance_bs_implied_vol) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bs_implied_vol(price,S,K,T,r,call)");
+
+    expect_ok(interp, "mp = finance_bs_call(100, 100, 1, 0.05, 0.2)");
+    expect_ok(interp, "iv = finance_bs_implied_vol(mp, 100, 100, 1, 0.05, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("iv"), 0.2, 1e-5);
+
+    expect_contains(interp, "finance_bs_implied_vol(10.450583572185565, 100, 100, 1, 0.05, 1)",
+                    "0.2");
+}
+
+TEST(ReplCommandsTest, wave86_finance_portfolio_return) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_portfolio_return(weights,returns)");
+
+    expect_ok(interp, "w = [0.6; 0.4]");
+    expect_ok(interp, "ret = [0.1; 0.05]");
+    expect_ok(interp, "pr = finance_portfolio_return(w, ret)");
+    EXPECT_NEAR(interp.state().scalars.at("pr"), 0.08, 1e-9);
+
+    expect_contains(interp, "finance_portfolio_return([0.6; 0.4], [0.1; 0.05])", "0.08");
+}
+
+TEST(ReplCommandsTest, wave86_finance_portfolio_variance) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_portfolio_variance(weights,cov)");
+
+    expect_ok(interp, "w = [0.5; 0.5]");
+    expect_ok(interp, "cov = [0.04, 0.01; 0.01, 0.09]");
+    expect_ok(interp, "pvar = finance_portfolio_variance(w, cov)");
+    EXPECT_NEAR(interp.state().scalars.at("pvar"), 0.0375, 1e-9);
+
+    expect_contains(interp, "finance_portfolio_variance([0.5; 0.5], [0.04, 0.01; 0.01, 0.09])",
+                    "0.0375");
+}
+
+TEST(ReplCommandsTest, wave87_info_joint_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_joint_entropy(joint,rows,cols)");
+
+    expect_ok(interp, "J = [0.25, 0.25; 0.25, 0.25]");
+    expect_ok(interp, "hj = info_joint_entropy(J, 2, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("hj"), 2.0, 1e-9);
+
+    expect_contains(interp, "info_joint_entropy([0.25, 0.25; 0.25, 0.25], 2, 2)", "2");
+}
+
+TEST(ReplCommandsTest, wave87_info_conditional_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_conditional_entropy(joint,rows,cols)");
+
+    expect_ok(interp, "J = [0.25, 0.25; 0.25, 0.25]");
+    expect_ok(interp, "hc = info_conditional_entropy(J, 2, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("hc"), 1.0, 1e-9);
+
+    expect_contains(interp, "info_conditional_entropy([0.25, 0.25; 0.25, 0.25], 2, 2)", "1");
+}
+
+TEST(ReplCommandsTest, wave87_info_sample_entropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_sample_entropy(x,m,r)");
+
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_ok(interp, "se = info_sample_entropy(x, 2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("se"), 0.0, 1e-9);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("se")));
+
+    expect_contains(interp, "info_sample_entropy([1; 2; 3; 4; 5], 2, 0.5)", "0");
+}
+
+TEST(ReplCommandsTest, wave88_quantum_pauli_x) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_pauli_x()");
+
+    expect_ok(interp, "X = quantum_pauli_x()");
+    ASSERT_GT(interp.state().matrices.count("X"), 0u);
+    const auto& X = interp.state().matrices.at("X");
+    EXPECT_EQ(X.rows(), 2u);
+    EXPECT_EQ(X.cols(), 2u);
+    EXPECT_NEAR(X(0, 1), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_pauli_x()", "op =");
+}
+
+TEST(ReplCommandsTest, wave88_quantum_pauli_z) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_pauli_z()");
+
+    expect_ok(interp, "Z = quantum_pauli_z()");
+    ASSERT_GT(interp.state().matrices.count("Z"), 0u);
+    const auto& Z = interp.state().matrices.at("Z");
+    EXPECT_EQ(Z.rows(), 2u);
+    EXPECT_EQ(Z.cols(), 2u);
+    EXPECT_NEAR(Z(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(Z(1, 1), -1.0, 1e-9);
+
+    expect_contains(interp, "quantum_pauli_z()", "op =");
+}
+
+TEST(ReplCommandsTest, wave88_quantum_cnot_gate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_cnot_gate()");
+
+    expect_ok(interp, "CNOT = quantum_cnot_gate()");
+    ASSERT_GT(interp.state().matrices.count("CNOT"), 0u);
+    const auto& CNOT = interp.state().matrices.at("CNOT");
+    EXPECT_EQ(CNOT.rows(), 4u);
+    EXPECT_EQ(CNOT.cols(), 4u);
+
+    expect_contains(interp, "quantum_cnot_gate()", "op =");
+}
+
+TEST(ReplCommandsTest, wave91_quantum_pauli_plus) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_pauli_plus()");
+
+    expect_ok(interp, "Pp = quantum_pauli_plus()");
+    ASSERT_GT(interp.state().matrices.count("Pp"), 0u);
+    const auto& Pp = interp.state().matrices.at("Pp");
+    EXPECT_EQ(Pp.rows(), 2u);
+    EXPECT_EQ(Pp.cols(), 2u);
+    EXPECT_NEAR(Pp(0, 1), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_pauli_plus()", "op =");
+}
+
+TEST(ReplCommandsTest, wave91_quantum_pauli_minus) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_pauli_minus()");
+
+    expect_ok(interp, "Pm = quantum_pauli_minus()");
+    ASSERT_GT(interp.state().matrices.count("Pm"), 0u);
+    const auto& Pm = interp.state().matrices.at("Pm");
+    EXPECT_EQ(Pm.rows(), 2u);
+    EXPECT_EQ(Pm.cols(), 2u);
+    EXPECT_NEAR(Pm(1, 0), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_pauli_minus()", "op =");
+}
+
+TEST(ReplCommandsTest, wave91_quantum_toffoli_gate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_toffoli_gate()");
+
+    expect_ok(interp, "T = quantum_toffoli_gate()");
+    ASSERT_GT(interp.state().matrices.count("T"), 0u);
+    const auto& T = interp.state().matrices.at("T");
+    EXPECT_EQ(T.rows(), 8u);
+    EXPECT_EQ(T.cols(), 8u);
+    EXPECT_NEAR(T(6, 7), 1.0, 1e-9);
+    EXPECT_NEAR(T(7, 6), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_toffoli_gate()", "op =");
+}
+
+TEST(ReplCommandsTest, wave89_quantum_pauli_y) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_pauli_y()");
+
+    expect_ok(interp, "Y = quantum_pauli_y()");
+    ASSERT_GT(interp.state().matrices.count("Y"), 0u);
+    const auto& Y = interp.state().matrices.at("Y");
+    EXPECT_EQ(Y.rows(), 2u);
+    EXPECT_EQ(Y.cols(), 2u);
+
+    expect_contains(interp, "quantum_pauli_y()", "op =");
+}
+
+TEST(ReplCommandsTest, wave89_quantum_swap_gate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_swap_gate()");
+
+    expect_ok(interp, "SWAP = quantum_swap_gate()");
+    ASSERT_GT(interp.state().matrices.count("SWAP"), 0u);
+    const auto& SWAP = interp.state().matrices.at("SWAP");
+    EXPECT_EQ(SWAP.rows(), 4u);
+    EXPECT_EQ(SWAP.cols(), 4u);
+    EXPECT_NEAR(SWAP(1, 2), 1.0, 1e-9);
+    EXPECT_NEAR(SWAP(2, 1), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_swap_gate()", "op =");
+}
+
+TEST(ReplCommandsTest, wave89_quantum_identity) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_identity()");
+
+    expect_ok(interp, "I2 = quantum_identity()");
+    ASSERT_GT(interp.state().matrices.count("I2"), 0u);
+    const auto& I2 = interp.state().matrices.at("I2");
+    EXPECT_EQ(I2.rows(), 2u);
+    EXPECT_EQ(I2.cols(), 2u);
+    EXPECT_NEAR(I2(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(I2(1, 1), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_identity()", "op =");
+}
+
+TEST(ReplCommandsTest, wave90_quantum_hadamard_gate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_hadamard_gate()");
+
+    expect_ok(interp, "H = quantum_hadamard_gate()");
+    ASSERT_GT(interp.state().matrices.count("H"), 0u);
+    const auto& H = interp.state().matrices.at("H");
+    EXPECT_EQ(H.rows(), 2u);
+    EXPECT_EQ(H.cols(), 2u);
+    const double h = 1.0 / std::sqrt(2.0);
+    EXPECT_NEAR(H(0, 0), h, 1e-9);
+
+    expect_contains(interp, "quantum_hadamard_gate()", "op =");
+}
+
+TEST(ReplCommandsTest, wave90_cplx_hyperbolic_distance) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_hyperbolic_distance(z1re,z1im,z2re,z2im)");
+
+    expect_ok(interp, "hd = cplx_hyperbolic_distance(0, 0, 0.5, 0)");
+    EXPECT_GT(interp.state().scalars.at("hd"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("hd")));
+
+    expect_contains(interp, "cplx_hyperbolic_distance(0, 0, 0.5, 0)", "1.");
+}
+
+TEST(ReplCommandsTest, wave90_info_lz_complexity) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_lz_complexity(seq)");
+
+    expect_ok(interp, "seq = [0; 1; 0; 1; 1; 0]");
+    expect_ok(interp, "lz = info_lz_complexity(seq)");
+    EXPECT_GE(interp.state().scalars.at("lz"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("lz")));
+
+    expect_contains(interp, "info_lz_complexity([0; 1; 0; 1; 1; 0])", "1.");
+}
+
+TEST(ReplCommandsTest, wave92_quantum_rotation_z) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_rotation_z(theta)");
+
+    expect_ok(interp, "pi = 3.14159265358979323846");
+    expect_ok(interp, "Rz = quantum_rotation_z(pi/2)");
+    ASSERT_GT(interp.state().matrices.count("Rz"), 0u);
+    const auto& Rz = interp.state().matrices.at("Rz");
+    EXPECT_EQ(Rz.rows(), 2u);
+    EXPECT_EQ(Rz.cols(), 2u);
+
+    expect_contains(interp, "quantum_rotation_z(pi/2)", "op =");
+}
+
+TEST(ReplCommandsTest, wave92_quantum_rotation_x) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_rotation_x(theta)");
+
+    expect_ok(interp, "pi = 3.14159265358979323846");
+    expect_ok(interp, "Rx = quantum_rotation_x(pi/2)");
+    ASSERT_GT(interp.state().matrices.count("Rx"), 0u);
+    const auto& Rx = interp.state().matrices.at("Rx");
+    EXPECT_EQ(Rx.rows(), 2u);
+    EXPECT_EQ(Rx.cols(), 2u);
+
+    expect_contains(interp, "quantum_rotation_x(pi/2)", "op =");
+}
+
+TEST(ReplCommandsTest, wave92_quantum_rotation_y) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_rotation_y(theta)");
+
+    expect_ok(interp, "pi = 3.14159265358979323846");
+    expect_ok(interp, "Ry = quantum_rotation_y(pi/2)");
+    ASSERT_GT(interp.state().matrices.count("Ry"), 0u);
+    const auto& Ry = interp.state().matrices.at("Ry");
+    EXPECT_EQ(Ry.rows(), 2u);
+    EXPECT_EQ(Ry.cols(), 2u);
+
+    expect_contains(interp, "quantum_rotation_y(pi/2)", "op =");
+}
+
+TEST(ReplCommandsTest, wave93_quantum_phase_gate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_phase_gate(theta)");
+
+    expect_ok(interp, "P = quantum_phase_gate(1.57)");
+    ASSERT_GT(interp.state().matrices.count("P"), 0u);
+    const auto& P = interp.state().matrices.at("P");
+    EXPECT_EQ(P.rows(), 2u);
+    EXPECT_EQ(P.cols(), 2u);
+    for (size_t i = 0; i < 2u; ++i) {
+        for (size_t j = 0; j < 2u; ++j) {
+            EXPECT_TRUE(std::isfinite(P(i, j)));
+        }
+    }
+
+    expect_contains(interp, "quantum_phase_gate(1.57)", "op =");
+}
+
+TEST(ReplCommandsTest, wave93_quantum_qft_gate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_qft_gate(n_qubits)");
+
+    expect_ok(interp, "Q = quantum_qft_gate(2)");
+    ASSERT_GT(interp.state().matrices.count("Q"), 0u);
+    const auto& Q = interp.state().matrices.at("Q");
+    EXPECT_EQ(Q.rows(), 4u);
+    EXPECT_EQ(Q.cols(), 4u);
+
+    expect_contains(interp, "quantum_qft_gate(2)", "op =");
+}
+
+TEST(ReplCommandsTest, wave93_cplx_poisson_kernel) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_poisson_kernel(theta,phi,r)");
+
+    expect_ok(interp, "pk = cplx_poisson_kernel(0, 0, 0.5)");
+    EXPECT_GT(interp.state().scalars.at("pk"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("pk")));
+
+    expect_contains(interp, "cplx_poisson_kernel(0, 0, 0.5)", "3");
+}
+
+TEST(ReplCommandsTest, wave94_tensorops_inner) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_inner(A,B)");
+
+    expect_ok(interp, "V1 = [1; 2; 3]");
+    expect_ok(interp, "V2 = [4; 5; 6]");
+    expect_ok(interp, "ti = tensorops_inner(V1, V2)");
+    EXPECT_NEAR(interp.state().scalars.at("ti"), 32.0, 1e-9);
+
+    expect_contains(interp, "tensorops_inner([1; 2; 3], [4; 5; 6])", "32");
+}
+
+TEST(ReplCommandsTest, wave94_geo_dist3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_dist3d(x1,y1,z1,x2,y2,z2)");
+
+    expect_ok(interp, "d3 = geo_dist3d(0, 0, 0, 3, 4, 12)");
+    EXPECT_NEAR(interp.state().scalars.at("d3"), 13.0, 1e-9);
+
+    expect_contains(interp, "geo_dist3d(0, 0, 0, 3, 4, 12)", "13");
+}
+
+TEST(ReplCommandsTest, wave94_numthy_isprime) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_isprime(n)");
+
+    expect_ok(interp, "ip = numthy_isprime(17)");
+    EXPECT_NEAR(interp.state().scalars.at("ip"), 1.0, 1e-9);
+
+    expect_contains(interp, "numthy_isprime(17)", "1");
+    expect_contains(interp, "numthy_isprime(18)", "0");
+}
+
+TEST(ReplCommandsTest, wave95_combo_stirling2) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_stirling2(n,k)");
+
+    expect_ok(interp, "s2 = combo_stirling2(4, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("s2"), 7.0, 1e-9);
+
+    expect_contains(interp, "combo_stirling2(4, 2)", "7");
+}
+
+TEST(ReplCommandsTest, wave95_numthy_euler_phi) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_euler_phi(n)");
+
+    expect_ok(interp, "phi = numthy_euler_phi(12)");
+    EXPECT_NEAR(interp.state().scalars.at("phi"), 4.0, 1e-9);
+
+    expect_contains(interp, "numthy_euler_phi(12)", "4");
+}
+
+TEST(ReplCommandsTest, wave95_numthy_mobius) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_mobius(n)");
+
+    expect_ok(interp, "mu = numthy_mobius(6)");
+    EXPECT_NEAR(interp.state().scalars.at("mu"), 1.0, 1e-9);
+
+    expect_contains(interp, "numthy_mobius(6)", "1");
+    expect_contains(interp, "numthy_mobius(4)", "0");
+}
+
+TEST(ReplCommandsTest, wave96_combo_catalan) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_catalan(n)");
+
+    expect_ok(interp, "cat = combo_catalan(4)");
+    EXPECT_NEAR(interp.state().scalars.at("cat"), 14.0, 1e-9);
+
+    expect_contains(interp, "combo_catalan(4)", "14");
+}
+
+TEST(ReplCommandsTest, wave96_combo_bell) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_bell(n)");
+
+    expect_ok(interp, "bell = combo_bell(4)");
+    EXPECT_NEAR(interp.state().scalars.at("bell"), 15.0, 1e-9);
+
+    expect_contains(interp, "combo_bell(4)", "15");
+}
+
+TEST(ReplCommandsTest, wave96_numthy_num_divisors) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_num_divisors(n)");
+
+    expect_ok(interp, "tau = numthy_num_divisors(12)");
+    EXPECT_NEAR(interp.state().scalars.at("tau"), 6.0, 1e-9);
+
+    expect_contains(interp, "numthy_num_divisors(12)", "6");
+}
+
+TEST(ReplCommandsTest, wave97_combo_stirling1) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_stirling1(n,k)");
+
+    expect_ok(interp, "s1 = combo_stirling1(4, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("s1"), 11.0, 1e-9);
+
+    expect_contains(interp, "combo_stirling1(4, 2)", "11");
+}
+
+TEST(ReplCommandsTest, wave97_numthy_lcm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_lcm(a,b)");
+
+    expect_ok(interp, "lc = numthy_lcm(4, 6)");
+    EXPECT_NEAR(interp.state().scalars.at("lc"), 12.0, 1e-9);
+
+    expect_contains(interp, "numthy_lcm(4, 6)", "12");
+}
+
+TEST(ReplCommandsTest, wave97_numthy_mod_pow) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_mod_pow(base,exp,mod)");
+
+    expect_ok(interp, "mp = numthy_mod_pow(2, 10, 1000)");
+    EXPECT_NEAR(interp.state().scalars.at("mp"), 24.0, 1e-9);
+
+    expect_contains(interp, "numthy_mod_pow(2, 10, 1000)", "24");
+    expect_contains(interp, "numthy_mod_pow(3, 12, 13)", "1");
+}
+
+TEST(ReplCommandsTest, wave98_combo_motzkin) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_motzkin(n)");
+
+    expect_ok(interp, "motz = combo_motzkin(4)");
+    EXPECT_NEAR(interp.state().scalars.at("motz"), 9.0, 1e-9);
+
+    expect_contains(interp, "combo_motzkin(4)", "9");
+}
+
+TEST(ReplCommandsTest, wave98_combo_permutations) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_permutations(n,k)");
+
+    expect_ok(interp, "perm = combo_permutations(5, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("perm"), 20.0, 1e-9);
+
+    expect_contains(interp, "combo_permutations(5, 2)", "20");
+}
+
+TEST(ReplCommandsTest, wave98_numthy_sum_divisors) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_sum_divisors(n)");
+
+    expect_ok(interp, "sigma = numthy_sum_divisors(12)");
+    EXPECT_NEAR(interp.state().scalars.at("sigma"), 28.0, 1e-9);
+
+    expect_contains(interp, "numthy_sum_divisors(12)", "28");
+}
+
+TEST(ReplCommandsTest, wave99_numthy_nextprime) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_nextprime(n)");
+
+    expect_ok(interp, "np = numthy_nextprime(10)");
+    EXPECT_NEAR(interp.state().scalars.at("np"), 11.0, 1e-9);
+
+    expect_contains(interp, "numthy_nextprime(10)", "11");
+    expect_contains(interp, "numthy_nextprime(11)", "13");
+}
+
+TEST(ReplCommandsTest, wave99_numthy_liouville) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_liouville(n)");
+
+    expect_ok(interp, "lam = numthy_liouville(12)");
+    EXPECT_NEAR(interp.state().scalars.at("lam"), -1.0, 1e-9);
+
+    expect_contains(interp, "numthy_liouville(12)", "-1");
+    expect_contains(interp, "numthy_liouville(6)", "1");
+}
+
+TEST(ReplCommandsTest, wave99_combo_subfactorial) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_subfactorial(n)");
+
+    expect_ok(interp, "subf = combo_subfactorial(4)");
+    EXPECT_NEAR(interp.state().scalars.at("subf"), 9.0, 1e-9);
+
+    expect_contains(interp, "combo_subfactorial(4)", "9");
+}
+
+TEST(ReplCommandsTest, wave100_numthy_prime_pi) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_prime_pi(n)");
+
+    expect_ok(interp, "pi = numthy_prime_pi(100)");
+    EXPECT_NEAR(interp.state().scalars.at("pi"), 25.0, 1e-9);
+
+    expect_contains(interp, "numthy_prime_pi(10)", "4");
+    expect_contains(interp, "numthy_prime_pi(100)", "25");
+}
+
+TEST(ReplCommandsTest, wave100_numthy_legendre_symbol) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_legendre_symbol(a,p)");
+
+    expect_ok(interp, "ls = numthy_legendre_symbol(2, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("ls"), 1.0, 1e-9);
+
+    expect_contains(interp, "numthy_legendre_symbol(2, 7)", "1");
+    expect_contains(interp, "numthy_legendre_symbol(3, 7)", "-1");
+}
+
+TEST(ReplCommandsTest, wave100_combo_combinations_with_rep) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_combinations_with_rep(n,k)");
+
+    expect_ok(interp, "cwr = combo_combinations_with_rep(3, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("cwr"), 6.0, 1e-9);
+
+    expect_contains(interp, "combo_combinations_with_rep(3, 2)", "6");
+    expect_contains(interp, "combo_combinations_with_rep(5, 3)", "35");
+}
+
+TEST(ReplCommandsTest, wave101_numthy_prevprime) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_prevprime(n)");
+
+    expect_ok(interp, "pp = numthy_prevprime(10)");
+    EXPECT_NEAR(interp.state().scalars.at("pp"), 7.0, 1e-9);
+
+    expect_contains(interp, "numthy_prevprime(10)", "7");
+    expect_contains(interp, "numthy_prevprime(3)", "2");
+}
+
+TEST(ReplCommandsTest, wave101_combo_double_factorial) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_double_factorial(n)");
+
+    expect_ok(interp, "df = combo_double_factorial(5)");
+    EXPECT_NEAR(interp.state().scalars.at("df"), 15.0, 1e-9);
+
+    expect_contains(interp, "combo_double_factorial(5)", "15");
+    expect_contains(interp, "combo_double_factorial(6)", "48");
+}
+
+TEST(ReplCommandsTest, wave101_numthy_jacobi_symbol) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_jacobi_symbol(a,n)");
+
+    expect_ok(interp, "js = numthy_jacobi_symbol(2, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("js"), 1.0, 1e-9);
+
+    expect_contains(interp, "numthy_jacobi_symbol(2, 7)", "1");
+    expect_contains(interp, "numthy_jacobi_symbol(3, 7)", "-1");
+}
+
+TEST(ReplCommandsTest, wave102_numthy_prime_nth) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_prime_nth(n)");
+
+    expect_ok(interp, "pn = numthy_prime_nth(6)");
+    EXPECT_NEAR(interp.state().scalars.at("pn"), 13.0, 1e-9);
+
+    expect_contains(interp, "numthy_prime_nth(6)", "13");
+    expect_contains(interp, "numthy_prime_nth(1)", "2");
+}
+
+TEST(ReplCommandsTest, wave102_numthy_kronecker_symbol) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_kronecker_symbol(a,n)");
+
+    expect_ok(interp, "ks = numthy_kronecker_symbol(2, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("ks"), 1.0, 1e-9);
+
+    expect_contains(interp, "numthy_kronecker_symbol(2, 7)", "1");
+    expect_contains(interp, "numthy_kronecker_symbol(3, 7)", "-1");
+}
+
+TEST(ReplCommandsTest, wave102_numthy_tonelli_shanks) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_tonelli_shanks(n,p)");
+
+    expect_ok(interp, "x = numthy_tonelli_shanks(2, 7)");
+    const int64_t root = static_cast<int64_t>(interp.state().scalars.at("x"));
+    EXPECT_EQ((root * root) % 7, 2);
+
+    expect_contains(interp, "numthy_tonelli_shanks(2, 7)", "4");
+}
+
+TEST(ReplCommandsTest, wave103_ml_precision) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_precision(p,t)");
+
+    expect_ok(interp, "prec = ml_precision([1; 1; 0; 0], [1; 0; 0; 1])");
+    EXPECT_NEAR(interp.state().scalars.at("prec"), 0.5, 1e-9);
+
+    expect_contains(interp, "ml_precision([1; 1; 0; 0], [1; 0; 0; 1])", "0.5");
+}
+
+TEST(ReplCommandsTest, wave103_ml_recall) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_recall(p,t)");
+
+    expect_ok(interp, "rec = ml_recall([1; 1; 0; 0], [1; 0; 0; 1])");
+    EXPECT_NEAR(interp.state().scalars.at("rec"), 0.5, 1e-9);
+
+    expect_contains(interp, "ml_recall([1; 1; 0; 0], [1; 0; 0; 1])", "0.5");
+}
+
+TEST(ReplCommandsTest, wave103_ml_mae) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_mae(p,t)");
+
+    expect_ok(interp, "mae = ml_mae([1; 2; 3], [1; 3; 3])");
+    EXPECT_NEAR(interp.state().scalars.at("mae"), 1.0 / 3.0, 1e-9);
+
+    expect_contains(interp, "ml_mae([1; 2; 3], [1; 3; 3])", "0.333333");
+}
+
+TEST(ReplCommandsTest, wave104_ml_hinge) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_hinge(p,t)");
+
+    expect_ok(interp, "hinge = ml_hinge([1.5; -0.5; 0.8], [1; -1; 1])");
+    EXPECT_NEAR(interp.state().scalars.at("hinge"), 0.7 / 3.0, 1e-9);
+
+    expect_contains(interp, "ml_hinge([1.5; -0.5; 0.8], [1; -1; 1])", "0.233333");
+}
+
+TEST(ReplCommandsTest, wave104_ml_huber) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_huber(p,t)");
+
+    expect_ok(interp, "huber = ml_huber([0; 1; 5], [0; 0; 0])");
+    EXPECT_GT(interp.state().scalars.at("huber"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("huber")));
+
+    expect_contains(interp, "ml_huber([0; 1; 5], [0; 0; 0])", "1.666667");
+}
+
+TEST(ReplCommandsTest, wave104_numthy_mod_inv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_mod_inv(a,m)");
+
+    expect_ok(interp, "inv = numthy_mod_inv(3, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("inv"), 5.0, 1e-9);
+
+    expect_contains(interp, "numthy_mod_inv(3, 7)", "5");
+}
+
+TEST(ReplCommandsTest, wave106_ml_vec_norm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_vec_norm(v)");
+
+    expect_ok(interp, "vn = ml_vec_norm([3; 4])");
+    EXPECT_NEAR(interp.state().scalars.at("vn"), 5.0, 1e-9);
+
+    expect_contains(interp, "ml_vec_norm([3; 4])", "5");
+}
+
+TEST(ReplCommandsTest, wave106_numthy_factor_count) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_factor_count(n)");
+
+    expect_ok(interp, "fc = numthy_factor_count(12)");
+    EXPECT_NEAR(interp.state().scalars.at("fc"), 3.0, 1e-9);
+
+    expect_contains(interp, "numthy_factor_count(12)", "3");
+}
+
+TEST(ReplCommandsTest, wave106_geo_polygon_perimeter) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_polygon_perimeter(P)");
+
+    expect_ok(interp, "per = geo_polygon_perimeter([0, 0; 4, 0; 4, 4; 0, 4])");
+    EXPECT_NEAR(interp.state().scalars.at("per"), 16.0, 1e-9);
+
+    expect_contains(interp, "geo_polygon_perimeter([0, 0; 4, 0; 4, 4; 0, 4])", "16");
+}
+
+TEST(ReplCommandsTest, wave107_ml_vec_dot) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_vec_dot(a,b)");
+
+    expect_ok(interp, "vd = ml_vec_dot([1; 2], [3; 4])");
+    EXPECT_NEAR(interp.state().scalars.at("vd"), 11.0, 1e-9);
+
+    expect_contains(interp, "ml_vec_dot([1; 2], [3; 4])", "11");
+}
+
+TEST(ReplCommandsTest, wave107_numthy_primitive_root) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_primitive_root(p)");
+
+    expect_ok(interp, "proot = numthy_primitive_root(7)");
+    EXPECT_NEAR(interp.state().scalars.at("proot"), 3.0, 1e-9);
+
+    expect_contains(interp, "numthy_primitive_root(7)", "3");
+}
+
+TEST(ReplCommandsTest, wave107_geo_triangle_area) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_triangle_area(x1,y1,x2,y2,x3,y3)");
+
+    expect_ok(interp, "tri = geo_triangle_area(0, 0, 4, 0, 0, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("tri"), 6.0, 1e-9);
+
+    expect_contains(interp, "geo_triangle_area(0, 0, 4, 0, 0, 3)", "6");
+}
+
+TEST(ReplCommandsTest, wave108_geo_dist_sq2d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_dist_sq2d(x1,y1,x2,y2)");
+
+    expect_ok(interp, "dsq = geo_dist_sq2d(0, 0, 3, 4)");
+    EXPECT_NEAR(interp.state().scalars.at("dsq"), 25.0, 1e-9);
+
+    expect_contains(interp, "geo_dist_sq2d(0, 0, 3, 4)", "25");
+}
+
+TEST(ReplCommandsTest, wave108_geo_vec2d_length) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_vec2d_length(x,y)");
+
+    expect_ok(interp, "vl = geo_vec2d_length(3, 4)");
+    EXPECT_NEAR(interp.state().scalars.at("vl"), 5.0, 1e-9);
+
+    expect_contains(interp, "geo_vec2d_length(3, 4)", "5");
+}
+
+TEST(ReplCommandsTest, wave108_geo_cross2d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_cross2d(x1,y1,x2,y2)");
+
+    expect_ok(interp, "cr = geo_cross2d(1, 2, 3, 4)");
+    EXPECT_NEAR(interp.state().scalars.at("cr"), -2.0, 1e-9);
+
+    expect_contains(interp, "geo_cross2d(1, 2, 3, 4)", "-2");
+}
+
+TEST(ReplCommandsTest, wave112_quantum_ket_basis) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_ket_basis(dim,index)");
+
+    expect_ok(interp, "kb = quantum_ket_basis(2, 0)");
+    ASSERT_GT(interp.state().matrices.count("kb"), 0u);
+    const auto& kb = interp.state().matrices.at("kb");
+    EXPECT_NEAR(kb(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(kb(1, 0), 0.0, 1e-9);
+
+    expect_contains(interp, "quantum_ket_basis(2, 0)", "state =");
+}
+
+TEST(ReplCommandsTest, wave112_quantum_fock_state) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_fock_state(n,n_max)");
+
+    expect_ok(interp, "fs = quantum_fock_state(1, 3)");
+    ASSERT_GT(interp.state().matrices.count("fs"), 0u);
+    const auto& fs = interp.state().matrices.at("fs");
+    EXPECT_NEAR(fs(1, 0), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_fock_state(1, 3)", "state =");
+}
+
+TEST(ReplCommandsTest, wave112_quantum_identity_n) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_identity_n(dim)");
+
+    expect_ok(interp, "I3 = quantum_identity_n(3)");
+    ASSERT_GT(interp.state().matrices.count("I3"), 0u);
+    const auto& I3 = interp.state().matrices.at("I3");
+    EXPECT_EQ(I3.rows(), 3u);
+    EXPECT_EQ(I3.cols(), 3u);
+    EXPECT_NEAR(I3(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(I3(2, 2), 1.0, 1e-9);
+
+    expect_contains(interp, "quantum_identity_n(3)", "op =");
+}
+
+TEST(ReplCommandsTest, wave113_control_is_controllable) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_is_controllable(A,B)");
+
+    expect_ok(interp, "A = [0, 1; 0, 0]");
+    expect_ok(interp, "B = [0; 1]");
+    expect_ok(interp, "ctrl = control_is_controllable(A, B)");
+    EXPECT_NEAR(interp.state().scalars.at("ctrl"), 1.0, 1e-9);
+
+    expect_contains(interp, "control_is_controllable([0, 1; 0, 0], [0; 1])", "1");
+}
+
+TEST(ReplCommandsTest, wave113_quantum_ket_superposition) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_ket_superposition(amps)");
+
+    expect_ok(interp, "sup = quantum_ket_superposition([1; 1])");
+    ASSERT_GT(interp.state().matrices.count("sup"), 0u);
+    const auto& sup = interp.state().matrices.at("sup");
+    const double h = 1.0 / std::sqrt(2.0);
+    EXPECT_NEAR(sup(0, 0), h, 1e-9);
+    EXPECT_NEAR(sup(1, 0), h, 1e-9);
+
+    expect_contains(interp, "quantum_ket_superposition([1; 1])", "state =");
+}
+
+TEST(ReplCommandsTest, wave113_numthy_extended_gcd) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_extended_gcd(a,b)");
+
+    expect_ok(interp, "g = numthy_extended_gcd(35, 15)");
+    EXPECT_NEAR(interp.state().scalars.at("g"), 5.0, 1e-9);
+
+    expect_contains(interp, "numthy_extended_gcd(35, 15)", "5");
+}
+
+TEST(ReplCommandsTest, wave114_mtf_encode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "mtf_encode_vec(M)");
+
+    expect_ok(interp, "B = [1, 1, 2, 2; 2, 2, 3, 3]");
+    expect_ok(interp, "E = mtf_encode_vec(B)");
+    expect_ok(interp, "R = mtf_decode_vec(E)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 8u);
+}
+
+TEST(ReplCommandsTest, wave114_geo_centroid_x) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_centroid_x(P)");
+
+    expect_ok(interp, "cx = geo_centroid_x([0, 0; 4, 0; 4, 4; 0, 4])");
+    EXPECT_NEAR(interp.state().scalars.at("cx"), 2.0, 1e-9);
+
+    expect_contains(interp, "geo_centroid_x([0, 0; 4, 0; 4, 4; 0, 4])", "2");
+}
+
+TEST(ReplCommandsTest, wave114_quantum_ghz_state) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_ghz_state(n)");
+
+    expect_ok(interp, "ghz = quantum_ghz_state(3)");
+    ASSERT_GT(interp.state().matrices.count("ghz"), 0u);
+    const auto& ghz = interp.state().matrices.at("ghz");
+    EXPECT_EQ(ghz.rows(), 8u);
+    EXPECT_EQ(ghz.cols(), 1u);
+    const double amp = 1.0 / std::sqrt(2.0);
+    EXPECT_NEAR(ghz(0, 0), amp, 1e-9);
+    EXPECT_NEAR(ghz(7, 0), amp, 1e-9);
+
+    expect_contains(interp, "quantum_ghz_state(3)", "state =");
+}
+
+TEST(ReplCommandsTest, wave115_control_is_observable) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_is_observable(A,C)");
+
+    expect_ok(interp, "A = [0, 1; 0, 0]");
+    expect_ok(interp, "C = [1, 0]");
+    expect_ok(interp, "obs = control_is_observable(A, C)");
+    EXPECT_NEAR(interp.state().scalars.at("obs"), 1.0, 1e-9);
+
+    expect_contains(interp, "control_is_observable([0, 1; 0, 0], [1, 0])", "1");
+}
+
+TEST(ReplCommandsTest, wave115_mtf_decode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "mtf_decode_vec(M)");
+
+    expect_ok(interp, "B = [10, 12, 15, 20]");
+    expect_ok(interp, "E = mtf_encode_vec(B)");
+    expect_ok(interp, "R = mtf_decode_vec(E)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 4u);
+}
+
+TEST(ReplCommandsTest, wave115_numthy_crt) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_crt(r,m)");
+
+    expect_ok(interp, "r = [2; 3; 2]");
+    expect_ok(interp, "m = [3; 5; 7]");
+    expect_ok(interp, "x = numthy_crt(r, m)");
+    EXPECT_NEAR(interp.state().scalars.at("x"), 23.0, 1e-9);
+
+    expect_contains(interp, "numthy_crt([2; 3; 2], [3; 5; 7])", "23");
+}
+
+TEST(ReplCommandsTest, wave116_geo_centroid_y) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_centroid_y(P)");
+
+    expect_ok(interp, "cy = geo_centroid_y([0, 0; 4, 0; 4, 4; 0, 4])");
+    EXPECT_NEAR(interp.state().scalars.at("cy"), 2.0, 1e-9);
+
+    expect_contains(interp, "geo_centroid_y([0, 0; 4, 0; 4, 4; 0, 4])", "2");
+}
+
+TEST(ReplCommandsTest, wave116_quantum_w_state) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_w_state(n)");
+
+    expect_ok(interp, "w = quantum_w_state(3)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    const auto& w = interp.state().matrices.at("w");
+    EXPECT_EQ(w.rows(), 8u);
+    EXPECT_EQ(w.cols(), 1u);
+    const double amp = 1.0 / std::sqrt(3.0);
+    EXPECT_NEAR(w(1, 0), amp, 1e-9);
+    EXPECT_NEAR(w(2, 0), amp, 1e-9);
+    EXPECT_NEAR(w(4, 0), amp, 1e-9);
+
+    expect_contains(interp, "quantum_w_state(3)", "state =");
+}
+
+TEST(ReplCommandsTest, wave116_numthy_divisors_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_divisors_vec(n)");
+
+    expect_ok(interp, "d = numthy_divisors_vec(12)");
+    ASSERT_GT(interp.state().matrices.count("d"), 0u);
+    const auto& divs = interp.state().matrices.at("d");
+    EXPECT_EQ(divs.rows(), 6u);
+    EXPECT_EQ(divs.cols(), 1u);
+    const double expected[] = {1, 2, 3, 4, 6, 12};
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(divs(i, 0), expected[i], 1e-9);
+    }
+}
+
+TEST(ReplCommandsTest, wave117_bwt_encode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bwt_encode_vec(M)");
+
+    expect_ok(interp, "B = [98; 97; 110; 97; 110; 97]");
+    expect_ok(interp, "E = bwt_encode_vec(B)");
+    ASSERT_GT(interp.state().matrices.count("E"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("E").rows(), 7u);
+}
+
+TEST(ReplCommandsTest, wave117_bwt_primary_index) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bwt_primary_index(M)");
+
+    expect_ok(interp, "B = [98; 97; 110; 97; 110; 97]");
+    expect_ok(interp, "pi = bwt_primary_index(B)");
+    const double pi = interp.state().scalars.at("pi");
+    EXPECT_GE(pi, 0.0);
+    EXPECT_LT(pi, 7.0);
+}
+
+TEST(ReplCommandsTest, wave117_bwt_decode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bwt_decode_vec(L,primary_index)");
+
+    expect_ok(interp, "B = [98; 97; 110; 97; 110; 97]");
+    expect_ok(interp, "E = bwt_encode_vec(B)");
+    expect_ok(interp, "pi = bwt_primary_index(B)");
+    expect_ok(interp, "R = bwt_decode_vec(E, pi)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    const auto& restored = interp.state().matrices.at("R");
+    EXPECT_EQ(restored.rows(), 6u);
+    const double banana[] = {98, 97, 110, 97, 110, 97};
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(restored(i, 0), banana[i], 1e-9);
+    }
+}
+
+TEST(ReplCommandsTest, wave118_control_impulse_final) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_impulse_final(num,den)");
+
+    expect_ok(interp, "imp = control_impulse_final([1], [1, 1])");
+    EXPECT_NEAR(interp.state().scalars.at("imp"), std::exp(-10.0), 1e-4);
+
+    expect_contains(interp, "control_impulse_final([1], [1, 1])", "0.00004");
+}
+
+TEST(ReplCommandsTest, wave118_combo_multinomial) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_multinomial(n,ks)");
+
+    expect_ok(interp, "m = combo_multinomial(6, [2; 2; 2])");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 90.0, 1e-9);
+
+    expect_contains(interp, "combo_multinomial(6, [2; 2; 2])", "90");
+}
+
+TEST(ReplCommandsTest, wave118_numthy_factor_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_factor_vec(n)");
+
+    expect_ok(interp, "f = numthy_factor_vec(12)");
+    ASSERT_GT(interp.state().matrices.count("f"), 0u);
+    const auto& factors = interp.state().matrices.at("f");
+    EXPECT_EQ(factors.rows(), 3u);
+    EXPECT_EQ(factors.cols(), 1u);
+    EXPECT_NEAR(factors(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(factors(1, 0), 2.0, 1e-9);
+    EXPECT_NEAR(factors(2, 0), 3.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave119_lzw_encode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "lzw_encode_vec(M)");
+
+    expect_ok(interp, "M = [97; 98; 99; 97; 98; 99]");
+    expect_ok(interp, "E = lzw_encode_vec(M)");
+    expect_ok(interp, "R = lzw_decode_vec(E)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    const auto& restored = interp.state().matrices.at("R");
+    EXPECT_EQ(restored.rows(), 6u);
+    const double expected[] = {97, 98, 99, 97, 98, 99};
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(restored(i, 0), expected[i], 1e-9);
+    }
+}
+
+TEST(ReplCommandsTest, wave119_lzw_decode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "lzw_decode_vec(C)");
+
+    expect_ok(interp, "M = [97; 98; 99; 97; 98; 99]");
+    expect_ok(interp, "E = lzw_encode_vec(M)");
+    expect_ok(interp, "R = lzw_decode_vec(E)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 6u);
+}
+
+TEST(ReplCommandsTest, wave119_quantum_coherent_state) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_coherent_state(alpha_re,alpha_im,n_max)");
+
+    expect_ok(interp, "s = quantum_coherent_state(1, 0, 20)");
+    ASSERT_GT(interp.state().matrices.count("s"), 0u);
+    const auto& state = interp.state().matrices.at("s");
+    EXPECT_EQ(state.rows(), 21u);
+    EXPECT_EQ(state.cols(), 1u);
+    double norm_sq = 0.0;
+    for (size_t i = 0; i < state.rows(); ++i) {
+        norm_sq += state(i, 0) * state(i, 0);
+    }
+    EXPECT_NEAR(norm_sq, 1.0, 1e-5);
+
+    expect_contains(interp, "quantum_coherent_state(1, 0, 20)", "state =");
+}
+
+TEST(ReplCommandsTest, wave119_geo_dist_point_line2d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_dist_point_line2d(px,py,a,b,c)");
+
+    expect_ok(interp, "d = geo_dist_point_line2d(0, 0, 1, 1, -1)");
+    EXPECT_NEAR(interp.state().scalars.at("d"), std::sqrt(2.0) / 2.0, 1e-5);
+
+    expect_contains(interp, "geo_dist_point_line2d(0, 0, 1, 1, -1)", "0.707");
+}
+
+TEST(ReplCommandsTest, wave120_huffman_encode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "huffman_encode_vec(M)");
+
+    expect_ok(interp, "M = [97; 98; 99; 97; 97; 98]");
+    expect_ok(interp, "E = huffman_encode_vec(M)");
+    ASSERT_GT(interp.state().matrices.count("E"), 0u);
+    EXPECT_GE(interp.state().matrices.at("E").rows(), 1u);
+}
+
+TEST(ReplCommandsTest, wave120_huffman_decode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "huffman_decode_vec(orig_M,E)");
+
+    expect_ok(interp, "M = [97; 98; 99; 97; 97; 98]");
+    expect_ok(interp, "E = huffman_encode_vec(M)");
+    expect_ok(interp, "R = huffman_decode_vec(M, E)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    const auto& restored = interp.state().matrices.at("R");
+    EXPECT_EQ(restored.rows(), 6u);
+    const double expected[] = {97, 98, 99, 97, 97, 98};
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(restored(i, 0), expected[i], 1e-9);
+    }
+}
+
+TEST(ReplCommandsTest, wave120_geo_volume_tetrahedron) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_volume_tetrahedron");
+
+    expect_ok(interp, "v = geo_volume_tetrahedron(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("v"), 1.0 / 6.0, 1e-5);
+
+    expect_contains(interp, "geo_volume_tetrahedron(0,0,0,1,0,0,0,1,0,0,0,1)", "0.166667");
+}
+
+TEST(ReplCommandsTest, wave121_control_lyap) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_lyap(A,Q)");
+
+    expect_ok(interp, "X = control_lyap([-1], [1])");
+    ASSERT_GT(interp.state().matrices.count("X"), 0u);
+    const auto& X = interp.state().matrices.at("X");
+    EXPECT_EQ(X.rows(), 1u);
+    EXPECT_EQ(X.cols(), 1u);
+    EXPECT_NEAR(X(0, 0), 0.5, 1e-4);
+}
+
+TEST(ReplCommandsTest, wave121_combo_rank_permutation) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_rank_permutation(v)");
+
+    expect_ok(interp, "r0 = combo_rank_permutation([0; 1; 2])");
+    EXPECT_NEAR(interp.state().scalars.at("r0"), 0.0, 1e-9);
+
+    expect_ok(interp, "r5 = combo_rank_permutation([2; 1; 0])");
+    EXPECT_NEAR(interp.state().scalars.at("r5"), 5.0, 1e-9);
+
+    expect_contains(interp, "combo_rank_permutation([2; 1; 0])", "5");
+}
+
+TEST(ReplCommandsTest, wave121_combo_unrank_permutation) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_unrank_permutation(n,rank)");
+
+    expect_ok(interp, "p = combo_unrank_permutation(3, 5)");
+    ASSERT_GT(interp.state().matrices.count("p"), 0u);
+    const auto& perm = interp.state().matrices.at("p");
+    EXPECT_EQ(perm.rows(), 3u);
+    EXPECT_NEAR(perm(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(perm(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(perm(2, 0), 0.0, 1e-9);
+
+    expect_contains(interp, "combo_unrank_permutation(3, 5)", "perm =");
+}
+
+TEST(ReplCommandsTest, wave122_control_lqr) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_lqr(A,B,Q,R)");
+
+    expect_ok(interp, "Q = eye(2)");
+    expect_ok(interp, "K = control_lqr([-2, 1; 0, -3], [1; 1], Q, [1])");
+    ASSERT_GT(interp.state().matrices.count("K"), 0u);
+    const auto& Klqr = interp.state().matrices.at("K");
+    EXPECT_EQ(Klqr.rows(), 1u);
+    EXPECT_EQ(Klqr.cols(), 2u);
+}
+
+TEST(ReplCommandsTest, wave122_combo_rank_combination) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_rank_combination(v,n)");
+
+    expect_ok(interp, "r0 = combo_rank_combination([0; 1], 4)");
+    EXPECT_NEAR(interp.state().scalars.at("r0"), 0.0, 1e-9);
+
+    expect_ok(interp, "r1 = combo_rank_combination([0; 2], 4)");
+    EXPECT_NEAR(interp.state().scalars.at("r1"), 1.0, 1e-9);
+
+    expect_contains(interp, "combo_rank_combination([0; 2], 4)", "1");
+}
+
+TEST(ReplCommandsTest, wave122_lz77_encode_decode_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "lz77_encode_vec(M)");
+    expect_contains(interp, "help", "lz77_decode_vec(T)");
+
+    expect_ok(interp, "M = [97; 98; 99; 97; 98; 99; 97; 98; 99]");
+    expect_ok(interp, "T = lz77_encode_vec(M)");
+    ASSERT_GT(interp.state().matrices.count("T"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("T").cols(), 3u);
+
+    expect_ok(interp, "R = lz77_decode_vec(T)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 9u);
+}
+
+TEST(ReplCommandsTest, wave123_control_pidtune_kp) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_pidtune_kp(num,den)");
+
+    expect_ok(interp, "kp = control_pidtune_kp([1], [1, 1])");
+    EXPECT_GT(interp.state().scalars.at("kp"), 0.0);
+    EXPECT_NEAR(interp.state().scalars.at("kp"), 1.414, 0.1);
+
+    expect_contains(interp, "control_pidtune_kp([1], [1, 1])", "1.");
+}
+
+TEST(ReplCommandsTest, wave123_quantum_bell_state) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_bell_state(index)");
+
+    expect_ok(interp, "s = quantum_bell_state(0)");
+    ASSERT_GT(interp.state().matrices.count("s"), 0u);
+    const auto& bell = interp.state().matrices.at("s");
+    EXPECT_EQ(bell.rows(), 4u);
+    EXPECT_NEAR(bell(0, 0), 0.707107, 1e-4);
+    EXPECT_NEAR(bell(3, 0), 0.707107, 1e-4);
+
+    expect_contains(interp, "quantum_bell_state(0)", "state =");
+}
+
+TEST(ReplCommandsTest, wave123_bzip2_compress_decompress_vec) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bzip2_compress_vec(M)");
+    expect_contains(interp, "help", "bzip2_decompress_vec(C)");
+
+    expect_ok(interp, "M = [97; 98; 114; 97; 99; 97; 100; 97; 98; 114; 97]");
+    expect_ok(interp, "C = bzip2_compress_vec(M)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+
+    expect_ok(interp, "R = bzip2_decompress_vec(C)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 11u);
+}
+
+TEST(ReplCommandsTest, wave124_control_place) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_place(A,B,poles)");
+
+    expect_ok(interp, "K = control_place([0, 1; 0, 0], [0; 1], [-2; -3])");
+    ASSERT_GT(interp.state().matrices.count("K"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("K").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave124_diffgeo_principal_curvature_sphere) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_principal_curvature_sphere()");
+
+    expect_ok(interp, "k1 = diffgeo_principal_curvature_sphere()");
+    EXPECT_NEAR(interp.state().scalars.at("k1"), 1.0, 0.15);
+
+    expect_contains(interp, "diffgeo_principal_curvature_sphere()", "0.999");
+}
+
+TEST(ReplCommandsTest, wave124_topo_euler_sphere_surface) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_euler_sphere_surface()");
+
+    expect_ok(interp, "chi = topo_euler_sphere_surface()");
+    EXPECT_NEAR(interp.state().scalars.at("chi"), 2.0, 1e-9);
+
+    expect_contains(interp, "topo_euler_sphere_surface()", "2");
+}
+
+TEST(ReplCommandsTest, wave125_combo_unrank_combination) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_unrank_combination(n,k,rank)");
+
+    expect_ok(interp, "c0 = combo_unrank_combination(4, 2, 0)");
+    ASSERT_GT(interp.state().matrices.count("c0"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("c0")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("c0")(1, 0), 1.0, 1e-9);
+
+    expect_ok(interp, "c1 = combo_unrank_combination(4, 2, 1)");
+    EXPECT_NEAR(interp.state().matrices.at("c1")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("c1")(1, 0), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave125_control_pidtune_ki) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_pidtune_ki(num,den)");
+
+    expect_ok(interp, "ki = control_pidtune_ki([1], [1, 1])");
+    EXPECT_GT(interp.state().scalars.at("ki"), 0.0);
+    EXPECT_NEAR(interp.state().scalars.at("ki"), 0.141, 0.05);
+
+    expect_contains(interp, "control_pidtune_ki([1], [1, 1])", "0.");
+}
+
+TEST(ReplCommandsTest, wave125_control_pidtune_kd) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_pidtune_kd(num,den)");
+
+    expect_ok(interp, "kd = control_pidtune_kd([1], [1, 1])");
+    EXPECT_GT(interp.state().scalars.at("kd"), 0.0);
+    EXPECT_NEAR(interp.state().scalars.at("kd"), 0.141, 0.05);
+
+    expect_contains(interp, "control_pidtune_kd([1], [1, 1])", "0.");
+}
+
+TEST(ReplCommandsTest, wave126_cplx_power_series_eval) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_power_series_eval(coeffs,zre,zim)");
+
+    expect_ok(interp, "expv = cplx_power_series_eval([1; 1; 0.5; 0.166667], 0.5, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("expv"), 1.6487, 0.01);
+
+    expect_contains(interp, "cplx_power_series_eval([1; 1; 0.5; 0.166667], 0.5, 0)", "1.64");
+}
+
+TEST(ReplCommandsTest, wave126_cplx_winding_number) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_winding_number(G,z0re,z0im)");
+
+    expect_ok(interp, "wn1 = cplx_winding_number([1, 0; 0, 1; -1, 0; 0, -1], 0, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("wn1"), 1.0, 1e-9);
+
+    expect_ok(interp, "wn0 = cplx_winding_number([1, 0; 0, 1; -1, 0; 0, -1], 2, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("wn0"), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave126_quantum_schrodinger) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_schrodinger(H,psi0,t0,t1,n_steps)");
+
+    expect_ok(interp, "traj = quantum_schrodinger([0.5, 0; 0, -0.5], [1; 0], 0, 3.141592653589793, 100)");
+    ASSERT_GT(interp.state().matrices.count("traj"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("traj").rows(), 101u);
+    EXPECT_EQ(interp.state().matrices.at("traj").cols(), 2u);
+}
+
+TEST(ReplCommandsTest, wave127_topo_vietoris_rips_betti0) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_vietoris_rips_betti0(D,r,max_dim)");
+
+    expect_ok(interp, "Dtri = [0, 1, 1; 1, 0, 1; 1, 1, 0]");
+    expect_ok(interp, "b0t = topo_vietoris_rips_betti0(Dtri, 1.1, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("b0t"), 1.0, 1e-9);
+
+    expect_ok(interp, "Dfar = [0, 10; 10, 0]");
+    expect_ok(interp, "b0d = topo_vietoris_rips_betti0(Dfar, 1.0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("b0d"), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave127_diffgeo_gaussian_curvature_sphere) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_gaussian_curvature_sphere(u,v)");
+
+    expect_ok(interp, "Kg = diffgeo_gaussian_curvature_sphere(0.3, 0.7)");
+    EXPECT_NEAR(interp.state().scalars.at("Kg"), 1.0, 0.15);
+
+    expect_contains(interp, "diffgeo_gaussian_curvature_sphere(0.3, 0.7)", "0.999");
+}
+
+TEST(ReplCommandsTest, wave127_control_dlyap) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_dlyap(A,Q)");
+
+    expect_ok(interp, "Xd = control_dlyap([0.5], [1])");
+    ASSERT_GT(interp.state().matrices.count("Xd"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Xd")(0, 0), 4.0 / 3.0, 1e-3);
+
+    expect_contains(interp, "control_dlyap([0.5], [1])", "1.333");
+}
+
+TEST(ReplCommandsTest, wave128_lz77_encode_vec_custom) {
+    Interpreter interp;
+    expect_contains(interp, "help", "lz77_encode_vec(M,window,lookahead)");
+
+    expect_ok(interp, "lzM2 = [120; 121; 122; 120; 121; 122; 120; 121]");
+    expect_ok(interp, "T2 = lz77_encode_vec(lzM2, 64, 8)");
+    ASSERT_GT(interp.state().matrices.count("T2"), 0u);
+    expect_ok(interp, "R2 = lz77_decode_vec(T2)");
+    ASSERT_GT(interp.state().matrices.count("R2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R2").rows(), 8u);
+}
+
+TEST(ReplCommandsTest, wave128_control_riccati) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_riccati(A,B,Q,R)");
+
+    expect_ok(interp, "Q = eye(2)");
+    expect_ok(interp, "Xr = control_riccati([-2, 1; 0, -3], [1; 1], Q, [1])");
+    ASSERT_GT(interp.state().matrices.count("Xr"), 0u);
+    EXPECT_GT(interp.state().matrices.at("Xr")(0, 0), 0.0);
+}
+
+TEST(ReplCommandsTest, wave128_control_dare) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_dare(A,B,Q,R)");
+
+    expect_ok(interp, "Xdare = control_dare([0.5], [1], [1], [1])");
+    ASSERT_GT(interp.state().matrices.count("Xdare"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Xdare")(0, 0), 4.0 / 3.0, 0.25);
+}
+
+TEST(ReplCommandsTest, wave129_control_bode_mag_db) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_bode_mag_db(num,den,w)");
+
+    expect_ok(interp, "bodeDb = control_bode_mag_db([1], [1, 1], 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bodeDb"), -3.01, 0.15);
+}
+
+TEST(ReplCommandsTest, wave129_cplx_residue_inv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_residue_inv(pole_re,pole_im)");
+
+    expect_ok(interp, "res1 = cplx_residue_inv(1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("res1"), 1.0, 0.05);
+}
+
+TEST(ReplCommandsTest, wave129_cplx_contour_integral_oneoverz_im) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_contour_integral_oneoverz_im()");
+
+    expect_ok(interp, "imz = cplx_contour_integral_oneoverz_im()");
+    EXPECT_NEAR(interp.state().scalars.at("imz"), 2.0 * 3.141592653589793, 0.2);
+}
+
+TEST(ReplCommandsTest, wave130_quantum_time_evolution) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_time_evolution(H,t)");
+
+    expect_ok(interp, "U0 = quantum_time_evolution([0, 0.5; 0.5, 0], 0)");
+    ASSERT_GT(interp.state().matrices.count("U0"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("U0")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("U0")(1, 1), 1.0, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave130_topo_betti_curve) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_betti_curve(D,thresholds,max_dim)");
+
+    expect_ok(interp, "Dcol = [0, 1, 2; 1, 0, 1; 2, 1, 0]");
+    expect_ok(interp, "thr = [0.5; 1.5; 2.5]");
+    expect_ok(interp, "bc = topo_betti_curve(Dcol, thr, 1)");
+    ASSERT_GT(interp.state().matrices.count("bc"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("bc")(0, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("bc")(1, 0), 1.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave130_diffgeo_mean_curvature_sphere) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_mean_curvature_sphere(u,v)");
+
+    expect_ok(interp, "Hm = diffgeo_mean_curvature_sphere(0.3, 0.7)");
+    EXPECT_NEAR(interp.state().scalars.at("Hm"), 1.0, 0.15);
+}
+
+TEST(ReplCommandsTest, wave131_control_bode_phase) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_bode_phase(num,den,w)");
+
+    expect_ok(interp, "bodePh = control_bode_phase([1], [1, 1], 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bodePh"), -45.0, 2.0);
+}
+
+TEST(ReplCommandsTest, wave131_control_phase_margin) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_phase_margin(num,den)");
+
+    expect_ok(interp, "pm = control_phase_margin([1], [1, 1])");
+    EXPECT_NEAR(interp.state().scalars.at("pm"), 180.0, 5.0);
+}
+
+TEST(ReplCommandsTest, wave131_combo_derangements) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_derangements(n)");
+
+    expect_ok(interp, "d3 = combo_derangements(3)");
+    ASSERT_GT(interp.state().matrices.count("d3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("d3").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("d3").cols(), 3u);
+}
+
+TEST(ReplCommandsTest, wave132_cplx_line_integral_one) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_line_integral_one()");
+
+    expect_ok(interp, "li1 = cplx_line_integral_one()");
+    EXPECT_NEAR(interp.state().scalars.at("li1"), 1.0, 0.05);
+}
+
+TEST(ReplCommandsTest, wave132_quantum_density_matrix) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_density_matrix(psi)");
+
+    expect_ok(interp, "rho = quantum_density_matrix([1; 0])");
+    ASSERT_GT(interp.state().matrices.count("rho"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("rho")(0, 0), 1.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave132_topo_bottleneck_distance) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_bottleneck_distance(dgm1,dgm2,dim)");
+
+    expect_ok(interp, "dgm1 = [0, 0, 2; 1, 1, 3]");
+    expect_ok(interp, "dgm2 = [0, 0.2, 2.2; 1, 1.2, 3.2]");
+    expect_ok(interp, "bn = topo_bottleneck_distance(dgm1, dgm2, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("bn"), 0.2, 0.05);
+}
+
+TEST(ReplCommandsTest, wave133_diffgeo_christoffel_sphere) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_christoffel_sphere(k,i,j,u,v)");
+
+    expect_ok(interp, "pi = 3.14159265358979323846");
+    expect_ok(interp, "G011 = diffgeo_christoffel_sphere(0, 1, 1, pi/4, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("G011"), -0.5, 0.05);
+}
+
+TEST(ReplCommandsTest, wave133_finance_bond_price_fv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bond_price(c,y,n,fv)");
+
+    expect_ok(interp, "bp100 = finance_bond_price(0.05, 0.05, 10, 100)");
+    EXPECT_NEAR(interp.state().scalars.at("bp100"), 100.0, 0.5);
+}
+
+TEST(ReplCommandsTest, wave133_control_gain_margin) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_gain_margin(num,den)");
+
+    expect_ok(interp, "gm = control_gain_margin([1], [1, 1])");
+    expect_contains(interp, "control_gain_margin([1], [1, 1])", "inf");
+}
+
+TEST(ReplCommandsTest, wave134_finance_compound_cpp) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_compound(principal,rate,n_periods,compounds_per_period)");
+
+    expect_ok(interp, "fv4 = finance_compound(100, 0.1, 1, 4)");
+    EXPECT_NEAR(interp.state().scalars.at("fv4"), 110.381, 0.05);
+}
+
+TEST(ReplCommandsTest, wave134_combo_all_permutations) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_all_permutations(n)");
+
+    expect_ok(interp, "p3 = combo_all_permutations(3)");
+    ASSERT_GT(interp.state().matrices.count("p3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("p3").rows(), 6u);
+    EXPECT_EQ(interp.state().matrices.at("p3").cols(), 3u);
+}
+
+TEST(ReplCommandsTest, wave134_control_bode) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_bode(num,den,w)");
+
+    expect_ok(interp, "bode = control_bode([1], [1, 1], 1)");
+    ASSERT_GT(interp.state().matrices.count("bode"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("bode")(0, 0), -3.01, 0.1);
+    EXPECT_NEAR(interp.state().matrices.at("bode")(0, 1), -45.0, 2.0);
+}
+
+TEST(ReplCommandsTest, wave135_quantum_op_apply) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_op_apply(op,psi)");
+
+    expect_ok(interp, "psi_h = quantum_op_apply(quantum_hadamard_gate(), [1; 0])");
+    ASSERT_GT(interp.state().matrices.count("psi_h"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("psi_h")(0, 0), 0.707, 0.05);
+    EXPECT_NEAR(interp.state().matrices.at("psi_h")(1, 0), 0.707, 0.05);
+}
+
+TEST(ReplCommandsTest, wave135_topo_persistence_diagram) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_persistence_diagram(S,births)");
+
+    expect_ok(interp, "S = [0, -1; 1, -1; 0, 1]");
+    expect_ok(interp, "births = [0; 0; 1]");
+    expect_ok(interp, "pd = topo_persistence_diagram(S, births)");
+    ASSERT_GT(interp.state().matrices.count("pd"), 0u);
+    EXPECT_GT(interp.state().matrices.at("pd").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave135_diffgeo_geodesic_euclidean) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end)");
+
+    expect_ok(interp, "geo = diffgeo_geodesic_euclidean(0, 0, 1, 0.5, 1)");
+    ASSERT_GT(interp.state().matrices.count("geo"), 0u);
+    const auto& geo = interp.state().matrices.at("geo");
+    EXPECT_NEAR(geo(geo.rows() - 1, 0), 1.0, 0.05);
+    EXPECT_NEAR(geo(geo.rows() - 1, 1), 0.5, 0.05);
+}
+
+TEST(ReplCommandsTest, wave136_compress_bits_to_bytes) {
+    Interpreter interp;
+    expect_contains(interp, "help", "compress_bits_to_bytes(bits_vec)");
+
+    expect_ok(interp, "bits = [1;0;1;0;1;0;1;1;1;1;0;0;1;0;1;1]");
+    expect_ok(interp, "bytes = compress_bits_to_bytes(bits)");
+    ASSERT_GT(interp.state().matrices.count("bytes"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("bytes").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave136_cplx_blaschke_product) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_blaschke_product(zre,zim,zeros)");
+
+    expect_ok(interp, "pi = 3.14159265358979323846");
+    expect_ok(interp, "zeros = [0.3, 0; 0, 0.4]");
+    expect_ok(interp, "bp = cplx_blaschke_product(cos(pi/7), sin(pi/7), zeros)");
+    EXPECT_NEAR(interp.state().scalars.at("bp"), 1.0, 0.05);
+}
+
+TEST(ReplCommandsTest, wave136_graph_diameter) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_diameter(A)");
+
+    expect_ok(interp, "Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
+    expect_ok(interp, "diam = graph_diameter(Achain)");
+    EXPECT_NEAR(interp.state().scalars.at("diam"), 3.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave137_compress_bytes_to_bits) {
+    Interpreter interp;
+    expect_contains(interp, "help", "compress_bytes_to_bits(bytes_vec)");
+
+    expect_ok(interp, "bytes = [171; 205]");
+    expect_ok(interp, "bits = compress_bytes_to_bits(bytes)");
+    ASSERT_GT(interp.state().matrices.count("bits"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("bits").rows(), 16u);
+    expect_ok(interp, "bytes2 = compress_bits_to_bytes(bits)");
+    EXPECT_EQ(interp.state().matrices.at("bytes2").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave137_graph_radius) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_radius(A)");
+
+    expect_ok(interp, "Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
+    expect_ok(interp, "rad = graph_radius(Achain)");
+    EXPECT_NEAR(interp.state().scalars.at("rad"), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave137_combo_all_subsets) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_all_subsets(n)");
+
+    expect_ok(interp, "subs = combo_all_subsets(3)");
+    ASSERT_GT(interp.state().matrices.count("subs"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("subs").rows(), 8u);
+    EXPECT_EQ(interp.state().matrices.at("subs").cols(), 3u);
+}
+
+TEST(ReplCommandsTest, wave138_control_margins) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_margins(num,den)");
+
+    expect_ok(interp, "marg = control_margins([1], [1, 1])");
+    ASSERT_GT(interp.state().matrices.count("marg"), 0u);
+    expect_contains(interp, "control_margins([1], [1, 1])", "inf");
+}
+
+TEST(ReplCommandsTest, wave138_topo_wasserstein_distance) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_wasserstein_distance(dgm1,dgm2,dim)");
+
+    expect_ok(interp, "dgm = [0, 0, 2; 1, 1, 3]");
+    expect_ok(interp, "ws = topo_wasserstein_distance(dgm, dgm, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("ws"), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave138_diffgeo_ricci_scalar_sphere) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_ricci_scalar_sphere(u,v)");
+
+    expect_ok(interp, "R = diffgeo_ricci_scalar_sphere(0.3, 1.2)");
+    EXPECT_NEAR(interp.state().scalars.at("R"), 2.0, 0.05);
+}
+
+TEST(ReplCommandsTest, wave139_quantum_schrodinger_final) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_schrodinger_final(H,psi0,t0,t1,n_steps)");
+
+    expect_ok(interp,
+              "psi = quantum_schrodinger_final([0.5, 0; 0, -0.5], [1; 0], 0, 3.141592653589793, 100)");
+    ASSERT_GT(interp.state().matrices.count("psi"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("psi").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("psi").cols(), 1u);
+}
+
+TEST(ReplCommandsTest, wave139_graph_betweenness) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_betweenness(A)");
+
+    expect_ok(interp, "Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
+    expect_ok(interp, "bc = graph_betweenness(Achain)");
+    ASSERT_GT(interp.state().matrices.count("bc"), 0u);
+    EXPECT_GT(interp.state().matrices.at("bc")(1, 0), interp.state().matrices.at("bc")(0, 0));
+}
+
+TEST(ReplCommandsTest, wave139_imcrop) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imcrop(M,r0,c0,r1,c1)");
+
+    expect_ok(interp, "M = ones(8, 8)");
+    expect_ok(interp, "crop = imcrop(M, 2, 2, 6, 6)");
+    ASSERT_GT(interp.state().matrices.count("crop"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("crop").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("crop").cols(), 4u);
+}
+
+TEST(ReplCommandsTest, wave140_medfilt2) {
+    Interpreter interp;
+    expect_contains(interp, "help", "medfilt2(M,k)");
+
+    expect_ok(interp,
+              "M = [0,0,0,0,0; 0,0,0,0,0; 0,0,1,0,0; 0,0,0,0,0; 0,0,0,0,0]");
+    expect_ok(interp, "F = medfilt2(M, 3)");
+    ASSERT_GT(interp.state().matrices.count("F"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("F")(2, 2), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave140_bilateral) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bilateral(M,sigma_s,sigma_r)");
+
+    expect_ok(interp, "M = ones(5, 5)");
+    expect_ok(interp, "B = bilateral(M, 1, 0.1)");
+    ASSERT_GT(interp.state().matrices.count("B"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("B").cols(), 5u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("B")(2, 2)));
+}
+
+TEST(ReplCommandsTest, wave140_canny) {
+    Interpreter interp;
+    expect_contains(interp, "help", "canny(M,low,high)");
+
+    expect_ok(interp,
+              "M = [0,0,0,0,0,1,1,1,1,1; 0,0,0,0,0,1,1,1,1,1; 0,0,0,0,0,1,1,1,1,1; "
+              "0,0,0,0,0,1,1,1,1,1; 0,0,0,0,0,1,1,1,1,1; 0,0,0,0,0,1,1,1,1,1; "
+              "0,0,0,0,0,1,1,1,1,1; 0,0,0,0,0,1,1,1,1,1; 0,0,0,0,0,1,1,1,1,1; "
+              "0,0,0,0,0,1,1,1,1,1]");
+    expect_ok(interp, "E = canny(M, 0.1, 0.3)");
+    ASSERT_GT(interp.state().matrices.count("E"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("E").rows(), 10u);
+    EXPECT_EQ(interp.state().matrices.at("E").cols(), 10u);
+}
+
+TEST(ReplCommandsTest, wave141_combo_all_compositions) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_all_compositions(n)");
+
+    expect_ok(interp, "comps = combo_all_compositions(3)");
+    ASSERT_GT(interp.state().matrices.count("comps"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("comps").rows(), 4u);
+}
+
+TEST(ReplCommandsTest, wave141_combo_all_partitions) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_all_partitions(n)");
+
+    expect_ok(interp, "parts = combo_all_partitions(4)");
+    ASSERT_GT(interp.state().matrices.count("parts"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("parts").rows(), 5u);
+}
+
+TEST(ReplCommandsTest, wave141_graph_closeness) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_closeness(A)");
+
+    expect_ok(interp, "Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
+    expect_ok(interp, "cc = graph_closeness(Achain)");
+    ASSERT_GT(interp.state().matrices.count("cc"), 0u);
+    EXPECT_GT(interp.state().matrices.at("cc")(2, 0), interp.state().matrices.at("cc")(0, 0));
+}
+
+TEST(ReplCommandsTest, wave142_graph_degree_centrality) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_degree_centrality(A)");
+
+    expect_ok(interp, "Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
+    expect_ok(interp, "dc = graph_degree_centrality(Achain)");
+    ASSERT_GT(interp.state().matrices.count("dc"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("dc")(0, 0), 1.0 / 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("dc")(3, 0), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave142_diffgeo_einstein_scalar_sphere) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_einstein_scalar_sphere(u,v)");
+
+    expect_ok(interp, "E = diffgeo_einstein_scalar_sphere(1.047197551196598, 0.523598775598299)");
+    EXPECT_NEAR(interp.state().scalars.at("E"), 0.0, 0.05);
+}
+
+TEST(ReplCommandsTest, wave142_cplx_joukowski_inv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_joukowski_inv(re,im)");
+
+    expect_ok(interp, "zmag = cplx_joukowski_inv(2, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("zmag"), std::sqrt(5.0), 1e-9);
+}
+
+TEST(ReplCommandsTest, wave143_graph_max_flow) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_max_flow(A,source,sink)");
+
+    expect_ok(interp, "Aflow = [0, 3, 2, 0; 0, 0, 0, 2; 0, 0, 0, 3; 0, 0, 0, 0]");
+    expect_ok(interp, "mf = graph_max_flow(Aflow, 0, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("mf"), 4.0, 1e-9);
+    expect_contains(interp, "graph_max_flow(Aflow, 0, 3)", "4");
+}
+
+TEST(ReplCommandsTest, wave143_diffgeo_surface_normal_sphere) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_surface_normal_sphere(u,v)");
+
+    expect_ok(interp, "N = diffgeo_surface_normal_sphere(0.5, 0.3)");
+    ASSERT_GT(interp.state().matrices.count("N"), 0u);
+    const auto& N = interp.state().matrices.at("N");
+    double n_norm = 0.0;
+    for (size_t i = 0; i < N.rows(); ++i) {
+        n_norm += N(i, 0) * N(i, 0);
+    }
+    EXPECT_NEAR(std::sqrt(n_norm), 1.0, 0.05);
+}
+
+TEST(ReplCommandsTest, wave143_quantum_commutator) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_commutator(A,B)");
+
+    expect_ok(interp, "X = quantum_pauli_x()");
+    expect_ok(interp, "Z = quantum_pauli_z()");
+    expect_ok(interp, "C = quantum_commutator(X, Z)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+    double comm_norm = 0.0;
+    const auto& C = interp.state().matrices.at("C");
+    for (size_t i = 0; i < C.rows(); ++i) {
+        for (size_t j = 0; j < C.cols(); ++j) {
+            comm_norm += C(i, j) * C(i, j);
+        }
+    }
+    EXPECT_GT(std::sqrt(comm_norm), 0.0);
+}
+
+TEST(ReplCommandsTest, wave144_stats_correlation) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_correlation(x,y)");
+
+    expect_ok(interp, "r = stats_correlation([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])");
+    EXPECT_NEAR(interp.state().scalars.at("r"), 1.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave144_signal_moving_average) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_moving_average(x,window)");
+
+    expect_ok(interp, "ma = signal_moving_average([5; 5; 5; 5], 3)");
+    ASSERT_GT(interp.state().matrices.count("ma"), 0u);
+    for (size_t i = 0; i < interp.state().matrices.at("ma").rows(); ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("ma")(i, 0), 5.0, 1e-9);
+    }
+}
+
+TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_delaunay_2d(P)");
+
+    expect_ok(interp, "T3 = geo_delaunay_2d([0, 0; 1, 0; 0.5, 0.866])");
+    ASSERT_GT(interp.state().matrices.count("T3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("T3").rows(), 1u);
+
+    expect_ok(interp, "Tsq = geo_delaunay_2d([0, 0; 1, 0; 0, 1; 1, 1])");
+    ASSERT_GT(interp.state().matrices.count("Tsq"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Tsq").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave145_fft_rfft) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_rfft(x)");
+
+    expect_ok(interp, "R = fft_rfft([1; 0; 0; 0])");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("R")(0, 0), 1.0, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave145_graph_is_bipartite) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_is_bipartite(A)");
+
+    expect_ok(interp, "bp = graph_is_bipartite([0, 1, 0, 0; 1, 0, 1, 0; 0, 1, 0, 1; 0, 0, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("bp"), 1.0, 1e-9);
+
+    expect_ok(interp, "bt = graph_is_bipartite([0, 1, 1; 1, 0, 1; 1, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("bt"), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave145_poly_deriv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_deriv(coeffs)");
+
+    expect_ok(interp, "pd = poly_deriv([1; 2; 3])");
+    ASSERT_GT(interp.state().matrices.count("pd"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pd").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pd")(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pd")(1, 0), 6.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave146_poly_eval) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_eval(coeffs,x)");
+
+    expect_ok(interp, "pe = poly_eval([1; -1; 1], 2)");
+    EXPECT_NEAR(interp.state().scalars.at("pe"), 3.0, 1e-9);
+
+    expect_contains(interp, "poly_eval([1; -1; 1], 2)", "3");
+}
+
+TEST(ReplCommandsTest, wave146_graph_is_dag) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_is_dag(A)");
+
+    expect_ok(interp, "dag = graph_is_dag([0, 1, 0; 0, 0, 1; 0, 0, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("dag"), 1.0, 1e-9);
+
+    expect_ok(interp, "cyc = graph_is_dag([0, 1, 0; 0, 0, 1; 1, 0, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("cyc"), 0.0, 1e-9);
+
+    expect_contains(interp, "graph_is_dag([0, 1, 0; 0, 0, 1; 0, 0, 0])", "1");
+}
+
+TEST(ReplCommandsTest, wave146_stats_mean) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_mean(x)");
+
+    expect_ok(interp, "m = stats_mean([1; 2; 3; 4; 5])");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 3.0, 1e-9);
+
+    expect_contains(interp, "stats_mean([1; 2; 3; 4; 5])", "3");
+}
+
+TEST(ReplCommandsTest, wave147_fft_irfft) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_irfft(spectrum,n)");
+
+    expect_ok(interp, "S = fft_rfft([1; 2; 3; 4])");
+    expect_ok(interp, "x = fft_irfft(S, 4)");
+    ASSERT_GT(interp.state().matrices.count("x"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("x").rows(), 4u);
+    EXPECT_NEAR(interp.state().matrices.at("x")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("x")(3, 0), 4.0, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave147_signal_convolve) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_convolve(a,b)");
+
+    expect_ok(interp, "c = signal_convolve([1; 2; 3], [1; 1])");
+    ASSERT_GT(interp.state().matrices.count("c"), 0u);
+    const auto& conv = interp.state().matrices.at("c");
+    EXPECT_EQ(conv.rows(), 4u);
+    EXPECT_NEAR(conv(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(conv(1, 0), 3.0, 1e-9);
+    EXPECT_NEAR(conv(2, 0), 5.0, 1e-9);
+    EXPECT_NEAR(conv(3, 0), 3.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave147_graph_floyd_warshall) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_floyd_warshall(A)");
+
+    expect_ok(interp, "D = graph_floyd_warshall([0, 1, 5; 0, 0, 1; 0, 0, 0])");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("D")(0, 2), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave148_poly_integ) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_integ(coeffs,c)");
+
+    expect_ok(interp, "pi = poly_integ([3], 0)");
+    ASSERT_GT(interp.state().matrices.count("pi"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pi").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pi")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pi")(1, 0), 3.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave148_stats_spearman) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_spearman(x,y)");
+
+    expect_ok(interp, "sp = stats_spearman([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])");
+    EXPECT_NEAR(interp.state().scalars.at("sp"), 1.0, 1e-9);
+
+    expect_contains(interp, "stats_spearman([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])", "1");
+}
+
+TEST(ReplCommandsTest, wave148_signal_hamming) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_hamming(n)");
+
+    expect_ok(interp, "w = signal_hamming(8)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w").rows(), 8u);
+    EXPECT_NEAR(interp.state().matrices.at("w")(3, 0), 1.0, 0.1);
+}
+
+TEST(ReplCommandsTest, wave149_stats_median) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_median(x)");
+
+    expect_ok(interp, "med = stats_median([1; 2; 3; 4; 5])");
+    EXPECT_NEAR(interp.state().scalars.at("med"), 3.0, 1e-9);
+
+    expect_contains(interp, "stats_median([1; 2; 3; 4; 5])", "3");
+}
+
+TEST(ReplCommandsTest, wave149_graph_is_connected) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_is_connected(A)");
+
+    expect_ok(interp, "cn = graph_is_connected([0, 1, 0; 1, 0, 1; 0, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("cn"), 1.0, 1e-9);
+
+    expect_ok(interp, "dc = graph_is_connected([0, 1, 0; 1, 0, 0; 0, 0, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("dc"), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave149_signal_hanning) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_hanning(n)");
+
+    expect_ok(interp, "w = signal_hanning(8)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w").rows(), 8u);
+    EXPECT_NEAR(interp.state().matrices.at("w")(3, 0), 1.0, 0.1);
+}
+
+TEST(ReplCommandsTest, wave150_fft_dct2) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_dct2(x)");
+
+    expect_ok(interp, "d = fft_dct2([1; 2; 3; 4])");
+    ASSERT_GT(interp.state().matrices.count("d"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("d").rows(), 4u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("d")(0, 0)));
+}
+
+TEST(ReplCommandsTest, wave150_poly_add) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_add(a,b)");
+
+    expect_ok(interp, "s = poly_add([1; 2], [3; 4])");
+    ASSERT_GT(interp.state().matrices.count("s"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("s")(0, 0), 4.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("s")(1, 0), 6.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave150_quantum_tensor_product) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_tensor_product(A,B)");
+
+    expect_ok(interp, "I2 = quantum_identity_n(2)");
+    expect_ok(interp, "X = quantum_pauli_x()");
+    expect_ok(interp, "tp = quantum_tensor_product(I2, X)");
+    ASSERT_GT(interp.state().matrices.count("tp"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("tp").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("tp").cols(), 4u);
+}
+
+TEST(ReplCommandsTest, wave151_stats_kendall) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_kendall(x,y)");
+
+    expect_ok(interp, "kt = stats_kendall([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])");
+    EXPECT_NEAR(interp.state().scalars.at("kt"), 1.0, 1e-9);
+
+    expect_contains(interp, "stats_kendall([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])", "1");
+}
+
+TEST(ReplCommandsTest, wave151_graph_mst_kruskal) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_mst_kruskal(A)");
+
+    expect_ok(interp, "mst = graph_mst_kruskal([0, 1, 0, 10; 1, 0, 2, 0; 0, 2, 0, 3; 10, 0, 3, 0])");
+    ASSERT_GT(interp.state().matrices.count("mst"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("mst").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("mst").cols(), 3u);
+    double total_w = 0.0;
+    for (size_t i = 0; i < 3; ++i) {
+        total_w += interp.state().matrices.at("mst")(i, 2);
+    }
+    EXPECT_NEAR(total_w, 6.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave151_signal_correlate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_correlate(a,b)");
+
+    expect_ok(interp, "c = signal_correlate([1; 2; 3], [1; 0; 0])");
+    ASSERT_GT(interp.state().matrices.count("c"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("c").rows(), 5u);
+    EXPECT_NEAR(interp.state().matrices.at("c")(2, 0), 1.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave152_stats_stddev) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_stddev(x)");
+
+    expect_ok(interp, "sd = stats_stddev([1; 2; 3; 4; 5])");
+    EXPECT_NEAR(interp.state().scalars.at("sd"), std::sqrt(2.5), 1e-9);
+
+    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.58114");
+}
+
+TEST(ReplCommandsTest, wave152_fft_idct2) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_idct2(x)");
+
+    expect_ok(interp, "d = fft_dct2([1; 2; 3; 4])");
+    expect_ok(interp, "x = fft_idct2(d)");
+    ASSERT_GT(interp.state().matrices.count("x"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("x").rows(), 4u);
+    EXPECT_NEAR(interp.state().matrices.at("x")(0, 0), 1.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("x")(3, 0), 4.0, 1e-5);
+}
+
+TEST(ReplCommandsTest, wave152_poly_mul) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_mul(a,b)");
+
+    expect_ok(interp, "p = poly_mul([1; 2], [3; 4])");
+    ASSERT_GT(interp.state().matrices.count("p"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("p")(0, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("p")(1, 0), 10.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("p")(2, 0), 8.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave153_graph_mst_prim) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_mst_prim(A)");
+
+    expect_ok(interp, "mst = graph_mst_prim([0, 1, 0, 10; 1, 0, 2, 0; 0, 2, 0, 3; 10, 0, 3, 0])");
+    ASSERT_GT(interp.state().matrices.count("mst"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("mst").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("mst").cols(), 3u);
+    double total_w = 0.0;
+    for (size_t i = 0; i < 3; ++i) {
+        total_w += interp.state().matrices.at("mst")(i, 2);
+    }
+    EXPECT_NEAR(total_w, 6.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave153_signal_blackman) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_blackman(n)");
+
+    expect_ok(interp, "w = signal_blackman(8)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w").rows(), 8u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("w")(3, 0)));
+}
+
+TEST(ReplCommandsTest, wave153_stats_skewness) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_skewness(x)");
+
+    expect_ok(interp, "sk = stats_skewness([1; 2; 3; 4; 5])");
+    EXPECT_NEAR(interp.state().scalars.at("sk"), 0.0, 1e-9);
+
+    expect_contains(interp, "stats_skewness([1; 2; 3; 4; 5])", "0");
+}
+
+TEST(ReplCommandsTest, wave154_poly_sub) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_sub(a,b)");
+
+    expect_ok(interp, "d = poly_sub([5; 3], [2; 1])");
+    ASSERT_GT(interp.state().matrices.count("d"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("d")(0, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("d")(1, 0), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave154_fft_dst2) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_dst2(x)");
+
+    expect_ok(interp, "s = fft_dst2([1; 2; 3; 4])");
+    ASSERT_GT(interp.state().matrices.count("s"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("s").rows(), 4u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("s")(0, 0)));
+}
+
+TEST(ReplCommandsTest, wave154_prob_norm_cdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_norm_cdf(x,mu,sigma)");
+
+    expect_ok(interp, "p = prob_norm_cdf(0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("p"), 0.5, 1e-9);
+
+    expect_contains(interp, "prob_norm_cdf(0, 0, 1)", "0.5");
+}
+
+TEST(ReplCommandsTest, wave155_stats_kurtosis) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_kurtosis(x)");
+
+    expect_ok(interp, "ku = stats_kurtosis([1; 2; 3; 4; 5])");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("ku")));
+}
+
+TEST(ReplCommandsTest, wave155_prob_norm_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_norm_pdf(x,mu,sigma)");
+
+    expect_ok(interp, "d = prob_norm_pdf(0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("d"), 0.3989422804014327, 1e-6);
+
+    expect_contains(interp, "prob_norm_pdf(0, 0, 1)", "0.398942");
+}
+
+TEST(ReplCommandsTest, wave155_signal_parzen) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_parzen(n)");
+
+    expect_ok(interp, "w = signal_parzen(8)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w").rows(), 8u);
+}
+
+TEST(ReplCommandsTest, wave156_graph_bfs) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_bfs(A,source)");
+
+    expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
+    expect_ok(interp, "ord = graph_bfs(A, 0)");
+    ASSERT_GT(interp.state().matrices.count("ord"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ord").rows(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("ord")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("ord")(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("ord")(2, 0), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave156_poly_compose) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_compose(p,q)");
+
+    expect_ok(interp, "c = poly_compose([1; 1], [0; 2])");
+    ASSERT_GT(interp.state().matrices.count("c"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("c")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("c")(1, 0), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave156_stats_var) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_var(x)");
+
+    expect_ok(interp, "v = stats_var([1; 2; 3; 4; 5])");
+    EXPECT_NEAR(interp.state().scalars.at("v"), 2.5, 1e-9);
+
+    expect_contains(interp, "stats_var([1; 2; 3; 4; 5])", "2.5");
+}
+
+TEST(ReplCommandsTest, wave157_prob_norm_ppf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_norm_ppf(p,mu,sigma)");
+
+    expect_ok(interp, "q = prob_norm_ppf(0.5, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("q"), 0.0, 1e-9);
+
+    expect_contains(interp, "prob_norm_ppf(0.5, 0, 1)", "0");
+}
+
+TEST(ReplCommandsTest, wave157_signal_triangular) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_triangular(n)");
+
+    expect_ok(interp, "w = signal_triangular(8)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w").rows(), 8u);
+}
+
+TEST(ReplCommandsTest, wave157_graph_is_tree) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_is_tree(A)");
+
+    expect_ok(interp, "tr = graph_is_tree([0, 1, 0; 1, 0, 1; 0, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("tr"), 1.0, 1e-9);
+
+    expect_ok(interp, "nt = graph_is_tree([0, 1, 1; 1, 0, 1; 1, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("nt"), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave158_graph_dfs) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_dfs(A,source)");
+
+    expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
+    expect_ok(interp, "ord = graph_dfs(A, 0)");
+    ASSERT_GT(interp.state().matrices.count("ord"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ord").rows(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("ord")(0, 0), 0.0, 1e-9);
+
+    expect_contains(interp, "graph_dfs(A, 0)", "0");
+}
+
+TEST(ReplCommandsTest, wave158_stats_percentile) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_percentile(x,p)");
+
+    expect_ok(interp, "p50 = stats_percentile([1; 2; 3; 4; 5], 50)");
+    EXPECT_NEAR(interp.state().scalars.at("p50"), 3.0, 1e-9);
+
+    expect_contains(interp, "stats_percentile([1; 2; 3; 4; 5], 50)", "3");
+}
+
+TEST(ReplCommandsTest, wave158_signal_lowpass) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_lowpass(x,cutoff,fs)");
+
+    expect_ok(interp, "y = signal_lowpass([1; 0; -1; 0], 0.25, 1.0)");
+    ASSERT_GT(interp.state().matrices.count("y"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("y").rows(), 4u);
+
+    expect_ok(interp, "signal_lowpass([1; 0; -1; 0], 0.25, 1.0)");
+}
+
+TEST(ReplCommandsTest, wave159_prob_binom_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_binom_pdf(k,n,p)");
+
+    expect_ok(interp, "pk = prob_binom_pdf(2, 4, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("pk"), 0.375, 1e-9);
+
+    expect_contains(interp, "prob_binom_pdf(2, 4, 0.5)", "0.375");
+}
+
+TEST(ReplCommandsTest, wave159_graph_topological_sort) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_topological_sort(A)");
+
+    expect_ok(interp, "ord = graph_topological_sort([0, 1, 1, 0; 0, 0, 0, 1; 0, 0, 0, 1; 0, 0, 0, 0])");
+    ASSERT_GT(interp.state().matrices.count("ord"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ord").rows(), 4u);
+    EXPECT_NEAR(interp.state().matrices.at("ord")(0, 0), 0.0, 1e-9);
+
+    expect_contains(interp, "graph_topological_sort([0, 1, 1, 0; 0, 0, 0, 1; 0, 0, 0, 1; 0, 0, 0, 0])", "0");
+}
+
+TEST(ReplCommandsTest, wave159_stats_mode) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_mode(x)");
+
+    expect_ok(interp, "m = stats_mode([1; 2; 2; 3])");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 2.0, 1e-9);
+
+    expect_contains(interp, "stats_mode([1; 2; 2; 3])", "2");
+}
+
+TEST(ReplCommandsTest, wave160_prob_exp_cdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_exp_cdf(x,lambda)");
+
+    expect_ok(interp, "c = prob_exp_cdf(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("c"), 1.0 - std::exp(-1.0), 1e-9);
+
+    expect_contains(interp, "prob_exp_cdf(1, 1)", "0.632");
+}
+
+TEST(ReplCommandsTest, wave160_fft_dft) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_dft(x)");
+
+    expect_ok(interp, "S = fft_dft([1; 0; 0; 0])");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("S").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 0), 1.0, 1e-9);
+
+    expect_ok(interp, "fft_dft([1; 0; 0; 0])");
+}
+
+TEST(ReplCommandsTest, wave160_graph_greedy_colour) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_greedy_colour(A)");
+
+    expect_ok(interp, "col = graph_greedy_colour([0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0])");
+    ASSERT_GT(interp.state().matrices.count("col"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("col").rows(), 4u);
+
+    expect_ok(interp, "graph_greedy_colour([0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0])");
+}
+
+TEST(ReplCommandsTest, wave161_prob_binom_cdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_binom_cdf(k,n,p)");
+
+    expect_ok(interp, "cdf = prob_binom_cdf(2, 4, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("cdf"), 0.6875, 1e-9);
+
+    expect_contains(interp, "prob_binom_cdf(2, 4, 0.5)", "0.6875");
+}
+
+TEST(ReplCommandsTest, wave161_signal_butterworth) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_butterworth(x,cutoff,fs)");
+
+    expect_ok(interp, "y = signal_butterworth([1; 0; -1; 0], 0.25, 1.0)");
+    ASSERT_GT(interp.state().matrices.count("y"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("y").rows(), 4u);
+
+    expect_ok(interp, "signal_butterworth([1; 0; -1; 0], 0.25, 1.0)");
+}
+
+TEST(ReplCommandsTest, wave161_graph_euler_circuit) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_euler_circuit(A)");
+
+    expect_ok(interp, "circ = graph_euler_circuit([0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0])");
+    ASSERT_GT(interp.state().matrices.count("circ"), 0u);
+    EXPECT_GT(interp.state().matrices.at("circ").rows(), 1u);
+
+    expect_ok(interp, "graph_euler_circuit([0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0])");
+}
+
+TEST(ReplCommandsTest, wave162_prob_pois_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_pois_pdf(k,lambda)");
+
+    expect_ok(interp, "pk = prob_pois_pdf(2, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("pk"), 2.0 * std::exp(-2.0), 1e-9);
+
+    expect_ok(interp, "prob_pois_pdf(2, 2)");
+}
+
+TEST(ReplCommandsTest, wave162_stats_geometric_mean) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_geometric_mean(x)");
+
+    expect_ok(interp, "gm = stats_geometric_mean([2; 8])");
+    EXPECT_NEAR(interp.state().scalars.at("gm"), 4.0, 1e-9);
+
+    expect_contains(interp, "stats_geometric_mean([2; 8])", "4");
+}
+
+TEST(ReplCommandsTest, wave162_signal_highpass) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_highpass(x,cutoff,fs)");
+
+    expect_ok(interp, "hp = signal_highpass([1; 0; -1; 0], 0.25, 1.0)");
+    ASSERT_GT(interp.state().matrices.count("hp"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("hp").rows(), 4u);
+
+    expect_ok(interp, "signal_highpass([1; 0; -1; 0], 0.25, 1.0)");
+}
+
+TEST(ReplCommandsTest, wave163_prob_uniform_cdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_uniform_cdf(x,a,b)");
+
+    expect_ok(interp, "ucdf = prob_uniform_cdf(3, 0, 10)");
+    EXPECT_NEAR(interp.state().scalars.at("ucdf"), 0.3, 1e-9);
+
+    expect_contains(interp, "prob_uniform_cdf(3, 0, 10)", "0.3");
+}
+
+TEST(ReplCommandsTest, wave163_stats_ttest) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_ttest(x,mu)");
+
+    expect_ok(interp, "t = stats_ttest([6; 7; 8; 9; 10], 5)");
+    EXPECT_GT(interp.state().scalars.at("t"), 0.0);
+
+    expect_ok(interp, "stats_ttest([6; 7; 8; 9; 10], 5)");
+}
+
+TEST(ReplCommandsTest, wave163_graph_bellman_ford_dist) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_bellman_ford_dist");
+
+    expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
+    expect_contains(interp, "graph_bellman_ford_dist(A, 0, 2)", "3");
+}
+
+TEST(ReplCommandsTest, wave164_prob_pois_cdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_pois_cdf(k,lambda)");
+
+    expect_ok(interp, "pc = prob_pois_cdf(2, 2)");
+    EXPECT_GT(interp.state().scalars.at("pc"), 0.0);
+    EXPECT_LT(interp.state().scalars.at("pc"), 1.0);
+
+    expect_ok(interp, "prob_pois_cdf(2, 2)");
+}
+
+TEST(ReplCommandsTest, wave164_stats_harmonic_mean) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_harmonic_mean(x)");
+
+    expect_ok(interp, "hm = stats_harmonic_mean([1; 2; 3; 4])");
+    EXPECT_NEAR(interp.state().scalars.at("hm"), 48.0 / 25.0, 1e-9);
+
+    expect_contains(interp, "stats_harmonic_mean([1; 2; 3; 4])", "1.92");
+}
+
+TEST(ReplCommandsTest, wave164_signal_bandpass) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_bandpass(x,low,high,fs)");
+
+    expect_ok(interp, "bp = signal_bandpass([1; 0; -1; 0], 0.1, 0.3, 1.0)");
+    ASSERT_GT(interp.state().matrices.count("bp"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("bp").rows(), 4u);
+
+    expect_ok(interp, "signal_bandpass([1; 0; -1; 0], 0.1, 0.3, 1.0)");
+}
+
+TEST(ReplCommandsTest, wave165_prob_exp_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_exp_pdf(x,lambda)");
+
+    expect_ok(interp, "ep = prob_exp_pdf(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ep"), std::exp(-1.0), 1e-9);
+
+    expect_ok(interp, "prob_exp_pdf(1, 1)");
+}
+
+TEST(ReplCommandsTest, wave165_stats_rms) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_rms(x)");
+
+    expect_ok(interp, "r = stats_rms([3; 4])");
+    EXPECT_NEAR(interp.state().scalars.at("r"), std::sqrt(12.5), 1e-9);
+
+    expect_contains(interp, "stats_rms([3; 4])", "3.5355");
+}
+
+TEST(ReplCommandsTest, wave165_fft_ifft) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_ifft(spectrum)");
+
+    expect_ok(interp, "S = fft_dft([1; 0; -1; 0])");
+    expect_ok(interp, "x = fft_ifft(S)");
+    ASSERT_GT(interp.state().matrices.count("x"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("x").rows(), 4u);
+
+    expect_ok(interp, "fft_ifft(S)");
+}
+
+TEST(ReplCommandsTest, wave166_prob_chi2_cdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_chi2_cdf(x,df)");
+
+    expect_ok(interp, "cc = prob_chi2_cdf(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("cc"), 0.682689492, 1e-3);
+
+    expect_ok(interp, "prob_chi2_cdf(1, 1)");
+}
+
+TEST(ReplCommandsTest, wave166_stats_mad) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_mad(x)");
+
+    expect_ok(interp, "m = stats_mad([1; 1; 2; 2; 4; 6; 9])");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 1.0, 1e-9);
+
+    expect_contains(interp, "stats_mad([1; 1; 2; 2; 4; 6; 9])", "1");
+}
+
+TEST(ReplCommandsTest, wave166_graph_astar) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_astar");
+
+    expect_ok(interp, "A = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
+    expect_ok(interp, "h = [3; 2; 1; 0]");
+    expect_ok(interp, "path = graph_astar(A, 0, 3, h)");
+    ASSERT_GT(interp.state().matrices.count("path"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("path").rows(), 4u);
+    EXPECT_NEAR(interp.state().matrices.at("path")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("path")(3, 0), 3.0, 1e-9);
+
+    expect_ok(interp, "graph_astar(A, 0, 3, h)");
+}
+
+TEST(ReplCommandsTest, wave167_prob_gamma_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_gamma_pdf(x,shape,scale)");
+
+    expect_ok(interp, "gp = prob_gamma_pdf(2, 3, 1)");
+    EXPECT_GT(interp.state().scalars.at("gp"), 0.0);
+
+    expect_ok(interp, "prob_gamma_pdf(2, 3, 1)");
+}
+
+TEST(ReplCommandsTest, wave167_stats_ztest) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_ztest(x,mu,sigma)");
+
+    expect_ok(interp, "z = stats_ztest([6; 7; 8; 9; 10], 5, 1)");
+    EXPECT_GT(interp.state().scalars.at("z"), 0.0);
+
+    expect_ok(interp, "stats_ztest([6; 7; 8; 9; 10], 5, 1)");
+}
+
+TEST(ReplCommandsTest, wave167_stats_acf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_acf(x,max_lag)");
+
+    expect_ok(interp, "a = stats_acf([1; 2; 3; 4; 5], 2)");
+    ASSERT_GT(interp.state().matrices.count("a"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("a").rows(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("a")(0, 0), 1.0, 1e-9);
+
+    expect_ok(interp, "stats_acf([1; 2; 3; 4; 5], 2)");
+}
+
+TEST(ReplCommandsTest, wave168_prob_t_cdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_t_cdf(x,df)");
+
+    expect_ok(interp, "tc = prob_t_cdf(0, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("tc"), 0.5, 1e-6);
+
+    expect_ok(interp, "prob_t_cdf(0, 5)");
+}
+
+TEST(ReplCommandsTest, wave168_stats_iqr) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_iqr(x)");
+
+    expect_ok(interp, "iq = stats_iqr([1; 2; 3; 4; 5; 6; 7; 8; 9])");
+    EXPECT_GT(interp.state().scalars.at("iq"), 0.0);
+
+    expect_contains(interp, "stats_iqr([1; 2; 3; 4; 5; 6; 7; 8; 9])", "4");
+}
+
+TEST(ReplCommandsTest, wave168_fft_fft2) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_fft2(S)");
+
+    expect_ok(interp, "S = fft_dft([1; 0; -1; 0])");
+    expect_ok(interp, "F = fft_fft2(S)");
+    ASSERT_GT(interp.state().matrices.count("F"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("F").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("F").cols(), 2u);
+
+    expect_ok(interp, "fft_fft2(S)");
+}
+
+TEST(ReplCommandsTest, wave169_prob_chi2_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_chi2_pdf(x,df)");
+
+    expect_ok(interp, "cp = prob_chi2_pdf(1, 3)");
+    EXPECT_GT(interp.state().scalars.at("cp"), 0.0);
+
+    expect_ok(interp, "prob_chi2_pdf(1, 3)");
+}
+
+TEST(ReplCommandsTest, wave169_stats_two_sample_ttest) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_two_sample_ttest(a,b)");
+
+    expect_ok(interp, "t2 = stats_two_sample_ttest([1; 2; 3], [4; 5; 6])");
+    EXPECT_LT(interp.state().scalars.at("t2"), 0.0);
+
+    expect_ok(interp, "stats_two_sample_ttest([1; 2; 3], [4; 5; 6])");
+}
+
+TEST(ReplCommandsTest, wave169_stats_chi2_gof) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_chi2_gof(observed,expected)");
+
+    expect_ok(interp, "g = stats_chi2_gof([10; 20; 30], [10; 20; 30])");
+    EXPECT_NEAR(interp.state().scalars.at("g"), 0.0, 1e-9);
+
+    expect_ok(interp, "stats_chi2_gof([10; 20; 30], [10; 20; 30])");
+}
+
+TEST(ReplCommandsTest, wave170_geo_kdtree_nearest) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_kdtree_nearest(P,x,y)");
+
+    expect_ok(interp, "idx = geo_kdtree_nearest([0, 0; 1, 0; 2, 0; 3, 0; 4, 0], 1.1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("idx"), 1.0, 1e-9);
+
+    expect_contains(interp, "geo_kdtree_nearest([0, 0; 1, 0; 2, 0; 3, 0; 4, 0], 1.1, 0)", "1");
+}
+
+TEST(ReplCommandsTest, wave170_topo_pairwise_distances) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_pairwise_distances(P)");
+
+    expect_ok(interp, "D = topo_pairwise_distances([0, 0; 1, 0; 0, 1])");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
+
+    expect_ok(interp, "topo_pairwise_distances([0, 0; 1, 0; 0, 1])");
+}
+
+TEST(ReplCommandsTest, wave170_numthy_continued_fraction) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_continued_fraction(x,n)");
+
+    expect_ok(interp, "cf = numthy_continued_fraction(3.14159, 5)");
+    ASSERT_GT(interp.state().matrices.count("cf"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cf").rows(), 5u);
+
+    expect_ok(interp, "numthy_continued_fraction(3.14159, 5)");
+}
+
+TEST(ReplCommandsTest, wave171_combo_next_perm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_next_perm(v)");
+
+    expect_ok(interp, "np = combo_next_perm([1; 2; 3])");
+    ASSERT_GT(interp.state().matrices.count("np"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("np")(1, 0), 3.0, 1e-9);
+
+    expect_ok(interp, "combo_next_perm([1; 2; 3])");
+}
+
+TEST(ReplCommandsTest, wave171_cplx_mobius_re) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cplx_mobius_re(a,b,c,d,zre,zim)");
+
+    expect_ok(interp, "mr = cplx_mobius_re(1, 1, 1, 0, 1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("mr"), 2.0, 1e-9);
+
+    expect_contains(interp, "cplx_mobius_re(1, 1, 1, 0, 1, 0)", "2");
+}
+
+TEST(ReplCommandsTest, wave171_boxfilter) {
+    Interpreter interp;
+    expect_contains(interp, "help", "boxfilter(M,k)");
+
+    expect_ok(interp, "M = ones(5, 5)");
+    expect_ok(interp, "B = boxfilter(M, 3)");
+    ASSERT_GT(interp.state().matrices.count("B"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 5u);
+
+    expect_ok(interp, "boxfilter(M, 3)");
+}
+
+TEST(ReplCommandsTest, wave172_geo_voronoi) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_voronoi(P)");
+
+    expect_ok(interp, "V = geo_voronoi([0, 0; 1, 0; 1, 1; 0, 1])");
+    ASSERT_GT(interp.state().matrices.count("V"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("V").cols(), 2u);
+
+    expect_ok(interp, "geo_voronoi([0, 0; 1, 0; 1, 1; 0, 1])");
+}
+
+TEST(ReplCommandsTest, wave172_numthy_convergents) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_convergents(cf)");
+
+    expect_ok(interp, "cf = numthy_continued_fraction(3.14159, 4)");
+    expect_ok(interp, "cv = numthy_convergents(cf)");
+    ASSERT_GT(interp.state().matrices.count("cv"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cv").cols(), 2u);
+
+    expect_ok(interp, "numthy_convergents(cf)");
+}
+
+TEST(ReplCommandsTest, wave172_ml_mat_transpose) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_mat_transpose(A)");
+
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6]");
+    expect_ok(interp, "At = ml_mat_transpose(A)");
+    ASSERT_GT(interp.state().matrices.count("At"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("At").rows(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("At")(0, 1), 4.0, 1e-9);
+
+    expect_ok(interp, "ml_mat_transpose(A)");
+}
+
+TEST(ReplCommandsTest, wave173_combo_next_comb) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_next_comb(v,n)");
+
+    expect_ok(interp, "v2 = combo_next_comb([0; 1], 4)");
+    ASSERT_GT(interp.state().matrices.count("v2"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("v2")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("v2")(1, 0), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave173_numthy_primes) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_primes(lo,hi)");
+
+    expect_ok(interp, "Pr = numthy_primes(1, 20)");
+    ASSERT_GT(interp.state().matrices.count("Pr"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Pr").rows(), 8u);
+    EXPECT_NEAR(interp.state().matrices.at("Pr")(0, 0), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave173_graph_scc) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_scc(A)");
+
+    expect_ok(interp, "A = [0, 1, 0, 0; 0, 0, 1, 0; 1, 0, 0, 0; 0, 0, 1, 0]");
+    expect_ok(interp, "S = graph_scc(A)");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave174_geo_hermite_x) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_hermite_x(");
+
+    expect_ok(interp, "hx = geo_hermite_x(0, 0, 0, 1, 1, 0, 0, -1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("hx"), 0.5, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave174_ml_mat_mul) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_mat_mul(A,B)");
+
+    expect_ok(interp, "I = eye(3)");
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_ok(interp, "C = ml_mat_mul(I, A)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("C")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("C")(2, 2), 9.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave174_stats_min_value) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_min_value(x)");
+
+    expect_ok(interp, "m = stats_min_value([3; 1; 4; 1; 5; 9; 2])");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 1.0, 1e-9);
+    expect_contains(interp, "stats_min_value([3; 1; 4; 1; 5; 9; 2])", "1");
+}
+
+TEST(ReplCommandsTest, wave175_count_components) {
+    Interpreter interp;
+    expect_contains(interp, "help", "count_components(B)");
+
+    expect_ok(interp, "B = [1, 1, 0, 0, 0, 0; 1, 1, 0, 0, 0, 0; 0, 0, 0, 0, 0, 0; 0, 0, 0, 0, 0, 1; 0, 0, 0, 0, 1, 1; 0, 0, 0, 0, 0, 1]");
+    expect_ok(interp, "n = count_components(B)");
+    EXPECT_NEAR(interp.state().scalars.at("n"), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave175_prewitt) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prewitt(M)");
+
+    expect_ok(interp, "M = [0, 0, 0, 0, 0; 0, 0, 0, 0, 0; 0, 0, 0, 1, 1; 0, 0, 0, 1, 1; 0, 0, 0, 1, 1]");
+    expect_ok(interp, "E = prewitt(M)");
+    ASSERT_GT(interp.state().matrices.count("E"), 0u);
+    EXPECT_GT(interp.state().matrices.at("E")(2, 2), 0.0);
+}
+
+TEST(ReplCommandsTest, wave175_fftshift) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fftshift(S)");
+
+    expect_ok(interp, "S = [0, 0; 1, 0; 2, 0; 3, 0]");
+    expect_ok(interp, "Sh = fftshift(S)");
+    ASSERT_GT(interp.state().matrices.count("Sh"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Sh")(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Sh")(2, 0), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave109_geo_signed_area) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_signed_area(P)");
+
+    expect_ok(interp, "sa = geo_signed_area([0, 0; 4, 0; 4, 4; 0, 4])");
+    EXPECT_NEAR(interp.state().scalars.at("sa"), 16.0, 1e-9);
+
+    expect_contains(interp, "geo_signed_area([0, 0; 4, 0; 4, 4; 0, 4])", "16");
+}
+
+TEST(ReplCommandsTest, wave109_geo_moment_of_inertia) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_moment_of_inertia(P)");
+
+    expect_ok(interp, "mi = geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])");
+    EXPECT_NEAR(interp.state().scalars.at("mi"), 128.0 / 3.0, 1e-5);
+
+    expect_contains(interp, "geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])", "42.6667");
+}
+
+TEST(ReplCommandsTest, wave109_geo_dist_point_seg2d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_dist_point_seg2d(px,py,x1,y1,x2,y2)");
+
+    expect_ok(interp, "dps = geo_dist_point_seg2d(2, 3, 0, 0, 4, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("dps"), 3.0, 1e-9);
+
+    expect_contains(interp, "geo_dist_point_seg2d(2, 3, 0, 0, 4, 0)", "3");
+}
+
+TEST(ReplCommandsTest, wave110_geo_point_in_polygon) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_point_in_polygon(px,py,P)");
+
+    expect_ok(interp, "pip = geo_point_in_polygon(2, 2, [0, 0; 4, 0; 4, 4; 0, 4])");
+    EXPECT_NEAR(interp.state().scalars.at("pip"), 1.0, 1e-9);
+
+    expect_contains(interp, "geo_point_in_polygon(2, 2, [0, 0; 4, 0; 4, 4; 0, 4])", "1");
+}
+
+TEST(ReplCommandsTest, wave110_ml_categorical_crossentropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_categorical_crossentropy(p,t)");
+
+    expect_ok(interp, "cce = ml_categorical_crossentropy([0.7, 0.2, 0.1; 0.1, 0.8, 0.1], [1, 0, 0; 0, 1, 0])");
+    EXPECT_GT(interp.state().scalars.at("cce"), 0.0);
+    EXPECT_LT(interp.state().scalars.at("cce"), 1.0);
+
+    expect_contains(interp,
+                    "ml_categorical_crossentropy([0.7, 0.2, 0.1; 0.1, 0.8, 0.1], [1, 0, 0; 0, 1, 0])",
+                    "0.289909");
+}
+
+TEST(ReplCommandsTest, wave110_geo_overlap_circles) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_overlap_circles(x1,y1,r1,x2,y2,r2)");
+
+    expect_ok(interp, "ov = geo_overlap_circles(0, 0, 1, 0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ov"), 1.0, 1e-9);
+
+    expect_contains(interp, "geo_overlap_circles(0, 0, 1, 0, 0, 1)", "1");
+}
+
+TEST(ReplCommandsTest, wave111_geo_bezier_eval_x) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_bezier_eval_x(P,t)");
+
+    expect_ok(interp, "bx = geo_bezier_eval_x([0, 0; 1, 2; 2, 0], 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("bx"), 1.0, 1e-9);
+
+    expect_contains(interp, "geo_bezier_eval_x([0, 0; 1, 2; 2, 0], 0.5)", "1");
+}
+
+TEST(ReplCommandsTest, wave111_geo_bezier_eval_y) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_bezier_eval_y(P,t)");
+
+    expect_ok(interp, "by = geo_bezier_eval_y([0, 0; 1, 2; 2, 0], 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("by"), 1.0, 1e-9);
+
+    expect_contains(interp, "geo_bezier_eval_y([0, 0; 1, 2; 2, 0], 0.5)", "1");
+}
+
+TEST(ReplCommandsTest, wave105_ml_binary_crossentropy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_binary_crossentropy(p,t)");
+
+    expect_ok(interp, "bce = ml_binary_crossentropy([0.9; 0.1], [1; 0])");
+    EXPECT_LT(interp.state().scalars.at("bce"), 0.15);
+
+    expect_contains(interp, "ml_binary_crossentropy([0.9; 0.1], [1; 0])", "0.10536");
+}
+
+TEST(ReplCommandsTest, wave105_numthy_is_primitive_root) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_is_primitive_root(g,p)");
+
+    expect_ok(interp, "pr = numthy_is_primitive_root(2, 11)");
+    EXPECT_NEAR(interp.state().scalars.at("pr"), 1.0, 1e-9);
+
+    expect_contains(interp, "numthy_is_primitive_root(2, 11)", "1");
+}
+
+TEST(ReplCommandsTest, wave105_numthy_discrete_log) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_discrete_log(g,h,p)");
+
+    expect_ok(interp, "dl = numthy_discrete_log(2, 8, 11)");
+    EXPECT_NEAR(interp.state().scalars.at("dl"), 3.0, 1e-9);
+
+    expect_contains(interp, "numthy_discrete_log(2, 8, 11)", "3");
 }

@@ -1,0 +1,2 @@
+S = fft_rfft([1; 2; 3; 4])
+x = fft_irfft(S, 4)

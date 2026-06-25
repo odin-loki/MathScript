@@ -1,0 +1,1 @@
+E = diffgeo_einstein_scalar_sphere(1.047197551196598, 0.523598775598299)

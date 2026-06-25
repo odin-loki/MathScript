@@ -1,0 +1,1 @@
+numthy_prime_pi(100)

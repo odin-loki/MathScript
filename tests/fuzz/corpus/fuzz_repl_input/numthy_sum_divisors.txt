@@ -1,0 +1,1 @@
+numthy_sum_divisors(12)

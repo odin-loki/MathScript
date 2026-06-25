@@ -1,0 +1,3 @@
+dgm1 = [0, 0, 2; 1, 1, 3]
+dgm2 = [0, 0.2, 2.2; 1, 1.2, 3.2]
+bn = topo_bottleneck_distance(dgm1, dgm2, 0)

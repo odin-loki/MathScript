@@ -7352,7 +7352,7 @@ Replace all Class A transitional libraries with own implementations. This runs i
 **Exit criterion:** Version 1.0.0 tag. All CI stages green. Unsafe surface report approved. Packages buildable on clean machines.
 
 <!-- Phase 10 tracking (see README "Phase 10 checklist"):
-DONE: CI green (Win/Linux), ~91% coverage (90% gate), 90 CTest suites, Valgrind memcheck,
+DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind memcheck,
       libFuzzer smoke (7 targets) + fuzz-24h manual workflow (86400 s×7, workflow_dispatch),
       fuzz_repl_input seed corpus, unsafe surface audit + delta baseline (blocking in CI),
       install/package smoke (DEB/RPM/NSIS/WiX), benchmark regression gate (benchmark-linux, 10% tolerance),
@@ -7373,7 +7373,211 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 90 CTest suites, Valgrind 
       Wave 7: JIT factory/linalg decomp ext/SIMD vector ops tests (85 suites),
       Wave 8: scalar type tests, bench_special in CI/scripts, baseline sync (86 suites),
       Wave 9: sparse ext/poly ext/domain types/graph+factorial/memory pinned coverage (89 suites),
-      Wave 10: scientific integration pipeline (ODE/FFT/linalg/stats/special end-to-end) (90 suites).
+      Wave 10: scientific integration pipeline (ODE/FFT/linalg/stats/special end-to-end) (90 suites),
+      Waves 60–64: ml/image/compress/bignum modules, REPL bindings, null()/dgesvd fixes,
+      Wave 57–59 integration pipeline, Windows ZIP packaging,
+      Wave 58 integration pipeline, REPL cplx/finance/info/tensorops, Linux TGZ packaging,
+      mega Wave 57–60 pipeline, von_neumann_entropy fix, REPL diffgeo/topo,
+      ss2tf DC gain fix, full integration pipeline, REPL matmul/partition (242 suites),
+      LQR integrator fix, REPL wave67 pipeline, CI ZIP/TGZ artifacts (243 suites),
+      Wave 68: finance_irr/info_kl_divergence REPL, wave68 pipeline, fuzz repl seeds,
+      ml/image unit tests, tag checklist 243→244 (244 suites),
+      Wave 69: control_dcgain/info_cross_entropy REPL, wave69 pipeline, fuzz repl seeds,
+      matrix literal negative fix, tag checklist 244→245 (245 suites),
+      Wave 70: control_is_stable/finance_var/info_mutual_info/combo_nchoosek REPL,
+      wave70 pipeline, fuzz repl seeds, tag checklist 245→246 (246 suites),
+      Wave 71: finance_cvar/info_js_divergence/quantum_von_neumann_entropy REPL,
+      wave71 pipeline, fuzz repl seeds, tag checklist 246→247 (247 suites),
+      Wave 72: finance_sortino/info_tv_distance/quantum_fidelity REPL,
+      wave72 pipeline, fuzz repl seeds, tag checklist 247→248 (248 suites),
+      Wave 73: finance_max_drawdown/info_hellinger_dist/quantum_trace_distance REPL,
+      wave73 pipeline, fuzz repl seeds, tag checklist 248→249 (249 suites),
+      Wave 74: finance_kelly_fraction/info_renyi_entropy/quantum_concurrence REPL,
+      wave74 pipeline, fuzz repl seeds, tag checklist 249→250 (250 suites),
+      Wave 75: finance_compound/info_redundancy/quantum_entanglement_entropy REPL,
+      wave75 pipeline, fuzz repl seeds, tag checklist 250→251 (251 suites),
+      Wave 76: finance_continuous_compound/info_efficiency/quantum_expectation REPL,
+      wave76 pipeline, fuzz repl seeds, tag checklist 251→252 (252 suites),
+      Wave 77: finance_pv/info_channel_capacity_bsc/quantum_expectation_dm REPL,
+      wave77 pipeline, fuzz repl seeds, tag checklist 252→253 (253 suites),
+      Wave 78: finance_fv_annuity/info_channel_capacity_bec/quantum_inner REPL,
+      wave78 pipeline, fuzz repl seeds, tag checklist 253→254 (254 suites),
+      Wave 79: finance_pmt_annuity/info_shannon_hartley/quantum_ket_normalise REPL,
+      wave79 pipeline, fuzz repl seeds, tag checklist 254→255 (255 suites),
+      Wave 80: finance_binomial_call/info_differential_entropy_gaussian/quantum_partial_trace REPL,
+      wave80 pipeline, fuzz repl seeds, tag checklist 255→256 (256 suites),
+      Wave 81: finance_binomial_put/info_differential_entropy_uniform/finance_bs_put REPL,
+      wave81 pipeline, fuzz repl seeds, tag checklist 256→257 (257 suites),
+      Wave 82: finance_bs_gamma/finance_bond_duration/info_rate_distortion_gaussian REPL,
+      wave82 pipeline, fuzz repl seeds, tag checklist 257→258 (258 suites),
+      Wave 83: finance_bs_delta/finance_bs_vega/finance_bond_modified_duration REPL,
+      wave83 pipeline, fuzz repl seeds, tag checklist 258→259 (259 suites),
+      Wave 84: finance_bs_theta/finance_bs_rho/finance_bond_convexity REPL,
+      wave84 pipeline, fuzz repl seeds, tag checklist 259→260 (260 suites),
+      Wave 85: finance_bond_ytm/info_source_coding_rate/info_tsallis_entropy REPL,
+      wave85 pipeline, fuzz repl seeds, tag checklist 260→261 (261 suites),
+      Wave 86: finance_bs_implied_vol/finance_portfolio_return/finance_portfolio_variance REPL,
+      wave86 pipeline, fuzz repl seeds, tag checklist 261→262 (262 suites),
+      Wave 87: info_joint_entropy/info_conditional_entropy/info_sample_entropy REPL,
+      wave87 pipeline, fuzz repl seeds, tag checklist 262→263 (263 suites),
+      Wave 88: quantum_pauli_x/quantum_pauli_z/quantum_cnot_gate REPL,
+      wave88 pipeline, fuzz repl seeds, tag checklist 263→264 (264 suites),
+      Wave 89: quantum_pauli_y/quantum_swap_gate/quantum_identity REPL,
+      wave89 pipeline, fuzz repl seeds, tag checklist 264→265 (265 suites),
+      Wave 90: quantum_hadamard_gate/cplx_hyperbolic_distance/info_lz_complexity REPL,
+      wave90 pipeline, fuzz repl seeds, tag checklist 265→266 (266 suites),
+      Wave 91: quantum_pauli_plus/quantum_pauli_minus/quantum_toffoli_gate REPL,
+      wave91 pipeline, fuzz repl seeds, tag checklist 266→267 (267 suites),
+      Wave 92: quantum_rotation_z/quantum_rotation_x/quantum_rotation_y REPL,
+      wave92 pipeline, fuzz repl seeds, tag checklist 267→268 (268 suites),
+      Wave 93: quantum_phase_gate/quantum_qft_gate/cplx_poisson_kernel REPL,
+      wave93 pipeline, fuzz repl seeds, tag checklist 268→269 (269 suites),
+      Wave 94: tensorops_inner/geo_dist3d/numthy_isprime REPL,
+      wave94 pipeline, fuzz repl seeds, tag checklist 269→270 (270 suites),
+      Wave 95: combo_stirling2/numthy_euler_phi/numthy_mobius REPL,
+      wave95 pipeline, fuzz repl seeds, tag checklist 270→271 (271 suites),
+      Wave 96: combo_catalan/combo_bell/numthy_num_divisors REPL,
+      wave96 pipeline, fuzz repl seeds, tag checklist 271→272 (272 suites),
+      Wave 97: combo_stirling1/numthy_lcm/numthy_mod_pow REPL,
+      wave97 pipeline, fuzz repl seeds, tag checklist 272→273 (273 suites),
+      Wave 98: combo_motzkin/combo_permutations/numthy_sum_divisors REPL,
+      wave98 pipeline, fuzz repl seeds, tag checklist 273→274 (274 suites),
+      Wave 99: numthy_nextprime/numthy_liouville/combo_subfactorial REPL,
+      wave99 pipeline, fuzz repl seeds, tag checklist 274→275 (275 suites),
+      Wave 100: numthy_prime_pi/numthy_legendre_symbol/combo_combinations_with_rep REPL,
+      wave100 pipeline, fuzz repl seeds, tag checklist 275→276 (276 suites),
+      Wave 101: numthy_prevprime/combo_double_factorial/numthy_jacobi_symbol REPL,
+      wave101 pipeline, fuzz repl seeds, tag checklist 276→277 (277 suites),
+      Wave 102: numthy_prime_nth/numthy_kronecker_symbol/numthy_tonelli_shanks REPL,
+      wave102 pipeline, fuzz repl seeds, tag checklist 277→278 (278 suites),
+      Wave 103: ml_precision/ml_recall/ml_mae REPL,
+      wave103 pipeline, fuzz repl seeds, tag checklist 278→279 (279 suites),
+      Wave 104: ml_huber/ml_hinge/numthy_mod_inv REPL,
+      wave104 pipeline, fuzz repl seeds, tag checklist 279→280 (280 suites),
+      Wave 105: ml_binary_crossentropy/numthy_is_primitive_root/numthy_discrete_log REPL,
+      wave105 pipeline, fuzz repl seeds, tag checklist 280→281 (281 suites),
+      Wave 106: ml_vec_norm/numthy_factor_count/geo_polygon_perimeter REPL,
+      wave106 pipeline, fuzz repl seeds, tag checklist 281→282 (282 suites),
+      Wave 107: ml_vec_dot/numthy_primitive_root/geo_triangle_area REPL,
+      wave107 pipeline, fuzz repl seeds, tag checklist 282→283 (283 suites),
+      Wave 108: geo_dist_sq2d/geo_vec2d_length/geo_cross2d REPL,
+      wave108 pipeline, fuzz repl seeds, tag checklist 283→284 (284 suites),
+      Wave 109: geo_signed_area/geo_moment_of_inertia/geo_dist_point_seg2d REPL,
+      wave109 pipeline, fuzz repl seeds, tag checklist 284→285 (285 suites),
+      Wave 110: geo_point_in_polygon/ml_categorical_crossentropy/geo_overlap_circles REPL,
+      wave110 pipeline, fuzz repl seeds, tag checklist 285→286 (286 suites),
+      Wave 111: geo_bezier_eval_x/geo_bezier_eval_y REPL,
+      wave111 pipeline, fuzz repl seeds, tag checklist 286→287 (287 suites),
+      Wave 112: quantum_ket_basis/quantum_fock_state/quantum_identity_n REPL,
+      wave112 pipeline, fuzz repl seeds, tag checklist 287→288 (288 suites).
+      Wave 113: control_is_controllable/quantum_ket_superposition/numthy_extended_gcd REPL,
+      wave113 pipeline, fuzz repl seeds, tag checklist 288→289 (289 suites).
+      Wave 114: mtf_encode_vec/geo_centroid_x/quantum_ghz_state REPL,
+      wave114 pipeline, fuzz repl seeds, tag checklist 289→290 (290 suites).
+      Wave 115: control_is_observable/mtf_decode_vec/numthy_crt REPL,
+      wave115 pipeline, fuzz repl seeds, tag checklist 290→291 (291 suites).
+      Wave 116: geo_centroid_y/quantum_w_state/numthy_divisors_vec REPL,
+      wave116 pipeline, fuzz repl seeds, tag checklist 291→292 (292 suites).
+      Wave 117: bwt_encode_vec/bwt_primary_index/bwt_decode_vec REPL,
+      wave117 pipeline, fuzz repl seeds, tag checklist 292→293 (293 suites).
+      Wave 118: control_impulse_final/combo_multinomial/numthy_factor_vec REPL,
+      wave118 pipeline, fuzz repl seeds, tag checklist 293→294 (294 suites).
+      Wave 119: lzw_encode_vec/lzw_decode_vec/quantum_coherent_state REPL,
+      wave119 pipeline, fuzz repl seeds, tag checklist 294→295 (295 suites).
+      Wave 120: huffman_encode_vec/huffman_decode_vec/geo_volume_tetrahedron REPL,
+      wave120 pipeline, fuzz repl seeds, tag checklist 295→296 (296 suites).
+      Wave 121: control_lyap/combo_rank_permutation/combo_unrank_permutation REPL,
+      wave121 pipeline, fuzz repl seeds, tag checklist 296→297 (297 suites).
+      Wave 122: control_lqr/combo_rank_combination/lz77_encode_vec/lz77_decode_vec REPL,
+      wave122 pipeline, fuzz repl seeds, tag checklist 297→298 (298 suites).
+      Wave 123: control_pidtune_kp/quantum_bell_state/bzip2_compress_vec/bzip2_decompress_vec REPL,
+      wave123 pipeline, fuzz repl seeds, tag checklist 298→299 (299 suites).
+      Wave 124: control_place/diffgeo_principal_curvature_sphere/topo_euler_sphere_surface REPL,
+      wave124 pipeline, fuzz repl seeds, tag checklist 299→300 (300 suites).
+      Wave 125: combo_unrank_combination/control_pidtune_ki/control_pidtune_kd REPL,
+      wave125 pipeline, fuzz repl seeds, tag checklist 300→301 (301 suites).
+      Wave 126: cplx_power_series_eval/cplx_winding_number/quantum_schrodinger REPL,
+      wave126 pipeline, fuzz repl seeds, tag checklist 301→302 (302 suites).
+      Wave 127: topo_vietoris_rips_betti0/diffgeo_gaussian_curvature_sphere/control_dlyap REPL,
+      wave127 pipeline, fuzz repl seeds, tag checklist 302→303 (303 suites).
+      Wave 128: lz77_encode_vec(window,lookahead)/control_riccati/control_dare REPL,
+      wave128 pipeline, fuzz repl seeds, tag checklist 303→304 (304 suites).
+      Wave 129: control_bode_mag_db/cplx_residue_inv/cplx_contour_integral_oneoverz_im REPL,
+      wave129 pipeline, fuzz repl seeds, tag checklist 304→305 (305 suites).
+      Wave 130: quantum_time_evolution/topo_betti_curve/diffgeo_mean_curvature_sphere REPL,
+      wave130 pipeline, fuzz repl seeds, tag checklist 305→306 (306 suites).
+      Wave 131: control_bode_phase/control_phase_margin/combo_derangements REPL,
+      wave131 pipeline, fuzz repl seeds, tag checklist 306→307 (307 suites).
+      Wave 132: cplx_line_integral_one/quantum_density_matrix/topo_bottleneck_distance REPL,
+      wave132 pipeline, fuzz repl seeds, tag checklist 307→308 (308 suites).
+      Wave 133: diffgeo_christoffel_sphere/finance_bond_price_fv/control_gain_margin REPL,
+      wave133 pipeline, fuzz repl seeds, tag checklist 308→309 (309 suites).
+      Wave 134: finance_compound_cpp/combo_all_permutations/control_bode REPL,
+      wave134 pipeline, fuzz repl seeds, tag checklist 309→310 (310 suites).
+      Wave 135: quantum_op_apply/topo_persistence_diagram/diffgeo_geodesic_euclidean REPL,
+      wave135 pipeline, fuzz repl seeds, tag checklist 310→311 (311 suites).
+      Wave 136: compress_bits_to_bytes/cplx_blaschke_product/graph_diameter REPL,
+      wave136 pipeline, fuzz repl seeds, tag checklist 311→312 (312 suites).
+      Wave 137: compress_bytes_to_bits/graph_radius/combo_all_subsets REPL,
+      wave137 pipeline, fuzz repl seeds, tag checklist 312→313 (313 suites).
+      Wave 138: control_margins/topo_wasserstein_distance/diffgeo_ricci_scalar_sphere REPL,
+      wave138 pipeline, fuzz repl seeds, tag checklist 313→314 (314 suites).
+      Wave 139: quantum_schrodinger_final/graph_betweenness/imcrop REPL,
+      wave139 pipeline, fuzz repl seeds, tag checklist 314→315 (315 suites).
+      Wave 140: medfilt2/bilateral/canny REPL,
+      wave140 pipeline, fuzz repl seeds, tag checklist 315→316 (316 suites).
+      Wave 141: combo_all_compositions/combo_all_partitions/graph_closeness REPL,
+      wave141 pipeline, fuzz repl seeds, tag checklist 316→317 (317 suites).
+      Wave 142: graph_degree_centrality/diffgeo_einstein_scalar_sphere/cplx_joukowski_inv REPL,
+      wave142 pipeline, fuzz repl seeds, tag checklist 317→318 (318 suites).
+      Wave 143: graph_max_flow/diffgeo_surface_normal_sphere/quantum_commutator REPL,
+      wave143 pipeline, fuzz repl seeds, tag checklist 318→319 (319 suites).
+      Wave 144: stats_correlation/signal_moving_average/geo_delaunay_2d REPL,
+      wave144 pipeline, fuzz repl seeds, tag checklist 319→320 (320 suites).
+      Wave 145: fft_rfft/graph_is_bipartite/poly_deriv REPL,
+      wave145 pipeline, fuzz repl seeds, tag checklist 320→321 (321 suites).
+      Wave 146: poly_eval/graph_is_dag/stats_mean REPL,
+      wave146 pipeline, fuzz repl seeds, tag checklist 321→322 (322 suites).
+      Wave 147: fft_irfft/signal_convolve/graph_floyd_warshall REPL,
+      wave147 pipeline, fuzz repl seeds, tag checklist 322→323 (323 suites).
+      Wave 148: poly_integ/stats_spearman/signal_hamming REPL,
+      wave148 pipeline, fuzz repl seeds, tag checklist 323→324 (324 suites).
+      Wave 149: stats_median/graph_is_connected/signal_hanning REPL,
+      wave149 pipeline, fuzz repl seeds, tag checklist 324→325 (325 suites).
+      Wave 150: fft_dct2/poly_add/quantum_tensor_product REPL,
+      wave150 pipeline, fuzz repl seeds, tag checklist 325→326 (326 suites).
+      Wave 151: stats_kendall/graph_mst_kruskal/signal_correlate REPL,
+      wave151 pipeline, fuzz repl seeds, tag checklist 326→327 (327 suites).
+      Wave 152: stats_stddev/fft_idct2/poly_mul REPL,
+      wave152 pipeline, fuzz repl seeds, tag checklist 327→328 (328 suites).
+      Wave 153: graph_mst_prim/signal_blackman/stats_skewness REPL,
+      wave153 pipeline, fuzz repl seeds, tag checklist 328→329 (329 suites).
+      Wave 154: poly_sub/fft_dst2/prob_norm_cdf REPL,
+      wave154 pipeline, fuzz repl seeds, tag checklist 329→330 (330 suites).
+      Wave 155: stats_kurtosis/prob_norm_pdf/signal_parzen REPL,
+      wave155 pipeline, fuzz repl seeds, tag checklist 330→331 (331 suites).
+      Wave 156: graph_bfs/poly_compose/stats_var REPL,
+      wave156 pipeline, fuzz repl seeds, tag checklist 331→332 (332 suites).
+      Wave 157: prob_norm_ppf/signal_triangular/graph_is_tree REPL,
+      wave157 pipeline, fuzz repl seeds, tag checklist 332→333 (333 suites).
+      Wave 158: graph_dfs/stats_percentile/signal_lowpass REPL,
+      wave158 pipeline, fuzz repl seeds, tag checklist 333→334 (334 suites).
+      Wave 159: prob_binom_pdf/graph_topological_sort/stats_mode REPL,
+      wave159 pipeline, fuzz repl seeds, tag checklist 334→335 (335 suites).
+      Wave 160: prob_exp_cdf/fft_dft/graph_greedy_colour REPL,
+      Wave 161: prob_binom_cdf/signal_butterworth/graph_euler_circuit REPL,
+      Wave 162: prob_pois_pdf/stats_geometric_mean/signal_highpass REPL,
+      Wave 163: prob_uniform_cdf/stats_ttest/graph_bellman_ford_dist REPL,
+      Wave 164: prob_pois_cdf/stats_harmonic_mean/signal_bandpass REPL,
+      Wave 165: prob_exp_pdf/stats_rms/fft_ifft REPL,
+      Wave 166: prob_chi2_cdf/stats_mad/graph_astar REPL,
+      Wave 167: prob_gamma_pdf/stats_ztest/stats_acf REPL,
+      Wave 168: prob_t_cdf/stats_iqr/fft_fft2 REPL,
+      Wave 169: prob_chi2_pdf/stats_two_sample_ttest/stats_chi2_gof REPL,
+      Wave 170: geo_kdtree_nearest/topo_pairwise_distances/numthy_continued_fraction REPL,
+      Wave 171: combo_next_perm/cplx_mobius_re/boxfilter REPL,
+      Wave 172: geo_voronoi/numthy_convergents/ml_mat_transpose REPL,
+      wave160 pipeline, fuzz repl seeds, tag checklist 335→336 (336 suites).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging). -->

@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
+#include <numeric>
+#include <random>
 
 namespace ms {
 
@@ -262,6 +265,635 @@ double newton_1d(Func1D f, double x0, double tol, int max_iter) {
         if (std::abs(step) < tol) {
             break;
         }
+    }
+    return x;
+}
+
+// ----------------------------------------------------------------
+// Nelder-Mead (derivative-free N-D minimizer)
+// ----------------------------------------------------------------
+OptimResult nelder_mead(FuncND f, std::vector<double> x0,
+                        double tol, int max_iter) {
+    const int n = static_cast<int>(x0.size());
+    const double alpha = 1.0, gamma_exp = 2.0, rho = 0.5, sigma = 0.5;
+
+    // Build initial simplex
+    std::vector<std::vector<double>> simplex(static_cast<size_t>(n + 1), x0);
+    for (int i = 0; i < n; ++i) {
+        double step = (x0[static_cast<size_t>(i)] != 0.0)
+                          ? 0.05 * x0[static_cast<size_t>(i)]
+                          : 0.00025;
+        simplex[static_cast<size_t>(i + 1)][static_cast<size_t>(i)] += step;
+    }
+
+    std::vector<double> fvals(static_cast<size_t>(n + 1));
+    for (int i = 0; i <= n; ++i) {
+        fvals[static_cast<size_t>(i)] = f(simplex[static_cast<size_t>(i)]);
+    }
+
+    const auto centroid = [&](size_t worst) {
+        std::vector<double> c(static_cast<size_t>(n), 0.0);
+        for (int i = 0; i <= n; ++i) {
+            if (static_cast<size_t>(i) == worst) continue;
+            for (int j = 0; j < n; ++j) {
+                c[static_cast<size_t>(j)] +=
+                    simplex[static_cast<size_t>(i)][static_cast<size_t>(j)];
+            }
+        }
+        for (auto& v : c) v /= n;
+        return c;
+    };
+
+    const auto reflect = [&](const std::vector<double>& cen,
+                              const std::vector<double>& worst,
+                              double coef) {
+        std::vector<double> r(static_cast<size_t>(n));
+        for (int j = 0; j < n; ++j) {
+            r[static_cast<size_t>(j)] =
+                cen[static_cast<size_t>(j)] +
+                coef * (cen[static_cast<size_t>(j)] -
+                        worst[static_cast<size_t>(j)]);
+        }
+        return r;
+    };
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // Sort
+        std::vector<size_t> idx(static_cast<size_t>(n + 1));
+        std::iota(idx.begin(), idx.end(), 0u);
+        std::sort(idx.begin(), idx.end(),
+                  [&](size_t a, size_t b) { return fvals[a] < fvals[b]; });
+
+        if (fvals[idx.back()] - fvals[idx.front()] < tol) break;
+
+        auto cen = centroid(idx.back());
+        auto xr  = reflect(cen, simplex[idx.back()], alpha);
+        double fr = f(xr);
+
+        if (fr < fvals[idx[0]]) {
+            auto xe = reflect(cen, simplex[idx.back()], -gamma_exp);
+            double fe = f(xe);
+            if (fe < fr) { simplex[idx.back()] = xe; fvals[idx.back()] = fe; }
+            else          { simplex[idx.back()] = xr; fvals[idx.back()] = fr; }
+        } else if (fr < fvals[idx[static_cast<size_t>(n - 1)]]) {
+            simplex[idx.back()] = xr;
+            fvals[idx.back()]   = fr;
+        } else {
+            auto xc = reflect(cen, simplex[idx.back()], -rho);
+            double fc = f(xc);
+            if (fc < fvals[idx.back()]) {
+                simplex[idx.back()] = xc;
+                fvals[idx.back()]   = fc;
+            } else {
+                for (int i = 1; i <= n; ++i) {
+                    auto& s = simplex[static_cast<size_t>(i)];
+                    for (int j = 0; j < n; ++j) {
+                        s[static_cast<size_t>(j)] =
+                            simplex[idx[0]][static_cast<size_t>(j)] +
+                            sigma * (s[static_cast<size_t>(j)] -
+                                     simplex[idx[0]][static_cast<size_t>(j)]);
+                    }
+                    fvals[static_cast<size_t>(i)] = f(s);
+                }
+            }
+        }
+    }
+
+    // Find best
+    size_t best = 0;
+    for (size_t i = 1; i < static_cast<size_t>(n + 1); ++i) {
+        if (fvals[i] < fvals[best]) best = i;
+    }
+    return OptimResult{simplex[best], fvals[best],
+                       static_cast<size_t>(max_iter), true};
+}
+
+// ----------------------------------------------------------------
+// BFGS
+// ----------------------------------------------------------------
+OptimResult bfgs(FuncND f, std::vector<double> x0, double tol, int max_iter) {
+    const int n = static_cast<int>(x0.size());
+    constexpr double h = 1e-7;
+
+    const auto grad = [&](const std::vector<double>& x) {
+        std::vector<double> g(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            auto xp = x; auto xm = x;
+            xp[static_cast<size_t>(i)] += h;
+            xm[static_cast<size_t>(i)] -= h;
+            g[static_cast<size_t>(i)] = (f(xp) - f(xm)) / (2.0 * h);
+        }
+        return g;
+    };
+
+    // H = I (inverse Hessian approx)
+    std::vector<std::vector<double>> H(
+        static_cast<size_t>(n),
+        std::vector<double>(static_cast<size_t>(n), 0.0));
+    for (int i = 0; i < n; ++i) H[static_cast<size_t>(i)][static_cast<size_t>(i)] = 1.0;
+
+    auto x = x0;
+    auto g = grad(x);
+    bool converged = false;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        double gnorm = 0.0;
+        for (auto v : g) gnorm += v * v;
+        if (std::sqrt(gnorm) < tol) { converged = true; break; }
+
+        // direction p = -H*g
+        std::vector<double> p(static_cast<size_t>(n), 0.0);
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                p[static_cast<size_t>(i)] -=
+                    H[static_cast<size_t>(i)][static_cast<size_t>(j)] *
+                    g[static_cast<size_t>(j)];
+            }
+        }
+
+        // Line search (Armijo backtracking)
+        double step = 1.0;
+        double fx = f(x);
+        double ddf = 0.0;
+        for (int i = 0; i < n; ++i) ddf += g[static_cast<size_t>(i)] * p[static_cast<size_t>(i)];
+        for (int ls = 0; ls < 30; ++ls) {
+            auto xnew = x;
+            for (int i = 0; i < n; ++i)
+                xnew[static_cast<size_t>(i)] += step * p[static_cast<size_t>(i)];
+            if (f(xnew) <= fx + 1e-4 * step * ddf) break;
+            step *= 0.5;
+        }
+
+        std::vector<double> s(static_cast<size_t>(n)), y(static_cast<size_t>(n));
+        auto xnew = x;
+        for (int i = 0; i < n; ++i) {
+            xnew[static_cast<size_t>(i)] += step * p[static_cast<size_t>(i)];
+            s[static_cast<size_t>(i)]     = step * p[static_cast<size_t>(i)];
+        }
+        auto gnew = grad(xnew);
+        for (int i = 0; i < n; ++i)
+            y[static_cast<size_t>(i)] = gnew[static_cast<size_t>(i)] - g[static_cast<size_t>(i)];
+
+        double sy = 0.0;
+        for (int i = 0; i < n; ++i) sy += s[static_cast<size_t>(i)] * y[static_cast<size_t>(i)];
+
+        if (std::abs(sy) > 1e-14) {
+            double rho_val = 1.0 / sy;
+            // H = (I - rho*s*y^T)*H*(I - rho*y*s^T) + rho*s*s^T
+            // Simplified rank-2 update
+            std::vector<std::vector<double>> Hnew(
+                static_cast<size_t>(n),
+                std::vector<double>(static_cast<size_t>(n), 0.0));
+            for (int i = 0; i < n; ++i) {
+                for (int j = 0; j < n; ++j) {
+                    double Hy_i = 0.0, Hy_j = 0.0;
+                    for (int k = 0; k < n; ++k) {
+                        Hy_i += H[static_cast<size_t>(i)][static_cast<size_t>(k)] *
+                                y[static_cast<size_t>(k)];
+                        Hy_j += H[static_cast<size_t>(j)][static_cast<size_t>(k)] *
+                                y[static_cast<size_t>(k)];
+                    }
+                    double yHy = 0.0;
+                    for (int k = 0; k < n; ++k) {
+                        double Hyk = 0.0;
+                        for (int l = 0; l < n; ++l)
+                            Hyk += H[static_cast<size_t>(k)][static_cast<size_t>(l)] *
+                                   y[static_cast<size_t>(l)];
+                        yHy += y[static_cast<size_t>(k)] * Hyk;
+                    }
+                    Hnew[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                        H[static_cast<size_t>(i)][static_cast<size_t>(j)] +
+                        rho_val * (1.0 + rho_val * yHy) *
+                            s[static_cast<size_t>(i)] * s[static_cast<size_t>(j)] -
+                        rho_val * (s[static_cast<size_t>(i)] * Hy_j +
+                                   s[static_cast<size_t>(j)] * Hy_i);
+                }
+            }
+            H = Hnew;
+        }
+        x = xnew;
+        g = gnew;
+    }
+    return OptimResult{x, f(x), static_cast<size_t>(max_iter), converged};
+}
+
+// ----------------------------------------------------------------
+// L-BFGS (two-loop recursion)
+// ----------------------------------------------------------------
+OptimResult lbfgs(FuncND f, std::vector<double> x0,
+                  int m, double tol, int max_iter) {
+    const int n = static_cast<int>(x0.size());
+    constexpr double h = 1e-7;
+
+    const auto grad = [&](const std::vector<double>& x) {
+        std::vector<double> g(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            auto xp = x; auto xm = x;
+            xp[static_cast<size_t>(i)] += h;
+            xm[static_cast<size_t>(i)] -= h;
+            g[static_cast<size_t>(i)] = (f(xp) - f(xm)) / (2.0 * h);
+        }
+        return g;
+    };
+
+    auto x = x0;
+    auto g = grad(x);
+    std::vector<std::vector<double>> S, Y;
+    std::vector<double> rho_list;
+    bool converged = false;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        double gnorm = 0.0;
+        for (auto v : g) gnorm += v * v;
+        if (std::sqrt(gnorm) < tol) { converged = true; break; }
+
+        // Two-loop L-BFGS direction
+        std::vector<double> q = g;
+        const int k = static_cast<int>(S.size());
+        std::vector<double> alpha_buf(static_cast<size_t>(k));
+        for (int i = k - 1; i >= 0; --i) {
+            double si_q = 0.0;
+            for (int j = 0; j < n; ++j)
+                si_q += S[static_cast<size_t>(i)][static_cast<size_t>(j)] *
+                        q[static_cast<size_t>(j)];
+            alpha_buf[static_cast<size_t>(i)] = rho_list[static_cast<size_t>(i)] * si_q;
+            for (int j = 0; j < n; ++j)
+                q[static_cast<size_t>(j)] -=
+                    alpha_buf[static_cast<size_t>(i)] *
+                    Y[static_cast<size_t>(i)][static_cast<size_t>(j)];
+        }
+        double scale = 1.0;
+        if (k > 0) {
+            double yy = 0.0, sy = 0.0;
+            for (int j = 0; j < n; ++j) {
+                yy += Y.back()[static_cast<size_t>(j)] * Y.back()[static_cast<size_t>(j)];
+                sy += S.back()[static_cast<size_t>(j)] * Y.back()[static_cast<size_t>(j)];
+            }
+            if (std::abs(yy) > 1e-14) scale = sy / yy;
+        }
+        std::vector<double> r(static_cast<size_t>(n));
+        for (int j = 0; j < n; ++j) r[static_cast<size_t>(j)] = scale * q[static_cast<size_t>(j)];
+        for (int i = 0; i < k; ++i) {
+            double yi_r = 0.0;
+            for (int j = 0; j < n; ++j)
+                yi_r += Y[static_cast<size_t>(i)][static_cast<size_t>(j)] *
+                        r[static_cast<size_t>(j)];
+            double beta = rho_list[static_cast<size_t>(i)] * yi_r;
+            for (int j = 0; j < n; ++j)
+                r[static_cast<size_t>(j)] +=
+                    S[static_cast<size_t>(i)][static_cast<size_t>(j)] *
+                    (alpha_buf[static_cast<size_t>(i)] - beta);
+        }
+
+        // p = -r, line search
+        double step = 1.0;
+        double fx = f(x);
+        double ddf = 0.0;
+        for (int j = 0; j < n; ++j) ddf -= g[static_cast<size_t>(j)] * r[static_cast<size_t>(j)];
+        for (int ls = 0; ls < 30; ++ls) {
+            auto xnew = x;
+            for (int j = 0; j < n; ++j)
+                xnew[static_cast<size_t>(j)] -= step * r[static_cast<size_t>(j)];
+            if (f(xnew) <= fx + 1e-4 * step * ddf) break;
+            step *= 0.5;
+        }
+
+        std::vector<double> s(static_cast<size_t>(n)), y(static_cast<size_t>(n));
+        auto xnew = x;
+        for (int j = 0; j < n; ++j) {
+            xnew[static_cast<size_t>(j)] -= step * r[static_cast<size_t>(j)];
+            s[static_cast<size_t>(j)]     = xnew[static_cast<size_t>(j)] -
+                                             x[static_cast<size_t>(j)];
+        }
+        auto gnew = grad(xnew);
+        for (int j = 0; j < n; ++j)
+            y[static_cast<size_t>(j)] = gnew[static_cast<size_t>(j)] -
+                                         g[static_cast<size_t>(j)];
+        double sy = 0.0;
+        for (int j = 0; j < n; ++j) sy += s[static_cast<size_t>(j)] * y[static_cast<size_t>(j)];
+
+        if (std::abs(sy) > 1e-14) {
+            if (static_cast<int>(S.size()) >= m) {
+                S.erase(S.begin()); Y.erase(Y.begin());
+                rho_list.erase(rho_list.begin());
+            }
+            S.push_back(s); Y.push_back(y);
+            rho_list.push_back(1.0 / sy);
+        }
+        x = xnew;
+        g = gnew;
+    }
+    return OptimResult{x, f(x), static_cast<size_t>(max_iter), converged};
+}
+
+// ----------------------------------------------------------------
+// Adam
+// ----------------------------------------------------------------
+OptimResult adam(FuncND f, std::vector<double> x0,
+                 double alpha, double beta1, double beta2, int max_iter) {
+    const int n = static_cast<int>(x0.size());
+    constexpr double eps = 1e-8;
+    constexpr double h   = 1e-7;
+
+    const auto grad = [&](const std::vector<double>& x) {
+        std::vector<double> g(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            auto xp = x; auto xm = x;
+            xp[static_cast<size_t>(i)] += h;
+            xm[static_cast<size_t>(i)] -= h;
+            g[static_cast<size_t>(i)] = (f(xp) - f(xm)) / (2.0 * h);
+        }
+        return g;
+    };
+
+    auto x = x0;
+    std::vector<double> m(static_cast<size_t>(n), 0.0);
+    std::vector<double> v(static_cast<size_t>(n), 0.0);
+
+    for (int t = 1; t <= max_iter; ++t) {
+        auto g = grad(x);
+        double gnorm = 0.0;
+        for (auto gv : g) gnorm += gv * gv;
+        if (std::sqrt(gnorm) < 1e-8) break;
+
+        double b1t = std::pow(beta1, t);
+        double b2t = std::pow(beta2, t);
+        for (int i = 0; i < n; ++i) {
+            m[static_cast<size_t>(i)] = beta1 * m[static_cast<size_t>(i)] +
+                                         (1.0 - beta1) * g[static_cast<size_t>(i)];
+            v[static_cast<size_t>(i)] = beta2 * v[static_cast<size_t>(i)] +
+                                         (1.0 - beta2) * g[static_cast<size_t>(i)] *
+                                         g[static_cast<size_t>(i)];
+            double mhat = m[static_cast<size_t>(i)] / (1.0 - b1t);
+            double vhat = v[static_cast<size_t>(i)] / (1.0 - b2t);
+            x[static_cast<size_t>(i)] -= alpha * mhat /
+                                          (std::sqrt(vhat) + eps);
+        }
+    }
+    return OptimResult{x, f(x), static_cast<size_t>(max_iter), true};
+}
+
+// ----------------------------------------------------------------
+// Simulated Annealing
+// ----------------------------------------------------------------
+OptimResult simulated_annealing(FuncND f, std::vector<double> x0,
+                                double T0, double cooling,
+                                int max_iter, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> unif(0.0, 1.0);
+    std::normal_distribution<double> step_dist(0.0, 0.1);
+
+    const int n = static_cast<int>(x0.size());
+    auto x = x0;
+    auto x_best = x;
+    double fx = f(x);
+    double f_best = fx;
+    double T = T0;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        auto x_new = x;
+        for (int i = 0; i < n; ++i)
+            x_new[static_cast<size_t>(i)] += T * step_dist(rng);
+
+        double fx_new = f(x_new);
+        double dE = fx_new - fx;
+        if (dE < 0.0 || unif(rng) < std::exp(-dE / (T + 1e-14))) {
+            x  = x_new;
+            fx = fx_new;
+        }
+        if (fx < f_best) { f_best = fx; x_best = x; }
+        T *= cooling;
+    }
+    return OptimResult{x_best, f_best, static_cast<size_t>(max_iter), true};
+}
+
+// ----------------------------------------------------------------
+// Differential Evolution
+// ----------------------------------------------------------------
+OptimResult differential_evolution(FuncND f,
+                                   std::vector<std::pair<double,double>> bounds,
+                                   int pop, double F_scale, double CR,
+                                   int max_iter, unsigned seed) {
+    const int n = static_cast<int>(bounds.size());
+    std::mt19937 rng(seed);
+
+    // Initialize population
+    std::vector<std::vector<double>> population(
+        static_cast<size_t>(pop), std::vector<double>(static_cast<size_t>(n)));
+    for (auto& ind : population) {
+        for (int j = 0; j < n; ++j) {
+            std::uniform_real_distribution<double> d(
+                bounds[static_cast<size_t>(j)].first,
+                bounds[static_cast<size_t>(j)].second);
+            ind[static_cast<size_t>(j)] = d(rng);
+        }
+    }
+
+    std::vector<double> fitness(static_cast<size_t>(pop));
+    for (int i = 0; i < pop; ++i)
+        fitness[static_cast<size_t>(i)] = f(population[static_cast<size_t>(i)]);
+
+    std::uniform_int_distribution<int> pop_dist(0, pop - 1);
+    std::uniform_real_distribution<double> unif(0.0, 1.0);
+    std::uniform_int_distribution<int> dim_dist(0, n - 1);
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        for (int i = 0; i < pop; ++i) {
+            int a = i, b = i, c = i;
+            while (a == i) a = pop_dist(rng);
+            while (b == i || b == a) b = pop_dist(rng);
+            while (c == i || c == a || c == b) c = pop_dist(rng);
+
+            std::vector<double> mutant(static_cast<size_t>(n));
+            for (int j = 0; j < n; ++j) {
+                mutant[static_cast<size_t>(j)] =
+                    population[static_cast<size_t>(a)][static_cast<size_t>(j)] +
+                    F_scale * (population[static_cast<size_t>(b)][static_cast<size_t>(j)] -
+                               population[static_cast<size_t>(c)][static_cast<size_t>(j)]);
+                mutant[static_cast<size_t>(j)] = std::max(
+                    bounds[static_cast<size_t>(j)].first,
+                    std::min(bounds[static_cast<size_t>(j)].second,
+                             mutant[static_cast<size_t>(j)]));
+            }
+
+            int jrand = dim_dist(rng);
+            std::vector<double> trial = population[static_cast<size_t>(i)];
+            for (int j = 0; j < n; ++j) {
+                if (unif(rng) < CR || j == jrand)
+                    trial[static_cast<size_t>(j)] = mutant[static_cast<size_t>(j)];
+            }
+
+            double ft = f(trial);
+            if (ft <= fitness[static_cast<size_t>(i)]) {
+                population[static_cast<size_t>(i)] = trial;
+                fitness[static_cast<size_t>(i)]    = ft;
+            }
+        }
+    }
+
+    size_t best = 0;
+    for (size_t i = 1; i < static_cast<size_t>(pop); ++i) {
+        if (fitness[i] < fitness[best]) best = i;
+    }
+    return OptimResult{population[best], fitness[best],
+                       static_cast<size_t>(max_iter), true};
+}
+
+// ----------------------------------------------------------------
+// Particle Swarm Optimization
+// ----------------------------------------------------------------
+OptimResult particle_swarm(FuncND f,
+                           std::vector<std::pair<double,double>> bounds,
+                           int n_particles, int max_iter, unsigned seed) {
+    const int n = static_cast<int>(bounds.size());
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> unif(0.0, 1.0);
+
+    const double w = 0.7, c1 = 1.5, c2 = 1.5;
+
+    std::vector<std::vector<double>> pos(
+        static_cast<size_t>(n_particles),
+        std::vector<double>(static_cast<size_t>(n)));
+    std::vector<std::vector<double>> vel(
+        static_cast<size_t>(n_particles),
+        std::vector<double>(static_cast<size_t>(n), 0.0));
+    std::vector<std::vector<double>> pbest(
+        static_cast<size_t>(n_particles),
+        std::vector<double>(static_cast<size_t>(n)));
+    std::vector<double> pbest_f(static_cast<size_t>(n_particles));
+
+    for (int i = 0; i < n_particles; ++i) {
+        for (int j = 0; j < n; ++j) {
+            double lo = bounds[static_cast<size_t>(j)].first;
+            double hi = bounds[static_cast<size_t>(j)].second;
+            pos[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                lo + unif(rng) * (hi - lo);
+        }
+        pbest[static_cast<size_t>(i)] = pos[static_cast<size_t>(i)];
+        pbest_f[static_cast<size_t>(i)] =
+            f(pos[static_cast<size_t>(i)]);
+    }
+
+    size_t gbest_idx = 0;
+    for (size_t i = 1; i < static_cast<size_t>(n_particles); ++i) {
+        if (pbest_f[i] < pbest_f[gbest_idx]) gbest_idx = i;
+    }
+    auto gbest = pbest[gbest_idx];
+    double gbest_f = pbest_f[gbest_idx];
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        for (int i = 0; i < n_particles; ++i) {
+            for (int j = 0; j < n; ++j) {
+                double r1 = unif(rng), r2 = unif(rng);
+                vel[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                    w * vel[static_cast<size_t>(i)][static_cast<size_t>(j)] +
+                    c1 * r1 * (pbest[static_cast<size_t>(i)][static_cast<size_t>(j)] -
+                               pos[static_cast<size_t>(i)][static_cast<size_t>(j)]) +
+                    c2 * r2 * (gbest[static_cast<size_t>(j)] -
+                               pos[static_cast<size_t>(i)][static_cast<size_t>(j)]);
+                pos[static_cast<size_t>(i)][static_cast<size_t>(j)] +=
+                    vel[static_cast<size_t>(i)][static_cast<size_t>(j)];
+                pos[static_cast<size_t>(i)][static_cast<size_t>(j)] = std::max(
+                    bounds[static_cast<size_t>(j)].first,
+                    std::min(bounds[static_cast<size_t>(j)].second,
+                             pos[static_cast<size_t>(i)][static_cast<size_t>(j)]));
+            }
+            double fi = f(pos[static_cast<size_t>(i)]);
+            if (fi < pbest_f[static_cast<size_t>(i)]) {
+                pbest[static_cast<size_t>(i)] = pos[static_cast<size_t>(i)];
+                pbest_f[static_cast<size_t>(i)] = fi;
+                if (fi < gbest_f) { gbest_f = fi; gbest = pos[static_cast<size_t>(i)]; }
+            }
+        }
+    }
+    return OptimResult{gbest, gbest_f, static_cast<size_t>(max_iter), true};
+}
+
+// ----------------------------------------------------------------
+// Scalar root finders
+// ----------------------------------------------------------------
+double bisection(Func1D f, double a, double b, double tol, int max_iter) {
+    double fa = f(a);
+    for (int i = 0; i < max_iter; ++i) {
+        double mid = 0.5 * (a + b);
+        if ((b - a) < tol) break;
+        double fmid = f(mid);
+        if (fa * fmid <= 0.0) { b = mid; }
+        else { a = mid; fa = fmid; }
+    }
+    return 0.5 * (a + b);
+}
+
+double brentq(Func1D f, double a, double b, double tol, int max_iter) {
+    double fa = f(a), fb = f(b);
+    if (fa * fb > 0.0) return 0.5 * (a + b);
+    double c = a, fc = fa, d = b - a, e = d;
+    for (int i = 0; i < max_iter; ++i) {
+        if (std::abs(fb) < tol) break;
+        if ((fb > 0.0) == (fc > 0.0)) { c = a; fc = fa; d = e = b - a; }
+        if (std::abs(fc) < std::abs(fb)) {
+            a = b; fa = fb; b = c; fb = fc; c = a; fc = fa;
+        }
+        double tol1 = 2.0 * 2.2e-16 * std::abs(b) + 0.5 * tol;
+        double xm = 0.5 * (c - b);
+        if (std::abs(xm) <= tol1 || std::abs(fb) < 1e-15) break;
+        if (std::abs(e) >= tol1 && std::abs(fa) > std::abs(fb)) {
+            double s = fb / fa;
+            double p, q;
+            if (a == c) {
+                p = 2.0 * xm * s;
+                q = 1.0 - s;
+            } else {
+                q = fa / fc; double r = fb / fc;
+                p = s * (2.0 * xm * q * (q - r) - (b - a) * (r - 1.0));
+                q = (q - 1.0) * (r - 1.0) * (s - 1.0);
+            }
+            if (p > 0.0) q = -q; else p = -p;
+            if (2.0 * p < std::min(3.0 * xm * q - std::abs(tol1 * q),
+                                    std::abs(e * q))) {
+                e = d; d = p / q;
+            } else { d = xm; e = d; }
+        } else { d = xm; e = d; }
+        a = b; fa = fb;
+        b += (std::abs(d) > tol1) ? d : (xm > 0.0 ? tol1 : -tol1);
+        fb = f(b);
+    }
+    return b;
+}
+
+double secant(Func1D f, double x0, double x1, double tol, int max_iter) {
+    for (int i = 0; i < max_iter; ++i) {
+        double f0 = f(x0), f1 = f(x1);
+        if (std::abs(f1) < tol) break;
+        double denom = f1 - f0;
+        if (std::abs(denom) < 1e-14) break;
+        double x2 = x1 - f1 * (x1 - x0) / denom;
+        if (std::abs(x2 - x1) < tol) { x1 = x2; break; }
+        x0 = x1; x1 = x2;
+    }
+    return x1;
+}
+
+double halley(Func1D f, Func1D df, Func1D d2f, double x0,
+              double tol, int max_iter) {
+    double x = x0;
+    for (int i = 0; i < max_iter; ++i) {
+        double fx = f(x), dfx = df(x), d2fx = d2f(x);
+        double denom = 2.0 * dfx * dfx - fx * d2fx;
+        if (std::abs(denom) < 1e-14) break;
+        double step = 2.0 * fx * dfx / denom;
+        x -= step;
+        if (std::abs(step) < tol) break;
+    }
+    return x;
+}
+
+double fixed_point(Func1D g, double x0, double tol, int max_iter) {
+    double x = x0;
+    for (int i = 0; i < max_iter; ++i) {
+        double xnew = g(x);
+        if (std::abs(xnew - x) < tol) { x = xnew; break; }
+        x = xnew;
     }
     return x;
 }

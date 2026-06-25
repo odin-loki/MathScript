@@ -1,0 +1,1 @@
+bodePh = control_bode_phase([1], [1, 1], 1)

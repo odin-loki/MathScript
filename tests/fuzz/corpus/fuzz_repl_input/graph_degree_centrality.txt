@@ -1,0 +1,2 @@
+Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]
+dc = graph_degree_centrality(Achain)

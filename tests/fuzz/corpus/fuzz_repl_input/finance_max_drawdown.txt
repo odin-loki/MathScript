@@ -1,0 +1,1 @@
+finance_max_drawdown([100;110;105;120;90;95])

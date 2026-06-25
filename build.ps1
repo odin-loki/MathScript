@@ -35,25 +35,54 @@ if (-not $VsDevCmd) {
     throw "Visual Studio Build Tools not found. Install VS 2022/2026 with C++ workload."
 }
 
-# Resolve MSVC toolset root via vswhere so we can pin cl.exe / link.exe / lib paths.
-# VsDevCmd.bat from some VS2026 installs omits the MSVC lib path from LIB; we add it
-# explicitly to avoid LNK1104 on msvcrtd.lib during CMake compiler detection.
-$vsInstall = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
-    -latest -property installationPath 2>$null
-if ($vsInstall) {
-    $msvcRoot = Get-ChildItem "$vsInstall\VC\Tools\MSVC" -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+# Resolve MSVC toolset root — prefer the same install as VsDevCmd, then vswhere.
+$msvcRoot = ""
+if ($VsDevCmd -match 'Visual Studio\\([^\\]+)\\([^\\]+)\\Common7') {
+    $vsEdition = $Matches[2]
+    $vsBase = Split-Path (Split-Path (Split-Path $VsDevCmd -Parent) -Parent) -Parent
+    $msvcCandidates = Get-ChildItem "$vsBase\VC\Tools\MSVC" -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending
+    foreach ($c in $msvcCandidates) {
+        if (Test-Path (Join-Path $c.FullName "bin\Hostx64\x64\cl.exe")) {
+            $msvcRoot = $c.FullName
+            break
+        }
+    }
+}
+if (-not $msvcRoot) {
+    $vsInstall = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+        -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath 2>$null
+    if ($vsInstall) {
+        $msvcCandidates = Get-ChildItem "$vsInstall\VC\Tools\MSVC" -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending
+        foreach ($c in $msvcCandidates) {
+            if (Test-Path (Join-Path $c.FullName "bin\Hostx64\x64\cl.exe")) {
+                $msvcRoot = $c.FullName
+                break
+            }
+        }
+    }
 }
 if (-not $msvcRoot) { $msvcRoot = "" }  # fall back: rely on PATH
 
+$ClExe = if ($msvcRoot) { Join-Path $msvcRoot "bin\Hostx64\x64\cl.exe" } else { "cl" }
+$LinkExe = if ($msvcRoot) { Join-Path $msvcRoot "bin\Hostx64\x64\link.exe" } else { "link" }
+$LibExe = if ($msvcRoot) { Join-Path $msvcRoot "bin\Hostx64\x64\lib.exe" } else { "lib" }
+
 $CmakeConfigureArgs = "-S `"$Root`" -B `"$BuildDir`" -G Ninja -DCMAKE_BUILD_TYPE=Release " +
-    "-DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF"
+    "-DCMAKE_C_COMPILER=`"$ClExe`" -DCMAKE_CXX_COMPILER=`"$ClExe`" " +
+    "-DCMAKE_LINKER=`"$LinkExe`" -DCMAKE_AR=`"$LibExe`" " +
+    "-DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF"
 
 # Build the batch content that runs inside a single cmd session so VsDevCmd
 # environment variables (PATH, INCLUDE, LIB) are visible to cmake.
 function New-BuildBatch([string]$extraCmds) {
-    $libFix = if ($msvcRoot) { "set `"LIB=$msvcRoot\lib\x64;%LIB%`"" +
-                               "`r`nset `"INCLUDE=$msvcRoot\include;%INCLUDE%`"" } else { "rem msvcRoot not found" }
+    $libFix = if ($msvcRoot) {
+        "set `"PATH=$msvcRoot\bin\Hostx64\x64;%PATH%`"" +
+        "`r`nset `"LIB=$msvcRoot\lib\x64;%LIB%`"" +
+        "`r`nset `"INCLUDE=$msvcRoot\include;%INCLUDE%`""
+    } else { "rem msvcRoot not found" }
     return @"
 @echo off
 call "$VsDevCmd" -arch=amd64

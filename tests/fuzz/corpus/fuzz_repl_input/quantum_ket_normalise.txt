@@ -1,0 +1,1 @@
+quantum_ket_normalise([2;0])

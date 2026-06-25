@@ -80,7 +80,7 @@ TEST(SimdExtTest, odd_length_vectors_hit_avx2_tails) {
 }
 
 TEST(SimdExtTest, scalar_dispatch_via_env_override) {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("MS_SIMD_FORCE_SCALAR", "1");
 #else
     setenv("MS_SIMD_FORCE_SCALAR", "1", 1);
@@ -106,7 +106,7 @@ TEST(SimdExtTest, scalar_dispatch_via_env_override) {
     EXPECT_NEAR(gemv_y[0], 14.0, 1e-12);
     EXPECT_NEAR(gemv_y[1], 32.0, 1e-12);
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("MS_SIMD_FORCE_SCALAR", "0");
 #else
     unsetenv("MS_SIMD_FORCE_SCALAR");

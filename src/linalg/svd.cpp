@@ -32,7 +32,7 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
         Matrix<double> VT(static_cast<std::size_t>(k), n);
         std::vector<double> sigma(static_cast<std::size_t>(k));
 
-        if (cpu::lapack::dgesvd(im, in, work.data(), im, sigma.data(), U.data(), im, VT.data(), in) == 0) {
+        if (cpu::lapack::dgesvd(im, in, work.data(), im, sigma.data(), U.data(), im, VT.data(), k) == 0) {
             Matrix<double> sing_vals(r, 1, 0.0);
             Matrix<double> V(n, r);
             for (int j = 0; j < k; ++j) {

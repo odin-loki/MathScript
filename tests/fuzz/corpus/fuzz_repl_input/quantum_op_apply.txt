@@ -1,0 +1,1 @@
+psi_h = quantum_op_apply(quantum_hadamard_gate(), [1; 0])

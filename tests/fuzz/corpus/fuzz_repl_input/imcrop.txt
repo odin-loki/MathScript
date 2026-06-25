@@ -1,0 +1,2 @@
+M = ones(8, 8)
+crop = imcrop(M, 2, 2, 6, 6)

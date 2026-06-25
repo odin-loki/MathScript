@@ -1,0 +1,1 @@
+numthy_euler_phi(12)

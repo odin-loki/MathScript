@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ms/core/operations.hpp"
+#include <functional>
 #include <vector>
 
 namespace ms {
@@ -115,5 +116,86 @@ Result<Matrix<S, OA, Alloc>> gmres(
     size_t restart = 20,
     size_t max_iter = 1000,
     S tol = S(1e-10));
+
+// --- New construction helpers ---
+// (zeros, ones, eye are already declared in ms/core/operations.hpp)
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> kron(const Matrix<S, OA, Alloc>& A,
+                           const Matrix<S, OA, Alloc>& B);
+
+template<typename S>
+std::vector<S> linspace(S a, S b, size_t n);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> repmat(const Matrix<S, OA, Alloc>& A, size_t p, size_t q);
+
+// --- New basic operations ---
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> pinv(const Matrix<S, OA, Alloc>& A,
+                                   S tol = S(0));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> null(const Matrix<S, OA, Alloc>& A,
+                                   S tol = S(0));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> orth(const Matrix<S, OA, Alloc>& A,
+                                   S tol = S(0));
+
+// --- New matrix functions ---
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> sinm(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> cosm(const Matrix<S, OA, Alloc>& A);
+
+// funm: apply scalar function via Schur decomposition
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> funm(const Matrix<S, OA, Alloc>& A,
+                                   std::function<S(S)> func);
+
+// --- New iterative solvers ---
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> minres(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> qmr(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> lsqr(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> lsmr(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> tfqmr(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+// --- Preconditioners (return diagonal scaling vector) ---
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+std::vector<S> precond_diag(const Matrix<S, OA, Alloc>& A);
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> precond_ssor(const Matrix<S, OA, Alloc>& A, S omega = S(1.0));
 
 } // namespace ms

@@ -1,0 +1,2 @@
+bits = [1;0;1;0;1;0;1;1;1;1;0;0;1;0;1;1]
+bytes = compress_bits_to_bytes(bits)

@@ -90,6 +90,7 @@ private:
     SessionState state_;
     Result<Matrix<double>> parse_matrix(const std::string& text) const;
     Result<Matrix<double>> resolve_matrix(const std::string& name) const;
+    Result<Matrix<double>> eval_matrix_operand(const std::string& text);
     Result<std::string> set_plot(const Matrix<double>& xs, const Matrix<double>& ys,
                                  PlotSeries::Kind kind = PlotSeries::Kind::Line);
     Result<std::string> set_plot_bars(std::vector<double> x, std::vector<double> y);

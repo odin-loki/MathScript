@@ -1,0 +1,3 @@
+Dcol = [0, 1, 2; 1, 0, 1; 2, 1, 0]
+thr = [0.5; 1.5; 2.5]
+bc = topo_betti_curve(Dcol, thr, 1)

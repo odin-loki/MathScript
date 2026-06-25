@@ -1,0 +1,1 @@
+quantum_ket_basis(2, 0)

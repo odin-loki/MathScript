@@ -1,0 +1,1 @@
+M=[97;98;99;97;97;98];E=huffman_encode_vec(M);huffman_decode_vec(M,E)

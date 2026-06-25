@@ -1,0 +1,1 @@
+ucdf = prob_uniform_cdf(3, 0, 10)

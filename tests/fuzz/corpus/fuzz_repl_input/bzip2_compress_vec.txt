@@ -1,0 +1,1 @@
+bzip2_compress_vec([97;98;99])

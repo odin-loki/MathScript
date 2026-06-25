@@ -1,0 +1,1 @@
+info_channel_capacity_bsc(0)

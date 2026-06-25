@@ -1,0 +1,1 @@
+mi = geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])

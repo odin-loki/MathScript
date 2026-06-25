@@ -1,0 +1,1 @@
+pr = finance_portfolio_return([0.6; 0.4], [0.1; 0.05])

@@ -1,0 +1,1 @@
+fv4 = finance_compound(100, 0.1, 1, 4)

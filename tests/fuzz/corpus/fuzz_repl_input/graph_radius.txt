@@ -1,0 +1,2 @@
+Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]
+rad = graph_radius(Achain)

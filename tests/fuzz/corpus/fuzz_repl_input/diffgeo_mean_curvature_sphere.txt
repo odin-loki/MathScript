@@ -1,0 +1,1 @@
+Hm = diffgeo_mean_curvature_sphere(0.3, 0.7)

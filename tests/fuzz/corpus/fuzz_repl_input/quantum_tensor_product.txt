@@ -1,0 +1,1 @@
+tp = quantum_tensor_product(quantum_identity_n(2), quantum_pauli_x())

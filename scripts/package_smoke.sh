@@ -44,3 +44,14 @@ if [[ ! -f "${PREFIX_PATH}/include/ms/version.hpp" ]]; then
 fi
 
 echo "Install smoke OK: ${PREFIX_PATH}"
+
+pushd "${BUILD_PATH}" >/dev/null
+cpack -G TGZ
+shopt -s nullglob
+tgz=(mathscript-*.tar.gz)
+if (( ${#tgz[@]} == 0 )); then
+    echo "CPack TGZ artifact not found in ${BUILD_PATH}" >&2
+    exit 1
+fi
+echo "Package smoke OK: ${BUILD_PATH}/${tgz[0]}"
+popd >/dev/null

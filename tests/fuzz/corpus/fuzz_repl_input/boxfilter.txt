@@ -1,0 +1,1 @@
+boxfilter(ones(5,5),3)

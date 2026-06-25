@@ -1,0 +1,1 @@
+cp = prob_chi2_pdf(1, 3)

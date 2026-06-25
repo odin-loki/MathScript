@@ -40,8 +40,9 @@ TEST(QrWideTest, underdetermined_modified_gram_schmidt) {
 }
 
 TEST(IterativeExtTest, GmresTest_NonConvergent) {
-    DMatrix A{{1, 1e-8}, {1e-8, 1}};
-    DMatrix b{{1}, {1}};
+    // 3x3 tridiagonal: 1 GMRES step cannot reduce residual to 1e-15
+    DMatrix A{{10, 1, 0}, {1, 10, 1}, {0, 1, 10}};
+    DMatrix b{{1}, {2}, {3}};
     const auto x = gmres(A, b, 1, 1, 1e-15);
     EXPECT_FALSE(x.has_value());
 }

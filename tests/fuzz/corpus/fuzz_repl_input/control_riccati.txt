@@ -1,0 +1,2 @@
+Q = eye(2)
+Xr = control_riccati([-2, 1; 0, -3], [1; 1], Q, [1])

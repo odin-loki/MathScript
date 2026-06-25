@@ -1,0 +1,1 @@
+numthy_is_primitive_root(2, 11)

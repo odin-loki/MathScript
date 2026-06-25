@@ -1,0 +1,1 @@
+topo_vietoris_rips_betti0([0,1,1;1,0,1;1,1,0],1.1,2)

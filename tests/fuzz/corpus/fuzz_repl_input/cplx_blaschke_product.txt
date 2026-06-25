@@ -1,0 +1,2 @@
+zeros = [0.3, 0; 0, 0.4]
+bp = cplx_blaschke_product(0.623489802, 0.781831482, zeros)

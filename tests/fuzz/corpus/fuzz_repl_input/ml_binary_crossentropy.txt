@@ -1,0 +1,1 @@
+ml_binary_crossentropy([0.9; 0.1], [1; 0])

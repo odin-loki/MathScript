@@ -42,3 +42,18 @@ if (-not (Test-Path -LiteralPath $versionPath)) {
 }
 
 Write-Host "Install smoke OK: $PrefixPath"
+
+Push-Location $BuildPath
+try {
+    & cpack -G ZIP
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    $zip = Get-ChildItem -Path $BuildPath -Filter "mathscript-*.zip" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $zip) {
+        Write-Error "CPack ZIP artifact not found in $BuildPath"
+    }
+    Write-Host "Package smoke OK: $($zip.FullName)"
+} finally {
+    Pop-Location
+}

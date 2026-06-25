@@ -1,0 +1,1 @@
+combo_permutations(5, 2)

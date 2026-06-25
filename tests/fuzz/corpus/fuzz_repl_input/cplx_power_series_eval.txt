@@ -1,0 +1,1 @@
+cplx_power_series_eval([1;1;0.5;0.166667],0.5,0)

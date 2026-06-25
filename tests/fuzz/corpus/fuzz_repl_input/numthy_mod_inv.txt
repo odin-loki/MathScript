@@ -1,0 +1,1 @@
+numthy_mod_inv(3, 7)

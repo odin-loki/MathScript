@@ -1,0 +1,2 @@
+bytes = [171; 205]
+bits = compress_bytes_to_bits(bytes)
