@@ -1,0 +1,2 @@
+tensorops_decompose_tucker(tk1, [1, 2; 3, 4], [2, 2])
+tensorops_reconstruct_tucker(tk1)

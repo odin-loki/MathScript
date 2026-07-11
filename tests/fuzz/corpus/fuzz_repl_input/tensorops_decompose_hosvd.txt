@@ -1,0 +1,1 @@
+tensorops_decompose_hosvd(tk2, [1, 0; 0, 1], [2, 2])

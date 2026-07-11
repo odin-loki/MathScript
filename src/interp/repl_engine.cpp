@@ -6216,7 +6216,13 @@ const char* session_object_kind_name(const SessionObject& object) {
     if (std::holds_alternative<cypha::DifModel>(object)) {
         return "difmodel";
     }
-    return "cluster";
+    if (std::holds_alternative<izaac::consensus::Cluster>(object)) {
+        return "cluster";
+    }
+    if (std::holds_alternative<tensorops::CPDecomposition>(object)) {
+        return "cp";
+    }
+    return "tucker";
 }
 
 template <typename T>
@@ -6235,6 +6241,12 @@ const char* session_object_type_label() {
     }
     if constexpr (std::is_same_v<T, izaac::consensus::Cluster>) {
         return "Cluster";
+    }
+    if constexpr (std::is_same_v<T, tensorops::CPDecomposition>) {
+        return "CPDecomposition";
+    }
+    if constexpr (std::is_same_v<T, tensorops::TuckerDecomposition>) {
+        return "TuckerDecomposition";
     }
     return "session object";
 }
@@ -6270,6 +6282,25 @@ Result<void> require_session_object_type(
     return {};
 }
 
+Result<std::vector<int>> parse_bracket_int_vector_literal(const std::string& text, const char* fn) {
+    auto values = parse_bracket_vector_literal(text, fn);
+    if (!values) {
+        return std::unexpected(values.error());
+    }
+    if (values->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty integer vector literal"});
+    }
+    std::vector<int> out;
+    out.reserve(values->size());
+    for (double value : *values) {
+        if (value < 1.0 || std::floor(value) != value) {
+            return std::unexpected(DomainError{fn, "expected positive integer vector literal"});
+        }
+        out.push_back(static_cast<int>(value));
+    }
+    return out;
+}
+
 Result<void> parse_session_handle(const std::string& text, const char* fn, std::string& handle) {
     handle = trim_copy(text);
     if (!is_identifier(handle)) {
@@ -6302,6 +6333,9 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         fn != "difmodel_gh_gate" && fn != "cluster_new" &&
         fn != "cluster_run_election" && fn != "cluster_replicate" &&
         fn != "cluster_current_leader" && fn != "cluster_status" &&
+        fn != "tensorops_decompose_cp" && fn != "tensorops_decompose_tucker" &&
+        fn != "tensorops_decompose_hosvd" && fn != "tensorops_reconstruct_cp" &&
+        fn != "tensorops_reconstruct_tucker" &&
         fn != "session_objects" && fn != "session_object_clear") {
         return std::nullopt;
     }
@@ -6920,6 +6954,199 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
                 << " term=" << node.current_term << " log_size=" << node.log.size()
                 << " commit_index=" << node.commit_index << "\n";
         }
+        return out.str();
+    }
+
+    if (fn == "tensorops_decompose_cp") {
+        if (call_args->size() != 3 && call_args->size() != 5) {
+            return std::unexpected(DomainError{
+                fn,
+                "expected tensorops_decompose_cp(handle, T, rank) or "
+                "tensorops_decompose_cp(handle, T, rank, max_iter, tol)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        auto tensor_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!tensor_m) {
+            return std::unexpected(tensor_m.error());
+        }
+        auto tensor = matrix_to_tensor(*tensor_m, fn.c_str());
+        if (!tensor) {
+            return std::unexpected(tensor.error());
+        }
+        if (tensor->ndim() != 2) {
+            return std::unexpected(DomainError{fn, "expected 2D matrix/tensor"});
+        }
+        double rank_d = 0.0;
+        if (!parse_number(trim_copy(call_args->at(2)), rank_d) || rank_d < 1.0 ||
+            std::floor(rank_d) != rank_d) {
+            return std::unexpected(DomainError{fn, "expected positive integer rank"});
+        }
+        int max_iter = 200;
+        double tol = 1e-6;
+        if (call_args->size() == 5) {
+            double max_iter_d = 0.0;
+            if (!parse_number(trim_copy(call_args->at(3)), max_iter_d) ||
+                !parse_number(trim_copy(call_args->at(4)), tol) || max_iter_d < 1.0 ||
+                std::floor(max_iter_d) != max_iter_d || tol <= 0.0) {
+                return std::unexpected(
+                    DomainError{fn, "expected positive integer max_iter and positive tol"});
+            }
+            max_iter = static_cast<int>(max_iter_d);
+        }
+        const auto cp = tensorops::decompose_cp(
+            *tensor, static_cast<int>(rank_d), max_iter, tol);
+        session_objects_.emplace(handle, cp);
+        std::ostringstream out;
+        out << "created CPDecomposition '" << handle << "' residual=" << cp.residual << "\n";
+        return out.str();
+    }
+
+    if (fn == "tensorops_decompose_tucker") {
+        if (call_args->size() != 3 && call_args->size() != 5) {
+            return std::unexpected(DomainError{
+                fn,
+                "expected tensorops_decompose_tucker(handle, T, ranks) or "
+                "tensorops_decompose_tucker(handle, T, ranks, max_iter, tol)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        auto tensor_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!tensor_m) {
+            return std::unexpected(tensor_m.error());
+        }
+        auto tensor = matrix_to_tensor(*tensor_m, fn.c_str());
+        if (!tensor) {
+            return std::unexpected(tensor.error());
+        }
+        if (tensor->ndim() != 2) {
+            return std::unexpected(DomainError{fn, "expected 2D matrix/tensor"});
+        }
+        auto ranks = parse_bracket_int_vector_literal(trim_copy(call_args->at(2)), fn.c_str());
+        if (!ranks) {
+            return std::unexpected(ranks.error());
+        }
+        if (static_cast<int>(ranks->size()) != tensor->ndim()) {
+            return std::unexpected(
+                DomainError{fn, "expected ranks vector length to match tensor dimensionality"});
+        }
+        for (int mode = 0; mode < tensor->ndim(); ++mode) {
+            if ((*ranks)[static_cast<size_t>(mode)] > tensor->shape[mode]) {
+                return std::unexpected(
+                    DomainError{fn, "rank exceeds tensor mode dimension"});
+            }
+        }
+        int max_iter = 50;
+        double tol = 1e-6;
+        if (call_args->size() == 5) {
+            double max_iter_d = 0.0;
+            if (!parse_number(trim_copy(call_args->at(3)), max_iter_d) ||
+                !parse_number(trim_copy(call_args->at(4)), tol) || max_iter_d < 1.0 ||
+                std::floor(max_iter_d) != max_iter_d || tol <= 0.0) {
+                return std::unexpected(
+                    DomainError{fn, "expected positive integer max_iter and positive tol"});
+            }
+            max_iter = static_cast<int>(max_iter_d);
+        }
+        const auto tucker = tensorops::decompose_tucker(*tensor, *ranks, max_iter, tol);
+        session_objects_.emplace(handle, tucker);
+        return std::string{"created TuckerDecomposition '" + handle + "'\n"};
+    }
+
+    if (fn == "tensorops_decompose_hosvd") {
+        if (call_args->size() != 3) {
+            return std::unexpected(
+                DomainError{fn, "expected tensorops_decompose_hosvd(handle, T, ranks)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        auto tensor_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!tensor_m) {
+            return std::unexpected(tensor_m.error());
+        }
+        auto tensor = matrix_to_tensor(*tensor_m, fn.c_str());
+        if (!tensor) {
+            return std::unexpected(tensor.error());
+        }
+        if (tensor->ndim() != 2) {
+            return std::unexpected(DomainError{fn, "expected 2D matrix/tensor"});
+        }
+        auto ranks = parse_bracket_int_vector_literal(trim_copy(call_args->at(2)), fn.c_str());
+        if (!ranks) {
+            return std::unexpected(ranks.error());
+        }
+        if (static_cast<int>(ranks->size()) != tensor->ndim()) {
+            return std::unexpected(
+                DomainError{fn, "expected ranks vector length to match tensor dimensionality"});
+        }
+        for (int mode = 0; mode < tensor->ndim(); ++mode) {
+            if ((*ranks)[static_cast<size_t>(mode)] > tensor->shape[mode]) {
+                return std::unexpected(
+                    DomainError{fn, "rank exceeds tensor mode dimension"});
+            }
+        }
+        const auto tucker = tensorops::decompose_hosvd(*tensor, *ranks);
+        session_objects_.emplace(handle, tucker);
+        return std::string{"created TuckerDecomposition '" + handle + "'\n"};
+    }
+
+    if (fn == "tensorops_reconstruct_cp") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected tensorops_reconstruct_cp(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        tensorops::CPDecomposition* cp = nullptr;
+        auto cp_check = require_session_object_type<tensorops::CPDecomposition>(
+            session_objects_, handle, fn.c_str(), cp);
+        if (!cp_check) {
+            return std::unexpected(cp_check.error());
+        }
+        const tensorops::Tensor reconstructed = tensorops::reconstruct_cp(*cp);
+        std::ostringstream out;
+        print_matrix(out, tensor_to_matrix(reconstructed));
+        return out.str();
+    }
+
+    if (fn == "tensorops_reconstruct_tucker") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected tensorops_reconstruct_tucker(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        tensorops::TuckerDecomposition* tucker = nullptr;
+        auto tucker_check = require_session_object_type<tensorops::TuckerDecomposition>(
+            session_objects_, handle, fn.c_str(), tucker);
+        if (!tucker_check) {
+            return std::unexpected(tucker_check.error());
+        }
+        const tensorops::Tensor reconstructed = tensorops::reconstruct_tucker(*tucker);
+        std::ostringstream out;
+        print_matrix(out, tensor_to_matrix(reconstructed));
         return out.str();
     }
 
@@ -10711,6 +10938,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cluster_replicate(cl, 0, \"cmd\") replicate command via leader to quorum\n"
             "  cluster_current_leader(cl) current leader id (-1 if none)\n"
             "  cluster_status(cl) print per-node role, term, log size, commit index\n"
+            "  tensorops_decompose_cp(cp, T, rank) CP decomposition of 2D tensor (handle persists)\n"
+            "  tensorops_decompose_tucker(tk, T, [r1,r2]) Tucker decomposition of 2D tensor (handle persists)\n"
+            "  tensorops_decompose_hosvd(tk, T, [r1,r2]) HOSVD Tucker decomposition of 2D tensor (handle persists)\n"
+            "  tensorops_reconstruct_cp(cp) reconstruct matrix from session CPDecomposition handle\n"
+            "  tensorops_reconstruct_tucker(tk) reconstruct matrix from session TuckerDecomposition handle\n"
             "  session_objects() list session object handles and types\n"
             "  session_object_clear(handle) remove a session object (handles persist until cleared)\n"};
     }
@@ -10832,6 +11064,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  difmodel_new(h,in,out,experts,lr)  difmodel_update(h,X,Y)  difmodel_predict(h,X)  difmodel_predict_interval(h,X)\n"
             "  difmodel_ood_score(h,X)  difmodel_gh_gate(h,X)\n"
             "  cluster_new(h,n,seed)  cluster_run_election(h)  cluster_replicate(h,leader,\"cmd\")  cluster_current_leader(h)  cluster_status(h)\n"
+            "  tensorops_decompose_cp(h,T,rank)  tensorops_decompose_tucker(h,T,[r1,r2])  tensorops_decompose_hosvd(h,T,[r1,r2])\n"
+            "  tensorops_reconstruct_cp(h)  tensorops_reconstruct_tucker(h)\n"
             "  session_objects()  session_object_clear(h)\n"
             "  gria(M)  axiom evolve\n"};
     }
