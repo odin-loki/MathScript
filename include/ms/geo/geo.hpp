@@ -65,6 +65,21 @@ Polygon2D convex_hull_2d(std::vector<Point2D> points);
 Polygon2D upper_hull(std::vector<Point2D> points);
 Polygon2D lower_hull(std::vector<Point2D> points);
 
+struct Triangle3Di { int a, b, c; };  // indices into point array
+
+// Brute-force face enumeration (O(n^4)): for every triple of points, checks
+// whether all remaining points lie on one side of the plane through them.
+// Suited to the dozens-to-low-hundreds point counts this library targets,
+// not large point clouds. Faces with more than 3 coplanar hull vertices
+// (e.g. a cube's square faces) are fan-triangulated into their minimal
+// triangle count rather than emitted once per combinatorial triple. Returns
+// outward-facing triangles with consistent winding (normal via
+// cross(b-a, c-a) points away from the point cloud). Fewer than 4 points, or
+// a coplanar/collinear input, yields an empty result since no plane through
+// any triple then has every other point strictly on one side bounding a 3D
+// volume.
+std::vector<Triangle3Di> convex_hull_3d(const std::vector<Point3D>& points);
+
 // ========================== Delaunay / Voronoi ==========================
 
 struct Triangle2Di { int a, b, c; };  // indices into point array

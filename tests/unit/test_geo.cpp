@@ -1,6 +1,7 @@
 #define _USE_MATH_DEFINES
 #include "ms/geo/geo.hpp"
 #include <cmath>
+#include <set>
 #include <gtest/gtest.h>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -46,6 +47,151 @@ TEST(GeoHull, Collinear) {
     std::vector<Point2D> pts = {{0,0},{1,0},{2,0},{3,0}};
     auto hull = convex_hull_2d(pts);
     EXPECT_GE(hull.size(), 2u);
+}
+
+// ---- Convex Hull 3D ----
+
+TEST(GeoHull3D, Tetrahedron) {
+    std::vector<Point3D> pts = {{1,1,1},{1,-1,-1},{-1,1,-1},{-1,-1,1}};
+    auto hull = convex_hull_3d(pts);
+    EXPECT_EQ(hull.size(), 4u);
+
+    int count[4] = {0,0,0,0};
+    for (auto& f : hull) { count[f.a]++; count[f.b]++; count[f.c]++; }
+    for (int i = 0; i < 4; ++i) EXPECT_EQ(count[i], 3);
+}
+
+TEST(GeoHull3D, Cube) {
+    std::vector<Point3D> pts;
+    for (double x : {0.0, 1.0})
+        for (double y : {0.0, 1.0})
+            for (double z : {0.0, 1.0})
+                pts.push_back({x, y, z});
+    auto hull = convex_hull_3d(pts);
+    EXPECT_EQ(hull.size(), 12u);
+}
+
+TEST(GeoHull3D, Octahedron) {
+    std::vector<Point3D> pts = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+    auto hull = convex_hull_3d(pts);
+    EXPECT_EQ(hull.size(), 8u);
+}
+
+TEST(GeoHull3D, InteriorPointExcluded) {
+    std::vector<Point3D> pts = {{1,1,1},{1,-1,-1},{-1,1,-1},{-1,-1,1},{0,0,0}};
+    // Index 4 (the tetrahedron's centroid) sits strictly inside the hull.
+    auto hull = convex_hull_3d(pts);
+    for (auto& f : hull) {
+        EXPECT_NE(f.a, 4);
+        EXPECT_NE(f.b, 4);
+        EXPECT_NE(f.c, 4);
+    }
+    EXPECT_EQ(hull.size(), 4u);  // hull is unaffected by the interior point
+}
+
+TEST(GeoHull3D, OutwardFacingAndOneSided) {
+    std::vector<Point3D> pts;
+    for (double x : {0.0, 1.0})
+        for (double y : {0.0, 1.0})
+            for (double z : {0.0, 1.0})
+                pts.push_back({x, y, z});
+    auto hull = convex_hull_3d(pts);
+    ASSERT_EQ(hull.size(), 12u);
+
+    Point3D centroid{0.5, 0.5, 0.5};
+    for (auto& f : hull) {
+        Vec3D nrm = cross(vec3(pts[f.a], pts[f.b]), vec3(pts[f.a], pts[f.c]));
+        double nlen = length(nrm);
+        ASSERT_GT(nlen, 1e-12);
+        double eps = 1e-9 * nlen;
+
+        // Outward-pointing check: the face should point away from the cloud's centroid.
+        Point3D face_centroid{(pts[f.a].x+pts[f.b].x+pts[f.c].x)/3.0,
+                               (pts[f.a].y+pts[f.b].y+pts[f.c].y)/3.0,
+                               (pts[f.a].z+pts[f.b].z+pts[f.c].z)/3.0};
+        Vec3D to_face = vec3(centroid, face_centroid);
+        EXPECT_GT(dot(nrm, to_face), 0.0);
+
+        // Re-derive the "all other points on one side" property on the output.
+        for (size_t p = 0; p < pts.size(); ++p) {
+            double d = dot(nrm, vec3(pts[f.a], pts[p]));
+            EXPECT_LE(d, eps);
+        }
+    }
+}
+
+TEST(GeoHull3D, FewerThanFourPointsIsEmpty) {
+    EXPECT_TRUE(convex_hull_3d({}).empty());
+    EXPECT_TRUE(convex_hull_3d({{0,0,0}}).empty());
+    EXPECT_TRUE(convex_hull_3d({{0,0,0},{1,0,0}}).empty());
+    EXPECT_TRUE(convex_hull_3d({{0,0,0},{1,0,0},{0,1,0}}).empty());
+}
+
+TEST(GeoHull3D, CoplanarSquareIsEmpty) {
+    std::vector<Point3D> pts = {{0,0,0},{1,0,0},{1,1,0},{0,1,0}};
+    auto hull = convex_hull_3d(pts);
+    EXPECT_TRUE(hull.empty());
+}
+
+TEST(GeoHull3D, CoplanarManyPointsIsEmpty) {
+    std::vector<Point3D> pts = {{0,0,0},{1,0,0},{2,0,0},{2,2,0},{1,1,0},{0,2,0},{0.5,0.5,0}};
+    auto hull = convex_hull_3d(pts);
+    EXPECT_TRUE(hull.empty());
+}
+
+TEST(GeoHull3D, DuplicatePointsNoCrash) {
+    std::vector<Point3D> pts = {{1,1,1},{1,-1,-1},{-1,1,-1},{-1,-1,1},{1,1,1}};  // last duplicates first
+    std::vector<Triangle3Di> hull;
+    ASSERT_NO_THROW(hull = convex_hull_3d(pts));
+    EXPECT_LE(hull.size(), 10u);  // sanity bound: at most C(5,3) candidate triples
+}
+
+TEST(GeoHull3D, EulerCharacteristic) {
+    // 12 hand-chosen points: the vertices of a regular icosahedron (golden
+    // ratio construction). Every face is a genuine 3-point triangle (no
+    // coincidental >3-point coplanarity), so this exercises the "regular"
+    // face path with a known, non-trivial (V=12, E=30, F=20) structure.
+    const double phi = 1.6180339887498949;
+    std::vector<Point3D> pts = {
+        { 1, phi, 0}, {-1, phi, 0}, { 1,-phi, 0}, {-1,-phi, 0},
+        { 0, 1, phi}, { 0,-1, phi}, { 0, 1,-phi}, { 0,-1,-phi},
+        { phi, 0, 1}, {-phi, 0, 1}, { phi, 0,-1}, {-phi, 0,-1},
+    };
+    auto hull = convex_hull_3d(pts);
+    EXPECT_EQ(hull.size(), 20u);
+
+    std::set<int> vertices;
+    for (auto& f : hull) { vertices.insert(f.a); vertices.insert(f.b); vertices.insert(f.c); }
+    int V = static_cast<int>(vertices.size());
+    int F = static_cast<int>(hull.size());
+    ASSERT_EQ(F % 2, 0);
+    int E = 3 * F / 2;
+    EXPECT_EQ(V - E + F, 2);
+}
+
+TEST(GeoHull3D, EulerCharacteristicTetrahedron) {
+    std::vector<Point3D> pts = {{1,1,1},{1,-1,-1},{-1,1,-1},{-1,-1,1}};
+    auto hull = convex_hull_3d(pts);
+    std::set<int> vertices;
+    for (auto& f : hull) { vertices.insert(f.a); vertices.insert(f.b); vertices.insert(f.c); }
+    int V = static_cast<int>(vertices.size());
+    int F = static_cast<int>(hull.size());
+    int E = 3 * F / 2;
+    EXPECT_EQ(V - E + F, 2);
+}
+
+TEST(GeoHull3D, AllFacesHaveDistinctIndices) {
+    std::vector<Point3D> pts;
+    for (double x : {0.0, 1.0})
+        for (double y : {0.0, 1.0})
+            for (double z : {0.0, 1.0})
+                pts.push_back({x, y, z});
+    auto hull = convex_hull_3d(pts);
+    for (auto& f : hull) {
+        EXPECT_NE(f.a, f.b);
+        EXPECT_NE(f.b, f.c);
+        EXPECT_NE(f.a, f.c);
+    }
 }
 
 // ---- Delaunay ----
