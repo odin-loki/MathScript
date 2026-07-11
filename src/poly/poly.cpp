@@ -1,4 +1,5 @@
 #include "ms/poly/poly.hpp"
+#include "ms/core/operations.hpp"
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -73,15 +74,22 @@ std::vector<double> poly_div_quot(const std::vector<double>& a,
                                    const std::vector<double>& b) {
     auto A = strip(a), B = strip(b);
     if (A.size() < B.size()) return {0.0};
-    size_t n = A.size() - B.size() + 1;
+    const size_t n = A.size() - B.size() + 1;
     std::vector<double> q(n, 0.0);
     auto rem = A;
-    for (size_t i = rem.size(); i-- > B.size() - 1;) {
-        size_t pos = i - (B.size() - 1);
-        double coef = rem[i] / B.back();
+    while (rem.size() >= B.size()) {
+        const size_t i = rem.size() - 1;
+        if (std::abs(rem[i]) < 1e-14) {
+            rem.pop_back();
+            continue;
+        }
+        const size_t pos = i - (B.size() - 1);
+        const double coef = rem[i] / B.back();
         q[pos] = coef;
-        for (size_t j = 0; j < B.size(); ++j)
+        for (size_t j = 0; j < B.size(); ++j) {
             rem[i - (B.size() - 1 - j)] -= coef * B[j];
+        }
+        rem = strip(rem);
     }
     return strip(q);
 }
@@ -91,13 +99,19 @@ std::vector<double> poly_mod(const std::vector<double>& a,
     auto A = strip(a), B = strip(b);
     if (A.size() < B.size()) return A;
     auto rem = A;
-    for (size_t i = rem.size(); i-- > B.size() - 1;) {
-        double coef = rem[i] / B.back();
-        for (size_t j = 0; j < B.size(); ++j)
+    while (rem.size() >= B.size()) {
+        const size_t i = rem.size() - 1;
+        if (std::abs(rem[i]) < 1e-14) {
+            rem.pop_back();
+            continue;
+        }
+        const double coef = rem[i] / B.back();
+        for (size_t j = 0; j < B.size(); ++j) {
             rem[i - (B.size() - 1 - j)] -= coef * B[j];
+        }
+        rem = strip(rem);
     }
-    rem.resize(B.size() - 1);
-    return strip(rem);
+    return rem;
 }
 
 std::vector<double> poly_integ(const std::vector<double>& coeffs, double c) {
@@ -123,13 +137,24 @@ std::vector<double> poly_compose(const std::vector<double>& p,
 std::vector<double> poly_gcd(const std::vector<double>& a,
                                const std::vector<double>& b) {
     auto A = strip(a), B = strip(b);
-    while (B.size() > 1 || std::abs(B[0]) > 1e-14) {
+    while (B.size() > 1) {
         auto R = poly_mod(A, B);
         R = strip(R);
+        if (R.empty() || (R.size() == 1 && std::abs(R[0]) < 1e-10)) {
+            A = B;
+            break;
+        }
+        if (R.size() == 1) {
+            A = {1.0};
+            break;
+        }
         A = B;
         B = R;
-        if (B.empty()) B = {0.0};
-        if (B.size() == 1 && std::abs(B[0]) < 1e-14) break;
+    }
+    if (B.size() == 1 && std::abs(B[0]) < 1e-10) {
+        // B is zero; A already holds the gcd candidate
+    } else if (B.size() == 1 && A.size() <= 1) {
+        A = {1.0};
     }
     // Normalize
     if (!A.empty() && std::abs(A.back()) > 1e-14) {
@@ -137,6 +162,197 @@ std::vector<double> poly_gcd(const std::vector<double>& a,
         for (auto& v : A) v /= lc;
     }
     return strip(A);
+}
+
+static double binom_double(int n, int k) {
+    if (k < 0 || k > n) return 0.0;
+    if (k > n - k) k = n - k;
+    double r = 1.0;
+    for (int i = 1; i <= k; ++i) {
+        r *= static_cast<double>(n - k + i) / static_cast<double>(i);
+    }
+    return r;
+}
+
+std::vector<double> poly_pow(const std::vector<double>& p, int n) {
+    if (n < 0) {
+        throw std::invalid_argument("poly_pow: negative exponent unsupported");
+    }
+    if (n == 0) {
+        return {1.0};
+    }
+    auto base = strip(p);
+    if (base.empty()) {
+        return {0.0};
+    }
+    std::vector<double> result = {1.0};
+    std::vector<double> cur = base;
+    int exp = n;
+    while (exp > 0) {
+        if (exp & 1) {
+            result = poly_mul(result, cur);
+        }
+        exp >>= 1;
+        if (exp > 0) {
+            cur = poly_mul(cur, cur);
+        }
+    }
+    return strip(result);
+}
+
+std::vector<double> poly_monic(const std::vector<double>& p) {
+    auto P = strip(p);
+    if (P.empty()) {
+        return {0.0};
+    }
+    const double lc = P.back();
+    if (std::abs(lc) < 1e-14) {
+        return P;
+    }
+    for (auto& v : P) {
+        v /= lc;
+    }
+    return strip(P);
+}
+
+std::vector<double> poly_reverse(const std::vector<double>& p) {
+    auto P = strip(p);
+    if (P.empty()) {
+        return {0.0};
+    }
+    std::reverse(P.begin(), P.end());
+    return strip(P);
+}
+
+std::vector<double> poly_shift(const std::vector<double>& p, double a) {
+    auto P = strip(p);
+    if (P.empty()) {
+        return {0.0};
+    }
+    const size_t deg = P.size() - 1;
+    std::vector<double> out(deg + 1, 0.0);
+    for (size_t j = 0; j <= deg; ++j) {
+        const double cj = P[j];
+        for (size_t k = 0; k <= j; ++k) {
+            const double sign = ((j - k) % 2 == 0) ? 1.0 : -1.0;
+            out[k] += cj * binom_double(static_cast<int>(j), static_cast<int>(k)) *
+                      sign * std::pow(a, static_cast<double>(j - k));
+        }
+    }
+    return strip(out);
+}
+
+std::vector<double> poly_scale(const std::vector<double>& p, double a) {
+    auto P = strip(p);
+    if (P.empty()) {
+        return {0.0};
+    }
+    double scale = 1.0;
+    for (size_t i = 0; i < P.size(); ++i) {
+        P[i] *= scale;
+        scale *= a;
+    }
+    return strip(P);
+}
+
+std::vector<double> poly_lcm(const std::vector<double>& a,
+                               const std::vector<double>& b) {
+    auto A = strip(a), B = strip(b);
+    if (A.empty() || (A.size() == 1 && std::abs(A[0]) < 1e-14)) {
+        return {0.0};
+    }
+    if (B.empty() || (B.size() == 1 && std::abs(B[0]) < 1e-14)) {
+        return {0.0};
+    }
+    const auto g = poly_gcd(A, B);
+    const auto prod = poly_mul(A, B);
+    const auto quot = poly_div_quot(prod, g);
+    return poly_monic(quot);
+}
+
+ColMatrix<double> poly_sylvester(const std::vector<double>& p,
+                                  const std::vector<double>& q) {
+    auto P = strip(p);
+    auto Q = strip(q);
+    if (P.empty() || (P.size() == 1 && std::abs(P[0]) < 1e-14)) {
+        P = {0.0};
+    }
+    if (Q.empty() || (Q.size() == 1 && std::abs(Q[0]) < 1e-14)) {
+        Q = {0.0};
+    }
+    const size_t m = (P.size() > 1 || std::abs(P[0]) > 1e-14) ? P.size() - 1 : 0;
+    const size_t n = (Q.size() > 1 || std::abs(Q[0]) > 1e-14) ? Q.size() - 1 : 0;
+    const size_t sz = m + n;
+    if (sz == 0) {
+        return ColMatrix<double>(1, 1, 0.0);
+    }
+    ColMatrix<double> S(sz, sz, 0.0);
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t k = 0; k <= m; ++k) {
+            const size_t col = i + k;
+            if (col < sz) {
+                S(i, col) = P[m - k];
+            }
+        }
+    }
+    for (size_t j = 0; j < m; ++j) {
+        const size_t row = n + j;
+        for (size_t k = 0; k <= n; ++k) {
+            const size_t col = j + k;
+            if (col < sz) {
+                S(row, col) = Q[n - k];
+            }
+        }
+    }
+    return S;
+}
+
+double poly_resultant(const std::vector<double>& p,
+                       const std::vector<double>& q) {
+    const auto S = poly_sylvester(p, q);
+    const auto d = det(S);
+    if (!d) {
+        // Singular Sylvester matrix <=> common root <=> resultant is zero
+        return 0.0;
+    }
+    return *d;
+}
+
+double poly_discriminant(const std::vector<double>& p) {
+    auto P = strip(p);
+    if (P.size() <= 1) {
+        return 0.0;
+    }
+    const int deg = static_cast<int>(P.size()) - 1;
+    const double an = P.back();
+    if (std::abs(an) < 1e-14) {
+        return 0.0;
+    }
+    const auto dp = poly_deriv(P);
+    const double res = poly_resultant(P, dp);
+    const double sign = ((deg * (deg - 1) / 2) % 2 == 0) ? 1.0 : -1.0;
+    return sign * res / an;
+}
+
+std::vector<double> poly_squarefree(const std::vector<double>& p) {
+    auto P = strip(p);
+    if (P.size() <= 1) {
+        return P.empty() ? std::vector<double>{0.0} : P;
+    }
+    const auto dp = poly_deriv(P);
+    const auto g = poly_gcd(P, dp);
+    if (g.size() == 1 && std::abs(g[0] - 1.0) < 1e-10) {
+        return poly_monic(P);
+    }
+    const auto quot = poly_div_quot(P, g);
+    return poly_monic(quot);
+}
+
+double bernstein(int n, int i, double x) {
+    if (n < 0 || i < 0 || i > n) {
+        return 0.0;
+    }
+    return binom_double(n, i) * std::pow(x, i) * std::pow(1.0 - x, n - i);
 }
 
 std::vector<std::complex<double>> poly_roots(const std::vector<double>& coeffs) {
