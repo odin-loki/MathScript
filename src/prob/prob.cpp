@@ -1,4 +1,5 @@
 #include "ms/prob/prob.hpp"
+#include "ms/special/special.hpp"
 #include <cmath>
 #include <limits>
 
@@ -25,6 +26,67 @@ double regularized_lower_incomplete_gamma(double a, double x) {
         }
     }
     return std::exp(-x + a * std::log(x) - std::lgamma(a)) * sum;
+}
+
+double beta_continued_fraction(double a, double b, double x) {
+    const double fpmin = 1e-300;
+    const double qab = a + b;
+    const double qap = a + 1.0;
+    const double qam = a - 1.0;
+    double c = 1.0;
+    double d = 1.0 - qab * x / qap;
+    if (std::abs(d) < fpmin) {
+        d = fpmin;
+    }
+    d = 1.0 / d;
+    double h = d;
+    for (int m = 1; m <= 200; ++m) {
+        const double m2 = 2.0 * static_cast<double>(m);
+        double aa = static_cast<double>(m) * (b - static_cast<double>(m)) * x /
+                    ((qam + m2) * (a + m2));
+        d = 1.0 + aa * d;
+        if (std::abs(d) < fpmin) {
+            d = fpmin;
+        }
+        c = 1.0 + aa / c;
+        if (std::abs(c) < fpmin) {
+            c = fpmin;
+        }
+        d = 1.0 / d;
+        h *= d * c;
+        aa = -(a + static_cast<double>(m)) * (qab + static_cast<double>(m)) * x /
+             ((a + m2) * (qap + m2));
+        d = 1.0 + aa * d;
+        if (std::abs(d) < fpmin) {
+            d = fpmin;
+        }
+        c = 1.0 + aa / c;
+        if (std::abs(c) < fpmin) {
+            c = fpmin;
+        }
+        d = 1.0 / d;
+        const double del = d * c;
+        h *= del;
+        if (std::abs(del - 1.0) < 1e-14) {
+            break;
+        }
+    }
+    return h;
+}
+
+double regularized_incomplete_beta(double a, double b, double x) {
+    if (x <= 0.0) {
+        return 0.0;
+    }
+    if (x >= 1.0) {
+        return 1.0;
+    }
+    const double bt = std::exp(std::lgamma(a + b) - std::lgamma(a) - std::lgamma(b) +
+                               a * std::log(x) + b * std::log(1.0 - x));
+    if (x < (a + 1.0) / (a + b + 2.0)) {
+        return bt * beta_continued_fraction(a, b, x) / a;
+    }
+    return 1.0 - bt * beta_continued_fraction(b, a, 1.0 - x) / b;
 }
 
 } // namespace
@@ -201,6 +263,51 @@ double gamma_pdf(double x, double shape, double scale) {
     }
     const double z = x / scale;
     return std::pow(z, shape - 1.0) * std::exp(-z) / (scale * std::tgamma(shape));
+}
+
+double gamma_cdf(double x, double shape, double scale) {
+    if (x <= 0.0 || shape <= 0.0 || scale <= 0.0) {
+        return 0.0;
+    }
+    return regularized_lower_incomplete_gamma(shape, x / scale);
+}
+
+double beta_pdf(double x, double alpha, double beta) {
+    if (x < 0.0 || x > 1.0 || alpha <= 0.0 || beta <= 0.0) {
+        return 0.0;
+    }
+    return std::pow(x, alpha - 1.0) * std::pow(1.0 - x, beta - 1.0) / beta_func(alpha, beta);
+}
+
+double beta_cdf(double x, double alpha, double beta) {
+    if (x <= 0.0 || alpha <= 0.0 || beta <= 0.0) {
+        return 0.0;
+    }
+    if (x >= 1.0) {
+        return 1.0;
+    }
+    return regularized_incomplete_beta(alpha, beta, x);
+}
+
+double f_pdf(double x, double d1, double d2) {
+    if (x <= 0.0 || d1 <= 0.0 || d2 <= 0.0) {
+        return 0.0;
+    }
+    const double a = d1 / 2.0;
+    const double b = d2 / 2.0;
+    const double z = d1 * x / d2;
+    const double log_num = a * std::log(d1 / d2) + (a - 1.0) * std::log(x);
+    const double log_den = std::lgamma(a) + std::lgamma(b) - std::lgamma(a + b) +
+                           (a + b) * std::log(1.0 + z);
+    return std::exp(log_num - log_den);
+}
+
+double f_cdf(double x, double d1, double d2) {
+    if (x <= 0.0 || d1 <= 0.0 || d2 <= 0.0) {
+        return 0.0;
+    }
+    const double z = d1 * x / (d1 * x + d2);
+    return regularized_incomplete_beta(d1 / 2.0, d2 / 2.0, z);
 }
 
 } // namespace ms

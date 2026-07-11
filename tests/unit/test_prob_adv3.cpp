@@ -152,6 +152,137 @@ TEST(ProbAdv3, Gamma_PDF_Mode_AtShapeMinus1) {
     EXPECT_GT(p2, p3) << "gamma_pdf(2,3,1) should be > gamma_pdf(3,3,1)";
 }
 
+TEST(ProbAdv3, Gamma_CDF_Exp_CrossCheck) {
+    // Gamma(1, 1) = Exp(1): gamma_cdf(x, 1, 1) = 1 - exp(-x)
+    for (double x : {0.5, 1.0, 2.0, 5.0}) {
+        double g = gamma_cdf(x, 1.0, 1.0);
+        double e = 1.0 - std::exp(-x);
+        EXPECT_NEAR(g, e, 1e-6) << "Gamma(1,1) CDF should equal Exp(1) at x=" << x;
+    }
+}
+
+TEST(ProbAdv3, Gamma_CDF_Monotone) {
+    for (double shape : {1.0, 2.0, 5.0}) {
+        double prev = gamma_cdf(0.0, shape, 1.0);
+        for (double x : {0.5, 1.0, 2.0, 5.0, 10.0}) {
+            double curr = gamma_cdf(x, shape, 1.0);
+            EXPECT_GE(curr, prev - 1e-10) << "gamma_cdf not monotone at x=" << x;
+            prev = curr;
+        }
+    }
+}
+
+TEST(ProbAdv3, Gamma_CDF_BoundaryAtZero) {
+    EXPECT_NEAR(gamma_cdf(0.0, 2.0, 1.0), 0.0, 1e-10);
+    EXPECT_NEAR(gamma_cdf(-1.0, 2.0, 1.0), 0.0, 1e-10);
+}
+
+TEST(ProbAdv3, Gamma_CDF_LargeX_NearOne) {
+    EXPECT_GT(gamma_cdf(50.0, 2.0, 1.0), 0.999);
+    EXPECT_GT(gamma_cdf(100.0, 5.0, 2.0), 0.999);
+}
+
+TEST(ProbAdv3, Gamma_CDF_InvalidParams) {
+    EXPECT_DOUBLE_EQ(gamma_cdf(1.0, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_cdf(1.0, 2.0, 0.0), 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Beta distribution
+// ---------------------------------------------------------------------------
+
+TEST(ProbAdv3, Beta_PDF_Uniform_CrossCheck) {
+    // Beta(1, 1) = Uniform(0, 1): beta_pdf(x, 1, 1) = 1 for x in [0, 1]
+    for (double x : {0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0}) {
+        EXPECT_NEAR(beta_pdf(x, 1.0, 1.0), 1.0, 1e-10)
+            << "Beta(1,1) PDF should equal 1 at x=" << x;
+    }
+}
+
+TEST(ProbAdv3, Beta_CDF_Uniform_CrossCheck) {
+    // Beta(1, 1) = Uniform(0, 1): beta_cdf(x, 1, 1) = x
+    for (double x : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+        EXPECT_NEAR(beta_cdf(x, 1.0, 1.0), x, 1e-10)
+            << "Beta(1,1) CDF should equal x at x=" << x;
+    }
+}
+
+TEST(ProbAdv3, Beta_CDF_Boundaries) {
+    EXPECT_NEAR(beta_cdf(0.0, 2.0, 3.0), 0.0, 1e-10);
+    EXPECT_NEAR(beta_cdf(1.0, 2.0, 3.0), 1.0, 1e-10);
+}
+
+TEST(ProbAdv3, Beta_PDF_IntegratesToOne) {
+    auto integrate_beta = [](double alpha, double beta, int steps) {
+        const double dx = 1.0 / static_cast<double>(steps);
+        double sum = 0.0;
+        for (int i = 0; i < steps; ++i) {
+            const double x = (static_cast<double>(i) + 0.5) * dx;
+            sum += beta_pdf(x, alpha, beta);
+        }
+        return sum * dx;
+    };
+    EXPECT_NEAR(integrate_beta(2.0, 3.0, 2000), 1.0, 1e-3);
+    EXPECT_NEAR(integrate_beta(0.5, 0.5, 4000), 1.0, 1e-2);
+}
+
+TEST(ProbAdv3, Beta_PDF_OutsideSupport) {
+    EXPECT_NEAR(beta_pdf(-0.1, 2.0, 2.0), 0.0, 1e-10);
+    EXPECT_NEAR(beta_pdf(1.1, 2.0, 2.0), 0.0, 1e-10);
+}
+
+// ---------------------------------------------------------------------------
+// F distribution
+// ---------------------------------------------------------------------------
+
+TEST(ProbAdv3, F_CDF_BoundaryAtZero) {
+    EXPECT_NEAR(f_cdf(0.0, 5.0, 10.0), 0.0, 1e-10);
+    EXPECT_NEAR(f_cdf(-1.0, 5.0, 10.0), 0.0, 1e-10);
+}
+
+TEST(ProbAdv3, F_CDF_LargeX_NearOne) {
+    EXPECT_GT(f_cdf(100.0, 5.0, 10.0), 0.999);
+    EXPECT_GT(f_cdf(50.0, 1.0, 30.0), 0.999);
+}
+
+TEST(ProbAdv3, F_CDF_T_Squared_CrossCheck) {
+    // t^2 ~ F(1, df): f_cdf(t^2, 1, df) = 2*t_cdf(t, df) - 1 for t > 0
+    for (double df : {5.0, 10.0, 30.0}) {
+        for (double t_val : {0.5, 1.0, 2.0, 3.0}) {
+            const double f_val = f_cdf(t_val * t_val, 1.0, df);
+            const double t_val_cdf = 2.0 * t_cdf(t_val, df) - 1.0;
+            EXPECT_NEAR(f_val, t_val_cdf, 1e-4)
+                << "F(1," << df << ") CDF at t^2=" << t_val * t_val
+                << " should match 2*t_cdf(" << t_val << ")-1";
+        }
+    }
+}
+
+TEST(ProbAdv3, F_PDF_NonNegative) {
+    for (double d1 : {1.0, 5.0}) {
+        for (double d2 : {5.0, 10.0}) {
+            for (double x : {0.1, 0.5, 1.0, 2.0, 5.0}) {
+                EXPECT_GE(f_pdf(x, d1, d2), 0.0);
+                EXPECT_TRUE(std::isfinite(f_pdf(x, d1, d2)));
+            }
+        }
+    }
+}
+
+TEST(ProbAdv3, F_PDF_IntegratesToOne) {
+    auto integrate_f = [](double d1, double d2, double upper, int steps) {
+        const double dx = upper / static_cast<double>(steps);
+        double sum = 0.0;
+        for (int i = 0; i < steps; ++i) {
+            const double x = (static_cast<double>(i) + 0.5) * dx;
+            sum += f_pdf(x, d1, d2);
+        }
+        return sum * dx;
+    };
+    EXPECT_NEAR(integrate_f(5.0, 10.0, 20.0, 4000), 1.0, 1e-2);
+    EXPECT_NEAR(integrate_f(2.0, 8.0, 30.0, 6000), 1.0, 1e-2);
+}
+
 // ---------------------------------------------------------------------------
 // Uniform distribution
 // ---------------------------------------------------------------------------
