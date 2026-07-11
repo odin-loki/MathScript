@@ -757,6 +757,77 @@ double american_option(double S, double K, double T, double r, double sigma,
     return binomial_tree(S, K, T, r, sigma, steps, call, true);
 }
 
+double trinomial_option(double S, double K, double T, double r, double sigma,
+                        int n_steps, bool is_call, bool is_american) {
+    double dt = T / n_steps;
+    double u = std::exp(sigma * std::sqrt(2.0 * dt));
+    double d = 1.0 / u;
+    double disc = std::exp(-r * dt);
+
+    double up_leg = std::exp(sigma * std::sqrt(dt / 2.0));
+    double down_leg = std::exp(-sigma * std::sqrt(dt / 2.0));
+    double half_rate = std::exp(r * dt / 2.0);
+    double denom = up_leg - down_leg;
+    double pu_sqrt = (half_rate - down_leg) / denom;
+    double pd_sqrt = (up_leg - half_rate) / denom;
+    double p_u = pu_sqrt * pu_sqrt;
+    double p_d = pd_sqrt * pd_sqrt;
+    double p_m = 1.0 - p_u - p_d;
+
+    // Node i at a level with `n` steps elapsed represents spot S*u^(i-n),
+    // i.e. i=n is the middle (unchanged) node; i=0/i=2n are the extreme down/up
+    // nodes. Terminal level has 2*n_steps+1 nodes.
+    std::vector<double> prices(static_cast<size_t>(2 * n_steps + 1));
+    for (int i = 0; i <= 2 * n_steps; ++i) {
+        double spot = S * std::pow(u, i - n_steps);
+        prices[i] = is_call ? std::max(spot - K, 0.0) : std::max(K - spot, 0.0);
+    }
+    for (int step = n_steps - 1; step >= 0; --step) {
+        for (int i = 0; i <= 2 * step; ++i) {
+            // Node i (exponent i-step) fans out to next-level indices i (down),
+            // i+1 (middle), i+2 (up) -- see header derivation.
+            double continuation = disc * (p_u * prices[i + 2] + p_m * prices[i + 1] +
+                                          p_d * prices[i]);
+            if (is_american) {
+                double spot = S * std::pow(u, i - step);
+                double intrinsic = is_call ? std::max(spot - K, 0.0) : std::max(K - spot, 0.0);
+                prices[i] = std::max(continuation, intrinsic);
+            } else {
+                prices[i] = continuation;
+            }
+        }
+    }
+    return prices[0];
+}
+
+// Adjusted volatility/drift for the discrete geometric average of n equally-
+// spaced fixings t_i=i*T/n, i=1..n (see header for the derivation). Shared by
+// geo_asian_call/geo_asian_put.
+static void geo_asian_adjusted_params(double sigma, double r, int n,
+                                      double& sigma_adj, double& mu_adj) {
+    double nd = static_cast<double>(n);
+    sigma_adj = sigma * std::sqrt((nd + 1.0) * (2.0 * nd + 1.0) / (6.0 * nd * nd));
+    mu_adj = 0.5 * sigma_adj * sigma_adj + (nd + 1.0) / (2.0 * nd) * (r - 0.5 * sigma * sigma);
+}
+
+double geo_asian_call(double S, double K, double T, double r, double sigma, int n_fixings) {
+    if (T <= 0.0) return std::max(S - K, 0.0);
+    int n = std::max(n_fixings, 1);
+    double sigma_adj, mu_adj;
+    geo_asian_adjusted_params(sigma, r, n, sigma_adj, mu_adj);
+    double F = S * std::exp(mu_adj * T);
+    return black76(F, K, T, r, sigma_adj, true);
+}
+
+double geo_asian_put(double S, double K, double T, double r, double sigma, int n_fixings) {
+    if (T <= 0.0) return std::max(K - S, 0.0);
+    int n = std::max(n_fixings, 1);
+    double sigma_adj, mu_adj;
+    geo_asian_adjusted_params(sigma, r, n, sigma_adj, mu_adj);
+    double F = S * std::exp(mu_adj * T);
+    return black76(F, K, T, r, sigma_adj, false);
+}
+
 static double mc_european(double S, double K, double T, double r, double sigma,
                           int n_paths, unsigned seed, bool call) {
     if (n_paths <= 0 || S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0) return 0.0;

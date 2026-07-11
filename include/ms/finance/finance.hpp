@@ -159,6 +159,46 @@ double binomial_put(double S, double K, double T, double r, double sigma, int st
 double american_option(double S, double K, double T, double r, double sigma,
                        bool call, int steps);
 
+// --- Pricing: trinomial tree (Boyle 1986) ---
+// Alternative discretization of the same continuous-time GBM process as the
+// binomial tree above, with an extra "stay" branch per step: dt=T/n_steps,
+// u=exp(sigma*sqrt(2*dt)), d=1/u, middle branch unchanged, and risk-neutral
+// probabilities p_u/p_m/p_d chosen to match the first two moments of GBM
+// (Boyle's discrete-time moment-matching construction). Converges to the
+// closed-form bs_call/bs_put as n_steps -> infinity when is_american=false,
+// and to the same limit as binomial_call/binomial_put/american_option since
+// all three discretize the same process. Early exercise (is_american=true)
+// is handled exactly like american_option: at each node, value is
+// max(continuation, intrinsic).
+double trinomial_option(double S, double K, double T, double r, double sigma,
+                        int n_steps, bool is_call, bool is_american);
+
+// --- Pricing: geometric-average Asian options (Kemna-Vorst 1990 closed form) ---
+// Unlike the arithmetic-average Asian options below (mc_asian_call/put, no
+// closed form), the GEOMETRIC average of lognormal GBM prices is itself
+// lognormal, so the discretely-monitored geometric-average Asian option has
+// an exact closed form. Fixings are the standard n equally-spaced
+// observations EXCLUDING t=0 and INCLUDING t=T, i.e. t_i = i*T/n_fixings for
+// i=1..n_fixings (so n_fixings=1 observes only S_T, reducing to a plain
+// vanilla option).
+//
+// Averaging the (correlated) log-increments at those fixing times shows the
+// geometric average G is lognormal with an adjusted effective volatility and
+// drift:
+//   sigma_adj = sigma * sqrt((n+1)*(2n+1) / (6*n^2))
+//   mu_adj    = 0.5*sigma_adj^2 + (n+1)/(2n) * (r - 0.5*sigma^2)
+// such that F = S*exp(mu_adj*T) is the risk-neutral expectation (the
+// "forward price") of G. The option then prices exactly like Black-76 on
+// that synthetic forward: price = black76(F, K, T, r, sigma_adj, call).
+//
+// Two hard sanity checks (see tests): as n_fixings -> infinity, sigma_adj ->
+// sigma/sqrt(3) and mu_adj -> 0.5*(r - sigma^2/6), the well-known continuous
+// geometric-average closed form; at n_fixings == 1, sigma_adj == sigma and
+// mu_adj == r exactly, so F == S*exp(r*T) and the formula reduces exactly to
+// plain Black-Scholes (bs_call/bs_put).
+double geo_asian_call(double S, double K, double T, double r, double sigma, int n_fixings);
+double geo_asian_put(double S, double K, double T, double r, double sigma, int n_fixings);
+
 // --- Pricing: Monte Carlo ---
 // European option via Monte Carlo under GBM, sampling the terminal price
 // directly from its known closed-form lognormal distribution (no path needed):
