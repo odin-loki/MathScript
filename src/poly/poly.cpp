@@ -1,9 +1,13 @@
 #include "ms/poly/poly.hpp"
 #include "ms/core/operations.hpp"
+#include "ms/numthy/numthy.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numeric>
+#include <set>
 #include <stdexcept>
+#include <utility>
 
 namespace ms {
 namespace poly {
@@ -619,6 +623,151 @@ int poly_root_count(const std::vector<double>& p, double a, double b) {
 
     auto seq = build_sturm();
     return sign_changes(seq, a) - sign_changes(seq, b);
+}
+
+namespace {
+
+// Upper bound on |a_0| / |a_n| (the rounded integer constant/leading
+// coefficients) that we're willing to hand to numthy::divisors, which does
+// O(sqrt(n)) trial division. 1e7 keeps that search well under a millisecond
+// while comfortably covering any hand-constructed test polynomial; anything
+// larger is rejected with a clear Result error instead of silently taking a
+// long time.
+constexpr double kRationalRootSafetyLimit = 1.0e7;
+
+// Rounds every coefficient to the nearest integer; fails (returns false) if
+// any coefficient is not within `tol` of an integer.
+bool coeffs_to_integers(const std::vector<double>& p, std::vector<double>& out, double tol) {
+    out.resize(p.size());
+    for (size_t i = 0; i < p.size(); ++i) {
+        const double r = std::round(p[i]);
+        if (std::abs(p[i] - r) > tol) return false;
+        out[i] = r;
+    }
+    return true;
+}
+
+// All reduced p/q candidates (q > 0) from the divisors of a0 and an, with
+// both signs of the numerator.
+std::vector<std::pair<int64_t, int64_t>> rational_root_candidates(uint64_t a0, uint64_t an) {
+    std::set<std::pair<int64_t, int64_t>> uniq;
+    const auto d0 = numthy::divisors(a0);
+    const auto dn = numthy::divisors(an);
+    for (uint64_t d1 : d0) {
+        for (uint64_t d2 : dn) {
+            int64_t num = static_cast<int64_t>(d1);
+            int64_t den = static_cast<int64_t>(d2);
+            const int64_t g = std::gcd(num, den);
+            num /= g;
+            den /= g;
+            uniq.insert({num, den});
+            uniq.insert({-num, den});
+        }
+    }
+    return {uniq.begin(), uniq.end()};
+}
+
+// Evaluates the (integer-coefficient) poly at num/den and checks it's near
+// zero relative to the polynomial's coefficient scale. This is a fast
+// pre-filter; the actual accept/reject decision is made by checking that
+// synthetic division leaves (near-)zero remainder, below.
+bool looks_like_root(const std::vector<double>& p, int64_t num, int64_t den, double tol) {
+    const double val = poly_eval(p, static_cast<double>(num) / static_cast<double>(den))[0];
+    double scale = 1.0;
+    for (double c : p) scale = std::max(scale, std::abs(c));
+    return std::abs(val) <= tol * scale;
+}
+
+struct RationalRootState {
+    std::vector<std::pair<int64_t, int64_t>> roots;
+    std::vector<double> remainder;
+};
+
+Result<RationalRootState> rational_roots_core(const std::vector<double>& p_in, double tol) {
+    std::vector<double> ip;
+    if (!coeffs_to_integers(p_in, ip, tol)) {
+        return std::unexpected(Error{DomainError{
+            "poly_rational_roots",
+            "coefficients are not within tolerance of integers; scale/clear "
+            "denominators before calling"}});
+    }
+    auto p = strip(ip);
+    if (p.empty() || (p.size() == 1 && std::abs(p[0]) < 1e-9)) {
+        return std::unexpected(Error{DomainError{
+            "poly_rational_roots", "zero polynomial has infinitely many roots"}});
+    }
+
+    RationalRootState state;
+    if (p.size() == 1) {
+        // Nonzero constant: no roots, nothing to factor.
+        state.remainder = p;
+        return state;
+    }
+
+    std::vector<double> rem = p;
+    while (true) {
+        rem = strip(rem);
+        if (rem.size() <= 1) break;
+
+        // x = 0 is a root iff the constant term is zero; handle separately
+        // since 0 has no p/q divisor representation.
+        if (std::abs(rem.front()) < 1e-9) {
+            state.roots.push_back({0, 1});
+            rem.erase(rem.begin());
+            continue;
+        }
+
+        const double a0d = std::abs(rem.front());
+        const double and_ = std::abs(rem.back());
+        if (a0d > kRationalRootSafetyLimit || and_ > kRationalRootSafetyLimit) {
+            return std::unexpected(Error{DomainError{
+                "poly_rational_roots",
+                "coefficient magnitude exceeds safety limit for divisor search"}});
+        }
+        const uint64_t a0 = static_cast<uint64_t>(std::llround(a0d));
+        const uint64_t an = static_cast<uint64_t>(std::llround(and_));
+
+        bool found = false;
+        for (const auto& [num, den] : rational_root_candidates(a0, an)) {
+            if (!looks_like_root(rem, num, den, 1e-7)) continue;
+
+            const std::vector<double> divisor = {static_cast<double>(-num),
+                                                   static_cast<double>(den)};
+            auto q = poly_div_quot(rem, divisor);
+            auto r = poly_mod(rem, divisor);
+            const bool rem_is_zero =
+                r.empty() || (r.size() == 1 && std::abs(r[0]) <= 1e-6 * and_);
+            if (!rem_is_zero) continue; // pre-filter false positive; keep scanning
+
+            for (auto& c : q) c = std::round(c); // exact by Gauss's lemma; clean fp noise
+            rem = strip(q);
+            state.roots.push_back({num, den});
+            found = true;
+            break;
+        }
+        if (!found) break;
+    }
+
+    state.remainder = strip(rem);
+    return state;
+}
+
+} // namespace
+
+Result<std::vector<std::pair<int64_t, int64_t>>> poly_rational_roots(
+    const std::vector<double>& p, double tol) {
+    auto res = rational_roots_core(p, tol);
+    if (!res) return std::unexpected(res.error());
+    return res->roots;
+}
+
+Result<RationalFactorization> poly_factor_rational(const std::vector<double>& p, double tol) {
+    auto res = rational_roots_core(p, tol);
+    if (!res) return std::unexpected(res.error());
+    RationalFactorization out;
+    out.linear_roots = std::move(res->roots);
+    out.remainder = std::move(res->remainder);
+    return out;
 }
 
 } // namespace poly

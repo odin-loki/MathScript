@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <algorithm>
+#include <map>
+#include <numeric>
+#include <utility>
 #include "ms/poly/poly.hpp"
 
 using namespace ms;
@@ -8,6 +11,24 @@ using namespace ms::poly;
 
 static double eval_at(const std::vector<double>& c, double x) {
     return poly_eval(c, x)[0];
+}
+
+// Multiset-style comparison of found roots against expected {root_value -> multiplicity},
+// independent of the order poly_rational_roots happens to return them in.
+static void expect_roots_multiset(
+    const std::vector<std::pair<int64_t, int64_t>>& found,
+    const std::map<std::pair<int64_t, int64_t>, int>& expected) {
+    ASSERT_EQ(found.size(),
+              std::accumulate(expected.begin(), expected.end(), size_t{0},
+                               [](size_t acc, const auto& kv) {
+                                   return acc + static_cast<size_t>(kv.second);
+                               }));
+    std::map<std::pair<int64_t, int64_t>, int> counts;
+    for (const auto& r : found) counts[r]++;
+    for (const auto& [root, mult] : expected) {
+        EXPECT_EQ(counts[root], mult)
+            << "root " << root.first << "/" << root.second;
+    }
 }
 
 static void expect_poly_near(const std::vector<double>& a,
@@ -497,4 +518,227 @@ TEST(PolyExtTest, hermite_size_mismatch_returns_empty) {
 
 TEST(PolyExtTest, hermite_duplicate_xs_returns_empty) {
     EXPECT_TRUE(interp_hermite({1.0, 1.0}, {2.0, 3.0}, {1.0, 1.0}).empty());
+}
+
+// ---------------------------------------------------------------------------
+// poly_rational_roots / poly_factor_rational
+// ---------------------------------------------------------------------------
+
+static std::vector<double> reconstruct_from_factorization(const RationalFactorization& f) {
+    std::vector<double> poly = f.remainder;
+    for (const auto& [num, den] : f.linear_roots) {
+        const std::vector<double> factor{static_cast<double>(-num), static_cast<double>(den)};
+        poly = poly_mul(poly, factor);
+    }
+    return poly;
+}
+
+// Cross-verify: every reported root, when evaluated against the ORIGINAL
+// polynomial via poly_eval, is (near) zero.
+static void expect_all_roots_evaluate_to_zero(
+    const std::vector<double>& original,
+    const std::vector<std::pair<int64_t, int64_t>>& roots) {
+    for (const auto& [num, den] : roots) {
+        const double x = static_cast<double>(num) / static_cast<double>(den);
+        EXPECT_NEAR(eval_at(original, x), 0.0, 1e-6)
+            << "root " << num << "/" << den;
+    }
+}
+
+TEST(PolyExtTest, rational_roots_three_distinct_integer_roots) {
+    // (x-1)(x-2)(x-3) = x^3 - 6x^2 + 11x - 6
+    const std::vector<double> p{-6.0, 11.0, -6.0, 1.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{1, 1}, 1}, {{2, 1}, 1}, {{3, 1}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, factor_rational_three_distinct_integer_roots_fully_factors) {
+    const std::vector<double> p{-6.0, 11.0, -6.0, 1.0};
+    const auto res = poly_factor_rational(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(res->linear_roots, {{{1, 1}, 1}, {{2, 1}, 1}, {{3, 1}, 1}});
+    ASSERT_EQ(res->remainder.size(), 1u);
+    EXPECT_NEAR(res->remainder[0], 1.0, 1e-9);
+    expect_poly_near(reconstruct_from_factorization(*res), p, 1e-6);
+}
+
+TEST(PolyExtTest, rational_roots_repeated_root_multiplicity_two) {
+    // (x-2)^2 (x+1) = x^3 - 3x^2 + 0x + 4
+    const std::vector<double> p{4.0, 0.0, -3.0, 1.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{2, 1}, 2}, {{-1, 1}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, factor_rational_repeated_root_reconstructs_original) {
+    const std::vector<double> p{4.0, 0.0, -3.0, 1.0};
+    const auto res = poly_factor_rational(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(res->linear_roots, {{{2, 1}, 2}, {{-1, 1}, 1}});
+    ASSERT_EQ(res->remainder.size(), 1u);
+    expect_poly_near(reconstruct_from_factorization(*res), p, 1e-6);
+}
+
+TEST(PolyExtTest, rational_roots_non_integer_rational_roots) {
+    // (2x-1)(3x+2) = 6x^2 + x - 2
+    const std::vector<double> p{-2.0, 1.0, 6.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{1, 2}, 1}, {{-2, 3}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, factor_rational_non_integer_rational_roots_reconstructs) {
+    const std::vector<double> p{-2.0, 1.0, 6.0};
+    const auto res = poly_factor_rational(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(res->linear_roots, {{{1, 2}, 1}, {{-2, 3}, 1}});
+    expect_poly_near(reconstruct_from_factorization(*res), p, 1e-6);
+}
+
+TEST(PolyExtTest, rational_roots_no_real_roots_x_squared_plus_one) {
+    const std::vector<double> p{1.0, 0.0, 1.0};  // x^2 + 1
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    EXPECT_TRUE(res->empty());
+}
+
+TEST(PolyExtTest, factor_rational_no_real_roots_remainder_is_original) {
+    const std::vector<double> p{1.0, 0.0, 1.0};  // x^2 + 1
+    const auto res = poly_factor_rational(p);
+    ASSERT_TRUE(res.has_value());
+    EXPECT_TRUE(res->linear_roots.empty());
+    expect_poly_near(res->remainder, p, 1e-9);
+}
+
+TEST(PolyExtTest, rational_roots_irrational_roots_x_squared_minus_two) {
+    const std::vector<double> p{-2.0, 0.0, 1.0};  // x^2 - 2, roots +/- sqrt(2)
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    EXPECT_TRUE(res->empty());
+}
+
+TEST(PolyExtTest, factor_rational_irrational_roots_remainder_is_original) {
+    const std::vector<double> p{-2.0, 0.0, 1.0};
+    const auto res = poly_factor_rational(p);
+    ASSERT_TRUE(res.has_value());
+    EXPECT_TRUE(res->linear_roots.empty());
+    expect_poly_near(res->remainder, p, 1e-9);
+}
+
+TEST(PolyExtTest, rational_roots_mixed_rational_and_irrational) {
+    // (x-1)(x^2-2) = x^3 - x^2 - 2x + 2
+    const std::vector<double> p{2.0, -2.0, -1.0, 1.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{1, 1}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, factor_rational_mixed_rational_and_irrational_remainder) {
+    // (x-1)(x^2-2) = x^3 - x^2 - 2x + 2; remainder should be x^2 - 2 (up to scale)
+    const std::vector<double> p{2.0, -2.0, -1.0, 1.0};
+    const auto res = poly_factor_rational(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(res->linear_roots, {{{1, 1}, 1}});
+    expect_poly_near(res->remainder, {-2.0, 0.0, 1.0}, 1e-6);
+    expect_poly_near(reconstruct_from_factorization(*res), p, 1e-6);
+}
+
+TEST(PolyExtTest, rational_roots_zero_polynomial_is_error) {
+    const auto res1 = poly_rational_roots({0.0});
+    EXPECT_FALSE(res1.has_value());
+    const auto res2 = poly_rational_roots({});
+    EXPECT_FALSE(res2.has_value());
+}
+
+TEST(PolyExtTest, factor_rational_zero_polynomial_is_error) {
+    const auto res = poly_factor_rational({0.0});
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(PolyExtTest, rational_roots_constant_polynomial_has_no_roots) {
+    const auto res = poly_rational_roots({5.0});
+    ASSERT_TRUE(res.has_value());
+    EXPECT_TRUE(res->empty());
+}
+
+TEST(PolyExtTest, factor_rational_constant_polynomial_remainder_is_itself) {
+    const auto res = poly_factor_rational({5.0});
+    ASSERT_TRUE(res.has_value());
+    EXPECT_TRUE(res->linear_roots.empty());
+    ASSERT_EQ(res->remainder.size(), 1u);
+    EXPECT_NEAR(res->remainder[0], 5.0, 1e-9);
+}
+
+TEST(PolyExtTest, rational_roots_degree_one_polynomial) {
+    // 2x - 3 -> root 3/2
+    const std::vector<double> p{-3.0, 2.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{3, 2}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, rational_roots_zero_is_a_root) {
+    // x^2 - x = x(x-1)
+    const std::vector<double> p{0.0, -1.0, 1.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{0, 1}, 1}, {{1, 1}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, rational_roots_repeated_zero_root) {
+    // x^3 - x^2 = x^2(x-1)
+    const std::vector<double> p{0.0, 0.0, -1.0, 1.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{0, 1}, 2}, {{1, 1}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, rational_roots_non_integer_coefficients_is_error) {
+    // 0.5x^2 + 1 is not within tolerance of integer coefficients
+    const auto res = poly_rational_roots({1.0, 0.0, 0.5});
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(PolyExtTest, rational_roots_large_but_within_limit_coefficients) {
+    // (1000000x - 1)(x - 1) = 1000000x^2 - 1000001x + 1
+    const std::vector<double> p{1.0, -1000001.0, 1000000.0};
+    const auto res = poly_rational_roots(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{1, 1000000}, 1}, {{1, 1}, 1}});
+    expect_all_roots_evaluate_to_zero(p, *res);
+}
+
+TEST(PolyExtTest, rational_roots_exceeds_safety_limit_is_error) {
+    // Constant term 1e8 exceeds the documented safety limit (1e7).
+    const std::vector<double> p{100000000.0, 0.0, 1.0};
+    const auto res = poly_rational_roots(p);
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(PolyExtTest, factor_rational_negative_leading_coefficient) {
+    // -(x-1)(x-2) = -x^2 + 3x - 2
+    const std::vector<double> p{-2.0, 3.0, -1.0};
+    const auto res = poly_factor_rational(p);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(res->linear_roots, {{{1, 1}, 1}, {{2, 1}, 1}});
+    expect_poly_near(reconstruct_from_factorization(*res), p, 1e-6);
+}
+
+TEST(PolyExtTest, rational_roots_near_integer_coefficients_within_tolerance) {
+    // Same as (x-1)(x-2)(x-3) but with tiny floating-point noise, as would
+    // arise from expanding via poly_mul in double precision.
+    const auto expanded = poly_mul(poly_mul({-1.0, 1.0}, {-2.0, 1.0}), {-3.0, 1.0});
+    std::vector<double> noisy = expanded;
+    for (auto& c : noisy) c += 1e-10;
+    const auto res = poly_rational_roots(noisy);
+    ASSERT_TRUE(res.has_value());
+    expect_roots_multiset(*res, {{{1, 1}, 1}, {{2, 1}, 1}, {{3, 1}, 1}});
 }
