@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ms/core/matrix.hpp"
+#include "ms/error/error_types.hpp"
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -137,5 +138,43 @@ BacktestResult run_backtest(
     double initial_capital);
 
 } // namespace backtest
+
+namespace crypto {
+
+/// Ciphertext produced by encrypt(): nonce (16 bytes) + XOR-encrypted payload, plus a tag.
+/// This is a CSPRNG keystream XOR cipher with a keyed checksum for tamper detection.
+/// Suitable for internal/demo use in this codebase — NOT a substitute for a vetted crypto library.
+struct CipherText {
+    std::vector<uint8_t> data;
+    std::array<uint8_t, 32> tag{};
+};
+
+/// Encrypts plaintext with a CSPRNG keystream (key + fresh random nonce) and attaches a tag.
+CipherText encrypt(std::span<const uint8_t> plaintext, std::array<uint8_t, 32> key);
+
+/// Verifies the tag and decrypts; returns an error if authentication fails.
+Result<std::vector<uint8_t>> decrypt(const CipherText& ct, std::array<uint8_t, 32> key);
+
+} // namespace crypto
+
+namespace mpc {
+
+/// Prime field modulus for Shamir secret sharing: 2^61 - 1 (61-bit Mersenne prime).
+/// Secrets and share values must be strictly less than this value.
+constexpr uint64_t PRIME = 2305843009213693951ULL;
+
+struct Share {
+    int x = 0;
+    uint64_t y = 0;
+};
+
+/// Splits secret into n shares with k-of-n threshold via Shamir's scheme over PRIME.
+std::vector<Share> split_secret(uint64_t secret, int n, int k, CSPRNG& rng);
+
+/// Reconstructs the secret from shares via Lagrange interpolation at x = 0.
+/// Requires at least two shares; fewer than the original threshold yields a wrong value.
+Result<uint64_t> reconstruct_secret(const std::vector<Share>& shares);
+
+} // namespace mpc
 
 } // namespace ms::izaac
