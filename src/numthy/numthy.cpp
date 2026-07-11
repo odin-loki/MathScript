@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <numeric>
+#include <queue>
 #include <set>
 #include <unordered_map>
 #if defined(_MSC_VER)
@@ -619,6 +620,22 @@ std::vector<std::pair<uint64_t,uint64_t>> farey(uint32_t n) {
     return fracs;
 }
 
+std::vector<std::pair<uint64_t,uint64_t>> stern_brocot(uint64_t n) {
+    std::vector<std::pair<uint64_t,uint64_t>> result;
+    if (n == 0) return result;
+    std::queue<std::pair<uint64_t,uint64_t>> frontier;
+    frontier.push({1, 1});
+    while (!frontier.empty() && result.size() < n) {
+        auto [p, q] = frontier.front();
+        frontier.pop();
+        result.push_back({p, q});
+        if (result.size() >= n) break;
+        frontier.push({p, p + q});
+        frontier.push({p + q, q});
+    }
+    return result;
+}
+
 Result<std::pair<uint64_t,uint64_t>> pell_solve(uint64_t D) {
     if (D == 0)
         return std::unexpected(Error{DomainError{"pell_solve", "D == 0"}});
@@ -642,6 +659,52 @@ Result<std::pair<uint64_t,uint64_t>> pell_solve(uint64_t D) {
                                   static_cast<uint64_t>(q));
     }
     return std::unexpected(Error{DomainError{"pell_solve", "no solution found"}});
+}
+
+// b*b > bound, computed without risking uint64_t overflow for large b.
+static bool sq_exceeds(uint64_t b, uint64_t bound) {
+    const u128 b2 = u128_mul64(b, b);
+    return b2.hi != 0 || b2.lo > bound;
+}
+
+Result<std::pair<uint64_t,uint64_t>> cornacchia(uint64_t d, uint64_t p) {
+    if (!isprime(p))
+        return std::unexpected(Error{DomainError{"cornacchia", "p is not prime"}});
+    if (d == 0)
+        return std::unexpected(Error{DomainError{"cornacchia", "d == 0"}});
+    if (d >= p)
+        return std::unexpected(Error{DomainError{"cornacchia", "d >= p"}});
+    if (p == 2)
+        return std::make_pair(1ULL, 1ULL); // 0 < d < 2 forces d == 1; 1^2 + 1*1^2 = 2
+
+    // Solve t^2 ≡ -d ≡ (p - d) (mod p).
+    auto troot = tonelli_shanks(p - d, p);
+    if (!troot)
+        return std::unexpected(Error{DomainError{"cornacchia", "-d is not a quadratic residue mod p; no solution"}});
+
+    uint64_t t = troot.value();
+    if (t > p - t) t = p - t;
+
+    // Partial Euclidean algorithm on (p, t) until the remainder b satisfies b^2 <= p.
+    uint64_t a = p, b = t;
+    while (sq_exceeds(b, p)) {
+        uint64_t r = a % b;
+        a = b;
+        b = r;
+    }
+
+    const u128 b2 = u128_mul64(b, b);
+    if (b2.hi != 0 || b2.lo > p)
+        return std::unexpected(Error{DomainError{"cornacchia", "no solution"}});
+    const uint64_t rem = p - b2.lo;
+    if (rem % d != 0)
+        return std::unexpected(Error{DomainError{"cornacchia", "no solution"}});
+    const uint64_t c2 = rem / d;
+    const uint64_t c = isqrt_u64(c2);
+    if (c * c != c2)
+        return std::unexpected(Error{DomainError{"cornacchia", "no solution"}});
+
+    return std::make_pair(b, c);
 }
 
 uint64_t partition(uint32_t n) {
