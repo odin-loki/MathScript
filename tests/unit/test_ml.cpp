@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include "ms/ml/ml.hpp"
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
 
@@ -485,4 +486,254 @@ TEST(MLNeuralNet, XOR) {
     auto pred=nn.predict(X);
     EXPECT_EQ(pred.size(), 4u);
     EXPECT_EQ(pred[0].size(), 1u);
+}
+
+// ---- Random Forest ----
+
+static std::pair<Mat,Vec> threshold_classification_data() {
+    Mat X={{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15}};
+    Vec y={0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1};
+    return {X,y};
+}
+
+TEST(MLRandomForest, ThresholdClassification) {
+    auto [X,y]=threshold_classification_data();
+    RandomForest rf;
+    rf.config.n_trees=25;
+    rf.config.max_depth=4;
+    rf.config.seed=42;
+    rf.fit(X,y);
+    auto pred=rf.predict(X);
+    EXPECT_GE(accuracy(pred,y), 0.85);
+}
+
+TEST(MLRandomForest, BetterThanConstantBaseline) {
+    auto [X,y]=threshold_classification_data();
+    RandomForest rf;
+    rf.config.n_trees=20;
+    rf.config.max_depth=5;
+    rf.fit(X,y);
+    double const_acc=std::max(
+        (double)std::count(y.begin(),y.end(),0.0)/y.size(),
+        (double)std::count(y.begin(),y.end(),1.0)/y.size());
+    EXPECT_GT(accuracy(rf.predict(X),y), const_acc);
+}
+
+TEST(MLRandomForest, TrainAccuracyHigh) {
+    Mat X; Vec y;
+    for (int i=0;i<40;++i) {
+        X.push_back({(double)i, (double)(i%2)});
+        y.push_back(i<20?0.0:1.0);
+    }
+    RandomForest rf;
+    rf.config.n_trees=40;
+    rf.config.max_depth=6;
+    rf.config.feature_subsample_ratio=1.0;
+    rf.fit(X,y);
+    EXPECT_GE(accuracy(rf.predict(X),y), 0.85);
+}
+
+TEST(MLRandomForest, FewTreesSanePredictions) {
+    auto [X,y]=threshold_classification_data();
+    RandomForest rf;
+    rf.config.n_trees=3;
+    rf.config.max_depth=3;
+    rf.fit(X,y);
+    auto pred=rf.predict(X);
+    for (double v:pred) {
+        EXPECT_TRUE(v==0.0 || v==1.0);
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(MLRandomForest, VaryingMaxDepth) {
+    auto [X,y]=threshold_classification_data();
+    RandomForest rf_shallow, rf_deep;
+    rf_shallow.config.n_trees=15;
+    rf_shallow.config.max_depth=2;
+    rf_deep.config.n_trees=15;
+    rf_deep.config.max_depth=8;
+    rf_shallow.fit(X,y);
+    rf_deep.fit(X,y);
+    auto ps=rf_shallow.predict(X), pd=rf_deep.predict(X);
+    for (size_t i=0;i<X.size();++i) {
+        EXPECT_TRUE(std::isfinite(ps[i]));
+        EXPECT_TRUE(std::isfinite(pd[i]));
+    }
+    EXPECT_GE(accuracy(pd,y), accuracy(ps,y)-0.2);
+}
+
+TEST(MLRandomForest, FeatureSubsamplePredicts) {
+    Mat X; Vec y;
+    for (int i=0;i<30;++i) {
+        X.push_back({(double)i, (double)(i*13 % 97), (double)(i*7 % 53)});
+        y.push_back(i<15?0.0:1.0);
+    }
+    RandomForest rf;
+    rf.config.n_trees=25;
+    rf.config.max_depth=5;
+    rf.config.feature_subsample_ratio=0.34;
+    rf.config.seed=7;
+    rf.fit(X,y);
+    auto pred=rf.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+    EXPECT_GE(accuracy(pred,y), 0.75);
+}
+
+TEST(MLRandomForest, FeatureSubsampleBeatsNoise) {
+    Mat X; Vec y;
+    for (int i=0;i<40;++i) {
+        X.push_back({(double)i, std::sin((double)i), std::cos((double)i*3)});
+        y.push_back(i<20?0.0:1.0);
+    }
+    RandomForest rf_full, rf_sub;
+    rf_full.config.n_trees=20;
+    rf_full.config.feature_subsample_ratio=1.0;
+    rf_sub.config.n_trees=20;
+    rf_sub.config.feature_subsample_ratio=0.34;
+    rf_full.fit(X,y);
+    rf_sub.fit(X,y);
+    EXPECT_GE(accuracy(rf_sub.predict(X),y), 0.7);
+    EXPECT_GE(accuracy(rf_full.predict(X),y), accuracy(rf_sub.predict(X),y)-0.15);
+}
+
+TEST(MLRandomForest, SampleSubsampleBootstrap) {
+    auto [X,y]=threshold_classification_data();
+    RandomForest rf;
+    rf.config.n_trees=20;
+    rf.config.sample_subsample_ratio=0.6;
+    rf.config.seed=99;
+    rf.fit(X,y);
+    EXPECT_EQ(rf.trees.size(), 20u);
+    EXPECT_GE(accuracy(rf.predict(X),y), 0.75);
+}
+
+TEST(MLRandomForest, StoresFeatureIndices) {
+    Mat X={{1,2,3},{4,5,6},{7,8,9},{10,11,12}};
+    Vec y={0,0,1,1};
+    RandomForest rf;
+    rf.config.n_trees=5;
+    rf.config.feature_subsample_ratio=0.5;
+    rf.fit(X,y);
+    EXPECT_EQ(rf.trees.size(), 5u);
+    EXPECT_EQ(rf.feature_indices.size(), 5u);
+    for (auto& fi:rf.feature_indices) {
+        EXPECT_GE(fi.size(), 1u);
+        EXPECT_LE(fi.size(), 2u);
+    }
+}
+
+// ---- Gradient Boosting ----
+
+static std::pair<Mat,Vec> linear_regression_data() {
+    Mat X; Vec y;
+    for (int i=0;i<50;++i) {
+        X.push_back({(double)i});
+        y.push_back(2.0*(double)i + 1.0);
+    }
+    return {X,y};
+}
+
+TEST(MLGradientBoosting, LinearFit) {
+    auto [X,y]=linear_regression_data();
+    GradientBoosting gb;
+    gb.config.n_trees=40;
+    gb.config.max_depth=3;
+    gb.config.learning_rate=0.1;
+    gb.fit(X,y);
+    auto pred=gb.predict(X);
+    EXPECT_LT(mse_loss(pred,y), 5.0);
+    EXPECT_GT(r2_score(pred,y), 0.95);
+}
+
+TEST(MLGradientBoosting, MoreTreesLowerMSE) {
+    auto [X,y]=linear_regression_data();
+    GradientBoosting gb1, gb50;
+    gb1.config.n_trees=1;
+    gb1.config.max_depth=3;
+    gb50.config.n_trees=50;
+    gb50.config.max_depth=3;
+    gb1.fit(X,y);
+    gb50.fit(X,y);
+    double mse1=mse_loss(gb1.predict(X),y);
+    double mse50=mse_loss(gb50.predict(X),y);
+    EXPECT_LT(mse50, mse1);
+    EXPECT_LT(mse50, mse1*0.5);
+}
+
+TEST(MLGradientBoosting, PredictionsFinite) {
+    Mat X; Vec y;
+    for (int i=0;i<25;++i) {
+        X.push_back({(double)i, (double)(i*i)});
+        y.push_back(std::sin((double)i));
+    }
+    GradientBoosting gb;
+    gb.config.n_trees=20;
+    gb.fit(X,y);
+    auto pred=gb.predict(X);
+    for (double v:pred) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(MLGradientBoosting, NonlinearPattern) {
+    Mat X; Vec y;
+    for (int i=0;i<40;++i) {
+        double x=(double)i/10.0;
+        X.push_back({x});
+        y.push_back(x*x);
+    }
+    GradientBoosting gb;
+    gb.config.n_trees=60;
+    gb.config.max_depth=4;
+    gb.config.learning_rate=0.15;
+    gb.fit(X,y);
+    EXPECT_LT(mse_loss(gb.predict(X),y), 0.5);
+}
+
+TEST(MLGradientBoosting, InitPredictionIsMean) {
+    Vec y={1,2,3,4,5};
+    Mat X={{0},{1},{2},{3},{4}};
+    GradientBoosting gb;
+    gb.config.n_trees=0;
+    gb.fit(X,y);
+    EXPECT_NEAR(gb.init_prediction, 3.0, 1e-12);
+}
+
+TEST(MLGradientBoosting, ZeroLearningRateConstant) {
+    auto [X,y]=linear_regression_data();
+    GradientBoosting gb;
+    gb.config.n_trees=10;
+    gb.config.learning_rate=0.0;
+    gb.fit(X,y);
+    auto pred=gb.predict(X);
+    for (double v:pred)
+        EXPECT_NEAR(v, gb.init_prediction, 1e-12);
+}
+
+TEST(MLGradientBoosting, SmallLearningRateSane) {
+    auto [X,y]=linear_regression_data();
+    GradientBoosting gb;
+    gb.config.n_trees=30;
+    gb.config.learning_rate=0.01;
+    gb.fit(X,y);
+    auto pred=gb.predict(X);
+    for (double v:pred) EXPECT_TRUE(std::isfinite(v));
+    EXPECT_LT(mse_loss(pred,y), mse_loss(Vec(y.size(),gb.init_prediction),y));
+}
+
+TEST(MLGradientBoosting, ShallowTreesWork) {
+    auto [X,y]=linear_regression_data();
+    GradientBoosting gb;
+    gb.config.n_trees=25;
+    gb.config.max_depth=1;
+    gb.config.learning_rate=0.2;
+    gb.fit(X,y);
+    EXPECT_LT(mse_loss(gb.predict(X),y), 50.0);
+}
+
+TEST(MLGradientBoosting, StoresTrees) {
+    auto [X,y]=linear_regression_data();
+    GradientBoosting gb;
+    gb.config.n_trees=12;
+    gb.fit(X,y);
+    EXPECT_EQ(gb.trees.size(), 12u);
 }

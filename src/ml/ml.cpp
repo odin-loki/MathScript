@@ -268,19 +268,50 @@ static double gini(const Vec& y, const std::vector<int>& idx) {
     return g;
 }
 
+static double mse_impurity(const Vec& y, const std::vector<int>& idx) {
+    if (idx.empty()) return 0;
+    double mean=0; for (int i:idx) mean+=y[i]; mean/=idx.size();
+    double s=0; for (int i:idx) { double d=y[i]-mean; s+=d*d; }
+    return s/idx.size();
+}
+
+static double tree_impurity(const Vec& y, const std::vector<int>& idx, const std::string& criterion) {
+    return criterion=="mse" ? mse_impurity(y,idx) : gini(y,idx);
+}
+
+static double tree_leaf_value(const Vec& y, const std::vector<int>& idx, const std::string& criterion) {
+    if (idx.empty()) return 0;
+    if (criterion=="mse") {
+        double s=0; for (int i:idx) s+=y[i];
+        return s/idx.size();
+    }
+    std::map<double,int> cnt;
+    for (int i:idx) cnt[y[i]]++;
+    return std::max_element(cnt.begin(),cnt.end(),[](auto&a,auto&b){return a.second<b.second;})->first;
+}
+
+static bool tree_all_same(const Vec& y, const std::vector<int>& idx, const std::string& criterion) {
+    if (idx.size()<=1) return true;
+    if (criterion=="mse") {
+        double ref=y[idx[0]];
+        for (int i:idx) if (std::abs(y[i]-ref)>1e-12) return false;
+        return true;
+    }
+    for (int i:idx) if (y[i]!=y[idx[0]]) return false;
+    return true;
+}
+
 int DecisionTree::build(const Mat& X, const Vec& y, std::vector<int>& idx, int depth) {
     int node_idx=nodes.size();
     nodes.push_back({});
     if (depth>=max_depth || idx.size()<=1) {
-        // Leaf: majority class
-        std::map<double,int> cnt;
-        for (int i:idx) cnt[y[i]]++;
-        nodes[node_idx].value=std::max_element(cnt.begin(),cnt.end(),[](auto&a,auto&b){return a.second<b.second;})->first;
+        nodes[node_idx].value=tree_leaf_value(y,idx,criterion);
         return node_idx;
     }
-    // Check if all same label
-    bool same=true; for (int i:idx) if (y[i]!=y[idx[0]]) {same=false;break;}
-    if (same) { nodes[node_idx].value=y[idx[0]]; return node_idx; }
+    if (tree_all_same(y,idx,criterion)) {
+        nodes[node_idx].value=tree_leaf_value(y,idx,criterion);
+        return node_idx;
+    }
 
     double best_g=1e300; int best_f=-1; double best_t=0;
     int p=X[0].size();
@@ -293,22 +324,19 @@ int DecisionTree::build(const Mat& X, const Vec& y, std::vector<int>& idx, int d
             std::vector<int> li,ri;
             for (int i:idx) (X[i][f]<=t?li:ri).push_back(i);
             if (li.empty()||ri.empty()) continue;
-            double g=(li.size()*gini(y,li)+ri.size()*gini(y,ri))/idx.size();
+            double g=(li.size()*tree_impurity(y,li,criterion)+ri.size()*tree_impurity(y,ri,criterion))/idx.size();
             if (g<best_g){best_g=g;best_f=f;best_t=t;}
         }
     }
     if (best_f<0) {
-        std::map<double,int> cnt; for (int i:idx) cnt[y[i]]++;
-        nodes[node_idx].value=std::max_element(cnt.begin(),cnt.end(),[](auto&a,auto&b){return a.second<b.second;})->first;
+        nodes[node_idx].value=tree_leaf_value(y,idx,criterion);
         return node_idx;
     }
     nodes[node_idx].feature=best_f; nodes[node_idx].threshold=best_t;
     std::vector<int> li,ri;
     for (int i:idx) (X[i][best_f]<=best_t?li:ri).push_back(i);
-    int li_node=nodes.size(); // will be set after left build
     nodes[node_idx].left=build(X,y,li,depth+1);
     nodes[node_idx].right=build(X,y,ri,depth+1);
-    (void)li_node;
     return node_idx;
 }
 
@@ -328,7 +356,97 @@ Vec DecisionTree::predict(const Mat& X) const {
     for (size_t i=0;i<X.size();++i) p[i]=predict_one(X[i],0);
     return p;
 }
-double DecisionTree::score(const Mat& X, const Vec& y) const { return accuracy(predict(X),y); }
+double DecisionTree::score(const Mat& X, const Vec& y) const {
+    return criterion=="mse" ? r2_score(predict(X),y) : accuracy(predict(X),y);
+}
+
+// ========================== Random Forest ==========================
+
+static Mat select_columns(const Mat& X, const std::vector<int>& cols) {
+    Mat out(X.size(), Vec(cols.size()));
+    for (size_t i=0;i<X.size();++i)
+        for (size_t j=0;j<cols.size();++j)
+            out[i][j]=X[i][cols[j]];
+    return out;
+}
+
+void RandomForest::fit(const Mat& X, const Vec& y) {
+    trees.clear();
+    feature_indices.clear();
+    int n=(int)X.size(), p=(int)X[0].size();
+    std::mt19937 rng(config.seed);
+    std::uniform_int_distribution<int> row_dist(0, std::max(0,n-1));
+
+    size_t n_feat = std::max<size_t>(1, (size_t)std::round(config.feature_subsample_ratio * p));
+    size_t n_sample = std::max<size_t>(1, (size_t)std::round(config.sample_subsample_ratio * n));
+
+    for (size_t t=0;t<config.n_trees;++t) {
+        std::vector<int> all_feat(p);
+        std::iota(all_feat.begin(), all_feat.end(), 0);
+        std::shuffle(all_feat.begin(), all_feat.end(), rng);
+        std::vector<int> feat(all_feat.begin(), all_feat.begin()+(int)n_feat);
+        std::sort(feat.begin(), feat.end());
+
+        Mat X_boot; Vec y_boot;
+        X_boot.reserve(n_sample);
+        y_boot.reserve(n_sample);
+        for (size_t s=0;s<n_sample;++s) {
+            int idx=row_dist(rng);
+            X_boot.push_back(X[idx]);
+            y_boot.push_back(y[idx]);
+        }
+
+        Mat X_sub = select_columns(X_boot, feat);
+        DecisionTree tree((int)config.max_depth, "gini");
+        tree.fit(X_sub, y_boot);
+        trees.push_back(std::move(tree));
+        feature_indices.push_back(std::move(feat));
+    }
+}
+
+Vec RandomForest::predict(const Mat& X) const {
+    Vec out(X.size());
+    for (size_t i=0;i<X.size();++i) {
+        std::map<double,int> votes;
+        for (size_t t=0;t<trees.size();++t) {
+            Mat X_sub = select_columns(X, feature_indices[t]);
+            votes[trees[t].predict(X_sub)[i]]++;
+        }
+        out[i]=std::max_element(votes.begin(),votes.end(),[](auto&a,auto&b){return a.second<b.second;})->first;
+    }
+    return out;
+}
+
+// ========================== Gradient Boosting ==========================
+
+void GradientBoosting::fit(const Mat& X, const Vec& y) {
+    trees.clear();
+    init_prediction=0;
+    for (double v:y) init_prediction+=v;
+    init_prediction/=y.size();
+
+    Vec current(y.size(), init_prediction);
+    for (size_t t=0;t<config.n_trees;++t) {
+        Vec residuals = vec_sub(y, current);
+        DecisionTree tree((int)config.max_depth, "mse");
+        tree.fit(X, residuals);
+        Vec tree_pred = tree.predict(X);
+        for (size_t i=0;i<current.size();++i)
+            current[i]+=config.learning_rate*tree_pred[i];
+        trees.push_back(std::move(tree));
+    }
+    (void)config.seed;
+}
+
+Vec GradientBoosting::predict(const Mat& X) const {
+    Vec pred(X.size(), init_prediction);
+    for (const auto& tree : trees) {
+        Vec tree_pred = tree.predict(X);
+        for (size_t i=0;i<pred.size();++i)
+            pred[i]+=config.learning_rate*tree_pred[i];
+    }
+    return pred;
+}
 
 // ========================== KMeans ==========================
 
