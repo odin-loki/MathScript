@@ -1,0 +1,2 @@
+izaac seed 42
+izaac_gaussian_noise(5, 1, 1e-5, 1)
