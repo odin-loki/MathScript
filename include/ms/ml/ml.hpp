@@ -90,6 +90,39 @@ private:
     double predict_one(const Vec& x, int node) const;
 };
 
+struct RandomForestConfig {
+    size_t n_trees = 50;
+    size_t max_depth = 5;
+    double feature_subsample_ratio = 0.7;
+    double sample_subsample_ratio = 1.0;
+    unsigned seed = 42;
+};
+
+struct RandomForest {
+    RandomForestConfig config;
+    std::vector<DecisionTree> trees;
+    std::vector<std::vector<int>> feature_indices;
+
+    void fit(const Mat& X, const Vec& y);
+    Vec predict(const Mat& X) const;
+};
+
+struct GradientBoostingConfig {
+    size_t n_trees = 50;
+    size_t max_depth = 3;
+    double learning_rate = 0.1;
+    unsigned seed = 42;
+};
+
+struct GradientBoosting {
+    GradientBoostingConfig config;
+    double init_prediction = 0.0;
+    std::vector<DecisionTree> trees;
+
+    void fit(const Mat& X, const Vec& y);
+    Vec predict(const Mat& X) const;
+};
+
 // ========================== Unsupervised Learning ==========================
 
 struct KMeans {
