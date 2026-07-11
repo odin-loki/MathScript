@@ -257,6 +257,286 @@ Vec NaiveBayes::predict(const Mat& X) const {
 }
 double NaiveBayes::score(const Mat& X, const Vec& y) const { return accuracy(predict(X),y); }
 
+// ========================== LDA / QDA helpers ==========================
+
+static Mat mat_add_reg(const Mat& A, double reg) {
+    Mat B=A;
+    for (size_t i=0;i<B.size();++i) B[i][i]+=reg;
+    return B;
+}
+
+static Mat mat_inv(const Mat& A, double reg=0.0) {
+    int n=(int)A.size();
+    if (n==0) return {};
+    Mat inv(n, Vec(n,0.0));
+    Mat base=mat_add_reg(A, reg);
+    for (int j=0;j<n;++j) {
+        Mat Acopy=base;
+        Vec e(n,0.0); e[j]=1.0;
+        Vec col=gauss_solve(Acopy, e);
+        for (int i=0;i<n;++i) inv[i][j]=col[i];
+    }
+    return inv;
+}
+
+static double mat_quad_form(const Mat& A, const Vec& x) {
+    Vec Ax=mat_vec(A, x);
+    return vec_dot(x, Ax);
+}
+
+static double mat_logdet_spd(Mat A, double reg=0.0) {
+    int n=(int)A.size();
+    if (n==0) return 0.0;
+    for (int i=0;i<n;++i) A[i][i]+=reg;
+    Mat L(n, Vec(n,0.0));
+    for (int i=0;i<n;++i) {
+        for (int j=0;j<=i;++j) {
+            double s=A[i][j];
+            for (int k=0;k<j;++k) s-=L[i][k]*L[j][k];
+            if (i==j) {
+                if (s<=1e-14) return -1e300;
+                L[i][j]=std::sqrt(s);
+            } else {
+                L[i][j]=s/L[j][j];
+            }
+        }
+    }
+    double logdet=0.0;
+    for (int i=0;i<n;++i) logdet+=2.0*std::log(L[i][i]);
+    return logdet;
+}
+
+static void sym_eig_power(const Mat& A, Mat& evecs, Vec& evals, int k, int max_iter=200) {
+    int n=(int)A.size();
+    k=std::min(k, n);
+    evecs.assign(k, Vec(n,0.0));
+    evals.assign(k, 0.0);
+    std::mt19937 rng(42);
+    std::normal_distribution<double> nd(0,1);
+    for (int r=0;r<k;++r) {
+        Vec v(n);
+        for (auto& x:v) x=nd(rng);
+        double nn=vec_norm(v);
+        if (nn<1e-14) { v[0]=1.0; nn=1.0; }
+        for (auto& x:v) x/=nn;
+        for (int it=0;it<max_iter;++it) {
+            Vec u(n,0.0);
+            for (int i=0;i<n;++i)
+                for (int j=0;j<n;++j)
+                    u[i]+=A[i][j]*v[j];
+            for (int prev=0;prev<r;++prev) {
+                double d=vec_dot(evecs[prev], u);
+                for (int i=0;i<n;++i) u[i]-=d*evecs[prev][i];
+            }
+            nn=vec_norm(u);
+            if (nn<1e-14) break;
+            for (auto& x:u) x/=nn;
+            v=u;
+        }
+        Vec Au(n,0.0);
+        for (int i=0;i<n;++i)
+            for (int j=0;j<n;++j)
+                Au[i]+=A[i][j]*v[j];
+        double lambda=vec_dot(v, Au);
+        evals[r]=lambda;
+        evecs[r]=v;
+    }
+}
+
+static Mat class_scatter(const Mat& X, const Vec& mean) {
+    int p=(int)mean.size();
+    Mat S=mat_zeros(p, p);
+    for (const auto& x:X) {
+        Vec d=vec_sub(x, mean);
+        for (int i=0;i<p;++i)
+            for (int j=0;j<p;++j)
+                S[i][j]+=d[i]*d[j];
+    }
+    return S;
+}
+
+// ========================== Linear Discriminant Analysis ==========================
+
+void LDA::fit(const Mat& X, const Vec& y) {
+    classes.clear(); class_prior.clear(); mean.clear();
+    pooled_cov_inv.clear(); discrim_const.clear(); discrim_coef.clear();
+    projection.clear(); overall_mean.clear();
+    if (X.empty()) return;
+
+    std::set<double> cls(y.begin(), y.end());
+    classes.assign(cls.begin(), cls.end());
+    int C=(int)classes.size(), n=(int)X.size(), p=(int)X[0].size();
+    if (C<2) return;
+
+    mean.assign(C, Vec(p,0.0));
+    class_prior.assign(C, 0.0);
+    std::vector<int> counts(C, 0);
+
+    overall_mean.assign(p, 0.0);
+    for (int i=0;i<n;++i)
+        for (int j=0;j<p;++j)
+            overall_mean[j]+=X[i][j];
+    for (int j=0;j<p;++j) overall_mean[j]/=n;
+
+    for (int i=0;i<n;++i) {
+        int ci=(int)(std::find(classes.begin(), classes.end(), y[i])-classes.begin());
+        counts[ci]++;
+        for (int j=0;j<p;++j) mean[ci][j]+=X[i][j];
+    }
+    for (int c=0;c<C;++c) {
+        class_prior[c]=(double)counts[c]/n;
+        if (counts[c]>0)
+            for (int j=0;j<p;++j) mean[c][j]/=counts[c];
+    }
+
+    Mat Sw=mat_zeros(p, p);
+    for (int i=0;i<n;++i) {
+        int ci=(int)(std::find(classes.begin(), classes.end(), y[i])-classes.begin());
+        Vec d=vec_sub(X[i], mean[ci]);
+        for (int a=0;a<p;++a)
+            for (int b=0;b<p;++b)
+                Sw[a][b]+=d[a]*d[b];
+    }
+    double dof=std::max(1.0, (double)(n-C));
+    for (int a=0;a<p;++a)
+        for (int b=0;b<p;++b)
+            Sw[a][b]/=dof;
+
+    pooled_cov_inv=mat_inv(Sw, reg_epsilon);
+
+    discrim_const.assign(C, 0.0);
+    discrim_coef.assign(C, Vec(p, 0.0));
+    for (int c=0;c<C;++c) {
+        Vec Smu=mat_vec(pooled_cov_inv, mean[c]);
+        discrim_coef[c]=Smu;
+        discrim_const[c]=-0.5*vec_dot(mean[c], Smu)+std::log(std::max(class_prior[c], 1e-300));
+    }
+
+    int k_comp=n_components>0 ? n_components : std::min(C-1, p);
+    if (k_comp>0) {
+        Mat Sb=mat_zeros(p, p);
+        for (int c=0;c<C;++c) {
+            Vec d=vec_sub(mean[c], overall_mean);
+            for (int a=0;a<p;++a)
+                for (int b=0;b<p;++b)
+                    Sb[a][b]+=counts[c]*d[a]*d[b];
+        }
+        Mat Sw_inv=mat_inv(Sw, reg_epsilon);
+        Mat M=mat_mul(Sw_inv, Sb);
+        Mat evecs; Vec evals;
+        sym_eig_power(M, evecs, evals, k_comp);
+        projection=evecs;
+    }
+}
+
+Vec LDA::predict(const Mat& X) const {
+    Vec pred(X.size(), classes.empty()?0.0:classes[0]);
+    if (classes.empty()||discrim_coef.empty()) return pred;
+    int C=(int)classes.size();
+    for (size_t i=0;i<X.size();++i) {
+        double best=-1e300; int best_c=0;
+        for (int c=0;c<C;++c) {
+            double score=discrim_const[c]+vec_dot(discrim_coef[c], X[i]);
+            if (score>best) { best=score; best_c=c; }
+        }
+        pred[i]=classes[best_c];
+    }
+    return pred;
+}
+
+double LDA::score(const Mat& X, const Vec& y) const { return accuracy(predict(X), y); }
+
+Mat LDA::transform(const Mat& X) const {
+    if (projection.empty()||overall_mean.empty()) return {};
+    int k=(int)projection.size(), p=(int)overall_mean.size();
+    Mat Z(X.size(), Vec(k, 0.0));
+    for (size_t i=0;i<X.size();++i) {
+        Vec xc(p);
+        for (int j=0;j<p;++j) xc[j]=X[i][j]-overall_mean[j];
+        for (int r=0;r<k;++r) Z[i][r]=vec_dot(projection[r], xc);
+    }
+    return Z;
+}
+
+// ========================== Quadratic Discriminant Analysis ==========================
+
+void QDA::fit(const Mat& X, const Vec& y) {
+    classes.clear(); class_prior.clear(); mean.clear();
+    quad_coef.clear(); linear_coef.clear(); discrim_const.clear();
+    if (X.empty()) return;
+
+    std::set<double> cls(y.begin(), y.end());
+    classes.assign(cls.begin(), cls.end());
+    int C=(int)classes.size(), n=(int)X.size(), p=(int)X[0].size();
+    if (C<1) return;
+
+    mean.assign(C, Vec(p, 0.0));
+    class_prior.assign(C, 0.0);
+    std::vector<int> counts(C, 0);
+    std::vector<Mat> class_X(C);
+
+    for (int i=0;i<n;++i) {
+        int ci=(int)(std::find(classes.begin(), classes.end(), y[i])-classes.begin());
+        counts[ci]++;
+        class_X[ci].push_back(X[i]);
+        for (int j=0;j<p;++j) mean[ci][j]+=X[i][j];
+    }
+    for (int c=0;c<C;++c) {
+        class_prior[c]=(double)counts[c]/n;
+        if (counts[c]>0)
+            for (int j=0;j<p;++j) mean[c][j]/=counts[c];
+    }
+
+    quad_coef.assign(C, Vec(p*p, 0.0));
+    linear_coef.assign(C, Vec(p, 0.0));
+    discrim_const.assign(C, 0.0);
+
+    for (int c=0;c<C;++c) {
+        Mat cov=mat_zeros(p, p);
+        if (counts[c]>1) {
+            cov=class_scatter(class_X[c], mean[c]);
+            double denom=std::max(1.0, (double)(counts[c]-1));
+            for (int a=0;a<p;++a)
+                for (int b=0;b<p;++b)
+                    cov[a][b]/=denom;
+        } else {
+            for (int a=0;a<p;++a) cov[a][a]=1.0;
+        }
+        Mat inv_cov=mat_inv(cov, reg_epsilon);
+        double log_det=mat_logdet_spd(cov, reg_epsilon);
+        Vec inv_mu=mat_vec(inv_cov, mean[c]);
+        double mu_quad=vec_dot(mean[c], inv_mu);
+
+        for (int a=0;a<p;++a)
+            for (int b=0;b<p;++b)
+                quad_coef[c][a*p+b]=inv_cov[a][b];
+        linear_coef[c]=inv_mu;
+        discrim_const[c]=-0.5*log_det-0.5*mu_quad+std::log(std::max(class_prior[c], 1e-300));
+    }
+}
+
+Vec QDA::predict(const Mat& X) const {
+    Vec pred(X.size(), classes.empty()?0.0:classes[0]);
+    if (classes.empty()||quad_coef.empty()) return pred;
+    int C=(int)classes.size(), p=(int)X[0].size();
+    for (size_t i=0;i<X.size();++i) {
+        double best=-1e300; int best_c=0;
+        for (int c=0;c<C;++c) {
+            Mat inv_cov(p, Vec(p));
+            for (int a=0;a<p;++a)
+                for (int b=0;b<p;++b)
+                    inv_cov[a][b]=quad_coef[c][a*p+b];
+            double score=discrim_const[c]+vec_dot(linear_coef[c], X[i])
+                -0.5*mat_quad_form(inv_cov, X[i]);
+            if (score>best) { best=score; best_c=c; }
+        }
+        pred[i]=classes[best_c];
+    }
+    return pred;
+}
+
+double QDA::score(const Mat& X, const Vec& y) const { return accuracy(predict(X), y); }
+
 // ========================== Decision Tree ==========================
 
 static double gini(const Vec& y, const std::vector<int>& idx) {

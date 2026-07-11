@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <random>
 
 using namespace ms::ml;
 
@@ -172,6 +173,214 @@ TEST(MLNaiveBayes, ScoreOnTrainSet) {
     NaiveBayes nb;
     nb.fit(X,y);
     EXPECT_GE(nb.score(X,y), 0.99);
+}
+
+// ---- LDA / QDA ----
+
+static std::pair<Mat,Vec> lda_three_class_data() {
+    Mat X; Vec y;
+    for (int i=0;i<30;++i) {
+        X.push_back({-3.0+0.1*(double)(i%6), 0.0+0.05*(double)(i/6)});
+        y.push_back(0.0);
+    }
+    for (int i=0;i<30;++i) {
+        X.push_back({0.0+0.05*(double)(i%6), 3.0+0.1*(double)(i/6)});
+        y.push_back(1.0);
+    }
+    for (int i=0;i<30;++i) {
+        X.push_back({3.0+0.1*(double)(i%6), 0.0+0.05*(double)(i/6)});
+        y.push_back(2.0);
+    }
+    return {X,y};
+}
+
+static std::pair<Mat,Vec> qda_unequal_covariance_data() {
+    Mat X; Vec y;
+    std::mt19937 rng(123);
+    std::normal_distribution<double> tight(0.0, 0.15);
+    std::normal_distribution<double> wide_x(0.0, 2.5);
+    std::normal_distribution<double> wide_y(0.0, 0.2);
+    for (int i=0;i<80;++i) {
+        X.push_back({-3.0+tight(rng), 0.0+tight(rng)});
+        y.push_back(0.0);
+    }
+    for (int i=0;i<80;++i) {
+        X.push_back({3.0+wide_x(rng), 0.0+wide_y(rng)});
+        y.push_back(1.0);
+    }
+    return {X,y};
+}
+
+TEST(MLLDA, TwoClassLinearSeparableHighAccuracy) {
+    Mat X; Vec y;
+    for (int i=0;i<40;++i) {
+        X.push_back({-2.0+0.1*(double)(i%8), -1.0+0.05*(double)(i/8)});
+        y.push_back(0.0);
+    }
+    for (int i=0;i<40;++i) {
+        X.push_back({2.0+0.1*(double)(i%8), 1.0+0.05*(double)(i/8)});
+        y.push_back(1.0);
+    }
+    auto split=train_test_split(X,y,0.25,42);
+    LDA lda;
+    lda.fit(split.first.first, split.first.second);
+    double acc=accuracy(lda.predict(split.second.first), split.second.second);
+    RecordProperty("lda_two_class_accuracy", acc);
+    EXPECT_GE(acc, 0.90);
+}
+
+TEST(MLLDA, ThreeClassHighAccuracy) {
+    auto [X,y]=lda_three_class_data();
+    auto split=train_test_split(X,y,0.25,7);
+    LDA lda;
+    lda.fit(split.first.first, split.first.second);
+    double acc=accuracy(lda.predict(split.second.first), split.second.second);
+    EXPECT_GE(acc, 0.85);
+}
+
+TEST(MLLDA, ScoreOnTrainSet) {
+    Mat X; Vec y;
+    for (int i=0;i<25;++i) { X.push_back({-1.0,0.0}); y.push_back(0.0); }
+    for (int i=0;i<25;++i) { X.push_back({1.0,0.0}); y.push_back(1.0); }
+    LDA lda;
+    lda.fit(X,y);
+    EXPECT_GE(lda.score(X,y), 0.95);
+}
+
+TEST(MLLDA, NonContiguousLabels) {
+    Mat X; Vec y;
+    for (int i=0;i<20;++i) { X.push_back({-2.0,0.0}); y.push_back(10.0); }
+    for (int i=0;i<20;++i) { X.push_back({2.0,0.0}); y.push_back(20.0); }
+    LDA lda;
+    lda.fit(X,y);
+    auto pred=lda.predict({{-2.5,0.0},{2.5,0.0}});
+    EXPECT_NEAR(pred[0], 10.0, 1e-10);
+    EXPECT_NEAR(pred[1], 20.0, 1e-10);
+}
+
+TEST(MLLDA, TransformReducesDimension) {
+    auto [X,y]=lda_three_class_data();
+    LDA lda(1e-6, 2);
+    lda.fit(X,y);
+    auto Z=lda.transform(X);
+    EXPECT_EQ(Z.size(), X.size());
+    EXPECT_EQ(Z[0].size(), 2u);
+}
+
+TEST(MLLDA, TransformPreservesClassSeparation) {
+    auto [X,y]=lda_three_class_data();
+    LDA lda(1e-6, 2);
+    lda.fit(X,y);
+    auto Z=lda.transform(X);
+    Vec m0(2,0), m1(2,0), m2(2,0);
+    int n0=0,n1=0,n2=0;
+    for (size_t i=0;i<y.size();++i) {
+        if (y[i]==0.0) { for (int d=0;d<2;++d) m0[d]+=Z[i][d]; ++n0; }
+        else if (y[i]==1.0) { for (int d=0;d<2;++d) m1[d]+=Z[i][d]; ++n1; }
+        else { for (int d=0;d<2;++d) m2[d]+=Z[i][d]; ++n2; }
+    }
+    for (int d=0;d<2;++d) { m0[d]/=n0; m1[d]/=n1; m2[d]/=n2; }
+    double d01=0,d02=0;
+    for (int d=0;d<2;++d) {
+        double a=m0[d]-m1[d]; d01+=a*a;
+        double b=m0[d]-m2[d]; d02+=b*b;
+    }
+    EXPECT_GT(std::sqrt(d01), 0.5);
+    EXPECT_GT(std::sqrt(d02), 0.5);
+}
+
+TEST(MLLDA, SmallClassSampleNoCrash) {
+    Mat X={{0,0},{0.1,0},{1,0},{1.1,0},{5,5}};
+    Vec y={0,0,1,1,2};
+    LDA lda(1e-4);
+    lda.fit(X,y);
+    auto pred=lda.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+    for (double v:pred) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(MLLDA, PredictBeforeFitNoCrash) {
+    Mat X={{1,2},{3,4}};
+    LDA lda;
+    auto pred=lda.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+}
+
+TEST(MLQDA, UnequalCovarianceBeatsLDA) {
+    auto [X,y]=qda_unequal_covariance_data();
+    auto split=train_test_split(X,y,0.3,42);
+    LDA lda;
+    QDA qda;
+    lda.fit(split.first.first, split.first.second);
+    qda.fit(split.first.first, split.first.second);
+    double acc_lda=accuracy(lda.predict(split.second.first), split.second.second);
+    double acc_qda=accuracy(qda.predict(split.second.first), split.second.second);
+    RecordProperty("lda_unequal_cov_accuracy", acc_lda);
+    RecordProperty("qda_unequal_cov_accuracy", acc_qda);
+    EXPECT_GE(acc_qda, acc_lda);
+    EXPECT_GE(acc_qda, 0.75);
+}
+
+TEST(MLQDA, ThreeClassClassification) {
+    auto [X,y]=lda_three_class_data();
+    auto split=train_test_split(X,y,0.25,11);
+    QDA qda;
+    qda.fit(split.first.first, split.first.second);
+    double acc=accuracy(qda.predict(split.second.first), split.second.second);
+    EXPECT_GE(acc, 0.80);
+}
+
+TEST(MLQDA, ScoreOnTrainSet) {
+    Mat X; Vec y;
+    for (int i=0;i<30;++i) { X.push_back({-1.0,0.0}); y.push_back(0.0); }
+    for (int i=0;i<30;++i) { X.push_back({1.0,0.0}); y.push_back(1.0); }
+    QDA qda;
+    qda.fit(X,y);
+    EXPECT_GE(qda.score(X,y), 0.90);
+}
+
+TEST(MLQDA, NonContiguousLabels) {
+    Mat X; Vec y;
+    for (int i=0;i<15;++i) { X.push_back({-3.0,0.0}); y.push_back(5.0); }
+    for (int i=0;i<15;++i) { X.push_back({3.0,0.0}); y.push_back(15.0); }
+    QDA qda;
+    qda.fit(X,y);
+    auto pred=qda.predict({{-4.0,0.0},{4.0,0.0}});
+    EXPECT_NEAR(pred[0], 5.0, 1e-10);
+    EXPECT_NEAR(pred[1], 15.0, 1e-10);
+}
+
+TEST(MLQDA, SmallClassSampleNoCrash) {
+    Mat X={{0,0},{1,0},{1.1,0},{5,5},{5.1,5}};
+    Vec y={0,1,1,2,2};
+    QDA qda(1e-4);
+    qda.fit(X,y);
+    auto pred=qda.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+    for (double v:pred) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(MLQDA, PredictBeforeFitNoCrash) {
+    Mat X={{1,2},{3,4}};
+    QDA qda;
+    auto pred=qda.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+}
+
+TEST(MLQDA, EqualCovarianceStillWorks) {
+    Mat X; Vec y;
+    for (int i=0;i<30;++i) {
+        X.push_back({-2.0+0.1*(double)(i%6), 0.0});
+        y.push_back(0.0);
+    }
+    for (int i=0;i<30;++i) {
+        X.push_back({2.0+0.1*(double)(i%6), 0.0});
+        y.push_back(1.0);
+    }
+    auto split=train_test_split(X,y,0.25,3);
+    QDA qda;
+    qda.fit(split.first.first, split.first.second);
+    EXPECT_GE(accuracy(qda.predict(split.second.first), split.second.second), 0.85);
 }
 
 // ---- Decision Tree ----
