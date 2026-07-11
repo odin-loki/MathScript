@@ -590,3 +590,281 @@ TEST(OdeAdvanced2, DaeIndex1_ProducesMonotoneGrid) {
         EXPECT_GT(result.t[i], result.t[i - 1]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// ode_verlet
+// ---------------------------------------------------------------------------
+
+namespace {
+
+double harmonic_energy(double q, double v) {
+    return 0.5 * v * v + 0.5 * q * q;
+}
+
+double harmonic_energy_vec(const std::vector<double>& q,
+                           const std::vector<double>& v) {
+    double e = 0.0;
+    for (size_t i = 0; i < q.size(); ++i) {
+        e += 0.5 * v[i] * v[i] + 0.5 * q[i] * q[i];
+    }
+    return e;
+}
+
+} // namespace
+
+TEST(OdeAdvanced2, Verlet_ZeroSteps_ReturnsEmpty) {
+    const auto a = [](double, double q) { return -q; };
+    const auto result = ode_verlet(a, 0.0, 1.0, 0.0, 10.0, 0);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.q.empty());
+    EXPECT_TRUE(result.v.empty());
+}
+
+TEST(OdeAdvanced2, Verlet_HarmonicOscillator_EnergyConserved) {
+    const auto a = [](double, double q) { return -q; };
+    const size_t periods = 20;
+    const size_t steps_per_period = 100;
+    const double t_end = static_cast<double>(periods) * 2.0 * M_PI;
+    const size_t steps = periods * steps_per_period;
+    const auto result = ode_verlet(a, 0.0, 1.0, 0.0, t_end, steps);
+    ASSERT_FALSE(result.q.empty());
+    ASSERT_FALSE(result.v.empty());
+    const double e0 = harmonic_energy(result.q.front(), result.v.front());
+    const double e1 = harmonic_energy(result.q.back(), result.v.back());
+    EXPECT_NEAR(e1, e0, 1e-3 * e0);
+}
+
+TEST(OdeAdvanced2, Verlet_HarmonicOscillator_MatchesAnalytic) {
+    const auto a = [](double, double q) { return -q; };
+    const auto result = ode_verlet(a, 0.0, 1.0, 0.0, M_PI, 400);
+    ASSERT_FALSE(result.q.empty());
+    EXPECT_NEAR(result.q.back(), std::cos(M_PI), 0.01);
+    EXPECT_NEAR(result.v.back(), -std::sin(M_PI), 0.01);
+}
+
+TEST(OdeAdvanced2, Verlet_HarmonicOscillator_MidTrajectory) {
+    const auto a = [](double, double q) { return -q; };
+    const auto result = ode_verlet(a, 0.0, 1.0, 0.0, M_PI / 2.0, 300);
+    ASSERT_GE(result.q.size(), 2u);
+    const size_t mid = result.q.size() / 2;
+    EXPECT_NEAR(result.q[mid], std::cos(result.t[mid]), 0.01);
+    EXPECT_NEAR(result.v[mid], -std::sin(result.t[mid]), 0.01);
+}
+
+TEST(OdeAdvanced2, Verlet_HarmonicOscillator_BetterEnergyThanRK4) {
+    const auto a = [](double, double q) { return -q; };
+
+    const size_t periods = 20;
+    const size_t steps_per_period = 50;
+    const double t_end = static_cast<double>(periods) * 2.0 * M_PI;
+    const size_t steps = periods * steps_per_period;
+
+    const auto verlet = ode_verlet(a, 0.0, 1.0, 0.0, t_end, steps);
+    ASSERT_FALSE(verlet.q.empty());
+
+    const OdeFuncVec sys = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto rk4 = ode_rk4_vec(sys, 0.0, {1.0, 0.0}, t_end, steps);
+    ASSERT_FALSE(rk4.y.empty());
+
+    const double e0 = harmonic_energy(verlet.q.front(), verlet.v.front());
+    const double e_verlet = harmonic_energy(verlet.q.back(), verlet.v.back());
+    const double e_rk4 = harmonic_energy(rk4.y.back()[0], rk4.y.back()[1]);
+
+    EXPECT_LT(std::abs(e_verlet - e0), 0.05 * e0);
+    EXPECT_GT(std::abs(e_rk4 - e0), std::abs(e_verlet - e0));
+}
+
+TEST(OdeAdvanced2, Verlet_ProducesMonotoneGrid) {
+    const auto a = [](double, double q) { return -q; };
+    const auto result = ode_verlet(a, 0.0, 1.0, 0.0, 1.0, 10);
+    ASSERT_EQ(result.t.size(), 11u);
+    for (size_t i = 1; i < result.t.size(); ++i) {
+        EXPECT_GT(result.t[i], result.t[i - 1]);
+    }
+}
+
+TEST(OdeAdvanced2, Verlet_HarmonicOscillator_InitialConditions) {
+    const auto a = [](double, double q) { return -q; };
+    const auto result = ode_verlet(a, 0.0, 1.0, 0.0, 0.1, 10);
+    ASSERT_FALSE(result.q.empty());
+    EXPECT_NEAR(result.q.front(), 1.0, 1e-12);
+    EXPECT_NEAR(result.v.front(), 0.0, 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// ode_verlet_vec
+// ---------------------------------------------------------------------------
+
+TEST(OdeAdvanced2, VerletVec_ZeroSteps_ReturnsEmpty) {
+    const auto a = [](double, const std::vector<double>& q) {
+        return std::vector<double>{-q[0], -q[1]};
+    };
+    const auto result = ode_verlet_vec(a, 0.0, {1.0, 0.5}, {0.0, 0.0}, 1.0, 0);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.q.empty());
+    EXPECT_TRUE(result.v.empty());
+}
+
+TEST(OdeAdvanced2, VerletVec_EmptyQ0_ReturnsEmpty) {
+    const auto a = [](double, const std::vector<double>&) {
+        return std::vector<double>{};
+    };
+    const auto result = ode_verlet_vec(a, 0.0, {}, {}, 1.0, 10);
+    EXPECT_TRUE(result.t.empty());
+}
+
+TEST(OdeAdvanced2, VerletVec_MismatchedQ0V0_ReturnsEmpty) {
+    const auto a = [](double, const std::vector<double>& q) {
+        return std::vector<double>{-q[0]};
+    };
+    const auto result = ode_verlet_vec(a, 0.0, {1.0}, {0.0, 0.0}, 1.0, 10);
+    EXPECT_TRUE(result.t.empty());
+}
+
+TEST(OdeAdvanced2, VerletVec_HarmonicOscillator2D_EnergyConserved) {
+    const auto a = [](double, const std::vector<double>& q) {
+        return std::vector<double>{-q[0], -q[1]};
+    };
+    const size_t periods = 20;
+    const size_t steps_per_period = 100;
+    const double t_end = static_cast<double>(periods) * 2.0 * M_PI;
+    const size_t steps = periods * steps_per_period;
+    const auto result = ode_verlet_vec(a, 0.0, {1.0, 0.5}, {0.0, 0.0}, t_end, steps);
+    ASSERT_FALSE(result.q.empty());
+    const double e0 = harmonic_energy_vec(result.q.front(), result.v.front());
+    const double e1 = harmonic_energy_vec(result.q.back(), result.v.back());
+    EXPECT_NEAR(e1, e0, 1e-3 * e0);
+}
+
+TEST(OdeAdvanced2, VerletVec_HarmonicOscillator2D_MatchesScalarComponents) {
+    const auto a_scalar = [](double, double q) { return -q; };
+    const auto a_vec = [](double, const std::vector<double>& q) {
+        return std::vector<double>{-q[0], -q[1]};
+    };
+    const double t_end = 4.0 * M_PI;
+    const size_t steps = 400;
+    const auto scalar = ode_verlet(a_scalar, 0.0, 1.0, 0.0, t_end, steps);
+    const auto vec = ode_verlet_vec(a_vec, 0.0, {1.0, 1.0}, {0.0, 0.0}, t_end, steps);
+    ASSERT_FALSE(scalar.q.empty());
+    ASSERT_FALSE(vec.q.empty());
+    EXPECT_NEAR(vec.q.back()[0], scalar.q.back(), 0.02);
+    EXPECT_NEAR(vec.q.back()[1], scalar.q.back(), 0.02);
+}
+
+TEST(OdeAdvanced2, VerletVec_HarmonicOscillator2D_MatchesAnalytic) {
+    const auto a = [](double, const std::vector<double>& q) {
+        return std::vector<double>{-q[0], -q[1]};
+    };
+    const auto result = ode_verlet_vec(a, 0.0, {1.0, 0.5}, {0.0, 0.0}, M_PI, 400);
+    ASSERT_FALSE(result.q.empty());
+    EXPECT_NEAR(result.q.back()[0], std::cos(M_PI), 0.01);
+    EXPECT_NEAR(result.q.back()[1], 0.5 * std::cos(M_PI), 0.01);
+    EXPECT_NEAR(result.v.back()[0], -std::sin(M_PI), 0.01);
+    EXPECT_NEAR(result.v.back()[1], -0.5 * std::sin(M_PI), 0.01);
+}
+
+TEST(OdeAdvanced2, VerletVec_ProducesMonotoneGrid) {
+    const auto a = [](double, const std::vector<double>& q) {
+        return std::vector<double>{-q[0], -q[1]};
+    };
+    const auto result = ode_verlet_vec(a, 0.0, {1.0, 0.0}, {0.0, 1.0}, 1.0, 10);
+    ASSERT_EQ(result.t.size(), 11u);
+    for (size_t i = 1; i < result.t.size(); ++i) {
+        EXPECT_GT(result.t[i], result.t[i - 1]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ode_rk45_vec
+// ---------------------------------------------------------------------------
+
+TEST(OdeAdvanced2, Rk45Vec_EmptyY0_ReturnsEmpty) {
+    const auto f = [](double, const std::vector<double>&) {
+        return std::vector<double>{};
+    };
+    const auto result = ode_rk45_vec(f, 0.0, {}, 1.0);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.y.empty());
+}
+
+TEST(OdeAdvanced2, Rk45Vec_HarmonicOscillator2D_MatchesAnalytic) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto result = ode_rk45_vec(f, 0.0, {1.0, 0.0}, M_PI);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back()[0], std::cos(M_PI), 1e-4);
+    EXPECT_NEAR(result.y.back()[1], -std::sin(M_PI), 1e-4);
+}
+
+TEST(OdeAdvanced2, Rk45Vec_HarmonicOscillator2D_MidTrajectory) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto result = ode_rk45_vec(f, 0.0, {1.0, 0.0}, M_PI / 2.0);
+    ASSERT_GE(result.y.size(), 2u);
+    const size_t mid = result.y.size() / 2;
+    EXPECT_NEAR(result.y[mid][0], std::cos(result.t[mid]), 1e-3);
+    EXPECT_NEAR(result.y[mid][1], -std::sin(result.t[mid]), 1e-3);
+}
+
+TEST(OdeAdvanced2, Rk45Vec_AdaptiveStepCount_Reasonable) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto result = ode_rk45_vec(f, 0.0, {1.0, 0.0}, 2.0 * M_PI);
+    ASSERT_GE(result.t.size(), 2u);
+    EXPECT_GT(result.t.size(), 5u);
+    EXPECT_LT(result.t.size(), 5000u);
+}
+
+TEST(OdeAdvanced2, Rk45Vec_TighterTolerance_SmallerError) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const double t_end = 1.0;
+    const double exact_y = std::cos(t_end);
+    const double exact_yp = -std::sin(t_end);
+    const auto loose = ode_rk45_vec(f, 0.0, {1.0, 0.0}, t_end, 1e-3, 1e-6);
+    const auto tight = ode_rk45_vec(f, 0.0, {1.0, 0.0}, t_end, 1e-9, 1e-12);
+    const double err_loose = std::abs(loose.y.back()[0] - exact_y)
+                           + std::abs(loose.y.back()[1] - exact_yp);
+    const double err_tight = std::abs(tight.y.back()[0] - exact_y)
+                           + std::abs(tight.y.back()[1] - exact_yp);
+    EXPECT_LT(err_tight, err_loose);
+}
+
+TEST(OdeAdvanced2, Rk45Vec_LooserTolerance_StillReasonable) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto result = ode_rk45_vec(f, 0.0, {1.0, 0.0}, 1.0, 1e-2, 1e-5);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back()[0], std::cos(1.0), 0.01);
+    EXPECT_NEAR(result.y.back()[1], -std::sin(1.0), 0.01);
+}
+
+TEST(OdeAdvanced2, Rk45Vec_ProducesMonotoneGrid) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto result = ode_rk45_vec(f, 0.0, {1.0, 0.0}, 1.0);
+    ASSERT_GE(result.t.size(), 2u);
+    for (size_t i = 1; i < result.t.size(); ++i) {
+        EXPECT_GT(result.t[i], result.t[i - 1]);
+    }
+}
+
+TEST(OdeAdvanced2, Rk45Vec_SolutionRemainsFinite) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto result = ode_rk45_vec(f, 0.0, {1.0, 0.0}, 10.0);
+    for (const auto& state : result.y) {
+        for (double v : state) {
+            EXPECT_TRUE(std::isfinite(v));
+        }
+    }
+}

@@ -41,6 +41,36 @@ OdeResultVec ode_rk4_vec(OdeFuncVec f, double t0,
                           const std::vector<double>& y0,
                           double t_end, size_t steps);
 
+// Adaptive vector solver (Dormand-Prince RK45)
+OdeResultVec ode_rk45_vec(OdeFuncVec f, double t0,
+                           const std::vector<double>& y0,
+                           double t_end,
+                           double rtol = 1e-6, double atol = 1e-9);
+
+// Symplectic velocity Verlet for second-order ODE q'' = a(t, q)
+using OdeAccelFunc = std::function<double(double t, double q)>;
+using OdeAccelFuncVec = std::function<std::vector<double>(
+    double t, const std::vector<double>& q)>;
+
+struct OdeVerletResult {
+    std::vector<double> t;
+    std::vector<double> q;
+    std::vector<double> v;
+};
+
+struct OdeVerletResultVec {
+    std::vector<double> t;
+    std::vector<std::vector<double>> q;
+    std::vector<std::vector<double>> v;
+};
+
+OdeVerletResult ode_verlet(OdeAccelFunc a, double t0, double q0, double v0,
+                           double t_end, size_t steps);
+OdeVerletResultVec ode_verlet_vec(OdeAccelFuncVec a, double t0,
+                                   const std::vector<double>& q0,
+                                   const std::vector<double>& v0,
+                                   double t_end, size_t steps);
+
 // Adams-Bashforth 2-step
 OdeResult ode_adams_bashforth2(OdeFunc f, double t0, double y0,
                                 double t_end, size_t steps);
