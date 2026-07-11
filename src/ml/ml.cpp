@@ -655,6 +655,132 @@ double KMeans::inertia(const Mat& X) const {
     return s;
 }
 
+// ========================== Gaussian Mixture Model ==========================
+
+static constexpr double GMM_VAR_FLOOR = 1e-6;
+
+static double gmm_log_gaussian_diag(const Vec& x, const Vec& mean, const Vec& var) {
+    int p=(int)x.size();
+    double log_det=0, mahal=0;
+    for (int j=0;j<p;++j) {
+        double v=std::max(var[j], GMM_VAR_FLOOR);
+        double d=x[j]-mean[j];
+        mahal+=d*d/v;
+        log_det+=std::log(v);
+    }
+    return -0.5*(p*std::log(2*M_PI)+log_det+mahal);
+}
+
+static Mat gmm_responsibilities(const Mat& X, const Mat& means, const Mat& variances,
+                                const Vec& weights, double* log_likelihood=nullptr) {
+    int n=(int)X.size(), p=(int)X[0].size();
+    size_t k=means.size();
+    Mat resp(n, Vec(k, 0.0));
+    double ll=0;
+    for (int i=0;i<n;++i) {
+        Vec log_prob(k);
+        for (size_t c=0;c<k;++c) {
+            log_prob[c]=std::log(std::max(weights[c], 1e-300))
+                +gmm_log_gaussian_diag(X[i], means[c], variances[c]);
+        }
+        double max_lp=*std::max_element(log_prob.begin(), log_prob.end());
+        double sum_exp=0;
+        for (size_t c=0;c<k;++c) {
+            resp[i][c]=std::exp(log_prob[c]-max_lp);
+            sum_exp+=resp[i][c];
+        }
+        for (size_t c=0;c<k;++c) resp[i][c]/=sum_exp;
+        ll+=max_lp+std::log(sum_exp);
+    }
+    if (log_likelihood) *log_likelihood=ll;
+    return resp;
+}
+
+void GaussianMixture::fit(const Mat& X) {
+    means.clear(); variances.clear(); weights.clear();
+    log_likelihood=0.0;
+    if (X.empty()) return;
+    int n=(int)X.size(), p=(int)X[0].size();
+    size_t k=std::min(config.n_components, (size_t)n);
+    if (k==0) return;
+
+    std::mt19937 rng(config.seed);
+    std::vector<int> idx(n);
+    std::iota(idx.begin(), idx.end(), 0);
+    std::shuffle(idx.begin(), idx.end(), rng);
+
+    means.resize(k, Vec(p));
+    for (size_t c=0;c<k;++c) means[c]=X[idx[c]];
+
+    Vec global_mean(p, 0.0);
+    for (int i=0;i<n;++i) for (int j=0;j<p;++j) global_mean[j]+=X[i][j];
+    for (int j=0;j<p;++j) global_mean[j]/=n;
+
+    Vec global_var(p, GMM_VAR_FLOOR);
+    for (int i=0;i<n;++i)
+        for (int j=0;j<p;++j) {
+            double d=X[i][j]-global_mean[j];
+            global_var[j]+=d*d;
+        }
+    for (int j=0;j<p;++j) global_var[j]=std::max(global_var[j]/n, GMM_VAR_FLOOR);
+
+    variances.assign(k, global_var);
+    weights.assign(k, 1.0/(double)k);
+
+    double prev_ll=-std::numeric_limits<double>::infinity();
+    for (size_t iter=0; iter<config.max_iter; ++iter) {
+        Mat resp=gmm_responsibilities(X, means, variances, weights, &log_likelihood);
+        if (iter>0 && log_likelihood-prev_ll<config.tol) break;
+        prev_ll=log_likelihood;
+
+        Vec nk(k, 0.0);
+        for (int i=0;i<n;++i) for (size_t c=0;c<k;++c) nk[c]+=resp[i][c];
+
+        for (size_t c=0;c<k;++c) {
+            double denom=std::max(nk[c], 1e-12);
+            weights[c]=nk[c]/n;
+            for (int j=0;j<p;++j) {
+                double m=0;
+                for (int i=0;i<n;++i) m+=resp[i][c]*X[i][j];
+                means[c][j]=m/denom;
+            }
+            for (int j=0;j<p;++j) {
+                double v=0;
+                for (int i=0;i<n;++i) {
+                    double d=X[i][j]-means[c][j];
+                    v+=resp[i][c]*d*d;
+                }
+                variances[c][j]=std::max(v/denom, GMM_VAR_FLOOR);
+            }
+        }
+    }
+}
+
+Mat GaussianMixture::predict_proba(const Mat& X) const {
+    if (X.empty()||means.empty()) return {};
+    return gmm_responsibilities(X, means, variances, weights, nullptr);
+}
+
+Vec GaussianMixture::predict(const Mat& X) const {
+    Vec pred(X.size());
+    if (X.empty()||means.empty()) return pred;
+    Mat proba=predict_proba(X);
+    for (size_t i=0;i<X.size();++i) {
+        int bi=0;
+        for (size_t c=1;c<proba[i].size();++c)
+            if (proba[i][c]>proba[i][bi]) bi=(int)c;
+        pred[i]=bi;
+    }
+    return pred;
+}
+
+double GaussianMixture::score(const Mat& X) const {
+    if (X.empty()||means.empty()) return -std::numeric_limits<double>::infinity();
+    double ll=0;
+    gmm_responsibilities(X, means, variances, weights, &ll);
+    return ll/X.size();
+}
+
 // ========================== DBSCAN ==========================
 
 void DBSCAN::fit(const Mat& X) {

@@ -220,6 +220,239 @@ TEST(MLKMeans, InertiaDecreases) {
     EXPECT_LT(inert, 50.0);
 }
 
+// ---- GaussianMixture ----
+
+static Mat gmm_two_blob_data() {
+    Mat X;
+    for (int i=0;i<15;++i)
+        X.push_back({0.1*(double)(i%5), 0.1*(double)(i/5)});
+    for (int i=0;i<15;++i)
+        X.push_back({10.0+0.1*(double)(i%5), 10.0+0.1*(double)(i/5)});
+    return X;
+}
+
+static Mat gmm_three_blob_data() {
+    Mat X;
+    for (int i=0;i<12;++i) X.push_back({0.1*(double)(i%4), 0.1*(double)(i/4)});
+    for (int i=0;i<12;++i) X.push_back({10.0+0.1*(double)(i%4), 0.0+0.1*(double)(i/4)});
+    for (int i=0;i<12;++i) X.push_back({0.0+0.1*(double)(i%4), 10.0+0.1*(double)(i/4)});
+    return X;
+}
+
+static bool gmm_means_match(const Mat& means, const std::vector<Vec>& true_centers, double tol) {
+    if (means.size()!=true_centers.size()) return false;
+    std::vector<bool> used(means.size(), false);
+    for (const auto& tc:true_centers) {
+        bool found=false;
+        for (size_t c=0;c<means.size();++c) {
+            if (used[c]) continue;
+            double d=0;
+            for (size_t j=0;j<tc.size();++j) {
+                double diff=means[c][j]-tc[j];
+                d+=diff*diff;
+            }
+            if (std::sqrt(d)<tol) { used[c]=true; found=true; break; }
+        }
+        if (!found) return false;
+    }
+    return true;
+}
+
+static bool gmm_blob_labels_consistent(const Vec& labels, size_t start, size_t count) {
+    if (count==0) return true;
+    double l0=labels[start];
+    for (size_t i=start;i<start+count;++i)
+        if (labels[i]!=l0) return false;
+    return true;
+}
+
+static int gmm_argmax_row(const Vec& row) {
+    int bi=0;
+    for (size_t c=1;c<row.size();++c)
+        if (row[c]>row[bi]) bi=(int)c;
+    return bi;
+}
+
+TEST(MLGMM, TwoBlobsMeansMatch) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.config.seed=42;
+    gmm.fit(X);
+    std::vector<Vec> centers={{0.2,0.2},{10.2,10.2}};
+    EXPECT_TRUE(gmm_means_match(gmm.means, centers, 1.5));
+}
+
+TEST(MLGMM, ThreeBlobsMeansMatch) {
+    auto X=gmm_three_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=3;
+    gmm.config.seed=42;
+    gmm.fit(X);
+    std::vector<Vec> centers={{0.15,0.15},{10.15,0.15},{0.15,10.15}};
+    EXPECT_TRUE(gmm_means_match(gmm.means, centers, 1.5));
+}
+
+TEST(MLGMM, WeightsSumToOne) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.fit(X);
+    double s=0;
+    for (double w:gmm.weights) s+=w;
+    EXPECT_NEAR(s, 1.0, 1e-9);
+}
+
+TEST(MLGMM, TwoBlobsHardAssignConsistent) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.config.seed=42;
+    gmm.fit(X);
+    auto labels=gmm.predict(X);
+    EXPECT_TRUE(gmm_blob_labels_consistent(labels, 0, 15));
+    EXPECT_TRUE(gmm_blob_labels_consistent(labels, 15, 15));
+    EXPECT_NE(labels[0], labels[15]);
+}
+
+TEST(MLGMM, ThreeBlobsHardAssignConsistent) {
+    auto X=gmm_three_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=3;
+    gmm.config.seed=42;
+    gmm.fit(X);
+    auto labels=gmm.predict(X);
+    EXPECT_TRUE(gmm_blob_labels_consistent(labels, 0, 12));
+    EXPECT_TRUE(gmm_blob_labels_consistent(labels, 12, 12));
+    EXPECT_TRUE(gmm_blob_labels_consistent(labels, 24, 12));
+}
+
+TEST(MLGMM, PredictProbaRowsSumToOne) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.fit(X);
+    auto proba=gmm.predict_proba(X);
+    for (const auto& row:proba) {
+        double s=0;
+        for (double v:row) s+=v;
+        EXPECT_NEAR(s, 1.0, 1e-9);
+    }
+}
+
+TEST(MLGMM, PredictProbaNonNegative) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.fit(X);
+    auto proba=gmm.predict_proba(X);
+    for (const auto& row:proba)
+        for (double v:row)
+            EXPECT_GE(v, 0.0);
+}
+
+TEST(MLGMM, PredictMatchesArgmaxProba) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.fit(X);
+    auto proba=gmm.predict_proba(X);
+    auto labels=gmm.predict(X);
+    for (size_t i=0;i<X.size();++i)
+        EXPECT_EQ(labels[i], (double)gmm_argmax_row(proba[i]));
+}
+
+TEST(MLGMM, ScoreFinite) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.fit(X);
+    double sc=gmm.score(X);
+    EXPECT_TRUE(std::isfinite(sc));
+    EXPECT_GT(sc, -1e6);
+}
+
+TEST(MLGMM, LogLikelihoodRecorded) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.fit(X);
+    EXPECT_TRUE(std::isfinite(gmm.log_likelihood));
+    EXPECT_GT(gmm.log_likelihood, gmm.score(X)*X.size()-1.0);
+}
+
+TEST(MLGMM, CorrectNComponentsScoresBetter) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm1, gmm2;
+    gmm1.config.n_components=1;
+    gmm2.config.n_components=2;
+    gmm1.config.seed=42;
+    gmm2.config.seed=42;
+    gmm1.fit(X);
+    gmm2.fit(X);
+    EXPECT_GT(gmm2.score(X), gmm1.score(X));
+}
+
+TEST(MLGMM, VariancesAboveFloor) {
+    auto X=gmm_two_blob_data();
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.fit(X);
+    for (const auto& row:gmm.variances)
+        for (double v:row)
+            EXPECT_GE(v, 1e-6);
+}
+
+TEST(MLGMM, TinyDatasetNoCrash) {
+    Mat X={{0,0},{10,10}};
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.config.seed=42;
+    gmm.fit(X);
+    auto labels=gmm.predict(X);
+    EXPECT_EQ(labels.size(), 2u);
+    auto proba=gmm.predict_proba(X);
+    EXPECT_EQ(proba.size(), 2u);
+    EXPECT_TRUE(std::isfinite(gmm.score(X)));
+}
+
+TEST(MLGMM, DuplicatePointsNoNaN) {
+    Mat X;
+    for (int i=0;i<10;++i) X.push_back({0.0, 0.0});
+    for (int i=0;i<10;++i) X.push_back({10.0, 10.0});
+    GaussianMixture gmm;
+    gmm.config.n_components=2;
+    gmm.config.seed=42;
+    gmm.fit(X);
+    for (const auto& row:gmm.variances)
+        for (double v:row) {
+            EXPECT_TRUE(std::isfinite(v));
+            EXPECT_GE(v, 1e-6);
+        }
+    auto proba=gmm.predict_proba(X);
+    for (const auto& row:proba)
+        for (double v:row)
+            EXPECT_TRUE(std::isfinite(v));
+    EXPECT_TRUE(std::isfinite(gmm.score(X)));
+}
+
+TEST(MLGMM, PredictBeforeFitNoCrash) {
+    Mat X={{1,2},{3,4}};
+    GaussianMixture gmm;
+    auto proba=gmm.predict_proba(X);
+    EXPECT_TRUE(proba.empty());
+    auto labels=gmm.predict(X);
+    EXPECT_EQ(labels.size(), X.size());
+}
+
+TEST(MLGMM, EmptyFitNoCrash) {
+    Mat X;
+    GaussianMixture gmm;
+    gmm.fit(X);
+    EXPECT_TRUE(gmm.means.empty());
+    EXPECT_TRUE(gmm.weights.empty());
+}
+
 // ---- DBSCAN ----
 
 TEST(MLDBSCAN, TwoClusters) {

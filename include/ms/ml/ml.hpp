@@ -165,6 +165,32 @@ struct KMeans {
     double inertia(const Mat& X) const;
 };
 
+struct GMMConfig {
+    size_t n_components = 2;
+    size_t max_iter = 100;
+    double tol = 1e-4;   // convergence tolerance on log-likelihood change
+    unsigned seed = 42;  // for random initialization of component means
+};
+
+/// Gaussian Mixture Model trained via Expectation-Maximization (EM).
+/// Uses diagonal covariance matrices (independent per-feature variances)
+/// rather than full covariances — a standard, tractable variant that avoids
+/// matrix inversion/determinant machinery. A variance floor (1e-6) prevents
+/// EM from collapsing components when duplicate or near-duplicate points would
+/// otherwise drive a component variance toward zero.
+struct GaussianMixture {
+    GMMConfig config;
+    Mat means;                   // n_components × n_features
+    Mat variances;               // n_components × n_features (diagonal entries)
+    Vec weights;                 // n_components mixing weights, sum to 1
+    double log_likelihood = 0.0; // final training log-likelihood
+
+    void fit(const Mat& X);
+    Mat predict_proba(const Mat& X) const;  // n_samples × n_components responsibilities
+    Vec predict(const Mat& X) const;          // hard assignment: argmax component per sample
+    double score(const Mat& X) const;         // average log-likelihood under the mixture
+};
+
 struct DBSCAN {
     double eps; int min_samples;
     Vec labels_;
