@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <tuple>
 #include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -267,6 +268,25 @@ Image scharr(const Image& img) {
     return out;
 }
 
+Image roberts(const Image& img) {
+    auto g=img.channels>1?rgb2gray(img):img;
+    Image gx(g.rows,g.cols,1,0.f), gy(g.rows,g.cols,1,0.f);
+    for (int r=0;r<g.rows;++r) for (int c=0;c<g.cols;++c) {
+        int r1=std::min(r+1,g.rows-1), c1=std::min(c+1,g.cols-1);
+        gx.at(r,c,0)=g.at(r,c,0)-g.at(r1,c1,0);
+        gy.at(r,c,0)=g.at(r,c1,0)-g.at(r1,c,0);
+    }
+    Image out(g.rows,g.cols,1);
+    for (int r=0;r<g.rows;++r) for (int c=0;c<g.cols;++c)
+        out.at(r,c,0)=std::sqrt(gx.at(r,c,0)*gx.at(r,c,0)+gy.at(r,c,0)*gy.at(r,c,0));
+    return out;
+}
+
+// LoG edge/blob detector: Gaussian smooth then Laplacian (sequential composition).
+Image laplacian_of_gaussian(const Image& img, float sigma) {
+    return laplacian(imgaussfilt(img, sigma));
+}
+
 Image canny(const Image& img, float low, float high, float sigma) {
     auto g=img.channels>1?rgb2gray(img):img;
     // 1. Gaussian smooth
@@ -350,6 +370,14 @@ Image imbothat(const Image& img, int ksize) {
     Image out(img.rows,img.cols,img.channels);
     for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch)
         out.at(r,c,ch)=closed.at(r,c,ch)-img.at(r,c,ch);
+    return out;
+}
+
+Image imgradient_morph(const Image& img, int ksize) {
+    auto dil=imdilate(img,ksize), ero=imerode(img,ksize);
+    Image out(img.rows,img.cols,img.channels);
+    for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch)
+        out.at(r,c,ch)=dil.at(r,c,ch)-ero.at(r,c,ch);
     return out;
 }
 
@@ -471,17 +499,63 @@ std::vector<std::vector<float>> radon(const Image& img, const std::vector<float>
     return sinogram;
 }
 
+static float sample_sinogram(const std::vector<float>& row, float ri_f) {
+    int n=(int)row.size();
+    if (n==0) return 0.f;
+    if (ri_f<=0.f) return row[0];
+    if (ri_f>=n-1) return row[n-1];
+    int i0=(int)ri_f;
+    float frac=ri_f-i0;
+    return row[i0]*(1.f-frac)+row[i0+1]*frac;
+}
+
+// Unfiltered backprojection: inverse of radon() using the same projection convention.
+Image iradon(const std::vector<std::vector<float>>& sinogram,
+             const std::vector<float>& theta_deg) {
+    if (sinogram.empty()||sinogram[0].empty()||theta_deg.empty())
+        return Image();
+    int n_theta=(int)sinogram.size(), n_proj=(int)sinogram[0].size();
+    int R=n_proj, C=n_proj;
+    Image out(R,C,1,0.f);
+    float cx=C/2.f, cy=R/2.f;
+    float scale=(float)(M_PI/(2.0*theta_deg.size()));
+    for (int r=0;r<R;++r) for (int c=0;c<C;++c) {
+        float sum=0;
+        for (int ti=0;ti<n_theta;++ti) {
+            float th=theta_deg[ti]*(float)(M_PI/180.0);
+            float costh=std::cos(th), sinth=std::sin(th);
+            float t=(c-cx)*costh+(r-cy)*sinth;
+            float ri_f=t+n_proj/2.f;
+            sum+=sample_sinogram(sinogram[ti], ri_f);
+        }
+        out.at(r,c,0)=sum*scale;
+    }
+    return out;
+}
+
 // ========================== Harris Corner Detector ==========================
 
-std::vector<KeyPoint> harris(const Image& img, float k, float threshold) {
-    auto g=img.channels>1?rgb2gray(img):img;
+static std::tuple<Image,Image,Image> structure_tensor_smoothed(const Image& g) {
     auto [gx,gy]=sobel_xy(g);
-    Image Ixx(img.rows,img.cols,1), Ixy(img.rows,img.cols,1), Iyy(img.rows,img.cols,1);
-    for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) {
+    Image Ixx(g.rows,g.cols,1), Ixy(g.rows,g.cols,1), Iyy(g.rows,g.cols,1);
+    for (int r=0;r<g.rows;++r) for (int c=0;c<g.cols;++c) {
         float x=gx.at(r,c,0), y=gy.at(r,c,0);
         Ixx.at(r,c,0)=x*x; Ixy.at(r,c,0)=x*y; Iyy.at(r,c,0)=y*y;
     }
-    auto sxx=imgaussfilt(Ixx,1.5f), sxy=imgaussfilt(Ixy,1.5f), syy=imgaussfilt(Iyy,1.5f);
+    return {imgaussfilt(Ixx,1.5f), imgaussfilt(Ixy,1.5f), imgaussfilt(Iyy,1.5f)};
+}
+
+static float min_eigenvalue_2x2(float a, float b, float d) {
+    float trace=a+d;
+    float det=a*d-b*b;
+    float disc=trace*trace-4.f*det;
+    if (disc<0.f) disc=0.f;
+    return (trace-std::sqrt(disc))/2.f;
+}
+
+std::vector<KeyPoint> harris(const Image& img, float k, float threshold) {
+    auto g=img.channels>1?rgb2gray(img):img;
+    auto [sxx,sxy,syy]=structure_tensor_smoothed(g);
     Image R_img(img.rows,img.cols,1);
     for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) {
         float a=sxx.at(r,c,0), b=sxy.at(r,c,0), d=syy.at(r,c,0);
@@ -493,13 +567,37 @@ std::vector<KeyPoint> harris(const Image& img, float k, float threshold) {
     for (int r=1;r<img.rows-1;++r) for (int c=1;c<img.cols-1;++c) {
         float v=R_img.at(r,c,0);
         if (v>threshold*mx) {
-            // Non-max suppression in 3×3
             bool peak=true;
             for (int dr=-1;dr<=1&&peak;++dr) for (int dc=-1;dc<=1&&peak;++dc)
                 if (R_img.at(r+dr,c+dc,0)>v) peak=false;
             if (peak) kps.push_back({(float)c,(float)r,v});
         }
     }
+    return kps;
+}
+
+std::vector<KeyPoint> shi_tomasi(const Image& img, int n, float quality_level) {
+    auto g=img.channels>1?rgb2gray(img):img;
+    auto [sxx,sxy,syy]=structure_tensor_smoothed(g);
+    Image R_img(g.rows,g.cols,1);
+    for (int r=0;r<g.rows;++r) for (int c=0;c<g.cols;++c) {
+        float a=sxx.at(r,c,0), b=sxy.at(r,c,0), d=syy.at(r,c,0);
+        R_img.at(r,c,0)=min_eigenvalue_2x2(a,b,d);
+    }
+    float mx=0;
+    for (int r=0;r<g.rows;++r) for (int c=0;c<g.cols;++c) mx=std::max(mx,R_img.at(r,c,0));
+    std::vector<KeyPoint> kps;
+    for (int r=1;r<g.rows-1;++r) for (int c=1;c<g.cols-1;++c) {
+        float v=R_img.at(r,c,0);
+        if (v>quality_level*mx) {
+            bool peak=true;
+            for (int dr=-1;dr<=1&&peak;++dr) for (int dc=-1;dc<=1&&peak;++dc)
+                if (R_img.at(r+dr,c+dc,0)>v) peak=false;
+            if (peak) kps.push_back({(float)c,(float)r,v});
+        }
+    }
+    std::sort(kps.begin(),kps.end(),[](const KeyPoint& a,const KeyPoint& b){return a.response>b.response;});
+    if ((int)kps.size()>n) kps.resize(n);
     return kps;
 }
 

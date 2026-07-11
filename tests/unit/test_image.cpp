@@ -214,6 +214,82 @@ TEST(ImageEdge, Laplacian) {
     EXPECT_EQ(lap.rows, 5);
 }
 
+TEST(ImageEdge, RobertsFlat) {
+    Image img(5,5,1,0.5f);
+    auto edges=roberts(img);
+    EXPECT_EQ(edges.channels, 1);
+    for (float v:edges.data) EXPECT_NEAR(v, 0.f, 0.01f);
+}
+
+TEST(ImageEdge, RobertsStepEdge) {
+    Image img(5,5,1,0.f);
+    for (int r=0;r<5;++r) for (int c=3;c<5;++c) img.at(r,c,0)=1.f;
+    auto edges=roberts(img);
+    EXPECT_GT(edges.at(2,2,0), 0.0f);
+    float row_max=0;
+    for (int c=0;c<5;++c) row_max=std::max(row_max, edges.at(2,c,0));
+    EXPECT_GT(row_max, 0.5f);
+}
+
+TEST(ImageEdge, RobertsHalfPlane) {
+    Image img(6,6,1,0.f);
+    for (int r=0;r<6;++r) for (int c=3;c<6;++c) img.at(r,c,0)=1.f;
+    auto edges=roberts(img);
+    float edge_sum=0;
+    for (int r=0;r<6;++r) for (int c=0;c<6;++c) edge_sum+=edges.at(r,c,0);
+    EXPECT_GT(edge_sum, 0.5f);
+}
+
+TEST(ImageEdge, RobertsGrayscaleFromRGB) {
+    Image img(4,4,3,0.f);
+    for (int r=0;r<4;++r) for (int c=2;c<4;++c) {
+        img.at(r,c,0)=1.f; img.at(r,c,1)=1.f; img.at(r,c,2)=1.f;
+    }
+    auto edges=roberts(img);
+    EXPECT_EQ(edges.channels, 1);
+    EXPECT_GT(edges.at(2,1,0), 0.0f);
+}
+
+TEST(ImageEdge, LaplacianOfGaussianFlat) {
+    Image img(7,7,1,0.4f);
+    auto log=laplacian_of_gaussian(img, 1.0f);
+    EXPECT_EQ(log.rows, 7);
+    for (float v:log.data) EXPECT_NEAR(v, 0.f, 0.05f);
+}
+
+TEST(ImageEdge, LaplacianOfGaussianEdge) {
+    Image img(9,9,1,0.f);
+    for (int r=0;r<9;++r) for (int c=5;c<9;++c) img.at(r,c,0)=1.f;
+    auto log=laplacian_of_gaussian(img, 0.8f);
+    float edge_resp=0;
+    for (int r=0;r<9;++r) {
+        edge_resp=std::max(edge_resp, std::abs(log.at(r,4,0)));
+        edge_resp=std::max(edge_resp, std::abs(log.at(r,5,0)));
+    }
+    EXPECT_GT(edge_resp, 0.01f);
+}
+
+TEST(ImageEdge, LaplacianOfGaussianSigmaAttenuates) {
+    Image img(11,11,1,0.f);
+    for (int r=0;r<11;++r) for (int c=6;c<11;++c) img.at(r,c,0)=1.f;
+    auto log_small=laplacian_of_gaussian(img, 0.5f);
+    auto log_large=laplacian_of_gaussian(img, 2.5f);
+    float resp_small=0, resp_large=0;
+    for (int r=0;r<11;++r) {
+        resp_small=std::max(resp_small, std::abs(log_small.at(r,5,0)));
+        resp_large=std::max(resp_large, std::abs(log_large.at(r,5,0)));
+    }
+    EXPECT_GT(resp_small, resp_large);
+}
+
+TEST(ImageEdge, LaplacianOfGaussianComposition) {
+    Image img(5,5,1,0.f);
+    img.at(2,2,0)=1.f;
+    auto composed=laplacian(imgaussfilt(img, 1.0f));
+    auto log=laplacian_of_gaussian(img, 1.0f);
+    EXPECT_NEAR(log.at(2,2,0), composed.at(2,2,0), 1e-5f);
+}
+
 // ---- Morphology ----
 
 TEST(ImageMorph, Dilate) {
@@ -247,6 +323,30 @@ TEST(ImageMorph, CloseTopHatBothat) {
     EXPECT_GE(tophat.at(3,3,0), 0.f);
     auto bothat=imbothat(img,3);
     EXPECT_GE(bothat.at(0,0,0), 0.f);
+}
+
+TEST(ImageMorph, GradientMorphEdge) {
+    Image img(9,9,1,0.f);
+    for (int r=2;r<7;++r) for (int c=2;c<7;++c) img.at(r,c,0)=1.f;
+    auto grad=imgradient_morph(img,3);
+    EXPECT_GT(grad.at(2,4,0), 0.1f);
+    EXPECT_GT(grad.at(4,2,0), 0.1f);
+}
+
+TEST(ImageMorph, GradientMorphInteriorExterior) {
+    Image img(9,9,1,0.f);
+    for (int r=2;r<7;++r) for (int c=2;c<7;++c) img.at(r,c,0)=1.f;
+    auto grad=imgradient_morph(img,3);
+    EXPECT_NEAR(grad.at(4,4,0), 0.f, 0.05f);
+    EXPECT_NEAR(grad.at(0,0,0), 0.f, 0.05f);
+}
+
+TEST(ImageMorph, GradientMorphComposition) {
+    Image img(7,7,1,0.f);
+    for (int r=2;r<5;++r) for (int c=2;c<5;++c) img.at(r,c,0)=1.f;
+    auto dil=imdilate(img,3), ero=imerode(img,3);
+    auto grad=imgradient_morph(img,3);
+    EXPECT_NEAR(grad.at(3,3,0), dil.at(3,3,0)-ero.at(3,3,0), 1e-5f);
 }
 
 // ---- Thresholding ----
@@ -326,6 +426,53 @@ TEST(ImageTransform, RadonFinite) {
             EXPECT_TRUE(std::isfinite(v));
 }
 
+static float normalized_cross_correlation(const Image& a, const Image& b) {
+    float mean_a=0, mean_b=0;
+    int n=a.rows*a.cols;
+    for (int r=0;r<a.rows;++r) for (int c=0;c<a.cols;++c) {
+        mean_a+=a.at(r,c,0); mean_b+=b.at(r,c,0);
+    }
+    mean_a/=n; mean_b/=n;
+    float num=0, den_a=0, den_b=0;
+    for (int r=0;r<a.rows;++r) for (int c=0;c<a.cols;++c) {
+        float da=a.at(r,c,0)-mean_a, db=b.at(r,c,0)-mean_b;
+        num+=da*db; den_a+=da*da; den_b+=db*db;
+    }
+    return num/(std::sqrt(den_a*den_b)+1e-12f);
+}
+
+TEST(ImageTransform, IradonRoundTrip) {
+    Image img(16,16,1,0.f);
+    for (int r=5;r<11;++r) for (int c=5;c<11;++c) img.at(r,c,0)=1.f;
+    std::vector<float> angles;
+    for (int i=0;i<180;++i) angles.push_back((float)i);
+    auto sino=radon(img, angles);
+    auto recon=iradon(sino, angles);
+    EXPECT_EQ(recon.rows, 16);
+    EXPECT_EQ(recon.cols, 16);
+    float ncc=normalized_cross_correlation(img, recon);
+    EXPECT_GT(ncc, 0.3f);
+    int peak_r=0, peak_c=0;
+    float peak_val=0;
+    for (int r=0;r<16;++r) for (int c=0;c<16;++c)
+        if (recon.at(r,c,0)>peak_val) { peak_val=recon.at(r,c,0); peak_r=r; peak_c=c; }
+    EXPECT_NEAR(peak_r, 8, 2);
+    EXPECT_NEAR(peak_c, 8, 2);
+}
+
+TEST(ImageTransform, IradonFinite) {
+    Image img(8,8,1,0.f);
+    img.at(4,4,0)=1.f;
+    auto sino=radon(img,{0.f,30.f,60.f,90.f});
+    auto recon=iradon(sino,{0.f,30.f,60.f,90.f});
+    for (float v:recon.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageTransform, IradonEmpty) {
+    auto recon=iradon({}, {});
+    EXPECT_TRUE(recon.empty());
+}
+
 // ---- Harris ----
 
 TEST(ImageHarris, CornerDetection) {
@@ -345,6 +492,43 @@ TEST(ImageHarris, PositiveCornerResponse) {
     EXPECT_GT(kps[0].response, 0.f);
     EXPECT_GE(kps[0].x, 0.f);
     EXPECT_GE(kps[0].y, 0.f);
+}
+
+TEST(ImageShiTomasi, CornerLocalization) {
+    Image img(20,20,1,0.f);
+    for (int r=10;r<20;++r) for (int c=0;c<20;++c) img.at(r,c,0)=1.f;
+    for (int r=0;r<10;++r) for (int c=10;c<20;++c) img.at(r,c,0)=1.f;
+    auto kps=shi_tomasi(img, 5, 0.01f);
+    ASSERT_GT(kps.size(), 0u);
+    float best_dist=1e9f;
+    for (const auto& kp:kps) {
+        float dr=kp.y-10.f, dc=kp.x-10.f;
+        best_dist=std::min(best_dist, std::sqrt(dr*dr+dc*dc));
+    }
+    EXPECT_LT(best_dist, 3.f);
+}
+
+TEST(ImageShiTomasi, FlatNoKeypoints) {
+    Image img(10,10,1,0.5f);
+    auto kps=shi_tomasi(img, 10, 0.01f);
+    EXPECT_EQ(kps.size(), 0u);
+}
+
+TEST(ImageShiTomasi, TopNLimit) {
+    Image img(24,24,1,0.f);
+    for (int r=12;r<24;++r) for (int c=0;c<24;++c) img.at(r,c,0)=1.f;
+    for (int r=0;r<12;++r) for (int c=12;c<24;++c) img.at(r,c,0)=1.f;
+    auto kps=shi_tomasi(img, 2, 0.001f);
+    EXPECT_LE(kps.size(), 2u);
+    if (kps.size()>=2u) EXPECT_GE(kps[0].response, kps[1].response);
+}
+
+TEST(ImageShiTomasi, QualityThreshold) {
+    Image img(16,16,1,0.f);
+    for (int r=8;r<16;++r) for (int c=8;c<16;++c) img.at(r,c,0)=1.f;
+    auto strict=shi_tomasi(img, 20, 0.5f);
+    auto loose=shi_tomasi(img, 20, 0.001f);
+    EXPECT_LE(strict.size(), loose.size());
 }
 
 // ---- Connected Components ----
