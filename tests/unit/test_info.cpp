@@ -170,3 +170,119 @@ TEST(InfoChannelCapacity, LowErrorBSC) {
     double h = -p * std::log2(p) - (1.0 - p) * std::log2(1.0 - p);
     EXPECT_NEAR(channel_capacity_bsc(p), 1.0 - h, 1e-10);
 }
+
+// --- Blahut-Arimoto: general discrete memoryless channel capacity ---
+
+TEST(BlahutArimoto, MatchesBSCClosedForm) {
+    for (double p : {0.01, 0.1, 0.2, 0.3, 0.5}) {
+        std::vector<std::vector<double>> W = {{1.0 - p, p}, {p, 1.0 - p}};
+        double c_ba = blahut_arimoto(W);
+        double c_closed = channel_capacity_bsc(p);
+        EXPECT_NEAR(c_ba, c_closed, 1e-4) << "p_error=" << p;
+    }
+}
+
+TEST(BlahutArimoto, MatchesBECClosedForm) {
+    for (double eps : {0.0, 0.1, 0.25, 0.5, 0.9}) {
+        // Binary erasure channel: 3 outputs {0, 1, erasure}.
+        std::vector<std::vector<double>> W = {
+            {1.0 - eps, 0.0, eps},
+            {0.0, 1.0 - eps, eps},
+        };
+        double c_ba = blahut_arimoto(W);
+        double c_closed = channel_capacity_bec(eps);
+        EXPECT_NEAR(c_ba, c_closed, 1e-4) << "epsilon=" << eps;
+    }
+}
+
+TEST(BlahutArimoto, NoiselessChannelIdentity2x2) {
+    std::vector<std::vector<double>> W = {{1.0, 0.0}, {0.0, 1.0}};
+    EXPECT_NEAR(blahut_arimoto(W), std::log2(2.0), 1e-6);
+}
+
+TEST(BlahutArimoto, NoiselessChannelIdentity3x3) {
+    std::vector<std::vector<double>> W = {
+        {1.0, 0.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 0.0, 1.0},
+    };
+    EXPECT_NEAR(blahut_arimoto(W), std::log2(3.0), 1e-6);
+}
+
+TEST(BlahutArimoto, UselessChannelIdenticalRows) {
+    std::vector<std::vector<double>> W = {{0.5, 0.5}, {0.5, 0.5}};
+    EXPECT_NEAR(blahut_arimoto(W), 0.0, 1e-6);
+
+    std::vector<std::vector<double>> W3 = {
+        {0.2, 0.3, 0.5},
+        {0.2, 0.3, 0.5},
+        {0.2, 0.3, 0.5},
+    };
+    EXPECT_NEAR(blahut_arimoto(W3), 0.0, 1e-6);
+}
+
+TEST(BlahutArimoto, NonNegativeAndUpperBounded) {
+    std::vector<std::vector<std::vector<double>>> matrices = {
+        {{0.9, 0.1}, {0.2, 0.8}},
+        {{0.7, 0.2, 0.1}, {0.1, 0.2, 0.7}, {0.3, 0.4, 0.3}},
+        {{1.0, 0.0, 0.0, 0.0}, {0.25, 0.25, 0.25, 0.25}, {0.0, 0.0, 0.5, 0.5}},
+        {{0.6, 0.4}, {0.4, 0.6}, {0.5, 0.5}},
+    };
+    for (const auto& W : matrices) {
+        double c = blahut_arimoto(W);
+        double upper_bound = std::log2(static_cast<double>(W[0].size()));
+        EXPECT_GE(c, 0.0);
+        EXPECT_LE(c, upper_bound + 1e-9);
+    }
+}
+
+TEST(BlahutArimoto, ReturnsOptimalInputDistribution) {
+    // Symmetric BSC-like channel: uniform input is optimal.
+    std::vector<std::vector<double>> W = {{0.8, 0.2}, {0.2, 0.8}};
+    ChannelCapacityResult res = channel_capacity(W);
+    ASSERT_EQ(res.input_distribution.size(), 2u);
+    EXPECT_NEAR(res.input_distribution[0], 0.5, 1e-4);
+    EXPECT_NEAR(res.input_distribution[1], 0.5, 1e-4);
+    EXPECT_NEAR(res.capacity, channel_capacity_bsc(0.2), 1e-4);
+
+    // Asymmetric channel: skewed erasure-like channel where input 1 is
+    // "cleaner" should not favor a uniform distribution symmetrically; just
+    // sanity check the returned distribution is a valid probability vector.
+    std::vector<std::vector<double>> W2 = {{0.9, 0.1}, {0.5, 0.5}};
+    ChannelCapacityResult res2 = channel_capacity(W2);
+    ASSERT_EQ(res2.input_distribution.size(), 2u);
+    double sum = res2.input_distribution[0] + res2.input_distribution[1];
+    EXPECT_NEAR(sum, 1.0, 1e-6);
+    for (double px : res2.input_distribution) {
+        EXPECT_GE(px, 0.0);
+        EXPECT_LE(px, 1.0);
+    }
+    EXPECT_GE(res2.capacity, 0.0);
+}
+
+TEST(BlahutArimoto, DegenerateEmptyMatrix) {
+    std::vector<std::vector<double>> W;
+    EXPECT_NEAR(blahut_arimoto(W), 0.0, 1e-12);
+    ChannelCapacityResult res = channel_capacity(W);
+    EXPECT_NEAR(res.capacity, 0.0, 1e-12);
+    EXPECT_TRUE(res.input_distribution.empty());
+}
+
+TEST(BlahutArimoto, DegenerateSingleInputSymbol) {
+    std::vector<std::vector<double>> W = {{0.3, 0.7}};
+    EXPECT_NEAR(blahut_arimoto(W), 0.0, 1e-12);
+    ChannelCapacityResult res = channel_capacity(W);
+    EXPECT_NEAR(res.capacity, 0.0, 1e-12);
+    ASSERT_EQ(res.input_distribution.size(), 1u);
+    EXPECT_NEAR(res.input_distribution[0], 1.0, 1e-12);
+}
+
+TEST(BlahutArimoto, DegenerateMismatchedRowLengths) {
+    std::vector<std::vector<double>> W = {{0.5, 0.5}, {1.0, 0.0, 0.0}};
+    EXPECT_NEAR(blahut_arimoto(W), 0.0, 1e-12);
+}
+
+TEST(BlahutArimoto, DegenerateRowsNotSummingToOne) {
+    std::vector<std::vector<double>> W = {{0.5, 0.2}, {0.3, 0.3}};
+    EXPECT_NEAR(blahut_arimoto(W), 0.0, 1e-12);
+}
