@@ -150,7 +150,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `tensorops/tensorops.hpp` | Row-major `Tensor`, contractions, `einsum`, mode products, Khatri-Rao/Kronecker, symmetrise/antisymmetrise, CP and Tucker/HOSVD decompositions, Frobenius norm |
+| `tensorops/tensorops.hpp` | Row-major `Tensor`, contractions, `einsum`, mode products, Khatri-Rao/Kronecker, symmetrise/antisymmetrise, CP and Tucker/HOSVD decompositions, `reconstruct_cp`/`reconstruct_tucker` (rebuild a dense tensor from decomposition factors), Frobenius norm |
 
 ## Machine Learning — Wave 60 (`include/ms/ml/`)
 
@@ -353,7 +353,7 @@ The `Interpreter` now holds a `std::variant`-backed named-handle registry so use
 
 | Header | Description |
 |--------|-------------|
-| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` genuinely evaluates `algo.representation` row-by-row against input data columns (`x0`, `x1`, …) via `Sym::eval`; `evolve` performs real GP tree evolution (internal `GPNode` population with random initialization, tournament selection, subtree crossover/mutation, elitism, synced to `representation` each generation) |
+| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` genuinely evaluates `algo.representation` row-by-row against input data columns (`x0`, `x1`, …) via `Sym::eval`; `evolve` performs real GP tree evolution (internal `GPNode` population with random initialization, tournament selection, subtree crossover/mutation, elitism, synced to `representation` each generation); `PrimitiveRegistry::build_from_ms_namespace()` supplies the GP tree's unary-function pool, scoped to `ms::Sym`'s scalar grammar (`sin`/`cos`/`exp`/`log`/`sqrt`/`tanh`) and consulted at every tree-generation site |
 | `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory, `hebbian_update`, `energy` (Boltzmann -vᵀWh), `CellMemory::consolidate` short→long-term decay, `cell_to_cypha_features` |
 | `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate` |
 | `frameworks/gria/gria.hpp` | Information-theoretic `entropy`/`compute_alpha`/`matrix_alpha`/`is_critical`/`classify`, GF(2^n), cellular automata, LFSR utilities |

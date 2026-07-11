@@ -7670,20 +7670,40 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       dst2) — closes a gap flagged in tests/numerical/test_fft_prob_remaining.cpp.
       docs/API.md synced (final ODE REPL bindings, fft/axiom module rows); tag checklist
       361→362 (362 suites, 100% passing).
+      Wave 185: ms::axiom::PrimitiveRegistry rescoped from leftover matrix-level primitives
+      (matmul/solve/lu/qr/svd/eig_sym/fft/det/trace/norm) — never actually consulted by the
+      Wave 184 GP-tree rewrite — to ms::Sym's real 6-function scalar grammar (sin/cos/exp/
+      log/sqrt/tanh), and wired as the GP tree's genuine single source of truth: random_tree/
+      subtree_mutation/enforce_max_depth now take an available_funcs parameter fed from
+      primitives_.function_names at every generation site (initial population, mutation,
+      depth enforcement), removing a previously-duplicated hardcoded function list. Proven via
+      3 new tests that construct a deliberately-restricted single-function registry and assert
+      no other function name ever appears across dozens of generated/evolved trees — CLOSES
+      the architecture-mismatch follow-up flagged in Wave 184. ms::tensorops gains
+      reconstruct_cp/reconstruct_tucker (rebuild an approximated dense Tensor from
+      CPDecomposition/TuckerDecomposition factors — the natural inverse of decompose_cp/
+      decompose_hosvd/decompose_tucker, previously missing as public API); caught and fixed a
+      stale-residual bug in decompose_cp's own ALS loop along the way (it returned the
+      previous, not final, iteration's residual on early convergence). New Google Benchmark
+      suite bench_optim_ml.cpp (8 benchmarks) covering ms::optim's global optimizers
+      (simulated_annealing/differential_evolution/particle_swarm/cmaes) and ms::ml's ensemble/
+      clustering fit() costs (RandomForest/GradientBoosting/SVM/GaussianMixture) — previously
+      zero benchmark coverage despite the project's own stated Phase 10 benchmarking policy;
+      benchmarks remain a separate opt-in (MS_BUILD_BENCHMARKS) build, outside CTest. No
+      docs/API.md changes needed (internal consistency fix + net-new library functions/
+      benchmarks, no new REPL bindings this wave); tag checklist stays at 362 (test *cases*
+      added to existing test_axiom_gria_ext/test_tensorops binaries, suite count unchanged;
+      362 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
-      ms::axiom::PrimitiveRegistry's matrix-level primitives (matmul/solve/lu/qr/svd/
-      eig_sym/fft/det/trace/norm) don't cleanly compose with the scalar-Sym-expression-tree
-      GP model introduced in Wave 184 — either rescope PrimitiveRegistry to scalar
-      functions, or give Algorithm::representation/GP evaluation a richer expression type
-      supporting matrix-valued nodes (larger design question, not yet addressed).
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
-      With the ODE REPL formula-bridge and stateful-class REPL exposure both now complete
-      (Waves 183-184), no single large concrete REPL-integration gap remains — future waves
-      will likely shift further toward hardening (fuzz marathon, coverage), performance, or
-      smaller library-level API completeness gaps. -->
+      With the ODE REPL formula-bridge, stateful-class REPL exposure, and the Axiom/
+      PrimitiveRegistry mismatch all now resolved (Waves 182-185), no single large concrete
+      gap remains — future waves will likely continue toward hardening (fuzz marathon,
+      coverage), further benchmark coverage, or smaller library-level API completeness gaps
+      (paired-operation gaps like reconstruct_cp/ifft2 before it). -->
 
 ---
 
