@@ -1181,6 +1181,38 @@ double brentq(Func1D f, double a, double b, double tol, int max_iter) {
     return b;
 }
 
+double illinois(Func1D f, double a, double b, double tol, int max_iter) {
+    double fa = f(a), fb = f(b);
+    if (fa * fb > 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    double c = a;
+    // -1 => a retained on the previous iteration, +1 => b retained, 0 => none yet.
+    int retained = 0;
+    for (int i = 0; i < max_iter; ++i) {
+        const double denom = fb - fa;
+        if (std::abs(denom) < 1e-300) break;
+        c = b - fb * (b - a) / denom;
+        const double fc = f(c);
+        if (std::abs(fc) < tol || std::abs(b - a) < tol) {
+            return c;
+        }
+        if (fa * fc < 0.0) {
+            // Root lies in [a, c]: b is replaced, a is retained.
+            b = c; fb = fc;
+            if (retained == -1) { fa *= 0.5; }
+            retained = -1;
+        } else {
+            // Root lies in [c, b]: a is replaced, b is retained.
+            a = c; fa = fc;
+            if (retained == 1) { fb *= 0.5; }
+            retained = 1;
+        }
+    }
+    return c;
+}
+
 double secant(Func1D f, double x0, double x1, double tol, int max_iter) {
     for (int i = 0; i < max_iter; ++i) {
         double f0 = f(x0), f1 = f(x1);
