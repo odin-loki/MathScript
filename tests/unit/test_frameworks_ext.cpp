@@ -167,13 +167,13 @@ TEST(FrameworksExtTest, axiom_evaluate_and_registry) {
 
     axiom::Axiom engine(axiom::EvolutionConfig{.population_size = 4}, registry);
     ColMatrix<double> data{{1.0, 2.0}, {3.0, 4.0}};
-    const axiom::Algorithm algo = engine.population().front();
+    axiom::Algorithm algo = engine.population().front();
+    algo.representation = ms::Sym("x0");
     const auto out = engine.evaluate(algo, data).value();
-    for (size_t i = 0; i < data.rows(); ++i) {
-        for (size_t j = 0; j < data.cols(); ++j) {
-            EXPECT_DOUBLE_EQ(out(i, j), data(i, j));
-        }
-    }
+    EXPECT_EQ(out.rows(), data.rows());
+    EXPECT_EQ(out.cols(), 1u);
+    EXPECT_DOUBLE_EQ(out(0, 0), 1.0);
+    EXPECT_DOUBLE_EQ(out(1, 0), 3.0);
 }
 
 TEST(FrameworksExtTest, axiom_gria_fitness_and_empty_population) {

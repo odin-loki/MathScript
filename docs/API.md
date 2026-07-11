@@ -16,7 +16,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `core/tensor.hpp` | Fixed-rank `Tensor<S, N>` multi-dimensional array wrapper |
 | `core/sparse.hpp` | COO `Sparse<S>` matrix with `spmv` and dense conversion |
 | `core/scalar.hpp` | `Scalar` value with physical units and arithmetic |
-| `core/sym.hpp` | Lightweight string-based symbolic `Sym` expression type |
+| `core/sym.hpp` | String-based `Sym` with parse/eval: `+ - * /`, unary `-`, parentheses, literals, variables (`x0`, `x1`, …), and `sin`/`cos`/`exp`/`log`/`sqrt`/`tanh`; unbound variables default to 0 |
 | `core/expr.hpp` | CRTP expression templates for lazy matrix evaluation |
 | `core/operations.hpp` | High-level `matmul`, `lu`, `qr`, `solve`, and related `Result<>` wrappers |
 | `core/rng.hpp` | Session RNG hooks (`set_session_rng`, `session_uniform`, `session_normal`) |
@@ -73,11 +73,11 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma, uniform |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions |
-| `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, zeta, Painlevé, etc. |
-| `ode/ode.hpp` | `ode_euler` and `ode_rk4` for scalar ODEs `dy/dt = f(t, y)` |
-| `pde/pde.hpp` | `pde_heat_1d` explicit heat-equation solver |
+| `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye` |
+| `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`; BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
+| `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d`, `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d` with CFL/stability guards |
 | `poly/poly.hpp` | Polynomial eval, add/sub/mul, derivative on coefficient vectors |
-| `symbolic/symbolic.hpp` | AST `SymExpr` with simplify, differentiate, and evaluate |
+| `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string` |
 | `domain/domain.hpp` | `factorial`, `nchoosek`, `gcd`, and `Graph` edge counting |
 
 ## Number Theory — Wave 57 (`include/ms/numthy/`)
@@ -262,8 +262,8 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 
 | Header | Description |
 |--------|-------------|
-| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` algorithm search with `PrimitiveRegistry` |
-| `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory and Hebbian update helpers |
-| `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty |
+| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` maps data columns `xj` and evaluates row-wise to one output column |
+| `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory, `hebbian_update`, `energy` (Boltzmann -vᵀWh), `CellMemory::consolidate` short→long-term decay, `cell_to_cypha_features` |
+| `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate` |
 | `frameworks/gria/gria.hpp` | Information-theoretic `alpha`, GF(2^n), cellular automata, LFSR utilities |
-| `frameworks/izaac/izaac.hpp` | VRF-based `CSPRNG`, session seeding, and Monte Carlo helpers |
+| `frameworks/izaac/izaac.hpp` | VRF `CSPRNG`, session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`/`run_backtest` |
