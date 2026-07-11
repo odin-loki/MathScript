@@ -616,6 +616,68 @@ OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
     return result;
 }
 
+OdeResult ode_bdf2(OdeFunc f, double t0, double y0, double t_end, size_t steps) {
+    OdeResult result;
+    if (steps == 0) {
+        return result;
+    }
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    result.t.reserve(steps + 1);
+    result.y.reserve(steps + 1);
+    double t = t0;
+    double y = y0;
+    result.t.push_back(t);
+    result.y.push_back(y);
+
+    // Bootstrap first step with backward Euler (BDF1); no y_{n-1} at t_0.
+    {
+        const double t_next = t + h;
+        double y_next = y;
+        for (int iter = 0; iter < kNewtonMaxIter; ++iter) {
+            const double fy = f(t_next, y_next);
+            const double g = y_next - y - h * fy;
+            if (std::abs(g) < kNewtonTol) {
+                break;
+            }
+            const double dfdy = central_df(f, t_next, y_next);
+            const double dg = 1.0 - h * dfdy;
+            if (std::abs(dg) < 1e-14) {
+                break;
+            }
+            y_next -= g / dg;
+        }
+        y = y_next;
+        t = t_next;
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+
+    double y_prev = y0;
+    for (size_t i = 2; i <= steps; ++i) {
+        const double t_next = t + h;
+        double y_next = y;
+        for (int iter = 0; iter < kNewtonMaxIter; ++iter) {
+            const double fy = f(t_next, y_next);
+            const double g = 3.0 * y_next - 4.0 * y + y_prev - 2.0 * h * fy;
+            if (std::abs(g) < kNewtonTol) {
+                break;
+            }
+            const double dfdy = central_df(f, t_next, y_next);
+            const double dg = 3.0 - 2.0 * h * dfdy;
+            if (std::abs(dg) < 1e-14) {
+                break;
+            }
+            y_next -= g / dg;
+        }
+        y_prev = y;
+        y = y_next;
+        t = t_next;
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+    return result;
+}
+
 OdeBvpResult ode_bvp_shooting(OdeBvpFunc f, double t0, double y_a,
                                double t_end, double y_b, size_t steps) {
     OdeBvpResult result;

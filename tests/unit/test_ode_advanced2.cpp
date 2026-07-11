@@ -79,6 +79,146 @@ TEST(OdeAdvanced2, BackwardEuler_ProducesMonotoneGrid) {
 }
 
 // ---------------------------------------------------------------------------
+// ode_bdf2
+// ---------------------------------------------------------------------------
+
+TEST(OdeAdvanced2, Bdf2_ZeroSteps_ReturnsEmpty) {
+    const auto f = [](double, double y) { return -y; };
+    const auto result = ode_bdf2(f, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.y.empty());
+}
+
+TEST(OdeAdvanced2, Bdf2_StiffDecay_RemainsStable) {
+    const double k = 50.0;
+    const auto f = [k](double, double y) { return -k * y; };
+    const double h_unstable = 0.1;
+    const size_t steps = static_cast<size_t>((1.0 - 0.0) / h_unstable);
+    const auto fwd = ode_euler(f, 0.0, 1.0, 1.0, steps);
+    const auto bdf2 = ode_bdf2(f, 0.0, 1.0, 1.0, steps);
+    ASSERT_FALSE(fwd.y.empty());
+    ASSERT_FALSE(bdf2.y.empty());
+    const double fwd_abs = std::abs(fwd.y.back());
+    EXPECT_TRUE(!std::isfinite(fwd.y.back()) || fwd_abs > 1e4)
+        << "forward Euler should blow up for stiff step";
+    EXPECT_TRUE(std::isfinite(bdf2.y.back()));
+    EXPECT_LT(std::abs(bdf2.y.back()), 10.0);
+}
+
+TEST(OdeAdvanced2, Bdf2_StiffCosProblem_RemainsBounded) {
+    // dy/dt = -100*(y - cos(t)) - sin(t), analytic solution y = cos(t)
+    const double k = 100.0;
+    const auto f = [k](double t, double y) {
+        return -k * (y - std::cos(t)) - std::sin(t);
+    };
+    const auto bdf2 = ode_bdf2(f, 0.0, 1.0, 1.0, 100);
+    ASSERT_FALSE(bdf2.y.empty());
+    const double exact = std::cos(1.0);
+    EXPECT_TRUE(std::isfinite(bdf2.y.back()));
+    EXPECT_NEAR(bdf2.y.back(), exact, 0.1);
+    for (double val : bdf2.y) {
+        EXPECT_TRUE(std::isfinite(val));
+        EXPECT_LT(std::abs(val), 10.0);
+    }
+}
+
+TEST(OdeAdvanced2, Bdf2_ExponentialDecay_MatchesAnalytic) {
+    const auto f = [](double, double y) { return -y; };
+    const auto result = ode_bdf2(f, 0.0, 1.0, 1.0, 200);
+    ASSERT_FALSE(result.y.empty());
+    const double exact = std::exp(-1.0);
+    EXPECT_NEAR(result.y.back(), exact, 0.01);
+}
+
+TEST(OdeAdvanced2, Bdf2_MoreAccurateThanBDF1_SameStepCount) {
+    const auto f = [](double, double y) { return -y; };
+    const double exact = std::exp(-1.0);
+    const size_t steps = 50;
+    const auto bdf1 = ode_backward_euler(f, 0.0, 1.0, 1.0, steps);
+    const auto bdf2 = ode_bdf2(f, 0.0, 1.0, 1.0, steps);
+    ASSERT_FALSE(bdf1.y.empty());
+    ASSERT_FALSE(bdf2.y.empty());
+    const double err_bdf1 = std::abs(bdf1.y.back() - exact);
+    const double err_bdf2 = std::abs(bdf2.y.back() - exact);
+    EXPECT_LT(err_bdf2, err_bdf1)
+        << "BDF2 (2nd order) should be more accurate than BDF1 (1st order) at same step count";
+}
+
+TEST(OdeAdvanced2, Bdf2_Bootstrap_OneStep_Finite) {
+    const auto f = [](double, double y) { return -y; };
+    const auto result = ode_bdf2(f, 0.0, 1.0, 1.0, 1);
+    ASSERT_EQ(result.t.size(), 2u);
+    ASSERT_EQ(result.y.size(), 2u);
+    EXPECT_NEAR(result.y.front(), 1.0, 1e-12);
+    EXPECT_TRUE(std::isfinite(result.y.back()));
+    EXPECT_GT(result.y.back(), 0.0);
+    EXPECT_LT(result.y.back(), 1.0);
+}
+
+TEST(OdeAdvanced2, Bdf2_Bootstrap_TwoSteps_Finite) {
+    const auto f = [](double, double y) { return -y; };
+    const auto result = ode_bdf2(f, 0.0, 1.0, 1.0, 2);
+    ASSERT_EQ(result.t.size(), 3u);
+    ASSERT_EQ(result.y.size(), 3u);
+    EXPECT_NEAR(result.y.front(), 1.0, 1e-12);
+    for (size_t i = 1; i < result.y.size(); ++i) {
+        EXPECT_TRUE(std::isfinite(result.y[i]));
+        EXPECT_GT(result.y[i], 0.0);
+        EXPECT_LT(result.y[i], 1.0);
+    }
+}
+
+TEST(OdeAdvanced2, Bdf2_ConvergesWithMoreSteps) {
+    const auto f = [](double, double y) { return -y; };
+    const double exact = std::exp(-1.0);
+    const auto coarse = ode_bdf2(f, 0.0, 1.0, 1.0, 20);
+    const auto fine = ode_bdf2(f, 0.0, 1.0, 1.0, 2000);
+    const double err_coarse = std::abs(coarse.y.back() - exact);
+    const double err_fine = std::abs(fine.y.back() - exact);
+    EXPECT_LT(err_coarse, 0.5);
+    EXPECT_LT(err_fine, err_coarse);
+}
+
+TEST(OdeAdvanced2, Bdf2_ProducesMonotoneGrid) {
+    const auto f = [](double, double y) { return -y; };
+    const auto result = ode_bdf2(f, 0.0, 1.0, 1.0, 10);
+    ASSERT_EQ(result.t.size(), 11u);
+    for (size_t i = 1; i < result.t.size(); ++i) {
+        EXPECT_GT(result.t[i], result.t[i - 1]);
+    }
+}
+
+TEST(OdeAdvanced2, Bdf2_LinearGrowth_Reasonable) {
+    const auto f = [](double, double) { return 1.0; };
+    const auto result = ode_bdf2(f, 0.0, 0.0, 2.0, 200);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), 2.0, 0.05);
+}
+
+TEST(OdeAdvanced2, Bdf2_SolutionRemainsFinite) {
+    const double k = 30.0;
+    const auto f = [k](double, double y) { return -k * y; };
+    const auto result = ode_bdf2(f, 0.0, 1.0, 2.0, 100);
+    for (double val : result.y) {
+        EXPECT_TRUE(std::isfinite(val));
+    }
+}
+
+TEST(OdeAdvanced2, Bdf2_StiffDecay_ForwardEulerBlowsUp) {
+    const double k = 100.0;
+    const auto f = [k](double, double y) { return -k * y; };
+    const size_t steps = 20; // h = 0.05, h*k = 5
+    const auto fwd = ode_euler(f, 0.0, 1.0, 1.0, steps);
+    const auto bdf2 = ode_bdf2(f, 0.0, 1.0, 1.0, steps);
+    ASSERT_FALSE(fwd.y.empty());
+    ASSERT_FALSE(bdf2.y.empty());
+    EXPECT_TRUE(!std::isfinite(fwd.y.back()) || std::abs(fwd.y.back()) > 1e4);
+    EXPECT_TRUE(std::isfinite(bdf2.y.back()));
+    const double exact = std::exp(-k * 1.0);
+    EXPECT_NEAR(bdf2.y.back(), exact, 0.2);
+}
+
+// ---------------------------------------------------------------------------
 // ode_bvp_shooting
 // ---------------------------------------------------------------------------
 

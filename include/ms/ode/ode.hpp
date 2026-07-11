@@ -79,6 +79,13 @@ OdeResult ode_adams_bashforth2(OdeFunc f, double t0, double y0,
 OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
                               double t_end, size_t steps);
 
+/// BDF2 (backward differentiation formula, order 2) implicit multistep solver for stiff ODEs.
+/// Solves (3*y_{n+1} - 4*y_n + y_{n-1}) / (2*h) = f(t_{n+1}, y_{n+1}) via Newton iteration
+/// with a numerically-differentiated df/dy Jacobian (same technique as ode_backward_euler).
+/// A-stable for stiff problems; second-order accurate in time. The first step bootstraps with
+/// one step of ode_backward_euler (BDF1) because y_{n-1} is unavailable at t_0.
+OdeResult ode_bdf2(OdeFunc f, double t0, double y0, double t_end, size_t steps);
+
 // Implicit backward Euler (vector stiff IVP, Picard iteration)
 OdeResultVec ode_backward_euler_vec(OdeFuncVec f, double t0,
                                      const std::vector<double>& y0,

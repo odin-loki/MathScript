@@ -74,10 +74,10 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye` |
-| `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`; BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
-| `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d`, `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d` with CFL/stability guards |
+| `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`, `ode_rk45_vec`; symplectic: `ode_verlet`, `ode_verlet_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`, `ode_bdf2` (BDF2 multistep, A-stable, bootstraps first step via BDF1); BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
+| `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson, unconditionally stable), `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d`, `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d`, `pde_reaction_diffusion_1d` (Fisher-KPP, zero-flux Neumann BC) with CFL/stability guards |
 | `poly/poly.hpp` | Polynomial eval, add/sub/mul, derivative on coefficient vectors |
-| `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string` |
+| `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals) |
 | `domain/domain.hpp` | `factorial`, `nchoosek`, `gcd`, and `Graph` edge counting |
 
 ## Number Theory — Wave 57 (`include/ms/numthy/`)
@@ -248,6 +248,15 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `ml_accuracy(p, t)`, `ml_rmse(p, t)`, `ml_mse(p, t)`, `ml_r2(p, t)`, `ml_f1(p, t)`, `ml_precision(p, t)`, `ml_recall(p, t)`, `ml_mae(p, t)` | ML metrics on matching `N×1` vectors |
 | `bigint("495")`, `bigint_factorial(n)`, `bigint_fib(n)`, `bigint_gcd("a", "b")` | Bignum parse/ops; results as scalars when representable in `double` |
 
+**Wave 178 — symbolic (string assignment):**
+
+| Call | Description |
+|------|-------------|
+| `sym_diff("expr", "var")` | Symbolic differentiation of parsed expression w.r.t. variable; returns simplified string |
+| `sym_simplify("expr")` | Constant-fold and algebraic simplification of parsed expression |
+| `sym_integrate("expr", "var")` | Symbolic integration (power rule, linearity, sin/cos; unsupported forms documented) |
+| `sym_eval("expr", "var=value")` | Numeric evaluation of parsed expression with one variable binding |
+
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 
 | Header | Description |
@@ -262,7 +271,7 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 
 | Header | Description |
 |--------|-------------|
-| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` maps data columns `xj` and evaluates row-wise to one output column |
+| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` genuinely evaluates `algo.representation` row-by-row against input data columns (`x0`, `x1`, …) via `Sym::eval` |
 | `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory, `hebbian_update`, `energy` (Boltzmann -vᵀWh), `CellMemory::consolidate` short→long-term decay, `cell_to_cypha_features` |
 | `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate` |
 | `frameworks/gria/gria.hpp` | Information-theoretic `alpha`, GF(2^n), cellular automata, LFSR utilities |
