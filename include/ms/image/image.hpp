@@ -47,6 +47,9 @@ Image prewitt(const Image& img);
 Image laplacian(const Image& img);
 Image canny(const Image& img, float low, float high, float sigma = 1.0f);
 Image scharr(const Image& img);
+Image roberts(const Image& img);
+// LoG via sequential composition: laplacian(imgaussfilt(img, sigma))
+Image laplacian_of_gaussian(const Image& img, float sigma);
 
 // ========================== Morphology ==========================
 Image imdilate(const Image& img, int ksize = 3);
@@ -55,6 +58,8 @@ Image imopen(const Image& img, int ksize = 3);
 Image imclose(const Image& img, int ksize = 3);
 Image imtophat(const Image& img, int ksize = 3);
 Image imbothat(const Image& img, int ksize = 3);
+// Morphological gradient: imdilate(img, ksize) - imerode(img, ksize)
+Image imgradient_morph(const Image& img, int ksize = 3);
 
 // ========================== Thresholding / Segmentation ==========================
 Image threshold_binary(const Image& img, float t);
@@ -73,11 +78,17 @@ Image dft_magnitude(const Image& img);
 // Radon transform: project at angles theta (degrees), returns sinogram
 std::vector<std::vector<float>> radon(const Image& img,
                                        const std::vector<float>& theta_deg);
+// Inverse Radon via unfiltered backprojection (matches radon angle/coordinate convention)
+Image iradon(const std::vector<std::vector<float>>& sinogram,
+             const std::vector<float>& theta_deg);
 
 // ========================== Feature Detection ==========================
 struct KeyPoint { float x, y, response; };
 std::vector<KeyPoint> harris(const Image& img, float k = 0.04f,
                               float threshold = 0.01f);
+// Shi-Tomasi corner detector: min eigenvalue of structure tensor (same as harris)
+std::vector<KeyPoint> shi_tomasi(const Image& img, int n,
+                                  float quality_level = 0.01f);
 
 // Connected components labelling
 std::vector<std::vector<int>> label_components(const Image& bw);
