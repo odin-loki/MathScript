@@ -79,6 +79,51 @@ struct KSTestResult {
 };
 KSTestResult ks_test_2sample(std::span<const double> a, std::span<const double> b);
 
+// Jarque-Bera test for normality: combines sample skewness and excess kurtosis into a single
+// chi-squared statistic. Under the null hypothesis of normality, JB is asymptotically
+// chi-squared distributed with 2 degrees of freedom. Returns the JB statistic, df (always 2),
+// and an upper-tail chi-squared p-value.
+struct JarqueBeraResult {
+    double jb_stat = 0.0;
+    int df = 2;
+    double p_value = 1.0;
+};
+JarqueBeraResult jarque_bera(std::span<const double> x);
+
+// Ljung-Box test for autocorrelation: tests whether a time series exhibits significant
+// autocorrelation up to `max_lag`, using the sample ACF at lags 1..max_lag. Under the null
+// hypothesis of no autocorrelation, Q is asymptotically chi-squared with `max_lag` degrees
+// of freedom. Returns the Q statistic, df (= max_lag), and an upper-tail chi-squared p-value.
+struct LjungBoxResult {
+    double q_stat = 0.0;
+    int df = 0;
+    double p_value = 1.0;
+};
+LjungBoxResult ljung_box(std::span<const double> x, int max_lag);
+
+// Levene's test for equality of variances across >= 2 groups (Brown-Forsythe median variant):
+// transforms each group to absolute deviations from its median, then applies one-way ANOVA on
+// the transformed values. Robust companion to ANOVA when checking the equal-variance assumption.
+// Returns the F statistic, associated p-value, and ANOVA degrees of freedom (between/within).
+struct LeveneResult {
+    double f_stat = 0.0;
+    double p_value = 0.0;
+    int df_between = 0;
+    int df_within = 0;
+};
+LeveneResult levene_test(const std::vector<std::vector<double>>& groups);
+
+// Bartlett's test for equality of variances across >= 2 groups: assumes approximate normality
+// within groups but is more powerful than Levene's when that holds. Uses a chi-squared
+// approximation with Bartlett's correction factor. Returns the chi-squared statistic, df
+// (number of non-empty groups - 1), and an upper-tail chi-squared p-value.
+struct BartlettResult {
+    double chi2_stat = 0.0;
+    int df = 0;
+    double p_value = 1.0;
+};
+BartlettResult bartlett_test(const std::vector<std::vector<double>>& groups);
+
 // --- Regression ---
 struct LinearRegressionResult {
     double slope;

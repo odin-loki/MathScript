@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <cstdint>
 #include "ms/stats/stats.hpp"
 #include "ms/prob/prob.hpp"
 
@@ -505,4 +506,269 @@ TEST(StatsExtTest, bootstrap_ci_empty_data_returns_zeros) {
     EXPECT_DOUBLE_EQ(result.lower, 0.0);
     EXPECT_DOUBLE_EQ(result.upper, 0.0);
     EXPECT_DOUBLE_EQ(result.std_error, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// jarque_bera
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<double> make_norm_ppf_sample(int n) {
+    std::vector<double> sample(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        const double p = (static_cast<double>(i) + 0.5) / static_cast<double>(n);
+        sample[static_cast<size_t>(i)] = norm_ppf(p, 0.0, 1.0);
+    }
+    return sample;
+}
+
+} // namespace
+
+TEST(StatsExtTest, jarque_bera_normal_like_sample) {
+    const auto normal = make_norm_ppf_sample(100);
+    const auto result = jarque_bera(normal);
+    EXPECT_LT(result.jb_stat, 6.0);
+    EXPECT_GT(result.p_value, 0.05);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, jarque_bera_skewed_exponential_shape) {
+    std::vector<double> skewed;
+    for (int i = 1; i <= 60; ++i) {
+        skewed.push_back(std::log(static_cast<double>(i)));
+    }
+    const auto result = jarque_bera(skewed);
+    EXPECT_GT(result.jb_stat, 10.0);
+    EXPECT_LT(result.p_value, 0.001);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, jarque_bera_bimodal_sample) {
+    std::vector<double> bimodal;
+    for (int i = 0; i < 30; ++i) {
+        bimodal.push_back(-8.0);
+    }
+    for (int i = 0; i < 30; ++i) {
+        bimodal.push_back(8.0);
+    }
+    const auto result = jarque_bera(bimodal);
+    EXPECT_GT(result.jb_stat, 5.0);
+    EXPECT_LT(result.p_value, 0.01);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, jarque_bera_heavy_right_skew) {
+    std::vector<double> heavy_skew;
+    for (int i = 1; i <= 80; ++i) {
+        heavy_skew.push_back(std::exp(static_cast<double>(i) / 25.0));
+    }
+    const auto result = jarque_bera(heavy_skew);
+    EXPECT_GT(result.jb_stat, 10.0);
+    EXPECT_LT(result.p_value, 0.001);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, jarque_bera_too_small_sample) {
+    const std::vector<double> tiny{1.0, 2.0, 3.0};
+    const auto result = jarque_bera(tiny);
+    EXPECT_DOUBLE_EQ(result.jb_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, jarque_bera_constant_sample) {
+    const std::vector<double> flat{5.0, 5.0, 5.0, 5.0, 5.0};
+    const auto result = jarque_bera(flat);
+    EXPECT_DOUBLE_EQ(result.jb_stat, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// ljung_box
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, ljung_box_uncorrelated_sequence) {
+    std::vector<double> uncorrelated;
+    uncorrelated.push_back(0.0);
+    uint32_t state = 12345u;
+    for (int i = 1; i < 500; ++i) {
+        state = state * 1664525u + 1013904223u;
+        uncorrelated.push_back(
+            static_cast<double>(state) / 4294967296.0 - 0.5);
+    }
+    const auto result = ljung_box(uncorrelated, 8);
+    const auto correlated = ljung_box(
+        std::vector<double>{1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0},
+        8);
+    EXPECT_LT(result.q_stat, correlated.q_stat);
+    EXPECT_GT(result.p_value, correlated.p_value);
+    EXPECT_EQ(result.df, 8);
+}
+
+TEST(StatsExtTest, ljung_box_alternating_strong_autocorrelation) {
+    std::vector<double> alternating;
+    for (int i = 0; i < 100; ++i) {
+        alternating.push_back((i % 2 == 0) ? 1.0 : -1.0);
+    }
+    const auto result = ljung_box(alternating, 5);
+    EXPECT_NEAR(result.q_stat, 494.7, 5.0);
+    EXPECT_EQ(result.df, 5);
+}
+
+TEST(StatsExtTest, ljung_box_ar1_autocorrelation) {
+    std::vector<double> ar1(static_cast<size_t>(100));
+    ar1[0] = 1.0;
+    for (int i = 1; i < 100; ++i) {
+        ar1[static_cast<size_t>(i)] =
+            0.95 * ar1[static_cast<size_t>(i - 1)] +
+            0.05 * static_cast<double>((i % 7) - 3);
+    }
+    const auto uncorrelated = ljung_box(
+        std::vector<double>{0.1, -0.2, 0.3, -0.1, 0.2, -0.3, 0.15, -0.25, 0.05, -0.15,
+                             0.12, -0.18, 0.22, -0.12, 0.18, -0.08, 0.28, -0.28, 0.08, -0.08},
+        10);
+    const auto result = ljung_box(ar1, 10);
+    EXPECT_GT(result.q_stat, uncorrelated.q_stat);
+    EXPECT_GT(result.q_stat, 5.0);
+    EXPECT_EQ(result.df, 10);
+}
+
+TEST(StatsExtTest, ljung_box_cumulative_sum_autocorrelation) {
+    std::vector<double> random_walk;
+    double sum = 0.0;
+    for (int i = 0; i < 80; ++i) {
+        sum += ((i % 3) - 1) * 0.5;
+        random_walk.push_back(sum);
+    }
+    const auto result = ljung_box(random_walk, 8);
+    EXPECT_GT(result.q_stat, 30.0);
+    EXPECT_LT(result.p_value, 0.01);
+    EXPECT_EQ(result.df, 8);
+}
+
+TEST(StatsExtTest, ljung_box_degenerate_inputs) {
+    const std::vector<double> one{1.0};
+    const auto single = ljung_box(one, 5);
+    EXPECT_DOUBLE_EQ(single.q_stat, 0.0);
+    EXPECT_DOUBLE_EQ(single.p_value, 1.0);
+
+    const std::vector<double> data{1.0, 2.0, 3.0, 4.0, 5.0};
+    const auto bad_lag = ljung_box(data, 0);
+    EXPECT_DOUBLE_EQ(bad_lag.q_stat, 0.0);
+    EXPECT_DOUBLE_EQ(bad_lag.p_value, 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// levene_test
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, levene_test_equal_variances) {
+    const std::vector<std::vector<double>> groups = {
+        {10.0, 11.0, 9.0, 10.5, 9.5},
+        {20.0, 21.0, 19.0, 20.5, 19.5},
+        {30.0, 31.0, 29.0, 30.5, 29.5},
+    };
+    const auto result = levene_test(groups);
+    EXPECT_LT(result.f_stat, 3.0);
+    EXPECT_GT(result.p_value, 0.05);
+    EXPECT_EQ(result.df_between, 2);
+    EXPECT_EQ(result.df_within, 12);
+}
+
+TEST(StatsExtTest, levene_test_unequal_variances) {
+    const std::vector<std::vector<double>> groups = {
+        {10.0, 10.1, 9.9, 10.2, 9.8},
+        {20.0, 20.1, 19.9, 20.2, 19.8},
+        {0.0, 40.0, 10.0, 30.0, -10.0},
+    };
+    const auto result = levene_test(groups);
+    EXPECT_GT(result.f_stat, 5.0);
+    EXPECT_LT(result.p_value, 0.05);
+    EXPECT_EQ(result.df_between, 2);
+    EXPECT_EQ(result.df_within, 12);
+}
+
+TEST(StatsExtTest, levene_test_delegates_to_one_way_anova) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 2.0, 3.0, 4.0, 5.0},
+        {6.0, 7.0, 8.0, 9.0, 10.0},
+        {11.0, 12.0, 13.0, 14.0, 15.0},
+    };
+    std::vector<std::vector<double>> transformed;
+    transformed.reserve(groups.size());
+    for (const auto& group : groups) {
+        const double med = median(group);
+        std::vector<double> devs;
+        devs.reserve(group.size());
+        for (double v : group) {
+            devs.push_back(std::abs(v - med));
+        }
+        transformed.push_back(std::move(devs));
+    }
+    const auto levene = levene_test(groups);
+    const auto manual = one_way_anova(transformed);
+    EXPECT_NEAR(levene.f_stat, manual.f_stat, 1e-12);
+    EXPECT_NEAR(levene.p_value, manual.p_value, 1e-12);
+    EXPECT_EQ(levene.df_between, manual.df_between);
+    EXPECT_EQ(levene.df_within, manual.df_within);
+}
+
+TEST(StatsExtTest, levene_test_degenerate_inputs) {
+    const std::vector<std::vector<double>> one_group = {{1.0, 2.0, 3.0}};
+    const auto result = levene_test(one_group);
+    EXPECT_DOUBLE_EQ(result.f_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// bartlett_test
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, bartlett_test_equal_variances) {
+    const std::vector<std::vector<double>> groups = {
+        {10.0, 11.0, 9.0, 10.5, 9.5},
+        {20.0, 21.0, 19.0, 20.5, 19.5},
+        {30.0, 31.0, 29.0, 30.5, 29.5},
+    };
+    const auto result = bartlett_test(groups);
+    EXPECT_LT(result.chi2_stat, 6.0);
+    EXPECT_GT(result.p_value, 0.05);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, bartlett_test_unequal_variances) {
+    const std::vector<std::vector<double>> groups = {
+        {10.0, 10.1, 9.9, 10.2, 9.8},
+        {20.0, 20.1, 19.9, 20.2, 19.8},
+        {0.0, 40.0, 10.0, 30.0, -10.0},
+    };
+    const auto result = bartlett_test(groups);
+    EXPECT_GT(result.chi2_stat, 10.0);
+    EXPECT_LT(result.p_value, 0.01);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, bartlett_test_two_groups) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 2.0, 3.0, 4.0, 5.0},
+        {1.0, 1.5, 2.5, 3.5, 4.5},
+    };
+    const auto result = bartlett_test(groups);
+    EXPECT_TRUE(std::isfinite(result.chi2_stat));
+    EXPECT_TRUE(std::isfinite(result.p_value));
+    EXPECT_GE(result.chi2_stat, 0.0);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 1);
+}
+
+TEST(StatsExtTest, bartlett_test_degenerate_inputs) {
+    const std::vector<std::vector<double>> one_group = {{1.0, 2.0, 3.0}};
+    const auto too_few = bartlett_test(one_group);
+    EXPECT_DOUBLE_EQ(too_few.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(too_few.p_value, 1.0);
+
+    const std::vector<std::vector<double>> zero_var = {{5.0, 5.0, 5.0}, {6.0, 7.0, 8.0}};
+    const auto flat = bartlett_test(zero_var);
+    EXPECT_DOUBLE_EQ(flat.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(flat.p_value, 1.0);
 }
