@@ -1,5 +1,6 @@
 #include "ms/compress/compress.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <numeric>
@@ -82,6 +83,176 @@ Bytes huffman_decode(const HuffmanResult& hr, size_t orig_size) {
         auto it=decode_map.find(cur);
         if (it!=decode_map.end()){out.push_back(it->second);cur="";}
         if (out.size()>=orig_size) break;
+    }
+    return out;
+}
+
+// ========================== Arithmetic (range) coding ==========================
+// Russian range coder (Shelwien/Subbotin): 64-bit low, 32-bit range/code,
+// renormalization with underflow avoidance via range clamping.
+namespace {
+
+constexpr uint32_t kTop = 1u << 24;
+
+struct RangeModel {
+    std::vector<uint8_t> sym;
+    std::vector<uint32_t> cum; // size n+1, cum[0]=0, cum[n]=total
+    uint32_t total = 0;
+
+    static RangeModel from_data(const Bytes& data) {
+        std::map<uint8_t, int> freq;
+        for (uint8_t b : data) ++freq[b];
+        RangeModel m;
+        for (auto& [s, f] : freq) {
+            m.sym.push_back(s);
+            m.cum.push_back(m.total);
+            m.total += static_cast<uint32_t>(f);
+        }
+        m.cum.push_back(m.total);
+        return m;
+    }
+
+    static RangeModel from_table(const std::vector<std::pair<uint8_t, uint32_t>>& ft) {
+        RangeModel m;
+        for (auto& [s, f] : ft) {
+            m.sym.push_back(s);
+            m.cum.push_back(m.total);
+            m.total += f;
+        }
+        m.cum.push_back(m.total);
+        return m;
+    }
+
+    int index_of(uint8_t s) const {
+        auto it = std::lower_bound(sym.begin(), sym.end(), s);
+        if (it == sym.end() || *it != s) return -1;
+        return static_cast<int>(it - sym.begin());
+    }
+
+    int symbol_for_count(uint32_t count) const {
+        int lo = 0, hi = static_cast<int>(sym.size()) - 1;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            if (cum[mid] <= count) lo = mid;
+            else hi = mid - 1;
+        }
+        return lo;
+    }
+};
+
+struct ByteWriter {
+    Bytes out;
+    void write(uint8_t b) { out.push_back(b); }
+};
+
+struct ByteReader {
+    const Bytes& data;
+    size_t pos = 0;
+    explicit ByteReader(const Bytes& data) : data(data) {}
+    uint8_t read() { return pos < data.size() ? data[pos++] : 0; }
+};
+
+struct RngCoder {
+    uint64_t low = 0;
+    uint32_t range = UINT32_MAX;
+    uint32_t code = 0;
+    ByteWriter* out = nullptr;
+    ByteReader* in = nullptr;
+
+    void renormalize_encode() {
+        if (range >= kTop) return;
+        do {
+            if (static_cast<uint8_t>((low ^ (low + range)) >> 56))
+                range = ((static_cast<uint32_t>(low) | (kTop - 1)) - static_cast<uint32_t>(low));
+            out->write(static_cast<uint8_t>(low >> 56));
+            range <<= 8;
+            low <<= 8;
+        } while (range < kTop);
+    }
+
+    void renormalize_decode() {
+        while (range < kTop) {
+            if (static_cast<uint8_t>((low ^ (low + range)) >> 56))
+                range = ((static_cast<uint32_t>(low) | (kTop - 1)) - static_cast<uint32_t>(low));
+            code = (code << 8) | in->read();
+            range <<= 8;
+            low <<= 8;
+        }
+    }
+
+    void encode(uint32_t cum_freq, uint32_t freq, uint32_t total) {
+        low += static_cast<uint64_t>(cum_freq) * (range /= total);
+        range *= freq;
+        renormalize_encode();
+    }
+
+    uint32_t get_freq(uint32_t total) {
+        return code / (range /= total);
+    }
+
+    void decode_update(uint32_t cum_freq, uint32_t freq) {
+        uint32_t temp = cum_freq * range;
+        low += temp;
+        code -= temp;
+        range *= freq;
+        renormalize_decode();
+    }
+
+    void finish_encode() {
+        for (int i = 0; i < 8; ++i) {
+            out->write(static_cast<uint8_t>(low >> 56));
+            low <<= 8;
+        }
+    }
+
+    void start_decode(ByteReader& reader) {
+        in = &reader;
+        for (int i = 0; i < 8; ++i)
+            code = (code << 8) | in->read();
+    }
+};
+
+} // namespace
+
+ArithmeticResult arithmetic_encode(const Bytes& data) {
+    ArithmeticResult result;
+    result.original_size = data.size();
+    result.padding_bits = 0;
+    if (data.empty()) return result;
+
+    RangeModel model = RangeModel::from_data(data);
+    result.freq_table.reserve(model.sym.size());
+    for (size_t i = 0; i < model.sym.size(); ++i)
+        result.freq_table.emplace_back(model.sym[i], model.cum[i + 1] - model.cum[i]);
+
+    ByteWriter writer;
+    RngCoder rc;
+    rc.out = &writer;
+    for (uint8_t b : data) {
+        int idx = model.index_of(b);
+        uint32_t freq = model.cum[idx + 1] - model.cum[idx];
+        rc.encode(model.cum[idx], freq, model.total);
+    }
+    rc.finish_encode();
+    result.encoded = std::move(writer.out);
+    return result;
+}
+
+Bytes arithmetic_decode(const ArithmeticResult& ar) {
+    if (ar.original_size == 0) return {};
+    RangeModel model = RangeModel::from_table(ar.freq_table);
+    ByteReader reader(ar.encoded);
+    RngCoder rc;
+    rc.start_decode(reader);
+    Bytes out;
+    out.reserve(ar.original_size);
+    for (size_t i = 0; i < ar.original_size; ++i) {
+        uint32_t count = rc.get_freq(model.total);
+        if (count >= model.total) count = model.total - 1;
+        int idx = model.symbol_for_count(count);
+        uint32_t freq = model.cum[idx + 1] - model.cum[idx];
+        rc.decode_update(model.cum[idx], freq);
+        out.push_back(model.sym[idx]);
     }
     return out;
 }

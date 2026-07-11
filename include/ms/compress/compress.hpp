@@ -21,6 +21,21 @@ struct HuffmanResult {
 HuffmanResult huffman_encode(const Bytes& data);
 Bytes          huffman_decode(const HuffmanResult& hr, size_t original_size);
 
+// ========================== Arithmetic (range) coding ==========================
+// Integer range coding — a numerically-stable variant of arithmetic coding that
+// maintains a (low, range) interval with 32-bit unsigned integers (never
+// floating-point), renormalizing by shifting out bytes when range falls below
+// 2^24. The frequency table and original symbol count are stored alongside the
+// coded bytes because range coding has no natural end-of-stream marker.
+struct ArithmeticResult {
+    Bytes encoded;                                      // range-coded output bytes
+    std::vector<std::pair<uint8_t, uint32_t>> freq_table; // symbol → frequency (symbols present only)
+    size_t original_size;                               // symbols to decode (no natural EOF marker)
+    int padding_bits;                                   // always 0 (byte-aligned output)
+};
+ArithmeticResult arithmetic_encode(const Bytes& data);
+Bytes            arithmetic_decode(const ArithmeticResult& ar);
+
 // ========================== LZ77 ==========================
 struct LZ77Token {
     uint16_t offset, length;
