@@ -1,5 +1,7 @@
 #include "ms/numthy/numthy.hpp"
 #include <gtest/gtest.h>
+#include <cmath>
+#include <cstdint>
 
 using namespace ms::numthy;
 
@@ -187,4 +189,107 @@ TEST(NumthyPartition, Small) {
     EXPECT_EQ(partition(4), 5u);
     EXPECT_EQ(partition(5), 7u);
     EXPECT_EQ(partition(10), 42u);
+}
+
+TEST(NumthyMult, JordanTotientMatchesEulerPhi) {
+    for (uint64_t n = 1; n <= 500; ++n)
+        EXPECT_EQ(jordan_totient(1, n), euler_phi(n)) << "n=" << n;
+    EXPECT_EQ(jordan_totient(1, 720720), euler_phi(720720));
+    EXPECT_EQ(jordan_totient(1, 1000003), euler_phi(1000003));
+}
+
+TEST(NumthyMult, JordanTotientK2) {
+    EXPECT_EQ(jordan_totient(2, 1), 1u);
+    EXPECT_EQ(jordan_totient(2, 6), 12u);   // 36*(1-1/2)*(1-1/3) = 12
+    EXPECT_EQ(jordan_totient(2, 12), 48u);  // 144*(1-1/2)*(1-1/3) = 48
+    EXPECT_EQ(jordan_totient(2, 7), 42u);   // 7^2 - 7 = 42
+    EXPECT_EQ(jordan_totient(3, 6), 72u);   // 216*(1-1/2)*(1-1/3) = 72
+}
+
+TEST(NumthyMult, VonMangoldtPrimePowers) {
+    EXPECT_DOUBLE_EQ(von_mangoldt(1), 0.0);
+    EXPECT_NEAR(von_mangoldt(2), std::log(2.0), 1e-12);
+    EXPECT_NEAR(von_mangoldt(3), std::log(3.0), 1e-12);
+    EXPECT_NEAR(von_mangoldt(5), std::log(5.0), 1e-12);
+    EXPECT_NEAR(von_mangoldt(4), std::log(2.0), 1e-12);
+    EXPECT_NEAR(von_mangoldt(8), std::log(2.0), 1e-12);
+    EXPECT_NEAR(von_mangoldt(9), std::log(3.0), 1e-12);
+    EXPECT_NEAR(von_mangoldt(16), std::log(2.0), 1e-12);
+    EXPECT_NEAR(von_mangoldt(27), std::log(3.0), 1e-12);
+}
+
+TEST(NumthyMult, VonMangoldtNonPrimePowers) {
+    EXPECT_DOUBLE_EQ(von_mangoldt(6), 0.0);
+    EXPECT_DOUBLE_EQ(von_mangoldt(10), 0.0);
+    EXPECT_DOUBLE_EQ(von_mangoldt(12), 0.0);
+    EXPECT_DOUBLE_EQ(von_mangoldt(15), 0.0);
+    EXPECT_DOUBLE_EQ(von_mangoldt(30), 0.0);
+}
+
+TEST(NumthyModular, QuadraticResiduesMod7) {
+    auto qr = quadratic_residues(7);
+    EXPECT_EQ(qr, (std::vector<uint64_t>{1, 2, 4}));
+    EXPECT_EQ(qr.size(), 3u);
+}
+
+TEST(NumthyModular, QuadraticResiduesCount) {
+    for (uint64_t p : {3u, 5u, 7u, 11u, 13u, 17u, 19u, 23u}) {
+        auto qr = quadratic_residues(p);
+        EXPECT_EQ(qr.size(), (p - 1) / 2) << "p=" << p;
+    }
+}
+
+TEST(NumthyModular, QuadraticResiduesInvalid) {
+    EXPECT_TRUE(quadratic_residues(2).empty());
+    EXPECT_TRUE(quadratic_residues(4).empty());
+    EXPECT_TRUE(quadratic_residues(15).empty());
+}
+
+TEST(NumthyFarey, Order4Exact) {
+    auto f = farey(4);
+    std::vector<std::pair<uint64_t,uint64_t>> expected = {
+        {0, 1}, {1, 4}, {1, 3}, {1, 2}, {2, 3}, {3, 4}, {1, 1}
+    };
+    EXPECT_EQ(f, expected);
+}
+
+TEST(NumthyFarey, CountFormula) {
+    for (uint32_t n = 1; n <= 20; ++n) {
+        uint64_t expected = 1;
+        for (uint32_t k = 1; k <= n; ++k)
+            expected += euler_phi(k);
+        EXPECT_EQ(farey(n).size(), expected) << "n=" << n;
+    }
+}
+
+TEST(NumthyPell, FundamentalSolutions) {
+    struct Case { uint64_t D; uint64_t x; uint64_t y; };
+    for (auto [D, x, y] : {Case{2, 3, 2}, Case{3, 2, 1}, Case{5, 9, 4},
+                          Case{7, 8, 3}, Case{13, 649, 180}}) {
+        auto sol = pell_solve(D);
+        ASSERT_TRUE(sol.has_value()) << "D=" << D;
+        EXPECT_EQ(sol->first, x) << "D=" << D;
+        EXPECT_EQ(sol->second, y) << "D=" << D;
+        EXPECT_EQ(sol->first * sol->first - D * sol->second * sol->second, 1u);
+    }
+}
+
+TEST(NumthyPell, PerfectSquareError) {
+    EXPECT_FALSE(pell_solve(4).has_value());
+    EXPECT_FALSE(pell_solve(9).has_value());
+    EXPECT_FALSE(pell_solve(16).has_value());
+}
+
+TEST(NumthyPell, HarderCase) {
+    auto sol = pell_solve(61);
+    ASSERT_TRUE(sol.has_value());
+    const uint64_t x = sol->first;
+    const uint64_t y = sol->second;
+    EXPECT_EQ(x, 1766319049u);
+    EXPECT_EQ(y, 226153980u);
+#if defined(__SIZEOF_INT128__)
+    const __int128_t norm = static_cast<__int128_t>(x) * x
+                          - static_cast<__int128_t>(61) * y * y;
+    EXPECT_EQ(norm, 1);
+#endif
 }
