@@ -516,6 +516,73 @@ bool is_planar_k5_k33_check(const Graph& G) {
     return E <= 3 * V - 6;
 }
 
+// ---- Isomorphism ----
+
+namespace {
+
+bool has_edge(const Graph& G, int u, int v) {
+    for (auto& [nbr, w] : G.neighbors(u))
+        if (nbr == v) return true;
+    return false;
+}
+
+// {in-degree, out-degree} per vertex; add_edge mirrors both directions for
+// undirected graphs, so in == out == neighbors().size() there, and this
+// reduces to the plain degree.
+std::vector<std::pair<int,int>> in_out_degrees(const Graph& G) {
+    int n = G.n_vertices();
+    std::vector<std::pair<int,int>> deg(n, {0, 0});
+    for (int u = 0; u < n; ++u) {
+        deg[u].second = static_cast<int>(G.neighbors(u).size());
+        for (auto& [v, w] : G.neighbors(u)) ++deg[v].first;
+    }
+    return deg;
+}
+
+bool isomorphic_backtrack(const Graph& G1, const Graph& G2,
+                           const std::vector<std::pair<int,int>>& deg1,
+                           const std::vector<std::pair<int,int>>& deg2,
+                           std::vector<int>& mapping, std::vector<bool>& used, int u) {
+    int n = G1.n_vertices();
+    if (u == n) return true;
+    for (int v = 0; v < n; ++v) {
+        if (used[v] || deg1[u] != deg2[v]) continue;
+        bool consistent = true;
+        for (int up = 0; up < u && consistent; ++up) {
+            int vp = mapping[up];
+            if (has_edge(G1, u, up) != has_edge(G2, v, vp)) consistent = false;
+            if (G1.is_directed() && has_edge(G1, up, u) != has_edge(G2, vp, v)) consistent = false;
+        }
+        if (!consistent) continue;
+        mapping[u] = v; used[v] = true;
+        if (isomorphic_backtrack(G1, G2, deg1, deg2, mapping, used, u + 1)) return true;
+        used[v] = false;
+    }
+    return false;
+}
+
+} // namespace
+
+bool is_isomorphic(const Graph& G1, const Graph& G2) {
+    if (G1.n_vertices() != G2.n_vertices() ||
+        G1.n_edges() != G2.n_edges() ||
+        G1.is_directed() != G2.is_directed())
+        return false;
+    int n = G1.n_vertices();
+    if (n == 0) return true;
+
+    auto deg1 = in_out_degrees(G1);
+    auto deg2 = in_out_degrees(G2);
+    auto sorted1 = deg1, sorted2 = deg2;
+    std::sort(sorted1.begin(), sorted1.end());
+    std::sort(sorted2.begin(), sorted2.end());
+    if (sorted1 != sorted2) return false;
+
+    std::vector<int> mapping(n, -1);
+    std::vector<bool> used(n, false);
+    return isomorphic_backtrack(G1, G2, deg1, deg2, mapping, used, 0);
+}
+
 // ---- Centrality ----
 
 std::vector<double> pagerank(const Graph& G, double alpha, int max_iter) {
