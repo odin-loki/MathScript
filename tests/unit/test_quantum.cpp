@@ -430,3 +430,192 @@ TEST(QuantumEvolution, TimeEvolutionOperator) {
     auto out = op_apply(U, ket_basis(2, 0));
     EXPECT_NEAR(std::abs(out[1]), 1.0, 0.05);
 }
+
+// ---- Phase-space quasi-probability distributions (Wigner / Husimi Q) ----
+namespace {
+
+constexpr int kFockCutoff = 24;  // truncated Fock-basis dimension - 1
+
+DensityMatrix mix(double w1, const DensityMatrix& rho1, double w2, const DensityMatrix& rho2) {
+    int n = static_cast<int>(rho1.size());
+    DensityMatrix out(n, std::vector<C>(n, C(0.0)));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            out[i][j] = w1 * rho1[i][j] + w2 * rho2[i][j];
+    return out;
+}
+
+// Numerically integrate Q(alpha) over a square region of the complex plane
+// via a simple midpoint grid sum: integral ≈ sum Q(alpha) * (step^2).
+double integrate_husimi(const DensityMatrix& rho, double half_width, double step) {
+    double total = 0.0;
+    for (double re = -half_width; re <= half_width; re += step)
+        for (double im = -half_width; im <= half_width; im += step)
+            total += husimi_Q(rho, C(re, im));
+    return total * step * step;
+}
+
+} // namespace
+
+// ---- Husimi Q normalisation ----
+TEST(QuantumPhaseSpace, HusimiNormalisation_Vacuum) {
+    auto rho = density_matrix(fock_state(0, kFockCutoff));
+    double integral = integrate_husimi(rho, 6.0, 0.1);
+    EXPECT_NEAR(integral, 1.0, 0.02);
+}
+
+TEST(QuantumPhaseSpace, HusimiNormalisation_Coherent) {
+    auto rho = density_matrix(coherent_state(C(1.2, 0.8), kFockCutoff));
+    double integral = integrate_husimi(rho, 7.0, 0.1);
+    EXPECT_NEAR(integral, 1.0, 0.02);
+}
+
+TEST(QuantumPhaseSpace, HusimiNormalisation_MixedState) {
+    // Equal mixture of |0> and |1>: still a physical (unit-trace) state.
+    auto rho0 = density_matrix(fock_state(0, kFockCutoff));
+    auto rho1 = density_matrix(fock_state(1, kFockCutoff));
+    auto rho = mix(0.5, rho0, 0.5, rho1);
+    double integral = integrate_husimi(rho, 6.0, 0.1);
+    EXPECT_NEAR(integral, 1.0, 0.02);
+}
+
+// ---- Husimi Q positivity ----
+TEST(QuantumPhaseSpace, HusimiPositivity_Vacuum) {
+    auto rho = density_matrix(fock_state(0, kFockCutoff));
+    for (double re = -4.0; re <= 4.0; re += 0.5)
+        for (double im = -4.0; im <= 4.0; im += 0.5)
+            EXPECT_GE(husimi_Q(rho, C(re, im)), -1e-9);
+}
+
+TEST(QuantumPhaseSpace, HusimiPositivity_Coherent) {
+    auto rho = density_matrix(coherent_state(C(1.5, -1.0), kFockCutoff));
+    for (double re = -4.0; re <= 4.0; re += 0.5)
+        for (double im = -4.0; im <= 4.0; im += 0.5)
+            EXPECT_GE(husimi_Q(rho, C(re, im)), -1e-9);
+}
+
+TEST(QuantumPhaseSpace, HusimiPositivity_MixedState) {
+    auto rho0 = density_matrix(fock_state(0, kFockCutoff));
+    auto rho1 = density_matrix(fock_state(2, kFockCutoff));
+    auto rho = mix(0.3, rho0, 0.7, rho1);
+    for (double re = -4.0; re <= 4.0; re += 0.5)
+        for (double im = -4.0; im <= 4.0; im += 0.5)
+            EXPECT_GE(husimi_Q(rho, C(re, im)), -1e-9);
+}
+
+// ---- Husimi Q exact vacuum Gaussian: Q(alpha) = (1/pi) exp(-|alpha|^2) ----
+TEST(QuantumPhaseSpace, HusimiVacuum_MatchesGaussianFormula) {
+    auto rho = density_matrix(fock_state(0, kFockCutoff));
+    EXPECT_NEAR(husimi_Q(rho, C(0.0, 0.0)), 1.0 / M_PI, 1e-6);
+    EXPECT_NEAR(husimi_Q(rho, C(1.0, 0.0)), std::exp(-1.0) / M_PI, 1e-6);
+    EXPECT_NEAR(husimi_Q(rho, C(0.0, 1.5)), std::exp(-2.25) / M_PI, 1e-6);
+}
+
+// ---- Vacuum peak location: max of Q/W at the origin ----
+TEST(QuantumPhaseSpace, HusimiVacuumPeakAtOrigin) {
+    auto rho = density_matrix(fock_state(0, kFockCutoff));
+    double q_origin = husimi_Q(rho, C(0.0, 0.0));
+    for (double re = -3.0; re <= 3.0; re += 0.3)
+        for (double im = -3.0; im <= 3.0; im += 0.3) {
+            if (re == 0.0 && im == 0.0) continue;
+            EXPECT_LE(husimi_Q(rho, C(re, im)), q_origin + 1e-12);
+        }
+}
+
+TEST(QuantumPhaseSpace, WignerVacuumPeakAtOrigin) {
+    auto rho = density_matrix(fock_state(0, kFockCutoff));
+    double w_origin = wigner_function(rho, 0.0, 0.0);
+    EXPECT_NEAR(w_origin, 1.0 / M_PI, 1e-4);
+    for (double x = -3.0; x <= 3.0; x += 0.6)
+        for (double p = -3.0; p <= 3.0; p += 0.6) {
+            if (x == 0.0 && p == 0.0) continue;
+            EXPECT_LE(wigner_function(rho, x, p), w_origin + 1e-9);
+        }
+}
+
+// ---- Coherent-state peak location ----
+TEST(QuantumPhaseSpace, HusimiCoherentPeakNearAlpha0) {
+    const C alpha0(1.4, -0.9);
+    auto rho = density_matrix(coherent_state(alpha0, kFockCutoff));
+
+    double best_q = -1.0;
+    C best_alpha(0.0, 0.0);
+    for (double re = -3.0; re <= 4.0; re += 0.25)
+        for (double im = -4.0; im <= 3.0; im += 0.25) {
+            double q = husimi_Q(rho, C(re, im));
+            if (q > best_q) {
+                best_q = q;
+                best_alpha = C(re, im);
+            }
+        }
+    EXPECT_NEAR(std::abs(best_alpha - alpha0), 0.0, 0.3);
+}
+
+TEST(QuantumPhaseSpace, WignerCoherentPeakNearAlpha0) {
+    const C alpha0(1.0, 1.0);
+    auto rho = density_matrix(coherent_state(alpha0, kFockCutoff));
+    const double x0 = alpha0.real() * std::sqrt(2.0);
+    const double p0 = alpha0.imag() * std::sqrt(2.0);
+
+    double best_w = -1e18;
+    double best_x = 0.0, best_p = 0.0;
+    for (double x = -2.0; x <= 4.0; x += 0.5)
+        for (double p = -2.0; p <= 4.0; p += 0.5) {
+            double w = wigner_function(rho, x, p);
+            if (w > best_w) {
+                best_w = w;
+                best_x = x;
+                best_p = p;
+            }
+        }
+    EXPECT_NEAR(best_x, x0, 0.75);
+    EXPECT_NEAR(best_p, p0, 0.75);
+}
+
+// ---- Wigner-function negativity for Fock state |1> (non-classicality witness) ----
+TEST(QuantumPhaseSpace, WignerFock1NegativeAtOrigin) {
+    auto rho = density_matrix(fock_state(1, kFockCutoff));
+    double w_origin = wigner_function(rho, 0.0, 0.0);
+    EXPECT_LT(w_origin, 0.0);
+    EXPECT_NEAR(w_origin, -1.0 / M_PI, 1e-4);  // known closed form: (-1)^n / pi
+}
+
+TEST(QuantumPhaseSpace, WignerFock2PositiveAtOrigin) {
+    // (-1)^n / pi with n=2 is positive again.
+    auto rho = density_matrix(fock_state(2, kFockCutoff));
+    double w_origin = wigner_function(rho, 0.0, 0.0);
+    EXPECT_GT(w_origin, 0.0);
+    EXPECT_NEAR(w_origin, 1.0 / M_PI, 1e-4);
+}
+
+TEST(QuantumPhaseSpace, WignerMixedFock0Fock1AverageAtOrigin) {
+    // Equal mixture of |0> (W=+1/pi) and |1> (W=-1/pi) at the origin -> exactly 0.
+    auto rho0 = density_matrix(fock_state(0, kFockCutoff));
+    auto rho1 = density_matrix(fock_state(1, kFockCutoff));
+    auto rho = mix(0.5, rho0, 0.5, rho1);
+    EXPECT_NEAR(wigner_function(rho, 0.0, 0.0), 0.0, 1e-4);
+}
+
+// ---- Sanity: both functions decay away from the vacuum peak ----
+TEST(QuantumPhaseSpace, HusimiVacuumDecaysAwayFromOrigin) {
+    auto rho = density_matrix(fock_state(0, kFockCutoff));
+    double q0 = husimi_Q(rho, C(0.0, 0.0));
+    double q_far = husimi_Q(rho, C(3.0, 0.0));
+    EXPECT_GT(q0, q_far);
+    EXPECT_LT(q_far, 0.01);
+}
+
+TEST(QuantumPhaseSpace, WignerVacuumDecaysAwayFromOrigin) {
+    auto rho = density_matrix(fock_state(0, kFockCutoff));
+    double w0 = wigner_function(rho, 0.0, 0.0);
+    double w_far = wigner_function(rho, 3.0, 0.0);
+    EXPECT_GT(w0, w_far);
+    EXPECT_LT(w_far, 0.01);
+}
+
+// ---- Consistency: Wigner/Husimi of the zero operator is zero ----
+TEST(QuantumPhaseSpace, ZeroDensityMatrixGivesZero) {
+    DensityMatrix rho(kFockCutoff + 1, std::vector<C>(kFockCutoff + 1, C(0.0)));
+    EXPECT_NEAR(husimi_Q(rho, C(0.5, 0.5)), 0.0, 1e-12);
+    EXPECT_NEAR(wigner_function(rho, 0.5, 0.5), 0.0, 1e-9);
+}

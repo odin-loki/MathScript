@@ -96,5 +96,26 @@ std::vector<Ket> schrodinger(const DensityMatrix& H, const Ket& psi0,
 // Matrix exponential exp(-i H t) for small/medium H
 DensityMatrix time_evolution_operator(const DensityMatrix& H, double t);
 
+// ---- Phase-space quasi-probability distributions ----
+// Both functions operate on a density matrix expressed in a truncated Fock
+// (number) basis of dimension N = rho.size() (the same convention used by
+// coherent_state()/fock_state(), i.e. Fock levels 0..N-1).
+
+// Wigner quasi-probability distribution at phase-space point (x, p), using
+// the Cahill-Glauber displaced-parity trace formula
+//   W(x,p) = (1/pi) * Tr[rho * D(alpha) * Parity * D(alpha)^dagger]
+// with alpha = (x + i p) / sqrt(2) (so that alpha is the eigenvalue of the
+// annihilation operator a = (x+ip)/sqrt(2), matching coherent_state's
+// convention) and Parity|n> = (-1)^n |n>. Normalised so that
+// integral over x,p of W(x,p) dx dp == 1. Unlike the Husimi Q-function,
+// W can be negative for non-classical states (e.g. Fock states n >= 1).
+double wigner_function(const DensityMatrix& rho, double x, double p);
+
+// Husimi Q quasi-probability distribution: Q(alpha) = (1/pi) * <alpha|rho|alpha>,
+// where |alpha> is the coherent state from coherent_state(). Always
+// non-negative, and normalised so that the integral over the complex plane
+// of Q(alpha) d^2(alpha) == 1.
+double husimi_Q(const DensityMatrix& rho, C alpha);
+
 } // namespace quantum
 } // namespace ms
