@@ -1,4 +1,5 @@
 #include <cmath>
+#include <map>
 
 #include <gtest/gtest.h>
 
@@ -54,7 +55,7 @@ TEST(CoreExtTest, sym_compound_operators) {
     EXPECT_NE(diff.to_string().find("-"), std::string::npos);
     EXPECT_NE(quot.to_string().find("/"), std::string::npos);
     Sym uneval("t");
-    EXPECT_TRUE(std::isnan(uneval.eval()));
+    EXPECT_DOUBLE_EQ(uneval.eval(), 0.0);
 }
 
 TEST(CoreExtTest, session_rng_uniform) {
@@ -71,8 +72,31 @@ TEST(CoreExtTest, sym_eval_numeric) {
     Sym value(6.0);
     EXPECT_DOUBLE_EQ(value.eval(), 6.0);
     EXPECT_DOUBLE_EQ(Sym("3.5").eval(), 3.5);
-    EXPECT_TRUE(std::isnan(Sym("x").eval()));
-    EXPECT_TRUE(std::isnan(Sym("x+y").eval()));
+    EXPECT_DOUBLE_EQ(Sym("x").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("x+y").eval(), 0.0);
+}
+
+TEST(CoreExtTest, sym_eval_arithmetic_precedence) {
+    EXPECT_DOUBLE_EQ(Sym("2+3*4").eval(), 14.0);
+    EXPECT_DOUBLE_EQ(Sym("(2+3)*4").eval(), 20.0);
+    EXPECT_DOUBLE_EQ(Sym("-5+3").eval(), -2.0);
+    EXPECT_DOUBLE_EQ(Sym("10/2").eval(), 5.0);
+}
+
+TEST(CoreExtTest, sym_eval_functions) {
+    EXPECT_NEAR(Sym("sin(0)").eval(), 0.0, 1e-12);
+    EXPECT_NEAR(Sym("cos(0)").eval(), 1.0, 1e-12);
+    EXPECT_NEAR(Sym("exp(0)").eval(), 1.0, 1e-12);
+    EXPECT_NEAR(Sym("log(1)").eval(), 0.0, 1e-12);
+    EXPECT_NEAR(Sym("sqrt(9)").eval(), 3.0, 1e-12);
+    EXPECT_NEAR(Sym("tanh(0)").eval(), 0.0, 1e-12);
+}
+
+TEST(CoreExtTest, sym_eval_env_bindings) {
+    const std::map<std::string, double> env{{"x0", 2.0}, {"x1", 3.0}};
+    EXPECT_DOUBLE_EQ(Sym("x0+x1").eval(env), 5.0);
+    EXPECT_DOUBLE_EQ(Sym("x0*x1").eval(env), 6.0);
+    EXPECT_DOUBLE_EQ(Sym("x9+1").eval(env), 1.0);
 }
 
 TEST(CoreExtTest, version_header) {

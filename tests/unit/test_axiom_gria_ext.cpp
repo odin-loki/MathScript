@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <vector>
 
 #include "ms/frameworks/axiom/axiom.hpp"
@@ -55,7 +56,96 @@ TEST(AxiomGriaExt, PopulationSizeMatchesConfig) {
 }
 
 // ---------------------------------------------------------------------------
-// Axiom: evaluate returns matrix with same dimensions as input
+// Axiom: evaluate applies representation row-by-row (column j -> xj)
+// ---------------------------------------------------------------------------
+
+TEST(AxiomGriaExt, EvaluateRowWiseExpression) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 2},
+        registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0+x1");
+
+    DMatrix data{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}};
+    const auto result = engine.evaluate(algo, data);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->rows(), 3u);
+    EXPECT_EQ(result->cols(), 1u);
+    EXPECT_DOUBLE_EQ((*result)(0, 0), 3.0);
+    EXPECT_DOUBLE_EQ((*result)(1, 0), 7.0);
+    EXPECT_DOUBLE_EQ((*result)(2, 0), 11.0);
+}
+
+TEST(AxiomGriaExt, EvaluateProductExpression) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 2},
+        registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0*x1");
+
+    DMatrix data{{2.0, 3.0}, {-1.0, 5.0}};
+    const auto result = engine.evaluate(algo, data);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_DOUBLE_EQ((*result)(0, 0), 6.0);
+    EXPECT_DOUBLE_EQ((*result)(1, 0), -5.0);
+}
+
+TEST(AxiomGriaExt, EvaluateUnaryFunctionExpression) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 2},
+        registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("sin(x0)");
+
+    DMatrix data{{0.0, 99.0}, {1.5707963267948966, 0.0}};
+    const auto result = engine.evaluate(algo, data);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NEAR((*result)(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR((*result)(1, 0), 1.0, 1e-9);
+}
+
+TEST(AxiomGriaExt, EvaluateComposedOperatorExpression) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 2},
+        registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0") + ms::Sym("x1") * ms::Sym("2");
+
+    DMatrix data{{1.0, 4.0}, {0.0, 3.0}};
+    const auto result = engine.evaluate(algo, data);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_DOUBLE_EQ((*result)(0, 0), 9.0);
+    EXPECT_DOUBLE_EQ((*result)(1, 0), 6.0);
+}
+
+TEST(AxiomGriaExt, EvaluateConstantExpression) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 2},
+        registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("3.5");
+
+    DMatrix data{{10.0, 20.0}, {30.0, 40.0}};
+    const auto result = engine.evaluate(algo, data);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->rows(), data.rows());
+    EXPECT_EQ(result->cols(), 1u);
+    EXPECT_DOUBLE_EQ((*result)(0, 0), 3.5);
+    EXPECT_DOUBLE_EQ((*result)(1, 0), 3.5);
+}
+
+// ---------------------------------------------------------------------------
+// Axiom: evaluate returns one column per input row
 // ---------------------------------------------------------------------------
 
 TEST(AxiomGriaExt, EvaluateDimensionsPreserved) {
@@ -67,7 +157,7 @@ TEST(AxiomGriaExt, EvaluateDimensionsPreserved) {
     const auto result = engine.evaluate(engine.population().front(), data);
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->rows(), data.rows());
-    EXPECT_EQ(result->cols(), data.cols());
+    EXPECT_EQ(result->cols(), 1u);
 }
 
 // ---------------------------------------------------------------------------

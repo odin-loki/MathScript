@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <random>
+#include <string>
 
 namespace ms::axiom {
 
@@ -64,8 +66,15 @@ Result<Algorithm> Axiom::evolve(
 }
 
 Result<Matrix<double>> Axiom::evaluate(const Algorithm& algo, const Matrix<double>& data) const {
-    (void)algo;
-    return data;
+    Matrix<double> output(data.rows(), 1);
+    for (size_t i = 0; i < data.rows(); ++i) {
+        std::map<std::string, double> env;
+        for (size_t j = 0; j < data.cols(); ++j) {
+            env["x" + std::to_string(j)] = data(i, j);
+        }
+        output(i, 0) = algo.representation.eval(env);
+    }
+    return output;
 }
 
 double Axiom::gria_fitness(const Algorithm& algo, const Matrix<double>& data) const {
