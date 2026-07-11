@@ -48,6 +48,36 @@ struct LassoRegression {
     Vec predict(const Mat& X) const;
 };
 
+/// Elastic Net regression — combines the L1 (Lasso) and L2 (Ridge) penalties
+/// via a single mixing parameter. Minimizes:
+///   (1/2n)*||y - Xw - b||^2 + alpha*(l1_ratio*||w||_1 + 0.5*(1-l1_ratio)*||w||_2^2)
+///
+/// Fit via cyclic coordinate descent, directly generalizing
+/// LassoRegression's per-coordinate soft-thresholding update: each
+/// coordinate's partial-residual correlation `rho_j` is soft-thresholded at
+/// `alpha*l1_ratio` (the L1 term) and then divided by the feature's
+/// (empirical) second moment plus `alpha*(1-l1_ratio)` (the extra L2 term
+/// in the denominator, which shrinks every coefficient uniformly on top of
+/// Lasso's sparsifying threshold).
+///
+/// @param alpha    Overall regularization strength (>= 0).
+/// @param l1_ratio Mixing parameter in [0, 1] between the L1 and L2
+///                 penalties.
+/// @note l1_ratio = 1.0 makes the update identical to LassoRegression's
+///       (pure L1 penalty; the L2 term vanishes from the denominator).
+/// @note l1_ratio = 0.0 reduces to a pure L2 (Ridge-style) penalty: the
+///       soft-threshold collapses to the identity (threshold 0), leaving
+///       coordinate-descent Ridge shrinkage, which converges to the same
+///       solution as RidgeRegression's closed-form normal-equation solve.
+struct ElasticNet {
+    Vec coef; double intercept = 0.0; double alpha; double l1_ratio;
+    int max_iter;
+    explicit ElasticNet(double a = 1.0, double l1r = 0.5, int mi = 1000)
+        : alpha(a), l1_ratio(l1r), max_iter(mi) {}
+    void fit(const Mat& X, const Vec& y);
+    Vec predict(const Mat& X) const;
+};
+
 struct LogisticRegression {
     Vec coef; double intercept = 0.0; double C; int max_iter;
     explicit LogisticRegression(double c = 1.0, int mi = 200) : C(c), max_iter(mi) {}
