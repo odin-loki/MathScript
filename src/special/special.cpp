@@ -1725,19 +1725,26 @@ double zeta(double s) {
     if (std::abs(s - 2.0) <= 1e-12) {
         return M_PI * M_PI / 6.0;
     }
+    if (std::abs(s - 4.0) <= 1e-12) {
+        const double pi2 = M_PI * M_PI;
+        return pi2 * pi2 / 90.0;
+    }
     if (s > 1.0) {
+        constexpr int N = 2000;
         double sum = 0.0;
-        for (int n = 1; n <= 500000; ++n) {
+        for (int n = 1; n <= N; ++n) {
             sum += 1.0 / std::pow(static_cast<double>(n), s);
         }
-        return sum;
+        const double ns = std::pow(static_cast<double>(N), -s);
+        const double n1s = ns / static_cast<double>(N);
+        const double tail = std::pow(static_cast<double>(N), 1.0 - s) / (s - 1.0) + 0.5 * ns -
+                            s * n1s / 12.0 + s * (s + 1.0) * n1s / (720.0 * static_cast<double>(N)) -
+                            s * (s + 1.0) * (s + 2.0) * (s + 3.0) * n1s /
+                                (30240.0 * static_cast<double>(N) * static_cast<double>(N));
+        return sum + tail;
     }
     if (s > 0.0) {
-        double eta = 0.0;
-        for (int n = 1; n <= 500000; ++n) {
-            eta += (n % 2 == 1 ? 1.0 : -1.0) / std::pow(static_cast<double>(n), s);
-        }
-        return eta / (1.0 - std::pow(2.0, 1.0 - s));
+        return eta_dirichlet(s) / (1.0 - std::pow(2.0, 1.0 - s));
     }
     return std::numeric_limits<double>::quiet_NaN();
 }
@@ -1773,6 +1780,9 @@ double eta_dirichlet(double s) {
     if (s <= 0.0) {
         return std::numeric_limits<double>::quiet_NaN();
     }
+    if (s > 1.0) {
+        return (1.0 - std::pow(2.0, 1.0 - s)) * zeta(s);
+    }
     double sum = 0.0;
     for (int n = 1; n <= 100000; ++n) {
         sum += (n % 2 == 1 ? 1.0 : -1.0) / std::pow(static_cast<double>(n), s);
@@ -1792,15 +1802,21 @@ double beta_dirichlet(double s) {
 }
 
 double polylog(int n, double z) {
+    if (n < 1) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     if (std::abs(z) >= 1.0) {
         return std::numeric_limits<double>::quiet_NaN();
     }
+    if (n == 1) {
+        return -std::log(1.0 - z);
+    }
     double sum = 0.0;
-    double term = z;
+    double zk = z;
     for (int k = 1; k <= 200000; ++k) {
-        term = (k == 1) ? z : term * z;
-        sum += term / std::pow(static_cast<double>(k), static_cast<double>(n));
-        if (std::abs(term / std::pow(static_cast<double>(k), static_cast<double>(n))) <= 1e-16 * std::abs(sum)) {
+        sum += zk / std::pow(static_cast<double>(k), static_cast<double>(n));
+        zk *= z;
+        if (std::abs(zk / std::pow(static_cast<double>(k), static_cast<double>(n))) <= 1e-16 * std::abs(sum)) {
             break;
         }
     }
@@ -1809,14 +1825,44 @@ double polylog(int n, double z) {
 
 double clausen(double x) {
     double sum = 0.0;
-    for (int n = 1; n <= 200000; ++n) {
+    for (int n = 1; n <= 500000; ++n) {
         sum += std::sin(static_cast<double>(n) * x) / (static_cast<double>(n) * static_cast<double>(n));
-        if (std::abs(std::sin(static_cast<double>(n) * x) / (static_cast<double>(n) * static_cast<double>(n))) <=
-            1e-16) {
-            break;
-        }
     }
     return sum;
+}
+
+namespace {
+
+double debye_integrand(int n, double t) {
+    if (t <= 1e-15) {
+        return (n == 1) ? 1.0 : 0.0;
+    }
+    return std::pow(t, static_cast<double>(n)) / (std::exp(t) - 1.0);
+}
+
+double debye_simpson(int n, double x) {
+    constexpr int steps = 256;
+    const double h = x / static_cast<double>(steps);
+    double sum = 0.0;
+    for (int i = 0; i <= steps; ++i) {
+        const double t = h * static_cast<double>(i);
+        const double weight = (i == 0 || i == steps) ? 1.0 : ((i % 2 == 0) ? 2.0 : 4.0);
+        sum += weight * debye_integrand(n, t);
+    }
+    return sum * h / 3.0;
+}
+
+} // namespace
+
+double debye(int n, double x) {
+    if (n < 1 || x <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (x <= 1e-8) {
+        return 1.0;
+    }
+    const double integral = debye_simpson(n, x);
+    return static_cast<double>(n) / std::pow(x, static_cast<double>(n)) * integral;
 }
 
 double mathieu_a(int n, double q) {

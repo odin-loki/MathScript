@@ -135,14 +135,20 @@ double weierstrass_pprime(double z, double g2, double g3);
 double weierstrass_zeta(double z, double g2, double g3);
 double weierstrass_sigma(double z, double g2, double g3);
 
-// Zeta and related functions
+// Zeta and related functions (DLMF Ch. 25)
+/// Riemann zeta function ζ(s) for real s; pole at s=1 (DLMF §25.2).
 double zeta(double s);
 double zeta_hurwitz(double s, double a);
 double lerch_phi(double z, double s, double a);
+/// Dirichlet eta function η(s) = (1 - 2^{1-s}) ζ(s) (DLMF §25.3).
 double eta_dirichlet(double s);
 double beta_dirichlet(double s);
+/// Polylogarithm Li_n(z) = Σ_{k=1}^∞ z^k / k^n, |z| < 1 (DLMF §25.12).
 double polylog(int n, double z);
+/// Clausen function Cl_2(θ) = -∫_0^θ ln|2 sin(t/2)| dt = Σ sin(kθ)/k² (DLMF §27.8).
 double clausen(double x);
+/// Debye function D_n(x) = (n/x^n) ∫_0^x t^n/(e^t - 1) dt, n ≥ 1, x > 0 (DLMF §6.3).
+double debye(int n, double x);
 
 // Mathieu functions (x in radians)
 double mathieu_a(int n, double q);
