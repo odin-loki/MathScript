@@ -274,6 +274,41 @@ std::pair<double,double> principal_curvatures(SurfaceFn r, double u, double v, d
     return {H + sq, H - sq};
 }
 
+// ---- Gauss-Bonnet theorem (closed-surface / no-boundary case) ----
+double gauss_bonnet_integral(SurfaceFn r, double u0, double u1, double v0, double v1,
+                              int n_u, int n_v, double h) {
+    if (n_u < 1 || n_v < 1) return 0.0;
+    if (!(u1 > u0) || !(v1 > v0)) return 0.0;
+
+    double du = (u1 - u0) / n_u;
+    double dv = (v1 - v0) / n_v;
+
+    double total = 0.0;
+    for (int i = 0; i <= n_u; ++i) {
+        double u = u0 + i * du;
+        double wu = (i == 0 || i == n_u) ? 0.5 : 1.0;
+        for (int j = 0; j <= n_v; ++j) {
+            double v = v0 + j * dv;
+            double wv = (j == 0 || j == n_v) ? 0.5 : 1.0;
+
+            auto fff = first_fundamental_form(r, u, v, h);
+            double jac = fff.E * fff.G - fff.F * fff.F;
+            if (jac < 0.0) jac = 0.0;  // guard against numerical noise
+            double dA = std::sqrt(jac);
+            double K = gaussian_curvature(r, u, v, h);
+
+            total += wu * wv * K * dA;
+        }
+    }
+    return total * du * dv;
+}
+
+double gauss_bonnet_residual(SurfaceFn r, double u0, double u1, double v0, double v1,
+                              int n_u, int n_v, int euler_characteristic, double h) {
+    double integral = gauss_bonnet_integral(r, u0, u1, v0, v1, n_u, n_v, h);
+    return integral - 2.0 * M_PI * static_cast<double>(euler_characteristic);
+}
+
 // ---- Lie bracket [X,Y]^k = X^i ∂_i Y^k - Y^i ∂_i X^k ----
 Coords lie_bracket(VectorField X, VectorField Y, const Coords& x, double h) {
     int n = static_cast<int>(x.size());

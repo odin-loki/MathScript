@@ -119,6 +119,76 @@ TEST(DiffGeoSurface, NormalSphere) {
     EXPECT_NEAR(len, 1.0, 1e-6);
 }
 
+// ---- Gauss-Bonnet theorem ----
+
+// Full closed unit sphere: r(u,v) = (sin u cos v, sin u sin v, cos u),
+// u in [0, pi] (colatitude), v in [0, 2pi] (longitude). chi = 2.
+static SurfaceFn sphere_colatitude(double R = 1.0) {
+    return [R](double u, double v) -> std::array<double,3> {
+        return {R*std::sin(u)*std::cos(v), R*std::sin(u)*std::sin(v), R*std::cos(u)};
+    };
+}
+
+TEST(DiffGeoGaussBonnet, UnitSphereApproachesFourPi) {
+    auto sphere = sphere_colatitude(1.0);
+    double integral = gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 200, 200);
+    // chi(sphere) = 2, so ∬K dA should approach 2*pi*2 = 4*pi
+    EXPECT_NEAR(integral, 4*M_PI, 0.01 * 4*M_PI);  // within 1%
+}
+
+TEST(DiffGeoGaussBonnet, ScaleInvarianceNonUnitRadius) {
+    // K = 1/R^2, area = 4*pi*R^2, so the product is 4*pi regardless of R.
+    auto sphere = sphere_colatitude(3.5);
+    double integral = gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 200, 200);
+    EXPECT_NEAR(integral, 4*M_PI, 0.01 * 4*M_PI);
+}
+
+TEST(DiffGeoGaussBonnet, FlatPatchVanishes) {
+    // Trivial planar parameterisation: K = 0 everywhere, regardless of bounds.
+    SurfaceFn plane = [](double u, double v) -> std::array<double,3> { return {u, v, 0.0}; };
+    double integral = gauss_bonnet_integral(plane, -2.0, 3.0, -1.0, 5.0, 40, 40);
+    EXPECT_NEAR(integral, 0.0, 1e-6);
+}
+
+TEST(DiffGeoGaussBonnet, ConvergenceWithGridResolution) {
+    auto sphere = sphere_colatitude(1.0);
+    double coarse = gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 20, 20);
+    double fine   = gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 200, 200);
+    double err_coarse = std::abs(coarse - 4*M_PI);
+    double err_fine   = std::abs(fine - 4*M_PI);
+    EXPECT_LT(err_fine, err_coarse);
+}
+
+TEST(DiffGeoGaussBonnet, ResidualSphereNearZero) {
+    auto sphere = sphere_colatitude(1.0);
+    double residual = gauss_bonnet_residual(sphere, 0.0, M_PI, 0.0, 2*M_PI, 200, 200, 2);
+    EXPECT_NEAR(residual, 0.0, 0.01 * 4*M_PI);
+}
+
+TEST(DiffGeoGaussBonnet, DegenerateGridResolutionNoCrash) {
+    auto sphere = sphere_colatitude(1.0);
+    // n_u/n_v of 1 or 2 are valid-but-coarse grids: should not crash and
+    // should return a finite (if inaccurate) number.
+    double r1 = gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 1, 1);
+    double r2 = gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 2, 2);
+    EXPECT_TRUE(std::isfinite(r1));
+    EXPECT_TRUE(std::isfinite(r2));
+}
+
+TEST(DiffGeoGaussBonnet, InvalidGridResolutionReturnsZero) {
+    auto sphere = sphere_colatitude(1.0);
+    EXPECT_NEAR(gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 0, 10), 0.0, 1e-12);
+    EXPECT_NEAR(gauss_bonnet_integral(sphere, 0.0, M_PI, 0.0, 2*M_PI, 10, -1), 0.0, 1e-12);
+}
+
+TEST(DiffGeoGaussBonnet, InvalidBoundsReturnsZero) {
+    auto sphere = sphere_colatitude(1.0);
+    // u1 < u0 and v1 < v0 are invalid domains; should not crash.
+    EXPECT_NEAR(gauss_bonnet_integral(sphere, M_PI, 0.0, 0.0, 2*M_PI, 50, 50), 0.0, 1e-12);
+    EXPECT_NEAR(gauss_bonnet_integral(sphere, 0.0, M_PI, 2*M_PI, 0.0, 50, 50), 0.0, 1e-12);
+    EXPECT_NEAR(gauss_bonnet_integral(sphere, 1.0, 1.0, 0.0, 2*M_PI, 50, 50), 0.0, 1e-12);
+}
+
 // ---- Lie bracket ----
 TEST(DiffGeoLieBracket, XYcommute) {
     // [∂/∂x, ∂/∂y] = 0 in Euclidean space

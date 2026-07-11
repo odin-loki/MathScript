@@ -71,6 +71,47 @@ std::pair<double,double> principal_curvatures(SurfaceFn r, double u, double v, d
 // Unit normal vector at (u,v)
 std::array<double,3> surface_normal(SurfaceFn r, double u, double v, double h = 1e-5);
 
+// ---- Gauss-Bonnet theorem (closed-surface / no-boundary case) ----
+// Theorem: ∬_S K dA = 2π·χ(S), where χ is the Euler characteristic of the
+// closed surface S, K is the Gaussian curvature, and dA = sqrt(EG - F²) du dv
+// is the area element from the first fundamental form.
+//
+// Computes the left-hand side ∬ K dA numerically via the composite trapezoid
+// rule over the (u,v) parameter grid, reusing first_fundamental_form (for the
+// area Jacobian) and gaussian_curvature (for K) at each grid node.
+//
+// @param r    surface parameterisation r(u,v) -> (x,y,z)
+// @param u0   lower bound of the u parameter domain
+// @param u1   upper bound of the u parameter domain (must be > u0)
+// @param v0   lower bound of the v parameter domain
+// @param v1   upper bound of the v parameter domain (must be > v0)
+// @param n_u  number of trapezoid subintervals in u (>= 1)
+// @param n_v  number of trapezoid subintervals in v (>= 1)
+// @return numerical estimate of ∬_S K dA over the given (u,v) patch
+// @note Trapezoid-rule error is O(1/n_u² + 1/n_v²); doubling the grid
+//       resolution in each direction roughly quarters the error. For a full
+//       closed surface (e.g. a sphere swept over its whole parameter domain)
+//       the result should approach 2π·χ(S) as n_u, n_v grow.
+// @note Assumes S is closed (or that the patch boundary contribution is zero,
+//       e.g. by periodicity of r); no geodesic-curvature boundary term is
+//       added, so applying this to an open patch with a non-geodesic boundary
+//       will not satisfy the theorem exactly.
+// @note Degenerate/invalid inputs (n_u < 1, n_v < 1, u1 <= u0, or v1 <= v0)
+//       return 0.0 rather than throwing, consistent with this module's
+//       defensive error handling elsewhere.
+double gauss_bonnet_integral(SurfaceFn r, double u0, double u1, double v0, double v1,
+                              int n_u, int n_v, double h = 1e-5);
+
+// Convenience wrapper: residual of the Gauss-Bonnet theorem against an
+// expected Euler characteristic, i.e. gauss_bonnet_integral(...) - 2π·χ.
+// A residual near zero (relative to 4π) confirms the theorem numerically.
+//
+// @param euler_characteristic expected χ(S) of the closed surface (e.g. 2 for
+//        a topological sphere, 0 for a torus)
+// @return gauss_bonnet_integral(r, u0, u1, v0, v1, n_u, n_v, h) - 2π·euler_characteristic
+double gauss_bonnet_residual(SurfaceFn r, double u0, double u1, double v0, double v1,
+                              int n_u, int n_v, int euler_characteristic, double h = 1e-5);
+
 // ---- Lie bracket of vector fields ----
 // Vector fields X, Y: Coords → Coords
 using VectorField = std::function<Coords(const Coords&)>;
