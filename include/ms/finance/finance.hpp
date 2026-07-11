@@ -48,6 +48,16 @@ double cvar(std::span<const double> returns, double alpha = 0.95); // ES
 double sharpe_ratio(std::span<const double> returns, double risk_free = 0.0);
 double sortino_ratio(std::span<const double> returns, double risk_free = 0.0);
 
+// Information ratio: mean(returns - benchmark) / stddev(returns - benchmark)
+double information_ratio(std::span<const double> returns,
+                         std::span<const double> benchmark);
+
+// Treynor ratio: (mean(returns) - risk_free) / beta
+double treynor_ratio(std::span<const double> returns, double risk_free, double beta);
+
+// CAPM expected return: risk_free + beta * (market_return - risk_free)
+double capm(double risk_free, double beta, double market_return);
+
 // Max drawdown from equity curve
 double max_drawdown(std::span<const double> equity_curve);
 
@@ -65,9 +75,30 @@ double portfolio_variance(std::span<const double> weights,
 double portfolio_return(std::span<const double> weights,
                         std::span<const double> asset_returns);
 
+// Simple-compounding implied forward rate between t1 and t2 given zero rates
+// r1 (to t1) and r2 (to t2): (r2*t2 - r1*t1) / (t2 - t1)
+double forward_rate(double r1, double t1, double r2, double t2);
+
+// Cash-or-nothing digital option: pays payout if in-the-money at expiry
+double digital_option(double S, double K, double T, double r, double sigma,
+                      bool call, double payout = 1.0);
+
+// Black-76 model for options on forwards/futures (F is the forward price)
+double black76(double F, double K, double T, double r, double sigma, bool call);
+
+// European barrier option (continuous monitoring, Haug closed-form).
+// All 8 single-barrier types via call/put, knock_in/knock_out, up/down flags.
+// Down barriers require S > B; up barriers require S < B.
+double barrier_option(double S, double K, double B, double T, double r, double sigma,
+                      bool call, bool knock_in, bool up);
+
 // --- Pricing: binomial tree ---
 double binomial_call(double S, double K, double T, double r, double sigma, int steps);
 double binomial_put(double S, double K, double T, double r, double sigma, int steps);
+
+// American option via binomial tree with early exercise
+double american_option(double S, double K, double T, double r, double sigma,
+                       bool call, int steps);
 
 } // namespace finance
 } // namespace ms
