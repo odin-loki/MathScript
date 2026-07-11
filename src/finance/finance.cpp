@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <random>
 #include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -427,6 +428,94 @@ double binomial_put(double S, double K, double T, double r, double sigma, int st
 double american_option(double S, double K, double T, double r, double sigma,
                        bool call, int steps) {
     return binomial_tree(S, K, T, r, sigma, steps, call, true);
+}
+
+static double mc_european(double S, double K, double T, double r, double sigma,
+                          int n_paths, unsigned seed, bool call) {
+    if (n_paths <= 0 || S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0) return 0.0;
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd(0.0, 1.0);
+    double drift = (r - 0.5 * sigma * sigma) * T;
+    double vol_sqrtT = sigma * std::sqrt(T);
+    int n_draws = (n_paths + 1) / 2;
+    double sum = 0.0;
+    int used = 0;
+    for (int i = 0; i < n_draws; ++i) {
+        double z = nd(rng);
+        double s1 = S * std::exp(drift + vol_sqrtT * z);
+        double payoff1 = call ? std::max(s1 - K, 0.0) : std::max(K - s1, 0.0);
+        sum += payoff1;
+        ++used;
+        if (used >= n_paths) break;
+        double s2 = S * std::exp(drift - vol_sqrtT * z);
+        double payoff2 = call ? std::max(s2 - K, 0.0) : std::max(K - s2, 0.0);
+        sum += payoff2;
+        ++used;
+    }
+    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+}
+
+double mc_european_call(double S, double K, double T, double r, double sigma,
+                        int n_paths, unsigned seed) {
+    return mc_european(S, K, T, r, sigma, n_paths, seed, true);
+}
+
+double mc_european_put(double S, double K, double T, double r, double sigma,
+                       int n_paths, unsigned seed) {
+    return mc_european(S, K, T, r, sigma, n_paths, seed, false);
+}
+
+static double mc_asian(double S, double K, double T, double r, double sigma,
+                       int n_paths, int n_steps, unsigned seed, bool call) {
+    if (n_paths <= 0 || n_steps <= 0 || S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0)
+        return 0.0;
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd(0.0, 1.0);
+    double dt = T / static_cast<double>(n_steps);
+    double drift = (r - 0.5 * sigma * sigma) * dt;
+    double vol_sqrtdt = sigma * std::sqrt(dt);
+    std::vector<double> z(static_cast<size_t>(n_steps));
+
+    // Antithetic pairing over the whole path (mirror the full Z-sequence) halves
+    // the number of independent path draws needed for a given sample count.
+    int n_draws = (n_paths + 1) / 2;
+    double sum = 0.0;
+    int used = 0;
+    for (int p = 0; p < n_draws; ++p) {
+        for (auto& zi : z) zi = nd(rng);
+
+        double s = S, avg = 0.0;
+        for (double zi : z) {
+            s *= std::exp(drift + vol_sqrtdt * zi);
+            avg += s;
+        }
+        avg /= static_cast<double>(n_steps);
+        double payoff1 = call ? std::max(avg - K, 0.0) : std::max(K - avg, 0.0);
+        sum += payoff1;
+        ++used;
+        if (used >= n_paths) break;
+
+        s = S; avg = 0.0;
+        for (double zi : z) {
+            s *= std::exp(drift - vol_sqrtdt * zi);
+            avg += s;
+        }
+        avg /= static_cast<double>(n_steps);
+        double payoff2 = call ? std::max(avg - K, 0.0) : std::max(K - avg, 0.0);
+        sum += payoff2;
+        ++used;
+    }
+    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+}
+
+double mc_asian_call(double S, double K, double T, double r, double sigma,
+                     int n_paths, int n_steps, unsigned seed) {
+    return mc_asian(S, K, T, r, sigma, n_paths, n_steps, seed, true);
+}
+
+double mc_asian_put(double S, double K, double T, double r, double sigma,
+                    int n_paths, int n_steps, unsigned seed) {
+    return mc_asian(S, K, T, r, sigma, n_paths, n_steps, seed, false);
 }
 
 } // namespace finance

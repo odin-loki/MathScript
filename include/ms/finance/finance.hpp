@@ -100,5 +100,26 @@ double binomial_put(double S, double K, double T, double r, double sigma, int st
 double american_option(double S, double K, double T, double r, double sigma,
                        bool call, int steps);
 
+// --- Pricing: Monte Carlo ---
+// European option via Monte Carlo under GBM, sampling the terminal price
+// directly from its known closed-form lognormal distribution (no path needed):
+// S_T = S * exp((r - 0.5*sigma^2)*T + sigma*sqrt(T)*Z), Z ~ N(0,1).
+// Uses antithetic variates (each Z paired with -Z) to cut simulation variance.
+// `seed` is explicit (not defaulted to a random device) so results are reproducible.
+double mc_european_call(double S, double K, double T, double r, double sigma,
+                        int n_paths, unsigned seed = 42);
+double mc_european_put(double S, double K, double T, double r, double sigma,
+                       int n_paths, unsigned seed = 42);
+
+// Arithmetic-average Asian option via Monte Carlo: simulates a full discretized
+// GBM path over n_steps of size dt=T/n_steps, averages the n_steps post-initial
+// prices, and prices max(avg-K,0) (call) / max(K-avg,0) (put) discounted at r.
+// Cheaper than the corresponding European option since averaging reduces the
+// effective volatility of the payoff-determining quantity.
+double mc_asian_call(double S, double K, double T, double r, double sigma,
+                     int n_paths, int n_steps, unsigned seed = 42);
+double mc_asian_put(double S, double K, double T, double r, double sigma,
+                    int n_paths, int n_steps, unsigned seed = 42);
+
 } // namespace finance
 } // namespace ms
