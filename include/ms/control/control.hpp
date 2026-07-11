@@ -62,6 +62,23 @@ StateSpace tf2ss(const TransferFunction& sys);
 // Convert SS to TF
 TransferFunction ss2tf(const StateSpace& sys);
 
+// ---- Discretization ----
+enum class DiscretizationMethod { ZOH, Tustin, Euler };
+
+/// @note ZOH is exact for piecewise-constant inputs; uses matrix exponential on an
+///       augmented state matrix (handles singular A, e.g. integrators).
+/// @note Tustin (bilinear) preserves stability via the s↔z map; good frequency response.
+/// @note Euler is a first-order approximation — not recommended for stiff systems.
+StateSpace c2d(const StateSpace& sys, double Ts,
+               DiscretizationMethod method = DiscretizationMethod::ZOH);
+StateSpace d2c(const StateSpace& sys, double Ts,
+               DiscretizationMethod method = DiscretizationMethod::ZOH);
+
+TransferFunction c2d(const TransferFunction& sys, double Ts,
+                     DiscretizationMethod method = DiscretizationMethod::ZOH);
+TransferFunction d2c(const TransferFunction& sys, double Ts,
+                     DiscretizationMethod method = DiscretizationMethod::ZOH);
+
 // ---- Interconnections ----
 TransferFunction series  (const TransferFunction& g, const TransferFunction& h);
 TransferFunction parallel(const TransferFunction& g, const TransferFunction& h);

@@ -268,3 +268,184 @@ TEST(ControlSS, TF2SSRoundtrip) {
     for (size_t i = 0; i < reals_orig.size(); ++i)
         EXPECT_NEAR(reals_back[i], reals_orig[i], 1e-6);
 }
+
+// ---- Discretization helpers ----
+namespace {
+
+double max_abs_diff(const std::vector<std::vector<double>>& A,
+                    const std::vector<std::vector<double>>& B) {
+    double m = 0.0;
+    for (size_t i = 0; i < A.size(); ++i)
+        for (size_t j = 0; j < A[i].size(); ++j)
+            m = std::max(m, std::abs(A[i][j] - B[i][j]));
+    return m;
+}
+
+void expect_ss_near(const StateSpace& a, const StateSpace& b, double tol) {
+    EXPECT_NEAR(max_abs_diff(a.A, b.A), 0.0, tol);
+    EXPECT_NEAR(max_abs_diff(a.B, b.B), 0.0, tol);
+    EXPECT_NEAR(max_abs_diff(a.C, b.C), 0.0, tol);
+    EXPECT_NEAR(max_abs_diff(a.D, b.D), 0.0, tol);
+}
+
+StateSpace mass_spring_damper() {
+    return ss({{0.0, 1.0}, {-2.0, -3.0}}, {{0.0}, {1.0}}, {{1.0, 0.0}}, {{0.0}});
+}
+
+StateSpace pure_integrator() {
+    return ss({{0.0}}, {{1.0}}, {{1.0}}, {{0.0}});
+}
+
+StateSpace third_order() {
+    return ss({{0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}, {-6.0, -11.0, -6.0}},
+              {{0.0}, {0.0}, {1.0}}, {{1.0, 0.0, 0.0}}, {{0.0}});
+}
+
+} // namespace
+
+// ---- c2d/d2c round-trip ----
+TEST(ControlDiscretize, ZOHC2dReferenceMassSpring) {
+    const auto disc = c2d(mass_spring_damper(), 0.1, DiscretizationMethod::ZOH);
+    EXPECT_NEAR(disc.A[0][0], 0.99094408, 1e-5);
+    EXPECT_NEAR(disc.A[0][1], 0.08610666, 1e-5);
+    EXPECT_NEAR(disc.A[1][0], -0.17221333, 1e-5);
+    EXPECT_NEAR(disc.A[1][1], 0.73262409, 1e-5);
+    EXPECT_NEAR(disc.B[0][0], 0.00452796, 1e-5);
+    EXPECT_NEAR(disc.B[1][0], 0.08610666, 1e-5);
+}
+
+TEST(ControlDiscretize, RoundTripZOHMassSpring) {
+    const auto orig = mass_spring_damper();
+    const double Ts = 0.1;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::ZOH), Ts,
+                             DiscretizationMethod::ZOH), 1e-5);
+}
+
+TEST(ControlDiscretize, RoundTripZOHIntegrator) {
+    const auto orig = pure_integrator();
+    const double Ts = 0.1;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::ZOH), Ts,
+                             DiscretizationMethod::ZOH), 1e-5);
+}
+
+TEST(ControlDiscretize, RoundTripZOHThirdOrder) {
+    const auto orig = third_order();
+    const double Ts = 0.05;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::ZOH), Ts,
+                             DiscretizationMethod::ZOH), 1e-4);
+}
+
+TEST(ControlDiscretize, RoundTripTustinMassSpring) {
+    const auto orig = mass_spring_damper();
+    const double Ts = 0.1;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::Tustin), Ts,
+                             DiscretizationMethod::Tustin), 1e-9);
+}
+
+TEST(ControlDiscretize, RoundTripTustinIntegrator) {
+    const auto orig = pure_integrator();
+    const double Ts = 0.1;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::Tustin), Ts,
+                             DiscretizationMethod::Tustin), 1e-9);
+}
+
+TEST(ControlDiscretize, RoundTripTustinThirdOrder) {
+    const auto orig = third_order();
+    const double Ts = 0.05;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::Tustin), Ts,
+                             DiscretizationMethod::Tustin), 1e-8);
+}
+
+TEST(ControlDiscretize, RoundTripEulerMassSpring) {
+    const auto orig = mass_spring_damper();
+    const double Ts = 0.1;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::Euler), Ts,
+                             DiscretizationMethod::Euler), 1e-12);
+}
+
+TEST(ControlDiscretize, RoundTripEulerIntegrator) {
+    const auto orig = pure_integrator();
+    const double Ts = 0.1;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::Euler), Ts,
+                             DiscretizationMethod::Euler), 1e-12);
+}
+
+TEST(ControlDiscretize, RoundTripEulerThirdOrder) {
+    const auto orig = third_order();
+    const double Ts = 0.05;
+    expect_ss_near(orig, d2c(c2d(orig, Ts, DiscretizationMethod::Euler), Ts,
+                             DiscretizationMethod::Euler), 1e-11);
+}
+
+// ---- ZOH closed-form scalar ----
+TEST(ControlDiscretize, ZOHScalarStable) {
+    const double a = -2.0, b = 3.0, Ts = 0.1;
+    const auto sys = ss({{a}}, {{b}}, {{1.0}}, {{0.0}});
+    const auto disc = c2d(sys, Ts, DiscretizationMethod::ZOH);
+    const double Ad_exact = std::exp(a * Ts);
+    const double Bd_exact = (std::exp(a * Ts) - 1.0) / a * b;
+    EXPECT_NEAR(disc.A[0][0], Ad_exact, 1e-6);
+    EXPECT_NEAR(disc.B[0][0], Bd_exact, 1e-6);
+    EXPECT_NEAR(max_abs_diff(disc.A, sys.A), std::abs(Ad_exact - a), 1e-6);
+}
+
+TEST(ControlDiscretize, ZOHScalarNearSingular) {
+    const double a = 1e-8, b = 1.0, Ts = 0.1;
+    const auto sys = ss({{a}}, {{b}}, {{1.0}}, {{0.0}});
+    const auto disc = c2d(sys, Ts, DiscretizationMethod::ZOH);
+    const double Ad_exact = std::exp(a * Ts);
+    const double Bd_exact = (std::exp(a * Ts) - 1.0) / a * b;
+    EXPECT_NEAR(disc.A[0][0], Ad_exact, 1e-6);
+    EXPECT_NEAR(disc.B[0][0], Bd_exact, 1e-5);
+}
+
+// ---- Euler exactness ----
+TEST(ControlDiscretize, EulerExactForm) {
+    const auto sys = mass_spring_damper();
+    const double Ts = 0.1;
+    const auto disc = c2d(sys, Ts, DiscretizationMethod::Euler);
+    for (int i = 0; i < sys.n; ++i)
+        for (int j = 0; j < sys.n; ++j)
+            EXPECT_NEAR(disc.A[i][j], (i == j ? 1.0 : 0.0) + sys.A[i][j] * Ts, 1e-15);
+    for (int i = 0; i < sys.n; ++i)
+        for (int j = 0; j < sys.m; ++j)
+            EXPECT_NEAR(disc.B[i][j], sys.B[i][j] * Ts, 1e-15);
+    EXPECT_NEAR(max_abs_diff(disc.C, sys.C), 0.0, 1e-15);
+    EXPECT_NEAR(max_abs_diff(disc.D, sys.D), 0.0, 1e-15);
+}
+
+// ---- Discrete stability sanity ----
+TEST(ControlDiscretize, ZOHStablePoleInsideUnitCircle) {
+    const auto sys = ss({{-1.0}}, {{1.0}}, {{1.0}}, {{0.0}});
+    const double Ts = 0.1;
+    const auto disc = c2d(sys, Ts, DiscretizationMethod::ZOH);
+    EXPECT_LT(std::abs(disc.A[0][0]), 1.0);
+    EXPECT_NEAR(disc.A[0][0], std::exp(-Ts), 1e-6);
+}
+
+// ---- TransferFunction overloads ----
+TEST(ControlDiscretize, TransferFunctionConsistency) {
+    const auto plant = tf({1.0}, {1.0, 3.0, 2.0});
+    const double Ts = 0.1;
+    const auto via_ss = ss2tf(c2d(tf2ss(plant), Ts, DiscretizationMethod::Tustin));
+    const auto direct = c2d(plant, Ts, DiscretizationMethod::Tustin);
+    EXPECT_NEAR(dcgain(direct), dcgain(via_ss), 1e-6);
+    const auto p_direct = poles(direct);
+    const auto p_via = poles(via_ss);
+    ASSERT_EQ(p_direct.size(), p_via.size());
+    std::vector<double> rd, rv;
+    for (auto& p : p_direct) rd.push_back(p.real());
+    for (auto& p : p_via) rv.push_back(p.real());
+    std::sort(rd.begin(), rd.end());
+    std::sort(rv.begin(), rv.end());
+    for (size_t i = 0; i < rd.size(); ++i)
+        EXPECT_NEAR(rd[i], rv[i], 1e-5);
+}
+
+TEST(ControlDiscretize, TransferFunctionD2CRoundTrip) {
+    const auto plant = tf({1.0}, {1.0, 2.0, 1.0});
+    const double Ts = 0.1;
+    const auto back = d2c(c2d(plant, Ts, DiscretizationMethod::Tustin), Ts,
+                          DiscretizationMethod::Tustin);
+    EXPECT_NEAR(dcgain(back), dcgain(plant), 1e-4);
+}
