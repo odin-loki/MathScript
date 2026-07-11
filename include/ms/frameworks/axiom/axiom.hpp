@@ -18,10 +18,13 @@ struct Algorithm {
     double fitness = 0.0;
 };
 
+/// Pool of unary scalar functions available to GP tree generation.
+/// Names must match ms::Sym's supported call grammar (sin/cos/exp/log/sqrt/tanh).
 struct PrimitiveRegistry {
     std::vector<std::string> function_names;
     std::vector<ms::Sym> function_symbols;
 
+    /// Builds a registry from ms::Sym's supported scalar unary-function grammar.
     static PrimitiveRegistry build_from_ms_namespace();
 };
 

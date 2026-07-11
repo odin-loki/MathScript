@@ -27,7 +27,6 @@ struct GPNode {
 
 namespace {
 
-constexpr const char* kScalarUnaryFuncs[] = {"sin", "cos", "exp", "log", "sqrt", "tanh"};
 constexpr char kBinaryOps[] = {'+', '-', '*', '/'};
 
 izaac::CSPRNG& session_rng() {
@@ -85,20 +84,26 @@ std::unique_ptr<GPNode> random_terminal(size_t n_vars, izaac::CSPRNG& rng) {
     return make_variable(random_int(rng, 0, static_cast<int>(n_vars)));
 }
 
-std::unique_ptr<GPNode> random_tree(size_t depth, size_t max_depth, size_t n_vars, izaac::CSPRNG& rng) {
+std::unique_ptr<GPNode> random_tree(
+    size_t depth,
+    size_t max_depth,
+    size_t n_vars,
+    const std::vector<std::string>& available_funcs,
+    izaac::CSPRNG& rng) {
     if (depth >= max_depth || (depth > 0 && rng.next_f64() < 0.35)) {
         return random_terminal(n_vars, rng);
     }
 
-    if (rng.next_f64() < 0.65) {
+    if (rng.next_f64() < 0.65 || available_funcs.empty()) {
         const char op = kBinaryOps[random_int(rng, 0, static_cast<int>(std::size(kBinaryOps)))];
-        auto left = random_tree(depth + 1, max_depth, n_vars, rng);
-        auto right = random_tree(depth + 1, max_depth, n_vars, rng);
+        auto left = random_tree(depth + 1, max_depth, n_vars, available_funcs, rng);
+        auto right = random_tree(depth + 1, max_depth, n_vars, available_funcs, rng);
         return make_binary(op, std::move(left), std::move(right));
     }
 
-    const char* func = kScalarUnaryFuncs[random_int(rng, 0, static_cast<int>(std::size(kScalarUnaryFuncs)))];
-    auto arg = random_tree(depth + 1, max_depth, n_vars, rng);
+    const std::string& func =
+        available_funcs[static_cast<size_t>(random_int(rng, 0, static_cast<int>(available_funcs.size())))];
+    auto arg = random_tree(depth + 1, max_depth, n_vars, available_funcs, rng);
     return make_unary(func, std::move(arg));
 }
 
@@ -221,7 +226,12 @@ std::unique_ptr<GPNode> crossover_offspring(
 }
 
 std::unique_ptr<GPNode> subtree_mutation(
-    const GPNode& tree, size_t max_depth, size_t n_vars, izaac::CSPRNG& rng, double mutation_rate) {
+    const GPNode& tree,
+    size_t max_depth,
+    size_t n_vars,
+    const std::vector<std::string>& available_funcs,
+    izaac::CSPRNG& rng,
+    double mutation_rate) {
     auto result = clone_tree(tree);
     if (rng.next_f64() >= mutation_rate) {
         return result;
@@ -236,7 +246,7 @@ std::unique_ptr<GPNode> subtree_mutation(
     const size_t target_depth = find_node_depth(*result, target, 1).value_or(1);
     const size_t remaining = max_depth >= target_depth ? max_depth - target_depth + 1 : 1;
     const size_t subtree_max = std::max<size_t>(1, std::min(remaining, size_t{3}));
-    auto replacement = random_tree(0, subtree_max, n_vars, rng);
+    auto replacement = random_tree(0, subtree_max, n_vars, available_funcs, rng);
 
     if (target == result.get()) {
         return replacement;
@@ -246,9 +256,13 @@ std::unique_ptr<GPNode> subtree_mutation(
 }
 
 std::unique_ptr<GPNode> enforce_max_depth(
-    std::unique_ptr<GPNode> tree, size_t max_depth, size_t n_vars, izaac::CSPRNG& rng) {
+    std::unique_ptr<GPNode> tree,
+    size_t max_depth,
+    size_t n_vars,
+    const std::vector<std::string>& available_funcs,
+    izaac::CSPRNG& rng) {
     while (tree && tree_depth(*tree) > max_depth) {
-        tree = random_tree(0, std::max<size_t>(2, max_depth / 2), n_vars, rng);
+        tree = random_tree(0, std::max<size_t>(2, max_depth / 2), n_vars, available_funcs, rng);
     }
     return tree;
 }
@@ -281,8 +295,7 @@ void assign_placeholder_fields(Algorithm& algo) {
 
 PrimitiveRegistry PrimitiveRegistry::build_from_ms_namespace() {
     PrimitiveRegistry registry;
-    registry.function_names = {
-        "matmul", "solve", "lu", "qr", "svd", "eig_sym", "fft", "det", "trace", "norm"};
+    registry.function_names = {"sin", "cos", "exp", "log", "sqrt", "tanh"};
     for (const auto& name : registry.function_names) {
         registry.function_symbols.emplace_back(name.c_str());
     }
@@ -299,7 +312,7 @@ Axiom::Axiom(EvolutionConfig cfg, PrimitiveRegistry primitives)
 
     const size_t init_depth = std::max<size_t>(2, cfg_.max_depth / 2);
     for (size_t i = 0; i < cfg_.population_size; ++i) {
-        gp_trees_[i] = random_tree(0, init_depth, num_vars_, rng);
+        gp_trees_[i] = random_tree(0, init_depth, num_vars_, primitives_.function_names, rng);
         assign_placeholder_fields(population_[i]);
         sync_representation(i);
         population_[i].fitness = 0.0;
@@ -350,8 +363,10 @@ Result<Algorithm> Axiom::evolve(
             } else {
                 child = clone_tree(*gp_trees_[parent_a]);
             }
-            child = subtree_mutation(*child, cfg_.max_depth, num_vars_, rng, cfg_.mutation_rate);
-            child = enforce_max_depth(std::move(child), cfg_.max_depth, num_vars_, rng);
+            child = subtree_mutation(
+                *child, cfg_.max_depth, num_vars_, primitives_.function_names, rng, cfg_.mutation_rate);
+            child = enforce_max_depth(
+                std::move(child), cfg_.max_depth, num_vars_, primitives_.function_names, rng);
             next_trees.push_back(std::move(child));
         }
 
