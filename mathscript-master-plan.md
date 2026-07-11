@@ -7744,6 +7744,25 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       textbook case it's designed for. tag checklist stays at 364 (53 new test cases added to
       existing test_signal_ext/test_stats_prob_ext/test_ml binaries; suite count unchanged; 364
       suites, 100% passing).
+      Wave 189: continued the spec-vs-implementation cross-check across three MORE mature
+      modules not previously checked. ms::graph gains articulation_points/bridges (undirected
+      DFS low-link, companion to the existing directed strongly_connected_components),
+      eigenvector_centrality/katz_centrality (power iteration, mirroring pagerank's style),
+      laplacian/normalised_laplacian/algebraic_connectivity (Fiedler value, reusing the existing
+      adjacency eigensolver; verified 0 for disconnected graphs, =n for complete graph K_n), and
+      min_cut (shared Dinic residual-graph helper alongside the existing max_flow, without
+      changing its public signature; verified consistent via max-flow min-cut theorem). ms::
+      finance gains information_ratio/treynor_ratio/capm/forward_rate (one-line ratio/rate
+      formulas) and digital_option/black76/barrier_option/american_option (closed-form exotic
+      pricing + binomial early-exercise; black76 verified equivalent to spot Black-Scholes at
+      the matching forward price, barrier_option verified via knock-in+knock-out=vanilla,
+      american_option verified equal to European call absent dividends and strictly greater for
+      a deep-ITM put). ms::numthy gains jordan_totient (verified J_1==euler_phi),
+      von_mangoldt, quadratic_residues, farey, and pell_solve (fundamental solution via INTEGER
+      continued-fraction-of-sqrt(D) period arithmetic, not the existing double-based
+      continued_fraction, to avoid precision loss; verified against known D=2/3/5/7/13/61
+      solutions). tag checklist stays at 364 (67 new test cases added to existing test_graph/
+      test_finance/test_numthy binaries; suite count unchanged; 364 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7761,12 +7780,22 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       ms::geo's spec section lists convex_hull_3d and polygon boolean ops (poly_union/
       poly_intersect/poly_diff/minkowski_sum) as missing; considered for Wave 188 but deferred
       as higher-risk (robust polygon clipping has notorious edge-case pitfalls).
+      ms::graph's spec section still lists planarity/embedding (Boyer-Myrvold), Blossom-
+      algorithm general matching, Louvain/community detection, and graph isomorphism (VF2) —
+      each a substantial dedicated algorithm effort. ms::finance's spec section still lists
+      Heston/SABR stochastic-volatility models, trinomial trees, Monte Carlo option pricing,
+      Asian/lookback path-dependent options, and portfolio optimization (Markowitz/Black-
+      Litterman/efficient frontier). ms::numthy's spec section still lists cornacchia (sum-of-
+      two-squares) and stern_brocot (tree structure); partition_list is arguably already
+      covered by ms::combo::all_partitions. All deferred as individually larger/riskier than
+      Wave 189's picks.
       mathscript-master-plan.md's original per-module spec lists (2.x sections) contain many
       more exotic entries (Painlevé transcendents, Heun functions, Meijer G/Fox H, Mathieu/
       spheroidal wave functions, FEM, CFD) likely deliberately descoped as impractical for a
-      general-purpose CAS — the spec-vs-implementation cross-check technique from Waves 187-188
-      remains worth repeating for OTHER mature modules not yet checked (ms::graph, ms::finance,
-      ms::combo), while continuing to skip these high-risk/exotic entries.
+      general-purpose CAS — the spec-vs-implementation cross-check technique from Waves 187-189
+      remains worth repeating for OTHER mature modules not yet checked (ms::combo, ms::poly,
+      ms::bignum, ms::crypto, ms::compress, ms::image), while continuing to skip these high-
+      risk/exotic entries.
       With the ODE REPL formula-bridge, stateful-class REPL exposure, the Axiom/
       PrimitiveRegistry mismatch, the Wave 182-185 pure-function REPL backlog, and the
       tensor-decomposition REPL gap all now resolved (Waves 182-187), no single large concrete

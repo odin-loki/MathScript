@@ -84,7 +84,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `numthy/numthy.hpp` | Primality (`isprime`, `primes`, `prime_pi`), factorisation (`factor`, `factor_exp`), divisor functions (`divisors`, `euler_phi`, `mobius`), modular arithmetic (`mod_inv`, `mod_pow`, `crt`), Legendre/Jacobi/Kronecker symbols, discrete log, Tonelli–Shanks, continued fractions, `partition` |
+| `numthy/numthy.hpp` | Primality (`isprime`, `primes`, `prime_pi`), factorisation (`factor`, `factor_exp`), divisor functions (`divisors`, `euler_phi`, `mobius`, `jordan_totient`, `von_mangoldt`), modular arithmetic (`mod_inv`, `mod_pow`, `crt`), Legendre/Jacobi/Kronecker symbols (`quadratic_residues`), discrete log, Tonelli–Shanks, continued fractions, `farey`, `pell_solve`, `partition` |
 
 ## Combinatorics — Wave 57 (`include/ms/combo/`)
 
@@ -102,7 +102,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `finance/finance.hpp` | Black–Scholes call/put and Greeks, implied vol, bond price/duration/convexity/YTM, NPV/IRR/PV/FV annuities, VaR/CVaR, Sharpe/Sortino, max drawdown, Kelly criterion, binomial option pricing, portfolio variance/return |
+| `finance/finance.hpp` | Black–Scholes call/put and Greeks, implied vol, bond price/duration/convexity/YTM, NPV/IRR/PV/FV annuities, VaR/CVaR, Sharpe/Sortino/Information/Treynor ratios, CAPM, forward rate, max drawdown, Kelly criterion, binomial/American option pricing, digital/Black-76/barrier option pricing, portfolio variance/return |
 
 ## Control — Wave 58 (`include/ms/control/`)
 
@@ -114,7 +114,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `graph/graph.hpp` | `Graph` adjacency list, BFS/DFS/topological sort, Dijkstra/Bellman-Ford/Floyd-Warshall/A*, connectivity and SCC, MST (Kruskal/Prim), PageRank/betweenness/closeness centrality, max flow, bipartite matching, greedy colouring |
+| `graph/graph.hpp` | `Graph` adjacency list, BFS/DFS/topological sort, Dijkstra/Bellman-Ford/Floyd-Warshall/A*, connectivity and SCC, articulation points/bridges, MST (Kruskal/Prim), PageRank/betweenness/closeness/eigenvector/Katz centrality, Laplacian/normalised Laplacian/algebraic connectivity, max flow, min cut, bipartite matching, greedy colouring |
 
 ## Complex Analysis — Wave 58 (`include/ms/cplx/`)
 
