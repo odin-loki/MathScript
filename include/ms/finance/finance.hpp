@@ -75,6 +75,27 @@ double portfolio_variance(std::span<const double> weights,
 double portfolio_return(std::span<const double> weights,
                         std::span<const double> asset_returns);
 
+// --- Markowitz mean-variance portfolio optimization ---
+// cov_matrix is flattened row-major n x n, same convention as portfolio_variance's
+// cov_matrix. All three solve a dense linear system against cov_matrix internally
+// and report a singular/near-singular matrix via ms::Result rather than NaN/crash.
+
+// Global minimum-variance portfolio: the weights minimizing w^T*cov_matrix*w
+// subject to sum(w) == 1, given by w = Sigma^-1*1 / (1^T*Sigma^-1*1).
+Result<std::vector<double>> min_variance_portfolio(std::span<const double> cov_matrix, int n);
+
+// Efficient-frontier portfolio: minimizes variance subject to sum(w) == 1 and
+// w^T*mu == target_return (two-fund theorem via Lagrange multipliers).
+Result<std::vector<double>> efficient_frontier_portfolio(std::span<const double> cov_matrix,
+                                                          std::span<const double> mu,
+                                                          double target_return, int n);
+
+// Maximum Sharpe ratio (tangency) portfolio for risk-free rate risk_free, given by
+// w = Sigma^-1*(mu - risk_free*1) / (1^T*Sigma^-1*(mu - risk_free*1)).
+Result<std::vector<double>> max_sharpe_portfolio(std::span<const double> cov_matrix,
+                                                 std::span<const double> mu,
+                                                 double risk_free, int n);
+
 // Simple-compounding implied forward rate between t1 and t2 given zero rates
 // r1 (to t1) and r2 (to t2): (r2*t2 - r1*t1) / (t2 - t1)
 double forward_rate(double r1, double t1, double r2, double t2);
