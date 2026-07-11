@@ -60,6 +60,11 @@ uint64_t primitive_root(uint64_t p);
 // --- Tonelli-Shanks: modular square root, x^2 ≡ n (mod p) ---
 Result<uint64_t> tonelli_shanks(uint64_t n, uint64_t p);
 
+// Cornacchia's algorithm: find non-negative (x, y) with x^2 + d*y^2 = p,
+// for prime p and 0 < d < p. Error if p is not prime, d == 0, d >= p, or
+// no representation exists.
+Result<std::pair<uint64_t,uint64_t>> cornacchia(uint64_t d, uint64_t p);
+
 // --- Continued fractions ---
 std::vector<int64_t> continued_fraction(double x, int max_terms = 20);
 // Convergents p/q from CF coefficients
@@ -68,6 +73,13 @@ std::vector<std::pair<int64_t,int64_t>> convergents(
 
 // Farey sequence F_n: reduced fractions p/q in [0,1], 1 <= q <= n, ascending
 std::vector<std::pair<uint64_t,uint64_t>> farey(uint32_t n);
+
+// Stern-Brocot tree: first n nodes (numerator, denominator) in breadth-first
+// order, starting from the root 1/1. Convention matches farey(n): n bounds
+// the *output size* (node count), not the tree depth. Node p/q has left
+// child p/(p+q) and right child (p+q)/q (mediant construction); every node
+// is automatically in reduced form. n == 0 returns an empty vector.
+std::vector<std::pair<uint64_t,uint64_t>> stern_brocot(uint64_t n);
 
 // Fundamental Pell solution (x,y) with x^2 - D*y^2 = 1; error if D is a perfect square.
 // Uses integer sqrt(D) continued-fraction period + convergents (not double CF).

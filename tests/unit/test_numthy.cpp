@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdint>
+#include <set>
 
 using namespace ms::numthy;
 
@@ -292,4 +293,116 @@ TEST(NumthyPell, HarderCase) {
                           - static_cast<__int128_t>(61) * y * y;
     EXPECT_EQ(norm, 1);
 #endif
+}
+
+TEST(NumthyCornacchia, KnownSolutionsIdentity) {
+    // Verify x^2 + d*y^2 == p and non-negativity, rather than hard-coding
+    // "the" solution (either root ordering is a valid answer).
+    struct Case { uint64_t d, p; };
+    for (auto [d, p] : {Case{1, 5}, Case{1, 13}, Case{1, 2}, Case{3, 7},
+                        Case{2, 11}, Case{4, 29}}) {
+        auto sol = cornacchia(d, p);
+        ASSERT_TRUE(sol.has_value()) << "d=" << d << " p=" << p;
+        const uint64_t x = sol->first, y = sol->second;
+        EXPECT_EQ(x * x + d * y * y, p) << "d=" << d << " p=" << p;
+    }
+}
+
+TEST(NumthyCornacchia, HandVerifiedLiterals) {
+    // Manually traced through the algorithm for these specific inputs.
+    auto s1 = cornacchia(1, 5);
+    ASSERT_TRUE(s1.has_value());
+    EXPECT_EQ(s1->first, 2u);
+    EXPECT_EQ(s1->second, 1u);
+
+    auto s2 = cornacchia(1, 13);
+    ASSERT_TRUE(s2.has_value());
+    EXPECT_EQ(s2->first, 3u);
+    EXPECT_EQ(s2->second, 2u);
+
+    auto s3 = cornacchia(1, 2);
+    ASSERT_TRUE(s3.has_value());
+    EXPECT_EQ(s3->first, 1u);
+    EXPECT_EQ(s3->second, 1u);
+
+    auto s4 = cornacchia(3, 7);
+    ASSERT_TRUE(s4.has_value());
+    EXPECT_EQ(s4->first, 2u);
+    EXPECT_EQ(s4->second, 1u);
+}
+
+TEST(NumthyCornacchia, NonPrimeError) {
+    EXPECT_FALSE(cornacchia(1, 4).has_value());
+    EXPECT_FALSE(cornacchia(1, 15).has_value());
+    EXPECT_FALSE(cornacchia(1, 1).has_value());
+}
+
+TEST(NumthyCornacchia, ZeroDError) {
+    EXPECT_FALSE(cornacchia(0, 5).has_value());
+    EXPECT_FALSE(cornacchia(0, 13).has_value());
+}
+
+TEST(NumthyCornacchia, DTooLargeError) {
+    EXPECT_FALSE(cornacchia(5, 5).has_value());   // d == p
+    EXPECT_FALSE(cornacchia(7, 5).has_value());   // d > p
+}
+
+TEST(NumthyCornacchia, NoSolutionCase) {
+    // Sum of two squares theorem: p = x^2+y^2 solvable iff p == 2 or p ≡ 1 (mod 4).
+    // 7 ≡ 3 (mod 4), so no representation exists for d=1.
+    EXPECT_FALSE(cornacchia(1, 7).has_value());
+    EXPECT_FALSE(cornacchia(1, 11).has_value());
+    EXPECT_FALSE(cornacchia(1, 19).has_value());
+}
+
+TEST(NumthyCornacchia, ValidSolutionsAcrossPrimesCongruentTo1Mod4) {
+    for (uint64_t p : {5u, 13u, 17u, 29u, 37u, 41u}) {
+        auto sol = cornacchia(1, p);
+        ASSERT_TRUE(sol.has_value()) << "p=" << p;
+        EXPECT_EQ(sol->first * sol->first + sol->second * sol->second, p) << "p=" << p;
+    }
+}
+
+TEST(NumthySternBrocot, EmptyForZero) {
+    EXPECT_TRUE(stern_brocot(0).empty());
+}
+
+TEST(NumthySternBrocot, RootOnly) {
+    auto sb = stern_brocot(1);
+    ASSERT_EQ(sb.size(), 1u);
+    EXPECT_EQ(sb[0], (std::pair<uint64_t,uint64_t>{1, 1}));
+}
+
+TEST(NumthySternBrocot, FirstElementIsAlwaysRoot) {
+    for (uint64_t n : {1u, 2u, 3u, 5u, 10u, 20u}) {
+        auto sb = stern_brocot(n);
+        ASSERT_FALSE(sb.empty());
+        EXPECT_EQ(sb[0], (std::pair<uint64_t,uint64_t>{1, 1}));
+    }
+}
+
+TEST(NumthySternBrocot, BfsOrderSmall) {
+    // Root's children: left = 1/2, right = 2/1. Their children come next in BFS order.
+    std::vector<std::pair<uint64_t,uint64_t>> expected = {
+        {1, 1}, {1, 2}, {2, 1}, {1, 3}, {3, 2}, {2, 3}, {3, 1}
+    };
+    EXPECT_EQ(stern_brocot(7), expected);
+}
+
+TEST(NumthySternBrocot, CountMatchesN) {
+    for (uint64_t n : {0u, 1u, 2u, 3u, 7u, 15u, 31u}) {
+        EXPECT_EQ(stern_brocot(n).size(), n);
+    }
+}
+
+TEST(NumthySternBrocot, AllReducedForm) {
+    auto sb = stern_brocot(50);
+    for (auto& [p, q] : sb)
+        EXPECT_EQ(gcd(p, q), 1u) << p << "/" << q;
+}
+
+TEST(NumthySternBrocot, AllDistinct) {
+    auto sb = stern_brocot(50);
+    std::set<std::pair<uint64_t,uint64_t>> unique(sb.begin(), sb.end());
+    EXPECT_EQ(unique.size(), sb.size());
 }
