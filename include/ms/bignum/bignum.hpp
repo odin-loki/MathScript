@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace ms {
@@ -18,6 +19,7 @@ public:
     BigInt() : digits(1, 0) {}
     BigInt(long long v);
     explicit BigInt(const std::string& s);
+    explicit BigInt(const std::string& s, int base);
 
     // Comparison
     int cmp_abs(const BigInt& o) const;  // -1 < 0 > +1
@@ -46,6 +48,7 @@ public:
     bool is_zero() const;
     bool is_one() const;
     std::string to_string() const;
+    std::string to_string(int base) const;
     long long to_ll() const;
     double to_double() const;
 
@@ -59,6 +62,11 @@ private:
 
 // ========================== Number theory ==========================
 BigInt bigint_gcd(BigInt a, BigInt b);
+// Returns {g, x, y} s.t. a*x + b*y = g and g == gcd(a,b)
+std::tuple<BigInt, BigInt, BigInt> bigint_extended_gcd(BigInt a, BigInt b);
+int  bigint_bit_length(const BigInt& a);
+bool bigint_is_even(const BigInt& a);
+bool bigint_is_odd(const BigInt& a);
 BigInt bigint_lcm(const BigInt& a, const BigInt& b);
 BigInt bigint_pow(const BigInt& base, long long exp);
 BigInt bigint_pow_mod(BigInt base, BigInt exp, const BigInt& mod);
@@ -89,6 +97,10 @@ public:
 
     std::string to_string() const;
     double to_double() const;
+
+    BigInt floor() const;
+    BigInt ceil() const;
+    BigInt round() const;
 
 private:
     void reduce();
