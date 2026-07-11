@@ -27,13 +27,10 @@ std::vector<double> fft_lowpass(const std::vector<double>& x, double cutoff, dou
     const size_t cutoff_bin = static_cast<size_t>(
         std::min(static_cast<double>(n / 2), cutoff / nyquist * static_cast<double>(n / 2)));
 
-    for (size_t i = cutoff_bin + 1; i < n; ++i) {
-        const size_t mirror = n - i;
-        if (mirror < n) {
-            (*spectrum)[i] = 0.0;
-            if (mirror > 0) {
-                (*spectrum)[mirror] = 0.0;
-            }
+    for (size_t k = 0; k < n; ++k) {
+        const size_t wrapped = std::min(k, n - k);
+        if (wrapped > cutoff_bin) {
+            (*spectrum)[k] = 0.0;
         }
     }
 
@@ -281,6 +278,61 @@ std::vector<double> moving_average(const std::vector<double>& x, size_t window) 
         out[i] = sum / static_cast<double>(i - start + 1);
     }
     return out;
+}
+
+std::vector<double> upsample(const std::vector<double>& x, int n) {
+    if (x.empty() || n <= 0) {
+        return {};
+    }
+    const size_t step = static_cast<size_t>(n);
+    std::vector<double> out(x.size() * step, 0.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        out[i * step] = x[i];
+    }
+    return out;
+}
+
+std::vector<double> downsample(const std::vector<double>& x, int n) {
+    if (x.empty() || n <= 0) {
+        return {};
+    }
+    const size_t step = static_cast<size_t>(n);
+    std::vector<double> out;
+    out.reserve(x.size() / step + 1);
+    for (size_t i = 0; i < x.size(); i += step) {
+        out.push_back(x[i]);
+    }
+    return out;
+}
+
+std::vector<double> decimate(const std::vector<double>& x, int q) {
+    if (x.empty() || q <= 0) {
+        return {};
+    }
+    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(q));
+    const auto filtered = lowpass(x, 0.8 * new_nyquist, 1.0);
+    return downsample(filtered, q);
+}
+
+std::vector<double> interpolate(const std::vector<double>& x, int p) {
+    if (x.empty() || p <= 0) {
+        return {};
+    }
+    const auto stuffed = upsample(x, p);
+    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(p));
+    auto filtered = lowpass(stuffed, 0.8 * new_nyquist, 1.0);
+    const double gain = static_cast<double>(p);
+    for (double& v : filtered) {
+        v *= gain;
+    }
+    return filtered;
+}
+
+std::vector<double> resample(const std::vector<double>& x, int p, int q) {
+    if (x.empty() || p <= 0 || q <= 0) {
+        return {};
+    }
+    return decimate(interpolate(x, p), q);
 }
 
 std::vector<double> hamming(size_t n) {

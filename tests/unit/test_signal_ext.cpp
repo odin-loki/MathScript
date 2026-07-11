@@ -110,6 +110,7 @@ TEST(SignalExtTest, filter_cutoff_edge_cases) {
     const auto lp_tight = lowpass(x, 0.25, fs);
     const auto lp_wide = lowpass(x, fs * 0.45, fs);
     const auto hp = highpass(x, 2.0, fs);
+    const auto hp_wide = highpass(x, fs * 0.45, fs);
     const auto bp_narrow = bandpass(x, 1.0, 2.5, fs);
     const auto bp_wide = bandpass(x, 0.1, fs * 0.45, fs);
 
@@ -119,8 +120,10 @@ TEST(SignalExtTest, filter_cutoff_edge_cases) {
     ASSERT_EQ(bp_narrow.size(), x.size());
     ASSERT_EQ(bp_wide.size(), x.size());
 
+    // highpass(x, c, fs) is defined as x - lowpass(x, c, fs), so the two must sum back to x
+    // when evaluated at the SAME cutoff.
     for (size_t i = 0; i < x.size(); ++i) {
-        EXPECT_NEAR(hp[i] + lp_wide[i], x[i], 1e-5);
+        EXPECT_NEAR(hp_wide[i] + lp_wide[i], x[i], 1e-5);
     }
     EXPECT_LT(std::abs(lp_tight[4]), std::abs(lp_wide[4]) + 1e-6);
 }
