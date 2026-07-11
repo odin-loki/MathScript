@@ -7605,16 +7605,23 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       ode_backward_euler wired via the sym_parse formula bridge (e.g. ode_rk4("y",0,1,1,100))
       — resolves the callback-argument REPL gap deferred since Wave 176; docs/API.md synced
       through Wave 178; tag checklist 356→357 (357 suites, 100% passing).
+      Wave 180: ms::stats one_way_anova/mann_whitney_u/ks_test_2sample hypothesis tests;
+      ms::izaac consensus namespace (deterministic simulated Raft leader election + log
+      replication, honestly documented as in-memory simulation not a real distributed system);
+      ms::ml SVM classifier via SMO (linear/RBF kernels); REPL formula bridge extended to
+      ode_bdf2/ode_verlet(_vec)/ode_euler_vec/ode_rk4_vec/ode_rk45_vec (vector systems via
+      semicolon-separated per-component formulas, e.g. ode_rk4_vec("y1; -y0",0,[1,0],6.283,200));
+      docs/API.md synced through Wave 179; 357 suites (no new suite files, all additions
+      extend existing suites), 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
-      REPL/fuzz-corpus wiring for ode_verlet/ode_verlet_vec/ode_rk45_vec/ode_bdf2/
-      ode_backward_euler_vec/ode_bvp_shooting/ode_dde_fixed_step/ode_event_detect/
-      ode_dae_index1 (the formula bridge added in Wave 179 covers only the 5 simplest
-      scalar-callback signatures; vector systems and second-order q''=a(t,q) signatures need
-      a multi-variable extension to the bridge — tracked as the concrete next step).
-      ms::izaac consensus/military/full-mpc-beyond-secret-sharing namespaces (need real
-      distributed-protocol design — out of scope for an incremental wave).
+      REPL/fuzz-corpus wiring for ode_backward_euler_vec/ode_bvp_shooting/
+      ode_dde_fixed_step/ode_event_detect/ode_dae_index1 (these have more complex
+      multi-callback or boundary-condition signatures needing further formula-bridge design
+      beyond the single/multi-formula convention used so far — tracked as the concrete next step).
+      ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
+      larger, dedicated protocol-design effort — out of scope for an incremental wave).
       Axiom::evolve mutation still perturbs fitness directly rather than mutating the
       representation/evaluation/selection/mutation expression trees (no real GP tree
       crossover/mutation yet — documented simplification). -->

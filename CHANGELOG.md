@@ -3,6 +3,21 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 180 — ODE Vector/Verlet REPL Bridge, Izaac Consensus, SVM, Stats Hypothesis Tests)
+
+### Added (Wave 180)
+- `ms::stats`: `one_way_anova` (F-statistic/p-value across >=2 groups), `mann_whitney_u` (non-parametric rank-sum test with tie correction and normal-approximation p-value), `ks_test_2sample` (two-sample Kolmogorov-Smirnov test with asymptotic p-value) — extends `tests/unit/test_stats_prob_ext.cpp`
+- `ms::izaac`: `consensus` namespace — a deterministic, single-process simulation of Raft-style leader election (`Cluster::run_election`) and log replication to a quorum (`Cluster::replicate`); explicitly documented as an in-memory simulation for demonstrating/testing the protocol's core safety properties, NOT a real networked distributed system — extends `tests/unit/test_izaac_advanced.cpp`
+- `ms::ml`: `SVM` — binary classifier via Sequential Minimal Optimization (SMO) with linear and RBF kernels — extends `tests/unit/test_ml.cpp`
+- REPL: extended the `sym_parse` formula bridge (introduced Wave 179) to `ode_bdf2` (same scalar bridge as `ode_backward_euler`), `ode_verlet`/`ode_verlet_vec` (acceleration formula(s) with `{t, q}`/`{t, q0..qN-1}` env bindings), and `ode_euler_vec`/`ode_rk4_vec`/`ode_rk45_vec` (vector systems via semicolon-separated per-component formulas parsed once up front, evaluated per component with a shared `{t, y0..yN-1}` env map each stage) — e.g. `ode_rk4_vec("y1; -y0", 0, [1, 0], 6.283, 200)` for the simple harmonic oscillator. New fuzz corpus seeds for all 6 new commands; help text updated; manually verified `ode_verlet("-9.8", 0, 0, 0, 1, 20)` reproduces the exact analytic projectile solution (q=-4.9t², v=-9.8t) and the harmonic-oscillator vector system completes a perfect closed orbit over one period.
+- `docs/API.md`: synced entries for Wave 179 additions (`ode_bdf2`, `ms::izaac::crypto`/`mpc`, `RandomForest`/`GradientBoosting`, the 5 scalar ODE REPL bindings)
+- Tag checklist suite count remains at 357 (no new suite files this wave — all additions extend existing suites)
+- **Total Wave 180: 357 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- The formula bridge still doesn't cover `ode_backward_euler_vec`, `ode_bvp_shooting`, `ode_dde_fixed_step`, `ode_event_detect`, or `ode_dae_index1` — these have more complex multi-callback or boundary-condition signatures that need further bridge design work.
+- `ms::izaac`'s `military` namespace and full generic MPC (beyond secret sharing) remain unimplemented — still considered out of scope without a much larger, dedicated protocol-design effort.
+
 ## [1.0.0] — 2026-07-11 (Wave 179 — ODE REPL Formula Bridge, BDF2, Izaac Crypto/MPC, ML Ensembles)
 
 ### Added (Wave 179)
