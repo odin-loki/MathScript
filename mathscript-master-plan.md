@@ -7886,6 +7886,33 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       distinguished only by triangle count). tag checklist stays at 365 (no new CTest
       registrations; 46 new test cases across existing test_repl_commands/test_finance/
       test_graph binaries; 365 suites, 100% passing).
+      Wave 195: continued the REPL-surface push plus two more smaller-library-gap picks. REPL
+      scalar bindings batch 2 exposes 20 more functions — special_erfinv/erfcinv/log_gamma/
+      digamma/trigamma/polygamma/gamma_inc_reg/gamma_inc_reg_upper/beta_inc_reg,
+      prob_uniform_pdf/t_pdf/t_ppf/gamma_ppf/beta_ppf/f_pdf/f_ppf, and
+      finance_mc_lookback_floating_call/put/fixed_call/put (Wave 194's lookback pricers,
+      REPL-exposed here) — all using existing unary/binary/ternary/heptary/octonary regex tiers,
+      no new tier needed. ms::finance gains the Black-Litterman model: bl_implied_returns
+      (reverse-optimization prior, Pi=delta*Sigma*w_mkt), bl_posterior_returns (full closed-form
+      posterior blending prior and views via [(tau*Sigma)^-1 + P^T*Omega^-1*P]^-1 *
+      [(tau*Sigma)^-1*Pi + P^T*Omega^-1*Q]), and bl_posterior_returns_default_omega
+      (convenience overload with the standard diagonal Omega) — built by generalizing the
+      existing private Gaussian-elimination solver to multiple right-hand-sides (enabling matrix
+      inversion without duplicate solver logic); verified via a hand-computed closed-form
+      reference case (Pi=[0.05,0.07], single view -> posterior [0.075, 0.07625] exactly), the
+      reverse-optimization identity, and an end-to-end pipeline into max_sharpe_portfolio —
+      closing ms::finance's last-noted stochastic/optimization gap (Black-Litterman was
+      explicitly flagged as out of scope in Waves 193-194). ms::graph gains Louvain community
+      detection: louvain(G) (two-phase greedy modularity optimization — local moving then
+      meta-graph aggregation, repeated to convergence) and modularity(G, communities)
+      (Newman-Girvan weighted modularity); the trickiest pitfall was keeping the self-loop
+      weight-doubling convention consistent across aggregation levels, solved via a single
+      0.5*weight-over-half-edges rule; verified via disjoint-clique and bridged-cluster recovery,
+      and one test was corrected after initially assuming a heavy-bridge case would force full
+      merging when it actually revealed a genuine, correctly-identified modularity
+      resolution-limit effect rather than a bug. tag checklist stays at 365 (no new CTest
+      registrations; 60 new test cases across existing test_repl_commands/test_finance/
+      test_graph binaries; 365 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7904,15 +7931,16 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       poly_intersect/poly_diff/minkowski_sum) as missing; convex_hull_3d was closed in Wave 193.
       Polygon boolean ops remain deferred as higher-risk (robust polygon clipping has notorious
       edge-case pitfalls).
-      ms::graph's spec section still lists planarity/embedding (Boyer-Myrvold), Blossom-
-      algorithm general matching, and Louvain/community detection — each a substantial dedicated
-      algorithm effort. Graph isomorphism (VF2-style, small-graph-scale) was closed in Wave 194.
+      ms::graph's spec section still lists planarity/embedding (Boyer-Myrvold) and Blossom-
+      algorithm general matching — each a substantial dedicated algorithm effort. Graph
+      isomorphism (VF2-style, small-graph-scale, Wave 194) and Louvain community detection
+      (Wave 195) are now closed.
       ms::finance's spec section still lists Heston/SABR stochastic-volatility models, trinomial
       trees, and geometric-average Asian options; European/Asian Monte Carlo pricing (Wave 192),
       Markowitz portfolio optimization (Wave 193: min_variance_portfolio/efficient_frontier_
-      portfolio/max_sharpe_portfolio), and lookback options (Wave 194: mc_lookback_floating_call/
-      put, mc_lookback_fixed_call/put) are now closed — Black-Litterman specifically remains out
-      of scope.
+      portfolio/max_sharpe_portfolio), lookback options (Wave 194: mc_lookback_floating_call/
+      put, mc_lookback_fixed_call/put), and Black-Litterman (Wave 195: bl_implied_returns/
+      bl_posterior_returns/bl_posterior_returns_default_omega) are now closed.
       ms::numthy's cornacchia/stern_brocot gap was also closed in Wave 192; partition_list is
       arguably already covered by ms::combo::all_partitions. Remaining items above deferred as
       individually larger/riskier than Wave 189/192/193's picks.
@@ -7935,12 +7963,13 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       (now applied to 14 modules, covering every mature module in the original spec except
       ms::sym's full symbolic-CAS surface and ms::bignum's APFloat/APComplex, both explicitly
       out of scope for a fundamental-rewrite-scale reason) has now run its course as the primary
-      wave-planning driver — Wave 194 began the shift toward REPL-surface completeness with a
-      first batch of 13 simple scalar-in-scalar-out bindings; the large majority of library
-      functions added since Wave 187 remain unbound (especially stateful/vector/callback-argument
-      signatures), so future waves will likely continue this alongside fuzz-corpus expansion and
-      the still-pending fuzz-marathon/packaging items, while continuing to skip high-risk/exotic
-      entries.
+      wave-planning driver — Waves 194-195 began the shift toward REPL-surface completeness with
+      two batches totaling 33 simple scalar-in-scalar-out bindings across numthy/poly/finance/
+      special/prob; the large majority of library functions added since Wave 187 remain unbound
+      (especially stateful/vector/callback-argument signatures, and entire modules like ml/image/
+      tensorops/izaac beyond what's already bound), so future waves will likely continue this
+      alongside fuzz-corpus expansion and the still-pending fuzz-marathon/packaging items, while
+      continuing to skip high-risk/exotic entries.
       With the ODE REPL formula-bridge, stateful-class REPL exposure, the Axiom/
       PrimitiveRegistry mismatch, the Wave 182-185 pure-function REPL backlog, and the
       tensor-decomposition REPL gap all now resolved (Waves 182-187), no single large concrete
