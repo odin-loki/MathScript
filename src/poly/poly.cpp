@@ -471,6 +471,108 @@ std::vector<double> poly_lagrange(const std::vector<double>& xs,
     return poly_fit(xs, ys, static_cast<int>(xs.size()) - 1);
 }
 
+namespace {
+
+// Expands the Newton form f[0,0] + f[0,1]*(x-nodes[0]) + f[0,2]*(x-nodes[0])*(x-nodes[1])
+// + ... into flat ascending-power coefficients, given the top row f[0,k] of a
+// divided-difference table and the node array it was built over.
+std::vector<double> newton_form_to_coeffs(const std::vector<double>& top_row,
+                                           const std::vector<double>& nodes) {
+    std::vector<double> result = {top_row[0]};
+    std::vector<double> basis = {1.0};
+    for (size_t k = 1; k < top_row.size(); ++k) {
+        basis = poly_mul(basis, {-nodes[k - 1], 1.0});
+        std::vector<double> term(basis.size());
+        for (size_t i = 0; i < basis.size(); ++i) {
+            term[i] = top_row[k] * basis[i];
+        }
+        result = poly_add(result, term);
+    }
+    return result;
+}
+
+// True if any two entries of xs coincide within eps (invalid for interpolation
+// with distinct nodes; division by zero in divided differences otherwise).
+bool has_duplicate_nodes(const std::vector<double>& xs, double eps = 1e-12) {
+    for (size_t i = 0; i < xs.size(); ++i) {
+        for (size_t j = i + 1; j < xs.size(); ++j) {
+            if (std::abs(xs[i] - xs[j]) < eps) return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+std::vector<double> interp_newton(const std::vector<double>& xs,
+                                   const std::vector<double>& ys) {
+    if (xs.size() != ys.size()) return {};
+    const size_t n = xs.size();
+    if (n == 0) return {};
+    if (n == 1) return {ys[0]};
+    if (has_duplicate_nodes(xs)) return {};
+
+    // table[i][k] = f[x_i, ..., x_{i+k}]
+    std::vector<std::vector<double>> table(n, std::vector<double>(n, 0.0));
+    for (size_t i = 0; i < n; ++i) table[i][0] = ys[i];
+    for (size_t k = 1; k < n; ++k) {
+        for (size_t i = 0; i + k < n; ++i) {
+            const double denom = xs[i + k] - xs[i];
+            if (std::abs(denom) < 1e-12) return {};
+            table[i][k] = (table[i + 1][k - 1] - table[i][k - 1]) / denom;
+        }
+    }
+
+    std::vector<double> top_row(n);
+    for (size_t k = 0; k < n; ++k) top_row[k] = table[0][k];
+    return newton_form_to_coeffs(top_row, xs);
+}
+
+std::vector<double> interp_hermite(const std::vector<double>& xs,
+                                    const std::vector<double>& ys,
+                                    const std::vector<double>& dys) {
+    if (xs.size() != ys.size() || xs.size() != dys.size()) return {};
+    const size_t n = xs.size();
+    if (n == 0) return {};
+    if (n == 1) return {ys[0] - dys[0] * xs[0], dys[0]};
+    if (has_duplicate_nodes(xs)) return {};
+
+    const size_t m = 2 * n;
+    std::vector<double> z(m), q(m);
+    for (size_t i = 0; i < n; ++i) {
+        z[2 * i] = xs[i];
+        z[2 * i + 1] = xs[i];
+        q[2 * i] = ys[i];
+        q[2 * i + 1] = ys[i];
+    }
+
+    std::vector<std::vector<double>> table(m, std::vector<double>(m, 0.0));
+    for (size_t i = 0; i < m; ++i) table[i][0] = q[i];
+
+    // First-level differences: adjacent doubled entries (z[2i] == z[2i+1]) use
+    // the derivative directly instead of dividing by zero.
+    for (size_t i = 0; i + 1 < m; ++i) {
+        const double denom = z[i + 1] - z[i];
+        if (std::abs(denom) < 1e-12) {
+            table[i][1] = dys[i / 2];
+        } else {
+            table[i][1] = (table[i + 1][0] - table[i][0]) / denom;
+        }
+    }
+    // Higher-level differences never hit a zero gap once xs are distinct.
+    for (size_t k = 2; k < m; ++k) {
+        for (size_t i = 0; i + k < m; ++i) {
+            const double denom = z[i + k] - z[i];
+            if (std::abs(denom) < 1e-12) return {};
+            table[i][k] = (table[i + 1][k - 1] - table[i][k - 1]) / denom;
+        }
+    }
+
+    std::vector<double> top_row(m);
+    for (size_t k = 0; k < m; ++k) top_row[k] = table[0][k];
+    return newton_form_to_coeffs(top_row, z);
+}
+
 double poly_cheb_eval(const std::vector<double>& cheb_coeffs, double x) {
     // Clenshaw's algorithm for sum c_k T_k(x)
     double b1 = 0.0, b2 = 0.0;

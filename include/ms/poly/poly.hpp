@@ -77,6 +77,19 @@ std::vector<double> poly_fit(const std::vector<double>& xs,
 std::vector<double> poly_lagrange(const std::vector<double>& xs,
                                    const std::vector<double>& ys);
 
+// Newton's divided-difference interpolation; same interpolating polynomial as
+// poly_lagrange (up to numerical error), same ascending-coefficient convention.
+// Returns {} on size mismatch or duplicate xs entries.
+std::vector<double> interp_newton(const std::vector<double>& xs,
+                                   const std::vector<double>& ys);
+
+// Hermite interpolation: unique degree-<2n polynomial p with p(xs[i]) == ys[i]
+// and p'(xs[i]) == dys[i] for every i. Returns {} on size mismatch or
+// duplicate xs entries.
+std::vector<double> interp_hermite(const std::vector<double>& xs,
+                                    const std::vector<double>& ys,
+                                    const std::vector<double>& dys);
+
 // Chebyshev evaluation
 double poly_cheb_eval(const std::vector<double>& cheb_coeffs, double x);
 
