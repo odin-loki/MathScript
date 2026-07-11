@@ -7838,6 +7838,32 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       at 365 (no new CTest registrations; 47 new test cases across existing test_numthy/
       test_signal_filters/test_finance binaries, plus 1 pre-existing test corrected for the
       fft_lowpass fix; 365 suites, 100% passing).
+      Wave 193: continued the smaller-library-gap strategy with three more picks. ms::geo gains
+      convex_hull_3d (brute-force O(n^4) supporting-plane enumeration over point triples,
+      matching convex_hull_2d's simple-over-optimal style; faces with more than 3 coplanar hull
+      vertices, e.g. a cube's square faces, are deduplicated by shared coplanar vertex set and
+      fan-triangulated via a 2D convex hull of the projected coplanar points, correctly excluding
+      interior/redundant coplanar points — an early draft double-counted cube faces, 24 instead
+      of 12, before this fix; verified via Platonic-solid face counts, outward-normal/one-
+      sidedness re-derivation, and Euler-characteristic V-E+F=2 checks) — closing the 3D-hull half
+      of ms::geo's spec gap (polygon boolean ops remain separately deferred as higher-risk).
+      ms::finance gains Markowitz portfolio optimization: min_variance_portfolio/
+      efficient_frontier_portfolio/max_sharpe_portfolio, the inverse-problem companions to the
+      existing portfolio_variance/portfolio_return metrics, each solving Sigma*y=b via a private
+      partial-pivoting Gauss-Jordan eliminator (mirroring ms::control's existing gauss_solve
+      precedent for small dense systems) — verified against the closed-form uncorrelated-asset
+      weighting, the Sigma*w=lambda*1 Lagrange/KKT optimality condition, and the tangency
+      portfolio's max-Sharpe property versus hand-picked alternatives (Black-Litterman remains
+      out of scope). ms::poly gains interp_newton (Newton divided-difference form) and
+      interp_hermite (derivative-constrained interpolation via doubled-node divided differences,
+      degree <2n satisfying both value and derivative at each node) — closing the module's last
+      two documented interpolation-algorithm gaps (poly_lagrange/poly_fit already covered these
+      "in spirit" per Wave 191's note, but these are genuinely distinct named algorithms per the
+      original spec); interp_newton verified against poly_lagrange (same unique interpolating
+      polynomial, compared via evaluation since raw coefficients are representation-sensitive),
+      interp_hermite verified against poly_deriv-checked derivative values at each node. tag
+      checklist stays at 365 (no new CTest registrations; 53 new test cases across existing
+      test_geo/test_finance/test_poly_ext binaries; 365 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7852,28 +7878,30 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       further spectral analysis (periodogram/music/esprit/pburg/cohere), emd/hht/vmd, and the
       modulation family — these are individually much larger/riskier numerical-algorithm efforts
       than this wave's thin FFT-reuse wrappers, worth splitting into dedicated future waves.
-      ms::geo's spec section lists convex_hull_3d and polygon boolean ops (poly_union/
-      poly_intersect/poly_diff/minkowski_sum) as missing; considered for Wave 188 but deferred
-      as higher-risk (robust polygon clipping has notorious edge-case pitfalls).
+      ms::geo's spec section listed convex_hull_3d and polygon boolean ops (poly_union/
+      poly_intersect/poly_diff/minkowski_sum) as missing; convex_hull_3d was closed in Wave 193.
+      Polygon boolean ops remain deferred as higher-risk (robust polygon clipping has notorious
+      edge-case pitfalls).
       ms::graph's spec section still lists planarity/embedding (Boyer-Myrvold), Blossom-
       algorithm general matching, Louvain/community detection, and graph isomorphism (VF2) —
       each a substantial dedicated algorithm effort. ms::finance's spec section still lists
-      Heston/SABR stochastic-volatility models, trinomial trees, Asian/lookback path-dependent
+      Heston/SABR stochastic-volatility models, trinomial trees, and Asian/lookback path-dependent
       options beyond Wave 192's Monte Carlo arithmetic-average Asian pricer (e.g. lookback,
-      geometric-average Asian), and portfolio optimization (Markowitz/Black-Litterman/efficient
-      frontier); European/Asian Monte Carlo pricing itself was closed in Wave 192
-      (mc_european_call/put, mc_asian_call/put). ms::numthy's cornacchia/stern_brocot gap was
-      also closed in Wave 192; partition_list is arguably already covered by
-      ms::combo::all_partitions. Remaining items above deferred as individually larger/riskier
-      than Wave 189/192's picks.
+      geometric-average Asian); European/Asian Monte Carlo pricing (Wave 192) and Markowitz
+      portfolio optimization (Wave 193: min_variance_portfolio/efficient_frontier_portfolio/
+      max_sharpe_portfolio) are now closed — Black-Litterman specifically remains out of scope.
+      ms::numthy's cornacchia/stern_brocot gap was also closed in Wave 192; partition_list is
+      arguably already covered by ms::combo::all_partitions. Remaining items above deferred as
+      individually larger/riskier than Wave 189/192/193's picks.
       ms::bignum's spec section still lists APFloat/APComplex arbitrary-precision floating point
       (full Chudnovsky-algorithm transcendental support) — a substantially larger, separate
       undertaking, similar in scale to FEM/CFD, deliberately out of scope for an incremental
       wave. ms::image's spec section still lists SIFT/SURF/ORB descriptors, watershed/graph-cut/
       SLIC segmentation, and marching-cubes isosurface extraction. ms::poly's spec section still
-      lists factor/factor_zz (polynomial factorization over Q/R/C/Fp) and sturm/interp_newton/
-      interp_hermite (the latter two arguably covered in spirit by existing poly_lagrange/
-      poly_fit). ms::crypto (SHA/AES/ChaCha/Curve25519/RSA) does not exist as a standalone
+      lists factor/factor_zz (polynomial factorization over Q/R/C/Fp) — interp_newton/
+      interp_hermite were closed in Wave 193 despite arguably being covered in spirit by the
+      existing poly_lagrange/poly_fit, since they're genuinely distinct named algorithms per the
+      original spec. ms::crypto (SHA/AES/ChaCha/Curve25519/RSA) does not exist as a standalone
       module — crypto primitives are intentionally routed through ms::izaac instead; a full
       independent crypto-primitive library carries correctness/security risk disproportionate
       to an incremental wave and is not planned.

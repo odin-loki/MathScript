@@ -77,7 +77,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye`; `erfinv`/`erfcinv`, `trigamma`/`polygamma`, `pochhammer`/`falling_factorial`, `rgamma`, and the public canonical `gamma_inc_reg`/`gamma_inc_reg_upper`/`gamma_inc`/`beta_inc_reg`/`beta_inc` (also used internally by `ms::prob`'s `gamma_cdf`/`beta_cdf`/`f_cdf`/`chi2_cdf`) |
 | `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`, `ode_rk45_vec`; symplectic: `ode_verlet`, `ode_verlet_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`, `ode_bdf2` (BDF2 multistep, A-stable, bootstraps first step via BDF1); BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
 | `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson, unconditionally stable), `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d`, `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d`, `pde_reaction_diffusion_1d` (Fisher-KPP, zero-flux Neumann BC) with CFL/stability guards |
-| `poly/poly.hpp` | Polynomial eval, add/sub/mul/div/mod, derivative/integral, composition, GCD/LCM on coefficient vectors; `poly_pow`/`monic`/`reverse`/`shift`/`scale`; `poly_sylvester`/`resultant`/`discriminant`/`squarefree`; `bernstein` basis evaluation |
+| `poly/poly.hpp` | Polynomial eval, add/sub/mul/div/mod, derivative/integral, composition, GCD/LCM on coefficient vectors; `poly_pow`/`monic`/`reverse`/`shift`/`scale`; `poly_sylvester`/`resultant`/`discriminant`/`squarefree`; `bernstein` basis evaluation; `interp_newton` (Newton divided-difference form) and `interp_hermite` (derivative-constrained interpolation via doubled-node divided differences) |
 | `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals) |
 | `domain/domain.hpp` | `factorial`, `nchoosek`, `gcd`, and `Graph` edge counting |
 
@@ -103,7 +103,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `finance/finance.hpp` | Black–Scholes call/put and Greeks, implied vol, bond price/duration/convexity/YTM, NPV/IRR/PV/FV annuities, VaR/CVaR, Sharpe/Sortino/Information/Treynor ratios, CAPM, forward rate, max drawdown, Kelly criterion, binomial/American option pricing, digital/Black-76/barrier option pricing, portfolio variance/return, Monte Carlo option pricing (`mc_european_call`/`mc_european_put` with antithetic-variate GBM sampling, `mc_asian_call`/`mc_asian_put` via discretized path simulation) |
+| `finance/finance.hpp` | Black–Scholes call/put and Greeks, implied vol, bond price/duration/convexity/YTM, NPV/IRR/PV/FV annuities, VaR/CVaR, Sharpe/Sortino/Information/Treynor ratios, CAPM, forward rate, max drawdown, Kelly criterion, binomial/American option pricing, digital/Black-76/barrier option pricing, portfolio variance/return, Monte Carlo option pricing (`mc_european_call`/`mc_european_put` with antithetic-variate GBM sampling, `mc_asian_call`/`mc_asian_put` via discretized path simulation), Markowitz portfolio optimization (`min_variance_portfolio`, `efficient_frontier_portfolio`, `max_sharpe_portfolio`, via a private Gaussian-elimination solve) |
 
 ## Control — Wave 58 (`include/ms/control/`)
 
@@ -133,7 +133,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `geo/geo.hpp` | 2D/3D points, segments, rays, polygons; convex hull, Delaunay/Voronoi; `KDTree2D`/`KDTree3D` nearest/range queries; ray–triangle/sphere/AABB intersections; Bezier/B-spline/Hermite curves; area, centroid, moments |
+| `geo/geo.hpp` | 2D/3D points, segments, rays, polygons; convex hull (2D via Graham scan, 3D via brute-force face enumeration with coplanar-face fan-triangulation), Delaunay/Voronoi; `KDTree2D`/`KDTree3D` nearest/range queries; ray–triangle/sphere/AABB intersections; Bezier/B-spline/Hermite curves; area, centroid, moments |
 
 ## Differential Geometry — Wave 59 (`include/ms/diffgeo/`)
 
