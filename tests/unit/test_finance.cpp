@@ -665,6 +665,234 @@ TEST(FinancePortfolioOpt, MinVarianceResidualIsSmall) {
     for (double v : sw) EXPECT_NEAR(v, mean_sw, 1e-8);
 }
 
+// --- Black-Litterman model ---
+namespace {
+// Symmetric, positive-definite 2-asset covariance matrix reused across most
+// Black-Litterman tests below.
+const std::vector<double> kBLCov2 = {0.04, 0.01,
+                                     0.01, 0.02};
+const std::vector<double> kBLPi2 = {0.05, 0.07};
+
+// Single view "asset 0 returns 10%", with the standard default-derived Omega
+// (omega_11 = tau * P.Sigma.P^T = 0.05 * 0.04 = 0.002), for tau = 0.05.
+const std::vector<double> kBLP1 = {1.0, 0.0};
+const std::vector<double> kBLQ1 = {0.10};
+const std::vector<double> kBLOmega1 = {0.002};
+constexpr double kBLTau = 0.05;
+} // namespace
+
+TEST(FinanceBlackLitterman, ImpliedReturnsMatchesHandComputedExample) {
+    // Pi = delta*Sigma*w_mkt: Sigma*w_mkt = [0.028, 0.014], delta=2.5 -> [0.07, 0.035].
+    std::vector<double> w_mkt = {0.6, 0.4};
+    auto pi = bl_implied_returns(kBLCov2, w_mkt, 2.5, 2);
+    ASSERT_TRUE(pi.has_value());
+    EXPECT_NEAR(pi->at(0), 0.07, 1e-9);
+    EXPECT_NEAR(pi->at(1), 0.035, 1e-9);
+}
+
+TEST(FinanceBlackLitterman, ImpliedReturnsDimensionMismatchErrors) {
+    std::vector<double> bad_cov = {0.04, 0.01, 0.01}; // not 2x2
+    std::vector<double> w_mkt2 = {0.6, 0.4};
+    EXPECT_FALSE(bl_implied_returns(bad_cov, w_mkt2, 2.5, 2).has_value());
+
+    std::vector<double> bad_w = {0.6}; // size 1, n=2
+    EXPECT_FALSE(bl_implied_returns(kBLCov2, bad_w, 2.5, 2).has_value());
+}
+
+TEST(FinanceBlackLitterman, ImpliedReturnsNonPositiveDeltaErrors) {
+    std::vector<double> w_mkt = {0.6, 0.4};
+    EXPECT_FALSE(bl_implied_returns(kBLCov2, w_mkt, 0.0, 2).has_value());
+    EXPECT_FALSE(bl_implied_returns(kBLCov2, w_mkt, -1.0, 2).has_value());
+}
+
+TEST(FinanceBlackLitterman, ImpliedReturnsNonPositiveNErrors) {
+    std::vector<double> w_mkt = {0.6, 0.4};
+    EXPECT_FALSE(bl_implied_returns(kBLCov2, w_mkt, 2.5, 0).has_value());
+    EXPECT_FALSE(bl_implied_returns(kBLCov2, w_mkt, 2.5, -1).has_value());
+}
+
+TEST(FinanceBlackLitterman, PosteriorNoViewsReturnsPriorExactly) {
+    // k=0 (empty P/Q/omega): the view terms vanish, so the posterior must
+    // collapse exactly to the prior Pi.
+    auto post = bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, {}, {}, {}, 2, 0);
+    ASSERT_TRUE(post.has_value());
+    EXPECT_NEAR(post->at(0), kBLPi2[0], 1e-12);
+    EXPECT_NEAR(post->at(1), kBLPi2[1], 1e-12);
+}
+
+TEST(FinanceBlackLitterman, PosteriorTinyTauConvergesToPrior) {
+    // A tiny tau makes the prior's implied covariance (tau*Sigma) very
+    // "tight", so (tau*Sigma)^-1 dwarfs the fixed P^T*Omega^-1*P view term and
+    // the posterior should converge toward the prior even with a view present.
+    auto post = bl_posterior_returns(kBLPi2, kBLCov2, 1e-6, kBLP1, kBLQ1, kBLOmega1, 2, 1);
+    ASSERT_TRUE(post.has_value());
+    EXPECT_NEAR(post->at(0), kBLPi2[0], 1e-4);
+    EXPECT_NEAR(post->at(1), kBLPi2[1], 1e-4);
+}
+
+TEST(FinanceBlackLitterman, PosteriorSingleViewPullsTowardView) {
+    auto post = bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, kBLOmega1, 2, 1);
+    ASSERT_TRUE(post.has_value());
+    // Posterior for the viewed asset must lie strictly between the prior and
+    // the view value, i.e. genuinely blended rather than snapping to either.
+    EXPECT_GT(post->at(0), kBLPi2[0]);
+    EXPECT_LT(post->at(0), kBLQ1[0]);
+}
+
+TEST(FinanceBlackLitterman, PosteriorSingleViewHighConfidenceNearView) {
+    // A very small (high-confidence) Omega should pull the posterior close
+    // to the view value itself.
+    std::vector<double> confident_omega = {1e-10};
+    auto post = bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, confident_omega, 2, 1);
+    ASSERT_TRUE(post.has_value());
+    EXPECT_NEAR(post->at(0), kBLQ1[0], 1e-4);
+}
+
+TEST(FinanceBlackLitterman, PosteriorMatchesHandComputedClosedForm) {
+    // Reference values worked out by hand from
+    // E[R] = [(tau*Sigma)^-1 + P^T*Omega^-1*P]^-1 * [(tau*Sigma)^-1*Pi + P^T*Omega^-1*Q]
+    // with Sigma=kBLCov2, Pi=[0.05,0.07], tau=0.05, P=[1,0], Q=[0.10], Omega=[0.002]:
+    //   tau*Sigma = [[0.002,0.0005],[0.0005,0.001]], det = 1.75e-6
+    //   inv(tau*Sigma) = (1/7)*[[4000,-2000],[-2000,8000]]
+    //   A = inv(tau*Sigma) + [[500,0],[0,0]] = (1/7)*[[7500,-2000],[-2000,8000]]
+    //   b = inv(tau*Sigma)*Pi + [50,0] = (1/7)*[410,460]
+    //   solving A*x=b gives x = [0.075, 0.07625] exactly.
+    auto post = bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, kBLOmega1, 2, 1);
+    ASSERT_TRUE(post.has_value());
+    EXPECT_NEAR(post->at(0), 0.075, 1e-6);
+    EXPECT_NEAR(post->at(1), 0.07625, 1e-6);
+}
+
+TEST(FinanceBlackLitterman, PosteriorDefaultOmegaMatchesHandComputedClosedForm) {
+    // Same setup as PosteriorMatchesHandComputedClosedForm, but Omega is
+    // derived automatically. omega_11 = tau*(P.Sigma.P^T) = 0.05*0.04 = 0.002,
+    // which is exactly kBLOmega1, so the result must match the same reference.
+    auto post = bl_posterior_returns_default_omega(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, 2, 1);
+    ASSERT_TRUE(post.has_value());
+    EXPECT_NEAR(post->at(0), 0.075, 1e-6);
+    EXPECT_NEAR(post->at(1), 0.07625, 1e-6);
+}
+
+TEST(FinanceBlackLitterman, PosteriorDimensionMismatchErrors) {
+    std::vector<double> bad_pi = {0.05}; // size 1, n=2
+    EXPECT_FALSE(bl_posterior_returns(bad_pi, kBLCov2, kBLTau, kBLP1, kBLQ1, kBLOmega1, 2, 1)
+                    .has_value());
+
+    std::vector<double> bad_P = {1.0, 0.0, 0.0}; // not k*n = 1*2
+    EXPECT_FALSE(bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, bad_P, kBLQ1, kBLOmega1, 2, 1)
+                    .has_value());
+
+    std::vector<double> bad_Q = {0.10, 0.05}; // not size k=1
+    EXPECT_FALSE(bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, bad_Q, kBLOmega1, 2, 1)
+                    .has_value());
+
+    std::vector<double> bad_omega = {0.002, 0.0}; // not k*k = 1*1
+    EXPECT_FALSE(bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, bad_omega, 2, 1)
+                    .has_value());
+}
+
+TEST(FinanceBlackLitterman, PosteriorSigmaDimensionMismatchErrors) {
+    std::vector<double> bad_cov = {0.04, 0.01, 0.01}; // not 2x2
+    auto post = bl_posterior_returns(kBLPi2, bad_cov, kBLTau, kBLP1, kBLQ1, kBLOmega1, 2, 1);
+    EXPECT_FALSE(post.has_value());
+}
+
+TEST(FinanceBlackLitterman, PosteriorNonPositiveTauErrors) {
+    EXPECT_FALSE(bl_posterior_returns(kBLPi2, kBLCov2, 0.0, kBLP1, kBLQ1, kBLOmega1, 2, 1)
+                    .has_value());
+    EXPECT_FALSE(bl_posterior_returns(kBLPi2, kBLCov2, -0.01, kBLP1, kBLQ1, kBLOmega1, 2, 1)
+                    .has_value());
+}
+
+TEST(FinanceBlackLitterman, PosteriorNonPositiveNErrors) {
+    EXPECT_FALSE(bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, kBLOmega1, 0, 1)
+                    .has_value());
+    EXPECT_FALSE(bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, kBLOmega1, -1, 1)
+                    .has_value());
+}
+
+TEST(FinanceBlackLitterman, PosteriorKZeroNonEmptyViewsErrors) {
+    // k=0 must be paired with genuinely empty P/Q/omega; supplying views
+    // while claiming k=0 is an inconsistent request, not silently ignored.
+    auto post = bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, kBLOmega1, 2, 0);
+    EXPECT_FALSE(post.has_value());
+}
+
+TEST(FinanceBlackLitterman, PosteriorSingularOmegaErrors) {
+    std::vector<double> singular_omega = {0.0};
+    auto post = bl_posterior_returns(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, singular_omega, 2, 1);
+    EXPECT_FALSE(post.has_value());
+}
+
+TEST(FinanceBlackLitterman, PosteriorSingularSigmaErrors) {
+    std::vector<double> singular_cov = {0.0, 0.0,
+                                        0.0, 0.0};
+    auto post = bl_posterior_returns(kBLPi2, singular_cov, kBLTau, kBLP1, kBLQ1, kBLOmega1, 2, 1);
+    EXPECT_FALSE(post.has_value());
+}
+
+TEST(FinanceBlackLitterman, DefaultOmegaDimensionMismatchErrors) {
+    std::vector<double> bad_cov = {0.04, 0.01, 0.01}; // not 2x2
+    EXPECT_FALSE(bl_posterior_returns_default_omega(kBLPi2, bad_cov, kBLTau, kBLP1, kBLQ1, 2, 1)
+                    .has_value());
+
+    std::vector<double> bad_P = {1.0, 0.0, 0.0}; // not k*n
+    EXPECT_FALSE(
+        bl_posterior_returns_default_omega(kBLPi2, kBLCov2, kBLTau, bad_P, kBLQ1, 2, 1)
+            .has_value());
+
+    std::vector<double> bad_Q = {0.10, 0.05}; // not size k
+    EXPECT_FALSE(
+        bl_posterior_returns_default_omega(kBLPi2, kBLCov2, kBLTau, kBLP1, bad_Q, 2, 1)
+            .has_value());
+}
+
+TEST(FinanceBlackLitterman, DefaultOmegaNonPositiveTauOrNErrors) {
+    EXPECT_FALSE(
+        bl_posterior_returns_default_omega(kBLPi2, kBLCov2, 0.0, kBLP1, kBLQ1, 2, 1).has_value());
+    EXPECT_FALSE(
+        bl_posterior_returns_default_omega(kBLPi2, kBLCov2, kBLTau, kBLP1, kBLQ1, 0, 1)
+            .has_value());
+}
+
+TEST(FinanceBlackLitterman, ThreeAssetTwoViewsProducesFiniteBlend) {
+    // Reuses the 3-asset covariance from the Markowitz tests above. Two
+    // views: an absolute view on asset 0, and a relative view (asset1 vs
+    // asset2), derived Omega. This is a sanity/integration check (finite,
+    // right-sized output) rather than a hand-computed reference.
+    std::vector<double> w_mkt3 = {1.0 / 3, 1.0 / 3, 1.0 / 3};
+    auto pi3 = bl_implied_returns(kCov3, w_mkt3, 2.5, 3);
+    ASSERT_TRUE(pi3.has_value());
+
+    std::vector<double> P3 = {1.0, 0.0, 0.0,
+                              0.0, 1.0, -1.0};
+    std::vector<double> Q3 = {0.15, 0.03};
+    auto post = bl_posterior_returns_default_omega(*pi3, kCov3, 0.05, P3, Q3, 3, 2);
+    ASSERT_TRUE(post.has_value());
+    ASSERT_EQ(post->size(), 3u);
+    for (double v : *post) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(FinanceBlackLitterman, EndToEndImpliedThenPosteriorFeedsMeanVariance) {
+    // Full pipeline: reverse-optimize the prior from market weights, blend in
+    // a view, then feed the posterior returns into the existing max-Sharpe
+    // optimizer as `mu`, exercising the intended cross-module usage.
+    std::vector<double> w_mkt2 = {0.5, 0.5};
+    auto pi = bl_implied_returns(kBLCov2, w_mkt2, 2.5, 2);
+    ASSERT_TRUE(pi.has_value());
+
+    auto post = bl_posterior_returns_default_omega(*pi, kBLCov2, kBLTau, kBLP1, kBLQ1, 2, 1);
+    ASSERT_TRUE(post.has_value());
+    // The view pulls asset 0's posterior return above its implied prior.
+    EXPECT_GT(post->at(0), pi->at(0));
+
+    auto w = max_sharpe_portfolio(kBLCov2, *post, 0.0, 2);
+    ASSERT_TRUE(w.has_value());
+    EXPECT_NEAR(w->at(0) + w->at(1), 1.0, 1e-8);
+}
+
 TEST(FinanceMC, AsianEdgeCasesReturnZero) {
     double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
     EXPECT_EQ(mc_asian_call(S, K, T, r, sigma, 0, 10), 0.0);
