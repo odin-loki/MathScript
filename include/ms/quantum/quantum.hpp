@@ -28,6 +28,8 @@ DensityMatrix dagger(const DensityMatrix& op);   // conjugate transpose
 // ---- Measurement ----
 double expectation(const Ket& psi, const DensityMatrix& A);   // <psi|A|psi>
 double expectation_dm(const DensityMatrix& rho, const DensityMatrix& A);
+// Standard-deviation product Δ(A)·Δ(B) for state |psi>
+double uncertainty(const Ket& psi, const DensityMatrix& A, const DensityMatrix& B);
 
 // ---- Pauli matrices ----
 DensityMatrix pauli_x();
@@ -79,8 +81,14 @@ Ket w_state(int n_qubits);
 Ket coherent_state(C alpha, int n_max = 30);
 Ket fock_state(int n, int n_max);
 
+// ---- Hamiltonian spectrum ----
+// Eigenvalues of Hermitian operator H (sorted ascending)
+std::vector<double> eigenspectrum(const DensityMatrix& H);
+// Ground-state eigenvector (smallest eigenvalue), normalised
+Ket ground_state(const DensityMatrix& H);
+
 // ---- Time evolution ----
-// Solve Schrödinger equation: i hbar dpsi/dt = H psi
+// Solve Schrödinger equation: i dpsi/dt = H psi  (ℏ = 1)
 // Returns psi(t) for t in linspace(t0, t1, n_steps)
 std::vector<Ket> schrodinger(const DensityMatrix& H, const Ket& psi0,
                               double t0, double t1, int n_steps = 100);

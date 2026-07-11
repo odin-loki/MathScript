@@ -105,6 +105,22 @@ double expectation_dm(const DensityMatrix& rho, const DensityMatrix& A) {
     return trace.real();
 }
 
+namespace {
+
+double observable_stddev(const Ket& psi, const DensityMatrix& A) {
+    const double mean = expectation(psi, A);
+    const auto A2 = matmul_dm(A, A);
+    const double mean_sq = expectation(psi, A2);
+    const double variance = mean_sq - mean * mean;
+    return variance > 0.0 ? std::sqrt(variance) : 0.0;
+}
+
+} // namespace
+
+double uncertainty(const Ket& psi, const DensityMatrix& A, const DensityMatrix& B) {
+    return observable_stddev(psi, A) * observable_stddev(psi, B);
+}
+
 // ---- Pauli matrices ----
 
 DensityMatrix pauli_x() { return {{{0,0},{1,0}}, {{1,0},{0,0}}}; }
@@ -236,8 +252,13 @@ DensityMatrix qft_gate(int n_qubits) {
 namespace {
 
 // Jacobi diagonalisation for small Hermitian matrices (n <= 8).
-void hermitian_jacobi_diagonalize(DensityMatrix& H, int n,
+// When evecs is non-null, columns of *evecs accumulate eigenvectors.
+void hermitian_jacobi_diagonalize(DensityMatrix& H, int n, DensityMatrix* evecs = nullptr,
                                   double tol = 1e-14, int max_sweeps = 100) {
+    if (evecs) {
+        *evecs = identity(n);
+    }
+
     for (int sweep = 0; sweep < max_sweeps; ++sweep) {
         int p = 0, q = 1;
         double max_off = 0.0;
@@ -265,6 +286,12 @@ void hermitian_jacobi_diagonalize(DensityMatrix& H, int n,
             H[k][q] *= std::conj(dq);
             H[q][k] *= dq;
         }
+        if (evecs) {
+            for (int k = 0; k < n; ++k) {
+                (*evecs)[k][p] *= dp;
+                (*evecs)[k][q] *= dq;
+            }
+        }
         apq = H[p][q];
 
         const double app = H[p][p].real();
@@ -286,6 +313,15 @@ void hermitian_jacobi_diagonalize(DensityMatrix& H, int n,
         H[p][p] = C(new_pp, 0.0);
         H[q][q] = C(new_qq, 0.0);
         H[p][q] = H[q][p] = C(0.0, 0.0);
+
+        if (evecs) {
+            for (int k = 0; k < n; ++k) {
+                const C vp = (*evecs)[k][p];
+                const C vq = (*evecs)[k][q];
+                (*evecs)[k][p] = C(c * vp.real() - s * vq.real(), c * vp.imag() - s * vq.imag());
+                (*evecs)[k][q] = C(s * vp.real() + c * vq.real(), s * vp.imag() + c * vq.imag());
+            }
+        }
     }
 }
 
@@ -299,7 +335,38 @@ std::vector<double> hermitian_eigenvalues(const DensityMatrix& rho) {
     return evals;
 }
 
+void hermitian_eigendecomposition(const DensityMatrix& H_in, int n,
+                                   std::vector<double>& evals, DensityMatrix& evecs) {
+    DensityMatrix H = H_in;
+    hermitian_jacobi_diagonalize(H, n, &evecs);
+    evals.resize(n);
+    for (int i = 0; i < n; ++i)
+        evals[i] = H[i][i].real();
+}
+
 } // namespace
+
+std::vector<double> eigenspectrum(const DensityMatrix& H) {
+    auto evals = hermitian_eigenvalues(H);
+    std::sort(evals.begin(), evals.end());
+    return evals;
+}
+
+Ket ground_state(const DensityMatrix& H) {
+    const int n = static_cast<int>(H.size());
+    std::vector<double> evals;
+    DensityMatrix evecs;
+    hermitian_eigendecomposition(H, n, evals, evecs);
+
+    int min_idx = 0;
+    for (int i = 1; i < n; ++i)
+        if (evals[i] < evals[min_idx]) min_idx = i;
+
+    Ket psi(n);
+    for (int i = 0; i < n; ++i)
+        psi[i] = evecs[i][min_idx];
+    return ket_normalise(psi);
+}
 
 // von Neumann entropy: S(rho) = -Tr(rho log rho) = -sum_i lambda_i log(lambda_i)
 double von_neumann_entropy(const DensityMatrix& rho) {
