@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <random>
 #include <span>
 #include <string>
 #include <vector>
@@ -176,5 +177,49 @@ std::vector<Share> split_secret(uint64_t secret, int n, int k, CSPRNG& rng);
 Result<uint64_t> reconstruct_secret(const std::vector<Share>& shares);
 
 } // namespace mpc
+
+namespace consensus {
+
+enum class NodeRole { Follower, Candidate, Leader };
+
+struct LogEntry {
+    uint64_t term = 0;
+    std::string command;
+};
+
+struct Node {
+    int id = 0;
+    NodeRole role = NodeRole::Follower;
+    uint64_t current_term = 0;
+    int voted_for = -1;
+    std::vector<LogEntry> log;
+    uint64_t commit_index = 0;
+};
+
+/// In-memory, single-process simulation of simplified Raft leader election and log replication.
+/// Nodes are driven explicitly via run_election() / replicate() — there is no real networking,
+/// RPC layer, failure/partition model beyond split-vote rounds, log compaction, snapshotting,
+/// or membership changes. For demonstration and testing only; not a production consensus system.
+struct Cluster {
+    std::vector<Node> nodes;
+    unsigned seed = 42;
+
+    explicit Cluster(int n, unsigned seed = 42);
+
+    /// Runs one election round: a seeded RNG picks one candidate (and occasionally a second for
+    /// split-vote simulation when n >= 4). Returns the elected leader id, or -1 if no majority.
+    int run_election();
+
+    /// Appends command to the leader log and replicates to a quorum; returns true on commit.
+    bool replicate(int leader_id, const std::string& command);
+
+    /// Returns the current leader id, or -1 if none (or ambiguous).
+    int current_leader() const;
+
+private:
+    std::mt19937 rng_;
+};
+
+} // namespace consensus
 
 } // namespace ms::izaac
