@@ -74,6 +74,47 @@ struct NaiveBayes {
     double score(const Mat& X, const Vec& y) const;
 };
 
+/// Linear Discriminant Analysis — Gaussian classifier with a shared
+/// (pooled) within-class covariance matrix. Supports classification via
+/// the standard linear discriminant function and supervised dimensionality
+/// reduction via transform().
+struct LDA {
+    double reg_epsilon = 1e-6;
+    int n_components = 0;  // 0 → min(n_classes-1, n_features)
+    Vec classes;
+    Vec class_prior;
+    Mat mean;              // n_classes × n_features
+    Mat pooled_cov_inv;    // n_features × n_features
+    Vec discrim_const;     // per-class constant term in discriminant
+    Mat discrim_coef;      // n_classes × n_features linear coefficients
+    Mat projection;        // n_components × n_features discriminant directions
+    Vec overall_mean;
+
+    explicit LDA(double eps = 1e-6, int n_comp = 0) : reg_epsilon(eps), n_components(n_comp) {}
+    void fit(const Mat& X, const Vec& y);
+    Vec predict(const Mat& X) const;
+    double score(const Mat& X, const Vec& y) const;
+    Mat transform(const Mat& X) const;
+};
+
+/// Quadratic Discriminant Analysis — Gaussian classifier with per-class
+/// covariance matrices (the key difference from LDA). Classification
+/// evaluates each class's multivariate-Gaussian log-density plus log-prior.
+struct QDA {
+    double reg_epsilon = 1e-6;
+    Vec classes;
+    Vec class_prior;
+    Mat mean;              // n_classes × n_features
+    Mat quad_coef;         // n_classes × (n_features*n_features) flattened Σ_k^{-1}
+    Mat linear_coef;       // n_classes × n_features  (Σ_k^{-1} μ_k)
+    Vec discrim_const;     // per-class constant in the quadratic discriminant
+
+    explicit QDA(double eps = 1e-6) : reg_epsilon(eps) {}
+    void fit(const Mat& X, const Vec& y);
+    Vec predict(const Mat& X) const;
+    double score(const Mat& X, const Vec& y) const;
+};
+
 struct DecisionTree {
     int max_depth; std::string criterion;
     struct Node {
