@@ -172,6 +172,65 @@ SimplicialComplex vietoris_rips(const std::vector<std::vector<double>>& dist_mat
     return sc;
 }
 
+// ========================== Čech complex ==========================
+
+// Minimum enclosing ball radius of a triangle given its three side lengths.
+// If the triangle is acute/right, this is the circumradius R = (a*b*c)/(4*Area).
+// If obtuse, the MEB is centered on the longest side, radius = longest_side/2.
+// Degenerate/near-degenerate triangles (zero or ~zero area) fall back to
+// half the longest side, which is still a valid enclosing ball radius.
+static double min_enclosing_ball_radius_triangle(double a, double b, double c) {
+    // Sort so that `c` is the longest side.
+    if (a > b) std::swap(a, b);
+    if (b > c) std::swap(b, c);
+    if (a > b) std::swap(a, b);
+
+    // Obtuse (or right) at the vertex opposite the longest side c:
+    // c^2 >= a^2 + b^2  =>  MEB is just the longest side's midpoint/radius.
+    if (c*c >= a*a + b*b - 1e-12) {
+        return c / 2.0;
+    }
+
+    // Acute triangle: circumradius via Heron's formula.
+    double s = (a + b + c) / 2.0;
+    double area_sq = s * (s-a) * (s-b) * (s-c);
+    if (area_sq <= 0.0) return c / 2.0;  // degenerate: collinear points
+    double area = std::sqrt(area_sq);
+    return (a * b * c) / (4.0 * area);
+}
+
+SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matrix,
+                                double epsilon, int max_dim) {
+    int n = static_cast<int>(dist_matrix.size());
+    int dim_cap = std::min(max_dim, 2);  // see @note: k>=3 not supported from distances alone
+    SimplicialComplex sc;
+
+    // dim 0: vertices are always included (a single ball trivially "intersects itself").
+    for (int i = 0; i < n; ++i) sc.add_point(i);
+
+    // dim 1: edge {i,j} iff balls of radius epsilon around i,j intersect, i.e. dist(i,j) <= 2*epsilon.
+    // (Mirrors vietoris_rips: edges are always considered regardless of max_dim.)
+    for (int i = 0; i < n; ++i)
+        for (int j = i+1; j < n; ++j)
+            if (dist_matrix[i][j] <= 2.0 * epsilon) sc.add_simplex({i, j});
+
+    // dim 2: triangle {i,j,k} iff its minimum enclosing ball radius <= epsilon.
+    // Checked independently per triple -- NOT inferred from the 1-skeleton.
+    if (dim_cap >= 2) {
+        for (int i = 0; i < n; ++i)
+            for (int j = i+1; j < n; ++j)
+                for (int k = j+1; k < n; ++k) {
+                    double a = dist_matrix[i][j];
+                    double b = dist_matrix[j][k];
+                    double c = dist_matrix[i][k];
+                    double r = min_enclosing_ball_radius_triangle(a, b, c);
+                    if (r <= epsilon) sc.add_simplex({i, j, k});
+                }
+    }
+
+    return sc;
+}
+
 // ========================== Persistent Homology ==========================
 // Simplified persistence using reduction algorithm (Z/2 coefficients)
 
