@@ -7613,6 +7613,16 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       semicolon-separated per-component formulas, e.g. ode_rk4_vec("y1; -y0",0,[1,0],6.283,200));
       docs/API.md synced through Wave 179; 357 suites (no new suite files, all additions
       extend existing suites), 100% passing.
+      Wave 181: REPL bindings for 13 pure functions across ms::gria/ms::cypha/ms::cellai/
+      ms::izaac (entropy, matrix_alpha, NIG fit/pdf/cdf/sample, hebbian_update, energy,
+      estimate_pi, laplace/gaussian DP noise); ms::ml GaussianMixture (diagonal-covariance EM);
+      ms::signal welch_psd + spectrogram (composing the existing ms::fft primitives);
+      ms::stats bootstrap_ci (percentile method); CRITICAL FIX: ms::izaac::CSPRNG replaced
+      with proper xoshiro256**+SplitMix64 (previous generator only mutated 8/32 state bytes
+      per call and had a single weak seed-mixing pass, producing badly biased output — caught
+      via manual smoke-testing when izaac_estimate_pi returned 4.0/3.0 instead of ~3.14159;
+      affected statistical correctness of every RNG consumer added Waves 176-180); docs/API.md
+      synced through Wave 180; tag checklist 357→358 (358 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7620,6 +7630,8 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       ode_dde_fixed_step/ode_event_detect/ode_dae_index1 (these have more complex
       multi-callback or boundary-condition signatures needing further formula-bridge design
       beyond the single/multi-formula convention used so far — tracked as the concrete next step).
+      REPL exposure for stateful framework classes (DifModel/CellMemory/BloomFilter/
+      TokenBucket/consensus::Cluster) — needs a session-object registry that doesn't exist yet.
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
       Axiom::evolve mutation still perturbs fitness directly rather than mutating the

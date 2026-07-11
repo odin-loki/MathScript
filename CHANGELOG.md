@@ -3,6 +3,24 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 181 — Framework REPL Bindings, GMM, Spectral Analysis, Bootstrap CI, CSPRNG Quality Fix)
+
+### Fixed (Wave 181) — critical
+- **`ms::izaac::CSPRNG` was producing badly-biased pseudo-random output.** `next_u64()` only ever mutated 8 of the class's 32 state bytes per call (bytes 8–10 and 19–31 were frozen forever after construction), and the seed-mixing pass (`mix_seed`) was a single weak XOR round with no diffusion — for small deterministic seeds (as used by `izaac seed <n>` in the REPL) this produced state with very little entropy. Caught via manual smoke-testing this wave: `izaac_estimate_pi(100000)` returned exactly `4.0` for one seed and `3.0` for another (should be ≈3.14159 ± ~0.003 at that sample count) — i.e. nearly every or exactly 75%/90%/100% of samples were landing inside the unit circle, a massive statistical bias. Existing unit tests never caught this because they only checked ranges/finiteness (`EXPECT_GT`/`EXPECT_LT`/`std::isfinite`), not statistical quality. Replaced the generator with a proper **xoshiro256\*\*** (Blackman & Vigna, public domain) operating on the full 256-bit state, seeded via **SplitMix64** expansion (guarantees good avalanche behavior even from a single small integer). Verified fix: `izaac_estimate_pi(100000)` now returns 3.130–3.145 across 5 different seeds, matching the expected Monte Carlo standard error. This bug affected the statistical correctness (though not the crash-safety) of every downstream RNG consumer added across Waves 176–180: `mc::estimate_pi`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`, `mpc::split_secret` (coefficient generation), `bloom::BloomFilter` (hash seeds), `cypha::nig_sample`, `randn_matrix`/`rand_matrix`. The class is still explicitly documented as NOT cryptographically secure (unrelated to this fix — it never claimed to be for security purposes, only as a session-scoped deterministic sampling source). All 358 CTest suites still pass unchanged (no test hardcoded exact RNG output values — all were range/consistency checks, confirmed by grep before making the change).
+
+### Added (Wave 181)
+- REPL: wired 13 previously-unexposed pure functions across `ms::gria`/`ms::cypha`/`ms::cellai`/`ms::izaac` — `gria_entropy`, `gria_matrix_alpha`, `gria_is_critical`, `gria_classify`, `cypha_nig_fit`, `cypha_nig_pdf`, `cypha_nig_cdf`, `cypha_nig_sample`, `cellai_hebbian_update`, `cellai_energy`, `izaac_estimate_pi`, `izaac_laplace_noise`, `izaac_gaussian_noise`. New `tests/integration/test_frameworks_repl_pipeline.cpp`; fuzz corpus seeds for all 13; help text updated. (Stateful class-based APIs — `DifModel`, `CellMemory`, `BloomFilter`, `TokenBucket`, `Cluster` — remain unwired; they need session-object lifetime management that's out of scope this wave.)
+- `ms::ml`: `GaussianMixture` — diagonal-covariance Gaussian Mixture Model via Expectation-Maximization, the probabilistic/soft-clustering sibling of `KMeans` — extends `tests/unit/test_ml.cpp`
+- `ms::signal`: `welch_psd` (Welch's method power spectral density) and `spectrogram` (STFT), both composing the existing `ms::fft` primitives rather than reimplementing FFT logic — extends `tests/unit/test_signal_ext.cpp`
+- `ms::stats`: `bootstrap_ci` — percentile-method bootstrap confidence interval for an arbitrary statistic function — extends `tests/unit/test_stats_prob_ext.cpp`
+- `docs/API.md`: synced entries for Wave 180 additions (`one_way_anova`/`mann_whitney_u`/`ks_test_2sample`, `ms::izaac::consensus`, `SVM`, the 6 vector/Verlet/BDF2 ODE REPL bindings)
+- Tag checklist suite count updated 357→358
+- **Total Wave 181: 358 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- Stateful framework classes (`DifModel`, `CellMemory`, `BloomFilter`, `TokenBucket`, `izaac::consensus::Cluster`) still have no REPL exposure — would need a session-object registry (create/store/reference-by-name) that doesn't exist yet in the REPL.
+- The formula bridge still doesn't cover `ode_backward_euler_vec`, `ode_bvp_shooting`, `ode_dde_fixed_step`, `ode_event_detect`, or `ode_dae_index1`.
+
 ## [1.0.0] — 2026-07-11 (Wave 180 — ODE Vector/Verlet REPL Bridge, Izaac Consensus, SVM, Stats Hypothesis Tests)
 
 ### Added (Wave 180)

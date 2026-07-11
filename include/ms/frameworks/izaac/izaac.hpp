@@ -29,6 +29,14 @@ bool verify(
     std::span<const uint8_t> msg,
     const VRFProof& proof);
 
+/// Seedable pseudo-random generator (xoshiro256** internally) used for session-scoped
+/// sampling throughout ms::izaac and the frameworks that build on it (Monte Carlo estimation,
+/// differential privacy noise, secret-sharing coefficients, bloom filter hash seeds, etc.).
+/// The name reflects its role as the session's deterministic randomness source, seeded from a
+/// VRF proof or a raw seed; it is NOT a cryptographically-secure generator in the security
+/// sense (do not use it to generate real cryptographic key material) but does have good
+/// statistical quality (long period, passes standard randomness test suites) suitable for
+/// simulation/estimation workloads.
 class CSPRNG {
 public:
     explicit CSPRNG(const VRFProof& seed);

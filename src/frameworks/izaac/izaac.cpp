@@ -29,11 +29,41 @@ double normal_from_rng() {
     return rng ? rng->next_normal() : 0.0;
 }
 
+uint64_t rotl64(uint64_t x, int k) {
+    return (x << k) | (x >> (64 - k));
+}
+
+// SplitMix64 (Vigna): used only to expand/diffuse a raw seed into well-distributed 64-bit
+// words. Guarantees good avalanche behaviour even for small, low-entropy seeds (e.g. a
+// deterministic small integer passed to seed_session), unlike a single-pass byte XOR.
+uint64_t splitmix64_next(uint64_t& x) {
+    x += 0x9E3779B97F4A7C15ULL;
+    uint64_t z = x;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
+// Expands an arbitrary 32-byte seed into a well-mixed 256-bit state for the xoshiro256**
+// generator used by next_u64(). Folds all 32 input bytes into a single 64-bit accumulator
+// (order- and position-sensitive via rotation) and then runs that accumulator through
+// SplitMix64 four times to produce the four state words, each forced non-zero (xoshiro256**
+// is undefined for an all-zero state).
 std::array<uint8_t, 32> mix_seed(std::array<uint8_t, 32> seed) {
+    uint64_t acc = 0x243F6A8885A308D3ULL;
     for (size_t i = 0; i < seed.size(); ++i) {
-        seed[i] ^= static_cast<uint8_t>(seed[(i + 7) % seed.size()] + i * 31);
+        acc = rotl64(acc ^ (static_cast<uint64_t>(seed[i]) << ((i % 8) * 8)), 13) +
+              static_cast<uint64_t>(i);
     }
-    return seed;
+    std::array<uint8_t, 32> out{};
+    for (int w = 0; w < 4; ++w) {
+        uint64_t word = splitmix64_next(acc);
+        if (word == 0) {
+            word = 1;
+        }
+        std::memcpy(out.data() + w * 8, &word, sizeof(word));
+    }
+    return out;
 }
 
 uint64_t fnv1a_64(std::span<const uint8_t> data, uint64_t seed) {
@@ -218,19 +248,40 @@ CSPRNG::CSPRNG(const VRFProof& seed) {
 CSPRNG::CSPRNG(std::array<uint8_t, 32> seed) : state_(mix_seed(seed)) {}
 
 void CSPRNG::fill(std::span<uint8_t> buf) {
-    for (size_t i = 0; i < buf.size(); ++i) {
-        buf[i] = static_cast<uint8_t>(next_u64() & 0xFF);
+    size_t i = 0;
+    while (i < buf.size()) {
+        const uint64_t word = next_u64();
+        for (size_t b = 0; b < sizeof(word) && i < buf.size(); ++b, ++i) {
+            buf[i] = static_cast<uint8_t>((word >> (b * 8)) & 0xFF);
+        }
     }
 }
 
+// xoshiro256** (Blackman & Vigna, public domain): a fast, high-quality, non-cryptographic
+// PRNG operating on the full 256-bit state (state_ interpreted as four uint64_t words).
+// The previous implementation only ever mutated 8 of the 32 state bytes per call and relied
+// on a single weak XOR mixing pass at construction, which produced badly biased output (e.g.
+// Monte Carlo pi estimates off by >20%) especially for small deterministic seeds. This
+// generator has a long period (2^256 - 1) and passes standard statistical test suites; it is
+// still explicitly NOT cryptographically secure (see the CSPRNG class doc — the name reflects
+// its role as a seedable session generator, not a security guarantee).
 uint64_t CSPRNG::next_u64() {
-    uint64_t x = 0;
-    for (size_t i = 0; i < 8; ++i) {
-        state_[i % 32] = static_cast<uint8_t>(state_[i % 32] ^ state_[(i + 11) % 32] ^ static_cast<uint8_t>(stream_));
-        x = (x << 8) | state_[i % 32];
-    }
+    std::array<uint64_t, 4> s{};
+    std::memcpy(s.data(), state_.data(), sizeof(s));
+
+    const uint64_t result = rotl64(s[1] * 5, 7) * 9;
+    const uint64_t t = s[1] << 17;
+
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
+    s[3] = rotl64(s[3], 45);
+
+    std::memcpy(state_.data(), s.data(), sizeof(s));
     ++stream_;
-    return x;
+    return result;
 }
 
 double CSPRNG::next_f64() {
