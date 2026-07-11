@@ -45,4 +45,40 @@ OdeResultVec ode_rk4_vec(OdeFuncVec f, double t0,
 OdeResult ode_adams_bashforth2(OdeFunc f, double t0, double y0,
                                 double t_end, size_t steps);
 
+// Implicit backward Euler (scalar stiff IVP)
+OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
+                              double t_end, size_t steps);
+
+// Second-order BVP via shooting: y'' = f(t, y, y')
+using OdeBvpFunc = std::function<double(double t, double y, double yp)>;
+
+struct OdeBvpResult {
+    std::vector<double> t;
+    std::vector<double> y;
+    std::vector<double> yp;
+    bool converged = false;
+    size_t iterations = 0;
+};
+
+OdeBvpResult ode_bvp_shooting(OdeBvpFunc f, double t0, double y_a,
+                               double t_end, double y_b, size_t steps);
+
+// Scalar delay differential equation (fixed-step RK4)
+OdeResult ode_dde_fixed_step(std::function<double(double, double, double)> f,
+                              std::function<double(double)> history,
+                              double t0, double t_end, double tau,
+                              size_t steps);
+
+// Scalar IVP with root-crossing event detection (RK4 + bisection)
+struct OdeEventResult {
+    std::vector<double> t;
+    std::vector<double> y;
+    std::vector<double> event_times;
+    std::vector<double> event_values;
+};
+
+OdeEventResult ode_event_detect(OdeFunc f, OdeFunc event_g,
+                                 double t0, double y0, double t_end,
+                                 size_t steps);
+
 } // namespace ms
