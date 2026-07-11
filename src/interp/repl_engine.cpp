@@ -37,6 +37,7 @@
 #include "ms/poly/poly.hpp"
 #include "ms/pde/pde.hpp"
 #include "ms/symbolic/symbolic.hpp"
+#include "ms/ode/ode.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -44,6 +45,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <optional>
 #include <regex>
 #include <sstream>
@@ -4638,6 +4640,92 @@ Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std
     return std::to_string(sym_eval(*expr, {{var, value}})) + "\n";
 }
 
+Result<std::string> format_ode_trajectory(const OdeResult& result) {
+    if (result.t.size() != result.y.size()) {
+        return std::unexpected(DomainError{"ode", "internal trajectory size mismatch"});
+    }
+    Matrix<double> out(result.t.size(), 2);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        out(i, 0) = result.t[i];
+        out(i, 1) = result.y[i];
+    }
+    std::ostringstream oss;
+    oss << "traj =\n";
+    oss << std::fixed << std::setprecision(6);
+    for (size_t i = 0; i < out.rows(); ++i) {
+        oss << "  [";
+        for (size_t j = 0; j < out.cols(); ++j) {
+            if (j > 0) {
+                oss << ", ";
+            }
+            oss << out(i, j);
+        }
+        oss << "]\n";
+    }
+    return oss.str();
+}
+
+Result<std::string> eval_ode_fixed_step_call(const std::string& fn, const std::string& formula_arg,
+                                             const std::string& t0_arg,
+                                             const std::string& y0_arg,
+                                             const std::string& t_end_arg,
+                                             const std::string& steps_arg,
+                                             OdeResult (*solver)(OdeFunc, double, double, double,
+                                                                 size_t)) {
+    auto expr = parse_sym_quoted_expr(formula_arg, fn.c_str());
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y0_arg), y0) ||
+        !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn, std::string("expected ") + fn + "(\"formula\", t0, y0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeFunc f = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    return format_ode_trajectory(
+        solver(f, t0, y0, t_end, static_cast<size_t>(steps_i)));
+}
+
+Result<std::string> eval_ode_rk45_call(const std::string& formula_arg, const std::string& t0_arg,
+                                       const std::string& y0_arg, const std::string& t_end_arg,
+                                       const std::string& rtol_arg, const std::string& atol_arg) {
+    constexpr const char* fn = "ode_rk45";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double rtol = 0.0;
+    double atol = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y0_arg), y0) ||
+        !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(rtol_arg), rtol) || !parse_number(trim_copy(atol_arg), atol)) {
+        return std::unexpected(DomainError{
+            fn, "expected ode_rk45(\"formula\", t0, y0, t_end, rtol, atol)"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeFunc f = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    return format_ode_trajectory(ode_rk45(f, t0, y0, t_end, rtol, atol));
+}
+
 std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) {
     std::smatch match;
     static const std::regex sym_binary(R"((\w+)\(([^,]+),([^)]+)\))", std::regex::icase);
@@ -8733,6 +8821,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
             "  name = sym_integrate(\"expr\",\"var\") integrate quoted expression w.r.t. variable\n"
             "  name = sym_eval(\"expr\",\"var=value\") numerically evaluate quoted expression\n"
+            "  name = ode_euler(\"formula\",t0,y0,t_end,steps) Euler IVP trajectory [t,y] columns\n"
+            "  name = ode_rk4(\"formula\",t0,y0,t_end,steps) RK4 IVP trajectory [t,y] columns\n"
+            "  name = ode_midpoint(\"formula\",t0,y0,t_end,steps) midpoint IVP trajectory [t,y] columns\n"
+            "  name = ode_rk45(\"formula\",t0,y0,t_end,rtol,atol) adaptive RK45 IVP trajectory [t,y] columns\n"
+            "  name = ode_backward_euler(\"formula\",t0,y0,t_end,steps) backward Euler IVP trajectory [t,y] columns\n"
             "  name = fft_rfft(x) real FFT spectrum as Nx2 [re,im] matrix\n"
             "  name = fftshift(S) cyclic shift of Nx2 complex spectrum\n"
             "  name = fft_dft(x) discrete Fourier transform as Nx2 [re,im] matrix\n"
@@ -8943,7 +9036,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  heun_g(a,q,alpha,beta,gamma,delta,z), painleve1(x,y0,yp0)\n"
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
-            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"};
+            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"
+            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100)\n"};
     }
     if (lcmd == "version") {
         std::ostringstream out;
@@ -11043,12 +11137,57 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, *value);
             return out.str();
         }
+        if (fn == "ode_euler") {
+            auto value = eval_ode_fixed_step_call(fn, trim(match[2].str()), trim(match[3].str()),
+                                                  trim(match[4].str()), trim(match[5].str()),
+                                                  trim(match[6].str()), ode_euler);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_rk4") {
+            auto value = eval_ode_fixed_step_call(fn, trim(match[2].str()), trim(match[3].str()),
+                                                  trim(match[4].str()), trim(match[5].str()),
+                                                  trim(match[6].str()), ode_rk4);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_midpoint") {
+            auto value = eval_ode_fixed_step_call(fn, trim(match[2].str()), trim(match[3].str()),
+                                                  trim(match[4].str()), trim(match[5].str()),
+                                                  trim(match[6].str()), ode_midpoint);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_backward_euler") {
+            auto value = eval_ode_fixed_step_call(fn, trim(match[2].str()), trim(match[3].str()),
+                                                  trim(match[4].str()), trim(match[5].str()),
+                                                  trim(match[6].str()), ode_backward_euler);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
     }
 
     static const std::regex senary(
         R"((\w+)\(([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^)]+)\))", std::regex::icase);
     if (std::regex_match(cmd, match, senary)) {
         const std::string fn = lower(match[1].str());
+        if (fn == "ode_rk45") {
+            auto value = eval_ode_rk45_call(trim(match[2].str()), trim(match[3].str()),
+                                            trim(match[4].str()), trim(match[5].str()),
+                                            trim(match[6].str()), trim(match[7].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
         if (fn == "geo_dist3d") {
             double x1 = 0.0;
             double y1 = 0.0;
