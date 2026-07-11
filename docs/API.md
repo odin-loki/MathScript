@@ -73,7 +73,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `prob/prob.hpp` | PDF/CDF/PPF for normal (`norm_ppf`), exponential (`exp_ppf`), binomial, Poisson, chi-square (`chi2_ppf`), t (`t_ppf`), gamma (`gamma_cdf`/`gamma_ppf`), beta (`beta_pdf`/`beta_cdf`/`beta_ppf`), F (`f_pdf`/`f_cdf`/`f_ppf`), uniform |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions; `welch_psd` (Welch PSD via segmented FFT with overlap) and `spectrogram` (STFT magnitude spectrogram, same windowing convention) |
-| `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye` |
+| `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye`; `erfinv`/`erfcinv`, `trigamma`/`polygamma`, `pochhammer`/`falling_factorial`, `rgamma`, and the public canonical `gamma_inc_reg`/`gamma_inc_reg_upper`/`gamma_inc`/`beta_inc_reg`/`beta_inc` (also used internally by `ms::prob`'s `gamma_cdf`/`beta_cdf`/`f_cdf`/`chi2_cdf`) |
 | `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`, `ode_rk45_vec`; symplectic: `ode_verlet`, `ode_verlet_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`, `ode_bdf2` (BDF2 multistep, A-stable, bootstraps first step via BDF1); BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
 | `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson, unconditionally stable), `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d`, `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d`, `pde_reaction_diffusion_1d` (Fisher-KPP, zero-flux Neumann BC) with CFL/stability guards |
 | `poly/poly.hpp` | Polynomial eval, add/sub/mul, derivative on coefficient vectors |
@@ -126,7 +126,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `quantum/quantum.hpp` | Kets and density matrices, Pauli and standard gates, tensor products, QFT, Bell/GHZ/W/coherent/Fock states, von Neumann entropy, fidelity, partial trace, entanglement entropy, Schrödinger time evolution |
+| `quantum/quantum.hpp` | Kets and density matrices, Pauli and standard gates, tensor products, QFT, Bell/GHZ/W/coherent/Fock states, von Neumann entropy, fidelity, partial trace, entanglement entropy, Schrödinger time evolution (`schrodinger`), uncertainty products (`uncertainty`), Hamiltonian spectra and ground states (`eigenspectrum`/`ground_state`) |
 
 ## Computational Geometry — Wave 59 (`include/ms/geo/`)
 
@@ -352,6 +352,16 @@ The `Interpreter` now holds a `std::variant`-backed named-handle registry so use
 | `idst2(M)` | Inverse 2D DST; real-valued result, same layout as `fft_dst2` |
 
 `reconstruct_cp`/`reconstruct_tucker` (Wave 185) remain unbound: their `CPDecomposition`/`TuckerDecomposition` struct inputs have no REPL representation since `decompose_cp`/`decompose_hosvd`/`decompose_tucker` are not yet REPL-bound either.
+
+**Wave 187 — tensor decomposition REPL exposure via the session-object registry (closes the item above):**
+
+| Call | Description |
+|------|-------------|
+| `tensorops_decompose_cp(handle, T, rank[, max_iter, tol])` | CP/CANDECOMP-PARAFAC decompose a 2D matrix `T`; stores the result under `handle` |
+| `tensorops_decompose_tucker(handle, T, ranks[, max_iter, tol])` | Tucker (ALS) decompose; `ranks` is a bracket vector, e.g. `[2, 2]` |
+| `tensorops_decompose_hosvd(handle, T, ranks)` | Tucker via HOSVD decompose |
+| `tensorops_reconstruct_cp(handle)` | Rebuild the approximated matrix from a stored CP handle |
+| `tensorops_reconstruct_tucker(handle)` | Rebuild the approximated matrix from a stored Tucker/HOSVD handle |
 
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 

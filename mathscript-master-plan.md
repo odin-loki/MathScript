@@ -7711,20 +7711,40 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       as a followup needing the decomposition functions bound first (likely via the session-
       object registry). tag checklist 362->363 (+1 for the new integration test suite; 363
       suites, 100% passing).
+      Wave 187: REPL session-object registry extended to CPDecomposition/TuckerDecomposition
+      — tensorops_decompose_cp/tucker/hosvd create a named handle from a 2D matrix literal
+      (consistent with tensorops_matmul's existing 2D-only REPL scope), tensorops_reconstruct_
+      cp/tucker rebuild the tensor from it — CLOSES the Wave 186 followup. Systematic spec-vs-
+      implementation cross-check of mathscript-master-plan.md's original per-module design
+      lists against actual headers found genuine, well-scoped gaps in two mature modules:
+      ms::special gains erfinv/erfcinv, trigamma/polygamma (via zeta_hurwitz), pochhammer/
+      falling_factorial, and publicly-exposed gamma_inc_reg/gamma_inc_reg_upper/gamma_inc/
+      beta_inc_reg/beta_inc/rgamma — the incomplete-gamma/beta numerics were moved out of
+      ms::prob's private duplicated implementation into this new public canonical one, with
+      ms::prob's gamma_cdf/beta_cdf/f_cdf/chi2_cdf now delegating to it (~80 duplicated lines
+      removed). ms::quantum gains uncertainty/eigenspectrum/ground_state (reusing the existing
+      Jacobi Hermitian diagonalizer already backing von_neumann_entropy); schrodinger turned
+      out to already exist and just needed test coverage. tag checklist 363->364 (+1 for the
+      new tensorops-decompose REPL integration test suite; 364 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
-      ms::tensorops::decompose_cp/decompose_hosvd/decompose_tucker (and, once bound,
-      reconstruct_cp/reconstruct_tucker) are not yet REPL-reachable — would need a way to
-      represent a CPDecomposition/TuckerDecomposition as a REPL value, most naturally via the
-      Wave 182 session-object registry.
+      HOSVD and iterative Tucker decompositions share the same REPL session-object kind/type
+      (TuckerDecomposition) — introspection can't distinguish which algorithm produced a given
+      handle by kind alone, only by the handle name chosen (minor, cosmetic).
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
+      mathscript-master-plan.md's original per-module spec lists (2.x sections) contain many
+      more exotic entries (Painlevé transcendents, Heun functions, Meijer G/Fox H, Mathieu/
+      spheroidal wave functions, FEM, CFD) likely deliberately descoped as impractical for a
+      general-purpose CAS — the spec-vs-implementation cross-check technique from Wave 187
+      remains worth repeating for OTHER mature modules' more tractable gaps, while continuing
+      to skip these high-risk/exotic entries.
       With the ODE REPL formula-bridge, stateful-class REPL exposure, the Axiom/
-      PrimitiveRegistry mismatch, and the Wave 182-185 pure-function REPL backlog all now
-      resolved (Waves 182-186), no single large concrete gap remains — future waves will
-      likely continue toward hardening (fuzz marathon, coverage), further benchmark coverage,
-      or smaller library-level API completeness gaps. -->
+      PrimitiveRegistry mismatch, the Wave 182-185 pure-function REPL backlog, and the
+      tensor-decomposition REPL gap all now resolved (Waves 182-187), no single large concrete
+      gap remains — future waves will likely continue toward hardening (fuzz marathon,
+      coverage), further benchmark coverage, or smaller library-level API completeness gaps. -->
 
 ---
 
