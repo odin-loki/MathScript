@@ -166,6 +166,39 @@ Vec LassoRegression::predict(const Mat& X) const {
     Vec p(X.size()); for (size_t i=0;i<X.size();++i) p[i]=intercept+vec_dot(coef,X[i]); return p;
 }
 
+// ========================== Elastic Net (coordinate descent) ==========================
+
+void ElasticNet::fit(const Mat& X, const Vec& y) {
+    coef.clear(); intercept=0.0;
+    if (X.empty() || y.empty() || X.size()!=y.size() || X[0].empty()) return;
+    int n=X.size(), p=X[0].size();
+    coef.assign(p, 0.0); intercept=0;
+    double l1=alpha*l1_ratio, l2=alpha*(1.0-l1_ratio);
+    Vec r=y;
+    for (int iter=0;iter<max_iter;++iter) {
+        double max_change=0;
+        // intercept
+        double mu=0; for (double v:r) mu+=v; mu/=n;
+        intercept+=mu; for (double& rv:r) rv-=mu;
+        for (int j=0;j<p;++j) {
+            // Add back j's contribution
+            for (int i=0;i<n;++i) r[i]+=coef[j]*X[i][j];
+            // Compute rho
+            double rho=0, Xjn=0;
+            for (int i=0;i<n;++i) { rho+=X[i][j]*r[i]; Xjn+=X[i][j]*X[i][j]; }
+            double new_coef = soft_threshold(rho/n, l1) / (Xjn/n + l2 + 1e-12);
+            double diff=std::abs(new_coef-coef[j]);
+            max_change=std::max(max_change,diff);
+            for (int i=0;i<n;++i) r[i]-=new_coef*X[i][j];
+            coef[j]=new_coef;
+        }
+        if (max_change<1e-6) break;
+    }
+}
+Vec ElasticNet::predict(const Mat& X) const {
+    Vec p(X.size()); for (size_t i=0;i<X.size();++i) p[i]=intercept+vec_dot(coef,X[i]); return p;
+}
+
 // ========================== Logistic Regression (GD) ==========================
 
 static double sigmoid(double z) { return 1.0/(1.0+std::exp(-z)); }

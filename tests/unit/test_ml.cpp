@@ -112,6 +112,145 @@ TEST(MLLasso, Predict) {
     EXPECT_GT(p[0], 0.5);
 }
 
+// ---- Elastic Net ----
+
+// Small toy dataset with a couple of informative features and shared across
+// the limiting-behaviour tests below so ElasticNet can be compared directly
+// against LassoRegression/RidgeRegression on identical data.
+static std::pair<Mat,Vec> elasticnet_toy_data() {
+    Mat X={{1,0},{0,1},{1,1},{0,0},{2,0},{0,2},{2,2},{1,2},{2,1}};
+    Vec y={1,0,1,0,2,0,2,1,1.5};
+    return {X,y};
+}
+
+TEST(MLElasticNet, L1RatioOneMatchesLasso) {
+    auto [X,y]=elasticnet_toy_data();
+    double alpha=0.1;
+    LassoRegression lasso(alpha);
+    lasso.fit(X,y);
+    ElasticNet enet(alpha, /*l1_ratio=*/1.0);
+    enet.fit(X,y);
+    ASSERT_EQ(enet.coef.size(), lasso.coef.size());
+    for (size_t j=0;j<enet.coef.size();++j)
+        EXPECT_NEAR(enet.coef[j], lasso.coef[j], 1e-6);
+    EXPECT_NEAR(enet.intercept, lasso.intercept, 1e-6);
+}
+
+TEST(MLElasticNet, L1RatioZeroMatchesRidge) {
+    // NOTE: RidgeRegression's closed-form solve minimizes the *unnormalized*
+    // objective ||y-Xw||^2 + alpha*||w||^2, whereas ElasticNet (mirroring
+    // LassoRegression's coordinate-descent convention) minimizes the
+    // n-normalized (1/2n)*||y-Xw-b||^2 + ... objective. The two conventions
+    // agree only in the small-alpha limit (where both approach the OLS
+    // solution), so this test uses a small alpha to verify the l1_ratio=0.0
+    // limiting behaviour without being dominated by that pre-existing
+    // Ridge/Lasso scale-convention mismatch elsewhere in the module.
+    auto [X,y]=elasticnet_toy_data();
+    double alpha=0.001;
+    RidgeRegression ridge(alpha);
+    ridge.fit(X,y);
+    ElasticNet enet(alpha, /*l1_ratio=*/0.0, /*max_iter=*/5000);
+    enet.fit(X,y);
+    ASSERT_EQ(enet.coef.size(), ridge.coef.size());
+    for (size_t j=0;j<enet.coef.size();++j)
+        EXPECT_NEAR(enet.coef[j], ridge.coef[j], 5e-3);
+    EXPECT_NEAR(enet.intercept, ridge.intercept, 5e-3);
+}
+
+TEST(MLElasticNet, IntermediateRatioShrinksBetweenLassoAndRidge) {
+    // Dataset with informative features (0,1) and pure-noise features (2,3).
+    std::mt19937 rng(7);
+    std::normal_distribution<double> noise(0.0, 0.05);
+    Mat X; Vec y;
+    for (int i=0;i<40;++i) {
+        double x0=(i%5)-2.0, x1=((i/5)%5)-2.0;
+        double noise_a=noise(rng), noise_b=noise(rng);
+        X.push_back({x0, x1, noise_a, noise_b});
+        y.push_back(3.0*x0 - 2.0*x1 + noise(rng));
+    }
+    double alpha=1.0;
+    LassoRegression lasso(alpha);
+    lasso.fit(X,y);
+    RidgeRegression ridge(alpha);
+    ridge.fit(X,y);
+    ElasticNet enet(alpha, 0.5);
+    enet.fit(X,y);
+
+    ASSERT_EQ(enet.coef.size(), 4u);
+    // Elastic net's noise coefficients should be shrunk toward zero, at
+    // least as much as (typically more sparse than) Ridge's, since it still
+    // carries an L1 component.
+    EXPECT_LT(std::abs(enet.coef[2]), std::abs(ridge.coef[2]) + 1e-6);
+    EXPECT_LT(std::abs(enet.coef[3]), std::abs(ridge.coef[3]) + 1e-6);
+
+    // A strongly regularized elastic net on this data should zero out (or
+    // nearly zero out) at least one of the pure-noise coefficients, unlike
+    // Ridge's uniform (never-exactly-zero) shrinkage.
+    ElasticNet enet_strong(5.0, 0.7);
+    enet_strong.fit(X,y);
+    bool some_noise_near_zero =
+        std::abs(enet_strong.coef[2]) < 1e-3 || std::abs(enet_strong.coef[3]) < 1e-3;
+    EXPECT_TRUE(some_noise_near_zero);
+}
+
+TEST(MLElasticNet, RecoversTrueSignalAndShrinksNoise) {
+    // y = 3*x1 - 2*x2 + noise, plus a few pure-noise features.
+    std::mt19937 rng(123);
+    std::normal_distribution<double> feat_dist(0.0, 1.0);
+    std::normal_distribution<double> noise_dist(0.0, 0.1);
+    Mat X; Vec y;
+    for (int i=0;i<60;++i) {
+        double x1=feat_dist(rng), x2=feat_dist(rng);
+        double n1=feat_dist(rng), n2=feat_dist(rng), n3=feat_dist(rng);
+        X.push_back({x1,x2,n1,n2,n3});
+        y.push_back(3.0*x1 - 2.0*x2 + noise_dist(rng));
+    }
+    ElasticNet enet(0.05, 0.5);
+    enet.fit(X,y);
+    ASSERT_EQ(enet.coef.size(), 5u);
+    // True features: correct sign and roughly right magnitude.
+    EXPECT_GT(enet.coef[0], 1.5);
+    EXPECT_LT(enet.coef[1], -1.0);
+    // Noise features: shrunk well below the true features' magnitude.
+    EXPECT_LT(std::abs(enet.coef[2]), 0.5);
+    EXPECT_LT(std::abs(enet.coef[3]), 0.5);
+    EXPECT_LT(std::abs(enet.coef[4]), 0.5);
+}
+
+TEST(MLElasticNet, PredictConsistentWithFit) {
+    Mat X={{0},{1},{2},{3},{4}};
+    Vec y={1,3,5,7,9};  // y = 2x + 1
+    ElasticNet enet(0.001, 0.5);
+    enet.fit(X,y);
+    auto p=enet.predict(X);
+    ASSERT_EQ(p.size(), y.size());
+    for (size_t i=0;i<X.size();++i)
+        EXPECT_NEAR(p[i], enet.intercept+enet.coef[0]*X[i][0], 1e-9);
+    // Held-out point should extrapolate sensibly.
+    auto p_new=enet.predict({{5},{6}});
+    EXPECT_NEAR(p_new[0], 11.0, 0.5);
+    EXPECT_NEAR(p_new[1], 13.0, 0.5);
+    EXPECT_GT(p_new[1], p_new[0]);
+}
+
+TEST(MLElasticNet, EmptyInputNoCrash) {
+    Mat X; Vec y;
+    ElasticNet enet;
+    enet.fit(X,y);
+    EXPECT_TRUE(enet.coef.empty());
+    EXPECT_DOUBLE_EQ(enet.intercept, 0.0);
+    auto p=enet.predict({});
+    EXPECT_TRUE(p.empty());
+}
+
+TEST(MLElasticNet, MismatchedDimensionsNoCrash) {
+    Mat X={{1,2},{3,4},{5,6}};
+    Vec y={1,2};  // fewer targets than rows
+    ElasticNet enet;
+    enet.fit(X,y);
+    EXPECT_TRUE(enet.coef.empty());
+}
+
 // ---- Logistic Regression ----
 
 TEST(MLLogReg, BinaryClassification) {
