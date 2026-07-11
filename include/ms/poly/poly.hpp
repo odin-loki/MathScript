@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ms/core/matrix.hpp"
 #include <complex>
 #include <vector>
 
@@ -30,6 +31,40 @@ std::vector<double> poly_compose(const std::vector<double>& p,
 // GCD / LCM
 std::vector<double> poly_gcd(const std::vector<double>& a,
                                const std::vector<double>& b);
+std::vector<double> poly_lcm(const std::vector<double>& a,
+                               const std::vector<double>& b);
+
+// Exponentiation (n >= 0; n=0 returns {1}; negative n unsupported)
+std::vector<double> poly_pow(const std::vector<double>& p, int n);
+
+// Normalize leading coefficient to 1 (zero poly returned unchanged)
+std::vector<double> poly_monic(const std::vector<double>& p);
+
+// Reverse coefficient order (reciprocal polynomial)
+std::vector<double> poly_reverse(const std::vector<double>& p);
+
+// Taylor shift: returns q with q(x) = p(x - a)
+std::vector<double> poly_shift(const std::vector<double>& p, double a);
+
+// Scale argument: returns q with q(x) = p(a * x)
+std::vector<double> poly_scale(const std::vector<double>& p, double a);
+
+// Sylvester matrix (columns x^{m+n-1} .. x^0, descending power left-to-right)
+ColMatrix<double> poly_sylvester(const std::vector<double>& p,
+                                  const std::vector<double>& q);
+
+// Resultant Res(p, q) = det(Sylvester(p, q)); zero iff p and q share a root
+double poly_resultant(const std::vector<double>& p,
+                       const std::vector<double>& q);
+
+// Discriminant of p (zero iff p has a repeated root)
+double poly_discriminant(const std::vector<double>& p);
+
+// Square-free part: p / gcd(p, p')
+std::vector<double> poly_squarefree(const std::vector<double>& p);
+
+// Bernstein basis B_{n,i}(x) = C(n,i) x^i (1-x)^{n-i}
+double bernstein(int n, int i, double x);
 
 // Roots via companion matrix eigenvalues (real coefficients)
 std::vector<std::complex<double>> poly_roots(const std::vector<double>& coeffs);
