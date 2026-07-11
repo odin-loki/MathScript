@@ -4,6 +4,10 @@
 #include "ms/error/error_types.hpp"
 #include <memory>
 
+namespace ms::izaac {
+class CSPRNG;
+}
+
 namespace ms::cypha {
 
 struct NIGParams {
@@ -23,13 +27,23 @@ struct DifConfig {
     size_t max_components = 100;
 };
 
+struct PredictionInterval {
+    Matrix<double> mean;
+    Matrix<double> lower;
+    Matrix<double> upper;
+    double nig_alpha = 0.0;
+    double nig_beta = 0.0;
+};
+
 class DifModel {
 public:
     explicit DifModel(const DifConfig& cfg);
 
     Result<void> update(const Matrix<double>& x, const Matrix<double>& y);
     Result<Matrix<double>> predict(const Matrix<double>& x) const;
+    Result<PredictionInterval> predict_interval(const Matrix<double>& x) const;
     Result<double> ood_score(const Matrix<double>& x) const;
+    bool gh_gate(const Matrix<double>& x) const;
 
 private:
     DifConfig cfg_;
@@ -41,5 +55,7 @@ private:
 
 NIGParams nig_fit(const Matrix<double>& data);
 double nig_pdf(double x, const NIGParams& params);
+double nig_cdf(double x, const NIGParams& params);
+Matrix<double> nig_sample(const NIGParams& params, size_t n, izaac::CSPRNG& rng);
 
 } // namespace ms::cypha
