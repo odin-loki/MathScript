@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <expected>
 #include <map>
 #include <memory>
 #include <string>
@@ -53,5 +55,12 @@ SymExpr sym_integrate(const SymExpr& expr, const std::string& var);
 SymExpr sym_substitute(const SymExpr& expr, const std::string& var, const SymExpr& replacement);
 double sym_eval(const SymExpr& expr, const std::map<std::string, double>& env);
 std::string sym_to_string(const SymExpr& expr);
+
+struct SymParseError {
+    std::string message;
+    size_t position = 0;
+};
+
+std::expected<SymExpr, SymParseError> sym_parse(const std::string& text);
 
 } // namespace ms

@@ -1,0 +1,1 @@
+sym_diff("sin(x)*x^2", "x")

@@ -36,6 +36,7 @@
 #include "ms/signal/signal.hpp"
 #include "ms/poly/poly.hpp"
 #include "ms/pde/pde.hpp"
+#include "ms/symbolic/symbolic.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -4567,6 +4568,104 @@ Result<double> eval_bigint_gcd_strings(const std::string& a, const std::string& 
     return bigint_to_scalar(bignum::bigint_gcd(bignum::BigInt(a), bignum::BigInt(b)), "bigint_gcd");
 }
 
+Result<SymExpr> parse_sym_quoted_expr(const std::string& quoted_arg, const char* fn) {
+    std::string expr_text;
+    if (!parse_quoted_string(quoted_arg, expr_text)) {
+        return std::unexpected(DomainError{fn, "expected quoted expression string"});
+    }
+    auto parsed = sym_parse(expr_text);
+    if (!parsed) {
+        return std::unexpected(DomainError{fn, parsed.error().message});
+    }
+    return Result<SymExpr>(std::in_place, std::move(*parsed));
+}
+
+Result<std::string> eval_sym_diff_strings(const std::string& expr_arg, const std::string& var_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_diff");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    std::string var_text;
+    if (!parse_quoted_string(var_arg, var_text) || var_text.empty()) {
+        return std::unexpected(DomainError{"sym_diff", "expected sym_diff(\"expr\", \"var\")"});
+    }
+    const auto result = sym_simplify(sym_diff(std::move(*expr), var_text));
+    return sym_to_string(result) + "\n";
+}
+
+Result<std::string> eval_sym_simplify_string(const std::string& expr_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_simplify");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    const auto result = sym_simplify(std::move(*expr));
+    return sym_to_string(result) + "\n";
+}
+
+Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, const std::string& var_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_integrate");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    std::string var_text;
+    if (!parse_quoted_string(var_arg, var_text) || var_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_integrate", "expected sym_integrate(\"expr\", \"var\")"});
+    }
+    const auto result = sym_integrate(*expr, var_text);
+    return sym_to_string(result) + "\n";
+}
+
+Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std::string& binding_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_eval");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    std::string binding;
+    if (!parse_quoted_string(binding_arg, binding)) {
+        return std::unexpected(DomainError{"sym_eval", "expected sym_eval(\"expr\", \"var=value\")"});
+    }
+    const auto eq_pos = binding.find('=');
+    if (eq_pos == std::string::npos || eq_pos == 0 || eq_pos + 1 >= binding.size()) {
+        return std::unexpected(DomainError{"sym_eval", "expected var=value binding"});
+    }
+    const std::string var = binding.substr(0, eq_pos);
+    const std::string value_text = binding.substr(eq_pos + 1);
+    double value = 0.0;
+    if (!parse_number(value_text, value)) {
+        return std::unexpected(DomainError{"sym_eval", "expected numeric value in var=value binding"});
+    }
+    return std::to_string(sym_eval(*expr, {{var, value}})) + "\n";
+}
+
+std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) {
+    std::smatch match;
+    static const std::regex sym_binary(R"((\w+)\(([^,]+),([^)]+)\))", std::regex::icase);
+    if (std::regex_match(cmd, match, sym_binary)) {
+        const std::string fn = lower(match[1].str());
+        const std::string arg_a = trim_copy(match[2].str());
+        const std::string arg_b = trim_copy(match[3].str());
+        if (fn == "sym_diff") {
+            return eval_sym_diff_strings(arg_a, arg_b);
+        }
+        if (fn == "sym_integrate") {
+            return eval_sym_integrate_strings(arg_a, arg_b);
+        }
+        if (fn == "sym_eval") {
+            return eval_sym_eval_strings(arg_a, arg_b);
+        }
+    }
+    static const std::regex sym_unary(R"((\w+)\(([^)]+)\))", std::regex::icase);
+    if (std::regex_match(cmd, match, sym_unary)) {
+        const std::string fn = lower(match[1].str());
+        const std::string arg = trim_copy(match[2].str());
+        if (fn == "sym_simplify") {
+            return eval_sym_simplify_string(arg);
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<std::vector<std::string>> split_call_args(const std::string& cmd) {
     const auto open = cmd.find('(');
     if (open == std::string::npos) {
@@ -5010,6 +5109,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_categorical_crossentropy" || fn == "ml_vec_dot" ||
             fn == "bigint" || fn == "bigint_factorial" || fn == "bigint_fib" ||
             fn == "bigint_gcd" ||
+            fn == "sym_diff" || fn == "sym_integrate" || fn == "sym_eval" || fn == "sym_simplify" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
             fn == "graph_bellman_ford_dist" || fn == "graph_max_flow" ||
             fn == "graph_astar" ||
@@ -8629,6 +8729,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_advection_1d(u0,v,dx,dt,steps) 1D advection final state column\n"
             "  name = pde_poisson_2d(f,dx,dy,max_iterations,tolerance) 2D Poisson solution grid\n"
             "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
+            "  name = sym_diff(\"expr\",\"var\") differentiate quoted expression w.r.t. variable\n"
+            "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
+            "  name = sym_integrate(\"expr\",\"var\") integrate quoted expression w.r.t. variable\n"
+            "  name = sym_eval(\"expr\",\"var=value\") numerically evaluate quoted expression\n"
             "  name = fft_rfft(x) real FFT spectrum as Nx2 [re,im] matrix\n"
             "  name = fftshift(S) cyclic shift of Nx2 complex spectrum\n"
             "  name = fft_dft(x) discrete Fourier transform as Nx2 [re,im] matrix\n"
@@ -8838,7 +8942,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  theta3(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x)\n"
             "  heun_g(a,q,alpha,beta,gamma,delta,z), painleve1(x,y0,yp0)\n"
             "  legendre_p(n,x), beta(a,b)\n"
-            "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"};
+            "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
+            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"};
     }
     if (lcmd == "version") {
         std::ostringstream out;
@@ -8982,6 +9087,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             << " rank=" << ms::distributed::rank(mpi)
             << " size=" << ms::distributed::size(mpi) << "\n";
         return out.str();
+    }
+
+    if (const auto sym = try_eval_sym_command(cmd)) {
+        if (!sym->has_value()) {
+            return std::unexpected(sym->error());
+        }
+        return **sym;
     }
 
     const auto eq = cmd.find('=');
@@ -14157,6 +14269,30 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(*value) + "\n";
         }
 
+        if (fn == "sym_diff") {
+            auto value = eval_sym_diff_strings(arg_a, arg_b);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
+        if (fn == "sym_integrate") {
+            auto value = eval_sym_integrate_strings(arg_a, arg_b);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
+        if (fn == "sym_eval") {
+            auto value = eval_sym_eval_strings(arg_a, arg_b);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
         if (fn == "legendre_p") {
             double n = 0.0;
             double x = 0.0;
@@ -14406,6 +14542,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"clausen", "expected numeric theta"});
             }
             return std::to_string(clausen(theta)) + "\n";
+        }
+
+        if (fn == "sym_simplify") {
+            auto value = eval_sym_simplify_string(arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
         }
 
         if (fn == "eta_dirichlet") {
