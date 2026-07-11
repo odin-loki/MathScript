@@ -7,6 +7,10 @@ namespace ms {
 // Error functions and related
 double erf(double x);
 double erfc(double x);
+/// Inverse error function erf⁻¹(x), x ∈ (−1, 1) (DLMF §7.17).
+double erfinv(double x);
+/// Inverse complementary error function erfc⁻¹(x), x ∈ (0, 2) (DLMF §7.17).
+double erfcinv(double x);
 double erfi(double x);
 double erfcx(double x);
 double dawson(double x);
@@ -19,8 +23,28 @@ double fresnel_s(double x);
 // Gamma family
 double gamma_func(double x);
 double log_gamma(double x);
+/// Reciprocal gamma 1/Γ(x); zero at non-positive integers (pole cancellation).
+double rgamma(double x);
 double beta_func(double a, double b);
 double digamma(double x);
+/// Trigamma ψ′(x) = ψ⁽¹⁾(x), the first derivative of digamma (DLMF §5.15).
+double trigamma(double x);
+/// Polygamma ψ⁽ⁿ⁾(x); n = 0 delegates to digamma, n ≥ 1 via Hurwitz zeta (DLMF §5.15).
+double polygamma(int n, double x);
+/// Rising factorial (a)_n = a(a+1)…(a+n−1) for integer n ≥ 0.
+double pochhammer(double a, int n);
+/// Falling factorial a^{(n)} = a(a−1)…(a−n+1) for integer n ≥ 0.
+double falling_factorial(double a, int n);
+/// Regularized lower incomplete gamma P(a, x) = γ(a, x)/Γ(a) (DLMF §8.2).
+double gamma_inc_reg(double a, double x);
+/// Regularized upper incomplete gamma Q(a, x) = 1 − P(a, x) (DLMF §8.2).
+double gamma_inc_reg_upper(double a, double x);
+/// Lower incomplete gamma γ(a, x) = P(a, x) Γ(a) (DLMF §8.2).
+double gamma_inc(double a, double x);
+/// Regularized incomplete beta I_x(a, b) (DLMF §8.17).
+double beta_inc_reg(double x, double a, double b);
+/// Incomplete beta B_x(a, b) = I_x(a, b) B(a, b) (DLMF §8.17).
+double beta_inc(double x, double a, double b);
 
 // Combinatorial constants
 double bernoulli_number(int n);

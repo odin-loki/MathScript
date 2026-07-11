@@ -801,6 +801,82 @@ double safe_ratio(double numerator, double denominator) {
     return numerator / denominator;
 }
 
+double gamma_inc_reg_impl(double a, double x) {
+    if (x <= 0.0) {
+        return 0.0;
+    }
+    double sum = 0.0;
+    double term = 1.0 / a;
+    sum = term;
+    for (int n = 1; n < 200; ++n) {
+        term *= x / (a + static_cast<double>(n));
+        sum += term;
+        if (std::abs(term) < 1e-12 * std::abs(sum)) {
+            break;
+        }
+    }
+    return std::exp(-x + a * std::log(x) - std::lgamma(a)) * sum;
+}
+
+double beta_continued_fraction(double a, double b, double x) {
+    const double fpmin = 1e-300;
+    const double qab = a + b;
+    const double qap = a + 1.0;
+    const double qam = a - 1.0;
+    double c = 1.0;
+    double d = 1.0 - qab * x / qap;
+    if (std::abs(d) < fpmin) {
+        d = fpmin;
+    }
+    d = 1.0 / d;
+    double h = d;
+    for (int m = 1; m <= 200; ++m) {
+        const double m2 = 2.0 * static_cast<double>(m);
+        double aa = static_cast<double>(m) * (b - static_cast<double>(m)) * x / ((qam + m2) * (a + m2));
+        d = 1.0 + aa * d;
+        if (std::abs(d) < fpmin) {
+            d = fpmin;
+        }
+        c = 1.0 + aa / c;
+        if (std::abs(c) < fpmin) {
+            c = fpmin;
+        }
+        d = 1.0 / d;
+        h *= d * c;
+        aa = -(a + static_cast<double>(m)) * (qab + static_cast<double>(m)) * x / ((a + m2) * (qap + m2));
+        d = 1.0 + aa * d;
+        if (std::abs(d) < fpmin) {
+            d = fpmin;
+        }
+        c = 1.0 + aa / c;
+        if (std::abs(c) < fpmin) {
+            c = fpmin;
+        }
+        d = 1.0 / d;
+        const double del = d * c;
+        h *= del;
+        if (std::abs(del - 1.0) < 1e-14) {
+            break;
+        }
+    }
+    return h;
+}
+
+double beta_inc_reg_impl(double a, double b, double x) {
+    if (x <= 0.0) {
+        return 0.0;
+    }
+    if (x >= 1.0) {
+        return 1.0;
+    }
+    const double bt = std::exp(std::lgamma(a + b) - std::lgamma(a) - std::lgamma(b) + a * std::log(x) +
+                               b * std::log(1.0 - x));
+    if (x < (a + 1.0) / (a + b + 2.0)) {
+        return bt * beta_continued_fraction(a, b, x) / a;
+    }
+    return 1.0 - bt * beta_continued_fraction(b, a, 1.0 - x) / b;
+}
+
 } // namespace
 
 double erf(double x) {
@@ -809,6 +885,40 @@ double erf(double x) {
 
 double erfc(double x) {
     return std::erfc(x);
+}
+
+double erfinv(double x) {
+    if (x < -1.0 || x > 1.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (x == 0.0) {
+        return 0.0;
+    }
+    if (x == 1.0) {
+        return std::numeric_limits<double>::infinity();
+    }
+    if (x == -1.0) {
+        return -std::numeric_limits<double>::infinity();
+    }
+    constexpr double a = 0.147;
+    const double sign = x < 0.0 ? -1.0 : 1.0;
+    const double x_abs = std::abs(x);
+    const double ln1mx2 = std::log(1.0 - x_abs * x_abs);
+    const double first = 2.0 / (M_PI * a) + 0.5 * ln1mx2;
+    const double second = ln1mx2 / a;
+    double w = sign * std::sqrt(std::sqrt(first * first - second) - first);
+    for (int i = 0; i < 3; ++i) {
+        const double err = erf(w) - x;
+        w -= err / (2.0 / std::sqrt(M_PI) * std::exp(-w * w));
+    }
+    return w;
+}
+
+double erfcinv(double x) {
+    if (x <= 0.0 || x >= 2.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return erfinv(1.0 - x);
 }
 
 double erfi(double x) {
@@ -897,6 +1007,62 @@ double digamma(double x) {
         return std::numeric_limits<double>::quiet_NaN();
     }
     return digamma_pos(x);
+}
+
+double pochhammer(double a, int n) {
+    if (n < 0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    double value = 1.0;
+    for (int k = 0; k < n; ++k) {
+        value *= a + static_cast<double>(k);
+    }
+    return value;
+}
+
+double falling_factorial(double a, int n) {
+    if (n < 0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    double value = 1.0;
+    for (int k = 0; k < n; ++k) {
+        value *= a - static_cast<double>(k);
+    }
+    return value;
+}
+
+double rgamma(double x) {
+    if (x <= 0.0 && x == std::floor(x)) {
+        return 0.0;
+    }
+    const double g = gamma_func(x);
+    if (!std::isfinite(g) || std::abs(g) <= 1e-300) {
+        return 0.0;
+    }
+    return 1.0 / g;
+}
+
+double gamma_inc_reg(double a, double x) {
+    return gamma_inc_reg_impl(a, x);
+}
+
+double gamma_inc_reg_upper(double a, double x) {
+    if (x <= 0.0) {
+        return 1.0;
+    }
+    return 1.0 - gamma_inc_reg_impl(a, x);
+}
+
+double gamma_inc(double a, double x) {
+    return gamma_inc_reg(a, x) * gamma_func(a);
+}
+
+double beta_inc_reg(double x, double a, double b) {
+    return beta_inc_reg_impl(a, b, x);
+}
+
+double beta_inc(double x, double a, double b) {
+    return beta_inc_reg(x, a, b) * beta_func(a, b);
 }
 
 double bernoulli_number(int n) {
@@ -1758,6 +1924,21 @@ double zeta_hurwitz(double s, double a) {
         sum += 1.0 / std::pow(static_cast<double>(n) + a, s);
     }
     return sum;
+}
+
+double polygamma(int n, double x) {
+    if (n < 0 || x <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (n == 0) {
+        return digamma(x);
+    }
+    const double sign = (n % 2 == 0) ? -1.0 : 1.0;
+    return sign * std::tgamma(static_cast<double>(n) + 1.0) * zeta_hurwitz(static_cast<double>(n) + 1.0, x);
+}
+
+double trigamma(double x) {
+    return polygamma(1, x);
 }
 
 double lerch_phi(double z, double s, double a) {

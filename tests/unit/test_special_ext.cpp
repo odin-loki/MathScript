@@ -51,3 +51,41 @@ TEST(SpecialExtTest, airy_and_hypergeo) {
     EXPECT_NEAR(hypergeo_0f1(1.0, 0.0), 1.0, 1e-12);
     EXPECT_NEAR(hypergeo_1f1(1.0, 0.0), 1.0, 1e-12);
 }
+
+TEST(SpecialExtTest, inverse_error_functions) {
+    EXPECT_NEAR(erfinv(0.0), 0.0, 1e-12);
+    EXPECT_NEAR(erfcinv(1.0), 0.0, 1e-12);
+    EXPECT_NEAR(ms::erf(erfinv(0.5)), 0.5, 1e-10);
+    EXPECT_NEAR(ms::erf(erfinv(-0.3)), -0.3, 1e-10);
+    EXPECT_NEAR(ms::erf(erfinv(0.9)), 0.9, 1e-10);
+    EXPECT_NEAR(ms::erfc(erfcinv(0.5)), 0.5, 1e-10);
+    EXPECT_NEAR(ms::erfc(erfcinv(1.5)), 1.5, 1e-10);
+}
+
+TEST(SpecialExtTest, polygamma_and_factorials) {
+    EXPECT_NEAR(trigamma(1.0), std::numbers::pi_v<double> * std::numbers::pi_v<double> / 6.0, 1e-4);
+    EXPECT_NEAR(polygamma(0, 2.0), digamma(2.0), 1e-10);
+    EXPECT_NEAR(pochhammer(2.0, 3), 24.0, 1e-12);
+    EXPECT_NEAR(falling_factorial(5.0, 3), 60.0, 1e-12);
+    EXPECT_NEAR(pochhammer(1.0, 5), 120.0, 1e-10);
+    EXPECT_NEAR(pochhammer(3.0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(falling_factorial(4.0, 0), 1.0, 1e-12);
+}
+
+TEST(SpecialExtTest, incomplete_gamma_and_beta) {
+    EXPECT_NEAR(gamma_inc_reg(1.0, 1.0), 1.0 - std::exp(-1.0), 1e-6);
+    EXPECT_NEAR(gamma_inc_reg(2.5, 1.2) + gamma_inc_reg_upper(2.5, 1.2), 1.0, 1e-10);
+    EXPECT_NEAR(gamma_inc_reg(3.0, 0.5) + gamma_inc_reg_upper(3.0, 0.5), 1.0, 1e-10);
+    EXPECT_NEAR(beta_inc_reg(0.5, 1.0, 1.0), 0.5, 1e-10);
+    EXPECT_NEAR(beta_inc_reg(0.3, 2.0, 3.0) + beta_inc_reg(0.7, 3.0, 2.0), 1.0, 1e-10);
+    EXPECT_NEAR(gamma_inc(2.0, 1.0), gamma_inc_reg(2.0, 1.0) * gamma_func(2.0), 1e-10);
+    EXPECT_NEAR(beta_inc(0.4, 2.0, 3.0), beta_inc_reg(0.4, 2.0, 3.0) * beta_func(2.0, 3.0), 1e-10);
+}
+
+TEST(SpecialExtTest, reciprocal_gamma) {
+    EXPECT_NEAR(rgamma(5.0) * gamma_func(5.0), 1.0, 1e-10);
+    EXPECT_NEAR(rgamma(2.5) * gamma_func(2.5), 1.0, 1e-10);
+    EXPECT_EQ(rgamma(0.0), 0.0);
+    EXPECT_EQ(rgamma(-1.0), 0.0);
+    EXPECT_EQ(rgamma(-3.0), 0.0);
+}
