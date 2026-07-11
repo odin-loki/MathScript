@@ -25,17 +25,34 @@ void dlartg(double f, double g, double& cs, double& sn, double& r) {
         r = g;
         return;
     }
-    if (std::abs(g) > std::abs(f)) {
-        const double tt = f / g;
-        sn = 1.0 / std::hypot(1.0, tt);
-        cs = sn * tt;
-        r = g / std::copysign(sn, g);
-    } else {
-        const double tt = g / f;
-        cs = 1.0 / std::hypot(1.0, tt);
-        sn = cs * tt;
-        r = f / std::copysign(cs, f);
-    }
+    // r = hypot(f, g) is always >= 0, so cs = f/r and sn = g/r retain the
+    // signs of f and g respectively, and by construction
+    // cs*f + sn*g == (f*f + g*g)/r == r for every sign combination of f, g.
+    //
+    // The previous implementation instead computed cs/sn from a ratio
+    // (tt = f/g or g/f) normalized so that whichever of cs/sn corresponds to
+    // the larger-magnitude input is always positive, and then derived r
+    // separately as r = g/copysign(sn, g) (or f/copysign(cs, f)), which is
+    // always >= 0 by construction of copysign. Whenever the larger-magnitude
+    // input (f or g, depending on branch) was negative, that always-positive
+    // r had the opposite sign from the true value of cs*f + sn*g, so the
+    // returned (cs, sn, r) triple did not actually satisfy the rotation
+    // identity cs*f + sn*g == r, -sn*f + cs*g == 0 that every caller relies
+    // on (only the second, sign-independent identity held). Concretely: for
+    // e.g. f=2, g=-3 (|g|>|f| branch), the old code returned r=+sqrt(13) but
+    // cs*f+sn*g = -sqrt(13). Applying that (cs, sn) to a bidiagonal matrix's
+    // row/column during dbdsqr's Givens sweep produced an internally
+    // consistent B = U*S*V^T factorization (since U, S, V are literally
+    // built from those same rotations, so the product identity can't help
+    // but hold), but U and V were NOT actually the matrix's true singular
+    // vectors, silently breaking their orthogonality/correctness (while, by
+    // that same self-consistency, leaving reconstruction of A looking fine)
+    // whenever a bidiagonalized matrix had a diagonal or off-diagonal entry
+    // with the sign pattern above appear mid-sweep - which happens routinely
+    // since dgebrd-produced bidiagonal entries can be of either sign.
+    r = std::hypot(f, g);
+    cs = f / r;
+    sn = g / r;
 }
 
 void dlas2(double f, double g, double h, double& ssmin, double& ssmax) {
