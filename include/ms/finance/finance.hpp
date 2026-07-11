@@ -96,6 +96,44 @@ Result<std::vector<double>> max_sharpe_portfolio(std::span<const double> cov_mat
                                                  std::span<const double> mu,
                                                  double risk_free, int n);
 
+// --- Black-Litterman model ---
+// Combines a market-equilibrium prior with investor "views" to produce a
+// blended (posterior) expected-return vector, for use with the mean-variance
+// optimizers above (e.g. plug the posterior into efficient_frontier_portfolio
+// or max_sharpe_portfolio as `mu`). cov_matrix/P/omega are flattened row-major,
+// same convention as cov_matrix elsewhere in this file (cov_matrix is n x n,
+// P is k x n, omega is k x k).
+
+// Reverse-optimization: implied equilibrium excess returns Pi = delta*Sigma*w_mkt,
+// where delta is the market risk-aversion coefficient and w_mkt is the vector of
+// market-cap weights (size n).
+Result<std::vector<double>> bl_implied_returns(std::span<const double> cov_matrix,
+                                               std::span<const double> w_mkt,
+                                               double delta, int n);
+
+// Black-Litterman posterior expected returns:
+//   E[R] = [(tau*Sigma)^-1 + P^T*Omega^-1*P]^-1 * [(tau*Sigma)^-1*Pi + P^T*Omega^-1*Q]
+// pi is the prior (size n, typically from bl_implied_returns), tau scales the
+// uncertainty of the prior (typical 0.025-0.05), P is the k x n view "picking"
+// matrix, Q is the k view returns, and omega is the k x k view-uncertainty
+// covariance matrix. k=0 (empty P/Q/omega) is a valid "no views" case and
+// returns pi unchanged, since the P^T*Omega^-1*(...) terms vanish and the
+// formula collapses to the prior exactly.
+Result<std::vector<double>> bl_posterior_returns(std::span<const double> pi,
+                                                 std::span<const double> cov_matrix,
+                                                 double tau,
+                                                 std::span<const double> P,
+                                                 std::span<const double> Q,
+                                                 std::span<const double> omega,
+                                                 int n, int k);
+
+// Convenience overload: derives Omega the standard diagonal way (omega_ii =
+// tau * P_i*Sigma*P_i^T, off-diagonals zero, i.e. views are assumed independent
+// of each other) rather than requiring the caller to supply Omega directly.
+Result<std::vector<double>> bl_posterior_returns_default_omega(
+    std::span<const double> pi, std::span<const double> cov_matrix, double tau,
+    std::span<const double> P, std::span<const double> Q, int n, int k);
+
 // Simple-compounding implied forward rate between t1 and t2 given zero rates
 // r1 (to t1) and r2 (to t2): (r2*t2 - r1*t1) / (t2 - t1)
 double forward_rate(double r1, double t1, double r2, double t2);

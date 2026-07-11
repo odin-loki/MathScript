@@ -290,12 +290,16 @@ double portfolio_return(std::span<const double> weights,
     return ret;
 }
 
-// Gauss-Jordan elimination on the augmented matrix K (n x n+1, last column is
-// the RHS) with partial pivoting, reducing K in place to [I | solution]. Same
-// pattern as gauss_solve in src/control/control.cpp, kept local here since
-// small dense solves like this aren't routed through the generic Matrix<S,...>
-// system elsewhere in the codebase either.
-static bool gauss_solve_aug(std::vector<std::vector<double>>& K, int n) {
+// Gauss-Jordan elimination on the augmented matrix K (n x n+n_rhs, last n_rhs
+// columns are the RHS, one column per right-hand-side vector) with partial
+// pivoting, reducing K in place to [I | solution(s)]. n_rhs defaults to 1 for
+// the single-RHS callers below; bl_posterior_returns's matrix inversions pass
+// n_rhs=n (RHS=identity) to solve A*X=I in one pass. Same pattern as
+// gauss_solve in src/control/control.cpp, kept local here since small dense
+// solves like this aren't routed through the generic Matrix<S,...> system
+// elsewhere in the codebase either.
+static bool gauss_solve_aug(std::vector<std::vector<double>>& K, int n, int n_rhs = 1) {
+    int total_cols = n + n_rhs;
     for (int col = 0; col < n; ++col) {
         int pivot = -1;
         double best = 0.0;
@@ -304,14 +308,88 @@ static bool gauss_solve_aug(std::vector<std::vector<double>>& K, int n) {
         if (pivot < 0 || best < 1e-12) return false; // no usable pivot: singular to tolerance
         std::swap(K[col], K[pivot]);
         double sc = K[col][col];
-        for (int j = col; j <= n; ++j) K[col][j] /= sc;
+        for (int j = col; j < total_cols; ++j) K[col][j] /= sc;
         for (int row = 0; row < n; ++row) {
             if (row == col) continue;
             double f = K[row][col];
-            for (int j = col; j <= n; ++j) K[row][j] -= f * K[col][j];
+            for (int j = col; j < total_cols; ++j) K[row][j] -= f * K[col][j];
         }
     }
     return true;
+}
+
+// Solves the dense n x n system A*X = B for X, where B has n_rhs columns
+// (flattened row-major, n x n_rhs). Generalizes solve_cov_system to multiple
+// right-hand-sides so it can also compute a full matrix inverse (B = identity).
+static Result<std::vector<double>> solve_linear_system(std::span<const double> A, int n,
+                                                        std::span<const double> B, int n_rhs) {
+    std::vector<std::vector<double>> K(static_cast<size_t>(n),
+                                       std::vector<double>(static_cast<size_t>(n) +
+                                                            static_cast<size_t>(n_rhs)));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j)
+            K[i][j] = A[static_cast<size_t>(i) * n + j];
+        for (int j = 0; j < n_rhs; ++j)
+            K[i][n + j] = B[static_cast<size_t>(i) * n_rhs + j];
+    }
+    if (!gauss_solve_aug(K, n, n_rhs))
+        return std::unexpected(Error{SingularMatrix{}});
+    std::vector<double> X(static_cast<size_t>(n) * static_cast<size_t>(n_rhs));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n_rhs; ++j)
+            X[static_cast<size_t>(i) * n_rhs + j] = K[i][n + j];
+    return X;
+}
+
+// n x n identity matrix, flattened row-major.
+static std::vector<double> identity_matrix(int n) {
+    std::vector<double> I(static_cast<size_t>(n) * static_cast<size_t>(n), 0.0);
+    for (int i = 0; i < n; ++i) I[static_cast<size_t>(i) * n + i] = 1.0;
+    return I;
+}
+
+// Inverts an n x n matrix (flattened row-major) by solving A*X = I via
+// solve_linear_system.
+static Result<std::vector<double>> invert_matrix(std::span<const double> A, int n) {
+    std::vector<double> I = identity_matrix(n);
+    return solve_linear_system(A, n, I, n);
+}
+
+// Matrix-vector multiply: (rows x cols) * (cols) -> (rows). mat is flattened
+// row-major.
+static std::vector<double> mat_vec_mul(std::span<const double> mat, int rows, int cols,
+                                       std::span<const double> vec) {
+    std::vector<double> out(static_cast<size_t>(rows), 0.0);
+    for (int i = 0; i < rows; ++i) {
+        double s = 0.0;
+        for (int j = 0; j < cols; ++j) s += mat[static_cast<size_t>(i) * cols + j] * vec[j];
+        out[i] = s;
+    }
+    return out;
+}
+
+// Matrix-matrix multiply: (rows x inner) * (inner x cols) -> (rows x cols),
+// all flattened row-major.
+static std::vector<double> mat_mat_mul(std::span<const double> A, int rows, int inner,
+                                       std::span<const double> B, int cols) {
+    std::vector<double> out(static_cast<size_t>(rows) * static_cast<size_t>(cols), 0.0);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j) {
+            double s = 0.0;
+            for (int t = 0; t < inner; ++t)
+                s += A[static_cast<size_t>(i) * inner + t] * B[static_cast<size_t>(t) * cols + j];
+            out[static_cast<size_t>(i) * cols + j] = s;
+        }
+    return out;
+}
+
+// Transpose a rows x cols matrix (flattened row-major) into cols x rows.
+static std::vector<double> mat_transpose(std::span<const double> A, int rows, int cols) {
+    std::vector<double> out(static_cast<size_t>(cols) * static_cast<size_t>(rows));
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            out[static_cast<size_t>(j) * rows + i] = A[static_cast<size_t>(i) * cols + j];
+    return out;
 }
 
 // Solves the dense n x n system cov_matrix*y = rhs for y. cov_matrix is the
@@ -414,6 +492,129 @@ Result<std::vector<double>> max_sharpe_portfolio(std::span<const double> cov_mat
     std::vector<double> w(std::move(*y));
     for (double& wi : w) wi /= s;
     return w;
+}
+
+Result<std::vector<double>> bl_implied_returns(std::span<const double> cov_matrix,
+                                               std::span<const double> w_mkt,
+                                               double delta, int n) {
+    if (n <= 0)
+        return std::unexpected(Error{DomainError{"bl_implied_returns", "n must be > 0"}});
+    if (cov_matrix.size() != static_cast<size_t>(n) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{cov_matrix.size(),
+                                                        static_cast<size_t>(n) * static_cast<size_t>(n)}});
+    if (w_mkt.size() != static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{w_mkt.size(), static_cast<size_t>(n)}});
+    if (delta <= 0.0)
+        return std::unexpected(Error{DomainError{"bl_implied_returns", "delta must be > 0"}});
+
+    std::vector<double> pi = mat_vec_mul(cov_matrix, n, n, w_mkt);
+    for (double& v : pi) v *= delta;
+    return pi;
+}
+
+Result<std::vector<double>> bl_posterior_returns(std::span<const double> pi,
+                                                 std::span<const double> cov_matrix,
+                                                 double tau,
+                                                 std::span<const double> P,
+                                                 std::span<const double> Q,
+                                                 std::span<const double> omega,
+                                                 int n, int k) {
+    if (n <= 0)
+        return std::unexpected(Error{DomainError{"bl_posterior_returns", "n must be > 0"}});
+    if (k < 0)
+        return std::unexpected(Error{DomainError{"bl_posterior_returns", "k must be >= 0"}});
+    if (tau <= 0.0)
+        return std::unexpected(Error{DomainError{"bl_posterior_returns", "tau must be > 0"}});
+    if (pi.size() != static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{pi.size(), static_cast<size_t>(n)}});
+    if (cov_matrix.size() != static_cast<size_t>(n) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{cov_matrix.size(),
+                                                        static_cast<size_t>(n) * static_cast<size_t>(n)}});
+
+    // No views: the P^T*Omega^-1*P and P^T*Omega^-1*Q terms vanish (empty
+    // sums), so [(tau*Sigma)^-1]*E[R] = [(tau*Sigma)^-1]*Pi and the posterior
+    // collapses exactly to the prior. Handled directly rather than inverting
+    // a degenerate 0x0 Omega.
+    if (k == 0) {
+        if (!P.empty() || !Q.empty() || !omega.empty())
+            return std::unexpected(Error{DomainError{"bl_posterior_returns",
+                                                      "k=0 requires empty P, Q, and omega"}});
+        return std::vector<double>(pi.begin(), pi.end());
+    }
+
+    if (P.size() != static_cast<size_t>(k) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{P.size(),
+                                                        static_cast<size_t>(k) * static_cast<size_t>(n)}});
+    if (Q.size() != static_cast<size_t>(k))
+        return std::unexpected(Error{DimensionMismatch{Q.size(), static_cast<size_t>(k)}});
+    if (omega.size() != static_cast<size_t>(k) * static_cast<size_t>(k))
+        return std::unexpected(Error{DimensionMismatch{omega.size(),
+                                                        static_cast<size_t>(k) * static_cast<size_t>(k)}});
+
+    std::vector<double> tau_sigma(cov_matrix.begin(), cov_matrix.end());
+    for (double& v : tau_sigma) v *= tau;
+
+    auto inv_tau_sigma = invert_matrix(tau_sigma, n);
+    if (!inv_tau_sigma) return std::unexpected(inv_tau_sigma.error());
+
+    auto inv_omega = invert_matrix(omega, k);
+    if (!inv_omega) return std::unexpected(inv_omega.error());
+
+    std::vector<double> Pt = mat_transpose(P, k, n); // n x k
+    std::vector<double> Pt_invOmega = mat_mat_mul(Pt, n, k, *inv_omega, k);       // n x k
+    std::vector<double> Pt_invOmega_P = mat_mat_mul(Pt_invOmega, n, k, P, n);     // n x n
+
+    // A = (tau*Sigma)^-1 + P^T*Omega^-1*P
+    std::vector<double> A(static_cast<size_t>(n) * static_cast<size_t>(n));
+    for (size_t i = 0; i < A.size(); ++i) A[i] = (*inv_tau_sigma)[i] + Pt_invOmega_P[i];
+
+    // b = (tau*Sigma)^-1*Pi + P^T*Omega^-1*Q
+    std::vector<double> b1 = mat_vec_mul(*inv_tau_sigma, n, n, pi);
+    std::vector<double> b2 = mat_vec_mul(Pt_invOmega, n, k, Q);
+    std::vector<double> b(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) b[i] = b1[i] + b2[i];
+
+    return solve_linear_system(A, n, b, 1);
+}
+
+Result<std::vector<double>> bl_posterior_returns_default_omega(
+    std::span<const double> pi, std::span<const double> cov_matrix, double tau,
+    std::span<const double> P, std::span<const double> Q, int n, int k) {
+    if (n <= 0)
+        return std::unexpected(Error{DomainError{"bl_posterior_returns_default_omega",
+                                                  "n must be > 0"}});
+    if (k < 0)
+        return std::unexpected(Error{DomainError{"bl_posterior_returns_default_omega",
+                                                  "k must be >= 0"}});
+    if (tau <= 0.0)
+        return std::unexpected(Error{DomainError{"bl_posterior_returns_default_omega",
+                                                  "tau must be > 0"}});
+    if (k == 0)
+        return bl_posterior_returns(pi, cov_matrix, tau, P, Q, {}, n, 0);
+
+    if (cov_matrix.size() != static_cast<size_t>(n) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{cov_matrix.size(),
+                                                        static_cast<size_t>(n) * static_cast<size_t>(n)}});
+    if (P.size() != static_cast<size_t>(k) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{P.size(),
+                                                        static_cast<size_t>(k) * static_cast<size_t>(n)}});
+    if (Q.size() != static_cast<size_t>(k))
+        return std::unexpected(Error{DimensionMismatch{Q.size(), static_cast<size_t>(k)}});
+
+    // Standard He-Litterman simplification: Omega diagonal with
+    // omega_ii = tau * (P_i . Sigma . P_i^T), i.e. each view's uncertainty is
+    // proportional to the prior variance of that view's portfolio, and views
+    // are uncorrelated with each other (off-diagonals zero).
+    std::vector<double> omega(static_cast<size_t>(k) * static_cast<size_t>(k), 0.0);
+    for (int i = 0; i < k; ++i) {
+        std::span<const double> p_row = P.subspan(static_cast<size_t>(i) * n, n);
+        std::vector<double> sigma_p = mat_vec_mul(cov_matrix, n, n, p_row);
+        double view_var = 0.0;
+        for (int j = 0; j < n; ++j) view_var += p_row[j] * sigma_p[j];
+        omega[static_cast<size_t>(i) * k + i] = tau * view_var;
+    }
+
+    return bl_posterior_returns(pi, cov_matrix, tau, P, Q, omega, n, k);
 }
 
 double forward_rate(double r1, double t1, double r2, double t2) {
