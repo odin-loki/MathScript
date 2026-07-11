@@ -103,7 +103,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `finance/finance.hpp` | Black–Scholes call/put and Greeks, implied vol, bond price/duration/convexity/YTM, NPV/IRR/PV/FV annuities, VaR/CVaR, Sharpe/Sortino/Information/Treynor ratios, CAPM, forward rate, max drawdown, Kelly criterion, binomial/American option pricing, digital/Black-76/barrier option pricing, portfolio variance/return, Monte Carlo option pricing (`mc_european_call`/`mc_european_put` with antithetic-variate GBM sampling, `mc_asian_call`/`mc_asian_put` via discretized path simulation), Markowitz portfolio optimization (`min_variance_portfolio`, `efficient_frontier_portfolio`, `max_sharpe_portfolio`, via a private Gaussian-elimination solve) |
+| `finance/finance.hpp` | Black–Scholes call/put and Greeks, implied vol, bond price/duration/convexity/YTM, NPV/IRR/PV/FV annuities, VaR/CVaR, Sharpe/Sortino/Information/Treynor ratios, CAPM, forward rate, max drawdown, Kelly criterion, binomial/American option pricing, digital/Black-76/barrier option pricing, portfolio variance/return, Monte Carlo option pricing (`mc_european_call`/`mc_european_put` with antithetic-variate GBM sampling, `mc_asian_call`/`mc_asian_put` via discretized path simulation, `mc_lookback_floating_call`/`mc_lookback_floating_put`/`mc_lookback_fixed_call`/`mc_lookback_fixed_put` tracking running path min/max), Markowitz portfolio optimization (`min_variance_portfolio`, `efficient_frontier_portfolio`, `max_sharpe_portfolio`, via a private Gaussian-elimination solve) |
 
 ## Control — Wave 58 (`include/ms/control/`)
 
@@ -115,7 +115,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `graph/graph.hpp` | `Graph` adjacency list, BFS/DFS/topological sort, Dijkstra/Bellman-Ford/Floyd-Warshall/A*, connectivity and SCC, articulation points/bridges, MST (Kruskal/Prim), PageRank/betweenness/closeness/eigenvector/Katz centrality, Laplacian/normalised Laplacian/algebraic connectivity, max flow, min cut, bipartite matching, greedy colouring |
+| `graph/graph.hpp` | `Graph` adjacency list, BFS/DFS/topological sort, Dijkstra/Bellman-Ford/Floyd-Warshall/A*, connectivity and SCC, articulation points/bridges, MST (Kruskal/Prim), PageRank/betweenness/closeness/eigenvector/Katz centrality, Laplacian/normalised Laplacian/algebraic connectivity, max flow, min cut, bipartite matching, greedy colouring, `is_isomorphic` (VF2-style backtracking vertex-bijection search with degree-sequence pre-check, for small graphs) |
 
 ## Complex Analysis — Wave 58 (`include/ms/cplx/`)
 
