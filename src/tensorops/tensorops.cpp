@@ -1,4 +1,5 @@
 #include "ms/tensorops/tensorops.hpp"
+#include "ms/error/error_types.hpp"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -587,6 +588,232 @@ Tensor reconstruct_tucker(const TuckerDecomposition& tucker) {
     for (int m = 0; m < N; ++m)
         result = mode_product(result, tucker.factors[m], m);
     return result;
+}
+
+// ========================== Tensor-Train (TT) Decomposition ==========================
+
+namespace {
+
+// Thin SVD of an (rows x cols) matrix: M = U * diag(S) * V^T, S sorted descending,
+// r = min(rows, cols) components.
+struct ThinSVD {
+    std::vector<std::vector<double>> U;  // rows x r
+    std::vector<double> S;               // size r, sorted descending
+    std::vector<std::vector<double>> V;  // cols x r
+};
+
+// One-sided Jacobi SVD of an (rows x cols) matrix with rows >= cols, producing all `cols`
+// components. Unlike eigenvalue-decomposition-of-Gram-matrix approaches, one-sided Jacobi
+// only ever needs pairwise column dot products, so it stays robust when several singular
+// values are (near-)zero or repeated -- exactly the case TT-SVD hits constantly, since
+// truncation is only meaningful once a matrix genuinely has a rank-deficient tail.
+void jacobi_svd_tall(int rows, int cols, const std::vector<std::vector<double>>& M,
+                     std::vector<std::vector<double>>& U_out,
+                     std::vector<double>& S_out,
+                     std::vector<std::vector<double>>& V_out) {
+    // Wcol[j] holds column j of the working matrix (length rows); Vcol[j] holds column j
+    // of the accumulated rotation product (length cols).
+    std::vector<std::vector<double>> Wcol(cols, std::vector<double>(rows));
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j) Wcol[j][i] = M[i][j];
+
+    std::vector<std::vector<double>> Vcol(cols, std::vector<double>(cols, 0.0));
+    for (int j = 0; j < cols; ++j) Vcol[j][j] = 1.0;
+
+    constexpr int kMaxSweeps = 60;
+    constexpr double kConvergedThreshold = 1e-28;
+    for (int sweep = 0; sweep < kMaxSweeps && cols > 1; ++sweep) {
+        double off_norm_sq = 0.0;
+        for (int p = 0; p < cols - 1; ++p) {
+            for (int q = p + 1; q < cols; ++q) {
+                double alpha = 0.0, beta = 0.0, gamma = 0.0;
+                for (int i = 0; i < rows; ++i) {
+                    alpha += Wcol[p][i] * Wcol[p][i];
+                    beta += Wcol[q][i] * Wcol[q][i];
+                    gamma += Wcol[p][i] * Wcol[q][i];
+                }
+                off_norm_sq += gamma * gamma;
+                if (gamma == 0.0) continue;
+                // Standard symmetric Jacobi rotation angle that zeroes out column pair
+                // (p, q)'s cross term: cot(2*theta) = (beta - alpha) / (2*gamma).
+                double zeta = (beta - alpha) / (2.0 * gamma);
+                double t = (zeta >= 0.0 ? 1.0 : -1.0) / (std::abs(zeta) + std::sqrt(1.0 + zeta * zeta));
+                double c = 1.0 / std::sqrt(1.0 + t * t);
+                double s = c * t;
+                for (int i = 0; i < rows; ++i) {
+                    double wp = Wcol[p][i], wq = Wcol[q][i];
+                    Wcol[p][i] = c * wp - s * wq;
+                    Wcol[q][i] = s * wp + c * wq;
+                }
+                for (int i = 0; i < cols; ++i) {
+                    double vp = Vcol[p][i], vq = Vcol[q][i];
+                    Vcol[p][i] = c * vp - s * vq;
+                    Vcol[q][i] = s * vp + c * vq;
+                }
+            }
+        }
+        if (off_norm_sq < kConvergedThreshold) break;
+    }
+
+    std::vector<double> S(cols);
+    std::vector<std::vector<double>> U(rows, std::vector<double>(cols, 0.0));
+    for (int j = 0; j < cols; ++j) {
+        double norm_sq = 0.0;
+        for (int i = 0; i < rows; ++i) norm_sq += Wcol[j][i] * Wcol[j][i];
+        double norm = std::sqrt(norm_sq);
+        S[j] = norm;
+        if (norm > 0.0)
+            for (int i = 0; i < rows; ++i) U[i][j] = Wcol[j][i] / norm;
+    }
+    std::vector<std::vector<double>> V(cols, std::vector<double>(cols));
+    for (int i = 0; i < cols; ++i)
+        for (int j = 0; j < cols; ++j) V[i][j] = Vcol[j][i];
+
+    std::vector<int> order(cols);
+    for (int j = 0; j < cols; ++j) order[j] = j;
+    std::sort(order.begin(), order.end(), [&](int a, int b) { return S[a] > S[b]; });
+
+    S_out.resize(cols);
+    U_out.assign(rows, std::vector<double>(cols));
+    V_out.assign(cols, std::vector<double>(cols));
+    for (int j = 0; j < cols; ++j) {
+        int src = order[j];
+        S_out[j] = S[src];
+        for (int i = 0; i < rows; ++i) U_out[i][j] = U[i][src];
+        for (int i = 0; i < cols; ++i) V_out[i][j] = V[i][src];
+    }
+}
+
+ThinSVD compute_thin_svd(const Tensor& M2d) {
+    int rows = M2d.shape[0];
+    int cols = M2d.shape[1];
+    std::vector<std::vector<double>> M(rows, std::vector<double>(cols));
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j) M[i][j] = M2d.data[static_cast<size_t>(i) * cols + j];
+
+    ThinSVD out;
+    if (rows >= cols) {
+        jacobi_svd_tall(rows, cols, M, out.U, out.S, out.V);
+    } else {
+        // M is wide: SVD(M^T) is a tall problem; M = (M^T)^T = V2 * S * U2^T, so U/V swap.
+        std::vector<std::vector<double>> Mt(cols, std::vector<double>(rows));
+        for (int i = 0; i < rows; ++i)
+            for (int j = 0; j < cols; ++j) Mt[j][i] = M[i][j];
+        std::vector<std::vector<double>> U2, V2;
+        jacobi_svd_tall(cols, rows, Mt, U2, out.S, V2);
+        out.U = std::move(V2);
+        out.V = std::move(U2);
+    }
+    return out;
+}
+
+// Smallest truncation rank r_k (1 <= r_k <= S.size()) such that the sum of squared
+// discarded singular values (indices r_k..end, S sorted descending) is <= delta^2.
+int truncation_rank(const std::vector<double>& S, double delta) {
+    int r_full = static_cast<int>(S.size());
+    double budget_sq = delta * delta;
+    // discarded[i] = sum_{j=i..r_full-1} S[j]^2, i.e. the squared reconstruction error
+    // incurred by keeping only the first i singular values.
+    std::vector<double> discarded(r_full + 1, 0.0);
+    for (int i = r_full - 1; i >= 0; --i) discarded[i] = discarded[i + 1] + S[i] * S[i];
+    for (int r_k = 1; r_k <= r_full; ++r_k)
+        if (discarded[r_k] <= budget_sq) return r_k;
+    return r_full;
+}
+
+// Prepend a leading dimension of size 1 to a shape.
+std::vector<int> prepend_one(const std::vector<int>& shape) {
+    std::vector<int> out;
+    out.reserve(shape.size() + 1);
+    out.push_back(1);
+    out.insert(out.end(), shape.begin(), shape.end());
+    return out;
+}
+
+} // namespace
+
+Result<TTDecomposition> decompose_tt(const Tensor& T, double eps) {
+    if (eps < 0.0) {
+        return std::unexpected(DomainError{"decompose_tt", "eps must be non-negative"});
+    }
+    if (T.numel() == 0) {
+        return std::unexpected(DomainError{"decompose_tt", "tensor must not be empty"});
+    }
+    int d = T.ndim();
+    if (d < 3) {
+        return std::unexpected(
+            DomainError{"decompose_tt", "TT decomposition requires tensor order >= 3"});
+    }
+
+    double norm_T = frobenius_norm(T);
+    // Oseledets' TT-SVD error bound: distribute the total relative error budget `eps`
+    // equally (in the Frobenius-norm sense) across the d-1 sequential SVD truncations, so
+    // the accumulated error stays within eps * ||T|| overall.
+    double delta = (eps / std::sqrt(static_cast<double>(d - 1))) * norm_T;
+
+    std::vector<Tensor> cores;
+    std::vector<int> ranks;
+    ranks.push_back(1);
+
+    // remaining always has shape (r_prev, n_k, n_{k+1}, ..., n_{d-1}) at the start of
+    // iteration k; start it as (1, n_0, ..., n_{d-1}) so the loop body is uniform.
+    Tensor remaining = T.reshape(prepend_one(T.shape));
+
+    for (int k = 0; k < d - 1; ++k) {
+        int r_prev = remaining.shape[0];
+        int n_k = remaining.shape[1];
+        long rows = static_cast<long>(r_prev) * n_k;
+        long cols = remaining.numel() / rows;
+
+        Tensor M2d = remaining.reshape({static_cast<int>(rows), static_cast<int>(cols)});
+        ThinSVD sv = compute_thin_svd(M2d);
+        int r_k = truncation_rank(sv.S, delta);
+
+        // Core k: reshape U's first r_k columns into shape (r_prev, n_k, r_k). Row index of
+        // U is the merged (r_prev, n_k) index in the same row-major order used to build M2d.
+        Tensor core({r_prev, n_k, r_k}, 0.0);
+        for (long row = 0; row < rows; ++row)
+            for (int l = 0; l < r_k; ++l)
+                core.data[row * r_k + l] = sv.U[static_cast<size_t>(row)][static_cast<size_t>(l)];
+        cores.push_back(std::move(core));
+        ranks.push_back(r_k);
+
+        // Next remaining = S_trunc * V_trunc^T, shape (r_k, cols), then reshaped to
+        // (r_k, n_{k+1}, ..., n_{d-1}) using the tensor's known original dimensions.
+        std::vector<double> next_data(static_cast<size_t>(r_k) * static_cast<size_t>(cols));
+        for (int l = 0; l < r_k; ++l)
+            for (long col = 0; col < cols; ++col)
+                next_data[static_cast<size_t>(l) * static_cast<size_t>(cols) + static_cast<size_t>(col)] =
+                    sv.S[static_cast<size_t>(l)] * sv.V[static_cast<size_t>(col)][static_cast<size_t>(l)];
+
+        std::vector<int> next_shape;
+        next_shape.push_back(r_k);
+        for (int m = k + 1; m < d; ++m) next_shape.push_back(T.shape[m]);
+        remaining = Tensor(next_shape, std::move(next_data));
+    }
+
+    // Final remaining has shape (r_{d-2}, n_{d-1}); it becomes the last core.
+    int r_last_prev = remaining.shape[0];
+    int n_last = remaining.shape[1];
+    Tensor last_core = remaining.reshape({r_last_prev, n_last, 1});
+    cores.push_back(std::move(last_core));
+    ranks.push_back(1);
+
+    return TTDecomposition{std::move(cores), std::move(ranks), eps};
+}
+
+Tensor reconstruct_tt(const TTDecomposition& tt) {
+    int d = static_cast<int>(tt.cores.size());
+    if (d == 0) return Tensor();
+
+    Tensor result = tt.cores[0];  // shape (1, n_0, r_1)
+    for (int k = 1; k < d; ++k) {
+        int last_dim = result.ndim() - 1;
+        result = contract(result, tt.cores[k], {{last_dim, 0}});
+    }
+    // result now has shape (1, n_0, n_1, ..., n_{d-1}, 1); drop the boundary rank-1 dims.
+    std::vector<int> final_shape(result.shape.begin() + 1, result.shape.end() - 1);
+    return result.reshape(final_shape);
 }
 
 } // namespace tensorops

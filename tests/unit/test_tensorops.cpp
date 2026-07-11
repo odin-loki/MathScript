@@ -1,5 +1,6 @@
 #include "ms/tensorops/tensorops.hpp"
 #include <cmath>
+#include <limits>
 #include <gtest/gtest.h>
 
 using namespace ms::tensorops;
@@ -449,4 +450,267 @@ TEST(TensorReconstructTucker, TuckerALSReducedRank) {
     EXPECT_EQ(R.shape, T.shape);
     double err = frobenius_norm(T - R);
     EXPECT_LT(err, frobenius_norm(T));
+}
+
+// ---- Tensor-Train (TT) decomposition ----
+
+TEST(TensorTT, RankOneRecovery3D) {
+    Tensor a({3}); a.data = {1, 2, 3};
+    Tensor b({2}); b.data = {4, 5};
+    Tensor c({4}); c.data = {1, -1, 2, 0.5};
+    auto T = make_rank1_tensor({a, b, c});
+    auto ttres = decompose_tt(T, 1e-8);
+    ASSERT_TRUE(ttres.has_value());
+    const auto& tt = *ttres;
+    ASSERT_EQ(tt.ranks.size(), 4u);
+    for (int r : tt.ranks) EXPECT_EQ(r, 1);
+    auto R = reconstruct_tt(tt);
+    EXPECT_EQ(R.shape, T.shape);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 1e-8 * frobenius_norm(T) + 1e-9);
+}
+
+TEST(TensorTT, RankOneRecovery4D) {
+    Tensor a({2}); a.data = {1, -2};
+    Tensor b({3}); b.data = {2, 1, 0.5};
+    Tensor c({2}); c.data = {3, -1};
+    Tensor d({3}); d.data = {1, 1, 2};
+    auto T = make_rank1_tensor({a, b, c, d});
+    auto ttres = decompose_tt(T, 1e-8);
+    ASSERT_TRUE(ttres.has_value());
+    const auto& tt = *ttres;
+    ASSERT_EQ(tt.ranks.size(), 5u);
+    for (int r : tt.ranks) EXPECT_EQ(r, 1);
+    auto R = reconstruct_tt(tt);
+    EXPECT_EQ(R.shape, T.shape);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 1e-8 * frobenius_norm(T) + 1e-9);
+}
+
+TEST(TensorTT, LowRankRecoveryTwoTerms3D) {
+    Tensor a1({3}); a1.data = {1, 0, 2};
+    Tensor b1({2}); b1.data = {1, 1};
+    Tensor c1({4}); c1.data = {2, 1, 1, 0};
+    Tensor a2({3}); a2.data = {0, 1, 1};
+    Tensor b2({2}); b2.data = {2, 0};
+    Tensor c2({4}); c2.data = {1, 2, 0, 1};
+    auto T = make_rank1_tensor({a1, b1, c1}) + make_rank1_tensor({a2, b2, c2});
+    auto ttres = decompose_tt(T, 1e-8);
+    ASSERT_TRUE(ttres.has_value());
+    const auto& tt = *ttres;
+    // A sum of 2 rank-1 terms has TT-rank <= 2 at every internal cut.
+    for (size_t i = 1; i + 1 < tt.ranks.size(); ++i) EXPECT_LE(tt.ranks[i], 2);
+    auto R = reconstruct_tt(tt);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 1e-6);
+}
+
+TEST(TensorTT, LowRankRecoveryThreeTerms4D) {
+    Tensor a1({2}); a1.data = {1, 0};
+    Tensor b1({2}); b1.data = {1, 1};
+    Tensor c1({2}); c1.data = {2, 1};
+    Tensor d1({3}); d1.data = {1, 0, 1};
+    Tensor a2({2}); a2.data = {0, 1};
+    Tensor b2({2}); b2.data = {2, 0};
+    Tensor c2({2}); c2.data = {1, 2};
+    Tensor d2({3}); d2.data = {0, 1, 1};
+    Tensor a3({2}); a3.data = {1, 1};
+    Tensor b3({2}); b3.data = {0, 1};
+    Tensor c3({2}); c3.data = {1, -1};
+    Tensor d3({3}); d3.data = {1, 1, 0};
+    auto T = make_rank1_tensor({a1, b1, c1, d1}) +
+             make_rank1_tensor({a2, b2, c2, d2}) +
+             make_rank1_tensor({a3, b3, c3, d3});
+    auto ttres = decompose_tt(T, 1e-8);
+    ASSERT_TRUE(ttres.has_value());
+    const auto& tt = *ttres;
+    for (size_t i = 1; i + 1 < tt.ranks.size(); ++i) EXPECT_LE(tt.ranks[i], 3);
+    auto R = reconstruct_tt(tt);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 1e-6);
+}
+
+TEST(TensorTT, ReconstructionErrorVsEpsMonotonic) {
+    Tensor T({4, 4, 4, 4}, 0.0);
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            for (int k = 0; k < 4; ++k)
+                for (int l = 0; l < 4; ++l)
+                    T.at({i, j, k, l}) = std::sin(i * 0.7 + j * 1.1 + k * 0.3 + l * 0.9) +
+                                         0.5 * std::cos(i * 0.2 - j * 0.4 + k * 1.3 - l * 0.6);
+    double normT = frobenius_norm(T);
+
+    std::vector<double> epsilons = {0.5, 0.1, 0.01, 1e-6};
+    double prev_err = std::numeric_limits<double>::infinity();
+    std::vector<int> prev_ranks;
+    for (double eps : epsilons) {
+        auto ttres = decompose_tt(T, eps);
+        ASSERT_TRUE(ttres.has_value());
+        const auto& tt = *ttres;
+        auto R = reconstruct_tt(tt);
+        double err = frobenius_norm(T - R);
+        double relerr = err / normT;
+
+        EXPECT_LT(relerr, eps + 1e-9) << "eps=" << eps;
+        EXPECT_LE(err, prev_err + 1e-9) << "eps=" << eps;
+        if (!prev_ranks.empty()) {
+            ASSERT_EQ(prev_ranks.size(), tt.ranks.size());
+            for (size_t i = 0; i < tt.ranks.size(); ++i)
+                EXPECT_GE(tt.ranks[i], prev_ranks[i]) << "eps=" << eps << " idx=" << i;
+        }
+        prev_err = err;
+        prev_ranks = tt.ranks;
+    }
+}
+
+TEST(TensorTT, EpsZeroExact) {
+    Tensor T({3, 4, 2}, 0.0);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 4; ++j)
+            for (int k = 0; k < 2; ++k)
+                T.at({i, j, k}) = std::sin(i * 1.3 + j * 0.6 + k * 2.1) * (i + j + k + 1);
+    auto ttres = decompose_tt(T, 0.0);
+    ASSERT_TRUE(ttres.has_value());
+    auto R = reconstruct_tt(*ttres);
+    EXPECT_EQ(R.shape, T.shape);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 1e-9 * (frobenius_norm(T) + 1.0));
+}
+
+TEST(TensorTT, FiveDTensor) {
+    Tensor T({2, 2, 2, 2, 2}, 0.0);
+    for (long i = 0; i < T.numel(); ++i) T.data[i] = std::sin(i * 0.37 + 0.1);
+    auto ttres = decompose_tt(T, 1e-3);
+    ASSERT_TRUE(ttres.has_value());
+    const auto& tt = *ttres;
+    EXPECT_EQ(tt.ranks.size(), 6u);
+    EXPECT_EQ(tt.ranks.front(), 1);
+    EXPECT_EQ(tt.ranks.back(), 1);
+    EXPECT_EQ(tt.cores.size(), 5u);
+    auto R = reconstruct_tt(tt);
+    EXPECT_EQ(R.shape, T.shape);
+    double relerr = frobenius_norm(T - R) / frobenius_norm(T);
+    EXPECT_LT(relerr, 1e-3 + 1e-9);
+}
+
+TEST(TensorTT, ConsistencyWithHOSVD3D) {
+    Tensor T({4, 4, 4}, 0.0);
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            for (int k = 0; k < 4; ++k)
+                T.at({i, j, k}) = std::sin(i * 0.7 + j * 1.1 + k * 0.3);
+    double normT = frobenius_norm(T);
+
+    auto hosvd = decompose_hosvd(T, {2, 2, 2});
+    auto Rh = reconstruct_tucker(hosvd);
+    double err_h = frobenius_norm(T - Rh);
+
+    auto ttres = decompose_tt(T, 0.15);
+    ASSERT_TRUE(ttres.has_value());
+    auto Rt = reconstruct_tt(*ttres);
+    double err_t = frobenius_norm(T - Rt);
+
+    // Different algorithms, but neither should be a catastrophic outlier relative to the
+    // other or blow up past the norm of T -- a sanity cross-check, not an exact match.
+    EXPECT_LT(err_h, normT);
+    EXPECT_LT(err_t, normT);
+    EXPECT_LT(err_t, err_h * 10.0 + 0.1 * normT);
+    EXPECT_LT(err_h, err_t * 10.0 + 0.1 * normT);
+}
+
+TEST(TensorTT, ThreeDGeneralModerateEps) {
+    Tensor T({3, 3, 3}, 0.0);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 3; ++k)
+                T.at({i, j, k}) = (i + 1) * (j + 2) * (k + 3) * 0.1 + std::sin(i + 2 * j - k);
+    auto ttres = decompose_tt(T, 0.2);
+    ASSERT_TRUE(ttres.has_value());
+    auto R = reconstruct_tt(*ttres);
+    double err = frobenius_norm(T - R);
+    EXPECT_GT(err, 0.0);
+    EXPECT_LT(err, frobenius_norm(T));
+}
+
+TEST(TensorTT, ReconstructShapeMatchesOriginal) {
+    Tensor T({2, 5, 3, 2}, 0.0);
+    for (long i = 0; i < T.numel(); ++i) T.data[i] = std::cos(i * 0.21) + i * 0.01;
+    auto ttres = decompose_tt(T, 0.05);
+    ASSERT_TRUE(ttres.has_value());
+    auto R = reconstruct_tt(*ttres);
+    EXPECT_EQ(R.shape, T.shape);
+    EXPECT_EQ(R.numel(), T.numel());
+}
+
+TEST(TensorTT, CoreShapesMatchRanks) {
+    Tensor T({3, 4, 5}, 0.0);
+    for (long i = 0; i < T.numel(); ++i) T.data[i] = std::sin(i * 0.13) + 0.05 * i;
+    auto ttres = decompose_tt(T, 0.01);
+    ASSERT_TRUE(ttres.has_value());
+    const auto& tt = *ttres;
+    ASSERT_EQ(tt.cores.size(), 3u);
+    ASSERT_EQ(tt.ranks.size(), 4u);
+    EXPECT_EQ(tt.ranks[0], 1);
+    EXPECT_EQ(tt.ranks[3], 1);
+    for (size_t k = 0; k < tt.cores.size(); ++k) {
+        EXPECT_EQ(tt.cores[k].ndim(), 3);
+        EXPECT_EQ(tt.cores[k].shape[0], tt.ranks[k]);
+        EXPECT_EQ(tt.cores[k].shape[1], T.shape[k]);
+        EXPECT_EQ(tt.cores[k].shape[2], tt.ranks[k + 1]);
+    }
+}
+
+TEST(TensorTT, EpsilonFieldStored) {
+    Tensor T({2, 2, 2}, 1.0);
+    auto ttres = decompose_tt(T, 0.05);
+    ASSERT_TRUE(ttres.has_value());
+    EXPECT_DOUBLE_EQ(ttres->epsilon, 0.05);
+}
+
+TEST(TensorTT, ManualCoreConstructionRoundTrip) {
+    TTDecomposition known;
+    Tensor c0({1, 3, 2}, 0.0);
+    c0.data = {1, 2, 0, 1, -1, 3};
+    Tensor c1({2, 2, 2}, 0.0);
+    c1.data = {1, 0, 0, 1, 2, -1, 1, 1};
+    Tensor c2({2, 4, 1}, 0.0);
+    c2.data = {1, 0, 2, 1, 0, 1, -1, 2};
+    known.cores = {c0, c1, c2};
+    known.ranks = {1, 2, 2, 1};
+    known.epsilon = 0.0;
+
+    auto T = reconstruct_tt(known);
+    EXPECT_EQ(T.shape, std::vector<int>({3, 2, 4}));
+
+    auto ttres = decompose_tt(T, 1e-8);
+    ASSERT_TRUE(ttres.has_value());
+    for (int r : ttres->ranks) EXPECT_LE(r, 2);
+    auto R = reconstruct_tt(*ttres);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 1e-6);
+}
+
+TEST(TensorTT, ErrorInvalidOrderTooLow1D) {
+    Tensor T({5}, 0.0); T.data = {1, 2, 3, 4, 5};
+    auto res = decompose_tt(T, 0.1);
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorTT, ErrorInvalidOrderTooLow2D) {
+    Tensor T({3, 3}, 1.0);
+    auto res = decompose_tt(T, 0.1);
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorTT, ErrorNegativeEps) {
+    Tensor T({2, 2, 2}, 1.0);
+    auto res = decompose_tt(T, -0.1);
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorTT, ErrorEmptyTensor) {
+    Tensor T({2, 0, 3}, 0.0);
+    ASSERT_EQ(T.numel(), 0);
+    auto res = decompose_tt(T, 0.1);
+    EXPECT_FALSE(res.has_value());
 }
