@@ -8020,6 +8020,19 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       most robust check, since manual small-case counting is error-prone) plus
       no-duplicate-equivalence-class and dihedral-closure checks. No new CTest registrations; 25
       new test cases across test_cplx/test_optim_global/test_combo; 367 suites, 100% passing.
+      Wave 201: ms::ml gains ElasticNet (combined L1+L2 penalty, same coordinate-descent structure
+      as LassoRegression generalized to a modified soft-threshold update), verified via limiting
+      agreement with Lasso/Ridge at l1_ratio=1/0 (noting a pre-existing normalized-vs-unnormalized
+      RSS convention mismatch between Ridge and Lasso/ElasticNet, documented as a caveat not a
+      bug) and coefficient recovery on synthetic noisy data. ms::diffgeo gains
+      gauss_bonnet_integral/residual (numerical ∬K dA = 2*pi*chi verification via composite
+      trapezoid quadrature over the existing first_fundamental_form/gaussian_curvature machinery),
+      verified on a unit sphere (->4*pi), radius scale-invariance, a flat patch (->0), and
+      monotonic grid-refinement convergence. ms::ode gains ode_cashkarp (6-stage embedded RK(4,5)
+      with adaptive step control mirroring ode_rk45's exact accept/reject/rescale loop), verified
+      against exact exponential solutions and agreement with ode_rk45 on a smooth nonlinear IVP.
+      No new CTest registrations; 28 new test cases across test_ml/test_diffgeo/test_ode_adaptive;
+      367 suites, 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
