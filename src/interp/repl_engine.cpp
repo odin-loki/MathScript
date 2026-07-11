@@ -7747,6 +7747,21 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "info_differential_entropy_gaussian") {
             return info::differential_entropy_gaussian(arg);
         }
+        if (fn == "special_erfinv") {
+            return erfinv(arg);
+        }
+        if (fn == "special_erfcinv") {
+            return erfcinv(arg);
+        }
+        if (fn == "special_log_gamma") {
+            return log_gamma(arg);
+        }
+        if (fn == "special_digamma") {
+            return digamma(arg);
+        }
+        if (fn == "special_trigamma") {
+            return trigamma(arg);
+        }
         if (fn == "numthy_partition") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
@@ -7996,6 +8011,21 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "info_rate_distortion_gaussian") {
             return info::rate_distortion_gaussian(args[0], args[1]);
+        }
+        if (fn == "special_polygamma") {
+            return polygamma(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "special_gamma_inc_reg") {
+            return gamma_inc_reg(args[0], args[1]);
+        }
+        if (fn == "special_gamma_inc_reg_upper") {
+            return gamma_inc_reg_upper(args[0], args[1]);
+        }
+        if (fn == "prob_t_pdf") {
+            return t_pdf(args[0], args[1]);
+        }
+        if (fn == "prob_t_ppf") {
+            return t_ppf(args[0], args[1]);
         }
         if (fn == "geo_vec2d_length") {
             const geo::Vec2D v{args[0], args[1]};
@@ -8256,6 +8286,24 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     if (args.size() == 3 && fn == "f_cdf") {
         return f_cdf(args[0], args[1], args[2]);
     }
+    if (args.size() == 3 && fn == "special_beta_inc_reg") {
+        return beta_inc_reg(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "prob_uniform_pdf") {
+        return uniform_pdf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "prob_gamma_ppf") {
+        return gamma_ppf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "prob_beta_ppf") {
+        return beta_ppf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "prob_f_pdf") {
+        return f_pdf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "prob_f_ppf") {
+        return f_ppf(args[0], args[1], args[2]);
+    }
     if ((args.size() == 3 || args.size() == 4) && fn == "finance_pv") {
         const int n = static_cast<int>(args[1]);
         if (n < 0 || args[1] != n) {
@@ -8446,6 +8494,54 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         return finance::mc_asian_put(args[0], args[1], args[2], args[3], args[4], n_paths,
                                      n_steps, seed);
+    }
+    if (args.size() == 7 &&
+        (fn == "finance_mc_lookback_floating_call" || fn == "finance_mc_lookback_floating_put")) {
+        const int n_paths = static_cast<int>(args[4]);
+        if (n_paths < 0 || args[4] != n_paths) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative integer n_paths"});
+        }
+        const int n_steps = static_cast<int>(args[5]);
+        if (n_steps < 0 || args[5] != n_steps) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative integer n_steps"});
+        }
+        const double seed_d = args[6];
+        const auto seed = static_cast<unsigned>(seed_d);
+        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+            return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+        }
+        if (fn == "finance_mc_lookback_floating_call") {
+            return finance::mc_lookback_floating_call(args[0], args[1], args[2], args[3],
+                                                       n_paths, n_steps, seed);
+        }
+        return finance::mc_lookback_floating_put(args[0], args[1], args[2], args[3], n_paths,
+                                                 n_steps, seed);
+    }
+    if (args.size() == 8 &&
+        (fn == "finance_mc_lookback_fixed_call" || fn == "finance_mc_lookback_fixed_put")) {
+        const int n_paths = static_cast<int>(args[5]);
+        if (n_paths < 0 || args[5] != n_paths) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative integer n_paths"});
+        }
+        const int n_steps = static_cast<int>(args[6]);
+        if (n_steps < 0 || args[6] != n_steps) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative integer n_steps"});
+        }
+        const double seed_d = args[7];
+        const auto seed = static_cast<unsigned>(seed_d);
+        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+            return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+        }
+        if (fn == "finance_mc_lookback_fixed_call") {
+            return finance::mc_lookback_fixed_call(args[0], args[1], args[2], args[3], args[4],
+                                                    n_paths, n_steps, seed);
+        }
+        return finance::mc_lookback_fixed_put(args[0], args[1], args[2], args[3], args[4],
+                                              n_paths, n_steps, seed);
     }
     if (args.size() == 9 && fn == "finance_barrier_option") {
         const int call = static_cast<int>(args[6]);
@@ -10919,6 +11015,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = prob_chi2_cdf(x,df) chi-squared CDF at x with df degrees of freedom\n"
             "  name = prob_chi2_pdf(x,df) chi-squared PDF at x with df degrees of freedom\n"
             "  name = prob_t_cdf(x,df) Student t CDF at x with df degrees of freedom\n"
+            "  name = prob_t_pdf(x,df) Student t PDF at x with df degrees of freedom\n"
+            "  name = prob_t_ppf(p,df) Student t quantile at p with df degrees of freedom\n"
+            "  name = prob_uniform_pdf(x,a,b) uniform PDF on [a,b] at x\n"
+            "  name = prob_gamma_ppf(p,shape,scale) gamma quantile at p with shape and scale\n"
+            "  name = prob_beta_ppf(p,alpha,beta) beta quantile at p with parameters alpha and beta\n"
+            "  name = prob_f_pdf(x,d1,d2) F distribution PDF at x with d1 and d2 degrees of freedom\n"
+            "  name = prob_f_ppf(p,d1,d2) F distribution quantile at p with d1 and d2 degrees of freedom\n"
+            "  name = special_erfinv(x) inverse error function erf^-1(x)\n"
+            "  name = special_erfcinv(x) inverse complementary error function erfc^-1(x)\n"
+            "  name = special_log_gamma(x) log gamma function ln(Gamma(x))\n"
+            "  name = special_digamma(x) digamma function psi(x)\n"
+            "  name = special_trigamma(x) trigamma function psi'(x)\n"
+            "  name = special_polygamma(n,x) polygamma function psi^(n)(x)\n"
+            "  name = special_gamma_inc_reg(a,x) regularized lower incomplete gamma P(a,x)\n"
+            "  name = special_gamma_inc_reg_upper(a,x) regularized upper incomplete gamma Q(a,x)\n"
+            "  name = special_beta_inc_reg(x,a,b) regularized incomplete beta I_x(a,b)\n"
             "  name = prob_gamma_pdf(x,shape,scale) gamma PDF at x with shape and scale\n"
             "  name = gamma_cdf(x,shape,scale) gamma CDF at x with shape and scale\n"
             "  name = beta_pdf(x,alpha,beta) beta PDF at x with parameters alpha and beta\n"
@@ -10942,6 +11054,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = finance_mc_european_put(S,K,T,r,sigma,n_paths,seed) Monte Carlo European put price\n"
             "  name = finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed) Monte Carlo arithmetic Asian call price\n"
             "  name = finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed) Monte Carlo arithmetic Asian put price\n"
+            "  name = finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed) Monte Carlo floating-strike lookback call price\n"
+            "  name = finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed) Monte Carlo floating-strike lookback put price\n"
+            "  name = finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed) Monte Carlo fixed-strike lookback call price\n"
+            "  name = finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed) Monte Carlo fixed-strike lookback put price\n"
             "  name = finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up) European barrier option price (call/knock_in/up: 0 or 1)\n"
             "  name = poly_bernstein(n,i,x) Bernstein basis polynomial B_n,i(x)\n"
             "  name = finance_bond_price(c,y,n,fv) bond price (annual coupon c, yield y, n periods, face fv)\n"
@@ -11052,12 +11168,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
+            "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
-            "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
+            "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -13361,6 +13478,47 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                        finance::mc_asian_put(S, K, T, r, sigma, n_paths, n_steps, seed)) +
                    "\n";
         }
+        if (fn == "finance_mc_lookback_fixed_call" || fn == "finance_mc_lookback_fixed_put") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double n_paths_d = 0.0;
+            double n_steps_d = 0.0;
+            double seed_d = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), sigma) ||
+                !parse_number(trim(match[7].str()), n_paths_d) ||
+                !parse_number(trim(match[8].str()), n_steps_d) ||
+                !parse_number(trim(match[9].str()), seed_d)) {
+                return std::unexpected(DomainError{
+                    fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,n_steps,seed)"});
+            }
+            const int n_paths = static_cast<int>(n_paths_d);
+            if (n_paths < 0 || n_paths_d != n_paths) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer n_paths"});
+            }
+            const int n_steps = static_cast<int>(n_steps_d);
+            if (n_steps < 0 || n_steps_d != n_steps) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer n_steps"});
+            }
+            const auto seed = static_cast<unsigned>(seed_d);
+            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            }
+            if (fn == "finance_mc_lookback_fixed_call") {
+                return std::to_string(finance::mc_lookback_fixed_call(
+                           S, K, T, r, sigma, n_paths, n_steps, seed)) +
+                       "\n";
+            }
+            return std::to_string(finance::mc_lookback_fixed_put(S, K, T, r, sigma, n_paths,
+                                                                  n_steps, seed)) +
+                   "\n";
+        }
     }
 
     static const std::regex nonary(
@@ -13520,6 +13678,47 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                        "\n";
             }
             return std::to_string(finance::mc_european_put(S, K, T, r, sigma, n_paths, seed)) +
+                   "\n";
+        }
+        if (fn == "finance_mc_lookback_floating_call" ||
+            fn == "finance_mc_lookback_floating_put") {
+            double S = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double n_paths_d = 0.0;
+            double n_steps_d = 0.0;
+            double seed_d = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), T) ||
+                !parse_number(trim(match[4].str()), r) ||
+                !parse_number(trim(match[5].str()), sigma) ||
+                !parse_number(trim(match[6].str()), n_paths_d) ||
+                !parse_number(trim(match[7].str()), n_steps_d) ||
+                !parse_number(trim(match[8].str()), seed_d)) {
+                return std::unexpected(DomainError{
+                    fn, "expected " + fn + "(S,T,r,sigma,n_paths,n_steps,seed)"});
+            }
+            const int n_paths = static_cast<int>(n_paths_d);
+            if (n_paths < 0 || n_paths_d != n_paths) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer n_paths"});
+            }
+            const int n_steps = static_cast<int>(n_steps_d);
+            if (n_steps < 0 || n_steps_d != n_steps) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer n_steps"});
+            }
+            const auto seed = static_cast<unsigned>(seed_d);
+            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            }
+            if (fn == "finance_mc_lookback_floating_call") {
+                return std::to_string(finance::mc_lookback_floating_call(
+                           S, T, r, sigma, n_paths, n_steps, seed)) +
+                       "\n";
+            }
+            return std::to_string(finance::mc_lookback_floating_put(S, T, r, sigma, n_paths,
+                                                                     n_steps, seed)) +
                    "\n";
         }
     }
@@ -14898,6 +15097,74 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"prob_norm_ppf", "expected prob_norm_ppf(p,mu,sigma)"});
             }
             return std::to_string(norm_ppf(p, mu, sigma)) + "\n";
+        }
+        if (fn == "special_beta_inc_reg") {
+            double x = 0.0;
+            double a = 0.0;
+            double b = 0.0;
+            if (!parse_number(trim(match[2].str()), x) || !parse_number(trim(match[3].str()), a) ||
+                !parse_number(trim(match[4].str()), b)) {
+                return std::unexpected(
+                    DomainError{"special_beta_inc_reg", "expected special_beta_inc_reg(x,a,b)"});
+            }
+            return std::to_string(beta_inc_reg(x, a, b)) + "\n";
+        }
+        if (fn == "prob_uniform_pdf") {
+            double x = 0.0;
+            double a = 0.0;
+            double b = 0.0;
+            if (!parse_number(trim(match[2].str()), x) || !parse_number(trim(match[3].str()), a) ||
+                !parse_number(trim(match[4].str()), b)) {
+                return std::unexpected(
+                    DomainError{"prob_uniform_pdf", "expected prob_uniform_pdf(x,a,b)"});
+            }
+            return std::to_string(uniform_pdf(x, a, b)) + "\n";
+        }
+        if (fn == "prob_gamma_ppf") {
+            double p = 0.0;
+            double shape = 0.0;
+            double scale = 0.0;
+            if (!parse_number(trim(match[2].str()), p) ||
+                !parse_number(trim(match[3].str()), shape) ||
+                !parse_number(trim(match[4].str()), scale)) {
+                return std::unexpected(
+                    DomainError{"prob_gamma_ppf", "expected prob_gamma_ppf(p,shape,scale)"});
+            }
+            return std::to_string(gamma_ppf(p, shape, scale)) + "\n";
+        }
+        if (fn == "prob_beta_ppf") {
+            double p = 0.0;
+            double alpha = 0.0;
+            double beta = 0.0;
+            if (!parse_number(trim(match[2].str()), p) ||
+                !parse_number(trim(match[3].str()), alpha) ||
+                !parse_number(trim(match[4].str()), beta)) {
+                return std::unexpected(
+                    DomainError{"prob_beta_ppf", "expected prob_beta_ppf(p,alpha,beta)"});
+            }
+            return std::to_string(beta_ppf(p, alpha, beta)) + "\n";
+        }
+        if (fn == "prob_f_pdf") {
+            double x = 0.0;
+            double d1 = 0.0;
+            double d2 = 0.0;
+            if (!parse_number(trim(match[2].str()), x) || !parse_number(trim(match[3].str()), d1) ||
+                !parse_number(trim(match[4].str()), d2)) {
+                return std::unexpected(
+                    DomainError{"prob_f_pdf", "expected prob_f_pdf(x,d1,d2)"});
+            }
+            return std::to_string(f_pdf(x, d1, d2)) + "\n";
+        }
+        if (fn == "prob_f_ppf") {
+            double p = 0.0;
+            double d1 = 0.0;
+            double d2 = 0.0;
+            if (!parse_number(trim(match[2].str()), p) || !parse_number(trim(match[3].str()), d1) ||
+                !parse_number(trim(match[4].str()), d2)) {
+                return std::unexpected(
+                    DomainError{"prob_f_ppf", "expected prob_f_ppf(p,d1,d2)"});
+            }
+            return std::to_string(f_ppf(p, d1, d2)) + "\n";
         }
         if (fn == "finance_bond_modified_duration") {
             double c = 0.0;
@@ -16282,6 +16549,55 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(spherical_jn(static_cast<int>(n), x)) + "\n";
         }
 
+        if (fn == "special_polygamma") {
+            double n = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
+                return std::unexpected(
+                    DomainError{"special_polygamma", "expected special_polygamma(n,x)"});
+            }
+            return std::to_string(polygamma(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "special_gamma_inc_reg") {
+            double a = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"special_gamma_inc_reg",
+                                                     "expected special_gamma_inc_reg(a,x)"});
+            }
+            return std::to_string(gamma_inc_reg(a, x)) + "\n";
+        }
+
+        if (fn == "special_gamma_inc_reg_upper") {
+            double a = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
+                return std::unexpected(
+                    DomainError{"special_gamma_inc_reg_upper",
+                                  "expected special_gamma_inc_reg_upper(a,x)"});
+            }
+            return std::to_string(gamma_inc_reg_upper(a, x)) + "\n";
+        }
+
+        if (fn == "prob_t_pdf") {
+            double x = 0.0;
+            double df = 0.0;
+            if (!parse_number(arg_a, x) || !parse_number(arg_b, df)) {
+                return std::unexpected(DomainError{"prob_t_pdf", "expected prob_t_pdf(x,df)"});
+            }
+            return std::to_string(t_pdf(x, df)) + "\n";
+        }
+
+        if (fn == "prob_t_ppf") {
+            double p = 0.0;
+            double df = 0.0;
+            if (!parse_number(arg_a, p) || !parse_number(arg_b, df)) {
+                return std::unexpected(DomainError{"prob_t_ppf", "expected prob_t_ppf(p,df)"});
+            }
+            return std::to_string(t_ppf(p, df)) + "\n";
+        }
+
         if (fn == "kelvin_ber") {
             double nu = 0.0;
             double x = 0.0;
@@ -17298,6 +17614,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     if (std::regex_match(cmd, match, unary)) {
         const std::string fn = lower(match[1].str());
         const std::string arg = trim(match[2].str());
+
+        if (fn == "special_erfinv" || fn == "special_erfcinv" || fn == "special_log_gamma" ||
+            fn == "special_digamma" || fn == "special_trigamma") {
+            double value = 0.0;
+            if (!parse_number(arg, value)) {
+                return std::unexpected(DomainError{fn, "expected numeric argument"});
+            }
+            if (fn == "special_erfinv") {
+                return std::to_string(erfinv(value)) + "\n";
+            }
+            if (fn == "special_erfcinv") {
+                return std::to_string(erfcinv(value)) + "\n";
+            }
+            if (fn == "special_log_gamma") {
+                return std::to_string(log_gamma(value)) + "\n";
+            }
+            if (fn == "special_digamma") {
+                return std::to_string(digamma(value)) + "\n";
+            }
+            return std::to_string(trigamma(value)) + "\n";
+        }
 
         if (fn == "plot") {
             auto ys = parse_matrix(arg);

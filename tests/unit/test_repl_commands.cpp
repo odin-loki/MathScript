@@ -5,7 +5,10 @@
 #include <string>
 
 #include "ms/error/error_types.hpp"
+#include "ms/finance/finance.hpp"
 #include "ms/interp/repl_engine.hpp"
+#include "ms/prob/prob.hpp"
+#include "ms/special/special.hpp"
 #include "ms/version.hpp"
 
 using namespace ms::interp;
@@ -4646,4 +4649,268 @@ TEST(ReplCommandsTest, wave194_finance_barrier_option) {
     // This also exercises the new 9-arg (nonary) regex literal-dispatch path added
     // specifically for finance_barrier_option.
     expect_contains(interp, "finance_barrier_option(100, 100, 90, 1, 0.05, 0.2, 1, 1, 0)", "\n");
+}
+
+TEST(ReplCommandsTest, wave195_special_erfinv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_erfinv(x)");
+
+    const double ref = ms::erfinv(0.5);
+    expect_ok(interp, "y = special_erfinv(0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_erfinv(0.5)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_erfcinv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_erfcinv(x)");
+
+    // erfcinv(x) == erfinv(1-x) (DLMF 7.17 relationship between erf^-1 and erfc^-1).
+    const double ref = ms::erfinv(1.0 - 0.3);
+    expect_ok(interp, "y = special_erfcinv(0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_erfcinv(0.3)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_log_gamma) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_log_gamma(x)");
+
+    // log_gamma(5) == ln(4!) == ln(24).
+    const double ref = ms::log_gamma(5.0);
+    EXPECT_NEAR(ref, std::log(24.0), 1e-9);
+    expect_ok(interp, "y = special_log_gamma(5)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_log_gamma(5)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_digamma) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_digamma(x)");
+
+    // digamma(1) == -EulerGamma.
+    const double ref = ms::digamma(1.0);
+    EXPECT_NEAR(ref, -0.5772156649015329, 1e-6);
+    expect_ok(interp, "y = special_digamma(1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_digamma(1)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_trigamma) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_trigamma(x)");
+
+    // trigamma(1) == pi^2/6 (implementation uses a series approximation, hence the looser tolerance).
+    const double ref = ms::trigamma(1.0);
+    constexpr double kPi = 3.14159265358979323846;
+    EXPECT_NEAR(ref, kPi * kPi / 6.0, 1e-5);
+    expect_ok(interp, "y = special_trigamma(1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_trigamma(1)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_polygamma) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_polygamma(n,x)");
+
+    // polygamma(1, x) is the trigamma function.
+    const double ref = ms::polygamma(1, 1.0);
+    EXPECT_NEAR(ref, ms::trigamma(1.0), 1e-9);
+    expect_ok(interp, "y = special_polygamma(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_polygamma(1, 1)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_gamma_inc_reg) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_gamma_inc_reg(a,x)");
+
+    // P(1, x) == 1 - exp(-x); use x = ln(2) so the expected value is 0.5.
+    // 0.69314718055994530942 is ln(2) to full double precision (std::to_string would
+    // truncate to 6 decimals and reintroduce error when re-parsed by the REPL).
+    const std::string x_str = "0.69314718055994530942";
+    const double x = std::log(2.0);
+    const double ref = ms::gamma_inc_reg(1.0, x);
+    EXPECT_NEAR(ref, 0.5, 1e-6);
+    expect_ok(interp, "y = special_gamma_inc_reg(1, " + x_str + ")");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_gamma_inc_reg(1, " + x_str + ")", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_gamma_inc_reg_upper) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_gamma_inc_reg_upper(a,x)");
+
+    // Q(1, x) == exp(-x); use x = ln(2) so the expected value is 0.5.
+    const std::string x_str = "0.69314718055994530942";
+    const double x = std::log(2.0);
+    const double ref = ms::gamma_inc_reg_upper(1.0, x);
+    EXPECT_NEAR(ref, 0.5, 1e-6);
+    expect_ok(interp, "y = special_gamma_inc_reg_upper(1, " + x_str + ")");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_gamma_inc_reg_upper(1, " + x_str + ")",
+                    std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_special_beta_inc_reg) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_beta_inc_reg(x,a,b)");
+
+    // I_x(1,1) == x since Beta(1,1) is the uniform distribution on [0,1].
+    const double ref = ms::beta_inc_reg(0.3, 1.0, 1.0);
+    EXPECT_NEAR(ref, 0.3, 1e-6);
+    expect_ok(interp, "y = special_beta_inc_reg(0.3, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "special_beta_inc_reg(0.3, 1, 1)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_prob_uniform_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_uniform_pdf(x,a,b)");
+
+    // uniform_pdf on [1,2] is constant 1/(2-1) = 1.
+    const double ref = ms::uniform_pdf(1.5, 1.0, 2.0);
+    EXPECT_NEAR(ref, 1.0, 1e-9);
+    expect_ok(interp, "y = prob_uniform_pdf(1.5, 1, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "prob_uniform_pdf(1.5, 1, 2)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_prob_t_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_t_pdf(x,df)");
+
+    const double ref = ms::t_pdf(1.0, 5.0);
+    expect_ok(interp, "y = prob_t_pdf(1, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "prob_t_pdf(1, 5)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_prob_t_ppf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_t_ppf(p,df)");
+
+    // The Student-t distribution is symmetric, so its median (p=0.5) is 0.
+    const double ref = ms::t_ppf(0.5, 10.0);
+    EXPECT_NEAR(ref, 0.0, 1e-9);
+    expect_ok(interp, "y = prob_t_ppf(0.5, 10)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "prob_t_ppf(0.5, 10)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_prob_gamma_ppf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_gamma_ppf(p,shape,scale)");
+
+    const double ref = ms::gamma_ppf(0.5, 2.0, 1.0);
+    expect_ok(interp, "y = prob_gamma_ppf(0.5, 2, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "prob_gamma_ppf(0.5, 2, 1)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_prob_beta_ppf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_beta_ppf(p,alpha,beta)");
+
+    // Beta(1,1) is the uniform distribution on [0,1], so its ppf is the identity.
+    const double ref = ms::beta_ppf(0.5, 1.0, 1.0);
+    EXPECT_NEAR(ref, 0.5, 1e-9);
+    expect_ok(interp, "y = prob_beta_ppf(0.5, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "prob_beta_ppf(0.5, 1, 1)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_prob_f_pdf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_f_pdf(x,d1,d2)");
+
+    const double ref = ms::f_pdf(1.0, 5.0, 5.0);
+    expect_ok(interp, "y = prob_f_pdf(1, 5, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "prob_f_pdf(1, 5, 5)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_prob_f_ppf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_f_ppf(p,d1,d2)");
+
+    const double ref = ms::f_ppf(0.5, 5.0, 5.0);
+    expect_ok(interp, "y = prob_f_ppf(0.5, 5, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+
+    expect_contains(interp, "prob_f_ppf(0.5, 5, 5)", std::to_string(ref));
+}
+
+TEST(ReplCommandsTest, wave195_finance_mc_lookback_floating_call) {
+    Interpreter interp;
+    expect_contains(interp, "help",
+                    "finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed)");
+
+    // Compare REPL plumbing against the same direct library call with a fixed seed.
+    const double ref = ms::finance::mc_lookback_floating_call(100, 1, 0.05, 0.2, 2000, 50, 7);
+    expect_ok(interp, "y = finance_mc_lookback_floating_call(100, 1, 0.05, 0.2, 2000, 50, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+    EXPECT_GT(ref, 0.0);
+
+    expect_contains(interp, "finance_mc_lookback_floating_call(100, 1, 0.05, 0.2, 2000, 50, 7)",
+                    "\n");
+}
+
+TEST(ReplCommandsTest, wave195_finance_mc_lookback_floating_put) {
+    Interpreter interp;
+    expect_contains(interp, "help",
+                    "finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed)");
+
+    const double ref = ms::finance::mc_lookback_floating_put(100, 1, 0.05, 0.2, 2000, 50, 7);
+    expect_ok(interp, "y = finance_mc_lookback_floating_put(100, 1, 0.05, 0.2, 2000, 50, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+    EXPECT_GT(ref, 0.0);
+
+    expect_contains(interp, "finance_mc_lookback_floating_put(100, 1, 0.05, 0.2, 2000, 50, 7)",
+                    "\n");
+}
+
+TEST(ReplCommandsTest, wave195_finance_mc_lookback_fixed_call) {
+    Interpreter interp;
+    expect_contains(interp, "help",
+                    "finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed)");
+
+    const double ref =
+        ms::finance::mc_lookback_fixed_call(100, 100, 1, 0.05, 0.2, 2000, 50, 7);
+    expect_ok(interp, "y = finance_mc_lookback_fixed_call(100, 100, 1, 0.05, 0.2, 2000, 50, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+    EXPECT_GT(ref, 0.0);
+
+    expect_contains(interp, "finance_mc_lookback_fixed_call(100, 100, 1, 0.05, 0.2, 2000, 50, 7)",
+                    "\n");
+}
+
+TEST(ReplCommandsTest, wave195_finance_mc_lookback_fixed_put) {
+    Interpreter interp;
+    expect_contains(interp, "help",
+                    "finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed)");
+
+    const double ref =
+        ms::finance::mc_lookback_fixed_put(100, 100, 1, 0.05, 0.2, 2000, 50, 7);
+    expect_ok(interp, "y = finance_mc_lookback_fixed_put(100, 100, 1, 0.05, 0.2, 2000, 50, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ref, 1e-9);
+    EXPECT_GT(ref, 0.0);
+
+    expect_contains(interp, "finance_mc_lookback_fixed_put(100, 100, 1, 0.05, 0.2, 2000, 50, 7)",
+                    "\n");
 }
