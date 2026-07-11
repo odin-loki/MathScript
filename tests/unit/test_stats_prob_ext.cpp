@@ -100,3 +100,153 @@ TEST(ProbExtTest, norm_ppf_interior_and_binom_edges) {
     EXPECT_NEAR(binom_cdf(4, 4, 0.5), 1.0, 1e-12);
     EXPECT_GT(pois_cdf(3.0, 2.0), pois_cdf(1.0, 2.0));
 }
+
+// ---------------------------------------------------------------------------
+// one_way_anova
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, one_way_anova_three_groups_differ) {
+    const std::vector<std::vector<double>> groups = {
+        {10.0, 11.0, 12.0},
+        {20.0, 21.0, 22.0},
+        {30.0, 31.0, 32.0},
+    };
+    const auto result = one_way_anova(groups);
+    EXPECT_GT(result.f_stat, 100.0);
+    EXPECT_LT(result.p_value, 0.001);
+    EXPECT_EQ(result.df_between, 2);
+    EXPECT_EQ(result.df_within, 6);
+}
+
+TEST(StatsExtTest, one_way_anova_three_groups_same) {
+    const std::vector<std::vector<double>> groups = {
+        {5.0, 6.0, 7.0},
+        {5.1, 6.1, 7.1},
+        {4.9, 5.9, 6.9},
+    };
+    const auto result = one_way_anova(groups);
+    EXPECT_LT(result.f_stat, 5.0);
+    EXPECT_GT(result.p_value, 0.05);
+    EXPECT_EQ(result.df_between, 2);
+    EXPECT_EQ(result.df_within, 6);
+}
+
+TEST(StatsExtTest, one_way_anova_two_groups_edge_case) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 2.0, 3.0, 4.0},
+        {5.0, 6.0, 7.0, 8.0},
+    };
+    const auto result = one_way_anova(groups);
+    EXPECT_GT(result.f_stat, 1.0);
+    EXPECT_LT(result.p_value, 0.05);
+    EXPECT_EQ(result.df_between, 1);
+    EXPECT_EQ(result.df_within, 6);
+}
+
+TEST(StatsExtTest, one_way_anova_f_matches_t_squared_for_two_groups) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> b{2.5, 3.5, 4.5, 5.5};
+    const auto anova = one_way_anova({a, b});
+    const double t = two_sample_ttest(a, b);
+    EXPECT_NEAR(anova.f_stat, t * t, 1e-6);
+}
+
+TEST(StatsExtTest, one_way_anova_degenerate_inputs) {
+    const std::vector<std::vector<double>> one_group = {{1.0, 2.0, 3.0}};
+    const auto too_few = one_way_anova(one_group);
+    EXPECT_DOUBLE_EQ(too_few.f_stat, 0.0);
+    EXPECT_DOUBLE_EQ(too_few.p_value, 0.0);
+
+    const std::vector<std::vector<double>> with_empty = {{1.0, 2.0}, {}};
+    const auto empty_group = one_way_anova(with_empty);
+    EXPECT_DOUBLE_EQ(empty_group.f_stat, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// mann_whitney_u
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, mann_whitney_u_stochastically_greater) {
+    const std::vector<double> low{1.0, 2.0, 3.0, 4.0, 5.0};
+    const std::vector<double> high{11.0, 12.0, 13.0, 14.0, 15.0};
+    const auto result = mann_whitney_u(low, high);
+    EXPECT_NEAR(result.u_stat, 0.0, 1e-12);
+    EXPECT_LT(result.p_value, 0.05);
+}
+
+TEST(StatsExtTest, mann_whitney_u_nearly_identical) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0, 5.0};
+    const std::vector<double> b{1.1, 2.1, 3.1, 4.1, 5.1};
+    const auto result = mann_whitney_u(a, b);
+    EXPECT_GT(result.p_value, 0.1);
+}
+
+TEST(StatsExtTest, mann_whitney_u_known_small_example) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> b{5.0, 6.0, 7.0, 8.0};
+    const auto result = mann_whitney_u(a, b);
+    EXPECT_NEAR(result.u_stat, 0.0, 1e-12);
+    EXPECT_LT(result.p_value, 0.05);
+}
+
+TEST(StatsExtTest, mann_whitney_u_tie_handling) {
+    const std::vector<double> a{1.0, 1.0, 2.0, 3.0};
+    const std::vector<double> b{2.0, 3.0, 4.0, 5.0};
+    const auto result = mann_whitney_u(a, b);
+    EXPECT_GE(result.u_stat, 0.0);
+    EXPECT_LE(result.u_stat, 16.0);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, mann_whitney_u_empty_samples) {
+    const std::vector<double> empty;
+    const std::vector<double> data{1.0, 2.0};
+    const auto result = mann_whitney_u(empty, data);
+    EXPECT_DOUBLE_EQ(result.u_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// ks_test_2sample
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, ks_test_2sample_different_distributions) {
+    const std::vector<double> low{0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+    const std::vector<double> high{10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0};
+    const auto result = ks_test_2sample(low, high);
+    EXPECT_GT(result.d_stat, 0.9);
+    EXPECT_LT(result.p_value, 0.05);
+}
+
+TEST(StatsExtTest, ks_test_2sample_same_distribution) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+    const std::vector<double> b{1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5};
+    const auto result = ks_test_2sample(a, b);
+    EXPECT_LT(result.d_stat, 0.3);
+    EXPECT_GT(result.p_value, 0.1);
+}
+
+TEST(StatsExtTest, ks_test_2sample_d_stat_in_unit_interval) {
+    const std::vector<double> a{3.0, 1.0, 4.0, 1.0, 5.0};
+    const std::vector<double> b{9.0, 2.0, 6.0, 5.0, 3.0};
+    const auto result = ks_test_2sample(a, b);
+    EXPECT_GE(result.d_stat, 0.0);
+    EXPECT_LE(result.d_stat, 1.0);
+}
+
+TEST(StatsExtTest, ks_test_2sample_empty_samples) {
+    const std::vector<double> empty;
+    const std::vector<double> data{1.0, 2.0, 3.0};
+    const auto result = ks_test_2sample(empty, data);
+    EXPECT_DOUBLE_EQ(result.d_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 0.0);
+}
+
+TEST(StatsExtTest, ks_test_2sample_identical_samples) {
+    const std::vector<double> a{2.0, 4.0, 6.0, 8.0, 10.0};
+    const std::vector<double> b{2.0, 4.0, 6.0, 8.0, 10.0};
+    const auto result = ks_test_2sample(a, b);
+    EXPECT_NEAR(result.d_stat, 0.0, 1e-12);
+    EXPECT_NEAR(result.p_value, 1.0, 1e-6);
+}

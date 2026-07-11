@@ -69,7 +69,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | Header | Description |
 |--------|-------------|
 | `fft/fft.hpp` | `fft`, `ifft`, `rfft`, `dft`, `dct2`/`dst2`, and shift helpers |
-| `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression |
+| `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`), Mann-Whitney U (`mann_whitney_u`), two-sample KS (`ks_test_2sample`) |
 | `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma, uniform |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions |
@@ -156,7 +156,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `ml/ml.hpp` | Linear/ridge/lasso/logistic regression, KNN, naive Bayes, decision trees; KMeans, DBSCAN, agglomerative clustering; PCA, t-SNE; autodiff, feedforward nets; loss/metrics, scalers, cross-validation |
+| `ml/ml.hpp` | Linear/ridge/lasso/logistic regression, KNN, naive Bayes, decision trees; `RandomForest` (bootstrap-aggregated ensemble with feature subsampling) and `GradientBoosting` (functional-gradient-boosted shallow trees for regression); KMeans, DBSCAN, agglomerative clustering; PCA, t-SNE; autodiff, feedforward nets; loss/metrics, scalers, cross-validation |
 
 ## Image Processing — Wave 60 (`include/ms/image/`)
 
@@ -257,6 +257,16 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `sym_integrate("expr", "var")` | Symbolic integration (power rule, linearity, sin/cos; unsupported forms documented) |
 | `sym_eval("expr", "var=value")` | Numeric evaluation of parsed expression with one variable binding |
 
+**Wave 179 — ODE formula-string bindings (scalar IVP):**
+
+| Call | Description |
+|------|-------------|
+| `ode_euler("expr", t0, y0, t_end, steps)` | Forward Euler; `expr` parsed once via `sym_parse`, evaluated per step with `{t, y}` bindings |
+| `ode_rk4("expr", t0, y0, t_end, steps)` | Classical RK4 with parsed formula RHS |
+| `ode_midpoint("expr", t0, y0, t_end, steps)` | Explicit midpoint (RK2) with parsed formula RHS |
+| `ode_rk45("expr", t0, y0, t_end, rtol, atol)` | Adaptive Dormand-Prince RK45 with parsed formula RHS |
+| `ode_backward_euler("expr", t0, y0, t_end, steps)` | Implicit backward Euler (Newton iteration) with parsed formula RHS |
+
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 
 | Header | Description |
@@ -275,4 +285,4 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory, `hebbian_update`, `energy` (Boltzmann -vᵀWh), `CellMemory::consolidate` short→long-term decay, `cell_to_cypha_features` |
 | `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate` |
 | `frameworks/gria/gria.hpp` | Information-theoretic `alpha`, GF(2^n), cellular automata, LFSR utilities |
-| `frameworks/izaac/izaac.hpp` | VRF `CSPRNG`, session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`/`run_backtest` |
+| `frameworks/izaac/izaac.hpp` | VRF `CSPRNG`, session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`/`run_backtest`; `crypto::encrypt`/`decrypt` (`CipherText` CSPRNG keystream XOR + keyed tag, demo/internal use only), `mpc::split_secret`/`reconstruct_secret` (`Share`, Shamir k-of-n over prime field `PRIME`) |

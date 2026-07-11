@@ -1,13 +1,115 @@
 #include "ms/stats/stats.hpp"
+#include "ms/prob/prob.hpp"
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <numeric>
 #include <random>
 #include <unordered_map>
 #include <vector>
 
 namespace ms {
+
+namespace {
+
+double beta_continued_fraction(double a, double b, double x) {
+    const double fpmin = 1e-300;
+    const double qab = a + b;
+    const double qap = a + 1.0;
+    const double qam = a - 1.0;
+    double c = 1.0;
+    double d = 1.0 - qab * x / qap;
+    if (std::abs(d) < fpmin) {
+        d = fpmin;
+    }
+    d = 1.0 / d;
+    double h = d;
+    for (int m = 1; m <= 200; ++m) {
+        const double m2 = 2.0 * static_cast<double>(m);
+        double aa = static_cast<double>(m) * (b - static_cast<double>(m)) * x /
+                    ((qam + m2) * (a + m2));
+        d = 1.0 + aa * d;
+        if (std::abs(d) < fpmin) {
+            d = fpmin;
+        }
+        c = 1.0 + aa / c;
+        if (std::abs(c) < fpmin) {
+            c = fpmin;
+        }
+        d = 1.0 / d;
+        h *= d * c;
+        aa = -(a + static_cast<double>(m)) * (qab + static_cast<double>(m)) * x /
+             ((a + m2) * (qap + m2));
+        d = 1.0 + aa * d;
+        if (std::abs(d) < fpmin) {
+            d = fpmin;
+        }
+        c = 1.0 + aa / c;
+        if (std::abs(c) < fpmin) {
+            c = fpmin;
+        }
+        d = 1.0 / d;
+        const double del = d * c;
+        h *= del;
+        if (std::abs(del - 1.0) < 1e-14) {
+            break;
+        }
+    }
+    return h;
+}
+
+double regularized_incomplete_beta(double a, double b, double x) {
+    if (x <= 0.0) {
+        return 0.0;
+    }
+    if (x >= 1.0) {
+        return 1.0;
+    }
+    const double bt = std::exp(std::lgamma(a + b) - std::lgamma(a) - std::lgamma(b) +
+                               a * std::log(x) + b * std::log(1.0 - x));
+    if (x < (a + 1.0) / (a + b + 2.0)) {
+        return bt * beta_continued_fraction(a, b, x) / a;
+    }
+    return 1.0 - bt * beta_continued_fraction(b, a, 1.0 - x) / b;
+}
+
+double f_distribution_upper_tail_p(double f_stat, int df1, int df2) {
+    if (f_stat <= 0.0 || df1 < 1 || df2 < 1) {
+        return 1.0;
+    }
+    const double x = static_cast<double>(df1) * f_stat /
+                     (static_cast<double>(df1) * f_stat + static_cast<double>(df2));
+    return 1.0 - regularized_incomplete_beta(
+                     static_cast<double>(df1) / 2.0,
+                     static_cast<double>(df2) / 2.0,
+                     x);
+}
+
+std::vector<double> average_ranks(const std::vector<double>& values) {
+    const size_t n = values.size();
+    std::vector<size_t> order(n);
+    std::iota(order.begin(), order.end(), 0u);
+    std::sort(order.begin(), order.end(),
+              [&](size_t i, size_t j) { return values[i] < values[j]; });
+    std::vector<double> ranks(n);
+    size_t i = 0;
+    while (i < n) {
+        size_t j = i + 1;
+        while (j < n && values[order[j]] == values[order[i]]) {
+            ++j;
+        }
+        const double avg_rank =
+            0.5 * (static_cast<double>(i + 1) + static_cast<double>(j));
+        for (size_t k = i; k < j; ++k) {
+            ranks[order[k]] = avg_rank;
+        }
+        i = j;
+    }
+    return ranks;
+}
+
+} // namespace
 
 double mean(std::span<const double> data) {
     if (data.empty()) {
@@ -319,6 +421,152 @@ double ks_test(std::span<const double> x,
         dn = std::max(dn, std::abs(f0 - ecdf_lo));
     }
     return dn;
+}
+
+AnovaResult one_way_anova(const std::vector<std::vector<double>>& groups) {
+    AnovaResult result{};
+    if (groups.size() < 2) {
+        return result;
+    }
+    int k = 0;
+    int N = 0;
+    double grand_sum = 0.0;
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        ++k;
+        N += static_cast<int>(group.size());
+        grand_sum += std::accumulate(group.begin(), group.end(), 0.0);
+    }
+    if (k < 2 || N <= k) {
+        return result;
+    }
+    const double grand_mean = grand_sum / static_cast<double>(N);
+    double ss_between = 0.0;
+    double ss_within = 0.0;
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        const double m = mean(group);
+        const double n = static_cast<double>(group.size());
+        ss_between += n * (m - grand_mean) * (m - grand_mean);
+        for (double v : group) {
+            const double d = v - m;
+            ss_within += d * d;
+        }
+    }
+    result.df_between = k - 1;
+    result.df_within = N - k;
+    if (ss_within <= 0.0 || result.df_between < 1 || result.df_within < 1) {
+        return result;
+    }
+    result.f_stat = (ss_between / static_cast<double>(result.df_between)) /
+                    (ss_within / static_cast<double>(result.df_within));
+    result.p_value = f_distribution_upper_tail_p(
+        result.f_stat, result.df_between, result.df_within);
+    return result;
+}
+
+MannWhitneyResult mann_whitney_u(std::span<const double> a, std::span<const double> b) {
+    MannWhitneyResult result{};
+    if (a.empty() || b.empty()) {
+        return result;
+    }
+    const int n1 = static_cast<int>(a.size());
+    const int n2 = static_cast<int>(b.size());
+    const int N = n1 + n2;
+    std::vector<double> combined(static_cast<size_t>(N));
+    std::vector<int> labels(static_cast<size_t>(N));
+    for (int i = 0; i < n1; ++i) {
+        combined[static_cast<size_t>(i)] = a[static_cast<size_t>(i)];
+        labels[static_cast<size_t>(i)] = 0;
+    }
+    for (int i = 0; i < n2; ++i) {
+        combined[static_cast<size_t>(n1 + i)] = b[static_cast<size_t>(i)];
+        labels[static_cast<size_t>(n1 + i)] = 1;
+    }
+    const auto ranks = average_ranks(combined);
+    double r1 = 0.0;
+    for (int i = 0; i < n1; ++i) {
+        r1 += ranks[static_cast<size_t>(i)];
+    }
+    const double u1 = r1 - static_cast<double>(n1 * (n1 + 1)) / 2.0;
+    const double u2 = static_cast<double>(n1 * n2) - u1;
+    result.u_stat = std::min(u1, u2);
+    const double mean_u = static_cast<double>(n1 * n2) / 2.0;
+    double tie_sum = 0.0;
+    std::unordered_map<double, int> tie_counts;
+    for (double v : combined) {
+        ++tie_counts[v];
+    }
+    for (const auto& [value, count] : tie_counts) {
+        (void)value;
+        if (count > 1) {
+            tie_sum += static_cast<double>(count * count * count - count);
+        }
+    }
+    double var_u = static_cast<double>(n1 * n2) *
+                   (static_cast<double>(N + 1) -
+                    tie_sum / (static_cast<double>(N) * static_cast<double>(N - 1))) /
+                   12.0;
+    if (var_u <= 0.0) {
+        return result;
+    }
+    const double sd_u = std::sqrt(var_u);
+    const double cc = (result.u_stat > mean_u) ? -0.5 : 0.5;
+    const double z = (result.u_stat - mean_u + cc) / sd_u;
+    result.p_value = 2.0 * (1.0 - norm_cdf(std::abs(z), 0.0, 1.0));
+    return result;
+}
+
+KSTestResult ks_test_2sample(std::span<const double> a, std::span<const double> b) {
+    KSTestResult result{};
+    if (a.empty() || b.empty()) {
+        return result;
+    }
+    const int n1 = static_cast<int>(a.size());
+    const int n2 = static_cast<int>(b.size());
+    std::vector<double> x1(a.begin(), a.end());
+    std::vector<double> x2(b.begin(), b.end());
+    std::sort(x1.begin(), x1.end());
+    std::sort(x2.begin(), x2.end());
+    size_t i = 0;
+    size_t j = 0;
+    double d_max = 0.0;
+    while (i < x1.size() || j < x2.size()) {
+        const double f1 = static_cast<double>(i) / static_cast<double>(n1);
+        const double f2 = static_cast<double>(j) / static_cast<double>(n2);
+        d_max = std::max(d_max, std::abs(f1 - f2));
+        if (i < x1.size() && j < x2.size() && x1[i] == x2[j]) {
+            ++i;
+            ++j;
+        } else if (i < x1.size() && (j >= x2.size() || x1[i] < x2[j])) {
+            ++i;
+        } else if (j < x2.size()) {
+            ++j;
+        } else {
+            break;
+        }
+    }
+    result.d_stat = d_max;
+    if (d_max <= 0.0) {
+        result.p_value = 1.0;
+        return result;
+    }
+    const double n_e = static_cast<double>(n1 * n2) / static_cast<double>(n1 + n2);
+    double p_sum = 0.0;
+    for (int k = 1; k <= 100; ++k) {
+        const double term =
+            2.0 * std::exp(-2.0 * static_cast<double>(k * k) * n_e * d_max * d_max);
+        p_sum += (k % 2 == 1) ? term : -term;
+        if (term < 1e-14) {
+            break;
+        }
+    }
+    result.p_value = std::clamp(p_sum, 0.0, 1.0);
+    return result;
 }
 
 std::vector<double> multiple_regression(
