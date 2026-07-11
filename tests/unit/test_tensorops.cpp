@@ -263,3 +263,190 @@ TEST(TensorCP, RankTwoTensor) {
     EXPECT_EQ(cp.rank, 2);
     EXPECT_LT(cp.residual, 1.0);
 }
+
+// ---- CP / Tucker reconstruction ----
+
+static Tensor make_rank1_tensor(const std::vector<Tensor>& vecs) {
+    Tensor term = vecs[0];
+    for (size_t m = 1; m < vecs.size(); ++m)
+        term = outer(term, vecs[m]);
+    return term;
+}
+
+TEST(TensorReconstructCP, RankOneExact3D) {
+    Tensor a({3}); a.data = {1, 2, 3};
+    Tensor b({3}); b.data = {4, 5, 6};
+    Tensor c({3}); c.data = {7, 8, 9};
+    auto T = make_rank1_tensor({a, b, c});
+    auto cp = decompose_cp(T, 1, 300, 1e-8);
+    auto R = reconstruct_cp(cp);
+    EXPECT_EQ(R.shape, T.shape);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 0.5);
+    EXPECT_NEAR(err, cp.residual, 1e-10);
+}
+
+TEST(TensorReconstructCP, RankTwoExact3D) {
+    Tensor a1({3}); a1.data = {1, 0, 2};
+    Tensor b1({3}); b1.data = {1, 1, 0};
+    Tensor c1({3}); c1.data = {2, 1, 1};
+    Tensor a2({3}); a2.data = {0, 1, 1};
+    Tensor b2({3}); b2.data = {2, 0, 1};
+    Tensor c2({3}); c2.data = {1, 2, 0};
+    auto T = make_rank1_tensor({a1, b1, c1}) + make_rank1_tensor({a2, b2, c2});
+    auto cp = decompose_cp(T, 2, 400, 1e-6);
+    auto R = reconstruct_cp(cp);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 1.0);
+    EXPECT_NEAR(err, cp.residual, 1e-10);
+}
+
+TEST(TensorReconstructCP, ResidualMatchesDecomposeCP) {
+    Tensor T({3, 3, 3}, 0.0);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 3; ++k)
+                T.at({i, j, k}) = (i + 1) * (j + 2) * (k + 3) * 0.1;
+    auto cp = decompose_cp(T, 3, 300, 1e-6);
+    double independent = frobenius_norm(T - reconstruct_cp(cp));
+    EXPECT_NEAR(independent, cp.residual, 1e-10);
+}
+
+TEST(TensorReconstructCP, LossyLowRank) {
+    Tensor T({4, 4, 4}, 0.0);
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            for (int k = 0; k < 4; ++k)
+                T.at({i, j, k}) = std::sin(i * 0.7 + j * 1.1 + k * 0.3);
+    auto cp = decompose_cp(T, 1, 200, 1e-6);
+    auto R = reconstruct_cp(cp);
+    double err = frobenius_norm(T - R);
+    EXPECT_GT(err, 0.01);
+    EXPECT_LT(err, frobenius_norm(T));
+    EXPECT_NEAR(err, cp.residual, 1e-10);
+}
+
+TEST(TensorReconstructCP, Matrix2D) {
+    Tensor a({2}); a.data = {1, 2};
+    Tensor b({3}); b.data = {3, 4, 5};
+    auto T = outer(a, b);
+    auto cp = decompose_cp(T, 1, 200, 1e-8);
+    auto R = reconstruct_cp(cp);
+    EXPECT_EQ(R.ndim(), 2);
+    EXPECT_EQ(R.shape[0], 2);
+    EXPECT_EQ(R.shape[1], 3);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 0.5);
+    EXPECT_NEAR(err, cp.residual, 1e-10);
+}
+
+TEST(TensorReconstructCP, RandomishTensorRank3) {
+    Tensor vecs[3] = {Tensor({3}), Tensor({3}), Tensor({3})};
+    vecs[0].data = {2, -1, 1};
+    vecs[1].data = {1, 3, 2};
+    vecs[2].data = {0, 2, -1};
+    auto T = make_rank1_tensor({vecs[0], vecs[1], vecs[2]});
+    auto cp = decompose_cp(T, 1, 300, 1e-8);
+    EXPECT_LT(frobenius_norm(T - reconstruct_cp(cp)), 0.5);
+}
+
+TEST(TensorReconstructTucker, KnownConstructionExact) {
+    TuckerDecomposition known;
+    known.core = Tensor({2, 2, 2}, 0.0);
+    known.core.at({0, 0, 0}) = 1.0;
+    known.core.at({1, 1, 1}) = 2.0;
+    known.factors = {
+        {{1, 0}, {0, 1}},
+        {{1, 1}, {1, -1}},
+        {{2, 0}, {0, 3}}
+    };
+    auto T = reconstruct_tucker(known);
+    auto R = reconstruct_tucker(known);
+    EXPECT_NEAR(frobenius_norm(T - R), 0.0, 1e-10);
+    EXPECT_EQ(R.shape, T.shape);
+}
+
+TEST(TensorReconstructTucker, FullRank3D) {
+    TuckerDecomposition known;
+    known.core = Tensor({2, 2, 2}, 0.0);
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            for (int k = 0; k < 2; ++k)
+                known.core.at({i, j, k}) = (i + 1) * (j + 1) + k * 0.5;
+    known.factors = {
+        {{1, 0.5}, {0.5, 1}},
+        {{1, -1}, {2, 1}},
+        {{1, 0}, {1, 1}}
+    };
+    auto T = reconstruct_tucker(known);
+    auto decomp = decompose_tucker(T, {2, 2, 2}, 50, 1e-6);
+    auto R = reconstruct_tucker(decomp);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, 5.0);
+}
+
+TEST(TensorReconstructTucker, ReducedRank3D) {
+    TuckerDecomposition known;
+    known.core = Tensor({2, 2, 2}, 0.0);
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            for (int k = 0; k < 2; ++k)
+                known.core.at({i, j, k}) = std::sin(i + j + k);
+    known.factors = {
+        {{1, 0.3, -0.2}, {0.5, 1, 0.1}, {0.2, -0.4, 1}},
+        {{1, 0.2}, {0.3, 1}, {-0.1, 0.5}},
+        {{1, -0.5}, {0.7, 1}}
+    };
+    auto T = reconstruct_tucker(known);
+    auto decomp = decompose_hosvd(T, {2, 2, 2});
+    auto R = reconstruct_tucker(decomp);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, frobenius_norm(T) + 1e-6);
+    EXPECT_GT(err, 0.0);
+}
+
+TEST(TensorReconstructTucker, HOSVDLossyCompression) {
+    TuckerDecomposition known;
+    known.core = Tensor({3, 3, 3}, 0.0);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 3; ++k)
+                known.core.at({i, j, k}) = (i + 1) * (j + 2) + k * 0.3;
+    known.factors = {
+        {{1, 0.2, -0.1}, {0.3, 1, 0.4}, {0.1, -0.2, 1}},
+        {{1, 0.5, 0.2}, {0.1, 1, -0.3}, {0.4, 0.2, 1}},
+        {{1, -0.2, 0.7}, {0.6, 1, -0.1}, {0.3, -0.1, 1}}
+    };
+    auto T = reconstruct_tucker(known);
+    auto decomp = decompose_hosvd(T, {1, 1, 1});
+    auto R = reconstruct_tucker(decomp);
+    double err = frobenius_norm(T - R);
+    EXPECT_GT(err, 0.1);
+    EXPECT_LT(err, frobenius_norm(T));
+}
+
+TEST(TensorReconstructTucker, Matrix2D) {
+    Tensor T({3, 3}, 0.0);
+    T.at({0, 0}) = 1; T.at({1, 1}) = 2; T.at({2, 2}) = 3;
+    T.at({0, 1}) = 0.5; T.at({1, 0}) = 0.5;
+    auto decomp = decompose_hosvd(T, {2, 2});
+    auto R = reconstruct_tucker(decomp);
+    EXPECT_EQ(R.ndim(), 2);
+    EXPECT_EQ(R.shape[0], 3);
+    EXPECT_EQ(R.shape[1], 3);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, frobenius_norm(T));
+}
+
+TEST(TensorReconstructTucker, TuckerALSReducedRank) {
+    Tensor T({3, 3, 2}, 0.0);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 2; ++k)
+                T.at({i, j, k}) = i * 0.5 + j * 0.3 + k;
+    auto decomp = decompose_tucker(T, {2, 2, 2}, 30, 1e-6);
+    auto R = reconstruct_tucker(decomp);
+    EXPECT_EQ(R.shape, T.shape);
+    double err = frobenius_norm(T - R);
+    EXPECT_LT(err, frobenius_norm(T));
+}

@@ -399,6 +399,33 @@ mat_pinv(const std::vector<std::vector<double>>& A) {
     return mat_mul(inv, At);
 }
 
+static Tensor reconstruct_cp_from_factors(
+    const std::vector<std::vector<std::vector<double>>>& factors,
+    const std::vector<double>& weights,
+    int rank) {
+    int N = static_cast<int>(factors.size());
+    std::vector<int> shapes(N);
+    for (int mode = 0; mode < N; ++mode)
+        shapes[mode] = static_cast<int>(factors[mode].size());
+    Tensor Trecon(shapes, 0.0);
+    for (int r = 0; r < rank; ++r) {
+        Tensor term({shapes[0]});
+        for (int i = 0; i < shapes[0]; ++i) term.data[i] = factors[0][i][r];
+        for (int mode = 1; mode < N; ++mode) {
+            Tensor fvec({shapes[mode]});
+            for (int i = 0; i < shapes[mode]; ++i) fvec.data[i] = factors[mode][i][r];
+            term = outer(term, fvec);
+        }
+        for (size_t i = 0; i < Trecon.data.size(); ++i)
+            Trecon.data[i] += weights[r] * term.data[i];
+    }
+    return Trecon;
+}
+
+Tensor reconstruct_cp(const CPDecomposition& cp) {
+    return reconstruct_cp_from_factors(cp.factors, cp.weights, cp.rank);
+}
+
 CPDecomposition decompose_cp(const Tensor& T, int rank,
                               int max_iter, double tol) {
     int N = T.ndim();
@@ -412,6 +439,7 @@ CPDecomposition decompose_cp(const Tensor& T, int rank,
     }
     std::vector<double> weights(rank, 1.0);
     double prev_res = 1e18;
+    double residual = prev_res;
     for (int iter=0; iter<max_iter; ++iter) {
         for (int mode=0; mode<N; ++mode) {
             // Compute Khatri-Rao product of all factors except mode
@@ -449,29 +477,13 @@ CPDecomposition decompose_cp(const Tensor& T, int rank,
             }
         }
         // Compute residual
-        // Reconstruct tensor via rank-1 terms
-        Tensor Trecon(T.shape, 0.0);
-        for (int r=0; r<rank; ++r) {
-            // Outer product of all factor columns
-            Tensor term({shapes[0]});
-            for (int i=0;i<shapes[0];++i) term.data[i] = factors[0][i][r];
-            for (int mode=1; mode<N; ++mode) {
-                Tensor fvec({shapes[mode]});
-                for (int i=0;i<shapes[mode];++i) fvec.data[i] = factors[mode][i][r];
-                term = outer(term, fvec);
-            }
-            for (size_t i=0;i<Trecon.data.size();++i) Trecon.data[i] += weights[r]*term.data[i];
-        }
-        double res=0;
-        for (size_t i=0;i<T.data.size();++i) {
-            double diff = T.data[i]-Trecon.data[i];
-            res+=diff*diff;
-        }
-        res=std::sqrt(res);
+        Tensor Trecon = reconstruct_cp_from_factors(factors, weights, rank);
+        double res = frobenius_norm(T - Trecon);
+        residual = res;
         if (std::abs(prev_res - res) < tol) break;
         prev_res = res;
     }
-    return {rank, factors, weights, prev_res};
+    return {rank, factors, weights, residual};
 }
 
 // ========================== HOSVD ==========================
@@ -567,6 +579,14 @@ TuckerDecomposition decompose_tucker(const Tensor& T, const std::vector<int>& ra
         prev_res=res;
     }
     return decomp;
+}
+
+Tensor reconstruct_tucker(const TuckerDecomposition& tucker) {
+    Tensor result = tucker.core;
+    int N = static_cast<int>(tucker.factors.size());
+    for (int m = 0; m < N; ++m)
+        result = mode_product(result, tucker.factors[m], m);
+    return result;
 }
 
 } // namespace tensorops

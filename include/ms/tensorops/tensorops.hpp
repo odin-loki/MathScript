@@ -85,6 +85,11 @@ struct CPDecomposition {
 CPDecomposition decompose_cp(const Tensor& T, int rank,
                               int max_iter = 200, double tol = 1e-6);
 
+// Reconstruct the approximated full tensor from a CP decomposition:
+// sum over r=1..rank of weights[r] * outer(factors[0][:,r], ..., factors[N-1][:,r])
+// Output shape is inferred from factors[mode].size() for each mode.
+Tensor reconstruct_cp(const CPDecomposition& cp);
+
 // Tucker decomposition via HOSVD
 struct TuckerDecomposition {
     Tensor core;
@@ -93,6 +98,10 @@ struct TuckerDecomposition {
 TuckerDecomposition decompose_hosvd(const Tensor& T, const std::vector<int>& ranks);
 TuckerDecomposition decompose_tucker(const Tensor& T, const std::vector<int>& ranks,
                                       int max_iter = 50, double tol = 1e-6);
+
+// Reconstruct the approximated full tensor from a Tucker decomposition:
+// core ×_1 factors[0] ×_2 factors[1] ×_3 ... ×_N factors[N-1]
+Tensor reconstruct_tucker(const TuckerDecomposition& tucker);
 
 // ========================== Norms ==========================
 double frobenius_norm(const Tensor& T);
