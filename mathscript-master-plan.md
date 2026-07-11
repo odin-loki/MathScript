@@ -7984,6 +7984,28 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       Exponential, lognormal median=exp(mu), Weibull cdf(lambda)=1-e^-1 regardless of shape). tag
       checklist updated to 367 (1 new CTest registration: test_prob_lognormal_weibull_laplace; 29
       new test cases across test_linalg_decomp/test_quantum; 367 suites, 100% passing).
+      Wave 199: three fresh, previously-untouched-module picks, each verified missing via header
+      grep first. ms::info gains blahut_arimoto/channel_capacity, the general iterative algorithm
+      for discrete-memoryless-channel capacity (generalizing the existing closed-form
+      channel_capacity_bsc/bec to any transition matrix); verified against those closed forms plus
+      noiseless/useless-channel limits and non-negativity/upper-bound sanity checks. ms::topo
+      gains cech_complex, mirroring vietoris_rips's signature but requiring an independent
+      minimum-enclosing-ball check per simplex (via Heron's-formula circumradius) rather than the
+      flag-complex/all-edges-present shortcut VR uses, since Cech is not a flag complex; verified
+      via an exact 3-4-5 right-triangle circumradius check and a unit-square-diagonal case
+      explicitly demonstrating where Cech and VR diverge at the 2-simplex level (higher dims
+      beyond triangles need actual coordinates, not just a distance matrix, so max_dim>2 is
+      documented as unsupported/clamped rather than attempted). ms::control gains
+      gram/ctrb_gram/obsv_gram (continuous-time controllability/observability Gramians, delegating
+      to the existing lyap solver); verified via symmetry, eigenvalue positive-semi-definiteness,
+      and -- the strongest check -- direct substitution back into both Lyapunov equations, plus an
+      exact closed-form scalar-plant check. All three subagents independently reported the same 5
+      transient failures (test_repl_commands/test_compress/3 integration_* pipeline tests, all
+      Huffman/compression-roundtrip related) during their own isolated-worktree builds; the
+      post-merge full-suite verification on main came back 100% clean (367/367), confirming this
+      is recurring parallel-build resource-contention noise rather than a real regression (no new
+      CTest registrations this wave; 31 new test cases across test_info/test_topo/test_control;
+      367 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),

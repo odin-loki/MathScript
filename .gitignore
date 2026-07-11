@@ -5,6 +5,9 @@
 /out/
 /cmake-build-*/
 
+# Git worktrees used for parallel subagent development (siblings-in-place)
+/MathsScript-wt-*/
+
 # CMake generated files
 CMakeCache.txt
 CMakeFiles/

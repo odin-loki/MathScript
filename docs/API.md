@@ -97,7 +97,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `info/info.hpp` | Shannon/joint/conditional entropy, mutual information, cross-entropy, KL/JS/Rényi/Tsallis divergence, Hellinger and total-variation distance, channel capacity, rate–distortion, LZ complexity, sample entropy |
+| `info/info.hpp` | Shannon/joint/conditional entropy, mutual information, cross-entropy, KL/JS/Rényi/Tsallis divergence, Hellinger and total-variation distance, channel capacity (closed-form BSC/BEC plus general discrete-memoryless-channel capacity via the Blahut-Arimoto algorithm: `blahut_arimoto`/`channel_capacity`), rate–distortion, LZ complexity, sample entropy |
 
 ## Finance — Wave 57 (`include/ms/finance/`)
 
@@ -109,7 +109,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `control/control.hpp` | Transfer function and state-space models (`tf`, `ss`, `tf2ss`, `ss2tf`), continuous↔discrete conversion (`c2d`/`d2c`, ZOH/Tustin/Euler), interconnections, poles/zeros/stability, Bode/Nyquist/margins, step/impulse response, Lyapunov/Riccati (`lyap`, `riccati`, `dare`), LQR, controllability/observability, pole placement, PID tuning |
+| `control/control.hpp` | Transfer function and state-space models (`tf`, `ss`, `tf2ss`, `ss2tf`), continuous↔discrete conversion (`c2d`/`d2c`, ZOH/Tustin/Euler), interconnections, poles/zeros/stability, Bode/Nyquist/margins, step/impulse response, Lyapunov/Riccati (`lyap`, `riccati`, `dare`), LQR, controllability/observability, controllability/observability Gramians (`gram`/`ctrb_gram`/`obsv_gram`, via the Lyapunov equation), pole placement, PID tuning |
 
 ## Graph — Wave 58 (`include/ms/graph/`)
 
@@ -145,7 +145,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `topo/topo.hpp` | `SimplicialComplex`, Vietoris–Rips filtration, persistent homology diagrams, Betti numbers and Euler characteristic, bottleneck/Wasserstein distances between diagrams, Betti curves |
+| `topo/topo.hpp` | `SimplicialComplex`, Vietoris–Rips and Čech filtrations (`vietoris_rips`, `cech_complex` — the latter via true minimum-enclosing-ball radii rather than the flag-complex shortcut), persistent homology diagrams, Betti numbers and Euler characteristic, bottleneck/Wasserstein distances between diagrams, Betti curves |
 
 ## Tensor Operations — Wave 59 (`include/ms/tensorops/`)
 
