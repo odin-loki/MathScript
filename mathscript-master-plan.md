@@ -8006,6 +8006,20 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       is recurring parallel-build resource-contention noise rather than a real regression (no new
       CTest registrations this wave; 31 new test cases across test_info/test_topo/test_control;
       367 suites, 100% passing).
+      Wave 200: three more fresh, previously-untouched-module picks. ms::cplx gains
+      green_function_disk (Dirichlet Green's function for the Laplacian on a disk), verified via
+      symmetry, boundary vanishing, the z->z0 singularity, and -- the deepest cross-check -- a
+      finite-difference confirmation that its boundary normal derivative reproduces the existing
+      poisson_kernel/(2*pi), directly connecting the new function to existing module machinery.
+      ms::optim gains illinois (the anti-stagnation regula-falsi variant that halves a
+      twice-retained endpoint's function value), verified against known roots, a classic
+      stagnation-prone bracket with a direct iteration-count improvement over plain regula falsi,
+      and agreement with brentq/bisection. ms::combo gains bracelets(n,k) (necklaces up to the
+      FULL dihedral group -- rotation AND reflection -- rather than just cyclic rotation as
+      necklaces uses), verified primarily via the bracelets(n,k)<=necklaces(n,k) invariant (the
+      most robust check, since manual small-case counting is error-prone) plus
+      no-duplicate-equivalence-class and dihedral-closure checks. No new CTest registrations; 25
+      new test cases across test_cplx/test_optim_global/test_combo; 367 suites, 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
