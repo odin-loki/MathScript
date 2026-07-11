@@ -70,7 +70,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 |--------|-------------|
 | `fft/fft.hpp` | `fft`, `ifft`, `rfft`/`irfft`, `dft`, `fft2`/`ifft2` (2D FFT with divisor-based dimension inference), `dct2`/`idct2`, `dst2`/`idst2` (self-inverse orthonormal DST-I), and shift helpers |
 | `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`, F-distribution p-value via `ms::prob::f_cdf`), Mann-Whitney U (`mann_whitney_u`), Kruskal-Wallis H-test (`kruskal_wallis`, tie-corrected, chi-squared p-value — non-parametric multi-group generalization of `mann_whitney_u`), two-sample KS (`ks_test_2sample`); bootstrap resampling (`bootstrap_mean`, mean-only `bootstrap_ci`, general `bootstrap_ci` with percentile-method CI for arbitrary statistics via `BootstrapResult`) |
-| `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma (`gamma_cdf`), beta (`beta_pdf`/`beta_cdf`), F (`f_pdf`/`f_cdf`), uniform |
+| `prob/prob.hpp` | PDF/CDF/PPF for normal (`norm_ppf`), exponential (`exp_ppf`), binomial, Poisson, chi-square (`chi2_ppf`), t (`t_ppf`), gamma (`gamma_cdf`/`gamma_ppf`), beta (`beta_pdf`/`beta_cdf`/`beta_ppf`), F (`f_pdf`/`f_cdf`/`f_ppf`), uniform |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions; `welch_psd` (Welch PSD via segmented FFT with overlap) and `spectrogram` (STFT magnitude spectrogram, same windowing convention) |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye` |
@@ -108,7 +108,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `control/control.hpp` | Transfer function and state-space models (`tf`, `ss`, `tf2ss`, `ss2tf`), interconnections, poles/zeros/stability, Bode/Nyquist/margins, step/impulse response, Lyapunov/Riccati (`lyap`, `riccati`, `dare`), LQR, controllability/observability, pole placement, PID tuning |
+| `control/control.hpp` | Transfer function and state-space models (`tf`, `ss`, `tf2ss`, `ss2tf`), continuous↔discrete conversion (`c2d`/`d2c`, ZOH/Tustin/Euler), interconnections, poles/zeros/stability, Bode/Nyquist/margins, step/impulse response, Lyapunov/Riccati (`lyap`, `riccati`, `dare`), LQR, controllability/observability, pole placement, PID tuning |
 
 ## Graph — Wave 58 (`include/ms/graph/`)
 
@@ -338,6 +338,20 @@ The `Interpreter` now holds a `std::variant`-backed named-handle registry so use
 | `ode_bvp_shooting("f_expr", t0, y_a, t_end, y_b, steps)` | Second-order BVP `y''=f(t,y,y')` via shooting; formula env `{t, y, yp}` |
 | `ode_dde_fixed_step("f_expr", "history_expr", t0, t_end, tau, steps)` | Scalar DDE; `f_expr` env `{t, y, ydelay}`, `history_expr` env `{t}` |
 | `ode_event_detect("f_expr", "event_expr", t0, y0, t_end, steps)` | Scalar IVP with root-crossing event detection; both formulas env `{t, y}` |
+
+**Wave 186 — pure-function REPL backlog (Waves 182–185):**
+
+| Call | Description |
+|------|-------------|
+| `gamma_cdf(x, shape, scale)` | Gamma distribution CDF |
+| `beta_pdf(x, alpha, beta)` / `beta_cdf(x, alpha, beta)` | Beta distribution PDF/CDF |
+| `f_pdf(x, d1, d2)` / `f_cdf(x, d1, d2)` | F distribution PDF/CDF |
+| `kruskal_wallis(groups)` | Non-parametric H-test; `groups` matrix rows = groups (semicolon-separated) |
+| `cmaes("formula", x0, sigma0, max_iter[, seed])` | CMA-ES global optimizer via the `sym_parse` formula bridge; env `{x0, x1, ...}` sized to `x0` |
+| `ifft2(M)` | Inverse 2D FFT; result matrix follows the existing `fft_fft2`/`fft_ifft` `[re, im]`-pair convention |
+| `idst2(M)` | Inverse 2D DST; real-valued result, same layout as `fft_dst2` |
+
+`reconstruct_cp`/`reconstruct_tucker` (Wave 185) remain unbound: their `CPDecomposition`/`TuckerDecomposition` struct inputs have no REPL representation since `decompose_cp`/`decompose_hosvd`/`decompose_tucker` are not yet REPL-bound either.
 
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 

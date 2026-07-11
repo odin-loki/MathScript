@@ -7694,16 +7694,37 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       benchmarks, no new REPL bindings this wave); tag checklist stays at 362 (test *cases*
       added to existing test_axiom_gria_ext/test_tensorops binaries, suite count unchanged;
       362 suites, 100% passing).
+      Wave 186: ms::control gains c2d/d2c (continuous<->discrete conversion for StateSpace/
+      TransferFunction; ZOH/Tustin/Euler; ZOH via augmented-block-matrix expm/logm so it
+      stays correct on singular/marginally-stable plants like a bare integrator, unlike the
+      naive A^-1(Ad-I)B shortcut) — previously entirely absent, meaning there was no on-ramp
+      from a continuous design to the module's existing dlyap/dare discrete-time solvers.
+      ms::prob gains chi2_ppf/t_ppf/f_ppf/gamma_ppf/beta_ppf/exp_ppf (bisection on existing
+      CDFs, or closed-form for exponential), completing the CDF<->PPF pairing so far only
+      done for norm_ppf; verified against standard textbook critical values (chi2_ppf(0.95,1)
+      ~3.841, t_ppf(0.975,10)~2.228) and round-trip accuracy to 1e-6. REPL: wired 9 previously
+      -unexposed pure functions from Waves 182-185 (gamma_cdf, beta_pdf/cdf, f_pdf/cdf,
+      kruskal_wallis, cmaes via sym_parse bridge, ifft2, idst2) with a new integration test
+      and fuzz seeds; reconstruct_cp/reconstruct_tucker investigated and explicitly deferred
+      since decompose_cp/decompose_hosvd/decompose_tucker aren't REPL-bound yet, so there's no
+      way to produce a decomposition-struct value from the REPL to reconstruct from — flagged
+      as a followup needing the decomposition functions bound first (likely via the session-
+      object registry). tag checklist 362->363 (+1 for the new integration test suite; 363
+      suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
+      ms::tensorops::decompose_cp/decompose_hosvd/decompose_tucker (and, once bound,
+      reconstruct_cp/reconstruct_tucker) are not yet REPL-reachable — would need a way to
+      represent a CPDecomposition/TuckerDecomposition as a REPL value, most naturally via the
+      Wave 182 session-object registry.
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
-      With the ODE REPL formula-bridge, stateful-class REPL exposure, and the Axiom/
-      PrimitiveRegistry mismatch all now resolved (Waves 182-185), no single large concrete
-      gap remains — future waves will likely continue toward hardening (fuzz marathon,
-      coverage), further benchmark coverage, or smaller library-level API completeness gaps
-      (paired-operation gaps like reconstruct_cp/ifft2 before it). -->
+      With the ODE REPL formula-bridge, stateful-class REPL exposure, the Axiom/
+      PrimitiveRegistry mismatch, and the Wave 182-185 pure-function REPL backlog all now
+      resolved (Waves 182-186), no single large concrete gap remains — future waves will
+      likely continue toward hardening (fuzz marathon, coverage), further benchmark coverage,
+      or smaller library-level API completeness gaps. -->
 
 ---
 
