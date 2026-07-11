@@ -192,3 +192,140 @@ TEST(FinanceVaR, KnownQuantile) {
     // idx=(1-0.5)*10=5 → sorted[5]=0.05 → VaR returns -0.05 (positive=loss convention)
     EXPECT_NEAR(var(returns, 0.50), -0.05, 1e-10);
 }
+
+TEST(FinanceRisk, InformationRatio) {
+    std::vector<double> returns = {0.10, 0.12, 0.08, 0.11, 0.09};
+    std::vector<double> benchmark = {0.05, 0.08, 0.06, 0.10, 0.07};
+    // excess mean = 0.028, sample std ≈ 0.016431676, IR ≈ 1.704
+    EXPECT_NEAR(information_ratio(returns, benchmark), 1.704, 0.01);
+}
+
+TEST(FinanceRisk, TreynorRatio) {
+    std::vector<double> returns = {0.10, 0.12, 0.08, 0.11, 0.09};
+    // mean = 0.10, (0.10 - 0.05) / 1.2 = 0.041666...
+    EXPECT_NEAR(treynor_ratio(returns, 0.05, 1.2), 0.05 / 1.2, 1e-10);
+}
+
+TEST(FinanceRisk, CAPM) {
+    // 0.05 + 1.2 * (0.10 - 0.05) = 0.11
+    EXPECT_NEAR(capm(0.05, 1.2, 0.10), 0.11, 1e-10);
+}
+
+TEST(FinanceRates, ForwardRate) {
+    // (0.06*2 - 0.05*1) / (2 - 1) = 0.07
+    EXPECT_NEAR(forward_rate(0.05, 1.0, 0.06, 2.0), 0.07, 1e-10);
+}
+
+TEST(FinanceRates, ForwardRateFlatCurve) {
+    // Flat curve: forward equals spot zero rate
+    EXPECT_NEAR(forward_rate(0.05, 1.0, 0.10, 2.0), 0.15, 1e-10);
+}
+
+TEST(FinanceDigital, DeepITMCall) {
+    double S = 200, K = 100, T = 1.0, r = 0.05, sigma = 0.2, payout = 1.0;
+    double price = digital_option(S, K, T, r, sigma, true, payout);
+    EXPECT_NEAR(price, payout * std::exp(-r * T), 0.01);
+}
+
+TEST(FinanceDigital, DeepOTMCall) {
+    double S = 50, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double price = digital_option(S, K, T, r, sigma, true);
+    EXPECT_NEAR(price, 0.0, 0.01);
+}
+
+TEST(FinanceDigital, DeepITMPut) {
+    double S = 50, K = 100, T = 1.0, r = 0.05, sigma = 0.2, payout = 2.0;
+    double price = digital_option(S, K, T, r, sigma, false, payout);
+    EXPECT_NEAR(price, payout * std::exp(-r * T), 0.01);
+}
+
+TEST(FinanceDigital, CallPutSum) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2, payout = 1.0;
+    double c = digital_option(S, K, T, r, sigma, true, payout);
+    double p = digital_option(S, K, T, r, sigma, false, payout);
+    // Both pay discounted payout in one scenario; sum ≈ discounted payout
+    EXPECT_NEAR(c + p, payout * std::exp(-r * T), 0.05);
+}
+
+TEST(FinanceBlack76, CallMatchesSpotBS) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double F = S * std::exp(r * T);
+    double bs = bs_call(S, K, T, r, sigma);
+    double b76 = black76(F, K, T, r, sigma, true);
+    EXPECT_NEAR(b76, bs, 1e-8);
+}
+
+TEST(FinanceBlack76, PutMatchesSpotBS) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double F = S * std::exp(r * T);
+    double bs = bs_put(S, K, T, r, sigma);
+    double b76 = black76(F, K, T, r, sigma, false);
+    EXPECT_NEAR(b76, bs, 1e-8);
+}
+
+TEST(FinanceBlack76, ForwardEquivalenceITM) {
+    double S = 120, K = 100, T = 0.5, r = 0.03, sigma = 0.25;
+    double F = S * std::exp(r * T);
+    EXPECT_NEAR(black76(F, K, T, r, sigma, true), bs_call(S, K, T, r, sigma), 1e-8);
+}
+
+TEST(FinanceBarrier, KnockInOutParityCall) {
+    double S = 100, K = 100, B = 90, T = 1.0, r = 0.05, sigma = 0.2;
+    double vanilla = bs_call(S, K, T, r, sigma);
+    double knock_in = barrier_option(S, K, B, T, r, sigma, true, true, false);
+    double knock_out = barrier_option(S, K, B, T, r, sigma, true, false, false);
+    EXPECT_NEAR(knock_in + knock_out, vanilla, 1e-6);
+}
+
+TEST(FinanceBarrier, KnockInOutParityPut) {
+    double S = 100, K = 100, B = 110, T = 1.0, r = 0.05, sigma = 0.2;
+    double vanilla = bs_put(S, K, T, r, sigma);
+    double knock_in = barrier_option(S, K, B, T, r, sigma, false, true, true);
+    double knock_out = barrier_option(S, K, B, T, r, sigma, false, false, true);
+    EXPECT_NEAR(knock_in + knock_out, vanilla, 1e-6);
+}
+
+TEST(FinanceBarrier, DownOutCallCheaperThanVanilla) {
+    double S = 100, K = 100, B = 90, T = 1.0, r = 0.05, sigma = 0.2;
+    double vanilla = bs_call(S, K, T, r, sigma);
+    double knock_out = barrier_option(S, K, B, T, r, sigma, true, false, false);
+    EXPECT_LT(knock_out, vanilla);
+    EXPECT_GT(knock_out, 0.0);
+}
+
+TEST(FinanceBarrier, UpOutPutCheaperThanVanilla) {
+    double S = 100, K = 100, B = 110, T = 1.0, r = 0.05, sigma = 0.2;
+    double vanilla = bs_put(S, K, T, r, sigma);
+    double knock_out = barrier_option(S, K, B, T, r, sigma, false, false, true);
+    EXPECT_LT(knock_out, vanilla);
+    EXPECT_GT(knock_out, 0.0);
+}
+
+TEST(FinanceAmerican, CallEqualsEuropean) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 200;
+    double am = american_option(S, K, T, r, sigma, true, steps);
+    double eu_bin = binomial_call(S, K, T, r, sigma, steps);
+    double eu_bs = bs_call(S, K, T, r, sigma);
+    EXPECT_NEAR(am, eu_bin, 0.5);
+    EXPECT_NEAR(am, eu_bs, 1.0);
+}
+
+TEST(FinanceAmerican, PutEarlyExercisePremium) {
+    double S = 80, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 200;
+    double am = american_option(S, K, T, r, sigma, false, steps);
+    double eu_bin = binomial_put(S, K, T, r, sigma, steps);
+    double eu_bs = bs_put(S, K, T, r, sigma);
+    EXPECT_GE(am, eu_bin - 1e-10);
+    EXPECT_GE(am, eu_bs - 1e-10);
+    EXPECT_GT(am - eu_bs, 1.0);  // clear early-exercise premium for deep ITM put
+}
+
+TEST(FinanceAmerican, PutPremiumMultipleStrikes) {
+    double S = 70, K = 100, T = 2.0, r = 0.03, sigma = 0.25;
+    int steps = 300;
+    double am = american_option(S, K, T, r, sigma, false, steps);
+    double eu = bs_put(S, K, T, r, sigma);
+    EXPECT_GT(am - eu, 1.0);  // non-negligible early-exercise premium
+}

@@ -224,6 +224,30 @@ double sortino_ratio(std::span<const double> returns, double risk_free) {
     return (mean - risk_free) / std::sqrt(downside_var / count);
 }
 
+double information_ratio(std::span<const double> returns,
+                         std::span<const double> benchmark) {
+    double mean = 0.0;
+    for (size_t i = 0; i < returns.size(); ++i)
+        mean += returns[i] - benchmark[i];
+    mean /= returns.size();
+    double var_te = 0.0;
+    for (size_t i = 0; i < returns.size(); ++i) {
+        double ex = returns[i] - benchmark[i];
+        var_te += (ex - mean) * (ex - mean);
+    }
+    var_te /= (returns.size() - 1);
+    return mean / std::sqrt(var_te);
+}
+
+double treynor_ratio(std::span<const double> returns, double risk_free, double beta) {
+    double mean = std::accumulate(returns.begin(), returns.end(), 0.0) / returns.size();
+    return (mean - risk_free) / beta;
+}
+
+double capm(double risk_free, double beta, double market_return) {
+    return risk_free + beta * (market_return - risk_free);
+}
+
 double max_drawdown(std::span<const double> equity_curve) {
     double peak = equity_curve[0], mdd = 0.0;
     for (double v : equity_curve) {
@@ -265,34 +289,144 @@ double portfolio_return(std::span<const double> weights,
     return ret;
 }
 
-double binomial_call(double S, double K, double T, double r, double sigma, int steps) {
+double forward_rate(double r1, double t1, double r2, double t2) {
+    return (r2 * t2 - r1 * t1) / (t2 - t1);
+}
+
+double digital_option(double S, double K, double T, double r, double sigma,
+                      bool call, double payout) {
+    if (T <= 0.0) return call ? (S > K ? payout : 0.0) : (S < K ? payout : 0.0);
+    double d1, d2;
+    bs_d1_d2(S, K, T, r, sigma, d1, d2);
+    double disc = payout * std::exp(-r * T);
+    return call ? disc * norm_cdf(d2) : disc * norm_cdf(-d2);
+}
+
+static void black76_d1_d2(double F, double K, double T, double sigma,
+                            double& d1, double& d2) {
+    d1 = (std::log(F / K) + 0.5 * sigma * sigma * T) / (sigma * std::sqrt(T));
+    d2 = d1 - sigma * std::sqrt(T);
+}
+
+double black76(double F, double K, double T, double r, double sigma, bool call) {
+    if (T <= 0.0) return call ? std::max(F - K, 0.0) : std::max(K - F, 0.0);
+    double d1, d2;
+    black76_d1_d2(F, K, T, sigma, d1, d2);
+    double disc = std::exp(-r * T);
+    if (call)
+        return disc * (F * norm_cdf(d1) - K * norm_cdf(d2));
+    return disc * (K * norm_cdf(-d2) - F * norm_cdf(-d1));
+}
+
+struct BarrierCoeffs {
+    double A, B, C, D;
+};
+
+static double barrier_safe_mul(double pow_hs, double n) {
+    return n == 0.0 ? 0.0 : pow_hs * n;
+}
+
+static void barrier_coeffs(double S, double K, double B, double T, double r, double sigma,
+                           double phi, double eta, BarrierCoeffs& c) {
+    double vol_sqrtT = sigma * std::sqrt(T);
+    double mu = r / (sigma * sigma) - 0.5;
+    double muSigma = (1.0 + mu) * vol_sqrtT;
+    double disc_r = std::exp(-r * T);
+    double HS = B / S;
+    double powHS0 = std::pow(HS, 2.0 * mu);
+    double powHS1 = powHS0 * HS * HS;
+
+    double x1 = std::log(S / K) / vol_sqrtT + muSigma;
+    double x2 = std::log(S / B) / vol_sqrtT + muSigma;
+    double y1 = std::log(B * HS / K) / vol_sqrtT + muSigma;
+    double y2 = std::log(B / S) / vol_sqrtT + muSigma;
+
+    c.A = phi * (S * norm_cdf(phi * x1) - K * disc_r * norm_cdf(phi * (x1 - vol_sqrtT)));
+    c.B = phi * (S * norm_cdf(phi * x2) - K * disc_r * norm_cdf(phi * (x2 - vol_sqrtT)));
+    c.C = phi * (S * barrier_safe_mul(powHS1, norm_cdf(eta * y1))
+                 - K * disc_r * barrier_safe_mul(powHS0, norm_cdf(eta * (y1 - vol_sqrtT))));
+    c.D = phi * (S * barrier_safe_mul(powHS1, norm_cdf(eta * y2))
+                 - K * disc_r * barrier_safe_mul(powHS0, norm_cdf(eta * (y2 - vol_sqrtT))));
+}
+
+double barrier_option(double S, double K, double B, double T, double r, double sigma,
+                      bool call, bool knock_in, bool up) {
+    if (T <= 0.0)
+        return call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+
+    if (!up && S <= B) {
+        if (knock_in) return call ? bs_call(S, K, T, r, sigma) : bs_put(S, K, T, r, sigma);
+        return 0.0;
+    }
+    if (up && S >= B) {
+        if (knock_in) return call ? bs_call(S, K, T, r, sigma) : bs_put(S, K, T, r, sigma);
+        return 0.0;
+    }
+
+    double phi = call ? 1.0 : -1.0;
+    double eta = up ? -1.0 : 1.0;
+    BarrierCoeffs c;
+    barrier_coeffs(S, K, B, T, r, sigma, phi, eta, c);
+
+    bool strike_ge_barrier = K >= B;
+    if (call) {
+        if (!up) {
+            if (knock_in)
+                return strike_ge_barrier ? c.C : c.A - c.B + c.D;
+            return strike_ge_barrier ? c.A - c.C : c.B - c.D;
+        }
+        if (knock_in)
+            return strike_ge_barrier ? c.A : c.B - c.C + c.D;
+        return strike_ge_barrier ? 0.0 : c.A - c.B + c.C - c.D;
+    }
+    if (!up) {
+        if (knock_in)
+            return strike_ge_barrier ? c.B - c.C + c.D : c.A;
+        return strike_ge_barrier ? c.A - c.B + c.C - c.D : 0.0;
+    }
+    if (knock_in)
+        return strike_ge_barrier ? c.A - c.B + c.D : c.C;
+    return strike_ge_barrier ? c.B - c.D : c.A - c.C;
+}
+
+static double binomial_tree(double S, double K, double T, double r, double sigma,
+                            int steps, bool call, bool american) {
     double dt = T / steps;
     double u = std::exp(sigma * std::sqrt(dt));
     double d = 1.0 / u;
     double disc = std::exp(-r * dt);
     double p = (std::exp(r * dt) - d) / (u - d);
     std::vector<double> prices(steps + 1);
-    for (int i = 0; i <= steps; ++i)
-        prices[i] = std::max(S * std::pow(u, i) * std::pow(d, steps - i) - K, 0.0);
-    for (int step = steps - 1; step >= 0; --step)
-        for (int i = 0; i <= step; ++i)
-            prices[i] = disc * (p * prices[i + 1] + (1.0 - p) * prices[i]);
+    for (int i = 0; i <= steps; ++i) {
+        double spot = S * std::pow(u, i) * std::pow(d, steps - i);
+        prices[i] = call ? std::max(spot - K, 0.0) : std::max(K - spot, 0.0);
+    }
+    for (int step = steps - 1; step >= 0; --step) {
+        for (int i = 0; i <= step; ++i) {
+            double continuation = disc * (p * prices[i + 1] + (1.0 - p) * prices[i]);
+            if (american) {
+                double spot = S * std::pow(u, i) * std::pow(d, step - i);
+                double intrinsic = call ? std::max(spot - K, 0.0) : std::max(K - spot, 0.0);
+                prices[i] = std::max(continuation, intrinsic);
+            } else {
+                prices[i] = continuation;
+            }
+        }
+    }
     return prices[0];
 }
 
+double binomial_call(double S, double K, double T, double r, double sigma, int steps) {
+    return binomial_tree(S, K, T, r, sigma, steps, true, false);
+}
+
 double binomial_put(double S, double K, double T, double r, double sigma, int steps) {
-    double dt = T / steps;
-    double u = std::exp(sigma * std::sqrt(dt));
-    double d = 1.0 / u;
-    double disc = std::exp(-r * dt);
-    double p = (std::exp(r * dt) - d) / (u - d);
-    std::vector<double> prices(steps + 1);
-    for (int i = 0; i <= steps; ++i)
-        prices[i] = std::max(K - S * std::pow(u, i) * std::pow(d, steps - i), 0.0);
-    for (int step = steps - 1; step >= 0; --step)
-        for (int i = 0; i <= step; ++i)
-            prices[i] = disc * (p * prices[i + 1] + (1.0 - p) * prices[i]);
-    return prices[0];
+    return binomial_tree(S, K, T, r, sigma, steps, false, false);
+}
+
+double american_option(double S, double K, double T, double r, double sigma,
+                       bool call, int steps) {
+    return binomial_tree(S, K, T, r, sigma, steps, call, true);
 }
 
 } // namespace finance
