@@ -2,9 +2,11 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <numeric>
 #include <queue>
 #include <stack>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace ms {
@@ -821,6 +823,191 @@ std::vector<int> greedy_colour(const Graph& G) {
 int chromatic_number_approx(const Graph& G) {
     auto colors = greedy_colour(G);
     return *std::max_element(colors.begin(), colors.end()) + 1;
+}
+
+// ---- Community detection (Louvain) ----
+
+namespace {
+
+// Symmetrise a directed graph into an undirected one (each directed edge
+// becomes one undirected edge); undirected inputs are just copied as-is.
+// Louvain modularity is only defined for undirected weighted graphs.
+Graph to_undirected(const Graph& G) {
+    if (!G.is_directed()) return G;
+    Graph U(G.n_vertices(), false);
+    for (int u = 0; u < G.n_vertices(); ++u)
+        for (auto& [v, w] : G.neighbors(u)) U.add_edge(u, v, w);
+    return U;
+}
+
+// One phase-1 "local moving" run to convergence: repeatedly scan all vertices
+// (fixed order, no RNG) and greedily move each to whichever neighbouring
+// community (or its own) yields the best modularity gain, until a full pass
+// produces no moves. Returns a community label per vertex (labels are a
+// subset of [0, n), not necessarily consecutive -- see aggregate() below).
+//
+// Uses the incremental gain formula (Blondel et al. 2008) rather than
+// recomputing full modularity per candidate:
+//   gain(i, C) = k_i,in(C)/m - Sigma_tot(C) * k_i / (2*m^2)
+// where k_i,in(C) excludes i's own self-loop (a self-loop never connects i to
+// a *different* community) and Sigma_tot(C) is C's total weighted degree with
+// i already removed.
+std::vector<int> local_moving(const Graph& G) {
+    int n = G.n_vertices();
+    std::vector<int> community(n);
+    std::iota(community.begin(), community.end(), 0);
+    if (n == 0) return community;
+
+    std::vector<double> k(n, 0.0);
+    double total = 0.0;
+    for (int v = 0; v < n; ++v)
+        for (auto& [u, w] : G.neighbors(v)) { k[v] += w; total += w; }
+    double m = total / 2.0;
+    if (m <= 1e-15) return community;  // no edges: leave every vertex singleton
+
+    std::vector<double> sigma_tot = k;  // each vertex starts as its own community
+
+    const int max_passes = 100;
+    for (int pass = 0; pass < max_passes; ++pass) {
+        bool moved = false;
+        for (int i = 0; i < n; ++i) {
+            int ci = community[i];
+            sigma_tot[ci] -= k[i];
+
+            std::map<int, double> weight_to_comm;
+            weight_to_comm[ci];  // always a candidate, even with zero neighbor weight
+            for (auto& [v, w] : G.neighbors(i)) {
+                if (v == i) continue;  // exclude self-loops from k_i,in
+                weight_to_comm[community[v]] += w;
+            }
+
+            int best_comm = ci;
+            double best_gain = weight_to_comm[ci] / m - sigma_tot[ci] * k[i] / (2.0 * m * m);
+            for (auto& [c, w_in] : weight_to_comm) {
+                if (c == ci) continue;
+                double gain = w_in / m - sigma_tot[c] * k[i] / (2.0 * m * m);
+                if (gain > best_gain + 1e-12) { best_gain = gain; best_comm = c; }
+            }
+            sigma_tot[best_comm] += k[i];
+            if (best_comm != ci) { community[i] = best_comm; moved = true; }
+        }
+        if (!moved) break;
+    }
+    return community;
+}
+
+struct Aggregation { Graph meta; std::vector<int> mapping; };
+
+// Phase-2 aggregation: collapse each community from local_moving() into a
+// single super-vertex. Inter-community edges sum into a single weighted edge
+// between the corresponding super-vertices; intra-community edges (including
+// any pre-existing self-loops) sum into a self-loop on the super-vertex.
+//
+// Every neighbour-list entry (u, v, w) is a "half" of some nominal edge of
+// weight w: a regular edge (u != v) contributes one such entry at each
+// endpoint, and a self-loop (u == v) contributes two such entries at its one
+// vertex (this is exactly how Graph::add_edge stores both cases). So summing
+// w/2 over all entries recovers each nominal edge's true weight exactly once,
+// whether it lands on a self-loop or a cross-community pair. Feeding the
+// resulting self-loop weight back through add_edge(c, c, w) re-creates the
+// same doubled-entry convention one level up, so the invariant is preserved
+// across repeated aggregation.
+Aggregation aggregate(const Graph& G, const std::vector<int>& community) {
+    int n = G.n_vertices();
+    std::unordered_map<int, int> new_id;
+    std::vector<int> mapping(n);
+    for (int v = 0; v < n; ++v) {
+        auto [it, inserted] = new_id.try_emplace(community[v], static_cast<int>(new_id.size()));
+        mapping[v] = it->second;
+    }
+    int k = static_cast<int>(new_id.size());
+
+    std::vector<double> self_w(k, 0.0);
+    std::map<std::pair<int,int>, double> pair_w;
+    for (int u = 0; u < n; ++u) {
+        int cu = mapping[u];
+        for (auto& [v, w] : G.neighbors(u)) {
+            int cv = mapping[v];
+            if (cu == cv) self_w[cu] += 0.5 * w;
+            else pair_w[{std::min(cu, cv), std::max(cu, cv)}] += 0.5 * w;
+        }
+    }
+
+    Graph meta(k, false);
+    for (int c = 0; c < k; ++c)
+        if (self_w[c] > 1e-15) meta.add_edge(c, c, self_w[c]);
+    for (auto& [key, w] : pair_w)
+        if (w > 1e-15) meta.add_edge(key.first, key.second, w);
+
+    return {std::move(meta), std::move(mapping)};
+}
+
+} // namespace
+
+std::vector<std::vector<int>> louvain(const Graph& G) {
+    int n0 = G.n_vertices();
+    if (n0 == 0) return {};
+
+    Graph current = to_undirected(G);
+    std::vector<std::vector<int>> level_mappings;
+
+    const int max_levels = 50;
+    for (int level = 0; level < max_levels; ++level) {
+        int n = current.n_vertices();
+        auto community = local_moving(current);
+        auto agg = aggregate(current, community);
+        level_mappings.push_back(agg.mapping);
+        if (agg.meta.n_vertices() >= n) break;  // no further coarsening -- local optimum
+        current = std::move(agg.meta);
+    }
+
+    std::vector<int> final_comm(n0);
+    int k_final = 0;
+    for (int v = 0; v < n0; ++v) {
+        int c = v;
+        for (auto& mapping : level_mappings) c = mapping[c];
+        final_comm[v] = c;
+        k_final = std::max(k_final, c + 1);
+    }
+    std::vector<std::vector<int>> result(k_final);
+    for (int v = 0; v < n0; ++v) result[final_comm[v]].push_back(v);
+    result.erase(std::remove_if(result.begin(), result.end(),
+        [](const std::vector<int>& c){ return c.empty(); }), result.end());
+    return result;
+}
+
+double modularity(const Graph& G, const std::vector<std::vector<int>>& communities) {
+    int n = G.n_vertices();
+    if (n == 0) return 0.0;
+
+    std::vector<int> comm_of(n, -1);
+    for (int c = 0; c < static_cast<int>(communities.size()); ++c)
+        for (int v : communities[c])
+            if (v >= 0 && v < n) comm_of[v] = c;
+
+    std::vector<double> k(n, 0.0);
+    double total = 0.0;
+    for (int v = 0; v < n; ++v)
+        for (auto& [u, w] : G.neighbors(v)) { k[v] += w; total += w; }
+    double m = total / 2.0;
+    if (m <= 1e-15) return 0.0;
+
+    int nc = static_cast<int>(communities.size());
+    std::vector<double> internal(nc, 0.0), degree_sum(nc, 0.0);
+    for (int v = 0; v < n; ++v) {
+        int cv = comm_of[v];
+        if (cv < 0) continue;
+        degree_sum[cv] += k[v];
+        for (auto& [u, w] : G.neighbors(v))
+            if (comm_of[u] == cv) internal[cv] += w;
+    }
+
+    double Q = 0.0;
+    for (int c = 0; c < nc; ++c) {
+        double frac = degree_sum[c] / (2.0 * m);
+        Q += (0.5 * internal[c]) / m - frac * frac;
+    }
+    return Q;
 }
 
 // ---- Adjacency spectrum (power iteration for largest eigenvalue) ----

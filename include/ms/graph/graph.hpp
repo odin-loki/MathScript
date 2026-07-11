@@ -114,6 +114,22 @@ Result<int> bipartite_match(const Graph& G, int left_size);
 std::vector<int> greedy_colour(const Graph& G);
 int chromatic_number_approx(const Graph& G);  // greedy upper bound
 
+// --- Community detection ---
+// Louvain community detection (greedy modularity optimization, Blondel et al. 2008).
+// Treats the graph as undirected and weighted (directed edges are symmetrised;
+// unweighted edges carry weight 1, matching Graph's own default). Returns a
+// partition of vertex indices into communities (groups), analogous to
+// connected_components' return shape. Deterministic given the same input
+// (fixed vertex-visitation order each local-moving pass -- no RNG). A graph
+// with no edges yields every vertex in its own singleton community.
+std::vector<std::vector<int>> louvain(const Graph& G);
+
+// Modularity Q of a given partition of G's vertices (Newman-Girvan weighted
+// modularity). `communities` must partition [0, G.n_vertices()); vertices not
+// covered by any group are treated as contributing zero. Useful standalone
+// for scoring/comparing partitions, and to verify louvain()'s output.
+double modularity(const Graph& G, const std::vector<std::vector<int>>& communities);
+
 // --- Miscellaneous ---
 std::vector<double> adjacency_spectrum(const Graph& G);  // eigenvalues of adj matrix
 std::vector<int>    euler_circuit(const Graph& G);        // Hierholzer

@@ -57,6 +57,62 @@ Graph make_star(int n) {
     return G;
 }
 
+// Complete graph K_n on vertices [offset, offset+n).
+void add_clique(Graph& G, int offset, int n) {
+    for (int i = 0; i < n; ++i)
+        for (int j = i + 1; j < n; ++j)
+            G.add_edge(offset + i, offset + j);
+}
+
+// n disjoint triangles: vertices [0,3), [3,6), ...
+Graph make_disjoint_triangles(int count) {
+    Graph G(count * 3, false);
+    for (int t = 0; t < count; ++t) add_clique(G, t * 3, 3);
+    return G;
+}
+
+// Two K4 cliques with no connecting edge.
+Graph make_two_disjoint_k4() {
+    Graph G(8, false);
+    add_clique(G, 0, 4);
+    add_clique(G, 4, 4);
+    return G;
+}
+
+// Two K5 cliques joined by a single bridge edge (4-5).
+Graph make_two_k5_bridge() {
+    Graph G(10, false);
+    add_clique(G, 0, 5);
+    add_clique(G, 5, 5);
+    G.add_edge(4, 5);
+    return G;
+}
+
+// Partition helper: every vertex in its own singleton community.
+std::vector<std::vector<int>> singleton_partition(int n) {
+    std::vector<std::vector<int>> parts;
+    for (int i = 0; i < n; ++i) parts.push_back({i});
+    return parts;
+}
+
+// Partition helper: every vertex in one community.
+std::vector<std::vector<int>> one_partition(int n) {
+    std::vector<int> all(n);
+    for (int i = 0; i < n; ++i) all[i] = i;
+    return {all};
+}
+
+// Sorts each community's members and sorts communities by their first
+// (smallest) member, so partitions can be compared for set-equality
+// regardless of the order louvain() happens to emit them in.
+std::vector<std::vector<int>> canonicalise(std::vector<std::vector<int>> parts) {
+    for (auto& p : parts) std::sort(p.begin(), p.end());
+    std::sort(parts.begin(), parts.end(), [](const auto& a, const auto& b) {
+        return a.front() < b.front();
+    });
+    return parts;
+}
+
 } // namespace
 
 // ---- Basic graph ----
@@ -614,4 +670,193 @@ TEST(GraphIsomorphism, DisconnectedVsConnectedSameCountsNotIsomorphic) {
     Graph path = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,3,1.0}});
     Graph triangleAndIsolated = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,0,1.0}});
     EXPECT_FALSE(is_isomorphic(path, triangleAndIsolated));
+}
+
+// ---- Modularity ----
+
+TEST(GraphCommunity, ModularitySingleCommunityIsZero) {
+    auto G = make_barbell();  // two triangles joined by a bridge
+    EXPECT_NEAR(modularity(G, one_partition(6)), 0.0, 1e-10);
+}
+
+TEST(GraphCommunity, ModularityCorrectPartitionBeatsTrivialPartitions) {
+    auto G = make_barbell();
+    double q_correct = modularity(G, {{0, 1, 2}, {3, 4, 5}});
+    double q_singleton = modularity(G, singleton_partition(6));
+    double q_one = modularity(G, one_partition(6));
+    EXPECT_GT(q_correct, q_singleton);
+    EXPECT_GT(q_correct, q_one);
+    // Hand-computed: m=7, correct partition Q = 2*(3/7 - (7/14)^2) = 6/7 - 0.5 = 0.3571...
+    EXPECT_NEAR(q_correct, 5.0 / 14.0, 1e-9);
+}
+
+TEST(GraphCommunity, ModularitySingletonsIsNegativeForBarbell) {
+    auto G = make_barbell();
+    EXPECT_LT(modularity(G, singleton_partition(6)), 0.0);
+}
+
+TEST(GraphCommunity, ModularityNoEdgesIsZero) {
+    Graph G(4, false);
+    EXPECT_NEAR(modularity(G, singleton_partition(4)), 0.0, 1e-12);
+}
+
+TEST(GraphCommunity, ModularityEmptyGraph) {
+    Graph G(0, false);
+    EXPECT_NEAR(modularity(G, {}), 0.0, 1e-12);
+}
+
+// ---- Louvain ----
+
+TEST(GraphCommunity, LouvainTwoDisjointCliquesRecoversCliques) {
+    auto G = make_two_disjoint_k4();
+    auto comms = canonicalise(louvain(G));
+    ASSERT_EQ(comms.size(), 2u);
+    std::vector<std::vector<int>> expected = {{0, 1, 2, 3}, {4, 5, 6, 7}};
+    EXPECT_EQ(comms, canonicalise(expected));
+}
+
+TEST(GraphCommunity, LouvainTwoK5CliquesWithBridgeRecoversClusters) {
+    auto G = make_two_k5_bridge();
+    auto comms = canonicalise(louvain(G));
+    ASSERT_EQ(comms.size(), 2u);
+    std::vector<std::vector<int>> expected = {{0, 1, 2, 3, 4}, {5, 6, 7, 8, 9}};
+    EXPECT_EQ(comms, canonicalise(expected));
+}
+
+TEST(GraphCommunity, LouvainSingleCliqueIsOneCommunity) {
+    Graph G(6, false);
+    add_clique(G, 0, 6);
+    auto comms = louvain(G);
+    ASSERT_EQ(comms.size(), 1u);
+    EXPECT_EQ(comms[0].size(), 6u);
+}
+
+TEST(GraphCommunity, LouvainDisjointTrianglesDoNotSpanComponents) {
+    auto G = make_disjoint_triangles(3);
+    auto comms = canonicalise(louvain(G));
+    // Each triangle must be fully contained in exactly one community, and no
+    // community may straddle two different (disconnected) triangles.
+    std::vector<int> comm_of(9, -1);
+    for (int c = 0; c < static_cast<int>(comms.size()); ++c)
+        for (int v : comms[c]) comm_of[v] = c;
+    for (int t = 0; t < 3; ++t) {
+        int c0 = comm_of[t * 3];
+        for (int i = 1; i < 3; ++i) EXPECT_EQ(comm_of[t * 3 + i], c0);
+    }
+    for (int a = 0; a < 3; ++a)
+        for (int b = a + 1; b < 3; ++b)
+            EXPECT_NE(comm_of[a * 3], comm_of[b * 3]);
+}
+
+TEST(GraphCommunity, LouvainBarbellRecoversTwoTriangles) {
+    auto G = make_barbell();
+    auto comms = canonicalise(louvain(G));
+    ASSERT_EQ(comms.size(), 2u);
+    std::vector<std::vector<int>> expected = {{0, 1, 2}, {3, 4, 5}};
+    EXPECT_EQ(comms, canonicalise(expected));
+}
+
+TEST(GraphCommunity, LouvainBeatsTrivialPartitionsOnVariousGraphs) {
+    auto check = [](const Graph& G) {
+        int n = G.n_vertices();
+        auto comms = louvain(G);
+        double q_louvain = modularity(G, comms);
+        double q_singleton = modularity(G, singleton_partition(n));
+        double q_one = modularity(G, one_partition(n));
+        EXPECT_GE(q_louvain, q_singleton - 1e-9);
+        EXPECT_GE(q_louvain, q_one - 1e-9);
+    };
+    check(make_barbell());
+    check(make_two_disjoint_k4());
+    check(make_two_k5_bridge());
+    check(make_disjoint_triangles(3));
+    Graph star = make_star(6);
+    check(star);
+}
+
+TEST(GraphCommunity, LouvainPartitionCoversAllVertices) {
+    auto G = make_two_k5_bridge();
+    auto comms = louvain(G);
+    std::vector<bool> seen(G.n_vertices(), false);
+    for (auto& c : comms)
+        for (int v : c) {
+            EXPECT_FALSE(seen[v]);  // no vertex appears twice
+            seen[v] = true;
+        }
+    for (bool s : seen) EXPECT_TRUE(s);  // every vertex appears
+}
+
+TEST(GraphCommunity, LouvainEmptyGraph) {
+    Graph G(0, false);
+    EXPECT_TRUE(louvain(G).empty());
+}
+
+TEST(GraphCommunity, LouvainSingleVertex) {
+    Graph G(1, false);
+    auto comms = louvain(G);
+    ASSERT_EQ(comms.size(), 1u);
+    EXPECT_EQ(comms[0], std::vector<int>{0});
+}
+
+TEST(GraphCommunity, LouvainNoEdgesGivesSingletons) {
+    // Convention: a graph with no edges places every vertex in its own
+    // singleton community (there is no incentive to merge any pair).
+    Graph G(5, false);
+    auto comms = canonicalise(louvain(G));
+    EXPECT_EQ(comms, canonicalise(singleton_partition(5)));
+}
+
+TEST(GraphCommunity, LouvainFullyDisconnectedMultiVertex) {
+    Graph G(4, false);  // no edges at all among 4 vertices
+    auto comms = canonicalise(louvain(G));
+    ASSERT_EQ(comms.size(), 4u);
+    for (auto& c : comms) EXPECT_EQ(c.size(), 1u);
+}
+
+TEST(GraphCommunity, LouvainDeterministicAcrossRuns) {
+    auto G = make_two_k5_bridge();
+    auto comms1 = canonicalise(louvain(G));
+    auto comms2 = canonicalise(louvain(G));
+    EXPECT_EQ(comms1, comms2);
+}
+
+TEST(GraphCommunity, LouvainDirectedGraphIsSymmetrisedAndRecoversCliques) {
+    // Same two-K4 structure, but every edge stored as a directed pair.
+    Graph G(8, true);
+    for (int t = 0; t < 2; ++t)
+        for (int i = 0; i < 4; ++i)
+            for (int j = i + 1; j < 4; ++j) {
+                G.add_edge(t * 4 + i, t * 4 + j);
+                G.add_edge(t * 4 + j, t * 4 + i);
+            }
+    auto comms = canonicalise(louvain(G));
+    ASSERT_EQ(comms.size(), 2u);
+    std::vector<std::vector<int>> expected = {{0, 1, 2, 3}, {4, 5, 6, 7}};
+    EXPECT_EQ(comms, canonicalise(expected));
+}
+
+TEST(GraphCommunity, LouvainWeightedEdgesFavourHeavyNeighbour) {
+    // Two triangles {0,1,2} and {3,4,5}, plus a pendant vertex 6 attached to
+    // both by a light edge (6-0, weight 1) and a much heavier edge (6-3,
+    // weight 5). Modularity should favour attaching 6 to vertex 3's triangle
+    // over vertex 0's, purely because of the edge-weight difference -- verify
+    // this independently via modularity() (so the expectation doesn't rely on
+    // hand-derived arithmetic), then check louvain() agrees.
+    Graph G(7, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 0);
+    G.add_edge(3, 4); G.add_edge(4, 5); G.add_edge(5, 3);
+    G.add_edge(6, 0, 1.0);
+    G.add_edge(6, 3, 5.0);
+    std::vector<std::vector<int>> joins_light_side = {{0, 1, 2, 6}, {3, 4, 5}};
+    std::vector<std::vector<int>> joins_heavy_side = {{0, 1, 2}, {3, 4, 5, 6}};
+    EXPECT_GT(modularity(G, joins_heavy_side), modularity(G, joins_light_side));
+
+    auto comms = canonicalise(louvain(G));
+    int comm_of_6 = -1, comm_of_3 = -1;
+    for (int c = 0; c < static_cast<int>(comms.size()); ++c)
+        for (int v : comms[c]) {
+            if (v == 6) comm_of_6 = c;
+            if (v == 3) comm_of_3 = c;
+        }
+    EXPECT_EQ(comm_of_6, comm_of_3);
 }
