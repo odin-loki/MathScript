@@ -5091,6 +5091,325 @@ Result<std::string> eval_ode_verlet_vec_call(const std::string& formula_arg,
         ode_verlet_vec(a, t0, *q0, *v0, t_end, static_cast<size_t>(steps_i)));
 }
 
+std::map<std::string, double> build_dae_env(double t, const std::vector<double>& y,
+                                            const std::vector<double>& z) {
+    auto env = build_vec_ode_env(t, y);
+    for (size_t i = 0; i < z.size(); ++i) {
+        env["z" + std::to_string(i)] = z[i];
+    }
+    return env;
+}
+
+Result<std::string> format_dae_trajectory(const DaeResult& result) {
+    if (result.t.size() != result.y.size() || result.t.size() != result.z.size()) {
+        return std::unexpected(DomainError{"ode", "internal DAE trajectory size mismatch"});
+    }
+    std::ostringstream oss;
+    oss << "converged = " << (result.converged ? "true" : "false") << "\n";
+    if (result.t.empty()) {
+        oss << "y_traj =\n";
+        oss << "z_traj =\n";
+        return oss.str();
+    }
+    const size_t n_y = result.y.front().size();
+    const size_t n_z = result.z.front().size();
+    Matrix<double> y_out(result.t.size(), 1 + n_y);
+    Matrix<double> z_out(result.t.size(), 1 + n_z);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        if (result.y[i].size() != n_y || result.z[i].size() != n_z) {
+            return std::unexpected(DomainError{"ode", "internal DAE state size mismatch"});
+        }
+        y_out(i, 0) = result.t[i];
+        z_out(i, 0) = result.t[i];
+        for (size_t j = 0; j < n_y; ++j) {
+            y_out(i, 1 + j) = result.y[i][j];
+        }
+        for (size_t j = 0; j < n_z; ++j) {
+            z_out(i, 1 + j) = result.z[i][j];
+        }
+    }
+    oss << "y_traj =\n";
+    oss << std::fixed << std::setprecision(6);
+    for (size_t i = 0; i < y_out.rows(); ++i) {
+        oss << "  [";
+        for (size_t j = 0; j < y_out.cols(); ++j) {
+            if (j > 0) {
+                oss << ", ";
+            }
+            oss << y_out(i, j);
+        }
+        oss << "]\n";
+    }
+    oss << "z_traj =\n";
+    for (size_t i = 0; i < z_out.rows(); ++i) {
+        oss << "  [";
+        for (size_t j = 0; j < z_out.cols(); ++j) {
+            if (j > 0) {
+                oss << ", ";
+            }
+            oss << z_out(i, j);
+        }
+        oss << "]\n";
+    }
+    return oss.str();
+}
+
+Result<std::string> format_ode_bvp_trajectory(const OdeBvpResult& result) {
+    if (result.t.size() != result.y.size() || result.t.size() != result.yp.size()) {
+        return std::unexpected(DomainError{"ode", "internal BVP trajectory size mismatch"});
+    }
+    std::ostringstream oss;
+    oss << "converged = " << (result.converged ? "true" : "false") << "\n";
+    oss << "iterations = " << result.iterations << "\n";
+    if (result.t.empty()) {
+        oss << "traj =\n";
+        return oss.str();
+    }
+    Matrix<double> out(result.t.size(), 3);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        out(i, 0) = result.t[i];
+        out(i, 1) = result.y[i];
+        out(i, 2) = result.yp[i];
+    }
+    oss << "traj =\n";
+    oss << std::fixed << std::setprecision(6);
+    for (size_t i = 0; i < out.rows(); ++i) {
+        oss << "  [";
+        for (size_t j = 0; j < out.cols(); ++j) {
+            if (j > 0) {
+                oss << ", ";
+            }
+            oss << out(i, j);
+        }
+        oss << "]\n";
+    }
+    return oss.str();
+}
+
+Result<std::string> format_ode_event_trajectory(const OdeEventResult& result) {
+    if (result.t.size() != result.y.size()) {
+        return std::unexpected(DomainError{"ode", "internal event trajectory size mismatch"});
+    }
+    if (result.event_times.size() != result.event_values.size()) {
+        return std::unexpected(DomainError{"ode", "internal event value size mismatch"});
+    }
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(6);
+    oss << "traj =\n";
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        oss << "  [" << result.t[i] << ", " << result.y[i] << "]\n";
+    }
+    oss << "event_count = " << result.event_times.size() << "\n";
+    if (!result.event_times.empty()) {
+        oss << "events =\n";
+        for (size_t i = 0; i < result.event_times.size(); ++i) {
+            oss << "  [" << result.event_times[i] << ", " << result.event_values[i] << "]\n";
+        }
+    }
+    oss << "event_values =\n";
+    for (size_t i = 0; i < result.event_values.size(); ++i) {
+        oss << "  [" << result.event_values[i] << "]\n";
+    }
+    return oss.str();
+}
+
+Result<std::string> eval_ode_dae_index1_call(const std::string& diff_formula_arg,
+                                             const std::string& alg_formula_arg,
+                                             const std::string& t0_arg,
+                                             const std::string& y0_arg,
+                                             const std::string& z0_arg,
+                                             const std::string& t_end_arg,
+                                             const std::string& steps_arg) {
+    constexpr const char* fn = "ode_dae_index1";
+    auto diff_exprs = parse_sym_semicolon_formulas(diff_formula_arg, fn);
+    if (!diff_exprs) {
+        return std::unexpected(diff_exprs.error());
+    }
+    auto alg_exprs = parse_sym_semicolon_formulas(alg_formula_arg, fn);
+    if (!alg_exprs) {
+        return std::unexpected(alg_exprs.error());
+    }
+    auto y0 = parse_bracket_vector_literal(y0_arg, fn);
+    if (!y0) {
+        return std::unexpected(y0.error());
+    }
+    auto z0 = parse_bracket_vector_literal(z0_arg, fn);
+    if (!z0) {
+        return std::unexpected(z0.error());
+    }
+    if (diff_exprs->size() != y0->size()) {
+        return std::unexpected(DomainError{
+            fn, "differential formula count must match initial y vector length"});
+    }
+    if (alg_exprs->size() != z0->size()) {
+        return std::unexpected(DomainError{
+            fn, "algebraic formula count must match initial z vector length"});
+    }
+    double t0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn,
+            "expected ode_dae_index1(\"f0;f1;...\", \"g0;g1;...\", t0, y0, z0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    auto diff_exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*diff_exprs));
+    auto alg_exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*alg_exprs));
+    DaeDiffFunc f = [diff_exprs_ptr](double t, const std::vector<double>& y,
+                                     const std::vector<double>& z) {
+        const auto env = build_dae_env(t, y, z);
+        std::vector<double> out;
+        out.reserve(diff_exprs_ptr->size());
+        for (const auto& expr : *diff_exprs_ptr) {
+            out.push_back(sym_eval(expr, env));
+        }
+        return out;
+    };
+    DaeAlgFunc g = [alg_exprs_ptr](double t, const std::vector<double>& y,
+                                   const std::vector<double>& z) {
+        const auto env = build_dae_env(t, y, z);
+        std::vector<double> out;
+        out.reserve(alg_exprs_ptr->size());
+        for (const auto& expr : *alg_exprs_ptr) {
+            out.push_back(sym_eval(expr, env));
+        }
+        return out;
+    };
+    return format_dae_trajectory(
+        ode_dae_index1(f, g, t0, *y0, *z0, t_end, static_cast<size_t>(steps_i)));
+}
+
+Result<std::string> eval_ode_bvp_shooting_call(const std::string& formula_arg,
+                                               const std::string& t0_arg,
+                                               const std::string& y_a_arg,
+                                               const std::string& t_end_arg,
+                                               const std::string& y_b_arg,
+                                               const std::string& steps_arg) {
+    constexpr const char* fn = "ode_bvp_shooting";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double y_a = 0.0;
+    double t_end = 0.0;
+    double y_b = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y_a_arg), y_a) ||
+        !parse_number(trim_copy(t_end_arg), t_end) || !parse_number(trim_copy(y_b_arg), y_b) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn,
+            "expected ode_bvp_shooting(\"formula\", t0, y_a, t_end, y_b, steps) "
+            "with env {t, y, yp}"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeBvpFunc f = [expr_ptr](double t, double y, double yp) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}, {"yp", yp}});
+    };
+    return format_ode_bvp_trajectory(
+        ode_bvp_shooting(f, t0, y_a, t_end, y_b, static_cast<size_t>(steps_i)));
+}
+
+Result<std::string> eval_ode_dde_fixed_step_call(const std::string& formula_arg,
+                                                 const std::string& history_formula_arg,
+                                                 const std::string& t0_arg,
+                                                 const std::string& t_end_arg,
+                                                 const std::string& tau_arg,
+                                                 const std::string& steps_arg) {
+    constexpr const char* fn = "ode_dde_fixed_step";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    auto hist_expr = parse_sym_quoted_expr(history_formula_arg, fn);
+    if (!hist_expr) {
+        return std::unexpected(hist_expr.error());
+    }
+    double t0 = 0.0;
+    double t_end = 0.0;
+    double tau = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(tau_arg), tau) || !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn,
+            "expected ode_dde_fixed_step(\"f\", \"history\", t0, t_end, tau, steps) "
+            "with f env {t, y, ydelay} and history env {t}"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    SymExpr hist_parsed = std::move(*hist_expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    auto hist_ptr = std::make_shared<SymExpr>(std::move(hist_parsed));
+    auto f = [expr_ptr](double t, double y, double ydelay) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}, {"ydelay", ydelay}});
+    };
+    auto history = [hist_ptr](double t) {
+        return sym_eval(*hist_ptr, {{"t", t}});
+    };
+    return format_ode_trajectory(
+        ode_dde_fixed_step(f, history, t0, t_end, tau, static_cast<size_t>(steps_i)));
+}
+
+Result<std::string> eval_ode_event_detect_call(const std::string& formula_arg,
+                                               const std::string& event_formula_arg,
+                                               const std::string& t0_arg,
+                                               const std::string& y0_arg,
+                                               const std::string& t_end_arg,
+                                               const std::string& steps_arg) {
+    constexpr const char* fn = "ode_event_detect";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    auto event_expr = parse_sym_quoted_expr(event_formula_arg, fn);
+    if (!event_expr) {
+        return std::unexpected(event_expr.error());
+    }
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y0_arg), y0) ||
+        !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn,
+            "expected ode_event_detect(\"f\", \"event\", t0, y0, t_end, steps) "
+            "with env {t, y} for both formulas"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    SymExpr event_parsed = std::move(*event_expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    auto event_ptr = std::make_shared<SymExpr>(std::move(event_parsed));
+    OdeFunc f = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    OdeFunc event_g = [event_ptr](double t, double y) {
+        return sym_eval(*event_ptr, {{"t", t}, {"y", y}});
+    };
+    return format_ode_event_trajectory(
+        ode_event_detect(f, event_g, t0, y0, t_end, static_cast<size_t>(steps_i)));
+}
+
 std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) {
     std::smatch match;
     static const std::regex sym_binary(R"((\w+)\(([^,]+),([^)]+)\))", std::regex::icase);
@@ -9945,6 +10264,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ode_rk4_vec(\"f0;f1;...\",t0,y0,t_end,steps) RK4 vector IVP trajectory [t,y0,y1,...] columns\n"
             "  name = ode_rk45_vec(\"f0;f1;...\",t0,y0,t_end,rtol,atol) adaptive RK45 vector IVP trajectory [t,y0,y1,...] columns\n"
             "  name = ode_verlet_vec(\"a0;a1;...\",t0,q0,v0,t_end,steps) vector Verlet trajectory [t,q0,q1,...,v0,v1,...] columns\n"
+            "  name = ode_backward_euler_vec(\"f0;f1;...\",t0,y0,t_end,steps) backward Euler vector IVP trajectory [t,y0,y1,...] columns (env {t,y0..yN-1})\n"
+            "  name = ode_dae_index1(\"f0;f1;...\",\"g0;g1;...\",t0,y0,z0,t_end,steps) index-1 DAE y/z trajectories (env {t,y0..yN-1,z0..zM-1})\n"
+            "  name = ode_bvp_shooting(\"formula\",t0,y_a,t_end,y_b,steps) BVP shooting trajectory [t,y,yp] (env {t,y,yp})\n"
+            "  name = ode_dde_fixed_step(\"f\",\"history\",t0,t_end,tau,steps) DDE trajectory [t,y] (f env {t,y,ydelay}, history env {t})\n"
+            "  name = ode_event_detect(\"f\",\"event\",t0,y0,t_end,steps) IVP with root events [t,y] plus event_times/values (env {t,y})\n"
             "  name = fft_rfft(x) real FFT spectrum as Nx2 [re,im] matrix\n"
             "  name = fftshift(S) cyclic shift of Nx2 complex spectrum\n"
             "  name = fft_dft(x) discrete Fourier transform as Nx2 [re,im] matrix\n"
@@ -10159,6 +10483,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100)\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
+            "  ode_backward_euler_vec(\"-y0\", 0, [1], 1, 200), ode_dae_index1(\"-y0\", \"z0 - 2*y0\", 0, [1], [2], 1, 200)\n"
+            "  ode_bvp_shooting(\"-y\", 0, 0, 1.570796, 1, 400), ode_dde_fixed_step(\"-y + ydelay\", \"3\", 0, 5, 1000, 200)\n"
+            "  ode_event_detect(\"1\", \"y\", 0, -5, 10, 100)\n"
             "  gria_entropy([1,2,2,3,3,3], 4) Shannon entropy with 4 histogram bins (default bins=16)\n"
             "  gria_matrix_alpha([1,2;3,4], [2,4;6,8]) matrix information-alpha between input and output\n"
             "  gria_is_critical(0.5, 0.05) test whether alpha is near critical (default tolerance=0.05)\n"
@@ -11940,17 +12267,40 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(*value) + "\n";
         }
-        if (fn == "ode_euler_vec" || fn == "ode_rk4_vec") {
+        if (fn == "ode_euler_vec" || fn == "ode_rk4_vec" || fn == "ode_backward_euler_vec") {
             const auto call_args = split_call_args(cmd);
             if (!call_args || call_args->size() != 5) {
                 return std::unexpected(DomainError{
                     fn, std::string("expected ") + fn + "(\"f0;f1;...\", t0, y0, t_end, steps)"});
             }
             OdeResultVec (*solver)(OdeFuncVec, double, const std::vector<double>&, double,
-                                   size_t) = (fn == "ode_euler_vec") ? ode_euler_vec : ode_rk4_vec;
+                                   size_t) = nullptr;
+            if (fn == "ode_euler_vec") {
+                solver = ode_euler_vec;
+            } else if (fn == "ode_rk4_vec") {
+                solver = ode_rk4_vec;
+            } else {
+                solver = ode_backward_euler_vec;
+            }
             auto value = eval_ode_vec_fixed_step_call(fn, call_args->at(0), call_args->at(1),
                                                       call_args->at(2), call_args->at(3),
                                                       call_args->at(4), solver);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_dae_index1") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 7) {
+                return std::unexpected(DomainError{
+                    fn,
+                    "expected ode_dae_index1(\"f0;f1;...\", \"g0;g1;...\", t0, y0, z0, t_end, steps)"});
+            }
+            auto value = eval_ode_dae_index1_call(call_args->at(0), call_args->at(1),
+                                                  call_args->at(2), call_args->at(3),
+                                                  call_args->at(4), call_args->at(5),
+                                                  call_args->at(6));
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -12669,6 +13019,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             auto value = eval_ode_verlet_call(trim(match[2].str()), trim(match[3].str()),
                                               trim(match[4].str()), trim(match[5].str()),
                                               trim(match[6].str()), trim(match[7].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_bvp_shooting") {
+            auto value = eval_ode_bvp_shooting_call(trim(match[2].str()), trim(match[3].str()),
+                                                    trim(match[4].str()), trim(match[5].str()),
+                                                    trim(match[6].str()), trim(match[7].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_dde_fixed_step") {
+            auto value = eval_ode_dde_fixed_step_call(trim(match[2].str()), trim(match[3].str()),
+                                                      trim(match[4].str()), trim(match[5].str()),
+                                                      trim(match[6].str()), trim(match[7].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_event_detect") {
+            auto value = eval_ode_event_detect_call(trim(match[2].str()), trim(match[3].str()),
+                                                    trim(match[4].str()), trim(match[5].str()),
+                                                    trim(match[6].str()), trim(match[7].str()));
             if (!value) {
                 return std::unexpected(value.error());
             }
