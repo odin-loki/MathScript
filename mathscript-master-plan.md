@@ -7959,13 +7959,32 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       reconstruction-error-vs-epsilon behavior. tag checklist updated to 366 (1 new CTest
       registration: test_special_voigt; 53 new test cases across test_special_voigt/
       test_stats_prob_ext/test_tensorops; 366 suites, 100% passing).
-REMAINING: KNOWN BUG (found Wave 197, unfixed): ms::linalg::svd produces incorrect reconstruction
-      for rank-deficient matrices beyond the first column. Discovered while implementing
-      ms::tensorops::decompose_tt, which worked around it with a self-contained Jacobi SVD rather
-      than fixing the shared routine (out of scope for that wave). Other callers of
-      ms::linalg::svd on rank-deficient inputs may be silently affected — needs a dedicated
-      investigation/fix in a future wave.
-      24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
+      Wave 198: dedicated one of three tasks to fixing the Wave 197 ms::linalg::svd bug, plus two
+      more fresh module picks. The svd investigation found TWO real bugs, not one: (1) dorgbr's
+      vect='P'/m>=n branch called its Householder-reflector accumulator with the wrong transpose
+      flag (apply_pt=true instead of false), corrupting every right singular vector beyond the
+      first reflector's span for ANY m>=n input with n>=3 (not specific to rank deficiency --
+      rank deficiency just made it visually obvious, matching the original "first column fine,
+      later columns wrong" report); (2) dlartg's Givens-rotation sign computation had the wrong
+      sign whenever the larger-magnitude input was negative, breaking U/V orthogonality while
+      leaving reconstruction looking self-consistent. Both fixed with minimal targeted changes
+      (apply_pt=false; direct r=hypot(f,g)/cs=f/r/sn=g/r) rather than a risky rewrite; verified via
+      column-by-column reconstruction, explicit U^T*U/V^T*V ≈ I orthogonality checks (not just
+      aggregate norms), and pinv/null/orth regressions on rank-deficient input -- the full
+      367-suite run confirms no other regressions from this shared-kernel change (this fix touches
+      code used throughout the codebase, so this was worth extra scrutiny). ms::quantum gains
+      wigner_function/husimi_Q (Cahill-Glauber displaced-parity trace formula and coherent-state
+      overlap respectively, built on the module's existing truncated-Fock-basis coherent_state/
+      fock_state infrastructure); verified via Husimi normalization/positivity and, as the
+      canonical non-classicality smoking-gun test, exact Wigner-function negativity at the origin
+      for the Fock |1> state (W=-1/pi, matching the textbook closed form (-1)^n/pi). ms::prob
+      gains lognormal/weibull/laplace pdf/cdf/ppf trios (Weibull/Laplace via closed-form
+      quantiles, lognormal via the existing normal ppf through a log transform); verified via
+      round-trip ppf/cdf identities plus exact closed-form relationships (Weibull k=1 ==
+      Exponential, lognormal median=exp(mu), Weibull cdf(lambda)=1-e^-1 regardless of shape). tag
+      checklist updated to 367 (1 new CTest registration: test_prob_lognormal_weibull_laplace; 29
+      new test cases across test_linalg_decomp/test_quantum; 367 suites, 100% passing).
+REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
       HOSVD and iterative Tucker decompositions share the same REPL session-object kind/type
