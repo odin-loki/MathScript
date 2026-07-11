@@ -3,6 +3,22 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 177 — Implicit/DAE Solvers, Framework Application Namespaces, PDE REPL Wiring)
+
+### Added (Wave 177)
+- `ms::pde`: `pde_heat_1d_cn` (Crank-Nicolson implicit 1D heat equation, unconditionally stable, hand-rolled Thomas tridiagonal solve), `pde_poisson_1d` (direct tridiagonal solve for 1D Poisson via the same Thomas algorithm), `pde_wave_2d` (explicit leapfrog 2D wave equation with 2D CFL guard) — extends `tests/unit/test_pde_extended.cpp`
+- `ms::ode`: `ode_backward_euler_vec` (implicit backward Euler for vector stiff ODE systems via fixed-point/Picard iteration), `ode_dae_index1` (semi-explicit index-1 DAE: RK4 predictor for differential variables + Newton correction with numerically-differentiated Jacobian for algebraic variables) — extends `tests/unit/test_ode_advanced2.cpp`
+- `ms::izaac`: four new application namespaces — `bloom::BloomFilter` (double-hashing Bloom filter sized via standard m/k formulas), `ratelimit::TokenBucket` (continuous-refill token bucket), `diffpriv::laplace_mechanism`/`gaussian_mechanism` (differential privacy noise mechanisms driven by `CSPRNG`), `backtest::simulate_gbm_path`/`run_backtest` (geometric Brownian motion price simulation + equity-curve/drawdown/Sharpe backtesting) — extends `tests/unit/test_izaac_advanced.cpp`
+- `ms::cypha`: `nig_cdf`, `nig_sample` (NIG sampling via `izaac::CSPRNG`), `DifModel::gh_gate` (posterior-coverage-style OOD gate), `DifModel::predict_interval` returning a new `PredictionInterval` (mean/lower/upper/nig_alpha/nig_beta) alongside the existing `predict`
+- `ms::cellai`: `energy` (Boltzmann-machine energy -vᵀWh), `CellMemory::consolidate` (exponential-decay short-term → long-term consolidation) — extends `tests/unit/test_cellai_cypha_ext.cpp`
+- REPL: wired all 6 `ms::pde` solvers into the command dispatcher — `pde_heat_1d(x0,alpha,dx,dt,steps)`, `pde_heat_2d(u0,alpha,dx,dy,dt,steps)`, `pde_wave_1d(u0,v0,c,dx,dt,steps)`, `pde_advection_1d(u0,v,dx,dt,steps)`, `pde_poisson_2d(f,dx,dy,max_iter,tol)`, `pde_burgers_1d(u0,nu,dx,dt,steps)` — using existing `matrix_to_coeff_vector`/`vector_to_column` vector helpers plus a new grid conversion helper for the 2D functions; help text updated; fuzz corpus seeds added for all 6; new `tests/integration/test_pde_repl_pipeline.cpp` end-to-end pipeline test
+- Tag checklist suite count updated 354→355 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
+- **Total Wave 177: 355 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- REPL/fuzz-corpus wiring for `ode_backward_euler`/`ode_backward_euler_vec`/`ode_bvp_shooting`/`ode_dde_fixed_step`/`ode_event_detect`/`ode_dae_index1` and `sym_*` functions remains deferred: these take `std::function` callbacks or symbolic expression trees that don't fit the REPL's scalar/matrix calling convention without a parser extension (mini-expression-language for user-supplied derivative functions) — tracked as future work, unlike the `pde_*` functions which only needed numeric vector/grid arguments and were wired this wave.
+- `ms::izaac` namespaces `crypto`/`vrf`(app-level)/`consensus`/`mpc`/`military` from the master plan's "12 Izaac applications" list remain unimplemented — they require real cryptographic-protocol design (secret sharing, BFT consensus, garbled circuits, etc.) that's out of scope for an incremental wave; `compress`/`fuzz` already exist as separate top-level modules (`ms::compress`, `tests/fuzz`) rather than izaac sub-namespaces.
+
 ## [1.0.0] — 2026-07-11 (Wave 176 — PDE Solvers, Symbolic Engine, DLMF Functions, Stiff/BVP/DDE ODE Solvers)
 
 ### Added (Wave 176)

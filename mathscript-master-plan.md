@@ -7584,12 +7584,22 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       (20 numerical tests); ms::ode ode_backward_euler/ode_bvp_shooting/ode_dde_fixed_step/
       ode_event_detect stiff & advanced solvers (24 tests); REPL clausen/eta_dirichlet/debye
       bindings + help text; tag checklist 351→354 (354 suites, 100% passing).
+      Wave 177: ms::pde pde_heat_1d_cn (Crank-Nicolson)/pde_poisson_1d (direct tridiagonal)/
+      pde_wave_2d (explicit leapfrog 2D) solvers; ms::ode ode_backward_euler_vec (implicit
+      vector stiff)/ode_dae_index1 (semi-explicit index-1 DAE) solvers; ms::izaac bloom/
+      ratelimit/diffpriv/backtest application namespaces; ms::cypha nig_cdf/nig_sample/
+      gh_gate/predict_interval; ms::cellai energy/consolidate; REPL bindings + fuzz seeds +
+      integration test for all 6 pde_* solvers from Wave 176 (heat_1d/heat_2d/wave_1d/
+      advection_1d/poisson_2d/burgers_1d); tag checklist 354→355 (355 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
-      REPL/fuzz-corpus wiring for Wave 176 pde_*/ode_backward_euler/ode_bvp_shooting/
-      ode_dde_fixed_step/ode_event_detect/sym_* functions (needs parser support for
-      2D-grid, callback, and symbolic-expression argument types — deferred, not force-fit). -->
+      REPL/fuzz-corpus wiring for ode_backward_euler/ode_backward_euler_vec/ode_bvp_shooting/
+      ode_dde_fixed_step/ode_event_detect/ode_dae_index1/sym_* functions (needs parser support
+      for callback and symbolic-expression argument types — deferred, not force-fit; pde_*
+      functions were wired in Wave 177 since they only need numeric vector/grid arguments).
+      ms::izaac crypto/vrf(app)/consensus/mpc/military application namespaces (need real
+      cryptographic-protocol design — out of scope for an incremental wave). -->
 
 ---
 
