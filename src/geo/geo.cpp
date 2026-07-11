@@ -112,6 +112,109 @@ Polygon2D lower_hull(std::vector<Point2D> pts) {
     return hull;
 }
 
+// ---- Convex Hull 3D (brute-force face enumeration) ----
+
+std::vector<Triangle3Di> convex_hull_3d(const std::vector<Point3D>& points) {
+    int n = static_cast<int>(points.size());
+    std::vector<Triangle3Di> hull;
+    if (n < 4) return hull;
+
+    // A hull face with more than 3 coplanar vertices (e.g. a cube's square
+    // faces) is discovered by every 3-subset of that face's vertices, all
+    // sharing the same supporting plane. Track vertex sets already turned
+    // into triangles so each physical face is triangulated exactly once,
+    // via a minimal fan, instead of once per combinatorial triple.
+    std::vector<std::vector<int>> processed_faces;
+
+    for (int i = 0; i < n; ++i) {
+        for (int j = i+1; j < n; ++j) {
+            for (int k = j+1; k < n; ++k) {
+                Vec3D nrm = cross(vec3(points[i], points[j]), vec3(points[i], points[k]));
+                double nlen = length(nrm);
+                if (nlen < 1e-12) continue;  // collinear triple, no plane
+
+                // Tolerance scaled to the plane normal's own magnitude rather than
+                // an absolute constant, since signed distances below are computed
+                // with the un-normalised normal and thus scale with |n| and the
+                // point cloud's coordinate range.
+                double eps = 1e-9 * nlen;
+
+                std::vector<int> coplanar = {i, j, k};
+                bool all_neg = true, all_pos = true;
+                for (int p = 0; p < n; ++p) {
+                    if (p == i || p == j || p == k) continue;
+                    double d = dot(nrm, vec3(points[i], points[p]));
+                    if (d > eps) all_neg = false;
+                    else if (d < -eps) all_pos = false;
+                    else coplanar.push_back(p);  // on the plane within tolerance
+                }
+                if (!all_neg && !all_pos) continue;  // points on both sides: not a hull face
+                if (all_neg && all_pos) continue;     // nothing strictly off-plane: no volume bounded
+
+                std::sort(coplanar.begin(), coplanar.end());
+                bool seen = false;
+                for (auto& f : processed_faces) if (f == coplanar) { seen = true; break; }
+                if (seen) continue;
+                processed_faces.push_back(coplanar);
+
+                if (coplanar.size() == 3) {
+                    if (all_neg) hull.push_back({i, j, k});
+                    else         hull.push_back({i, k, j});  // outward normal is -n
+                    continue;
+                }
+
+                // More than 3 coplanar points: some may be strictly interior
+                // to the flat face polygon (e.g. lying at the centroid of
+                // the others), not just extra polygon vertices, so a naive
+                // angle-sort-and-fan over all of them can produce an invalid
+                // (self-overlapping) triangulation. Project onto an in-plane
+                // 2D basis and take the actual 2D convex hull (Andrew's
+                // monotone chain, mirroring convex_hull_2d) to discard any
+                // interior points, then fan-triangulate that polygon —
+                // giving the minimal, non-overlapping triangle set, with
+                // winding consistent with the outward normal.
+                Vec3D outward = all_neg ? nrm : (-1.0) * nrm;
+                Vec3D u = normalise(vec3(points[coplanar[0]], points[coplanar[1]]));
+                Vec3D w = normalise(outward);
+                Vec3D v = cross(w, u);
+
+                Point3D c0 = points[coplanar[0]];
+                struct ProjPt { double x, y; int idx; };
+                std::vector<ProjPt> proj(coplanar.size());
+                for (size_t t = 0; t < coplanar.size(); ++t) {
+                    Vec3D d = vec3(c0, points[coplanar[t]]);
+                    proj[t] = {dot(d, u), dot(d, v), coplanar[t]};
+                }
+                std::sort(proj.begin(), proj.end(), [](const ProjPt& a, const ProjPt& b) {
+                    return a.x < b.x || (a.x == b.x && a.y < b.y);
+                });
+                auto cross2 = [](const ProjPt& O, const ProjPt& A, const ProjPt& B) {
+                    return (A.x-O.x)*(B.y-O.y) - (A.y-O.y)*(B.x-O.x);
+                };
+                std::vector<ProjPt> poly;
+                for (auto& pp : proj) {
+                    while (poly.size() >= 2 &&
+                           cross2(poly[poly.size()-2], poly.back(), pp) <= 0)
+                        poly.pop_back();
+                    poly.push_back(pp);
+                }
+                size_t lower_size = poly.size();
+                for (auto it = proj.rbegin(); it != proj.rend(); ++it) {
+                    while (poly.size() > lower_size &&
+                           cross2(poly[poly.size()-2], poly.back(), *it) <= 0)
+                        poly.pop_back();
+                    poly.push_back(*it);
+                }
+                poly.pop_back();  // closing point duplicates poly[0]
+
+                for (size_t t = 1; t + 1 < poly.size(); ++t)
+                    hull.push_back({poly[0].idx, poly[t].idx, poly[t+1].idx});
+            }
+        }
+    }
+    return hull;
+}
+
 // ---- Delaunay (Bowyer-Watson incremental) ----
 
 static double circumradius_sq(Point2D a, Point2D b, Point2D c) {
