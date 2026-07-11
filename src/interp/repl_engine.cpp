@@ -35,6 +35,7 @@
 #include "ms/prob/prob.hpp"
 #include "ms/signal/signal.hpp"
 #include "ms/poly/poly.hpp"
+#include "ms/pde/pde.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -297,6 +298,27 @@ Matrix<double> int_vector_to_column(const std::vector<int>& values) {
         out(i, 0) = static_cast<double>(values[i]);
     }
     return out;
+}
+
+Matrix<double> grid_to_matrix(const std::vector<std::vector<double>>& grid) {
+    if (grid.empty()) {
+        return Matrix<double>(0, 0);
+    }
+    Matrix<double> out(grid.size(), grid[0].size());
+    for (size_t i = 0; i < grid.size(); ++i) {
+        for (size_t j = 0; j < grid[i].size(); ++j) {
+            out(i, j) = grid[i][j];
+        }
+    }
+    return out;
+}
+
+Result<std::vector<std::vector<double>>> matrix_to_grid(const Matrix<double>& m, const char* fn) {
+    auto grid = matrix_to_ml_mat(m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    return *grid;
 }
 
 Result<std::vector<geo::Point2D>> matrix_to_points2d(const Matrix<double>& m, const char* fn) {
@@ -2865,6 +2887,98 @@ Result<Matrix<double>> eval_signal_convolve(const Matrix<double>& a_m, const Mat
     return vector_to_column(convolve(*a, *b));
 }
 
+Result<Matrix<double>> eval_pde_heat_1d(const Matrix<double>& x0_m, double alpha, double dx,
+                                       double dt, std::size_t steps) {
+    auto x0 = matrix_to_coeff_vector(x0_m, "pde_heat_1d");
+    if (!x0) {
+        return std::unexpected(x0.error());
+    }
+    const auto value = pde_heat_1d(*x0, alpha, dx, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_heat_1d", "stability condition violated or invalid input"});
+    }
+    return vector_to_column(value.u.back());
+}
+
+Result<Matrix<double>> eval_pde_heat_2d(const Matrix<double>& u0_m, double alpha, double dx,
+                                       double dy, double dt, std::size_t steps) {
+    auto u0 = matrix_to_grid(u0_m, "pde_heat_2d");
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    const auto value = pde_heat_2d(*u0, alpha, dx, dy, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_heat_2d", "stability condition violated or invalid input"});
+    }
+    return grid_to_matrix(value.u.back());
+}
+
+Result<Matrix<double>> eval_pde_wave_1d(const Matrix<double>& u0_m, const Matrix<double>& v0_m,
+                                        double c, double dx, double dt, std::size_t steps) {
+    auto u0 = matrix_to_coeff_vector(u0_m, "pde_wave_1d");
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    auto v0 = matrix_to_coeff_vector(v0_m, "pde_wave_1d");
+    if (!v0) {
+        return std::unexpected(v0.error());
+    }
+    if (u0->size() != v0->size()) {
+        return std::unexpected(
+            DomainError{"pde_wave_1d", "u0 and v0 vector length mismatch"});
+    }
+    const auto value = pde_wave_1d(*u0, *v0, c, dx, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_wave_1d", "CFL stability condition violated or invalid input"});
+    }
+    return vector_to_column(value.u.back());
+}
+
+Result<Matrix<double>> eval_pde_advection_1d(const Matrix<double>& u0_m, double v, double dx,
+                                            double dt, std::size_t steps) {
+    auto u0 = matrix_to_coeff_vector(u0_m, "pde_advection_1d");
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    const auto value = pde_advection_1d(*u0, v, dx, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_advection_1d", "CFL stability condition violated or invalid input"});
+    }
+    return vector_to_column(value.u.back());
+}
+
+Result<Matrix<double>> eval_pde_poisson_2d(const Matrix<double>& f_m, double dx, double dy,
+                                          std::size_t max_iterations, double tolerance) {
+    auto f = matrix_to_grid(f_m, "pde_poisson_2d");
+    if (!f) {
+        return std::unexpected(f.error());
+    }
+    const auto value = pde_poisson_2d(*f, dx, dy, max_iterations, tolerance);
+    if (value.u.empty()) {
+        return std::unexpected(DomainError{
+            "pde_poisson_2d", "invalid grid or input rejected by solver"});
+    }
+    return grid_to_matrix(value.u);
+}
+
+Result<Matrix<double>> eval_pde_burgers_1d(const Matrix<double>& u0_m, double nu, double dx,
+                                           double dt, std::size_t steps) {
+    auto u0 = matrix_to_coeff_vector(u0_m, "pde_burgers_1d");
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    const auto value = pde_burgers_1d(*u0, nu, dx, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_burgers_1d", "invalid input or grid too small"});
+    }
+    return vector_to_column(value.u.back());
+}
+
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall");
     if (!G) {
@@ -4933,6 +5047,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_inner" || fn == "quantum_entanglement_entropy" ||
             fn == "quantum_partial_trace" || fn == "quantum_schrodinger" ||
             fn == "quantum_schrodinger_final" ||
+            fn == "pde_heat_1d" || fn == "pde_heat_2d" || fn == "pde_wave_1d" ||
+            fn == "pde_advection_1d" || fn == "pde_poisson_2d" || fn == "pde_burgers_1d" ||
             fn == "quantum_time_evolution" ||
             fn == "info_joint_entropy" ||
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
@@ -5206,6 +5322,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "quantum_fock_state" || callee == "quantum_coherent_state" ||
            callee == "quantum_partial_trace" || callee == "quantum_schrodinger" ||
            callee == "quantum_schrodinger_final" ||
+           callee == "pde_heat_1d" || callee == "pde_heat_2d" || callee == "pde_wave_1d" ||
+           callee == "pde_advection_1d" || callee == "pde_poisson_2d" ||
+           callee == "pde_burgers_1d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
            callee == "compress_bits_to_bytes" ||
            callee == "compress_bytes_to_bits" ||
@@ -5320,6 +5439,13 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "imcrop") {
         return arity == 5;
+    }
+    if (callee == "pde_heat_1d" || callee == "pde_advection_1d" ||
+        callee == "pde_poisson_2d" || callee == "pde_burgers_1d") {
+        return arity == 5;
+    }
+    if (callee == "pde_heat_2d" || callee == "pde_wave_1d") {
+        return arity == 6;
     }
     if (callee == "quantum_ket_basis" || callee == "quantum_fock_state" ||
         callee == "combo_unrank_permutation" || callee == "numthy_continued_fraction" ||
@@ -7494,6 +7620,135 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
                 "quantum_schrodinger_final", "expected non-negative integer n_steps"});
         }
         result = eval_quantum_schrodinger_final(*H_m, *psi0_m, t0, t1, n_steps);
+    } else if (assign.callee == "pde_heat_1d" && assign.args.size() == 5) {
+        auto x0_m = resolve_operand(assign.args[0]);
+        if (!x0_m) {
+            return std::unexpected(x0_m.error());
+        }
+        double alpha = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_heat_1d", "expected pde_heat_1d(x0, alpha, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_heat_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_heat_1d(*x0_m, alpha, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_advection_1d" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double v = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], v) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_advection_1d", "expected pde_advection_1d(u0, v, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_advection_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_advection_1d(*u0_m, v, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_poisson_2d" && assign.args.size() == 5) {
+        auto f_m = resolve_operand(assign.args[0]);
+        if (!f_m) {
+            return std::unexpected(f_m.error());
+        }
+        double dx = 0.0;
+        double dy = 0.0;
+        double max_iter_d = 0.0;
+        double tolerance = 0.0;
+        if (!parse_number(assign.args[1], dx) || !parse_number(assign.args[2], dy) ||
+            !parse_number(assign.args[3], max_iter_d) ||
+            !parse_number(assign.args[4], tolerance)) {
+            return std::unexpected(DomainError{
+                "pde_poisson_2d",
+                "expected pde_poisson_2d(f, dx, dy, max_iterations, tolerance)"});
+        }
+        const int max_iter_i = static_cast<int>(max_iter_d);
+        if (max_iter_i < 0 || max_iter_d != max_iter_i) {
+            return std::unexpected(DomainError{
+                "pde_poisson_2d", "expected non-negative integer max_iterations"});
+        }
+        result = eval_pde_poisson_2d(*f_m, dx, dy, static_cast<std::size_t>(max_iter_i),
+                                     tolerance);
+    } else if (assign.callee == "pde_burgers_1d" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double nu = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], nu) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_burgers_1d", "expected pde_burgers_1d(u0, nu, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_burgers_1d(*u0_m, nu, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_heat_2d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double alpha = 0.0;
+        double dx = 0.0;
+        double dy = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dy) || !parse_number(assign.args[4], dt) ||
+            !parse_number(assign.args[5], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_heat_2d", "expected pde_heat_2d(u0, alpha, dx, dy, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_heat_2d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_heat_2d(*u0_m, alpha, dx, dy, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_wave_1d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto v0_m = resolve_operand(assign.args[1]);
+        if (!v0_m) {
+            return std::unexpected(v0_m.error());
+        }
+        double c = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[2], c) || !parse_number(assign.args[3], dx) ||
+            !parse_number(assign.args[4], dt) || !parse_number(assign.args[5], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_wave_1d", "expected pde_wave_1d(u0, v0, c, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_wave_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_wave_1d(*u0_m, *v0_m, c, dx, dt, static_cast<std::size_t>(steps_i));
     } else if (assign.callee == "imcrop" && assign.args.size() == 5) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -8368,6 +8623,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_blackman(n) Blackman window as n×1 column\n"
             "  name = signal_parzen(n) Parzen window as n×1 column\n"
             "  name = signal_triangular(n) triangular window as n×1 column\n"
+            "  name = pde_heat_1d(x0,alpha,dx,dt,steps) 1D heat equation final state column\n"
+            "  name = pde_heat_2d(u0,alpha,dx,dy,dt,steps) 2D heat equation final grid (rows×cols)\n"
+            "  name = pde_wave_1d(u0,v0,c,dx,dt,steps) 1D wave equation final state column\n"
+            "  name = pde_advection_1d(u0,v,dx,dt,steps) 1D advection final state column\n"
+            "  name = pde_poisson_2d(f,dx,dy,max_iterations,tolerance) 2D Poisson solution grid\n"
+            "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
             "  name = fft_rfft(x) real FFT spectrum as Nx2 [re,im] matrix\n"
             "  name = fftshift(S) cyclic shift of Nx2 complex spectrum\n"
             "  name = fft_dft(x) discrete Fourier transform as Nx2 [re,im] matrix\n"
@@ -8566,7 +8827,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov)\n"
             "  quantum_von_neumann_entropy(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_gamma_pdf(x,shape,scale), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_gamma_pdf(x,shape,scale), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -10547,6 +10808,129 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(*value) + "\n";
         }
+        if (fn == "pde_heat_1d" || fn == "pde_advection_1d" || fn == "pde_poisson_2d" ||
+            fn == "pde_burgers_1d") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto arg0_m = resolve_arg(trim(match[2].str()));
+            if (!arg0_m) {
+                return std::unexpected(arg0_m.error());
+            }
+            if (fn == "pde_heat_1d") {
+                double alpha = 0.0;
+                double dx = 0.0;
+                double dt = 0.0;
+                double steps_d = 0.0;
+                if (!parse_number(trim(match[3].str()), alpha) ||
+                    !parse_number(trim(match[4].str()), dx) ||
+                    !parse_number(trim(match[5].str()), dt) ||
+                    !parse_number(trim(match[6].str()), steps_d)) {
+                    return std::unexpected(DomainError{
+                        "pde_heat_1d", "expected pde_heat_1d(x0, alpha, dx, dt, steps)"});
+                }
+                const int steps_i = static_cast<int>(steps_d);
+                if (steps_i < 0 || steps_d != steps_i) {
+                    return std::unexpected(
+                        DomainError{"pde_heat_1d", "expected non-negative integer steps"});
+                }
+                auto value = eval_pde_heat_1d(*arg0_m, alpha, dx, dt,
+                                              static_cast<std::size_t>(steps_i));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "u =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (fn == "pde_advection_1d") {
+                double v = 0.0;
+                double dx = 0.0;
+                double dt = 0.0;
+                double steps_d = 0.0;
+                if (!parse_number(trim(match[3].str()), v) ||
+                    !parse_number(trim(match[4].str()), dx) ||
+                    !parse_number(trim(match[5].str()), dt) ||
+                    !parse_number(trim(match[6].str()), steps_d)) {
+                    return std::unexpected(DomainError{
+                        "pde_advection_1d",
+                        "expected pde_advection_1d(u0, v, dx, dt, steps)"});
+                }
+                const int steps_i = static_cast<int>(steps_d);
+                if (steps_i < 0 || steps_d != steps_i) {
+                    return std::unexpected(
+                        DomainError{"pde_advection_1d", "expected non-negative integer steps"});
+                }
+                auto value = eval_pde_advection_1d(*arg0_m, v, dx, dt,
+                                                   static_cast<std::size_t>(steps_i));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "u =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (fn == "pde_poisson_2d") {
+                double dx = 0.0;
+                double dy = 0.0;
+                double max_iter_d = 0.0;
+                double tolerance = 0.0;
+                if (!parse_number(trim(match[3].str()), dx) ||
+                    !parse_number(trim(match[4].str()), dy) ||
+                    !parse_number(trim(match[5].str()), max_iter_d) ||
+                    !parse_number(trim(match[6].str()), tolerance)) {
+                    return std::unexpected(DomainError{
+                        "pde_poisson_2d",
+                        "expected pde_poisson_2d(f, dx, dy, max_iterations, tolerance)"});
+                }
+                const int max_iter_i = static_cast<int>(max_iter_d);
+                if (max_iter_i < 0 || max_iter_d != max_iter_i) {
+                    return std::unexpected(DomainError{
+                        "pde_poisson_2d", "expected non-negative integer max_iterations"});
+                }
+                auto value = eval_pde_poisson_2d(*arg0_m, dx, dy,
+                                                 static_cast<std::size_t>(max_iter_i),
+                                                 tolerance);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "u =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            double nu = 0.0;
+            double dx = 0.0;
+            double dt = 0.0;
+            double steps_d = 0.0;
+            if (!parse_number(trim(match[3].str()), nu) ||
+                !parse_number(trim(match[4].str()), dx) ||
+                !parse_number(trim(match[5].str()), dt) ||
+                !parse_number(trim(match[6].str()), steps_d)) {
+                return std::unexpected(DomainError{
+                    "pde_burgers_1d", "expected pde_burgers_1d(u0, nu, dx, dt, steps)"});
+            }
+            const int steps_i = static_cast<int>(steps_d);
+            if (steps_i < 0 || steps_d != steps_i) {
+                return std::unexpected(
+                    DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
+            }
+            auto value = eval_pde_burgers_1d(*arg0_m, nu, dx, dt,
+                                             static_cast<std::size_t>(steps_i));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
     }
 
     static const std::regex senary(
@@ -10777,6 +11161,77 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"finance_bs_rho", "expected integer call (0=put, 1=call)"});
             }
             return std::to_string(finance::bs_rho(S, K, T, r, sigma, call != 0)) + "\n";
+        }
+        if (fn == "pde_heat_2d" || fn == "pde_wave_1d") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto arg0_m = resolve_arg(trim(match[2].str()));
+            if (!arg0_m) {
+                return std::unexpected(arg0_m.error());
+            }
+            if (fn == "pde_heat_2d") {
+                double alpha = 0.0;
+                double dx = 0.0;
+                double dy = 0.0;
+                double dt = 0.0;
+                double steps_d = 0.0;
+                if (!parse_number(trim(match[3].str()), alpha) ||
+                    !parse_number(trim(match[4].str()), dx) ||
+                    !parse_number(trim(match[5].str()), dy) ||
+                    !parse_number(trim(match[6].str()), dt) ||
+                    !parse_number(trim(match[7].str()), steps_d)) {
+                    return std::unexpected(DomainError{
+                        "pde_heat_2d", "expected pde_heat_2d(u0, alpha, dx, dy, dt, steps)"});
+                }
+                const int steps_i = static_cast<int>(steps_d);
+                if (steps_i < 0 || steps_d != steps_i) {
+                    return std::unexpected(
+                        DomainError{"pde_heat_2d", "expected non-negative integer steps"});
+                }
+                auto value = eval_pde_heat_2d(*arg0_m, alpha, dx, dy, dt,
+                                              static_cast<std::size_t>(steps_i));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "u =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            auto v0_m = resolve_arg(trim(match[3].str()));
+            if (!v0_m) {
+                return std::unexpected(v0_m.error());
+            }
+            double c = 0.0;
+            double dx = 0.0;
+            double dt = 0.0;
+            double steps_d = 0.0;
+            if (!parse_number(trim(match[4].str()), c) ||
+                !parse_number(trim(match[5].str()), dx) ||
+                !parse_number(trim(match[6].str()), dt) ||
+                !parse_number(trim(match[7].str()), steps_d)) {
+                return std::unexpected(DomainError{
+                    "pde_wave_1d", "expected pde_wave_1d(u0, v0, c, dx, dt, steps)"});
+            }
+            const int steps_i = static_cast<int>(steps_d);
+            if (steps_i < 0 || steps_d != steps_i) {
+                return std::unexpected(
+                    DomainError{"pde_wave_1d", "expected non-negative integer steps"});
+            }
+            auto value = eval_pde_wave_1d(*arg0_m, *v0_m, c, dx, dt,
+                                          static_cast<std::size_t>(steps_i));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
         }
     }
 
