@@ -1,4 +1,5 @@
 #pragma once
+#include "ms/error/error_types.hpp"
 #include <functional>
 #include <string>
 #include <vector>
@@ -102,6 +103,27 @@ TuckerDecomposition decompose_tucker(const Tensor& T, const std::vector<int>& ra
 // Reconstruct the approximated full tensor from a Tucker decomposition:
 // core ×_1 factors[0] ×_2 factors[1] ×_3 ... ×_N factors[N-1]
 Tensor reconstruct_tucker(const TuckerDecomposition& tucker);
+
+// Tensor-Train (TT) decomposition (Oseledets 2011): represents a d-way tensor as a chain
+// of d 3-way "core" tensors linked by TT-ranks. Scales linearly (not exponentially) with
+// tensor order, making it preferable to Tucker for order >= 4-5 tensors.
+struct TTDecomposition {
+    std::vector<Tensor> cores;   // cores[k] has shape (r_{k-1}, n_k, r_k); r_0 = r_{d-1} = 1
+    std::vector<int> ranks;      // TT-ranks {r_0=1, r_1, ..., r_{d-1}, r_d=1}, size d+1
+    double epsilon;              // truncation tolerance used to produce this decomposition
+};
+
+// TT-SVD algorithm: sequentially unfolds the tensor into 2D matrices and applies truncated
+// SVD at each of the d-1 steps, carrying S*V^T forward as the "remaining" tensor for the
+// next mode. Each step is allowed a relative error of eps/sqrt(d-1) (Frobenius norm, measured
+// against the original tensor's norm) so that the accumulated error over all d-1 steps stays
+// within the requested relative tolerance `eps` (Oseledets' TT-SVD error bound).
+// Requires T.ndim() >= 3 (TT decomposition is not meaningful for order < 3) and eps >= 0.
+Result<TTDecomposition> decompose_tt(const Tensor& T, double eps);
+
+// Reconstructs the full dense tensor by sequentially contracting
+// core[0] * core[1] * ... * core[d-1] along their shared rank indices.
+Tensor reconstruct_tt(const TTDecomposition& tt);
 
 // ========================== Norms ==========================
 double frobenius_norm(const Tensor& T);
