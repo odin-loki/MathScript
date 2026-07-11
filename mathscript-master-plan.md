@@ -7933,7 +7933,39 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       a tractable subset of the module's general-filter-design gap. tag checklist stays at 365
       (no new CTest registrations; 68 new test cases across existing test_finance/test_poly_ext/
       test_signal_filters binaries; 365 suites, 100% passing).
-REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
+      Wave 197: an explore-agent survey of module spec sections (targeting modules untouched
+      since Wave 191, for variety) identified three fresh, tractable picks. ms::special gains
+      voigt (Gaussian-Lorentzian convolution line shape) and pseudo_voigt/pseudo_voigt_auto
+      (Thompson-Cox-Hastings shared-FWHM approximation); no Faddeeva-function w(z) implementation
+      previously existed anywhere in the codebase, so the Humlicek (1982) w4 rational
+      approximation was implemented from scratch with std::complex<double>; verified primarily
+      via Simpson's-rule normalization integrals landing within a few percent of 1.0 (the
+      strongest signal, since it doesn't require trusting an invented reference value), plus
+      gamma=0->Gaussian and tiny-sigma->Lorentzian limiting-case convergence. ms::stats gains the
+      Friedman test (friedman(data) -> FriedmanResult{chi2_stat,df,p_value}, the non-parametric
+      repeated-measures alternative to one-way ANOVA, tie-corrected via the existing
+      average_ranks helper shared with kruskal_wallis/mann_whitney_u and ms::chi2_cdf for the
+      p-value); deliberately implemented as a plain struct return (not Result<T>) after
+      confirming that's the actual convention every other hypothesis test in the module uses;
+      verified against a hand-computed reference case matching to 1e-9. ms::tensorops gains
+      Tensor-Train decomposition (decompose_tt/reconstruct_tt, Oseledets 2011 TT-SVD, closing the
+      module's order-4+ compression gap where Tucker's core grows exponentially but TT scales
+      linearly); while implementing this, uncovered a real pre-existing bug in the shared
+      ms::linalg::svd routine (wrong reconstruction for rank-deficient matrices beyond the first
+      column) and worked around it with a self-contained one-sided Jacobi SVD directly in
+      tensorops.cpp rather than depending on the buggy shared routine (matching how CP/Tucker/
+      HOSVD are already self-sufficient) -- the underlying svd bug remains UNFIXED and is a
+      flagged follow-up item; verified via exact rank-1/known-low-rank recovery and monotonic
+      reconstruction-error-vs-epsilon behavior. tag checklist updated to 366 (1 new CTest
+      registration: test_special_voigt; 53 new test cases across test_special_voigt/
+      test_stats_prob_ext/test_tensorops; 366 suites, 100% passing).
+REMAINING: KNOWN BUG (found Wave 197, unfixed): ms::linalg::svd produces incorrect reconstruction
+      for rank-deficient matrices beyond the first column. Discovered while implementing
+      ms::tensorops::decompose_tt, which worked around it with a self-contained Jacobi SVD rather
+      than fixing the shared routine (out of scope for that wave). Other callers of
+      ms::linalg::svd on rank-deficient inputs may be silently affected — needs a dedicated
+      investigation/fix in a future wave.
+      24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
       HOSVD and iterative Tucker decompositions share the same REPL session-object kind/type

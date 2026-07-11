@@ -20,7 +20,7 @@ echo "Current: ${VERSION_LINE:-unknown}"
 echo
 echo "Required before tagging (see docs/RELEASE.md):"
 echo "  [ ] CI green on main (.github/workflows/ci.yml)"
-echo "  [ ] 365 CTest suites passing"
+echo "  [ ] 366 CTest suites passing"
 echo "  [ ] Coverage >= 90% (coverage-linux)"
 echo "  [ ] Valgrind clean (valgrind-linux)"
 echo "  [ ] fuzz-24h.yml: 86400 s x 7 targets, zero crashes"
