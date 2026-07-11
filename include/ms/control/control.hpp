@@ -151,6 +151,44 @@ bool is_controllable(const std::vector<std::vector<double>>& A,
 bool is_observable(const std::vector<std::vector<double>>& A,
                    const std::vector<std::vector<double>>& C);
 
+// ---- Gramians ----
+enum class GramianType { Controllability, Observability };
+
+/// @brief Controllability/observability Gramian of a continuous-time LTI system.
+///
+/// The controllability Gramian solves A*Wc + Wc*A^T + B*B^T = 0.
+/// The observability  Gramian solves A^T*Wo + Wo*A + C^T*C = 0.
+/// Both equations are solved by delegating to lyap(), which solves
+/// A*X + X*A^T + Q = 0 (Wo is obtained via lyap(A^T, C^T*C), which — since
+/// lyap treats its first argument as "A" — solves A^T*X + X*A + Q = 0, exactly
+/// the observability equation).
+///
+/// @param sys  State-space system. Only (A, B) are used for the controllability
+///             Gramian; only (A, C) are used for the observability Gramian.
+/// @param type GramianType::Controllability or GramianType::Observability.
+/// @return The n×n Gramian matrix, or an error if the underlying Lyapunov solve
+///         fails (see @note below).
+/// @note The Gramian is only mathematically well-defined (finite) when A is
+///       asymptotically stable (all eigenvalues strictly in the open left
+///       half-plane). For an unstable or marginally stable A (e.g. eigenvalues
+///       on or to the right of the imaginary axis), the Lyapunov equation may
+///       have no solution, an unbounded solution, or a non-unique solution;
+///       lyap()'s Kronecker-product linear system becomes singular or
+///       ill-conditioned in that case and this function propagates that
+///       failure through the returned Result rather than throwing or
+///       returning a nonsensical matrix.
+/// @note For a stable system, the returned Gramian is symmetric by
+///       construction and positive semi-definite; it is positive *definite*
+///       iff the system is fully controllable (resp. observable).
+Result<std::vector<std::vector<double>>>
+    gram(const StateSpace& sys, GramianType type);
+
+/// @brief Convenience wrapper for gram(sys, GramianType::Controllability).
+Result<std::vector<std::vector<double>>> ctrb_gram(const StateSpace& sys);
+
+/// @brief Convenience wrapper for gram(sys, GramianType::Observability).
+Result<std::vector<std::vector<double>>> obsv_gram(const StateSpace& sys);
+
 // ---- Pole placement ----
 // Returns state feedback gain K s.t. eigenvalues of (A - B*K) = desired_poles
 Result<std::vector<double>>

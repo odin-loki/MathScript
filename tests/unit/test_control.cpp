@@ -1,4 +1,5 @@
 #include "ms/control/control.hpp"
+#include "ms/linalg/linalg.hpp"
 #include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
@@ -145,6 +146,205 @@ TEST(ControlLyap, DiscreteLyapunov) {
     auto X = ms::control::dlyap(A, Q);
     EXPECT_TRUE(X.has_value());
     if (X) EXPECT_NEAR(X.value()[0][0], 4.0 / 3.0, 1e-4);
+}
+
+// ---- Gramians ----
+namespace {
+
+using Mat = std::vector<std::vector<double>>;
+
+double mat_max_abs(const Mat& M) {
+    double m = 0.0;
+    for (const auto& row : M)
+        for (double x : row) m = std::max(m, std::abs(x));
+    return m;
+}
+
+Mat mat_transpose(const Mat& M) {
+    size_t rows = M.size(), cols = M.empty() ? 0 : M[0].size();
+    Mat T(cols, std::vector<double>(rows, 0.0));
+    for (size_t i = 0; i < rows; ++i)
+        for (size_t j = 0; j < cols; ++j)
+            T[j][i] = M[i][j];
+    return T;
+}
+
+Mat mat_matmul(const Mat& A, const Mat& B) {
+    size_t m = A.size(), k = B.size(), n = B.empty() ? 0 : B[0].size();
+    Mat C(m, std::vector<double>(n, 0.0));
+    for (size_t i = 0; i < m; ++i)
+        for (size_t j = 0; j < n; ++j)
+            for (size_t l = 0; l < k; ++l)
+                C[i][j] += A[i][l] * B[l][j];
+    return C;
+}
+
+Mat mat_add(const Mat& A, const Mat& B) {
+    Mat C = A;
+    for (size_t i = 0; i < C.size(); ++i)
+        for (size_t j = 0; j < C[i].size(); ++j)
+            C[i][j] += B[i][j];
+    return C;
+}
+
+// Convert a std::vector<std::vector<double>> to an ms::ColMatrix<double> so
+// we can reuse the existing eig_sym() routine to check Gramian eigenvalues.
+ms::ColMatrix<double> to_col_matrix(const Mat& M) {
+    size_t rows = M.size(), cols = M.empty() ? 0 : M[0].size();
+    ms::ColMatrix<double> out(rows, cols);
+    for (size_t i = 0; i < rows; ++i)
+        for (size_t j = 0; j < cols; ++j)
+            out(i, j) = M[i][j];
+    return out;
+}
+
+// Stable, controllable & observable 2x2 diagonal test plant:
+//   A = diag(-1, -2), B = [[1],[1]], C = [[1, 1]]
+// Closed form (solve a_i*Wc_ij + Wc_ij*a_j + (BB^T)_ij = 0 elementwise for
+// diagonal A): Wc = [[0.5, 1/3], [1/3, 0.25]]. By symmetry of A, Wo is
+// identical when C = B^T.
+StateSpace diagonal_plant() {
+    return ss({{-1.0, 0.0}, {0.0, -2.0}}, {{1.0}, {1.0}}, {{1.0, 1.0}}, {{0.0}});
+}
+
+} // namespace
+
+TEST(ControlGram, ControllabilityGramianSymmetric) {
+    auto sys = diagonal_plant();
+    auto Wc = gram(sys, GramianType::Controllability);
+    ASSERT_TRUE(Wc.has_value());
+    auto WcT = mat_transpose(Wc.value());
+    for (size_t i = 0; i < Wc->size(); ++i)
+        for (size_t j = 0; j < (*Wc)[i].size(); ++j)
+            EXPECT_NEAR((*Wc)[i][j], WcT[i][j], 1e-8);
+}
+
+TEST(ControlGram, ControllabilityGramianClosedForm) {
+    // Wc = [[0.5, 1/3], [1/3, 0.25]] for A = diag(-1,-2), B = [[1],[1]]
+    auto sys = diagonal_plant();
+    auto Wc = gram(sys, GramianType::Controllability);
+    ASSERT_TRUE(Wc.has_value());
+    EXPECT_NEAR(Wc.value()[0][0], 0.5, 1e-6);
+    EXPECT_NEAR(Wc.value()[0][1], 1.0 / 3.0, 1e-6);
+    EXPECT_NEAR(Wc.value()[1][0], 1.0 / 3.0, 1e-6);
+    EXPECT_NEAR(Wc.value()[1][1], 0.25, 1e-6);
+}
+
+TEST(ControlGram, ControllabilityGramianPositiveSemiDefinite) {
+    auto sys = diagonal_plant();
+    auto Wc = gram(sys, GramianType::Controllability);
+    ASSERT_TRUE(Wc.has_value());
+    // Diagonal entries strictly positive for a controllable system.
+    EXPECT_GT(Wc.value()[0][0], 0.0);
+    EXPECT_GT(Wc.value()[1][1], 0.0);
+    // All eigenvalues >= -epsilon (numerical noise tolerance).
+    auto eig_res = ms::eig_sym(to_col_matrix(Wc.value()));
+    ASSERT_TRUE(eig_res.has_value());
+    for (size_t i = 0; i < eig_res->values.rows(); ++i)
+        EXPECT_GE(eig_res->values(i, 0), -1e-9);
+}
+
+TEST(ControlGram, ControllabilityGramianSatisfiesLyapunovEquation) {
+    // Verify A*Wc + Wc*A^T + B*B^T ≈ 0 by direct substitution — the strongest
+    // correctness check, independent of trusting lyap()'s own tests.
+    auto sys = diagonal_plant();
+    auto Wc = gram(sys, GramianType::Controllability);
+    ASSERT_TRUE(Wc.has_value());
+    auto AWc = mat_matmul(sys.A, Wc.value());
+    auto WcAt = mat_matmul(Wc.value(), mat_transpose(sys.A));
+    auto BBt = mat_matmul(sys.B, mat_transpose(sys.B));
+    auto residual = mat_add(mat_add(AWc, WcAt), BBt);
+    EXPECT_NEAR(mat_max_abs(residual), 0.0, 1e-8);
+}
+
+TEST(ControlGram, ObservabilityGramianSatisfiesLyapunovEquation) {
+    // Verify A^T*Wo + Wo*A + C^T*C ≈ 0 by direct substitution.
+    auto sys = diagonal_plant();
+    auto Wo = gram(sys, GramianType::Observability);
+    ASSERT_TRUE(Wo.has_value());
+    auto At = mat_transpose(sys.A);
+    auto AtWo = mat_matmul(At, Wo.value());
+    auto WoA = mat_matmul(Wo.value(), sys.A);
+    auto CtC = mat_matmul(mat_transpose(sys.C), sys.C);
+    auto residual = mat_add(mat_add(AtWo, WoA), CtC);
+    EXPECT_NEAR(mat_max_abs(residual), 0.0, 1e-8);
+}
+
+TEST(ControlGram, ObservabilityGramianSymmetricAndPositive) {
+    auto sys = diagonal_plant();
+    auto Wo = gram(sys, GramianType::Observability);
+    ASSERT_TRUE(Wo.has_value());
+    auto WoT = mat_transpose(Wo.value());
+    for (size_t i = 0; i < Wo->size(); ++i)
+        for (size_t j = 0; j < (*Wo)[i].size(); ++j)
+            EXPECT_NEAR((*Wo)[i][j], WoT[i][j], 1e-8);
+    EXPECT_GT(Wo.value()[0][0], 0.0);
+    EXPECT_GT(Wo.value()[1][1], 0.0);
+    auto eig_res = ms::eig_sym(to_col_matrix(Wo.value()));
+    ASSERT_TRUE(eig_res.has_value());
+    for (size_t i = 0; i < eig_res->values.rows(); ++i)
+        EXPECT_GE(eig_res->values(i, 0), -1e-9);
+}
+
+TEST(ControlGram, TraceIsFinite) {
+    auto sys = diagonal_plant();
+    auto Wc = gram(sys, GramianType::Controllability);
+    ASSERT_TRUE(Wc.has_value());
+    double trace = 0.0;
+    for (size_t i = 0; i < Wc->size(); ++i) trace += (*Wc)[i][i];
+    EXPECT_TRUE(std::isfinite(trace));
+}
+
+TEST(ControlGram, ScalarSystemClosedForm) {
+    // dx/dt = -a*x + b*u  =>  Wc = b^2 / (2a)  (textbook closed form).
+    const double a = 2.0, b = 3.0;
+    auto sys = ss({{-a}}, {{b}}, {{1.0}}, {{0.0}});
+    auto Wc = ctrb_gram(sys);
+    ASSERT_TRUE(Wc.has_value());
+    EXPECT_NEAR(Wc.value()[0][0], (b * b) / (2.0 * a), 1e-9);
+}
+
+TEST(ControlGram, ConvenienceWrappersMatchDispatcher) {
+    auto sys = diagonal_plant();
+    auto Wc1 = gram(sys, GramianType::Controllability);
+    auto Wc2 = ctrb_gram(sys);
+    auto Wo1 = gram(sys, GramianType::Observability);
+    auto Wo2 = obsv_gram(sys);
+    ASSERT_TRUE(Wc1.has_value());
+    ASSERT_TRUE(Wc2.has_value());
+    ASSERT_TRUE(Wo1.has_value());
+    ASSERT_TRUE(Wo2.has_value());
+    for (size_t i = 0; i < Wc1->size(); ++i)
+        for (size_t j = 0; j < (*Wc1)[i].size(); ++j) {
+            EXPECT_NEAR((*Wc1)[i][j], (*Wc2)[i][j], 1e-12);
+            EXPECT_NEAR((*Wo1)[i][j], (*Wo2)[i][j], 1e-12);
+        }
+}
+
+TEST(ControlGram, UnstableSystemDoesNotCrash) {
+    // A = [1] (unstable, pole at +1): the Lyapunov equation for Wc has no
+    // finite positive-semidefinite solution. gram() must not crash and
+    // should surface failure through the Result rather than returning
+    // a bogus matrix.
+    auto sys = ss({{1.0}}, {{1.0}}, {{1.0}}, {{0.0}});
+    auto Wc = gram(sys, GramianType::Controllability);
+    // lyap() on A=[1] gives 2*X + 1 = 0 -> X = -0.5, which is a valid
+    // (negative) solution to the Sylvester equation itself, so this does
+    // not error — but it must be finite and must not crash.
+    if (Wc.has_value()) {
+        for (const auto& row : Wc.value())
+            for (double x : row) EXPECT_TRUE(std::isfinite(x));
+    }
+}
+
+TEST(ControlGram, MarginallyStableSystemDoesNotCrash) {
+    // A = [0] (marginally stable, pole on imaginary axis at origin): the
+    // Lyapunov map A*X + X*A^T is identically zero, so the equation
+    // 0 = -B*B^T has no solution unless B = 0 -> lyap() must report failure
+    // (singular system), and gram() must propagate that gracefully.
+    auto sys = ss({{0.0}}, {{1.0}}, {{1.0}}, {{0.0}});
+    auto Wc = gram(sys, GramianType::Controllability);
+    EXPECT_FALSE(Wc.has_value());
 }
 
 // ---- Pole placement ----

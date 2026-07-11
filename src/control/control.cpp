@@ -1056,6 +1056,28 @@ bool is_observable(const std::vector<std::vector<double>>& A,
     return matrix_rank(O) == n;
 }
 
+// ---- Gramians ----
+// lyap(A, Q) solves A*X + X*A^T + Q = 0 (see the Lyapunov solver above).
+// Wc: A*Wc + Wc*A^T + B*B^T = 0            -> lyap(A, B*B^T)
+// Wo: A^T*Wo + Wo*A + C^T*C = 0 = A'*Wo + Wo*(A')^T + C^T*C -> lyap(A^T, C^T*C)
+Result<std::vector<std::vector<double>>>
+gram(const StateSpace& sys, GramianType type) {
+    if (type == GramianType::Controllability) {
+        auto BBt = matmul(sys.B, transpose(sys.B));
+        return lyap(sys.A, BBt);
+    }
+    auto CtC = matmul(transpose(sys.C), sys.C);
+    return lyap(transpose(sys.A), CtC);
+}
+
+Result<std::vector<std::vector<double>>> ctrb_gram(const StateSpace& sys) {
+    return gram(sys, GramianType::Controllability);
+}
+
+Result<std::vector<std::vector<double>>> obsv_gram(const StateSpace& sys) {
+    return gram(sys, GramianType::Observability);
+}
+
 // ---- Pole placement (Ackermann's formula for SISO) ----
 Result<std::vector<double>>
 place(const std::vector<std::vector<double>>& A,
