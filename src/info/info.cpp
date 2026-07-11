@@ -133,6 +133,89 @@ double shannon_hartley(double bandwidth_hz, double snr_linear) {
     return bandwidth_hz * std::log2(1.0 + snr_linear);
 }
 
+// Validates that W is a non-empty, rectangular channel matrix whose rows
+// are (approximately) valid probability distributions.
+static bool is_valid_channel_matrix(const std::vector<std::vector<double>>& W) {
+    if (W.empty()) return false;
+    const size_t n_outputs = W[0].size();
+    if (n_outputs == 0) return false;
+    for (const auto& row : W) {
+        if (row.size() != n_outputs) return false;
+        double sum = 0.0;
+        for (double v : row) {
+            if (v < 0.0) return false;
+            sum += v;
+        }
+        if (std::abs(sum - 1.0) > 1e-6) return false;
+    }
+    return true;
+}
+
+ChannelCapacityResult channel_capacity(const std::vector<std::vector<double>>& W,
+                                        double eps, int max_iter) {
+    ChannelCapacityResult result;
+    if (!is_valid_channel_matrix(W)) return result;
+
+    const size_t n_inputs = W.size();
+    const size_t n_outputs = W[0].size();
+
+    // Single-input channel: capacity is trivially 0 bits.
+    if (n_inputs == 1) {
+        result.input_distribution = {1.0};
+        return result;
+    }
+
+    std::vector<double> p(n_inputs, 1.0 / static_cast<double>(n_inputs));
+    double capacity = 0.0;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        // p(y) = sum_x p(x) W(y|x)
+        std::vector<double> py(n_outputs, 0.0);
+        for (size_t x = 0; x < n_inputs; ++x)
+            for (size_t y = 0; y < n_outputs; ++y)
+                py[y] += p[x] * W[x][y];
+
+        // c(x) = sum_y W(y|x) log2( W(y|x) / p(y) )
+        std::vector<double> c(n_inputs, 0.0);
+        for (size_t x = 0; x < n_inputs; ++x) {
+            double cx = 0.0;
+            for (size_t y = 0; y < n_outputs; ++y) {
+                if (W[x][y] > 0.0 && py[y] > 0.0)
+                    cx += W[x][y] * log_base(W[x][y] / py[y], 2.0);
+            }
+            c[x] = cx;
+        }
+
+        // Capacity estimate: I(X;Y) = sum_x p(x) c(x)
+        double new_capacity = 0.0;
+        for (size_t x = 0; x < n_inputs; ++x) new_capacity += p[x] * c[x];
+
+        // Update p(x) <- p(x) * 2^c(x), then normalise.
+        std::vector<double> new_p(n_inputs);
+        double norm = 0.0;
+        for (size_t x = 0; x < n_inputs; ++x) {
+            new_p[x] = p[x] * std::exp2(c[x]);
+            norm += new_p[x];
+        }
+        if (norm > 0.0)
+            for (size_t x = 0; x < n_inputs; ++x) new_p[x] /= norm;
+
+        bool converged = std::abs(new_capacity - capacity) < eps;
+        p = new_p;
+        capacity = new_capacity;
+        if (converged) break;
+    }
+
+    result.capacity = capacity;
+    result.input_distribution = p;
+    return result;
+}
+
+double blahut_arimoto(const std::vector<std::vector<double>>& W,
+                       double eps, int max_iter) {
+    return channel_capacity(W, eps, max_iter).capacity;
+}
+
 double rate_distortion_gaussian(double variance, double distortion) {
     if (distortion >= variance) return 0.0;
     return 0.5 * std::log2(variance / distortion);
