@@ -33,6 +33,31 @@ OdeResult ode_rk45(OdeFunc f, double t0, double y0, double t_end,
 OdeResult ode_rk23(OdeFunc f, double t0, double y0, double t_end,
                    double rtol = 1e-4, double atol = 1e-7);
 
+/// Cash-Karp embedded Runge-Kutta (4,5) adaptive-step scalar IVP solver.
+/// A 6-stage explicit RK pair that produces a 5th-order solution advanced at
+/// each accepted step, together with an embedded 4th-order estimate computed
+/// from the same 6 stage derivatives; the difference between the two drives
+/// step-size control. Butcher tableau coefficients are the canonical
+/// published values (Cash & Karp 1990 / Numerical Recipes).
+/// @param f Right-hand side dy/dt = f(t, y).
+/// @param t0 Initial time.
+/// @param y0 Initial value y(t0).
+/// @param t_end Final time. If t_end <= t0, returns immediately with the
+///        single point (t0, y0) and takes no steps (same convention as
+///        ode_rk45).
+/// @param rtol Relative tolerance for the per-step error control.
+/// @param atol Absolute tolerance for the per-step error control.
+/// @return OdeResult with the accepted (t, y) pairs, starting at (t0, y0)
+///         and ending at (or numerically at) t_end.
+/// @note Defensive: no exceptions; a hard cap on the number of steps
+///       prevents runaway loops if the step size collapses.
+/// @accuracy Local error per step is O(h^5); the embedded 4th-order estimate
+///           is used only for error control, not returned. Step size is
+///           rescaled by a safety factor times (tol/err)^(1/5), clamped to
+///           [0.2x, 5x] growth per step, mirroring ode_rk45's control loop.
+OdeResult ode_cashkarp(OdeFunc f, double t0, double y0, double t_end,
+                       double rtol = 1e-6, double atol = 1e-9);
+
 // Vector ODE fixed-step
 OdeResultVec ode_euler_vec(OdeFuncVec f, double t0,
                            const std::vector<double>& y0,
