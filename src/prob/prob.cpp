@@ -12,84 +12,6 @@ namespace ms {
 
 namespace {
 
-double regularized_lower_incomplete_gamma(double a, double x) {
-    if (x <= 0.0) {
-        return 0.0;
-    }
-    double sum = 0.0;
-    double term = 1.0 / a;
-    sum = term;
-    for (int n = 1; n < 200; ++n) {
-        term *= x / (a + static_cast<double>(n));
-        sum += term;
-        if (std::abs(term) < 1e-12 * std::abs(sum)) {
-            break;
-        }
-    }
-    return std::exp(-x + a * std::log(x) - std::lgamma(a)) * sum;
-}
-
-double beta_continued_fraction(double a, double b, double x) {
-    const double fpmin = 1e-300;
-    const double qab = a + b;
-    const double qap = a + 1.0;
-    const double qam = a - 1.0;
-    double c = 1.0;
-    double d = 1.0 - qab * x / qap;
-    if (std::abs(d) < fpmin) {
-        d = fpmin;
-    }
-    d = 1.0 / d;
-    double h = d;
-    for (int m = 1; m <= 200; ++m) {
-        const double m2 = 2.0 * static_cast<double>(m);
-        double aa = static_cast<double>(m) * (b - static_cast<double>(m)) * x /
-                    ((qam + m2) * (a + m2));
-        d = 1.0 + aa * d;
-        if (std::abs(d) < fpmin) {
-            d = fpmin;
-        }
-        c = 1.0 + aa / c;
-        if (std::abs(c) < fpmin) {
-            c = fpmin;
-        }
-        d = 1.0 / d;
-        h *= d * c;
-        aa = -(a + static_cast<double>(m)) * (qab + static_cast<double>(m)) * x /
-             ((a + m2) * (qap + m2));
-        d = 1.0 + aa * d;
-        if (std::abs(d) < fpmin) {
-            d = fpmin;
-        }
-        c = 1.0 + aa / c;
-        if (std::abs(c) < fpmin) {
-            c = fpmin;
-        }
-        d = 1.0 / d;
-        const double del = d * c;
-        h *= del;
-        if (std::abs(del - 1.0) < 1e-14) {
-            break;
-        }
-    }
-    return h;
-}
-
-double regularized_incomplete_beta(double a, double b, double x) {
-    if (x <= 0.0) {
-        return 0.0;
-    }
-    if (x >= 1.0) {
-        return 1.0;
-    }
-    const double bt = std::exp(std::lgamma(a + b) - std::lgamma(a) - std::lgamma(b) +
-                               a * std::log(x) + b * std::log(1.0 - x));
-    if (x < (a + 1.0) / (a + b + 2.0)) {
-        return bt * beta_continued_fraction(a, b, x) / a;
-    }
-    return 1.0 - bt * beta_continued_fraction(b, a, 1.0 - x) / b;
-}
-
 constexpr double k_ppf_neg_tail = -1e100;
 constexpr double k_ppf_pos_tail = 1e100;
 constexpr double k_ppf_bracket_max = 1e300;
@@ -246,7 +168,7 @@ double chi2_cdf(double x, double df) {
     if (x <= 0.0 || df <= 0.0) {
         return 0.0;
     }
-    return regularized_lower_incomplete_gamma(df / 2.0, x / 2.0);
+    return gamma_inc_reg(df / 2.0, x / 2.0);
 }
 
 double chi2_ppf(double p, double df) {
@@ -351,7 +273,7 @@ double gamma_cdf(double x, double shape, double scale) {
     if (x <= 0.0 || shape <= 0.0 || scale <= 0.0) {
         return 0.0;
     }
-    return regularized_lower_incomplete_gamma(shape, x / scale);
+    return gamma_inc_reg(shape, x / scale);
 }
 
 double gamma_ppf(double p, double shape, double scale) {
@@ -387,7 +309,7 @@ double beta_cdf(double x, double alpha, double beta) {
     if (x >= 1.0) {
         return 1.0;
     }
-    return regularized_incomplete_beta(alpha, beta, x);
+    return beta_inc_reg(x, alpha, beta);
 }
 
 double beta_ppf(double p, double alpha, double beta) {
@@ -425,7 +347,7 @@ double f_cdf(double x, double d1, double d2) {
         return 0.0;
     }
     const double z = d1 * x / (d1 * x + d2);
-    return regularized_incomplete_beta(d1 / 2.0, d2 / 2.0, z);
+    return beta_inc_reg(z, d1 / 2.0, d2 / 2.0);
 }
 
 double f_ppf(double p, double d1, double d2) {
