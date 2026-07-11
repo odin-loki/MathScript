@@ -589,6 +589,130 @@ KSTestResult ks_test_2sample(std::span<const double> a, std::span<const double> 
     return result;
 }
 
+JarqueBeraResult jarque_bera(std::span<const double> x) {
+    JarqueBeraResult result{};
+    const size_t n = x.size();
+    if (n < 4) {
+        return result;
+    }
+    const double s = skewness(x);
+    const double k_excess = kurtosis(x);
+    const double jb = (static_cast<double>(n) / 6.0) *
+                      (s * s + (k_excess * k_excess) / 4.0);
+    result.jb_stat = jb;
+    result.df = 2;
+    result.p_value = 1.0 - chi2_cdf(jb, 2.0);
+    return result;
+}
+
+LjungBoxResult ljung_box(std::span<const double> x, int max_lag) {
+    LjungBoxResult result{};
+    const size_t n = x.size();
+    if (n < 2 || max_lag < 1) {
+        return result;
+    }
+    const int effective_max_lag =
+        std::min(max_lag, static_cast<int>(n) - 1);
+    if (effective_max_lag < 1) {
+        return result;
+    }
+    const auto rhos = acf(x, effective_max_lag);
+    const double n_d = static_cast<double>(n);
+    double sum = 0.0;
+    for (int k = 1; k <= effective_max_lag; ++k) {
+        const double rho = rhos[static_cast<size_t>(k)];
+        sum += (rho * rho) / (n_d - static_cast<double>(k));
+    }
+    const double q = n_d * (n_d + 2.0) * sum;
+    result.q_stat = q;
+    result.df = effective_max_lag;
+    result.p_value =
+        1.0 - chi2_cdf(q, static_cast<double>(effective_max_lag));
+    return result;
+}
+
+LeveneResult levene_test(const std::vector<std::vector<double>>& groups) {
+    LeveneResult result{};
+    std::vector<std::vector<double>> transformed;
+    transformed.reserve(groups.size());
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            transformed.emplace_back();
+            continue;
+        }
+        const double med = median(group);
+        std::vector<double> devs;
+        devs.reserve(group.size());
+        for (double v : group) {
+            devs.push_back(std::abs(v - med));
+        }
+        transformed.push_back(std::move(devs));
+    }
+    const AnovaResult anova = one_way_anova(transformed);
+    result.f_stat = anova.f_stat;
+    result.p_value = anova.p_value;
+    result.df_between = anova.df_between;
+    result.df_within = anova.df_within;
+    return result;
+}
+
+BartlettResult bartlett_test(const std::vector<std::vector<double>>& groups) {
+    BartlettResult result{};
+    int k = 0;
+    int N = 0;
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        ++k;
+        N += static_cast<int>(group.size());
+    }
+    if (k < 2 || N <= k) {
+        return result;
+    }
+    double sum_ni_minus_1_ln_si2 = 0.0;
+    double sum_inv_ni_minus_1 = 0.0;
+    double sum_ni_minus_1_si2 = 0.0;
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        const int ni = static_cast<int>(group.size());
+        if (ni < 2) {
+            return result;
+        }
+        const double si2 = var(group);
+        if (si2 <= 0.0) {
+            return result;
+        }
+        const double ni_m1 = static_cast<double>(ni - 1);
+        sum_ni_minus_1_ln_si2 += ni_m1 * std::log(si2);
+        sum_inv_ni_minus_1 += 1.0 / ni_m1;
+        sum_ni_minus_1_si2 += ni_m1 * si2;
+    }
+    const double sp2 = sum_ni_minus_1_si2 / static_cast<double>(N - k);
+    if (sp2 <= 0.0) {
+        return result;
+    }
+    const double M = static_cast<double>(N - k) * std::log(sp2) -
+                     sum_ni_minus_1_ln_si2;
+    const double C = 1.0 +
+                     (1.0 / (3.0 * static_cast<double>(k - 1))) *
+                         (sum_inv_ni_minus_1 - 1.0 / static_cast<double>(N - k));
+    if (C <= 0.0) {
+        return result;
+    }
+    double chi2 = M / C;
+    if (chi2 < 0.0) {
+        chi2 = 0.0;
+    }
+    result.chi2_stat = chi2;
+    result.df = k - 1;
+    result.p_value =
+        1.0 - chi2_cdf(chi2, static_cast<double>(result.df));
+    return result;
+}
+
 std::vector<double> multiple_regression(
     const std::vector<std::vector<double>>& X,
     std::span<const double> y) {
