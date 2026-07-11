@@ -189,6 +189,106 @@ TEST(BigIntNumThy, PowModSmall) {
     EXPECT_EQ(r.to_string(), "3");
 }
 
+namespace {
+
+void expect_bezout(const BigInt& a, const BigInt& b) {
+    auto [g, x, y] = bigint_extended_gcd(a, b);
+    EXPECT_EQ(g, bigint_gcd(a, b));
+    EXPECT_EQ(a * x + b * y, g);
+}
+
+} // namespace
+
+TEST(BigIntNumThy, ExtendedGcdBasic) {
+    auto [g, x, y] = bigint_extended_gcd(BigInt(35LL), BigInt(15LL));
+    EXPECT_EQ(g.to_string(), "5");
+    EXPECT_EQ(BigInt(35LL) * x + BigInt(15LL) * y, g);
+}
+
+TEST(BigIntNumThy, ExtendedGcdBezout48_18) {
+    expect_bezout(BigInt(48LL), BigInt(18LL));
+}
+
+TEST(BigIntNumThy, ExtendedGcdBezoutCoprime) {
+    expect_bezout(BigInt(17LL), BigInt(13LL));
+}
+
+TEST(BigIntNumThy, ExtendedGcdBezoutNegativeA) {
+    expect_bezout(BigInt(-35LL), BigInt(15LL));
+}
+
+TEST(BigIntNumThy, ExtendedGcdBezoutNegativeB) {
+    expect_bezout(BigInt(35LL), BigInt(-15LL));
+}
+
+TEST(BigIntNumThy, ExtendedGcdBezoutBothNegative) {
+    expect_bezout(BigInt(-35LL), BigInt(-15LL));
+}
+
+TEST(BigIntNumThy, ExtendedGcdBezoutLarge) {
+    expect_bezout(BigInt("123456789012345"), BigInt("987654321098765"));
+}
+
+TEST(BigIntNumThy, BitLength) {
+    EXPECT_EQ(bigint_bit_length(BigInt(0LL)), 0);
+    EXPECT_EQ(bigint_bit_length(BigInt(1LL)), 1);
+    EXPECT_EQ(bigint_bit_length(BigInt(255LL)), 8);
+    EXPECT_EQ(bigint_bit_length(BigInt(256LL)), 9);
+    EXPECT_EQ(bigint_bit_length(BigInt(1023LL)), 10);
+    EXPECT_EQ(bigint_bit_length(BigInt(1024LL)), 11);
+    EXPECT_EQ(bigint_bit_length(BigInt(-255LL)), 8);
+}
+
+TEST(BigIntNumThy, Parity) {
+    EXPECT_TRUE(bigint_is_even(BigInt(0LL)));
+    EXPECT_TRUE(bigint_is_even(BigInt(4LL)));
+    EXPECT_TRUE(bigint_is_even(BigInt(-6LL)));
+    EXPECT_FALSE(bigint_is_even(BigInt(255LL)));
+    EXPECT_TRUE(bigint_is_odd(BigInt(3LL)));
+    EXPECT_TRUE(bigint_is_odd(BigInt(-7LL)));
+    EXPECT_TRUE(bigint_is_odd(BigInt(255LL)));
+    EXPECT_FALSE(bigint_is_odd(BigInt(0LL)));
+}
+
+TEST(BigIntBasic, ToStringBaseKnown) {
+    BigInt n(255LL);
+    EXPECT_EQ(n.to_string(16), "ff");
+    EXPECT_EQ(n.to_string(2), "11111111");
+    EXPECT_EQ(n.to_string(8), "377");
+    EXPECT_EQ(n.to_string(10), n.to_string());
+}
+
+TEST(BigIntBasic, FromStringBaseKnown) {
+    EXPECT_EQ(BigInt("ff", 16).to_string(), "255");
+    EXPECT_EQ(BigInt("FF", 16).to_string(), "255");
+    EXPECT_EQ(BigInt("11111111", 2).to_string(), "255");
+    EXPECT_EQ(BigInt("377", 8).to_string(), "255");
+}
+
+TEST(BigIntBasic, BaseRoundTripHex) {
+    BigInt n("123456789012345678");
+    auto s = n.to_string(16);
+    EXPECT_EQ(BigInt(s, 16), n);
+}
+
+TEST(BigIntBasic, BaseRoundTripBinary) {
+    BigInt n("987654321");
+    auto s = n.to_string(2);
+    EXPECT_EQ(BigInt(s, 2), n);
+}
+
+TEST(BigIntBasic, BaseRoundTripOctal) {
+    BigInt n("-4095");
+    auto s = n.to_string(8);
+    EXPECT_EQ(BigInt(s, 8), n);
+}
+
+TEST(BigIntBasic, Base10Regression) {
+    BigInt n("-123456789012345");
+    EXPECT_EQ(n.to_string(10), n.to_string());
+    EXPECT_EQ(BigInt(n.to_string(10), 10), n);
+}
+
 // ---- Rational ----
 
 TEST(Rational, BasicConstruct) {
@@ -260,4 +360,34 @@ TEST(Rational, BigRational) {
     Rational s(7LL,1LL);
     auto p=r*s;
     EXPECT_EQ(p.to_string(), "1");
+}
+
+TEST(Rational, FloorCeilRoundPositive) {
+    Rational r(7LL, 3LL);
+    EXPECT_EQ(r.floor().to_string(), "2");
+    EXPECT_EQ(r.ceil().to_string(), "3");
+    EXPECT_EQ(r.round().to_string(), "2");
+    Rational half(5LL, 2LL);
+    EXPECT_EQ(half.floor().to_string(), "2");
+    EXPECT_EQ(half.ceil().to_string(), "3");
+    EXPECT_EQ(half.round().to_string(), "3");
+    Rational whole(6LL, 2LL);
+    EXPECT_EQ(whole.floor().to_string(), "3");
+    EXPECT_EQ(whole.ceil().to_string(), "3");
+    EXPECT_EQ(whole.round().to_string(), "3");
+}
+
+TEST(Rational, FloorCeilRoundNegative) {
+    Rational r(-7LL, 3LL);
+    EXPECT_EQ(r.floor().to_string(), "-3");
+    EXPECT_EQ(r.ceil().to_string(), "-2");
+    EXPECT_EQ(r.round().to_string(), "-2");
+    Rational half(-3LL, 2LL);
+    EXPECT_EQ(half.floor().to_string(), "-2");
+    EXPECT_EQ(half.ceil().to_string(), "-1");
+    EXPECT_EQ(half.round().to_string(), "-2");
+    Rational trunc_case(-5LL, 2LL);
+    EXPECT_EQ(trunc_case.floor().to_string(), "-3");
+    EXPECT_EQ(trunc_case.ceil().to_string(), "-2");
+    EXPECT_EQ(trunc_case.round().to_string(), "-2");
 }

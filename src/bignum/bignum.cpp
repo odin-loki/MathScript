@@ -1,11 +1,28 @@
 #include "ms/bignum/bignum.hpp"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <random>
 #include <stdexcept>
 
 namespace ms {
 namespace bignum {
+
+namespace {
+
+int digit_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (c >= 'a' && c <= 'z') return c - 'a' + 10;
+    return -1;
+}
+
+char digit_char(int d) {
+    if (d < 10) return static_cast<char>('0' + d);
+    return static_cast<char>('a' + d - 10);
+}
+
+} // namespace
 
 // ========================== BigInt ==========================
 
@@ -36,6 +53,27 @@ BigInt::BigInt(const std::string& s) {
     if (is_zero()) negative = false;
 }
 
+BigInt::BigInt(const std::string& s, int base) {
+    if (base < 2 || base > 36)
+        throw std::invalid_argument("BigInt base must be in [2, 36]");
+    std::string str = s;
+    bool is_neg = false;
+    if (!str.empty() && str[0] == '-') { is_neg = true; str = str.substr(1); }
+    if (!str.empty() && str[0] == '+') str = str.substr(1);
+    if (str.empty()) { digits = {0}; negative = false; return; }
+
+    BigInt result(0LL);
+    BigInt bbase(static_cast<long long>(base));
+    for (char c : str) {
+        int d = digit_value(c);
+        if (d < 0 || d >= base)
+            throw std::invalid_argument("invalid digit for BigInt base");
+        result = result * bbase + BigInt(static_cast<long long>(d));
+    }
+    *this = std::move(result);
+    negative = is_neg && !is_zero();
+}
+
 void BigInt::trim() {
     while (digits.size() > 1 && digits.back() == 0) digits.pop_back();
 }
@@ -52,6 +90,25 @@ std::string BigInt::to_string() const {
         s += std::string(9 - chunk.size(), '0') + chunk;
     }
     return s;
+}
+
+std::string BigInt::to_string(int base) const {
+    if (base < 2 || base > 36)
+        throw std::invalid_argument("BigInt base must be in [2, 36]");
+    if (base == 10) return to_string();
+    if (is_zero()) return "0";
+
+    BigInt n = negative ? -*this : *this;
+    BigInt bbase(static_cast<long long>(base));
+    std::string digits_out;
+    while (!n.is_zero()) {
+        BigInt rem = n % bbase;
+        digits_out.push_back(digit_char(static_cast<int>(rem.to_ll())));
+        n = n / bbase;
+    }
+    std::reverse(digits_out.begin(), digits_out.end());
+    if (negative) digits_out.insert(digits_out.begin(), '-');
+    return digits_out;
 }
 
 long long BigInt::to_ll() const {
@@ -193,6 +250,54 @@ BigInt bigint_gcd(BigInt a, BigInt b) {
     while (!b.is_zero()) { BigInt t=a%b; a=b; b=t; }
     return a;
 }
+
+std::tuple<BigInt, BigInt, BigInt> bigint_extended_gcd(BigInt a, BigInt b) {
+    BigInt old_r = a, r = b;
+    BigInt old_s(1LL), s(0LL);
+    BigInt old_t(0LL), t(1LL);
+    while (!r.is_zero()) {
+        BigInt q = old_r / r;
+        BigInt tmp = r;
+        r = old_r - q * r;
+        old_r = tmp;
+        tmp = s;
+        s = old_s - q * s;
+        old_s = tmp;
+        tmp = t;
+        t = old_t - q * t;
+        old_t = tmp;
+    }
+    BigInt g = old_r;
+    BigInt x = old_s;
+    BigInt y = old_t;
+    if (g.negative) {
+        g = -g;
+        x = -x;
+        y = -y;
+    }
+    return {g, x, y};
+}
+
+int bigint_bit_length(const BigInt& a) {
+    if (a.is_zero()) return 0;
+    BigInt n = a.negative ? -a : a;
+    int bits = 0;
+    BigInt power(1LL);
+    while (power <= n) {
+        ++bits;
+        power = power * BigInt(2LL);
+    }
+    return bits;
+}
+
+bool bigint_is_even(const BigInt& a) {
+    return (a % BigInt(2LL)).is_zero();
+}
+
+bool bigint_is_odd(const BigInt& a) {
+    return !bigint_is_even(a);
+}
+
 BigInt bigint_lcm(const BigInt& a, const BigInt& b) {
     return a/bigint_gcd(a,b)*b;
 }
@@ -331,6 +436,32 @@ std::string Rational::to_string() const {
     return num.to_string() + "/" + den.to_string();
 }
 double Rational::to_double() const { return num.to_double() / den.to_double(); }
+
+BigInt Rational::floor() const {
+    BigInt q = num / den;
+    BigInt r = num % den;
+    if (num.negative && !r.is_zero()) q = q - BigInt(1LL);
+    return q;
+}
+
+BigInt Rational::ceil() const {
+    BigInt q = num / den;
+    BigInt r = num % den;
+    if (!num.negative && !r.is_zero()) q = q + BigInt(1LL);
+    return q;
+}
+
+BigInt Rational::round() const {
+    BigInt r = num % den;
+    BigInt abs_r = r.negative ? -r : r;
+    BigInt twice_abs_r = abs_r * BigInt(2LL);
+    if (twice_abs_r < den) return num.negative ? ceil() : floor();
+    if (twice_abs_r > den) return num.negative ? floor() : ceil();
+    if (!num.negative) return ceil();
+    BigInt fl = floor();
+    if ((fl % BigInt(2LL)).is_zero()) return fl;
+    return ceil();
+}
 
 } // namespace bignum
 } // namespace ms
