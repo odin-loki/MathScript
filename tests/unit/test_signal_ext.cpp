@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <variant>
 #include "ms/signal/signal.hpp"
 
 #ifndef M_PI
@@ -215,4 +216,190 @@ TEST(SignalExtTest, window_functions_sum) {
     // Symmetric periodic windows (N-1 denominator): hann sums to ~3.5, hamming to ~3.86
     EXPECT_NEAR(hann_sum, 3.5, 0.1);
     EXPECT_NEAR(hamm_sum, 3.86, 0.05);
+}
+
+namespace {
+
+std::vector<double> sinusoid(size_t n, double fs, double freq, double amplitude = 1.0) {
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = amplitude * std::sin(2.0 * M_PI * freq * static_cast<double>(i) / fs);
+    }
+    return x;
+}
+
+size_t peak_index(const std::vector<double>& values) {
+    return static_cast<size_t>(std::distance(values.begin(), std::max_element(values.begin(), values.end())));
+}
+
+size_t peak_column(const Matrix<double>& magnitude, size_t row) {
+    size_t best = 0;
+    for (size_t j = 1; j < magnitude.cols(); ++j) {
+        if (magnitude(row, j) > magnitude(row, best)) {
+            best = j;
+        }
+    }
+    return best;
+}
+
+} // namespace
+
+TEST(SignalExtTest, welch_psd_sinusoid_peak_at_known_frequency) {
+    const double fs = 1000.0;
+    const double f0 = 50.0;
+    const size_t segment_len = 256;
+    const auto x = sinusoid(4096, fs, f0);
+
+    const auto result = welch_psd(x, fs, segment_len, 0.5);
+    ASSERT_TRUE(result.has_value()) << "welch_psd failed";
+    const auto& psd = *result;
+
+    ASSERT_EQ(psd.frequencies.size(), psd.power.size());
+    ASSERT_FALSE(psd.power.empty());
+
+    const size_t peak = peak_index(psd.power);
+    const double peak_freq = psd.frequencies[peak];
+    const double df = fs / static_cast<double>(segment_len);
+    EXPECT_NEAR(peak_freq, f0, df);
+}
+
+TEST(SignalExtTest, welch_psd_frequencies_monotonic_and_nyquist) {
+    const double fs = 1000.0;
+    const auto x = sinusoid(2048, fs, 40.0);
+
+    const auto result = welch_psd(x, fs, 256, 0.5);
+    ASSERT_TRUE(result.has_value());
+    const auto& psd = *result;
+
+    for (size_t i = 1; i < psd.frequencies.size(); ++i) {
+        EXPECT_GT(psd.frequencies[i], psd.frequencies[i - 1]);
+    }
+    EXPECT_NEAR(psd.frequencies.front(), 0.0, 1e-12);
+    EXPECT_NEAR(psd.frequencies.back(), fs / 2.0, 1e-9);
+}
+
+TEST(SignalExtTest, welch_psd_overlap_zero) {
+    const double fs = 1000.0;
+    const double f0 = 50.0;
+    const auto x = sinusoid(4096, fs, f0);
+    const double df = fs / 256.0;
+
+    const auto result = welch_psd(x, fs, 256, 0.0);
+    ASSERT_TRUE(result.has_value());
+    const size_t peak = peak_index(result->power);
+    EXPECT_NEAR(result->frequencies[peak], f0, df);
+}
+
+TEST(SignalExtTest, welch_psd_overlap_half) {
+    const double fs = 1000.0;
+    const double f0 = 50.0;
+    const auto x = sinusoid(4096, fs, f0);
+    const double df = fs / 256.0;
+
+    const auto result = welch_psd(x, fs, 256, 0.5);
+    ASSERT_TRUE(result.has_value());
+    const size_t peak = peak_index(result->power);
+    EXPECT_NEAR(result->frequencies[peak], f0, df);
+}
+
+TEST(SignalExtTest, welch_psd_overlap_high) {
+    const double fs = 1000.0;
+    const double f0 = 50.0;
+    const auto x = sinusoid(4096, fs, f0);
+    const double df = fs / 256.0;
+
+    const auto result = welch_psd(x, fs, 256, 0.75);
+    ASSERT_TRUE(result.has_value());
+    const size_t peak = peak_index(result->power);
+    EXPECT_NEAR(result->frequencies[peak], f0, df);
+}
+
+TEST(SignalExtTest, welch_psd_invalid_segment_len_zero) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = welch_psd(x, 1000.0, 0, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, welch_psd_invalid_segment_len_too_large) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = welch_psd(x, 1000.0, x.size() + 1, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, welch_psd_invalid_overlap_negative) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = welch_psd(x, 1000.0, 256, -0.1);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, welch_psd_invalid_overlap_ge_one) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = welch_psd(x, 1000.0, 256, 1.0);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, spectrogram_frequency_shift_over_time) {
+    const double fs = 1000.0;
+    const size_t n = 8000;
+    const size_t segment_len = 256;
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        const double freq = (i < n / 2) ? 20.0 : 80.0;
+        x[i] = std::sin(2.0 * M_PI * freq * static_cast<double>(i) / fs);
+    }
+
+    const auto result = spectrogram(x, fs, segment_len, 0.5);
+    ASSERT_TRUE(result.has_value());
+    const auto& spec = *result;
+
+    const size_t early_row = spec.times.size() / 8;
+    const size_t late_row = spec.times.size() * 7 / 8;
+    const double df = fs / static_cast<double>(segment_len);
+
+    const size_t early_peak = peak_column(spec.magnitude, early_row);
+    const size_t late_peak = peak_column(spec.magnitude, late_row);
+    EXPECT_NEAR(spec.frequencies[early_peak], 20.0, df);
+    EXPECT_NEAR(spec.frequencies[late_peak], 80.0, df);
+    EXPECT_LT(spec.times[early_row], spec.times[late_row]);
+}
+
+TEST(SignalExtTest, spectrogram_matrix_dimensions_consistent) {
+    const double fs = 1000.0;
+    const auto x = sinusoid(4096, fs, 30.0);
+
+    const auto result = spectrogram(x, fs, 256, 0.5);
+    ASSERT_TRUE(result.has_value());
+    const auto& spec = *result;
+
+    EXPECT_EQ(spec.magnitude.rows(), spec.times.size());
+    EXPECT_EQ(spec.magnitude.cols(), spec.frequencies.size());
+    EXPECT_GT(spec.times.size(), 1u);
+    for (size_t i = 1; i < spec.times.size(); ++i) {
+        EXPECT_GT(spec.times[i], spec.times[i - 1]);
+    }
+}
+
+TEST(SignalExtTest, spectrogram_invalid_segment_len_zero) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = spectrogram(x, 1000.0, 0, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, spectrogram_invalid_segment_len_too_large) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = spectrogram(x, 1000.0, x.size() + 1, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, spectrogram_invalid_overlap_ge_one) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = spectrogram(x, 1000.0, 256, 1.0);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
 }
