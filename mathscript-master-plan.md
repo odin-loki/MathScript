@@ -7913,6 +7913,26 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       resolution-limit effect rather than a bug. tag checklist stays at 365 (no new CTest
       registrations; 60 new test cases across existing test_repl_commands/test_finance/
       test_graph binaries; 365 suites, 100% passing).
+      Wave 196: an explore-agent inventory check found the simplest scalar-in-scalar-out REPL
+      candidates across ml/image/bignum/stats/optim/cplx now exhausted, so this wave pivoted back
+      to three smaller-library-gap picks. ms::finance gains geo_asian_call/put (Kemna-Vorst
+      closed-form discrete-geometric-average Asian options, priced as black76 on a synthetic
+      forward with variance/drift-adjusted sigma_adj/mu_adj; verified via exact reduction to
+      bs_call/put at n_fixings=1, convergence to the continuous closed form as n_fixings->infinity,
+      and a Monte Carlo geometric-running-mean cross-check) and trinomial_option (Boyle 1986
+      trinomial tree; verified via Black-Scholes convergence, the American-put early-exercise
+      premium, and cross-agreement with the existing binomial-tree pricer). ms::poly gains
+      poly_rational_roots/poly_factor_rational (Rational Root Theorem factorization over Q for
+      near-integer-coefficient polynomials, built on numthy::divisors with a documented safety
+      limit; verified via full round-trip reconstruction and independent poly_eval re-verification
+      of every root) — a tractable subset of the module's long-deferred full-factorization gap.
+      ms::signal gains filter/filtfilt (direct-form difference-equation application and zero-phase
+      double-pass filtering) and firwin/firwin_highpass (windowed-sinc FIR design with
+      Rectangular/Hamming/Hann/Blackman windows, highpass via spectral inversion) — verified via
+      DC-gain/symmetry/amplitude-response checks and the lowpass/highpass complementary identity —
+      a tractable subset of the module's general-filter-design gap. tag checklist stays at 365
+      (no new CTest registrations; 68 new test cases across existing test_finance/test_poly_ext/
+      test_signal_filters binaries; 365 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7921,12 +7941,13 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       handle by kind alone, only by the handle name chosen (minor, cosmetic).
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
-      ms::signal's spec section (2.5) still has a much larger surface not covered by Wave 188's
-      tractable subset or Wave 192's resampling family — general IIR/FIR filter()/filtfilt()/
-      sosfilt(), filter design beyond butterworth (cheby1/cheby2/ellip/bessel/firwin/remez),
-      further spectral analysis (periodogram/music/esprit/pburg/cohere), emd/hht/vmd, and the
-      modulation family — these are individually much larger/riskier numerical-algorithm efforts
-      than this wave's thin FFT-reuse wrappers, worth splitting into dedicated future waves.
+      ms::signal's spec section (2.5) still has a surface not covered by Wave 188's tractable
+      subset, Wave 192's resampling family, or Wave 196's filter()/filtfilt()/firwin() — sosfilt()
+      (second-order-section IIR for numerical stability at high orders), filter design beyond
+      butterworth/windowed-sinc-FIR (cheby1/cheby2/ellip/bessel/remez), further spectral analysis
+      (periodogram/music/esprit/pburg/cohere), emd/hht/vmd, and the modulation family — these
+      remain individually larger/riskier numerical-algorithm efforts worth splitting into
+      dedicated future waves.
       ms::geo's spec section listed convex_hull_3d and polygon boolean ops (poly_union/
       poly_intersect/poly_diff/minkowski_sum) as missing; convex_hull_3d was closed in Wave 193.
       Polygon boolean ops remain deferred as higher-risk (robust polygon clipping has notorious
@@ -7935,12 +7956,11 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       algorithm general matching — each a substantial dedicated algorithm effort. Graph
       isomorphism (VF2-style, small-graph-scale, Wave 194) and Louvain community detection
       (Wave 195) are now closed.
-      ms::finance's spec section still lists Heston/SABR stochastic-volatility models, trinomial
-      trees, and geometric-average Asian options; European/Asian Monte Carlo pricing (Wave 192),
-      Markowitz portfolio optimization (Wave 193: min_variance_portfolio/efficient_frontier_
-      portfolio/max_sharpe_portfolio), lookback options (Wave 194: mc_lookback_floating_call/
-      put, mc_lookback_fixed_call/put), and Black-Litterman (Wave 195: bl_implied_returns/
-      bl_posterior_returns/bl_posterior_returns_default_omega) are now closed.
+      ms::finance's spec section now lists only Heston/SABR stochastic-volatility models as an
+      outstanding gap; European/Asian Monte Carlo pricing (Wave 192), Markowitz portfolio
+      optimization (Wave 193), lookback options (Wave 194), Black-Litterman (Wave 195), and
+      geometric-average Asian options plus trinomial trees (Wave 196: geo_asian_call/put,
+      trinomial_option) are now closed.
       ms::numthy's cornacchia/stern_brocot gap was also closed in Wave 192; partition_list is
       arguably already covered by ms::combo::all_partitions. Remaining items above deferred as
       individually larger/riskier than Wave 189/192/193's picks.
@@ -7949,10 +7969,13 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       undertaking, similar in scale to FEM/CFD, deliberately out of scope for an incremental
       wave. ms::image's spec section still lists SIFT/SURF/ORB descriptors, watershed/graph-cut/
       SLIC segmentation, and marching-cubes isosurface extraction. ms::poly's spec section still
-      lists factor/factor_zz (polynomial factorization over Q/R/C/Fp) — interp_newton/
-      interp_hermite were closed in Wave 193 despite arguably being covered in spirit by the
-      existing poly_lagrange/poly_fit, since they're genuinely distinct named algorithms per the
-      original spec. ms::crypto (SHA/AES/ChaCha/Curve25519/RSA) does not exist as a standalone
+      lists factor/factor_zz (full polynomial factorization over R/C/Fp) as outstanding — Wave 196
+      closed the rational-root/factor-over-Q subset (poly_rational_roots/poly_factor_rational),
+      leaving R/C/Fp factorization of the remainder as the substantially larger remaining piece;
+      interp_newton/interp_hermite were closed in Wave 193 despite arguably being covered in
+      spirit by the existing poly_lagrange/poly_fit, since they're genuinely distinct named
+      algorithms per the original spec. ms::crypto (SHA/AES/ChaCha/Curve25519/RSA) does not exist
+      as a standalone
       module — crypto primitives are intentionally routed through ms::izaac instead; a full
       independent crypto-primitive library carries correctness/security risk disproportionate
       to an incremental wave and is not planned.
