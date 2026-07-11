@@ -42,6 +42,41 @@ private:
 SimplicialComplex vietoris_rips(const std::vector<std::vector<double>>& dist_matrix,
                                  double r, int max_dim = 2);
 
+// ========================== Čech complex ==========================
+// Build the Čech complex of a point cloud (given as a distance matrix) at scale epsilon.
+//
+// Definition: the Čech complex Čech(ε) contains a k-simplex {v0,...,vk} iff the
+// closed balls of radius ε centered at each v_i have a common (non-empty) intersection.
+// By the Nerve Lemma / Helly-type argument this holds iff the minimum enclosing ball
+// (MEB) of the k+1 points has radius ≤ ε.
+//   - dim 0 (vertices): always included.
+//   - dim 1 (edges {i,j}): balls of radius ε around i and j intersect iff
+//     dist(i,j) ≤ 2ε, so the MEB radius of the pair is dist(i,j)/2.
+//   - dim 2 (triangles {i,j,k}): MEB radius = circumradius R = (a*b*c)/(4*Area)
+//     (Heron's formula for Area from side lengths a,b,c) if the triangle is acute
+//     or right; if it is obtuse, the MEB is the smallest ball spanning the longest
+//     side alone, i.e. radius = longest_side/2 (the opposite vertex lies inside it).
+//     Obtuseness (at the vertex opposite the longest side) is detected by comparing
+//     longest_side^2 against the sum of the other two sides squared.
+//
+// @param dist_matrix square, symmetric matrix of pairwise distances (dist_matrix[i][i] == 0)
+// @param epsilon      ball radius; a k-simplex is included iff its MEB radius <= epsilon
+// @param max_dim      highest simplex dimension to construct (0 = vertices only,
+//                      1 = vertices+edges, 2 = vertices+edges+triangles)
+// @return SimplicialComplex containing all Čech simplices up to max_dim
+// @note Unlike vietoris_rips, the Čech complex is NOT a flag complex: a triangle whose
+//       three edges all satisfy the 2ε edge rule need not have MEB radius <= epsilon
+//       (an obtuse triangle can have all edges short but a circumradius that exceeds
+//       epsilon whenever the pairwise distances are far from acute). Each candidate
+//       simplex is therefore checked independently against the true MEB condition.
+// @note max_dim > 2 is not supported: computing the minimum enclosing ball of 4+ points
+//       from pairwise distances alone (without explicit coordinates) requires solving a
+//       higher-dimensional Cayley-Menger / semidefinite feasibility problem (the naive
+//       generalization of Welzl's algorithm needs actual point coordinates). Requests
+//       with max_dim > 2 are silently clamped to 2 rather than crashing.
+SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matrix,
+                                double epsilon, int max_dim = 2);
+
 // ========================== Persistence Diagram ==========================
 struct PersistencePair {
     int dim;
