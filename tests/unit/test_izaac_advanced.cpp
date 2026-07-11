@@ -915,3 +915,245 @@ TEST(IzaacAdvanced, Mpc_FewerThanTwoSharesReturnsError) {
     const ms::Result<uint64_t> empty = ms::izaac::mpc::reconstruct_secret({});
     EXPECT_FALSE(empty.has_value());
 }
+
+// ---------------------------------------------------------------------------
+// consensus::Cluster – simulated Raft leader election and log replication
+// ---------------------------------------------------------------------------
+
+namespace {
+
+int count_leaders(const ms::izaac::consensus::Cluster& cluster) {
+    int count = 0;
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        if (node.role == ms::izaac::consensus::NodeRole::Leader) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+int count_nodes_holding_log_index(const ms::izaac::consensus::Cluster& cluster, size_t index) {
+    int count = 0;
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        if (node.log.size() >= index) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+void assert_single_leader_elected(ms::izaac::consensus::Cluster& cluster, unsigned seed) {
+    const int leader_id = cluster.run_election();
+    EXPECT_GE(leader_id, 0);
+    EXPECT_EQ(count_leaders(cluster), 1);
+    EXPECT_EQ(cluster.current_leader(), leader_id);
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        if (node.id == leader_id) {
+            EXPECT_EQ(node.role, ms::izaac::consensus::NodeRole::Leader);
+        } else {
+            EXPECT_EQ(node.role, ms::izaac::consensus::NodeRole::Follower);
+        }
+    }
+    (void)seed;
+}
+
+bool clusters_match(
+    const ms::izaac::consensus::Cluster& a,
+    const ms::izaac::consensus::Cluster& b) {
+    if (a.nodes.size() != b.nodes.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < a.nodes.size(); ++i) {
+        const auto& na = a.nodes[i];
+        const auto& nb = b.nodes[i];
+        if (na.id != nb.id || na.role != nb.role || na.current_term != nb.current_term ||
+            na.voted_for != nb.voted_for || na.commit_index != nb.commit_index ||
+            na.log.size() != nb.log.size()) {
+            return false;
+        }
+        for (size_t j = 0; j < na.log.size(); ++j) {
+            if (na.log[j].term != nb.log[j].term || na.log[j].command != nb.log[j].command) {
+                return false;
+            }
+        }
+    }
+    return a.current_leader() == b.current_leader();
+}
+
+} // namespace
+
+TEST(IzaacAdvanced, Consensus_CurrentLeaderBeforeElection) {
+    ms::izaac::consensus::Cluster cluster(5, 100u);
+    EXPECT_EQ(cluster.current_leader(), -1);
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        EXPECT_EQ(node.role, ms::izaac::consensus::NodeRole::Follower);
+    }
+}
+
+TEST(IzaacAdvanced, Consensus_RunElectionCluster3OneLeader) {
+    ms::izaac::consensus::Cluster cluster(3, 7u);
+    assert_single_leader_elected(cluster, 7u);
+}
+
+TEST(IzaacAdvanced, Consensus_RunElectionCluster5OneLeader) {
+    ms::izaac::consensus::Cluster cluster(5, 11u);
+    assert_single_leader_elected(cluster, 11u);
+}
+
+TEST(IzaacAdvanced, Consensus_RunElectionCluster7OneLeader) {
+    ms::izaac::consensus::Cluster cluster(7, 13u);
+    assert_single_leader_elected(cluster, 13u);
+}
+
+TEST(IzaacAdvanced, Consensus_RunElectionTermIncrementsConsistently) {
+    ms::izaac::consensus::Cluster cluster(5, 17u);
+    const int leader_id = cluster.run_election();
+    ASSERT_GE(leader_id, 0);
+
+    const uint64_t term = cluster.nodes[static_cast<size_t>(leader_id)].current_term;
+    EXPECT_EQ(term, 1u);
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        EXPECT_EQ(node.current_term, term);
+    }
+
+    const int leader_id_2 = cluster.run_election();
+    ASSERT_GE(leader_id_2, 0);
+    const uint64_t term_2 = cluster.nodes[static_cast<size_t>(leader_id_2)].current_term;
+    EXPECT_EQ(term_2, term + 1);
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        EXPECT_EQ(node.current_term, term_2);
+    }
+}
+
+TEST(IzaacAdvanced, Consensus_RunElectionVotedForSafety) {
+    ms::izaac::consensus::Cluster cluster(5, 19u);
+    for (int round = 0; round < 5; ++round) {
+        const int leader_id = cluster.run_election();
+        ASSERT_GE(leader_id, 0);
+        const uint64_t term = cluster.nodes[static_cast<size_t>(leader_id)].current_term;
+        for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+            EXPECT_EQ(node.current_term, term);
+            if (node.voted_for != -1) {
+                EXPECT_GE(node.voted_for, 0);
+                EXPECT_LT(node.voted_for, static_cast<int>(cluster.nodes.size()));
+            }
+        }
+    }
+}
+
+TEST(IzaacAdvanced, Consensus_ReplicateAfterElectionSucceeds) {
+    ms::izaac::consensus::Cluster cluster(5, 23u);
+    const int leader_id = cluster.run_election();
+    ASSERT_GE(leader_id, 0);
+    EXPECT_TRUE(cluster.replicate(leader_id, "set x=1"));
+}
+
+TEST(IzaacAdvanced, Consensus_ReplicateEntryInMajorityWithCorrectTerm) {
+    ms::izaac::consensus::Cluster cluster(5, 29u);
+    const int leader_id = cluster.run_election();
+    ASSERT_GE(leader_id, 0);
+    const uint64_t term = cluster.nodes[static_cast<size_t>(leader_id)].current_term;
+
+    ASSERT_TRUE(cluster.replicate(leader_id, "cmd-alpha"));
+    EXPECT_GE(count_nodes_holding_log_index(cluster, 1), 3);
+
+    int with_correct_term = 0;
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        if (!node.log.empty() && node.log[0].term == term && node.log[0].command == "cmd-alpha") {
+            ++with_correct_term;
+        }
+    }
+    EXPECT_GE(with_correct_term, 3);
+}
+
+TEST(IzaacAdvanced, Consensus_ReplicateCommitIndexAdvances) {
+    ms::izaac::consensus::Cluster cluster(3, 31u);
+    const int leader_id = cluster.run_election();
+    ASSERT_GE(leader_id, 0);
+
+    ASSERT_TRUE(cluster.replicate(leader_id, "commit-me"));
+    for (const ms::izaac::consensus::Node& node : cluster.nodes) {
+        if (node.log.size() >= 1) {
+            EXPECT_EQ(node.commit_index, 1u);
+        }
+    }
+}
+
+TEST(IzaacAdvanced, Consensus_ReplicateSequentialEntriesOrdered) {
+    ms::izaac::consensus::Cluster cluster(5, 37u);
+    const int leader_id = cluster.run_election();
+    ASSERT_GE(leader_id, 0);
+
+    ASSERT_TRUE(cluster.replicate(leader_id, "first"));
+    ASSERT_TRUE(cluster.replicate(leader_id, "second"));
+    ASSERT_TRUE(cluster.replicate(leader_id, "third"));
+
+    const ms::izaac::consensus::Node& leader = cluster.nodes[static_cast<size_t>(leader_id)];
+    ASSERT_EQ(leader.log.size(), 3u);
+    EXPECT_EQ(leader.log[0].command, "first");
+    EXPECT_EQ(leader.log[1].command, "second");
+    EXPECT_EQ(leader.log[2].command, "third");
+    EXPECT_EQ(leader.commit_index, 3u);
+}
+
+TEST(IzaacAdvanced, Consensus_ReplicateBeforeElectionReturnsFalse) {
+    ms::izaac::consensus::Cluster cluster(3, 41u);
+    EXPECT_FALSE(cluster.replicate(0, "orphan"));
+    EXPECT_TRUE(cluster.nodes[0].log.empty());
+}
+
+TEST(IzaacAdvanced, Consensus_ReplicateInvalidLeaderIdReturnsFalse) {
+    ms::izaac::consensus::Cluster cluster(3, 43u);
+    const int leader_id = cluster.run_election();
+    ASSERT_GE(leader_id, 0);
+    EXPECT_FALSE(cluster.replicate(-1, "bad"));
+    EXPECT_FALSE(cluster.replicate(99, "bad"));
+    EXPECT_FALSE(cluster.replicate((leader_id + 1) % 3, "not-leader"));
+}
+
+TEST(IzaacAdvanced, Consensus_CurrentLeaderReflectsElection) {
+    ms::izaac::consensus::Cluster cluster(5, 47u);
+    EXPECT_EQ(cluster.current_leader(), -1);
+    const int leader_id = cluster.run_election();
+    ASSERT_GE(leader_id, 0);
+    EXPECT_EQ(cluster.current_leader(), leader_id);
+}
+
+TEST(IzaacAdvanced, Consensus_DeterminismSameSeedSameElection) {
+    ms::izaac::consensus::Cluster a(5, 53u);
+    ms::izaac::consensus::Cluster b(5, 53u);
+
+    const int leader_a = a.run_election();
+    const int leader_b = b.run_election();
+    EXPECT_EQ(leader_a, leader_b);
+    EXPECT_TRUE(clusters_match(a, b));
+}
+
+TEST(IzaacAdvanced, Consensus_DeterminismSameSequenceIdenticalState) {
+    ms::izaac::consensus::Cluster a(5, 59u);
+    ms::izaac::consensus::Cluster b(5, 59u);
+
+    const int leader_a = a.run_election();
+    const int leader_b = b.run_election();
+    ASSERT_EQ(leader_a, leader_b);
+    ASSERT_GE(leader_a, 0);
+
+    ASSERT_TRUE(a.replicate(leader_a, "a"));
+    ASSERT_TRUE(b.replicate(leader_b, "a"));
+    ASSERT_TRUE(a.replicate(leader_a, "b"));
+    ASSERT_TRUE(b.replicate(leader_b, "b"));
+
+    EXPECT_TRUE(clusters_match(a, b));
+    EXPECT_EQ(a.current_leader(), b.current_leader());
+}
+
+TEST(IzaacAdvanced, Consensus_DeterminismReplayMatchesFirstRun) {
+    ms::izaac::consensus::Cluster first(5, 61u);
+    const int leader_first = first.run_election();
+    ASSERT_GE(leader_first, 0);
+
+    ms::izaac::consensus::Cluster replay(5, 61u);
+    const int leader_replay = replay.run_election();
+    EXPECT_EQ(leader_first, leader_replay);
+    EXPECT_TRUE(clusters_match(first, replay));
+}

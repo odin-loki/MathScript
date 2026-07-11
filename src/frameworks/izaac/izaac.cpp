@@ -6,6 +6,7 @@
 #include <cstring>
 #include <random>
 #include <vector>
+#include <algorithm>
 #if defined(_MSC_VER)
 #include <intrin.h>
 #endif
@@ -633,5 +634,164 @@ Result<uint64_t> reconstruct_secret(const std::vector<Share>& shares) {
 }
 
 } // namespace mpc
+
+namespace consensus {
+
+Cluster::Cluster(int n, unsigned seed) : seed(seed), rng_(seed) {
+    nodes.reserve(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        nodes.push_back(Node{i});
+    }
+}
+
+int Cluster::run_election() {
+    if (nodes.empty()) {
+        return -1;
+    }
+
+    const int n = static_cast<int>(nodes.size());
+    const int majority = n / 2 + 1;
+
+    std::uniform_int_distribution<int> node_dist(0, n - 1);
+    std::vector<int> candidates;
+    candidates.push_back(node_dist(rng_));
+
+    // ~20% of rounds with n >= 4 spawn a second candidate in the same term; followers pick
+    // one eligible candidate via the seeded RNG, which can produce a split vote (no majority).
+    const bool split_round = (n >= 4) && ((rng_() % 5) == 0);
+    if (split_round) {
+        int second = node_dist(rng_);
+        while (second == candidates[0]) {
+            second = node_dist(rng_);
+        }
+        candidates.push_back(second);
+    }
+    std::sort(candidates.begin(), candidates.end());
+
+    uint64_t new_term = 0;
+    for (const Node& node : nodes) {
+        new_term = std::max(new_term, node.current_term);
+    }
+    ++new_term;
+
+    for (Node& node : nodes) {
+        node.role = NodeRole::Follower;
+        if (new_term > node.current_term) {
+            node.current_term = new_term;
+            node.voted_for = -1;
+        }
+    }
+
+    for (int cid : candidates) {
+        nodes[static_cast<size_t>(cid)].role = NodeRole::Candidate;
+    }
+
+    std::vector<int> votes(static_cast<size_t>(n), 0);
+    for (int cid : candidates) {
+        Node& candidate = nodes[static_cast<size_t>(cid)];
+        candidate.voted_for = cid;
+        ++votes[static_cast<size_t>(cid)];
+    }
+
+    for (int i = 0; i < n; ++i) {
+        Node& voter = nodes[static_cast<size_t>(i)];
+        if (voter.voted_for != -1) {
+            continue;
+        }
+
+        std::vector<int> eligible;
+        eligible.reserve(candidates.size());
+        for (int cid : candidates) {
+            const Node& candidate = nodes[static_cast<size_t>(cid)];
+            if (candidate.current_term >= voter.current_term) {
+                eligible.push_back(cid);
+            }
+        }
+        if (eligible.empty()) {
+            continue;
+        }
+
+        const int choice = eligible.size() == 1
+            ? eligible[0]
+            : eligible[static_cast<size_t>(rng_() % eligible.size())];
+        voter.voted_for = choice;
+        ++votes[static_cast<size_t>(choice)];
+    }
+
+    int winner = -1;
+    int winner_votes = 0;
+    for (int cid : candidates) {
+        const int count = votes[static_cast<size_t>(cid)];
+        if (count >= majority && count > winner_votes) {
+            winner = cid;
+            winner_votes = count;
+        }
+    }
+
+    if (winner >= 0) {
+        for (Node& node : nodes) {
+            node.role = (node.id == winner) ? NodeRole::Leader : NodeRole::Follower;
+        }
+        return winner;
+    }
+
+    for (Node& node : nodes) {
+        node.role = NodeRole::Follower;
+    }
+    return -1;
+}
+
+bool Cluster::replicate(int leader_id, const std::string& command) {
+    if (leader_id < 0 || leader_id >= static_cast<int>(nodes.size())) {
+        return false;
+    }
+
+    Node& leader = nodes[static_cast<size_t>(leader_id)];
+    if (leader.role != NodeRole::Leader) {
+        return false;
+    }
+
+    const LogEntry entry{leader.current_term, command};
+    leader.log.push_back(entry);
+    const uint64_t entry_index = leader.log.size();
+
+    const int n = static_cast<int>(nodes.size());
+    const int majority = n / 2 + 1;
+    int holding = 1;
+
+    for (int i = 0; i < n && holding < majority; ++i) {
+        if (i == leader_id) {
+            continue;
+        }
+        nodes[static_cast<size_t>(i)].log.push_back(entry);
+        ++holding;
+    }
+
+    if (holding < majority) {
+        return false;
+    }
+
+    for (Node& node : nodes) {
+        if (node.log.size() >= entry_index) {
+            node.commit_index = entry_index;
+        }
+    }
+    return true;
+}
+
+int Cluster::current_leader() const {
+    int leader = -1;
+    for (const Node& node : nodes) {
+        if (node.role == NodeRole::Leader) {
+            if (leader != -1) {
+                return -1;
+            }
+            leader = node.id;
+        }
+    }
+    return leader;
+}
+
+} // namespace consensus
 
 } // namespace ms::izaac
