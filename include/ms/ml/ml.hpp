@@ -123,6 +123,37 @@ struct GradientBoosting {
     Vec predict(const Mat& X) const;
 };
 
+/// Support Vector Machine (binary classifier) trained via Platt's Sequential
+/// Minimal Optimization (SMO). Each iteration optimizes a pair of Lagrange
+/// multipliers with clipping to [0, C] and linear-equality bookkeeping until
+/// KKT violations fall below `tol` or `max_iter` full passes occur with no
+/// alpha updates. Kernels: Linear (dot product) and RBF (Gaussian).
+///
+/// Labels must be exactly +1.0 or -1.0 per sample. If every label is in {0, 1},
+/// 0 is remapped to -1 and 1 is kept as +1 (documented convenience); mixed
+/// {0,1} and {-1,+1} encodings or any other values cause fit() to no-op.
+enum class SVMKernel { Linear, RBF };
+
+struct SVMConfig {
+    SVMKernel kernel = SVMKernel::Linear;
+    double C = 1.0;
+    double gamma = 0.1;
+    double tol = 1e-3;
+    int max_iter = 1000;
+};
+
+struct SVM {
+    SVMConfig config;
+    Mat support_vectors;
+    Vec alphas;
+    Vec sv_labels;
+    double b = 0.0;
+
+    void fit(const Mat& X, const Vec& y);
+    Vec decision_function(const Mat& X) const;
+    Vec predict(const Mat& X) const;
+};
+
 // ========================== Unsupervised Learning ==========================
 
 struct KMeans {

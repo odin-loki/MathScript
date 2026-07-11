@@ -737,3 +737,206 @@ TEST(MLGradientBoosting, StoresTrees) {
     gb.fit(X,y);
     EXPECT_EQ(gb.trees.size(), 12u);
 }
+
+// ---- Support Vector Machine (SMO) ----
+
+static std::pair<Mat,Vec> linear_separable_svm_data() {
+    Mat X; Vec y;
+    for (int i=0;i<24;++i) {
+        double x0=(i<12)?-1.5-0.05*i:1.5+0.05*(i-12);
+        double x1=0.3*std::sin((double)i);
+        X.push_back({x0, x1});
+        y.push_back(x0<0.0?-1.0:1.0);
+    }
+    return {X,y};
+}
+
+static std::pair<Mat,Vec> xor_svm_data() {
+    Mat X={{-1,-1},{-1,1},{1,-1},{1,1},
+           {-0.7,-0.7},{-0.7,0.7},{0.7,-0.7},{0.7,0.7},
+           {-0.5,0},{0.5,0},{0,-0.5},{0,0.5}};
+    Vec y={-1,1,1,-1, -1,1,1,-1, -1,1,-1,1};
+    return {X,y};
+}
+
+static double svm_train_accuracy(const SVM& svm, const Mat& X, const Vec& y) {
+    return accuracy(svm.predict(X), y);
+}
+
+TEST(MLSVM, LinearSeparableHighAccuracy) {
+    auto [X,y]=linear_separable_svm_data();
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=10.0;
+    svm.fit(X,y);
+    EXPECT_GE(svm_train_accuracy(svm,X,y), 0.95);
+}
+
+TEST(MLSVM, LinearDecisionFunctionMatchesPredict) {
+    auto [X,y]=linear_separable_svm_data();
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=5.0;
+    svm.fit(X,y);
+    auto df=svm.decision_function(X);
+    auto pred=svm.predict(X);
+    ASSERT_EQ(df.size(), pred.size());
+    for (size_t i=0;i<df.size();++i) {
+        double expected=df[i]>=0.0?1.0:-1.0;
+        EXPECT_DOUBLE_EQ(pred[i], expected);
+    }
+}
+
+TEST(MLSVM, LinearSupportVectorConsistency) {
+    auto [X,y]=linear_separable_svm_data();
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=10.0;
+    svm.fit(X,y);
+    EXPECT_EQ(svm.support_vectors.size(), svm.alphas.size());
+    EXPECT_EQ(svm.support_vectors.size(), svm.sv_labels.size());
+    for (size_t i=0;i<svm.support_vectors.size();++i) {
+        EXPECT_TRUE(svm.sv_labels[i]==1.0 || svm.sv_labels[i]==-1.0);
+        EXPECT_GT(svm.alphas[i], 0.0);
+    }
+}
+
+TEST(MLSVM, RBFNonlinearHighAccuracy) {
+    auto [X,y]=xor_svm_data();
+    SVM svm;
+    svm.config.kernel=SVMKernel::RBF;
+    svm.config.C=100.0;
+    svm.config.gamma=1.0;
+    svm.fit(X,y);
+    EXPECT_GE(svm_train_accuracy(svm,X,y), 0.85);
+}
+
+TEST(MLSVM, RBFBetterThanLinearOnNonlinear) {
+    auto [X,y]=xor_svm_data();
+    SVM svm_lin, svm_rbf;
+    svm_lin.config.kernel=SVMKernel::Linear;
+    svm_lin.config.C=100.0;
+    svm_rbf.config.kernel=SVMKernel::RBF;
+    svm_rbf.config.C=100.0;
+    svm_rbf.config.gamma=1.0;
+    svm_lin.fit(X,y);
+    svm_rbf.fit(X,y);
+    double acc_lin=svm_train_accuracy(svm_lin,X,y);
+    double acc_rbf=svm_train_accuracy(svm_rbf,X,y);
+    EXPECT_LT(acc_lin, 0.85);
+    EXPECT_GE(acc_rbf, acc_lin);
+    EXPECT_GE(acc_rbf, 0.85);
+}
+
+TEST(MLSVM, SmallCFiniteBehavior) {
+    auto [X,y]=linear_separable_svm_data();
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=1e-4;
+    svm.fit(X,y);
+    auto pred=svm.predict(X);
+    for (double v:pred) EXPECT_TRUE(std::isfinite(v));
+    EXPECT_TRUE(std::isfinite(svm.b));
+}
+
+TEST(MLSVM, LargeCNearHardMargin) {
+    auto [X,y]=linear_separable_svm_data();
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=1e6;
+    svm.fit(X,y);
+    EXPECT_GE(svm_train_accuracy(svm,X,y), 0.95);
+    for (double a:svm.alphas) EXPECT_TRUE(std::isfinite(a));
+}
+
+TEST(MLSVM, TwoPointsMinimalCase) {
+    Mat X={{-1,0},{1,0}};
+    Vec y={-1,1};
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=1.0;
+    svm.fit(X,y);
+    EXPECT_GE(svm_train_accuracy(svm,X,y), 1.0);
+    EXPECT_GE(svm.support_vectors.size(), 1u);
+}
+
+TEST(MLSVM, PredictBeforeFitNoCrash) {
+    Mat X={{1,2},{3,4}};
+    SVM svm;
+    auto pred=svm.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+    for (double v:pred) {
+        EXPECT_TRUE(std::isfinite(v));
+        EXPECT_TRUE(v==1.0 || v==-1.0);
+    }
+}
+
+TEST(MLSVM, DecisionFunctionBeforeFitNoCrash) {
+    Mat X={{1,2},{3,4}};
+    SVM svm;
+    auto df=svm.decision_function(X);
+    EXPECT_EQ(df.size(), X.size());
+    for (double v:df) EXPECT_DOUBLE_EQ(v, 0.0);
+}
+
+TEST(MLSVM, EmptyFitNoCrash) {
+    Mat X; Vec y;
+    SVM svm;
+    svm.fit(X,y);
+    EXPECT_TRUE(svm.support_vectors.empty());
+    auto pred=svm.predict({{1,2}});
+    EXPECT_EQ(pred.size(), 1u);
+}
+
+TEST(MLSVM, RemapZeroOneLabels) {
+    Mat X={{-2,0},{-1,0},{1,0},{2,0}};
+    Vec y={0,0,1,1};
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=10.0;
+    svm.fit(X,y);
+    Vec y_pm1={-1,-1,1,1};
+    EXPECT_GE(accuracy(svm.predict(X), y_pm1), 0.95);
+}
+
+TEST(MLSVM, InvalidLabelsNoOp) {
+    auto [X,y]=linear_separable_svm_data();
+    y[0]=0.5;
+    SVM svm;
+    svm.fit(X,y);
+    EXPECT_TRUE(svm.support_vectors.empty());
+    EXPECT_TRUE(svm.alphas.empty());
+}
+
+TEST(MLSVM, MixedLabelEncodingsNoOp) {
+    Mat X={{-1,0},{1,0}};
+    Vec y={0,1};
+    y[1]=-1.0;
+    SVM svm;
+    svm.fit(X,y);
+    EXPECT_TRUE(svm.support_vectors.empty());
+}
+
+TEST(MLSVM, RBFKernelGammaUsed) {
+    auto [X,y]=xor_svm_data();
+    SVM svm_lo, svm_hi;
+    svm_lo.config.kernel=SVMKernel::RBF;
+    svm_lo.config.C=50.0;
+    svm_lo.config.gamma=0.01;
+    svm_hi.config.kernel=SVMKernel::RBF;
+    svm_hi.config.C=50.0;
+    svm_hi.config.gamma=5.0;
+    svm_lo.fit(X,y);
+    svm_hi.fit(X,y);
+    EXPECT_GE(svm_train_accuracy(svm_hi,X,y), svm_train_accuracy(svm_lo,X,y));
+}
+
+TEST(MLSVM, LinearBiasTermFinite) {
+    auto [X,y]=linear_separable_svm_data();
+    SVM svm;
+    svm.config.kernel=SVMKernel::Linear;
+    svm.config.C=10.0;
+    svm.fit(X,y);
+    EXPECT_TRUE(std::isfinite(svm.b));
+    EXPECT_FALSE(svm.support_vectors.empty());
+}
