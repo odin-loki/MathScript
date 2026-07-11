@@ -7810,6 +7810,34 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       coder instead. tag checklist bumped to 365 (1 new CTest registration: test_checked_arith;
       36 more new test cases added to existing test_combo/test_compress binaries; 365 suites,
       100% passing).
+      Wave 192: shifted from spec-vs-implementation gap-filling (now exhausted per Wave 191's
+      note) to smaller library-level completeness picks explicitly called out as candidates:
+      ms::numthy gains cornacchia(d,p) (sum-of-two-squares x^2+d*y^2=p, built on the existing
+      tonelli_shanks helper plus a partial Euclidean reduction, verified via the reconstruction
+      identity rather than literal outputs since either root ordering is valid) and stern_brocot(n)
+      (BFS mediant tree enumeration, verified reduced-form/distinctness/root) — closing the last
+      two documented ms::numthy spec gaps (cornacchia/stern_brocot, flagged since Wave 189).
+      ms::signal gains the resampling family upsample/downsample/decimate/interpolate/resample
+      (zero-stuffing + lowpass-filtered rational rate conversion, cutoff derived as 0.8 of the new
+      Nyquist frequency) — closing the module's documented resampling gap. NOTE: building
+      decimate's anti-aliasing test surfaced a genuine latent bug in the shared fft_lowpass helper
+      (used by lowpass/butterworth/highpass/bandpass): the old high-frequency-zeroing loop's
+      mirror-index arithmetic wrapped around and zeroed nearly all non-DC spectral bins regardless
+      of the requested cutoff, silently collapsing "low-pass" filtering toward just the DC/mean
+      component — invisible to prior tests since they only checked size/finiteness/loose ratios.
+      Fixed with the textbook-correct wrapped-distance-from-DC check (min(k,n-k) > cutoff_bin);
+      also corrected one pre-existing test_signal_ext.cpp case that had accidentally been relying
+      on the old bug (compared highpass/lowpass at different cutoffs and expected them to sum to
+      the identity, which only holds at matching cutoffs). ms::finance gains Monte Carlo option
+      pricing: mc_european_call/put (antithetic-variate GBM terminal-value sampling, verified to
+      converge to the existing closed-form bs_call/bs_put within Monte-Carlo-standard-error
+      tolerance, plus put-call parity) and mc_asian_call/put (discretized-path arithmetic-average
+      simulation, verified cheaper than the equivalent European option, the well-known
+      volatility-averaging result) — both following the existing bootstrap_mean/bootstrap_ci
+      std::mt19937(seed) RNG convention from stats.cpp for full determinism. tag checklist stays
+      at 365 (no new CTest registrations; 47 new test cases across existing test_numthy/
+      test_signal_filters/test_finance binaries, plus 1 pre-existing test corrected for the
+      fft_lowpass fix; 365 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7819,23 +7847,25 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
       ms::signal's spec section (2.5) still has a much larger surface not covered by Wave 188's
-      tractable subset — general IIR/FIR filter()/filtfilt()/sosfilt(), filter design beyond
-      butterworth (cheby1/cheby2/ellip/bessel/firwin/remez), resampling, further spectral
-      analysis (periodogram/music/esprit/pburg/cohere), emd/hht/vmd, and the modulation family —
-      these are individually much larger/riskier numerical-algorithm efforts than this wave's
-      thin FFT-reuse wrappers, worth splitting into dedicated future waves.
+      tractable subset or Wave 192's resampling family — general IIR/FIR filter()/filtfilt()/
+      sosfilt(), filter design beyond butterworth (cheby1/cheby2/ellip/bessel/firwin/remez),
+      further spectral analysis (periodogram/music/esprit/pburg/cohere), emd/hht/vmd, and the
+      modulation family — these are individually much larger/riskier numerical-algorithm efforts
+      than this wave's thin FFT-reuse wrappers, worth splitting into dedicated future waves.
       ms::geo's spec section lists convex_hull_3d and polygon boolean ops (poly_union/
       poly_intersect/poly_diff/minkowski_sum) as missing; considered for Wave 188 but deferred
       as higher-risk (robust polygon clipping has notorious edge-case pitfalls).
       ms::graph's spec section still lists planarity/embedding (Boyer-Myrvold), Blossom-
       algorithm general matching, Louvain/community detection, and graph isomorphism (VF2) —
       each a substantial dedicated algorithm effort. ms::finance's spec section still lists
-      Heston/SABR stochastic-volatility models, trinomial trees, Monte Carlo option pricing,
-      Asian/lookback path-dependent options, and portfolio optimization (Markowitz/Black-
-      Litterman/efficient frontier). ms::numthy's spec section still lists cornacchia (sum-of-
-      two-squares) and stern_brocot (tree structure); partition_list is arguably already
-      covered by ms::combo::all_partitions. All deferred as individually larger/riskier than
-      Wave 189's picks.
+      Heston/SABR stochastic-volatility models, trinomial trees, Asian/lookback path-dependent
+      options beyond Wave 192's Monte Carlo arithmetic-average Asian pricer (e.g. lookback,
+      geometric-average Asian), and portfolio optimization (Markowitz/Black-Litterman/efficient
+      frontier); European/Asian Monte Carlo pricing itself was closed in Wave 192
+      (mc_european_call/put, mc_asian_call/put). ms::numthy's cornacchia/stern_brocot gap was
+      also closed in Wave 192; partition_list is arguably already covered by
+      ms::combo::all_partitions. Remaining items above deferred as individually larger/riskier
+      than Wave 189/192's picks.
       ms::bignum's spec section still lists APFloat/APComplex arbitrary-precision floating point
       (full Chudnovsky-algorithm transcendental support) — a substantially larger, separate
       undertaking, similar in scale to FEM/CFD, deliberately out of scope for an incremental
