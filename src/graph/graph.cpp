@@ -10,6 +10,133 @@
 namespace ms {
 namespace graph {
 
+namespace {
+
+// Build binary adjacency matrix (matches adjacency_spectrum convention).
+std::vector<std::vector<double>> adjacency_matrix(const Graph& G) {
+    int n = G.n_vertices();
+    std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
+    for (int u = 0; u < n; ++u)
+        for (auto& [v, w] : G.neighbors(u)) A[u][v] = 1.0;
+    return A;
+}
+
+// Jacobi eigenvalue decomposition for small symmetric matrices.
+std::vector<double> symmetric_eigenvalues(std::vector<std::vector<double>> A) {
+    int n = static_cast<int>(A.size());
+    if (n == 0) return {};
+    if (n == 1) return {A[0][0]};
+    const double tol = 1e-12;
+    for (int iter = 0; iter < 50 * n * n; ++iter) {
+        int p = 0, q = 1;
+        double max_off = 0.0;
+        for (int i = 0; i < n; ++i)
+            for (int j = i + 1; j < n; ++j)
+                if (std::abs(A[i][j]) > max_off) {
+                    max_off = std::abs(A[i][j]);
+                    p = i; q = j;
+                }
+        if (max_off < tol) break;
+        double app = A[p][p], aqq = A[q][q], apq = A[p][q];
+        double phi = 0.5 * std::atan2(2.0 * apq, aqq - app);
+        double c = std::cos(phi), s = std::sin(phi);
+        for (int k = 0; k < n; ++k) {
+            double akp = A[k][p], akq = A[k][q];
+            A[k][p] = c * akp - s * akq;
+            A[p][k] = A[k][p];
+            A[k][q] = s * akp + c * akq;
+            A[q][k] = A[k][q];
+        }
+        double new_pp = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        double new_qq = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        A[p][p] = new_pp;
+        A[q][q] = new_qq;
+        A[p][q] = A[q][p] = 0.0;
+    }
+    std::vector<double> evals(n);
+    for (int i = 0; i < n; ++i) evals[i] = A[i][i];
+    std::sort(evals.begin(), evals.end());
+    return evals;
+}
+
+struct DinicResult {
+    double flow = 0.0;
+    std::vector<std::vector<std::pair<int, double>>> residual;
+};
+
+DinicResult dinic_max_flow_residual(const Graph& G, int source, int sink) {
+    int n = G.n_vertices();
+    DinicResult result;
+    auto& res = result.residual;
+    res.assign(n, {});
+    std::vector<std::vector<int>> rev_idx(n);
+    for (int u = 0; u < n; ++u) {
+        for (auto& [v, w] : G.neighbors(u)) {
+            int uidx = static_cast<int>(res[u].size());
+            int vidx = static_cast<int>(res[v].size());
+            res[u].push_back({v, w});
+            res[v].push_back({u, 0.0});
+            rev_idx[u].push_back(vidx);
+            rev_idx[v].push_back(uidx);
+        }
+    }
+    while (true) {
+        std::vector<int> level(n, -1);
+        level[source] = 0;
+        std::queue<int> q;
+        q.push(source);
+        while (!q.empty()) {
+            int v = q.front(); q.pop();
+            for (auto& [u, cap] : res[v])
+                if (cap > 1e-12 && level[u] < 0) { level[u] = level[v] + 1; q.push(u); }
+        }
+        if (level[sink] < 0) break;
+        std::vector<int> iter(n, 0);
+        std::function<double(int, double)> dfs_flow = [&](int v, double pushed) -> double {
+            if (v == sink) return pushed;
+            for (int& i = iter[v]; i < static_cast<int>(res[v].size()); ++i) {
+                auto& [u, cap] = res[v][i];
+                if (cap < 1e-12 || level[u] != level[v] + 1) continue;
+                double d = dfs_flow(u, std::min(pushed, cap));
+                if (d > 0) { cap -= d; res[u][rev_idx[v][i]].second += d; return d; }
+            }
+            return 0.0;
+        };
+        while (true) {
+            double pushed = dfs_flow(source, INF);
+            if (pushed < 1e-12) break;
+            result.flow += pushed;
+        }
+    }
+    return result;
+}
+
+void dfs_articulation_bridges(const Graph& G, int u, int parent, int& timer,
+                              std::vector<int>& disc, std::vector<int>& low,
+                              std::vector<bool>& is_ap,
+                              std::vector<Edge>& bridges) {
+    disc[u] = low[u] = ++timer;
+    int children = 0;
+    for (auto& [v, w] : G.neighbors(u)) {
+        if (v == parent) continue;
+        if (disc[v] == -1) {
+            ++children;
+            dfs_articulation_bridges(G, v, u, timer, disc, low, is_ap, bridges);
+            low[u] = std::min(low[u], low[v]);
+            if (parent != -1 && low[v] >= disc[u]) is_ap[u] = true;
+            if (low[v] > disc[u]) {
+                int a = std::min(u, v), b = std::max(u, v);
+                bridges.push_back({a, b, w});
+            }
+        } else {
+            low[u] = std::min(low[u], disc[v]);
+        }
+    }
+    if (parent == -1 && children >= 2) is_ap[u] = true;
+}
+
+} // namespace
+
 // ---- Graph ----
 
 Graph::Graph(int n, bool directed)
@@ -249,6 +376,37 @@ std::vector<std::vector<int>> strongly_connected_components(const Graph& G) {
     return sccs;
 }
 
+std::vector<int> articulation_points(const Graph& G) {
+    int n = G.n_vertices();
+    std::vector<int> disc(n, -1), low(n, -1);
+    std::vector<bool> is_ap(n, false);
+    std::vector<Edge> unused;
+    int timer = 0;
+    for (int i = 0; i < n; ++i)
+        if (disc[i] == -1)
+            dfs_articulation_bridges(G, i, -1, timer, disc, low, is_ap, unused);
+    std::vector<int> aps;
+    for (int i = 0; i < n; ++i)
+        if (is_ap[i]) aps.push_back(i);
+    std::sort(aps.begin(), aps.end());
+    return aps;
+}
+
+std::vector<Edge> bridges(const Graph& G) {
+    int n = G.n_vertices();
+    std::vector<int> disc(n, -1), low(n, -1);
+    std::vector<bool> unused_ap(n, false);
+    std::vector<Edge> result;
+    int timer = 0;
+    for (int i = 0; i < n; ++i)
+        if (disc[i] == -1)
+            dfs_articulation_bridges(G, i, -1, timer, disc, low, unused_ap, result);
+    std::sort(result.begin(), result.end(), [](const Edge& a, const Edge& b) {
+        return a.from < b.from || (a.from == b.from && a.to < b.to);
+    });
+    return result;
+}
+
 bool is_bipartite(const Graph& G) {
     int n = G.n_vertices();
     std::vector<int> color(n, -1);
@@ -431,54 +589,123 @@ std::vector<double> degree_centrality(const Graph& G) {
     return dc;
 }
 
+std::vector<double> eigenvector_centrality(const Graph& G, int max_iter, double tol) {
+    int n = G.n_vertices();
+    if (n == 0) return {};
+    std::vector<double> x(n);
+    for (int v = 0; v < n; ++v) x[v] = 1.0 + static_cast<double>(G.neighbors(v).size());
+    double init_norm = 0.0;
+    for (double v : x) init_norm += v * v;
+    init_norm = std::sqrt(init_norm);
+    for (auto& v : x) v /= init_norm;
+    for (int iter = 0; iter < max_iter; ++iter) {
+        std::vector<double> y(n, 0.0);
+        for (int u = 0; u < n; ++u)
+            for (auto& [v, w] : G.neighbors(u))
+                y[v] += x[u];
+        double norm = 0.0;
+        for (double v : y) norm += v * v;
+        norm = std::sqrt(norm);
+        if (norm < 1e-15) return y;
+        double diff = 0.0;
+        for (int i = 0; i < n; ++i) {
+            y[i] /= norm;
+            diff += std::abs(y[i] - x[i]);
+        }
+        x = y;
+        if (diff < tol) break;
+    }
+    return x;
+}
+
+std::vector<double> katz_centrality(const Graph& G, double alpha, double beta,
+                                    int max_iter, double tol) {
+    int n = G.n_vertices();
+    if (n == 0) return {};
+    std::vector<double> x(n, beta);
+    for (int iter = 0; iter < max_iter; ++iter) {
+        std::vector<double> y(n, beta);
+        for (int u = 0; u < n; ++u)
+            for (auto& [v, w] : G.neighbors(u))
+                y[v] += alpha * x[u];
+        double diff = 0.0;
+        for (int i = 0; i < n; ++i) diff += std::abs(y[i] - x[i]);
+        x = y;
+        if (diff < tol) break;
+    }
+    return x;
+}
+
+std::vector<std::vector<double>> laplacian(const Graph& G) {
+    int n = G.n_vertices();
+    auto A = adjacency_matrix(G);
+    std::vector<std::vector<double>> L(n, std::vector<double>(n, 0.0));
+    for (int i = 0; i < n; ++i) {
+        double deg = 0.0;
+        for (int j = 0; j < n; ++j) deg += A[i][j];
+        L[i][i] = deg;
+        for (int j = 0; j < n; ++j)
+            if (i != j) L[i][j] = -A[i][j];
+    }
+    return L;
+}
+
+std::vector<std::vector<double>> normalised_laplacian(const Graph& G) {
+    int n = G.n_vertices();
+    auto A = adjacency_matrix(G);
+    std::vector<double> deg(n, 0.0);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) deg[i] += A[i][j];
+    std::vector<std::vector<double>> L(n, std::vector<double>(n, 0.0));
+    for (int i = 0; i < n; ++i) {
+        if (deg[i] < 1e-15) continue;  // isolated vertex: row/col remain zero
+        for (int j = 0; j < n; ++j) {
+            if (i == j) {
+                L[i][j] = 1.0;
+            } else if (deg[j] >= 1e-15 && A[i][j] != 0.0) {
+                L[i][j] = -1.0 / std::sqrt(deg[i] * deg[j]);
+            }
+        }
+    }
+    return L;
+}
+
+double algebraic_connectivity(const Graph& G) {
+    int n = G.n_vertices();
+    if (n <= 1) return 0.0;
+    auto evals = symmetric_eigenvalues(laplacian(G));
+    if (evals.size() < 2) return 0.0;
+    return evals[1];  // second-smallest; smallest is always 0
+}
+
 // ---- Max flow (Dinic's) ----
 
 Result<double> max_flow(const Graph& G, int source, int sink) {
+    return dinic_max_flow_residual(G, source, sink).flow;
+}
+
+Result<MinCutResult> min_cut(const Graph& G, int source, int sink) {
+    auto dinic = dinic_max_flow_residual(G, source, sink);
     int n = G.n_vertices();
-    // Build residual graph
-    std::vector<std::vector<std::pair<int,double>>> res(n);
-    std::vector<std::vector<int>> rev_idx(n);
-    for (int u = 0; u < n; ++u) {
-        for (auto& [v, w] : G.neighbors(u)) {
-            int uidx = static_cast<int>(res[u].size());
-            int vidx = static_cast<int>(res[v].size());
-            res[u].push_back({v, w});
-            res[v].push_back({u, 0.0});
-            rev_idx[u].push_back(vidx);
-            rev_idx[v].push_back(uidx);
-        }
-    }
-    double total_flow = 0.0;
-    while (true) {
-        // BFS to find level graph
-        std::vector<int> level(n, -1);
-        level[source] = 0;
-        std::queue<int> q;
-        q.push(source);
-        while (!q.empty()) {
-            int v = q.front(); q.pop();
-            for (auto& [u, cap] : res[v])
-                if (cap > 1e-12 && level[u] < 0) { level[u] = level[v] + 1; q.push(u); }
-        }
-        if (level[sink] < 0) break;
-        std::vector<int> iter(n, 0);
-        std::function<double(int, double)> dfs_flow = [&](int v, double pushed) -> double {
-            if (v == sink) return pushed;
-            for (int& i = iter[v]; i < (int)res[v].size(); ++i) {
-                auto& [u, cap] = res[v][i];
-                if (cap < 1e-12 || level[u] != level[v] + 1) continue;
-                double d = dfs_flow(u, std::min(pushed, cap));
-                if (d > 0) { cap -= d; res[u][rev_idx[v][i]].second += d; return d; }
+    std::vector<bool> reachable(n, false);
+    std::queue<int> q;
+    q.push(source);
+    reachable[source] = true;
+    while (!q.empty()) {
+        int v = q.front(); q.pop();
+        for (auto& [u, cap] : dinic.residual[v])
+            if (cap > 1e-12 && !reachable[u]) {
+                reachable[u] = true;
+                q.push(u);
             }
-            return 0.0;
-        };
-        while (true) {
-            double pushed = dfs_flow(source, INF);
-            if (pushed < 1e-12) break;
-            total_flow += pushed;
-        }
     }
-    return total_flow;
+    MinCutResult result;
+    result.value = dinic.flow;
+    for (auto& e : G.edges()) {
+        if (reachable[e.from] && !reachable[e.to])
+            result.cut_edges.push_back(e);
+    }
+    return result;
 }
 
 // ---- Bipartite matching (Hopcroft-Karp) ----

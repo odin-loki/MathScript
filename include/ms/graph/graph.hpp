@@ -59,6 +59,8 @@ bool                  is_connected(const Graph& G);
 bool                  is_strongly_connected(const Graph& G);
 std::vector<std::vector<int>> connected_components(const Graph& G);
 std::vector<std::vector<int>> strongly_connected_components(const Graph& G);  // Tarjan
+std::vector<int>      articulation_points(const Graph& G);   // undirected DFS low-link
+std::vector<Edge>     bridges(const Graph& G);               // undirected DFS low-link
 bool                  is_bipartite(const Graph& G);
 bool                  is_dag(const Graph& G);
 
@@ -79,9 +81,23 @@ std::vector<double> pagerank(const Graph& G, double alpha = 0.85, int max_iter =
 std::vector<double> betweenness_centrality(const Graph& G);
 std::vector<double> closeness_centrality(const Graph& G);
 std::vector<double> degree_centrality(const Graph& G);
+// Power iteration on adjacency (dominant eigenvector); L2-normalised scores
+std::vector<double> eigenvector_centrality(const Graph& G, int max_iter = 100, double tol = 1e-9);
+// x = alpha * A^T * x + beta; requires alpha < 1/spectral_radius(A) for convergence
+std::vector<double> katz_centrality(const Graph& G, double alpha = 0.1, double beta = 1.0,
+                                    int max_iter = 100, double tol = 1e-9);
+
+// --- Spectral ---
+std::vector<std::vector<double>> laplacian(const Graph& G);              // L = D - A
+std::vector<std::vector<double>> normalised_laplacian(const Graph& G);  // I - D^{-1/2} A D^{-1/2}
+// Second-smallest Laplacian eigenvalue (0 for disconnected graphs)
+double algebraic_connectivity(const Graph& G);
 
 // --- Max flow (Dinic's algorithm) ---
 Result<double> max_flow(const Graph& G, int source, int sink);
+
+struct MinCutResult { double value; std::vector<Edge> cut_edges; };
+Result<MinCutResult> min_cut(const Graph& G, int source, int sink);
 
 // --- Bipartite matching (Hopcroft-Karp) ---
 // G must be bipartite with left vertices [0, left_size) and right [left_size, n)
