@@ -339,6 +339,260 @@ TEST(StatsExtTest, kruskal_wallis_only_one_nonempty_group) {
 }
 
 // ---------------------------------------------------------------------------
+// friedman
+// ---------------------------------------------------------------------------
+
+// Hand-computed reference case (no ties). 4 blocks x 3 treatments.
+// Row ranks (computed by hand from the raw values):
+//   {10,20,30}  -> ranks (1,2,3)
+//   {15,25,20}  -> ranks (1,3,2)
+//   {5,8,6}     -> ranks (1,3,2)
+//   {100,90,95} -> ranks (3,1,2)
+// Rank sums: R1 = 1+1+1+3 = 6, R2 = 2+3+3+1 = 9, R3 = 3+2+2+2 = 9
+// (check: 6+9+9 = 24 = n*k*(k+1)/2 = 4*3*4/2 = 24)
+// chi2 = [12/(n*k*(k+1))] * sum(Rj^2) - 3*n*(k+1)
+//      = [12/48] * (36+81+81) - 48 = 0.25*198 - 48 = 49.5 - 48 = 1.5
+// No ties anywhere, so the tie-correction factor C = 1 exactly.
+// df = k-1 = 2, and for df=2 the upper-tail chi-square probability has the closed form
+// P(X > x) = exp(-x/2), so p_value = exp(-0.75).
+TEST(StatsExtTest, friedman_reference_case_hand_computed) {
+    const std::vector<std::vector<double>> data = {
+        {10.0, 20.0, 30.0},
+        {15.0, 25.0, 20.0},
+        {5.0, 8.0, 6.0},
+        {100.0, 90.0, 95.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 2);
+    EXPECT_NEAR(result.chi2_stat, 1.5, 1e-9);
+    EXPECT_NEAR(result.p_value, std::exp(-0.75), 1e-9);
+}
+
+// No-tie dataset (3 blocks x 4 treatments) where the tie-correction factor C = 1 exactly, so
+// the function's output must match the naive uncorrected formula exactly.
+//   {1,2,3,4} -> ranks (1,2,3,4)
+//   {4,3,2,1} -> ranks (4,3,2,1)
+//   {2,1,4,3} -> ranks (2,1,4,3)
+// Rank sums: R1=1+4+2=7, R2=2+3+1=6, R3=3+2+4=9, R4=4+1+3=8 (sum=30=3*4*5/2)
+// chi2 = [12/(3*4*5)] * (49+36+81+64) - 3*3*5 = 0.2*230 - 45 = 46 - 45 = 1.0
+TEST(StatsExtTest, friedman_no_ties_matches_uncorrected_formula) {
+    const std::vector<std::vector<double>> data = {
+        {1.0, 2.0, 3.0, 4.0},
+        {4.0, 3.0, 2.0, 1.0},
+        {2.0, 1.0, 4.0, 3.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 3);
+    EXPECT_NEAR(result.chi2_stat, 1.0, 1e-9);
+    EXPECT_NEAR(result.p_value, 1.0 - chi2_cdf(1.0, 3.0), 1e-12);
+}
+
+// Same shape as the reference case above, but block 2 has a tie ({15,20,20} instead of
+// {15,25,20}), so the tie-correction factor C < 1 must kick in.
+//   {10,20,30}  -> ranks (1,2,3)          (no tie)
+//   {15,20,20}  -> ranks (1,2.5,2.5)      (tie group of size 2)
+//   {5,8,6}     -> ranks (1,3,2)          (no tie)
+//   {100,90,95} -> ranks (3,1,2)          (no tie)
+// Rank sums: R1=1+1+1+3=6, R2=2+2.5+3+1=8.5, R3=3+2.5+2+2=9.5 (sum=24, as before)
+// Uncorrected chi2 = 0.25*(36+72.25+90.25) - 48 = 0.25*198.5 - 48 = 49.625 - 48 = 1.625
+// Tie correction: one tie group of size t=2 in one block, so sum(t^3-t) = 8-2 = 6.
+// C = 1 - 6/(n*k*(k^3-k)) = 1 - 6/(4*3*24) = 1 - 6/288 = 1 - 1/48 = 47/48
+// Corrected chi2 = 1.625 / (47/48) = 1.625 * 48/47 = 78/47 (~1.65957...)
+TEST(StatsExtTest, friedman_tie_correction_inflates_statistic) {
+    const std::vector<std::vector<double>> data = {
+        {10.0, 20.0, 30.0},
+        {15.0, 20.0, 20.0},
+        {5.0, 8.0, 6.0},
+        {100.0, 90.0, 95.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 2);
+    EXPECT_NEAR(result.chi2_stat, 78.0 / 47.0, 1e-9);
+    EXPECT_GT(result.chi2_stat, 1.625);  // corrected value must exceed the naive/uncorrected one
+    EXPECT_NEAR(result.p_value, std::exp(-(78.0 / 47.0) / 2.0), 1e-9);
+}
+
+// Perfectly balanced (cyclic) ranks across 3 blocks x 3 treatments: every treatment gets each
+// rank (1, 2, 3) exactly once. This is the textbook "no treatment effect" case, so the rank
+// sums are all equal and chi2 must be exactly zero (p_value == 1.0).
+TEST(StatsExtTest, friedman_null_effect_cyclic_balance) {
+    const std::vector<std::vector<double>> data = {
+        {1.0, 2.0, 3.0},
+        {2.0, 3.0, 1.0},
+        {3.0, 1.0, 2.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 2);
+    EXPECT_NEAR(result.chi2_stat, 0.0, 1e-12);
+    EXPECT_NEAR(result.p_value, 1.0, 1e-12);
+}
+
+// Strong, consistent effect: 5 blocks x 3 treatments, every block ranks the treatments in the
+// exact same order (treatment 1 lowest, treatment 3 highest). Rank sums: R1=5, R2=10, R3=15.
+// chi2 = [12/(5*3*4)] * (25+100+225) - 3*5*4 = 0.2*350 - 60 = 70 - 60 = 10
+// df=2, so p_value = exp(-10/2) = exp(-5), which is very small.
+TEST(StatsExtTest, friedman_strong_effect_consistent_ranking) {
+    const std::vector<std::vector<double>> data = {
+        {10.0, 20.0, 30.0},
+        {1.0, 5.0, 9.0},
+        {100.0, 150.0, 200.0},
+        {-5.0, 0.0, 5.0},
+        {2.0, 2.5, 3.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 2);
+    EXPECT_NEAR(result.chi2_stat, 10.0, 1e-9);
+    EXPECT_NEAR(result.p_value, std::exp(-5.0), 1e-9);
+    EXPECT_LT(result.p_value, 0.01);
+}
+
+TEST(StatsExtTest, friedman_degrees_of_freedom_various_k) {
+    for (int k = 2; k <= 6; ++k) {
+        std::vector<std::vector<double>> data;
+        for (int block = 0; block < 3; ++block) {
+            std::vector<double> row(static_cast<size_t>(k));
+            for (int j = 0; j < k; ++j) {
+                // Rotate the value order per block so there's some variation, without ties.
+                row[static_cast<size_t>(j)] = static_cast<double>((j + block) % k);
+            }
+            data.push_back(row);
+        }
+        const auto result = friedman(data);
+        EXPECT_EQ(result.df, k - 1) << "k=" << k;
+    }
+}
+
+TEST(StatsExtTest, friedman_error_empty_input) {
+    const std::vector<std::vector<double>> empty;
+    const auto result = friedman(empty);
+    EXPECT_DOUBLE_EQ(result.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 0);
+}
+
+TEST(StatsExtTest, friedman_error_too_few_blocks) {
+    const std::vector<std::vector<double>> one_block = {{1.0, 2.0, 3.0}};
+    const auto result = friedman(one_block);
+    EXPECT_DOUBLE_EQ(result.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 0);
+}
+
+TEST(StatsExtTest, friedman_error_too_few_treatments) {
+    const std::vector<std::vector<double>> one_treatment = {{1.0}, {2.0}, {3.0}};
+    const auto result = friedman(one_treatment);
+    EXPECT_DOUBLE_EQ(result.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 0);
+
+    const std::vector<std::vector<double>> zero_treatments = {{}, {}};
+    const auto result2 = friedman(zero_treatments);
+    EXPECT_DOUBLE_EQ(result2.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result2.p_value, 1.0);
+    EXPECT_EQ(result2.df, 0);
+}
+
+TEST(StatsExtTest, friedman_error_jagged_rows) {
+    const std::vector<std::vector<double>> jagged = {
+        {1.0, 2.0, 3.0},
+        {4.0, 5.0},
+        {6.0, 7.0, 8.0},
+    };
+    const auto result = friedman(jagged);
+    EXPECT_DOUBLE_EQ(result.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 0);
+}
+
+// k=2 reduction: treatment B beats treatment A in every single block (a maximally consistent,
+// extreme result -- the two-treatment analog of a sign-test result where every sign agrees).
+// R_A = 6*1 = 6, R_B = 6*2 = 12. chi2 = [12/(6*2*3)]*(36+144) - 3*6*3 = (1/3)*180 - 54 = 6.
+TEST(StatsExtTest, friedman_two_treatment_perfect_agreement) {
+    const std::vector<std::vector<double>> data = {
+        {1.0, 2.0}, {3.0, 9.0}, {-1.0, 0.0}, {5.0, 6.0}, {10.0, 20.0}, {0.0, 0.5},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 1);
+    EXPECT_NEAR(result.chi2_stat, 6.0, 1e-9);
+    EXPECT_NEAR(result.p_value, 1.0 - chi2_cdf(6.0, 1.0), 1e-9);
+    EXPECT_LT(result.p_value, 0.02);
+}
+
+// k=2, mixed directions: A beats B in half the blocks and B beats A in the other half, so the
+// rank sums come out exactly equal -> chi2 == 0 (fail to reject), unlike the perfect-agreement
+// case above.
+TEST(StatsExtTest, friedman_two_treatment_mixed_non_significant) {
+    const std::vector<std::vector<double>> data = {
+        {1.0, 2.0}, {3.0, 9.0}, {-1.0, 0.0}, {6.0, 5.0}, {20.0, 10.0}, {0.5, 0.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 1);
+    EXPECT_NEAR(result.chi2_stat, 0.0, 1e-9);
+    EXPECT_NEAR(result.p_value, 1.0, 1e-9);
+}
+
+// Every value within each row is identical (a full tie across all k treatments in every
+// block), so every treatment gets the same average rank in every block and chi2 must be zero.
+TEST(StatsExtTest, friedman_all_identical_values_within_rows) {
+    const std::vector<std::vector<double>> data = {
+        {5.0, 5.0, 5.0},
+        {10.0, 10.0, 10.0},
+        {1.0, 1.0, 1.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_NEAR(result.chi2_stat, 0.0, 1e-12);
+    EXPECT_NEAR(result.p_value, 1.0, 1e-12);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, friedman_tie_handling_finite_and_bounded) {
+    const std::vector<std::vector<double>> data = {
+        {1.0, 1.0, 2.0, 3.0},
+        {2.0, 3.0, 3.0, 5.0},
+        {3.0, 4.0, 5.0, 5.0},
+        {1.0, 2.0, 2.0, 4.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_TRUE(std::isfinite(result.chi2_stat));
+    EXPECT_TRUE(std::isfinite(result.p_value));
+    EXPECT_GE(result.chi2_stat, 0.0);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 3);
+}
+
+TEST(StatsExtTest, friedman_larger_dataset_sanity_bounds) {
+    const std::vector<std::vector<double>> data = {
+        {3.0, 1.0, 4.0, 1.0, 5.0},
+        {9.0, 2.0, 6.0, 5.0, 3.0},
+        {5.0, 8.0, 9.0, 7.0, 9.0},
+        {3.0, 2.0, 3.0, 8.0, 4.0},
+        {6.0, 2.0, 6.0, 4.0, 3.0},
+        {3.0, 8.0, 3.0, 2.0, 7.0},
+        {9.0, 5.0, 0.0, 2.0, 8.0},
+        {8.0, 4.0, 1.0, 9.0, 7.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 4);
+    EXPECT_GE(result.chi2_stat, 0.0);
+    EXPECT_TRUE(std::isfinite(result.chi2_stat));
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, friedman_minimal_valid_input) {
+    const std::vector<std::vector<double>> data = {
+        {1.0, 2.0},
+        {2.0, 1.0},
+    };
+    const auto result = friedman(data);
+    EXPECT_EQ(result.df, 1);
+    EXPECT_GE(result.chi2_stat, 0.0);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+}
+
+// ---------------------------------------------------------------------------
 // ks_test_2sample
 // ---------------------------------------------------------------------------
 

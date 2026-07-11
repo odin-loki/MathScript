@@ -70,6 +70,22 @@ struct KruskalWallisResult {
 };
 KruskalWallisResult kruskal_wallis(const std::vector<std::vector<double>>& groups);
 
+// Friedman test: a non-parametric alternative to one-way repeated-measures ANOVA for >= 2
+// treatments measured across >= 2 blocks (e.g. n judges each ranking k products). `data[i][j]`
+// is the measurement for block i under treatment j, so `data` is an n_blocks x k_treatments
+// matrix with every row the same length. Ranks the k_treatments values within each block
+// (average ranks for ties), sums ranks per treatment, and forms a chi-square-distributed
+// statistic (with tie correction) testing the null hypothesis that all treatments are
+// equivalent. Returns the chi-squared statistic, degrees of freedom (k_treatments - 1), and an
+// upper-tail chi-squared p-value. Malformed input (fewer than 2 blocks, fewer than 2
+// treatments, or jagged/mismatched row lengths) yields a zeroed result with p_value == 1.0.
+struct FriedmanResult {
+    double chi2_stat = 0.0;
+    int df = 0;
+    double p_value = 1.0;
+};
+FriedmanResult friedman(const std::vector<std::vector<double>>& data);
+
 // Two-sample Kolmogorov-Smirnov test: a non-parametric test for whether two samples come from
 // the same distribution, based on the maximum distance between their empirical CDFs. Returns
 // the D statistic and an asymptotic p-value (standard Kolmogorov distribution approximation).
