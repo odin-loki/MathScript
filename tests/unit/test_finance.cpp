@@ -329,3 +329,145 @@ TEST(FinanceAmerican, PutPremiumMultipleStrikes) {
     double eu = bs_put(S, K, T, r, sigma);
     EXPECT_GT(am - eu, 1.0);  // non-negligible early-exercise premium
 }
+
+// --- Monte Carlo pricing ---
+// With antithetic variates and n_paths in the hundreds of thousands, the MC
+// standard error for these (S,K,T,r,sigma) combos is well under 0.05 (payoff
+// std dev is O(S*sigma*sqrt(T)) ~ 20-40, divided by sqrt(n_paths) ~ 700-1000).
+// An absolute tolerance of 0.15 is therefore roughly 3-5 standard errors,
+// which passes reliably at the fixed seed while still being a meaningful check.
+namespace {
+constexpr int kMCPaths = 500000;
+constexpr double kMCTol = 0.15;
+} // namespace
+
+TEST(FinanceMC, EuropeanCallATMMatchesBS) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double bs = bs_call(S, K, T, r, sigma);
+    double mc = mc_european_call(S, K, T, r, sigma, kMCPaths);
+    EXPECT_NEAR(mc, bs, kMCTol);
+}
+
+TEST(FinanceMC, EuropeanPutATMMatchesBS) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double bs = bs_put(S, K, T, r, sigma);
+    double mc = mc_european_put(S, K, T, r, sigma, kMCPaths);
+    EXPECT_NEAR(mc, bs, kMCTol);
+}
+
+TEST(FinanceMC, EuropeanCallITMMatchesBS) {
+    double S = 120, K = 100, T = 0.5, r = 0.03, sigma = 0.25;
+    double bs = bs_call(S, K, T, r, sigma);
+    double mc = mc_european_call(S, K, T, r, sigma, kMCPaths);
+    EXPECT_NEAR(mc, bs, kMCTol);
+}
+
+TEST(FinanceMC, EuropeanPutITMMatchesBS) {
+    double S = 80, K = 100, T = 0.5, r = 0.03, sigma = 0.25;
+    double bs = bs_put(S, K, T, r, sigma);
+    double mc = mc_european_put(S, K, T, r, sigma, kMCPaths);
+    EXPECT_NEAR(mc, bs, kMCTol);
+}
+
+TEST(FinanceMC, EuropeanCallOTMMatchesBS) {
+    double S = 90, K = 110, T = 1.0, r = 0.04, sigma = 0.3;
+    double bs = bs_call(S, K, T, r, sigma);
+    double mc = mc_european_call(S, K, T, r, sigma, kMCPaths);
+    EXPECT_NEAR(mc, bs, kMCTol);
+}
+
+TEST(FinanceMC, EuropeanPutOTMMatchesBS) {
+    double S = 110, K = 90, T = 1.0, r = 0.04, sigma = 0.3;
+    double bs = bs_put(S, K, T, r, sigma);
+    double mc = mc_european_put(S, K, T, r, sigma, kMCPaths);
+    EXPECT_NEAR(mc, bs, kMCTol);
+}
+
+TEST(FinanceMC, PutCallParity) {
+    double S = 100, K = 105, T = 1.0, r = 0.05, sigma = 0.2;
+    double c = mc_european_call(S, K, T, r, sigma, kMCPaths);
+    double p = mc_european_put(S, K, T, r, sigma, kMCPaths);
+    EXPECT_NEAR(c - p, S - K * std::exp(-r * T), kMCTol);
+}
+
+TEST(FinanceMC, EuropeanCallDeterministic) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double a = mc_european_call(S, K, T, r, sigma, 10000, 7);
+    double b = mc_european_call(S, K, T, r, sigma, 10000, 7);
+    EXPECT_EQ(a, b);
+}
+
+TEST(FinanceMC, EuropeanPutDeterministic) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double a = mc_european_put(S, K, T, r, sigma, 10000, 7);
+    double b = mc_european_put(S, K, T, r, sigma, 10000, 7);
+    EXPECT_EQ(a, b);
+}
+
+TEST(FinanceMC, EuropeanOddPathCountRuns) {
+    // Odd n_paths exercises the "extra draw, drop one payoff" antithetic branch.
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double mc_odd = mc_european_call(S, K, T, r, sigma, 10001);
+    double bs = bs_call(S, K, T, r, sigma);
+    EXPECT_NEAR(mc_odd, bs, 1.0);
+    EXPECT_GT(mc_odd, 0.0);
+}
+
+TEST(FinanceMC, EuropeanEdgeCasesReturnZero) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    EXPECT_EQ(mc_european_call(S, K, T, r, sigma, 0), 0.0);
+    EXPECT_EQ(mc_european_put(S, K, T, r, sigma, 0), 0.0);
+    EXPECT_EQ(mc_european_call(-1.0, K, T, r, sigma, 1000), 0.0);
+    EXPECT_EQ(mc_european_call(S, -1.0, T, r, sigma, 1000), 0.0);
+    EXPECT_EQ(mc_european_call(S, K, -1.0, r, sigma, 1000), 0.0);
+    EXPECT_EQ(mc_european_call(S, K, T, r, -0.1, 1000), 0.0);
+    EXPECT_EQ(mc_european_put(-1.0, K, T, r, sigma, 1000), 0.0);
+    EXPECT_EQ(mc_european_put(S, K, T, r, 0.0, 1000), 0.0);
+}
+
+TEST(FinanceMC, AsianCallCheaperThanEuropean) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double asian = mc_asian_call(S, K, T, r, sigma, 100000, 50);
+    double euro = bs_call(S, K, T, r, sigma);
+    EXPECT_LT(asian, euro);
+    EXPECT_GT(asian, 0.0);
+}
+
+TEST(FinanceMC, AsianCallCheaperThanEuropeanHighVol) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.4;
+    double asian = mc_asian_call(S, K, T, r, sigma, 100000, 50);
+    double euro = bs_call(S, K, T, r, sigma);
+    EXPECT_LT(asian, euro);
+    EXPECT_GT(asian, 0.0);
+}
+
+TEST(FinanceMC, AsianPutPositiveITM) {
+    double S = 90, K = 110, T = 1.0, r = 0.05, sigma = 0.25;
+    double asian_put = mc_asian_put(S, K, T, r, sigma, 100000, 50);
+    EXPECT_GT(asian_put, 0.0);
+}
+
+TEST(FinanceMC, AsianPayoffsNonNegative) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.3;
+    double call = mc_asian_call(S, K, T, r, sigma, 50000, 25);
+    double put  = mc_asian_put(S, K, T, r, sigma, 50000, 25);
+    EXPECT_GE(call, 0.0);
+    EXPECT_GE(put, 0.0);
+}
+
+TEST(FinanceMC, AsianDeterministic) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double a = mc_asian_call(S, K, T, r, sigma, 5000, 20, 3);
+    double b = mc_asian_call(S, K, T, r, sigma, 5000, 20, 3);
+    EXPECT_EQ(a, b);
+}
+
+TEST(FinanceMC, AsianEdgeCasesReturnZero) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    EXPECT_EQ(mc_asian_call(S, K, T, r, sigma, 0, 10), 0.0);
+    EXPECT_EQ(mc_asian_call(S, K, T, r, sigma, 1000, 0), 0.0);
+    EXPECT_EQ(mc_asian_put(-1.0, K, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_asian_put(S, -1.0, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_asian_put(S, K, -1.0, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_asian_put(S, K, T, r, -0.1, 1000, 10), 0.0);
+}
