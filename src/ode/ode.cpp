@@ -183,6 +183,65 @@ OdeResult ode_rk23(OdeFunc f, double t0, double y0, double t_end,
     return result;
 }
 
+OdeResult ode_cashkarp(OdeFunc f, double t0, double y0, double t_end,
+                       double rtol, double atol) {
+    // Cash-Karp embedded RK45 adaptive step (Numerical Recipes tableau)
+    static const double c2 = 1.0/5.0, c3 = 3.0/10.0, c4 = 3.0/5.0,
+                        c5 = 1.0,     c6 = 7.0/8.0;
+    static const double a21 = 1.0/5.0;
+    static const double a31 = 3.0/40.0,      a32 = 9.0/40.0;
+    static const double a41 = 3.0/10.0,      a42 = -9.0/10.0,   a43 = 6.0/5.0;
+    static const double a51 = -11.0/54.0,    a52 = 5.0/2.0,
+                        a53 = -70.0/27.0,    a54 = 35.0/27.0;
+    static const double a61 = 1631.0/55296.0, a62 = 175.0/512.0,
+                        a63 = 575.0/13824.0,  a64 = 44275.0/110592.0,
+                        a65 = 253.0/4096.0;
+    // 5th-order weights
+    static const double b1 = 37.0/378.0,  b3 = 250.0/621.0,
+                        b4 = 125.0/594.0, b6 = 512.0/1771.0;
+    // 4th-order weights (embedded error estimate)
+    static const double bs1 = 2825.0/27648.0, bs3 = 18575.0/48384.0,
+                        bs4 = 13525.0/55296.0, bs5 = 277.0/14336.0,
+                        bs6 = 1.0/4.0;
+    // Error coefficients (e = b - b*)
+    static const double e1 = b1 - bs1,  e3 = b3 - bs3,
+                        e4 = b4 - bs4,  e5 = -bs5,
+                        e6 = b6 - bs6;
+
+    OdeResult result;
+    double h = (t_end - t0) / 100.0;
+    double t = t0, y = y0;
+    result.t.push_back(t);
+    result.y.push_back(y);
+
+    const int max_steps = 50000;
+    for (int step = 0; step < max_steps && t < t_end; ++step) {
+        if (t + h > t_end) h = t_end - t;
+        double k1 = f(t,              y);
+        double k2 = f(t + c2*h,       y + h*a21*k1);
+        double k3 = f(t + c3*h,       y + h*(a31*k1 + a32*k2));
+        double k4 = f(t + c4*h,       y + h*(a41*k1 + a42*k2 + a43*k3));
+        double k5 = f(t + c5*h,       y + h*(a51*k1 + a52*k2 + a53*k3 + a54*k4));
+        double k6 = f(t + c6*h,       y + h*(a61*k1 + a62*k2 + a63*k3 + a64*k4 + a65*k5));
+        double y5 = y + h*(b1*k1 + b3*k3 + b4*k4 + b6*k6);
+        double err = std::abs(h * (e1*k1 + e3*k3 + e4*k4 + e5*k5 + e6*k6));
+        double sc = atol + rtol * std::max(std::abs(y), std::abs(y5));
+        double err_norm = (sc > 0.0) ? err / sc : err;
+
+        if (err_norm <= 1.0) {
+            t += h;
+            y  = y5;
+            result.t.push_back(t);
+            result.y.push_back(y);
+        }
+        double factor = (err_norm > 0.0) ?
+            std::min(5.0, std::max(0.2, 0.9 * std::pow(err_norm, -0.2))) : 5.0;
+        h *= factor;
+        h = std::max(h, 1e-12 * std::abs(t_end - t0));
+    }
+    return result;
+}
+
 OdeResultVec ode_euler_vec(OdeFuncVec f, double t0,
                             const std::vector<double>& y0,
                             double t_end, size_t steps) {
