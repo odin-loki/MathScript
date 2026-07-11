@@ -20,6 +20,23 @@ double dawsonx(double x);
 double fresnel_c(double x);
 double fresnel_s(double x);
 
+// Voigt profile and pseudo-Voigt approximation (spectroscopy line shapes)
+/// Voigt profile: normalized convolution of a Gaussian (std dev sigma) and a Lorentzian
+/// (half-width gamma), V(x; sigma, gamma) = Re[w(z)] / (sigma sqrt(2 pi)), z = (x + i gamma) /
+/// (sigma sqrt(2)), where w is the Faddeeva function. Integrates to 1 over all x.
+/// Requires sigma > 0; gamma < 0 is clamped to 0. gamma = 0 reduces to a pure Gaussian; as
+/// sigma -> 0 with gamma > 0 fixed, V approaches a pure Lorentzian. sigma <= 0 falls back to
+/// the pure Lorentzian (gamma > 0) or a Dirac-delta-like spike at x = 0 (gamma <= 0 too).
+double voigt(double x, double sigma, double gamma);
+/// Pseudo-Voigt approximation: eta * L(x; gamma_pv) + (1 - eta) * G(x; sigma_pv), a cheap
+/// linear-combination approximation to voigt() using a shared FWHM derived from sigma and
+/// gamma via the Thompson-Cox-Hastings mixing formula. eta in [0, 1] is the caller-supplied
+/// Lorentzian mixing fraction (see pseudo_voigt_auto() to derive eta automatically).
+double pseudo_voigt(double x, double sigma, double gamma, double eta);
+/// Pseudo-Voigt with eta derived automatically from sigma/gamma via the Thompson-Cox-Hastings
+/// formula eta = 1.36603 r - 0.47719 r^2 + 0.11116 r^3, r = f_L / f (shared FWHM f).
+double pseudo_voigt_auto(double x, double sigma, double gamma);
+
 // Gamma family
 double gamma_func(double x);
 double log_gamma(double x);

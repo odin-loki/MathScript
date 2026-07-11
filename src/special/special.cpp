@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <functional>
 #include <limits>
 #include <numeric>
@@ -877,6 +878,54 @@ double beta_inc_reg_impl(double a, double b, double x) {
     return 1.0 - bt * beta_continued_fraction(b, a, 1.0 - x) / b;
 }
 
+// Humlicek (1982) w4 rational approximation of the Faddeeva function w(z) = exp(-z^2)
+// erfc(-iz), specialized to the (v, a) parametrization standard in Voigt-profile work: given
+// real "frequency" v and non-negative "damping" a, this returns w(v + i*a) accurate to ~1e-4
+// relative error (region I/II asymptotics) or better (region III/IV rational forms) over the
+// whole half-plane a >= 0. Region split follows s = |v| + a exactly as in the original paper.
+std::complex<double> humlicek_w4(double v, double a) {
+    const std::complex<double> z(a, -v);
+    const double s = std::abs(v) + a;
+    if (s >= 15.0) {
+        return (z * 0.5641896) / (0.5 + z * z);
+    }
+    if (s >= 5.5) {
+        const std::complex<double> u = z * z;
+        return (z * (1.410474 + u * 0.5641896)) / (0.75 + u * (3.0 + u));
+    }
+    if (a >= 0.195 * std::abs(v) - 0.176) {
+        return (16.4955 + z * (20.20933 + z * (11.96482 + z * (3.778987 + 0.5642236 * z)))) /
+               (16.4955 + z * (38.82363 + z * (39.27121 + z * (21.69274 + z * (6.699398 + z)))));
+    }
+    const std::complex<double> u = z * z;
+    const std::complex<double> numerator =
+        z * (36183.31 - u * (3321.9905 - u * (1540.787 - u * (219.0313 - u * (35.76683 -
+             u * (1.320522 - u * 0.56419))))));
+    const std::complex<double> denominator =
+        32066.6 - u * (24322.84 - u * (9022.228 - u * (2186.181 - u * (364.2191 -
+                  u * (61.57037 - u * (1.841439 - u))))));
+    return std::exp(u) - numerator / denominator;
+}
+
+// Thompson-Cox-Hastings shared FWHM for the pseudo-Voigt approximation, combining the
+// Gaussian FWHM f_g = 2 sigma sqrt(2 ln 2) and Lorentzian FWHM f_l = 2 gamma.
+struct PseudoVoigtFwhm {
+    double f_g;
+    double f_l;
+    double f;
+};
+
+PseudoVoigtFwhm pseudo_voigt_fwhm(double sigma, double gamma) {
+    const double s = std::max(sigma, 0.0);
+    const double g = std::max(gamma, 0.0);
+    const double f_g = 2.0 * s * std::sqrt(2.0 * std::log(2.0));
+    const double f_l = 2.0 * g;
+    const double f5 = std::pow(f_g, 5.0) + 2.69269 * std::pow(f_g, 4.0) * f_l +
+                       2.42843 * std::pow(f_g, 3.0) * f_l * f_l + 4.47163 * f_g * f_g * std::pow(f_l, 3.0) +
+                       0.07842 * f_g * std::pow(f_l, 4.0) + std::pow(f_l, 5.0);
+    return {f_g, f_l, std::pow(f5, 0.2)};
+}
+
 } // namespace
 
 double erf(double x) {
@@ -988,6 +1037,44 @@ double fresnel_s(double x) {
         }
     }
     return x >= 0.0 ? sum : -sum;
+}
+
+double voigt(double x, double sigma, double gamma) {
+    const double g = std::max(gamma, 0.0);
+    if (sigma <= 0.0) {
+        if (g > 0.0) {
+            return g / (M_PI * (x * x + g * g));
+        }
+        return x == 0.0 ? std::numeric_limits<double>::infinity() : 0.0;
+    }
+    const double scale = sigma * std::sqrt(2.0);
+    const double v = x / scale;
+    const double a = g / scale;
+    const std::complex<double> w = humlicek_w4(v, a);
+    return w.real() / (sigma * std::sqrt(2.0 * M_PI));
+}
+
+double pseudo_voigt(double x, double sigma, double gamma, double eta) {
+    const PseudoVoigtFwhm fwhm = pseudo_voigt_fwhm(sigma, gamma);
+    if (fwhm.f <= 0.0) {
+        return x == 0.0 ? std::numeric_limits<double>::infinity() : 0.0;
+    }
+    const double eta_c = std::clamp(eta, 0.0, 1.0);
+    const double gamma_pv = fwhm.f / 2.0;
+    const double sigma_pv = fwhm.f / (2.0 * std::sqrt(2.0 * std::log(2.0)));
+    const double lorentzian = gamma_pv / (M_PI * (x * x + gamma_pv * gamma_pv));
+    const double gaussian = std::exp(-x * x / (2.0 * sigma_pv * sigma_pv)) / (sigma_pv * std::sqrt(2.0 * M_PI));
+    return eta_c * lorentzian + (1.0 - eta_c) * gaussian;
+}
+
+double pseudo_voigt_auto(double x, double sigma, double gamma) {
+    const PseudoVoigtFwhm fwhm = pseudo_voigt_fwhm(sigma, gamma);
+    if (fwhm.f <= 0.0) {
+        return x == 0.0 ? std::numeric_limits<double>::infinity() : 0.0;
+    }
+    const double r = fwhm.f_l / fwhm.f;
+    const double eta = 1.36603 * r - 0.47719 * r * r + 0.11116 * r * r * r;
+    return pseudo_voigt(x, sigma, gamma, eta);
 }
 
 double gamma_func(double x) {
