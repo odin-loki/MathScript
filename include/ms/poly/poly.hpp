@@ -1,7 +1,10 @@
 #pragma once
 
 #include "ms/core/matrix.hpp"
+#include "ms/error/error_types.hpp"
 #include <complex>
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace ms {
@@ -95,6 +98,63 @@ double poly_cheb_eval(const std::vector<double>& cheb_coeffs, double x);
 
 // Sturm chain: count real roots in [a, b]
 int poly_root_count(const std::vector<double>& p, double a, double b);
+
+// --- Rational root extraction / factorization ---
+//
+// Coefficient convention: same as the rest of this module (ascending powers,
+// coeffs[0] is the constant term). Coefficients are treated as exact integers
+// by rounding to the nearest integer; this module does NOT accept arbitrary
+// rational coefficients or integrate with ms::bignum::Rational. Rationale:
+// every other function in ms::poly operates on std::vector<double>, and
+// pulling ms::bignum::Rational (BigInt-backed) into this otherwise
+// double-only module would be inconsistent with that existing convention and
+// would force every caller through a conversion. Callers with genuinely
+// rational (non-integer) coefficients should clear denominators themselves
+// (multiply through by the LCM of denominators) before calling; if any
+// coefficient is not within `tol` of an integer after that, a Result error
+// is returned rather than silently truncating.
+//
+// Finds all RATIONAL roots of a polynomial with (near-)integer coefficients,
+// via the Rational Root Theorem: any rational root p/q (lowest terms) of
+// a_n*x^n + ... + a_0 must have p | a_0 and q | a_n. Candidate p/q pairs are
+// generated from ms::numthy::divisors(|a_0|) and ms::numthy::divisors(|a_n|),
+// tested via poly_eval and confirmed via exact-if-possible synthetic
+// division (poly_div_quot / poly_mod), then divided out to expose higher
+// multiplicities of the same root. Returns each root as a reduced
+// {numerator, denominator} pair with denominator > 0, with multiplicity
+// (i.e. a double root appears twice), in the order found.
+//
+// Errors (Result):
+//  - DomainError if any input coefficient is not within `tol` of an integer.
+//  - DomainError if the (stripped) input is the zero polynomial (every x is
+//    a root -- not representable as a finite list).
+//  - DomainError if a leading/trailing (after stripping x=0 roots) integer
+//    coefficient magnitude exceeds a safety limit (see kRationalRootSafetyLimit
+//    in poly.cpp), to avoid an expensive/unbounded divisor search.
+// A constant (degree-0) nonzero polynomial is valid input and simply yields
+// an empty root list (not an error).
+Result<std::vector<std::pair<int64_t,int64_t>>> poly_rational_roots(
+    const std::vector<double>& p, double tol = 1e-6);
+
+// Full rational factorization built on poly_rational_roots: repeatedly
+// divides out each rational root p/q via synthetic division by the linear
+// factor (q*x - p) until no further rational roots remain.
+struct RationalFactorization {
+    // One entry per linear factor found (q*x - p for root p/q), with
+    // multiplicity, same order as poly_rational_roots.
+    std::vector<std::pair<int64_t,int64_t>> linear_roots;
+    // What remains after dividing out every rational root: an
+    // irreducible-over-Q (as far as rational roots go) remainder, or a
+    // nonzero constant {c} if the polynomial fully factors into linear
+    // terms. Same ascending-coefficient convention as the input. Multiplying
+    // `remainder` by (den*x - num) for every entry in `linear_roots` (via
+    // poly_mul) reconstructs the original polynomial (up to floating-point
+    // tolerance).
+    std::vector<double> remainder;
+};
+
+Result<RationalFactorization> poly_factor_rational(const std::vector<double>& p,
+                                                     double tol = 1e-6);
 
 } // namespace poly
 
