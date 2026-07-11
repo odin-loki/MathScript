@@ -59,6 +59,19 @@ size_t next_power_of_two(size_t n) {
     return p;
 }
 
+std::vector<std::complex<double>> ifft_recursive(std::vector<std::complex<double>> x) {
+    const size_t n = x.size();
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = std::conj(x[i]);
+    }
+    x = fft_recursive(std::move(x));
+    const double inv_n = 1.0 / static_cast<double>(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = std::conj(x[i]) * inv_n;
+    }
+    return x;
+}
+
 } // namespace
 
 Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x) {
@@ -135,6 +148,49 @@ Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<do
             col[r] = out[r * cols + c];
         }
         col = fft_recursive(std::move(col));
+        for (size_t r = 0; r < rows; ++r) {
+            out[r * cols + c] = col[r];
+        }
+    }
+
+    return out;
+}
+
+Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<double>>& data) {
+    if (data.empty()) {
+        return std::vector<std::complex<double>>{};
+    }
+
+    const size_t n = data.size();
+    size_t cols = 1;
+    const size_t root = static_cast<size_t>(std::sqrt(static_cast<double>(n)));
+    for (size_t c = root; c >= 1; --c) {
+        if (n % c == 0) {
+            cols = c;
+            break;
+        }
+    }
+    const size_t rows = n / cols;
+
+    std::vector<std::complex<double>> out = data;
+
+    for (size_t r = 0; r < rows; ++r) {
+        std::vector<std::complex<double>> row(cols);
+        for (size_t c = 0; c < cols; ++c) {
+            row[c] = out[r * cols + c];
+        }
+        row = ifft_recursive(std::move(row));
+        for (size_t c = 0; c < cols; ++c) {
+            out[r * cols + c] = row[c];
+        }
+    }
+
+    for (size_t c = 0; c < cols; ++c) {
+        std::vector<std::complex<double>> col(rows);
+        for (size_t r = 0; r < rows; ++r) {
+            col[r] = out[r * cols + c];
+        }
+        col = ifft_recursive(std::move(col));
         for (size_t r = 0; r < rows; ++r) {
             out[r * cols + c] = col[r];
         }
@@ -255,6 +311,12 @@ Result<std::vector<double>> dst2(const std::vector<double>& x) {
         out[k] = scale * sum;
     }
     return out;
+}
+
+// Orthonormal DST-I (sin basis with sqrt(2/(n+1)) scaling) is symmetric and
+// orthogonal, hence self-inverse: applying dst2 twice recovers the input.
+Result<std::vector<double>> idst2(const std::vector<double>& x) {
+    return dst2(x);
 }
 
 } // namespace ms

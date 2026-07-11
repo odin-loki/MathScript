@@ -83,8 +83,60 @@ TEST(FftExtTest, irfft_hermitian_extension) {
     }
 }
 
+TEST(FftExtTest, idst2_roundtrip) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const auto coeffs = dst2(x).value();
+    const auto back = idst2(coeffs).value();
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(back[i], x[i], 1e-6);
+    }
+}
+
+TEST(FftExtTest, idst2_hand_n1) {
+    const std::vector<double> x{3.0};
+    const auto s = dst2(x).value();
+    const auto back = idst2(s).value();
+    EXPECT_NEAR(back[0], 3.0, 1e-10);
+}
+
+TEST(FftExtTest, idst2_hand_n2) {
+    const std::vector<double> x{1.0, 2.0};
+    const auto s = dst2(x).value();
+    const auto back = idst2(s).value();
+    EXPECT_NEAR(back[0], 1.0, 1e-8);
+    EXPECT_NEAR(back[1], 2.0, 1e-8);
+}
+
+TEST(FftExtTest, idst2_roundtrip_various_lengths) {
+    const std::vector<double> x7{1.0, -0.5, 2.0, 0.0, -1.0, 3.0, 0.25};
+    const auto back7 = idst2(dst2(x7).value()).value();
+    for (size_t i = 0; i < x7.size(); ++i) {
+        EXPECT_NEAR(back7[i], x7[i], 1e-6);
+    }
+
+    std::vector<double> x12(12);
+    for (size_t i = 0; i < x12.size(); ++i) {
+        x12[i] = std::sin(0.3 * static_cast<double>(i));
+    }
+    const auto back12 = idst2(dst2(x12).value()).value();
+    for (size_t i = 0; i < x12.size(); ++i) {
+        EXPECT_NEAR(back12[i], x12[i], 1e-6);
+    }
+}
+
+TEST(FftExtTest, ifft2_roundtrip_square) {
+    const std::vector<std::complex<double>> data{{1, 0}, {2, 0}, {3, 0}, {4, 0}};
+    const auto spectrum = fft2(data).value();
+    const auto back = ifft2(spectrum).value();
+    for (size_t i = 0; i < data.size(); ++i) {
+        EXPECT_NEAR(back[i].real(), data[i].real(), 1e-6);
+        EXPECT_NEAR(back[i].imag(), data[i].imag(), 1e-6);
+    }
+}
+
 TEST(FftExtTest, fft2_empty_guard) {
     EXPECT_TRUE(fft2({}).value().empty());
+    EXPECT_TRUE(ifft2({}).value().empty());
 }
 
 TEST(FftExtTest, dst2_inverse) {

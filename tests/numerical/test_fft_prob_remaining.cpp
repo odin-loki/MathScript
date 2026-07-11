@@ -16,11 +16,106 @@
 using namespace ms;
 
 // ---------------------------------------------------------------------------
-// ifft2: inverse 2D FFT (currently zero test coverage)
+// ifft2: inverse 2D FFT
 // ---------------------------------------------------------------------------
 
-// ifft2 doesn't exist in the header — fft.hpp only has fft2 (no ifft2).
-// Instead add more coverage for fft2 and roundtrip tests.
+namespace {
+
+double max_complex_error(const std::vector<std::complex<double>>& a,
+                         const std::vector<std::complex<double>>& b) {
+    double err = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        err = std::max(err, std::abs(a[i] - b[i]));
+    }
+    return err;
+}
+
+} // namespace
+
+TEST(IFFT2Test, EmptyInput) {
+    EXPECT_TRUE(ifft2({}).value().empty());
+}
+
+TEST(IFFT2Test, Roundtrip_PerfectSquare_Real) {
+    const size_t N = 4;
+    std::vector<std::complex<double>> data(N * N);
+    for (size_t i = 0; i < N * N; ++i) {
+        data[i] = {static_cast<double>((i % 5) + 1), 0.0};
+    }
+    auto spectrum = fft2(data);
+    ASSERT_TRUE(spectrum.has_value());
+    auto back = ifft2(*spectrum);
+    ASSERT_TRUE(back.has_value());
+    EXPECT_LT(max_complex_error(data, *back), 1e-8);
+}
+
+TEST(IFFT2Test, Roundtrip_PerfectSquare_Complex) {
+    const size_t N = 8;
+    std::vector<std::complex<double>> data(N * N);
+    for (size_t i = 0; i < N * N; ++i) {
+        data[i] = {std::cos(static_cast<double>(i)), std::sin(static_cast<double>(i) * 0.3)};
+    }
+    auto spectrum = fft2(data);
+    ASSERT_TRUE(spectrum.has_value());
+    auto back = ifft2(*spectrum);
+    ASSERT_TRUE(back.has_value());
+    EXPECT_LT(max_complex_error(data, *back), 1e-7);
+}
+
+TEST(IFFT2Test, Roundtrip_PrimeLength) {
+    const size_t n = 7;
+    std::vector<std::complex<double>> data(n);
+    for (size_t i = 0; i < n; ++i) {
+        data[i] = {static_cast<double>(i + 1), static_cast<double>(i) * 0.25};
+    }
+    auto spectrum = fft2(data);
+    ASSERT_TRUE(spectrum.has_value());
+    auto back = ifft2(*spectrum);
+    ASSERT_TRUE(back.has_value());
+    EXPECT_LT(max_complex_error(data, *back), 1e-7);
+}
+
+TEST(IFFT2Test, Roundtrip_HighlyComposite) {
+    const size_t n = 60;
+    std::vector<std::complex<double>> data(n);
+    for (size_t i = 0; i < n; ++i) {
+        data[i] = {std::sin(0.17 * static_cast<double>(i)), std::cos(0.11 * static_cast<double>(i))};
+    }
+    auto spectrum = fft2(data);
+    ASSERT_TRUE(spectrum.has_value());
+    auto back = ifft2(*spectrum);
+    ASSERT_TRUE(back.has_value());
+    EXPECT_LT(max_complex_error(data, *back), 1e-6);
+}
+
+TEST(IFFT2Test, ConstantInput_RecoversConstant) {
+    const size_t N = 4;
+    std::vector<std::complex<double>> data(N * N, {2.5, 0.0});
+    auto spectrum = fft2(data);
+    ASSERT_TRUE(spectrum.has_value());
+    auto back = ifft2(*spectrum);
+    ASSERT_TRUE(back.has_value());
+    for (const auto& v : *back) {
+        EXPECT_NEAR(v.real(), 2.5, 1e-8);
+        EXPECT_NEAR(v.imag(), 0.0, 1e-8);
+    }
+}
+
+TEST(IFFT2Test, Impulse_RecoversImpulse) {
+    const size_t N = 4;
+    std::vector<std::complex<double>> data(N * N, {0.0, 0.0});
+    data[0] = {1.0, 0.0};
+    auto spectrum = fft2(data);
+    ASSERT_TRUE(spectrum.has_value());
+    auto back = ifft2(*spectrum);
+    ASSERT_TRUE(back.has_value());
+    EXPECT_NEAR((*back)[0].real(), 1.0, 1e-8);
+    EXPECT_NEAR((*back)[0].imag(), 0.0, 1e-8);
+    for (size_t i = 1; i < back->size(); ++i) {
+        EXPECT_NEAR((*back)[i].real(), 0.0, 1e-8);
+        EXPECT_NEAR((*back)[i].imag(), 0.0, 1e-8);
+    }
+}
 
 TEST(FFT2Extended, BasicSquareInput) {
     // fft2 of a constant sequence

@@ -101,6 +101,7 @@ TEST(FftCoreTest, empty_shift_and_transforms) {
     EXPECT_TRUE(dct2({}).value().empty());
     EXPECT_TRUE(idct2({}).value().empty());
     EXPECT_TRUE(dst2({}).value().empty());
+    EXPECT_TRUE(idst2({}).value().empty());
 
     const std::vector<std::complex<double>> spec{{1, 0}, {0, 0}};
     EXPECT_TRUE(irfft(spec, 0).value().empty());
