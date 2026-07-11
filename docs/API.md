@@ -70,9 +70,9 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 |--------|-------------|
 | `fft/fft.hpp` | `fft`, `ifft`, `rfft`, `dft`, `dct2`/`dst2`, and shift helpers |
 | `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`), Mann-Whitney U (`mann_whitney_u`), two-sample KS (`ks_test_2sample`); bootstrap resampling (`bootstrap_mean`, mean-only `bootstrap_ci`, general `bootstrap_ci` with percentile-method CI for arbitrary statistics via `BootstrapResult`) |
-| `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma, uniform |
+| `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma (`gamma_cdf`), beta (`beta_pdf`/`beta_cdf`), F (`f_pdf`/`f_cdf`), uniform |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints` |
-| `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions |
+| `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions; `welch_psd` (Welch PSD via segmented FFT with overlap) and `spectrogram` (STFT magnitude spectrogram, same windowing convention) |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye` |
 | `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`, `ode_rk45_vec`; symplectic: `ode_verlet`, `ode_verlet_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`, `ode_bdf2` (BDF2 multistep, A-stable, bootstraps first step via BDF1); BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
 | `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson, unconditionally stable), `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d`, `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d`, `pde_reaction_diffusion_1d` (Fisher-KPP, zero-flux Neumann BC) with CFL/stability guards |
@@ -156,7 +156,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `ml/ml.hpp` | Linear/ridge/lasso/logistic regression, KNN, naive Bayes, decision trees; `SVM` (binary classifier via SMO with linear/RBF kernels); `RandomForest` (bootstrap-aggregated ensemble with feature subsampling) and `GradientBoosting` (functional-gradient-boosted shallow trees for regression); KMeans, DBSCAN, agglomerative clustering; PCA, t-SNE; autodiff, feedforward nets; loss/metrics, scalers, cross-validation |
+| `ml/ml.hpp` | Linear/ridge/lasso/logistic regression, KNN, naive Bayes, decision trees; `SVM` (binary classifier via SMO with linear/RBF kernels); `RandomForest` (bootstrap-aggregated ensemble with feature subsampling) and `GradientBoosting` (functional-gradient-boosted shallow trees for regression); `GaussianMixture` (diagonal-covariance GMM via EM); KMeans, DBSCAN, agglomerative clustering; PCA, t-SNE; autodiff, feedforward nets; loss/metrics, scalers, cross-validation |
 
 ## Image Processing — Wave 60 (`include/ms/image/`)
 
@@ -278,6 +278,24 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `ode_rk4_vec("f0; f1; ...", t0, y0_vec, t_end, steps)` | Classical RK4 on vector systems with parsed per-component formulas |
 | `ode_rk45_vec("f0; f1; ...", t0, y0_vec, t_end, rtol, atol)` | Adaptive Dormand-Prince RK45 on vector systems with parsed per-component formulas |
 
+**Wave 181 — framework and spectral REPL bindings:**
+
+| Call | Description |
+|------|-------------|
+| `gria_entropy([data], bins)` | Shannon entropy of histogram-binned data (default `bins=16`) |
+| `gria_matrix_alpha(X, FX)` | Information-theoretic alpha between input matrix `X` and transformed `FX` |
+| `gria_is_critical(a, tol)` | Whether alpha is within tolerance of the critical threshold (default `tol=0.05`) |
+| `gria_classify(a)` | Classify compute regime from alpha: reversible / critical / irreversible |
+| `cypha_nig_fit([data])` | Fit Normal-Inverse-Gaussian parameters to a data vector |
+| `cypha_nig_pdf(x, mu, a, b, d)` | NIG probability density at `x` |
+| `cypha_nig_cdf(x, mu, a, b, d)` | NIG cumulative distribution at `x` |
+| `cypha_nig_sample(mu, a, b, d, n)` | Draw `n` samples from an NIG distribution |
+| `cellai_hebbian_update(W, v, h, lr)` | Hebbian weight update for Boltzmann energy model |
+| `cellai_energy(W, v, h)` | Boltzmann energy \(-v^T W h\) for weight matrix `W` and state vectors `v`, `h` |
+| `izaac_estimate_pi(n)` | Monte Carlo \(\pi\) estimate using `n` samples (requires prior `izaac seed N`) |
+| `izaac_laplace_noise(value, epsilon, sensitivity)` | Laplace mechanism differential-privacy noise |
+| `izaac_gaussian_noise(value, epsilon, delta, sensitivity)` | Gaussian mechanism differential-privacy noise |
+
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 
 | Header | Description |
@@ -295,5 +313,5 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` genuinely evaluates `algo.representation` row-by-row against input data columns (`x0`, `x1`, …) via `Sym::eval` |
 | `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory, `hebbian_update`, `energy` (Boltzmann -vᵀWh), `CellMemory::consolidate` short→long-term decay, `cell_to_cypha_features` |
 | `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate` |
-| `frameworks/gria/gria.hpp` | Information-theoretic `alpha`, GF(2^n), cellular automata, LFSR utilities |
-| `frameworks/izaac/izaac.hpp` | VRF `CSPRNG`, session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`/`run_backtest`; `crypto::encrypt`/`decrypt` (`CipherText` CSPRNG keystream XOR + keyed tag, demo/internal use only), `mpc::split_secret`/`reconstruct_secret` (`Share`, Shamir k-of-n over prime field `PRIME`); `consensus::Cluster` (in-memory Raft-style election/replication simulation: `run_election`, `replicate`, `current_leader`; demo/testing only, not networked production consensus) |
+| `frameworks/gria/gria.hpp` | Information-theoretic `entropy`/`compute_alpha`/`matrix_alpha`/`is_critical`/`classify`, GF(2^n), cellular automata, LFSR utilities |
+| `frameworks/izaac/izaac.hpp` | VRF `CSPRNG` (xoshiro256**), session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`, `estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`/`run_backtest`; `crypto::encrypt`/`decrypt` (`CipherText` CSPRNG keystream XOR + keyed tag, demo/internal use only), `mpc::split_secret`/`reconstruct_secret` (`Share`, Shamir k-of-n over prime field `PRIME`); `consensus::Cluster` (in-memory Raft-style election/replication simulation: `run_election`, `replicate`, `current_leader`; demo/testing only, not networked production consensus) |

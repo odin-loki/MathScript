@@ -25,5 +25,12 @@ double t_pdf(double x, double df);
 double t_cdf(double x, double df);
 
 double gamma_pdf(double x, double shape, double scale);
+double gamma_cdf(double x, double shape, double scale);
+
+double beta_pdf(double x, double alpha, double beta);
+double beta_cdf(double x, double alpha, double beta);
+
+double f_pdf(double x, double d1, double d2);
+double f_cdf(double x, double d1, double d2);
 
 } // namespace ms
