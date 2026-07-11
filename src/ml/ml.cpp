@@ -448,6 +448,156 @@ Vec GradientBoosting::predict(const Mat& X) const {
     return pred;
 }
 
+// ========================== Support Vector Machine (SMO) ==========================
+
+static bool svm_normalize_labels(Vec& y) {
+    bool saw0=false, saw_neg1=false;
+    for (double v:y) {
+        if (v==0.0) saw0=true;
+        else if (v==1.0) {}
+        else if (v==-1.0) saw_neg1=true;
+        else return false;
+    }
+    if (saw0 && saw_neg1) return false;
+    if (saw0)
+        for (auto& v:y) v=v==0.0?-1.0:1.0;
+    return true;
+}
+
+static double svm_linear_kernel(const Vec& xi, const Vec& xj) {
+    return vec_dot(xi, xj);
+}
+
+static double svm_rbf_kernel(const Vec& xi, const Vec& xj, double gamma) {
+    double sq=0;
+    for (size_t k=0;k<xi.size();++k) {
+        double d=xi[k]-xj[k];
+        sq+=d*d;
+    }
+    return std::exp(-gamma*sq);
+}
+
+static double svm_kernel(const Vec& xi, const Vec& xj, const SVMConfig& cfg) {
+    return cfg.kernel==SVMKernel::Linear
+        ? svm_linear_kernel(xi, xj)
+        : svm_rbf_kernel(xi, xj, cfg.gamma);
+}
+
+void SVM::fit(const Mat& X, const Vec& y_in) {
+    support_vectors.clear();
+    alphas.clear();
+    sv_labels.clear();
+    b=0.0;
+    if (X.empty() || y_in.empty() || X.size()!=y_in.size()) return;
+
+    Vec y=y_in;
+    if (!svm_normalize_labels(y)) return;
+
+    int n=(int)X.size();
+    double C=config.C, tol=config.tol;
+
+    Mat K(n, Vec(n));
+    for (int i=0;i<n;++i)
+        for (int j=0;j<n;++j)
+            K[i][j]=svm_kernel(X[i], X[j], config);
+
+    Vec alpha(n, 0.0);
+    Vec E(n);
+    for (int i=0;i<n;++i) E[i]=-y[i];
+
+    int passes=0;
+    while (passes<config.max_iter) {
+        int num_changed=0;
+        for (int i=0;i<n;++i) {
+            double fi=b;
+            for (int j=0;j<n;++j) fi+=alpha[j]*y[j]*K[i][j];
+            E[i]=fi-y[i];
+
+            double ri=y[i]*fi;
+            bool kkt_violated =
+                (alpha[i]<tol && ri<1.0-tol) ||
+                (alpha[i]>C-tol && ri>1.0+tol) ||
+                (alpha[i]>=tol && alpha[i]<=C-tol && std::abs(ri-1.0)>tol);
+            if (!kkt_violated) continue;
+
+            int j=-1;
+            double max_delta=0;
+            for (int jj=0;jj<n;++jj) {
+                if (jj==i) continue;
+                double delta=std::abs(E[i]-E[jj]);
+                if (delta>max_delta) { max_delta=delta; j=jj; }
+            }
+            if (j<0) continue;
+
+            double eta=K[i][i]+K[j][j]-2.0*K[i][j];
+            if (eta<=1e-12) continue;
+
+            double ai=alpha[i], aj=alpha[j];
+            double Ei=E[i], Ej=E[j];
+
+            double L, H;
+            if (y[i]!=y[j]) {
+                L=std::max(0.0, aj-ai);
+                H=std::min(C, C+aj-ai);
+            } else {
+                L=std::max(0.0, ai+aj-C);
+                H=std::min(C, ai+aj);
+            }
+            if (L>=H) continue;
+
+            double aj_new=aj+y[j]*(Ei-Ej)/eta;
+            aj_new=std::clamp(aj_new, L, H);
+            if (std::abs(aj_new-aj)<1e-12) continue;
+
+            double ai_new=ai+y[i]*y[j]*(aj-aj_new);
+
+            double b1=b-Ei-y[i]*(ai_new-ai)*K[i][i]-y[j]*(aj_new-aj)*K[i][j];
+            double b2=b-Ej-y[i]*(ai_new-ai)*K[i][j]-y[j]*(aj_new-aj)*K[j][j];
+
+            if (ai_new>tol && ai_new<C-tol) b=b1;
+            else if (aj_new>tol && aj_new<C-tol) b=b2;
+            else b=(b1+b2)*0.5;
+
+            double dai=ai_new-ai, daj=aj_new-aj;
+            alpha[i]=ai_new;
+            alpha[j]=aj_new;
+
+            for (int k=0;k<n;++k)
+                E[k]+=y[i]*dai*K[i][k]+y[j]*daj*K[j][k];
+
+            num_changed++;
+        }
+        if (num_changed==0) ++passes;
+        else passes=0;
+    }
+
+    this->b=b;
+    for (int i=0;i<n;++i) {
+        if (alpha[i]>1e-7) {
+            support_vectors.push_back(X[i]);
+            alphas.push_back(alpha[i]);
+            sv_labels.push_back(y[i]);
+        }
+    }
+}
+
+Vec SVM::decision_function(const Mat& X) const {
+    Vec out(X.size(), b);
+    for (size_t i=0;i<X.size();++i) {
+        double sum=b;
+        for (size_t j=0;j<support_vectors.size();++j)
+            sum+=alphas[j]*sv_labels[j]*svm_kernel(support_vectors[j], X[i], config);
+        out[i]=sum;
+    }
+    return out;
+}
+
+Vec SVM::predict(const Mat& X) const {
+    auto df=decision_function(X);
+    for (auto& v:df) v=v>=0.0?1.0:-1.0;
+    return df;
+}
+
 // ========================== KMeans ==========================
 
 void KMeans::fit(const Mat& X) {
