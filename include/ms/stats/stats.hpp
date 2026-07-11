@@ -93,4 +93,25 @@ std::pair<double, double> bootstrap_ci(std::span<const double> data,
                                         int n_boot = 1000,
                                         unsigned seed = 42);
 
+struct BootstrapResult {
+    double point_estimate;   // the statistic computed on the original (full) sample
+    double lower;             // lower bound of the confidence interval
+    double upper;             // upper bound of the confidence interval
+    double std_error;         // bootstrap standard error (std dev of the resampled statistic distribution)
+};
+
+// Computes a bootstrap confidence interval for an arbitrary statistic function `stat_fn`
+// (e.g. mean, median, std dev, or any custom function of a data sample) via resampling with
+// replacement. Uses the percentile method (the (alpha/2, 1-alpha/2) percentiles of the
+// bootstrap distribution of the statistic) for the confidence interval — simple and standard,
+// but with known limitations vs. BCa or studentized bootstrap for skewed distributions.
+// `n_resamples` controls how many bootstrap samples to draw (default 1000); `confidence_level`
+// e.g. 0.95 for a 95% CI; `seed` for reproducible resampling RNG.
+BootstrapResult bootstrap_ci(
+    std::span<const double> data,
+    const std::function<double(std::span<const double>)>& stat_fn,
+    size_t n_resamples = 1000,
+    double confidence_level = 0.95,
+    unsigned seed = 42);
+
 } // namespace ms

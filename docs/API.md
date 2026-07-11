@@ -69,7 +69,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | Header | Description |
 |--------|-------------|
 | `fft/fft.hpp` | `fft`, `ifft`, `rfft`, `dft`, `dct2`/`dst2`, and shift helpers |
-| `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`), Mann-Whitney U (`mann_whitney_u`), two-sample KS (`ks_test_2sample`) |
+| `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`), Mann-Whitney U (`mann_whitney_u`), two-sample KS (`ks_test_2sample`); bootstrap resampling (`bootstrap_mean`, mean-only `bootstrap_ci`, general `bootstrap_ci` with percentile-method CI for arbitrary statistics via `BootstrapResult`) |
 | `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma, uniform |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions |
@@ -156,7 +156,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `ml/ml.hpp` | Linear/ridge/lasso/logistic regression, KNN, naive Bayes, decision trees; `RandomForest` (bootstrap-aggregated ensemble with feature subsampling) and `GradientBoosting` (functional-gradient-boosted shallow trees for regression); KMeans, DBSCAN, agglomerative clustering; PCA, t-SNE; autodiff, feedforward nets; loss/metrics, scalers, cross-validation |
+| `ml/ml.hpp` | Linear/ridge/lasso/logistic regression, KNN, naive Bayes, decision trees; `SVM` (binary classifier via SMO with linear/RBF kernels); `RandomForest` (bootstrap-aggregated ensemble with feature subsampling) and `GradientBoosting` (functional-gradient-boosted shallow trees for regression); KMeans, DBSCAN, agglomerative clustering; PCA, t-SNE; autodiff, feedforward nets; loss/metrics, scalers, cross-validation |
 
 ## Image Processing — Wave 60 (`include/ms/image/`)
 
@@ -267,6 +267,17 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `ode_rk45("expr", t0, y0, t_end, rtol, atol)` | Adaptive Dormand-Prince RK45 with parsed formula RHS |
 | `ode_backward_euler("expr", t0, y0, t_end, steps)` | Implicit backward Euler (Newton iteration) with parsed formula RHS |
 
+**Wave 180 — extended ODE formula-string bindings:**
+
+| Call | Description |
+|------|-------------|
+| `ode_bdf2("expr", t0, y0, t_end, steps)` | A-stable BDF2 multistep stiff scalar solver; first step bootstrapped via BDF1; parsed formula RHS |
+| `ode_verlet("accel_expr", t0, q0, v0, t_end, steps)` | Velocity Verlet for second-order q''=a(t,q); `accel_expr` evaluated with `{t, q}` bindings |
+| `ode_verlet_vec("a0; a1; ...", t0, q0_vec, v0_vec, t_end, steps)` | Vector velocity Verlet; semicolon-separated acceleration formulas with `{t, q0..qN-1}` env |
+| `ode_euler_vec("f0; f1; ...", t0, y0_vec, t_end, steps)` | Forward Euler on vector systems; per-component formulas with shared `{t, y0..yN-1}` env |
+| `ode_rk4_vec("f0; f1; ...", t0, y0_vec, t_end, steps)` | Classical RK4 on vector systems with parsed per-component formulas |
+| `ode_rk45_vec("f0; f1; ...", t0, y0_vec, t_end, rtol, atol)` | Adaptive Dormand-Prince RK45 on vector systems with parsed per-component formulas |
+
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 
 | Header | Description |
@@ -285,4 +296,4 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory, `hebbian_update`, `energy` (Boltzmann -vᵀWh), `CellMemory::consolidate` short→long-term decay, `cell_to_cypha_features` |
 | `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate` |
 | `frameworks/gria/gria.hpp` | Information-theoretic `alpha`, GF(2^n), cellular automata, LFSR utilities |
-| `frameworks/izaac/izaac.hpp` | VRF `CSPRNG`, session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`/`run_backtest`; `crypto::encrypt`/`decrypt` (`CipherText` CSPRNG keystream XOR + keyed tag, demo/internal use only), `mpc::split_secret`/`reconstruct_secret` (`Share`, Shamir k-of-n over prime field `PRIME`) |
+| `frameworks/izaac/izaac.hpp` | VRF `CSPRNG`, session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`, `backtest::simulate_gbm_path`/`run_backtest`; `crypto::encrypt`/`decrypt` (`CipherText` CSPRNG keystream XOR + keyed tag, demo/internal use only), `mpc::split_secret`/`reconstruct_secret` (`Share`, Shamir k-of-n over prime field `PRIME`); `consensus::Cluster` (in-memory Raft-style election/replication simulation: `run_election`, `replicate`, `current_leader`; demo/testing only, not networked production consensus) |
