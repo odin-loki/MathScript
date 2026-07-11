@@ -39,4 +39,21 @@ double f_pdf(double x, double d1, double d2);
 double f_cdf(double x, double d1, double d2);
 double f_ppf(double p, double d1, double d2);
 
+/// Lognormal(mu, sigma): X = exp(Z) where Z ~ Normal(mu, sigma). mu/sigma are the mean/stddev
+/// of the underlying normal, not of X itself. Support x > 0.
+double lognormal_pdf(double x, double mu, double sigma);
+double lognormal_cdf(double x, double mu, double sigma);
+double lognormal_ppf(double p, double mu, double sigma);
+
+/// Weibull(lambda, k): scale lambda > 0, shape k > 0. Support x >= 0. k=1 reduces to
+/// Exponential(rate=1/lambda).
+double weibull_pdf(double x, double lambda, double k);
+double weibull_cdf(double x, double lambda, double k);
+double weibull_ppf(double p, double lambda, double k);
+
+/// Laplace(mu, b): location mu, scale b > 0 (double exponential distribution).
+double laplace_pdf(double x, double mu, double b);
+double laplace_cdf(double x, double mu, double b);
+double laplace_ppf(double p, double mu, double b);
+
 } // namespace ms
