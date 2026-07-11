@@ -138,6 +138,39 @@ TEST(FFTDctAdv, DST2_ZeroInput_ZeroOutput) {
     for (auto v : dst_res.value()) EXPECT_NEAR(v, 0.0, 1e-10);
 }
 
+TEST(FFTDctAdv, IDST2_Roundtrip_Impulse) {
+    int N = 16;
+    std::vector<double> signal(N, 0.0);
+    signal[0] = 1.0;
+    auto dst_res = dst2(signal);
+    ASSERT_TRUE(dst_res.has_value());
+    auto back_res = idst2(dst_res.value());
+    ASSERT_TRUE(back_res.has_value());
+    EXPECT_NEAR(back_res.value()[0], 1.0, 1e-9);
+    for (int i = 1; i < N; ++i) {
+        EXPECT_NEAR(back_res.value()[static_cast<size_t>(i)], 0.0, 1e-9);
+    }
+}
+
+TEST(FFTDctAdv, IDST2_Roundtrip_Sine) {
+    int N = 24;
+    std::vector<double> signal(N);
+    for (int i = 0; i < N; ++i) {
+        signal[i] = std::sin(M_PI * static_cast<double>(i + 1) / static_cast<double>(N + 1));
+    }
+    auto dst_res = dst2(signal);
+    ASSERT_TRUE(dst_res.has_value());
+    auto back_res = idst2(dst_res.value());
+    ASSERT_TRUE(back_res.has_value());
+    for (int i = 0; i < N; ++i) {
+        EXPECT_NEAR(back_res.value()[static_cast<size_t>(i)], signal[i], 1e-8);
+    }
+}
+
+TEST(FFTDctAdv, IDST2_EmptyInput) {
+    EXPECT_TRUE(idst2({}).value().empty());
+}
+
 // ---------------------------------------------------------------------------
 // fftshift / ifftshift
 // ---------------------------------------------------------------------------
