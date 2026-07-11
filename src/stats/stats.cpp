@@ -541,6 +541,72 @@ KruskalWallisResult kruskal_wallis(const std::vector<std::vector<double>>& group
     return result;
 }
 
+FriedmanResult friedman(const std::vector<std::vector<double>>& data) {
+    FriedmanResult result{};
+    const int n = static_cast<int>(data.size());
+    if (n < 2) {
+        return result;
+    }
+    const int k = static_cast<int>(data[0].size());
+    if (k < 2) {
+        return result;
+    }
+    for (const auto& row : data) {
+        if (static_cast<int>(row.size()) != k) {
+            return result;
+        }
+    }
+    std::vector<double> rank_sums(static_cast<size_t>(k), 0.0);
+    double tie_cubed_sum = 0.0;
+    for (const auto& row : data) {
+        const auto ranks = average_ranks(row);
+        for (int j = 0; j < k; ++j) {
+            rank_sums[static_cast<size_t>(j)] += ranks[static_cast<size_t>(j)];
+        }
+        std::unordered_map<double, int> tie_counts;
+        for (double v : row) {
+            ++tie_counts[v];
+        }
+        for (const auto& [value, count] : tie_counts) {
+            (void)value;
+            if (count > 1) {
+                tie_cubed_sum += static_cast<double>(count * count * count - count);
+            }
+        }
+    }
+    double sum_sq = 0.0;
+    for (int j = 0; j < k; ++j) {
+        const double Rj = rank_sums[static_cast<size_t>(j)];
+        sum_sq += Rj * Rj;
+    }
+    const double n_d = static_cast<double>(n);
+    const double k_d = static_cast<double>(k);
+    double chi2 = (12.0 / (n_d * k_d * (k_d + 1.0))) * sum_sq - 3.0 * n_d * (k_d + 1.0);
+    const double tie_denom = n_d * k_d * (k_d * k_d * k_d - k_d);
+    if (tie_cubed_sum > 0.0 && tie_denom > 0.0) {
+        const double correction = 1.0 - tie_cubed_sum / tie_denom;
+        if (correction <= 0.0) {
+            if (chi2 <= 0.0) {
+                result.df = k - 1;
+                result.chi2_stat = 0.0;
+                result.p_value = 1.0;
+            }
+            return result;
+        }
+        chi2 /= correction;
+    }
+    result.df = k - 1;
+    if (result.df < 1) {
+        return result;
+    }
+    if (chi2 < 0.0) {
+        chi2 = 0.0;
+    }
+    result.chi2_stat = chi2;
+    result.p_value = 1.0 - chi2_cdf(chi2, static_cast<double>(result.df));
+    return result;
+}
+
 KSTestResult ks_test_2sample(std::span<const double> a, std::span<const double> b) {
     KSTestResult result{};
     if (a.empty() || b.empty()) {
