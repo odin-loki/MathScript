@@ -3,6 +3,23 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 178 — Symbolic Expression Parser, Symplectic/ADI Solvers, AXIOM Evaluation Fix)
+
+### Added (Wave 178)
+- `ms::pde`: `pde_reaction_diffusion_1d` (Fisher-KPP reaction-diffusion, explicit FTCS diffusion + forward-Euler reaction, zero-flux Neumann BC via ghost-point reflection), `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson 2D heat equation, unconditionally stable, reuses the existing Thomas tridiagonal solver along each direction) — extends `tests/unit/test_pde_extended.cpp`
+- `ms::ode`: `ode_verlet`/`ode_verlet_vec` (velocity Verlet symplectic integrator for second-order q''=a(t,q) systems — verified long-time energy conservation vs. RK4 drift on the harmonic oscillator), `ode_rk45_vec` (adaptive Dormand-Prince RK45 generalized to vector systems with max-norm step-size control) — extends `tests/unit/test_ode_advanced2.cpp`
+- `ms::core::Sym`: replaced the previous string-concatenation-only stub with a real recursive-descent expression parser and `eval(env)` evaluator supporting `+ - * /`, unary minus, parentheses, literals, named variables (missing variables default to 0.0, documented), and `sin`/`cos`/`exp`/`log`/`sqrt`/`tanh`; `operator+/-/*//` now parenthesize operands so programmatically-built `Sym` trees remain correctly round-trippable
+- `ms::axiom`: fixed `Axiom::evaluate` — previously a no-op stub (`return data;`) that never actually ran the evolved algorithm's symbolic representation; now genuinely evaluates `algo.representation` row-by-row against input data (columns bound to `x0`, `x1`, ...) via the upgraded `Sym::eval`
+- `ms::symbolic`: `sym_parse(text)` — a recursive-descent parser converting standard math notation (`^` `*` `/` `+` `-`, unary minus, parens, `sin`/`cos`/`tan`/`exp`/`log`/`sqrt`, variables, decimal/exponent literals) into the existing `SymExpr` tree, composing directly with `sym_diff`/`sym_simplify`/`sym_integrate`/`sym_substitute`/`sym_eval`
+- REPL: first-ever exposure of the symbolic engine — `sym_diff("expr","var")`, `sym_simplify("expr")`, `sym_integrate("expr","var")`, `sym_eval("expr","var=value")`, all backed by `sym_parse`; help text updated; fuzz corpus seeds added for all 4; new `tests/integration/test_symbolic_repl_pipeline.cpp`
+- `docs/API.md`: synced entries for `ms::pde`, `ms::ode` advanced solvers, `ms::symbolic`, `ms::special` DLMF additions, and the `ms::izaac`/`ms::cypha`/`ms::cellai` framework additions through Wave 177
+- Tag checklist suite count updated 355→356 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
+- **Total Wave 178: 356 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- `Axiom::evolve`'s mutation step still perturbs `fitness` directly rather than mutating the `representation`/`evaluation`/`selection`/`mutation` expression trees themselves (i.e. no real genetic-programming crossover/mutation of program structure yet) — a known, documented simplification; full GP tree mutation is a larger undertaking than this wave's scope.
+- REPL/fuzz wiring for `ode_verlet`/`ode_verlet_vec`/`ode_rk45_vec` and the remaining callback-based ODE/DAE solvers was NOT added this wave despite the new `sym_parse` bridge existing — wiring an ODE right-hand-side through a parsed `SymExpr` callback (`sym_eval` per RK stage) is a natural next step but requires careful REPL argument-parsing work (multi-argument dispatch mixing quoted formula strings with numeric args) that was deferred to keep this wave's scope bounded; tracked as the next concrete follow-up.
+
 ## [1.0.0] — 2026-07-11 (Wave 177 — Implicit/DAE Solvers, Framework Application Namespaces, PDE REPL Wiring)
 
 ### Added (Wave 177)
