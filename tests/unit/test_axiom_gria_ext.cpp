@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "ms/frameworks/axiom/axiom.hpp"
@@ -223,6 +225,252 @@ TEST(AxiomGriaExt, EvolveImmediateTermination) {
     ASSERT_TRUE(best.has_value());
     // At most one generation worth of evaluations
     EXPECT_LE(eval_count, 8); // generous upper bound: 4 pop * 2 passes
+}
+
+// ---------------------------------------------------------------------------
+// Axiom: GP initial population diversity and structural evolution
+// ---------------------------------------------------------------------------
+
+TEST(AxiomGriaExt, InitialPopulationIsDiverse) {
+    ms::izaac::seed_session(static_cast<uint64_t>(54321));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 20, .max_depth = 6},
+        registry);
+
+    std::set<std::string> unique_repr;
+    for (const auto& algo : engine.population()) {
+        unique_repr.insert(algo.representation.to_string());
+    }
+    EXPECT_GE(unique_repr.size(), 5u);
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, InitialPopulationNotUniformX) {
+    ms::izaac::seed_session(static_cast<uint64_t>(99991));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 12, .max_depth = 5},
+        registry);
+
+    size_t not_x = 0;
+    for (const auto& algo : engine.population()) {
+        if (algo.representation.to_string() != "x") {
+            ++not_x;
+        }
+    }
+    EXPECT_EQ(not_x, engine.population().size());
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, EvolveChangesRepresentations) {
+    ms::izaac::seed_session(static_cast<uint64_t>(111));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{
+            .population_size = 16,
+            .max_generations = 12,
+            .mutation_rate = 0.25,
+            .crossover_rate = 0.8,
+            .tournament_size = 3,
+            .max_depth = 5},
+        registry);
+
+    std::set<std::string> initial_repr;
+    for (const auto& algo : engine.population()) {
+        initial_repr.insert(algo.representation.to_string());
+    }
+
+    const auto best = engine.evolve(
+        [](const ms::axiom::Algorithm& a) {
+            return a.representation.eval({{"x0", 1.0}, {"x1", 2.0}});
+        },
+        [](const ms::axiom::Algorithm&) { return false; });
+    ASSERT_TRUE(best.has_value());
+
+    size_t novel = 0;
+    for (const auto& algo : engine.population()) {
+        if (initial_repr.find(algo.representation.to_string()) == initial_repr.end()) {
+            ++novel;
+        }
+    }
+    EXPECT_GE(novel, engine.population().size() / 4);
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, SymbolicRegressionFitnessImproves) {
+    ms::izaac::seed_session(static_cast<uint64_t>(424242));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::EvolutionConfig cfg{};
+    cfg.population_size = 50;
+    cfg.max_generations = 40;
+    cfg.max_depth = 6;
+    cfg.mutation_rate = 0.2;
+    cfg.crossover_rate = 0.75;
+    cfg.tournament_size = 4;
+    ms::axiom::Axiom engine(cfg, registry);
+
+    DMatrix data{{0.0}, {1.0}, {2.0}, {3.0}, {-1.0}, {0.5}};
+
+    const auto target_fitness = [&](const ms::axiom::Algorithm& a) {
+        double mse = 0.0;
+        for (size_t i = 0; i < data.rows(); ++i) {
+            const double x0 = data(i, 0);
+            const double target = 2.0 * x0 + 1.0;
+            const double pred = a.representation.eval({{"x0", x0}});
+            const double err = pred - target;
+            mse += err * err;
+        }
+        return -mse / static_cast<double>(data.rows());
+    };
+
+    double initial_best = -1e300;
+    for (const auto& algo : engine.population()) {
+        initial_best = std::max(initial_best, target_fitness(algo));
+    }
+
+    const auto best = engine.evolve(
+        target_fitness,
+        [](const ms::axiom::Algorithm&) { return false; });
+    ASSERT_TRUE(best.has_value());
+
+    EXPECT_GT(best->fitness, initial_best + 1.0);
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, EvaluateMatchesDirectSymEval) {
+    ms::izaac::seed_session(static_cast<uint64_t>(31415));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 8, .max_depth = 5},
+        registry);
+
+    DMatrix data{{1.0, 2.0}, {3.0, 4.0}, {-1.0, 0.5}};
+    for (const auto& algo : engine.population()) {
+        const auto result = engine.evaluate(algo, data);
+        ASSERT_TRUE(result.has_value());
+        for (size_t i = 0; i < data.rows(); ++i) {
+            std::map<std::string, double> env;
+            for (size_t j = 0; j < data.cols(); ++j) {
+                env["x" + std::to_string(j)] = data(i, j);
+            }
+            const double direct = algo.representation.eval(env);
+            EXPECT_TRUE(std::isfinite((*result)(i, 0)));
+            EXPECT_DOUBLE_EQ((*result)(i, 0), direct);
+        }
+    }
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, MaxDepthLimitsExpressionComplexity) {
+    ms::izaac::seed_session(static_cast<uint64_t>(999));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{
+            .population_size = 24,
+            .max_generations = 30,
+            .mutation_rate = 0.3,
+            .crossover_rate = 0.85,
+            .max_depth = 4},
+        registry);
+
+    const auto evolved = engine.evolve(
+        [](const ms::axiom::Algorithm& a) {
+            return a.representation.eval({{"x0", 0.5}, {"x1", -0.25}});
+        },
+        [](const ms::axiom::Algorithm&) { return false; });
+    ASSERT_TRUE(evolved.has_value());
+
+    for (const auto& algo : engine.population()) {
+        EXPECT_LE(algo.representation.to_string().size(), 180u);
+    }
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, EvolveDeterministicWithFixedSeed) {
+    ms::izaac::seed_session(static_cast<uint64_t>(2024));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::EvolutionConfig cfg{};
+    cfg.population_size = 10;
+    cfg.max_generations = 8;
+    cfg.max_depth = 5;
+
+    ms::axiom::Axiom engine_a(cfg, registry);
+    const auto best_a = engine_a.evolve(
+        [](const ms::axiom::Algorithm& a) { return a.representation.eval({{"x0", 1.0}}); },
+        [](const ms::axiom::Algorithm&) { return false; });
+    ms::izaac::clear_session();
+
+    ms::izaac::seed_session(static_cast<uint64_t>(2024));
+    ms::axiom::Axiom engine_b(cfg, registry);
+    const auto best_b = engine_b.evolve(
+        [](const ms::axiom::Algorithm& a) { return a.representation.eval({{"x0", 1.0}}); },
+        [](const ms::axiom::Algorithm&) { return false; });
+    ms::izaac::clear_session();
+
+    ASSERT_TRUE(best_a.has_value());
+    ASSERT_TRUE(best_b.has_value());
+    EXPECT_EQ(best_a->representation.to_string(), best_b->representation.to_string());
+    EXPECT_DOUBLE_EQ(best_a->fitness, best_b->fitness);
+}
+
+TEST(AxiomGriaExt, EvolveElitismPreservesGlobalBest) {
+    ms::izaac::seed_session(static_cast<uint64_t>(8080));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::EvolutionConfig cfg{};
+    cfg.population_size = 20;
+    cfg.max_generations = 15;
+    cfg.max_depth = 5;
+
+    ms::axiom::Axiom engine(cfg, registry);
+    DMatrix data{{0.0, 1.0}, {1.0, 0.0}, {2.0, -1.0}};
+
+    const auto scalar_fitness = [&](const ms::axiom::Algorithm& a) {
+        const auto out = engine.evaluate(a, data);
+        if (!out.has_value()) {
+            return -1e300;
+        }
+        double score = 0.0;
+        for (size_t i = 0; i < out->rows(); ++i) {
+            score -= std::abs((*out)(i, 0));
+        }
+        return score;
+    };
+
+    double initial_best = -1e300;
+    for (const auto& algo : engine.population()) {
+        initial_best = std::max(initial_best, scalar_fitness(algo));
+    }
+
+    const auto best = engine.evolve(
+        scalar_fitness,
+        [](const ms::axiom::Algorithm&) { return false; });
+
+    ASSERT_TRUE(best.has_value());
+    EXPECT_GE(best->fitness, initial_best);
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, EvolveProducesFiniteRepresentations) {
+    ms::izaac::seed_session(static_cast<uint64_t>(1234));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 10, .max_generations = 5, .max_depth = 6},
+        registry);
+
+    const auto evolved = engine.evolve(
+        [](const ms::axiom::Algorithm& a) {
+            return a.representation.eval({{"x0", 0.1}, {"x1", 0.2}});
+        },
+        [](const ms::axiom::Algorithm&) { return false; });
+    ASSERT_TRUE(evolved.has_value());
+
+    for (const auto& algo : engine.population()) {
+        EXPECT_FALSE(algo.representation.to_string().empty());
+        const double v = algo.representation.eval({{"x0", 1.0}, {"x1", 2.0}});
+        EXPECT_TRUE(std::isfinite(v));
+    }
+    ms::izaac::clear_session();
 }
 
 // ---------------------------------------------------------------------------

@@ -36,9 +36,12 @@ struct EvolutionConfig {
     bool use_cuda = true;
 };
 
+struct GPNode;
+
 class Axiom {
 public:
     Axiom(EvolutionConfig cfg, PrimitiveRegistry primitives);
+    ~Axiom();
 
     Result<Algorithm> evolve(
         const std::function<double(const Algorithm&)>& objective,
@@ -52,6 +55,10 @@ private:
     EvolutionConfig cfg_;
     PrimitiveRegistry primitives_;
     std::vector<Algorithm> population_;
+    std::vector<std::unique_ptr<GPNode>> gp_trees_;
+    size_t num_vars_ = 2;
+
+    void sync_representation(size_t index);
 };
 
 } // namespace ms::axiom
