@@ -490,3 +490,128 @@ TEST(GraphFlow, MinCutMatchesMaxFlowParallelPaths) {
     ASSERT_TRUE(cut.has_value());
     EXPECT_NEAR(cut.value().value, flow.value(), 1e-10);
 }
+
+// ---- Isomorphism ----
+
+TEST(GraphIsomorphism, ReflexiveCycle) {
+    Graph G = from_edge_list(5, {{0,1,1.0},{1,2,1.0},{2,3,1.0},{3,4,1.0},{4,0,1.0}});
+    EXPECT_TRUE(is_isomorphic(G, G));
+}
+
+TEST(GraphIsomorphism, PermutedTriangleIsIsomorphic) {
+    Graph G1 = from_edge_list(3, {{0,1,1.0},{1,2,1.0},{2,0,1.0}});
+    // Relabel via permutation {2,0,1}: vertex i of G1 becomes vertex perm[i] of G2.
+    std::vector<int> perm = {2, 0, 1};
+    Graph G2 = from_edge_list(3, {{perm[0],perm[1],1.0},{perm[1],perm[2],1.0},{perm[2],perm[0],1.0}});
+    EXPECT_TRUE(is_isomorphic(G1, G2));
+}
+
+TEST(GraphIsomorphism, PathVsStarNotIsomorphic) {
+    // Path 0-1-2-3: degree sequence [1,2,2,1]; Star centered at 0: [3,1,1,1].
+    Graph path = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,3,1.0}});
+    Graph star = from_edge_list(4, {{0,1,1.0},{0,2,1.0},{0,3,1.0}});
+    EXPECT_FALSE(is_isomorphic(path, star));
+}
+
+TEST(GraphIsomorphism, DifferentVertexCountNotIsomorphic) {
+    Graph G1 = from_edge_list(3, {{0,1,1.0},{1,2,1.0}});
+    Graph G2 = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,3,1.0}});
+    EXPECT_FALSE(is_isomorphic(G1, G2));
+}
+
+TEST(GraphIsomorphism, K33VsPrismSameDegreeSequenceNotIsomorphic) {
+    // K3,3: bipartite {0,1,2} vs {3,4,5}, every cross pair connected; triangle-free.
+    Graph k33 = from_edge_list(6, {
+        {0,3,1.0},{0,4,1.0},{0,5,1.0},
+        {1,3,1.0},{1,4,1.0},{1,5,1.0},
+        {2,3,1.0},{2,4,1.0},{2,5,1.0}});
+    // Prism (K3 x K2): two triangles {0,1,2} and {3,4,5} joined by a perfect matching.
+    Graph prism = from_edge_list(6, {
+        {0,1,1.0},{1,2,1.0},{2,0,1.0},
+        {3,4,1.0},{4,5,1.0},{5,3,1.0},
+        {0,3,1.0},{1,4,1.0},{2,5,1.0}});
+    // Both are 3-regular on 6 vertices with 9 edges (same degree sequence),
+    // but K3,3 is triangle-free while the prism has triangles, so they are
+    // not isomorphic; this exercises the backtracking search itself, not
+    // just the cheap degree-sequence pre-check.
+    EXPECT_EQ(k33.n_vertices(), prism.n_vertices());
+    EXPECT_EQ(k33.n_edges(), prism.n_edges());
+    EXPECT_FALSE(is_isomorphic(k33, prism));
+}
+
+TEST(GraphIsomorphism, PermutedCompleteGraphIsIsomorphic) {
+    Graph K4a(4, false);
+    for (int i = 0; i < 4; ++i)
+        for (int j = i + 1; j < 4; ++j) K4a.add_edge(i, j);
+    std::vector<int> perm = {3, 1, 0, 2};
+    Graph K4b(4, false);
+    for (int i = 0; i < 4; ++i)
+        for (int j = i + 1; j < 4; ++j) K4b.add_edge(perm[i], perm[j]);
+    EXPECT_TRUE(is_isomorphic(K4a, K4b));
+}
+
+TEST(GraphIsomorphism, ExtraEdgeNotIsomorphic) {
+    Graph G1 = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,3,1.0}});
+    Graph G2 = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,3,1.0},{3,0,1.0}});
+    EXPECT_FALSE(is_isomorphic(G1, G2));
+}
+
+TEST(GraphIsomorphism, DirectedCyclePermutedIsIsomorphic) {
+    Graph G1 = from_edge_list(3, {{0,1,1.0},{1,2,1.0},{2,0,1.0}}, /*directed=*/true);
+    std::vector<int> perm = {2, 0, 1};
+    Graph G2 = from_edge_list(3,
+        {{perm[0],perm[1],1.0},{perm[1],perm[2],1.0},{perm[2],perm[0],1.0}}, /*directed=*/true);
+    EXPECT_TRUE(is_isomorphic(G1, G2));
+}
+
+TEST(GraphIsomorphism, DirectedVsUndirectedNotIsomorphic) {
+    Graph directedTri = from_edge_list(3, {{0,1,1.0},{1,2,1.0},{2,0,1.0}}, /*directed=*/true);
+    Graph undirectedTri = from_edge_list(3, {{0,1,1.0},{1,2,1.0},{2,0,1.0}}, /*directed=*/false);
+    EXPECT_FALSE(is_isomorphic(directedTri, undirectedTri));
+}
+
+TEST(GraphIsomorphism, DirectedTransitiveTournamentReversalIsIsomorphic) {
+    // 0->1, 0->2, 1->2 is a transitive tournament (total order 0 > 1 > 2).
+    Graph G1 = from_edge_list(3, {{0,1,1.0},{0,2,1.0},{1,2,1.0}}, /*directed=*/true);
+    // Reversing every edge gives the reverse order 2 > 1 > 0, which is
+    // structurally the same tournament under the relabeling 0<->2.
+    Graph reversed = from_edge_list(3, {{1,0,1.0},{2,0,1.0},{2,1,1.0}}, /*directed=*/true);
+    EXPECT_TRUE(is_isomorphic(G1, reversed));
+}
+
+TEST(GraphIsomorphism, DirectedNonIsomorphicDifferentStructure) {
+    // Directed 3-cycle 0->1->2->0: every vertex has in-degree 1, out-degree 1.
+    Graph cycle = from_edge_list(3, {{0,1,1.0},{1,2,1.0},{2,0,1.0}}, /*directed=*/true);
+    // Directed "star-ish" graph with same edge/vertex count but different
+    // per-vertex (in,out) degrees: 0->1, 0->2, 1->0.
+    Graph other = from_edge_list(3, {{0,1,1.0},{0,2,1.0},{1,0,1.0}}, /*directed=*/true);
+    EXPECT_FALSE(is_isomorphic(cycle, other));
+}
+
+TEST(GraphIsomorphism, EmptyGraphsAreIsomorphic) {
+    Graph G1(0, false);
+    Graph G2(0, false);
+    EXPECT_TRUE(is_isomorphic(G1, G2));
+}
+
+TEST(GraphIsomorphism, SingleVertexNoEdgesIsomorphic) {
+    Graph G1(1, false);
+    Graph G2(1, false);
+    EXPECT_TRUE(is_isomorphic(G1, G2));
+}
+
+TEST(GraphIsomorphism, DisconnectedGraphsPermutedIsomorphic) {
+    // Two disjoint edges {0-1, 2-3} vs a permuted relabeling {0-2, 1-3}.
+    Graph G1 = from_edge_list(4, {{0,1,1.0},{2,3,1.0}});
+    Graph G2 = from_edge_list(4, {{0,2,1.0},{1,3,1.0}});
+    EXPECT_TRUE(is_isomorphic(G1, G2));
+}
+
+TEST(GraphIsomorphism, DisconnectedVsConnectedSameCountsNotIsomorphic) {
+    // Both have 4 vertices and 3 edges, but the path is connected with
+    // degree sequence [1,1,2,2] while this graph is disconnected (a triangle
+    // plus an isolated vertex) with degree sequence [0,2,2,2].
+    Graph path = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,3,1.0}});
+    Graph triangleAndIsolated = from_edge_list(4, {{0,1,1.0},{1,2,1.0},{2,0,1.0}});
+    EXPECT_FALSE(is_isomorphic(path, triangleAndIsolated));
+}

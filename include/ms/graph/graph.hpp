@@ -76,6 +76,13 @@ int    radius(const Graph& G);
 bool   is_tree(const Graph& G);
 bool   is_planar_k5_k33_check(const Graph& G);  // heuristic
 
+// Backtracking vertex-bijection search (VF2-style, simplified): true iff a
+// bijection between G1 and G2 vertices exists that preserves adjacency
+// (and edge direction, for directed graphs). Exponential worst case; intended
+// for the small graphs (roughly up to 12-15 vertices) this library's other
+// exact graph algorithms already target, not large-scale isomorphism testing.
+bool   is_isomorphic(const Graph& G1, const Graph& G2);
+
 // --- Centrality ---
 std::vector<double> pagerank(const Graph& G, double alpha = 0.85, int max_iter = 100);
 std::vector<double> betweenness_centrality(const Graph& G);
