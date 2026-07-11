@@ -208,6 +208,136 @@ TEST(StatsExtTest, mann_whitney_u_empty_samples) {
 }
 
 // ---------------------------------------------------------------------------
+// kruskal_wallis
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, kruskal_wallis_three_groups_differ) {
+    const std::vector<std::vector<double>> groups = {
+        {10.0, 11.0, 12.0},
+        {20.0, 21.0, 22.0},
+        {30.0, 31.0, 32.0},
+    };
+    const auto result = kruskal_wallis(groups);
+    EXPECT_GT(result.h_stat, 5.0);
+    EXPECT_LT(result.p_value, 0.05);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, kruskal_wallis_three_groups_same) {
+    const std::vector<std::vector<double>> groups = {
+        {5.0, 6.0, 7.0},
+        {5.1, 6.1, 7.1},
+        {4.9, 5.9, 6.9},
+    };
+    const auto result = kruskal_wallis(groups);
+    EXPECT_LT(result.h_stat, 2.0);
+    EXPECT_GT(result.p_value, 0.05);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, kruskal_wallis_four_groups_differ) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 2.0, 3.0, 4.0},
+        {10.0, 11.0, 12.0, 13.0},
+        {20.0, 21.0, 22.0, 23.0},
+        {30.0, 31.0, 32.0, 33.0},
+    };
+    const auto result = kruskal_wallis(groups);
+    EXPECT_GT(result.h_stat, 6.0);
+    EXPECT_LT(result.p_value, 0.01);
+    EXPECT_EQ(result.df, 3);
+}
+
+TEST(StatsExtTest, kruskal_wallis_two_groups_agrees_with_mann_whitney) {
+    const std::vector<double> low{1.0, 2.0, 3.0, 4.0, 5.0};
+    const std::vector<double> high{11.0, 12.0, 13.0, 14.0, 15.0};
+    const auto kw = kruskal_wallis({low, high});
+    const auto mw = mann_whitney_u(low, high);
+    EXPECT_LT(kw.p_value, 0.05);
+    EXPECT_LT(mw.p_value, 0.05);
+    EXPECT_EQ(kw.df, 1);
+}
+
+TEST(StatsExtTest, kruskal_wallis_two_groups_non_significant_agreement) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0, 5.0};
+    const std::vector<double> b{1.1, 2.1, 3.1, 4.1, 5.1};
+    const auto kw = kruskal_wallis({a, b});
+    const auto mw = mann_whitney_u(a, b);
+    EXPECT_GT(kw.p_value, 0.1);
+    EXPECT_GT(mw.p_value, 0.1);
+}
+
+TEST(StatsExtTest, kruskal_wallis_tie_handling) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 1.0, 2.0, 3.0},
+        {2.0, 3.0, 4.0, 5.0},
+        {3.0, 4.0, 5.0, 6.0},
+    };
+    const auto result = kruskal_wallis(groups);
+    EXPECT_TRUE(std::isfinite(result.h_stat));
+    EXPECT_TRUE(std::isfinite(result.p_value));
+    EXPECT_GE(result.h_stat, 0.0);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, kruskal_wallis_all_identical_values) {
+    const std::vector<std::vector<double>> groups = {
+        {5.0, 5.0, 5.0},
+        {5.0, 5.0, 5.0},
+        {5.0, 5.0, 5.0},
+    };
+    const auto result = kruskal_wallis(groups);
+    EXPECT_NEAR(result.h_stat, 0.0, 1e-12);
+    EXPECT_NEAR(result.p_value, 1.0, 1e-12);
+    EXPECT_EQ(result.df, 2);
+}
+
+TEST(StatsExtTest, kruskal_wallis_degenerate_fewer_than_two_groups) {
+    const std::vector<std::vector<double>> one_group = {{1.0, 2.0, 3.0}};
+    const auto result = kruskal_wallis(one_group);
+    EXPECT_DOUBLE_EQ(result.h_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 0);
+}
+
+TEST(StatsExtTest, kruskal_wallis_empty_groups_mixed) {
+    const std::vector<std::vector<double>> with_empty = {
+        {1.0, 2.0, 3.0},
+        {},
+        {4.0, 5.0, 6.0},
+    };
+    const auto result = kruskal_wallis(with_empty);
+    EXPECT_GT(result.h_stat, 0.0);
+    EXPECT_LT(result.p_value, 0.05);
+    EXPECT_EQ(result.df, 1);
+}
+
+TEST(StatsExtTest, kruskal_wallis_single_element_per_group) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0},
+        {2.0},
+        {3.0},
+    };
+    const auto result = kruskal_wallis(groups);
+    EXPECT_DOUBLE_EQ(result.h_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 0);
+}
+
+TEST(StatsExtTest, kruskal_wallis_only_one_nonempty_group) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 2.0, 3.0},
+        {},
+    };
+    const auto result = kruskal_wallis(groups);
+    EXPECT_DOUBLE_EQ(result.h_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.df, 0);
+}
+
+// ---------------------------------------------------------------------------
 // ks_test_2sample
 // ---------------------------------------------------------------------------
 

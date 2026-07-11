@@ -59,6 +59,17 @@ struct MannWhitneyResult {
 };
 MannWhitneyResult mann_whitney_u(std::span<const double> a, std::span<const double> b);
 
+// Kruskal-Wallis test: a non-parametric one-way ANOVA generalization for >= 2 groups, based on
+// rank-sums across pooled samples (natural multi-group extension of the Mann-Whitney rank approach).
+// Returns the H statistic (chi-square approximation with tie correction), degrees of freedom
+// (number of non-empty groups - 1), and an upper-tail chi-squared p-value.
+struct KruskalWallisResult {
+    double h_stat = 0.0;
+    int df = 0;
+    double p_value = 1.0;
+};
+KruskalWallisResult kruskal_wallis(const std::vector<std::vector<double>>& groups);
+
 // Two-sample Kolmogorov-Smirnov test: a non-parametric test for whether two samples come from
 // the same distribution, based on the maximum distance between their empirical CDFs. Returns
 // the D statistic and an asymptotic p-value (standard Kolmogorov distribution approximation).
