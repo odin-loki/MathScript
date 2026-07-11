@@ -7726,6 +7726,24 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       Jacobi Hermitian diagonalizer already backing von_neumann_entropy); schrodinger turned
       out to already exist and just needed test coverage. tag checklist 363->364 (+1 for the
       new tensorops-decompose REPL integration test suite; 364 suites, 100% passing).
+      Wave 188: continued the Wave 187 spec-vs-implementation cross-check technique across three
+      more mature modules, picking tractable (FFT/existing-primitive-reuse) subsets rather than
+      their full (much larger) spec sections. ms::signal gains the analytic-signal family —
+      hilbert (FFT-based discrete Hilbert transform), envelope, instantaneous_phase,
+      instantaneous_freq (phase-unwrapped derivative) — plus lag-windowed xcorr/xcov/autocorr
+      (distinct from ms::acf's normalized one-sided convention), conv2 (2D convolution), and
+      deconv (reusing ms::poly::poly_div_quot, since convolution is polynomial multiplication).
+      ms::stats gains jarque_bera (via existing skewness/kurtosis), ljung_box (via existing acf),
+      and levene_test/bartlett_test (equal-variance tests, the natural companions to
+      one_way_anova's equal-variance assumption; levene_test literally delegates to
+      one_way_anova on median-absolute-deviation-transformed data). ms::ml gains LDA (shared-
+      covariance linear discriminant classifier, with supervised transform() dimensionality
+      reduction) and QDA (per-class-covariance quadratic discriminant classifier) — natural,
+      previously-missing companions to the module's existing NaiveBayes/GaussianMixture/PCA;
+      QDA verified to outperform LDA head-to-head on a synthetic unequal-covariance dataset, the
+      textbook case it's designed for. tag checklist stays at 364 (53 new test cases added to
+      existing test_signal_ext/test_stats_prob_ext/test_ml binaries; suite count unchanged; 364
+      suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7734,12 +7752,21 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       handle by kind alone, only by the handle name chosen (minor, cosmetic).
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
+      ms::signal's spec section (2.5) still has a much larger surface not covered by Wave 188's
+      tractable subset — general IIR/FIR filter()/filtfilt()/sosfilt(), filter design beyond
+      butterworth (cheby1/cheby2/ellip/bessel/firwin/remez), resampling, further spectral
+      analysis (periodogram/music/esprit/pburg/cohere), emd/hht/vmd, and the modulation family —
+      these are individually much larger/riskier numerical-algorithm efforts than this wave's
+      thin FFT-reuse wrappers, worth splitting into dedicated future waves.
+      ms::geo's spec section lists convex_hull_3d and polygon boolean ops (poly_union/
+      poly_intersect/poly_diff/minkowski_sum) as missing; considered for Wave 188 but deferred
+      as higher-risk (robust polygon clipping has notorious edge-case pitfalls).
       mathscript-master-plan.md's original per-module spec lists (2.x sections) contain many
       more exotic entries (Painlevé transcendents, Heun functions, Meijer G/Fox H, Mathieu/
       spheroidal wave functions, FEM, CFD) likely deliberately descoped as impractical for a
-      general-purpose CAS — the spec-vs-implementation cross-check technique from Wave 187
-      remains worth repeating for OTHER mature modules' more tractable gaps, while continuing
-      to skip these high-risk/exotic entries.
+      general-purpose CAS — the spec-vs-implementation cross-check technique from Waves 187-188
+      remains worth repeating for OTHER mature modules not yet checked (ms::graph, ms::finance,
+      ms::combo), while continuing to skip these high-risk/exotic entries.
       With the ODE REPL formula-bridge, stateful-class REPL exposure, the Axiom/
       PrimitiveRegistry mismatch, the Wave 182-185 pure-function REPL backlog, and the
       tensor-decomposition REPL gap all now resolved (Waves 182-187), no single large concrete
