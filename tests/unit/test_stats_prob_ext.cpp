@@ -250,3 +250,129 @@ TEST(StatsExtTest, ks_test_2sample_identical_samples) {
     EXPECT_NEAR(result.d_stat, 0.0, 1e-12);
     EXPECT_NEAR(result.p_value, 1.0, 1e-6);
 }
+
+// ---------------------------------------------------------------------------
+// bootstrap_ci (percentile method, arbitrary statistic)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+const auto mean_stat = [](std::span<const double> s) { return mean(s); };
+const auto median_stat = [](std::span<const double> s) { return median(s); };
+const auto stddev_stat = [](std::span<const double> s) { return stddev(s); };
+
+} // namespace
+
+TEST(StatsExtTest, bootstrap_ci_mean_point_estimate_matches_sample_mean) {
+    const std::vector<double> data{8.0, 9.0, 10.0, 11.0, 12.0};
+    const auto result = bootstrap_ci(data, mean_stat, 1000, 0.95, 42);
+    EXPECT_NEAR(result.point_estimate, mean(data), 1e-12);
+    EXPECT_NEAR(result.point_estimate, 10.0, 1e-12);
+}
+
+TEST(StatsExtTest, bootstrap_ci_mean_sane_bounds) {
+    const std::vector<double> data{8.0, 9.0, 10.0, 11.0, 12.0};
+    const auto result = bootstrap_ci(data, mean_stat, 1000, 0.95, 42);
+    EXPECT_LT(result.lower, result.point_estimate);
+    EXPECT_LT(result.point_estimate, result.upper);
+    EXPECT_LT(result.lower, result.upper);
+    EXPECT_GT(result.std_error, 0.0);
+}
+
+TEST(StatsExtTest, bootstrap_ci_mean_narrows_with_larger_sample) {
+    std::vector<double> small;
+    std::vector<double> large;
+    for (int i = 0; i < 20; ++i) {
+        small.push_back(10.0 + static_cast<double>((i % 5) - 2));
+    }
+    for (int i = 0; i < 200; ++i) {
+        large.push_back(10.0 + static_cast<double>((i % 5) - 2));
+    }
+    const auto ci_small = bootstrap_ci(small, mean_stat, 1000, 0.95, 42);
+    const auto ci_large = bootstrap_ci(large, mean_stat, 1000, 0.95, 42);
+    const double width_small = ci_small.upper - ci_small.lower;
+    const double width_large = ci_large.upper - ci_large.lower;
+    EXPECT_LT(width_large, width_small);
+}
+
+TEST(StatsExtTest, bootstrap_ci_median_sane_bounds) {
+    const std::vector<double> data{1.0, 2.0, 100.0, 3.0, 4.0};
+    const auto result = bootstrap_ci(data, median_stat, 1000, 0.95, 7);
+    EXPECT_NEAR(result.point_estimate, median(data), 1e-12);
+    EXPECT_LT(result.lower, result.upper);
+    EXPECT_LE(result.lower, result.point_estimate);
+    EXPECT_GE(result.upper, result.point_estimate);
+}
+
+TEST(StatsExtTest, bootstrap_ci_stddev_sane_bounds) {
+    const std::vector<double> data{2.0, 4.0, 6.0, 8.0, 10.0, 12.0};
+    const auto result = bootstrap_ci(data, stddev_stat, 1000, 0.95, 99);
+    EXPECT_NEAR(result.point_estimate, stddev(data), 1e-12);
+    EXPECT_LT(result.lower, result.upper);
+    EXPECT_LT(result.lower, result.point_estimate);
+    EXPECT_LT(result.point_estimate, result.upper);
+}
+
+TEST(StatsExtTest, bootstrap_ci_deterministic_same_seed) {
+    const std::vector<double> data{3.0, 5.0, 7.0, 9.0, 11.0};
+    const auto a = bootstrap_ci(data, mean_stat, 500, 0.95, 12345);
+    const auto b = bootstrap_ci(data, mean_stat, 500, 0.95, 12345);
+    EXPECT_DOUBLE_EQ(a.point_estimate, b.point_estimate);
+    EXPECT_DOUBLE_EQ(a.lower, b.lower);
+    EXPECT_DOUBLE_EQ(a.upper, b.upper);
+    EXPECT_DOUBLE_EQ(a.std_error, b.std_error);
+}
+
+TEST(StatsExtTest, bootstrap_ci_confidence_99_wider_than_90) {
+    const std::vector<double> data{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    const auto ci90 = bootstrap_ci(data, mean_stat, 1000, 0.90, 42);
+    const auto ci99 = bootstrap_ci(data, mean_stat, 1000, 0.99, 42);
+    const double width90 = ci90.upper - ci90.lower;
+    const double width99 = ci99.upper - ci99.lower;
+    EXPECT_LT(width90, width99);
+}
+
+TEST(StatsExtTest, bootstrap_ci_confidence_95_between_90_and_99) {
+    const std::vector<double> data{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    const auto ci90 = bootstrap_ci(data, mean_stat, 1000, 0.90, 42);
+    const auto ci95 = bootstrap_ci(data, mean_stat, 1000, 0.95, 42);
+    const auto ci99 = bootstrap_ci(data, mean_stat, 1000, 0.99, 42);
+    const double width90 = ci90.upper - ci90.lower;
+    const double width95 = ci95.upper - ci95.lower;
+    const double width99 = ci99.upper - ci99.lower;
+    EXPECT_LT(width90, width95);
+    EXPECT_LT(width95, width99);
+}
+
+TEST(StatsExtTest, bootstrap_ci_small_dataset_three_points) {
+    const std::vector<double> data{4.0, 5.0, 6.0};
+    const auto result = bootstrap_ci(data, mean_stat, 500, 0.95, 1);
+    EXPECT_NEAR(result.point_estimate, 5.0, 1e-12);
+    EXPECT_LT(result.lower, result.upper);
+    EXPECT_TRUE(std::isfinite(result.std_error));
+}
+
+TEST(StatsExtTest, bootstrap_ci_small_dataset_five_points) {
+    const std::vector<double> data{7.0, 8.0, 9.0, 10.0, 11.0};
+    const auto mean_result = bootstrap_ci(data, mean_stat, 500, 0.95, 3);
+    const auto median_result = bootstrap_ci(data, median_stat, 500, 0.95, 3);
+    EXPECT_LT(mean_result.lower, mean_result.upper);
+    EXPECT_LT(median_result.lower, median_result.upper);
+    EXPECT_TRUE(std::isfinite(mean_result.std_error));
+    EXPECT_TRUE(std::isfinite(median_result.std_error));
+}
+
+TEST(StatsExtTest, bootstrap_ci_std_error_positive_for_spread_data) {
+    const std::vector<double> data{0.0, 5.0, 10.0, 15.0, 20.0};
+    const auto result = bootstrap_ci(data, mean_stat, 1000, 0.95, 42);
+    EXPECT_GT(result.std_error, 0.0);
+}
+
+TEST(StatsExtTest, bootstrap_ci_empty_data_returns_zeros) {
+    const std::vector<double> empty;
+    const auto result = bootstrap_ci(empty, mean_stat, 1000, 0.95, 42);
+    EXPECT_DOUBLE_EQ(result.point_estimate, 0.0);
+    EXPECT_DOUBLE_EQ(result.lower, 0.0);
+    EXPECT_DOUBLE_EQ(result.upper, 0.0);
+    EXPECT_DOUBLE_EQ(result.std_error, 0.0);
+}

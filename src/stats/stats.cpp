@@ -744,4 +744,46 @@ std::pair<double, double> bootstrap_ci(std::span<const double> data,
     return {boot_means[lo], boot_means[hi]};
 }
 
+BootstrapResult bootstrap_ci(
+    std::span<const double> data,
+    const std::function<double(std::span<const double>)>& stat_fn,
+    size_t n_resamples,
+    double confidence_level,
+    unsigned seed) {
+    BootstrapResult result{};
+    if (data.empty() || n_resamples == 0) {
+        return result;
+    }
+    result.point_estimate = stat_fn(data);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<size_t> idx_dist(0, data.size() - 1);
+    std::vector<double> boot_stats(n_resamples);
+    std::vector<double> sample(data.size());
+    for (size_t b = 0; b < n_resamples; ++b) {
+        for (size_t i = 0; i < data.size(); ++i) {
+            sample[i] = data[idx_dist(rng)];
+        }
+        boot_stats[b] = stat_fn(sample);
+    }
+    std::sort(boot_stats.begin(), boot_stats.end());
+    const double alpha = (1.0 - confidence_level) / 2.0;
+    size_t lo = static_cast<size_t>(alpha * static_cast<double>(n_resamples));
+    size_t hi = static_cast<size_t>((1.0 - alpha) * static_cast<double>(n_resamples));
+    hi = std::min(hi, boot_stats.size() - 1);
+    result.lower = boot_stats[lo];
+    result.upper = boot_stats[hi];
+    if (n_resamples >= 2) {
+        const double m = std::accumulate(boot_stats.begin(), boot_stats.end(), 0.0) /
+                         static_cast<double>(n_resamples);
+        double sum_sq = 0.0;
+        for (double v : boot_stats) {
+            const double d = v - m;
+            sum_sq += d * d;
+        }
+        result.std_error =
+            std::sqrt(sum_sq / static_cast<double>(n_resamples - 1));
+    }
+    return result;
+}
+
 } // namespace ms
