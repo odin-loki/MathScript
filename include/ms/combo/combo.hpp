@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace ms {
@@ -54,6 +55,24 @@ uint64_t bell_num(uint32_t n);
 
 // Motzkin numbers M_n
 uint64_t motzkin_num(uint32_t n);
+
+// Set partitions of {0..n-1} (enumeration analogue of bell_num)
+std::vector<std::vector<std::vector<int>>> set_partitions(int n);
+
+// Involution count I(n): permutations that are their own inverse
+uint64_t involutions(uint32_t n);
+
+// All Dyck paths of semilength n (balanced '(' ')' strings; count = catalan_num(n))
+std::vector<std::string> dyck_paths(int n);
+
+// All Motzkin paths of length n over 'U'/'D'/'F' (count = motzkin_num(n))
+std::vector<std::string> motzkin_paths(int n);
+
+// Distinct necklaces of length n over k colors (rotation equivalence)
+std::vector<std::vector<int>> necklaces(int n, int k);
+
+// Lyndon words of length n over k symbols (aperiodic, strictly minimal rotation)
+std::vector<std::vector<int>> lyndon_words(int n, int k);
 
 } // namespace combo
 } // namespace ms

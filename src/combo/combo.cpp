@@ -271,5 +271,159 @@ uint64_t motzkin_num(uint32_t n) {
     return m[n];
 }
 
+static void set_partitions_extend(
+    const std::vector<std::vector<std::vector<int>>>& prev, int elem,
+    std::vector<std::vector<std::vector<int>>>& result) {
+    for (const auto& part : prev) {
+        auto with_new_block = part;
+        with_new_block.push_back({elem});
+        result.push_back(std::move(with_new_block));
+        for (size_t i = 0; i < part.size(); ++i) {
+            auto extended = part;
+            extended[i].push_back(elem);
+            result.push_back(std::move(extended));
+        }
+    }
+}
+
+std::vector<std::vector<std::vector<int>>> set_partitions(int n) {
+    if (n == 0) return {{}};
+    auto prev = set_partitions(n - 1);
+    std::vector<std::vector<std::vector<int>>> result;
+    set_partitions_extend(prev, n - 1, result);
+    return result;
+}
+
+uint64_t involutions(uint32_t n) {
+    if (n == 0 || n == 1) return 1;
+    uint64_t prev2 = 1, prev1 = 1;
+    for (uint32_t i = 2; i <= n; ++i) {
+        uint64_t cur = prev1 + static_cast<uint64_t>(i - 1) * prev2;
+        prev2 = prev1;
+        prev1 = cur;
+    }
+    return prev1;
+}
+
+static void dyck_paths_helper(int n, int open, int close, std::string& current,
+                              std::vector<std::string>& result) {
+    if (static_cast<int>(current.size()) == 2 * n) {
+        result.push_back(current);
+        return;
+    }
+    if (open < n) {
+        current.push_back('(');
+        dyck_paths_helper(n, open + 1, close, current, result);
+        current.pop_back();
+    }
+    if (close < open) {
+        current.push_back(')');
+        dyck_paths_helper(n, open, close + 1, current, result);
+        current.pop_back();
+    }
+}
+
+std::vector<std::string> dyck_paths(int n) {
+    if (n < 0) return {};
+    std::vector<std::string> result;
+    std::string current;
+    dyck_paths_helper(n, 0, 0, current, result);
+    return result;
+}
+
+static void motzkin_paths_helper(int n, int pos, int height, std::string& current,
+                                 std::vector<std::string>& result) {
+    if (pos == n) {
+        if (height == 0) result.push_back(current);
+        return;
+    }
+    current.push_back('U');
+    motzkin_paths_helper(n, pos + 1, height + 1, current, result);
+    current.pop_back();
+
+    current.push_back('F');
+    motzkin_paths_helper(n, pos + 1, height, current, result);
+    current.pop_back();
+
+    if (height > 0) {
+        current.push_back('D');
+        motzkin_paths_helper(n, pos + 1, height - 1, current, result);
+        current.pop_back();
+    }
+}
+
+std::vector<std::string> motzkin_paths(int n) {
+    if (n < 0) return {};
+    std::vector<std::string> result;
+    std::string current;
+    motzkin_paths_helper(n, 0, 0, current, result);
+    return result;
+}
+
+static bool is_necklace_representative(const std::vector<int>& v) {
+    int n = static_cast<int>(v.size());
+    for (int shift = 1; shift < n; ++shift) {
+        for (int i = 0; i < n; ++i) {
+            int rotated = v[(i + shift) % n];
+            if (rotated < v[i]) return false;
+            if (rotated > v[i]) break;
+        }
+    }
+    return true;
+}
+
+static void necklaces_odometer(std::vector<int>& v, int k) {
+    int n = static_cast<int>(v.size());
+    int i = n - 1;
+    while (i >= 0 && v[i] == k - 1) {
+        v[i] = 0;
+        --i;
+    }
+    if (i >= 0) ++v[i];
+}
+
+std::vector<std::vector<int>> necklaces(int n, int k) {
+    if (n < 0 || k <= 0) return {};
+    if (n == 0) return {{}};
+    std::vector<int> v(n, 0);
+    std::vector<std::vector<int>> result;
+    while (true) {
+        if (is_necklace_representative(v))
+            result.push_back(v);
+        necklaces_odometer(v, k);
+        if (std::all_of(v.begin(), v.end(), [](int x) { return x == 0; }))
+            break;
+    }
+    return result;
+}
+
+static bool is_aperiodic(const std::vector<int>& v) {
+    int n = static_cast<int>(v.size());
+    if (n <= 1) return true;
+    for (int period = 1; period < n; ++period) {
+        if (n % period != 0) continue;
+        bool periodic = true;
+        for (int i = period; i < n; ++i) {
+            if (v[i] != v[i - period]) {
+                periodic = false;
+                break;
+            }
+        }
+        if (periodic) return false;
+    }
+    return true;
+}
+
+std::vector<std::vector<int>> lyndon_words(int n, int k) {
+    if (n < 0 || k <= 0) return {};
+    auto reps = necklaces(n, k);
+    std::vector<std::vector<int>> result;
+    for (const auto& w : reps) {
+        if (is_aperiodic(w))
+            result.push_back(w);
+    }
+    return result;
+}
+
 } // namespace combo
 } // namespace ms
