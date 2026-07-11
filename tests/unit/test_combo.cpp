@@ -1,7 +1,9 @@
 #include "ms/combo/combo.hpp"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <numeric>
 #include <set>
+#include <utility>
 
 using namespace ms::combo;
 
@@ -20,6 +22,30 @@ void assert_valid_set_partition(const std::vector<std::vector<int>>& part, int n
     }
     for (int i = 0; i < n; ++i)
         ASSERT_TRUE(seen[i]);
+}
+
+// All 2n dihedral images of v: its n rotations plus the n rotations of its
+// reversal. Used to test bracelets() for uniqueness/closure under D_n.
+std::vector<std::vector<int>> dihedral_images(const std::vector<int>& v) {
+    int n = static_cast<int>(v.size());
+    std::vector<std::vector<int>> images;
+    for (int shift = 0; shift < n; ++shift) {
+        std::vector<int> rotated(n);
+        for (int i = 0; i < n; ++i) rotated[i] = v[(i + shift) % n];
+        images.push_back(std::move(rotated));
+    }
+    std::vector<int> rev(v.rbegin(), v.rend());
+    for (int shift = 0; shift < n; ++shift) {
+        std::vector<int> rotated(n);
+        for (int i = 0; i < n; ++i) rotated[i] = rev[(i + shift) % n];
+        images.push_back(std::move(rotated));
+    }
+    return images;
+}
+
+std::vector<int> canonical_bracelet(const std::vector<int>& v) {
+    auto images = dihedral_images(v);
+    return *std::min_element(images.begin(), images.end());
 }
 
 bool is_balanced_dyck(const std::string& s) {
@@ -325,4 +351,109 @@ TEST(ComboLyndonWords, Length1OverKAlphabet) {
 TEST(ComboLyndonWords, AdditionalSmallCounts) {
     EXPECT_EQ(lyndon_words(2, 3).size(), 3u);
     EXPECT_EQ(lyndon_words(4, 2).size(), 3u);
+}
+
+TEST(ComboBracelets, BinaryLength3Count) {
+    auto bracs = bracelets(3, 2);
+    EXPECT_EQ(bracs.size(), 4u);
+}
+
+TEST(ComboBracelets, BinaryLength3Representatives) {
+    // n=3 is small enough that every necklace class over {0,1} is already
+    // its own reflection, so the bracelet reps match the necklace reps.
+    auto bracs = bracelets(3, 2);
+    std::set<std::vector<int>> expected{{0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {1, 1, 1}};
+    std::set<std::vector<int>> actual(bracs.begin(), bracs.end());
+    EXPECT_EQ(actual, expected);
+}
+
+TEST(ComboBracelets, SmallKnownCounts) {
+    // n=1: every single symbol is its own reflection, same as necklaces.
+    EXPECT_EQ(bracelets(1, 2).size(), 2u);
+    EXPECT_EQ(bracelets(1, 3).size(), 3u);
+    // n=2: reflection just swaps the two positions, so bracelets(2,k) is
+    // exactly the number of unordered pairs with repetition, k*(k+1)/2.
+    EXPECT_EQ(bracelets(2, 2).size(), 3u);
+    EXPECT_EQ(bracelets(2, 3).size(), 6u);
+    EXPECT_EQ(bracelets(2, 4).size(), 10u);
+    // Brute-force-verified counts for slightly larger (n,k), including
+    // cases where bracelets strictly merges necklace classes together.
+    EXPECT_EQ(bracelets(3, 3).size(), 10u);   // necklaces(3,3) == 11
+    EXPECT_EQ(bracelets(4, 2).size(), 6u);    // == necklaces(4,2)
+    EXPECT_EQ(bracelets(4, 3).size(), 21u);   // necklaces(4,3) == 24
+    EXPECT_EQ(bracelets(6, 2).size(), 13u);   // necklaces(6,2) == 14
+}
+
+TEST(ComboBracelets, CountNeverExceedsNecklaceCount) {
+    // Bracelets merge necklace classes whose reflection lands in a
+    // different rotation class, so the count can only shrink or stay
+    // equal, never grow, relative to necklaces() for the same (n, k).
+    for (int n = 0; n <= 7; ++n) {
+        for (int k = 1; k <= 4; ++k) {
+            EXPECT_LE(bracelets(n, k).size(), necklaces(n, k).size())
+                << "n=" << n << " k=" << k;
+        }
+    }
+}
+
+TEST(ComboBracelets, NoDuplicateEquivalenceClassesInOutput) {
+    // No two distinct returned representatives should be related by any
+    // rotation or reflection of each other.
+    const std::vector<std::pair<int, int>> cases{{3, 3}, {4, 3}, {5, 2}, {6, 2}};
+    for (const auto& [n, k] : cases) {
+        auto bracs = bracelets(n, k);
+        for (std::size_t i = 0; i < bracs.size(); ++i) {
+            std::set<std::vector<int>> orbit_i;
+            for (auto& img : dihedral_images(bracs[i])) orbit_i.insert(std::move(img));
+            for (std::size_t j = 0; j < bracs.size(); ++j) {
+                if (i == j) continue;
+                EXPECT_EQ(orbit_i.count(bracs[j]), 0u)
+                    << "n=" << n << " k=" << k << " i=" << i << " j=" << j;
+            }
+        }
+    }
+}
+
+TEST(ComboBracelets, EveryRepresentativeIsItsOwnCanonicalForm) {
+    // Each returned representative must already be the lexicographically
+    // smallest among its own 2n dihedral images (self-consistency of the
+    // canonicalization).
+    for (auto n : {3, 4, 5}) {
+        for (auto k : {2, 3}) {
+            auto bracs = bracelets(n, k);
+            for (const auto& b : bracs)
+                EXPECT_EQ(canonical_bracelet(b), b);
+        }
+    }
+}
+
+TEST(ComboBracelets, ClosedUnderRotationAndReflection) {
+    // Applying any rotation or reflection to any returned representative
+    // and re-canonicalizing must land back on an element already present
+    // in the returned set (completeness of the enumeration).
+    auto bracs = bracelets(4, 3);
+    std::set<std::vector<int>> repset(bracs.begin(), bracs.end());
+    ASSERT_FALSE(repset.empty());
+    for (const auto& b : bracs) {
+        for (const auto& img : dihedral_images(b)) {
+            auto canon = canonical_bracelet(img);
+            EXPECT_TRUE(repset.count(canon) > 0)
+                << "canonical form of a dihedral image missing from output";
+        }
+    }
+}
+
+TEST(ComboBracelets, DegenerateCasesMatchNecklacesConvention) {
+    EXPECT_EQ(bracelets(-1, 2), necklaces(-1, 2));
+    EXPECT_EQ(bracelets(3, 0), necklaces(3, 0));
+    EXPECT_EQ(bracelets(3, -2), necklaces(3, -2));
+    EXPECT_EQ(bracelets(0, 3), necklaces(0, 3));
+    EXPECT_EQ(bracelets(0, 3).size(), 1u);
+
+    // k == 1: only one possible string, regardless of n.
+    EXPECT_EQ(bracelets(1, 1).size(), 1u);
+    EXPECT_EQ(bracelets(5, 1).size(), 1u);
+
+    // n == 1: every single symbol is trivially its own bracelet.
+    EXPECT_EQ(bracelets(1, 5).size(), 5u);
 }
