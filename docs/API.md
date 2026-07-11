@@ -68,7 +68,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `fft/fft.hpp` | `fft`, `ifft`, `rfft`, `dft`, `dct2`/`dst2`, and shift helpers |
+| `fft/fft.hpp` | `fft`, `ifft`, `rfft`/`irfft`, `dft`, `fft2`/`ifft2` (2D FFT with divisor-based dimension inference), `dct2`/`idct2`, `dst2`/`idst2` (self-inverse orthonormal DST-I), and shift helpers |
 | `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`, F-distribution p-value via `ms::prob::f_cdf`), Mann-Whitney U (`mann_whitney_u`), Kruskal-Wallis H-test (`kruskal_wallis`, tie-corrected, chi-squared p-value — non-parametric multi-group generalization of `mann_whitney_u`), two-sample KS (`ks_test_2sample`); bootstrap resampling (`bootstrap_mean`, mean-only `bootstrap_ci`, general `bootstrap_ci` with percentile-method CI for arbitrary statistics via `BootstrapResult`) |
 | `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma (`gamma_cdf`), beta (`beta_pdf`/`beta_cdf`), F (`f_pdf`/`f_cdf`), uniform |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point` |
@@ -329,6 +329,16 @@ The `Interpreter` now holds a `std::variant`-backed named-handle registry so use
 | `cluster_current_leader(handle)` | Current leader id, or -1 if none/ambiguous |
 | `cluster_status(handle)` | Per-node role/term/log-size/commit-index diagnostic dump |
 
+**Wave 184 — final ODE formula-bridge bindings (closes the REPL formula-bridge gap):**
+
+| Call | Description |
+|------|-------------|
+| `ode_backward_euler_vec("f0; f1; ...", t0, [y0], t_end, steps)` | Vector implicit backward Euler; semicolon-separated per-component formulas, `{t, y0..yN-1}` env |
+| `ode_dae_index1("f0; ...", "g0; ...", t0, [y0], [z0], t_end, steps)` | Semi-explicit index-1 DAE: differential formulas `f` and algebraic-constraint formulas `g`, both see `{t, y0..yN-1, z0..zM-1}` |
+| `ode_bvp_shooting("f_expr", t0, y_a, t_end, y_b, steps)` | Second-order BVP `y''=f(t,y,y')` via shooting; formula env `{t, y, yp}` |
+| `ode_dde_fixed_step("f_expr", "history_expr", t0, t_end, tau, steps)` | Scalar DDE; `f_expr` env `{t, y, ydelay}`, `history_expr` env `{t}` |
+| `ode_event_detect("f_expr", "event_expr", t0, y0, t_end, steps)` | Scalar IVP with root-crossing event detection; both formulas env `{t, y}` |
+
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 
 | Header | Description |
@@ -343,7 +353,7 @@ The `Interpreter` now holds a `std::variant`-backed named-handle registry so use
 
 | Header | Description |
 |--------|-------------|
-| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` genuinely evaluates `algo.representation` row-by-row against input data columns (`x0`, `x1`, …) via `Sym::eval` |
+| `frameworks/axiom/axiom.hpp` | Evolutionary `Axiom` GP search; `Algorithm` holds `Sym` representation; `evaluate` genuinely evaluates `algo.representation` row-by-row against input data columns (`x0`, `x1`, …) via `Sym::eval`; `evolve` performs real GP tree evolution (internal `GPNode` population with random initialization, tournament selection, subtree crossover/mutation, elitism, synced to `representation` each generation) |
 | `frameworks/cellai/cellai.hpp` | `CellMemory` temporal memory, `hebbian_update`, `energy` (Boltzmann -vᵀWh), `CellMemory::consolidate` short→long-term decay, `cell_to_cypha_features` |
 | `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate` |
 | `frameworks/gria/gria.hpp` | Information-theoretic `entropy`/`compute_alpha`/`matrix_alpha`/`is_critical`/`classify`, GF(2^n), cellular automata, LFSR utilities |

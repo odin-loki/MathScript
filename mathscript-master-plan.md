@@ -7651,20 +7651,39 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       instead of a duplicated incomplete-beta implementation. docs/API.md synced (session-
       object registry Waves 182-183, optim/stats module table rows); tag checklist 360→361
       (361 suites, 100% passing).
+      Wave 184: REPL formula bridge extended to the last 5 deferred ODE bindings —
+      ode_backward_euler_vec (vector, same semicolon convention as Wave 180's vector
+      solvers), ode_dae_index1 (two formula-string args for differential/algebraic parts,
+      shared {t,y..,z..} env), ode_bvp_shooting (shooting method, formula env {t,y,yp},
+      verified exactly against y''=-y -> sin(t)), ode_dde_fixed_step (delay differential
+      equation with a separate history-function formula), ode_event_detect (root-crossing
+      event detection, verified exactly against an analytic crossing time) — CLOSES the
+      REPL formula-bridge gap entirely, tracked since Wave 179; every ms::ode solver is now
+      REPL-reachable. ms::axiom::Axiom::evolve rewritten from a fitness-perturbation
+      placeholder into real genetic-programming tree evolution: internal GPNode tree
+      population (scoped to ms::Sym's actual scalar grammar since PrimitiveRegistry's
+      matrix-level primitives don't fit a scalar-expression-tree GP model — flagged as a
+      follow-up), diverse random initialization, tournament selection, subtree
+      crossover/mutation, elitism, synced to Algorithm::representation each generation.
+      ms::fft gains ifft2 (inverse 2D FFT, same dimension-inference as fft2) and idst2
+      (dst2 is the self-inverse orthonormal DST-I, confirmed numerically, so idst2 wraps
+      dst2) — closes a gap flagged in tests/numerical/test_fft_prob_remaining.cpp.
+      docs/API.md synced (final ODE REPL bindings, fft/axiom module rows); tag checklist
+      361→362 (362 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
-      REPL/fuzz-corpus wiring for ode_backward_euler_vec/ode_bvp_shooting/
-      ode_dde_fixed_step/ode_event_detect/ode_dae_index1 (these have more complex
-      multi-callback or boundary-condition signatures needing further formula-bridge design
-      beyond the single/multi-formula convention used so far — the last remaining REPL gap,
-      tracked since Wave 179 — now the clear concrete next step since stateful-class REPL
-      exposure was completed in Wave 183).
+      ms::axiom::PrimitiveRegistry's matrix-level primitives (matmul/solve/lu/qr/svd/
+      eig_sym/fft/det/trace/norm) don't cleanly compose with the scalar-Sym-expression-tree
+      GP model introduced in Wave 184 — either rescope PrimitiveRegistry to scalar
+      functions, or give Algorithm::representation/GP evaluation a richer expression type
+      supporting matrix-valued nodes (larger design question, not yet addressed).
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
-      Axiom::evolve mutation still perturbs fitness directly rather than mutating the
-      representation/evaluation/selection/mutation expression trees (no real GP tree
-      crossover/mutation yet — documented simplification). -->
+      With the ODE REPL formula-bridge and stateful-class REPL exposure both now complete
+      (Waves 183-184), no single large concrete REPL-integration gap remains — future waves
+      will likely shift further toward hardening (fuzz marathon, coverage), performance, or
+      smaller library-level API completeness gaps. -->
 
 ---
 

@@ -3,6 +3,25 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 184 — Final ODE REPL Bindings, Real GP Tree Evolution, ifft2/idst2)
+
+### Added (Wave 184)
+- REPL: wired the **last 5 remaining deferred ODE bindings** into the `sym_parse` formula bridge (tracked since Wave 179), each with a formula-argument convention matched to its underlying signature:
+  - `ode_backward_euler_vec("f0; f1; ...", t0, [y0], t_end, steps)` — vector stiff IVP, same semicolon-separated convention as `ode_euler_vec`/`ode_rk4_vec`
+  - `ode_dae_index1("f0; ...", "g0; ...", t0, [y0], [z0], t_end, steps)` — semi-explicit index-1 DAE: differential formulas + algebraic-constraint formulas, both seeing a shared `{t, y0..yN-1, z0..zM-1}` env
+  - `ode_bvp_shooting("f_expr", t0, y_a, t_end, y_b, steps)` — second-order BVP via shooting, formula sees `{t, y, yp}`; manually verified against the exact `y''=-y`, `y(0)=0`, `y(pi/2)=1` boundary-value problem, reproducing `sin(t)` to high precision
+  - `ode_dde_fixed_step("f_expr", "history_expr", t0, t_end, tau, steps)` — delay differential equation; `f_expr` sees `{t, y, ydelay}`, `history_expr` sees `{t}` only
+  - `ode_event_detect("f_expr", "event_expr", t0, y0, t_end, steps)` — root-crossing event detection; both formulas see `{t, y}`; manually verified against `y'=1` from `y0=-5` with `event_g=y`, correctly detecting the crossing at the exact analytic time `t=5`
+  - New `tests/integration/test_ode_repl_complex_pipeline.cpp`; fuzz corpus seeds for all 5 commands; help text updated. **This closes out the REPL formula-bridge gap entirely — every ODE solver in `ms::ode` is now reachable from the REPL.**
+- `ms::axiom::Axiom::evolve` now performs **real genetic-programming tree evolution**, replacing the previous placeholder that only perturbed `Algorithm::fitness` directly and never touched any expression tree. Implementation: an internal `GPNode` tree type (constants/variables/binary-ops/unary-funcs restricted to `ms::Sym`'s actual supported grammar — `sin/cos/exp/log/sqrt/tanh` plus arithmetic) with diverse random-tree population initialization, tournament selection (now actually using the previously-unused `EvolutionConfig::tournament_size`), subtree crossover and mutation respecting `crossover_rate`/`mutation_rate`/`max_depth`, and elitism; the internal tree population is synced to `Algorithm::representation` as a `Sym` string each generation for evaluation/external consumption. **Finding:** `PrimitiveRegistry`'s matrix-level function set (`matmul`/`solve`/`lu`/`qr`/`svd`/`eig_sym`/`fft`/`det`/`trace`/`norm`) doesn't fit the scalar-expression-tree model that `Algorithm::representation` actually uses via `Sym`, so the GP function set is scoped to `Sym`'s real scalar grammar instead — flagged as a follow-up architecture question rather than forced. Extends `tests/unit/test_axiom_gria_ext.cpp` with 9 new tests verifying population diversity, structural change across generations, and measurable fitness improvement on a symbolic-regression-style objective.
+- `ms::fft`: `ifft2` (inverse 2D FFT, using `fft2`'s exact same divisor-based row/column dimension-inference so `ifft2(fft2(x))` round-trips for any input size) and `idst2` (inverse of `dst2`) — closes a gap explicitly flagged in `tests/numerical/test_fft_prob_remaining.cpp` ("ifft2 doesn't exist in the header"). **Finding:** `dst2` (despite its "type-II" name) is actually implemented as the orthonormal DST-I transform, which is symmetric and orthogonal and therefore mathematically self-inverse — confirmed numerically via round-trip tests — so `idst2` is a documented one-line wrapper around `dst2` rather than a separate formula.
+- **Total Wave 184: 362 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- `ms::axiom::PrimitiveRegistry`'s matrix-level primitives don't cleanly compose with the scalar-`Sym`-expression-tree GP model — either `PrimitiveRegistry` needs rescoping to scalar functions, or `Algorithm::representation`/GP evaluation needs a richer expression type that supports matrix-valued nodes (larger design question, not addressed this wave).
+- `ms::izaac` military namespace and full generic MPC beyond secret sharing remain out of scope (dedicated protocol-design effort).
+- With the ODE REPL formula-bridge and stateful-class REPL exposure both now complete, no single large concrete REPL-integration gap remains — future waves will likely shift further toward hardening (fuzz marathon, coverage), performance, or smaller library-level API completeness gaps.
+
 ## [1.0.0] — 2026-07-11 (Wave 183 — DifModel/Cluster REPL Wiring, CMA-ES, Kruskal-Wallis)
 
 ### Added (Wave 183)
