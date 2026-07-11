@@ -20,6 +20,38 @@ std::vector<double> blackman(size_t n);
 std::vector<double> parzen(size_t n);
 std::vector<double> triangular(size_t n);
 
+// Resampling family: change the effective sample rate of a signal by inserting or dropping
+// samples, optionally with anti-aliasing/anti-imaging low-pass filtering. `n`/`p`/`q` <= 0 or
+// an empty input signal returns an empty vector (no exceptions), matching moving_average's
+// defensive style.
+
+// Zero-stuffing upsample: inserts n-1 zeros after each input sample. Output length is
+// x.size()*n. E.g. upsample({1,2}, 3) == {1,0,0,2,0,0}.
+std::vector<double> upsample(const std::vector<double>& x, int n);
+
+// Naive decimation: keeps every n-th sample starting at index 0, with no anti-aliasing filter.
+// E.g. downsample({1,2,3,4,5,6}, 2) == {1,3,5}.
+std::vector<double> downsample(const std::vector<double>& x, int n);
+
+// Anti-aliased downsampling by integer factor q: low-pass filters x (ms::lowpass, treating x as
+// having unit sample rate fs = 1.0) with cutoff = 0.8 * new_nyquist, where new_nyquist =
+// 1/(2*q) is the Nyquist frequency of the decimated signal and 0.8 is a safety margin below it,
+// then keeps every q-th sample (ms::downsample). Pre-filtering attenuates frequency content
+// above the new Nyquist rate so it cannot alias into the decimated signal.
+std::vector<double> decimate(const std::vector<double>& x, int q);
+
+// Band-limited interpolation by integer factor p: zero-stuffs x (ms::upsample) then low-pass
+// filters (ms::lowpass, unit sample rate fs = 1.0) with cutoff = 0.8 * new_nyquist, where
+// new_nyquist = 1/(2*p), smoothing the inserted zeros into interpolated values. The filtered
+// result is scaled by p to undo the amplitude loss caused by zero-stuffing (averaging in zeros
+// divides signal energy by p).
+std::vector<double> interpolate(const std::vector<double>& x, int p);
+
+// Rational resampling: changes the sample rate by a factor of p/q via
+// ms::decimate(ms::interpolate(x, p), q) — interpolate (upsample by p) first so no information
+// is lost to decimation, then decimate (downsample by q) to the target rate.
+std::vector<double> resample(const std::vector<double>& x, int p, int q);
+
 // Welch's method for power spectral density estimation: splits x into overlapping segments of
 // length `segment_len`, applies a Hanning window (ms::hanning), computes the FFT magnitude-squared
 // of each windowed segment, and averages across segments. Returns a one-sided PSD (non-negative
