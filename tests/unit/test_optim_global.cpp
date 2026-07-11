@@ -261,6 +261,119 @@ TEST(OptimBrentq, FindsRootOfCos) {
 }
 
 // -----------------------------------------------------------------------
+// Illinois method (anti-stagnation regula falsi)
+// -----------------------------------------------------------------------
+TEST(OptimIllinois, FindsRootOfSquareMinusTwo) {
+    // f(x) = x^2 - 2 => root at sqrt(2)
+    ms::Func1D f = [](double x) { return x * x - 2.0; };
+    double r = ms::illinois(f, 0.0, 2.0);
+    EXPECT_NEAR(r, std::sqrt(2.0), 1e-8);
+}
+
+TEST(OptimIllinois, FindsRootOfCosMinusX) {
+    // f(x) = cos(x) - x, root near 0.7390851332
+    ms::Func1D f = [](double x) { return std::cos(x) - x; };
+    double r = ms::illinois(f, 0.0, 1.0);
+    EXPECT_NEAR(f(r), 0.0, 1e-8);
+    EXPECT_NEAR(r, 0.7390851332, 1e-6);
+}
+
+TEST(OptimIllinois, ConvergesOnStagnationProneBracket) {
+    // f(x) = x^10 - 1 on [0, 1.5]: extremely convex near the left endpoint,
+    // a classic case where plain regula falsi keeps the left endpoint fixed
+    // for many iterations and converges very slowly. Illinois should still
+    // converge to the root at x = 1 well within max_iter.
+    ms::Func1D f = [](double x) { return std::pow(x, 10) - 1.0; };
+    double r = ms::illinois(f, 0.0, 1.5, 1e-9, 200);
+    EXPECT_NEAR(r, 1.0, 1e-6);
+    EXPECT_NEAR(f(r), 0.0, 1e-6);
+}
+
+TEST(OptimIllinois, ConvergesFasterThanPlainRegulaFalsiOnStagnationCase) {
+    // Instrumented copies of plain regula falsi and Illinois on the same
+    // stagnation-prone bracket, counting iterations to reach the same
+    // tolerance. Illinois should need substantially fewer iterations since
+    // regula falsi keeps `a` pinned at 0 for a very long time.
+    ms::Func1D f = [](double x) { return std::pow(x, 10) - 1.0; };
+    const double a0 = 0.0, b0 = 1.5, tol = 1e-9;
+    const int cap = 500;
+
+    auto regula_falsi_iters = [&]() {
+        double a = a0, b = b0, fa = f(a), fb = f(b);
+        for (int i = 0; i < cap; ++i) {
+            double c = b - fb * (b - a) / (fb - fa);
+            double fc = f(c);
+            if (std::abs(fc) < tol) return i + 1;
+            if (fa * fc < 0.0) { b = c; fb = fc; }
+            else { a = c; fa = fc; }
+        }
+        return cap;
+    };
+
+    auto illinois_iters = [&]() {
+        double a = a0, b = b0, fa = f(a), fb = f(b);
+        int retained = 0;
+        for (int i = 0; i < cap; ++i) {
+            double c = b - fb * (b - a) / (fb - fa);
+            double fc = f(c);
+            if (std::abs(fc) < tol) return i + 1;
+            if (fa * fc < 0.0) {
+                b = c; fb = fc;
+                if (retained == -1) fa *= 0.5;
+                retained = -1;
+            } else {
+                a = c; fa = fc;
+                if (retained == 1) fb *= 0.5;
+                retained = 1;
+            }
+        }
+        return cap;
+    };
+
+    int rf_iters = regula_falsi_iters();
+    int il_iters = illinois_iters();
+    EXPECT_LT(il_iters, rf_iters);
+    EXPECT_LE(il_iters, 200);
+}
+
+TEST(OptimIllinois, AgreesWithBrentqAndBisectionOnSmoothFunctions) {
+    ms::Func1D f1 = [](double x) { return x * x * x - 2.0 * x - 5.0; };
+    double r_illinois1 = ms::illinois(f1, 1.0, 3.0);
+    double r_brentq1 = ms::brentq(f1, 1.0, 3.0);
+    EXPECT_NEAR(r_illinois1, r_brentq1, 1e-6);
+
+    ms::Func1D f2 = [](double x) { return std::sin(x); };
+    double r_illinois2 = ms::illinois(f2, 1.0, 4.0);
+    double r_bisection2 = ms::bisection(f2, 1.0, 4.0);
+    EXPECT_NEAR(r_illinois2, r_bisection2, 1e-6);
+    EXPECT_NEAR(r_illinois2, M_PI, 1e-6);
+}
+
+TEST(OptimIllinois, NonBracketingIntervalReturnsNaN) {
+    // f(x) = x^2 + 1 has no real root, and f(a), f(b) have the same sign
+    // for any a, b => not a valid bracket.
+    ms::Func1D f = [](double x) { return x * x + 1.0; };
+    double r = ms::illinois(f, 0.0, 2.0);
+    EXPECT_TRUE(std::isnan(r));
+}
+
+TEST(OptimIllinois, RootAtLeftEndpointHandledGracefully) {
+    // f(x) = x - 1, f(a) == 0 exactly at a = 1.
+    ms::Func1D f = [](double x) { return x - 1.0; };
+    double r = ms::illinois(f, 1.0, 2.0);
+    EXPECT_NEAR(r, 1.0, 1e-9);
+    EXPECT_TRUE(std::isfinite(r));
+}
+
+TEST(OptimIllinois, RootAtRightEndpointHandledGracefully) {
+    // f(x) = x - 2, f(b) == 0 exactly at b = 2.
+    ms::Func1D f = [](double x) { return x - 2.0; };
+    double r = ms::illinois(f, 1.0, 2.0);
+    EXPECT_NEAR(r, 2.0, 1e-9);
+    EXPECT_TRUE(std::isfinite(r));
+}
+
+// -----------------------------------------------------------------------
 // Secant method
 // -----------------------------------------------------------------------
 TEST(OptimSecant, FindsRootOfQuadratic) {

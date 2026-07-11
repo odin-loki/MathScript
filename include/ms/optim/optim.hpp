@@ -70,6 +70,42 @@ double bisection(Func1D f, double a, double b, double tol = 1e-10,
                  int max_iter = 200);
 double brentq(Func1D f, double a, double b, double tol = 1e-10,
               int max_iter = 200);
+
+/// @brief Illinois algorithm: an anti-stagnation modification of regula falsi
+///        (false position) for bracketed scalar root-finding.
+///
+/// Standard regula falsi picks the next estimate as the x-intercept of the
+/// secant line through (a, f(a)) and (b, f(b)): c = b - f(b)*(b-a)/(f(b)-f(a)).
+/// For strongly convex or concave functions this can stagnate badly: one
+/// endpoint is retained for many consecutive iterations while the other
+/// crawls toward the root, giving convergence that is barely linear. The
+/// Illinois modification tracks which endpoint was retained on the previous
+/// step; if the same endpoint is retained again on the current step, its
+/// stored function value is halved before the next false-position update.
+/// This shrinks that endpoint's influence on the secant estimate, forcing
+/// the stagnant side to move and restoring superlinear convergence, while
+/// still guaranteeing the root stays bracketed at every step.
+///
+/// @param f        Continuous scalar function to find a root of.
+/// @param a        Left bracket endpoint.
+/// @param b        Right bracket endpoint.
+/// @param tol      Convergence tolerance, applied to both |f(c)| and the
+///                 bracket width |b-a|.
+/// @param max_iter Maximum number of iterations.
+/// @return The estimated root. Returns NaN if the interval does not bracket
+///         a root, i.e. f(a) and f(b) have the same sign (f(a)*f(b) > 0).
+/// @note Converges at least as fast as plain regula falsi, and typically
+///       much faster on functions where regula falsi stagnates (e.g.
+///       strongly convex/concave functions on asymmetric brackets), since a
+///       stagnating endpoint's contribution is repeatedly halved instead of
+///       being left fixed indefinitely.
+/// @accuracy Superlinear convergence (order ~1.4-1.8) in the typical case;
+///           never worse than linear, unlike plain regula falsi which can
+///           stagnate to sub-linear effective progress on adversarial
+///           brackets.
+double illinois(Func1D f, double a, double b, double tol = 1e-10,
+                int max_iter = 200);
+
 double secant(Func1D f, double x0, double x1, double tol = 1e-10,
               int max_iter = 100);
 double halley(Func1D f, Func1D df, Func1D d2f, double x0,
