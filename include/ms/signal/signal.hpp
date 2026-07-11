@@ -123,4 +123,40 @@ Matrix<double> conv2(const Matrix<double>& A, const Matrix<double>& B);
 // division (ms::poly::poly_div_quot). Coefficient vectors use ascending-power convention.
 std::vector<double> deconv(const std::vector<double>& y, const std::vector<double>& b);
 
+// Generic digital filter application (direct-form difference equation): applies an IIR/FIR
+// filter with numerator (feedforward) coefficients b and denominator (feedback) coefficients a
+// to input x:
+//   a[0]*y[n] = b[0]*x[n] + b[1]*x[n-1] + ... - a[1]*y[n-1] - a[2]*y[n-2] - ...
+// If a[0] != 1, b and a are normalized internally by dividing through by a[0]. Zero initial
+// conditions are assumed (x[n] = 0, y[n] = 0 for n < 0). If a.size() <= 1 (e.g. {1.0} or empty),
+// this reduces to a pure FIR filter. Returns a vector the same length as x; empty x or empty b
+// returns an empty vector.
+std::vector<double> filter(const std::vector<double>& b, const std::vector<double>& a,
+                            const std::vector<double>& x);
+
+// Zero-phase filtering: applies ms::filter forward, reverses, applies ms::filter again, then
+// reverses back, cancelling the phase delay a single causal pass would introduce (the standard
+// filtfilt technique). To reduce edge transients, x is padded at both ends by reflecting
+// ~3*max(a.size(), b.size()) samples before the double pass; padding is trimmed off afterward.
+// Empty x or empty b returns an empty vector.
+std::vector<double> filtfilt(const std::vector<double>& b, const std::vector<double>& a,
+                              const std::vector<double>& x);
+
+// Window functions usable with firwin/firwin_highpass.
+enum class FirWindow { Rectangular, Hamming, Hann, Blackman };
+
+// Designs a windowed-sinc FIR lowpass filter with n_taps coefficients and cutoff frequency
+// `cutoff` normalized to Nyquist (cutoff in (0,1), where 1.0 == fs/2): the ideal (infinite)
+// lowpass sinc impulse response is truncated/centered to n_taps samples, multiplied pointwise
+// by the chosen window, then normalized so the DC gain (sum of taps) equals 1.0. n_taps should
+// be odd for a symmetric/linear-phase filter centered at (n_taps-1)/2. n_taps <= 0 returns an
+// empty vector.
+std::vector<double> firwin(int n_taps, double cutoff, FirWindow window = FirWindow::Hamming);
+
+// FIR highpass via spectral inversion of the equivalent firwin lowpass design: negates all taps
+// and adds 1 to the center tap (highpass = delta - lowpass). Requires odd n_taps (so a unique
+// center tap exists); even or non-positive n_taps returns an empty vector, matching this
+// module's defensive early-return style for inputs that can't be validated any other way.
+std::vector<double> firwin_highpass(int n_taps, double cutoff, FirWindow window = FirWindow::Hamming);
+
 } // namespace ms

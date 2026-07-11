@@ -616,4 +616,144 @@ std::vector<double> deconv(const std::vector<double>& y, const std::vector<doubl
     return poly::poly_div_quot(y, b);
 }
 
+std::vector<double> filter(const std::vector<double>& b, const std::vector<double>& a,
+                            const std::vector<double>& x) {
+    if (x.empty() || b.empty()) {
+        return {};
+    }
+
+    const double a0 = a.empty() ? 1.0 : a[0];
+    std::vector<double> bn = b;
+    std::vector<double> an = a.empty() ? std::vector<double>{1.0} : a;
+    if (a0 != 1.0 && a0 != 0.0) {
+        for (double& v : bn) {
+            v /= a0;
+        }
+        for (double& v : an) {
+            v /= a0;
+        }
+    }
+
+    std::vector<double> y(x.size(), 0.0);
+    for (size_t n = 0; n < x.size(); ++n) {
+        double acc = 0.0;
+        for (size_t j = 0; j < bn.size(); ++j) {
+            if (n >= j) {
+                acc += bn[j] * x[n - j];
+            }
+        }
+        for (size_t k = 1; k < an.size(); ++k) {
+            if (n >= k) {
+                acc -= an[k] * y[n - k];
+            }
+        }
+        y[n] = acc;
+    }
+    return y;
+}
+
+std::vector<double> filtfilt(const std::vector<double>& b, const std::vector<double>& a,
+                              const std::vector<double>& x) {
+    if (x.empty() || b.empty()) {
+        return {};
+    }
+
+    const size_t n = x.size();
+    size_t pad_len = 3 * std::max(a.size(), b.size());
+    if (n <= 1) {
+        pad_len = 0;
+    } else if (pad_len >= n) {
+        pad_len = n - 1;
+    }
+
+    std::vector<double> padded;
+    padded.reserve(n + 2 * pad_len);
+    for (size_t j = 0; j < pad_len; ++j) {
+        const size_t k = pad_len - j; // k = pad_len .. 1
+        padded.push_back(2.0 * x[0] - x[k]);
+    }
+    padded.insert(padded.end(), x.begin(), x.end());
+    for (size_t j = 0; j < pad_len; ++j) {
+        const size_t k = j + 1; // k = 1 .. pad_len
+        padded.push_back(2.0 * x[n - 1] - x[n - 1 - k]);
+    }
+
+    auto forward = filter(b, a, padded);
+    std::reverse(forward.begin(), forward.end());
+    auto backward = filter(b, a, forward);
+    std::reverse(backward.begin(), backward.end());
+
+    return std::vector<double>(backward.begin() + static_cast<ptrdiff_t>(pad_len),
+                                backward.end() - static_cast<ptrdiff_t>(pad_len));
+}
+
+namespace {
+
+std::vector<double> fir_window(int n_taps, FirWindow window) {
+    const size_t n = static_cast<size_t>(n_taps);
+    switch (window) {
+        case FirWindow::Hamming:
+            return hamming(n);
+        case FirWindow::Hann:
+            return hanning(n);
+        case FirWindow::Blackman:
+            return blackman(n);
+        case FirWindow::Rectangular:
+        default:
+            return std::vector<double>(n, 1.0);
+    }
+}
+
+} // namespace
+
+std::vector<double> firwin(int n_taps, double cutoff, FirWindow window) {
+    if (n_taps <= 0) {
+        return {};
+    }
+
+    const size_t n = static_cast<size_t>(n_taps);
+    const double center = static_cast<double>(n_taps - 1) / 2.0;
+    const double omega_c = M_PI * cutoff;
+
+    std::vector<double> taps(n);
+    for (size_t i = 0; i < n; ++i) {
+        const double m = static_cast<double>(i) - center;
+        if (std::abs(m) < 1e-12) {
+            taps[i] = cutoff;
+        } else {
+            taps[i] = std::sin(omega_c * m) / (M_PI * m);
+        }
+    }
+
+    const auto win = fir_window(n_taps, window);
+    for (size_t i = 0; i < n; ++i) {
+        taps[i] *= win[i];
+    }
+
+    double sum = 0.0;
+    for (double v : taps) {
+        sum += v;
+    }
+    if (std::abs(sum) > 1e-12) {
+        for (double& v : taps) {
+            v /= sum;
+        }
+    }
+    return taps;
+}
+
+std::vector<double> firwin_highpass(int n_taps, double cutoff, FirWindow window) {
+    if (n_taps <= 0 || n_taps % 2 == 0) {
+        return {};
+    }
+
+    auto taps = firwin(n_taps, cutoff, window);
+    for (double& v : taps) {
+        v = -v;
+    }
+    const size_t center = static_cast<size_t>(n_taps - 1) / 2;
+    taps[center] += 1.0;
+    return taps;
+}
+
 } // namespace ms

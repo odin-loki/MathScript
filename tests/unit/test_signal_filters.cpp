@@ -227,3 +227,325 @@ TEST(SignalResampleTest, resample_length_sanity) {
     EXPECT_NEAR(static_cast<double>(out.size()), expected_len, expected_len * 0.05 + 2.0);
     EXPECT_FALSE(out.empty());
 }
+
+// ---------------------------------------------------------------------------
+// filter() / filtfilt(): generic direct-form IIR/FIR application.
+// ---------------------------------------------------------------------------
+
+TEST(SignalFilterApplyTest, filter_fir_identity) {
+    const std::vector<double> x{1.0, -2.0, 3.5, 0.0, -7.25};
+    const auto y = filter({1.0}, {1.0}, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(SignalFilterApplyTest, filter_fir_moving_average_step_hand_computed) {
+    // b = {1/3,1/3,1/3}, a = {1}; x is a step from 0 to 1 at n=3.
+    const std::vector<double> b{1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0};
+    const std::vector<double> a{1.0};
+    const std::vector<double> x{0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    const auto y = filter(b, a, x);
+    ASSERT_EQ(y.size(), x.size());
+    const std::vector<double> expected{0.0, 0.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterApplyTest, filter_iir_exponential_moving_average_hand_computed) {
+    // b = {alpha}, a = {1, -(1-alpha)} => y[n] = alpha*x[n] + (1-alpha)*y[n-1].
+    const double alpha = 0.5;
+    const std::vector<double> b{alpha};
+    const std::vector<double> a{1.0, -(1.0 - alpha)};
+    const std::vector<double> x{1.0, 1.0, 1.0, 1.0, 1.0};
+    const auto y = filter(b, a, x);
+    ASSERT_EQ(y.size(), x.size());
+    const std::vector<double> expected{0.5, 0.75, 0.875, 0.9375, 0.96875};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterApplyTest, filter_general_iir_hand_computed) {
+    // y[n] = x[n] - x[n-1] + 0.5*y[n-1], i.e. b = {1,-1}, a = {1,-0.5}.
+    const std::vector<double> b{1.0, -1.0};
+    const std::vector<double> a{1.0, -0.5};
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    const auto y = filter(b, a, x);
+    ASSERT_EQ(y.size(), x.size());
+    const std::vector<double> expected{1.0, 1.5, 1.75, 1.875, 1.9375};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterApplyTest, filter_normalizes_when_a0_not_one) {
+    // Same recurrence as filter_general_iir_hand_computed, but scaled by 2:
+    // b = {2,-2}, a = {2,-1} should produce identical output once normalized by a[0]=2.
+    const std::vector<double> b{2.0, -2.0};
+    const std::vector<double> a{2.0, -1.0};
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    const auto y = filter(b, a, x);
+    const std::vector<double> expected{1.0, 1.5, 1.75, 1.875, 1.9375};
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterApplyTest, filter_empty_input_or_b) {
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    EXPECT_TRUE(filter({1.0}, {1.0}, {}).empty());
+    EXPECT_TRUE(filter({}, {1.0}, x).empty());
+}
+
+TEST(SignalFilterApplyTest, filtfilt_preserves_length) {
+    const std::vector<double> b{0.25, 0.5, 0.25};
+    const std::vector<double> a{1.0};
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+    const auto y = filtfilt(b, a, x);
+    EXPECT_EQ(y.size(), x.size());
+}
+
+TEST(SignalFilterApplyTest, filtfilt_empty_input_or_b) {
+    EXPECT_TRUE(filtfilt({1.0}, {1.0}, {}).empty());
+    EXPECT_TRUE(filtfilt({}, {1.0}, {1.0, 2.0}).empty());
+}
+
+TEST(SignalFilterApplyTest, filtfilt_is_zero_phase_vs_causal_filter_delay) {
+    // A causal FIR lowpass filter has a constant group delay of (n_taps-1)/2 samples;
+    // filtfilt should remove that delay entirely.
+    const int n_taps = 41;
+    const int delay = (n_taps - 1) / 2;
+    const auto taps = firwin(n_taps, 0.3, FirWindow::Hamming);
+    ASSERT_EQ(taps.size(), static_cast<size_t>(n_taps));
+
+    const size_t N = 300;
+    const double f = 0.02; // well within the 0.15-cycles/sample passband
+    std::vector<double> x(N);
+    for (size_t i = 0; i < N; ++i) {
+        x[i] = std::sin(2.0 * M_PI * f * static_cast<double>(i));
+    }
+
+    const auto causal = filter(taps, {1.0}, x);
+    const auto zero_phase = filtfilt(taps, {1.0}, x);
+    ASSERT_EQ(causal.size(), x.size());
+    ASSERT_EQ(zero_phase.size(), x.size());
+
+    const size_t margin = 60;
+    double sq_err_undelayed = 0.0;
+    double sq_err_delayed = 0.0;
+    double sq_err_zero_phase = 0.0;
+    size_t count = 0;
+    for (size_t i = margin; i + margin < N; ++i) {
+        const double ref = x[i];
+        sq_err_undelayed += (causal[i] - ref) * (causal[i] - ref);
+        sq_err_delayed += (causal[i + static_cast<size_t>(delay)] - ref) * (causal[i + static_cast<size_t>(delay)] - ref);
+        sq_err_zero_phase += (zero_phase[i] - ref) * (zero_phase[i] - ref);
+        ++count;
+    }
+    const double rmse_undelayed = std::sqrt(sq_err_undelayed / static_cast<double>(count));
+    const double rmse_delayed = std::sqrt(sq_err_delayed / static_cast<double>(count));
+    const double rmse_zero_phase = std::sqrt(sq_err_zero_phase / static_cast<double>(count));
+
+    // The causal filter output, compared directly (no shift) to the input, is way off due to
+    // the group delay; shifting it by the known delay brings it back in line.
+    EXPECT_GT(rmse_undelayed, 0.3);
+    EXPECT_LT(rmse_delayed, 0.05);
+    // filtfilt matches the input directly, with no shift needed at all.
+    EXPECT_LT(rmse_zero_phase, 0.05);
+    EXPECT_LT(rmse_zero_phase, rmse_undelayed * 0.5);
+}
+
+// ---------------------------------------------------------------------------
+// firwin() / firwin_highpass(): windowed-sinc FIR filter design.
+// ---------------------------------------------------------------------------
+
+TEST(FirWinTest, dc_gain_near_unity) {
+    for (int n_taps : {15, 31, 63}) {
+        for (double cutoff : {0.2, 0.4, 0.6}) {
+            const auto taps = firwin(n_taps, cutoff, FirWindow::Hamming);
+            ASSERT_EQ(taps.size(), static_cast<size_t>(n_taps));
+            double sum = 0.0;
+            for (double v : taps) {
+                sum += v;
+            }
+            EXPECT_NEAR(sum, 1.0, 1e-9);
+        }
+    }
+}
+
+TEST(FirWinTest, symmetric_linear_phase) {
+    for (int n_taps : {15, 31, 64}) {
+        for (FirWindow w : {FirWindow::Rectangular, FirWindow::Hamming, FirWindow::Hann, FirWindow::Blackman}) {
+            const auto taps = firwin(n_taps, 0.3, w);
+            ASSERT_EQ(taps.size(), static_cast<size_t>(n_taps));
+            for (size_t i = 0; i < taps.size(); ++i) {
+                EXPECT_NEAR(taps[i], taps[taps.size() - 1 - i], 1e-9);
+            }
+        }
+    }
+}
+
+TEST(FirWinTest, amplitude_response_lowpass_via_filtfilt) {
+    // cutoff = 0.3 (normalized to Nyquist) => passband edge at 0.15 cycles/sample.
+    const int n_taps = 101;
+    const auto taps = firwin(n_taps, 0.3, FirWindow::Hamming);
+
+    const size_t N = 400;
+    const double f_low = 0.02;  // well below cutoff
+    const double f_high = 0.4;  // well above cutoff
+    std::vector<double> x_low(N), x_high(N);
+    for (size_t i = 0; i < N; ++i) {
+        x_low[i] = std::sin(2.0 * M_PI * f_low * static_cast<double>(i));
+        x_high[i] = std::sin(2.0 * M_PI * f_high * static_cast<double>(i));
+    }
+
+    const auto y_low = filtfilt(taps, {1.0}, x_low);
+    const auto y_high = filtfilt(taps, {1.0}, x_high);
+
+    const size_t margin = 60;
+    double amp_low = 0.0;
+    double amp_high = 0.0;
+    for (size_t i = margin; i + margin < N; ++i) {
+        amp_low = std::max(amp_low, std::abs(y_low[i]));
+        amp_high = std::max(amp_high, std::abs(y_high[i]));
+    }
+
+    EXPECT_NEAR(amp_low, 1.0, 0.1);   // near-unity passband gain
+    EXPECT_LT(amp_high, 0.2);         // substantially attenuated stopband
+}
+
+TEST(FirWinTest, amplitude_response_second_cutoff) {
+    const int n_taps = 81;
+    const auto taps = firwin(n_taps, 0.5, FirWindow::Blackman);
+
+    const size_t N = 400;
+    const double f_low = 0.05;  // well below the 0.25 cycles/sample passband edge
+    const double f_high = 0.45; // well above it
+    std::vector<double> x_low(N), x_high(N);
+    for (size_t i = 0; i < N; ++i) {
+        x_low[i] = std::sin(2.0 * M_PI * f_low * static_cast<double>(i));
+        x_high[i] = std::sin(2.0 * M_PI * f_high * static_cast<double>(i));
+    }
+
+    const auto y_low = filtfilt(taps, {1.0}, x_low);
+    const auto y_high = filtfilt(taps, {1.0}, x_high);
+
+    const size_t margin = 60;
+    double amp_low = 0.0;
+    double amp_high = 0.0;
+    for (size_t i = margin; i + margin < N; ++i) {
+        amp_low = std::max(amp_low, std::abs(y_low[i]));
+        amp_high = std::max(amp_high, std::abs(y_high[i]));
+    }
+
+    EXPECT_NEAR(amp_low, 1.0, 0.1);
+    EXPECT_LT(amp_high, 0.2);
+}
+
+TEST(FirWinTest, rectangular_window_has_worse_stopband_than_tapered) {
+    const int n_taps = 51;
+    const double cutoff = 0.3;
+    const size_t N = 400;
+    const double f_stop = 0.4; // well above cutoff, in the stopband
+
+    std::vector<double> x(N);
+    for (size_t i = 0; i < N; ++i) {
+        x[i] = std::sin(2.0 * M_PI * f_stop * static_cast<double>(i));
+    }
+
+    auto stopband_amplitude = [&](FirWindow w) {
+        const auto taps = firwin(n_taps, cutoff, w);
+        const auto y = filtfilt(taps, {1.0}, x);
+        const size_t margin = 60;
+        double amp = 0.0;
+        for (size_t i = margin; i + margin < N; ++i) {
+            amp = std::max(amp, std::abs(y[i]));
+        }
+        return amp;
+    };
+
+    const double amp_rect = stopband_amplitude(FirWindow::Rectangular);
+    const double amp_hamming = stopband_amplitude(FirWindow::Hamming);
+    const double amp_hann = stopband_amplitude(FirWindow::Hann);
+    const double amp_blackman = stopband_amplitude(FirWindow::Blackman);
+
+    EXPECT_GT(amp_rect, amp_hamming);
+    EXPECT_GT(amp_rect, amp_hann);
+    EXPECT_GT(amp_rect, amp_blackman);
+}
+
+TEST(FirWinTest, edge_cases) {
+    EXPECT_TRUE(firwin(0, 0.3).empty());
+    EXPECT_TRUE(firwin(-5, 0.3).empty());
+    EXPECT_EQ(firwin(1, 0.3).size(), 1u);
+
+    // Cutoff near the extremes should stay finite (no NaN/Inf) and not crash.
+    const auto near_zero = firwin(21, 0.001, FirWindow::Hamming);
+    const auto near_one = firwin(21, 0.999, FirWindow::Hamming);
+    ASSERT_EQ(near_zero.size(), 21u);
+    ASSERT_EQ(near_one.size(), 21u);
+    for (double v : near_zero) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+    for (double v : near_one) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(FirWinTest, highpass_complementary_identity) {
+    for (int n_taps : {15, 31, 63}) {
+        const auto lp = firwin(n_taps, 0.4, FirWindow::Hamming);
+        const auto hp = firwin_highpass(n_taps, 0.4, FirWindow::Hamming);
+        ASSERT_EQ(lp.size(), static_cast<size_t>(n_taps));
+        ASSERT_EQ(hp.size(), static_cast<size_t>(n_taps));
+
+        const size_t center = static_cast<size_t>(n_taps - 1) / 2;
+        for (size_t i = 0; i < lp.size(); ++i) {
+            if (i == center) {
+                EXPECT_NEAR(lp[i] + hp[i], 1.0, 1e-9);
+            } else {
+                EXPECT_NEAR(lp[i] + hp[i], 0.0, 1e-9);
+            }
+        }
+    }
+}
+
+TEST(FirWinTest, highpass_amplitude_response_is_inverted) {
+    const int n_taps = 101;
+    const auto taps = firwin_highpass(n_taps, 0.3, FirWindow::Hamming);
+    ASSERT_EQ(taps.size(), static_cast<size_t>(n_taps));
+
+    const size_t N = 400;
+    const double f_low = 0.02;  // now in the highpass's stopband
+    const double f_high = 0.4;  // now in the highpass's passband
+    std::vector<double> x_low(N), x_high(N);
+    for (size_t i = 0; i < N; ++i) {
+        x_low[i] = std::sin(2.0 * M_PI * f_low * static_cast<double>(i));
+        x_high[i] = std::sin(2.0 * M_PI * f_high * static_cast<double>(i));
+    }
+
+    const auto y_low = filtfilt(taps, {1.0}, x_low);
+    const auto y_high = filtfilt(taps, {1.0}, x_high);
+
+    const size_t margin = 60;
+    double amp_low = 0.0;
+    double amp_high = 0.0;
+    for (size_t i = margin; i + margin < N; ++i) {
+        amp_low = std::max(amp_low, std::abs(y_low[i]));
+        amp_high = std::max(amp_high, std::abs(y_high[i]));
+    }
+
+    EXPECT_LT(amp_low, 0.2);          // low frequency now attenuated
+    EXPECT_NEAR(amp_high, 1.0, 0.1);  // high frequency now passed
+}
+
+TEST(FirWinTest, highpass_edge_cases) {
+    EXPECT_TRUE(firwin_highpass(0, 0.3).empty());
+    EXPECT_TRUE(firwin_highpass(-3, 0.3).empty());
+    EXPECT_TRUE(firwin_highpass(10, 0.3).empty()); // even n_taps rejected
+    EXPECT_EQ(firwin_highpass(11, 0.3).size(), 11u);
+}
