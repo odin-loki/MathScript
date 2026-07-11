@@ -403,3 +403,259 @@ TEST(SignalExtTest, spectrogram_invalid_overlap_ge_one) {
     ASSERT_FALSE(result.has_value());
     EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
 }
+
+namespace {
+
+std::vector<double> cosine_signal(size_t n, double fs, double freq, double amplitude = 1.0) {
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = amplitude * std::cos(2.0 * M_PI * freq * static_cast<double>(i) / fs);
+    }
+    return x;
+}
+
+std::vector<double> linear_chirp(size_t n, double fs, double f0, double f1) {
+    std::vector<double> x(n);
+    const double T = static_cast<double>(n - 1) / fs;
+    for (size_t i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i) / fs;
+        const double phase = 2.0 * M_PI * (f0 * t + 0.5 * (f1 - f0) * t * t / T);
+        x[i] = std::sin(phase);
+    }
+    return x;
+}
+
+double mean_middle_80(const std::vector<double>& values) {
+    const size_t n = values.size();
+    const size_t start = n / 10;
+    const size_t end = n - n / 10;
+    double sum = 0.0;
+    for (size_t i = start; i < end; ++i) {
+        sum += values[i];
+    }
+    return sum / static_cast<double>(end - start);
+}
+
+int lag_at_peak(const std::vector<double>& xcorr_values, int max_lag) {
+    const auto peak = std::max_element(xcorr_values.begin(), xcorr_values.end());
+    const int peak_index = static_cast<int>(std::distance(xcorr_values.begin(), peak));
+    return peak_index - max_lag;
+}
+
+} // namespace
+
+TEST(SignalExtTest, hilbert_sinusoid_envelope_is_constant) {
+    const double fs = 1000.0;
+    const double f0 = 50.0;
+    const size_t n = 1024;
+    const auto x = cosine_signal(n, fs, f0);
+    const auto env = envelope(x);
+    ASSERT_EQ(env.size(), n);
+
+    const double env_mean = mean_middle_80(env);
+    EXPECT_NEAR(env_mean, 1.0, 0.15);
+}
+
+TEST(SignalExtTest, hilbert_sinusoid_instantaneous_freq_is_constant) {
+    const double fs = 1000.0;
+    const double f0 = 50.0;
+    const size_t n = 1024;
+    const auto x = cosine_signal(n, fs, f0);
+    const auto freq = instantaneous_freq(x, fs);
+    ASSERT_EQ(freq.size(), n);
+
+    const double freq_mean = mean_middle_80(freq);
+    EXPECT_NEAR(freq_mean, f0, 5.0);
+}
+
+TEST(SignalExtTest, hilbert_empty_returns_empty) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(hilbert(empty).empty());
+    EXPECT_TRUE(envelope(empty).empty());
+    EXPECT_TRUE(instantaneous_phase(empty).empty());
+    EXPECT_TRUE(instantaneous_freq(empty, 1000.0).empty());
+}
+
+TEST(SignalExtTest, envelope_matches_hilbert_magnitude) {
+    const auto x = cosine_signal(128, 500.0, 25.0, 2.0);
+    const auto z = hilbert(x);
+    const auto env = envelope(x);
+    ASSERT_EQ(z.size(), env.size());
+    for (size_t i = 0; i < env.size(); ++i) {
+        EXPECT_NEAR(env[i], std::abs(z[i]), 1e-12);
+    }
+}
+
+TEST(SignalExtTest, instantaneous_phase_matches_hilbert_arg) {
+    const auto x = cosine_signal(128, 500.0, 25.0);
+    const auto z = hilbert(x);
+    const auto phase = instantaneous_phase(x);
+    ASSERT_EQ(z.size(), phase.size());
+    for (size_t i = 0; i < phase.size(); ++i) {
+        EXPECT_NEAR(phase[i], std::arg(z[i]), 1e-12);
+    }
+}
+
+TEST(SignalExtTest, instantaneous_freq_output_length_matches_input) {
+    const auto x = cosine_signal(64, 1000.0, 40.0);
+    const auto freq = instantaneous_freq(x, 1000.0);
+    EXPECT_EQ(freq.size(), x.size());
+    EXPECT_NEAR(freq.back(), freq[freq.size() - 2], 1e-12);
+}
+
+TEST(SignalExtTest, instantaneous_freq_chirp_tracks_increasing_frequency) {
+    const double fs = 1000.0;
+    const size_t n = 2048;
+    const auto x = linear_chirp(n, fs, 20.0, 120.0);
+    const auto freq = instantaneous_freq(x, fs);
+
+    const size_t early_start = n / 10;
+    const size_t early_end = n / 5;
+    const size_t late_start = 4 * n / 5;
+    const size_t late_end = 9 * n / 10;
+
+    double early_mean = 0.0;
+    for (size_t i = early_start; i < early_end; ++i) {
+        early_mean += freq[i];
+    }
+    early_mean /= static_cast<double>(early_end - early_start);
+
+    double late_mean = 0.0;
+    for (size_t i = late_start; i < late_end; ++i) {
+        late_mean += freq[i];
+    }
+    late_mean /= static_cast<double>(late_end - late_start);
+
+    EXPECT_GT(late_mean, early_mean + 30.0);
+    EXPECT_NEAR(early_mean, 20.0, 25.0);
+    EXPECT_NEAR(late_mean, 120.0, 35.0);
+}
+
+TEST(SignalExtTest, xcorr_finds_known_integer_delay) {
+    const double fs = 1000.0;
+    const auto x = sinusoid(256, fs, 60.0);
+    const int delay = 12;
+    const int max_lag = 20;
+
+    std::vector<double> y(x.size(), 0.0);
+    for (size_t i = static_cast<size_t>(delay); i < x.size(); ++i) {
+        y[i] = x[i - static_cast<size_t>(delay)];
+    }
+
+    const auto xc = xcorr(x, y, max_lag);
+    ASSERT_EQ(xc.size(), static_cast<size_t>(2 * max_lag + 1));
+    EXPECT_EQ(lag_at_peak(xc, max_lag), delay);
+}
+
+TEST(SignalExtTest, xcorr_output_size_is_two_max_lag_plus_one) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> b{1.0, 0.0, -1.0};
+    const int max_lag = 5;
+    const auto xc = xcorr(a, b, max_lag);
+    EXPECT_EQ(xc.size(), static_cast<size_t>(2 * max_lag + 1));
+}
+
+TEST(SignalExtTest, autocorr_zero_lag_equals_sum_of_squares) {
+    const std::vector<double> x{1.0, -2.0, 3.0, 0.5};
+    const int max_lag = 2;
+    const auto ac = autocorr(x, max_lag);
+    ASSERT_EQ(ac.size(), static_cast<size_t>(2 * max_lag + 1));
+
+    double expected = 0.0;
+    for (double v : x) {
+        expected += v * v;
+    }
+    EXPECT_NEAR(ac[static_cast<size_t>(max_lag)], expected, 1e-12);
+}
+
+TEST(SignalExtTest, autocorr_matches_xcorr_self) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    const int max_lag = 3;
+    const auto ac = autocorr(x, max_lag);
+    const auto xc = xcorr(x, x, max_lag);
+    ASSERT_EQ(ac.size(), xc.size());
+    for (size_t i = 0; i < ac.size(); ++i) {
+        EXPECT_NEAR(ac[i], xc[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, xcov_is_demeaned_cross_correlation) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> b{2.0, 1.0, 4.0, 3.0};
+    const int max_lag = 2;
+
+    auto demean_copy = [](const std::vector<double>& v) {
+        double mean = std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size());
+        std::vector<double> out(v.size());
+        for (size_t i = 0; i < v.size(); ++i) {
+            out[i] = v[i] - mean;
+        }
+        return out;
+    };
+
+    const auto expected = xcorr(demean_copy(a), demean_copy(b), max_lag);
+    const auto cov = xcov(a, b, max_lag);
+    ASSERT_EQ(expected.size(), cov.size());
+    for (size_t i = 0; i < cov.size(); ++i) {
+        EXPECT_NEAR(cov[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, xcorr_invalid_max_lag_returns_empty) {
+    const std::vector<double> x{1.0, 2.0};
+    EXPECT_TRUE(xcorr(x, x, -1).empty());
+    EXPECT_TRUE(xcov(x, x, -1).empty());
+    EXPECT_TRUE(autocorr(x, -1).empty());
+}
+
+TEST(SignalExtTest, conv2_hand_computed_2x2) {
+    Matrix<double> A{{1.0, 2.0}, {3.0, 4.0}};
+    Matrix<double> B{{1.0, 0.0}, {0.0, 1.0}};
+    const auto C = conv2(A, B);
+    ASSERT_EQ(C.rows(), 3u);
+    ASSERT_EQ(C.cols(), 3u);
+    EXPECT_NEAR(C(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(C(0, 1), 2.0, 1e-12);
+    EXPECT_NEAR(C(1, 0), 3.0, 1e-12);
+    EXPECT_NEAR(C(1, 1), 5.0, 1e-12);
+    EXPECT_NEAR(C(2, 2), 4.0, 1e-12);
+}
+
+TEST(SignalExtTest, conv2_small_kernel_sums) {
+    Matrix<double> A{{1.0, 2.0}, {3.0, 4.0}};
+    Matrix<double> K{{1.0, 1.0}, {1.0, 1.0}};
+    const auto C = conv2(A, K);
+    EXPECT_NEAR(C(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(C(0, 1), 3.0, 1e-12);
+    EXPECT_NEAR(C(1, 0), 4.0, 1e-12);
+    EXPECT_NEAR(C(2, 2), 4.0, 1e-12);
+}
+
+TEST(SignalExtTest, conv2_empty_matrix_returns_empty) {
+    Matrix<double> empty;
+    Matrix<double> B{{1.0}};
+    EXPECT_TRUE(conv2(empty, B).empty());
+    EXPECT_TRUE(conv2(B, empty).empty());
+}
+
+TEST(SignalExtTest, deconv_recovers_signal_from_convolution) {
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    const std::vector<double> b{1.0, 1.0};
+    const auto y = convolve(x, b);
+    const auto recovered = deconv(y, b);
+    ASSERT_EQ(recovered.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(recovered[i], x[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, deconv_roundtrip_longer_signals) {
+    const std::vector<double> x{2.0, -1.0, 0.5, 3.0, 1.0};
+    const std::vector<double> b{1.0, -0.5, 0.25};
+    const auto y = convolve(x, b);
+    const auto recovered = deconv(y, b);
+    ASSERT_EQ(recovered.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(recovered[i], x[i], 1e-10);
+    }
+}

@@ -1,7 +1,10 @@
 #include "ms/signal/signal.hpp"
 #include "ms/fft/fft.hpp"
+#include "ms/poly/poly.hpp"
+#include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstddef>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -111,6 +114,115 @@ void apply_one_sided_psd_scaling(std::vector<double>& psd, size_t n_fft) {
     if (n_fft % 2 != 0) {
         psd.back() *= 2.0;
     }
+}
+
+std::vector<std::complex<double>> fft_recursive(std::vector<std::complex<double>> x) {
+    const size_t n = x.size();
+    if (n <= 1) {
+        return x;
+    }
+    if (n % 2 != 0) {
+        std::vector<std::complex<double>> out(n);
+        for (size_t k = 0; k < n; ++k) {
+            std::complex<double> sum(0.0, 0.0);
+            for (size_t t = 0; t < n; ++t) {
+                const double angle = -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n);
+                sum += x[t] * std::complex<double>(std::cos(angle), std::sin(angle));
+            }
+            out[k] = sum;
+        }
+        return out;
+    }
+
+    std::vector<std::complex<double>> even(n / 2);
+    std::vector<std::complex<double>> odd(n / 2);
+    for (size_t i = 0; i < n / 2; ++i) {
+        even[i] = x[2 * i];
+        odd[i] = x[2 * i + 1];
+    }
+
+    even = fft_recursive(std::move(even));
+    odd = fft_recursive(std::move(odd));
+
+    std::vector<std::complex<double>> out(n);
+    for (size_t k = 0; k < n / 2; ++k) {
+        const double angle = -2.0 * M_PI * static_cast<double>(k) / static_cast<double>(n);
+        const std::complex<double> w(std::cos(angle), std::sin(angle));
+        const std::complex<double> t = w * odd[k];
+        out[k] = even[k] + t;
+        out[k + n / 2] = even[k] - t;
+    }
+    return out;
+}
+
+std::vector<std::complex<double>> complex_ifft(const std::vector<std::complex<double>>& x) {
+    if (x.empty()) {
+        return {};
+    }
+    std::vector<std::complex<double>> conj(x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        conj[i] = std::conj(x[i]);
+    }
+    auto spectrum = fft_recursive(std::move(conj));
+    const double inv_n = 1.0 / static_cast<double>(x.size());
+    for (size_t i = 0; i < spectrum.size(); ++i) {
+        spectrum[i] = std::conj(spectrum[i]) * inv_n;
+    }
+    return spectrum;
+}
+
+void apply_hilbert_frequency_mask(std::vector<std::complex<double>>& spectrum) {
+    const size_t n = spectrum.size();
+    if (n == 0) {
+        return;
+    }
+    for (size_t k = 1; k < n / 2; ++k) {
+        spectrum[k] *= 2.0;
+    }
+    if (n % 2 == 0) {
+        for (size_t k = n / 2 + 1; k < n; ++k) {
+            spectrum[k] = 0.0;
+        }
+    } else {
+        for (size_t k = (n + 1) / 2; k < n; ++k) {
+            spectrum[k] = 0.0;
+        }
+    }
+}
+
+std::vector<double> unwrap_phase(const std::vector<double>& wrapped) {
+    if (wrapped.empty()) {
+        return wrapped;
+    }
+    std::vector<double> out(wrapped.size());
+    out[0] = wrapped[0];
+    for (size_t i = 1; i < wrapped.size(); ++i) {
+        double delta = wrapped[i] - wrapped[i - 1];
+        while (delta > M_PI) {
+            delta -= 2.0 * M_PI;
+        }
+        while (delta <= -M_PI) {
+            delta += 2.0 * M_PI;
+        }
+        out[i] = out[i - 1] + delta;
+    }
+    return out;
+}
+
+std::vector<double> demean(const std::vector<double>& x) {
+    if (x.empty()) {
+        return x;
+    }
+    double mean = 0.0;
+    for (double v : x) {
+        mean += v;
+    }
+    mean /= static_cast<double>(x.size());
+    std::vector<double> out(x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        out[i] = x[i] - mean;
+    }
+    return out;
 }
 
 } // namespace
@@ -346,6 +458,110 @@ Result<SpectrogramResult> spectrogram(const std::vector<double>& x, double fs,
     }
 
     return out;
+}
+
+std::vector<std::complex<double>> hilbert(const std::vector<double>& x) {
+    if (x.empty()) {
+        return {};
+    }
+    const auto spectrum = fft(x);
+    if (!spectrum) {
+        return {};
+    }
+    auto masked = *spectrum;
+    apply_hilbert_frequency_mask(masked);
+    auto analytic = complex_ifft(masked);
+    analytic.resize(x.size());
+    return analytic;
+}
+
+std::vector<double> envelope(const std::vector<double>& x) {
+    const auto analytic = hilbert(x);
+    if (analytic.empty()) {
+        return {};
+    }
+    std::vector<double> out(analytic.size());
+    for (size_t i = 0; i < analytic.size(); ++i) {
+        out[i] = std::abs(analytic[i]);
+    }
+    return out;
+}
+
+std::vector<double> instantaneous_phase(const std::vector<double>& x) {
+    const auto analytic = hilbert(x);
+    if (analytic.empty()) {
+        return {};
+    }
+    std::vector<double> out(analytic.size());
+    for (size_t i = 0; i < analytic.size(); ++i) {
+        out[i] = std::arg(analytic[i]);
+    }
+    return out;
+}
+
+std::vector<double> instantaneous_freq(const std::vector<double>& x, double fs) {
+    if (x.empty()) {
+        return {};
+    }
+    const auto phase = unwrap_phase(instantaneous_phase(x));
+    std::vector<double> freq(x.size(), 0.0);
+    if (phase.size() < 2) {
+        return freq;
+    }
+    const double scale = fs / (2.0 * M_PI);
+    for (size_t i = 0; i + 1 < phase.size(); ++i) {
+        freq[i] = (phase[i + 1] - phase[i]) * scale;
+    }
+    freq.back() = freq[freq.size() - 2];
+    return freq;
+}
+
+std::vector<double> xcorr(const std::vector<double>& a, const std::vector<double>& b, int max_lag) {
+    if (max_lag < 0 || a.empty() || b.empty()) {
+        return {};
+    }
+    const auto full = correlate(a, b);
+    const ptrdiff_t zero_idx = static_cast<ptrdiff_t>(b.size() - 1);
+    const size_t out_len = static_cast<size_t>(2 * max_lag + 1);
+    std::vector<double> out(out_len, 0.0);
+    for (int lag = -max_lag; lag <= max_lag; ++lag) {
+        const ptrdiff_t idx = zero_idx - lag;
+        if (idx >= 0 && idx < static_cast<ptrdiff_t>(full.size())) {
+            out[static_cast<size_t>(lag + max_lag)] = full[static_cast<size_t>(idx)];
+        }
+    }
+    return out;
+}
+
+std::vector<double> xcov(const std::vector<double>& a, const std::vector<double>& b, int max_lag) {
+    return xcorr(demean(a), demean(b), max_lag);
+}
+
+std::vector<double> autocorr(const std::vector<double>& x, int max_lag) {
+    return xcorr(x, x, max_lag);
+}
+
+Matrix<double> conv2(const Matrix<double>& A, const Matrix<double>& B) {
+    if (A.empty() || B.empty()) {
+        return Matrix<double>{};
+    }
+    const size_t out_rows = A.rows() + B.rows() - 1;
+    const size_t out_cols = A.cols() + B.cols() - 1;
+    Matrix<double> out(out_rows, out_cols, 0.0);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            for (size_t k = 0; k < B.rows(); ++k) {
+                for (size_t l = 0; l < B.cols(); ++l) {
+                    out(i + k, j + l) += A(i, j) * B(k, l);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<double> deconv(const std::vector<double>& y, const std::vector<double>& b) {
+    return poly::poly_div_quot(y, b);
 }
 
 } // namespace ms
