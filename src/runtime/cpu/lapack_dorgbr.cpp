@@ -396,7 +396,25 @@ void dorgbr(
                     (i == j) ? 1.0 : 0.0;
             }
         }
-        apply_p_right_tall(n, k, A, lda, tau, Q, ldq, true);
+        // apply_p_right_tall accumulates the elementary reflectors P(0), P(1), ...,
+        // P(count-1) (each individually symmetric) onto the identity from the
+        // right. Applying them in ascending order (apply_pt=true) reproduces the
+        // forward product P = P(0)*P(1)*...*P(count-1) used by dgebd2 to build the
+        // bidiagonal form of A, not its transpose. dgesvd_tall needs P**T here (as
+        // documented above) to back-transform the bidiagonal-space right singular
+        // vectors into the original basis, so the reflectors must be applied in
+        // descending order instead, which is what apply_pt=false does.
+        //
+        // Passing true here previously produced P instead of P**T whenever the
+        // reflector product doesn't happen to be self-transpose (i.e. whenever
+        // count = min(k, n) - 1 >= 2, so P is a product of 2+ non-commuting
+        // Householder reflectors). That silently corrupts every right singular
+        // vector beyond the ones spanned by the first reflector for ANY m>=n input
+        // with n >= 3 taking this code path — not only rank-deficient matrices,
+        // though a rank-deficient probe with several trailing near-zero singular
+        // values beyond the leading one(s) is what exposed it, because the error
+        // shows up as soon as more than one reflector's worth of columns are read.
+        apply_p_right_tall(n, k, A, lda, tau, Q, ldq, false);
     } else {
         dorgbr_p_wide(m, n, k, A, lda, tau, Q, ldq);
     }
