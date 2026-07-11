@@ -7636,19 +7636,30 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       primitives), verified against exact distributional identities (Beta(1,1)=Uniform,
       Gamma(1,scale)=Exponential, F(1,df) vs t^2); docs/API.md synced through Wave 181;
       tag checklist 358→360 (360 suites, 100% passing).
+      Wave 183: REPL session-object registry (Wave 182) extended to ms::cypha::DifModel
+      (difmodel_new/update/predict/predict_interval/ood_score/gh_gate) and
+      ms::izaac::consensus::Cluster (cluster_new/run_election/replicate/current_leader/
+      status) — closes out the "REPL exposure for stateful framework classes" follow-up
+      first flagged in Wave 181; all 5 previously-deferred stateful classes now reachable
+      from the REPL via the same named-handle registry. ms::optim cmaes (Covariance Matrix
+      Adaptation Evolution Strategy — full covariance-matrix adaptation via rank-1/rank-mu
+      updates, log-weighted recombination, cumulative step-size control; outperforms
+      differential_evolution/particle_swarm on ill-conditioned/rotated objectives, verified
+      on the Rosenbrock valley benchmark). ms::stats kruskal_wallis (non-parametric H-test,
+      tie-corrected, chi-squared p-value — generalizes mann_whitney_u to >2 groups); cleanup:
+      one_way_anova's F-distribution p-value now calls the shared ms::prob::f_cdf (Wave 182)
+      instead of a duplicated incomplete-beta implementation. docs/API.md synced (session-
+      object registry Waves 182-183, optim/stats module table rows); tag checklist 360→361
+      (361 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
       REPL/fuzz-corpus wiring for ode_backward_euler_vec/ode_bvp_shooting/
       ode_dde_fixed_step/ode_event_detect/ode_dae_index1 (these have more complex
       multi-callback or boundary-condition signatures needing further formula-bridge design
-      beyond the single/multi-formula convention used so far — tracked as the concrete next step).
-      REPL exposure for the remaining stateful framework classes (DifModel/consensus::Cluster)
-      — can now reuse the session-object registry mechanism introduced in Wave 182 for
-      BloomFilter/TokenBucket/CellMemory.
-      ms::stats::one_way_anova's inline incomplete-beta F-distribution p-value logic could be
-      refactored to call the new ms::prob::f_cdf (Wave 182) instead of duplicating it — minor
-      cleanup, not done yet to keep changes additive-only.
+      beyond the single/multi-formula convention used so far — the last remaining REPL gap,
+      tracked since Wave 179 — now the clear concrete next step since stateful-class REPL
+      exposure was completed in Wave 183).
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
       Axiom::evolve mutation still perturbs fitness directly rather than mutating the

@@ -3,6 +3,23 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 183 — DifModel/Cluster REPL Wiring, CMA-ES, Kruskal-Wallis)
+
+### Added (Wave 183)
+- REPL: extended the Wave 182 session-object registry to the two remaining previously-unwired stateful framework classes:
+  - `difmodel_new(handle, input_dim, output_dim, n_experts, learning_rate)` / `difmodel_update(handle, x, y)` / `difmodel_predict(handle, x)` / `difmodel_predict_interval(handle, x)` / `difmodel_ood_score(handle, x)` / `difmodel_gh_gate(handle, x)` — `ms::cypha::DifModel`
+  - `cluster_new(handle, n_nodes, seed)` / `cluster_run_election(handle)` / `cluster_replicate(handle, leader_id, "cmd")` / `cluster_current_leader(handle)` / `cluster_status(handle)` — `ms::izaac::consensus::Cluster`
+  - This closes out the "REPL exposure for stateful framework classes" follow-up first flagged in Wave 181 — all 5 previously-deferred stateful classes (`BloomFilter`, `TokenBucket`, `CellMemory`, `DifModel`, `consensus::Cluster`) are now reachable from the REPL via the same named-handle registry. New `tests/integration/test_stateful_objects2_repl_pipeline.cpp`; fuzz corpus seeds for all 11 new commands; help text updated. Manually verified end-to-end via `mathscriptc` (DifModel online-update/predict cycle; Cluster election + replication to the elected leader).
+- `ms::optim`: `cmaes` — Covariance Matrix Adaptation Evolution Strategy, a global derivative-free optimizer that adapts a full covariance matrix of its sampling distribution (log-weighted recombination, rank-1 + rank-mu covariance updates, cumulative step-size adaptation), giving it a structural advantage over the existing `differential_evolution`/`particle_swarm` on ill-conditioned or rotated objectives. Verified on the 2D sphere function, the classic Rosenbrock valley benchmark (the standard test for exactly this covariance-adaptation advantage), a higher-dimensional sphere function (validating the dimension-dependent default formulas for population size/weights), and a trivial 1D edge case — extends `tests/unit/test_optim_global.cpp`.
+- `ms::stats`: `kruskal_wallis` — non-parametric H-test generalizing `mann_whitney_u` to more than two groups (rank-based, with the standard tie-correction factor and a chi-squared p-value), the natural nonparametric complement to `one_way_anova` the same way `mann_whitney_u` complements the two-sample t-test — extends `tests/unit/test_stats_prob_ext.cpp`.
+- **Cleanup:** `one_way_anova`'s F-distribution p-value computation now calls the shared `ms::prob::f_cdf` (added Wave 182) instead of a private, duplicated incomplete-beta implementation in `stats.cpp` — one fewer copy of the same math to maintain, with identical results confirmed against the pre-refactor test values.
+- **Total Wave 183: 361 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- The formula bridge still doesn't cover `ode_backward_euler_vec`, `ode_bvp_shooting`, `ode_dde_fixed_step`, `ode_event_detect`, or `ode_dae_index1` — the last remaining REPL gap tracked since Wave 179.
+- `ms::izaac` military namespace and full generic MPC beyond secret sharing remain out of scope (dedicated protocol-design effort).
+- `Axiom::evolve` mutation still perturbs fitness directly rather than mutating representation/evaluation/selection/mutation expression trees.
+
 ## [1.0.0] — 2026-07-11 (Wave 182 — REPL Session-Object Registry, RNG Statistical Hardening, Prob Distribution Gaps)
 
 ### Added (Wave 182)

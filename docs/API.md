@@ -69,9 +69,9 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | Header | Description |
 |--------|-------------|
 | `fft/fft.hpp` | `fft`, `ifft`, `rfft`, `dft`, `dct2`/`dst2`, and shift helpers |
-| `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`), Mann-Whitney U (`mann_whitney_u`), two-sample KS (`ks_test_2sample`); bootstrap resampling (`bootstrap_mean`, mean-only `bootstrap_ci`, general `bootstrap_ci` with percentile-method CI for arbitrary statistics via `BootstrapResult`) |
+| `stats/stats.hpp` | Mean, variance, percentiles, t/z tests, correlation, linear regression; one-way ANOVA (`one_way_anova`, F-distribution p-value via `ms::prob::f_cdf`), Mann-Whitney U (`mann_whitney_u`), Kruskal-Wallis H-test (`kruskal_wallis`, tie-corrected, chi-squared p-value — non-parametric multi-group generalization of `mann_whitney_u`), two-sample KS (`ks_test_2sample`); bootstrap resampling (`bootstrap_mean`, mean-only `bootstrap_ci`, general `bootstrap_ci` with percentile-method CI for arbitrary statistics via `BootstrapResult`) |
 | `prob/prob.hpp` | PDF/CDF/PPF for normal, exponential, binomial, Poisson, chi-square, t, gamma (`gamma_cdf`), beta (`beta_pdf`/`beta_cdf`), F (`f_pdf`/`f_cdf`), uniform |
-| `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints` |
+| `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point` |
 | `signal/signal.hpp` | Butterworth/low/high/band-pass filters, convolution, moving average, window functions; `welch_psd` (Welch PSD via segmented FFT with overlap) and `spectrogram` (STFT magnitude spectrogram, same windowing convention) |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye` |
 | `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`, `ode_rk45_vec`; symplectic: `ode_verlet`, `ode_verlet_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`, `ode_bdf2` (BDF2 multistep, A-stable, bootstraps first step via BDF1); BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
@@ -295,6 +295,39 @@ C++ library modules from Waves 57–59 are header-only API; Waves 61–62 extend
 | `izaac_estimate_pi(n)` | Monte Carlo \(\pi\) estimate using `n` samples (requires prior `izaac seed N`) |
 | `izaac_laplace_noise(value, epsilon, sensitivity)` | Laplace mechanism differential-privacy noise |
 | `izaac_gaussian_noise(value, epsilon, delta, sensitivity)` | Gaussian mechanism differential-privacy noise |
+
+**Wave 182 — session-object registry (first REPL exposure of stateful framework classes):**
+
+The `Interpreter` now holds a `std::variant`-backed named-handle registry so users can create a persistent stateful object once and invoke methods on it across multiple REPL commands. `session_objects()` lists all live handles and their types; `session_object_clear(handle)` frees one.
+
+| Call | Description |
+|------|-------------|
+| `bloom_new(handle, expected_items, fp_rate)` | Create a `ms::izaac::bloom::BloomFilter` (requires prior `izaac seed N`) |
+| `bloom_insert(handle, "item")` | Insert a string item into the named bloom filter |
+| `bloom_check(handle, "item")` | Test membership (`true`/`false`, may false-positive per the filter's FP rate) |
+| `tokenbucket_new(handle, capacity, refill_rate)` | Create a `ms::izaac::ratelimit::TokenBucket` |
+| `tokenbucket_consume(handle, tokens, now)` | Attempt to consume tokens at time `now` (`true`/`false`) |
+| `tokenbucket_available(handle, now)` | Tokens currently available at time `now` |
+| `cellmemory_new(handle, input_dim, memory_dim, [time_scales])` | Create a `ms::cellai::CellMemory` |
+| `cellmemory_step(handle, input)` | Advance memory state with an input column vector |
+| `cellmemory_recall(handle, time_scale)` | Recall memory content at a given time scale |
+| `cellmemory_consolidate(handle)` | Consolidate short-term into long-term memory |
+
+**Wave 183 — session-object registry extended to `DifModel`/`consensus::Cluster`:**
+
+| Call | Description |
+|------|-------------|
+| `difmodel_new(handle, input_dim, output_dim, n_experts, learning_rate)` | Create a `ms::cypha::DifModel` online learner |
+| `difmodel_update(handle, x, y)` | Online update on one `(x, y)` observation |
+| `difmodel_predict(handle, x)` | Point prediction for input `x` |
+| `difmodel_predict_interval(handle, x)` | Prediction with NIG-based uncertainty interval (mean/lower/upper) |
+| `difmodel_ood_score(handle, x)` | Out-of-distribution score for input `x` |
+| `difmodel_gh_gate(handle, x)` | Whether `x` passes the generalized-hyperbolic protection gate |
+| `cluster_new(handle, n_nodes, seed)` | Create a simulated Raft `ms::izaac::consensus::Cluster` |
+| `cluster_run_election(handle)` | Run one election round; returns elected leader id or -1 |
+| `cluster_replicate(handle, leader_id, "cmd")` | Replicate a command to a quorum via the given leader |
+| `cluster_current_leader(handle)` | Current leader id, or -1 if none/ambiguous |
+| `cluster_status(handle)` | Per-node role/term/log-size/commit-index diagnostic dump |
 
 ## Distributed (`include/ms/distributed/`) — optional when `MS_ENABLE_MPI=ON`
 
