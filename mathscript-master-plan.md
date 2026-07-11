@@ -7598,17 +7598,23 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       ms::symbolic sym_parse string-formula parser + REPL sym_diff/sym_simplify/sym_integrate/
       sym_eval bindings (first REPL exposure of the symbolic engine); docs/API.md synced
       through Wave 177; tag checklist 355→356 (356 suites, 100% passing).
+      Wave 179: ms::ode ode_bdf2 (A-stable BDF2, bootstrapped via BDF1); ms::izaac crypto
+      (CSPRNG stream cipher, honestly non-production-grade) + mpc (Shamir's Secret Sharing,
+      real threshold-crypto primitive) namespaces; ms::ml RandomForest + GradientBoosting
+      ensembles on the existing DecisionTree; REPL ode_euler/ode_rk4/ode_midpoint/ode_rk45/
+      ode_backward_euler wired via the sym_parse formula bridge (e.g. ode_rk4("y",0,1,1,100))
+      — resolves the callback-argument REPL gap deferred since Wave 176; docs/API.md synced
+      through Wave 178; tag checklist 356→357 (357 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
-      REPL/fuzz-corpus wiring for ode_backward_euler/ode_backward_euler_vec/ode_bvp_shooting/
-      ode_dde_fixed_step/ode_event_detect/ode_dae_index1/ode_verlet/ode_verlet_vec/
-      ode_rk45_vec functions (the sym_parse bridge added in Wave 178 makes this feasible now —
-      an ODE RHS could be parsed once and evaluated per RK stage via sym_eval — but wiring it
-      through the REPL's multi-arg dispatch, mixing quoted formula strings with numeric args,
-      was deferred to keep Wave 178 bounded; tracked as the concrete next step).
-      ms::izaac crypto/vrf(app)/consensus/mpc/military application namespaces (need real
-      cryptographic-protocol design — out of scope for an incremental wave).
+      REPL/fuzz-corpus wiring for ode_verlet/ode_verlet_vec/ode_rk45_vec/ode_bdf2/
+      ode_backward_euler_vec/ode_bvp_shooting/ode_dde_fixed_step/ode_event_detect/
+      ode_dae_index1 (the formula bridge added in Wave 179 covers only the 5 simplest
+      scalar-callback signatures; vector systems and second-order q''=a(t,q) signatures need
+      a multi-variable extension to the bridge — tracked as the concrete next step).
+      ms::izaac consensus/military/full-mpc-beyond-secret-sharing namespaces (need real
+      distributed-protocol design — out of scope for an incremental wave).
       Axiom::evolve mutation still perturbs fitness directly rather than mutating the
       representation/evaluation/selection/mutation expression trees (no real GP tree
       crossover/mutation yet — documented simplification). -->

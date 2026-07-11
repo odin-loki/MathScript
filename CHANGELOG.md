@@ -3,6 +3,21 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 179 — ODE REPL Formula Bridge, BDF2, Izaac Crypto/MPC, ML Ensembles)
+
+### Added (Wave 179)
+- `ms::ode`: `ode_bdf2` — 2nd-order Backward Differentiation Formula (A-stable, implicit multistep) solver for stiff scalar ODEs, bootstrapped via one `ode_backward_euler` (BDF1) step; verified more accurate than BDF1 at equal step count on a non-stiff reference problem and stable on a stiff problem where explicit Euler diverges — extends `tests/unit/test_ode_advanced2.cpp`
+- `ms::izaac`: `crypto` namespace — a CSPRNG-keystream XOR stream cipher with a keyed-mixing authentication tag (`encrypt`/`decrypt` returning a `CipherText`); explicitly documented as an internal/demo construction, NOT a substitute for a vetted cryptographic library; `mpc` namespace — Shamir's Secret Sharing (`split_secret`/`reconstruct_secret`) over a fixed prime field, a genuine standard threshold secret-sharing primitive — extends `tests/unit/test_izaac_advanced.cpp`
+- `ms::ml`: `RandomForest` (bootstrap-aggregated `DecisionTree` ensemble with feature subsampling) and `GradientBoosting` (functional-gradient-boosted shallow `DecisionTree` ensemble for regression) — extends `tests/unit/test_ml.cpp`
+- REPL: wired `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk45`, `ode_backward_euler` — each taking a quoted formula string parsed once via `sym_parse` (from Wave 178) and evaluated per solver stage via `sym_eval` with `{t, y}` bindings, e.g. `ode_rk4("y", 0, 1, 1, 100)`. This resolves the callback-argument REPL gap that had been explicitly deferred since Wave 176 for being unable to fit `std::function` arguments into the REPL's scalar/matrix calling convention. New `tests/integration/test_ode_repl_pipeline.cpp`; fuzz corpus seeds for all 5 commands; help text updated.
+- `docs/API.md`: synced entries for Wave 178 additions (`pde_reaction_diffusion_1d`, `pde_heat_2d_cn_adi`, `ode_verlet`/`ode_verlet_vec`/`ode_rk45_vec`, the `ms::core::Sym` rewrite, `sym_parse`) plus the new `ode_bdf2`
+- Tag checklist suite count updated 356→357 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
+- **Total Wave 179: 357 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- REPL wiring for `ode_verlet`/`ode_verlet_vec`/`ode_rk45_vec`/`ode_bdf2`/vector solvers was not added this wave — the formula bridge currently only covers the 5 simplest scalar-callback signatures; extending it to vector systems (multiple named variables `y0`, `y1`, ... per component) and second-order/Verlet's `q''=a(t,q)` signature is a natural next step but was kept out of scope to bound this wave.
+- `ms::izaac`'s `consensus`/full-`mpc` (beyond secret sharing)/`military` namespaces remain unimplemented — they need real distributed-protocol design (BFT consensus, garbled circuits/secure computation beyond secret sharing) that's out of scope for an incremental wave.
+
 ## [1.0.0] — 2026-07-11 (Wave 178 — Symbolic Expression Parser, Symplectic/ADI Solvers, AXIOM Evaluation Fix)
 
 ### Added (Wave 178)
