@@ -1,0 +1,5 @@
+izaac seed 42
+bloom_new(bf, 100, 0.01)
+tokenbucket_new(tb, 10, 1)
+cellmemory_new(cm, 2, 4, [0.1, 1, 10])
+session_objects()

@@ -49,6 +49,7 @@
 #include <optional>
 #include <regex>
 #include <sstream>
+#include <type_traits>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -5748,7 +5749,388 @@ std::string format_nig_params(const cypha::NIGParams& params) {
     return out.str();
 }
 
+const char* session_object_kind_name(const SessionObject& object) {
+    if (std::holds_alternative<izaac::bloom::BloomFilter>(object)) {
+        return "bloom";
+    }
+    if (std::holds_alternative<izaac::ratelimit::TokenBucket>(object)) {
+        return "tokenbucket";
+    }
+    return "cellmemory";
+}
+
+template <typename T>
+Result<void> require_session_object_type(
+    std::map<std::string, SessionObject>& registry,
+    const std::string& handle,
+    const char* fn,
+    T*& out) {
+    const auto it = registry.find(handle);
+    if (it == registry.end()) {
+        return std::unexpected(DomainError{fn, "session object not found: " + handle});
+    }
+    if (!std::holds_alternative<T>(it->second)) {
+        return std::unexpected(DomainError{
+            fn, std::string("session object '") + handle + "' is not a " +
+                    (std::is_same_v<T, izaac::bloom::BloomFilter>       ? "BloomFilter"
+                     : std::is_same_v<T, izaac::ratelimit::TokenBucket> ? "TokenBucket"
+                                                                        : "CellMemory")});
+    }
+    out = &std::get<T>(it->second);
+    return {};
+}
+
+Result<void> parse_session_handle(const std::string& text, const char* fn, std::string& handle) {
+    handle = trim_copy(text);
+    if (!is_identifier(handle)) {
+        return std::unexpected(DomainError{fn, "expected identifier handle"});
+    }
+    return {};
+}
+
+std::span<const uint8_t> string_item_bytes(const std::string& item) {
+    return std::span<const uint8_t>(
+        reinterpret_cast<const uint8_t*>(item.data()), item.size());
+}
+
 } // namespace
+
+std::optional<Result<std::string>> Interpreter::try_session_object_command(
+    const std::string& cmd) {
+    const auto open = cmd.find('(');
+    if (open == std::string::npos) {
+        return std::nullopt;
+    }
+    const std::string fn = lower(trim_copy(cmd.substr(0, open)));
+    if (fn != "bloom_new" && fn != "bloom_insert" && fn != "bloom_check" &&
+        fn != "tokenbucket_new" && fn != "tokenbucket_consume" &&
+        fn != "tokenbucket_available" && fn != "cellmemory_new" &&
+        fn != "cellmemory_step" && fn != "cellmemory_recall" &&
+        fn != "cellmemory_consolidate" && fn != "session_objects" &&
+        fn != "session_object_clear") {
+        return std::nullopt;
+    }
+
+    const auto call_args = split_call_args(cmd);
+    if (!call_args) {
+        return std::unexpected(DomainError{fn, "invalid call syntax"});
+    }
+
+    auto resolve_matrix_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+        auto matrix = parse_matrix(text);
+        if (!matrix) {
+            matrix = resolve_matrix(text);
+        }
+        return matrix;
+    };
+
+    if (fn == "session_objects") {
+        if (call_args->size() != 1 || !trim_copy(call_args->at(0)).empty()) {
+            return std::unexpected(DomainError{fn, "expected session_objects()"});
+        }
+        if (session_objects_.empty()) {
+            return std::string{"(no session objects)\n"};
+        }
+        std::ostringstream out;
+        for (const auto& [handle, object] : session_objects_) {
+            out << handle << " " << session_object_kind_name(object) << "\n";
+        }
+        return out.str();
+    }
+
+    if (fn == "session_object_clear") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected session_object_clear(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.erase(handle) == 0) {
+            return std::unexpected(DomainError{fn, "session object not found: " + handle});
+        }
+        return std::string{"cleared session object '" + handle + "'\n"};
+    }
+
+    if (fn == "bloom_new") {
+        if (call_args->size() != 3) {
+            return std::unexpected(
+                DomainError{fn, "expected bloom_new(handle, expected_items, false_positive_rate)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        double expected_items_d = 0.0;
+        double false_positive_rate = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), expected_items_d) ||
+            !parse_number(trim_copy(call_args->at(2)), false_positive_rate) ||
+            expected_items_d < 1.0 || std::floor(expected_items_d) != expected_items_d) {
+            return std::unexpected(
+                DomainError{fn, "expected positive integer expected_items and numeric false_positive_rate"});
+        }
+        auto rng_check = require_session_rng(fn.c_str());
+        if (!rng_check) {
+            return std::unexpected(rng_check.error());
+        }
+        session_objects_.emplace(
+            handle,
+            izaac::bloom::BloomFilter(
+                static_cast<size_t>(expected_items_d), false_positive_rate, *izaac::g_session_rng));
+        return std::string{"created BloomFilter '" + handle + "'\n"};
+    }
+
+    if (fn == "bloom_insert") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{fn, "expected bloom_insert(handle, \"item\")"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::bloom::BloomFilter* bloom = nullptr;
+        auto bloom_check = require_session_object_type<izaac::bloom::BloomFilter>(
+            session_objects_, handle, fn.c_str(), bloom);
+        if (!bloom_check) {
+            return std::unexpected(bloom_check.error());
+        }
+        std::string item;
+        if (!parse_quoted_string(call_args->at(1), item)) {
+            return std::unexpected(DomainError{fn, "expected quoted string item"});
+        }
+        bloom->insert(string_item_bytes(item));
+        return std::string{"inserted\n"};
+    }
+
+    if (fn == "bloom_check") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{fn, "expected bloom_check(handle, \"item\")"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::bloom::BloomFilter* bloom = nullptr;
+        auto bloom_check = require_session_object_type<izaac::bloom::BloomFilter>(
+            session_objects_, handle, fn.c_str(), bloom);
+        if (!bloom_check) {
+            return std::unexpected(bloom_check.error());
+        }
+        std::string item;
+        if (!parse_quoted_string(call_args->at(1), item)) {
+            return std::unexpected(DomainError{fn, "expected quoted string item"});
+        }
+        return std::string(bloom->might_contain(string_item_bytes(item)) ? "true\n" : "false\n");
+    }
+
+    if (fn == "tokenbucket_new") {
+        if (call_args->size() != 3) {
+            return std::unexpected(
+                DomainError{fn, "expected tokenbucket_new(handle, capacity, refill_rate_per_sec)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        double capacity = 0.0;
+        double refill_rate = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), capacity) ||
+            !parse_number(trim_copy(call_args->at(2)), refill_rate) || capacity < 0.0 ||
+            refill_rate < 0.0) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative numeric capacity and refill_rate_per_sec"});
+        }
+        session_objects_.emplace(
+            handle, izaac::ratelimit::TokenBucket(capacity, refill_rate));
+        return std::string{"created TokenBucket '" + handle + "'\n"};
+    }
+
+    if (fn == "tokenbucket_consume") {
+        if (call_args->size() != 3) {
+            return std::unexpected(
+                DomainError{fn, "expected tokenbucket_consume(handle, tokens, now_seconds)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::ratelimit::TokenBucket* bucket = nullptr;
+        auto bucket_check = require_session_object_type<izaac::ratelimit::TokenBucket>(
+            session_objects_, handle, fn.c_str(), bucket);
+        if (!bucket_check) {
+            return std::unexpected(bucket_check.error());
+        }
+        double tokens = 0.0;
+        double now_seconds = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), tokens) ||
+            !parse_number(trim_copy(call_args->at(2)), now_seconds)) {
+            return std::unexpected(DomainError{fn, "expected numeric tokens and now_seconds"});
+        }
+        return std::string(bucket->try_consume(tokens, now_seconds) ? "true\n" : "false\n");
+    }
+
+    if (fn == "tokenbucket_available") {
+        if (call_args->size() != 2) {
+            return std::unexpected(
+                DomainError{fn, "expected tokenbucket_available(handle, now_seconds)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::ratelimit::TokenBucket* bucket = nullptr;
+        auto bucket_check = require_session_object_type<izaac::ratelimit::TokenBucket>(
+            session_objects_, handle, fn.c_str(), bucket);
+        if (!bucket_check) {
+            return std::unexpected(bucket_check.error());
+        }
+        double now_seconds = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), now_seconds)) {
+            return std::unexpected(DomainError{fn, "expected numeric now_seconds"});
+        }
+        return std::to_string(bucket->available_tokens(now_seconds)) + "\n";
+    }
+
+    if (fn == "cellmemory_new") {
+        if (call_args->size() != 3 && call_args->size() != 4) {
+            return std::unexpected(DomainError{
+                fn,
+                "expected cellmemory_new(handle, input_dim, memory_dim) or "
+                "cellmemory_new(handle, input_dim, memory_dim, [time_scales...])"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        double input_dim_d = 0.0;
+        double memory_dim_d = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), input_dim_d) ||
+            !parse_number(trim_copy(call_args->at(2)), memory_dim_d) || input_dim_d < 1.0 ||
+            memory_dim_d < 1.0 || std::floor(input_dim_d) != input_dim_d ||
+            std::floor(memory_dim_d) != memory_dim_d) {
+            return std::unexpected(
+                DomainError{fn, "expected positive integer input_dim and memory_dim"});
+        }
+        std::vector<double> time_scales{1.0};
+        if (call_args->size() == 4) {
+            auto parsed_scales =
+                parse_bracket_vector_literal(trim_copy(call_args->at(3)), fn.c_str());
+            if (!parsed_scales) {
+                return std::unexpected(parsed_scales.error());
+            }
+            if (parsed_scales->empty()) {
+                return std::unexpected(DomainError{fn, "expected non-empty time_scales vector"});
+            }
+            time_scales = std::move(*parsed_scales);
+        }
+        session_objects_.emplace(
+            handle,
+            cellai::CellMemory(
+                static_cast<size_t>(input_dim_d),
+                static_cast<size_t>(memory_dim_d),
+                std::move(time_scales)));
+        return std::string{"created CellMemory '" + handle + "'\n"};
+    }
+
+    if (fn == "cellmemory_step") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{fn, "expected cellmemory_step(handle, input_matrix)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        auto input = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!input) {
+            return std::unexpected(input.error());
+        }
+        auto result = memory->step(*input);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        std::ostringstream out;
+        out << "state =\n";
+        print_matrix(out, *result);
+        return out.str();
+    }
+
+    if (fn == "cellmemory_recall") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{fn, "expected cellmemory_recall(handle, time_scale)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        double time_scale = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), time_scale)) {
+            return std::unexpected(DomainError{fn, "expected numeric time_scale"});
+        }
+        auto result = memory->recall(time_scale);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        std::ostringstream out;
+        out << "recall =\n";
+        print_matrix(out, *result);
+        return out.str();
+    }
+
+    if (fn == "cellmemory_consolidate") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cellmemory_consolidate(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        auto result = memory->consolidate();
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        return std::string{"consolidated\n"};
+    }
+
+    return std::nullopt;
+}
 
 std::string Interpreter::trim(std::string s) {
     auto not_space = [](unsigned char c) { return !std::isspace(c); };
@@ -9449,7 +9831,19 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cellai_energy([1,2;3,4], [1;0], [1;2]) RBM energy scalar\n"
             "  izaac_estimate_pi(1000) Monte Carlo pi estimate (requires izaac seed)\n"
             "  izaac_laplace_noise(5, 1, 1) Laplace differential-privacy noise (requires izaac seed)\n"
-            "  izaac_gaussian_noise(5, 1, 1e-5, 1) Gaussian DP noise (requires izaac seed)\n"};
+            "  izaac_gaussian_noise(5, 1, 1e-5, 1) Gaussian DP noise (requires izaac seed)\n"
+            "  bloom_new(bf, 1000, 0.01) create session BloomFilter (requires izaac seed; handle persists)\n"
+            "  bloom_insert(bf, \"item\") insert string into session BloomFilter\n"
+            "  bloom_check(bf, \"item\") test membership in session BloomFilter (true/false)\n"
+            "  tokenbucket_new(tb, 10, 1) create session TokenBucket (handle persists)\n"
+            "  tokenbucket_consume(tb, 3, 0) consume tokens at now_seconds (true/false)\n"
+            "  tokenbucket_available(tb, 5) available tokens at now_seconds\n"
+            "  cellmemory_new(cm, 2, 4, [0.1, 1, 10]) create session CellMemory (handle persists)\n"
+            "  cellmemory_step(cm, [1;0]) step CellMemory with input column vector\n"
+            "  cellmemory_recall(cm, 1.0) recall CellMemory state at time_scale\n"
+            "  cellmemory_consolidate(cm) consolidate CellMemory long-term state\n"
+            "  session_objects() list session object handles and types\n"
+            "  session_object_clear(handle) remove a session object (handles persist until cleared)\n"};
     }
     if (lcmd == "version") {
         std::ostringstream out;
@@ -9563,6 +9957,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
             "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
+            "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")\n"
+            "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)\n"
+            "  cellmemory_new(h,in,dim,[scales])  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)\n"
+            "  session_objects()  session_object_clear(h)\n"
             "  gria(M)  axiom evolve\n"};
     }
     if (lcmd.rfind("izaac seed ", 0) == 0) {
@@ -9604,6 +10002,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::unexpected(sym->error());
         }
         return **sym;
+    }
+
+    if (const auto session_cmd = try_session_object_command(cmd)) {
+        return *session_cmd;
     }
 
     const auto eq = cmd.find('=');

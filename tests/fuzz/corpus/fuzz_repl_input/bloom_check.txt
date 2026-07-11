@@ -1,0 +1,4 @@
+izaac seed 42
+bloom_new(bf, 100, 0.01)
+bloom_insert(bf, "alpha")
+bloom_check(bf, "alpha")

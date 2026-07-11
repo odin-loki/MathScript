@@ -1,0 +1,2 @@
+tokenbucket_new(tb, 10, 1)
+tokenbucket_available(tb, 5)

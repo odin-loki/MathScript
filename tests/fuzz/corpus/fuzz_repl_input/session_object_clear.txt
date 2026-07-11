@@ -1,0 +1,2 @@
+tokenbucket_new(tb, 10, 1)
+session_object_clear(tb)

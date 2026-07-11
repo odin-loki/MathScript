@@ -2,9 +2,13 @@
 
 #include "ms/core/matrix.hpp"
 #include "ms/error/expected.hpp"
+#include "ms/frameworks/cellai/cellai.hpp"
+#include "ms/frameworks/izaac/izaac.hpp"
 #include <map>
+#include <optional>
 #include <ostream>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace ms::interp {
@@ -60,13 +64,21 @@ struct MultiMatrixCallAssign {
     std::string arg;
 };
 
+using SessionObject = std::variant<
+    izaac::bloom::BloomFilter,
+    izaac::ratelimit::TokenBucket,
+    cellai::CellMemory>;
+
 class Interpreter {
 public:
     Result<std::string> execute(const std::string& line);
     const SessionState& state() const { return state_; }
     bool has_plot() const { return state_.plot.valid; }
     const PlotSeries& plot() const { return state_.plot; }
-    void reset() { state_ = SessionState{}; }
+    void reset() {
+        state_ = SessionState{};
+        session_objects_.clear();
+    }
     Result<void> save_session(const std::string& path) const;
     Result<void> load_session(const std::string& path);
     static std::string trim(std::string s);
@@ -88,6 +100,8 @@ public:
 
 private:
     SessionState state_;
+    std::map<std::string, SessionObject> session_objects_;
+    std::optional<Result<std::string>> try_session_object_command(const std::string& cmd);
     Result<Matrix<double>> parse_matrix(const std::string& text) const;
     Result<Matrix<double>> resolve_matrix(const std::string& name) const;
     Result<Matrix<double>> eval_matrix_operand(const std::string& text);
