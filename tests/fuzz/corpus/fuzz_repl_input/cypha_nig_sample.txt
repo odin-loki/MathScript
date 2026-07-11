@@ -1,0 +1,2 @@
+izaac seed 42
+cypha_nig_sample(0, 1, 0, 1, 10)

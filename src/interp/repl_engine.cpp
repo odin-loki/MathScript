@@ -5721,6 +5721,33 @@ void collect_scalar_expr_variables(const std::string& expr_text, std::vector<std
     collect_scalar_expr_variables(expr.substr(op_pos->first + 1), vars);
 }
 
+const char* format_compute_class(gria::ComputeClass cls) {
+    switch (cls) {
+    case gria::ComputeClass::Reversible:
+        return "reversible";
+    case gria::ComputeClass::Critical:
+        return "critical";
+    case gria::ComputeClass::Irreversible:
+        return "irreversible";
+    }
+    return "reversible";
+}
+
+Result<void> require_session_rng(const char* fn) {
+    if (!izaac::session_active()) {
+        return std::unexpected(
+            DomainError{fn, "session RNG not active; run 'izaac seed <n>' first"});
+    }
+    return {};
+}
+
+std::string format_nig_params(const cypha::NIGParams& params) {
+    std::ostringstream out;
+    out << "mu=" << params.mu << " alpha=" << params.alpha << " beta=" << params.beta
+        << " delta=" << params.delta << "\n";
+    return out.str();
+}
+
 } // namespace
 
 std::string Interpreter::trim(std::string s) {
@@ -9409,7 +9436,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100)\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
-            "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"};
+            "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
+            "  gria_entropy([1,2,2,3,3,3], 4) Shannon entropy with 4 histogram bins (default bins=16)\n"
+            "  gria_matrix_alpha([1,2;3,4], [2,4;6,8]) matrix information-alpha between input and output\n"
+            "  gria_is_critical(0.5, 0.05) test whether alpha is near critical (default tolerance=0.05)\n"
+            "  gria_classify(0.5) classify alpha as reversible/critical/irreversible\n"
+            "  cypha_nig_fit([1,2,3,4]) fit Normal-Inverse-Gaussian parameters to data vector\n"
+            "  cypha_nig_pdf(2.5, 0, 1, 0, 1) NIG probability density at x\n"
+            "  cypha_nig_cdf(2.5, 0, 1, 0, 1) NIG cumulative distribution at x\n"
+            "  cypha_nig_sample(0, 1, 0, 1, 10) draw n NIG samples (requires izaac seed)\n"
+            "  cellai_hebbian_update([0.1], [1], [0.8], 0.1) Hebbian weight update\n"
+            "  cellai_energy([1,2;3,4], [1;0], [1;2]) RBM energy scalar\n"
+            "  izaac_estimate_pi(1000) Monte Carlo pi estimate (requires izaac seed)\n"
+            "  izaac_laplace_noise(5, 1, 1) Laplace differential-privacy noise (requires izaac seed)\n"
+            "  izaac_gaussian_noise(5, 1, 1e-5, 1) Gaussian DP noise (requires izaac seed)\n"};
     }
     if (lcmd == "version") {
         std::ostringstream out;
@@ -9518,8 +9558,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
     if (lcmd == "frameworks") {
         return std::string{
-            "frameworks: GRIA (gria matrix ops), Izaac (seed), AXIOM (evolve)\n"
-            "  gria(M)  izaac seed N  axiom evolve\n"};
+            "frameworks: GRIA, Cypha, CellAI, Izaac pure REPL functions\n"
+            "  gria_entropy([data],bins)  gria_matrix_alpha(X,FX)  gria_is_critical(a,tol)  gria_classify(a)\n"
+            "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
+            "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)\n"
+            "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
+            "  gria(M)  axiom evolve\n"};
     }
     if (lcmd.rfind("izaac seed ", 0) == 0) {
         const std::string arg = trim(cmd.substr(11));
@@ -11248,6 +11292,260 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     out << "  [" << (*value)(i, 0) << "]\n";
                 }
                 return out.str();
+            }
+        }
+        if (fn == "gria_entropy" || fn == "gria_matrix_alpha" || fn == "gria_is_critical" ||
+            fn == "gria_classify" || fn == "cypha_nig_fit" || fn == "cypha_nig_pdf" ||
+            fn == "cypha_nig_cdf" || fn == "cypha_nig_sample" || fn == "cellai_hebbian_update" ||
+            fn == "cellai_energy" || fn == "izaac_estimate_pi" || fn == "izaac_laplace_noise" ||
+            fn == "izaac_gaussian_noise") {
+            const auto call_args = split_call_args(cmd);
+            auto resolve_matrix_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            if (fn == "gria_entropy") {
+                if (!call_args || (call_args->size() != 1 && call_args->size() != 2)) {
+                    return std::unexpected(DomainError{
+                        fn, "expected gria_entropy([data], bins) with default bins=16"});
+                }
+                auto data = parse_bracket_vector_literal(trim_copy(call_args->at(0)), fn.c_str());
+                if (!data) {
+                    return std::unexpected(data.error());
+                }
+                size_t bins = 16;
+                if (call_args->size() == 2) {
+                    double bins_d = 0.0;
+                    if (!parse_number(trim_copy(call_args->at(1)), bins_d) || bins_d < 1.0 ||
+                        std::floor(bins_d) != bins_d) {
+                        return std::unexpected(
+                            DomainError{fn, "expected positive integer bins"});
+                    }
+                    bins = static_cast<size_t>(bins_d);
+                }
+                return std::to_string(gria::entropy(*data, bins)) + "\n";
+            }
+            if (fn == "gria_matrix_alpha") {
+                if (!call_args || call_args->size() != 2) {
+                    return std::unexpected(DomainError{
+                        fn, "expected gria_matrix_alpha(x_matrix, fx_matrix)"});
+                }
+                auto x_m = resolve_matrix_arg(trim_copy(call_args->at(0)));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                auto fx_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+                if (!fx_m) {
+                    return std::unexpected(fx_m.error());
+                }
+                return std::to_string(gria::matrix_alpha(*x_m, *fx_m)) + "\n";
+            }
+            if (fn == "gria_is_critical") {
+                if (!call_args || (call_args->size() != 1 && call_args->size() != 2)) {
+                    return std::unexpected(DomainError{
+                        fn, "expected gria_is_critical(alpha, tolerance) with default tolerance=0.05"});
+                }
+                double alpha = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), alpha)) {
+                    return std::unexpected(DomainError{fn, "expected numeric alpha"});
+                }
+                double tolerance = 0.05;
+                if (call_args->size() == 2 &&
+                    !parse_number(trim_copy(call_args->at(1)), tolerance)) {
+                    return std::unexpected(DomainError{fn, "expected numeric tolerance"});
+                }
+                return std::string(gria::is_critical(alpha, tolerance) ? "true\n" : "false\n");
+            }
+            if (fn == "gria_classify") {
+                if (!call_args || call_args->size() != 1) {
+                    return std::unexpected(DomainError{fn, "expected gria_classify(alpha)"});
+                }
+                double alpha = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), alpha)) {
+                    return std::unexpected(DomainError{fn, "expected numeric alpha"});
+                }
+                return std::string(format_compute_class(gria::classify(alpha))) + "\n";
+            }
+            if (fn == "cypha_nig_fit") {
+                if (!call_args || call_args->size() != 1) {
+                    return std::unexpected(DomainError{fn, "expected cypha_nig_fit([data])"});
+                }
+                auto data_m = resolve_matrix_arg(trim_copy(call_args->at(0)));
+                if (!data_m) {
+                    return std::unexpected(data_m.error());
+                }
+                return format_nig_params(cypha::nig_fit(*data_m));
+            }
+            if (fn == "cypha_nig_pdf" || fn == "cypha_nig_cdf") {
+                if (!call_args || call_args->size() != 5) {
+                    return std::unexpected(DomainError{
+                        fn, std::string("expected ") + fn + "(x, mu, alpha, beta, delta)"});
+                }
+                double x = 0.0;
+                double mu = 0.0;
+                double alpha = 0.0;
+                double beta = 0.0;
+                double delta = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), x) ||
+                    !parse_number(trim_copy(call_args->at(1)), mu) ||
+                    !parse_number(trim_copy(call_args->at(2)), alpha) ||
+                    !parse_number(trim_copy(call_args->at(3)), beta) ||
+                    !parse_number(trim_copy(call_args->at(4)), delta)) {
+                    return std::unexpected(DomainError{fn, "expected numeric arguments"});
+                }
+                const cypha::NIGParams params{.mu = mu, .alpha = alpha, .beta = beta, .delta = delta};
+                if (fn == "cypha_nig_pdf") {
+                    return std::to_string(cypha::nig_pdf(x, params)) + "\n";
+                }
+                return std::to_string(cypha::nig_cdf(x, params)) + "\n";
+            }
+            if (fn == "cypha_nig_sample") {
+                if (!call_args || call_args->size() != 5) {
+                    return std::unexpected(DomainError{
+                        fn, "expected cypha_nig_sample(mu, alpha, beta, delta, n)"});
+                }
+                double mu = 0.0;
+                double alpha = 0.0;
+                double beta = 0.0;
+                double delta = 0.0;
+                double n_d = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), mu) ||
+                    !parse_number(trim_copy(call_args->at(1)), alpha) ||
+                    !parse_number(trim_copy(call_args->at(2)), beta) ||
+                    !parse_number(trim_copy(call_args->at(3)), delta) ||
+                    !parse_number(trim_copy(call_args->at(4)), n_d)) {
+                    return std::unexpected(DomainError{fn, "expected numeric arguments"});
+                }
+                const int n_i = static_cast<int>(n_d);
+                if (n_i < 0 || n_d != n_i) {
+                    return std::unexpected(DomainError{fn, "expected non-negative integer n"});
+                }
+                auto rng_check = require_session_rng(fn.c_str());
+                if (!rng_check) {
+                    return std::unexpected(rng_check.error());
+                }
+                const cypha::NIGParams params{.mu = mu, .alpha = alpha, .beta = beta, .delta = delta};
+                const auto samples =
+                    cypha::nig_sample(params, static_cast<size_t>(n_i), *izaac::g_session_rng);
+                std::ostringstream out;
+                out << "samples =\n";
+                print_matrix(out, samples);
+                return out.str();
+            }
+            if (fn == "cellai_hebbian_update") {
+                if (!call_args || call_args->size() != 4) {
+                    return std::unexpected(DomainError{
+                        fn, "expected cellai_hebbian_update(w_matrix, x_matrix, y_matrix, learning_rate)"});
+                }
+                auto w_m = resolve_matrix_arg(trim_copy(call_args->at(0)));
+                if (!w_m) {
+                    return std::unexpected(w_m.error());
+                }
+                auto x_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                auto y_m = resolve_matrix_arg(trim_copy(call_args->at(2)));
+                if (!y_m) {
+                    return std::unexpected(y_m.error());
+                }
+                double learning_rate = 0.0;
+                if (!parse_number(trim_copy(call_args->at(3)), learning_rate)) {
+                    return std::unexpected(DomainError{fn, "expected numeric learning_rate"});
+                }
+                const auto updated =
+                    cellai::hebbian_update(*w_m, *x_m, *y_m, learning_rate);
+                std::ostringstream out;
+                out << "w =\n";
+                print_matrix(out, updated);
+                return out.str();
+            }
+            if (fn == "cellai_energy") {
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        fn, "expected cellai_energy(w_matrix, v_matrix, h_matrix)"});
+                }
+                auto w_m = resolve_matrix_arg(trim_copy(call_args->at(0)));
+                if (!w_m) {
+                    return std::unexpected(w_m.error());
+                }
+                auto v_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+                if (!v_m) {
+                    return std::unexpected(v_m.error());
+                }
+                auto h_m = resolve_matrix_arg(trim_copy(call_args->at(2)));
+                if (!h_m) {
+                    return std::unexpected(h_m.error());
+                }
+                return std::to_string(cellai::energy(*w_m, *v_m, *h_m)) + "\n";
+            }
+            if (fn == "izaac_estimate_pi") {
+                if (!call_args || call_args->size() != 1) {
+                    return std::unexpected(DomainError{fn, "expected izaac_estimate_pi(samples)"});
+                }
+                double samples_d = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), samples_d) || samples_d < 1.0 ||
+                    std::floor(samples_d) != samples_d) {
+                    return std::unexpected(DomainError{fn, "expected positive integer samples"});
+                }
+                auto rng_check = require_session_rng(fn.c_str());
+                if (!rng_check) {
+                    return std::unexpected(rng_check.error());
+                }
+                return std::to_string(
+                           izaac::mc::estimate_pi(static_cast<size_t>(samples_d),
+                                                  *izaac::g_session_rng)) +
+                       "\n";
+            }
+            if (fn == "izaac_laplace_noise") {
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        fn, "expected izaac_laplace_noise(true_value, epsilon, sensitivity)"});
+                }
+                double true_value = 0.0;
+                double epsilon = 0.0;
+                double sensitivity = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), true_value) ||
+                    !parse_number(trim_copy(call_args->at(1)), epsilon) ||
+                    !parse_number(trim_copy(call_args->at(2)), sensitivity)) {
+                    return std::unexpected(DomainError{fn, "expected numeric arguments"});
+                }
+                auto rng_check = require_session_rng(fn.c_str());
+                if (!rng_check) {
+                    return std::unexpected(rng_check.error());
+                }
+                return std::to_string(
+                           izaac::diffpriv::laplace_mechanism(
+                               true_value, epsilon, sensitivity, *izaac::g_session_rng)) +
+                       "\n";
+            }
+            if (fn == "izaac_gaussian_noise") {
+                if (!call_args || call_args->size() != 4) {
+                    return std::unexpected(DomainError{
+                        fn,
+                        "expected izaac_gaussian_noise(true_value, epsilon, delta, sensitivity)"});
+                }
+                double true_value = 0.0;
+                double epsilon = 0.0;
+                double delta = 0.0;
+                double sensitivity = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), true_value) ||
+                    !parse_number(trim_copy(call_args->at(1)), epsilon) ||
+                    !parse_number(trim_copy(call_args->at(2)), delta) ||
+                    !parse_number(trim_copy(call_args->at(3)), sensitivity)) {
+                    return std::unexpected(DomainError{fn, "expected numeric arguments"});
+                }
+                auto rng_check = require_session_rng(fn.c_str());
+                if (!rng_check) {
+                    return std::unexpected(rng_check.error());
+                }
+                return std::to_string(
+                           izaac::diffpriv::gaussian_mechanism(
+                               true_value, epsilon, delta, sensitivity, *izaac::g_session_rng)) +
+                       "\n";
             }
         }
     }
