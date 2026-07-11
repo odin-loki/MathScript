@@ -1,5 +1,6 @@
 #include "ms/frameworks/cellai/cellai.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace ms::cellai {
@@ -18,6 +19,19 @@ Matrix<double> hebbian_update(
         }
     }
     return updated;
+}
+
+double energy(const Matrix<double>& w, const Matrix<double>& v, const Matrix<double>& h) {
+    double e = 0.0;
+    const size_t rows = std::min(w.rows(), v.rows());
+    const size_t cols = std::min(w.cols(), h.rows());
+    for (size_t i = 0; i < rows; ++i) {
+        const double vi = v(i, 0);
+        for (size_t j = 0; j < cols; ++j) {
+            e -= vi * w(i, j) * h(j, 0);
+        }
+    }
+    return e;
 }
 
 CellMemory::CellMemory(size_t input_dim, size_t memory_dim, std::vector<double> time_scales)
@@ -46,6 +60,24 @@ Result<Matrix<double>> CellMemory::recall(double time_scale) const {
         out(i, 0) = weight * state_(i, 0) + (1.0 - weight) * long_term_(i, 0);
     }
     return out;
+}
+
+Result<void> CellMemory::consolidate() {
+    if (state_.rows() != long_term_.rows() || state_.cols() != long_term_.cols()) {
+        return std::unexpected(DimensionMismatch{state_.rows(), long_term_.rows()});
+    }
+
+    // Exponential decay merge: retain a fraction of long-term memory while
+    // pulling toward the current short-term state. Default decay = 0.1.
+    static constexpr double k_consolidation_decay = 0.1;
+    for (size_t i = 0; i < long_term_.rows(); ++i) {
+        for (size_t j = 0; j < long_term_.cols(); ++j) {
+            long_term_(i, j) =
+                k_consolidation_decay * long_term_(i, j) +
+                (1.0 - k_consolidation_decay) * state_(i, j);
+        }
+    }
+    return {};
 }
 
 void CellMemory::reset() {
