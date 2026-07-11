@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <random>
+#include <vector>
 
 namespace ms::izaac {
 
@@ -28,6 +29,17 @@ std::array<uint8_t, 32> mix_seed(std::array<uint8_t, 32> seed) {
         seed[i] ^= static_cast<uint8_t>(seed[(i + 7) % seed.size()] + i * 31);
     }
     return seed;
+}
+
+uint64_t fnv1a_64(std::span<const uint8_t> data, uint64_t seed) {
+    constexpr uint64_t offset = 14695981039346656037ULL;
+    constexpr uint64_t prime = 1099511628211ULL;
+    uint64_t hash = offset ^ seed;
+    for (uint8_t byte : data) {
+        hash ^= static_cast<uint64_t>(byte);
+        hash *= prime;
+    }
+    return hash;
 }
 
 } // namespace
@@ -172,5 +184,215 @@ double estimate_pi(size_t samples, CSPRNG& rng) {
 }
 
 } // namespace mc
+
+namespace bloom {
+
+BloomFilter::BloomFilter(size_t expected_items, double false_positive_rate, CSPRNG& rng) {
+    const double ln2 = std::log(2.0);
+    const double ln2_sq = ln2 * ln2;
+    const double n = static_cast<double>(std::max(expected_items, size_t{1}));
+    const double p = std::max(false_positive_rate, 1e-12);
+
+    bit_count_ = static_cast<size_t>(std::ceil(-n * std::log(p) / ln2_sq));
+    hash_count_ = static_cast<size_t>(std::round(static_cast<double>(bit_count_) / n * ln2));
+    if (hash_count_ == 0) {
+        hash_count_ = 1;
+    }
+
+    bits_.assign((bit_count_ + 7) / 8, 0);
+    hash_seed1_ = rng.next_u64();
+    hash_seed2_ = rng.next_u64() | 1ULL;
+}
+
+size_t BloomFilter::hash_index(std::span<const uint8_t> item, size_t i) const {
+    const uint64_t h1 = fnv1a_64(item, hash_seed1_);
+    const uint64_t h2 = fnv1a_64(item, hash_seed2_);
+    const uint64_t combined = h1 + static_cast<uint64_t>(i) * h2;
+    return static_cast<size_t>(combined % static_cast<uint64_t>(bit_count_));
+}
+
+void BloomFilter::set_bit(size_t index) {
+    bits_[index / 8] |= static_cast<uint8_t>(1u << (index % 8));
+}
+
+bool BloomFilter::get_bit(size_t index) const {
+    return (bits_[index / 8] & static_cast<uint8_t>(1u << (index % 8))) != 0;
+}
+
+void BloomFilter::insert(std::span<const uint8_t> item) {
+    for (size_t i = 0; i < hash_count_; ++i) {
+        set_bit(hash_index(item, i));
+    }
+}
+
+bool BloomFilter::might_contain(std::span<const uint8_t> item) const {
+    for (size_t i = 0; i < hash_count_; ++i) {
+        if (!get_bit(hash_index(item, i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+size_t BloomFilter::bit_count() const {
+    return bit_count_;
+}
+
+size_t BloomFilter::hash_count() const {
+    return hash_count_;
+}
+
+} // namespace bloom
+
+namespace ratelimit {
+
+TokenBucket::TokenBucket(double capacity, double refill_rate_per_sec)
+    : capacity_(capacity),
+      refill_rate_(refill_rate_per_sec),
+      tokens_(capacity) {}
+
+void TokenBucket::refill_to(double now_seconds) {
+    if (now_seconds > last_update_) {
+        const double elapsed = now_seconds - last_update_;
+        tokens_ = std::min(capacity_, tokens_ + elapsed * refill_rate_);
+        last_update_ = now_seconds;
+    }
+}
+
+bool TokenBucket::try_consume(double tokens, double now_seconds) {
+    refill_to(now_seconds);
+    if (tokens_ < tokens) {
+        return false;
+    }
+    tokens_ -= tokens;
+    return true;
+}
+
+double TokenBucket::available_tokens(double now_seconds) const {
+    TokenBucket copy = *this;
+    copy.refill_to(now_seconds);
+    return copy.tokens_;
+}
+
+} // namespace ratelimit
+
+namespace diffpriv {
+
+double laplace_mechanism(double true_value, double epsilon, double sensitivity, CSPRNG& rng) {
+    const double scale = sensitivity / epsilon;
+    const uint64_t bits = rng.next_u64();
+    double u = (static_cast<double>(static_cast<uint32_t>(bits & 0xFFFFFFFFu)) + 1.0) /
+        static_cast<double>(0x100000000ULL);
+    double noise = 0.0;
+    if (u < 0.5) {
+        noise = scale * std::log(2.0 * u);
+    } else {
+        noise = -scale * std::log(2.0 * (1.0 - u));
+    }
+    return true_value + noise;
+}
+
+double gaussian_mechanism(
+    double true_value,
+    double epsilon,
+    double delta,
+    double sensitivity,
+    CSPRNG& rng) {
+    const double sigma = std::sqrt(2.0 * std::log(1.25 / delta)) * sensitivity / epsilon;
+    return true_value + rng.next_normal() * sigma;
+}
+
+} // namespace diffpriv
+
+namespace backtest {
+
+std::vector<double> simulate_gbm_path(
+    double s0,
+    double mu,
+    double sigma,
+    double dt,
+    size_t steps,
+    CSPRNG& rng) {
+    std::vector<double> path;
+    path.reserve(steps + 1);
+    path.push_back(s0);
+
+    const double drift = (mu - 0.5 * sigma * sigma) * dt;
+    const double diffusion = sigma * std::sqrt(dt);
+
+    double price = s0;
+    for (size_t i = 0; i < steps; ++i) {
+        const double z = rng.next_normal();
+        price *= std::exp(drift + diffusion * z);
+        path.push_back(price);
+    }
+    return path;
+}
+
+BacktestResult run_backtest(
+    const std::vector<double>& prices,
+    const std::vector<int>& positions,
+    double initial_capital) {
+    BacktestResult result;
+    if (prices.empty() || positions.size() != prices.size()) {
+        return result;
+    }
+
+    result.equity_curve.reserve(prices.size());
+    result.equity_curve.push_back(initial_capital);
+
+    std::vector<double> step_returns;
+    if (prices.size() > 1) {
+        step_returns.reserve(prices.size() - 1);
+    }
+
+    double equity = initial_capital;
+    for (size_t i = 0; i + 1 < prices.size(); ++i) {
+        const double price_return = (prices[i + 1] - prices[i]) / prices[i];
+        const double portfolio_return = static_cast<double>(positions[i]) * price_return;
+        const double prev_equity = equity;
+        equity *= (1.0 + portfolio_return);
+        result.equity_curve.push_back(equity);
+        if (prev_equity > 0.0) {
+            step_returns.push_back(equity / prev_equity - 1.0);
+        }
+    }
+
+    if (!result.equity_curve.empty()) {
+        result.total_return = result.equity_curve.back() / initial_capital - 1.0;
+    }
+
+    double peak = result.equity_curve.empty() ? 0.0 : result.equity_curve.front();
+    for (double value : result.equity_curve) {
+        peak = std::max(peak, value);
+        if (peak > 0.0) {
+            const double drawdown = (peak - value) / peak;
+            result.max_drawdown = std::max(result.max_drawdown, drawdown);
+        }
+    }
+
+    if (step_returns.size() >= 2) {
+        double mean = 0.0;
+        for (double r : step_returns) {
+            mean += r;
+        }
+        mean /= static_cast<double>(step_returns.size());
+
+        double variance = 0.0;
+        for (double r : step_returns) {
+            const double diff = r - mean;
+            variance += diff * diff;
+        }
+        variance /= static_cast<double>(step_returns.size());
+        const double stddev = std::sqrt(variance);
+        if (stddev > 1e-12) {
+            result.sharpe_ratio = mean / stddev;
+        }
+    }
+
+    return result;
+}
+
+} // namespace backtest
 
 } // namespace ms::izaac
