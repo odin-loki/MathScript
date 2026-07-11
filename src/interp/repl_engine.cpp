@@ -4726,6 +4726,370 @@ Result<std::string> eval_ode_rk45_call(const std::string& formula_arg, const std
     return format_ode_trajectory(ode_rk45(f, t0, y0, t_end, rtol, atol));
 }
 
+Result<Matrix<double>> parse_bracket_matrix_literal(const std::string& text, const char* fn) {
+    std::string s = trim_copy(text);
+    if (s.size() < 2 || s.front() != '[' || s.back() != ']') {
+        return std::unexpected(DomainError{fn, "expected [ ... ] vector literal"});
+    }
+    s = s.substr(1, s.size() - 2);
+    if (s.empty()) {
+        return Matrix<double>(0, 0);
+    }
+
+    std::vector<std::vector<double>> rows;
+    std::stringstream row_stream(s);
+    std::string row_text;
+    while (std::getline(row_stream, row_text, ';')) {
+        row_text = trim_copy(row_text);
+        if (row_text.empty()) {
+            continue;
+        }
+        std::vector<double> row;
+        std::stringstream col_stream(row_text);
+        std::string cell;
+        while (std::getline(col_stream, cell, ',')) {
+            cell = trim_copy(cell);
+            double value = 0.0;
+            if (!parse_number(cell, value)) {
+                return std::unexpected(DomainError{fn, "invalid number in vector literal: " + cell});
+            }
+            row.push_back(value);
+        }
+        rows.push_back(std::move(row));
+    }
+
+    if (rows.empty()) {
+        return std::unexpected(DomainError{fn, "no rows found in vector literal"});
+    }
+    const size_t cols = rows[0].size();
+    for (const auto& row : rows) {
+        if (row.size() != cols) {
+            return std::unexpected(DimensionMismatch{rows.size(), row.size()});
+        }
+    }
+
+    Matrix<double> m(rows.size(), cols);
+    for (size_t i = 0; i < rows.size(); ++i) {
+        for (size_t j = 0; j < cols; ++j) {
+            m(i, j) = rows[i][j];
+        }
+    }
+    return m;
+}
+
+Result<std::vector<double>> parse_bracket_vector_literal(const std::string& text, const char* fn) {
+    auto matrix = parse_bracket_matrix_literal(text, fn);
+    if (!matrix) {
+        return std::unexpected(matrix.error());
+    }
+    return matrix_to_coeff_vector(*matrix, fn);
+}
+
+Result<std::vector<SymExpr>> parse_sym_semicolon_formulas(const std::string& formula_arg,
+                                                          const char* fn) {
+    std::string formulas_text;
+    if (!parse_quoted_string(formula_arg, formulas_text)) {
+        return std::unexpected(
+            DomainError{fn, "expected quoted semicolon-separated formula string"});
+    }
+    std::vector<SymExpr> parsed;
+    std::stringstream ss(formulas_text);
+    std::string part;
+    while (std::getline(ss, part, ';')) {
+        part = trim_copy(part);
+        if (part.empty()) {
+            continue;
+        }
+        auto expr = sym_parse(part);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, expr.error().message});
+        }
+        parsed.push_back(std::move(*expr));
+    }
+    if (parsed.empty()) {
+        return std::unexpected(DomainError{fn, "expected at least one formula"});
+    }
+    return parsed;
+}
+
+std::map<std::string, double> build_vec_ode_env(double t, const std::vector<double>& y) {
+    std::map<std::string, double> env;
+    env["t"] = t;
+    for (size_t i = 0; i < y.size(); ++i) {
+        env["y" + std::to_string(i)] = y[i];
+    }
+    return env;
+}
+
+std::map<std::string, double> build_vec_accel_env(double t, const std::vector<double>& q) {
+    std::map<std::string, double> env;
+    env["t"] = t;
+    for (size_t i = 0; i < q.size(); ++i) {
+        env["q" + std::to_string(i)] = q[i];
+    }
+    return env;
+}
+
+Result<std::string> format_ode_trajectory_vec(const OdeResultVec& result) {
+    if (result.t.size() != result.y.size()) {
+        return std::unexpected(DomainError{"ode", "internal vector trajectory size mismatch"});
+    }
+    if (result.t.empty()) {
+        return std::string("traj =\n");
+    }
+    const size_t n_state = result.y.front().size();
+    Matrix<double> out(result.t.size(), 1 + n_state);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        if (result.y[i].size() != n_state) {
+            return std::unexpected(
+                DomainError{"ode", "internal vector state size mismatch"});
+        }
+        out(i, 0) = result.t[i];
+        for (size_t j = 0; j < n_state; ++j) {
+            out(i, 1 + j) = result.y[i][j];
+        }
+    }
+    std::ostringstream oss;
+    oss << "traj =\n";
+    oss << std::fixed << std::setprecision(6);
+    for (size_t i = 0; i < out.rows(); ++i) {
+        oss << "  [";
+        for (size_t j = 0; j < out.cols(); ++j) {
+            if (j > 0) {
+                oss << ", ";
+            }
+            oss << out(i, j);
+        }
+        oss << "]\n";
+    }
+    return oss.str();
+}
+
+Result<std::string> format_ode_verlet_trajectory(const OdeVerletResult& result) {
+    if (result.t.size() != result.q.size() || result.t.size() != result.v.size()) {
+        return std::unexpected(DomainError{"ode", "internal Verlet trajectory size mismatch"});
+    }
+    Matrix<double> out(result.t.size(), 3);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        out(i, 0) = result.t[i];
+        out(i, 1) = result.q[i];
+        out(i, 2) = result.v[i];
+    }
+    std::ostringstream oss;
+    oss << "traj =\n";
+    oss << std::fixed << std::setprecision(6);
+    for (size_t i = 0; i < out.rows(); ++i) {
+        oss << "  [";
+        for (size_t j = 0; j < out.cols(); ++j) {
+            if (j > 0) {
+                oss << ", ";
+            }
+            oss << out(i, j);
+        }
+        oss << "]\n";
+    }
+    return oss.str();
+}
+
+Result<std::string> format_ode_verlet_trajectory_vec(const OdeVerletResultVec& result) {
+    if (result.t.size() != result.q.size() || result.t.size() != result.v.size()) {
+        return std::unexpected(DomainError{"ode", "internal vector Verlet trajectory size mismatch"});
+    }
+    if (result.t.empty()) {
+        return std::string("traj =\n");
+    }
+    const size_t n_dim = result.q.front().size();
+    if (result.v.front().size() != n_dim) {
+        return std::unexpected(DomainError{"ode", "internal vector Verlet q/v size mismatch"});
+    }
+    Matrix<double> out(result.t.size(), 1 + 2 * n_dim);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        if (result.q[i].size() != n_dim || result.v[i].size() != n_dim) {
+            return std::unexpected(DomainError{"ode", "internal vector Verlet state size mismatch"});
+        }
+        out(i, 0) = result.t[i];
+        for (size_t j = 0; j < n_dim; ++j) {
+            out(i, 1 + j) = result.q[i][j];
+            out(i, 1 + n_dim + j) = result.v[i][j];
+        }
+    }
+    std::ostringstream oss;
+    oss << "traj =\n";
+    oss << std::fixed << std::setprecision(6);
+    for (size_t i = 0; i < out.rows(); ++i) {
+        oss << "  [";
+        for (size_t j = 0; j < out.cols(); ++j) {
+            if (j > 0) {
+                oss << ", ";
+            }
+            oss << out(i, j);
+        }
+        oss << "]\n";
+    }
+    return oss.str();
+}
+
+Result<std::string> eval_ode_verlet_call(const std::string& formula_arg, const std::string& t0_arg,
+                                         const std::string& q0_arg, const std::string& v0_arg,
+                                         const std::string& t_end_arg, const std::string& steps_arg) {
+    constexpr const char* fn = "ode_verlet";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double q0 = 0.0;
+    double v0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(q0_arg), q0) ||
+        !parse_number(trim_copy(v0_arg), v0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn, "expected ode_verlet(\"formula\", t0, q0, v0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeAccelFunc a = [expr_ptr](double t, double q) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"q", q}});
+    };
+    return format_ode_verlet_trajectory(
+        ode_verlet(a, t0, q0, v0, t_end, static_cast<size_t>(steps_i)));
+}
+
+Result<std::string> eval_ode_vec_fixed_step_call(
+    const std::string& fn, const std::string& formula_arg, const std::string& t0_arg,
+    const std::string& y0_arg, const std::string& t_end_arg, const std::string& steps_arg,
+    OdeResultVec (*solver)(OdeFuncVec, double, const std::vector<double>&, double, size_t)) {
+    auto exprs = parse_sym_semicolon_formulas(formula_arg, fn.c_str());
+    if (!exprs) {
+        return std::unexpected(exprs.error());
+    }
+    auto y0 = parse_bracket_vector_literal(y0_arg, fn.c_str());
+    if (!y0) {
+        return std::unexpected(y0.error());
+    }
+    if (exprs->size() != y0->size()) {
+        return std::unexpected(DomainError{
+            fn.c_str(),
+            "formula count must match initial-condition vector length"});
+    }
+    double t0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn.c_str(),
+            std::string("expected ") + fn + "(\"f0;f1;...\", t0, y0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn.c_str(), "expected non-negative integer steps"});
+    }
+    auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
+    OdeFuncVec f = [exprs_ptr](double t, const std::vector<double>& y) {
+        const auto env = build_vec_ode_env(t, y);
+        std::vector<double> out;
+        out.reserve(exprs_ptr->size());
+        for (const auto& expr : *exprs_ptr) {
+            out.push_back(sym_eval(expr, env));
+        }
+        return out;
+    };
+    return format_ode_trajectory_vec(
+        solver(f, t0, *y0, t_end, static_cast<size_t>(steps_i)));
+}
+
+Result<std::string> eval_ode_rk45_vec_call(const std::string& formula_arg, const std::string& t0_arg,
+                                           const std::string& y0_arg, const std::string& t_end_arg,
+                                           const std::string& rtol_arg, const std::string& atol_arg) {
+    constexpr const char* fn = "ode_rk45_vec";
+    auto exprs = parse_sym_semicolon_formulas(formula_arg, fn);
+    if (!exprs) {
+        return std::unexpected(exprs.error());
+    }
+    auto y0 = parse_bracket_vector_literal(y0_arg, fn);
+    if (!y0) {
+        return std::unexpected(y0.error());
+    }
+    if (exprs->size() != y0->size()) {
+        return std::unexpected(DomainError{
+            fn, "formula count must match initial-condition vector length"});
+    }
+    double t0 = 0.0;
+    double t_end = 0.0;
+    double rtol = 0.0;
+    double atol = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(rtol_arg), rtol) || !parse_number(trim_copy(atol_arg), atol)) {
+        return std::unexpected(DomainError{
+            fn, "expected ode_rk45_vec(\"f0;f1;...\", t0, y0, t_end, rtol, atol)"});
+    }
+    auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
+    OdeFuncVec f = [exprs_ptr](double t, const std::vector<double>& y) {
+        const auto env = build_vec_ode_env(t, y);
+        std::vector<double> out;
+        out.reserve(exprs_ptr->size());
+        for (const auto& expr : *exprs_ptr) {
+            out.push_back(sym_eval(expr, env));
+        }
+        return out;
+    };
+    return format_ode_trajectory_vec(ode_rk45_vec(f, t0, *y0, t_end, rtol, atol));
+}
+
+Result<std::string> eval_ode_verlet_vec_call(const std::string& formula_arg,
+                                             const std::string& t0_arg, const std::string& q0_arg,
+                                             const std::string& v0_arg, const std::string& t_end_arg,
+                                             const std::string& steps_arg) {
+    constexpr const char* fn = "ode_verlet_vec";
+    auto exprs = parse_sym_semicolon_formulas(formula_arg, fn);
+    if (!exprs) {
+        return std::unexpected(exprs.error());
+    }
+    auto q0 = parse_bracket_vector_literal(q0_arg, fn);
+    if (!q0) {
+        return std::unexpected(q0.error());
+    }
+    auto v0 = parse_bracket_vector_literal(v0_arg, fn);
+    if (!v0) {
+        return std::unexpected(v0.error());
+    }
+    if (exprs->size() != q0->size() || q0->size() != v0->size()) {
+        return std::unexpected(DomainError{
+            fn, "formula count must match q0 and v0 vector lengths"});
+    }
+    double t0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn, "expected ode_verlet_vec(\"a0;a1;...\", t0, q0, v0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
+    OdeAccelFuncVec a = [exprs_ptr](double t, const std::vector<double>& q) {
+        const auto env = build_vec_accel_env(t, q);
+        std::vector<double> out;
+        out.reserve(exprs_ptr->size());
+        for (const auto& expr : *exprs_ptr) {
+            out.push_back(sym_eval(expr, env));
+        }
+        return out;
+    };
+    return format_ode_verlet_trajectory_vec(
+        ode_verlet_vec(a, t0, *q0, *v0, t_end, static_cast<size_t>(steps_i)));
+}
+
 std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) {
     std::smatch match;
     static const std::regex sym_binary(R"((\w+)\(([^,]+),([^)]+)\))", std::regex::icase);
@@ -8826,6 +9190,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ode_midpoint(\"formula\",t0,y0,t_end,steps) midpoint IVP trajectory [t,y] columns\n"
             "  name = ode_rk45(\"formula\",t0,y0,t_end,rtol,atol) adaptive RK45 IVP trajectory [t,y] columns\n"
             "  name = ode_backward_euler(\"formula\",t0,y0,t_end,steps) backward Euler IVP trajectory [t,y] columns\n"
+            "  name = ode_bdf2(\"formula\",t0,y0,t_end,steps) BDF2 stiff IVP trajectory [t,y] columns\n"
+            "  name = ode_verlet(\"formula\",t0,q0,v0,t_end,steps) Verlet second-order trajectory [t,q,v] columns\n"
+            "  name = ode_euler_vec(\"f0;f1;...\",t0,y0,t_end,steps) Euler vector IVP trajectory [t,y0,y1,...] columns\n"
+            "  name = ode_rk4_vec(\"f0;f1;...\",t0,y0,t_end,steps) RK4 vector IVP trajectory [t,y0,y1,...] columns\n"
+            "  name = ode_rk45_vec(\"f0;f1;...\",t0,y0,t_end,rtol,atol) adaptive RK45 vector IVP trajectory [t,y0,y1,...] columns\n"
+            "  name = ode_verlet_vec(\"a0;a1;...\",t0,q0,v0,t_end,steps) vector Verlet trajectory [t,q0,q1,...,v0,v1,...] columns\n"
             "  name = fft_rfft(x) real FFT spectrum as Nx2 [re,im] matrix\n"
             "  name = fftshift(S) cyclic shift of Nx2 complex spectrum\n"
             "  name = fft_dft(x) discrete Fourier transform as Nx2 [re,im] matrix\n"
@@ -9037,7 +9407,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
             "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"
-            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100)\n"};
+            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100)\n"
+            "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
+            "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"};
     }
     if (lcmd == "version") {
         std::ostringstream out;
@@ -10768,6 +11140,48 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(*value) + "\n";
         }
+        if (fn == "ode_euler_vec" || fn == "ode_rk4_vec") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 5) {
+                return std::unexpected(DomainError{
+                    fn, std::string("expected ") + fn + "(\"f0;f1;...\", t0, y0, t_end, steps)"});
+            }
+            OdeResultVec (*solver)(OdeFuncVec, double, const std::vector<double>&, double,
+                                   size_t) = (fn == "ode_euler_vec") ? ode_euler_vec : ode_rk4_vec;
+            auto value = eval_ode_vec_fixed_step_call(fn, call_args->at(0), call_args->at(1),
+                                                      call_args->at(2), call_args->at(3),
+                                                      call_args->at(4), solver);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_rk45_vec" || fn == "ode_verlet_vec") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 6) {
+                return std::unexpected(DomainError{
+                    fn,
+                    fn == "ode_rk45_vec"
+                        ? "expected ode_rk45_vec(\"f0;f1;...\", t0, y0, t_end, rtol, atol)"
+                        : "expected ode_verlet_vec(\"a0;a1;...\", t0, q0, v0, t_end, steps)"});
+            }
+            if (fn == "ode_rk45_vec") {
+                auto value = eval_ode_rk45_vec_call(call_args->at(0), call_args->at(1),
+                                                    call_args->at(2), call_args->at(3),
+                                                    call_args->at(4), call_args->at(5));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return *value;
+            }
+            auto value = eval_ode_verlet_vec_call(call_args->at(0), call_args->at(1),
+                                                  call_args->at(2), call_args->at(3),
+                                                  call_args->at(4), call_args->at(5));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
         if (fn == "quantum_ket_basis" || fn == "quantum_fock_state" ||
             fn == "quantum_coherent_state" || fn == "diffgeo_surface_normal_sphere") {
             const auto call_args = split_call_args(cmd);
@@ -11173,6 +11587,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return *value;
         }
+        if (fn == "ode_bdf2") {
+            auto value = eval_ode_fixed_step_call(fn, trim(match[2].str()), trim(match[3].str()),
+                                                  trim(match[4].str()), trim(match[5].str()),
+                                                  trim(match[6].str()), ode_bdf2);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
     }
 
     static const std::regex senary(
@@ -11183,6 +11606,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             auto value = eval_ode_rk45_call(trim(match[2].str()), trim(match[3].str()),
                                             trim(match[4].str()), trim(match[5].str()),
                                             trim(match[6].str()), trim(match[7].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_verlet") {
+            auto value = eval_ode_verlet_call(trim(match[2].str()), trim(match[3].str()),
+                                              trim(match[4].str()), trim(match[5].str()),
+                                              trim(match[6].str()), trim(match[7].str()));
             if (!value) {
                 return std::unexpected(value.error());
             }
