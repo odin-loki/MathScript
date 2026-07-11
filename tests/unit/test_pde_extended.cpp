@@ -27,6 +27,24 @@ double grid_max(const std::vector<std::vector<double>>& g) {
     return m;
 }
 
+double grid_max_abs(const std::vector<std::vector<double>>& g) {
+    double m = 0.0;
+    for (const auto& row : g) {
+        for (double v : row) {
+            m = std::max(m, std::abs(v));
+        }
+    }
+    return m;
+}
+
+std::vector<double> sin_initial_1d(std::size_t n) {
+    std::vector<double> u0(n, 0.0);
+    for (std::size_t i = 0; i < n; ++i) {
+        u0[i] = std::sin(M_PI * static_cast<double>(i) / static_cast<double>(n - 1));
+    }
+    return u0;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -319,5 +337,260 @@ TEST(PdeExtTest, burgers_1d_too_small_grid) {
 TEST(PdeExtTest, burgers_1d_zero_steps) {
     const std::vector<double> u0(5, 1.0);
     const auto result = pde_burgers_1d(u0, 0.01, 0.1, 0.001, 0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+// ---------------------------------------------------------------------------
+// pde_heat_1d_cn
+// ---------------------------------------------------------------------------
+
+TEST(PdeExtTest, heat_1d_cn_matches_explicit_when_stable) {
+    const std::size_t n = 21;
+    const double dx = 0.05;
+    const double alpha = 0.1;
+    const double dt = 0.005;
+    const std::size_t steps = 20;
+    const auto x0 = sin_initial_1d(n);
+
+    const auto explicit_result = pde_heat_1d(x0, alpha, dx, dt, steps);
+    const auto cn_result = pde_heat_1d_cn(x0, alpha, dx, dt, steps);
+    ASSERT_FALSE(explicit_result.u.empty());
+    ASSERT_FALSE(cn_result.u.empty());
+    ASSERT_EQ(explicit_result.u.size(), cn_result.u.size());
+
+    for (std::size_t k = 0; k < explicit_result.u.size(); ++k) {
+        for (std::size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(cn_result.u[k][i], explicit_result.u[k][i], 0.05);
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_1d_cn_stable_for_large_dt) {
+    const std::size_t n = 21;
+    const double dx = 0.05;
+    const double alpha = 0.1;
+    const double dt = 0.1;
+    const auto x0 = sin_initial_1d(n);
+
+    const double r = alpha * dt / (dx * dx);
+    ASSERT_GT(r, 0.5);
+
+    const auto explicit_result = pde_heat_1d(x0, alpha, dx, dt, 10);
+    EXPECT_TRUE(explicit_result.u.empty());
+
+    const auto cn_result = pde_heat_1d_cn(x0, alpha, dx, dt, 10);
+    ASSERT_FALSE(cn_result.u.empty());
+    for (const auto& snap : cn_result.u) {
+        for (double v : snap) {
+            EXPECT_TRUE(std::isfinite(v));
+            EXPECT_LT(std::abs(v), 2.0);
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_1d_cn_dirichlet_boundaries_zero) {
+    const std::vector<double> x0 = {0.0, 1.0, 0.8, 0.5, 0.8, 1.0, 0.0};
+    const auto result = pde_heat_1d_cn(x0, 0.1, 0.1, 0.01, 15);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        EXPECT_NEAR(snap.front(), 0.0, 1e-12);
+        EXPECT_NEAR(snap.back(), 0.0, 1e-12);
+    }
+}
+
+TEST(PdeExtTest, heat_1d_cn_diffuses_spike) {
+    std::vector<double> x0(11, 0.0);
+    x0[5] = 5.0;
+    const auto result = pde_heat_1d_cn(x0, 0.2, 0.1, 0.01, 30);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_LT(*std::max_element(result.u.back().begin(), result.u.back().end()), 5.0);
+    EXPECT_GT(*std::max_element(result.u.back().begin(), result.u.back().end()), 0.0);
+}
+
+TEST(PdeExtTest, heat_1d_cn_too_small_grid) {
+    const std::vector<double> x0 = {0.0, 1.0};
+    const auto result = pde_heat_1d_cn(x0, 0.1, 0.1, 0.01, 5);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, heat_1d_cn_zero_steps) {
+    const std::vector<double> x0(5, 0.0);
+    const auto result = pde_heat_1d_cn(x0, 0.1, 0.1, 0.01, 0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, heat_1d_cn_invalid_parameters) {
+    std::vector<double> x0(5, 0.0);
+    x0[2] = 1.0;
+    EXPECT_TRUE(pde_heat_1d_cn(x0, 0.0, 0.1, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_heat_1d_cn(x0, 0.1, 0.0, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_heat_1d_cn(x0, 0.1, 0.1, 0.0, 5).u.empty());
+}
+
+// ---------------------------------------------------------------------------
+// pde_poisson_1d
+// ---------------------------------------------------------------------------
+
+TEST(PdeExtTest, poisson_1d_manufactured_solution) {
+    const std::size_t n = 51;
+    const double dx = 1.0 / static_cast<double>(n - 1);
+    const double L = static_cast<double>(n - 1) * dx;
+    const double coeff = -(M_PI / L) * (M_PI / L);
+
+    std::vector<double> f(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = static_cast<double>(i) * dx;
+        f[i] = coeff * std::sin(M_PI * x / L);
+    }
+
+    const auto result = pde_poisson_1d(f, dx, 0.0, 0.0);
+    ASSERT_EQ(result.u.size(), n);
+    double max_err = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = static_cast<double>(i) * dx;
+        const double exact = std::sin(M_PI * x / L);
+        max_err = std::max(max_err, std::abs(result.u[i] - exact));
+    }
+    EXPECT_LT(max_err, 0.002);
+}
+
+TEST(PdeExtTest, poisson_1d_boundary_values) {
+    const std::size_t n = 11;
+    const double dx = 0.1;
+    std::vector<double> f(n, 0.0);
+    const auto result = pde_poisson_1d(f, dx, 2.0, -1.0);
+    ASSERT_EQ(result.u.size(), n);
+    EXPECT_NEAR(result.u.front(), 2.0, 1e-12);
+    EXPECT_NEAR(result.u.back(), -1.0, 1e-12);
+}
+
+TEST(PdeExtTest, poisson_1d_linear_with_zero_source) {
+    const std::size_t n = 6;
+    const double dx = 0.2;
+    std::vector<double> f(n, 0.0);
+    const double ua = 1.0;
+    const double ub = 3.0;
+    const auto result = pde_poisson_1d(f, dx, ua, ub);
+    ASSERT_EQ(result.u.size(), n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = static_cast<double>(i) * dx;
+        const double exact = ua + (ub - ua) * x / (static_cast<double>(n - 1) * dx);
+        EXPECT_NEAR(result.u[i], exact, 1e-10);
+    }
+}
+
+TEST(PdeExtTest, poisson_1d_too_small_grid) {
+    const std::vector<double> f = {0.0, 1.0};
+    const auto result = pde_poisson_1d(f, 0.1, 0.0, 0.0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, poisson_1d_invalid_dx) {
+    const std::vector<double> f(5, 0.0);
+    const auto result = pde_poisson_1d(f, 0.0, 0.0, 0.0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+// ---------------------------------------------------------------------------
+// pde_wave_2d
+// ---------------------------------------------------------------------------
+
+TEST(PdeExtTest, wave_2d_cfl_rejection) {
+    auto u0 = make_grid(7, 7, 0.0);
+    auto v0 = make_grid(7, 7, 0.0);
+    u0[3][3] = 1.0;
+    const auto result = pde_wave_2d(u0, v0, 2.0, 0.1, 0.1, 0.2, 5);
+    EXPECT_TRUE(result.u.empty());
+    EXPECT_TRUE(result.t.empty());
+}
+
+TEST(PdeExtTest, wave_2d_symmetry_preserved) {
+    const std::size_t n = 9;
+    auto u0 = make_grid(n, n, 0.0);
+    auto v0 = make_grid(n, n, 0.0);
+    u0[n / 2][n / 2] = 1.0;
+
+    const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.02, 8);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (std::size_t j = 0; j < n; ++j) {
+            for (std::size_t i = 0; i < n; ++i) {
+                EXPECT_NEAR(snap[j][i], snap[j][n - 1 - i], 1e-10);
+                EXPECT_NEAR(snap[j][i], snap[n - 1 - j][i], 1e-10);
+            }
+        }
+    }
+}
+
+TEST(PdeExtTest, wave_2d_dirichlet_boundaries_zero) {
+    auto u0 = make_grid(7, 7, 0.0);
+    auto v0 = make_grid(7, 7, 0.0);
+    u0[3][3] = 1.0;
+    const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.02, 10);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (std::size_t i = 0; i < snap[0].size(); ++i) {
+            EXPECT_NEAR(snap[0][i], 0.0, 1e-12);
+            EXPECT_NEAR(snap.back()[i], 0.0, 1e-12);
+        }
+        for (const auto& row : snap) {
+            EXPECT_NEAR(row.front(), 0.0, 1e-12);
+            EXPECT_NEAR(row.back(), 0.0, 1e-12);
+        }
+    }
+}
+
+TEST(PdeExtTest, wave_2d_finite_output) {
+    auto u0 = make_grid(11, 11, 0.0);
+    auto v0 = make_grid(11, 11, 0.0);
+    u0[5][5] = 0.5;
+    v0[5][5] = 0.1;
+    const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.01, 12);
+    ASSERT_EQ(result.u.size(), 13u);
+    for (const auto& snap : result.u) {
+        for (const auto& row : snap) {
+            for (double v : row) {
+                EXPECT_TRUE(std::isfinite(v));
+            }
+        }
+    }
+}
+
+TEST(PdeExtTest, wave_2d_energy_roughly_preserved) {
+    const std::size_t n = 11;
+    auto u0 = make_grid(n, n, 0.0);
+    auto v0 = make_grid(n, n, 0.0);
+    for (std::size_t j = 0; j < n; ++j) {
+        for (std::size_t i = 0; i < n; ++i) {
+            const double x = static_cast<double>(i) / static_cast<double>(n - 1);
+            const double y = static_cast<double>(j) / static_cast<double>(n - 1);
+            u0[j][i] = std::sin(M_PI * x) * std::sin(M_PI * y);
+        }
+    }
+    const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.005, 6);
+    ASSERT_GE(result.u.size(), 2u);
+    const double norm0 = grid_max_abs(result.u.front());
+    const double norm1 = grid_max_abs(result.u.back());
+    EXPECT_NEAR(norm0, norm1, 0.2 * norm0);
+}
+
+TEST(PdeExtTest, wave_2d_too_small_grid) {
+    auto u0 = make_grid(2, 2, 1.0);
+    auto v0 = make_grid(2, 2, 0.0);
+    const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.01, 5);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, wave_2d_zero_steps) {
+    auto u0 = make_grid(5, 5, 0.0);
+    auto v0 = make_grid(5, 5, 0.0);
+    const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.01, 0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, wave_2d_mismatched_shapes) {
+    auto u0 = make_grid(5, 5, 0.0);
+    auto v0 = make_grid(5, 7, 0.0);
+    const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.01, 5);
     EXPECT_TRUE(result.u.empty());
 }

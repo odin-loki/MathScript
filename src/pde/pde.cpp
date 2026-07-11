@@ -23,6 +23,36 @@ bool is_rectangular_grid(const std::vector<std::vector<double>>& grid) {
     return grid.size() >= 3;
 }
 
+/// Solve a tridiagonal system with lower diag a, main diag b, upper diag c, rhs d.
+/// Overwrites d with the solution. Returns false if the system is singular.
+bool thomas_solve(
+    std::vector<double>& a,
+    std::vector<double>& b,
+    std::vector<double>& c,
+    std::vector<double>& d) {
+    const std::size_t n = d.size();
+    if (n == 0) {
+        return false;
+    }
+
+    for (std::size_t i = 1; i < n; ++i) {
+        const double w = a[i - 1] / b[i - 1];
+        b[i] -= w * c[i - 1];
+        d[i] -= w * d[i - 1];
+    }
+
+    if (std::abs(b[n - 1]) < 1e-300) {
+        return false;
+    }
+    d[n - 1] /= b[n - 1];
+
+    for (std::size_t i = n - 1; i-- > 0;) {
+        d[i] = (d[i] - c[i] * d[i + 1]) / b[i];
+    }
+
+    return true;
+}
+
 } // namespace
 
 Heat1DResult pde_heat_1d(
@@ -59,6 +89,61 @@ Heat1DResult pde_heat_1d(
         next[0] = u[0];
         next[n - 1] = u[n - 1];
         u.swap(next);
+        result.t.push_back(static_cast<double>(step) * dt);
+        result.u.push_back(u);
+    }
+
+    return result;
+}
+
+Heat1DResult pde_heat_1d_cn(
+    const std::vector<double>& x0,
+    double alpha,
+    double dx,
+    double dt,
+    std::size_t steps) {
+    Heat1DResult result;
+    if (x0.size() < 3 || steps == 0 || dx <= 0.0 || dt <= 0.0 || alpha <= 0.0) {
+        return result;
+    }
+
+    const std::size_t n = x0.size();
+    const double r = alpha * dt / (dx * dx);
+    const std::size_t m = n - 2;
+
+    result.x.resize(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        result.x[i] = static_cast<double>(i) * dx;
+    }
+
+    std::vector<double> u = x0;
+    result.t.push_back(0.0);
+    result.u.push_back(u);
+
+    std::vector<double> a(m, -0.5 * r);
+    std::vector<double> b(m, 1.0 + r);
+    std::vector<double> c(m, -0.5 * r);
+    std::vector<double> rhs(m);
+
+    for (std::size_t step = 1; step <= steps; ++step) {
+        for (std::size_t k = 0; k < m; ++k) {
+            const std::size_t i = k + 1;
+            rhs[k] = (1.0 - r) * u[i] + 0.5 * r * (u[i - 1] + u[i + 1]);
+        }
+
+        std::vector<double> a_copy = a;
+        std::vector<double> b_copy = b;
+        std::vector<double> c_copy = c;
+        if (!thomas_solve(a_copy, b_copy, c_copy, rhs)) {
+            return Heat1DResult{};
+        }
+
+        u[0] = 0.0;
+        u[n - 1] = 0.0;
+        for (std::size_t k = 0; k < m; ++k) {
+            u[k + 1] = rhs[k];
+        }
+
         result.t.push_back(static_cast<double>(step) * dt);
         result.u.push_back(u);
     }
@@ -168,6 +253,75 @@ Wave1DResult pde_wave_1d(
     return result;
 }
 
+Wave2DResult pde_wave_2d(
+    const std::vector<std::vector<double>>& u0,
+    const std::vector<std::vector<double>>& v0,
+    double c,
+    double dx,
+    double dy,
+    double dt,
+    std::size_t steps) {
+    Wave2DResult result;
+    if (!is_rectangular_grid(u0) || !is_rectangular_grid(v0) || steps == 0
+        || dx <= 0.0 || dy <= 0.0 || dt <= 0.0) {
+        return result;
+    }
+
+    const std::size_t ny = u0.size();
+    const std::size_t nx = u0[0].size();
+    if (v0.size() != ny || v0[0].size() != nx) {
+        return result;
+    }
+
+    const double cfl = c * c * dt * dt * (1.0 / (dx * dx) + 1.0 / (dy * dy));
+    if (cfl > 1.0) {
+        return result;
+    }
+
+    const double sig_x = c * c * dt * dt / (dx * dx);
+    const double sig_y = c * c * dt * dt / (dy * dy);
+
+    std::vector<std::vector<double>> prev(ny, std::vector<double>(nx, 0.0));
+    std::vector<std::vector<double>> curr = u0;
+    std::vector<std::vector<double>> next(ny, std::vector<double>(nx, 0.0));
+
+    for (std::size_t j = 1; j + 1 < ny; ++j) {
+        for (std::size_t i = 1; i + 1 < nx; ++i) {
+            next[j][i] = u0[j][i] + dt * v0[j][i]
+                + 0.5 * sig_x * (u0[j][i - 1] - 2.0 * u0[j][i] + u0[j][i + 1])
+                + 0.5 * sig_y * (u0[j - 1][i] - 2.0 * u0[j][i] + u0[j + 1][i]);
+        }
+    }
+
+    result.t.push_back(0.0);
+    result.u.push_back(curr);
+
+    prev = curr;
+    curr = next;
+    result.t.push_back(dt);
+    result.u.push_back(curr);
+
+    for (std::size_t step = 2; step <= steps; ++step) {
+        for (std::size_t j = 0; j < ny; ++j) {
+            for (std::size_t i = 0; i < nx; ++i) {
+                if (i == 0 || i + 1 == nx || j == 0 || j + 1 == ny) {
+                    next[j][i] = 0.0;
+                } else {
+                    next[j][i] = 2.0 * curr[j][i] - prev[j][i]
+                        + sig_x * (curr[j][i - 1] - 2.0 * curr[j][i] + curr[j][i + 1])
+                        + sig_y * (curr[j - 1][i] - 2.0 * curr[j][i] + curr[j + 1][i]);
+                }
+            }
+        }
+        prev = curr;
+        curr = next;
+        result.t.push_back(static_cast<double>(step) * dt);
+        result.u.push_back(curr);
+    }
+
+    return result;
+}
+
 Advection1DResult pde_advection_1d(
     const std::vector<double>& u0,
     double v,
@@ -205,6 +359,55 @@ Advection1DResult pde_advection_1d(
         u.swap(next);
         result.t.push_back(static_cast<double>(step) * dt);
         result.u.push_back(u);
+    }
+
+    return result;
+}
+
+Poisson1DResult pde_poisson_1d(
+    const std::vector<double>& f,
+    double dx,
+    double ua,
+    double ub) {
+    Poisson1DResult result;
+    if (f.size() < 3 || dx <= 0.0) {
+        return result;
+    }
+
+    const std::size_t n = f.size();
+    const std::size_t m = n - 2;
+    const double inv_dx2 = 1.0 / (dx * dx);
+
+    result.u.resize(n);
+    result.u[0] = ua;
+    result.u[n - 1] = ub;
+
+    if (m == 0) {
+        return result;
+    }
+
+    std::vector<double> a(m, inv_dx2);
+    std::vector<double> b(m, -2.0 * inv_dx2);
+    std::vector<double> c(m, inv_dx2);
+    std::vector<double> rhs(m);
+
+    for (std::size_t k = 0; k < m; ++k) {
+        const std::size_t i = k + 1;
+        rhs[k] = f[i];
+        if (k == 0) {
+            rhs[k] -= ua * inv_dx2;
+        }
+        if (k + 1 == m) {
+            rhs[k] -= ub * inv_dx2;
+        }
+    }
+
+    if (!thomas_solve(a, b, c, rhs)) {
+        return Poisson1DResult{};
+    }
+
+    for (std::size_t k = 0; k < m; ++k) {
+        result.u[k + 1] = rhs[k];
     }
 
     return result;
