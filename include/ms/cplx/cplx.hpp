@@ -50,6 +50,29 @@ std::vector<C> joukowski_inv(C w, double c = 1.0);
 // --- Poisson kernel: P_r(theta-phi) ---
 double poisson_kernel(double theta, double phi, double r);
 
+/// Green's function for the Dirichlet Laplacian on the disk of radius `radius`
+/// centred at the origin:
+///   G(z, z0) = (1/(2*pi)) * ln | (z - z0) / (radius - conj(z0)*z/radius) |
+/// (equivalently, on the unit disk, G(z,z0) = (1/(2*pi)) * ln |(z-z0)/(1-conj(z0)*z)|,
+/// obtained via the rescaling z -> z/radius, z0 -> z0/radius).
+/// Symmetric: green_function_disk(z, z0, radius) == green_function_disk(z0, z, radius).
+/// Vanishes as |z| -> radius (Dirichlet boundary condition) and has a logarithmic
+/// singularity as z -> z0. With this sign convention (G <= 0 inside the disk,
+/// G -> -infinity at the source), the outward normal derivative of G in its
+/// first argument, taken at the boundary, reproduces the Poisson kernel:
+/// dG/dn(e^{i theta}, r*e^{i phi}) = (1/(2*pi)) * poisson_kernel(theta, phi, r),
+/// where n is the outward radial direction at the boundary point e^{i theta}.
+/// @param z point inside the disk at which G is evaluated
+/// @param z0 source point inside the disk
+/// @param radius disk radius (default 1.0, the unit disk)
+/// @return the value of G(z, z0); 0.0 if z or z0 lies outside/on the boundary of
+///   the disk (defensive out-of-domain convention, matching poisson_kernel's
+///   behaviour of returning a well-defined finite value for all inputs rather
+///   than throwing); -infinity if z == z0 (true logarithmic singularity).
+/// @note No exceptions are thrown; degenerate/out-of-domain inputs return a
+///   documented sentinel instead.
+double green_function_disk(C z, C z0, double radius = 1.0);
+
 // --- Harmonic conjugate (numerical, Hilbert transform approach) ---
 // Given real part u on circle of radius r (n equally spaced points),
 // returns harmonic conjugate v
