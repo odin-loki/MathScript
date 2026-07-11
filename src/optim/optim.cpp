@@ -810,6 +810,326 @@ OptimResult particle_swarm(FuncND f,
 }
 
 // ----------------------------------------------------------------
+// CMA-ES (Covariance Matrix Adaptation Evolution Strategy)
+// ----------------------------------------------------------------
+namespace {
+
+// Symmetric Jacobi eigendecomposition: A = V diag(d) V^T (V orthonormal).
+void jacobi_eig_sym(std::vector<std::vector<double>> A,
+                    std::vector<double>& evals,
+                    std::vector<std::vector<double>>& evecs) {
+    const int n = static_cast<int>(A.size());
+    evals.assign(static_cast<size_t>(n), 0.0);
+    evecs.assign(static_cast<size_t>(n),
+                 std::vector<double>(static_cast<size_t>(n), 0.0));
+    for (int i = 0; i < n; ++i) {
+        evecs[static_cast<size_t>(i)][static_cast<size_t>(i)] = 1.0;
+    }
+
+    constexpr int max_sweeps = 100;
+    constexpr double eps = 1e-15;
+    for (int sweep = 0; sweep < max_sweeps; ++sweep) {
+        double off = 0.0;
+        for (int p = 0; p < n; ++p) {
+            for (int q = p + 1; q < n; ++q) {
+                off += A[static_cast<size_t>(p)][static_cast<size_t>(q)] *
+                       A[static_cast<size_t>(p)][static_cast<size_t>(q)];
+            }
+        }
+        if (off < eps) {
+            break;
+        }
+
+        for (int p = 0; p < n; ++p) {
+            for (int q = p + 1; q < n; ++q) {
+                const double apq = A[static_cast<size_t>(p)][static_cast<size_t>(q)];
+                if (std::abs(apq) < eps) {
+                    continue;
+                }
+                const double app = A[static_cast<size_t>(p)][static_cast<size_t>(p)];
+                const double aqq = A[static_cast<size_t>(q)][static_cast<size_t>(q)];
+                const double tau = (aqq - app) / (2.0 * apq);
+                const double t = (tau >= 0.0 ? 1.0 : -1.0) /
+                                 (std::abs(tau) + std::sqrt(1.0 + tau * tau));
+                const double c = 1.0 / std::sqrt(1.0 + t * t);
+                const double s = t * c;
+
+                for (int k = 0; k < n; ++k) {
+                    const double akp = A[static_cast<size_t>(k)][static_cast<size_t>(p)];
+                    const double akq = A[static_cast<size_t>(k)][static_cast<size_t>(q)];
+                    A[static_cast<size_t>(k)][static_cast<size_t>(p)] = c * akp - s * akq;
+                    A[static_cast<size_t>(p)][static_cast<size_t>(k)] =
+                        A[static_cast<size_t>(k)][static_cast<size_t>(p)];
+                    A[static_cast<size_t>(k)][static_cast<size_t>(q)] = s * akp + c * akq;
+                    A[static_cast<size_t>(q)][static_cast<size_t>(k)] =
+                        A[static_cast<size_t>(k)][static_cast<size_t>(q)];
+                }
+                for (int k = 0; k < n; ++k) {
+                    const double vkp = evecs[static_cast<size_t>(k)][static_cast<size_t>(p)];
+                    const double vkq = evecs[static_cast<size_t>(k)][static_cast<size_t>(q)];
+                    evecs[static_cast<size_t>(k)][static_cast<size_t>(p)] = c * vkp - s * vkq;
+                    evecs[static_cast<size_t>(k)][static_cast<size_t>(q)] = s * vkp + c * vkq;
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < n; ++i) {
+        evals[static_cast<size_t>(i)] =
+            A[static_cast<size_t>(i)][static_cast<size_t>(i)];
+    }
+}
+
+double chi_n(int n) {
+    if (n <= 0) {
+        return 1.0;
+    }
+    const double nd = static_cast<double>(n);
+    return std::sqrt(nd) * (1.0 - 1.0 / (4.0 * nd) + 1.0 / (21.0 * nd * nd));
+}
+
+std::vector<double> mat_vec(const std::vector<std::vector<double>>& M,
+                            const std::vector<double>& v) {
+    const int n = static_cast<int>(v.size());
+    std::vector<double> r(static_cast<size_t>(n), 0.0);
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            r[static_cast<size_t>(i)] +=
+                M[static_cast<size_t>(i)][static_cast<size_t>(j)] *
+                v[static_cast<size_t>(j)];
+        }
+    }
+    return r;
+}
+
+double dot(const std::vector<double>& a, const std::vector<double>& b) {
+    double s = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        s += a[i] * b[i];
+    }
+    return s;
+}
+
+double norm2(const std::vector<double>& v) {
+    return std::sqrt(dot(v, v));
+}
+
+std::vector<double> outer_apply(
+    const std::vector<std::vector<double>>& V,
+    const std::vector<double>& d,
+    const std::vector<double>& x) {
+    const int n = static_cast<int>(x.size());
+    std::vector<double> tmp(static_cast<size_t>(n), 0.0);
+    for (int j = 0; j < n; ++j) {
+        double s = 0.0;
+        for (int i = 0; i < n; ++i) {
+            s += V[static_cast<size_t>(i)][static_cast<size_t>(j)] *
+                 x[static_cast<size_t>(i)];
+        }
+        tmp[static_cast<size_t>(j)] = d[static_cast<size_t>(j)] * s;
+    }
+    return mat_vec(V, tmp);
+}
+
+} // namespace
+
+OptimResult cmaes(FuncND f, std::vector<double> x0, double sigma0,
+                  int max_iter, unsigned seed) {
+    constexpr double tol = 1e-8;
+
+    const int n = static_cast<int>(x0.size());
+    if (n <= 0) {
+        return OptimResult{{}, 0.0, 0, false};
+    }
+
+    const int lambda = 4 + static_cast<int>(std::floor(3.0 * std::log(static_cast<double>(n))));
+    const int mu = lambda / 2;
+
+    std::vector<double> weights(static_cast<size_t>(mu));
+    double w_sum = 0.0;
+    for (int i = 0; i < mu; ++i) {
+        weights[static_cast<size_t>(i)] =
+            std::log(static_cast<double>(mu) + 0.5) -
+            std::log(static_cast<double>(i + 1));
+        w_sum += weights[static_cast<size_t>(i)];
+    }
+    for (int i = 0; i < mu; ++i) {
+        weights[static_cast<size_t>(i)] /= w_sum;
+    }
+
+    double w_sq_sum = 0.0;
+    for (int i = 0; i < mu; ++i) {
+        w_sq_sum += weights[static_cast<size_t>(i)] * weights[static_cast<size_t>(i)];
+    }
+    const double mu_eff = 1.0 / w_sq_sum;
+
+    const double c_sigma = (mu_eff + 2.0) / (static_cast<double>(n) + mu_eff + 5.0);
+    const double d_sigma =
+        1.0 + c_sigma +
+        2.0 * std::max(0.0, std::sqrt((mu_eff - 1.0) / (static_cast<double>(n) + 1.0)) - 1.0);
+    const double c_c =
+        (4.0 + mu_eff / static_cast<double>(n)) /
+        (static_cast<double>(n) + 4.0 + 2.0 * mu_eff / static_cast<double>(n));
+    const double c_1 =
+        2.0 / ((static_cast<double>(n) + 1.3) * (static_cast<double>(n) + 1.3) + mu_eff);
+    const double c_mu = std::min(
+        1.0 - c_1,
+        2.0 * (mu_eff - 2.0 + 1.0 / mu_eff) /
+            ((static_cast<double>(n) + 2.0) * (static_cast<double>(n) + 2.0) + mu_eff));
+
+    const double chiN = chi_n(n);
+    const double sigma_thresh =
+        (1.4 + 2.0 / (static_cast<double>(n) + 1.0)) * chiN;
+
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> normal(0.0, 1.0);
+
+    auto mean = x0;
+    double sigma = sigma0;
+
+    std::vector<std::vector<double>> C(
+        static_cast<size_t>(n),
+        std::vector<double>(static_cast<size_t>(n), 0.0));
+    for (int i = 0; i < n; ++i) {
+        C[static_cast<size_t>(i)][static_cast<size_t>(i)] = 1.0;
+    }
+
+    std::vector<double> p_sigma(static_cast<size_t>(n), 0.0);
+    std::vector<double> p_c(static_cast<size_t>(n), 0.0);
+
+    std::vector<std::vector<double>> pop(
+        static_cast<size_t>(lambda),
+        std::vector<double>(static_cast<size_t>(n)));
+    std::vector<double> fitness(static_cast<size_t>(lambda));
+
+    double f_best = std::numeric_limits<double>::infinity();
+    auto x_best = mean;
+    bool converged = false;
+    int generations = 0;
+
+    for (int gen = 0; gen < max_iter; ++gen) {
+        generations = gen + 1;
+
+        std::vector<double> evals;
+        std::vector<std::vector<double>> evecs;
+        jacobi_eig_sym(C, evals, evecs);
+
+        std::vector<double> sqrt_evals(static_cast<size_t>(n));
+        std::vector<double> inv_sqrt_evals(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            const double ev = std::max(evals[static_cast<size_t>(i)], 0.0);
+            sqrt_evals[static_cast<size_t>(i)] = std::sqrt(ev);
+            inv_sqrt_evals[static_cast<size_t>(i)] =
+                ev > 1e-14 ? 1.0 / std::sqrt(ev) : 0.0;
+        }
+
+        for (int k = 0; k < lambda; ++k) {
+            std::vector<double> z(static_cast<size_t>(n));
+            for (int i = 0; i < n; ++i) {
+                z[static_cast<size_t>(i)] = normal(rng);
+            }
+            auto step = outer_apply(evecs, sqrt_evals, z);
+            for (int i = 0; i < n; ++i) {
+                pop[static_cast<size_t>(k)][static_cast<size_t>(i)] =
+                    mean[static_cast<size_t>(i)] + sigma * step[static_cast<size_t>(i)];
+            }
+            fitness[static_cast<size_t>(k)] = f(pop[static_cast<size_t>(k)]);
+        }
+
+        std::vector<size_t> idx(static_cast<size_t>(lambda));
+        std::iota(idx.begin(), idx.end(), 0u);
+        std::sort(idx.begin(), idx.end(),
+                  [&](size_t a, size_t b) { return fitness[a] < fitness[b]; });
+
+        if (fitness[idx[0]] < f_best) {
+            f_best = fitness[idx[0]];
+            x_best = pop[idx[0]];
+        }
+
+        const double f_spread =
+            fitness[idx[static_cast<size_t>(mu - 1)]] - fitness[idx[0]];
+        if (f_best < tol || sigma < tol || f_spread < tol) {
+            converged = true;
+            break;
+        }
+
+        const auto mean_old = mean;
+        std::fill(mean.begin(), mean.end(), 0.0);
+        for (int i = 0; i < mu; ++i) {
+            const auto& xi = pop[idx[static_cast<size_t>(i)]];
+            for (int j = 0; j < n; ++j) {
+                mean[static_cast<size_t>(j)] +=
+                    weights[static_cast<size_t>(i)] * xi[static_cast<size_t>(j)];
+            }
+        }
+
+        std::vector<std::vector<double>> y_mu(static_cast<size_t>(mu));
+        std::vector<double> y_w(static_cast<size_t>(n), 0.0);
+        for (int i = 0; i < mu; ++i) {
+            y_mu[static_cast<size_t>(i)].resize(static_cast<size_t>(n));
+            for (int j = 0; j < n; ++j) {
+                y_mu[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                    (pop[idx[static_cast<size_t>(i)]][static_cast<size_t>(j)] -
+                     mean_old[static_cast<size_t>(j)]) /
+                    sigma;
+                y_w[static_cast<size_t>(j)] +=
+                    weights[static_cast<size_t>(i)] *
+                    y_mu[static_cast<size_t>(i)][static_cast<size_t>(j)];
+            }
+        }
+
+        const auto invsqrt_yw = outer_apply(evecs, inv_sqrt_evals, y_w);
+        const double ps_factor =
+            std::sqrt(c_sigma * (2.0 - c_sigma) * mu_eff);
+        for (int j = 0; j < n; ++j) {
+            p_sigma[static_cast<size_t>(j)] =
+                (1.0 - c_sigma) * p_sigma[static_cast<size_t>(j)] +
+                ps_factor * invsqrt_yw[static_cast<size_t>(j)];
+        }
+
+        const double ps_norm = norm2(p_sigma);
+        const double gen_factor =
+            std::sqrt(1.0 - std::pow(1.0 - c_sigma, 2.0 * static_cast<double>(gen + 1)));
+        const double h_sig =
+            (ps_norm / (gen_factor + 1e-14) < sigma_thresh) ? 1.0 : 0.0;
+
+        const double pc_factor = h_sig * std::sqrt(c_c * (2.0 - c_c) * mu_eff);
+        for (int j = 0; j < n; ++j) {
+            p_c[static_cast<size_t>(j)] =
+                (1.0 - c_c) * p_c[static_cast<size_t>(j)] +
+                pc_factor * y_w[static_cast<size_t>(j)];
+        }
+
+        std::vector<std::vector<double>> C_new(
+            static_cast<size_t>(n),
+            std::vector<double>(static_cast<size_t>(n), 0.0));
+        const double cc_factor = (1.0 - h_sig) * c_c * (2.0 - c_c);
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j <= i; ++j) {
+                double rank1 = p_c[static_cast<size_t>(i)] * p_c[static_cast<size_t>(j)];
+                double rank_mu = 0.0;
+                for (int k = 0; k < mu; ++k) {
+                    rank_mu += weights[static_cast<size_t>(k)] *
+                               y_mu[static_cast<size_t>(k)][static_cast<size_t>(i)] *
+                               y_mu[static_cast<size_t>(k)][static_cast<size_t>(j)];
+                }
+                C_new[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                    (1.0 - c_1 - c_mu) * C[static_cast<size_t>(i)][static_cast<size_t>(j)] +
+                    c_1 * (rank1 + cc_factor * C[static_cast<size_t>(i)][static_cast<size_t>(j)]) +
+                    c_mu * rank_mu;
+                C_new[static_cast<size_t>(j)][static_cast<size_t>(i)] =
+                    C_new[static_cast<size_t>(i)][static_cast<size_t>(j)];
+            }
+        }
+        C = C_new;
+
+        sigma *= std::exp((c_sigma / d_sigma) * (ps_norm / chiN - 1.0));
+    }
+
+    return OptimResult{x_best, f_best, static_cast<size_t>(generations), converged};
+}
+
+// ----------------------------------------------------------------
 // Scalar root finders
 // ----------------------------------------------------------------
 double bisection(Func1D f, double a, double b, double tol, int max_iter) {
