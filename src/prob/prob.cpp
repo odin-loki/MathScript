@@ -1,6 +1,7 @@
 #include "ms/prob/prob.hpp"
 #include "ms/special/special.hpp"
 #include <cmath>
+#include <functional>
 #include <limits>
 
 #ifndef M_PI
@@ -89,6 +90,33 @@ double regularized_incomplete_beta(double a, double b, double x) {
     return 1.0 - bt * beta_continued_fraction(b, a, 1.0 - x) / b;
 }
 
+constexpr double k_ppf_neg_tail = -1e100;
+constexpr double k_ppf_pos_tail = 1e100;
+constexpr double k_ppf_bracket_max = 1e300;
+
+double bisect_increasing(const std::function<double(double)>& f, double lo, double hi,
+                         double tol = 1e-12, int max_iter = 200) {
+    for (int i = 0; i < max_iter; ++i) {
+        const double mid = 0.5 * (lo + hi);
+        if (hi - lo <= tol) {
+            break;
+        }
+        if (f(mid) <= 0.0) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    return 0.5 * (lo + hi);
+}
+
+double expand_upper_until_cdf(const std::function<double(double)>& cdf, double p, double hi) {
+    while (cdf(hi) < p && hi < k_ppf_bracket_max) {
+        hi *= 2.0;
+    }
+    return hi;
+}
+
 } // namespace
 
 double norm_pdf(double x, double mu, double sigma) {
@@ -156,6 +184,19 @@ double exp_cdf(double x, double lambda) {
     return 1.0 - std::exp(-lambda * x);
 }
 
+double exp_ppf(double p, double lambda) {
+    if (lambda <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return -std::log(1.0 - p) / lambda;
+}
+
 double binom_pdf(int k, int n, double p) {
     if (k < 0 || k > n || p < 0.0 || p > 1.0) {
         return 0.0;
@@ -208,6 +249,22 @@ double chi2_cdf(double x, double df) {
     return regularized_lower_incomplete_gamma(df / 2.0, x / 2.0);
 }
 
+double chi2_ppf(double p, double df) {
+    if (df <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    const auto residual = [&](double x) { return chi2_cdf(x, df) - p; };
+    double hi = std::max(df + 10.0 * std::sqrt(2.0 * df), 1.0);
+    hi = expand_upper_until_cdf([&](double x) { return chi2_cdf(x, df); }, p, hi);
+    return bisect_increasing(residual, 0.0, hi);
+}
+
 double uniform_pdf(double x, double a, double b) {
     if (b <= a || x < a || x > b) {
         return 0.0;
@@ -257,6 +314,31 @@ double t_cdf(double x, double df) {
     return x > 0.0 ? 0.5 + half_area : 0.5 - half_area;
 }
 
+double t_ppf(double p, double df) {
+    if (df <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return k_ppf_neg_tail;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    if (p == 0.5) {
+        return 0.0;
+    }
+    const auto residual = [&](double x) { return t_cdf(x, df) - p; };
+    double lo = -1.0;
+    double hi = 1.0;
+    while (t_cdf(lo, df) > p && lo > -k_ppf_bracket_max) {
+        lo *= 2.0;
+    }
+    while (t_cdf(hi, df) < p && hi < k_ppf_bracket_max) {
+        hi *= 2.0;
+    }
+    return bisect_increasing(residual, lo, hi);
+}
+
 double gamma_pdf(double x, double shape, double scale) {
     if (x <= 0.0 || shape <= 0.0 || scale <= 0.0) {
         return 0.0;
@@ -270,6 +352,25 @@ double gamma_cdf(double x, double shape, double scale) {
         return 0.0;
     }
     return regularized_lower_incomplete_gamma(shape, x / scale);
+}
+
+double gamma_ppf(double p, double shape, double scale) {
+    if (shape <= 0.0 || scale <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    if (shape == 1.0) {
+        return exp_ppf(p, 1.0 / scale);
+    }
+    const auto residual = [&](double x) { return gamma_cdf(x, shape, scale) - p; };
+    double hi = std::max(shape * scale + 10.0 * std::sqrt(shape) * scale, scale);
+    hi = expand_upper_until_cdf([&](double x) { return gamma_cdf(x, shape, scale); }, p, hi);
+    return bisect_increasing(residual, 0.0, hi);
 }
 
 double beta_pdf(double x, double alpha, double beta) {
@@ -287,6 +388,23 @@ double beta_cdf(double x, double alpha, double beta) {
         return 1.0;
     }
     return regularized_incomplete_beta(alpha, beta, x);
+}
+
+double beta_ppf(double p, double alpha, double beta) {
+    if (alpha <= 0.0 || beta <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return 1.0;
+    }
+    if (alpha == 1.0 && beta == 1.0) {
+        return p;
+    }
+    const auto residual = [&](double x) { return beta_cdf(x, alpha, beta) - p; };
+    return bisect_increasing(residual, 0.0, 1.0);
 }
 
 double f_pdf(double x, double d1, double d2) {
@@ -308,6 +426,23 @@ double f_cdf(double x, double d1, double d2) {
     }
     const double z = d1 * x / (d1 * x + d2);
     return regularized_incomplete_beta(d1 / 2.0, d2 / 2.0, z);
+}
+
+double f_ppf(double p, double d1, double d2) {
+    if (d1 <= 0.0 || d2 <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    const auto residual = [&](double x) { return f_cdf(x, d1, d2) - p; };
+    double hi = (d2 > 2.0) ? (d2 / (d2 - 2.0)) * (d1 / d2) : 1.0;
+    hi = std::max(hi + 10.0 * std::sqrt(2.0 * std::max(hi, 1.0)), 1.0);
+    hi = expand_upper_until_cdf([&](double x) { return f_cdf(x, d1, d2); }, p, hi);
+    return bisect_increasing(residual, 0.0, hi);
 }
 
 } // namespace ms
