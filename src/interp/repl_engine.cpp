@@ -38,6 +38,7 @@
 #include "ms/pde/pde.hpp"
 #include "ms/symbolic/symbolic.hpp"
 #include "ms/ode/ode.hpp"
+#include "ms/optim/optim.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -3605,6 +3606,73 @@ Result<Matrix<double>> eval_fft_dst2(const Matrix<double>& x_m) {
     return vector_to_column(*coeffs);
 }
 
+Result<Matrix<double>> eval_fft_ifft2(const Matrix<double>& spectrum_m) {
+    auto spec = matrix_to_complex_spectrum(spectrum_m, "ifft2");
+    if (!spec) {
+        return std::unexpected(spec.error());
+    }
+    auto out = ifft2(*spec);
+    if (!out) {
+        return std::unexpected(out.error());
+    }
+    Matrix<double> result(out->size(), 2);
+    for (size_t i = 0; i < out->size(); ++i) {
+        result(i, 0) = (*out)[i].real();
+        result(i, 1) = (*out)[i].imag();
+    }
+    return result;
+}
+
+Result<Matrix<double>> eval_fft_idst2(const Matrix<double>& x_m) {
+    auto x = matrix_to_coeff_vector(x_m, "idst2");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(DomainError{"idst2", "expected non-empty vector"});
+    }
+    auto signal = idst2(*x);
+    if (!signal) {
+        return std::unexpected(signal.error());
+    }
+    return vector_to_column(*signal);
+}
+
+Result<std::vector<std::vector<double>>> matrix_to_groups(const Matrix<double>& m,
+                                                           const char* fn) {
+    if (m.rows() < 2) {
+        return std::unexpected(
+            DomainError{fn, "expected at least two group rows in groups matrix"});
+    }
+    if (m.cols() < 1) {
+        return std::unexpected(DomainError{fn, "expected non-empty group rows"});
+    }
+    std::vector<std::vector<double>> groups;
+    groups.reserve(m.rows());
+    for (size_t i = 0; i < m.rows(); ++i) {
+        std::vector<double> group;
+        group.reserve(m.cols());
+        for (size_t j = 0; j < m.cols(); ++j) {
+            group.push_back(m(i, j));
+        }
+        groups.push_back(std::move(group));
+    }
+    return groups;
+}
+
+Result<Matrix<double>> eval_kruskal_wallis(const Matrix<double>& groups_m) {
+    auto groups = matrix_to_groups(groups_m, "kruskal_wallis");
+    if (!groups) {
+        return std::unexpected(groups.error());
+    }
+    const auto result = kruskal_wallis(*groups);
+    Matrix<double> out(3, 1);
+    out(0, 0) = result.h_stat;
+    out(1, 0) = static_cast<double>(result.df);
+    out(2, 0) = result.p_value;
+    return out;
+}
+
 Result<Matrix<double>> eval_combo_derangements(int n) {
     if (n < 0) {
         return std::unexpected(
@@ -4786,6 +4854,72 @@ Result<std::vector<double>> parse_bracket_vector_literal(const std::string& text
     return matrix_to_coeff_vector(*matrix, fn);
 }
 
+std::map<std::string, double> build_optim_env(const std::vector<double>& x) {
+    std::map<std::string, double> env;
+    for (size_t i = 0; i < x.size(); ++i) {
+        env["x" + std::to_string(i)] = x[i];
+    }
+    return env;
+}
+
+Result<std::string> format_optim_result(const OptimResult& result) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(6);
+    oss << "x_opt =\n";
+    for (double xi : result.x) {
+        oss << "  [" << xi << "]\n";
+    }
+    oss << "f_val = " << result.f_val << "\n";
+    oss << "iterations = " << result.iterations << "\n";
+    oss << "converged = " << (result.converged ? 1 : 0) << "\n";
+    return oss.str();
+}
+
+Result<std::string> eval_cmaes_call(const std::string& formula_arg, const std::string& x0_arg,
+                                    const std::string& sigma_arg,
+                                    const std::string& max_iter_arg,
+                                    const std::string& seed_arg) {
+    constexpr const char* fn = "cmaes";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    auto x0 = parse_bracket_vector_literal(x0_arg, fn);
+    if (!x0) {
+        return std::unexpected(x0.error());
+    }
+    if (x0->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty initial point vector x0"});
+    }
+    double sigma = 0.0;
+    double max_iter_d = 0.0;
+    if (!parse_number(trim_copy(sigma_arg), sigma) ||
+        !parse_number(trim_copy(max_iter_arg), max_iter_d)) {
+        return std::unexpected(
+            DomainError{fn, "expected cmaes(\"formula\", x0, sigma0, max_iter[, seed])"});
+    }
+    const int max_iter = static_cast<int>(max_iter_d);
+    if (max_iter < 1 || max_iter_d != max_iter) {
+        return std::unexpected(DomainError{fn, "expected positive integer max_iter"});
+    }
+    unsigned seed = 42;
+    if (!seed_arg.empty()) {
+        double seed_d = 0.0;
+        if (!parse_number(trim_copy(seed_arg), seed_d) || seed_d < 0.0 ||
+            std::floor(seed_d) != seed_d) {
+            return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+        }
+        seed = static_cast<unsigned>(seed_d);
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    const size_t dim = x0->size();
+    FuncND f = [expr_ptr, dim](const std::vector<double>& x) {
+        return sym_eval(*expr_ptr, build_optim_env(x));
+    };
+    return format_optim_result(cmaes(f, *x0, sigma, max_iter, seed));
+}
+
 Result<std::vector<SymExpr>> parse_sym_semicolon_formulas(const std::string& formula_arg,
                                                           const char* fn) {
     std::string formulas_text;
@@ -5840,7 +5974,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_mat_transpose" || fn == "ml_mat_mul" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_integ" || fn == "poly_add" ||
             fn == "poly_mul" || fn == "poly_sub" || fn == "poly_compose" ||
-            fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "fftshift" ||
+            fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "fftshift" ||
             fn == "graph_floyd_warshall" || fn == "graph_mst_kruskal" ||
             fn == "graph_mst_prim" ||
             fn == "graph_scc" ||
@@ -5932,6 +6066,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "finance_binomial_put" || fn == "finance_bs_delta" ||
             fn == "finance_bs_theta" || fn == "finance_bs_rho" ||
             fn == "finance_portfolio_return" || fn == "finance_portfolio_variance" ||
+            fn == "cmaes" ||
             fn == "tensorops_matmul" || fn == "tensorops_einsum") {
             return false;
         }
@@ -6962,6 +7097,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_greedy_colour" || callee == "graph_euler_circuit" ||
            callee == "graph_scc" ||
            callee == "fft_dct2" || callee == "fft_idct2" || callee == "fft_dst2" ||
+           callee == "ifft2" || callee == "idst2" || callee == "kruskal_wallis" ||
            callee == "fftshift" ||
            callee == "diffgeo_surface_normal_sphere" ||
            callee == "imcrop" ||
@@ -7010,6 +7146,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
            callee == "graph_greedy_colour" || callee == "graph_euler_circuit" ||
            callee == "graph_scc" ||
         callee == "fft_dct2" || callee == "fft_idct2" || callee == "fft_dst2" ||
+        callee == "ifft2" || callee == "idst2" || callee == "kruskal_wallis" ||
         callee == "fftshift" || callee == "count_components") {
         return arity == 1;
     }
@@ -7837,6 +7974,21 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 3 && fn == "prob_gamma_pdf") {
         return gamma_pdf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "gamma_cdf") {
+        return gamma_cdf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "beta_pdf") {
+        return beta_pdf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "beta_cdf") {
+        return beta_cdf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "f_pdf") {
+        return f_pdf(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "f_cdf") {
+        return f_cdf(args[0], args[1], args[2]);
     }
     if ((args.size() == 3 || args.size() == 4) && fn == "finance_pv") {
         const int n = static_cast<int>(args[1]);
@@ -8868,6 +9020,36 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(spectrum.error());
         }
         result = *spectrum;
+    } else if (assign.callee == "ifft2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto signal = eval_fft_ifft2(*matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        result = *signal;
+    } else if (assign.callee == "idst2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto signal = eval_fft_idst2(*matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        result = *signal;
+    } else if (assign.callee == "kruskal_wallis" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto stats = eval_kruskal_wallis(*matrix);
+        if (!stats) {
+            return std::unexpected(stats.error());
+        }
+        result = *stats;
     } else if (assign.callee == "graph_topological_sort" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -10275,9 +10457,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = fft_irfft(spectrum,n) inverse real FFT from Nx2 spectrum to n×1 column\n"
             "  name = fft_ifft(spectrum) inverse FFT from Nx2 spectrum to Nx1 column\n"
             "  name = fft_fft2(S) 2D FFT from Nx2 complex spectrum to Nx2 spectrum\n"
+            "  name = ifft2(S) 2D inverse FFT from Nx2 complex spectrum to Nx2 spectrum\n"
             "  name = fft_dct2(x) type-II DCT coefficients as Nx1 column\n"
             "  name = fft_idct2(x) type-II inverse DCT signal as Nx1 column\n"
             "  name = fft_dst2(x) type-II DST coefficients as Nx1 column\n"
+            "  name = idst2(x) type-II inverse DST signal as Nx1 column\n"
+            "  name = cmaes(\"formula\",x0,sigma0,max_iter[,seed]) CMA-ES minimization (env {x0,x1,...})\n"
             "  name = numthy_is_primitive_root(g,p) 1 if g is primitive root mod p else 0\n"
             "  name = numthy_primitive_root(p) smallest primitive root mod prime p\n"
             "  name = numthy_discrete_log(g,h,p) discrete log x with g^x ≡ h (mod p)\n"
@@ -10347,6 +10532,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = prob_chi2_pdf(x,df) chi-squared PDF at x with df degrees of freedom\n"
             "  name = prob_t_cdf(x,df) Student t CDF at x with df degrees of freedom\n"
             "  name = prob_gamma_pdf(x,shape,scale) gamma PDF at x with shape and scale\n"
+            "  name = gamma_cdf(x,shape,scale) gamma CDF at x with shape and scale\n"
+            "  name = beta_pdf(x,alpha,beta) beta PDF at x with parameters alpha and beta\n"
+            "  name = beta_cdf(x,alpha,beta) beta CDF at x with parameters alpha and beta\n"
+            "  name = f_pdf(x,d1,d2) F distribution PDF at x with d1 and d2 degrees of freedom\n"
+            "  name = f_cdf(x,d1,d2) F distribution CDF at x with d1 and d2 degrees of freedom\n"
+            "  name = kruskal_wallis(groups) Kruskal-Wallis test; groups matrix rows are samples per group; returns [h_stat,df,p_value]\n"
             "  name = finance_bs_vega(S,K,T,r,sigma) Black-Scholes vega\n"
             "  name = finance_bs_delta(S,K,T,r,sigma,call) Black-Scholes delta (call: 0=put, 1=call)\n"
             "  name = finance_bs_implied_vol(price,S,K,T,r,call) implied volatility from option price (call: 0=put, 1=call)\n"
@@ -10467,7 +10658,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov)\n"
             "  quantum_von_neumann_entropy(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_gamma_pdf(x,shape,scale), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -10480,7 +10671,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
             "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"
-            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100)\n"
+            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42)\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
             "  ode_backward_euler_vec(\"-y0\", 0, [1], 1, 200), ode_dae_index1(\"-y0\", \"z0 - 2*y0\", 0, [1], [2], 1, 200)\n"
@@ -12267,6 +12458,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(*value) + "\n";
         }
+        if (fn == "cmaes") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || (call_args->size() != 4 && call_args->size() != 5)) {
+                return std::unexpected(DomainError{
+                    fn, "expected cmaes(\"formula\", x0, sigma0, max_iter[, seed])"});
+            }
+            const std::string seed_arg =
+                call_args->size() == 5 ? call_args->at(4) : std::string{};
+            auto value = eval_cmaes_call(call_args->at(0), call_args->at(1), call_args->at(2),
+                                         call_args->at(3), seed_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
         if (fn == "ode_euler_vec" || fn == "ode_rk4_vec" || fn == "ode_backward_euler_vec") {
             const auto call_args = split_call_args(cmd);
             if (!call_args || call_args->size() != 5) {
@@ -13890,6 +14096,64 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"prob_gamma_pdf", "expected prob_gamma_pdf(x, shape, scale)"});
             }
             return std::to_string(gamma_pdf(x, shape, scale)) + "\n";
+        }
+        if (fn == "gamma_cdf") {
+            double x = 0.0;
+            double shape = 0.0;
+            double scale = 0.0;
+            if (!parse_number(trim(match[2].str()), x) ||
+                !parse_number(trim(match[3].str()), shape) ||
+                !parse_number(trim(match[4].str()), scale)) {
+                return std::unexpected(
+                    DomainError{"gamma_cdf", "expected gamma_cdf(x, shape, scale)"});
+            }
+            return std::to_string(gamma_cdf(x, shape, scale)) + "\n";
+        }
+        if (fn == "beta_pdf") {
+            double x = 0.0;
+            double alpha = 0.0;
+            double beta_param = 0.0;
+            if (!parse_number(trim(match[2].str()), x) ||
+                !parse_number(trim(match[3].str()), alpha) ||
+                !parse_number(trim(match[4].str()), beta_param)) {
+                return std::unexpected(
+                    DomainError{"beta_pdf", "expected beta_pdf(x, alpha, beta)"});
+            }
+            return std::to_string(beta_pdf(x, alpha, beta_param)) + "\n";
+        }
+        if (fn == "beta_cdf") {
+            double x = 0.0;
+            double alpha = 0.0;
+            double beta_param = 0.0;
+            if (!parse_number(trim(match[2].str()), x) ||
+                !parse_number(trim(match[3].str()), alpha) ||
+                !parse_number(trim(match[4].str()), beta_param)) {
+                return std::unexpected(
+                    DomainError{"beta_cdf", "expected beta_cdf(x, alpha, beta)"});
+            }
+            return std::to_string(beta_cdf(x, alpha, beta_param)) + "\n";
+        }
+        if (fn == "f_pdf") {
+            double x = 0.0;
+            double d1 = 0.0;
+            double d2 = 0.0;
+            if (!parse_number(trim(match[2].str()), x) ||
+                !parse_number(trim(match[3].str()), d1) ||
+                !parse_number(trim(match[4].str()), d2)) {
+                return std::unexpected(DomainError{"f_pdf", "expected f_pdf(x, d1, d2)"});
+            }
+            return std::to_string(f_pdf(x, d1, d2)) + "\n";
+        }
+        if (fn == "f_cdf") {
+            double x = 0.0;
+            double d1 = 0.0;
+            double d2 = 0.0;
+            if (!parse_number(trim(match[2].str()), x) ||
+                !parse_number(trim(match[3].str()), d1) ||
+                !parse_number(trim(match[4].str()), d2)) {
+                return std::unexpected(DomainError{"f_cdf", "expected f_cdf(x, d1, d2)"});
+            }
+            return std::to_string(f_cdf(x, d1, d2)) + "\n";
         }
         if (fn == "kummer_m" || fn == "whittaker_m" || fn == "mathieu_ce" || fn == "painleve1") {
             double a = 0.0;
@@ -17097,6 +17361,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "fft2 =\n";
             print_matrix(out, *spectrum);
+        } else if (fn == "ifft2") {
+            auto signal = eval_fft_ifft2(*matrix);
+            if (!signal) {
+                return std::unexpected(signal.error());
+            }
+            out << "ifft2 =\n";
+            print_matrix(out, *signal);
+        } else if (fn == "idst2") {
+            auto signal = eval_fft_idst2(*matrix);
+            if (!signal) {
+                return std::unexpected(signal.error());
+            }
+            out << "idst2 =\n";
+            print_matrix(out, *signal);
+        } else if (fn == "kruskal_wallis") {
+            auto stats = eval_kruskal_wallis(*matrix);
+            if (!stats) {
+                return std::unexpected(stats.error());
+            }
+            out << "kruskal_wallis =\n";
+            out << "  h_stat = " << (*stats)(0, 0) << "\n";
+            out << "  df = " << (*stats)(1, 0) << "\n";
+            out << "  p_value = " << (*stats)(2, 0) << "\n";
         } else if (fn == "graph_topological_sort") {
             auto order = eval_graph_topological_sort(*matrix);
             if (!order) {

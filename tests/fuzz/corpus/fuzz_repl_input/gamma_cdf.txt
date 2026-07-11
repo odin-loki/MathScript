@@ -1,0 +1,1 @@
+gc = gamma_cdf(1, 1, 1)
