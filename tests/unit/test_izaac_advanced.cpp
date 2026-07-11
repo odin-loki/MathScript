@@ -655,3 +655,263 @@ TEST(IzaacAdvanced, Backtest_RunBacktestEmptyPricesReturnsEmpty) {
     EXPECT_TRUE(result.equity_curve.empty());
     EXPECT_DOUBLE_EQ(result.total_return, 0.0);
 }
+
+// ---------------------------------------------------------------------------
+// crypto::encrypt / decrypt
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::array<uint8_t, 32> make_test_key(uint8_t byte) {
+    std::array<uint8_t, 32> key{};
+    key.fill(byte);
+    return key;
+}
+
+bool round_trip_plaintext(std::span<const uint8_t> plaintext, const std::array<uint8_t, 32>& key) {
+    const ms::izaac::crypto::CipherText ct = ms::izaac::crypto::encrypt(plaintext, key);
+    const ms::Result<std::vector<uint8_t>> decrypted = ms::izaac::crypto::decrypt(ct, key);
+    if (!decrypted) {
+        return false;
+    }
+    if (decrypted->size() != plaintext.size()) {
+        return false;
+    }
+    return std::equal(plaintext.begin(), plaintext.end(), decrypted->begin());
+}
+
+} // namespace
+
+TEST(IzaacAdvanced, Crypto_RoundTripEmptyPlaintext) {
+    const std::array<uint8_t, 32> key = make_test_key(0x11);
+    const std::vector<uint8_t> plaintext;
+    EXPECT_TRUE(round_trip_plaintext(std::span<const uint8_t>(plaintext), key));
+}
+
+TEST(IzaacAdvanced, Crypto_RoundTripOneBytePlaintext) {
+    const std::array<uint8_t, 32> key = make_test_key(0x22);
+    const std::array<uint8_t, 1> plaintext = {0xAB};
+    EXPECT_TRUE(round_trip_plaintext(std::span<const uint8_t>(plaintext), key));
+}
+
+TEST(IzaacAdvanced, Crypto_RoundTripSmallBuffer) {
+    const std::array<uint8_t, 32> key = make_test_key(0x33);
+    std::vector<uint8_t> plaintext(64);
+    for (size_t i = 0; i < plaintext.size(); ++i) {
+        plaintext[i] = static_cast<uint8_t>(i * 17 + 3);
+    }
+    EXPECT_TRUE(round_trip_plaintext(std::span<const uint8_t>(plaintext), key));
+}
+
+TEST(IzaacAdvanced, Crypto_RoundTripLargeBuffer) {
+    const std::array<uint8_t, 32> key = make_test_key(0x44);
+    std::vector<uint8_t> plaintext(256);
+    for (size_t i = 0; i < plaintext.size(); ++i) {
+        plaintext[i] = static_cast<uint8_t>((i * 131) ^ 0x5A);
+    }
+    EXPECT_TRUE(round_trip_plaintext(std::span<const uint8_t>(plaintext), key));
+}
+
+TEST(IzaacAdvanced, Crypto_TamperedCiphertextFailsDecrypt) {
+    const std::array<uint8_t, 32> key = make_test_key(0x55);
+    const std::array<uint8_t, 8> plaintext = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+    ms::izaac::crypto::CipherText ct = ms::izaac::crypto::encrypt(std::span<const uint8_t>(plaintext), key);
+    ASSERT_GT(ct.data.size(), 16u);
+    ct.data[16] ^= 0x01;
+    const ms::Result<std::vector<uint8_t>> decrypted = ms::izaac::crypto::decrypt(ct, key);
+    EXPECT_FALSE(decrypted.has_value());
+}
+
+TEST(IzaacAdvanced, Crypto_TamperedTagFailsDecrypt) {
+    const std::array<uint8_t, 32> key = make_test_key(0x66);
+    const std::array<uint8_t, 4> plaintext = {0xDE, 0xAD, 0xBE, 0xEF};
+    ms::izaac::crypto::CipherText ct = ms::izaac::crypto::encrypt(std::span<const uint8_t>(plaintext), key);
+    ct.tag[0] ^= 0x80;
+    const ms::Result<std::vector<uint8_t>> decrypted = ms::izaac::crypto::decrypt(ct, key);
+    EXPECT_FALSE(decrypted.has_value());
+}
+
+TEST(IzaacAdvanced, Crypto_DifferentKeysProduceDifferentCiphertexts) {
+    const std::array<uint8_t, 16> plaintext = {
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    const ms::izaac::crypto::CipherText ct_a =
+        ms::izaac::crypto::encrypt(std::span<const uint8_t>(plaintext), make_test_key(0xAA));
+    const ms::izaac::crypto::CipherText ct_b =
+        ms::izaac::crypto::encrypt(std::span<const uint8_t>(plaintext), make_test_key(0xBB));
+    EXPECT_NE(ct_a.data, ct_b.data);
+    EXPECT_NE(ct_a.tag, ct_b.tag);
+}
+
+TEST(IzaacAdvanced, Crypto_CiphertextDiffersFromPlaintext) {
+    const std::array<uint8_t, 32> key = make_test_key(0x77);
+    std::vector<uint8_t> plaintext(32);
+    for (size_t i = 0; i < plaintext.size(); ++i) {
+        plaintext[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+    const ms::izaac::crypto::CipherText ct =
+        ms::izaac::crypto::encrypt(std::span<const uint8_t>(plaintext), key);
+    ASSERT_EQ(ct.data.size(), plaintext.size() + 16u);
+    const std::span<const uint8_t> ciphertext_body(ct.data.data() + 16, plaintext.size());
+    EXPECT_NE(
+        std::vector<uint8_t>(ciphertext_body.begin(), ciphertext_body.end()),
+        plaintext);
+}
+
+TEST(IzaacAdvanced, Crypto_WrongKeyFailsDecrypt) {
+    const std::array<uint8_t, 6> plaintext = {0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x01};
+    const ms::izaac::crypto::CipherText ct =
+        ms::izaac::crypto::encrypt(std::span<const uint8_t>(plaintext), make_test_key(0x88));
+    const ms::Result<std::vector<uint8_t>> decrypted =
+        ms::izaac::crypto::decrypt(ct, make_test_key(0x99));
+    EXPECT_FALSE(decrypted.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// mpc::split_secret / reconstruct_secret
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<ms::izaac::mpc::Share> pick_shares(
+    const std::vector<ms::izaac::mpc::Share>& all,
+    const std::vector<int>& indices) {
+    std::vector<ms::izaac::mpc::Share> picked;
+    picked.reserve(indices.size());
+    for (int idx : indices) {
+        picked.push_back(all[static_cast<size_t>(idx - 1)]);
+    }
+    return picked;
+}
+
+} // namespace
+
+TEST(IzaacAdvanced, Mpc_ReconstructFromThreeOfFiveSubsetA) {
+    std::array<uint8_t, 32> seed{};
+    seed[0] = 0xA1;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 123456789ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 5, 3, rng);
+    ASSERT_EQ(shares.size(), 5u);
+
+    const std::vector<ms::izaac::mpc::Share> subset = pick_shares(shares, {1, 2, 3});
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(subset);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_ReconstructFromThreeOfFiveSubsetB) {
+    std::array<uint8_t, 32> seed{};
+    seed[1] = 0xA2;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 987654321ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 5, 3, rng);
+    const std::vector<ms::izaac::mpc::Share> subset = pick_shares(shares, {2, 4, 5});
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(subset);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_ReconstructFromAllFiveShares) {
+    std::array<uint8_t, 32> seed{};
+    seed[2] = 0xA3;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 42424242ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 5, 3, rng);
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(shares);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_TwoSharesBelowThresholdDoNotRecover) {
+    std::array<uint8_t, 32> seed{};
+    seed[3] = 0xA4;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 555555ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 5, 3, rng);
+    const std::vector<ms::izaac::mpc::Share> subset = pick_shares(shares, {1, 5});
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(subset);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_NE(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_SecretZeroReconstructs) {
+    std::array<uint8_t, 32> seed{};
+    seed[4] = 0xA5;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 0;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 5, 3, rng);
+    const std::vector<ms::izaac::mpc::Share> subset = pick_shares(shares, {1, 3, 4});
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(subset);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_LargeSecretNearPrimeBound) {
+    std::array<uint8_t, 32> seed{};
+    seed[5] = 0xA6;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = ms::izaac::mpc::PRIME - 42ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 5, 3, rng);
+    const std::vector<ms::izaac::mpc::Share> subset = pick_shares(shares, {2, 3, 5});
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(subset);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_ThreeOfThreeReconstructs) {
+    std::array<uint8_t, 32> seed{};
+    seed[6] = 0xA7;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 314159ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 3, 3, rng);
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(shares);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_TwoOfTwoReconstructs) {
+    std::array<uint8_t, 32> seed{};
+    seed[7] = 0xA8;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 271828ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 2, 2, rng);
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(shares);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_SevenOfTenReconstructs) {
+    std::array<uint8_t, 32> seed{};
+    seed[8] = 0xA9;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr uint64_t secret = 1618033ULL;
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(secret, 10, 7, rng);
+    const std::vector<ms::izaac::mpc::Share> subset = pick_shares(shares, {1, 3, 4, 6, 8, 9, 10});
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(subset);
+    ASSERT_TRUE(reconstructed.has_value());
+    EXPECT_EQ(*reconstructed, secret);
+}
+
+TEST(IzaacAdvanced, Mpc_FewerThanTwoSharesReturnsError) {
+    std::array<uint8_t, 32> seed{};
+    seed[9] = 0xAA;
+    ms::izaac::CSPRNG rng(seed);
+    const std::vector<ms::izaac::mpc::Share> shares =
+        ms::izaac::mpc::split_secret(42ULL, 5, 3, rng);
+    const std::vector<ms::izaac::mpc::Share> one_share = pick_shares(shares, {1});
+    const ms::Result<uint64_t> reconstructed = ms::izaac::mpc::reconstruct_secret(one_share);
+    EXPECT_FALSE(reconstructed.has_value());
+
+    const ms::Result<uint64_t> empty = ms::izaac::mpc::reconstruct_secret({});
+    EXPECT_FALSE(empty.has_value());
+}

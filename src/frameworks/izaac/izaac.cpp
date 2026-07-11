@@ -1,10 +1,14 @@
 #include "ms/frameworks/izaac/izaac.hpp"
 #include "ms/core/rng.hpp"
+#include "ms/error/error_types.hpp"
 
 #include <cmath>
 #include <cstring>
 #include <random>
 #include <vector>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 namespace ms::izaac {
 
@@ -40,6 +44,131 @@ uint64_t fnv1a_64(std::span<const uint8_t> data, uint64_t seed) {
         hash *= prime;
     }
     return hash;
+}
+
+std::array<uint8_t, 32> xor_key_with_constant(
+    std::array<uint8_t, 32> key,
+    std::array<uint8_t, 32> constant) {
+    for (size_t i = 0; i < key.size(); ++i) {
+        key[i] ^= constant[i];
+    }
+    return mix_seed(key);
+}
+
+std::array<uint8_t, 32> derive_cipher_seed(
+    std::array<uint8_t, 32> key,
+    std::span<const uint8_t> nonce) {
+    std::array<uint8_t, 32> seed = key;
+    for (size_t i = 0; i < seed.size(); ++i) {
+        seed[i] ^= nonce[i % nonce.size()];
+    }
+    return mix_seed(seed);
+}
+
+std::array<uint8_t, 32> compute_tag(std::span<const uint8_t> data, std::array<uint8_t, 32> key) {
+    constexpr std::array<uint8_t, 32> tag_constant = {
+        0x54, 0x41, 0x47, 0x5F, 0x4B, 0x45, 0x59, 0x5F,
+        0x44, 0x49, 0x53, 0x54, 0x49, 0x4E, 0x47, 0x55,
+        0x49, 0x53, 0x48, 0x5F, 0x43, 0x4F, 0x4E, 0x53,
+        0x54, 0x41, 0x4E, 0x54, 0x5F, 0x56, 0x31, 0x00};
+
+    CSPRNG rng(xor_key_with_constant(key, tag_constant));
+    std::array<uint8_t, 32> state{};
+
+    for (size_t i = 0; i < data.size(); ++i) {
+        const uint64_t mix = rng.next_u64() ^ static_cast<uint64_t>(data[i]) ^ static_cast<uint64_t>(i);
+        state[i % 32] ^= static_cast<uint8_t>(mix & 0xFF);
+        state[(i + 7) % 32] ^= static_cast<uint8_t>((mix >> 8) & 0xFF);
+        state[(i + 13) % 32] ^= static_cast<uint8_t>((mix >> 16) & 0xFF);
+        state[(i + 19) % 32] ^= static_cast<uint8_t>((mix >> 24) & 0xFF);
+
+        const uint8_t carry = static_cast<uint8_t>(state[31] >> 7);
+        for (int j = 31; j > 0; --j) {
+            state[static_cast<size_t>(j)] =
+                static_cast<uint8_t>((state[static_cast<size_t>(j)] << 1) |
+                    (state[static_cast<size_t>(j - 1)] >> 7));
+        }
+        state[0] = static_cast<uint8_t>((state[0] << 1) | carry);
+    }
+
+    for (int round = 0; round < 4; ++round) {
+        for (size_t i = 0; i < state.size(); ++i) {
+            state[i] ^= static_cast<uint8_t>(rng.next_u64() & 0xFF);
+        }
+    }
+
+    return state;
+}
+
+uint64_t mod_mul(uint64_t a, uint64_t b, uint64_t mod) {
+#if defined(__SIZEOF_INT128__)
+    return static_cast<uint64_t>(static_cast<__uint128_t>(a) * b % mod);
+#elif defined(_MSC_VER)
+    unsigned __int64 hi = 0;
+    const unsigned __int64 lo = _umul128(a, b, &hi);
+    uint64_t rem = 0;
+    for (int i = 63; i >= 0; --i) {
+        rem = (rem << 1) | ((hi >> i) & 1);
+        if (rem >= mod) {
+            rem -= mod;
+        }
+    }
+    for (int i = 63; i >= 0; --i) {
+        rem = (rem << 1) | ((lo >> i) & 1);
+        if (rem >= mod) {
+            rem -= mod;
+        }
+    }
+    return rem;
+#else
+    uint64_t res = 0;
+    a %= mod;
+    while (b > 0) {
+        if (b & 1) {
+            res += a;
+            if (res >= mod) {
+                res -= mod;
+            }
+        }
+        a = (a << 1) % mod;
+        b >>= 1;
+    }
+    return res;
+#endif
+}
+
+uint64_t mod_pow(uint64_t base, uint64_t exp, uint64_t mod) {
+    uint64_t result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) {
+            result = mod_mul(result, base, mod);
+        }
+        base = mod_mul(base, base, mod);
+        exp >>= 1;
+    }
+    return result;
+}
+
+uint64_t mod_inverse(uint64_t value, uint64_t mod) {
+    if (value == 0) {
+        return 0;
+    }
+    return mod_pow(value, mod - 2, mod);
+}
+
+uint64_t eval_polynomial(
+    const std::vector<uint64_t>& coeffs,
+    int x,
+    uint64_t mod) {
+    uint64_t result = 0;
+    uint64_t power = 1;
+    const uint64_t x_mod = static_cast<uint64_t>(x) % mod;
+    for (uint64_t coeff : coeffs) {
+        result = (result + mod_mul(coeff % mod, power, mod)) % mod;
+        power = mod_mul(power, x_mod, mod);
+    }
+    return result;
 }
 
 } // namespace
@@ -394,5 +523,115 @@ BacktestResult run_backtest(
 }
 
 } // namespace backtest
+
+namespace crypto {
+
+namespace {
+
+constexpr size_t kNonceSize = 16;
+
+} // namespace
+
+CipherText encrypt(std::span<const uint8_t> plaintext, std::array<uint8_t, 32> key) {
+    CipherText ct;
+
+    CSPRNG nonce_rng(mix_seed(key));
+    std::array<uint8_t, kNonceSize> nonce{};
+    nonce_rng.fill(std::span<uint8_t>(nonce));
+
+    ct.data.resize(kNonceSize + plaintext.size());
+    std::memcpy(ct.data.data(), nonce.data(), kNonceSize);
+
+    CSPRNG keystream_rng(derive_cipher_seed(key, std::span<const uint8_t>(nonce)));
+    for (size_t i = 0; i < plaintext.size(); ++i) {
+        const uint8_t stream_byte = static_cast<uint8_t>(keystream_rng.next_u64() & 0xFF);
+        ct.data[kNonceSize + i] = static_cast<uint8_t>(plaintext[i] ^ stream_byte);
+    }
+
+    ct.tag = compute_tag(std::span<const uint8_t>(ct.data), key);
+    return ct;
+}
+
+Result<std::vector<uint8_t>> decrypt(const CipherText& ct, std::array<uint8_t, 32> key) {
+    if (ct.data.size() < kNonceSize) {
+        return std::unexpected(DomainError{"izaac::crypto::decrypt", "ciphertext too short"});
+    }
+
+    const std::array<uint8_t, 32> expected_tag = compute_tag(std::span<const uint8_t>(ct.data), key);
+    if (std::memcmp(expected_tag.data(), ct.tag.data(), ct.tag.size()) != 0) {
+        return std::unexpected(DomainError{"izaac::crypto::decrypt", "authentication tag mismatch"});
+    }
+
+    const std::span<const uint8_t> nonce(ct.data.data(), kNonceSize);
+    const size_t ciphertext_len = ct.data.size() - kNonceSize;
+    std::vector<uint8_t> plaintext(ciphertext_len);
+
+    CSPRNG keystream_rng(derive_cipher_seed(key, nonce));
+    for (size_t i = 0; i < ciphertext_len; ++i) {
+        const uint8_t stream_byte = static_cast<uint8_t>(keystream_rng.next_u64() & 0xFF);
+        plaintext[i] = static_cast<uint8_t>(ct.data[kNonceSize + i] ^ stream_byte);
+    }
+
+    return plaintext;
+}
+
+} // namespace crypto
+
+namespace mpc {
+
+std::vector<Share> split_secret(uint64_t secret, int n, int k, CSPRNG& rng) {
+    std::vector<Share> shares;
+    if (n < k || k < 2 || n < 2 || secret >= PRIME) {
+        return shares;
+    }
+
+    std::vector<uint64_t> coeffs(static_cast<size_t>(k));
+    coeffs[0] = secret % PRIME;
+    for (int i = 1; i < k; ++i) {
+        coeffs[static_cast<size_t>(i)] = rng.next_u64() % PRIME;
+    }
+
+    shares.reserve(static_cast<size_t>(n));
+    for (int x = 1; x <= n; ++x) {
+        shares.push_back(Share{x, eval_polynomial(coeffs, x, PRIME)});
+    }
+    return shares;
+}
+
+Result<uint64_t> reconstruct_secret(const std::vector<Share>& shares) {
+    if (shares.size() < 2) {
+        return std::unexpected(
+            DomainError{"izaac::mpc::reconstruct_secret", "need at least two shares"});
+    }
+
+    uint64_t secret = 0;
+    for (size_t i = 0; i < shares.size(); ++i) {
+        uint64_t numerator = 1;
+        uint64_t denominator = 1;
+
+        const uint64_t xi = static_cast<uint64_t>(shares[i].x) % PRIME;
+        for (size_t j = 0; j < shares.size(); ++j) {
+            if (i == j) {
+                continue;
+            }
+            const uint64_t xj = static_cast<uint64_t>(shares[j].x) % PRIME;
+            numerator = mod_mul(numerator, (PRIME - xj) % PRIME, PRIME);
+            const uint64_t diff = (xi + PRIME - xj) % PRIME;
+            if (diff == 0) {
+                return std::unexpected(
+                    DomainError{"izaac::mpc::reconstruct_secret", "duplicate share index"});
+            }
+            denominator = mod_mul(denominator, diff, PRIME);
+        }
+
+        const uint64_t lagrange_basis =
+            mod_mul(numerator, mod_inverse(denominator, PRIME), PRIME);
+        secret = (secret + mod_mul(shares[i].y % PRIME, lagrange_basis, PRIME)) % PRIME;
+    }
+
+    return secret;
+}
+
+} // namespace mpc
 
 } // namespace ms::izaac
