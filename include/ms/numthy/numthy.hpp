@@ -24,8 +24,13 @@ std::vector<uint64_t> divisors(uint64_t n);
 uint64_t num_divisors(uint64_t n);       // tau(n)
 uint64_t sum_divisors(uint64_t n);       // sigma(n)
 uint64_t euler_phi(uint64_t n);          // Euler totient
+// Jordan totient J_k(n) = n^k * prod_{p|n}(1 - 1/p).  J_1(n) == euler_phi(n).
+// Returns 0 if k == 0, n == 0, or the result would overflow uint64_t.
+uint64_t jordan_totient(uint32_t k, uint64_t n);
 int64_t  mobius(uint64_t n);             // Möbius function: -1,0,1
 int      liouville(uint64_t n);          // Liouville lambda: ±1
+// von Mangoldt: ln(p) if n = p^k (p prime, k >= 1), else 0
+double   von_mangoldt(uint64_t n);
 
 // --- Arithmetic ---
 uint64_t gcd(uint64_t a, uint64_t b);
@@ -42,6 +47,8 @@ Result<uint64_t> crt(const std::vector<uint64_t>& r,
 
 // Legendre / Jacobi / Kronecker symbols
 int legendre_symbol(int64_t a, uint64_t p);   // p must be odd prime
+// Quadratic residues mod odd prime p; empty if p <= 2 or p not prime
+std::vector<uint64_t> quadratic_residues(uint64_t p);
 int jacobi_symbol(int64_t a, uint64_t n);
 int kronecker_symbol(int64_t a, int64_t n);
 
@@ -58,6 +65,13 @@ std::vector<int64_t> continued_fraction(double x, int max_terms = 20);
 // Convergents p/q from CF coefficients
 std::vector<std::pair<int64_t,int64_t>> convergents(
     const std::vector<int64_t>& cf);
+
+// Farey sequence F_n: reduced fractions p/q in [0,1], 1 <= q <= n, ascending
+std::vector<std::pair<uint64_t,uint64_t>> farey(uint32_t n);
+
+// Fundamental Pell solution (x,y) with x^2 - D*y^2 = 1; error if D is a perfect square.
+// Uses integer sqrt(D) continued-fraction period + convergents (not double CF).
+Result<std::pair<uint64_t,uint64_t>> pell_solve(uint64_t D);
 
 // --- Partition function ---
 uint64_t partition(uint32_t n);   // number of integer partitions of n

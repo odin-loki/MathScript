@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <numeric>
+#include <set>
 #include <unordered_map>
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -225,6 +226,85 @@ uint64_t euler_phi(uint64_t n) {
     return result;
 }
 
+static bool pow_u64(uint64_t base, uint32_t exp, uint64_t& out) {
+#if defined(__SIZEOF_INT128__)
+    __uint128_t result = 1;
+    __uint128_t b = base;
+    uint32_t e = exp;
+    while (e > 0) {
+        if (e & 1) {
+            result *= b;
+            if (result > UINT64_MAX) return false;
+        }
+        if (e > 1) {
+            b *= b;
+            if (b > UINT64_MAX) return false;
+        }
+        e >>= 1;
+    }
+    out = static_cast<uint64_t>(result);
+    return true;
+#else
+    uint64_t result = 1;
+    uint64_t b = base;
+    uint32_t e = exp;
+    while (e > 0) {
+        if (e & 1) {
+            if (b != 0 && result > UINT64_MAX / b) return false;
+            result *= b;
+        }
+        if (e > 1) {
+            if (b > 0 && b > UINT64_MAX / b) return false;
+            b *= b;
+        }
+        e >>= 1;
+    }
+    out = result;
+    return true;
+#endif
+}
+
+uint64_t jordan_totient(uint32_t k, uint64_t n) {
+    if (n == 0 || k == 0) return 0;
+    if (n == 1) return 1;
+    auto fe = factor_exp(n);
+#if defined(__SIZEOF_INT128__)
+    __uint128_t result = 1;
+    for (auto& [p, e] : fe) {
+        uint64_t pk_e;
+        if (!pow_u64(p, k * static_cast<uint32_t>(e), pk_e)) return 0;
+        uint64_t pk_e1;
+        if (k * static_cast<uint32_t>(e) <= 1) {
+            pk_e1 = 1;
+        } else if (!pow_u64(p, k * static_cast<uint32_t>(e) - 1, pk_e1)) {
+            return 0;
+        }
+        if (pk_e < pk_e1) return 0;
+        __uint128_t term = static_cast<__uint128_t>(pk_e) - pk_e1;
+        result *= term;
+        if (result > UINT64_MAX) return 0;
+    }
+    return static_cast<uint64_t>(result);
+#else
+    uint64_t result = 1;
+    for (auto& [p, e] : fe) {
+        uint64_t pk_e;
+        if (!pow_u64(p, k * static_cast<uint32_t>(e), pk_e)) return 0;
+        uint64_t pk_e1;
+        if (k * static_cast<uint32_t>(e) <= 1) {
+            pk_e1 = 1;
+        } else if (!pow_u64(p, k * static_cast<uint32_t>(e) - 1, pk_e1)) {
+            return 0;
+        }
+        if (pk_e < pk_e1) return 0;
+        uint64_t term = pk_e - pk_e1;
+        if (result > UINT64_MAX / term) return 0;
+        result *= term;
+    }
+    return result;
+#endif
+}
+
 int64_t mobius(uint64_t n) {
     auto fe = factor_exp(n);
     for (auto& [p, e] : fe)
@@ -235,6 +315,13 @@ int64_t mobius(uint64_t n) {
 int liouville(uint64_t n) {
     auto f = factor(n);
     return (f.size() % 2 == 0) ? 1 : -1;
+}
+
+double von_mangoldt(uint64_t n) {
+    if (n <= 1) return 0.0;
+    auto fe = factor_exp(n);
+    if (fe.size() != 1) return 0.0;
+    return std::log(static_cast<double>(fe[0].first));
 }
 
 uint64_t gcd(uint64_t a, uint64_t b) {
@@ -293,6 +380,14 @@ int legendre_symbol(int64_t a, uint64_t p) {
     if (a == 0) return 0;
     uint64_t ls = powmod(static_cast<uint64_t>(a), (p - 1) / 2, p);
     return (ls == p - 1) ? -1 : static_cast<int>(ls);
+}
+
+std::vector<uint64_t> quadratic_residues(uint64_t p) {
+    if (p <= 2 || !isprime(p)) return {};
+    std::set<uint64_t> residues;
+    for (uint64_t a = 1; a < p; ++a)
+        residues.insert(mulmod(a, a, p));
+    return {residues.begin(), residues.end()};
 }
 
 int jacobi_symbol(int64_t a, uint64_t n) {
@@ -418,6 +513,135 @@ std::vector<std::pair<int64_t,int64_t>> convergents(
         k_prev = k_curr; k_curr = k_next;
     }
     return conv;
+}
+
+static uint64_t isqrt_u64(uint64_t n) {
+    uint64_t r = static_cast<uint64_t>(std::sqrt(static_cast<double>(n)));
+    while ((r + 1) <= n / (r + 1)) ++r;
+    while (r > 0 && r > n / r) --r;
+    return r;
+}
+
+struct u128 {
+    uint64_t hi;
+    uint64_t lo;
+};
+
+static u128 u128_mul64(uint64_t a, uint64_t b) {
+#if defined(_MSC_VER)
+    u128 r;
+    r.lo = _umul128(a, b, &r.hi);
+    return r;
+#elif defined(__SIZEOF_INT128__)
+    const __uint128_t v = static_cast<__uint128_t>(a) * b;
+    return {static_cast<uint64_t>(v >> 64), static_cast<uint64_t>(v)};
+#else
+    u128 r{};
+    r.lo = a * b;
+    return r;
+#endif
+}
+
+static u128 u128_mul_u128_u64(u128 a, uint64_t b) {
+#if defined(_MSC_VER)
+    unsigned __int64 mid;
+    const unsigned __int64 lo = _umul128(a.lo, b, &mid);
+    u128 r;
+    r.lo = lo;
+    r.hi = a.hi * b + mid;
+    return r;
+#elif defined(__SIZEOF_INT128__)
+    const __uint128_t v = (static_cast<__uint128_t>(a.hi) << 64 | a.lo) * b;
+    return {static_cast<uint64_t>(v >> 64), static_cast<uint64_t>(v)};
+#else
+    return u128_mul64(a.lo, b);
+#endif
+}
+
+static bool u128_sub_u128(u128 a, u128 b, u128& out) {
+    const bool borrow = a.lo < b.lo;
+    out.lo = a.lo - b.lo;
+    out.hi = a.hi - b.hi - (borrow ? 1u : 0u);
+    return a.hi >= b.hi + (borrow ? 1u : 0u);
+}
+
+static bool pell_norm_is_one(int64_t p, int64_t q, uint64_t D) {
+    if (q <= 0) return false;
+    const uint64_t ap = static_cast<uint64_t>(std::llabs(p));
+    const uint64_t aq = static_cast<uint64_t>(q);
+    const u128 p2 = u128_mul64(ap, ap);
+    const u128 q2 = u128_mul64(aq, aq);
+    const u128 dq2 = u128_mul_u128_u64(q2, D);
+    u128 diff{};
+    if (!u128_sub_u128(p2, dq2, diff)) return false;
+    return diff.hi == 0 && diff.lo == 1;
+}
+
+static std::vector<int64_t> sqrt_cf_period(uint64_t D) {
+    const uint64_t a0 = isqrt_u64(D);
+    std::vector<int64_t> cf;
+    cf.push_back(static_cast<int64_t>(a0));
+
+    uint64_t m = 0, d = 1, a = a0;
+    std::unordered_map<uint64_t, std::pair<uint64_t, uint64_t>> seen;
+
+    while (true) {
+        m = d * a - m;
+        d = (D - m * m) / d;
+        a = (a0 + m) / d;
+        const uint64_t key = (m << 32) ^ d;
+        if (seen.count(key)) break;
+        seen[key] = {m, d};
+        cf.push_back(static_cast<int64_t>(a));
+    }
+    return cf;
+}
+
+std::vector<std::pair<uint64_t,uint64_t>> farey(uint32_t n) {
+    if (n == 0) return {};
+    std::vector<std::pair<uint64_t,uint64_t>> fracs;
+    for (uint64_t q = 1; q <= n; ++q) {
+        for (uint64_t p = 0; p <= q; ++p) {
+            if (gcd(p, q) == 1)
+                fracs.push_back({p, q});
+        }
+    }
+    std::sort(fracs.begin(), fracs.end(),
+        [](const auto& lhs, const auto& rhs) {
+#if defined(__SIZEOF_INT128__)
+            __uint128_t left = static_cast<__uint128_t>(lhs.first) * rhs.second;
+            __uint128_t right = static_cast<__uint128_t>(rhs.first) * lhs.second;
+            return left < right;
+#else
+            return lhs.first * rhs.second < rhs.first * lhs.second;
+#endif
+        });
+    return fracs;
+}
+
+Result<std::pair<uint64_t,uint64_t>> pell_solve(uint64_t D) {
+    if (D == 0)
+        return std::unexpected(Error{DomainError{"pell_solve", "D == 0"}});
+    const uint64_t s = isqrt_u64(D);
+    if (s * s == D)
+        return std::unexpected(Error{DomainError{"pell_solve", "D is a perfect square"}});
+
+    auto period_cf = sqrt_cf_period(D);
+    if (period_cf.size() < 2)
+        return std::unexpected(Error{DomainError{"pell_solve", "invalid CF"}});
+
+    std::vector<int64_t> cf = period_cf;
+    cf.insert(cf.end(), period_cf.begin() + 1, period_cf.end());
+
+    auto conv = convergents(cf);
+    for (size_t i = 1; i < conv.size(); ++i) {
+        const int64_t p = conv[i].first;
+        const int64_t q = conv[i].second;
+        if (pell_norm_is_one(p, q, D))
+            return std::make_pair(static_cast<uint64_t>(std::llabs(p)),
+                                  static_cast<uint64_t>(q));
+    }
+    return std::unexpected(Error{DomainError{"pell_solve", "no solution found"}});
 }
 
 uint64_t partition(uint32_t n) {
