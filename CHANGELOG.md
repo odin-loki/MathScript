@@ -3,6 +3,21 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 176 — PDE Solvers, Symbolic Engine, DLMF Functions, Stiff/BVP/DDE ODE Solvers)
+
+### Added (Wave 176)
+- `ms::pde`: `pde_heat_2d` (2D explicit FTCS heat equation), `pde_wave_1d` (leapfrog 1D wave equation), `pde_advection_1d` (upwind 1D advection, periodic BC), `pde_poisson_2d` (Gauss-Seidel 2D Poisson solver), `pde_burgers_1d` (upwind/central 1D viscous Burgers equation) — each with stability/CFL guards and doc comments; 25 new unit tests in `tests/unit/test_pde_extended.cpp`
+- `ms::symbolic`: new `Sub`/`Div`/`Neg`/`Tan`/`Sqrt` ops with builders, differentiation, constant-fold simplification, evaluation, and string rendering; `sym_integrate` (power rule, linearity, sin/cos, documented unsupported-form fallback); `sym_substitute` (variable substitution); 30 new unit tests in `tests/unit/test_symbolic_extended.cpp`
+- `ms::special`: improved `zeta` (Euler-Maclaurin tail correction for better accuracy/perf), `eta_dirichlet`, `polylog` (fixed term-tracking bug), `clausen` (removed incorrect early-break) — plus genuinely new `debye(n,x)` Debye function (DLMF §6.3, Simpson quadrature); 20 new reference-value tests in `tests/numerical/test_special_dlmf_extended.cpp`
+- `ms::ode`: `ode_backward_euler` (implicit stiff scalar solver via Newton iteration), `ode_bvp_shooting` (two-point BVP via shooting + bisection), `ode_dde_fixed_step` (constant-delay DDE with history interpolation), `ode_event_detect` (RK4 + bisection zero-crossing event detection); 24 new unit tests in `tests/unit/test_ode_advanced2.cpp`
+- REPL bindings: `clausen(theta)`, `eta_dirichlet(s)`, `debye(n,x)` wired into the scalar-function command dispatcher and `help` text
+- New CTest suites: `test_symbolic_extended`, `test_special_dlmf_extended` (numerical), `test_ode_advanced2` (`test_pde_extended` extended in place, not a new suite)
+- Tag checklist suite count updated 351→354 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
+- **Total Wave 176: 354 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- REPL/fuzz-corpus wiring for the new `pde_*`, `ode_backward_euler`/`ode_bvp_shooting`/`ode_dde_fixed_step`/`ode_event_detect`, and `sym_*` functions was intentionally deferred: their signatures (2D grids, `std::function` callbacks, symbolic expression trees) don't fit the REPL's existing scalar/matrix calling convention without extending the parser — tracked as future work rather than force-fit.
+
 ## [1.0.0] — 2026-06-24 (Wave 172 — REPL Bindings, Fuzz Seeds)
 
 ### Added (Wave 172)

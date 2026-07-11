@@ -7578,9 +7578,18 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       Wave 171: combo_next_perm/cplx_mobius_re/boxfilter REPL,
       Wave 172: geo_voronoi/numthy_convergents/ml_mat_transpose REPL,
       wave160 pipeline, fuzz repl seeds, tag checklist 335→336 (336 suites).
+      Wave 176: ms::pde heat2d/wave1d/advection1d/poisson2d/burgers1d solvers (25 tests);
+      ms::symbolic sub/div/neg/tan/sqrt ops + sym_integrate + sym_substitute (30 tests);
+      ms::special zeta/eta_dirichlet/polylog/clausen accuracy fixes + new debye DLMF function
+      (20 numerical tests); ms::ode ode_backward_euler/ode_bvp_shooting/ode_dde_fixed_step/
+      ode_event_detect stiff & advanced solvers (24 tests); REPL clausen/eta_dirichlet/debye
+      bindings + help text; tag checklist 351→354 (354 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
-      Windows installer/Linux packages (post-1.0 packaging). -->
+      Windows installer/Linux packages (post-1.0 packaging),
+      REPL/fuzz-corpus wiring for Wave 176 pde_*/ode_backward_euler/ode_bvp_shooting/
+      ode_dde_fixed_step/ode_event_detect/sym_* functions (needs parser support for
+      2D-grid, callback, and symbolic-expression argument types — deferred, not force-fit). -->
 
 ---
 

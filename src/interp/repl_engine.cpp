@@ -8576,7 +8576,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  jacobi_p(n,a,b,x), ellip_k(k), jacobi_sn(u,k)\n"
             "  theta3(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x)\n"
             "  heun_g(a,q,alpha,beta,gamma,delta,z), painleve1(x,y0,yp0)\n"
-            "  legendre_p(n,x), beta(a,b)\n"};
+            "  legendre_p(n,x), beta(a,b)\n"
+            "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"};
     }
     if (lcmd == "version") {
         std::ostringstream out;
@@ -12851,6 +12852,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(polylog(static_cast<int>(n), z)) + "\n";
         }
 
+        if (fn == "debye") {
+            double n = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"debye", "expected debye(n,x)"});
+            }
+            return std::to_string(debye(static_cast<int>(n), x)) + "\n";
+        }
+
         if (fn == "beta") {
             double a = 0.0;
             double b = 0.0;
@@ -13933,6 +13943,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"info_differential_entropy_gaussian", "expected numeric sigma"});
             }
             return std::to_string(info::differential_entropy_gaussian(sigma)) + "\n";
+        }
+
+        if (fn == "clausen") {
+            double theta = 0.0;
+            if (!parse_number(arg, theta)) {
+                return std::unexpected(DomainError{"clausen", "expected numeric theta"});
+            }
+            return std::to_string(clausen(theta)) + "\n";
+        }
+
+        if (fn == "eta_dirichlet") {
+            double s = 0.0;
+            if (!parse_number(arg, s)) {
+                return std::unexpected(DomainError{"eta_dirichlet", "expected numeric s"});
+            }
+            return std::to_string(eta_dirichlet(s)) + "\n";
         }
 
         if (fn == "erf" || fn == "erfc" || fn == "gamma" || fn == "bessel_j0" || fn == "fresnel_c" ||
