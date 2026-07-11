@@ -397,6 +397,43 @@ std::vector<std::vector<int>> necklaces(int n, int k) {
     return result;
 }
 
+static bool is_bracelet_representative(const std::vector<int>& v) {
+    int n = static_cast<int>(v.size());
+    // v must be <= every one of its own rotations (necklace condition).
+    for (int shift = 1; shift < n; ++shift) {
+        for (int i = 0; i < n; ++i) {
+            int rotated = v[(i + shift) % n];
+            if (rotated < v[i]) return false;
+            if (rotated > v[i]) break;
+        }
+    }
+    // v must also be <= every rotation of its reversal (reflection condition).
+    std::vector<int> rev(v.rbegin(), v.rend());
+    for (int shift = 0; shift < n; ++shift) {
+        for (int i = 0; i < n; ++i) {
+            int reflected = rev[(i + shift) % n];
+            if (reflected < v[i]) return false;
+            if (reflected > v[i]) break;
+        }
+    }
+    return true;
+}
+
+std::vector<std::vector<int>> bracelets(int n, int k) {
+    if (n < 0 || k <= 0) return {};
+    if (n == 0) return {{}};
+    std::vector<int> v(n, 0);
+    std::vector<std::vector<int>> result;
+    while (true) {
+        if (is_bracelet_representative(v))
+            result.push_back(v);
+        necklaces_odometer(v, k);
+        if (std::all_of(v.begin(), v.end(), [](int x) { return x == 0; }))
+            break;
+    }
+    return result;
+}
+
 static bool is_aperiodic(const std::vector<int>& v) {
     int n = static_cast<int>(v.size());
     if (n <= 1) return true;

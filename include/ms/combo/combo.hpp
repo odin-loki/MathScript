@@ -71,6 +71,34 @@ std::vector<std::string> motzkin_paths(int n);
 // Distinct necklaces of length n over k colors (rotation equivalence)
 std::vector<std::vector<int>> necklaces(int n, int k);
 
+/// Distinct bracelets of length n over k colors (rotation + reflection
+/// equivalence, i.e. the dihedral group D_n of order 2n rather than just
+/// the cyclic group C_n of order n used by necklaces()).
+///
+/// Two length-n strings over a k-color alphabet are the same bracelet if
+/// one can be reached from the other by a rotation, a reflection, or a
+/// rotation composed with a reflection. Each returned entry is the
+/// lexicographically smallest string among all 2n rotations of the string
+/// and of its reversal (its canonical representative), mirroring how
+/// necklaces() picks the lexicographically smallest of the n rotations.
+///
+/// @param n  Length of the strings (bracelet size).
+/// @param k  Number of available colors/symbols (alphabet size).
+/// @return   One canonical representative per distinct bracelet, in the
+///           order their representatives are produced by the internal
+///           k-ary odometer. Since every necklace-equivalence-class is
+///           either its own reflection or gets merged with exactly one
+///           other necklace's class, bracelets(n, k).size() <=
+///           necklaces(n, k).size() always holds, with equality only in
+///           degenerate cases (e.g. n <= 2, k == 1).
+/// @note Defensive: returns {} for n < 0 or k <= 0, and {{}} (one empty
+///       representative) for n == 0 — matching necklaces()'s convention.
+/// @note Brute-force over all k^n strings, each checked against its 2n
+///       dihedral images: O(k^n * n) time. Practical only for small n
+///       (the same small-n range as necklaces()/lyndon_words(), e.g.
+///       n up to roughly 15-20 for small k); not suitable for large n.
+std::vector<std::vector<int>> bracelets(int n, int k);
+
 // Lyndon words of length n over k symbols (aperiodic, strictly minimal rotation)
 std::vector<std::vector<int>> lyndon_words(int n, int k);
 
