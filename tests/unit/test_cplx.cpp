@@ -2,6 +2,8 @@
 #include "ms/cplx/cplx.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
+#include <utility>
+#include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -315,4 +317,123 @@ TEST(CplxJoukowski, Origin) {
     C w = joukowski(C(0.0, 0.0), 1.0);
     EXPECT_NEAR(w.real(), 0.0, 1e-10);
     EXPECT_NEAR(w.imag(), 0.0, 1e-10);
+}
+
+// ---- Green's function for the Dirichlet Laplacian on the unit disk ----
+
+TEST(CplxGreenFunction, Symmetry) {
+    // G(z, z0) == G(z0, z) for several interior point pairs.
+    std::vector<std::pair<C, C>> pairs = {
+        {C(0.3, 0.1), C(-0.2, 0.4)},
+        {C(0.5, 0.0), C(0.0, 0.5)},
+        {C(-0.6, -0.1), C(0.2, -0.3)},
+        {C(0.1, 0.05), C(0.7, 0.2)},
+    };
+    for (const auto& [z, z0] : pairs) {
+        double g1 = green_function_disk(z, z0);
+        double g2 = green_function_disk(z0, z);
+        EXPECT_NEAR(g1, g2, 1e-10);
+    }
+}
+
+TEST(CplxGreenFunction, KnownValueAtOrigin) {
+    // G(0, z0) = (1/(2*pi)) * ln|(0-z0)/(1-0)| = ln|z0| / (2*pi)
+    C z0(0.4, 0.3);
+    double expected = std::log(std::abs(z0)) / (2.0 * M_PI);
+    EXPECT_NEAR(green_function_disk(C(0.0, 0.0), z0), expected, 1e-10);
+
+    C z1(0.0, -0.6);
+    double expected1 = std::log(std::abs(z1)) / (2.0 * M_PI);
+    EXPECT_NEAR(green_function_disk(C(0.0, 0.0), z1), expected1, 1e-10);
+}
+
+TEST(CplxGreenFunction, KnownValueHandComputed) {
+    // z = 0.5, z0 = 0.5i: |z-z0| = |0.5 - 0.5i| = 0.5*sqrt(2)
+    // |1 - conj(z0)*z| = |1 - (-0.5i)*0.5| = |1 + 0.25i| = sqrt(1 + 0.0625)
+    C z(0.5, 0.0), z0(0.0, 0.5);
+    double num = std::abs(z - z0);
+    double den = std::abs(C(1.0) - std::conj(z0) * z);
+    double expected = std::log(num / den) / (2.0 * M_PI);
+    EXPECT_NEAR(green_function_disk(z, z0), expected, 1e-12);
+    // Sanity: matches direct hand-computed magnitudes above.
+    EXPECT_NEAR(num, 0.5 * std::sqrt(2.0), 1e-12);
+    EXPECT_NEAR(den, std::sqrt(1.0625), 1e-12);
+}
+
+TEST(CplxGreenFunction, NegativeInsideDisk) {
+    // With this sign convention, G <= 0 everywhere inside the disk
+    // (|z-z0| <= |1-conj(z0)z| for z, z0 in the closed unit disk).
+    std::vector<C> pts = {C(0.1, 0.2), C(-0.3, 0.1), C(0.0, -0.5), C(0.6, 0.3)};
+    C z0(0.2, -0.1);
+    for (const C& z : pts) {
+        if (std::abs(z - z0) < 1e-9) continue;
+        EXPECT_LE(green_function_disk(z, z0), 0.0);
+    }
+}
+
+TEST(CplxGreenFunction, VanishesNearBoundary) {
+    // Fixed interior z0; G(z, z0) -> 0 as |z| -> 1.
+    C z0(0.3, -0.2);
+    double theta = 0.9;
+    double prev = std::abs(green_function_disk(C(0.9 * std::cos(theta), 0.9 * std::sin(theta)), z0));
+    for (double r : {0.99, 0.999, 0.9999, 0.99999}) {
+        C z(r * std::cos(theta), r * std::sin(theta));
+        double g = green_function_disk(z, z0);
+        EXPECT_LT(std::abs(g), prev + 1e-9);  // monotonically shrinking toward 0
+        prev = std::abs(g);
+    }
+    EXPECT_NEAR(prev, 0.0, 1e-3);
+}
+
+TEST(CplxGreenFunction, SingularityAtSource) {
+    // As z -> z0, G(z, z0) -> -infinity (logarithmic singularity).
+    C z0(0.2, 0.1);
+    double g_far = green_function_disk(z0 + C(0.1, 0.0), z0);
+    double g_near = green_function_disk(z0 + C(1e-3, 0.0), z0);
+    double g_nearer = green_function_disk(z0 + C(1e-6, 0.0), z0);
+    EXPECT_LT(g_near, g_far);       // grows more negative as z approaches z0
+    EXPECT_LT(g_nearer, g_near);
+    EXPECT_TRUE(std::isinf(green_function_disk(z0, z0)));
+    EXPECT_LT(green_function_disk(z0, z0), 0.0);
+}
+
+TEST(CplxGreenFunction, PoissonKernelBoundaryDerivative) {
+    // Cross-check with poisson_kernel: with this sign convention,
+    // dG/dn(e^{i theta}, r e^{i phi}) = poisson_kernel(theta, phi, r) / (2*pi),
+    // where n is the outward radial direction at the boundary. Since
+    // G(e^{i theta}, z0) == 0 exactly, a one-sided finite difference gives
+    // dG/dn ≈ -G((1-h) e^{i theta}, z0) / h.
+    double r = 0.5, phi = 0.3;
+    C z0(r * std::cos(phi), r * std::sin(phi));
+    double h = 1e-4;
+    for (double theta : {0.0, 0.7, 1.1, 2.5, 4.0, 5.5}) {
+        C z_inner((1.0 - h) * std::cos(theta), (1.0 - h) * std::sin(theta));
+        double deriv = -green_function_disk(z_inner, z0) / h;
+        double expected = poisson_kernel(theta, phi, r) / (2.0 * M_PI);
+        EXPECT_NEAR(deriv, expected, 1e-3);
+    }
+}
+
+TEST(CplxGreenFunction, OutOfDomainReturnsZero) {
+    // z or z0 on/outside the boundary: defensive, well-defined return of 0.0.
+    C inside(0.2, 0.1);
+    EXPECT_EQ(green_function_disk(C(1.0, 0.0), inside), 0.0);       // z on boundary
+    EXPECT_EQ(green_function_disk(inside, C(1.0, 0.0)), 0.0);       // z0 on boundary
+    EXPECT_EQ(green_function_disk(C(1.5, 0.0), inside), 0.0);       // z outside
+    EXPECT_EQ(green_function_disk(inside, C(0.0, 2.0)), 0.0);       // z0 outside
+    EXPECT_EQ(green_function_disk(C(3.0, 0.0), C(4.0, 0.0)), 0.0);  // both outside
+}
+
+TEST(CplxGreenFunction, GeneralRadius) {
+    // On a disk of radius R, rescaling z, z0 by R should reproduce the unit-disk
+    // formula: green_function_disk(R*w, R*w0, R) == green_function_disk(w, w0, 1).
+    double R = 2.5;
+    C w(0.3, -0.2), w0(-0.1, 0.4);
+    double g_unit = green_function_disk(w, w0);
+    double g_scaled = green_function_disk(R * w, R * w0, R);
+    EXPECT_NEAR(g_unit, g_scaled, 1e-10);
+
+    // Out-of-domain on the scaled disk.
+    EXPECT_EQ(green_function_disk(C(R, 0.0), w0 * R, R), 0.0);
+    EXPECT_EQ(green_function_disk(C(0.0, 0.0), C(0.0, 0.0), 0.0), 0.0);  // invalid radius
 }

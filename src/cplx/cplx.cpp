@@ -132,6 +132,21 @@ double poisson_kernel(double theta, double phi, double r) {
     return (1.0 - r * r) / (1.0 - 2.0 * r * std::cos(diff) + r * r);
 }
 
+// ---- Green's function for the Dirichlet Laplacian on a disk ----
+double green_function_disk(C z, C z0, double radius) {
+    if (radius <= 0.0) return 0.0;
+    // Out-of-domain: defensively return 0.0 (like poisson_kernel, which is
+    // well-defined for all r rather than throwing on |r| >= 1).
+    if (std::abs(z) >= radius || std::abs(z0) >= radius) return 0.0;
+    // Rescale to the unit disk: w = z/radius, w0 = z0/radius.
+    C w = z / radius;
+    C w0 = z0 / radius;
+    C num = w - w0;
+    if (std::abs(num) < 1e-15) return -std::numeric_limits<double>::infinity();
+    C den = C(1.0) - std::conj(w0) * w;
+    return std::log(std::abs(num) / std::abs(den)) / (2.0 * M_PI);
+}
+
 // ---- Harmonic conjugate via discrete Hilbert transform ----
 std::vector<double> harmonic_conjugate(const std::vector<double>& u) {
     int n = static_cast<int>(u.size());
