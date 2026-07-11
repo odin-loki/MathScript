@@ -13,77 +13,13 @@ namespace ms {
 
 namespace {
 
-double beta_continued_fraction(double a, double b, double x) {
-    const double fpmin = 1e-300;
-    const double qab = a + b;
-    const double qap = a + 1.0;
-    const double qam = a - 1.0;
-    double c = 1.0;
-    double d = 1.0 - qab * x / qap;
-    if (std::abs(d) < fpmin) {
-        d = fpmin;
-    }
-    d = 1.0 / d;
-    double h = d;
-    for (int m = 1; m <= 200; ++m) {
-        const double m2 = 2.0 * static_cast<double>(m);
-        double aa = static_cast<double>(m) * (b - static_cast<double>(m)) * x /
-                    ((qam + m2) * (a + m2));
-        d = 1.0 + aa * d;
-        if (std::abs(d) < fpmin) {
-            d = fpmin;
-        }
-        c = 1.0 + aa / c;
-        if (std::abs(c) < fpmin) {
-            c = fpmin;
-        }
-        d = 1.0 / d;
-        h *= d * c;
-        aa = -(a + static_cast<double>(m)) * (qab + static_cast<double>(m)) * x /
-             ((a + m2) * (qap + m2));
-        d = 1.0 + aa * d;
-        if (std::abs(d) < fpmin) {
-            d = fpmin;
-        }
-        c = 1.0 + aa / c;
-        if (std::abs(c) < fpmin) {
-            c = fpmin;
-        }
-        d = 1.0 / d;
-        const double del = d * c;
-        h *= del;
-        if (std::abs(del - 1.0) < 1e-14) {
-            break;
-        }
-    }
-    return h;
-}
-
-double regularized_incomplete_beta(double a, double b, double x) {
-    if (x <= 0.0) {
-        return 0.0;
-    }
-    if (x >= 1.0) {
-        return 1.0;
-    }
-    const double bt = std::exp(std::lgamma(a + b) - std::lgamma(a) - std::lgamma(b) +
-                               a * std::log(x) + b * std::log(1.0 - x));
-    if (x < (a + 1.0) / (a + b + 2.0)) {
-        return bt * beta_continued_fraction(a, b, x) / a;
-    }
-    return 1.0 - bt * beta_continued_fraction(b, a, 1.0 - x) / b;
-}
-
 double f_distribution_upper_tail_p(double f_stat, int df1, int df2) {
     if (f_stat <= 0.0 || df1 < 1 || df2 < 1) {
         return 1.0;
     }
-    const double x = static_cast<double>(df1) * f_stat /
-                     (static_cast<double>(df1) * f_stat + static_cast<double>(df2));
-    return 1.0 - regularized_incomplete_beta(
-                     static_cast<double>(df1) / 2.0,
-                     static_cast<double>(df2) / 2.0,
-                     x);
+    return 1.0 - f_cdf(f_stat,
+                       static_cast<double>(df1),
+                       static_cast<double>(df2));
 }
 
 std::vector<double> average_ranks(const std::vector<double>& values) {
@@ -518,6 +454,90 @@ MannWhitneyResult mann_whitney_u(std::span<const double> a, std::span<const doub
     const double cc = (result.u_stat > mean_u) ? -0.5 : 0.5;
     const double z = (result.u_stat - mean_u + cc) / sd_u;
     result.p_value = 2.0 * (1.0 - norm_cdf(std::abs(z), 0.0, 1.0));
+    return result;
+}
+
+KruskalWallisResult kruskal_wallis(const std::vector<std::vector<double>>& groups) {
+    KruskalWallisResult result{};
+    if (groups.size() < 2) {
+        return result;
+    }
+    int k = 0;
+    int N = 0;
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        ++k;
+        N += static_cast<int>(group.size());
+    }
+    if (k < 2 || N <= k) {
+        return result;
+    }
+    std::vector<double> pooled(static_cast<size_t>(N));
+    std::vector<int> labels(static_cast<size_t>(N));
+    size_t idx = 0;
+    int group_idx = 0;
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        for (double v : group) {
+            pooled[idx] = v;
+            labels[idx] = group_idx;
+            ++idx;
+        }
+        ++group_idx;
+    }
+    const auto ranks = average_ranks(pooled);
+    std::vector<double> rank_sums(static_cast<size_t>(k), 0.0);
+    std::vector<int> group_sizes(static_cast<size_t>(k), 0);
+    for (int i = 0; i < N; ++i) {
+        const size_t gi = static_cast<size_t>(labels[static_cast<size_t>(i)]);
+        rank_sums[gi] += ranks[static_cast<size_t>(i)];
+        ++group_sizes[gi];
+    }
+    double sum_term = 0.0;
+    for (int gi = 0; gi < k; ++gi) {
+        const double ni = static_cast<double>(group_sizes[static_cast<size_t>(gi)]);
+        const double Ri = rank_sums[static_cast<size_t>(gi)];
+        sum_term += (Ri * Ri) / ni;
+    }
+    const double N_d = static_cast<double>(N);
+    double h = (12.0 / (N_d * (N_d + 1.0))) * sum_term - 3.0 * (N_d + 1.0);
+    double tie_cubed_sum = 0.0;
+    std::unordered_map<double, int> tie_counts;
+    for (double v : pooled) {
+        ++tie_counts[v];
+    }
+    for (const auto& [value, count] : tie_counts) {
+        (void)value;
+        if (count > 1) {
+            tie_cubed_sum += static_cast<double>(count * count * count - count);
+        }
+    }
+    const double tie_denom = N_d * N_d * N_d - N_d;
+    if (tie_cubed_sum > 0.0 && tie_denom > 0.0) {
+        const double correction = 1.0 - tie_cubed_sum / tie_denom;
+        if (correction <= 0.0) {
+            if (h <= 0.0) {
+                result.df = k - 1;
+                result.h_stat = 0.0;
+                result.p_value = 1.0;
+            }
+            return result;
+        }
+        h /= correction;
+    }
+    result.df = k - 1;
+    if (result.df < 1) {
+        return result;
+    }
+    if (h < 0.0) {
+        h = 0.0;
+    }
+    result.h_stat = h;
+    result.p_value = 1.0 - chi2_cdf(h, static_cast<double>(result.df));
     return result;
 }
 
