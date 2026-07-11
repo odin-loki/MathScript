@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ms/core/matrix.hpp"
+#include "ms/core/checked_arith.hpp"
 #include "ms/core/operations.hpp"
 #include "ms/linalg/linalg.hpp"
 #include "ms/core/scalar.hpp"

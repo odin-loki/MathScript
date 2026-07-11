@@ -186,6 +186,7 @@ add_ms_test(test_ml         unit/test_ml.cpp)
 add_ms_test(test_image      unit/test_image.cpp)
 add_ms_test(test_compress   unit/test_compress.cpp)
 add_ms_test(test_bignum     unit/test_bignum.cpp)
+add_ms_test(test_checked_arith unit/test_checked_arith.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
