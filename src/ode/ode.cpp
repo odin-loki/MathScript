@@ -269,4 +269,280 @@ OdeResult ode_adams_bashforth2(OdeFunc f, double t0, double y0,
     return result;
 }
 
+namespace {
+
+constexpr double kNewtonTol = 1e-10;
+constexpr int kNewtonMaxIter = 50;
+constexpr double kNewtonEps = 1e-8;
+constexpr int kShootMaxIter = 100;
+constexpr double kShootTol = 1e-8;
+constexpr double kEventTol = 1e-9;
+constexpr int kEventMaxBisect = 60;
+
+double central_df(OdeFunc f, double t, double y) {
+    const double fp = f(t, y + kNewtonEps);
+    const double fm = f(t, y - kNewtonEps);
+    return (fp - fm) / (2.0 * kNewtonEps);
+}
+
+double interpolate_linear(const std::vector<double>& xs,
+                          const std::vector<double>& ys, double x) {
+    if (xs.empty()) {
+        return 0.0;
+    }
+    if (x <= xs.front()) {
+        return ys.front();
+    }
+    if (x >= xs.back()) {
+        return ys.back();
+    }
+    const auto it = std::upper_bound(xs.begin(), xs.end(), x);
+    const size_t i = static_cast<size_t>(it - xs.begin());
+    const double x0 = xs[i - 1];
+    const double x1 = xs[i];
+    const double y0 = ys[i - 1];
+    const double y1 = ys[i];
+    const double w = (x - x0) / (x1 - x0);
+    return y0 + w * (y1 - y0);
+}
+
+double delayed_value(double td, double t0,
+                     const std::function<double(double)>& history,
+                     const std::vector<double>& t_grid,
+                     const std::vector<double>& y_grid) {
+    if (td <= t0) {
+        return history(td);
+    }
+    return interpolate_linear(t_grid, y_grid, td);
+}
+
+} // namespace
+
+OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
+                              double t_end, size_t steps) {
+    OdeResult result;
+    if (steps == 0) {
+        return result;
+    }
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    result.t.reserve(steps + 1);
+    result.y.reserve(steps + 1);
+    double t = t0;
+    double y = y0;
+    for (size_t i = 0; i <= steps; ++i) {
+        result.t.push_back(t);
+        result.y.push_back(y);
+        if (i < steps) {
+            const double t_next = t + h;
+            double y_next = y;
+            for (int iter = 0; iter < kNewtonMaxIter; ++iter) {
+                const double fy = f(t_next, y_next);
+                const double g = y_next - y - h * fy;
+                if (std::abs(g) < kNewtonTol) {
+                    break;
+                }
+                const double dfdy = central_df(f, t_next, y_next);
+                const double dg = 1.0 - h * dfdy;
+                if (std::abs(dg) < 1e-14) {
+                    break;
+                }
+                y_next -= g / dg;
+            }
+            y = y_next;
+            t = t_next;
+        }
+    }
+    return result;
+}
+
+OdeBvpResult ode_bvp_shooting(OdeBvpFunc f, double t0, double y_a,
+                               double t_end, double y_b, size_t steps) {
+    OdeBvpResult result;
+    if (steps == 0) {
+        return result;
+    }
+
+    const auto integrate = [&](double slope) -> double {
+        OdeFuncVec sys = [&](double t, const std::vector<double>& state) {
+            std::vector<double> d(2);
+            d[0] = state[1];
+            d[1] = f(t, state[0], state[1]);
+            return d;
+        };
+        const std::vector<double> y0 = {y_a, slope};
+        const OdeResultVec ivp = ode_rk4_vec(sys, t0, y0, t_end, steps);
+        if (ivp.y.empty()) {
+            return slope;
+        }
+        return ivp.y.back()[0];
+    };
+
+    double s_lo = -10.0;
+    double s_hi = 10.0;
+    double r_lo = integrate(s_lo) - y_b;
+    double r_hi = integrate(s_hi) - y_b;
+
+    int expand = 0;
+    while (r_lo * r_hi > 0.0 && expand < 20) {
+        s_lo *= 2.0;
+        s_hi *= 2.0;
+        r_lo = integrate(s_lo) - y_b;
+        r_hi = integrate(s_hi) - y_b;
+        ++expand;
+    }
+
+    if (r_lo * r_hi > 0.0) {
+        return result;
+    }
+
+    double s_mid = 0.5 * (s_lo + s_hi);
+    size_t iter = 0;
+    for (; iter < static_cast<size_t>(kShootMaxIter); ++iter) {
+        s_mid = 0.5 * (s_lo + s_hi);
+        const double r_mid = integrate(s_mid) - y_b;
+        if (std::abs(r_mid) < kShootTol) {
+            result.converged = true;
+            break;
+        }
+        if (r_lo * r_mid <= 0.0) {
+            s_hi = s_mid;
+            r_hi = r_mid;
+        } else {
+            s_lo = s_mid;
+            r_lo = r_mid;
+        }
+    }
+
+    if (!result.converged) {
+        const double r_mid = integrate(s_mid) - y_b;
+        if (std::abs(r_mid) < kShootTol) {
+            result.converged = true;
+        }
+    }
+    result.iterations = iter + (result.converged ? 1u : 0u);
+
+    OdeFuncVec sys = [&](double t, const std::vector<double>& state) {
+        std::vector<double> d(2);
+        d[0] = state[1];
+        d[1] = f(t, state[0], state[1]);
+        return d;
+    };
+    const std::vector<double> y0 = {y_a, s_mid};
+    const OdeResultVec ivp = ode_rk4_vec(sys, t0, y0, t_end, steps);
+    result.t = ivp.t;
+    result.y.reserve(ivp.y.size());
+    result.yp.reserve(ivp.y.size());
+    for (const auto& state : ivp.y) {
+        result.y.push_back(state[0]);
+        result.yp.push_back(state[1]);
+    }
+    if (result.converged && !result.y.empty()) {
+        const double err = std::abs(result.y.back() - y_b);
+        if (err > 10.0 * kShootTol) {
+            result.converged = false;
+        }
+    }
+    return result;
+}
+
+OdeResult ode_dde_fixed_step(std::function<double(double, double, double)> f,
+                              std::function<double(double)> history,
+                              double t0, double t_end, double tau,
+                              size_t steps) {
+    OdeResult result;
+    if (steps == 0 || tau <= 0.0) {
+        return result;
+    }
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    double t = t0;
+    double y = history(t0);
+    result.t.push_back(t);
+    result.y.push_back(y);
+
+    for (size_t step = 0; step < steps; ++step) {
+        const auto delayed_at = [&](double ts) {
+            return delayed_value(ts - tau, t0, history, result.t, result.y);
+        };
+
+        const double k1 = f(t, y, delayed_at(t));
+        const double y2 = y + 0.5 * h * k1;
+        const double k2 = f(t + 0.5 * h, y2, delayed_at(t + 0.5 * h));
+        const double y3 = y + 0.5 * h * k2;
+        const double k3 = f(t + 0.5 * h, y3, delayed_at(t + 0.5 * h));
+        const double y4 = y + h * k3;
+        const double k4 = f(t + h, y4, delayed_at(t + h));
+        y += (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+        t += h;
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+    return result;
+}
+
+OdeEventResult ode_event_detect(OdeFunc f, OdeFunc event_g,
+                                 double t0, double y0, double t_end,
+                                 size_t steps) {
+    OdeEventResult result;
+    if (steps == 0) {
+        return result;
+    }
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    double t = t0;
+    double y = y0;
+    double g_prev = event_g(t, y);
+    result.t.push_back(t);
+    result.y.push_back(y);
+
+    for (size_t step = 0; step < steps; ++step) {
+        const double k1 = f(t, y);
+        const double k2 = f(t + 0.5 * h, y + 0.5 * h * k1);
+        const double k3 = f(t + 0.5 * h, y + 0.5 * h * k2);
+        const double k4 = f(t + h, y + h * k3);
+        const double y_next = y + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+        const double t_next = t + h;
+        const double g_next = event_g(t_next, y_next);
+
+        if (g_prev * g_next < 0.0) {
+            double lo_t = t;
+            double hi_t = t_next;
+            double lo_g = g_prev;
+            double hi_g = g_next;
+            double lo_y = y;
+            double hi_y = y_next;
+            double event_t = hi_t;
+            double event_y = hi_y;
+
+            for (int bisect = 0; bisect < kEventMaxBisect; ++bisect) {
+                const double mid_t = 0.5 * (lo_t + hi_t);
+                const double frac = (hi_t > lo_t) ? (mid_t - lo_t) / (hi_t - lo_t) : 0.0;
+                const double mid_y = lo_y + frac * (hi_y - lo_y);
+                const double mid_g = event_g(mid_t, mid_y);
+                event_t = mid_t;
+                event_y = mid_y;
+                if (std::abs(mid_g) < kEventTol || (hi_t - lo_t) < kEventTol) {
+                    break;
+                }
+                if (lo_g * mid_g <= 0.0) {
+                    hi_t = mid_t;
+                    hi_y = mid_y;
+                    hi_g = mid_g;
+                } else {
+                    lo_t = mid_t;
+                    lo_y = mid_y;
+                    lo_g = mid_g;
+                }
+            }
+            result.event_times.push_back(event_t);
+            result.event_values.push_back(event_y);
+        }
+
+        y = y_next;
+        t = t_next;
+        g_prev = g_next;
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+    return result;
+}
+
 } // namespace ms
