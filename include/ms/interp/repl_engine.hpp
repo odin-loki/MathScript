@@ -5,6 +5,7 @@
 #include "ms/frameworks/cellai/cellai.hpp"
 #include "ms/frameworks/cypha/cypha.hpp"
 #include "ms/frameworks/izaac/izaac.hpp"
+#include "ms/tensorops/tensorops.hpp"
 #include <map>
 #include <optional>
 #include <ostream>
@@ -70,7 +71,9 @@ using SessionObject = std::variant<
     izaac::ratelimit::TokenBucket,
     cellai::CellMemory,
     cypha::DifModel,
-    izaac::consensus::Cluster>;
+    izaac::consensus::Cluster,
+    tensorops::CPDecomposition,
+    tensorops::TuckerDecomposition>;
 
 class Interpreter {
 public:
