@@ -18,6 +18,32 @@
 
 using DMatrix = ms::ColMatrix<double>;
 
+namespace {
+
+constexpr std::array<const char*, 6> kSymScalarUnaryFuncs = {
+    "sin", "cos", "exp", "log", "sqrt", "tanh"};
+
+constexpr std::array<const char*, 10> kLegacyMatrixPrimitives = {
+    "matmul", "solve", "lu", "qr", "svd", "eig_sym", "fft", "det", "trace", "norm"};
+
+bool representation_contains_func(const std::string& repr, const std::string& func) {
+    return repr.find(func + "(") != std::string::npos;
+}
+
+void expect_no_forbidden_unary_funcs(
+    const std::vector<ms::axiom::Algorithm>& population,
+    const std::set<std::string>& forbidden) {
+    for (const auto& algo : population) {
+        const std::string repr = algo.representation.to_string();
+        for (const auto& func : forbidden) {
+            EXPECT_FALSE(representation_contains_func(repr, func))
+                << "unexpected unary function '" << func << "' in: " << repr;
+        }
+    }
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // Axiom: EvolutionConfig defaults
 // ---------------------------------------------------------------------------
@@ -174,6 +200,186 @@ TEST(AxiomGriaExt, PrimitiveRegistryParallelVectors) {
     for (const auto& name : reg.function_names) {
         EXPECT_FALSE(name.empty());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Axiom: PrimitiveRegistry rescoped to ms::Sym scalar unary grammar
+// ---------------------------------------------------------------------------
+
+TEST(AxiomGriaExt, PrimitiveRegistryContainsOnlyScalarFunctions) {
+    const auto reg = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    for (const char* legacy : kLegacyMatrixPrimitives) {
+        EXPECT_EQ(
+            std::find(reg.function_names.begin(), reg.function_names.end(), legacy),
+            reg.function_names.end())
+            << "legacy matrix primitive '" << legacy << "' must not appear";
+    }
+    for (const char* scalar : kSymScalarUnaryFuncs) {
+        EXPECT_NE(
+            std::find(reg.function_names.begin(), reg.function_names.end(), scalar),
+            reg.function_names.end())
+            << "expected scalar function '" << scalar << "'";
+    }
+}
+
+TEST(AxiomGriaExt, PrimitiveRegistryMatchesSymGrammarExactly) {
+    const auto reg = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ASSERT_EQ(reg.function_names.size(), kSymScalarUnaryFuncs.size());
+    for (const char* scalar : kSymScalarUnaryFuncs) {
+        EXPECT_NE(
+            std::find(reg.function_names.begin(), reg.function_names.end(), scalar),
+            reg.function_names.end());
+    }
+}
+
+TEST(AxiomGriaExt, PrimitiveRegistryFunctionSymbolsMirrorNames) {
+    const auto reg = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ASSERT_EQ(reg.function_names.size(), reg.function_symbols.size());
+    for (size_t i = 0; i < reg.function_names.size(); ++i) {
+        EXPECT_EQ(reg.function_symbols[i].to_string(), reg.function_names[i]);
+    }
+}
+
+TEST(AxiomGriaExt, RestrictedRegistryInitialPopulationUsesOnlyAllowedFuncs) {
+    ms::izaac::seed_session(static_cast<uint64_t>(13579));
+    ms::axiom::PrimitiveRegistry registry;
+    registry.function_names = {"sin"};
+    registry.function_symbols = {ms::Sym("sin")};
+
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 40, .max_depth = 6},
+        registry);
+
+    const std::set<std::string> forbidden = {"cos", "exp", "log", "sqrt", "tanh"};
+    expect_no_forbidden_unary_funcs(engine.population(), forbidden);
+
+    bool saw_sin = false;
+    for (const auto& algo : engine.population()) {
+        if (representation_contains_func(algo.representation.to_string(), "sin")) {
+            saw_sin = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(saw_sin);
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, RestrictedRegistryEvolutionUsesOnlyAllowedFuncs) {
+    ms::izaac::seed_session(static_cast<uint64_t>(24680));
+    ms::axiom::PrimitiveRegistry registry;
+    registry.function_names = {"sin"};
+    registry.function_symbols = {ms::Sym("sin")};
+
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{
+            .population_size = 32,
+            .max_generations = 20,
+            .mutation_rate = 0.35,
+            .crossover_rate = 0.85,
+            .max_depth = 5},
+        registry);
+
+    const std::set<std::string> forbidden = {"cos", "exp", "log", "sqrt", "tanh"};
+    expect_no_forbidden_unary_funcs(engine.population(), forbidden);
+
+    const auto best = engine.evolve(
+        [](const ms::axiom::Algorithm& a) {
+            return a.representation.eval({{"x0", 0.5}, {"x1", -0.25}});
+        },
+        [](const ms::axiom::Algorithm&) { return false; });
+    ASSERT_TRUE(best.has_value());
+
+    expect_no_forbidden_unary_funcs(engine.population(), forbidden);
+    EXPECT_FALSE(representation_contains_func(best->representation.to_string(), "cos"));
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, RestrictedRegistryLargeSampleNeverViolatesAllowedSet) {
+    ms::izaac::seed_session(static_cast<uint64_t>(97531));
+    ms::axiom::PrimitiveRegistry registry;
+    registry.function_names = {"sin"};
+    registry.function_symbols = {ms::Sym("sin")};
+
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{
+            .population_size = 48,
+            .max_generations = 25,
+            .mutation_rate = 0.4,
+            .crossover_rate = 0.9,
+            .max_depth = 6},
+        registry);
+
+    const std::set<std::string> forbidden = {"cos", "exp", "log", "sqrt", "tanh"};
+    for (int round = 0; round < 3; ++round) {
+        expect_no_forbidden_unary_funcs(engine.population(), forbidden);
+        const auto evolved = engine.evolve(
+            [](const ms::axiom::Algorithm& a) {
+                return a.representation.eval({{"x0", 1.0}, {"x1", 2.0}});
+            },
+            [](const ms::axiom::Algorithm&) { return false; });
+        ASSERT_TRUE(evolved.has_value());
+        expect_no_forbidden_unary_funcs(engine.population(), forbidden);
+    }
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, SymbolicRegressionImprovesAfterRegistryRescoping) {
+    ms::izaac::seed_session(static_cast<uint64_t>(818181));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::EvolutionConfig cfg{};
+    cfg.population_size = 50;
+    cfg.max_generations = 40;
+    cfg.max_depth = 6;
+    cfg.mutation_rate = 0.2;
+    cfg.crossover_rate = 0.75;
+    cfg.tournament_size = 4;
+    ms::axiom::Axiom engine(cfg, registry);
+
+    DMatrix data{{0.0}, {1.0}, {2.0}, {3.0}, {-1.0}, {0.5}};
+
+    const auto target_fitness = [&](const ms::axiom::Algorithm& a) {
+        double mse = 0.0;
+        for (size_t i = 0; i < data.rows(); ++i) {
+            const double x0 = data(i, 0);
+            const double target = 2.0 * x0 + 1.0;
+            const double pred = a.representation.eval({{"x0", x0}});
+            const double err = pred - target;
+            mse += err * err;
+        }
+        return -mse / static_cast<double>(data.rows());
+    };
+
+    double initial_best = -1e300;
+    for (const auto& algo : engine.population()) {
+        initial_best = std::max(initial_best, target_fitness(algo));
+    }
+
+    const auto best = engine.evolve(
+        target_fitness,
+        [](const ms::axiom::Algorithm&) { return false; });
+    ASSERT_TRUE(best.has_value());
+
+    EXPECT_GT(best->fitness, initial_best + 1.0);
+    ms::izaac::clear_session();
+}
+
+TEST(AxiomGriaExt, DefaultRegistryUnaryNodesAreSymEvaluable) {
+    ms::izaac::seed_session(static_cast<uint64_t>(60606));
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(
+        ms::axiom::EvolutionConfig{.population_size = 30, .max_depth = 5},
+        registry);
+
+    for (const auto& algo : engine.population()) {
+        const std::string repr = algo.representation.to_string();
+        for (const char* scalar : kSymScalarUnaryFuncs) {
+            if (representation_contains_func(repr, scalar)) {
+                const double v = algo.representation.eval({{"x0", 0.3}, {"x1", 0.7}});
+                EXPECT_TRUE(std::isfinite(v));
+            }
+        }
+    }
+    ms::izaac::clear_session();
 }
 
 // ---------------------------------------------------------------------------

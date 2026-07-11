@@ -162,7 +162,7 @@ TEST(FrameworksExtTest, axiom_evaluate_and_registry) {
     ASSERT_FALSE(registry.function_names.empty());
     EXPECT_EQ(registry.function_names.size(), registry.function_symbols.size());
     EXPECT_NE(
-        std::find(registry.function_names.begin(), registry.function_names.end(), "matmul"),
+        std::find(registry.function_names.begin(), registry.function_names.end(), "sin"),
         registry.function_names.end());
 
     axiom::Axiom engine(axiom::EvolutionConfig{.population_size = 4}, registry);
