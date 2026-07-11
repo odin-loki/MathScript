@@ -145,4 +145,34 @@ Burgers1DResult pde_burgers_1d(
     double dt,
     std::size_t steps);
 
+/// Explicit FTCS + forward-Euler solver for the Fisher-KPP reaction-diffusion equation
+/// u_t = D u_xx + r u (1 - u) on a 1D grid. Models population growth with logistic
+/// saturation (reaction term) coupled to spatial spreading (diffusion). Zero-flux
+/// Neumann boundaries (du/dx = 0) are enforced via ghost-point reflection.
+/// Diffusion stability requires D*dt/dx^2 <= 0.5.
+/// @note Returns empty result when the stability condition is violated or inputs are invalid.
+/// Complexity: O(steps * n).
+Heat1DResult pde_reaction_diffusion_1d(
+    const std::vector<double>& u0,
+    double D,
+    double r,
+    double dx,
+    double dt,
+    std::size_t steps);
+
+/// Peaceman-Rachford ADI Crank-Nicolson solver for the 2D heat equation
+/// u_t = alpha Laplacian(u) with zero Dirichlet boundaries. Each timestep splits into
+/// two half-steps: implicit in x / explicit in y, then implicit in y / explicit in x,
+/// solving tridiagonal systems along rows and columns via the Thomas algorithm.
+/// Unconditionally stable (no CFL restriction on dt); second-order accurate in time and space.
+/// @note Returns empty result when inputs are invalid.
+/// Complexity: O(steps * nx * ny).
+Heat2DResult pde_heat_2d_cn_adi(
+    const std::vector<std::vector<double>>& u0,
+    double alpha,
+    double dx,
+    double dy,
+    double dt,
+    std::size_t steps);
+
 } // namespace ms

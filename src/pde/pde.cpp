@@ -493,4 +493,150 @@ Burgers1DResult pde_burgers_1d(
     return result;
 }
 
+Heat1DResult pde_reaction_diffusion_1d(
+    const std::vector<double>& u0,
+    double D,
+    double r,
+    double dx,
+    double dt,
+    std::size_t steps) {
+    Heat1DResult result;
+    if (u0.size() < 3 || steps == 0 || dx <= 0.0 || dt <= 0.0 || D < 0.0) {
+        return result;
+    }
+
+    const std::size_t n = u0.size();
+    const double diff_r = D * dt / (dx * dx);
+    if (diff_r > 0.5) {
+        return result;
+    }
+
+    result.x.resize(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        result.x[i] = static_cast<double>(i) * dx;
+    }
+
+    std::vector<double> u = u0;
+    std::vector<double> next(n);
+    result.t.push_back(0.0);
+    result.u.push_back(u);
+
+    for (std::size_t step = 1; step <= steps; ++step) {
+        for (std::size_t i = 1; i + 1 < n; ++i) {
+            const double diffusion = diff_r * (u[i - 1] - 2.0 * u[i] + u[i + 1]);
+            const double reaction = dt * r * u[i] * (1.0 - u[i]);
+            next[i] = u[i] + diffusion + reaction;
+        }
+        {
+            const double diffusion = 2.0 * diff_r * (u[1] - u[0]);
+            const double reaction = dt * r * u[0] * (1.0 - u[0]);
+            next[0] = u[0] + diffusion + reaction;
+        }
+        {
+            const double diffusion = 2.0 * diff_r * (u[n - 2] - u[n - 1]);
+            const double reaction = dt * r * u[n - 1] * (1.0 - u[n - 1]);
+            next[n - 1] = u[n - 1] + diffusion + reaction;
+        }
+        u.swap(next);
+        result.t.push_back(static_cast<double>(step) * dt);
+        result.u.push_back(u);
+    }
+
+    return result;
+}
+
+Heat2DResult pde_heat_2d_cn_adi(
+    const std::vector<std::vector<double>>& u0,
+    double alpha,
+    double dx,
+    double dy,
+    double dt,
+    std::size_t steps) {
+    Heat2DResult result;
+    if (!is_rectangular_grid(u0) || steps == 0 || dx <= 0.0 || dy <= 0.0 || dt <= 0.0
+        || alpha <= 0.0) {
+        return result;
+    }
+
+    const std::size_t ny = u0.size();
+    const std::size_t nx = u0[0].size();
+    const double lam_x = alpha * dt / (2.0 * dx * dx);
+    const double lam_y = alpha * dt / (2.0 * dy * dy);
+
+    std::vector<std::vector<double>> u = u0;
+    std::vector<std::vector<double>> half(ny, std::vector<double>(nx));
+    result.t.push_back(0.0);
+    result.u.push_back(u);
+
+    const std::size_t m_x = nx - 2;
+    const std::size_t m_y = ny - 2;
+    std::vector<double> a_x(m_x, -lam_x);
+    std::vector<double> b_x(m_x, 1.0 + 2.0 * lam_x);
+    std::vector<double> c_x(m_x, -lam_x);
+    std::vector<double> a_y(m_y, -lam_y);
+    std::vector<double> b_y(m_y, 1.0 + 2.0 * lam_y);
+    std::vector<double> c_y(m_y, -lam_y);
+
+    for (std::size_t step = 1; step <= steps; ++step) {
+        for (std::size_t j = 1; j + 1 < ny; ++j) {
+            std::vector<double> rhs(m_x);
+            for (std::size_t k = 0; k < m_x; ++k) {
+                const std::size_t i = k + 1;
+                rhs[k] = u[j][i]
+                    + lam_y * (u[j - 1][i] - 2.0 * u[j][i] + u[j + 1][i]);
+            }
+
+            std::vector<double> a_copy = a_x;
+            std::vector<double> b_copy = b_x;
+            std::vector<double> c_copy = c_x;
+            if (!thomas_solve(a_copy, b_copy, c_copy, rhs)) {
+                return Heat2DResult{};
+            }
+
+            half[j][0] = 0.0;
+            half[j][nx - 1] = 0.0;
+            for (std::size_t k = 0; k < m_x; ++k) {
+                half[j][k + 1] = rhs[k];
+            }
+        }
+
+        for (std::size_t j = 0; j < ny; ++j) {
+            half[j][0] = 0.0;
+            half[j][nx - 1] = 0.0;
+        }
+
+        for (std::size_t i = 1; i + 1 < nx; ++i) {
+            std::vector<double> rhs(m_y);
+            for (std::size_t k = 0; k < m_y; ++k) {
+                const std::size_t j = k + 1;
+                rhs[k] = half[j][i]
+                    + lam_x * (half[j][i - 1] - 2.0 * half[j][i] + half[j][i + 1]);
+            }
+
+            std::vector<double> a_copy = a_y;
+            std::vector<double> b_copy = b_y;
+            std::vector<double> c_copy = c_y;
+            if (!thomas_solve(a_copy, b_copy, c_copy, rhs)) {
+                return Heat2DResult{};
+            }
+
+            u[0][i] = 0.0;
+            u[ny - 1][i] = 0.0;
+            for (std::size_t k = 0; k < m_y; ++k) {
+                u[k + 1][i] = rhs[k];
+            }
+        }
+
+        for (std::size_t j = 0; j < ny; ++j) {
+            u[j][0] = 0.0;
+            u[j][nx - 1] = 0.0;
+        }
+
+        result.t.push_back(static_cast<double>(step) * dt);
+        result.u.push_back(u);
+    }
+
+    return result;
+}
+
 } // namespace ms

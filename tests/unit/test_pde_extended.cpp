@@ -594,3 +594,277 @@ TEST(PdeExtTest, wave_2d_mismatched_shapes) {
     const auto result = pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.01, 5);
     EXPECT_TRUE(result.u.empty());
 }
+
+// ---------------------------------------------------------------------------
+// pde_reaction_diffusion_1d
+// ---------------------------------------------------------------------------
+
+double logistic_solution(double c, double r, double t) {
+    return c / (c + (1.0 - c) * std::exp(-r * t));
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_stability_rejection) {
+    const std::vector<double> u0(11, 0.5);
+    const double D = 1.0;
+    const double dx = 0.1;
+    const double dt = 0.1;
+    ASSERT_GT(D * dt / (dx * dx), 0.5);
+    const auto result = pde_reaction_diffusion_1d(u0, D, 1.0, dx, dt, 5);
+    EXPECT_TRUE(result.u.empty());
+    EXPECT_TRUE(result.t.empty());
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_uniform_logistic_evolution) {
+    const std::size_t n = 21;
+    const double c = 0.4;
+    const double r = 2.0;
+    const double D = 0.05;
+    const double dx = 0.1;
+    const double dt = 0.01;
+    const std::size_t steps = 30;
+    const std::vector<double> u0(n, c);
+
+    const auto result = pde_reaction_diffusion_1d(u0, D, r, dx, dt, steps);
+    ASSERT_FALSE(result.u.empty());
+    ASSERT_EQ(result.u.size(), steps + 1);
+
+    for (std::size_t k = 0; k < result.u.size(); ++k) {
+        const double expected = logistic_solution(c, r, result.t[k]);
+        for (std::size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(result.u[k][i], expected, 0.02);
+        }
+    }
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_spatial_uniformity_preserved) {
+    const std::size_t n = 15;
+    const double c = 0.6;
+    const std::vector<double> u0(n, c);
+    const auto result = pde_reaction_diffusion_1d(u0, 0.1, 1.5, 0.1, 0.005, 20);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (std::size_t i = 1; i < n; ++i) {
+            EXPECT_NEAR(snap[i], snap[0], 1e-12);
+        }
+    }
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_neumann_boundaries_finite) {
+    const std::size_t n = 17;
+    std::vector<double> u0(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        u0[i] = 0.3 + 0.4 * std::exp(-0.5 * static_cast<double>((i - n / 2) * (i - n / 2)));
+    }
+    const auto result = pde_reaction_diffusion_1d(u0, 0.2, 1.0, 0.1, 0.002, 50);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (double v : snap) {
+            EXPECT_TRUE(std::isfinite(v));
+            EXPECT_GE(v, -0.1);
+            EXPECT_LE(v, 1.2);
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(snap[i], snap[n - 1 - i], 0.05);
+        }
+    }
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_neumann_conserves_mass_when_r_zero) {
+    const std::size_t n = 21;
+    std::vector<double> u0(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        u0[i] = 0.5 + 0.3 * std::sin(M_PI * static_cast<double>(i) / static_cast<double>(n - 1));
+    }
+    const double mass0 = std::accumulate(u0.begin(), u0.end(), 0.0);
+    const auto result = pde_reaction_diffusion_1d(u0, 0.1, 0.0, 0.1, 0.01, 25);
+    ASSERT_FALSE(result.u.empty());
+    const double mass1 = std::accumulate(result.u.back().begin(), result.u.back().end(), 0.0);
+    EXPECT_NEAR(mass0, mass1, 0.05 * std::abs(mass0));
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_finite_stable_output) {
+    const std::size_t n = 11;
+    std::vector<double> u0(n, 0.0);
+    u0[n / 2] = 0.9;
+    const auto result = pde_reaction_diffusion_1d(u0, 0.1, 2.0, 0.1, 0.004, 40);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (double v : snap) {
+            EXPECT_TRUE(std::isfinite(v));
+            EXPECT_GE(v, -0.1);
+            EXPECT_LE(v, 1.1);
+        }
+    }
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_logistic_multiple_times) {
+    const std::size_t n = 9;
+    const double c = 0.25;
+    const double r = 1.0;
+    const double dx = 0.2;
+    const double dt = 0.02;
+    const std::vector<double> u0(n, c);
+    const auto result = pde_reaction_diffusion_1d(u0, 0.01, r, dx, dt, 10);
+    ASSERT_FALSE(result.u.empty());
+    for (std::size_t k : {0u, 3u, 7u, 10u}) {
+        const double expected = logistic_solution(c, r, result.t[k]);
+        for (std::size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(result.u[k][i], expected, 0.03);
+        }
+    }
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_too_small_grid) {
+    const std::vector<double> u0 = {0.5, 0.6};
+    const auto result = pde_reaction_diffusion_1d(u0, 0.1, 1.0, 0.1, 0.01, 5);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_zero_steps) {
+    const std::vector<double> u0(5, 0.5);
+    const auto result = pde_reaction_diffusion_1d(u0, 0.1, 1.0, 0.1, 0.01, 0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_invalid_parameters) {
+    const std::vector<double> u0(7, 0.5);
+    EXPECT_TRUE(pde_reaction_diffusion_1d(u0, 0.1, 1.0, 0.0, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_reaction_diffusion_1d(u0, 0.1, 1.0, 0.1, 0.0, 5).u.empty());
+    EXPECT_TRUE(pde_reaction_diffusion_1d(u0, -0.1, 1.0, 0.1, 0.01, 5).u.empty());
+}
+
+// ---------------------------------------------------------------------------
+// pde_heat_2d_cn_adi
+// ---------------------------------------------------------------------------
+
+TEST(PdeExtTest, heat_2d_cn_adi_stable_large_dt) {
+    const std::size_t n = 9;
+    const double dx = 0.1;
+    const double dy = 0.1;
+    const double alpha = 0.1;
+    const double dt = 0.5;
+    auto u0 = make_grid(n, n, 0.0);
+    u0[n / 2][n / 2] = 1.0;
+
+    const double stability = alpha * dt * (1.0 / (dx * dx) + 1.0 / (dy * dy));
+    ASSERT_GT(stability, 0.5);
+
+    const auto explicit_result = pde_heat_2d(u0, alpha, dx, dy, dt, 10);
+    EXPECT_TRUE(explicit_result.u.empty());
+
+    const auto adi_result = pde_heat_2d_cn_adi(u0, alpha, dx, dy, dt, 10);
+    ASSERT_FALSE(adi_result.u.empty());
+    for (const auto& snap : adi_result.u) {
+        for (const auto& row : snap) {
+            for (double v : row) {
+                EXPECT_TRUE(std::isfinite(v));
+                EXPECT_LT(std::abs(v), 2.0);
+            }
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_dirichlet_boundaries_zero) {
+    auto u0 = make_grid(7, 7, 0.0);
+    u0[3][3] = 2.0;
+    const auto result = pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.1, 0.05, 15);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (std::size_t i = 0; i < snap[0].size(); ++i) {
+            EXPECT_NEAR(snap[0][i], 0.0, 1e-12);
+            EXPECT_NEAR(snap.back()[i], 0.0, 1e-12);
+        }
+        for (const auto& row : snap) {
+            EXPECT_NEAR(row.front(), 0.0, 1e-12);
+            EXPECT_NEAR(row.back(), 0.0, 1e-12);
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_symmetry_preserved) {
+    const std::size_t n = 9;
+    auto u0 = make_grid(n, n, 0.0);
+    u0[n / 2][n / 2] = 1.0;
+    const auto result = pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.1, 0.02, 12);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (std::size_t j = 0; j < n; ++j) {
+            for (std::size_t i = 0; i < n; ++i) {
+                EXPECT_NEAR(snap[j][i], snap[j][n - 1 - i], 1e-10);
+                EXPECT_NEAR(snap[j][i], snap[n - 1 - j][i], 1e-10);
+            }
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_matches_explicit_when_stable) {
+    const std::size_t n = 7;
+    const double dx = 0.1;
+    const double dy = 0.1;
+    const double alpha = 0.1;
+    const double dt = 0.001;
+    const std::size_t steps = 20;
+    auto u0 = make_grid(n, n, 0.0);
+    u0[n / 2][n / 2] = 1.0;
+
+    const double stability = alpha * dt * (1.0 / (dx * dx) + 1.0 / (dy * dy));
+    ASSERT_LE(stability, 0.5);
+
+    const auto explicit_result = pde_heat_2d(u0, alpha, dx, dy, dt, steps);
+    const auto adi_result = pde_heat_2d_cn_adi(u0, alpha, dx, dy, dt, steps);
+    ASSERT_FALSE(explicit_result.u.empty());
+    ASSERT_FALSE(adi_result.u.empty());
+    ASSERT_EQ(explicit_result.u.size(), adi_result.u.size());
+
+    for (std::size_t k = 0; k < explicit_result.u.size(); ++k) {
+        for (std::size_t j = 1; j + 1 < n; ++j) {
+            for (std::size_t i = 1; i + 1 < n; ++i) {
+                EXPECT_NEAR(adi_result.u[k][j][i], explicit_result.u[k][j][i], 0.08);
+            }
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_finite_output) {
+    auto u0 = make_grid(11, 11, 0.0);
+    u0[5][5] = 0.8;
+    const auto result = pde_heat_2d_cn_adi(u0, 0.2, 0.1, 0.1, 0.1, 8);
+    ASSERT_EQ(result.u.size(), 9u);
+    for (const auto& snap : result.u) {
+        for (const auto& row : snap) {
+            for (double v : row) {
+                EXPECT_TRUE(std::isfinite(v));
+            }
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_diffuses_spike) {
+    auto u0 = make_grid(7, 7, 0.0);
+    u0[3][3] = 5.0;
+    const auto result = pde_heat_2d_cn_adi(u0, 0.2, 0.1, 0.1, 0.01, 30);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_LT(grid_max(result.u.back()), 5.0);
+    EXPECT_GT(grid_max(result.u.back()), 0.0);
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_too_small_grid) {
+    auto u0 = make_grid(2, 2, 1.0);
+    const auto result = pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.1, 0.01, 5);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_zero_steps) {
+    auto u0 = make_grid(5, 5, 1.0);
+    const auto result = pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.1, 0.01, 0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_invalid_parameters) {
+    auto u0 = make_grid(5, 5, 0.0);
+    u0[2][2] = 1.0;
+    EXPECT_TRUE(pde_heat_2d_cn_adi(u0, 0.0, 0.1, 0.1, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_heat_2d_cn_adi(u0, 0.1, 0.0, 0.1, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.0, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.1, 0.0, 5).u.empty());
+}
