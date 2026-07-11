@@ -62,6 +62,8 @@ OptimResult particle_swarm(FuncND f,
                            std::vector<std::pair<double,double>> bounds,
                            int n_particles = 30, int max_iter = 500,
                            unsigned seed = 42);
+OptimResult cmaes(FuncND f, std::vector<double> x0, double sigma0 = 0.5,
+                  int max_iter = 1000, unsigned seed = 42);
 
 // --- nonlinear equation solvers ---
 double bisection(Func1D f, double a, double b, double tol = 1e-10,

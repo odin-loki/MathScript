@@ -160,6 +160,76 @@ TEST(OptimParticleSwarm, BestNotWorse) {
 }
 
 // -----------------------------------------------------------------------
+// CMA-ES
+// -----------------------------------------------------------------------
+TEST(OptimCMAES, Sphere2D_ConvergesFromOriginOffset) {
+    ms::OptimResult r = ms::cmaes(sphere, {2.0, 3.0}, 0.5, 500, 42);
+    EXPECT_LT(r.f_val, 1e-4);
+    EXPECT_EQ(r.x.size(), 2u);
+}
+
+TEST(OptimCMAES, Sphere2D_ConvergesFromNegativeStart) {
+    ms::OptimResult r = ms::cmaes(sphere, {-3.0, 4.0}, 0.5, 500, 7);
+    EXPECT_LT(r.f_val, 1e-4);
+}
+
+TEST(OptimCMAES, Sphere2D_ConvergesFromFarStart) {
+    ms::OptimResult r = ms::cmaes(sphere, {5.0, -5.0}, 1.0, 800, 99);
+    EXPECT_LT(r.f_val, 1e-4);
+}
+
+TEST(OptimCMAES, Rosenbrock2D_Converges) {
+    ms::OptimResult r = ms::cmaes(rosenbrock, {0.0, 0.0}, 0.3, 1500, 42);
+    EXPECT_LT(r.f_val, 1.0);
+}
+
+TEST(OptimCMAES, Rosenbrock2D_ConvergesFromAlternateStart) {
+    ms::OptimResult r = ms::cmaes(rosenbrock, {-1.0, 1.0}, 0.5, 2000, 123);
+    EXPECT_LT(r.f_val, 1.0);
+}
+
+TEST(OptimCMAES, Sphere5D_Converges) {
+    ms::OptimResult r = ms::cmaes(
+        sphere, {1.0, 1.0, 1.0, 1.0, 1.0}, 0.5, 800, 42);
+    EXPECT_LT(r.f_val, 1e-3);
+    EXPECT_EQ(r.x.size(), 5u);
+}
+
+TEST(OptimCMAES, Sphere10D_Converges) {
+    ms::OptimResult r = ms::cmaes(
+        sphere,
+        {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+        0.5, 1000, 42);
+    EXPECT_LT(r.f_val, 1e-2);
+    EXPECT_EQ(r.x.size(), 10u);
+}
+
+TEST(OptimCMAES, CorrectDimension) {
+    ms::OptimResult r = ms::cmaes(sphere, {1.0, 2.0, 3.0}, 0.5, 300, 1);
+    EXPECT_EQ(r.x.size(), 3u);
+    EXPECT_TRUE(std::isfinite(r.f_val));
+    for (auto v : r.x) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(OptimCMAES, DeterministicWithSameSeed) {
+    ms::OptimResult r1 = ms::cmaes(sphere, {2.0, -1.0}, 0.5, 400, 42);
+    ms::OptimResult r2 = ms::cmaes(sphere, {2.0, -1.0}, 0.5, 400, 42);
+    EXPECT_DOUBLE_EQ(r1.f_val, r2.f_val);
+    ASSERT_EQ(r1.x.size(), r2.x.size());
+    for (size_t i = 0; i < r1.x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(r1.x[i], r2.x[i]);
+    }
+}
+
+TEST(OptimCMAES, Sphere1D_EdgeCase) {
+    ms::FuncND f1d = [](const std::vector<double>& x) { return x[0] * x[0]; };
+    ms::OptimResult r = ms::cmaes(f1d, {3.0}, 0.5, 300, 42);
+    EXPECT_EQ(r.x.size(), 1u);
+    EXPECT_LT(r.f_val, 1e-4);
+    EXPECT_TRUE(std::isfinite(r.f_val));
+}
+
+// -----------------------------------------------------------------------
 // Bisection
 // -----------------------------------------------------------------------
 TEST(OptimBisection, FindsRootOfLinear) {
