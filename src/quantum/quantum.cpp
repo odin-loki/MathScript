@@ -540,5 +540,105 @@ std::vector<Ket> schrodinger(const DensityMatrix& H, const Ket& psi0,
     return trajectory;
 }
 
+// ---- Phase-space quasi-probability distributions ----
+
+namespace {
+
+// Truncated annihilation operator on Fock levels 0..dim-1: a|n> = sqrt(n)|n-1>.
+DensityMatrix annihilation_operator(int dim) {
+    DensityMatrix a(dim, std::vector<C>(dim, C(0.0)));
+    for (int n = 1; n < dim; ++n) a[n - 1][n] = C(std::sqrt(static_cast<double>(n)));
+    return a;
+}
+
+// Parity operator on Fock levels: Parity|n> = (-1)^n |n>.
+DensityMatrix parity_operator(int dim) {
+    DensityMatrix P(dim, std::vector<C>(dim, C(0.0)));
+    for (int n = 0; n < dim; ++n) P[n][n] = C(n % 2 == 0 ? 1.0 : -1.0);
+    return P;
+}
+
+// exp(X) for an arbitrary square complex matrix via scaling-and-squaring:
+// halve X until its (row-sum) norm is small, Taylor-expand, then square back.
+DensityMatrix matrix_exp(const DensityMatrix& X) {
+    const int n = static_cast<int>(X.size());
+    double row_norm = 0.0;
+    for (int i = 0; i < n; ++i) {
+        double s = 0.0;
+        for (int j = 0; j < n; ++j) s += std::abs(X[i][j]);
+        row_norm = std::max(row_norm, s);
+    }
+
+    int squarings = 0;
+    double scale = 1.0;
+    while (row_norm * scale > 0.5) {
+        scale *= 0.5;
+        ++squarings;
+    }
+
+    DensityMatrix Xs(n, std::vector<C>(n));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            Xs[i][j] = X[i][j] * scale;
+
+    DensityMatrix result = identity(n);
+    DensityMatrix term = identity(n);
+    for (int k = 1; k <= 25; ++k) {
+        term = matmul_dm(term, Xs);
+        const C inv_k = C(1.0 / static_cast<double>(k));
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j) {
+                term[i][j] *= inv_k;
+                result[i][j] += term[i][j];
+            }
+    }
+
+    for (int s = 0; s < squarings; ++s) result = matmul_dm(result, result);
+    return result;
+}
+
+// Displacement operator D(alpha) = exp(alpha a^dagger - conj(alpha) a) truncated
+// to the same Fock dimension as rho.
+DensityMatrix displacement_operator(C alpha, int dim) {
+    DensityMatrix a = annihilation_operator(dim);
+    DensityMatrix adag = dagger(a);
+    DensityMatrix X(dim, std::vector<C>(dim));
+    for (int i = 0; i < dim; ++i)
+        for (int j = 0; j < dim; ++j)
+            X[i][j] = alpha * adag[i][j] - std::conj(alpha) * a[i][j];
+    return matrix_exp(X);
+}
+
+} // namespace
+
+double wigner_function(const DensityMatrix& rho, double x, double p) {
+    const int dim = static_cast<int>(rho.size());
+    if (dim <= 0) return 0.0;
+
+    const C alpha(x / std::sqrt(2.0), p / std::sqrt(2.0));
+    DensityMatrix D = displacement_operator(alpha, dim);
+    DensityMatrix Ddag = dagger(D);
+    DensityMatrix P = parity_operator(dim);
+
+    DensityMatrix DP = matmul_dm(D, P);
+    DensityMatrix DPDdag = matmul_dm(DP, Ddag);
+    DensityMatrix M = matmul_dm(rho, DPDdag);
+
+    C trace = 0.0;
+    for (int i = 0; i < dim; ++i) trace += M[i][i];
+    return trace.real() / M_PI;
+}
+
+double husimi_Q(const DensityMatrix& rho, C alpha) {
+    const int dim = static_cast<int>(rho.size());
+    if (dim <= 0) return 0.0;
+
+    const int n_max = dim - 1;
+    Ket alpha_ket = coherent_state(alpha, n_max);
+    Ket rho_alpha = op_apply(rho, alpha_ket);
+    const C overlap = inner(alpha_ket, rho_alpha);   // <alpha|rho|alpha>
+    return overlap.real() / M_PI;
+}
+
 } // namespace quantum
 } // namespace ms
