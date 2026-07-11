@@ -7820,6 +7820,13 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             }
             return static_cast<double>(numthy::liouville(static_cast<uint64_t>(arg)));
         }
+        if (fn == "numthy_von_mangoldt") {
+            if (arg < 0.0 || std::floor(arg) != arg) {
+                return std::unexpected(
+                    DomainError{"numthy_von_mangoldt", "expected non-negative integer n"});
+            }
+            return numthy::von_mangoldt(static_cast<uint64_t>(arg));
+        }
         if (fn == "numthy_prime_pi") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
@@ -8004,6 +8011,19 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             const auto b = static_cast<uint64_t>(args[1]);
             return static_cast<double>(numthy::lcm(a, b));
         }
+        if (fn == "numthy_jordan_totient") {
+            const int k = static_cast<int>(args[0]);
+            if (k < 0 || args[0] != k) {
+                return std::unexpected(
+                    DomainError{"numthy_jordan_totient", "expected non-negative integer k"});
+            }
+            if (args[1] < 0.0 || std::floor(args[1]) != args[1]) {
+                return std::unexpected(
+                    DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
+            }
+            return static_cast<double>(numthy::jordan_totient(
+                static_cast<uint32_t>(k), static_cast<uint64_t>(args[1])));
+        }
         if (fn == "cplx_joukowski") {
             const cplx::C z{args[0], args[1]};
             const cplx::C w = cplx::joukowski(z);
@@ -8097,6 +8117,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         const cplx::C z2{args[2], args[3]};
         return cplx::hyperbolic_distance(z1, z2);
     }
+    if (args.size() == 4 && fn == "finance_forward_rate") {
+        return finance::forward_rate(args[0], args[1], args[2], args[3]);
+    }
     if ((args.size() == 3 || args.size() == 4) && fn == "finance_bond_price") {
         const int n = static_cast<int>(args[2]);
         if (n < 0 || args[2] != n) {
@@ -8159,6 +8182,22 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 3 && fn == "finance_continuous_compound") {
         return finance::continuous_compound(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "finance_capm") {
+        return finance::capm(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "poly_bernstein") {
+        const int n = static_cast<int>(args[0]);
+        const int i = static_cast<int>(args[1]);
+        if (n < 0 || args[0] != n) {
+            return std::unexpected(
+                DomainError{"poly_bernstein", "expected non-negative integer n"});
+        }
+        if (i < 0 || args[1] != i) {
+            return std::unexpected(
+                DomainError{"poly_bernstein", "expected non-negative integer i"});
+        }
+        return poly::bernstein(n, i, args[2]);
     }
     if (args.size() == 3 && fn == "numthy_mod_pow") {
         const auto base = static_cast<uint64_t>(args[0]);
@@ -8291,6 +8330,14 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         return finance::bs_rho(args[0], args[1], args[2], args[3], args[4], call != 0);
     }
+    if (args.size() == 6 && fn == "finance_black76") {
+        const int call = static_cast<int>(args[5]);
+        if (args[5] != call) {
+            return std::unexpected(
+                DomainError{"finance_black76", "expected integer call (0=put, 1=call)"});
+        }
+        return finance::black76(args[0], args[1], args[2], args[3], args[4], call != 0);
+    }
     if (args.size() == 6 && fn == "finance_binomial_call") {
         const int steps = static_cast<int>(args[5]);
         if (steps < 0 || args[5] != steps) {
@@ -8306,6 +8353,118 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 DomainError{"finance_binomial_put", "expected non-negative integer steps"});
         }
         return finance::binomial_put(args[0], args[1], args[2], args[3], args[4], steps);
+    }
+    if (args.size() == 7 && fn == "finance_digital_option") {
+        const int call = static_cast<int>(args[5]);
+        if (args[5] != call) {
+            return std::unexpected(
+                DomainError{"finance_digital_option", "expected integer call (0=put, 1=call)"});
+        }
+        return finance::digital_option(args[0], args[1], args[2], args[3], args[4], call != 0,
+                                       args[6]);
+    }
+    if (args.size() == 7 && fn == "finance_american_option") {
+        const int call = static_cast<int>(args[5]);
+        if (args[5] != call) {
+            return std::unexpected(
+                DomainError{"finance_american_option", "expected integer call (0=put, 1=call)"});
+        }
+        const int steps = static_cast<int>(args[6]);
+        if (steps < 0 || args[6] != steps) {
+            return std::unexpected(
+                DomainError{"finance_american_option", "expected non-negative integer steps"});
+        }
+        return finance::american_option(args[0], args[1], args[2], args[3], args[4], call != 0,
+                                        steps);
+    }
+    if (args.size() == 7 && fn == "finance_mc_european_call") {
+        const int n_paths = static_cast<int>(args[5]);
+        if (n_paths < 0 || args[5] != n_paths) {
+            return std::unexpected(
+                DomainError{"finance_mc_european_call", "expected non-negative integer n_paths"});
+        }
+        const double seed_d = args[6];
+        const auto seed = static_cast<unsigned>(seed_d);
+        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+            return std::unexpected(
+                DomainError{"finance_mc_european_call", "expected non-negative integer seed"});
+        }
+        return finance::mc_european_call(args[0], args[1], args[2], args[3], args[4], n_paths,
+                                         seed);
+    }
+    if (args.size() == 7 && fn == "finance_mc_european_put") {
+        const int n_paths = static_cast<int>(args[5]);
+        if (n_paths < 0 || args[5] != n_paths) {
+            return std::unexpected(
+                DomainError{"finance_mc_european_put", "expected non-negative integer n_paths"});
+        }
+        const double seed_d = args[6];
+        const auto seed = static_cast<unsigned>(seed_d);
+        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+            return std::unexpected(
+                DomainError{"finance_mc_european_put", "expected non-negative integer seed"});
+        }
+        return finance::mc_european_put(args[0], args[1], args[2], args[3], args[4], n_paths,
+                                        seed);
+    }
+    if (args.size() == 8 && fn == "finance_mc_asian_call") {
+        const int n_paths = static_cast<int>(args[5]);
+        if (n_paths < 0 || args[5] != n_paths) {
+            return std::unexpected(
+                DomainError{"finance_mc_asian_call", "expected non-negative integer n_paths"});
+        }
+        const int n_steps = static_cast<int>(args[6]);
+        if (n_steps < 0 || args[6] != n_steps) {
+            return std::unexpected(
+                DomainError{"finance_mc_asian_call", "expected non-negative integer n_steps"});
+        }
+        const double seed_d = args[7];
+        const auto seed = static_cast<unsigned>(seed_d);
+        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+            return std::unexpected(
+                DomainError{"finance_mc_asian_call", "expected non-negative integer seed"});
+        }
+        return finance::mc_asian_call(args[0], args[1], args[2], args[3], args[4], n_paths,
+                                      n_steps, seed);
+    }
+    if (args.size() == 8 && fn == "finance_mc_asian_put") {
+        const int n_paths = static_cast<int>(args[5]);
+        if (n_paths < 0 || args[5] != n_paths) {
+            return std::unexpected(
+                DomainError{"finance_mc_asian_put", "expected non-negative integer n_paths"});
+        }
+        const int n_steps = static_cast<int>(args[6]);
+        if (n_steps < 0 || args[6] != n_steps) {
+            return std::unexpected(
+                DomainError{"finance_mc_asian_put", "expected non-negative integer n_steps"});
+        }
+        const double seed_d = args[7];
+        const auto seed = static_cast<unsigned>(seed_d);
+        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+            return std::unexpected(
+                DomainError{"finance_mc_asian_put", "expected non-negative integer seed"});
+        }
+        return finance::mc_asian_put(args[0], args[1], args[2], args[3], args[4], n_paths,
+                                     n_steps, seed);
+    }
+    if (args.size() == 9 && fn == "finance_barrier_option") {
+        const int call = static_cast<int>(args[6]);
+        if (args[6] != call) {
+            return std::unexpected(
+                DomainError{"finance_barrier_option", "expected integer call (0=put, 1=call)"});
+        }
+        const int knock_in = static_cast<int>(args[7]);
+        if (args[7] != knock_in) {
+            return std::unexpected(DomainError{
+                "finance_barrier_option", "expected integer knock_in (0=knock-out, 1=knock-in)"});
+        }
+        const int up = static_cast<int>(args[8]);
+        if (args[8] != up) {
+            return std::unexpected(
+                DomainError{"finance_barrier_option", "expected integer up (0=down, 1=up)"});
+        }
+        return finance::barrier_option(args[0], args[1], args[2], args[3], args[4], args[5],
+                                       call != 0, knock_in != 0, up != 0);
     }
     if (args.size() == 8 && fn == "cplx_cross_ratio") {
         const cplx::C z1{args[0], args[1]};
@@ -10598,6 +10757,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_nextprime(n) smallest prime strictly greater than n\n"
             "  name = numthy_prevprime(n) largest prime strictly less than n (0 if none)\n"
             "  name = numthy_liouville(n) Liouville function lambda(n): -1 or 1\n"
+            "  name = numthy_von_mangoldt(n) von Mangoldt function: ln(p) if n=p^k else 0\n"
+            "  name = numthy_jordan_totient(k,n) Jordan totient J_k(n)\n"
             "  name = numthy_prime_pi(n)  prime counting function pi(n)\n"
             "  name = numthy_prime_nth(n) nth prime (1-indexed)\n"
             "  name = numthy_legendre_symbol(a,p) Legendre symbol (a/p), p odd prime\n"
@@ -10772,6 +10933,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = finance_bs_rho(S,K,T,r,sigma,call) Black-Scholes rho (call: 0=put, 1=call)\n"
             "  name = finance_binomial_call(S,K,T,r,sigma,steps) binomial-tree call price\n"
             "  name = finance_binomial_put(S,K,T,r,sigma,steps) binomial-tree put price\n"
+            "  name = finance_capm(risk_free,beta,market_return) CAPM expected return\n"
+            "  name = finance_forward_rate(r1,t1,r2,t2) implied forward rate between t1 and t2\n"
+            "  name = finance_black76(F,K,T,r,sigma,call) Black-76 price on forward F (call: 0=put, 1=call)\n"
+            "  name = finance_digital_option(S,K,T,r,sigma,call,payout) cash-or-nothing digital option price (call: 0=put, 1=call)\n"
+            "  name = finance_american_option(S,K,T,r,sigma,call,steps) American option via binomial tree (call: 0=put, 1=call)\n"
+            "  name = finance_mc_european_call(S,K,T,r,sigma,n_paths,seed) Monte Carlo European call price\n"
+            "  name = finance_mc_european_put(S,K,T,r,sigma,n_paths,seed) Monte Carlo European put price\n"
+            "  name = finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed) Monte Carlo arithmetic Asian call price\n"
+            "  name = finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed) Monte Carlo arithmetic Asian put price\n"
+            "  name = finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up) European barrier option price (call/knock_in/up: 0 or 1)\n"
+            "  name = poly_bernstein(n,i,x) Bernstein basis polynomial B_n,i(x)\n"
             "  name = finance_bond_price(c,y,n,fv) bond price (annual coupon c, yield y, n periods, face fv)\n"
             "  name = finance_bond_duration(c,y,n) Macaulay duration (annual coupon c, yield y, n periods)\n"
             "  name = finance_bond_modified_duration(c,y,n) modified duration (annual coupon c, yield y, n periods)\n"
@@ -10879,11 +11051,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
-            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p)\n"
+            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
-            "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov)\n"
+            "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
             "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
@@ -13148,6 +13320,94 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const cplx::C z4{z4re, z4im};
             return std::to_string(cplx::cross_ratio(z1, z2, z3, z4)) + "\n";
         }
+        if (fn == "finance_mc_asian_call" || fn == "finance_mc_asian_put") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double n_paths_d = 0.0;
+            double n_steps_d = 0.0;
+            double seed_d = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), sigma) ||
+                !parse_number(trim(match[7].str()), n_paths_d) ||
+                !parse_number(trim(match[8].str()), n_steps_d) ||
+                !parse_number(trim(match[9].str()), seed_d)) {
+                return std::unexpected(DomainError{
+                    fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,n_steps,seed)"});
+            }
+            const int n_paths = static_cast<int>(n_paths_d);
+            if (n_paths < 0 || n_paths_d != n_paths) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer n_paths"});
+            }
+            const int n_steps = static_cast<int>(n_steps_d);
+            if (n_steps < 0 || n_steps_d != n_steps) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer n_steps"});
+            }
+            const auto seed = static_cast<unsigned>(seed_d);
+            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            }
+            if (fn == "finance_mc_asian_call") {
+                return std::to_string(finance::mc_asian_call(S, K, T, r, sigma, n_paths, n_steps,
+                                                              seed)) +
+                       "\n";
+            }
+            return std::to_string(
+                       finance::mc_asian_put(S, K, T, r, sigma, n_paths, n_steps, seed)) +
+                   "\n";
+        }
+    }
+
+    static const std::regex nonary(
+        R"((\w+)\(([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^)]+)\))",
+        std::regex::icase);
+    if (std::regex_match(cmd, match, nonary)) {
+        const std::string fn = lower(match[1].str());
+        if (fn == "finance_barrier_option") {
+            double S = 0.0;
+            double K = 0.0;
+            double B = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double call_d = 0.0;
+            double knock_in_d = 0.0;
+            double up_d = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), B) || !parse_number(trim(match[5].str()), T) ||
+                !parse_number(trim(match[6].str()), r) || !parse_number(trim(match[7].str()), sigma) ||
+                !parse_number(trim(match[8].str()), call_d) ||
+                !parse_number(trim(match[9].str()), knock_in_d) ||
+                !parse_number(trim(match[10].str()), up_d)) {
+                return std::unexpected(DomainError{
+                    "finance_barrier_option",
+                    "expected finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up)"});
+            }
+            const int call = static_cast<int>(call_d);
+            if (call_d != call) {
+                return std::unexpected(DomainError{
+                    "finance_barrier_option", "expected integer call (0=put, 1=call)"});
+            }
+            const int knock_in = static_cast<int>(knock_in_d);
+            if (knock_in_d != knock_in) {
+                return std::unexpected(DomainError{
+                    "finance_barrier_option",
+                    "expected integer knock_in (0=knock-out, 1=knock-in)"});
+            }
+            const int up = static_cast<int>(up_d);
+            if (up_d != up) {
+                return std::unexpected(DomainError{
+                    "finance_barrier_option", "expected integer up (0=down, 1=up)"});
+            }
+            return std::to_string(finance::barrier_option(S, K, B, T, r, sigma, call != 0,
+                                                           knock_in != 0, up != 0)) +
+                   "\n";
+        }
     }
 
     static const std::regex heptary(
@@ -13171,6 +13431,96 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"heun_g", "expected heun_g(a,q,alpha,beta,gamma,delta,z)"});
             }
             return std::to_string(heun_g(a, q, alpha, beta, gamma, delta, z)) + "\n";
+        }
+        if (fn == "finance_digital_option") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double call_d = 0.0;
+            double payout = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), sigma) ||
+                !parse_number(trim(match[7].str()), call_d) ||
+                !parse_number(trim(match[8].str()), payout)) {
+                return std::unexpected(DomainError{
+                    "finance_digital_option",
+                    "expected finance_digital_option(S,K,T,r,sigma,call,payout)"});
+            }
+            const int call = static_cast<int>(call_d);
+            if (call_d != call) {
+                return std::unexpected(DomainError{
+                    "finance_digital_option", "expected integer call (0=put, 1=call)"});
+            }
+            return std::to_string(
+                       finance::digital_option(S, K, T, r, sigma, call != 0, payout)) +
+                   "\n";
+        }
+        if (fn == "finance_american_option") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double call_d = 0.0;
+            double steps_d = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), sigma) ||
+                !parse_number(trim(match[7].str()), call_d) ||
+                !parse_number(trim(match[8].str()), steps_d)) {
+                return std::unexpected(DomainError{
+                    "finance_american_option",
+                    "expected finance_american_option(S,K,T,r,sigma,call,steps)"});
+            }
+            const int call = static_cast<int>(call_d);
+            if (call_d != call) {
+                return std::unexpected(DomainError{
+                    "finance_american_option", "expected integer call (0=put, 1=call)"});
+            }
+            const int steps = static_cast<int>(steps_d);
+            if (steps < 0 || steps_d != steps) {
+                return std::unexpected(DomainError{
+                    "finance_american_option", "expected non-negative integer steps"});
+            }
+            return std::to_string(
+                       finance::american_option(S, K, T, r, sigma, call != 0, steps)) +
+                   "\n";
+        }
+        if (fn == "finance_mc_european_call" || fn == "finance_mc_european_put") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double n_paths_d = 0.0;
+            double seed_d = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), sigma) ||
+                !parse_number(trim(match[7].str()), n_paths_d) ||
+                !parse_number(trim(match[8].str()), seed_d)) {
+                return std::unexpected(DomainError{
+                    fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,seed)"});
+            }
+            const int n_paths = static_cast<int>(n_paths_d);
+            if (n_paths < 0 || n_paths_d != n_paths) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer n_paths"});
+            }
+            const auto seed = static_cast<unsigned>(seed_d);
+            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
+                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            }
+            if (fn == "finance_mc_european_call") {
+                return std::to_string(
+                           finance::mc_european_call(S, K, T, r, sigma, n_paths, seed)) +
+                       "\n";
+            }
+            return std::to_string(finance::mc_european_put(S, K, T, r, sigma, n_paths, seed)) +
+                   "\n";
         }
     }
 
@@ -13653,6 +14003,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(finance::bs_delta(S, K, T, r, sigma, call != 0)) + "\n";
         }
+        if (fn == "finance_black76") {
+            double F = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double sigma = 0.0;
+            double call_d = 0.0;
+            if (!parse_number(trim(match[2].str()), F) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), sigma) ||
+                !parse_number(trim(match[7].str()), call_d)) {
+                return std::unexpected(DomainError{
+                    "finance_black76", "expected finance_black76(F,K,T,r,sigma,call)"});
+            }
+            const int call = static_cast<int>(call_d);
+            if (call_d != call) {
+                return std::unexpected(
+                    DomainError{"finance_black76", "expected integer call (0=put, 1=call)"});
+            }
+            return std::to_string(finance::black76(F, K, T, r, sigma, call != 0)) + "\n";
+        }
         if (fn == "finance_bs_implied_vol") {
             double price = 0.0;
             double S = 0.0;
@@ -13834,6 +14205,18 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const geo::Vec2D a{x1, y1};
             const geo::Vec2D b{x2, y2};
             return std::to_string(geo::cross2d(a, b)) + "\n";
+        }
+        if (fn == "finance_forward_rate") {
+            double r1 = 0.0;
+            double t1 = 0.0;
+            double r2 = 0.0;
+            double t2 = 0.0;
+            if (!parse_number(trim(match[2].str()), r1) || !parse_number(trim(match[3].str()), t1) ||
+                !parse_number(trim(match[4].str()), r2) || !parse_number(trim(match[5].str()), t2)) {
+                return std::unexpected(
+                    DomainError{"finance_forward_rate", "expected finance_forward_rate(r1,t1,r2,t2)"});
+            }
+            return std::to_string(finance::forward_rate(r1, t1, r2, t2)) + "\n";
         }
         if (fn == "cplx_hyperbolic_distance") {
             double z1re = 0.0;
@@ -14606,6 +14989,40 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "expected finance_continuous_compound(principal,rate,t)"});
             }
             return std::to_string(finance::continuous_compound(principal, rate, t)) + "\n";
+        }
+        if (fn == "finance_capm") {
+            double risk_free = 0.0;
+            double beta = 0.0;
+            double market_return = 0.0;
+            if (!parse_number(trim(match[2].str()), risk_free) ||
+                !parse_number(trim(match[3].str()), beta) ||
+                !parse_number(trim(match[4].str()), market_return)) {
+                return std::unexpected(DomainError{
+                    "finance_capm", "expected finance_capm(risk_free,beta,market_return)"});
+            }
+            return std::to_string(finance::capm(risk_free, beta, market_return)) + "\n";
+        }
+        if (fn == "poly_bernstein") {
+            double n_d = 0.0;
+            double i_d = 0.0;
+            double x = 0.0;
+            if (!parse_number(trim(match[2].str()), n_d) ||
+                !parse_number(trim(match[3].str()), i_d) ||
+                !parse_number(trim(match[4].str()), x)) {
+                return std::unexpected(
+                    DomainError{"poly_bernstein", "expected poly_bernstein(n,i,x)"});
+            }
+            const int n = static_cast<int>(n_d);
+            if (n < 0 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"poly_bernstein", "expected non-negative integer n"});
+            }
+            const int i = static_cast<int>(i_d);
+            if (i < 0 || i_d != i) {
+                return std::unexpected(
+                    DomainError{"poly_bernstein", "expected non-negative integer i"});
+            }
+            return std::to_string(poly::bernstein(n, i, x)) + "\n";
         }
         if (fn == "finance_pv") {
             double rate = 0.0;
@@ -16278,6 +16695,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                    "\n";
         }
 
+        if (fn == "numthy_jordan_totient") {
+            double k_d = 0.0;
+            double n_d = 0.0;
+            if (!parse_number(arg_a, k_d) || !parse_number(arg_b, n_d)) {
+                return std::unexpected(
+                    DomainError{"numthy_jordan_totient", "expected numthy_jordan_totient(k,n)"});
+            }
+            const int k = static_cast<int>(k_d);
+            if (k < 0 || k_d != k) {
+                return std::unexpected(
+                    DomainError{"numthy_jordan_totient", "expected non-negative integer k"});
+            }
+            if (n_d < 0.0 || std::floor(n_d) != n_d) {
+                return std::unexpected(
+                    DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
+            }
+            return std::to_string(numthy::jordan_totient(
+                       static_cast<uint32_t>(k), static_cast<uint64_t>(n_d))) +
+                   "\n";
+        }
+
         if (fn == "combo_combinations_with_rep") {
             double n_d = 0.0;
             double k_d = 0.0;
@@ -16907,6 +17345,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
             return std::to_string(numthy::primitive_root(p)) + "\n";
+        }
+
+        if (fn == "numthy_von_mangoldt") {
+            double n_d = 0.0;
+            if (!parse_number(arg, n_d) || n_d < 0.0 || std::floor(n_d) != n_d) {
+                return std::unexpected(
+                    DomainError{"numthy_von_mangoldt", "expected non-negative integer n"});
+            }
+            return std::to_string(numthy::von_mangoldt(static_cast<uint64_t>(n_d))) + "\n";
         }
 
         if (fn == "combo_factorial" || fn == "combo_catalan" || fn == "combo_bell" ||

@@ -4495,3 +4495,155 @@ TEST(ReplCommandsTest, wave105_numthy_discrete_log) {
 
     expect_contains(interp, "numthy_discrete_log(2, 8, 11)", "3");
 }
+
+TEST(ReplCommandsTest, wave194_numthy_von_mangoldt) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_von_mangoldt(n)");
+
+    // 8 = 2^3, so von Mangoldt(8) = ln(2).
+    expect_ok(interp, "vm = numthy_von_mangoldt(8)");
+    EXPECT_NEAR(interp.state().scalars.at("vm"), std::log(2.0), 1e-9);
+
+    expect_contains(interp, "numthy_von_mangoldt(8)", "0.693");
+}
+
+TEST(ReplCommandsTest, wave194_numthy_jordan_totient) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_jordan_totient(k,n)");
+
+    // J_2(6) = 36*(1-1/2)*(1-1/3) = 12.
+    expect_ok(interp, "jt = numthy_jordan_totient(2, 6)");
+    EXPECT_NEAR(interp.state().scalars.at("jt"), 12.0, 1e-9);
+
+    expect_contains(interp, "numthy_jordan_totient(2, 6)", "12");
+}
+
+TEST(ReplCommandsTest, wave194_poly_bernstein) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_bernstein(n,i,x)");
+
+    // B_{2,1}(0.5) = C(2,1)*0.5*0.5 = 0.5.
+    expect_ok(interp, "bn = poly_bernstein(2, 1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("bn"), 0.5, 1e-9);
+
+    expect_contains(interp, "poly_bernstein(2, 1, 0.5)", "0.5");
+}
+
+TEST(ReplCommandsTest, wave194_finance_capm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_capm(risk_free,beta,market_return)");
+
+    // 0.05 + 1.2 * (0.10 - 0.05) = 0.11.
+    expect_ok(interp, "capm = finance_capm(0.05, 1.2, 0.10)");
+    EXPECT_NEAR(interp.state().scalars.at("capm"), 0.11, 1e-9);
+
+    expect_contains(interp, "finance_capm(0.05, 1.2, 0.10)", "0.11");
+}
+
+TEST(ReplCommandsTest, wave194_finance_forward_rate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_forward_rate(r1,t1,r2,t2)");
+
+    // (0.06*2 - 0.05*1) / (2 - 1) = 0.07.
+    expect_ok(interp, "fr = finance_forward_rate(0.05, 1.0, 0.06, 2.0)");
+    EXPECT_NEAR(interp.state().scalars.at("fr"), 0.07, 1e-9);
+
+    expect_contains(interp, "finance_forward_rate(0.05, 1.0, 0.06, 2.0)", "0.07");
+}
+
+TEST(ReplCommandsTest, wave194_finance_black76) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_black76(F,K,T,r,sigma,call)");
+
+    // With F = S*exp(r*T) (S=100,r=0.05,T=1), black76 call == bs_call(100,100,1,0.05,0.2)
+    // == 10.450583572185565 (reused from the finance_bs_implied_vol precedent).
+    expect_ok(interp, "b76 = finance_black76(105.12710963760241, 100, 1, 0.05, 0.2, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("b76"), 10.450583572185565, 1e-6);
+
+    expect_contains(interp, "finance_black76(105.12710963760241, 100, 1, 0.05, 0.2, 1)", "10.45");
+}
+
+TEST(ReplCommandsTest, wave194_finance_digital_option) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_digital_option(S,K,T,r,sigma,call,payout)");
+
+    // Deep ITM call: price ~ payout * exp(-r*T) = exp(-0.05).
+    expect_ok(interp, "d = finance_digital_option(200, 100, 1, 0.05, 0.2, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("d"), std::exp(-0.05), 0.01);
+
+    expect_contains(interp, "finance_digital_option(200, 100, 1, 0.05, 0.2, 1, 1)", "0.9");
+}
+
+TEST(ReplCommandsTest, wave194_finance_american_option) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_american_option(S,K,T,r,sigma,call,steps)");
+
+    // American call without dividends should be close to the European (BS) call price.
+    expect_ok(interp, "am = finance_american_option(100, 100, 1, 0.05, 0.2, 1, 200)");
+    EXPECT_NEAR(interp.state().scalars.at("am"), 10.450583572185565, 1.0);
+
+    expect_contains(interp, "finance_american_option(100, 100, 1, 0.05, 0.2, 1, 200)", "\n");
+}
+
+TEST(ReplCommandsTest, wave194_finance_mc_european_call) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_mc_european_call(S,K,T,r,sigma,n_paths,seed)");
+
+    // Loose tolerance vs. the analytic BS call price: this checks REPL plumbing
+    // (right function/args/result), not Monte Carlo statistical accuracy.
+    expect_ok(interp, "mc = finance_mc_european_call(100, 100, 1, 0.05, 0.2, 20000, 7)");
+    EXPECT_GT(interp.state().scalars.at("mc"), 0.0);
+    EXPECT_NEAR(interp.state().scalars.at("mc"), 10.450583572185565, 3.0);
+
+    expect_contains(interp, "finance_mc_european_call(100, 100, 1, 0.05, 0.2, 20000, 7)", "\n");
+}
+
+TEST(ReplCommandsTest, wave194_finance_mc_european_put) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_mc_european_put(S,K,T,r,sigma,n_paths,seed)");
+
+    // bs_put(100,100,1,0.05,0.2) via put-call parity: bs_call - S + K*exp(-r*T).
+    const double bs_put_ref = 10.450583572185565 - 100.0 + 100.0 * std::exp(-0.05);
+    expect_ok(interp, "mc = finance_mc_european_put(100, 100, 1, 0.05, 0.2, 20000, 7)");
+    EXPECT_GT(interp.state().scalars.at("mc"), 0.0);
+    EXPECT_NEAR(interp.state().scalars.at("mc"), bs_put_ref, 3.0);
+
+    expect_contains(interp, "finance_mc_european_put(100, 100, 1, 0.05, 0.2, 20000, 7)", "\n");
+}
+
+TEST(ReplCommandsTest, wave194_finance_mc_asian_call) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed)");
+
+    // Arithmetic-average Asian call should be cheaper than the corresponding European call.
+    expect_ok(interp, "ac = finance_mc_asian_call(100, 100, 1, 0.05, 0.2, 20000, 50, 3)");
+    EXPECT_GT(interp.state().scalars.at("ac"), 0.0);
+    EXPECT_LT(interp.state().scalars.at("ac"), 10.450583572185565);
+
+    expect_contains(interp, "finance_mc_asian_call(100, 100, 1, 0.05, 0.2, 20000, 50, 3)", "\n");
+}
+
+TEST(ReplCommandsTest, wave194_finance_mc_asian_put) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed)");
+
+    expect_ok(interp, "ap = finance_mc_asian_put(90, 110, 1, 0.05, 0.25, 20000, 50, 3)");
+    EXPECT_GT(interp.state().scalars.at("ap"), 0.0);
+
+    expect_contains(interp, "finance_mc_asian_put(90, 110, 1, 0.05, 0.25, 20000, 50, 3)", "\n");
+}
+
+TEST(ReplCommandsTest, wave194_finance_barrier_option) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up)");
+
+    // Down-and-in + down-and-out call must reconstruct the vanilla call price.
+    expect_ok(interp, "ki = finance_barrier_option(100, 100, 90, 1, 0.05, 0.2, 1, 1, 0)");
+    expect_ok(interp, "ko = finance_barrier_option(100, 100, 90, 1, 0.05, 0.2, 1, 0, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("ki") + interp.state().scalars.at("ko"),
+                10.450583572185565, 1e-4);
+
+    // This also exercises the new 9-arg (nonary) regex literal-dispatch path added
+    // specifically for finance_barrier_option.
+    expect_contains(interp, "finance_barrier_option(100, 100, 90, 1, 0.05, 0.2, 1, 1, 0)", "\n");
+}
