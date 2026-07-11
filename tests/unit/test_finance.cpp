@@ -2,6 +2,7 @@
 #include "ms/finance/finance.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
+#include <random>
 #include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -1061,4 +1062,280 @@ TEST(FinanceMC, LookbackFixedEdgeCasesReturnZero) {
     EXPECT_EQ(mc_lookback_fixed_put(S, -1.0, T, r, sigma, 1000, 10), 0.0);
     EXPECT_EQ(mc_lookback_fixed_put(S, K, -1.0, r, sigma, 1000, 10), 0.0);
     EXPECT_EQ(mc_lookback_fixed_put(S, K, T, r, -0.1, 1000, 10), 0.0);
+}
+
+// --- Geometric-average Asian options (Kemna-Vorst closed form) ---
+namespace {
+// Monte Carlo cross-check for geo_asian_call/geo_asian_put: simulates the
+// SAME discrete-fixing convention (t_i=i*T/n_steps, i=1..n_steps, i.e.
+// n_steps fixings), tracking a running GEOMETRIC mean along the path instead
+// of the arithmetic mean mc_asian_call/mc_asian_put track. Mirrors mc_asian's
+// antithetic-variate structure and std::mt19937(seed) RNG convention.
+double mc_geo_asian(double S, double K, double T, double r, double sigma,
+                    int n_paths, int n_steps, unsigned seed, bool call) {
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd(0.0, 1.0);
+    double dt = T / static_cast<double>(n_steps);
+    double drift = (r - 0.5 * sigma * sigma) * dt;
+    double vol_sqrtdt = sigma * std::sqrt(dt);
+    std::vector<double> z(static_cast<size_t>(n_steps));
+
+    int n_draws = (n_paths + 1) / 2;
+    double sum = 0.0;
+    int used = 0;
+    for (int p = 0; p < n_draws; ++p) {
+        for (auto& zi : z) zi = nd(rng);
+
+        double s = S, log_sum = 0.0;
+        for (double zi : z) {
+            s *= std::exp(drift + vol_sqrtdt * zi);
+            log_sum += std::log(s);
+        }
+        double geo = std::exp(log_sum / n_steps);
+        double payoff1 = call ? std::max(geo - K, 0.0) : std::max(K - geo, 0.0);
+        sum += payoff1;
+        ++used;
+        if (used >= n_paths) break;
+
+        s = S; log_sum = 0.0;
+        for (double zi : z) {
+            s *= std::exp(drift - vol_sqrtdt * zi);
+            log_sum += std::log(s);
+        }
+        geo = std::exp(log_sum / n_steps);
+        double payoff2 = call ? std::max(geo - K, 0.0) : std::max(K - geo, 0.0);
+        sum += payoff2;
+        ++used;
+    }
+    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+}
+
+constexpr int kGeoMCPaths = 200000;
+constexpr int kGeoMCSteps = 50;
+constexpr double kGeoMCTol = 0.1;
+} // namespace
+
+TEST(FinanceGeoAsian, SingleFixingMatchesBSCall) {
+    // n_fixings=1 observes only S_T, so this must reduce EXACTLY to plain
+    // Black-Scholes (sigma_adj==sigma, mu_adj==r at n=1).
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double geo = geo_asian_call(S, K, T, r, sigma, 1);
+    double bs = bs_call(S, K, T, r, sigma);
+    EXPECT_NEAR(geo, bs, 1e-9);
+}
+
+TEST(FinanceGeoAsian, SingleFixingMatchesBSPut) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double geo = geo_asian_put(S, K, T, r, sigma, 1);
+    double bs = bs_put(S, K, T, r, sigma);
+    EXPECT_NEAR(geo, bs, 1e-9);
+}
+
+TEST(FinanceGeoAsian, ContinuousLimitCallConvergence) {
+    // As n_fixings -> infinity, sigma_adj -> sigma/sqrt(3) and
+    // mu_adj -> 0.5*(r - sigma^2/6): the classic continuous geometric-average
+    // closed form, computed independently here via black76 on that limiting
+    // forward/vol pair (no loop needed: the closed form is O(1) in n).
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double sigma_c = sigma / std::sqrt(3.0);
+    double mu_c = 0.5 * (r - sigma * sigma / 6.0);
+    double F_c = S * std::exp(mu_c * T);
+    double continuous = black76(F_c, K, T, r, sigma_c, true);
+    double discrete = geo_asian_call(S, K, T, r, sigma, 1000000);
+    EXPECT_NEAR(discrete, continuous, 1e-4);
+}
+
+TEST(FinanceGeoAsian, ContinuousLimitPutConvergence) {
+    double S = 110, K = 95, T = 2.0, r = 0.04, sigma = 0.35;
+    double sigma_c = sigma / std::sqrt(3.0);
+    double mu_c = 0.5 * (r - sigma * sigma / 6.0);
+    double F_c = S * std::exp(mu_c * T);
+    double continuous = black76(F_c, K, T, r, sigma_c, false);
+    double discrete = geo_asian_put(S, K, T, r, sigma, 2000000);
+    EXPECT_NEAR(discrete, continuous, 1e-3);
+}
+
+TEST(FinanceGeoAsian, CheaperThanVanillaEuropeanCall) {
+    // Averaging reduces effective volatility, so the geometric Asian call
+    // (like the arithmetic one) is always cheaper than the vanilla European
+    // call sharing the same spot/strike/maturity.
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double geo = geo_asian_call(S, K, T, r, sigma, 50);
+    double euro = bs_call(S, K, T, r, sigma);
+    EXPECT_LT(geo, euro);
+    EXPECT_GT(geo, 0.0);
+}
+
+TEST(FinanceGeoAsian, CheaperThanVanillaEuropeanPut) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.3;
+    double geo = geo_asian_put(S, K, T, r, sigma, 50);
+    double euro = bs_put(S, K, T, r, sigma);
+    EXPECT_LT(geo, euro);
+    EXPECT_GT(geo, 0.0);
+}
+
+TEST(FinanceGeoAsian, PutCallParity) {
+    // Same Black-76-style parity as the underlying formula:
+    // C - P = e^{-rT}*(F - K) for the synthetic geometric-average forward F.
+    double S = 100, K = 105, T = 1.0, r = 0.05, sigma = 0.25;
+    int n = 24;
+    double c = geo_asian_call(S, K, T, r, sigma, n);
+    double p = geo_asian_put(S, K, T, r, sigma, n);
+    double sigma_adj = sigma * std::sqrt((n + 1.0) * (2.0 * n + 1.0) / (6.0 * n * n));
+    double mu_adj = 0.5 * sigma_adj * sigma_adj +
+                    (n + 1.0) / (2.0 * n) * (r - 0.5 * sigma * sigma);
+    double F = S * std::exp(mu_adj * T);
+    EXPECT_NEAR(c - p, std::exp(-r * T) * (F - K), 1e-8);
+}
+
+TEST(FinanceGeoAsian, MonotoneDecreasingEffectiveVolWithFixings) {
+    // sigma_adj is monotonically decreasing in n (from sigma at n=1 down
+    // toward sigma/sqrt(3)); for an ATM call, price should therefore
+    // decrease monotonically as n_fixings increases.
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double prev = geo_asian_call(S, K, T, r, sigma, 1);
+    for (int n : {2, 4, 8, 16, 32, 64}) {
+        double cur = geo_asian_call(S, K, T, r, sigma, n);
+        EXPECT_LT(cur, prev);
+        prev = cur;
+    }
+}
+
+TEST(FinanceGeoAsian, ZeroOrNegativeFixingsClampsToOne) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double base = geo_asian_call(S, K, T, r, sigma, 1);
+    EXPECT_NEAR(geo_asian_call(S, K, T, r, sigma, 0), base, 1e-12);
+    EXPECT_NEAR(geo_asian_call(S, K, T, r, sigma, -5), base, 1e-12);
+}
+
+TEST(FinanceGeoAsian, ExpiredOptionReturnsIntrinsic) {
+    double S = 110, K = 100, T = 0.0, r = 0.05, sigma = 0.2;
+    EXPECT_NEAR(geo_asian_call(S, K, T, r, sigma, 10), 10.0, 1e-9);
+    EXPECT_NEAR(geo_asian_put(S, K, T, r, sigma, 10), 0.0, 1e-9);
+}
+
+TEST(FinanceGeoAsian, MatchesMonteCarloATM) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double closed = geo_asian_call(S, K, T, r, sigma, kGeoMCSteps);
+    double mc = mc_geo_asian(S, K, T, r, sigma, kGeoMCPaths, kGeoMCSteps, 42, true);
+    EXPECT_NEAR(closed, mc, kGeoMCTol);
+}
+
+TEST(FinanceGeoAsian, MatchesMonteCarloITMPut) {
+    double S = 90, K = 100, T = 1.0, r = 0.05, sigma = 0.25;
+    double closed = geo_asian_put(S, K, T, r, sigma, kGeoMCSteps);
+    double mc = mc_geo_asian(S, K, T, r, sigma, kGeoMCPaths, kGeoMCSteps, 43, false);
+    EXPECT_NEAR(closed, mc, kGeoMCTol);
+}
+
+TEST(FinanceGeoAsian, MatchesMonteCarloHighVol) {
+    double S = 100, K = 95, T = 0.5, r = 0.03, sigma = 0.4;
+    double closed = geo_asian_call(S, K, T, r, sigma, kGeoMCSteps);
+    double mc = mc_geo_asian(S, K, T, r, sigma, kGeoMCPaths, kGeoMCSteps, 44, true);
+    EXPECT_NEAR(closed, mc, kGeoMCTol);
+}
+
+// --- Trinomial tree option pricing (Boyle 1986) ---
+TEST(FinanceTrinomial, EuropeanCallConvergesToBS_ATM) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double bs = bs_call(S, K, T, r, sigma);
+    double tri = trinomial_option(S, K, T, r, sigma, 300, true, false);
+    EXPECT_NEAR(tri, bs, 1e-2);
+}
+
+TEST(FinanceTrinomial, EuropeanPutConvergesToBS_ATM) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double bs = bs_put(S, K, T, r, sigma);
+    double tri = trinomial_option(S, K, T, r, sigma, 300, false, false);
+    EXPECT_NEAR(tri, bs, 1e-2);
+}
+
+TEST(FinanceTrinomial, EuropeanCallConvergesToBS_ITM) {
+    double S = 120, K = 100, T = 0.5, r = 0.03, sigma = 0.25;
+    double bs = bs_call(S, K, T, r, sigma);
+    double tri = trinomial_option(S, K, T, r, sigma, 300, true, false);
+    EXPECT_NEAR(tri, bs, 1e-2);
+}
+
+TEST(FinanceTrinomial, EuropeanPutConvergesToBS_ITM) {
+    double S = 80, K = 100, T = 0.5, r = 0.03, sigma = 0.25;
+    double bs = bs_put(S, K, T, r, sigma);
+    double tri = trinomial_option(S, K, T, r, sigma, 300, false, false);
+    EXPECT_NEAR(tri, bs, 1e-2);
+}
+
+TEST(FinanceTrinomial, EuropeanCallConvergesToBS_OTM) {
+    double S = 90, K = 110, T = 1.0, r = 0.04, sigma = 0.3;
+    double bs = bs_call(S, K, T, r, sigma);
+    double tri = trinomial_option(S, K, T, r, sigma, 300, true, false);
+    EXPECT_NEAR(tri, bs, 1e-2);
+}
+
+TEST(FinanceTrinomial, EuropeanPutConvergesToBS_OTM) {
+    double S = 110, K = 90, T = 1.0, r = 0.04, sigma = 0.3;
+    double bs = bs_put(S, K, T, r, sigma);
+    double tri = trinomial_option(S, K, T, r, sigma, 300, false, false);
+    EXPECT_NEAR(tri, bs, 1e-2);
+}
+
+TEST(FinanceTrinomial, EuropeanPutCallParity) {
+    double S = 100, K = 105, T = 1.0, r = 0.05, sigma = 0.2;
+    double c = trinomial_option(S, K, T, r, sigma, 200, true, false);
+    double p = trinomial_option(S, K, T, r, sigma, 200, false, false);
+    EXPECT_NEAR(c - p, S - K * std::exp(-r * T), 0.05);
+}
+
+TEST(FinanceTrinomial, AmericanCallEqualsEuropeanNonDividend) {
+    // Non-dividend-paying American call is never optimally exercised early,
+    // so American == European exactly (same equality american_option and
+    // binomial_call already exhibit for the binomial tree).
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 300;
+    double euro = trinomial_option(S, K, T, r, sigma, steps, true, false);
+    double amer = trinomial_option(S, K, T, r, sigma, steps, true, true);
+    EXPECT_NEAR(amer, euro, 1e-9);
+}
+
+TEST(FinanceTrinomial, AmericanPutEarlyExercisePremium) {
+    double S = 80, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 300;
+    double euro = trinomial_option(S, K, T, r, sigma, steps, false, false);
+    double amer = trinomial_option(S, K, T, r, sigma, steps, false, true);
+    EXPECT_GE(amer, euro - 1e-10);
+    EXPECT_GT(amer - euro, 1.0);  // clear early-exercise premium, deep ITM put
+}
+
+TEST(FinanceTrinomial, CrossCheckBinomialEuropeanCall) {
+    // Both are discretizations of the same continuous-time GBM process, so
+    // they should agree closely (generous tolerance since the discretization
+    // grids differ: binary vs ternary branching).
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 250;
+    double tri = trinomial_option(S, K, T, r, sigma, steps, true, false);
+    double bin = binomial_call(S, K, T, r, sigma, steps);
+    EXPECT_NEAR(tri, bin, 0.02 * bin);
+}
+
+TEST(FinanceTrinomial, CrossCheckBinomialEuropeanPut) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 250;
+    double tri = trinomial_option(S, K, T, r, sigma, steps, false, false);
+    double bin = binomial_put(S, K, T, r, sigma, steps);
+    EXPECT_NEAR(tri, bin, 0.02 * bin);
+}
+
+TEST(FinanceTrinomial, CrossCheckBinomialAmericanPut) {
+    double S = 80, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 250;
+    double tri = trinomial_option(S, K, T, r, sigma, steps, false, true);
+    double bin = american_option(S, K, T, r, sigma, false, steps);
+    EXPECT_NEAR(tri, bin, 0.02 * bin);
+}
+
+TEST(FinanceTrinomial, CrossCheckBinomialAmericanCall) {
+    double S = 120, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    int steps = 250;
+    double tri = trinomial_option(S, K, T, r, sigma, steps, true, true);
+    double bin = american_option(S, K, T, r, sigma, true, steps);
+    EXPECT_NEAR(tri, bin, 0.02 * bin);
 }
