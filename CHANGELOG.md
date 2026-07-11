@@ -3,6 +3,26 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0] — 2026-07-11 (Wave 182 — REPL Session-Object Registry, RNG Statistical Hardening, Prob Distribution Gaps)
+
+### Added (Wave 182)
+- REPL: **session-object registry** — the `Interpreter` now holds a `std::variant`-backed `std::map<std::string, ...>` of named, persistent, stateful framework objects, the first mechanism in the REPL for referencing a C++ object (as opposed to a matrix/scalar variable) across multiple commands. Wired the three simplest previously-unexposed stateful classes:
+  - `bloom_new(handle, expected_items, fp_rate)` / `bloom_insert(handle, "item")` / `bloom_check(handle, "item")` — `ms::izaac::bloom::BloomFilter`
+  - `tokenbucket_new(handle, capacity, refill_rate)` / `tokenbucket_consume(handle, tokens, now)` / `tokenbucket_available(handle, now)` — `ms::izaac::ratelimit::TokenBucket`
+  - `cellmemory_new(handle, input_dim, memory_dim, [time_scales])` / `cellmemory_step(handle, input)` / `cellmemory_recall(handle, time_scale)` / `cellmemory_consolidate(handle)` — `ms::cellai::CellMemory`
+  - `session_objects()` (list all handles + types) / `session_object_clear(handle)` (free a handle) for introspection/lifecycle management
+  - Clear errors for: unseeded session RNG (bloom filter creation), handle not found, and handle-exists-but-wrong-type. New `tests/integration/test_session_objects_repl_pipeline.cpp`; fuzz corpus seeds for all 11 new commands; help text updated. Manually verified full bloom/token-bucket/cell-memory lifecycles end-to-end via `mathscriptc`.
+- `tests/unit/test_rng_statistical_quality.cpp` — 20 new regression tests directly targeting the failure mode of the Wave 181 CSPRNG bug (which existing range/finiteness checks never caught): chi-square goodness-of-fit uniformity test on `CSPRNG::next_f64()`, two-sample Kolmogorov-Smirnov and Mann-Whitney consistency between differently-seeded streams, lag-1 serial-correlation check (guards against the "only 8/32 state bytes mutated" failure mode specifically), single-bit seed avalanche/diffusion check, `mc::estimate_pi` accuracy across 5 seeds at n=200,000 (tight ~3σ tolerance), `diffpriv::laplace_mechanism`/`gaussian_mechanism` empirical mean/variance vs. theoretical formulas, and `randn_matrix` normality checks.
+- `ms::prob`: `gamma_cdf` (regularized lower incomplete gamma), `beta_pdf`/`beta_cdf` (regularized incomplete beta), `f_pdf`/`f_cdf` (F-distribution via the incomplete-beta identity) — filling the last gap among the module's standard continuous distributions, reusing existing `ms::special` incomplete-gamma/incomplete-beta primitives rather than reimplementing series expansions. Verified against exact distributional identities: `beta_pdf/cdf(·,1,1)` ≡ Uniform(0,1), `gamma_cdf(·,1,scale)` ≡ Exponential(1/scale), and `f_cdf(t², 1, df)` ≡ `2·t_cdf(t, df) − 1` for t > 0 — extends `tests/unit/test_prob_adv3.cpp`.
+- `docs/API.md`: synced entries for Wave 181 additions (13 framework REPL bindings, `GaussianMixture`, `welch_psd`/`spectrogram`, `bootstrap_ci`) and the new Wave 182 `ms::prob` functions.
+- Tag checklist suite count updated 358→360.
+- **Total Wave 182: 360 CTest suites — all passing**
+
+### Follow-up (not in this wave)
+- The session-object registry currently covers only `BloomFilter`/`TokenBucket`/`CellMemory`; `DifModel` and `izaac::consensus::Cluster` (more complex constructor/method signatures) remain unwired but can now reuse the same registry mechanism.
+- `ms::stats::one_way_anova`'s p-value computation may duplicate incomplete-beta F-distribution logic inline that could now be refactored to call the new `ms::prob::f_cdf` — noted by the implementing subagent, not done this wave to keep the change additive-only.
+- The formula bridge still doesn't cover `ode_backward_euler_vec`, `ode_bvp_shooting`, `ode_dde_fixed_step`, `ode_event_detect`, or `ode_dae_index1`.
+
 ## [1.0.0] — 2026-07-11 (Wave 181 — Framework REPL Bindings, GMM, Spectral Analysis, Bootstrap CI, CSPRNG Quality Fix)
 
 ### Fixed (Wave 181) — critical

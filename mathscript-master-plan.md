@@ -7623,6 +7623,19 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       via manual smoke-testing when izaac_estimate_pi returned 4.0/3.0 instead of ~3.14159;
       affected statistical correctness of every RNG consumer added Waves 176-180); docs/API.md
       synced through Wave 180; tag checklist 357→358 (358 suites, 100% passing).
+      Wave 182: REPL session-object registry (std::variant-backed named-handle store on
+      Interpreter) — first REPL mechanism for referencing persistent stateful C++ objects
+      (vs. matrix/scalar variables); wired BloomFilter/TokenBucket/CellMemory via
+      bloom_new/insert/check, tokenbucket_new/consume/available, cellmemory_new/step/
+      recall/consolidate, plus session_objects()/session_object_clear() introspection;
+      20 new statistical-quality regression tests (chi-square uniformity, two-sample KS,
+      lag-1 serial correlation, seed avalanche, Monte Carlo pi accuracy across seeds) for
+      ms::izaac::CSPRNG and RNG-dependent sampling functions, directly targeting the Wave
+      181 bug's failure mode so it cannot silently regress; ms::prob gamma_cdf/beta_pdf/
+      beta_cdf/f_pdf/f_cdf (reusing existing ms::special incomplete-gamma/incomplete-beta
+      primitives), verified against exact distributional identities (Beta(1,1)=Uniform,
+      Gamma(1,scale)=Exponential, F(1,df) vs t^2); docs/API.md synced through Wave 181;
+      tag checklist 358→360 (360 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7630,8 +7643,12 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       ode_dde_fixed_step/ode_event_detect/ode_dae_index1 (these have more complex
       multi-callback or boundary-condition signatures needing further formula-bridge design
       beyond the single/multi-formula convention used so far — tracked as the concrete next step).
-      REPL exposure for stateful framework classes (DifModel/CellMemory/BloomFilter/
-      TokenBucket/consensus::Cluster) — needs a session-object registry that doesn't exist yet.
+      REPL exposure for the remaining stateful framework classes (DifModel/consensus::Cluster)
+      — can now reuse the session-object registry mechanism introduced in Wave 182 for
+      BloomFilter/TokenBucket/CellMemory.
+      ms::stats::one_way_anova's inline incomplete-beta F-distribution p-value logic could be
+      refactored to call the new ms::prob::f_cdf (Wave 182) instead of duplicating it — minor
+      cleanup, not done yet to keep changes additive-only.
       ms::izaac military namespace and full generic MPC beyond secret sharing (need a much
       larger, dedicated protocol-design effort — out of scope for an incremental wave).
       Axiom::evolve mutation still perturbs fitness directly rather than mutating the
