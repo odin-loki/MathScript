@@ -20,6 +20,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `core/expr.hpp` | CRTP expression templates for lazy matrix evaluation |
 | `core/operations.hpp` | High-level `matmul`, `lu`, `qr`, `solve`, and related `Result<>` wrappers |
 | `core/rng.hpp` | Session RNG hooks (`set_session_rng`, `session_uniform`, `session_normal`) |
+| `core/checked_arith.hpp` | Overflow-safe `checked_add`/`sub`/`mul`/`div`/`mod`/`neg`/`abs`/`pow` (`Result<T>`), `saturating_add`/`sub`/`mul`, `wrapping_add`/`sub`/`mul`, float introspection (`is_nan`/`is_inf`/`is_finite`/`is_normal`/`signbit`/`ulp`/`eps`/`huge`/`tiny`), checked `narrow`/`widen` casts — Wave 191 |
 
 ## Linear Algebra (`include/ms/linalg/`)
 
@@ -90,7 +91,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `combo/combo.hpp` | Factorials and derangements, binomial/multinomial/permutations, `next_perm`/`next_comb`, rank/unrank, enumeration (`all_permutations`, `all_subsets`, `all_partitions`), Stirling/Bell/Catalan/Motzkin numbers |
+| `combo/combo.hpp` | Factorials and derangements, binomial/multinomial/permutations, `next_perm`/`next_comb`, rank/unrank, enumeration (`all_permutations`, `all_subsets`, `all_partitions`), Stirling/Bell/Catalan/Motzkin numbers, plus `set_partitions`/`involutions`/`dyck_paths`/`motzkin_paths`/`necklaces`/`lyndon_words` — Wave 191 |
 
 ## Information Theory — Wave 57 (`include/ms/info/`)
 
@@ -168,7 +169,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `compress/compress.hpp` | RLE, Huffman, LZ77, LZW, BWT/MTF, delta coding, bzip2-like pipeline, bit-pack helpers |
+| `compress/compress.hpp` | RLE, Huffman, LZ77, LZW, BWT/MTF, delta coding, bzip2-like pipeline, bit-pack helpers, plus `arithmetic_encode`/`arithmetic_decode` range coding — Wave 191 |
 
 ## Bignum — Wave 60 (`include/ms/bignum/`)
 

@@ -7782,6 +7782,34 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       larger separate undertaking, similar scale to FEM/CFD). tag checklist stays at 364 (67 new
       test cases added to existing test_poly_ext/test_image/test_bignum binaries; suite count
       unchanged; 364 suites, 100% passing).
+      Wave 191: closed the LAST three modules tracked for the systematic spec-vs-implementation
+      cross-check (ms::core, ms::combo, ms::compress). New ms::core module
+      (include/ms/core/checked_arith.hpp) gains checked_add/sub/mul/div/mod/neg/abs/pow (type-
+      generic, returning Result<T> with OverflowError/DomainError instead of UB on overflow/div-
+      by-zero/INT_MIN-negation), saturating_add/sub/mul and wrapping_add/sub/mul, float
+      introspection (is_nan/is_inf/is_finite/is_normal/signbit/ulp/eps/huge/tiny), and checked
+      narrow/widen casts — MathScript's first dedicated overflow-safety primitives (new
+      test_checked_arith CTest registration, 42 tests). ms::combo gains 6 ENUMERATION functions
+      (as opposed to the module's existing counting-only functions) — set_partitions (verified
+      count==bell_num), involutions (recurrence I(n)=I(n-1)+(n-1)*I(n-2)), dyck_paths (verified
+      count==catalan_num), motzkin_paths (verified count==motzkin_num), necklaces (rotation-
+      equivalence dedup), and lyndon_words (aperiodic necklaces, verified subset of necklaces with
+      strictly fewer elements for composite n). ms::compress gains arithmetic_encode/decode — a
+      byte-oriented Subbotin/Schindler-style integer range coder (64-bit low accumulator, 32-bit
+      range/code, underflow avoided via range-clamping at renormalization rather than explicit
+      carry/pending-bit tracking), the entropy-optimal companion to the existing huffman_encode;
+      verified via round-trip on skewed/uniform/random-looking/all-256-distinct/sparse-high-byte
+      inputs, a Shannon-entropy-bound compression-ratio check, and a head-to-head bit-count
+      comparison showing it matches-or-beats Huffman on skewed text. NOTE: an intermediate bit-
+      oriented range-coder draft had a subtle unsigned-integer-wraparound bug in its
+      `while (pending--) write_bit(...)` countdown idiom — the final failing check's postfix-
+      decrement side effect wrapped `pending` from 0 to UINT32_MAX instead of leaving it at 0,
+      and a later reuse of that corrupted counter caused an effective infinite loop (~4 billion
+      redundant bit-writes) on specific inputs (e.g. the skewed-English-text test case); the
+      shipped implementation avoids the whole idiom by using an explicit byte-oriented range
+      coder instead. tag checklist bumped to 365 (1 new CTest registration: test_checked_arith;
+      36 more new test cases added to existing test_combo/test_compress binaries; 365 suites,
+      100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7822,10 +7850,13 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       mathscript-master-plan.md's original per-module spec lists (2.x sections) contain many
       more exotic entries (Painlevé transcendents, Heun functions, Meijer G/Fox H, Mathieu/
       spheroidal wave functions, FEM, CFD) likely deliberately descoped as impractical for a
-      general-purpose CAS — the spec-vs-implementation cross-check technique from Waves 187-190
-      (now applied to 11 modules) remains worth repeating for OTHER mature modules not yet
-      checked (ms::combo, ms::compress's arithmetic coding/ANS, ms::sym, ms::core), while
-      continuing to skip these high-risk/exotic entries.
+      general-purpose CAS — the spec-vs-implementation cross-check technique from Waves 187-191
+      (now applied to 14 modules, covering every mature module in the original spec except
+      ms::sym's full symbolic-CAS surface and ms::bignum's APFloat/APComplex, both explicitly
+      out of scope for a fundamental-rewrite-scale reason) has now run its course as the primary
+      wave-planning driver — future waves will likely shift toward REPL-surface completeness,
+      fuzz-corpus expansion, or the still-pending fuzz-marathon/packaging items, while continuing
+      to skip high-risk/exotic entries.
       With the ODE REPL formula-bridge, stateful-class REPL exposure, the Axiom/
       PrimitiveRegistry mismatch, the Wave 182-185 pure-function REPL backlog, and the
       tensor-decomposition REPL gap all now resolved (Waves 182-187), no single large concrete
