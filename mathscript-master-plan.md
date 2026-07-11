@@ -7763,6 +7763,25 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       continued_fraction, to avoid precision loss; verified against known D=2/3/5/7/13/61
       solutions). tag checklist stays at 364 (67 new test cases added to existing test_graph/
       test_finance/test_numthy binaries; suite count unchanged; 364 suites, 100% passing).
+      Wave 190: continued the spec-vs-implementation cross-check across three MORE modules.
+      ms::poly gains poly_pow/monic/reverse/shift/scale/lcm (compositions of existing
+      mul/gcd/div_quot/deriv) and, most significantly, poly_sylvester/resultant/discriminant/
+      squarefree (resultant verified zero iff p,q share a root; discriminant verified against
+      the closed-form quadratic b^2-4ac and zero-iff-repeated-root) plus bernstein (verified via
+      partition-of-unity); ALSO fixed poly_mod/div_quot/gcd's termination logic to handle near-
+      zero (not just exactly-zero) leading coefficients during repeated-root GCD, needed for the
+      discriminant/squarefree repeated-root test cases — verified the existing poly suite still
+      passes unchanged. ms::image gains roberts/laplacian_of_gaussian/imgradient_morph
+      (compositions of existing filters) and shi_tomasi/iradon (min-eigenvalue corner detection
+      sharing harris's structure tensor; inverse Radon via unfiltered backprojection matching
+      radon's convention, verified via round-trip reconstruction). ms::bignum gains
+      bigint_extended_gcd (Bezout, verified a*x+b*y=g including negative inputs),
+      bigint_bit_length/is_even/is_odd, base-2/8/16 string I/O (verified round-trip + hand-
+      checked conversions), and Rational::floor/ceil/round (verified correct negative-number
+      semantics, e.g. floor(-3/2)==-2). APFloat/APComplex remain explicitly out of scope (much
+      larger separate undertaking, similar scale to FEM/CFD). tag checklist stays at 364 (67 new
+      test cases added to existing test_poly_ext/test_image/test_bignum binaries; suite count
+      unchanged; 364 suites, 100% passing).
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
@@ -7789,13 +7808,24 @@ REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       two-squares) and stern_brocot (tree structure); partition_list is arguably already
       covered by ms::combo::all_partitions. All deferred as individually larger/riskier than
       Wave 189's picks.
+      ms::bignum's spec section still lists APFloat/APComplex arbitrary-precision floating point
+      (full Chudnovsky-algorithm transcendental support) — a substantially larger, separate
+      undertaking, similar in scale to FEM/CFD, deliberately out of scope for an incremental
+      wave. ms::image's spec section still lists SIFT/SURF/ORB descriptors, watershed/graph-cut/
+      SLIC segmentation, and marching-cubes isosurface extraction. ms::poly's spec section still
+      lists factor/factor_zz (polynomial factorization over Q/R/C/Fp) and sturm/interp_newton/
+      interp_hermite (the latter two arguably covered in spirit by existing poly_lagrange/
+      poly_fit). ms::crypto (SHA/AES/ChaCha/Curve25519/RSA) does not exist as a standalone
+      module — crypto primitives are intentionally routed through ms::izaac instead; a full
+      independent crypto-primitive library carries correctness/security risk disproportionate
+      to an incremental wave and is not planned.
       mathscript-master-plan.md's original per-module spec lists (2.x sections) contain many
       more exotic entries (Painlevé transcendents, Heun functions, Meijer G/Fox H, Mathieu/
       spheroidal wave functions, FEM, CFD) likely deliberately descoped as impractical for a
-      general-purpose CAS — the spec-vs-implementation cross-check technique from Waves 187-189
-      remains worth repeating for OTHER mature modules not yet checked (ms::combo, ms::poly,
-      ms::bignum, ms::crypto, ms::compress, ms::image), while continuing to skip these high-
-      risk/exotic entries.
+      general-purpose CAS — the spec-vs-implementation cross-check technique from Waves 187-190
+      (now applied to 11 modules) remains worth repeating for OTHER mature modules not yet
+      checked (ms::combo, ms::compress's arithmetic coding/ANS, ms::sym, ms::core), while
+      continuing to skip these high-risk/exotic entries.
       With the ODE REPL formula-bridge, stateful-class REPL exposure, the Axiom/
       PrimitiveRegistry mismatch, the Wave 182-185 pure-function REPL backlog, and the
       tensor-decomposition REPL gap all now resolved (Waves 182-187), no single large concrete

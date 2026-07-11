@@ -76,7 +76,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye`; `erfinv`/`erfcinv`, `trigamma`/`polygamma`, `pochhammer`/`falling_factorial`, `rgamma`, and the public canonical `gamma_inc_reg`/`gamma_inc_reg_upper`/`gamma_inc`/`beta_inc_reg`/`beta_inc` (also used internally by `ms::prob`'s `gamma_cdf`/`beta_cdf`/`f_cdf`/`chi2_cdf`) |
 | `ode/ode.hpp` | Scalar/vector IVP solvers: `ode_euler`, `ode_rk4`, `ode_midpoint`, `ode_rk2`, `ode_rk45`, `ode_rk23`, `ode_adams_bashforth2`, `ode_euler_vec`, `ode_rk4_vec`, `ode_rk45_vec`; symplectic: `ode_verlet`, `ode_verlet_vec`; stiff/implicit: `ode_backward_euler`, `ode_backward_euler_vec`, `ode_bdf2` (BDF2 multistep, A-stable, bootstraps first step via BDF1); BVP: `ode_bvp_shooting`; DDE: `ode_dde_fixed_step`; events: `ode_event_detect`; DAE: `ode_dae_index1` |
 | `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson, unconditionally stable), `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d`, `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d`, `pde_reaction_diffusion_1d` (Fisher-KPP, zero-flux Neumann BC) with CFL/stability guards |
-| `poly/poly.hpp` | Polynomial eval, add/sub/mul, derivative on coefficient vectors |
+| `poly/poly.hpp` | Polynomial eval, add/sub/mul/div/mod, derivative/integral, composition, GCD/LCM on coefficient vectors; `poly_pow`/`monic`/`reverse`/`shift`/`scale`; `poly_sylvester`/`resultant`/`discriminant`/`squarefree`; `bernstein` basis evaluation |
 | `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals) |
 | `domain/domain.hpp` | `factorial`, `nchoosek`, `gcd`, and `Graph` edge counting |
 
@@ -162,7 +162,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `image/image.hpp` | `Image` buffer, RGB/HSV conversion, resize/crop/flip/rotate, Gaussian/median/bilateral filters, Sobel/Canny/Laplacian edges, morphology, Otsu/adaptive threshold, histogram equalisation, Harris corners, connected components |
+| `image/image.hpp` | `Image` buffer, RGB/HSV conversion, resize/crop/flip/rotate, Gaussian/median/bilateral filters, Sobel/Canny/Laplacian/Roberts/LoG edges, morphology (incl. `imgradient_morph`), Otsu/adaptive threshold, histogram equalisation, Harris/Shi-Tomasi corners, Radon/inverse-Radon (`iradon`), connected components |
 
 ## Compression — Wave 60 (`include/ms/compress/`)
 
@@ -174,7 +174,7 @@ Public headers live under `include/ms/`. Include paths use the `ms/...` prefix (
 
 | Header | Description |
 |--------|-------------|
-| `bignum/bignum.hpp` | `BigInt` and `Rational` arbitrary-precision arithmetic, `bigint_gcd`/`lcm`/`pow`/`pow_mod`, factorial, Fibonacci, Miller–Rabin primality |
+| `bignum/bignum.hpp` | `BigInt` and `Rational` arbitrary-precision arithmetic, `bigint_gcd`/`extended_gcd`/`lcm`/`pow`/`pow_mod`, `bit_length`/`is_even`/`is_odd`, base-2/8/10/16 string I/O, factorial, Fibonacci, Miller–Rabin primality, `Rational::floor`/`ceil`/`round` |
 
 ## SIMD (`include/ms/simd/`)
 
