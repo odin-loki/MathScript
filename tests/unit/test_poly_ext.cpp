@@ -340,3 +340,161 @@ TEST(PolyExtTest, bernstein_partition_of_unity) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// interp_newton
+// ---------------------------------------------------------------------------
+
+TEST(PolyExtTest, newton_matches_lagrange_three_points) {
+    const std::vector<double> xs{0.0, 1.0, 2.0};
+    const std::vector<double> ys{1.0, 3.0, 7.0};
+    const auto pn = interp_newton(xs, ys);
+    const auto pl = poly_lagrange(xs, ys);
+    for (double x : {-1.0, 0.5, 1.5, 3.0, 10.0}) {
+        EXPECT_NEAR(eval_at(pn, x), eval_at(pl, x), 1e-9) << "x=" << x;
+    }
+}
+
+TEST(PolyExtTest, newton_matches_lagrange_four_points) {
+    const std::vector<double> xs{-1.0, 0.0, 1.0, 2.0};
+    const std::vector<double> ys{2.0, 1.0, 0.0, 5.0};
+    const auto pn = interp_newton(xs, ys);
+    const auto pl = poly_lagrange(xs, ys);
+    for (double x : {-2.0, -0.5, 0.75, 1.5, 4.0}) {
+        EXPECT_NEAR(eval_at(pn, x), eval_at(pl, x), 1e-9) << "x=" << x;
+    }
+}
+
+TEST(PolyExtTest, newton_matches_lagrange_five_points) {
+    const std::vector<double> xs{0.0, 1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> ys{1.0, 2.0, 0.0, -3.0, 5.0};
+    const auto pn = interp_newton(xs, ys);
+    const auto pl = poly_lagrange(xs, ys);
+    for (double x : {-1.0, 0.5, 2.5, 3.5, 6.0}) {
+        EXPECT_NEAR(eval_at(pn, x), eval_at(pl, x), 1e-8) << "x=" << x;
+    }
+}
+
+TEST(PolyExtTest, newton_reproduces_input_points_three) {
+    const std::vector<double> xs{0.0, 1.0, 2.0};
+    const std::vector<double> ys{1.0, 3.0, 7.0};
+    const auto p = interp_newton(xs, ys);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_NEAR(eval_at(p, xs[i]), ys[i], 1e-9) << "i=" << i;
+    }
+}
+
+TEST(PolyExtTest, newton_reproduces_input_points_four) {
+    const std::vector<double> xs{-2.0, -0.5, 1.0, 3.0};
+    const std::vector<double> ys{4.0, -1.0, 2.0, 9.0};
+    const auto p = interp_newton(xs, ys);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_NEAR(eval_at(p, xs[i]), ys[i], 1e-8) << "i=" << i;
+    }
+}
+
+TEST(PolyExtTest, newton_reproduces_input_points_five) {
+    const std::vector<double> xs{-1.0, 0.0, 1.0, 2.5, 4.0};
+    const std::vector<double> ys{3.0, -2.0, 0.0, 5.0, 1.0};
+    const auto p = interp_newton(xs, ys);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_NEAR(eval_at(p, xs[i]), ys[i], 1e-7) << "i=" << i;
+    }
+}
+
+TEST(PolyExtTest, newton_single_point_is_constant) {
+    const auto p = interp_newton({3.0}, {9.0});
+    ASSERT_EQ(p.size(), 1u);
+    EXPECT_NEAR(p[0], 9.0, 1e-12);
+    EXPECT_NEAR(eval_at(p, 100.0), 9.0, 1e-12);
+}
+
+TEST(PolyExtTest, newton_two_points_is_line) {
+    // through (0,1) and (2,5): slope 2, p(x) = 1 + 2x
+    const auto p = interp_newton({0.0, 2.0}, {1.0, 5.0});
+    expect_poly_near(p, {1.0, 2.0});
+}
+
+TEST(PolyExtTest, newton_empty_input_returns_empty) {
+    EXPECT_TRUE(interp_newton({}, {}).empty());
+}
+
+TEST(PolyExtTest, newton_size_mismatch_returns_empty) {
+    EXPECT_TRUE(interp_newton({0.0, 1.0}, {1.0}).empty());
+}
+
+TEST(PolyExtTest, newton_duplicate_xs_returns_empty) {
+    EXPECT_TRUE(interp_newton({1.0, 1.0, 2.0}, {1.0, 2.0, 3.0}).empty());
+}
+
+// ---------------------------------------------------------------------------
+// interp_hermite
+// ---------------------------------------------------------------------------
+
+TEST(PolyExtTest, hermite_tangent_line_single_point) {
+    // p(x) = 5 + 3*(x-2) = -1 + 3x
+    const auto p = interp_hermite({2.0}, {5.0}, {3.0});
+    expect_poly_near(p, {-1.0, 3.0});
+    EXPECT_NEAR(eval_at(p, 2.0), 5.0, 1e-12);
+    EXPECT_NEAR(eval_at(poly_deriv(p), 2.0), 3.0, 1e-12);
+}
+
+TEST(PolyExtTest, hermite_reproduces_values_and_derivatives_two_points_cubic) {
+    // f(x) = x^3, f'(x) = 3x^2, sampled at x = 1, 2
+    const std::vector<double> xs{1.0, 2.0};
+    const std::vector<double> ys{1.0, 8.0};
+    const std::vector<double> dys{3.0, 12.0};
+    const auto p = interp_hermite(xs, ys, dys);
+    const auto dp = poly_deriv(p);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_NEAR(eval_at(p, xs[i]), ys[i], 1e-8) << "i=" << i;
+        EXPECT_NEAR(eval_at(dp, xs[i]), dys[i], 1e-7) << "i=" << i;
+    }
+}
+
+TEST(PolyExtTest, hermite_reproduces_values_and_derivatives_three_points_cubic) {
+    // f(x) = x^3, f'(x) = 3x^2, sampled at x = -1, 0, 2
+    const std::vector<double> xs{-1.0, 0.0, 2.0};
+    const std::vector<double> ys{-1.0, 0.0, 8.0};
+    const std::vector<double> dys{3.0, 0.0, 12.0};
+    const auto p = interp_hermite(xs, ys, dys);
+    const auto dp = poly_deriv(p);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_NEAR(eval_at(p, xs[i]), ys[i], 1e-7) << "i=" << i;
+        EXPECT_NEAR(eval_at(dp, xs[i]), dys[i], 1e-6) << "i=" << i;
+    }
+}
+
+TEST(PolyExtTest, hermite_reproduces_values_and_derivatives_sine) {
+    // f(x) = sin(x), f'(x) = cos(x), sampled at a few points
+    const std::vector<double> xs{0.0, 0.5, 1.0, 1.5};
+    std::vector<double> ys, dys;
+    for (double x : xs) {
+        ys.push_back(std::sin(x));
+        dys.push_back(std::cos(x));
+    }
+    const auto p = interp_hermite(xs, ys, dys);
+    const auto dp = poly_deriv(p);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_NEAR(eval_at(p, xs[i]), ys[i], 1e-6) << "i=" << i;
+        EXPECT_NEAR(eval_at(dp, xs[i]), dys[i], 1e-5) << "i=" << i;
+    }
+}
+
+TEST(PolyExtTest, hermite_degree_bound_two_points) {
+    // n=2 points -> degree < 4, so at most 4 coefficients
+    const auto p = interp_hermite({0.0, 1.0}, {0.0, 1.0}, {0.0, 3.0});
+    EXPECT_LE(p.size(), 4u);
+}
+
+TEST(PolyExtTest, hermite_empty_input_returns_empty) {
+    EXPECT_TRUE(interp_hermite({}, {}, {}).empty());
+}
+
+TEST(PolyExtTest, hermite_size_mismatch_returns_empty) {
+    EXPECT_TRUE(interp_hermite({0.0, 1.0}, {0.0, 1.0}, {0.0}).empty());
+}
+
+TEST(PolyExtTest, hermite_duplicate_xs_returns_empty) {
+    EXPECT_TRUE(interp_hermite({1.0, 1.0}, {2.0, 3.0}, {1.0, 1.0}).empty());
+}
