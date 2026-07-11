@@ -274,6 +274,71 @@ namespace {
 constexpr double kNewtonTol = 1e-10;
 constexpr int kNewtonMaxIter = 50;
 constexpr double kNewtonEps = 1e-8;
+constexpr double kPicardTol = 1e-10;
+constexpr int kPicardMaxIter = 50;
+
+double vec_max_norm(const std::vector<double>& a, const std::vector<double>& b) {
+    const size_t n = std::min(a.size(), b.size());
+    double m = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        m = std::max(m, std::abs(a[i] - b[i]));
+    }
+    return m;
+}
+
+std::vector<double> gauss_solve(std::vector<std::vector<double>> A,
+                                 std::vector<double> b) {
+    const size_t n = b.size();
+    if (A.size() != n) {
+        return {};
+    }
+    for (size_t i = 0; i < n; ++i) {
+        if (A[i].size() != n) {
+            return {};
+        }
+    }
+
+    for (size_t col = 0; col < n; ++col) {
+        size_t pivot = col;
+        double max_abs = std::abs(A[col][col]);
+        for (size_t row = col + 1; row < n; ++row) {
+            const double v = std::abs(A[row][col]);
+            if (v > max_abs) {
+                max_abs = v;
+                pivot = row;
+            }
+        }
+        if (max_abs < 1e-14) {
+            return {};
+        }
+        if (pivot != col) {
+            std::swap(A[pivot], A[col]);
+            std::swap(b[pivot], b[col]);
+        }
+        const double diag = A[col][col];
+        for (size_t row = col + 1; row < n; ++row) {
+            const double factor = A[row][col] / diag;
+            for (size_t j = col; j < n; ++j) {
+                A[row][j] -= factor * A[col][j];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+
+    std::vector<double> x(n, 0.0);
+    for (int row = static_cast<int>(n) - 1; row >= 0; --row) {
+        double sum = b[static_cast<size_t>(row)];
+        for (size_t j = static_cast<size_t>(row) + 1; j < n; ++j) {
+            sum -= A[static_cast<size_t>(row)][j] * x[j];
+        }
+        const double diag = A[static_cast<size_t>(row)][static_cast<size_t>(row)];
+        if (std::abs(diag) < 1e-14) {
+            return {};
+        }
+        x[static_cast<size_t>(row)] = sum / diag;
+    }
+    return x;
+}
 constexpr int kShootMaxIter = 100;
 constexpr double kShootTol = 1e-8;
 constexpr double kEventTol = 1e-9;
@@ -542,6 +607,186 @@ OdeEventResult ode_event_detect(OdeFunc f, OdeFunc event_g,
         result.t.push_back(t);
         result.y.push_back(y);
     }
+    return result;
+}
+
+OdeResultVec ode_backward_euler_vec(OdeFuncVec f, double t0,
+                                     const std::vector<double>& y0,
+                                     double t_end, size_t steps) {
+    OdeResultVec result;
+    if (steps == 0 || y0.empty()) {
+        return result;
+    }
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    double t = t0;
+    auto y = y0;
+    result.t.push_back(t);
+    result.y.push_back(y);
+
+    for (size_t step = 0; step < steps; ++step) {
+        const double t_next = t + h;
+        auto y_next = y;
+        for (int iter = 0; iter < kPicardMaxIter; ++iter) {
+            const auto fy = f(t_next, y_next);
+            if (fy.size() != y.size()) {
+                break;
+            }
+            std::vector<double> y_new(y.size());
+            for (size_t j = 0; j < y.size(); ++j) {
+                y_new[j] = y[j] + h * fy[j];
+            }
+            const double change = vec_max_norm(y_new, y_next);
+            y_next = std::move(y_new);
+            if (!std::isfinite(change)) {
+                break;
+            }
+            if (change < kPicardTol) {
+                break;
+            }
+        }
+        y = std::move(y_next);
+        t = t_next;
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+    return result;
+}
+
+// Index-1 DAE: semi-explicit form dy/dt = f(t,y,z), 0 = g(t,y,z).
+// Index-1 means the algebraic Jacobian dg/dz is nonsingular so z can be
+// locally determined from y. This solver is a deliberate simplification:
+// explicit RK4 predictor for y using the current z, then Newton correction
+// for z at each step. Adequate for well-conditioned index-1 systems; not a
+// substitute for a fully implicit DAE integrator.
+DaeResult ode_dae_index1(DaeDiffFunc f, DaeAlgFunc g, double t0,
+                          const std::vector<double>& y0,
+                          const std::vector<double>& z0,
+                          double t_end, size_t steps) {
+    DaeResult result;
+    if (steps == 0 || y0.empty() || z0.empty()) {
+        return result;
+    }
+
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    double t = t0;
+    auto y = y0;
+    auto z = z0;
+    result.converged = true;
+
+    const auto solve_algebraic = [&](double t_new, const std::vector<double>& y_new,
+                                     std::vector<double>& z_state) -> bool {
+        const size_t n = z_state.size();
+        for (int iter = 0; iter < kNewtonMaxIter; ++iter) {
+            const auto gv = g(t_new, y_new, z_state);
+            if (gv.size() != n) {
+                return false;
+            }
+            double max_res = 0.0;
+            for (double v : gv) {
+                max_res = std::max(max_res, std::abs(v));
+            }
+            if (max_res < kNewtonTol) {
+                return true;
+            }
+
+            std::vector<std::vector<double>> J(n, std::vector<double>(n, 0.0));
+            for (size_t j = 0; j < n; ++j) {
+                auto zp = z_state;
+                auto zm = z_state;
+                zp[j] += kNewtonEps;
+                zm[j] -= kNewtonEps;
+                const auto gp = g(t_new, y_new, zp);
+                const auto gm = g(t_new, y_new, zm);
+                if (gp.size() != n || gm.size() != n) {
+                    return false;
+                }
+                for (size_t i = 0; i < n; ++i) {
+                    J[i][j] = (gp[i] - gm[i]) / (2.0 * kNewtonEps);
+                }
+            }
+
+            std::vector<double> rhs(n);
+            for (size_t i = 0; i < n; ++i) {
+                rhs[i] = -gv[i];
+            }
+            const auto dz = gauss_solve(J, rhs);
+            if (dz.size() != n) {
+                return false;
+            }
+            for (size_t j = 0; j < n; ++j) {
+                z_state[j] += dz[j];
+            }
+        }
+        const auto gv = g(t_new, y_new, z_state);
+        if (gv.size() != n) {
+            return false;
+        }
+        for (double v : gv) {
+            if (std::abs(v) >= kNewtonTol) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    result.t.push_back(t);
+    result.y.push_back(y);
+    result.z.push_back(z);
+
+    for (size_t step = 0; step < steps; ++step) {
+        const auto k1 = f(t, y, z);
+        if (k1.size() != y.size()) {
+            result.converged = false;
+            break;
+        }
+
+        std::vector<double> y2(y.size());
+        for (size_t j = 0; j < y.size(); ++j) {
+            y2[j] = y[j] + 0.5 * h * k1[j];
+        }
+        const auto k2 = f(t + 0.5 * h, y2, z);
+        if (k2.size() != y.size()) {
+            result.converged = false;
+            break;
+        }
+
+        std::vector<double> y3(y.size());
+        for (size_t j = 0; j < y.size(); ++j) {
+            y3[j] = y[j] + 0.5 * h * k2[j];
+        }
+        const auto k3 = f(t + 0.5 * h, y3, z);
+        if (k3.size() != y.size()) {
+            result.converged = false;
+            break;
+        }
+
+        std::vector<double> y4(y.size());
+        for (size_t j = 0; j < y.size(); ++j) {
+            y4[j] = y[j] + h * k3[j];
+        }
+        const auto k4 = f(t + h, y4, z);
+        if (k4.size() != y.size()) {
+            result.converged = false;
+            break;
+        }
+
+        std::vector<double> y_new(y.size());
+        for (size_t j = 0; j < y.size(); ++j) {
+            y_new[j] = y[j] + (h / 6.0) * (k1[j] + 2.0 * k2[j] + 2.0 * k3[j] + k4[j]);
+        }
+
+        const double t_next = t + h;
+        if (!solve_algebraic(t_next, y_new, z)) {
+            result.converged = false;
+        }
+
+        y = std::move(y_new);
+        t = t_next;
+        result.t.push_back(t);
+        result.y.push_back(y);
+        result.z.push_back(z);
+    }
+
     return result;
 }
 

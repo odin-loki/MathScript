@@ -49,6 +49,29 @@ OdeResult ode_adams_bashforth2(OdeFunc f, double t0, double y0,
 OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
                               double t_end, size_t steps);
 
+// Implicit backward Euler (vector stiff IVP, Picard iteration)
+OdeResultVec ode_backward_euler_vec(OdeFuncVec f, double t0,
+                                     const std::vector<double>& y0,
+                                     double t_end, size_t steps);
+
+// Semi-explicit index-1 DAE: dy/dt = f(t,y,z), 0 = g(t,y,z)
+using DaeDiffFunc = std::function<std::vector<double>(
+    double t, const std::vector<double>& y, const std::vector<double>& z)>;
+using DaeAlgFunc = std::function<std::vector<double>(
+    double t, const std::vector<double>& y, const std::vector<double>& z)>;
+
+struct DaeResult {
+    std::vector<double> t;
+    std::vector<std::vector<double>> y;
+    std::vector<std::vector<double>> z;
+    bool converged = false;
+};
+
+DaeResult ode_dae_index1(DaeDiffFunc f, DaeAlgFunc g, double t0,
+                          const std::vector<double>& y0,
+                          const std::vector<double>& z0,
+                          double t_end, size_t steps);
+
 // Second-order BVP via shooting: y'' = f(t, y, y')
 using OdeBvpFunc = std::function<double(double t, double y, double yp)>;
 
