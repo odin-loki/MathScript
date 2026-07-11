@@ -5756,7 +5756,45 @@ const char* session_object_kind_name(const SessionObject& object) {
     if (std::holds_alternative<izaac::ratelimit::TokenBucket>(object)) {
         return "tokenbucket";
     }
-    return "cellmemory";
+    if (std::holds_alternative<cellai::CellMemory>(object)) {
+        return "cellmemory";
+    }
+    if (std::holds_alternative<cypha::DifModel>(object)) {
+        return "difmodel";
+    }
+    return "cluster";
+}
+
+template <typename T>
+const char* session_object_type_label() {
+    if constexpr (std::is_same_v<T, izaac::bloom::BloomFilter>) {
+        return "BloomFilter";
+    }
+    if constexpr (std::is_same_v<T, izaac::ratelimit::TokenBucket>) {
+        return "TokenBucket";
+    }
+    if constexpr (std::is_same_v<T, cellai::CellMemory>) {
+        return "CellMemory";
+    }
+    if constexpr (std::is_same_v<T, cypha::DifModel>) {
+        return "DifModel";
+    }
+    if constexpr (std::is_same_v<T, izaac::consensus::Cluster>) {
+        return "Cluster";
+    }
+    return "session object";
+}
+
+const char* format_node_role(izaac::consensus::NodeRole role) {
+    switch (role) {
+    case izaac::consensus::NodeRole::Follower:
+        return "Follower";
+    case izaac::consensus::NodeRole::Candidate:
+        return "Candidate";
+    case izaac::consensus::NodeRole::Leader:
+        return "Leader";
+    }
+    return "Follower";
 }
 
 template <typename T>
@@ -5772,9 +5810,7 @@ Result<void> require_session_object_type(
     if (!std::holds_alternative<T>(it->second)) {
         return std::unexpected(DomainError{
             fn, std::string("session object '") + handle + "' is not a " +
-                    (std::is_same_v<T, izaac::bloom::BloomFilter>       ? "BloomFilter"
-                     : std::is_same_v<T, izaac::ratelimit::TokenBucket> ? "TokenBucket"
-                                                                        : "CellMemory")});
+                    session_object_type_label<T>()});
     }
     out = &std::get<T>(it->second);
     return {};
@@ -5806,8 +5842,13 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         fn != "tokenbucket_new" && fn != "tokenbucket_consume" &&
         fn != "tokenbucket_available" && fn != "cellmemory_new" &&
         fn != "cellmemory_step" && fn != "cellmemory_recall" &&
-        fn != "cellmemory_consolidate" && fn != "session_objects" &&
-        fn != "session_object_clear") {
+        fn != "cellmemory_consolidate" && fn != "difmodel_new" &&
+        fn != "difmodel_update" && fn != "difmodel_predict" &&
+        fn != "difmodel_predict_interval" && fn != "difmodel_ood_score" &&
+        fn != "difmodel_gh_gate" && fn != "cluster_new" &&
+        fn != "cluster_run_election" && fn != "cluster_replicate" &&
+        fn != "cluster_current_leader" && fn != "cluster_status" &&
+        fn != "session_objects" && fn != "session_object_clear") {
         return std::nullopt;
     }
 
@@ -6127,6 +6168,305 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(result.error());
         }
         return std::string{"consolidated\n"};
+    }
+
+    if (fn == "difmodel_new") {
+        if (call_args->size() != 5) {
+            return std::unexpected(DomainError{
+                fn,
+                "expected difmodel_new(handle, input_dim, output_dim, n_experts, learning_rate)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        double input_dim_d = 0.0;
+        double output_dim_d = 0.0;
+        double n_experts_d = 0.0;
+        double learning_rate = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), input_dim_d) ||
+            !parse_number(trim_copy(call_args->at(2)), output_dim_d) ||
+            !parse_number(trim_copy(call_args->at(3)), n_experts_d) ||
+            !parse_number(trim_copy(call_args->at(4)), learning_rate) || input_dim_d < 1.0 ||
+            output_dim_d < 1.0 || n_experts_d < 1.0 || learning_rate <= 0.0 ||
+            std::floor(input_dim_d) != input_dim_d || std::floor(output_dim_d) != output_dim_d ||
+            std::floor(n_experts_d) != n_experts_d) {
+            return std::unexpected(DomainError{
+                fn,
+                "expected positive integer input_dim, output_dim, n_experts and positive "
+                "learning_rate"});
+        }
+        cypha::DifConfig cfg;
+        cfg.input_dim = static_cast<size_t>(input_dim_d);
+        cfg.output_dim = static_cast<size_t>(output_dim_d);
+        cfg.n_experts = static_cast<size_t>(n_experts_d);
+        cfg.learning_rate = learning_rate;
+        session_objects_.emplace(handle, cypha::DifModel(cfg));
+        return std::string{"created DifModel '" + handle + "'\n"};
+    }
+
+    if (fn == "difmodel_update") {
+        if (call_args->size() != 3) {
+            return std::unexpected(
+                DomainError{fn, "expected difmodel_update(handle, x_matrix, y_matrix)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cypha::DifModel* model = nullptr;
+        auto model_check = require_session_object_type<cypha::DifModel>(
+            session_objects_, handle, fn.c_str(), model);
+        if (!model_check) {
+            return std::unexpected(model_check.error());
+        }
+        auto x = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto y = resolve_matrix_arg(trim_copy(call_args->at(2)));
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto result = model->update(*x, *y);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        return std::string{"ok\n"};
+    }
+
+    if (fn == "difmodel_predict") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{fn, "expected difmodel_predict(handle, x_matrix)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cypha::DifModel* model = nullptr;
+        auto model_check = require_session_object_type<cypha::DifModel>(
+            session_objects_, handle, fn.c_str(), model);
+        if (!model_check) {
+            return std::unexpected(model_check.error());
+        }
+        auto x = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto result = model->predict(*x);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        std::ostringstream out;
+        print_matrix(out, *result);
+        return out.str();
+    }
+
+    if (fn == "difmodel_predict_interval") {
+        if (call_args->size() != 2) {
+            return std::unexpected(
+                DomainError{fn, "expected difmodel_predict_interval(handle, x_matrix)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cypha::DifModel* model = nullptr;
+        auto model_check = require_session_object_type<cypha::DifModel>(
+            session_objects_, handle, fn.c_str(), model);
+        if (!model_check) {
+            return std::unexpected(model_check.error());
+        }
+        auto x = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto result = model->predict_interval(*x);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        std::ostringstream out;
+        out << "mean =\n";
+        print_matrix(out, result->mean);
+        out << "lower =\n";
+        print_matrix(out, result->lower);
+        out << "upper =\n";
+        print_matrix(out, result->upper);
+        out << "nig_alpha = " << result->nig_alpha << "\n";
+        out << "nig_beta = " << result->nig_beta << "\n";
+        return out.str();
+    }
+
+    if (fn == "difmodel_ood_score") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{fn, "expected difmodel_ood_score(handle, x_matrix)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cypha::DifModel* model = nullptr;
+        auto model_check = require_session_object_type<cypha::DifModel>(
+            session_objects_, handle, fn.c_str(), model);
+        if (!model_check) {
+            return std::unexpected(model_check.error());
+        }
+        auto x = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto result = model->ood_score(*x);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        return std::to_string(*result) + "\n";
+    }
+
+    if (fn == "difmodel_gh_gate") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{fn, "expected difmodel_gh_gate(handle, x_matrix)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cypha::DifModel* model = nullptr;
+        auto model_check = require_session_object_type<cypha::DifModel>(
+            session_objects_, handle, fn.c_str(), model);
+        if (!model_check) {
+            return std::unexpected(model_check.error());
+        }
+        auto x = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        return std::string(model->gh_gate(*x) ? "true\n" : "false\n");
+    }
+
+    if (fn == "cluster_new") {
+        if (call_args->size() != 3) {
+            return std::unexpected(DomainError{fn, "expected cluster_new(handle, n_nodes, seed)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        double n_nodes_d = 0.0;
+        double seed_d = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), n_nodes_d) ||
+            !parse_number(trim_copy(call_args->at(2)), seed_d) || n_nodes_d < 1.0 ||
+            seed_d < 0.0 || std::floor(n_nodes_d) != n_nodes_d ||
+            std::floor(seed_d) != seed_d) {
+            return std::unexpected(
+                DomainError{fn, "expected positive integer n_nodes and non-negative integer seed"});
+        }
+        session_objects_.emplace(
+            handle,
+            izaac::consensus::Cluster(
+                static_cast<int>(n_nodes_d), static_cast<unsigned>(seed_d)));
+        return std::string{"created Cluster '" + handle + "'\n"};
+    }
+
+    if (fn == "cluster_run_election") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cluster_run_election(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::consensus::Cluster* cluster = nullptr;
+        auto cluster_check = require_session_object_type<izaac::consensus::Cluster>(
+            session_objects_, handle, fn.c_str(), cluster);
+        if (!cluster_check) {
+            return std::unexpected(cluster_check.error());
+        }
+        return std::to_string(cluster->run_election()) + "\n";
+    }
+
+    if (fn == "cluster_replicate") {
+        if (call_args->size() != 3) {
+            return std::unexpected(
+                DomainError{fn, "expected cluster_replicate(handle, leader_id, \"command\")"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::consensus::Cluster* cluster = nullptr;
+        auto cluster_check = require_session_object_type<izaac::consensus::Cluster>(
+            session_objects_, handle, fn.c_str(), cluster);
+        if (!cluster_check) {
+            return std::unexpected(cluster_check.error());
+        }
+        double leader_id_d = 0.0;
+        if (!parse_number(trim_copy(call_args->at(1)), leader_id_d) ||
+            std::floor(leader_id_d) != leader_id_d) {
+            return std::unexpected(DomainError{fn, "expected integer leader_id"});
+        }
+        std::string command;
+        if (!parse_quoted_string(call_args->at(2), command)) {
+            return std::unexpected(DomainError{fn, "expected quoted string command"});
+        }
+        return std::string(
+                   cluster->replicate(static_cast<int>(leader_id_d), command) ? "true\n" : "false\n");
+    }
+
+    if (fn == "cluster_current_leader") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cluster_current_leader(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::consensus::Cluster* cluster = nullptr;
+        auto cluster_check = require_session_object_type<izaac::consensus::Cluster>(
+            session_objects_, handle, fn.c_str(), cluster);
+        if (!cluster_check) {
+            return std::unexpected(cluster_check.error());
+        }
+        return std::to_string(cluster->current_leader()) + "\n";
+    }
+
+    if (fn == "cluster_status") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cluster_status(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::consensus::Cluster* cluster = nullptr;
+        auto cluster_check = require_session_object_type<izaac::consensus::Cluster>(
+            session_objects_, handle, fn.c_str(), cluster);
+        if (!cluster_check) {
+            return std::unexpected(cluster_check.error());
+        }
+        std::ostringstream out;
+        for (const izaac::consensus::Node& node : cluster->nodes) {
+            out << "id=" << node.id << " role=" << format_node_role(node.role)
+                << " term=" << node.current_term << " log_size=" << node.log.size()
+                << " commit_index=" << node.commit_index << "\n";
+        }
+        return out.str();
     }
 
     return std::nullopt;
@@ -9842,6 +10182,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cellmemory_step(cm, [1;0]) step CellMemory with input column vector\n"
             "  cellmemory_recall(cm, 1.0) recall CellMemory state at time_scale\n"
             "  cellmemory_consolidate(cm) consolidate CellMemory long-term state\n"
+            "  difmodel_new(dm, 1, 1, 2, 0.1) create session DifModel (handle persists)\n"
+            "  difmodel_update(dm, [1], [0.5]) update DifModel with input/output column vectors\n"
+            "  difmodel_predict(dm, [1]) predict with DifModel\n"
+            "  difmodel_predict_interval(dm, [1]) predict credible interval with DifModel\n"
+            "  difmodel_ood_score(dm, [1]) out-of-distribution score for DifModel input\n"
+            "  difmodel_gh_gate(dm, [1]) GH-posterior gate for DifModel input (true/false)\n"
+            "  cluster_new(cl, 3, 42) create session consensus Cluster (handle persists)\n"
+            "  cluster_run_election(cl) run one Raft election round on session Cluster\n"
+            "  cluster_replicate(cl, 0, \"cmd\") replicate command via leader to quorum\n"
+            "  cluster_current_leader(cl) current leader id (-1 if none)\n"
+            "  cluster_status(cl) print per-node role, term, log size, commit index\n"
             "  session_objects() list session object handles and types\n"
             "  session_object_clear(handle) remove a session object (handles persist until cleared)\n"};
     }
@@ -9960,6 +10311,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")\n"
             "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)\n"
             "  cellmemory_new(h,in,dim,[scales])  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)\n"
+            "  difmodel_new(h,in,out,experts,lr)  difmodel_update(h,X,Y)  difmodel_predict(h,X)  difmodel_predict_interval(h,X)\n"
+            "  difmodel_ood_score(h,X)  difmodel_gh_gate(h,X)\n"
+            "  cluster_new(h,n,seed)  cluster_run_election(h)  cluster_replicate(h,leader,\"cmd\")  cluster_current_leader(h)  cluster_status(h)\n"
             "  session_objects()  session_object_clear(h)\n"
             "  gria(M)  axiom evolve\n"};
     }

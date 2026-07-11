@@ -1,0 +1,2 @@
+cluster_new(cl, 3, 42)
+cluster_run_election(cl)

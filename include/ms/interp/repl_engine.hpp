@@ -3,6 +3,7 @@
 #include "ms/core/matrix.hpp"
 #include "ms/error/expected.hpp"
 #include "ms/frameworks/cellai/cellai.hpp"
+#include "ms/frameworks/cypha/cypha.hpp"
 #include "ms/frameworks/izaac/izaac.hpp"
 #include <map>
 #include <optional>
@@ -67,7 +68,9 @@ struct MultiMatrixCallAssign {
 using SessionObject = std::variant<
     izaac::bloom::BloomFilter,
     izaac::ratelimit::TokenBucket,
-    cellai::CellMemory>;
+    cellai::CellMemory,
+    cypha::DifModel,
+    izaac::consensus::Cluster>;
 
 class Interpreter {
 public:
