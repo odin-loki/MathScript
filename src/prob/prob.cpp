@@ -367,4 +367,91 @@ double f_ppf(double p, double d1, double d2) {
     return bisect_increasing(residual, 0.0, hi);
 }
 
+double lognormal_pdf(double x, double mu, double sigma) {
+    if (x <= 0.0 || sigma <= 0.0) {
+        return 0.0;
+    }
+    return norm_pdf(std::log(x), mu, sigma) / x;
+}
+
+double lognormal_cdf(double x, double mu, double sigma) {
+    if (x <= 0.0 || sigma <= 0.0) {
+        return 0.0;
+    }
+    return norm_cdf(std::log(x), mu, sigma);
+}
+
+double lognormal_ppf(double p, double mu, double sigma) {
+    if (sigma <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return std::exp(norm_ppf(p, mu, sigma));
+}
+
+double weibull_pdf(double x, double lambda, double k) {
+    if (x < 0.0 || lambda <= 0.0 || k <= 0.0) {
+        return 0.0;
+    }
+    const double z = x / lambda;
+    return (k / lambda) * std::pow(z, k - 1.0) * std::exp(-std::pow(z, k));
+}
+
+double weibull_cdf(double x, double lambda, double k) {
+    if (x < 0.0 || lambda <= 0.0 || k <= 0.0) {
+        return 0.0;
+    }
+    return 1.0 - std::exp(-std::pow(x / lambda, k));
+}
+
+double weibull_ppf(double p, double lambda, double k) {
+    if (lambda <= 0.0 || k <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return lambda * std::pow(-std::log(1.0 - p), 1.0 / k);
+}
+
+double laplace_pdf(double x, double mu, double b) {
+    if (b <= 0.0) {
+        return 0.0;
+    }
+    return std::exp(-std::abs(x - mu) / b) / (2.0 * b);
+}
+
+double laplace_cdf(double x, double mu, double b) {
+    if (b <= 0.0) {
+        return 0.0;
+    }
+    if (x < mu) {
+        return 0.5 * std::exp((x - mu) / b);
+    }
+    return 1.0 - 0.5 * std::exp(-(x - mu) / b);
+}
+
+double laplace_ppf(double p, double mu, double b) {
+    if (b <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return k_ppf_neg_tail;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    const double d = p - 0.5;
+    const double sign = (d > 0.0) ? 1.0 : ((d < 0.0) ? -1.0 : 0.0);
+    return mu - b * sign * std::log(1.0 - 2.0 * std::abs(d));
+}
+
 } // namespace ms
