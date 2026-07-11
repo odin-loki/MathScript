@@ -338,3 +338,156 @@ TEST(ProbAdv3, Normal_CDF_Monotone) {
         prev = curr;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Quantile functions (PPF) — Wave 183
+// ---------------------------------------------------------------------------
+
+TEST(ProbAdv3, Exp_PPF_ClosedForm) {
+    for (double lambda : {0.5, 1.0, 2.5}) {
+        for (double p : {0.1, 0.25, 0.5, 0.75, 0.9}) {
+            const double expected = -std::log(1.0 - p) / lambda;
+            EXPECT_NEAR(exp_ppf(p, lambda), expected, 1e-12)
+                << "exp_ppf closed form at p=" << p << " lambda=" << lambda;
+        }
+    }
+}
+
+TEST(ProbAdv3, Exp_PPF_RoundTrip) {
+    for (double lambda : {0.5, 1.0, 3.0}) {
+        for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+            EXPECT_NEAR(exp_cdf(exp_ppf(p, lambda), lambda), p, 1e-6)
+                << "exp round-trip at p=" << p << " lambda=" << lambda;
+        }
+    }
+}
+
+TEST(ProbAdv3, Chi2_PPF_TextbookCriticalValues) {
+    EXPECT_NEAR(chi2_ppf(0.95, 1.0), 3.841, 1e-2);
+    EXPECT_NEAR(chi2_ppf(0.95, 5.0), 11.070, 1e-2);
+}
+
+TEST(ProbAdv3, Chi2_PPF_RoundTrip) {
+    for (double df : {1.0, 3.0, 5.0, 10.0, 30.0, 100.0}) {
+        for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+            const double q = chi2_ppf(p, df);
+            EXPECT_TRUE(std::isfinite(q));
+            EXPECT_NEAR(chi2_cdf(q, df), p, 1e-6)
+                << "chi2 round-trip at p=" << p << " df=" << df;
+        }
+    }
+}
+
+TEST(ProbAdv3, T_PPF_TextbookCriticalValues) {
+    EXPECT_NEAR(t_ppf(0.975, 10.0), 2.228, 1e-2);
+    EXPECT_NEAR(t_ppf(0.95, 30.0), 1.697, 1e-2);
+}
+
+TEST(ProbAdv3, T_PPF_RoundTrip) {
+    for (double df : {1.0, 3.0, 10.0, 30.0, 100.0}) {
+        for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+            const double q = t_ppf(p, df);
+            EXPECT_TRUE(std::isfinite(q));
+            EXPECT_NEAR(t_cdf(q, df), p, 1e-6)
+                << "t round-trip at p=" << p << " df=" << df;
+        }
+    }
+}
+
+TEST(ProbAdv3, Gamma_PPF_RoundTrip) {
+    for (double shape : {0.5, 1.0, 2.0, 5.0, 10.0}) {
+        for (double scale : {0.5, 1.0, 2.0}) {
+            for (double p : {0.01, 0.1, 0.5, 0.9, 0.99}) {
+                const double q = gamma_ppf(p, shape, scale);
+                EXPECT_TRUE(std::isfinite(q));
+                EXPECT_NEAR(gamma_cdf(q, shape, scale), p, 1e-6)
+                    << "gamma round-trip at p=" << p << " shape=" << shape
+                    << " scale=" << scale;
+            }
+        }
+    }
+}
+
+TEST(ProbAdv3, Gamma_PPF_ExpConsistency) {
+    for (double scale : {0.5, 1.0, 2.0}) {
+        for (double p : {0.1, 0.25, 0.5, 0.75, 0.9}) {
+            EXPECT_NEAR(gamma_ppf(p, 1.0, scale), exp_ppf(p, 1.0 / scale), 1e-6)
+                << "Gamma(1,scale) PPF should equal Exp PPF at p=" << p;
+        }
+    }
+}
+
+TEST(ProbAdv3, Beta_PPF_UniformConsistency) {
+    for (double p : {0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0}) {
+        if (p <= 0.0) {
+            EXPECT_NEAR(beta_ppf(p, 1.0, 1.0), 0.0, 1e-10);
+        } else if (p >= 1.0) {
+            EXPECT_NEAR(beta_ppf(p, 1.0, 1.0), 1.0, 1e-10);
+        } else {
+            EXPECT_NEAR(beta_ppf(p, 1.0, 1.0), p, 1e-10)
+                << "Beta(1,1) PPF should equal p at p=" << p;
+        }
+    }
+}
+
+TEST(ProbAdv3, Beta_PPF_RoundTrip) {
+    for (double alpha : {0.5, 1.0, 2.0, 5.0}) {
+        for (double beta_param : {0.5, 2.0, 5.0}) {
+            for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+                const double q = beta_ppf(p, alpha, beta_param);
+                EXPECT_TRUE(std::isfinite(q));
+                EXPECT_GE(q, 0.0);
+                EXPECT_LE(q, 1.0);
+                EXPECT_NEAR(beta_cdf(q, alpha, beta_param), p, 1e-6)
+                    << "beta round-trip at p=" << p << " alpha=" << alpha
+                    << " beta=" << beta_param;
+            }
+        }
+    }
+}
+
+TEST(ProbAdv3, F_PPF_RoundTrip) {
+    for (double d1 : {1.0, 5.0, 10.0}) {
+        for (double d2 : {5.0, 10.0, 30.0}) {
+            for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+                const double q = f_ppf(p, d1, d2);
+                EXPECT_TRUE(std::isfinite(q));
+                EXPECT_NEAR(f_cdf(q, d1, d2), p, 1e-6)
+                    << "f round-trip at p=" << p << " d1=" << d1 << " d2=" << d2;
+            }
+        }
+    }
+}
+
+TEST(ProbAdv3, PPF_EdgeCases_NearBoundaries) {
+    const double eps = 1e-10;
+
+    EXPECT_NEAR(exp_ppf(0.0, 1.0), 0.0, 1e-10);
+    EXPECT_GT(exp_ppf(1.0 - eps, 1.0), 10.0);
+
+    EXPECT_LT(chi2_ppf(eps, 5.0), 0.01);
+    EXPECT_GT(chi2_ppf(1.0 - eps, 5.0), 20.0);
+
+    EXPECT_LT(t_ppf(eps, 10.0), -5.0);
+    EXPECT_GT(t_ppf(1.0 - eps, 10.0), 5.0);
+    EXPECT_NEAR(t_ppf(0.5, 10.0), 0.0, 1e-6);
+
+    EXPECT_LT(gamma_ppf(eps, 2.0, 1.0), 0.01);
+    EXPECT_GT(gamma_ppf(1.0 - eps, 2.0, 1.0), 10.0);
+
+    EXPECT_LT(beta_ppf(eps, 2.0, 3.0), 0.01);
+    EXPECT_NEAR(beta_ppf(1.0, 2.0, 3.0), 1.0, 1e-10);
+
+    EXPECT_LT(f_ppf(eps, 5.0, 10.0), 0.01);
+    EXPECT_GT(f_ppf(1.0 - eps, 5.0, 10.0), 10.0);
+}
+
+TEST(ProbAdv3, PPF_InvalidParams) {
+    EXPECT_DOUBLE_EQ(exp_ppf(0.5, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(chi2_ppf(0.5, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(t_ppf(0.5, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_ppf(0.5, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_ppf(0.5, 2.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_ppf(0.5, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_ppf(0.5, 0.0, 10.0), 0.0);
+}

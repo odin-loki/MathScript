@@ -8,6 +8,7 @@ double norm_ppf(double p, double mu, double sigma);
 
 double exp_pdf(double x, double lambda);
 double exp_cdf(double x, double lambda);
+double exp_ppf(double p, double lambda);
 
 double binom_pdf(int k, int n, double p);
 double binom_cdf(int k, int n, double p);
@@ -17,20 +18,25 @@ double pois_cdf(double k, double lambda);
 
 double chi2_pdf(double x, double df);
 double chi2_cdf(double x, double df);
+double chi2_ppf(double p, double df);
 
 double uniform_pdf(double x, double a, double b);
 double uniform_cdf(double x, double a, double b);
 
 double t_pdf(double x, double df);
 double t_cdf(double x, double df);
+double t_ppf(double p, double df);
 
 double gamma_pdf(double x, double shape, double scale);
 double gamma_cdf(double x, double shape, double scale);
+double gamma_ppf(double p, double shape, double scale);
 
 double beta_pdf(double x, double alpha, double beta);
 double beta_cdf(double x, double alpha, double beta);
+double beta_ppf(double p, double alpha, double beta);
 
 double f_pdf(double x, double d1, double d2);
 double f_cdf(double x, double d1, double d2);
+double f_ppf(double p, double d1, double d2);
 
 } // namespace ms
