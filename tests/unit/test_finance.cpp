@@ -674,3 +674,163 @@ TEST(FinanceMC, AsianEdgeCasesReturnZero) {
     EXPECT_EQ(mc_asian_put(S, K, -1.0, r, sigma, 1000, 10), 0.0);
     EXPECT_EQ(mc_asian_put(S, K, T, r, -0.1, 1000, 10), 0.0);
 }
+
+// --- Lookback options via Monte Carlo ---
+// Floating-strike payoffs (S_T-min(path), max(path)-S_T) are always
+// non-negative pathwise since min(path)<=S_T<=max(path), and always strictly
+// exceed the at-the-money vanilla call/put payoff since the path starts at S
+// (so min(path)<=S and max(path)>=S). The margin used below (kLookbackMargin)
+// is well beyond the MC noise floor implied by kMCTol above.
+namespace {
+constexpr double kLookbackMargin = 0.5;
+} // namespace
+
+TEST(FinanceMC, LookbackFloatingCallPositive) {
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double price = mc_lookback_floating_call(S, T, r, sigma, kMCPaths, 50);
+    EXPECT_GT(price, 0.0);
+}
+
+TEST(FinanceMC, LookbackFloatingPutPositive) {
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double price = mc_lookback_floating_put(S, T, r, sigma, kMCPaths, 50);
+    EXPECT_GT(price, 0.0);
+}
+
+TEST(FinanceMC, LookbackFloatingCallBeatsATMEuropeanCall) {
+    // S_T-min(path) >= S_T-S = max(S_T-S,0)-min(0,S_T-S) pathwise, and since
+    // min(path)<=S always (path starts at S), S_T-min(path) >= max(S_T-S,0).
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double lookback = mc_lookback_floating_call(S, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_call(S, S, T, r, sigma);
+    EXPECT_GT(lookback, vanilla + kLookbackMargin);
+}
+
+TEST(FinanceMC, LookbackFloatingCallBeatsATMEuropeanCallHighVol) {
+    double S = 100, T = 1.0, r = 0.03, sigma = 0.35;
+    double lookback = mc_lookback_floating_call(S, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_call(S, S, T, r, sigma);
+    EXPECT_GT(lookback, vanilla + kLookbackMargin);
+}
+
+TEST(FinanceMC, LookbackFloatingPutBeatsATMEuropeanPut) {
+    // By the symmetric argument, max(path)-S_T >= S-S_T = max(K-S_T,0) at K=S,
+    // since max(path)>=S always.
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double lookback = mc_lookback_floating_put(S, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_put(S, S, T, r, sigma);
+    EXPECT_GT(lookback, vanilla + kLookbackMargin);
+}
+
+TEST(FinanceMC, LookbackFloatingPutBeatsATMEuropeanPutHighVol) {
+    double S = 100, T = 1.0, r = 0.03, sigma = 0.35;
+    double lookback = mc_lookback_floating_put(S, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_put(S, S, T, r, sigma);
+    EXPECT_GT(lookback, vanilla + kLookbackMargin);
+}
+
+TEST(FinanceMC, LookbackFloatingStableAcrossStepCounts) {
+    // Finer path sampling makes the realized min/max more extreme, but for a
+    // fixed seed and moderate parameters the price shouldn't swing wildly.
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double coarse = mc_lookback_floating_call(S, T, r, sigma, kMCPaths, 50);
+    double fine = mc_lookback_floating_call(S, T, r, sigma, kMCPaths, 200);
+    EXPECT_GT(coarse, 0.0);
+    EXPECT_GT(fine, 0.0);
+    EXPECT_NEAR(coarse, fine, 2.0);
+}
+
+TEST(FinanceMC, LookbackFloatingCallDeterministic) {
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double a = mc_lookback_floating_call(S, T, r, sigma, 5000, 20, 3);
+    double b = mc_lookback_floating_call(S, T, r, sigma, 5000, 20, 3);
+    EXPECT_EQ(a, b);
+}
+
+TEST(FinanceMC, LookbackFloatingPutDeterministic) {
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double a = mc_lookback_floating_put(S, T, r, sigma, 5000, 20, 3);
+    double b = mc_lookback_floating_put(S, T, r, sigma, 5000, 20, 3);
+    EXPECT_EQ(a, b);
+}
+
+TEST(FinanceMC, LookbackFloatingEdgeCasesReturnZero) {
+    double S = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    EXPECT_EQ(mc_lookback_floating_call(S, T, r, sigma, 0, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_call(S, T, r, sigma, 1000, 0), 0.0);
+    EXPECT_EQ(mc_lookback_floating_call(-1.0, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_call(S, -1.0, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_call(S, T, r, -0.1, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_put(-1.0, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_put(S, -1.0, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_put(S, T, r, -0.1, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_put(S, T, r, sigma, 0, 10), 0.0);
+    EXPECT_EQ(mc_lookback_floating_put(S, T, r, sigma, 1000, 0), 0.0);
+}
+
+TEST(FinanceMC, LookbackFixedCallAtLeastVanillaCall) {
+    // max(max(path)-K,0) >= max(S_T-K,0) pathwise since max(path)>=S_T.
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double lookback = mc_lookback_fixed_call(S, K, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_call(S, K, T, r, sigma);
+    EXPECT_GT(lookback, vanilla + kLookbackMargin);
+}
+
+TEST(FinanceMC, LookbackFixedCallAtLeastVanillaCallOTM) {
+    double S = 90, K = 110, T = 1.0, r = 0.04, sigma = 0.3;
+    double lookback = mc_lookback_fixed_call(S, K, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_call(S, K, T, r, sigma);
+    EXPECT_GT(lookback, vanilla);
+    EXPECT_GE(lookback, vanilla - 1e-9);
+}
+
+TEST(FinanceMC, LookbackFixedPutAtLeastVanillaPut) {
+    // max(K-min(path),0) >= max(K-S_T,0) pathwise since min(path)<=S_T.
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double lookback = mc_lookback_fixed_put(S, K, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_put(S, K, T, r, sigma);
+    EXPECT_GT(lookback, vanilla + kLookbackMargin);
+}
+
+TEST(FinanceMC, LookbackFixedPutAtLeastVanillaPutITM) {
+    double S = 90, K = 110, T = 1.0, r = 0.05, sigma = 0.25;
+    double lookback = mc_lookback_fixed_put(S, K, T, r, sigma, kMCPaths, 50);
+    double vanilla = bs_put(S, K, T, r, sigma);
+    EXPECT_GT(lookback, vanilla + kLookbackMargin);
+}
+
+TEST(FinanceMC, LookbackFixedPayoffsNonNegative) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.3;
+    double call = mc_lookback_fixed_call(S, K, T, r, sigma, 50000, 25);
+    double put  = mc_lookback_fixed_put(S, K, T, r, sigma, 50000, 25);
+    EXPECT_GE(call, 0.0);
+    EXPECT_GE(put, 0.0);
+}
+
+TEST(FinanceMC, LookbackFixedCallDeterministic) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double a = mc_lookback_fixed_call(S, K, T, r, sigma, 5000, 20, 3);
+    double b = mc_lookback_fixed_call(S, K, T, r, sigma, 5000, 20, 3);
+    EXPECT_EQ(a, b);
+}
+
+TEST(FinanceMC, LookbackFixedPutDeterministic) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double a = mc_lookback_fixed_put(S, K, T, r, sigma, 5000, 20, 3);
+    double b = mc_lookback_fixed_put(S, K, T, r, sigma, 5000, 20, 3);
+    EXPECT_EQ(a, b);
+}
+
+TEST(FinanceMC, LookbackFixedEdgeCasesReturnZero) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    EXPECT_EQ(mc_lookback_fixed_call(S, K, T, r, sigma, 0, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_call(S, K, T, r, sigma, 1000, 0), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_call(-1.0, K, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_call(S, -1.0, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_call(S, K, -1.0, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_call(S, K, T, r, -0.1, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_put(-1.0, K, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_put(S, -1.0, T, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_put(S, K, -1.0, r, sigma, 1000, 10), 0.0);
+    EXPECT_EQ(mc_lookback_fixed_put(S, K, T, r, -0.1, 1000, 10), 0.0);
+}

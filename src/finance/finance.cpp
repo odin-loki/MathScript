@@ -644,5 +644,108 @@ double mc_asian_put(double S, double K, double T, double r, double sigma,
     return mc_asian(S, K, T, r, sigma, n_paths, n_steps, seed, false);
 }
 
+static double mc_lookback_floating(double S, double T, double r, double sigma,
+                                   int n_paths, int n_steps, unsigned seed, bool call) {
+    if (n_paths <= 0 || n_steps <= 0 || S <= 0.0 || T <= 0.0 || sigma <= 0.0) return 0.0;
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd(0.0, 1.0);
+    double dt = T / static_cast<double>(n_steps);
+    double drift = (r - 0.5 * sigma * sigma) * dt;
+    double vol_sqrtdt = sigma * std::sqrt(dt);
+    std::vector<double> z(static_cast<size_t>(n_steps));
+
+    int n_draws = (n_paths + 1) / 2;
+    double sum = 0.0;
+    int used = 0;
+    for (int p = 0; p < n_draws; ++p) {
+        for (auto& zi : z) zi = nd(rng);
+
+        // path_min/path_max seeded at S rather than the first simulated point,
+        // since the path includes S_0=S and it can itself be the extreme.
+        double s = S, path_min = S, path_max = S;
+        for (double zi : z) {
+            s *= std::exp(drift + vol_sqrtdt * zi);
+            path_min = std::min(path_min, s);
+            path_max = std::max(path_max, s);
+        }
+        double payoff1 = call ? (s - path_min) : (path_max - s);
+        sum += payoff1;
+        ++used;
+        if (used >= n_paths) break;
+
+        s = S; path_min = S; path_max = S;
+        for (double zi : z) {
+            s *= std::exp(drift - vol_sqrtdt * zi);
+            path_min = std::min(path_min, s);
+            path_max = std::max(path_max, s);
+        }
+        double payoff2 = call ? (s - path_min) : (path_max - s);
+        sum += payoff2;
+        ++used;
+    }
+    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+}
+
+double mc_lookback_floating_call(double S, double T, double r, double sigma,
+                                 int n_paths, int n_steps, unsigned seed) {
+    return mc_lookback_floating(S, T, r, sigma, n_paths, n_steps, seed, true);
+}
+
+double mc_lookback_floating_put(double S, double T, double r, double sigma,
+                                int n_paths, int n_steps, unsigned seed) {
+    return mc_lookback_floating(S, T, r, sigma, n_paths, n_steps, seed, false);
+}
+
+static double mc_lookback_fixed(double S, double K, double T, double r, double sigma,
+                                int n_paths, int n_steps, unsigned seed, bool call) {
+    if (n_paths <= 0 || n_steps <= 0 || S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0)
+        return 0.0;
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd(0.0, 1.0);
+    double dt = T / static_cast<double>(n_steps);
+    double drift = (r - 0.5 * sigma * sigma) * dt;
+    double vol_sqrtdt = sigma * std::sqrt(dt);
+    std::vector<double> z(static_cast<size_t>(n_steps));
+
+    int n_draws = (n_paths + 1) / 2;
+    double sum = 0.0;
+    int used = 0;
+    for (int p = 0; p < n_draws; ++p) {
+        for (auto& zi : z) zi = nd(rng);
+
+        double s = S, path_min = S, path_max = S;
+        for (double zi : z) {
+            s *= std::exp(drift + vol_sqrtdt * zi);
+            path_min = std::min(path_min, s);
+            path_max = std::max(path_max, s);
+        }
+        double payoff1 = call ? std::max(path_max - K, 0.0) : std::max(K - path_min, 0.0);
+        sum += payoff1;
+        ++used;
+        if (used >= n_paths) break;
+
+        s = S; path_min = S; path_max = S;
+        for (double zi : z) {
+            s *= std::exp(drift - vol_sqrtdt * zi);
+            path_min = std::min(path_min, s);
+            path_max = std::max(path_max, s);
+        }
+        double payoff2 = call ? std::max(path_max - K, 0.0) : std::max(K - path_min, 0.0);
+        sum += payoff2;
+        ++used;
+    }
+    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+}
+
+double mc_lookback_fixed_call(double S, double K, double T, double r, double sigma,
+                              int n_paths, int n_steps, unsigned seed) {
+    return mc_lookback_fixed(S, K, T, r, sigma, n_paths, n_steps, seed, true);
+}
+
+double mc_lookback_fixed_put(double S, double K, double T, double r, double sigma,
+                             int n_paths, int n_steps, unsigned seed) {
+    return mc_lookback_fixed(S, K, T, r, sigma, n_paths, n_steps, seed, false);
+}
+
 } // namespace finance
 } // namespace ms

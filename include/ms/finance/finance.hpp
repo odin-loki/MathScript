@@ -142,5 +142,27 @@ double mc_asian_call(double S, double K, double T, double r, double sigma,
 double mc_asian_put(double S, double K, double T, double r, double sigma,
                     int n_paths, int n_steps, unsigned seed = 42);
 
+// Lookback options via Monte Carlo: simulates a full discretized GBM path over
+// n_steps of size dt=T/n_steps (same convention as mc_asian_call/mc_asian_put)
+// and tracks the running min/max over the path INCLUDING the initial price
+// S_0=S, since the starting point can itself be the path extreme.
+//
+// Floating-strike: the strike is the path's own realized optimum, so the
+// payoff is S_T-min(path) (call) / max(path)-S_T (put). Both are always
+// non-negative pathwise (min(path)<=S_T<=max(path)), so these are strictly
+// more valuable than the corresponding fixed-strike/vanilla option.
+double mc_lookback_floating_call(double S, double T, double r, double sigma,
+                                 int n_paths, int n_steps, unsigned seed = 42);
+double mc_lookback_floating_put(double S, double T, double r, double sigma,
+                                int n_paths, int n_steps, unsigned seed = 42);
+
+// Fixed-strike: strike K is set upfront, but the payoff uses the path's
+// extreme rather than the terminal price: max(max(path)-K,0) (call) /
+// max(K-min(path),0) (put).
+double mc_lookback_fixed_call(double S, double K, double T, double r, double sigma,
+                              int n_paths, int n_steps, unsigned seed = 42);
+double mc_lookback_fixed_put(double S, double K, double T, double r, double sigma,
+                             int n_paths, int n_steps, unsigned seed = 42);
+
 } // namespace finance
 } // namespace ms
