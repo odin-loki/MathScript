@@ -290,6 +290,132 @@ double portfolio_return(std::span<const double> weights,
     return ret;
 }
 
+// Gauss-Jordan elimination on the augmented matrix K (n x n+1, last column is
+// the RHS) with partial pivoting, reducing K in place to [I | solution]. Same
+// pattern as gauss_solve in src/control/control.cpp, kept local here since
+// small dense solves like this aren't routed through the generic Matrix<S,...>
+// system elsewhere in the codebase either.
+static bool gauss_solve_aug(std::vector<std::vector<double>>& K, int n) {
+    for (int col = 0; col < n; ++col) {
+        int pivot = -1;
+        double best = 0.0;
+        for (int row = col; row < n; ++row)
+            if (std::abs(K[row][col]) > best) { best = std::abs(K[row][col]); pivot = row; }
+        if (pivot < 0 || best < 1e-12) return false; // no usable pivot: singular to tolerance
+        std::swap(K[col], K[pivot]);
+        double sc = K[col][col];
+        for (int j = col; j <= n; ++j) K[col][j] /= sc;
+        for (int row = 0; row < n; ++row) {
+            if (row == col) continue;
+            double f = K[row][col];
+            for (int j = col; j <= n; ++j) K[row][j] -= f * K[col][j];
+        }
+    }
+    return true;
+}
+
+// Solves the dense n x n system cov_matrix*y = rhs for y. cov_matrix is the
+// flattened row-major covariance matrix; it's copied into a local dense table
+// since gauss_solve_aug needs to pivot/mutate rows in place.
+static Result<std::vector<double>> solve_cov_system(std::span<const double> cov_matrix, int n,
+                                                    std::span<const double> rhs) {
+    std::vector<std::vector<double>> K(static_cast<size_t>(n),
+                                       std::vector<double>(static_cast<size_t>(n) + 1));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j)
+            K[i][j] = cov_matrix[static_cast<size_t>(i) * n + j];
+        K[i][n] = rhs[i];
+    }
+    if (!gauss_solve_aug(K, n))
+        return std::unexpected(Error{SingularMatrix{}});
+    std::vector<double> y(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) y[i] = K[i][n];
+    return y;
+}
+
+Result<std::vector<double>> min_variance_portfolio(std::span<const double> cov_matrix, int n) {
+    if (n <= 0)
+        return std::unexpected(Error{DomainError{"min_variance_portfolio", "n must be > 0"}});
+    if (cov_matrix.size() != static_cast<size_t>(n) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{cov_matrix.size(),
+                                                        static_cast<size_t>(n) * static_cast<size_t>(n)}});
+
+    std::vector<double> ones(static_cast<size_t>(n), 1.0);
+    auto y = solve_cov_system(cov_matrix, n, ones);
+    if (!y) return std::unexpected(y.error());
+
+    double s = std::accumulate(y->begin(), y->end(), 0.0);
+    if (std::abs(s) < 1e-14)
+        return std::unexpected(Error{SingularMatrix{}});
+
+    std::vector<double> w(std::move(*y));
+    for (double& wi : w) wi /= s;
+    return w;
+}
+
+Result<std::vector<double>> efficient_frontier_portfolio(std::span<const double> cov_matrix,
+                                                          std::span<const double> mu,
+                                                          double target_return, int n) {
+    if (n <= 0)
+        return std::unexpected(Error{DomainError{"efficient_frontier_portfolio", "n must be > 0"}});
+    if (cov_matrix.size() != static_cast<size_t>(n) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{cov_matrix.size(),
+                                                        static_cast<size_t>(n) * static_cast<size_t>(n)}});
+    if (mu.size() != static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{mu.size(), static_cast<size_t>(n)}});
+
+    std::vector<double> ones(static_cast<size_t>(n), 1.0);
+    auto y1 = solve_cov_system(cov_matrix, n, ones);
+    if (!y1) return std::unexpected(y1.error());
+    auto y2 = solve_cov_system(cov_matrix, n, mu);
+    if (!y2) return std::unexpected(y2.error());
+
+    double a = std::accumulate(y1->begin(), y1->end(), 0.0);
+    double b = std::accumulate(y2->begin(), y2->end(), 0.0); // == mu^T*y1 by symmetry of Sigma^-1
+    double c = 0.0;
+    for (int i = 0; i < n; ++i) c += mu[i] * (*y2)[i];
+
+    double det = a * c - b * b;
+    if (std::abs(det) < 1e-12)
+        return std::unexpected(Error{DomainError{"efficient_frontier_portfolio",
+                                                  "degenerate two-fund system (near-zero determinant)"}});
+
+    // Cramer's rule on [a b; b c][lambda; gamma] = [1; target_return].
+    double lambda = (c - b * target_return) / det;
+    double gamma  = (a * target_return - b) / det;
+
+    std::vector<double> w(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) w[i] = lambda * (*y1)[i] + gamma * (*y2)[i];
+    return w;
+}
+
+Result<std::vector<double>> max_sharpe_portfolio(std::span<const double> cov_matrix,
+                                                 std::span<const double> mu,
+                                                 double risk_free, int n) {
+    if (n <= 0)
+        return std::unexpected(Error{DomainError{"max_sharpe_portfolio", "n must be > 0"}});
+    if (cov_matrix.size() != static_cast<size_t>(n) * static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{cov_matrix.size(),
+                                                        static_cast<size_t>(n) * static_cast<size_t>(n)}});
+    if (mu.size() != static_cast<size_t>(n))
+        return std::unexpected(Error{DimensionMismatch{mu.size(), static_cast<size_t>(n)}});
+
+    std::vector<double> excess(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) excess[i] = mu[i] - risk_free;
+
+    auto y = solve_cov_system(cov_matrix, n, excess);
+    if (!y) return std::unexpected(y.error());
+
+    double s = std::accumulate(y->begin(), y->end(), 0.0);
+    if (std::abs(s) < 1e-14)
+        return std::unexpected(Error{DomainError{"max_sharpe_portfolio",
+                                                  "excess-return weights sum to zero; tangency portfolio undefined"}});
+
+    std::vector<double> w(std::move(*y));
+    for (double& wi : w) wi /= s;
+    return w;
+}
+
 double forward_rate(double r1, double t1, double r2, double t2) {
     return (r2 * t2 - r1 * t1) / (t2 - t1);
 }

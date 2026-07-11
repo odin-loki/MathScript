@@ -462,6 +462,209 @@ TEST(FinanceMC, AsianDeterministic) {
     EXPECT_EQ(a, b);
 }
 
+// --- Markowitz mean-variance portfolio optimization ---
+namespace {
+// 2-asset, uncorrelated: analytical min-variance weights are inversely
+// proportional to variance, w_i = (1/sigma_i^2) / sum_j(1/sigma_j^2).
+const std::vector<double> kCov2Diag = {0.04, 0.0,
+                                       0.0, 0.01};
+
+// 3-asset, correlated example (symmetric, positive-definite).
+const std::vector<double> kCov3 = {0.10, 0.02, 0.01,
+                                   0.02, 0.08, 0.03,
+                                   0.01, 0.03, 0.06};
+const std::vector<double> kMu3 = {0.08, 0.12, 0.10};
+} // namespace
+
+TEST(FinancePortfolioOpt, MinVarianceTwoAssetMatchesClosedForm) {
+    auto w = min_variance_portfolio(kCov2Diag, 2);
+    ASSERT_TRUE(w.has_value());
+    double inv1 = 1.0 / 0.04, inv2 = 1.0 / 0.01;
+    double expected1 = inv1 / (inv1 + inv2), expected2 = inv2 / (inv1 + inv2);
+    EXPECT_NEAR(w->at(0), expected1, 1e-6);
+    EXPECT_NEAR(w->at(1), expected2, 1e-6);
+    EXPECT_NEAR(w->at(0) + w->at(1), 1.0, 1e-10);
+}
+
+TEST(FinancePortfolioOpt, MinVarianceThreeAssetSumsToOne) {
+    auto w = min_variance_portfolio(kCov3, 3);
+    ASSERT_TRUE(w.has_value());
+    double sum = w->at(0) + w->at(1) + w->at(2);
+    EXPECT_NEAR(sum, 1.0, 1e-8);
+}
+
+TEST(FinancePortfolioOpt, MinVarianceThreeAssetSatisfiesKKT) {
+    // At the true minimum-variance point, Sigma*w = lambda*1 for some scalar
+    // lambda, i.e. every entry of Sigma*w is equal.
+    auto w = min_variance_portfolio(kCov3, 3);
+    ASSERT_TRUE(w.has_value());
+    std::vector<double> sw(3, 0.0);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            sw[i] += kCov3[i * 3 + j] * w->at(j);
+    EXPECT_NEAR(sw[0], sw[1], 1e-8);
+    EXPECT_NEAR(sw[1], sw[2], 1e-8);
+}
+
+TEST(FinancePortfolioOpt, MinVarianceReducesVarianceVsEqualWeight) {
+    auto w = min_variance_portfolio(kCov3, 3);
+    ASSERT_TRUE(w.has_value());
+    std::vector<double> equal = {1.0 / 3, 1.0 / 3, 1.0 / 3};
+    EXPECT_LE(portfolio_variance(*w, kCov3), portfolio_variance(equal, kCov3));
+}
+
+TEST(FinancePortfolioOpt, MinVarianceDimensionMismatchErrors) {
+    std::vector<double> bad_cov = {0.04, 0.0, 0.0}; // not 2x2
+    auto w = min_variance_portfolio(bad_cov, 2);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, MinVarianceNonPositiveNErrors) {
+    EXPECT_FALSE(min_variance_portfolio(kCov2Diag, 0).has_value());
+    EXPECT_FALSE(min_variance_portfolio(kCov2Diag, -1).has_value());
+}
+
+TEST(FinancePortfolioOpt, MinVarianceSingularCovarianceErrors) {
+    // Two identical, zero-variance assets: Sigma is all zeros, singular.
+    std::vector<double> singular_cov = {0.0, 0.0,
+                                        0.0, 0.0};
+    auto w = min_variance_portfolio(singular_cov, 2);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, EfficientFrontierHitsTargetReturn) {
+    for (double target : {0.09, 0.10, 0.11}) {
+        auto w = efficient_frontier_portfolio(kCov3, kMu3, target, 3);
+        ASSERT_TRUE(w.has_value());
+        double realized = portfolio_return(*w, kMu3);
+        double sum = w->at(0) + w->at(1) + w->at(2);
+        EXPECT_NEAR(realized, target, 1e-6);
+        EXPECT_NEAR(sum, 1.0, 1e-8);
+    }
+}
+
+TEST(FinancePortfolioOpt, EfficientFrontierAtMinVarianceReturnMatchesMinVariance) {
+    auto min_var_w = min_variance_portfolio(kCov3, 3);
+    ASSERT_TRUE(min_var_w.has_value());
+    double min_var_return = portfolio_return(*min_var_w, kMu3);
+
+    auto ef_w = efficient_frontier_portfolio(kCov3, kMu3, min_var_return, 3);
+    ASSERT_TRUE(ef_w.has_value());
+    for (int i = 0; i < 3; ++i)
+        EXPECT_NEAR(ef_w->at(i), min_var_w->at(i), 1e-6);
+}
+
+TEST(FinancePortfolioOpt, EfficientFrontierDimensionMismatchErrors) {
+    std::vector<double> bad_mu = {0.08, 0.12}; // length 2, n=3
+    auto w = efficient_frontier_portfolio(kCov3, bad_mu, 0.1, 3);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, EfficientFrontierNonPositiveNErrors) {
+    EXPECT_FALSE(efficient_frontier_portfolio(kCov3, kMu3, 0.1, 0).has_value());
+}
+
+TEST(FinancePortfolioOpt, EfficientFrontierSingularCovarianceErrors) {
+    std::vector<double> singular_cov = {0.0, 0.0,
+                                        0.0, 0.0};
+    std::vector<double> mu2 = {0.05, 0.07};
+    auto w = efficient_frontier_portfolio(singular_cov, mu2, 0.06, 2);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, EfficientFrontierDegenerateEqualReturnsErrors) {
+    // All expected returns equal collapses the 1x2/2x1 rows of [a b; b c] into
+    // a rank-1 system: a*c - b*b -> 0.
+    std::vector<double> equal_mu = {0.10, 0.10, 0.10};
+    auto w = efficient_frontier_portfolio(kCov3, equal_mu, 0.10, 3);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeSumsToOne) {
+    auto w = max_sharpe_portfolio(kCov3, kMu3, 0.02, 3);
+    ASSERT_TRUE(w.has_value());
+    double sum = w->at(0) + w->at(1) + w->at(2);
+    EXPECT_NEAR(sum, 1.0, 1e-8);
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeBeatsEqualWeight) {
+    double r_f = 0.02;
+    auto w = max_sharpe_portfolio(kCov3, kMu3, r_f, 3);
+    ASSERT_TRUE(w.has_value());
+    double tangency_sharpe = (portfolio_return(*w, kMu3) - r_f) /
+                             std::sqrt(portfolio_variance(*w, kCov3));
+
+    std::vector<double> equal = {1.0 / 3, 1.0 / 3, 1.0 / 3};
+    double equal_sharpe = (portfolio_return(equal, kMu3) - r_f) /
+                          std::sqrt(portfolio_variance(equal, kCov3));
+
+    EXPECT_GE(tangency_sharpe, equal_sharpe);
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeBeatsMinVariance) {
+    double r_f = 0.02;
+    auto w = max_sharpe_portfolio(kCov3, kMu3, r_f, 3);
+    ASSERT_TRUE(w.has_value());
+    double tangency_sharpe = (portfolio_return(*w, kMu3) - r_f) /
+                             std::sqrt(portfolio_variance(*w, kCov3));
+
+    auto min_var_w = min_variance_portfolio(kCov3, 3);
+    ASSERT_TRUE(min_var_w.has_value());
+    double min_var_sharpe = (portfolio_return(*min_var_w, kMu3) - r_f) /
+                            std::sqrt(portfolio_variance(*min_var_w, kCov3));
+
+    EXPECT_GE(tangency_sharpe, min_var_sharpe);
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeBeatsArbitraryCandidates) {
+    double r_f = 0.02;
+    auto w = max_sharpe_portfolio(kCov3, kMu3, r_f, 3);
+    ASSERT_TRUE(w.has_value());
+    double tangency_sharpe = (portfolio_return(*w, kMu3) - r_f) /
+                             std::sqrt(portfolio_variance(*w, kCov3));
+
+    std::vector<std::vector<double>> candidates = {
+        {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0},
+        {0.5, 0.3, 0.2}, {0.2, 0.2, 0.6},
+    };
+    for (const auto& cand : candidates) {
+        double cand_sharpe = (portfolio_return(cand, kMu3) - r_f) /
+                             std::sqrt(portfolio_variance(cand, kCov3));
+        EXPECT_GE(tangency_sharpe, cand_sharpe - 1e-9);
+    }
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeDimensionMismatchErrors) {
+    std::vector<double> bad_mu = {0.08, 0.12};
+    auto w = max_sharpe_portfolio(kCov3, bad_mu, 0.02, 3);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeNonPositiveNErrors) {
+    EXPECT_FALSE(max_sharpe_portfolio(kCov3, kMu3, 0.02, 0).has_value());
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeSingularCovarianceErrors) {
+    std::vector<double> singular_cov = {0.0, 0.0,
+                                        0.0, 0.0};
+    std::vector<double> mu2 = {0.05, 0.07};
+    auto w = max_sharpe_portfolio(singular_cov, mu2, 0.02, 2);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, MinVarianceResidualIsSmall) {
+    // Direct residual check: every entry of Sigma*w should be equal (KKT
+    // optimality for the equality-constrained minimum-variance problem).
+    auto w = min_variance_portfolio(kCov3, 3);
+    ASSERT_TRUE(w.has_value());
+    std::vector<double> sw(3, 0.0);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            sw[i] += kCov3[i * 3 + j] * w->at(j);
+    double mean_sw = (sw[0] + sw[1] + sw[2]) / 3.0;
+    for (double v : sw) EXPECT_NEAR(v, mean_sw, 1e-8);
+}
+
 TEST(FinanceMC, AsianEdgeCasesReturnZero) {
     double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
     EXPECT_EQ(mc_asian_call(S, K, T, r, sigma, 0, 10), 0.0);
