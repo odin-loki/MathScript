@@ -17,6 +17,8 @@ int size(const MPIContext& ctx);
 std::string backend_name(const MPIContext& ctx);
 
 double allreduce_sum(const MPIContext& ctx, double value);
+double allreduce_max(const MPIContext& ctx, double value);
+double allreduce_min(const MPIContext& ctx, double value);
 void barrier(const MPIContext& ctx);
 
 } // namespace ms::distributed

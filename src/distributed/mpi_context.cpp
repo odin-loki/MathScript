@@ -60,6 +60,28 @@ double allreduce_sum(const MPIContext& ctx, double value) {
 #endif
 }
 
+double allreduce_max(const MPIContext& ctx, double value) {
+#if defined(MS_HAS_MPI) && MS_HAS_MPI
+    double out = 0.0;
+    MPI_Allreduce(&value, &out, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    return out;
+#else
+    (void)ctx;
+    return value;
+#endif
+}
+
+double allreduce_min(const MPIContext& ctx, double value) {
+#if defined(MS_HAS_MPI) && MS_HAS_MPI
+    double out = 0.0;
+    MPI_Allreduce(&value, &out, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    return out;
+#else
+    (void)ctx;
+    return value;
+#endif
+}
+
 void barrier(const MPIContext& ctx) {
 #if defined(MS_HAS_MPI) && MS_HAS_MPI
     if (ctx.active) {
