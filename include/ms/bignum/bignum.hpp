@@ -98,6 +98,18 @@ bool bigint_is_odd(const BigInt& a);
 BigInt bigint_lcm(const BigInt& a, const BigInt& b);
 BigInt bigint_pow(const BigInt& base, long long exp);
 BigInt bigint_pow_mod(BigInt base, BigInt exp, const BigInt& mod);
+
+/// @brief Modular multiplicative inverse: find x such that a*x ≡ 1 (mod m).
+/// @param a Value whose inverse is sought (need not be reduced mod m).
+/// @param m Modulus; must be > 1 for a meaningful result.
+/// @return x in [0, m) with a*x ≡ 1 (mod m) when gcd(a, m) == 1.
+///   On degenerate modulus (m <= 1 or m negative) or when no inverse exists
+///   (gcd(a, m) != 1), mirrors this module's defensive convention and returns
+///   BigInt(0) rather than throwing/asserting.
+/// @note Computed via bigint_extended_gcd(a, m): if (g, x, y) satisfies
+///   a*x + m*y = g and g == 1, the inverse is x normalized into [0, m).
+BigInt bigint_mod_inv(const BigInt& a, const BigInt& m);
+
 BigInt bigint_factorial(int n);
 BigInt bigint_fibonacci(int n);
 bool   bigint_is_prime(const BigInt& n, int rounds = 10);  // Miller-Rabin

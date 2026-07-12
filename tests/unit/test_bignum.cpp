@@ -428,6 +428,72 @@ TEST(BigIntNumThy, PowModSmall) {
 
 namespace {
 
+void expect_mod_inv_property(const BigInt& a, const BigInt& m) {
+    BigInt inv = bigint_mod_inv(a, m);
+    EXPECT_FALSE(inv.is_zero()) << "expected inverse for a=" << a.to_string()
+                                << " m=" << m.to_string();
+    EXPECT_FALSE(inv.negative);
+    EXPECT_TRUE(inv < m);
+    BigInt one = (a * inv) % m;
+    if (one.negative) one = one + m;
+    EXPECT_EQ(one, BigInt(1LL)) << "a=" << a.to_string() << " inv=" << inv.to_string()
+                                << " m=" << m.to_string();
+}
+
+} // namespace
+
+TEST(BigIntNumThy, ModInvSmallKnown) {
+    // 3 * 4 = 12 ≡ 1 (mod 11)
+    EXPECT_EQ(bigint_mod_inv(BigInt(3LL), BigInt(11LL)).to_string(), "4");
+}
+
+TEST(BigIntNumThy, ModInvPropertySmallCoprime) {
+    expect_mod_inv_property(BigInt(7LL), BigInt(13LL));
+    expect_mod_inv_property(BigInt(17LL), BigInt(19LL));
+    expect_mod_inv_property(BigInt(12345LL), BigInt(67891LL));
+}
+
+TEST(BigIntNumThy, ModInvPropertyLargeCoprime) {
+    BigInt a("98765432109876543210987654321098765432109876543210");
+    BigInt m("12345678901234567890123456789012345678901234567891");
+    expect_mod_inv_property(a, m);
+}
+
+TEST(BigIntNumThy, ModInvNonCoprimeReturnsZero) {
+    EXPECT_TRUE(bigint_mod_inv(BigInt(4LL), BigInt(8LL)).is_zero());
+    EXPECT_TRUE(bigint_mod_inv(BigInt(6LL), BigInt(9LL)).is_zero());
+    EXPECT_TRUE(bigint_mod_inv(BigInt(10LL), BigInt(15LL)).is_zero());
+}
+
+TEST(BigIntNumThy, ModInvNegativeA) {
+    BigInt m(11LL);
+    BigInt inv = bigint_mod_inv(BigInt(-3LL), m);
+    // (-3)*7 = -21 ≡ 1 (mod 11); not the same as mod_inv(3, 11) == 4
+    EXPECT_EQ(inv.to_string(), "7");
+    expect_mod_inv_property(BigInt(-3LL), m);
+}
+
+TEST(BigIntNumThy, ModInvALargerThanM) {
+    // 15*3 = 45 ≡ 1 (mod 11); inverse uses the actual value of a, not a%m
+    EXPECT_EQ(bigint_mod_inv(BigInt(15LL), BigInt(11LL)).to_string(), "3");
+    expect_mod_inv_property(BigInt(15LL), BigInt(11LL));
+}
+
+TEST(BigIntNumThy, ModInvCryptoSizedPrime) {
+    // 982451653 is prime (used elsewhere in this test file).
+    BigInt prime("982451653");
+    BigInt a("31415926535897932384626433832795028841971");
+    expect_mod_inv_property(a, prime);
+}
+
+TEST(BigIntNumThy, ModInvDegenerateModulusReturnsZero) {
+    EXPECT_TRUE(bigint_mod_inv(BigInt(3LL), BigInt(0LL)).is_zero());
+    EXPECT_TRUE(bigint_mod_inv(BigInt(3LL), BigInt(1LL)).is_zero());
+    EXPECT_TRUE(bigint_mod_inv(BigInt(3LL), BigInt(-11LL)).is_zero());
+}
+
+namespace {
+
 void expect_bezout(const BigInt& a, const BigInt& b) {
     auto [g, x, y] = bigint_extended_gcd(a, b);
     EXPECT_EQ(g, bigint_gcd(a, b));

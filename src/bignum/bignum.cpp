@@ -337,6 +337,17 @@ BigInt bigint_pow_mod(BigInt base, BigInt exp, const BigInt& mod) {
     return result;
 }
 
+BigInt bigint_mod_inv(const BigInt& a, const BigInt& m) {
+    if (m <= BigInt(1LL)) return BigInt(0LL);
+    BigInt mod = m.negative ? -m : m;
+    auto [g, x, y] = bigint_extended_gcd(a, mod);
+    (void)y;
+    if (!g.is_one()) return BigInt(0LL);
+    BigInt inv = x % mod;
+    if (inv.negative) inv = inv + mod;
+    return inv;
+}
+
 BigInt bigint_factorial(int n) {
     BigInt r(1LL);
     for (int i=2;i<=n;++i) r=r*BigInt((long long)i);
