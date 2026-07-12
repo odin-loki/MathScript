@@ -219,6 +219,119 @@ TEST(OdeAdvanced2, Bdf2_StiffDecay_ForwardEulerBlowsUp) {
 }
 
 // ---------------------------------------------------------------------------
+// ode_exponential_euler (ETD1)
+// ---------------------------------------------------------------------------
+
+TEST(OdeAdvanced2, ExponentialEuler_ZeroSteps_ReturnsEmpty) {
+    const auto g = [](double, double) { return 0.0; };
+    const auto result = ode_exponential_euler(g, -5.0, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.y.empty());
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_PureLinearDecay_ExactMachinePrecision) {
+    const double lambda = -5.0;
+    const auto g = [](double, double) { return 0.0; };
+    const auto result = ode_exponential_euler(g, lambda, 0.0, 1.0, 1.0, 200);
+    ASSERT_FALSE(result.y.empty());
+    const double exact = std::exp(lambda * 1.0);
+    EXPECT_NEAR(result.y.back(), exact, 1e-12);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        const double y_exact = std::exp(lambda * result.t[i]);
+        EXPECT_NEAR(result.y[i], y_exact, 1e-12);
+    }
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_ConstantForcing_MatchesAnalytic) {
+    const double lambda = -3.0;
+    const double c = 2.0;
+    const double y0 = 0.5;
+    const auto g = [c](double, double) { return c; };
+    const auto result = ode_exponential_euler(g, lambda, 0.0, y0, 1.0, 500);
+    ASSERT_FALSE(result.y.empty());
+    const double exact = (y0 + c / lambda) * std::exp(lambda * 1.0) - c / lambda;
+    EXPECT_NEAR(result.y.back(), exact, 1e-10);
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_MildStiff_AgreesWithRk4) {
+    const double lambda = -10.0;
+    const auto g = [](double t, double y) { return 0.1 * std::sin(t) + 0.01 * y * y; };
+    const auto full = [lambda, &g](double t, double y) { return lambda * y + g(t, y); };
+    const size_t steps = 400;
+    const auto etd = ode_exponential_euler(g, lambda, 0.0, 1.0, 1.0, static_cast<int>(steps));
+    const auto rk4 = ode_rk4(full, 0.0, 1.0, 1.0, steps);
+    ASSERT_FALSE(etd.y.empty());
+    ASSERT_FALSE(rk4.y.empty());
+    EXPECT_NEAR(etd.y.back(), rk4.y.back(), 1e-3);
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_StiffLargeStep_RemainsStable) {
+    const double lambda = -1000.0;
+    const auto g = [](double, double) { return 0.0; };
+    const int steps = 10; // h = 0.1, h*lambda = -100 (explicit Euler would blow up)
+    const auto fwd = ode_euler(
+        [lambda](double, double y) { return lambda * y; }, 0.0, 1.0, 1.0,
+        static_cast<size_t>(steps));
+    const auto etd = ode_exponential_euler(g, lambda, 0.0, 1.0, 1.0, steps);
+    ASSERT_FALSE(fwd.y.empty());
+    ASSERT_FALSE(etd.y.empty());
+    EXPECT_TRUE(!std::isfinite(fwd.y.back()) || std::abs(fwd.y.back()) > 1e4);
+    EXPECT_TRUE(std::isfinite(etd.y.back()));
+    const double exact = std::exp(lambda * 1.0);
+    EXPECT_NEAR(etd.y.back(), exact, 1e-10);
+    for (double val : etd.y) {
+        EXPECT_TRUE(std::isfinite(val));
+        EXPECT_GE(val, 0.0);
+        EXPECT_LE(val, 1.0);
+    }
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_LambdaNearZero_LikeForwardEuler) {
+    const auto g = [](double, double) { return 1.0; };
+    const auto full = [](double, double) { return 1.0; };
+    const size_t steps = 100;
+    const auto etd_zero = ode_exponential_euler(g, 0.0, 0.0, 0.0, 1.0, static_cast<int>(steps));
+    const auto etd_tiny = ode_exponential_euler(g, 1e-12, 0.0, 0.0, 1.0, static_cast<int>(steps));
+    const auto euler = ode_euler(full, 0.0, 0.0, 1.0, steps);
+    ASSERT_FALSE(etd_zero.y.empty());
+    ASSERT_FALSE(etd_tiny.y.empty());
+    ASSERT_FALSE(euler.y.empty());
+    for (double val : etd_zero.y) {
+        EXPECT_TRUE(std::isfinite(val));
+    }
+    for (double val : etd_tiny.y) {
+        EXPECT_TRUE(std::isfinite(val));
+    }
+    const double exact = 1.0;
+    EXPECT_NEAR(etd_zero.y.back(), exact, 0.02);
+    EXPECT_NEAR(etd_tiny.y.back(), exact, 0.02);
+    EXPECT_NEAR(etd_zero.y.back(), euler.y.back(), 1e-12);
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_MultiStepTrajectory_AccurateThroughout) {
+    const double lambda = -2.0;
+    const double c = 1.0;
+    const double y0 = 2.0;
+    const auto g = [c](double, double) { return c; };
+    const auto result = ode_exponential_euler(g, lambda, 0.0, y0, 2.0, 400);
+    ASSERT_EQ(result.t.size(), result.y.size());
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        const double t = result.t[i];
+        const double exact = (y0 + c / lambda) * std::exp(lambda * t) - c / lambda;
+        EXPECT_NEAR(result.y[i], exact, 1e-9) << "at t=" << t;
+    }
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_ProducesMonotoneGrid) {
+    const auto g = [](double, double y) { return -0.1 * y; };
+    const auto result = ode_exponential_euler(g, -5.0, 0.0, 1.0, 1.0, 10);
+    ASSERT_EQ(result.t.size(), 11u);
+    for (size_t i = 1; i < result.t.size(); ++i) {
+        EXPECT_GT(result.t[i], result.t[i - 1]);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // ode_bvp_shooting
 // ---------------------------------------------------------------------------
 
