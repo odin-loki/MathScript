@@ -123,6 +123,34 @@ double gaussian_mechanism(
     double sensitivity,
     CSPRNG& rng);
 
+/// Exponential mechanism (McSherry & Talwar): differentially-private selection over a
+/// finite set of discrete candidates, as opposed to laplace_mechanism()/gaussian_mechanism()
+/// which add calibrated noise to a single numeric query result. Given a utility/"score" per
+/// candidate (higher is better), returns the index of the candidate chosen, where candidate
+/// `i` is selected with probability proportional to `exp(epsilon * scores[i] / (2 *
+/// sensitivity))`. Larger @p epsilon concentrates selection on the highest-scoring
+/// candidate(s); smaller @p epsilon pushes the distribution toward uniform.
+///
+/// Internally computes the selection weights via a log-sum-exp-stabilized softmax (subtracting
+/// the max exponent before calling std::exp) so large-magnitude scores cannot overflow, then
+/// draws the candidate via cumulative-sum categorical sampling from a single uniform draw off
+/// @p rng — the same CSPRNG source used by laplace_mechanism()/gaussian_mechanism().
+///
+/// @param scores      One utility value per candidate; @p scores.size() is the candidate count.
+/// @param epsilon     Privacy budget; must be > 0 for the standard privacy guarantee to hold
+///                     (as with laplace_mechanism()/gaussian_mechanism(), this is not validated
+///                     here — an invalid value simply propagates through the math).
+/// @param sensitivity Score sensitivity; must be > 0 for the same reason (not validated, for
+///                     consistency with laplace_mechanism()/gaussian_mechanism()).
+/// @param rng         CSPRNG supplying the single uniform draw used for categorical sampling.
+/// @return The selected candidate index (`< scores.size()`), or `SIZE_MAX` if @p scores is
+///         empty (there is nothing to select from).
+size_t exponential_mechanism(
+    std::span<const double> scores,
+    double epsilon,
+    double sensitivity,
+    CSPRNG& rng);
+
 } // namespace diffpriv
 
 namespace backtest {
