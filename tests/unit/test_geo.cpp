@@ -1066,3 +1066,94 @@ TEST(GeoClip, BothEmptyReturnsEmptyNoCrash) {
     ASSERT_NO_THROW(result = clip_polygon({}, {}));
     EXPECT_TRUE(result.empty());
 }
+
+// ---- Polygon Union (convex MVP) ----
+
+TEST(GeoPolyUnion, OverlappingSquaresArea) {
+    // [0,2]x[0,2] union [1,3]x[0,2] => 3x2 rectangle, area 6.
+    Polygon2D a = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    Polygon2D b = {{1, 0}, {3, 0}, {3, 2}, {1, 2}};
+    auto u = poly_union(a, b);
+    ASSERT_GE(u.size(), 3u);
+    EXPECT_NEAR(area(u), 6.0, 1e-9);
+    EXPECT_NEAR(shoelace_area(u), 6.0, 1e-9);
+}
+
+TEST(GeoPolyUnion, DisjointSquaresHullOverapproximation) {
+    // Disjoint operands cannot be represented as one simple polygon; MVP returns the
+    // convex hull of all vertices (documented over-approximation bridging the gap).
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{3, 0}, {4, 0}, {4, 1}, {3, 1}};
+    auto u = poly_union(a, b);
+    ASSERT_GE(u.size(), 3u);
+    EXPECT_NEAR(area(u), 4.0, 1e-9);
+    EXPECT_TRUE(point_in_polygon({0.5, 0.5}, u));
+    EXPECT_TRUE(point_in_polygon({3.5, 0.5}, u));
+}
+
+TEST(GeoPolyUnion, ContainedSquareReturnsLarger) {
+    Polygon2D inner = {{1, 1}, {2, 1}, {2, 2}, {1, 2}};
+    Polygon2D outer = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    auto u = poly_union(inner, outer);
+    ASSERT_GE(u.size(), 3u);
+    EXPECT_NEAR(area(u), 16.0, 1e-9);
+}
+
+TEST(GeoPolyUnion, IdenticalSquaresUnchangedArea) {
+    Polygon2D sq = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    auto u = poly_union(sq, sq);
+    ASSERT_GE(u.size(), 3u);
+    EXPECT_NEAR(area(u), 4.0, 1e-9);
+}
+
+TEST(GeoPolyUnion, OffsetOverlappingSquaresConvexHullFallback) {
+    // [0,2]^2 ∪ [1,3]^2 is a non-convex octagon (area 7). A single convex polygon
+    // cannot represent that region exactly; MVP returns the convex hull (area 8).
+    Polygon2D a = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    Polygon2D b = {{1, 1}, {3, 1}, {3, 3}, {1, 3}};
+    auto u = poly_union(a, b);
+    ASSERT_GE(u.size(), 3u);
+    EXPECT_NEAR(area(u), 8.0, 1e-9);
+    expect_convex_ccw(u);
+}
+
+TEST(GeoPolyUnion, ResultIsConvexCCW) {
+    Polygon2D a = {{0, 0}, {2, 0}, {1, 2}};
+    Polygon2D b = {{1, 0}, {3, 0}, {2, 2}};
+    auto u = poly_union(a, b);
+    expect_convex_ccw(u);
+}
+
+TEST(GeoPolyUnion, OneEmptyReturnsOther) {
+    Polygon2D sq = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D empty;
+    auto u1 = poly_union(sq, empty);
+    auto u2 = poly_union(empty, sq);
+    ASSERT_GE(u1.size(), 3u);
+    expect_same_point_set(u1, sq);
+    expect_same_point_set(u2, sq);
+}
+
+TEST(GeoPolyUnion, BothEmptyReturnsEmpty) {
+    Polygon2D a, b;
+    auto u = poly_union(a, b);
+    EXPECT_TRUE(u.empty());
+}
+
+TEST(GeoPolyUnion, TouchingSquaresShareEdge) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{1, 0}, {2, 0}, {2, 1}, {1, 1}};
+    auto u = poly_union(a, b);
+    ASSERT_GE(u.size(), 3u);
+    EXPECT_NEAR(area(u), 2.0, 1e-9);
+}
+
+TEST(GeoPolyUnion, TriangleAndSquareOverlap) {
+    Polygon2D tri = {{0, 0}, {2, 0}, {1, 2}};
+    Polygon2D sq  = {{1, 0}, {3, 0}, {3, 2}, {1, 2}};
+    auto u = poly_union(tri, sq);
+    ASSERT_GE(u.size(), 3u);
+    EXPECT_GT(area(u), area(tri));
+    EXPECT_LT(area(u), area(tri) + area(sq));
+    expect_convex_ccw(u);
+}
