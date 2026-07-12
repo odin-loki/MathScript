@@ -89,6 +89,13 @@ std::vector<Edge> mst_kruskal(const Graph& G);
 // Returns MST edges (Prim)
 std::vector<Edge> mst_prim(const Graph& G, int start = 0);
 
+// Minimum spanning arborescence rooted at `root` (directed graphs only).
+// Chu-Liu/Edmonds: greedily pick each non-root vertex's cheapest incoming
+// edge; if that set contains a cycle, contract the cycle, recurse, expand.
+// Requires every non-root vertex to have at least one incoming edge.
+struct ArborescenceResult { double total_weight; std::vector<Edge> edges; };
+ArborescenceResult min_arborescence(const Graph& G, int root);
+
 // --- Graph properties ---
 int    diameter(const Graph& G);   // longest shortest path
 int    radius(const Graph& G);

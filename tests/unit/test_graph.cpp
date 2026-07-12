@@ -318,6 +318,127 @@ TEST(GraphMST, Prim) {
     EXPECT_EQ(mst.size(), 3u);
 }
 
+namespace {
+
+double edge_set_weight(const std::vector<Edge>& edges) {
+    double total = 0.0;
+    for (const auto& e : edges) total += e.weight;
+    return total;
+}
+
+bool is_valid_arborescence(const Graph& G, int root, const std::vector<Edge>& edges) {
+    int n = G.n_vertices();
+    if (n == 0) return edges.empty();
+    if (static_cast<int>(edges.size()) != n - 1) return false;
+
+    std::vector<int> indegree(n, 0);
+    Graph arb(n, true);
+    for (const auto& e : edges) {
+        if (e.from < 0 || e.from >= n || e.to < 0 || e.to >= n) return false;
+        arb.add_edge(e.from, e.to, e.weight);
+        ++indegree[e.to];
+    }
+    if (indegree[root] != 0) return false;
+    for (int v = 0; v < n; ++v)
+        if (v != root && indegree[v] != 1) return false;
+
+    auto reached = bfs(arb, root);
+    return static_cast<int>(reached.size()) == n;
+}
+
+double naive_min_incoming_total(const Graph& G, int root) {
+    int n = G.n_vertices();
+    double total = 0.0;
+    for (int v = 0; v < n; ++v) {
+        if (v == root) continue;
+        double best = INF;
+        for (int u = 0; u < n; ++u)
+            for (auto& [to, w] : G.neighbors(u))
+                if (to == v) best = std::min(best, w);
+        if (best >= INF) return INF;
+        total += best;
+    }
+    return total;
+}
+
+} // namespace
+
+// ---- Minimum spanning arborescence (Chu-Liu/Edmonds) ----
+TEST(GraphArborescence, AcyclicGreedySelectionIsOptimal) {
+    Graph G(3, true);
+    G.add_edge(0, 1, 1.0);
+    G.add_edge(1, 2, 2.0);
+    G.add_edge(0, 2, 10.0);
+
+    auto res = min_arborescence(G, 0);
+    EXPECT_EQ(res.edges.size(), 2u);
+    EXPECT_NEAR(res.total_weight, 3.0, 1e-10);
+    EXPECT_NEAR(edge_set_weight(res.edges), res.total_weight, 1e-10);
+    EXPECT_TRUE(is_valid_arborescence(G, 0, res.edges));
+}
+
+TEST(GraphArborescence, CycleForcingCaseMatchesHandComputedOptimum) {
+    // Classic Chu-Liu/Edmonds example: greedy min-incoming picks the 1<->2
+    // cycle (total 8) but the true minimum arborescence costs 9
+    // (0->2, 2->1, 0->3).
+    Graph G(4, true);
+    G.add_edge(0, 1, 4.0);
+    G.add_edge(0, 2, 3.0);
+    G.add_edge(0, 3, 5.0);
+    G.add_edge(1, 2, 2.0);
+    G.add_edge(2, 1, 1.0);
+    G.add_edge(1, 3, 6.0);
+    G.add_edge(2, 3, 7.0);
+
+    auto res = min_arborescence(G, 0);
+    EXPECT_EQ(res.edges.size(), 3u);
+    EXPECT_NEAR(res.total_weight, 9.0, 1e-10);
+    EXPECT_NEAR(edge_set_weight(res.edges), res.total_weight, 1e-10);
+    EXPECT_TRUE(is_valid_arborescence(G, 0, res.edges));
+
+    // Naive per-vertex min-incoming would yield 8.0 via the invalid 1<->2 cycle.
+    EXPECT_NEAR(naive_min_incoming_total(G, 0), 8.0, 1e-10);
+    EXPECT_GT(res.total_weight, naive_min_incoming_total(G, 0));
+}
+
+TEST(GraphArborescence, ResultIsConnectedSpanningInBranchStructure) {
+    Graph G(5, true);
+    G.add_edge(0, 1, 1.0);
+    G.add_edge(0, 2, 4.0);
+    G.add_edge(1, 2, 1.0);
+    G.add_edge(2, 1, 2.0);
+    G.add_edge(1, 3, 3.0);
+    G.add_edge(2, 3, 2.0);
+    G.add_edge(3, 4, 1.0);
+    G.add_edge(4, 3, 5.0);
+
+    auto res = min_arborescence(G, 0);
+    EXPECT_EQ(res.edges.size(), 4u);
+    EXPECT_TRUE(is_valid_arborescence(G, 0, res.edges));
+    EXPECT_NEAR(edge_set_weight(res.edges), res.total_weight, 1e-10);
+}
+
+TEST(GraphArborescence, SingleVertexRoot) {
+    Graph G(1, true);
+    auto res = min_arborescence(G, 0);
+    EXPECT_TRUE(res.edges.empty());
+    EXPECT_NEAR(res.total_weight, 0.0, 1e-10);
+}
+
+TEST(GraphArborescence, BookkeepingMatchesEdgeSum) {
+    Graph G(4, true);
+    G.add_edge(0, 1, 4.0);
+    G.add_edge(0, 2, 3.0);
+    G.add_edge(0, 3, 5.0);
+    G.add_edge(1, 2, 2.0);
+    G.add_edge(2, 1, 1.0);
+    G.add_edge(1, 3, 6.0);
+    G.add_edge(2, 3, 7.0);
+
+    auto res = min_arborescence(G, 0);
+    EXPECT_DOUBLE_EQ(res.total_weight, edge_set_weight(res.edges));
+}
+
 // ---- PageRank ----
 TEST(GraphCentrality, PageRank) {
     Graph G(3, true);
