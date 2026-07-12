@@ -845,4 +845,29 @@ std::vector<double> savgol(const std::vector<double>& x, int window_length, int 
     return y;
 }
 
+std::vector<double> median_filter(const std::vector<double>& x, int window_length) {
+    if (window_length <= 0 || window_length % 2 == 0) {
+        return {};
+    }
+    if (x.size() < static_cast<size_t>(window_length)) {
+        return {};
+    }
+
+    const size_t half = static_cast<size_t>((window_length - 1) / 2);
+    const size_t n = x.size();
+
+    // Boundary points without a full centered window are left unfiltered (copied from x),
+    // mirroring savgol's boundary convention exactly; see the @note in signal.hpp.
+    std::vector<double> y = x;
+    std::vector<double> window(static_cast<size_t>(window_length));
+    for (size_t center = half; center + half < n; ++center) {
+        for (size_t j = 0; j < window.size(); ++j) {
+            window[j] = x[center - half + j];
+        }
+        std::sort(window.begin(), window.end());
+        y[center] = window[half];
+    }
+    return y;
+}
+
 } // namespace ms
