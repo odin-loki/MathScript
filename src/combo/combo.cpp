@@ -244,6 +244,21 @@ uint64_t stirling2(uint32_t n, uint32_t k) {
     return s[n][k];
 }
 
+uint64_t eulerian_number(uint32_t n, uint32_t k) {
+    if (n == 0) return k == 0 ? 1 : 0;
+    if (k >= n) return 0;
+    if (k == 0) return 1;
+    // A(n,k) = (k+1)*A(n-1,k) + (n-k)*A(n-1,k-1)
+    std::vector<std::vector<uint64_t>> a(n + 1, std::vector<uint64_t>(k + 1, 0));
+    a[0][0] = 1;
+    for (uint32_t i = 1; i <= n; ++i) {
+        a[i][0] = 1;
+        for (uint32_t j = 1; j <= std::min(i - 1, k); ++j)
+            a[i][j] = (j + 1) * a[i - 1][j] + (i - j) * a[i - 1][j - 1];
+    }
+    return a[n][k];
+}
+
 uint64_t bell_num(uint32_t n) {
     // Bell triangle method
     if (n == 0) return 1;

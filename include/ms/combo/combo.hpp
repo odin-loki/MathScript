@@ -50,6 +50,9 @@ uint64_t catalan_num(uint32_t n);
 uint64_t stirling1(uint32_t n, uint32_t k);  // unsigned, first kind |s(n,k)|
 uint64_t stirling2(uint32_t n, uint32_t k);  // second kind S(n,k)
 
+// Eulerian numbers A(n,k): permutations of {1..n} with exactly k ascents
+uint64_t eulerian_number(uint32_t n, uint32_t k);
+
 // Bell numbers B_n
 uint64_t bell_num(uint32_t n);
 
