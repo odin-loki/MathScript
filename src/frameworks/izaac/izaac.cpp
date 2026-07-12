@@ -845,4 +845,88 @@ int Cluster::current_leader() const {
 
 } // namespace consensus
 
+namespace fuzz {
+
+namespace {
+
+constexpr std::size_t kMaxSpliceLength = 8;
+
+// Draws a uniform value in [0, bound); returns 0 for bound == 0 rather than dividing by
+// zero, matching this module's defensive no-crash convention.
+uint64_t bounded(CSPRNG& rng, uint64_t bound) {
+    if (bound == 0) {
+        return 0;
+    }
+    return rng.next_u64() % bound;
+}
+
+uint8_t random_byte(CSPRNG& rng) {
+    return static_cast<uint8_t>(bounded(rng, 256));
+}
+
+enum class EditKind : uint8_t { Flip = 0, Insert = 1, Delete = 2, Splice = 3 };
+
+void apply_flip(std::vector<uint8_t>& buf, CSPRNG& rng) {
+    const std::size_t pos = static_cast<std::size_t>(bounded(rng, buf.size()));
+    buf[pos] = random_byte(rng);
+}
+
+void apply_insert(std::vector<uint8_t>& buf, CSPRNG& rng) {
+    const std::size_t pos = static_cast<std::size_t>(bounded(rng, buf.size() + 1));
+    buf.insert(buf.begin() + static_cast<std::ptrdiff_t>(pos), random_byte(rng));
+}
+
+void apply_delete(std::vector<uint8_t>& buf, CSPRNG& rng) {
+    const std::size_t pos = static_cast<std::size_t>(bounded(rng, buf.size()));
+    buf.erase(buf.begin() + static_cast<std::ptrdiff_t>(pos));
+}
+
+void apply_splice(std::vector<uint8_t>& buf, CSPRNG& rng) {
+    const std::size_t start = static_cast<std::size_t>(bounded(rng, buf.size()));
+    const std::size_t max_len = std::min(kMaxSpliceLength, buf.size() - start);
+    const std::size_t len = 1 + static_cast<std::size_t>(bounded(rng, max_len));
+    const std::vector<uint8_t> chunk(
+        buf.begin() + static_cast<std::ptrdiff_t>(start),
+        buf.begin() + static_cast<std::ptrdiff_t>(start + len));
+    const std::size_t insert_pos = static_cast<std::size_t>(bounded(rng, buf.size() + 1));
+    buf.insert(buf.begin() + static_cast<std::ptrdiff_t>(insert_pos), chunk.begin(), chunk.end());
+}
+
+} // namespace
+
+std::vector<uint8_t> mutate(std::span<const uint8_t> input, CSPRNG& rng, std::size_t max_edits) {
+    std::vector<uint8_t> buf(input.begin(), input.end());
+    if (max_edits == 0) {
+        return buf;
+    }
+
+    const std::size_t edit_count = 1 + static_cast<std::size_t>(bounded(rng, max_edits));
+    for (std::size_t i = 0; i < edit_count; ++i) {
+        if (buf.empty()) {
+            // Only insertion is well-defined on an empty buffer; still consumes rng state
+            // for the byte value so edit i's randomness usage stays uniform across edits.
+            buf.push_back(random_byte(rng));
+            continue;
+        }
+
+        switch (static_cast<EditKind>(bounded(rng, 4))) {
+        case EditKind::Flip:
+            apply_flip(buf, rng);
+            break;
+        case EditKind::Insert:
+            apply_insert(buf, rng);
+            break;
+        case EditKind::Delete:
+            apply_delete(buf, rng);
+            break;
+        case EditKind::Splice:
+            apply_splice(buf, rng);
+            break;
+        }
+    }
+    return buf;
+}
+
+} // namespace fuzz
+
 } // namespace ms::izaac

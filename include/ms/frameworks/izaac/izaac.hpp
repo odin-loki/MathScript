@@ -230,4 +230,38 @@ private:
 
 } // namespace consensus
 
+namespace fuzz {
+
+/// Applies a bounded number of random byte-level edits to @p input, producing a mutated
+/// copy suitable as a fuzzer corpus seed (libFuzzer-style mutation: flips, insertions,
+/// deletions, and short duplications of existing sub-ranges).
+///
+/// Each edit is chosen uniformly among four kinds using @p rng:
+///   - flip:   overwrite one existing byte at a random position with a random value.
+///   - insert: splice one random byte in at a random position (buffer grows by 1).
+///   - delete: remove one byte at a random position (buffer shrinks by 1; no-op if empty).
+///   - splice: duplicate a short (bounded-length) sub-range starting at a random position
+///             and re-insert it at a random position (buffer grows by up to 8 bytes).
+///
+/// @param input     Source byte buffer to mutate; left unmodified (a mutated copy is returned).
+/// @param rng       CSPRNG supplying all randomness (edit count, edit kind, positions, values).
+/// @param max_edits Upper bound on the number of edits applied. The actual count is drawn
+///                   from @p rng as `1 + rng.next_u64() % max_edits` (i.e. at least one edit
+///                   whenever max_edits > 0). Defaults to 16.
+/// @return A new buffer with the mutations applied. Returns a copy of @p input unchanged if
+///         @p max_edits == 0.
+/// @note Deterministic: given a fixed @p rng seed and identical call sequence (same input,
+///       same max_edits), mutate() always produces byte-for-byte identical output, since all
+///       randomness is drawn from @p rng with no other entropy source. This makes generated
+///       corpora reproducible for regression/replay.
+/// @note Bounded: applies at most @p max_edits edits (never more); each edit changes the
+///       buffer length by at most 8 bytes (splice) so the total length delta is bounded by
+///       `max_edits * 8`.
+/// @note Defensive: empty @p input only ever receives insertion edits (flip/delete/splice
+///       are no-ops without existing bytes to act on), so mutate() never indexes into an
+///       empty buffer and never throws.
+std::vector<uint8_t> mutate(std::span<const uint8_t> input, CSPRNG& rng, std::size_t max_edits = 16);
+
+} // namespace fuzz
+
 } // namespace ms::izaac
