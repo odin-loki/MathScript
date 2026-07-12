@@ -3,6 +3,7 @@
 #include "ms/error/error_types.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <random>
 #include <vector>
@@ -662,6 +663,38 @@ double bachelier_put(double F, double K, double T, double r, double sigma) {
     double vol_sqrtT = sigma * std::sqrt(T);
     double d = (F - K) / vol_sqrtT;
     return disc * ((K - F) * norm_cdf(-d) + vol_sqrtT * norm_pdf(d));
+}
+
+double vasicek_bond_price(double r, double a, double b, double sigma, double tau) {
+    if (tau <= 0.0) return 1.0;
+    if (a <= 0.0) return std::numeric_limits<double>::quiet_NaN();
+    double B = (1.0 - std::exp(-a * tau)) / a;
+    double sigma2 = sigma * sigma;
+    double log_A = (b - sigma2 / (2.0 * a * a)) * (B - tau) - (sigma2 / (4.0 * a)) * B * B;
+    return std::exp(log_A - B * r);
+}
+
+double cir_bond_price(double r, double a, double b, double sigma, double tau) {
+    if (tau <= 0.0) return 1.0;
+    if (a <= 0.0) return std::numeric_limits<double>::quiet_NaN();
+
+    double B, log_A;
+    if (sigma == 0.0) {
+        // Deterministic limit (dr = a*(b-r)*dt): r(s) = b + (r-b)*exp(-a*s),
+        // so P = exp(-integral_0^tau r(s) ds) = exp(b*(B-tau) - B*r), which
+        // is also the exact sigma->0 limit of the general branch below
+        // (its 1^infinity-form A(tau) is unsafe to evaluate via std::pow).
+        B = (1.0 - std::exp(-a * tau)) / a;
+        log_A = b * (B - tau);
+    } else {
+        double h = std::sqrt(a * a + 2.0 * sigma * sigma);
+        double eht = std::exp(h * tau);
+        double denom = (h + a) * (eht - 1.0) + 2.0 * h;
+        B = 2.0 * (eht - 1.0) / denom;
+        double numer_A = 2.0 * h * std::exp((a + h) * tau / 2.0);
+        log_A = (2.0 * a * b / (sigma * sigma)) * std::log(numer_A / denom);
+    }
+    return std::exp(log_A - B * r);
 }
 
 struct BarrierCoeffs {

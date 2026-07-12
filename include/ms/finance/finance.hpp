@@ -166,6 +166,56 @@ double black76(double F, double K, double T, double r, double sigma, bool call);
 double bachelier_call(double F, double K, double T, double r, double sigma);
 double bachelier_put(double F, double K, double T, double r, double sigma);
 
+// --- Short-rate models: Vasicek / CIR zero-coupon bond pricing ---
+// Both models below price a unit-face-value zero-coupon bond P(t,T) under a
+// one-factor short-rate process for the instantaneous rate r, as the
+// classic affine closed-form P(t,T) = A(tau)*exp(-B(tau)*r) with tau = T-t.
+//
+// Shared defensive conventions for both functions:
+//   - tau <= 0: the bond is at or past maturity, so it is worth exactly its
+//     unit face value regardless of the other parameters -- returns 1.0.
+//   - a <= 0: mean-reversion speed must be strictly positive for the
+//     "ordinary" closed-form below to be well-defined (B(tau)'s derivation
+//     assumes a != 0, and a < 0 would make the process mean-diverging, not
+//     mean-reverting). This is treated as malformed input: returns NaN
+//     rather than silently producing a misleading number.
+
+// Vasicek model: dr = a*(b - r)*dt + sigma*dW (Ornstein-Uhlenbeck short
+// rate; can in principle go negative since the diffusion term is constant).
+// Closed-form bond price:
+//   B(tau) = (1 - exp(-a*tau)) / a
+//   A(tau) = exp( (b - sigma^2/(2*a^2)) * (B(tau) - tau) - (sigma^2/(4*a)) * B(tau)^2 )
+//   P(t,T) = A(tau) * exp(-B(tau) * r)
+// At sigma == 0 this reduces exactly (no approximation) to the deterministic
+// discount factor exp(-integral of r(s) ds), and in particular to
+// exp(-b*tau) when r == b (already at the mean, zero drift).
+// @param r current instantaneous short rate.
+// @param a mean-reversion speed (a > 0 required; see defensive note above).
+// @param b long-run mean rate level.
+// @param sigma short-rate volatility (sigma >= 0; sign is irrelevant since
+//        it only ever appears squared).
+// @param tau time to maturity T-t (tau <= 0 returns 1.0; see note above).
+// @return zero-coupon bond price P(t,T) for unit face value 1.
+double vasicek_bond_price(double r, double a, double b, double sigma, double tau);
+
+// Cox-Ingersoll-Ross (CIR) model: dr = a*(b - r)*dt + sigma*sqrt(r)*dW
+// (mean-reverting with a level-dependent, non-negative-preserving diffusion
+// term, unlike Vasicek). Closed-form bond price:
+//   h = sqrt(a^2 + 2*sigma^2)
+//   B(tau) = 2*(exp(h*tau) - 1) / ((h+a)*(exp(h*tau)-1) + 2*h)
+//   A(tau) = ( 2*h*exp((a+h)*tau/2) / ((h+a)*(exp(h*tau)-1) + 2*h) ) ^ (2*a*b/sigma^2)
+//   P(t,T) = A(tau) * exp(-B(tau) * r)
+// sigma == 0 makes the A(tau) exponent 2*a*b/sigma^2 blow up while its base
+// tends to exactly 1 (a removable 1^infinity singularity), which is
+// numerically unsafe to evaluate directly via std::pow. This is handled
+// defensively by falling back to the same deterministic zero-vol limit as
+// vasicek_bond_price (B(tau) = (1-exp(-a*tau))/a, P = exp(b*(B(tau)-tau) -
+// B(tau)*r)), which is the exact sigma -> 0 limit of the formula above.
+// @param r, a, b, sigma, tau: as in vasicek_bond_price (same tau<=0/a<=0
+//        defensive conventions; sigma == 0 handled explicitly as above).
+// @return zero-coupon bond price P(t,T) for unit face value 1.
+double cir_bond_price(double r, double a, double b, double sigma, double tau);
+
 // European barrier option (continuous monitoring, Haug closed-form).
 // All 8 single-barrier types via call/put, knock_in/knock_out, up/down flags.
 // Down barriers require S > B; up barriers require S < B.
