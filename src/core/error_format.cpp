@@ -22,6 +22,11 @@ std::string format_error(const Error& error) {
             return "convergence failed";
         } else if constexpr (std::is_same_v<T, ParseError>) {
             return std::string(e.msg);
+        } else if constexpr (std::is_same_v<T, ValueOutOfRange>) {
+            std::ostringstream out;
+            out << e.param << " value " << e.value
+                << " out of range [" << e.lo << ", " << e.hi << "]";
+            return out.str();
         } else {
             return "mathscript error";
         }

@@ -45,6 +45,7 @@ TEST(ErrorTest, all_variants_format_without_crash) {
         Error{ParseError{1, 2, "token"}},
         Error{OverflowError{"mul"}},
         Error{PluginViolation{"rule", "loc"}},
+        Error{ValueOutOfRange{"param", 2.0, 0.0, 1.0}},
     };
 
     for (const auto& err : variants) {
