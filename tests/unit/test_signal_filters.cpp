@@ -681,3 +681,176 @@ TEST(SavGolTest, edge_cases_return_empty) {
     // Sanity: a valid, small configuration on this same signal should NOT be empty.
     EXPECT_FALSE(savgol(x, 5, 2).empty());
 }
+
+// ---------------------------------------------------------------------------
+// median_filter(): nonlinear sliding-window median denoising filter.
+// ---------------------------------------------------------------------------
+
+TEST(MedianFilterTest, known_small_example_hand_computed) {
+    // x = {5, 1, 3, 2, 4}, window_length=3.
+    // center=1: window {5,1,3} sorted -> {1,3,5}, median 3.
+    // center=2: window {1,3,2} sorted -> {1,2,3}, median 2.
+    // center=3: window {3,2,4} sorted -> {2,3,4}, median 3.
+    // Boundary points (half=1): y[0]=x[0]=5, y[4]=x[4]=4.
+    const std::vector<double> x{5.0, 1.0, 3.0, 2.0, 4.0};
+    const auto y = median_filter(x, 3);
+    ASSERT_EQ(y.size(), x.size());
+    const std::vector<double> expected{5.0, 3.0, 2.0, 3.0, 4.0};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], expected[i]);
+    }
+}
+
+TEST(MedianFilterTest, window_length_one_is_identity) {
+    const std::vector<double> x{5.0, -1.0, 3.0, 2.0, 4.0, 0.0, -7.5};
+    const auto y = median_filter(x, 1);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(MedianFilterTest, removes_single_outlier_spike_completely) {
+    // Constant signal with one huge outlier spike.
+    std::vector<double> x(11, 2.0);
+    x[5] = 1.0e6; // sharp impulsive outlier, far outside the local range
+
+    const auto y = median_filter(x, 5);
+    ASSERT_EQ(y.size(), x.size());
+
+    // The median of a window centered on the spike (four 2.0's and the spike) is 2.0: the
+    // spike is completely rejected, not merely attenuated.
+    EXPECT_DOUBLE_EQ(y[5], 2.0);
+    // Neighboring interior points, whose windows also contain only 2.0 or the single spike,
+    // are unaffected too.
+    for (size_t i = 2; i + 2 < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], 2.0);
+    }
+}
+
+TEST(MedianFilterTest, robust_to_outlier_unlike_moving_average) {
+    // Same spiked signal, contrast median_filter against moving_average directly: a moving
+    // average is pulled arbitrarily far toward the outlier, while the median completely
+    // rejects it.
+    std::vector<double> x(11, 2.0);
+    x[5] = 1.0e6;
+
+    const auto med = median_filter(x, 5);
+    const auto avg = moving_average(x, 5);
+    ASSERT_EQ(med.size(), x.size());
+    ASSERT_EQ(avg.size(), x.size());
+
+    EXPECT_DOUBLE_EQ(med[5], 2.0);
+    // moving_average's window ending at i=5 (indices 1..5) includes the spike, so it is
+    // dragged far away from the surrounding baseline of 2.0.
+    EXPECT_GT(avg[5], 1000.0);
+    EXPECT_GT(std::abs(avg[5] - 2.0), std::abs(med[5] - 2.0) * 1000.0);
+}
+
+TEST(MedianFilterTest, boundary_points_copied_unfiltered) {
+    const std::vector<double> x{9.0, 8.0, 1.0, 5.0, 3.0, 7.0, 2.0, 6.0, 4.0};
+    const int window_length = 5;
+    const auto y = median_filter(x, window_length);
+    ASSERT_EQ(y.size(), x.size());
+
+    const size_t half = static_cast<size_t>((window_length - 1) / 2);
+    for (size_t i = 0; i < half; ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+    for (size_t i = x.size() - half; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(MedianFilterTest, edge_cases_return_empty) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+
+    EXPECT_TRUE(median_filter(x, 4).empty());   // even window_length
+    EXPECT_TRUE(median_filter(x, 0).empty());   // non-positive window_length
+    EXPECT_TRUE(median_filter(x, -3).empty());  // negative window_length
+    EXPECT_TRUE(median_filter(x, 11).empty());  // window_length > x.size()
+    EXPECT_TRUE(median_filter(std::vector<double>{}, 3).empty()); // empty input
+
+    // Sanity: a valid, small configuration on this same signal should NOT be empty.
+    EXPECT_FALSE(median_filter(x, 3).empty());
+}
+
+TEST(MedianFilterTest, constant_signal_filters_to_itself) {
+    const std::vector<double> x(15, 3.5);
+    for (int window_length : {1, 3, 5, 9, 15}) {
+        const auto y = median_filter(x, window_length);
+        ASSERT_EQ(y.size(), x.size());
+        for (size_t i = 0; i < x.size(); ++i) {
+            EXPECT_DOUBLE_EQ(y[i], 3.5);
+        }
+    }
+}
+
+TEST(MedianFilterTest, monotonic_ramp_interior_points_unchanged) {
+    // For a monotonically increasing signal of consecutive integers, the median of any
+    // symmetric window centered at i is exactly x[i] (the center value ranks in the middle).
+    std::vector<double> x(20);
+    for (size_t i = 0; i < x.size(); ++i) {
+        x[i] = static_cast<double>(i + 1); // 1, 2, ..., 20
+    }
+
+    const int window_length = 7;
+    const auto y = median_filter(x, window_length);
+    ASSERT_EQ(y.size(), x.size());
+
+    const size_t half = static_cast<size_t>((window_length - 1) / 2);
+    for (size_t i = half; i + half < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(MedianFilterTest, output_length_matches_input_for_various_windows) {
+    const std::vector<double> x{4.0, 2.0, 9.0, 1.0, 7.0, 3.0, 8.0, 5.0, 6.0, 0.0, 10.0};
+    for (int window_length : {1, 3, 5, 7, 9, 11}) {
+        const auto y = median_filter(x, window_length);
+        EXPECT_EQ(y.size(), x.size());
+    }
+}
+
+TEST(MedianFilterTest, window_length_three_never_moves_output_outside_window_range) {
+    // General sanity property: every filtered interior sample must lie within the min/max of
+    // its own window (a median is always within [min, max] of the values it's drawn from).
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<double> dist(-10.0, 10.0);
+    std::vector<double> x(50);
+    for (double& v : x) {
+        v = dist(rng);
+    }
+
+    const int window_length = 5;
+    const auto y = median_filter(x, window_length);
+    ASSERT_EQ(y.size(), x.size());
+
+    const size_t half = static_cast<size_t>((window_length - 1) / 2);
+    for (size_t center = half; center + half < x.size(); ++center) {
+        double window_min = x[center - half];
+        double window_max = x[center - half];
+        for (size_t j = center - half; j <= center + half; ++j) {
+            window_min = std::min(window_min, x[j]);
+            window_max = std::max(window_max, x[j]);
+        }
+        EXPECT_GE(y[center], window_min);
+        EXPECT_LE(y[center], window_max);
+    }
+}
+
+TEST(MedianFilterTest, two_outlier_spikes_within_one_window_still_rejected) {
+    // Window_length=5 window has 5 slots; with only 2 outliers in any given window, the
+    // majority (3) baseline values still determine the median.
+    std::vector<double> x(13, 1.0);
+    x[5] = -1000.0;
+    x[6] = 1000.0;
+
+    const auto y = median_filter(x, 5);
+    ASSERT_EQ(y.size(), x.size());
+    // Any window of length 5 containing both spikes still has at least 3 baseline (1.0)
+    // values, so the median remains exactly 1.0.
+    for (size_t center = 5; center <= 6; ++center) {
+        EXPECT_DOUBLE_EQ(y[center], 1.0);
+    }
+}

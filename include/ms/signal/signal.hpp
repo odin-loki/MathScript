@@ -195,4 +195,18 @@ std::vector<double> firwin_highpass(int n_taps, double cutoff, FirWindow window 
 //           (< 1 for window_length > polyorder + 1) relative to the raw signal's noise variance.
 std::vector<double> savgol(const std::vector<double>& x, int window_length, int polyorder);
 
+// Median filter: replaces each sample with the median of a centered sliding window of the
+// given (odd) length, a classic nonlinear denoising filter that — unlike moving_average or
+// savgol — is highly robust to outliers/impulsive noise (a single extreme sample only shifts
+// the local median by one rank position, rather than pulling a linear average arbitrarily far),
+// at the cost of not preserving smooth polynomial trends the way savgol does.
+// @param x input signal
+// @param window_length window size; MUST be odd and >= 1 so a unique center sample exists.
+//        Even or non-positive window_length, or x.size() < window_length, returns {},
+//        matching this module's defensive early-return convention (e.g. savgol, firwin).
+// @note Boundary handling: mirrors savgol's convention exactly — the first/last
+//       (window_length-1)/2 points, where a full centered window does not fit, are copied
+//       unfiltered from the input rather than using a shrinking/asymmetric window.
+std::vector<double> median_filter(const std::vector<double>& x, int window_length);
+
 } // namespace ms
