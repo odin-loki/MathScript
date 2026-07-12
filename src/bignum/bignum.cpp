@@ -379,6 +379,22 @@ bool bigint_is_prime(const BigInt& n, int rounds) {
     return true;
 }
 
+BigInt bigint_isqrt(const BigInt& n) {
+    if (n.negative) return BigInt(0LL);
+    if (n.is_zero() || n.is_one()) return n;
+    // Seed Newton's method with a guess >= the true root: n has bit_length bl bits,
+    // i.e. n < 2^bl, so sqrt(n) < 2^ceil(bl/2). Starting above the root guarantees
+    // the iteration decreases monotonically until it settles on floor(sqrt(n)).
+    int bl = bigint_bit_length(n);
+    BigInt x = bigint_pow(BigInt(2LL), (bl + 1) / 2);
+    BigInt y = (x + n / x) / BigInt(2LL);
+    while (y < x) {
+        x = y;
+        y = (x + n / x) / BigInt(2LL);
+    }
+    return x;
+}
+
 // ========================== Rational ==========================
 
 Rational::Rational(long long n, long long d) : num(n), den(d) {
