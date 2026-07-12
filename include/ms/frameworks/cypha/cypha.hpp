@@ -58,4 +58,14 @@ double nig_pdf(double x, const NIGParams& params);
 double nig_cdf(double x, const NIGParams& params);
 Matrix<double> nig_sample(const NIGParams& params, size_t n, izaac::CSPRNG& rng);
 
+/// Closed-form mean of the NIG(alpha, beta, delta, mu) distribution:
+/// mean = mu + delta * beta / sqrt(alpha^2 - beta^2).
+/// Returns NaN if params are outside the valid domain (|beta| >= alpha or delta <= 0).
+double nig_mean(const NIGParams& params);
+
+/// Closed-form variance of the NIG(alpha, beta, delta, mu) distribution:
+/// variance = delta * alpha^2 / (alpha^2 - beta^2)^1.5.
+/// Returns NaN if params are outside the valid domain (|beta| >= alpha or delta <= 0).
+double nig_variance(const NIGParams& params);
+
 } // namespace ms::cypha
