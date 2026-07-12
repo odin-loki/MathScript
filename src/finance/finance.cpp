@@ -646,6 +646,24 @@ double black76(double F, double K, double T, double r, double sigma, bool call) 
     return disc * (K * norm_cdf(-d2) - F * norm_cdf(-d1));
 }
 
+double bachelier_call(double F, double K, double T, double r, double sigma) {
+    if (T <= 0.0) return std::max(F - K, 0.0);
+    double disc = std::exp(-r * T);
+    if (sigma <= 0.0) return disc * std::max(F - K, 0.0);
+    double vol_sqrtT = sigma * std::sqrt(T);
+    double d = (F - K) / vol_sqrtT;
+    return disc * ((F - K) * norm_cdf(d) + vol_sqrtT * norm_pdf(d));
+}
+
+double bachelier_put(double F, double K, double T, double r, double sigma) {
+    if (T <= 0.0) return std::max(K - F, 0.0);
+    double disc = std::exp(-r * T);
+    if (sigma <= 0.0) return disc * std::max(K - F, 0.0);
+    double vol_sqrtT = sigma * std::sqrt(T);
+    double d = (F - K) / vol_sqrtT;
+    return disc * ((K - F) * norm_cdf(-d) + vol_sqrtT * norm_pdf(d));
+}
+
 struct BarrierCoeffs {
     double A, B, C, D;
 };

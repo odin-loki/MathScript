@@ -1339,3 +1339,130 @@ TEST(FinanceTrinomial, CrossCheckBinomialAmericanCall) {
     double bin = american_option(S, K, T, r, sigma, true, steps);
     EXPECT_NEAR(tri, bin, 0.02 * bin);
 }
+
+// --- Bachelier (normal) model ---
+
+TEST(FinanceBachelier, PutCallParity) {
+    // C - P = e^{-rT}*(F - K), a model-independent identity that should hold
+    // exactly for any correctly implemented European option pricer.
+    struct Params { double F, K, r, sigma, T; };
+    std::vector<Params> cases = {
+        {100.0, 100.0, 0.05, 0.2, 1.0},
+        {100.0, 110.0, 0.03, 0.15, 0.5},
+        {50.0, 40.0, 0.08, 0.3, 2.0},
+        {0.02, 0.01, 0.01, 0.005, 3.0},   // rate-like small magnitudes
+        {-0.01, 0.01, 0.02, 0.01, 1.0},   // negative forward
+    };
+    for (const auto& p : cases) {
+        double c = bachelier_call(p.F, p.K, p.T, p.r, p.sigma);
+        double put = bachelier_put(p.F, p.K, p.T, p.r, p.sigma);
+        EXPECT_NEAR(c - put, std::exp(-p.r * p.T) * (p.F - p.K), 1e-9);
+    }
+}
+
+TEST(FinanceBachelier, AtTheMoneyClosedForm) {
+    // At F == K, d == 0 so Phi(0)=0.5 and both formulas collapse to
+    // call = put = e^{-rT} * sigma*sqrt(T) / sqrt(2*pi).
+    double F = 100.0, K = 100.0, r = 0.04, sigma = 0.25, T = 1.5;
+    double expected = std::exp(-r * T) * sigma * std::sqrt(T) / std::sqrt(2.0 * M_PI);
+    double c = bachelier_call(F, K, T, r, sigma);
+    double p = bachelier_put(F, K, T, r, sigma);
+    EXPECT_NEAR(c, expected, 1e-10);
+    EXPECT_NEAR(p, expected, 1e-10);
+    EXPECT_NEAR(c, p, 1e-12);
+}
+
+TEST(FinanceBachelier, NegativeForwardHandledCorrectly) {
+    // Bachelier's key differentiating feature vs Black-Scholes/Black-76:
+    // it must handle a negative forward (e.g. negative interest rate) without
+    // crashing or producing nonsensical (NaN/inf/negative-price) output.
+    double F = -0.01, K = 0.005, r = 0.01, sigma = 0.01, T = 1.0;
+    double c = bachelier_call(F, K, T, r, sigma);
+    double p = bachelier_put(F, K, T, r, sigma);
+    EXPECT_TRUE(std::isfinite(c));
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_GE(c, 0.0);
+    EXPECT_GE(p, 0.0);
+    // Put-call parity must still hold in the negative-F regime.
+    EXPECT_NEAR(c - p, std::exp(-r * T) * (F - K), 1e-9);
+}
+
+TEST(FinanceBachelier, NegativeForwardNegativeStrike) {
+    // Both F and K negative -- still must produce finite, non-negative prices
+    // and preserve parity.
+    double F = -0.02, K = -0.03, r = 0.015, sigma = 0.02, T = 2.0;
+    double c = bachelier_call(F, K, T, r, sigma);
+    double p = bachelier_put(F, K, T, r, sigma);
+    EXPECT_TRUE(std::isfinite(c));
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_GE(c, 0.0);
+    EXPECT_GE(p, 0.0);
+    EXPECT_NEAR(c - p, std::exp(-r * T) * (F - K), 1e-9);
+}
+
+TEST(FinanceBachelier, ZeroVolConvergesToDiscountedIntrinsic) {
+    // As sigma -> 0, both prices converge to the discounted intrinsic value.
+    double F = 105.0, K = 100.0, r = 0.05, T = 1.0;
+    double call_intrinsic = std::exp(-r * T) * std::max(F - K, 0.0);
+    double put_intrinsic = std::exp(-r * T) * std::max(K - F, 0.0);
+    // Exact at sigma == 0.
+    EXPECT_NEAR(bachelier_call(F, K, T, r, 0.0), call_intrinsic, 1e-12);
+    EXPECT_NEAR(bachelier_put(F, K, T, r, 0.0), put_intrinsic, 1e-12);
+    // Approaches the same limit as sigma shrinks towards zero.
+    double prev_call_diff = 1e300, prev_put_diff = 1e300;
+    for (double sigma : {1.0, 0.1, 0.01, 1e-3, 1e-5}) {
+        double call_diff = std::abs(bachelier_call(F, K, T, r, sigma) - call_intrinsic);
+        double put_diff = std::abs(bachelier_put(F, K, T, r, sigma) - put_intrinsic);
+        EXPECT_LE(call_diff, prev_call_diff + 1e-12);
+        EXPECT_LE(put_diff, prev_put_diff + 1e-12);
+        prev_call_diff = call_diff;
+        prev_put_diff = put_diff;
+    }
+    EXPECT_NEAR(prev_call_diff, 0.0, 1e-4);
+    EXPECT_NEAR(prev_put_diff, 0.0, 1e-4);
+}
+
+TEST(FinanceBachelier, ZeroVolBelowAndAboveStrike) {
+    // sigma=0 combined with various F/K relationships: pure intrinsic value.
+    double r = 0.03, T = 1.0, sigma = 0.0;
+    // F below K: call worthless, put in the money.
+    EXPECT_NEAR(bachelier_call(90.0, 100.0, T, r, sigma), 0.0, 1e-12);
+    EXPECT_NEAR(bachelier_put(90.0, 100.0, T, r, sigma),
+                std::exp(-r * T) * 10.0, 1e-10);
+    // F above K: call in the money, put worthless.
+    EXPECT_NEAR(bachelier_call(110.0, 100.0, T, r, sigma),
+                std::exp(-r * T) * 10.0, 1e-10);
+    EXPECT_NEAR(bachelier_put(110.0, 100.0, T, r, sigma), 0.0, 1e-12);
+    // F == K: both worthless (no vol, no intrinsic value).
+    EXPECT_NEAR(bachelier_call(100.0, 100.0, T, r, sigma), 0.0, 1e-12);
+    EXPECT_NEAR(bachelier_put(100.0, 100.0, T, r, sigma), 0.0, 1e-12);
+}
+
+TEST(FinanceBachelier, SanityNonNegativePrices) {
+    // Genuine option prices must be non-negative for reasonable parameters,
+    // even though the underlying process itself can go negative.
+    struct Params { double F, K, r, sigma, T; };
+    std::vector<Params> cases = {
+        {100.0, 100.0, 0.05, 0.2, 1.0},
+        {100.0, 90.0, 0.05, 0.2, 1.0},
+        {100.0, 110.0, 0.05, 0.2, 1.0},
+        {0.01, 0.02, 0.01, 0.005, 5.0},
+        {-0.005, 0.005, 0.02, 0.01, 1.0},
+        {0.0, 0.0, 0.0, 0.1, 1.0},
+    };
+    for (const auto& p : cases) {
+        EXPECT_GE(bachelier_call(p.F, p.K, p.T, p.r, p.sigma), 0.0);
+        EXPECT_GE(bachelier_put(p.F, p.K, p.T, p.r, p.sigma), 0.0);
+    }
+}
+
+TEST(FinanceBachelier, ZeroExpiryGivesDiscountedIntrinsic) {
+    // T=0: immediate expiry, no time value, discounted intrinsic value only
+    // (discount factor is 1 since T=0, so this is just plain intrinsic value).
+    double F = 105.0, K = 100.0, r = 0.05, sigma = 0.3, T = 0.0;
+    EXPECT_NEAR(bachelier_call(F, K, T, r, sigma), std::max(F - K, 0.0), 1e-12);
+    EXPECT_NEAR(bachelier_put(F, K, T, r, sigma), std::max(K - F, 0.0), 1e-12);
+    // Also true when F < K.
+    EXPECT_NEAR(bachelier_call(K, F, T, r, sigma), std::max(K - F, 0.0), 1e-12);
+    EXPECT_NEAR(bachelier_put(K, F, T, r, sigma), std::max(F - K, 0.0), 1e-12);
+}
