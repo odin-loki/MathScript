@@ -39,6 +39,8 @@ std::vector<std::vector<int>> all_subsets(int n);
 std::vector<std::vector<int>> all_compositions(int n, int max_parts = -1);
 // Generate all integer partitions of n (non-increasing order)
 std::vector<std::vector<int>> all_partitions(int n);
+// Generate all integer partitions of n into exactly k positive parts (non-increasing order)
+std::vector<std::vector<int>> restricted_partitions(int n, int k);
 
 // Derangements of 0..n-1
 std::vector<std::vector<int>> derangements(int n);

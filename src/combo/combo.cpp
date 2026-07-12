@@ -193,6 +193,41 @@ std::vector<std::vector<int>> all_partitions(int n) {
     return result;
 }
 
+static void restricted_partitions_helper(int n, int max_part, int parts_left,
+                                           std::vector<int>& current,
+                                           std::vector<std::vector<int>>& result) {
+    if (parts_left == 0) {
+        if (n == 0) result.push_back(current);
+        return;
+    }
+    if (n < parts_left) return;
+    if (parts_left == 1) {
+        if (n <= max_part) {
+            current.push_back(n);
+            result.push_back(current);
+            current.pop_back();
+        }
+        return;
+    }
+    int upper = std::min(max_part, n - (parts_left - 1));
+    for (int i = upper; i >= 1; --i) {
+        current.push_back(i);
+        restricted_partitions_helper(n - i, i, parts_left - 1, current, result);
+        current.pop_back();
+    }
+}
+
+std::vector<std::vector<int>> restricted_partitions(int n, int k) {
+    if (n < 0) return {};
+    if (n == 0) return k == 0 ? std::vector<std::vector<int>>{std::vector<int>{}} : std::vector<std::vector<int>>{};
+    if (k <= 0) return {};
+    if (k > n) return {};
+    std::vector<std::vector<int>> result;
+    std::vector<int> current;
+    restricted_partitions_helper(n, n, k, current, result);
+    return result;
+}
+
 static void derangements_helper(int pos, std::vector<int>& perm,
                                   std::vector<bool>& used, int n,
                                   std::vector<std::vector<int>>& result) {
