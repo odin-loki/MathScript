@@ -3,6 +3,7 @@
 #include <bit>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -457,6 +458,58 @@ double wasserstein_distance(const std::vector<PersistencePair>& dgm1,
     for (int j=0; j<(int)pts2.size(); ++j)
         if (!used2[j]) total += diag_cost(pts2[j]);
     return std::pow(total, 1.0/p);
+}
+
+// ========================== Persistence Landscape ==========================
+
+std::vector<std::vector<double>>
+persistence_landscape(const std::vector<PersistencePair>& diagram,
+                       int n_layers, int n_samples,
+                       double t_min, double t_max) {
+    if (n_layers <= 0 || n_samples <= 1) return {};
+
+    // Only finite-death pairs contribute a tent function (see is_essential()),
+    // matching how bottleneck_distance / wasserstein_distance already filter diagrams.
+    std::vector<std::pair<double, double>> pairs;
+    for (auto& p : diagram)
+        if (!p.is_essential()) pairs.push_back({p.birth, p.death});
+
+    // Auto-derive the sampling range from the diagram when the caller didn't supply
+    // a valid one (t_min>=t_max, including the sentinel 0.0/0.0 default).
+    if (t_min >= t_max) {
+        if (pairs.empty()) {
+            t_min = 0.0;
+            t_max = 1.0;
+        } else {
+            double bmin = pairs[0].first, dmax = pairs[0].second;
+            for (auto& pr : pairs) {
+                bmin = std::min(bmin, pr.first);
+                dmax = std::max(dmax, pr.second);
+            }
+            t_min = bmin;
+            t_max = dmax;
+            if (t_min >= t_max) t_max = t_min + 1.0;  // degenerate (e.g. b==d) guard
+        }
+    }
+
+    std::vector<std::vector<double>> result(n_layers, std::vector<double>(n_samples, 0.0));
+    double step = (t_max - t_min) / (n_samples - 1);
+
+    std::vector<double> tent_values;
+    tent_values.reserve(pairs.size());
+    for (int i = 0; i < n_samples; ++i) {
+        double t = t_min + step * i;
+        tent_values.clear();
+        for (auto& pr : pairs) {
+            double v = std::min(t - pr.first, pr.second - t);
+            if (v > 0.0) tent_values.push_back(v);
+        }
+        // Descending sort: k-th largest lands at index k-1 (or 0 if fewer values exist).
+        std::sort(tent_values.begin(), tent_values.end(), std::greater<double>());
+        for (int k = 0; k < n_layers; ++k)
+            result[k][i] = (k < (int)tent_values.size()) ? tent_values[k] : 0.0;
+    }
+    return result;
 }
 
 // ========================== Utilities ==========================

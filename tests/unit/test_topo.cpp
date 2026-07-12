@@ -637,3 +637,177 @@ TEST(TopoAlpha, MaxDimZeroSuppressesTrianglesOnly) {
     EXPECT_FALSE(sc.simplices(1).empty());
     EXPECT_TRUE(sc.simplices(2).empty());
 }
+
+// ---- Persistence landscape ----
+
+// Single pair (0,2): hand-computable tent function. lambda_1(1) is the peak
+// ((d-b)/2 = 1), lambda_1(0)=lambda_1(2)=0 (at the boundary), lambda_1(0.5)=0.5.
+TEST(TopoLandscape, SinglePairTentShape) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 2.0}};
+    auto land = persistence_landscape(dgm, 2, 5, 0.0, 2.0);
+    ASSERT_EQ(land.size(), 2u);
+    ASSERT_EQ(land[0].size(), 5u);
+    // samples at t = 0, 0.5, 1, 1.5, 2
+    EXPECT_NEAR(land[0][0], 0.0, 1e-10);
+    EXPECT_NEAR(land[0][1], 0.5, 1e-10);
+    EXPECT_NEAR(land[0][2], 1.0, 1e-10);
+    EXPECT_NEAR(land[0][3], 0.5, 1e-10);
+    EXPECT_NEAR(land[0][4], 0.0, 1e-10);
+}
+
+// Only one pair exists, so lambda_2 has no "2nd highest" value anywhere: identically 0.
+TEST(TopoLandscape, SinglePairSecondLayerIsZero) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 2.0}};
+    auto land = persistence_landscape(dgm, 2, 5, 0.0, 2.0);
+    ASSERT_EQ(land.size(), 2u);
+    for (double v : land[1])
+        EXPECT_NEAR(v, 0.0, 1e-10);
+}
+
+// Two non-overlapping pairs: lambda_1 is the union/envelope of both tents, and since
+// they never overlap, lambda_2 is all-zero (at most one tent is nonzero at any t).
+TEST(TopoLandscape, NonOverlappingPairsUnionEnvelope) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 1.0}, {0, 10.0, 11.0}};
+    auto land = persistence_landscape(dgm, 2, 12, 0.0, 11.0);
+    ASSERT_EQ(land.size(), 2u);
+    ASSERT_EQ(land[0].size(), 12u);
+    // step = 1.0, samples at t = 0,1,...,11
+    // t=0.5 -> inside first tent, peak height 0.5
+    EXPECT_NEAR(land[0][0], 0.0, 1e-10);   // t=0 (boundary of first tent)
+    // t = 10.5 is not exactly sampled (step=1), but t=10 and t=11 are boundaries of
+    // the second tent, and t=1..9 lie strictly between/outside both tents.
+    for (int i = 1; i <= 9; ++i)
+        EXPECT_NEAR(land[0][i], 0.0, 1e-10) << "i=" << i;
+    EXPECT_NEAR(land[0][10], 0.0, 1e-10);  // t=10, boundary of second tent
+    EXPECT_NEAR(land[0][11], 0.0, 1e-10);  // t=11, boundary of second tent
+    for (double v : land[1])
+        EXPECT_NEAR(v, 0.0, 1e-10);
+}
+
+// Finer sampling over a non-overlapping pair to directly hit the tent peaks.
+TEST(TopoLandscape, NonOverlappingPairsPeaksHit) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 1.0}, {0, 10.0, 11.0}};
+    // 3 samples per unit interval so t=0.5 and t=10.5 land exactly on peaks.
+    auto land = persistence_landscape(dgm, 1, 23, 0.0, 11.0);
+    // step = 11/22 = 0.5 -> sample index 1 is t=0.5, sample index 21 is t=10.5
+    EXPECT_NEAR(land[0][1], 0.5, 1e-10);
+    EXPECT_NEAR(land[0][21], 0.5, 1e-10);
+}
+
+// Two overlapping pairs with different heights: (0,4) peak height 2, (1,3) peak
+// height 1, overlapping in t in [1,3]. In the overlap, lambda_1 must follow the
+// taller tent and lambda_2 the shorter one -- this is the key "k-th largest across
+// all pairs" behavior that distinguishes landscapes from a naive per-pair summary.
+TEST(TopoLandscape, OverlappingPairsKthLargest) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 4.0}, {0, 1.0, 3.0}};
+    auto land = persistence_landscape(dgm, 2, 9, 0.0, 4.0);
+    // step = 0.5, samples at t = 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4
+    // t=2 (midpoint, inside overlap): tent1 = min(2,2) = 2, tent2 = min(1,1) = 1
+    EXPECT_NEAR(land[0][4], 2.0, 1e-10);  // lambda_1(2) follows the taller tent
+    EXPECT_NEAR(land[1][4], 1.0, 1e-10);  // lambda_2(2) follows the shorter tent
+    // t=0.5 (outside overlap, only tent1 nonzero): tent1 = min(0.5,3.5) = 0.5
+    EXPECT_NEAR(land[0][1], 0.5, 1e-10);
+    EXPECT_NEAR(land[1][1], 0.0, 1e-10);
+    // t=3.5 (outside overlap, only tent1 nonzero): tent1 = min(3.5,0.5) = 0.5
+    EXPECT_NEAR(land[0][7], 0.5, 1e-10);
+    EXPECT_NEAR(land[1][7], 0.0, 1e-10);
+}
+
+// Essential (infinite-death) pairs must be excluded, matching is_essential() usage
+// elsewhere -- the landscape must be identical whether the essential pair is present
+// or simply omitted from the input.
+TEST(TopoLandscape, EssentialPairsExcluded) {
+    std::vector<PersistencePair> with_essential = {
+        {0, 0.0, 2.0},
+        {0, 0.5, std::numeric_limits<double>::infinity()}
+    };
+    std::vector<PersistencePair> without_essential = {{0, 0.0, 2.0}};
+
+    auto land_with = persistence_landscape(with_essential, 2, 5, 0.0, 2.0);
+    auto land_without = persistence_landscape(without_essential, 2, 5, 0.0, 2.0);
+    ASSERT_EQ(land_with.size(), land_without.size());
+    for (size_t k = 0; k < land_with.size(); ++k) {
+        ASSERT_EQ(land_with[k].size(), land_without[k].size());
+        for (size_t i = 0; i < land_with[k].size(); ++i)
+            EXPECT_NEAR(land_with[k][i], land_without[k][i], 1e-10);
+    }
+}
+
+TEST(TopoLandscape, NonPositiveLayersReturnsEmpty) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 2.0}};
+    EXPECT_TRUE(persistence_landscape(dgm, 0, 10, 0.0, 2.0).empty());
+    EXPECT_TRUE(persistence_landscape(dgm, -1, 10, 0.0, 2.0).empty());
+}
+
+TEST(TopoLandscape, TooFewSamplesReturnsEmpty) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 2.0}};
+    EXPECT_TRUE(persistence_landscape(dgm, 1, 1, 0.0, 2.0).empty());
+    EXPECT_TRUE(persistence_landscape(dgm, 1, 0, 0.0, 2.0).empty());
+}
+
+// Auto-derived t_min/t_max (sentinel default 0.0/0.0): the derived range must
+// actually span at least [min birth, max death] of the input diagram.
+TEST(TopoLandscape, AutoDerivedRangeSpansDiagram) {
+    std::vector<PersistencePair> dgm = {{0, 2.0, 5.0}, {0, 3.0, 9.0}};
+    auto land = persistence_landscape(dgm, 1, 50);  // t_min=t_max=0.0 -> auto-derive
+    ASSERT_EQ(land.size(), 1u);
+    ASSERT_EQ(land[0].size(), 50u);
+    // At the min birth (2.0) and max death (9.0) every tent must be at its boundary
+    // (0), while some interior sample must be strictly positive -- confirming the
+    // sampled range actually reaches down to birth=2 and up to death=9 rather than
+    // e.g. clamping to the sentinel default of [0,0].
+    bool any_positive = false;
+    for (double v : land[0]) if (v > 1e-9) any_positive = true;
+    EXPECT_TRUE(any_positive);
+}
+
+// More pairs than requested layers: 5 pairs, only 2 layers requested. Both layers
+// must be populated (non-trivially) since there are plenty of tents to rank.
+TEST(TopoLandscape, MorePairsThanLayers) {
+    std::vector<PersistencePair> dgm = {
+        {0, 0.0, 2.0}, {0, 0.2, 2.2}, {0, 0.4, 2.4}, {0, 0.6, 2.6}, {0, 0.8, 2.8}
+    };
+    auto land = persistence_landscape(dgm, 2, 11, 0.0, 3.0);
+    ASSERT_EQ(land.size(), 2u);
+    bool layer0_nonzero = false, layer1_nonzero = false;
+    for (double v : land[0]) if (v > 1e-9) layer0_nonzero = true;
+    for (double v : land[1]) if (v > 1e-9) layer1_nonzero = true;
+    EXPECT_TRUE(layer0_nonzero);
+    EXPECT_TRUE(layer1_nonzero);
+}
+
+// Fewer pairs than requested layers: 2 pairs, 5 layers requested. Layers 3-5
+// (indices 2..4) must be all-zero everywhere, since there is no "3rd/4th/5th
+// highest" tent value when at most 2 tents exist at any given t.
+TEST(TopoLandscape, FewerPairsThanLayersHigherLayersAreZero) {
+    std::vector<PersistencePair> dgm = {{0, 0.0, 2.0}, {0, 1.0, 3.0}};
+    auto land = persistence_landscape(dgm, 5, 9, 0.0, 3.0);
+    ASSERT_EQ(land.size(), 5u);
+    for (int k = 2; k < 5; ++k)
+        for (double v : land[k])
+            EXPECT_NEAR(v, 0.0, 1e-10) << "layer=" << k;
+}
+
+// Empty diagram (no pairs at all): every layer must be all-zero, and the function
+// must not crash even with the sentinel auto-derive range.
+TEST(TopoLandscape, EmptyDiagramIsAllZero) {
+    std::vector<PersistencePair> dgm;
+    auto land = persistence_landscape(dgm, 3, 10);
+    ASSERT_EQ(land.size(), 3u);
+    for (auto& layer : land) {
+        ASSERT_EQ(layer.size(), 10u);
+        for (double v : layer) EXPECT_NEAR(v, 0.0, 1e-10);
+    }
+}
+
+// Diagram with only an essential pair (no finite pairs at all): must behave like
+// an empty diagram (all-zero output), not crash on the auto-derive path.
+TEST(TopoLandscape, OnlyEssentialPairIsAllZero) {
+    std::vector<PersistencePair> dgm = {
+        {0, 0.5, std::numeric_limits<double>::infinity()}
+    };
+    auto land = persistence_landscape(dgm, 2, 10);
+    ASSERT_EQ(land.size(), 2u);
+    for (auto& layer : land)
+        for (double v : layer) EXPECT_NEAR(v, 0.0, 1e-10);
+}

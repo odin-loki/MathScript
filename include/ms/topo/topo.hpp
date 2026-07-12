@@ -154,6 +154,44 @@ double wasserstein_distance(const std::vector<PersistencePair>& dgm1,
                              const std::vector<PersistencePair>& dgm2,
                              int dim = 0, int p = 2);
 
+// ========================== Persistence Landscape ==========================
+// Persistence landscape: a stable, vectorized functional summary of a persistence
+// diagram (Bubenik 2015), widely used to turn topological summaries into feature
+// vectors usable by standard statistical/ML methods (unlike the diagram itself,
+// landscapes live in a vector space with a well-defined mean/distance, addressing
+// a fundamental limitation of raw persistence diagrams).
+//
+// For each persistence pair (birth b, death d) -- only non-essential pairs, i.e.
+// finite death, are used; essential/infinite-death pairs are excluded (see
+// is_essential()), matching the convention bottleneck_distance/wasserstein_distance
+// already use when consuming a persistence diagram -- define the tent/triangle
+// function:
+//   Lambda_{(b,d)}(t) = max(0, min(t - b, d - t))   for t in [b, d], 0 elsewhere
+// (this peaks at height (d-b)/2 at the midpoint t=(b+d)/2, and is 0 at and outside [b,d]).
+//
+// The k-th persistence landscape function lambda_k(t) (for k = 1, 2, 3, ...) is the
+// k-th LARGEST value among {Lambda_{(b,d)}(t) : (b,d) in the diagram} at each t (i.e.
+// lambda_1 is the pointwise max/envelope over all tent functions, lambda_2 is the
+// second-highest at each t, etc.). This function computes the first n_layers landscape
+// functions, each sampled at n_samples evenly-spaced points over [t_min, t_max].
+//
+// @param diagram persistence pairs (e.g. from persistence_diagram). Only finite-death
+//        pairs contribute; essential (infinite-death) pairs are excluded.
+// @param n_layers number of landscape layers (k=1..n_layers) to compute. n_layers<=0
+//        returns {}. If the diagram has fewer than k tents nonzero at some t, lambda_k
+//        is simply 0 there (and possibly identically 0 everywhere) -- this is the
+//        mathematically correct convention, not an error.
+// @param n_samples number of evenly-spaced t-samples per layer. n_samples<=1 returns {}.
+// @param t_min, t_max sampling range. If t_min>=t_max (including the sentinel default
+//        of 0.0/0.0), the range is instead auto-derived from the diagram's own
+//        [min birth, max death] over its finite-death pairs, as a convenience default.
+// @return n_layers vectors, each of length n_samples: result[k-1][i] = lambda_k(t_i)
+//         for the i-th sample point t_i in the (possibly auto-derived) range.
+std::vector<std::vector<double>>
+persistence_landscape(const std::vector<PersistencePair>& diagram,
+                       int n_layers, int n_samples,
+                       double t_min = 0.0, double t_max = 0.0);
+
 // ========================== Utilities ==========================
 
 // Build distance matrix from point cloud (Euclidean)
