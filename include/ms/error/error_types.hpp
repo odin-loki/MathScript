@@ -73,16 +73,33 @@ struct PluginViolation {
     std::string_view location;
 };
 
+struct ValueOutOfRange {
+    std::string param;
+    double value;
+    double lo;
+    double hi;
+};
+
 using Error = std::variant<
     DimensionMismatch, SingularMatrix, DeviceError,
     AllocationFailure, ConvergenceFail, DomainError,
     DistributedError, SymbolicError, IOError,
-    ParseError, OverflowError, PluginViolation
+    ParseError, OverflowError, PluginViolation,
+    ValueOutOfRange
 >;
 
 template<typename T>
 using Result = std::expected<T, Error>;
 
 std::string format_error(const Error& error);
+
+inline Result<double> check_range(
+    std::string param, double value, double lo, double hi) {
+    if (value < lo || value > hi) {
+        return std::unexpected(
+            Error{ValueOutOfRange{std::move(param), value, lo, hi}});
+    }
+    return value;
+}
 
 } // namespace ms

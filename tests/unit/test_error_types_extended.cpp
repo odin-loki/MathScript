@@ -220,6 +220,80 @@ TEST(ErrorTypes, DistributedError_FormatError) {
 }
 
 // ---------------------------------------------------------------------------
+// ValueOutOfRange
+// ---------------------------------------------------------------------------
+
+TEST(ErrorTypes, ValueOutOfRange_Fields) {
+    const ValueOutOfRange e{"alpha", 2.5, 0.0, 1.0};
+    EXPECT_EQ(e.param, "alpha");
+    EXPECT_DOUBLE_EQ(e.value, 2.5);
+    EXPECT_DOUBLE_EQ(e.lo, 0.0);
+    EXPECT_DOUBLE_EQ(e.hi, 1.0);
+}
+
+TEST(ErrorTypes, ValueOutOfRange_InError) {
+    const Error err = ValueOutOfRange{"beta", -1.0, 0.0, 10.0};
+    EXPECT_TRUE(std::holds_alternative<ValueOutOfRange>(err));
+    const auto& e = std::get<ValueOutOfRange>(err);
+    EXPECT_EQ(e.param, "beta");
+    EXPECT_DOUBLE_EQ(e.value, -1.0);
+}
+
+TEST(ErrorTypes, ValueOutOfRange_FormatError) {
+    const Error err = ValueOutOfRange{"tolerance", 1.5, 0.0, 1.0};
+    const std::string msg = format_error(err);
+    EXPECT_FALSE(msg.empty());
+    EXPECT_NE(msg.find("tolerance"), std::string::npos);
+    EXPECT_NE(msg.find("out of range"), std::string::npos);
+    EXPECT_NE(msg.find("1.5"), std::string::npos);
+    EXPECT_NE(msg.find("[0"), std::string::npos);
+    EXPECT_NE(msg.find("1]"), std::string::npos);
+}
+
+TEST(ErrorTypes, ValueOutOfRange_FormatError_BoundaryValues) {
+    const Error err = ValueOutOfRange{"x", 100.0, -50.0, 50.0};
+    const std::string msg = format_error(err);
+    EXPECT_NE(msg.find("100"), std::string::npos);
+    EXPECT_NE(msg.find("[-50"), std::string::npos);
+    EXPECT_NE(msg.find("50]"), std::string::npos);
+}
+
+TEST(ErrorTypes, CheckRange_InRange) {
+    const Result<double> r = check_range("rate", 0.5, 0.0, 1.0);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_DOUBLE_EQ(*r, 0.5);
+}
+
+TEST(ErrorTypes, CheckRange_BelowLo) {
+    const Result<double> r = check_range("rate", -0.1, 0.0, 1.0);
+    ASSERT_FALSE(r.has_value());
+    EXPECT_TRUE(std::holds_alternative<ValueOutOfRange>(r.error()));
+    const auto& e = std::get<ValueOutOfRange>(r.error());
+    EXPECT_EQ(e.param, "rate");
+    EXPECT_DOUBLE_EQ(e.value, -0.1);
+    EXPECT_DOUBLE_EQ(e.lo, 0.0);
+    EXPECT_DOUBLE_EQ(e.hi, 1.0);
+}
+
+TEST(ErrorTypes, CheckRange_AboveHi) {
+    const Result<double> r = check_range("iterations", 101.0, 1.0, 100.0);
+    ASSERT_FALSE(r.has_value());
+    EXPECT_TRUE(std::holds_alternative<ValueOutOfRange>(r.error()));
+    const auto& e = std::get<ValueOutOfRange>(r.error());
+    EXPECT_EQ(e.param, "iterations");
+    EXPECT_DOUBLE_EQ(e.value, 101.0);
+}
+
+TEST(ErrorTypes, CheckRange_AtBoundaries) {
+    const Result<double> lo = check_range("x", 0.0, 0.0, 1.0);
+    const Result<double> hi = check_range("x", 1.0, 0.0, 1.0);
+    ASSERT_TRUE(lo.has_value());
+    ASSERT_TRUE(hi.has_value());
+    EXPECT_DOUBLE_EQ(*lo, 0.0);
+    EXPECT_DOUBLE_EQ(*hi, 1.0);
+}
+
+// ---------------------------------------------------------------------------
 // Result<T> wrapper behavior
 // ---------------------------------------------------------------------------
 
