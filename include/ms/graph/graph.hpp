@@ -61,6 +61,25 @@ std::vector<std::vector<int>> connected_components(const Graph& G);
 std::vector<std::vector<int>> strongly_connected_components(const Graph& G);  // Tarjan
 std::vector<int>      articulation_points(const Graph& G);   // undirected DFS low-link
 std::vector<Edge>     bridges(const Graph& G);               // undirected DFS low-link
+
+// Biconnected components (blocks) of an undirected graph, via Tarjan's DFS
+// low-link algorithm with an explicit edge stack. A biconnected component is
+// a maximal subgraph containing no articulation point of itself -- i.e. it
+// stays connected after removing any single one of its vertices. Every edge
+// of G belongs to exactly one block, so the returned components partition
+// G's edge set (edges() elsewhere returns each edge once for undirected
+// graphs, matching this convention). Blocks may share vertices (an
+// articulation point sits at the junction of two or more blocks) but never
+// share edges. A bridge edge (see bridges()) always forms its own singleton
+// (1-edge, 2-vertex) block; conversely every singleton block returned here
+// corresponds to a bridge. Directed edges are treated as undirected, as with
+// articulation_points/bridges.
+// @param G undirected (or directed-treated-as-undirected) input graph
+// @return list of blocks, each a list of edges (u,v) belonging to that block;
+//         empty for a graph with no edges (including n == 0)
+// @note O(V+E) time and space, same DFS pass family as articulation_points/bridges
+std::vector<std::vector<Edge>> biconnected_components(const Graph& G);
+
 bool                  is_bipartite(const Graph& G);
 bool                  is_dag(const Graph& G);
 

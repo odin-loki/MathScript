@@ -137,6 +137,46 @@ void dfs_articulation_bridges(const Graph& G, int u, int parent, int& timer,
     if (parent == -1 && children >= 2) is_ap[u] = true;
 }
 
+// Same low-link DFS as dfs_articulation_bridges, augmented with an explicit
+// edge stack: every edge is pushed exactly once, when first traversed from
+// its lower-disc endpoint (tree edges when the child is discovered, back
+// edges when a descendant looks up at a not-yet-finished ancestor). When a
+// child v returns with low[v] >= disc[u] -- the same condition that flags u
+// as an articulation point (or the DFS root closing off a subtree) -- every
+// edge back to and including (u, v) is popped off the stack: that batch is
+// exactly one biconnected component.
+void dfs_biconnected(const Graph& G, int u, int parent, int& timer,
+                     std::vector<int>& disc, std::vector<int>& low,
+                     std::vector<Edge>& edge_stack,
+                     std::vector<std::vector<Edge>>& components) {
+    disc[u] = low[u] = ++timer;
+    for (auto& [v, w] : G.neighbors(u)) {
+        if (v == parent) continue;
+        if (disc[v] == -1) {
+            edge_stack.push_back({u, v, w});
+            dfs_biconnected(G, v, u, timer, disc, low, edge_stack, components);
+            low[u] = std::min(low[u], low[v]);
+            if (low[v] >= disc[u]) {
+                std::vector<Edge> comp;
+                while (true) {
+                    Edge e = edge_stack.back();
+                    edge_stack.pop_back();
+                    comp.push_back(e);
+                    if (e.from == u && e.to == v) break;
+                }
+                components.push_back(std::move(comp));
+            }
+        } else if (disc[v] < disc[u]) {
+            // Back edge, encountered from the descendant looking up at an
+            // ancestor still on the call stack; push once here only (the
+            // ancestor will later see the same edge with disc[v] > disc[u]
+            // and must not push it again).
+            edge_stack.push_back({u, v, w});
+            low[u] = std::min(low[u], disc[v]);
+        }
+    }
+}
+
 } // namespace
 
 // ---- Graph ----
@@ -407,6 +447,30 @@ std::vector<Edge> bridges(const Graph& G) {
         return a.from < b.from || (a.from == b.from && a.to < b.to);
     });
     return result;
+}
+
+std::vector<std::vector<Edge>> biconnected_components(const Graph& G) {
+    int n = G.n_vertices();
+    std::vector<int> disc(n, -1), low(n, -1);
+    std::vector<Edge> edge_stack;
+    std::vector<std::vector<Edge>> components;
+    int timer = 0;
+    for (int i = 0; i < n; ++i)
+        if (disc[i] == -1)
+            dfs_biconnected(G, i, -1, timer, disc, low, edge_stack, components);
+
+    auto edge_less = [](const Edge& a, const Edge& b) {
+        return a.from < b.from || (a.from == b.from && a.to < b.to);
+    };
+    for (auto& comp : components) {
+        for (auto& e : comp)
+            if (e.from > e.to) std::swap(e.from, e.to);
+        std::sort(comp.begin(), comp.end(), edge_less);
+    }
+    std::sort(components.begin(), components.end(), [&](const auto& a, const auto& b) {
+        return edge_less(a.front(), b.front());
+    });
+    return components;
 }
 
 bool is_bipartite(const Graph& G) {
