@@ -602,3 +602,112 @@ TEST(DiffGeoParallelTransport, DegenerateSEndReturnsV0) {
     EXPECT_NEAR(traj_zero[0][0], V0[0], 1e-12);
     EXPECT_NEAR(traj_neg[0][0], V0[0], 1e-12);
 }
+
+// ---- Space curve torsion ----
+
+static CurveFn unit_circle_xy() {
+    return [](double t) -> std::array<double,3> {
+        return {std::cos(t), std::sin(t), 0.0};
+    };
+}
+
+static CurveFn circular_helix(double a, double b) {
+    return [a, b](double t) -> std::array<double,3> {
+        return {a * std::cos(t), a * std::sin(t), b * t};
+    };
+}
+
+static CurveFn straight_line_3d() {
+    return [](double t) -> std::array<double,3> { return {t, 2.0 * t, 3.0 * t}; };
+}
+
+// Cubic Bezier B(t) = (1-t)^3 P0 + 3(1-t)^2 t P1 + 3(1-t)t^2 P2 + t^3 P3.
+static CurveFn cubic_bezier(std::array<double,3> P0, std::array<double,3> P1,
+                            std::array<double,3> P2, std::array<double,3> P3) {
+    return [P0, P1, P2, P3](double t) -> std::array<double,3> {
+        double u = 1.0 - t;
+        double u2 = u * u, u3 = u2 * u;
+        double t2 = t * t, t3 = t2 * t;
+        return {
+            u3 * P0[0] + 3.0 * u2 * t * P1[0] + 3.0 * u * t2 * P2[0] + t3 * P3[0],
+            u3 * P0[1] + 3.0 * u2 * t * P1[1] + 3.0 * u * t2 * P2[1] + t3 * P3[1],
+            u3 * P0[2] + 3.0 * u2 * t * P1[2] + 3.0 * u * t2 * P2[2] + t3 * P3[2]
+        };
+    };
+}
+
+TEST(DiffGeoTorsion, PlanarCircleZero) {
+    auto circle = unit_circle_xy();
+    for (double t : {0.0, M_PI / 4, M_PI / 2, M_PI, 3.0 * M_PI / 2}) {
+        EXPECT_NEAR(torsion(circle, t), 0.0, 1e-4);
+    }
+}
+
+TEST(DiffGeoTorsion, HelixConstantTorsionUnitPitch) {
+    // r(t) = (cos t, sin t, t): τ = b/(a²+b²) = 1/2
+    auto helix = circular_helix(1.0, 1.0);
+    const double expected = 1.0 / (1.0 + 1.0);
+    for (double t : {0.0, M_PI / 4, M_PI / 2, M_PI}) {
+        EXPECT_NEAR(torsion(helix, t), expected, 2e-2);
+    }
+}
+
+TEST(DiffGeoTorsion, HelixConstantTorsionScaledRadius) {
+    // r(t) = (2 cos t, 2 sin t, 3 t): τ = 3/(4+9) = 3/13
+    auto helix = circular_helix(2.0, 3.0);
+    const double expected = 3.0 / (4.0 + 9.0);
+    for (double t : {0.0, 0.2, 1.1}) {
+        EXPECT_NEAR(torsion(helix, t), expected, 2e-2);
+    }
+}
+
+TEST(DiffGeoTorsion, HelixRightHandedSignConvention) {
+    // Documented convention: b > 0 gives positive τ; b < 0 flips sign.
+    auto right_handed = circular_helix(1.0, 2.0);
+    auto left_handed  = circular_helix(1.0, -2.0);
+    double tau_pos = torsion(right_handed, 0.0);
+    double tau_neg = torsion(left_handed, 0.0);
+    EXPECT_GT(tau_pos, 0.0);
+    EXPECT_LT(tau_neg, 0.0);
+    EXPECT_NEAR(tau_pos, -tau_neg, 2e-2);
+    EXPECT_NEAR(tau_pos, 2.0 / 5.0, 2e-2);
+}
+
+TEST(DiffGeoTorsion, StraightLineDegenerateReturnsZero) {
+    auto line = straight_line_3d();
+    for (double t : {-1.0, 0.0, 2.5, 10.0}) {
+        double tau = torsion(line, t);
+        EXPECT_NEAR(tau, 0.0, 1e-12);
+        EXPECT_TRUE(std::isfinite(tau));
+    }
+}
+
+TEST(DiffGeoTorsion, NonConstantTorsionVaryingPitch) {
+    // r(t) = (cos t, sin t, t + 0.5 sin t): pitch varies, τ is not constant.
+    CurveFn varying = [](double t) -> std::array<double,3> {
+        return {std::cos(t), std::sin(t), t + 0.5 * std::sin(t)};
+    };
+    double tau0 = torsion(varying, 0.0);
+    double tau1 = torsion(varying, M_PI / 2);
+    double tau2 = torsion(varying, M_PI);
+    EXPECT_GT(std::abs(tau0), 1e-4);
+    EXPECT_GT(std::abs(tau1), 1e-4);
+    EXPECT_GT(std::abs(tau2), 1e-4);
+    EXPECT_GT(std::abs(tau0 - tau1), 1e-4);
+    EXPECT_GT(std::abs(tau1 - tau2), 1e-4);
+}
+
+TEST(DiffGeoTorsion, CubicBezierPlanarVsTwistedRegions) {
+    // Nearly planar cubic (all control points in z=0 plane).
+    auto planar = cubic_bezier({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0},
+                               {2.0, 1.0, 0.0}, {3.0, 1.0, 0.0});
+    EXPECT_NEAR(torsion(planar, 0.25), 0.0, 1e-4);
+    EXPECT_NEAR(torsion(planar, 0.75), 0.0, 1e-4);
+
+    // Cubic spiral leaving the xy-plane (P3 has z=1).
+    auto twisted = cubic_bezier({1.0, 0.0, 0.0}, {1.0, 1.0, 0.0},
+                                {0.0, 1.0, 0.5}, {0.0, 0.0, 1.0});
+    double tau_twist = torsion(twisted, 0.6);
+    EXPECT_GT(std::abs(tau_twist), 1e-3);
+    EXPECT_TRUE(std::isfinite(tau_twist));
+}

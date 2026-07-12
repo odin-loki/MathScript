@@ -217,6 +217,52 @@ parallel_transport(MetricFn g, std::function<Coords(double)> curve,
     return traj;
 }
 
+// ---- Shared 3-vector helpers ----
+
+static std::array<double,3> cross3(std::array<double,3> a, std::array<double,3> b) {
+    return {a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]};
+}
+static double dot3(std::array<double,3> a, std::array<double,3> b) {
+    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+}
+static double norm3(std::array<double,3> a) { return std::sqrt(dot3(a,a)); }
+
+// ---- Space curve geometry helpers ----
+
+static std::array<double,3> curve_deriv(CurveFn r, double t, double h) {
+    auto p1 = r(t + h), p2 = r(t - h);
+    return {(p1[0] - p2[0]) / (2 * h),
+            (p1[1] - p2[1]) / (2 * h),
+            (p1[2] - p2[2]) / (2 * h)};
+}
+
+static std::array<double,3> curve_deriv2(CurveFn r, double t, double h) {
+    auto pp = r(t + h), p0 = r(t), pm = r(t - h);
+    return {(pp[0] - 2 * p0[0] + pm[0]) / (h * h),
+            (pp[1] - 2 * p0[1] + pm[1]) / (h * h),
+            (pp[2] - 2 * p0[2] + pm[2]) / (h * h)};
+}
+
+static std::array<double,3> curve_deriv3(CurveFn r, double t, double h) {
+    // Central difference of r'' avoids the ill-conditioned O(h^3) 4-point stencil
+    // at the default step h = 1e-5 (denominator ~ 2e-15 in double precision).
+    auto rpp_p = curve_deriv2(r, t + h, h);
+    auto rpp_m = curve_deriv2(r, t - h, h);
+    return {(rpp_p[0] - rpp_m[0]) / (2 * h),
+            (rpp_p[1] - rpp_m[1]) / (2 * h),
+            (rpp_p[2] - rpp_m[2]) / (2 * h)};
+}
+
+double torsion(CurveFn r, double t, double h) {
+    auto rp   = curve_deriv(r, t, h);
+    auto rpp  = curve_deriv2(r, t, h);
+    auto rppp = curve_deriv3(r, t, h);
+    auto cross = cross3(rp, rpp);
+    double cross_mag_sq = dot3(cross, cross);
+    if (cross_mag_sq < 1e-30) return 0.0;
+    return dot3(cross, rppp) / cross_mag_sq;
+}
+
 // ---- Surface geometry helpers ----
 
 static std::array<double,3> surf_deriv(SurfaceFn r, double u, double v, bool du, double h) {
@@ -246,14 +292,6 @@ static std::array<double,3> surf_deriv2(SurfaceFn r, double u, double v,
                 (pp[2]-2*p0[2]+pm[2])/(h*h)};
     }
 }
-
-static std::array<double,3> cross3(std::array<double,3> a, std::array<double,3> b) {
-    return {a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]};
-}
-static double dot3(std::array<double,3> a, std::array<double,3> b) {
-    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-}
-static double norm3(std::array<double,3> a) { return std::sqrt(dot3(a,a)); }
 
 std::array<double,3> surface_normal(SurfaceFn r, double u, double v, double h) {
     auto ru = surf_deriv(r, u, v, true, h);
