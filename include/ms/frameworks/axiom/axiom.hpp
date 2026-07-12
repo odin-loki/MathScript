@@ -52,6 +52,27 @@ public:
 
     Result<Matrix<double>> evaluate(const Algorithm& algo, const Matrix<double>& data) const;
     double gria_fitness(const Algorithm& algo, const Matrix<double>& data) const;
+
+    /// Supervised regression fitness: mean squared error of `algo` evaluated row-by-row
+    /// over `inputs` (column j bound to variable "xj", matching evaluate()'s convention)
+    /// against `targets[i]`.
+    ///
+    /// Conventions (no exceptions are thrown; malformed inputs degrade gracefully):
+    ///  - Row count is `min(inputs.rows(), targets.size())`; a mismatch is not an error,
+    ///    the extra rows/targets are simply ignored. If either is empty, returns 0.0.
+    ///  - `ms::Sym::eval` already guards div-by-zero, log(<=0), and sqrt(<0) by returning
+    ///    0.0 (see sym.cpp), so those cannot produce NaN/Inf. The remaining risk is
+    ///    numeric overflow (e.g. exp() of a large argument, or repeated multiplication
+    ///    in a deep tree) producing +-Inf, or Inf-Inf producing NaN. Any row whose
+    ///    prediction or squared error is non-finite is penalized with a large-but-finite
+    ///    sentinel (1e12) instead of letting NaN/Inf propagate into the aggregate score,
+    ///    which would otherwise silently destroy selection pressure across the whole
+    ///    population in an evolutionary loop.
+    double mse_fitness(const Algorithm& algo, const Matrix<double>& inputs, const std::vector<double>& targets) const;
+
+    /// Root of mse_fitness(); same conventions apply (see mse_fitness doc comment).
+    double rmse_fitness(const Algorithm& algo, const Matrix<double>& inputs, const std::vector<double>& targets) const;
+
     const std::vector<Algorithm>& population() const { return population_; }
 
 private:

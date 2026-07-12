@@ -414,4 +414,47 @@ double Axiom::gria_fitness(const Algorithm& algo, const Matrix<double>& data) co
     return 1.0 - std::abs(alpha - cfg_.target_alpha);
 }
 
+namespace {
+
+// Large-but-finite penalty substituted for any row whose prediction (or squared
+// error) is non-finite, so a single malformed individual cannot turn the whole
+// aggregate fitness into NaN/Inf and destroy selection pressure. See mse_fitness's
+// doc comment in axiom.hpp for the full rationale.
+constexpr double kNonFinitePenalty = 1e12;
+
+} // namespace
+
+double Axiom::mse_fitness(
+    const Algorithm& algo, const Matrix<double>& inputs, const std::vector<double>& targets) const {
+    const size_t n = std::min(inputs.rows(), targets.size());
+    if (n == 0) {
+        return 0.0;
+    }
+
+    double sum_squared_error = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        std::map<std::string, double> env;
+        for (size_t j = 0; j < inputs.cols(); ++j) {
+            env["x" + std::to_string(j)] = inputs(i, j);
+        }
+        const double prediction = algo.representation.eval(env);
+
+        double squared_error = kNonFinitePenalty;
+        if (std::isfinite(prediction)) {
+            const double error = prediction - targets[i];
+            const double candidate = error * error;
+            if (std::isfinite(candidate)) {
+                squared_error = candidate;
+            }
+        }
+        sum_squared_error += squared_error;
+    }
+    return sum_squared_error / static_cast<double>(n);
+}
+
+double Axiom::rmse_fitness(
+    const Algorithm& algo, const Matrix<double>& inputs, const std::vector<double>& targets) const {
+    return std::sqrt(mse_fitness(algo, inputs, targets));
+}
+
 } // namespace ms::axiom
