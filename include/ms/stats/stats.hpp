@@ -195,6 +195,35 @@ struct ShapiroWilkResult {
 };
 ShapiroWilkResult shapiro_wilk(std::span<const double> x);
 
+// Wilcoxon signed-rank test: a non-parametric test for whether the median of the paired
+// differences (x[i] - y[i]) between two related/matched samples is zero (i.e. whether there's
+// a systematic difference between paired observations), without assuming the differences are
+// normally distributed (unlike a paired t-test). Pairs with a zero difference are discarded
+// (see @note below); the remaining |differences| are ranked (average ranks for ties, via this
+// module's `average_ranks` helper) and split into the rank-sum of positive differences (W+) and
+// the rank-sum of negative differences (W-). Returns W = min(W+, W-), a normal-approximation z
+// statistic, and a two-tailed p-value (standard for reasonably-sized samples; exact small-sample
+// tables are not used here, consistent with `mann_whitney_u`/`kruskal_wallis` in this module).
+//
+// @note Zero-difference pairs: any pair with x[i] == y[i] contributes no information about the
+// sign of a systematic difference and is excluded from ranking entirely, per the standard
+// procedure for this test. `n_eff` is the number of pairs remaining after this exclusion.
+// @note Tie correction: mirrors `mann_whitney_u`'s treatment in this module -- the variance of
+// W is reduced by a tie-correction term derived from the sizes of tied groups among the ranked
+// |differences|, matching the standard formula var_W = n(n+1)(2n+1)/24 - sum(t^3 - t)/48.
+// @note Continuity correction: a 0.5 continuity correction is applied when converting W to a z
+// statistic (consistent with `mann_whitney_u`'s use of a continuity correction).
+// Malformed input (mismatched `x`/`y` lengths, or fewer than 1 non-zero-difference pair after
+// discarding zero-difference pairs) yields the neutral default result
+// { w_stat = 0.0, z_stat = 0.0, p_value = 1.0, n_eff = 0 }.
+struct WilcoxonSignedRankResult {
+    double w_stat = 0.0;   // W = min(W+, W-)
+    double z_stat = 0.0;   // normal-approximation z statistic
+    double p_value = 1.0;  // two-tailed p-value via normal approximation
+    int n_eff = 0;          // number of non-zero-difference pairs actually used
+};
+WilcoxonSignedRankResult wilcoxon_signed_rank(std::span<const double> x, std::span<const double> y);
+
 // --- Regression ---
 struct LinearRegressionResult {
     double slope;

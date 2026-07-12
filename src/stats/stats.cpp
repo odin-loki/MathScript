@@ -912,6 +912,65 @@ ShapiroWilkResult shapiro_wilk(std::span<const double> x) {
     return result;
 }
 
+WilcoxonSignedRankResult wilcoxon_signed_rank(std::span<const double> x, std::span<const double> y) {
+    WilcoxonSignedRankResult result{};
+    if (x.size() != y.size() || x.empty()) {
+        return result;
+    }
+    std::vector<double> abs_diffs;
+    std::vector<double> signs;
+    abs_diffs.reserve(x.size());
+    signs.reserve(x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        const double d = x[i] - y[i];
+        if (d == 0.0) {
+            continue;
+        }
+        abs_diffs.push_back(std::abs(d));
+        signs.push_back(d > 0.0 ? 1.0 : -1.0);
+    }
+    const int n_eff = static_cast<int>(abs_diffs.size());
+    if (n_eff < 1) {
+        return result;
+    }
+    result.n_eff = n_eff;
+
+    const auto ranks = average_ranks(abs_diffs);
+    double w_plus = 0.0;
+    double w_minus = 0.0;
+    for (size_t i = 0; i < ranks.size(); ++i) {
+        if (signs[i] > 0.0) {
+            w_plus += ranks[i];
+        } else {
+            w_minus += ranks[i];
+        }
+    }
+    result.w_stat = std::min(w_plus, w_minus);
+
+    const double n_d = static_cast<double>(n_eff);
+    const double mean_w = n_d * (n_d + 1.0) / 4.0;
+    double tie_sum = 0.0;
+    std::unordered_map<double, int> tie_counts;
+    for (double v : abs_diffs) {
+        ++tie_counts[v];
+    }
+    for (const auto& [value, count] : tie_counts) {
+        (void)value;
+        if (count > 1) {
+            tie_sum += static_cast<double>(count * count * count - count);
+        }
+    }
+    double var_w = n_d * (n_d + 1.0) * (2.0 * n_d + 1.0) / 24.0 - tie_sum / 48.0;
+    if (var_w <= 0.0) {
+        return result;
+    }
+    const double sd_w = std::sqrt(var_w);
+    const double cc = (result.w_stat > mean_w) ? -0.5 : 0.5;
+    result.z_stat = (result.w_stat - mean_w + cc) / sd_w;
+    result.p_value = 2.0 * (1.0 - norm_cdf(std::abs(result.z_stat), 0.0, 1.0));
+    return result;
+}
+
 std::vector<double> multiple_regression(
     const std::vector<std::vector<double>>& X,
     std::span<const double> y) {

@@ -1326,3 +1326,219 @@ TEST(StatsExtTest, shapiro_wilk_large_normal_like_sample_very_high_w) {
     EXPECT_GT(result.w_stat, 0.95);
     EXPECT_GT(result.p_value, 0.1);
 }
+
+// ---------------------------------------------------------------------------
+// wilcoxon_signed_rank
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, wilcoxon_signed_rank_clear_systematic_difference_significant) {
+    // Every pair has y[i] > x[i] by a growing margin, so every difference is negative and the
+    // ranking has no ties -- the most one-sided possible outcome (W+ = 0, W- = n(n+1)/2).
+    const std::vector<double> x{10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0};
+    const std::vector<double> y{15.0, 26.0, 38.0, 51.0, 65.0, 80.0, 96.0, 113.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 8);
+    EXPECT_NEAR(result.w_stat, 0.0, 1e-12);
+    EXPECT_LT(result.p_value, 0.02);
+    EXPECT_LT(result.z_stat, 0.0);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_balanced_no_effect_not_significant) {
+    // Differences alternate sign with increasing magnitude (-1, 2, -3, 4, ..., 10), so positive
+    // and negative rank-sums are close (W+ = 30, W- = 25 out of a total of 55) -- no real
+    // systematic paired effect.
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    const std::vector<double> y{2.0, 0.0, 6.0, 0.0, 10.0, 0.0, 14.0, 0.0, 18.0, 0.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 10);
+    EXPECT_NEAR(result.w_stat, 25.0, 1e-9);
+    EXPECT_GT(result.p_value, 0.5);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_zero_diff_pairs_excluded) {
+    // 5 of the 10 pairs are exactly equal (zero difference) and must be discarded; the
+    // remaining 5 all share the same non-zero difference (-5).
+    const std::vector<double> x{10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0};
+    const std::vector<double> y{10.0, 25.0, 30.0, 45.0, 50.0, 65.0, 70.0, 85.0, 90.0, 105.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 5);  // 10 total - 5 zero-diff pairs
+    EXPECT_NEAR(result.w_stat, 0.0, 1e-12);  // all remaining diffs are negative
+    EXPECT_LT(result.p_value, 0.1);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_mismatched_lengths_returns_default) {
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    const std::vector<double> y{1.0, 2.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_DOUBLE_EQ(result.w_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.z_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+    EXPECT_EQ(result.n_eff, 0);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_all_zero_differences_degenerate) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> y{1.0, 2.0, 3.0, 4.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 0);
+    EXPECT_DOUBLE_EQ(result.w_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.z_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_empty_inputs_returns_default) {
+    const std::vector<double> empty;
+    const auto result = wilcoxon_signed_rank(empty, empty);
+    EXPECT_EQ(result.n_eff, 0);
+    EXPECT_DOUBLE_EQ(result.w_stat, 0.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+}
+
+// Hand-computed reference case, no ties. Differences d = x - y = {3, -7, 5, -2, 9, -4}.
+// Sorted |d| = {2, 3, 4, 5, 7, 9} -> ranks 1..6 respectively (no ties, so ranks are just the
+// position in sorted order):
+//   |d|=3 -> rank 2 (positive)      |d|=7 -> rank 5 (negative)
+//   |d|=5 -> rank 4 (positive)      |d|=2 -> rank 1 (negative)
+//   |d|=9 -> rank 6 (positive)      |d|=4 -> rank 3 (negative)
+// W+ = 2 + 4 + 6 = 12, W- = 5 + 1 + 3 = 9 (check: 12 + 9 = 21 = 6*7/2). W = min(12, 9) = 9.
+TEST(StatsExtTest, wilcoxon_signed_rank_hand_computed_no_ties) {
+    const std::vector<double> x{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
+    const std::vector<double> y{7.0, 27.0, 25.0, 42.0, 41.0, 64.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 6);
+    EXPECT_NEAR(result.w_stat, 9.0, 1e-9);
+}
+
+// Hand-computed reference case with ties in |d|. Differences d = x - y = {4, -4, 6, -6, 4, 2}.
+// |d| values: {4, 4, 6, 6, 4, 2}. Tie groups: |d|=2 (1 occurrence, rank 1), |d|=4 (3
+// occurrences, occupying ranks 2-4, average rank 3), |d|=6 (2 occurrences, occupying ranks 5-6,
+// average rank 5.5).
+// Assigning average ranks back to each signed difference:
+//   d= 4 -> rank 3 (positive)   d=-4 -> rank 3 (negative)   d= 6 -> rank 5.5 (positive)
+//   d=-6 -> rank 5.5 (negative) d= 4 -> rank 3 (positive)   d= 2 -> rank 1 (positive)
+// W+ = 3 + 5.5 + 3 + 1 = 12.5, W- = 3 + 5.5 = 8.5 (check: 12.5 + 8.5 = 21 = 6*7/2).
+// W = min(12.5, 8.5) = 8.5.
+// Also cross-check the tie-corrected variance directly: mean_W = 6*7/4 = 10.5,
+// var_W = 6*7*13/24 - tie_sum/48 where tie_sum = (3^3-3) + (2^3-2) = 24 + 6 = 30, so
+// var_W = 22.75 - 30/48 = 22.75 - 0.625 = 22.125. With the 0.5 continuity correction
+// (W < mean_W, so cc = +0.5): z = (8.5 - 10.5 + 0.5) / sqrt(22.125) = -1.5 / sqrt(22.125).
+TEST(StatsExtTest, wilcoxon_signed_rank_hand_computed_with_ties) {
+    const std::vector<double> x{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
+    const std::vector<double> y{6.0, 24.0, 24.0, 46.0, 46.0, 58.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 6);
+    EXPECT_NEAR(result.w_stat, 8.5, 1e-9);
+    const double expected_var_w = 22.125;
+    const double expected_z = (8.5 - 10.5 + 0.5) / std::sqrt(expected_var_w);
+    EXPECT_NEAR(result.z_stat, expected_z, 1e-9);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_symmetric_under_swap_of_x_and_y) {
+    // Swapping x and y flips the sign of every difference, which swaps W+ and W- -- but since
+    // the reported statistic is W = min(W+, W-), the result must be identical either way.
+    const std::vector<double> x{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
+    const std::vector<double> y{7.0, 27.0, 25.0, 42.0, 41.0, 64.0};
+    const auto forward = wilcoxon_signed_rank(x, y);
+    const auto backward = wilcoxon_signed_rank(y, x);
+    EXPECT_EQ(forward.n_eff, backward.n_eff);
+    EXPECT_NEAR(forward.w_stat, backward.w_stat, 1e-12);
+    EXPECT_NEAR(forward.p_value, backward.p_value, 1e-12);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_bounds_sanity_finite_and_in_range) {
+    const std::vector<double> x{3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0};
+    const std::vector<double> y{9.0, 2.0, 6.0, 5.0, 3.0, 5.0, 8.0, 9.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    ASSERT_GT(result.n_eff, 0);
+    const double n_d = static_cast<double>(result.n_eff);
+    EXPECT_TRUE(std::isfinite(result.w_stat));
+    EXPECT_TRUE(std::isfinite(result.z_stat));
+    EXPECT_TRUE(std::isfinite(result.p_value));
+    EXPECT_GE(result.w_stat, 0.0);
+    EXPECT_LE(result.w_stat, n_d * (n_d + 1.0) / 2.0);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_single_pair_deterministic) {
+    // A single non-zero-difference pair: n_eff = 1, rank = 1. With only one pair, either W+ or
+    // W- takes the whole rank sum (1) and the other is 0, so W = min(W+, W-) = 0 always.
+    // mean_W = 1*2/4 = 0.5, var_W = 1*2*3/24 = 0.25 (no ties possible with only one value),
+    // sd_W = 0.5. W (0) is below mean_W, so cc = +0.5:
+    // z = (0 - 0.5 + 0.5) / 0.5 = 0 exactly, giving p_value = 2*(1 - norm_cdf(0)) = 1.0 exactly.
+    const std::vector<double> x{10.0};
+    const std::vector<double> y{7.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 1);
+    EXPECT_NEAR(result.w_stat, 0.0, 1e-12);
+    EXPECT_NEAR(result.z_stat, 0.0, 1e-9);
+    EXPECT_NEAR(result.p_value, 1.0, 1e-9);
+}
+
+// All 8 differences share the same magnitude (5) but are evenly split between positive and
+// negative signs, so the tied ranks are perfectly balanced between W+ and W-: W+ = W- = 18
+// (mean_W = 8*9/4 = 18 exactly), so this is the textbook "no effect" outcome even though every
+// single difference is individually large.
+TEST(StatsExtTest, wilcoxon_signed_rank_all_tied_balanced_signs_not_significant) {
+    const std::vector<double> x{10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0};
+    const std::vector<double> y{15.0, 25.0, 35.0, 45.0, 45.0, 55.0, 65.0, 75.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 8);
+    EXPECT_NEAR(result.w_stat, 18.0, 1e-9);
+    EXPECT_GT(result.p_value, 0.8);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_single_zero_pair_among_many) {
+    // Exactly one pair out of six is an exact tie (x[2] == y[2] == 30); the other five all have
+    // a non-zero, distinct-magnitude difference.
+    const std::vector<double> x{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
+    const std::vector<double> y{12.0, 25.0, 30.0, 33.0, 58.0, 54.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 5);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_large_sample_strong_effect_with_ties) {
+    // 20 pairs, every difference negative (y always larger), with a handful of repeated
+    // magnitudes to exercise the tie-correction path alongside a strong, clearly significant
+    // effect.
+    std::vector<double> x;
+    std::vector<double> y;
+    for (int i = 0; i < 20; ++i) {
+        const double xv = static_cast<double>(10 * (i + 1));
+        const double margin = 5.0 + static_cast<double>(i % 5);  // repeats every 5 -> ties
+        x.push_back(xv);
+        y.push_back(xv + margin);
+    }
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 20);
+    EXPECT_NEAR(result.w_stat, 0.0, 1e-9);
+    EXPECT_LT(result.p_value, 1e-4);
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_n_eff_tracks_non_zero_pair_count) {
+    // Fix 8 pairs total, starting as all-exact-ties (y == x), then progressively turn more of
+    // them into non-zero-difference pairs; n_eff must track the number of non-zero pairs
+    // exactly (equivalently, 8 - number_of_remaining_zero_pairs) each time.
+    const std::vector<double> base_x{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+    for (int nonzero_count = 0; nonzero_count <= 8; ++nonzero_count) {
+        std::vector<double> y = base_x;
+        for (int i = 0; i < nonzero_count; ++i) {
+            y[static_cast<size_t>(i)] += 3.0;  // introduce a non-zero difference
+        }
+        const auto result = wilcoxon_signed_rank(base_x, y);
+        EXPECT_EQ(result.n_eff, nonzero_count) << "nonzero_count=" << nonzero_count;
+    }
+}
+
+TEST(StatsExtTest, wilcoxon_signed_rank_small_no_tie_opposite_signs_bounds) {
+    const std::vector<double> x{5.0, 12.0, 8.0, 20.0};
+    const std::vector<double> y{8.0, 10.0, 15.0, 15.0};
+    const auto result = wilcoxon_signed_rank(x, y);
+    EXPECT_EQ(result.n_eff, 4);
+    EXPECT_GE(result.w_stat, 0.0);
+    EXPECT_LE(result.w_stat, 10.0);  // n(n+1)/2 = 4*5/2 = 10
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+}
