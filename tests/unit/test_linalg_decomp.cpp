@@ -2,6 +2,7 @@
 #include <vector>
 #include <gtest/gtest.h>
 
+#include "ms/control/control.hpp"
 #include "ms/error/error_types.hpp"
 #include "ms/linalg/linalg.hpp"
 
@@ -47,6 +48,17 @@ double ortho_error(const DMatrix& M, size_t ncols) {
         }
     }
     return std::sqrt(err);
+}
+
+// Frobenius norm, used below to check Sylvester-equation residuals.
+double frob_norm(const DMatrix& M) {
+    double s = 0.0;
+    for (size_t i = 0; i < M.rows(); ++i) {
+        for (size_t j = 0; j < M.cols(); ++j) {
+            s += M(i, j) * M(i, j);
+        }
+    }
+    return std::sqrt(s);
 }
 
 } // namespace
@@ -656,4 +668,118 @@ TEST(LinalgDecompTest, SchurTest_EigenvaluesOnDiagonal) {
     const double e1 = evals->values(1, 0);
     EXPECT_NEAR(t00, e0, 1e-4);
     EXPECT_NEAR(t11, e1, 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// solve_sylvester: A*X + X*B = C
+// ---------------------------------------------------------------------------
+
+TEST(SylvesterTest, known_exact_solution_2x2) {
+    DMatrix A{{1, 0}, {0, 2}};
+    DMatrix B{{3, 0}, {0, 4}};
+    DMatrix X_true{{1, 2}, {3, 4}};
+    const DMatrix C = A * X_true + X_true * B;
+
+    auto result = solve_sylvester(A, B, C);
+    ASSERT_TRUE(result.has_value());
+    for (size_t i = 0; i < X_true.rows(); ++i) {
+        for (size_t j = 0; j < X_true.cols(); ++j) {
+            EXPECT_NEAR((*result)(i, j), X_true(i, j), 1e-9);
+        }
+    }
+}
+
+TEST(SylvesterTest, known_exact_solution_nonsquare_3x2) {
+    // A is 3x3, B is 2x2 (n != m), so X and C are 3x2 — exercises the
+    // rectangular n != m case, not just the square n == m case above.
+    DMatrix A{{2, 1, 0}, {0, 3, 1}, {0, 0, 4}};
+    DMatrix B{{1, 2}, {0, 5}};
+    DMatrix X_true{{1, 2}, {3, -1}, {0, 4}};
+    const DMatrix C = A * X_true + X_true * B;
+
+    auto result = solve_sylvester(A, B, C);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->rows(), 3u);
+    ASSERT_EQ(result->cols(), 2u);
+    for (size_t i = 0; i < X_true.rows(); ++i) {
+        for (size_t j = 0; j < X_true.cols(); ++j) {
+            EXPECT_NEAR((*result)(i, j), X_true(i, j), 1e-8);
+        }
+    }
+}
+
+TEST(SylvesterTest, residual_near_zero_hand_picked_2x2) {
+    // C here is hand-picked directly (not built from a known X), so this
+    // checks the residual ||A*X+X*B-C||_F rather than an exact X match.
+    DMatrix A{{2, 1}, {0, 3}};
+    DMatrix B{{-1, 2}, {1, -3}};
+    DMatrix C{{5, -3}, {2, 7}};
+
+    auto result = solve_sylvester(A, B, C);
+    ASSERT_TRUE(result.has_value());
+    const DMatrix residual = A * (*result) + (*result) * B - C;
+    EXPECT_LT(frob_norm(residual), 1e-8);
+}
+
+TEST(SylvesterTest, residual_near_zero_hand_picked_3x3) {
+    DMatrix A{{4, 1, 0}, {1, 3, 1}, {0, 1, 2}};
+    DMatrix B{{2, -1, 0}, {0, 5, 1}, {1, 0, 3}};
+    DMatrix C{{1, 2, 3}, {-1, 0, 2}, {4, -2, 1}};
+
+    auto result = solve_sylvester(A, B, C);
+    ASSERT_TRUE(result.has_value());
+    const DMatrix residual = A * (*result) + (*result) * B - C;
+    EXPECT_LT(frob_norm(residual), 1e-7);
+}
+
+TEST(SylvesterTest, matches_lyap_when_B_is_A_transpose) {
+    // The special case B = A^T reduces the Sylvester equation to the
+    // continuous Lyapunov equation A*X + X*A^T = C, i.e. A*X + X*A^T + Q = 0
+    // with Q = -C. ms::control::lyap(A, Q) solves exactly that, so cross-check
+    // numerically against it (using a stable A so lyap's Kronecker solve is
+    // well-conditioned).
+    DMatrix A{{-2, 1}, {0, -3}};
+    DMatrix NegQ{{-2, 0}, {0, -3}};
+    const DMatrix AT{{-2, 0}, {1, -3}}; // A^T as a DMatrix (transpose() returns RowMatrix)
+
+    auto sylv_result = solve_sylvester(A, AT, NegQ);
+    ASSERT_TRUE(sylv_result.has_value());
+
+    std::vector<std::vector<double>> Avec{{-2, 1}, {0, -3}};
+    std::vector<std::vector<double>> Qvec{{2, 0}, {0, 3}};
+    auto lyap_result = control::lyap(Avec, Qvec);
+    ASSERT_TRUE(lyap_result.has_value());
+
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 2; ++j) {
+            EXPECT_NEAR((*sylv_result)(i, j), (*lyap_result)[i][j], 1e-6);
+        }
+    }
+}
+
+TEST(SylvesterTest, dimension_mismatch_errors) {
+    DMatrix square2{{1, 2}, {3, 4}};
+    DMatrix nonsquare{{1, 2, 3}, {4, 5, 6}};
+    DMatrix c_wrong_shape{{1, 2}, {3, 4}, {5, 6}};
+
+    // A not square.
+    EXPECT_FALSE(solve_sylvester(nonsquare, square2, c_wrong_shape).has_value());
+    // B not square.
+    EXPECT_FALSE(solve_sylvester(square2, nonsquare, c_wrong_shape).has_value());
+    // A, B square but C shape doesn't match (n x m).
+    DMatrix square3{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    EXPECT_FALSE(solve_sylvester(square2, square3, c_wrong_shape).has_value());
+}
+
+TEST(SylvesterTest, near_singular_shared_eigenvalue_detected) {
+    // A has eigenvalue 2 and -B has eigenvalue 2 (B has eigenvalue -2), so the
+    // Sylvester operator (I (x) A + B^T (x) I) is exactly singular in exact
+    // arithmetic; the underlying solve() should detect this rather than
+    // returning a nonsensical X.
+    DMatrix A{{2, 0}, {0, 5}};
+    DMatrix B{{-2, 0}, {0, 3}};
+    DMatrix C{{1, 2}, {3, 4}};
+
+    auto result = solve_sylvester(A, B, C);
+    EXPECT_FALSE(result.has_value());
 }
