@@ -2,6 +2,8 @@
 
 Short guide for building, testing, and running compliance checks locally.
 
+Looking to just use MathScript? See [`docs/USER_GUIDE.md`](USER_GUIDE.md) instead.
+
 ## Prerequisites
 
 - **CMake** 3.28+
