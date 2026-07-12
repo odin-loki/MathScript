@@ -1,4 +1,5 @@
 #include "ms/topo/topo.hpp"
+#include "ms/geo/geo.hpp"
 #include <bit>
 #include <algorithm>
 #include <cmath>
@@ -226,6 +227,73 @@ SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matr
                     double r = min_enclosing_ball_radius_triangle(a, b, c);
                     if (r <= epsilon) sc.add_simplex({i, j, k});
                 }
+    }
+
+    return sc;
+}
+
+// ========================== Alpha complex ==========================
+
+SimplicialComplex alpha_complex(const std::vector<std::vector<double>>& pts,
+                                  double alpha, int max_dim) {
+    int n = static_cast<int>(pts.size());
+    int dim_cap = std::min(max_dim, 2);  // see @note: only a 2D Delaunay structure exists
+    SimplicialComplex sc;
+
+    // dim 0: vertices are always included, regardless of alpha.
+    for (int i = 0; i < n; ++i) sc.add_point(i);
+    if (n < 2) return sc;
+
+    auto edist = [&](int i, int j) {
+        double dx = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1];
+        return std::sqrt(dx*dx + dy*dy);
+    };
+
+    // With only 2 points there is no Delaunay triangulation to build; the lone
+    // segment joining them is the trivial 1-dimensional "triangulation", whose
+    // own MEB radius (half its length) is its alpha value.
+    if (n == 2) {
+        if (edist(0, 1) / 2.0 <= alpha) sc.add_simplex({0, 1});
+        return sc;
+    }
+
+    std::vector<ms::geo::Point2D> gpts(n);
+    for (int i = 0; i < n; ++i) gpts[i] = {pts[i][0], pts[i][1]};
+    auto tris = ms::geo::delaunay_2d(gpts);
+
+    // Per Delaunay edge: how many Delaunay triangles reference it, and whether at
+    // least one of those triangles was included in the alpha complex. Edges that
+    // border only one triangle (convex-hull edges) or -- in degenerate/collinear
+    // inputs -- no triangle at all are the ones whose own MEB radius is checked
+    // independently below (see @note on the documented interior-edge simplification).
+    struct EdgeInfo { int triangle_count = 0; bool any_included = false; };
+    std::map<std::pair<int,int>, EdgeInfo> edge_info;
+    auto edge_key = [](int i, int j) { return i < j ? std::make_pair(i, j) : std::make_pair(j, i); };
+
+    for (auto& t : tris) {
+        double a = edist(t.a, t.b);
+        double b = edist(t.b, t.c);
+        double c = edist(t.a, t.c);
+        double r = min_enclosing_ball_radius_triangle(a, b, c);
+        bool included = (dim_cap >= 2) && (r <= alpha);
+        if (included) sc.add_simplex({t.a, t.b, t.c});  // also adds its 3 edges + 3 vertices
+
+        std::pair<int,int> keys[3] = {edge_key(t.a,t.b), edge_key(t.b,t.c), edge_key(t.a,t.c)};
+        for (auto& k : keys) {
+            auto& info = edge_info[k];
+            info.triangle_count++;
+            info.any_included = info.any_included || included;
+        }
+    }
+
+    // dim 1: edges are always considered regardless of max_dim (mirrors cech_complex).
+    // An edge already added as a face of an included triangle is left alone; a
+    // hull/orphan edge (triangle_count <= 1) is independently tested against its
+    // own MEB radius (half its length).
+    for (auto& [key, info] : edge_info) {
+        if (info.any_included) continue;
+        if (info.triangle_count <= 1 && edist(key.first, key.second) / 2.0 <= alpha)
+            sc.add_simplex({key.first, key.second});
     }
 
     return sc;

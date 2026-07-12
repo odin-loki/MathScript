@@ -1,5 +1,9 @@
 #include "ms/topo/topo.hpp"
+#include "ms/geo/geo.hpp"
+#include <algorithm>
 #include <cmath>
+#include <set>
+#include <vector>
 #include <gtest/gtest.h>
 
 using namespace ms::topo;
@@ -427,4 +431,209 @@ TEST(TopoCech, MaxDimClampedAboveTwo) {
     auto sc = cech_complex(D, 1000.0, 5);
     EXPECT_EQ(sc.dimension(), 2);
     EXPECT_TRUE(sc.simplices(3).empty());
+}
+
+// ---- Alpha complex ----
+
+namespace {
+
+// Local re-derivation of circumcenter/circumradius from 3 raw coordinates, kept
+// independent of ms::geo's internal (static) helpers, so that the "no other point
+// lies strictly inside the circumcircle" Delaunay property can be verified in tests
+// without reaching into ms::geo's implementation details.
+struct CircumCircle { double cx, cy, r; bool ok; };
+
+CircumCircle circum_circle(const std::vector<std::vector<double>>& pts, int i, int j, int k) {
+    double ax = pts[i][0], ay = pts[i][1];
+    double bx = pts[j][0], by = pts[j][1];
+    double cx0 = pts[k][0], cy0 = pts[k][1];
+    double D = 2.0 * (ax*(by-cy0) + bx*(cy0-ay) + cx0*(ay-by));
+    if (std::abs(D) < 1e-12) return {0, 0, 0, false};
+    double ux = ((ax*ax+ay*ay)*(by-cy0) + (bx*bx+by*by)*(cy0-ay) + (cx0*cx0+cy0*cy0)*(ay-by)) / D;
+    double uy = ((ax*ax+ay*ay)*(cx0-bx) + (bx*bx+by*by)*(ax-cx0) + (cx0*cx0+cy0*cy0)*(bx-ax)) / D;
+    double r = std::sqrt((ax-ux)*(ax-ux) + (ay-uy)*(ay-uy));
+    return {ux, uy, r, true};
+}
+
+// Every simplex in `sub` (as a sorted-vertex set) must also appear in `sup`.
+bool is_subcomplex(const SimplicialComplex& sub, const SimplicialComplex& sup) {
+    std::set<Simplex> super_set(sup.all_simplices().begin(), sup.all_simplices().end());
+    for (auto& s : sub.all_simplices())
+        if (super_set.find(s) == super_set.end()) return false;
+    return true;
+}
+
+} // namespace
+
+// 1. Subcomplex-of-Delaunay property: every triangle/edge alpha_complex returns must
+// be a genuine Delaunay triangle/edge of the same point set (5 points in general
+// position: no 3 collinear, no 4 exactly cocircular), and no returned triangle may
+// contain another input point strictly inside its circumcircle.
+TEST(TopoAlpha, SubcomplexOfDelaunay) {
+    std::vector<std::vector<double>> pts = {{0,0}, {4,0}, {4,3}, {0,4}, {1.5,1.5}};
+    std::vector<ms::geo::Point2D> gpts;
+    for (auto& p : pts) gpts.push_back({p[0], p[1]});
+    auto delaunay_tris = ms::geo::delaunay_2d(gpts);
+
+    std::set<Simplex> delaunay_tri_set, delaunay_edge_set;
+    for (auto& t : delaunay_tris) {
+        Simplex s = {t.a, t.b, t.c};
+        std::sort(s.begin(), s.end());
+        delaunay_tri_set.insert(s);
+        Simplex e1={t.a,t.b}, e2={t.b,t.c}, e3={t.a,t.c};
+        std::sort(e1.begin(),e1.end()); std::sort(e2.begin(),e2.end()); std::sort(e3.begin(),e3.end());
+        delaunay_edge_set.insert(e1); delaunay_edge_set.insert(e2); delaunay_edge_set.insert(e3);
+    }
+    ASSERT_FALSE(delaunay_tris.empty());
+
+    // Large alpha admits every Delaunay simplex, giving the widest check surface.
+    auto sc = alpha_complex(pts, 1000.0, 2);
+    for (auto& tri : sc.simplices(2))
+        EXPECT_TRUE(delaunay_tri_set.count(tri)) << "triangle not part of the Delaunay triangulation";
+    for (auto& e : sc.simplices(1))
+        EXPECT_TRUE(delaunay_edge_set.count(e)) << "edge not part of the Delaunay triangulation";
+
+    // Empty-circumcircle defining property of Delaunay triangles.
+    for (auto& tri : sc.simplices(2)) {
+        auto cc = circum_circle(pts, tri[0], tri[1], tri[2]);
+        ASSERT_TRUE(cc.ok);
+        for (int m = 0; m < (int)pts.size(); ++m) {
+            if (m == tri[0] || m == tri[1] || m == tri[2]) continue;
+            double dx = pts[m][0]-cc.cx, dy = pts[m][1]-cc.cy;
+            double dm = std::sqrt(dx*dx+dy*dy);
+            EXPECT_GE(dm, cc.r - 1e-9) << "point lies strictly inside a returned triangle's circumcircle";
+        }
+    }
+}
+
+// 2. Nesting/monotonicity: increasing alpha only adds simplices, never removes them.
+TEST(TopoAlpha, Monotonicity) {
+    std::vector<std::vector<double>> pts = {{0,0}, {4,0}, {4,3}, {0,4}, {1.5,1.5}, {2.5, 0.5}};
+    std::vector<double> alphas = {0.1, 0.4, 0.9, 1.5, 2.5, 100.0};
+    for (size_t a = 0; a + 1 < alphas.size(); ++a) {
+        auto sc1 = alpha_complex(pts, alphas[a], 2);
+        auto sc2 = alpha_complex(pts, alphas[a+1], 2);
+        EXPECT_TRUE(is_subcomplex(sc1, sc2))
+            << "alpha=" << alphas[a] << " complex is not a subset of alpha=" << alphas[a+1];
+    }
+}
+
+// 3. Small hand-checked case: unit-ish rectangle (2 x 2 square) split by Delaunay into
+// its two triangles. Both possible diagonals of a square yield an identical circumradius
+// (sqrt(2)/2 * side) by symmetry, so the expected simplex counts below hold regardless of
+// which diagonal delaunay_2d happens to choose.
+TEST(TopoAlpha, SquareHandChecked) {
+    std::vector<std::vector<double>> pts = {{0,0}, {2,0}, {2,2}, {0,2}};
+    const double side = 2.0;
+    const double R = side / std::sqrt(2.0);  // circumradius of each right-isoceles half-triangle
+
+    // alpha below half a side length: only vertices.
+    {
+        auto sc = alpha_complex(pts, 0.3, 2);
+        EXPECT_EQ(sc.simplices(0).size(), 4u);
+        EXPECT_TRUE(sc.simplices(1).empty());
+        EXPECT_TRUE(sc.simplices(2).empty());
+    }
+    // alpha between half a side (1.0) and R (~1.414): the 4 hull edges appear
+    // (their own MEB radius is 1.0 <= alpha) but the diagonal/triangles do not,
+    // since the diagonal is an interior edge governed by triangle inclusion only.
+    {
+        auto sc = alpha_complex(pts, 1.2, 2);
+        EXPECT_EQ(sc.simplices(0).size(), 4u);
+        EXPECT_EQ(sc.simplices(1).size(), 4u);
+        EXPECT_TRUE(sc.simplices(2).empty());
+    }
+    // alpha == R: both triangles (and hence all 4 sides + the 1 Delaunay diagonal) appear.
+    {
+        auto sc = alpha_complex(pts, R + 1e-9, 2);
+        EXPECT_EQ(sc.simplices(0).size(), 4u);
+        EXPECT_EQ(sc.simplices(1).size(), 5u);
+        EXPECT_EQ(sc.simplices(2).size(), 2u);
+    }
+}
+
+// 4. Comparison with cech_complex: alpha_complex must always be a subset of
+// cech_complex at the same alpha/epsilon on the same point set, since the alpha
+// complex only ever considers Delaunay simplices -- a strict subset of every
+// possible simplex cech_complex considers.
+TEST(TopoAlpha, SubsetOfCech) {
+    std::vector<std::vector<double>> pts = {{0,0}, {4,0}, {4,3}, {0,4}, {1.5,1.5}, {2.5,0.5}};
+    auto D = pairwise_distances(pts);
+    double alphas[] = {0.2, 0.75, 1.5, 3.0, 10.0};
+    for (double a : alphas) {
+        auto alpha_sc = alpha_complex(pts, a, 2);
+        auto cech_sc = cech_complex(D, a, 2);
+        EXPECT_TRUE(is_subcomplex(alpha_sc, cech_sc)) << "alpha_complex not a subset of cech_complex at alpha=" << a;
+    }
+}
+
+// 5. Degenerate / edge-case inputs must not crash and should return sensible results.
+TEST(TopoAlpha, EmptyPointSet) {
+    std::vector<std::vector<double>> pts;
+    auto sc = alpha_complex(pts, 1.0, 2);
+    EXPECT_EQ(sc.dimension(), -1);
+    EXPECT_TRUE(sc.all_simplices().empty());
+}
+
+TEST(TopoAlpha, SinglePoint) {
+    std::vector<std::vector<double>> pts = {{0, 0}};
+    auto sc = alpha_complex(pts, 1.0, 2);
+    EXPECT_EQ(sc.dimension(), 0);
+    EXPECT_EQ(sc.simplices(0).size(), 1u);
+}
+
+TEST(TopoAlpha, TwoPoints) {
+    std::vector<std::vector<double>> pts = {{0, 0}, {1, 0}};
+    // Below half the distance: no edge.
+    {
+        auto sc = alpha_complex(pts, 0.2, 2);
+        EXPECT_EQ(sc.simplices(0).size(), 2u);
+        EXPECT_TRUE(sc.simplices(1).empty());
+    }
+    // At/above half the distance: the edge appears.
+    {
+        auto sc = alpha_complex(pts, 0.5, 2);
+        EXPECT_EQ(sc.simplices(0).size(), 2u);
+        EXPECT_EQ(sc.simplices(1).size(), 1u);
+    }
+}
+
+TEST(TopoAlpha, CollinearPointsDoNotCrash) {
+    std::vector<std::vector<double>> pts = {{0,0}, {1,0}, {2,0}, {3,0}};
+    auto sc = alpha_complex(pts, 5.0, 2);
+    EXPECT_EQ(sc.simplices(0).size(), 4u);  // vertices are always safe to report
+    // Whatever (possibly degenerate) triangles a Delaunay implementation derives
+    // from a collinear input, every triangle actually returned must still respect
+    // the alpha threshold and involve valid point indices -- i.e. no garbage output.
+    for (auto& tri : sc.simplices(2)) {
+        EXPECT_EQ(tri.size(), 3u);
+        for (int idx : tri) { EXPECT_GE(idx, 0); EXPECT_LT(idx, 4); }
+    }
+}
+
+TEST(TopoAlpha, DuplicatePointsDoNotCrash) {
+    std::vector<std::vector<double>> pts = {{0,0}, {1,0}, {0,1}, {0,0}};
+    auto sc = alpha_complex(pts, 5.0, 2);
+    EXPECT_EQ(sc.simplices(0).size(), 4u);  // all 4 indices remain distinct vertices
+    for (auto& tri : sc.simplices(2)) {
+        EXPECT_EQ(tri.size(), 3u);
+        for (int idx : tri) { EXPECT_GE(idx, 0); EXPECT_LT(idx, 4); }
+    }
+}
+
+TEST(TopoAlpha, MaxDimClampedAboveTwo) {
+    std::vector<std::vector<double>> pts = {{0,0}, {2,0}, {2,2}, {0,2}};
+    auto sc = alpha_complex(pts, 1000.0, 5);
+    EXPECT_EQ(sc.dimension(), 2);
+    EXPECT_TRUE(sc.simplices(3).empty());
+}
+
+// Mirrors cech_complex / vietoris_rips: max_dim only gates simplices of dimension
+// >= 2 (edges are always considered against their own alpha value regardless).
+TEST(TopoAlpha, MaxDimZeroSuppressesTrianglesOnly) {
+    std::vector<std::vector<double>> pts = {{0,0}, {2,0}, {2,2}, {0,2}};
+    auto sc = alpha_complex(pts, 1000.0, 0);
+    EXPECT_EQ(sc.simplices(0).size(), 4u);
+    EXPECT_FALSE(sc.simplices(1).empty());
+    EXPECT_TRUE(sc.simplices(2).empty());
 }
