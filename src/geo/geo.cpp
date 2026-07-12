@@ -1194,5 +1194,13 @@ Polygon2D poly_union(const Polygon2D& a, const Polygon2D& b) {
     return poly_union_from_candidates(a, b);
 }
 
+// ---- Polygon Intersection (convex MVP) ----
+
+Polygon2D poly_intersect(const Polygon2D& a, const Polygon2D& b) {
+    if (a.empty() || b.empty()) return {};
+    if (a.size() < 3 || b.size() < 3) return {};
+    return clip_polygon(a, b);
+}
+
 } // namespace geo
 } // namespace ms

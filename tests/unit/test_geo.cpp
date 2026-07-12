@@ -1157,3 +1157,93 @@ TEST(GeoPolyUnion, TriangleAndSquareOverlap) {
     EXPECT_LT(area(u), area(tri) + area(sq));
     expect_convex_ccw(u);
 }
+
+// ---- Polygon Intersection (convex MVP) ----
+
+TEST(GeoPolyIntersect, OverlappingSquaresPartialOverlap) {
+    // [0,4]x[0,4] ∩ [2,6]x[2,6] => [2,4]x[2,4], area 4.
+    Polygon2D a = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D b = {{2, 2}, {6, 2}, {6, 6}, {2, 6}};
+    auto ix = poly_intersect(a, b);
+    ASSERT_FALSE(ix.empty());
+    EXPECT_NEAR(shoelace_area(ix), 4.0, 1e-9);
+    EXPECT_NEAR(area(ix), 4.0, 1e-9);
+}
+
+TEST(GeoPolyIntersect, DisjointSquaresGiveEmpty) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{10, 10}, {11, 10}, {11, 11}, {10, 11}};
+    auto ix = poly_intersect(a, b);
+    EXPECT_TRUE(ix.empty());
+}
+
+TEST(GeoPolyIntersect, ContainedSquareReturnsInner) {
+    Polygon2D inner = {{1, 1}, {2, 1}, {2, 2}, {1, 2}};
+    Polygon2D outer = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    auto ix = poly_intersect(inner, outer);
+    ASSERT_FALSE(ix.empty());
+    EXPECT_NEAR(area(ix), 1.0, 1e-9);
+    EXPECT_NEAR(shoelace_area(ix), 1.0, 1e-9);
+}
+
+TEST(GeoPolyIntersect, IdenticalSquaresUnchangedArea) {
+    Polygon2D sq = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    auto ix = poly_intersect(sq, sq);
+    ASSERT_FALSE(ix.empty());
+    EXPECT_NEAR(area(ix), 4.0, 1e-9);
+}
+
+TEST(GeoPolyIntersect, OneEmptyReturnsEmpty) {
+    Polygon2D sq = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D empty;
+    EXPECT_TRUE(poly_intersect(sq, empty).empty());
+    EXPECT_TRUE(poly_intersect(empty, sq).empty());
+}
+
+TEST(GeoPolyIntersect, BothEmptyReturnsEmpty) {
+    Polygon2D a, b;
+    EXPECT_TRUE(poly_intersect(a, b).empty());
+}
+
+TEST(GeoPolyIntersect, TouchingSquaresShareEdgeOnly) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{1, 0}, {2, 0}, {2, 1}, {1, 1}};
+    auto ix = poly_intersect(a, b);
+    EXPECT_TRUE(ix.empty() || area(ix) < 1e-9);
+}
+
+TEST(GeoPolyIntersect, TriangleAndSquareOverlap) {
+    Polygon2D tri = {{0, 0}, {2, 0}, {1, 2}};
+    Polygon2D sq  = {{1, 0}, {3, 0}, {3, 2}, {1, 2}};
+    auto ix = poly_intersect(tri, sq);
+    ASSERT_FALSE(ix.empty());
+    EXPECT_GT(area(ix), 0.0);
+    EXPECT_LT(area(ix), area(tri));
+    EXPECT_LT(area(ix), area(sq));
+    expect_convex_ccw(ix);
+}
+
+TEST(GeoPolyIntersect, ResultMatchesClipPolygon) {
+    Polygon2D a = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D b = {{2, -1}, {5, -1}, {5, 5}, {2, 5}};
+    auto ix = poly_intersect(a, b);
+    auto clipped = clip_polygon(a, b);
+    ASSERT_FALSE(ix.empty());
+    EXPECT_NEAR(area(ix), area(clipped), 1e-9);
+    EXPECT_NEAR(shoelace_area(ix), 8.0, 1e-9);
+}
+
+TEST(GeoPolyIntersect, ClockwiseOperandStillWorks) {
+    Polygon2D a = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D b_cw = {{6, 6}, {6, 2}, {2, 2}, {2, 6}};
+    ASSERT_LT(signed_area(b_cw), 0.0);
+    auto ix = poly_intersect(a, b_cw);
+    ASSERT_FALSE(ix.empty());
+    EXPECT_NEAR(area(ix), 4.0, 1e-9);
+}
+
+TEST(GeoPolyIntersect, DegenerateFewerThanThreeVerticesReturnsEmpty) {
+    Polygon2D sq = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    EXPECT_TRUE(poly_intersect(sq, {{0, 0}, {1, 1}}).empty());
+    EXPECT_TRUE(poly_intersect({{0, 0}}, sq).empty());
+}

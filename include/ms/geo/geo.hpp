@@ -312,5 +312,20 @@ Polygon2D clip_polygon(const Polygon2D& subject, const Polygon2D& clip_window);
 //       window).
 Polygon2D poly_union(const Polygon2D& a, const Polygon2D& b);
 
+// ========================== Polygon Intersection ==========================
+
+// Intersection of two CONVEX polygons. Computed via Sutherland-Hodgman clipping: `a` is
+// clipped against each half-plane of convex `b` in turn (reusing `clip_polygon`), yielding
+// the overlap region A ∩ B. The result is always convex when non-empty.
+//
+// @param a, b convex polygons in any winding (CCW is the usual convention in this module).
+//        Fewer than 3 vertices in either operand is degenerate (no well-defined polygon
+//        interior) and returns an empty result. Either operand empty also returns empty.
+// @return the intersection polygon's vertices in order, or empty when the operands do not
+//         overlap (including edge-only or point-only contact with zero area).
+// @note Requires CONVEX inputs as a precondition — non-convex polygons are out of scope.
+//       For concave subjects against a convex clip window, use `clip_polygon` directly.
+Polygon2D poly_intersect(const Polygon2D& a, const Polygon2D& b);
+
 } // namespace geo
 } // namespace ms
