@@ -30,6 +30,12 @@ double correlation(std::span<const double> x, std::span<const double> y);
 double spearman(std::span<const double> x, std::span<const double> y);
 double kendall(std::span<const double> x, std::span<const double> y);
 
+// Partial correlation between x and y after controlling for z:
+// r_xy.z = (r_xy - r_xz*r_yz) / sqrt((1 - r_xz^2)*(1 - r_yz^2)).
+double partial_correlation(std::span<const double> x,
+                           std::span<const double> y,
+                           std::span<const double> z);
+
 // --- Hypothesis tests ---
 double ttest(std::span<const double> sample, double mu);
 double two_sample_ttest(std::span<const double> a, std::span<const double> b);
@@ -235,6 +241,12 @@ LinearRegressionResult linear_regression(std::span<const double> x,
 std::vector<double> multiple_regression(
     const std::vector<std::vector<double>>& X,
     std::span<const double> y);
+
+// Variance inflation factor for predictor column j of design matrix X (rows = observations,
+// columns = predictors): regress column j on all other columns and return VIF_j = 1 / (1 - R^2).
+// High values (commonly > 5 or > 10) indicate multicollinearity. Alias: vif().
+double variance_inflation_factor(const std::vector<std::vector<double>>& X, size_t j);
+double vif(const std::vector<std::vector<double>>& X, size_t j);
 
 // --- Time series ---
 std::vector<double> acf(std::span<const double> x, int max_lag);

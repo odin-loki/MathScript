@@ -4,6 +4,10 @@
 #include "ms/stats/stats.hpp"
 #include "ms/prob/prob.hpp"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 using namespace ms;
 
 TEST(StatsExtTest, linear_regression) {
@@ -1541,4 +1545,85 @@ TEST(StatsExtTest, wilcoxon_signed_rank_small_no_tie_opposite_signs_bounds) {
     EXPECT_LE(result.w_stat, 10.0);  // n(n+1)/2 = 4*5/2 = 10
     EXPECT_GE(result.p_value, 0.0);
     EXPECT_LE(result.p_value, 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// partial_correlation
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, partial_correlation_reduces_to_correlation_when_z_uncorrelated) {
+    std::vector<double> x;
+    std::vector<double> y;
+    std::vector<double> z;
+    for (int i = 0; i < 100; ++i) {
+        x.push_back(static_cast<double>(i));
+        y.push_back(2.0 * static_cast<double>(i) + 1.0);
+        z.push_back((i % 2 == 0) ? 1.0 : -1.0);
+    }
+    EXPECT_NEAR(correlation(x, z), 0.0, 0.05);
+    EXPECT_NEAR(correlation(y, z), 0.0, 0.05);
+    EXPECT_NEAR(partial_correlation(x, y, z), correlation(x, y), 0.05);
+}
+
+TEST(StatsExtTest, partial_correlation_spurious_correlation_drops_after_controlling_z) {
+    std::vector<double> z;
+    std::vector<double> x;
+    std::vector<double> y;
+    for (int i = 0; i < 100; ++i) {
+        const double zi = static_cast<double>(i);
+        z.push_back(zi);
+        x.push_back(zi + 0.01 * std::sin(static_cast<double>(i)));
+        y.push_back(zi + 0.02 * std::cos(static_cast<double>(i)));
+    }
+    EXPECT_GT(std::abs(correlation(x, y)), 0.99);
+    EXPECT_NEAR(partial_correlation(x, y, z), 0.0, 0.15);
+}
+
+TEST(StatsExtTest, partial_correlation_degenerate_inputs) {
+    const std::vector<double> empty;
+    const std::vector<double> one{1.0};
+    const std::vector<double> two{1.0, 2.0};
+    EXPECT_DOUBLE_EQ(partial_correlation(empty, empty, empty), 0.0);
+    EXPECT_DOUBLE_EQ(partial_correlation(one, one, one), 0.0);
+    EXPECT_DOUBLE_EQ(partial_correlation(two, one, one), 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// variance_inflation_factor / vif
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, vif_orthogonal_design_near_one) {
+    std::vector<std::vector<double>> X;
+    constexpr int n = 64;
+    X.reserve(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        const double t = 2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n);
+        X.push_back({std::sin(t), std::cos(t), std::sin(2.0 * t)});
+    }
+    for (size_t j = 0; j < 3; ++j) {
+        EXPECT_NEAR(variance_inflation_factor(X, j), 1.0, 0.15);
+        EXPECT_NEAR(vif(X, j), variance_inflation_factor(X, j), 1e-12);
+    }
+}
+
+TEST(StatsExtTest, vif_near_multicollinearity_is_large) {
+    std::vector<std::vector<double>> X;
+    constexpr int n = 50;
+    X.reserve(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        const double a = static_cast<double>(i);
+        const double b = static_cast<double>(i * i) / static_cast<double>(n);
+        X.push_back({a, b, a + b + 1e-8 * static_cast<double>(i)});
+    }
+    EXPECT_GT(variance_inflation_factor(X, 2), 100.0);
+}
+
+TEST(StatsExtTest, vif_degenerate_inputs) {
+    const std::vector<std::vector<double>> empty;
+    const std::vector<std::vector<double>> one_col{{1.0}, {2.0}, {3.0}};
+    const std::vector<std::vector<double>> jagged{{1.0, 2.0}, {3.0}};
+    EXPECT_DOUBLE_EQ(variance_inflation_factor(empty, 0), 1.0);
+    EXPECT_DOUBLE_EQ(variance_inflation_factor(one_col, 0), 1.0);
+    EXPECT_DOUBLE_EQ(variance_inflation_factor(jagged, 0), 0.0);
+    EXPECT_DOUBLE_EQ(variance_inflation_factor(one_col, 1), 0.0);
 }
