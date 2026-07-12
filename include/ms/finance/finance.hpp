@@ -19,6 +19,13 @@ double bs_put(double S, double K, double T, double r, double sigma);
 double heston_call(double S, double K, double T, double r, double v0, double kappa,
                    double theta, double sigma_v, double rho);
 
+// SABR (Hagan et al. 2002) European call via asymptotic Black implied volatility.
+// S=spot, K=strike, T=time_to_expiry(years), r=risk_free_rate, alpha=initial vol,
+// beta=CEV exponent in [0,1], rho=spot-vol correlation, nu=vol-of-vol. beta=1 gives
+// lognormal-type dynamics; nu->0 freezes the smile at the alpha backbone.
+double sabr_call(double S, double K, double T, double r, double alpha, double beta,
+                 double rho, double nu);
+
 // Greeks
 double bs_delta(double S, double K, double T, double r, double sigma, bool call);
 double bs_gamma(double S, double K, double T, double r, double sigma);
