@@ -1,6 +1,7 @@
 #define _USE_MATH_DEFINES
 #include "ms/cplx/cplx.hpp"
 #include <cmath>
+#include <limits>
 #include <numeric>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -200,6 +201,67 @@ std::vector<C> laurent_coeffs(CFunc f, C z0, double r,
         coeffs.push_back(sum / C(0.0, 2.0 * M_PI));
     }
     return coeffs;
+}
+
+namespace {
+
+// Composite Simpson's rule on [lo, hi] with n even subintervals.
+double simpson_real(RealFunc f, double lo, double hi, int n) {
+    if (n < 2) n = 2;
+    if (n % 2 != 0) ++n;
+    if (hi <= lo) return 0.0;
+    const double h = (hi - lo) / n;
+    double sum = f(lo) + f(hi);
+    for (int i = 1; i < n; ++i) {
+        const double x = lo + i * h;
+        sum += f(x) * (i % 2 == 0 ? 2.0 : 4.0);
+    }
+    return sum * h / 3.0;
+}
+
+double pv_regular_part(RealFunc f, double a, double c, double b, int n_pts) {
+    auto regular = [&](double x) {
+        const double dx = x - c;
+        if (std::abs(dx) < 1e-14) {
+            const double h = 1e-8;
+            return (f(c + h) - f(c - h)) / (2.0 * h);
+        }
+        return (f(x) - f(c)) / dx;
+    };
+    // Continuous integrand: no exclusion needed around the removable singularity.
+    return simpson_real(regular, a, b, n_pts);
+}
+
+} // namespace
+
+// ---- Cauchy principal value (real integral with simple pole) ----
+double cauchy_principal_value(RealFunc f, double a, double c, double b, int n_pts) {
+    if (a >= b) return 0.0;
+    if (n_pts < 2) n_pts = 2;
+    if (n_pts % 2 != 0) ++n_pts;
+
+    auto integrand = [&](double x) { return f(x) / (x - c); };
+
+    // No pole strictly inside [a,b]: ordinary definite integral.
+    if (c <= a || c >= b)
+        return simpson_real(integrand, a, b, n_pts);
+
+    const double left_span = c - a;
+    const double right_span = b - c;
+    if (left_span <= 0.0 || right_span <= 0.0) return 0.0;
+
+    // Analytic PV of f(c)/(x-c) in the symmetric-exclusion limit.
+    const double singular_pv = f(c) * std::log((b - c) / (c - a));
+
+    const double reg1 = pv_regular_part(f, a, c, b, n_pts);
+    const double reg2 = pv_regular_part(f, a, c, b, n_pts * 2);
+    const double pv1 = singular_pv + reg1;
+    const double pv2 = singular_pv + reg2;
+
+    const double scale = std::max(1.0, std::abs(pv2));
+    if (std::abs(pv1 - pv2) <= 1e-8 * scale)
+        return pv2;
+    return 0.5 * (pv1 + pv2);
 }
 
 // ---- Line integral (Gauss-Legendre on segment) ----

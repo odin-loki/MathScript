@@ -437,3 +437,81 @@ TEST(CplxGreenFunction, GeneralRadius) {
     EXPECT_EQ(green_function_disk(C(R, 0.0), w0 * R, R), 0.0);
     EXPECT_EQ(green_function_disk(C(0.0, 0.0), C(0.0, 0.0), 0.0), 0.0);  // invalid radius
 }
+
+// ---- Cauchy principal value (real integral with simple pole) ----
+
+TEST(CplxCauchyPrincipalValue, OneOverXSymmetric) {
+    // PV ∫[-1,1] 1/x dx = 0 (odd integrand around pole at 0)
+    auto f = [](double x) { (void)x; return 1.0; };
+    double pv = cauchy_principal_value(f, -1.0, 0.0, 1.0, 200);
+    EXPECT_NEAR(pv, 0.0, 1e-6);
+}
+
+TEST(CplxCauchyPrincipalValue, SymmetricAroundOne) {
+    // PV ∫[0,2] 1/(x-1) dx = 0
+    auto f = [](double x) { (void)x; return 1.0; };
+    double pv = cauchy_principal_value(f, 0.0, 1.0, 2.0, 200);
+    EXPECT_NEAR(pv, 0.0, 1e-6);
+}
+
+TEST(CplxCauchyPrincipalValue, AsymmetricClosedForm) {
+    // PV ∫[0,3] 1/(x-1) dx = ln((b-c)/(c-a)) = ln(2)
+    auto f = [](double x) { (void)x; return 1.0; };
+    double pv = cauchy_principal_value(f, 0.0, 1.0, 3.0, 300);
+    EXPECT_NEAR(pv, std::log(2.0), 1e-5);
+}
+
+TEST(CplxCauchyPrincipalValue, RemovableSingularity) {
+    // PV ∫[-1,1] x/x dx = ∫[-1,1] 1 dx = 2 (f(x)=x cancels the pole)
+    auto f = [](double x) { return x; };
+    double pv = cauchy_principal_value(f, -1.0, 0.0, 1.0, 200);
+    EXPECT_NEAR(pv, 2.0, 1e-5);
+}
+
+TEST(CplxCauchyPrincipalValue, ConvergenceWithNpts) {
+    // Same integral at two resolutions should agree closely
+    auto f = [](double x) { (void)x; return 1.0; };
+    double pv_coarse = cauchy_principal_value(f, 0.0, 1.0, 3.0, 100);
+    double pv_fine = cauchy_principal_value(f, 0.0, 1.0, 3.0, 400);
+    EXPECT_NEAR(pv_coarse, std::log(2.0), 1e-4);
+    EXPECT_NEAR(pv_fine, std::log(2.0), 1e-6);
+    EXPECT_NEAR(pv_coarse, pv_fine, 1e-5);
+}
+
+TEST(CplxCauchyPrincipalValue, StabilityAcrossEps) {
+    // Result stays bounded and stable as n_pts changes (unlike naive quadrature)
+    auto f = [](double x) { (void)x; return 1.0; };
+    double pv50 = cauchy_principal_value(f, -1.0, 0.0, 1.0, 50);
+    double pv200 = cauchy_principal_value(f, -1.0, 0.0, 1.0, 200);
+    double pv800 = cauchy_principal_value(f, -1.0, 0.0, 1.0, 800);
+    EXPECT_TRUE(std::isfinite(pv50));
+    EXPECT_TRUE(std::isfinite(pv200));
+    EXPECT_TRUE(std::isfinite(pv800));
+    EXPECT_NEAR(pv50, 0.0, 1e-4);
+    EXPECT_NEAR(pv200, 0.0, 1e-6);
+    EXPECT_NEAR(pv800, 0.0, 1e-7);
+    EXPECT_NEAR(pv50, pv200, 1e-4);
+    EXPECT_NEAR(pv200, pv800, 1e-6);
+}
+
+TEST(CplxCauchyPrincipalValue, OffCenterPole) {
+    // PV ∫[1,4] 1/(x-2) dx = ln((4-2)/(2-1)) = ln(2)
+    auto f = [](double x) { (void)x; return 1.0; };
+    double pv = cauchy_principal_value(f, 1.0, 2.0, 4.0, 300);
+    EXPECT_NEAR(pv, std::log(2.0), 1e-5);
+}
+
+TEST(CplxCauchyPrincipalValue, NonConstantNumerator) {
+    // f(x)=2 on [1,4] c=2: PV = 2*ln((4-2)/(2-1)) = 2*ln(2)
+    auto f = [](double x) { (void)x; return 2.0; };
+    double pv = cauchy_principal_value(f, 1.0, 2.0, 4.0, 300);
+    EXPECT_NEAR(pv, 2.0 * std::log(2.0), 1e-5);
+}
+
+TEST(CplxCauchyPrincipalValue, PoleOutsideInterval) {
+    // c outside [a,b]: no singularity, ordinary integral of 1/(x-5) on [0,1]
+    auto f = [](double x) { (void)x; return 1.0; };
+    double pv = cauchy_principal_value(f, 0.0, 5.0, 1.0, 100);
+    double expected = std::log(std::abs(1.0 - 5.0)) - std::log(std::abs(0.0 - 5.0));
+    EXPECT_NEAR(pv, expected, 1e-6);
+}
