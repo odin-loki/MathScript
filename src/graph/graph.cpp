@@ -177,6 +177,16 @@ void dfs_biconnected(const Graph& G, int u, int parent, int& timer,
     }
 }
 
+// Symmetrise a directed graph into an undirected one (each directed edge
+// becomes one undirected edge); undirected inputs are just copied as-is.
+Graph to_undirected(const Graph& G) {
+    if (!G.is_directed()) return G;
+    Graph U(G.n_vertices(), false);
+    for (int u = 0; u < G.n_vertices(); ++u)
+        for (auto& [v, w] : G.neighbors(u)) U.add_edge(u, v, w);
+    return U;
+}
+
 } // namespace
 
 // ---- Graph ----
@@ -707,6 +717,83 @@ bool is_planar_k5_k33_check(const Graph& G) {
     return E <= 3 * V - 6;
 }
 
+// ---- K-core decomposition (Batagelj-Zaversnik degree peeling) ----
+
+std::vector<int> k_core_decomposition(const Graph& G) {
+    Graph U = to_undirected(G);
+    int n = U.n_vertices();
+    std::vector<int> core(n, 0);
+    if (n == 0) return core;
+
+    std::vector<int> deg(n);
+    int max_deg = 0;
+    for (int v = 0; v < n; ++v) {
+        deg[v] = static_cast<int>(U.neighbors(v).size());
+        max_deg = std::max(max_deg, deg[v]);
+    }
+
+    std::vector<int> vert(n), pos(n);
+    std::vector<int> bin(max_deg + 2, 0);
+    for (int v = 0; v < n; ++v) ++bin[deg[v]];
+    int start = 0;
+    for (int d = 0; d <= max_deg; ++d) {
+        int num = bin[d];
+        bin[d] = start;
+        start += num;
+    }
+    for (int v = 0; v < n; ++v) {
+        pos[v] = bin[deg[v]];
+        vert[pos[v]] = v;
+        ++bin[deg[v]];
+    }
+    for (int d = max_deg; d >= 1; --d) bin[d] = bin[d - 1];
+    bin[0] = 0;
+
+    for (int k = 0; k <= max_deg; ++k) {
+        for (int i = bin[k]; i < ((k < max_deg) ? bin[k + 1] : n); ++i) {
+            int v = vert[i];
+            core[v] = k;
+            for (auto& [u, w] : U.neighbors(v)) {
+                if (deg[u] > k) {
+                    int du = deg[u];
+                    int pu = pos[u];
+                    int pw = vert[bin[du]];
+                    if (u != pw) {
+                        pos[u] = bin[du];
+                        pos[pw] = pu;
+                        vert[pu] = pw;
+                        vert[bin[du]] = u;
+                    }
+                    ++bin[du];
+                    --deg[u];
+                }
+            }
+        }
+    }
+    return core;
+}
+
+Graph k_core_subgraph(const Graph& G, int k) {
+    auto core = k_core_decomposition(G);
+    int n = G.n_vertices();
+    std::vector<int> new_id(n, -1);
+    int m = 0;
+    for (int v = 0; v < n; ++v)
+        if (core[v] >= k) new_id[v] = m++;
+
+    Graph H(m, false);
+    if (m == 0) return H;
+
+    Graph U = to_undirected(G);
+    for (int v = 0; v < n; ++v) {
+        if (new_id[v] < 0) continue;
+        for (auto& [u, w] : U.neighbors(v))
+            if (new_id[u] >= 0 && new_id[v] < new_id[u])
+                H.add_edge(new_id[v], new_id[u], w);
+    }
+    return H;
+}
+
 // ---- Isomorphism ----
 
 namespace {
@@ -1017,17 +1104,6 @@ int chromatic_number_approx(const Graph& G) {
 // ---- Community detection (Louvain) ----
 
 namespace {
-
-// Symmetrise a directed graph into an undirected one (each directed edge
-// becomes one undirected edge); undirected inputs are just copied as-is.
-// Louvain modularity is only defined for undirected weighted graphs.
-Graph to_undirected(const Graph& G) {
-    if (!G.is_directed()) return G;
-    Graph U(G.n_vertices(), false);
-    for (int u = 0; u < G.n_vertices(); ++u)
-        for (auto& [v, w] : G.neighbors(u)) U.add_edge(u, v, w);
-    return U;
-}
 
 // One phase-1 "local moving" run to convergence: repeatedly scan all vertices
 // (fixed order, no RNG) and greedily move each to whichever neighbouring

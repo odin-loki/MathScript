@@ -102,6 +102,30 @@ int    radius(const Graph& G);
 bool   is_tree(const Graph& G);
 bool   is_planar_k5_k33_check(const Graph& G);  // heuristic
 
+// K-core decomposition of an undirected graph via the standard Batagelj-
+// Zaversnik bucket-queue degree-peeling algorithm (O(V+E)). The core number
+// of a vertex is the largest k such that it belongs to the k-core (the
+// maximal induced subgraph where every vertex has degree >= k within that
+// subgraph). Directed edges are symmetrised (as with louvain/biconnected
+// components); self-loops and multi-edges are handled via adjacency-list
+// degree (each stored half-edge entry contributes to degree). Isolated
+// vertices receive core number 0.
+// @param G undirected (or directed-treated-as-undirected) input graph
+// @return core number per vertex, indexed by vertex id (size n_vertices())
+// @note O(V+E) time and space; identical convention to degree_centrality's
+//       use of neighbors(v).size() for undirected degree
+std::vector<int> k_core_decomposition(const Graph& G);
+
+// Maximal k-core subgraph: the induced subgraph on all vertices whose core
+// number is >= k (from k_core_decomposition). Vertices are compactly
+// renumbered to [0, m) in ascending original-id order; edges are copied
+// once per undirected pair. An empty graph is returned when no vertex
+// survives the threshold (including k < 0 or k larger than the degeneracy).
+// @param G input graph (same undirected convention as k_core_decomposition)
+// @param k minimum core number for membership
+// @return undirected subgraph on surviving vertices
+Graph k_core_subgraph(const Graph& G, int k);
+
 // Backtracking vertex-bijection search (VF2-style, simplified): true iff a
 // bijection between G1 and G2 vertices exists that preserves adjacency
 // (and edge direction, for directed graphs). Exponential worst case; intended
