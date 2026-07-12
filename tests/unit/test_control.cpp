@@ -649,3 +649,231 @@ TEST(ControlDiscretize, TransferFunctionD2CRoundTrip) {
                           DiscretizationMethod::Tustin);
     EXPECT_NEAR(dcgain(back), dcgain(plant), 1e-4);
 }
+
+// ---- Kalman filter ----
+namespace {
+
+double kalman_trace(const std::vector<std::vector<double>>& P) {
+    double t = 0.0;
+    for (size_t i = 0; i < P.size(); ++i) t += P[i][i];
+    return t;
+}
+
+// Simple deterministic LCG-based "noise" generator so tests are reproducible
+// without pulling in <random> engines/seeding subtleties.
+double lcg_noise(uint64_t& state, double amplitude) {
+    state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+    // Take top bits, map to [-amplitude, amplitude]
+    double u = static_cast<double>(state >> 11) / static_cast<double>(1ULL << 53);
+    return (u - 0.5) * 2.0 * amplitude;
+}
+
+} // namespace
+
+TEST(ControlKalman, PredictStepExact2x2) {
+    // x = [1, 2], P = I; A = [[1,1],[0,1]] (constant velocity); Q = [[0.1,0],[0,0.1]]
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> A = {{1.0, 1.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{0.1, 0.0}, {0.0, 0.1}};
+    auto pred = kalman_predict(state, A, Q);
+    // x_pred = A*x = [1*1+1*2, 0*1+1*2] = [3, 2]
+    EXPECT_NEAR(pred.x[0], 3.0, 1e-12);
+    EXPECT_NEAR(pred.x[1], 2.0, 1e-12);
+    // P_pred = A*P*A^T + Q; with P=I, A*A^T = [[2,1],[1,1]]
+    EXPECT_NEAR(pred.P[0][0], 2.1, 1e-12);
+    EXPECT_NEAR(pred.P[0][1], 1.0, 1e-12);
+    EXPECT_NEAR(pred.P[1][0], 1.0, 1e-12);
+    EXPECT_NEAR(pred.P[1][1], 1.1, 1e-12);
+}
+
+TEST(ControlKalman, ScalarPredictUpdateClosedForm) {
+    // Scalar Kalman filter: A=1, Q=q, H=1, R=r.
+    const double q = 0.05, r = 0.5;
+    KalmanState state{{0.0}, {{1.0}}};
+    const double z = 2.0;
+
+    // Independently compute the standard scalar recursion.
+    double x = 0.0, P = 1.0;
+    double x_pred = x;              // A=1
+    double P_pred = P + q;          // A=1
+    double S = P_pred + r;          // H=1
+    double K = P_pred / S;
+    double x_post = x_pred + K * (z - x_pred);
+    double P_post = (1.0 - K) * P_pred;
+
+    std::vector<std::vector<double>> A = {{1.0}};
+    std::vector<std::vector<double>> Q = {{q}};
+    std::vector<std::vector<double>> H = {{1.0}};
+    std::vector<std::vector<double>> R = {{r}};
+
+    auto pred = kalman_predict(state, A, Q);
+    EXPECT_NEAR(pred.x[0], x_pred, 1e-12);
+    EXPECT_NEAR(pred.P[0][0], P_pred, 1e-12);
+
+    auto post = kalman_update(pred, {z}, H, R);
+    EXPECT_NEAR(post.x[0], x_post, 1e-10);
+    EXPECT_NEAR(post.P[0][0], P_post, 1e-10);
+}
+
+TEST(ControlKalman, UpdateNeverIncreasesUncertainty) {
+    // For a well-posed, observable update, trace(P_post) <= trace(P_pred).
+    KalmanState state{{0.0, 0.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> A = {{1.0, 1.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{0.01, 0.0}, {0.0, 0.01}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+
+    auto pred = kalman_predict(state, A, Q);
+    double trace_pred = kalman_trace(pred.P);
+    auto post = kalman_update(pred, {0.5}, H, R);
+    double trace_post = kalman_trace(post.P);
+    EXPECT_LE(trace_post, trace_pred + 1e-12);
+}
+
+TEST(ControlKalman, CovarianceShrinksOverRepeatedUpdates) {
+    // Repeated updates on a stationary scalar system should monotonically
+    // shrink the covariance towards a steady-state value.
+    KalmanState state{{0.0}, {{10.0}}};  // large initial uncertainty
+    std::vector<std::vector<double>> A = {{1.0}};
+    std::vector<std::vector<double>> Q = {{0.01}};
+    std::vector<std::vector<double>> H = {{1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+
+    double prev_trace = state.P[0][0];
+    uint64_t rng = 12345;
+    for (int i = 0; i < 20; ++i) {
+        auto pred = kalman_predict(state, A, Q);
+        double z = 5.0 + lcg_noise(rng, 0.5);
+        state = kalman_update(pred, {z}, H, R);
+        double trace_now = state.P[0][0];
+        EXPECT_LE(trace_now, prev_trace + 1e-9);
+        prev_trace = trace_now;
+    }
+}
+
+TEST(ControlKalman, FiltersNoisyScalarRandomWalkBetterThanRawMeasurement) {
+    // True value is constant (5.0); measurements are noisy. After enough
+    // updates, the filtered estimate should be closer to truth than the
+    // most recent raw noisy measurement.
+    const double truth = 5.0;
+    KalmanState state{{0.0}, {{5.0}}};
+    std::vector<std::vector<double>> A = {{1.0}};
+    std::vector<std::vector<double>> Q = {{0.001}};
+    std::vector<std::vector<double>> H = {{1.0}};
+    std::vector<std::vector<double>> R = {{4.0}};
+
+    uint64_t rng = 987654321ULL;
+    double last_z = 0.0;
+    for (int i = 0; i < 50; ++i) {
+        auto pred = kalman_predict(state, A, Q);
+        last_z = truth + lcg_noise(rng, 3.0);
+        state = kalman_update(pred, {last_z}, H, R);
+    }
+    double err_filtered = std::abs(state.x[0] - truth);
+    double err_raw = std::abs(last_z - truth);
+    EXPECT_LT(err_filtered, err_raw);
+}
+
+TEST(ControlKalman, ConstantVelocityTrackingEstimatesVelocity) {
+    // Classic textbook example: track position+velocity from position-only
+    // measurements of a known constant-velocity trajectory.
+    const double true_velocity = 1.0;
+    const double dt = 1.0;
+    std::vector<std::vector<double>> A = {{1.0, dt}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{0.001, 0.0}, {0.0, 0.001}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0}};
+    std::vector<std::vector<double>> R = {{0.25}};
+
+    KalmanState state{{0.0, 0.0}, {{10.0, 0.0}, {0.0, 10.0}}};
+    uint64_t rng = 42;
+    double true_pos = 0.0;
+    for (int i = 0; i < 60; ++i) {
+        true_pos += true_velocity * dt;
+        auto pred = kalman_predict(state, A, Q);
+        double z = true_pos + lcg_noise(rng, 0.4);
+        state = kalman_update(pred, {z}, H, R);
+    }
+    EXPECT_NEAR(state.x[1], true_velocity, 0.2);
+}
+
+TEST(ControlKalman, PredictDefensiveNonSquareA) {
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> A = {{1.0, 1.0, 0.0}, {0.0, 1.0, 0.0}};  // 2x3, not square
+    std::vector<std::vector<double>> Q = {{0.1, 0.0}, {0.0, 0.1}};
+    auto out = kalman_predict(state, A, Q);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, PredictDefensiveDimMismatchWithState) {
+    KalmanState state{{1.0, 2.0, 3.0}, {{1,0,0},{0,1,0},{0,0,1}}};
+    std::vector<std::vector<double>> A = {{1.0, 0.0}, {0.0, 1.0}};  // 2x2, state is 3-dim
+    std::vector<std::vector<double>> Q = {{0.1, 0.0}, {0.0, 0.1}};
+    auto out = kalman_predict(state, A, Q);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, UpdateDefensiveHColumnMismatch) {
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0, 0.0}};  // 1x3, but state is 2-dim
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto out = kalman_update(state, {5.0}, H, R);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, UpdateDefensiveZSizeMismatch) {
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0}, {0.0, 1.0}};  // expects z of size 2
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto out = kalman_update(state, {5.0}, H, R);  // z has size 1
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, UpdateDefensiveEmptyState) {
+    KalmanState state{{}, {}};
+    std::vector<std::vector<double>> H = {{1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto out = kalman_update(state, {1.0}, H, R);
+    EXPECT_TRUE(out.x.empty());
+    EXPECT_TRUE(out.P.empty());
+}
+
+TEST(ControlKalman, UpdateSingularInnovationCovarianceDoesNotCrash) {
+    // R = 0 and H*P*H^T = 0 (P = 0) makes S singular; must not crash and
+    // should fall back to returning the input state unchanged.
+    KalmanState state{{1.0, 2.0}, {{0.0, 0.0}, {0.0, 0.0}}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0}};
+    std::vector<std::vector<double>> R = {{0.0}};
+    auto out = kalman_update(state, {5.0}, H, R);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, PredictThenUpdateComposesToKnownGainScalar) {
+    // With P=1, Q=0, H=1, R=1: predict gives P_pred=1, S=2, K=0.5.
+    KalmanState state{{0.0}, {{1.0}}};
+    std::vector<std::vector<double>> A = {{1.0}};
+    std::vector<std::vector<double>> Q = {{0.0}};
+    std::vector<std::vector<double>> H = {{1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto pred = kalman_predict(state, A, Q);
+    auto post = kalman_update(pred, {2.0}, H, R);
+    // x_post = 0 + 0.5*(2-0) = 1.0
+    EXPECT_NEAR(post.x[0], 1.0, 1e-12);
+    // P_post = (1-0.5)*1 = 0.5
+    EXPECT_NEAR(post.P[0][0], 0.5, 1e-12);
+}
+
+TEST(ControlKalman, PosteriorCovarianceRemainsSymmetric) {
+    KalmanState state{{0.0, 0.0}, {{2.0, 0.3}, {0.3, 1.5}}};
+    std::vector<std::vector<double>> A = {{1.0, 0.5}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{0.02, 0.0}, {0.0, 0.02}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0}};
+    std::vector<std::vector<double>> R = {{0.3}};
+    auto pred = kalman_predict(state, A, Q);
+    auto post = kalman_update(pred, {1.2}, H, R);
+    EXPECT_NEAR(post.P[0][1], post.P[1][0], 1e-9);
+}

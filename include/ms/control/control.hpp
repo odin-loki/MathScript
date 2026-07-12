@@ -200,5 +200,46 @@ Result<std::vector<double>>
 struct PIDGains { double Kp, Ki, Kd; };
 PIDGains pidtune(const TransferFunction& plant, double bandwidth_rad_s = 1.0);
 
+// ---- Kalman filter ----
+// Kalman filter state: mean estimate and error covariance.
+struct KalmanState {
+    std::vector<double> x;                    // state mean estimate
+    std::vector<std::vector<double>> P;       // state error covariance
+};
+
+// Kalman filter predict step (time update): propagates the state estimate and covariance
+// forward one step under the linear model x_{k+1} = A*x_k + w_k, w_k ~ N(0, Q).
+//   x_pred = A * x
+//   P_pred = A * P * A^T + Q
+// @param state current (posterior) state estimate {x, P}
+// @param A state transition matrix (n x n)
+// @param Q process noise covariance (n x n)
+// @return predicted (prior) state estimate for the next time step
+// @note Defensive: if A/Q/P dimensions are inconsistent with state.x, returns
+//       state unchanged rather than crashing (this module never throws).
+KalmanState kalman_predict(const KalmanState& state,
+                           const std::vector<std::vector<double>>& A,
+                           const std::vector<std::vector<double>>& Q);
+
+// Kalman filter update step (measurement update): incorporates a new observation z under the
+// linear measurement model z = H*x + v, v ~ N(0, R), producing the posterior estimate.
+//   y = z - H*x_pred                          (innovation / residual)
+//   S = H*P_pred*H^T + R                      (innovation covariance)
+//   K = P_pred*H^T*S^{-1}                     (optimal Kalman gain)
+//   x_post = x_pred + K*y
+//   P_post = (I - K*H) * P_pred
+// @param state predicted (prior) state estimate {x_pred, P_pred}, e.g. from kalman_predict
+// @param z observation vector (m-dimensional)
+// @param H observation/measurement matrix (m x n)
+// @param R measurement noise covariance (m x m)
+// @return posterior (updated) state estimate after incorporating the observation
+// @note Defensive: if H/R/z dimensions are inconsistent with state.x, or if the
+//       innovation covariance S is singular, returns state unchanged rather than
+//       crashing (this module never throws).
+KalmanState kalman_update(const KalmanState& state,
+                          const std::vector<double>& z,
+                          const std::vector<std::vector<double>>& H,
+                          const std::vector<std::vector<double>>& R);
+
 } // namespace control
 } // namespace ms
