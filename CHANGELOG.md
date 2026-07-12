@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-12 (Wave 214 — Signal sosfilt, Prob Logistic, Stats KDE, Optim RMSprop, Control LQE, Compress ANS, Special Lambert W, Error ValueOutOfRange)
+
+8 parallel subagents closing master-plan §2.x gaps across scientific and infrastructure modules.
+
+### Added (Wave 214)
+- `ms::signal` gains `sosfilt` — second-order-sections IIR filtering via cascaded `filter()` calls, numerically stable alternative to high-order direct-form IIR. 11 new tests in `test_signal_filters.cpp`.
+- `ms::prob` gains Logistic distribution — `logistic_pdf`/`logistic_cdf`/`logistic_ppf` complementing Rayleigh/Laplace/Gumbel. 10 new tests in `test_prob_lognormal_weibull_laplace.cpp`.
+- `ms::stats` gains `kde` — 1D kernel density estimation (Gaussian/Epanechnikov kernels) over a user-supplied grid. 10 new tests in `test_stats_numerical.cpp`.
+- `ms::optim` gains `rmsprop` — adaptive gradient optimizer (EMA of squared gradients) complementing `adam` and `conjugate_gradient`. 10 new tests in `test_optim_global.cpp`.
+- `ms::control` gains `lqe` — linear quadratic estimator (dual of LQR) complementing existing `lqr`/`kalman_*` for LQG design. 8 new tests in `test_control.cpp`.
+- `ms::compress` gains `ans_encode`/`ans_decode` — asymmetric numeral systems entropy coding complementing Huffman/arithmetic/Golomb-Rice. 12 new tests in `test_compress.cpp`.
+- `ms::special` gains `lambert_w` — Lambert W function (branch 0 and branch −1) via Halley iteration, verifying `w·exp(w)≈z`. 3 new tests in `test_special_ext.cpp`.
+- `ms::error` gains `ValueOutOfRange` — structured numeric bound failure variant added to the `Error` union with `format_error` support. 8 new tests in `test_error_types_extended.cpp`.
+- **Total Wave 214: 369 CTest suites — all passing** (no new CTest registrations; 72 new test cases). All eight branches merged with zero conflicts; full-suite verification on `main` passed on the first attempt.
+
 ## [1.0.0] — 2026-07-12 (Wave 213 — CPU BLAS L1/L2, Core nextafter/sparse_add/Tensor reshape/MatMul, Interp list_session_objects, Runtime parallel_for, Memory Arena bytes_used)
 
 8 parallel subagents targeting infrastructure modules untouched in waves 207–212 (`cpu`, `core/checked_arith`, `core/sparse`, `core/tensor`, `core/expr`, `interp`, `runtime`, `memory`).
