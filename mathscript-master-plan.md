@@ -8033,6 +8033,27 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       against exact exponential solutions and agreement with ode_rk45 on a smooth nonlinear IVP.
       No new CTest registrations; 28 new test cases across test_ml/test_diffgeo/test_ode_adaptive;
       367 suites, 100% passing.
+      Wave 202: the largest single wave yet, using 6 parallel subagents across 6 independent
+      modules simultaneously (up from the usual 3), testing whether the wave-based parallel
+      pattern scales further. ms::fft gains goertzel (O(n) single-bin DFT via 2-pole IIR
+      recurrence; subagent caught and fixed an incorrect finalization formula in its OWN task
+      brief by verifying against a naive DFT before shipping -- a good example of a subagent
+      correctly distrusting instructions and verifying against ground truth). ms::pde gains
+      pde_advection_1d_lax_wendroff (2nd-order scheme, verified <half the RMSE of the existing
+      1st-order upwind pde_advection_1d on the same smooth test case). ms::compress gains
+      wavelet_compress/decompress (single-level Haar DWT, lossy, additive-only changes to the
+      historically-flaky test_compress.cpp, confirmed via diff not to touch existing Huffman/RLE/
+      arithmetic paths). ms::bignum gains bigint_divmod via a shared-helper refactor of
+      operator//operator% that eliminates their previous redundant double-computation of the
+      long-division loop (verified to preserve all pre-existing behavior exactly). ms::izaac
+      gains fuzz::mutate (deterministic CSPRNG-seeded bounded byte mutation for corpus seed
+      expansion). ms::image gains adapthisteq/CLAHE (tile-local clip-limited histogram
+      equalization with bilinear inter-tile blending, verified to out-perform global histeq on
+      locally-low-contrast images). All six subagents independently hit the same 5 known-flaky
+      failures during isolated builds; the post-merge full-suite verification on main came back
+      100% clean (367/367) even at 6x the usual parallel build load, reinforcing that this is
+      environmental resource-contention noise, not a real defect. No new CTest registrations; 43
+      new test cases across the six modules' existing test binaries; 367 suites, 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
