@@ -94,6 +94,33 @@ std::vector<Coords>
                         std::function<Coords(double)> curve_velocity,
                         const Coords& V0, double s_end, int n_steps, double h = 1e-5);
 
+// ---- Space curve differential geometry ----
+// Curve parameterised as r(t) -> (x,y,z)
+using CurveFn = std::function<std::array<double,3>(double)>;
+
+// Frenet-Serret torsion τ(t) of a 3D parametric space curve.
+//
+//   τ(t) = ((r'(t) × r''(t)) · r'''(t)) / |r'(t) × r''(t)|²
+//
+// where r(t) is the position vector and primes denote derivatives with respect
+// to the curve parameter t. Derivatives are computed via central finite
+// differences with step h (same default/convention as surface geometry).
+//
+// Sign convention: τ > 0 when the curve twists in the sense of a right-handed
+// helix (e.g. r(t) = (a cos t, a sin t, b t) with a > 0 and b > 0 has
+// constant τ = b/(a² + b²) > 0). Reversing the parameter (t → −t) or the
+// curve's orientation flips the sign.
+//
+// @param r the curve r(t).
+// @param t parameter value at which to evaluate torsion.
+// @param h finite-difference step for r', r'', r''' (default 1e-5).
+// @return τ(t) in units of 1/(curve-parameter units); dimensionless when t is
+//         arc length.
+// @note If |r' × r''| is numerically negligible (locally vanishing curvature,
+//       e.g. a straight line), returns 0.0 rather than dividing by near-zero,
+//       consistent with this module's defensive handling elsewhere.
+double torsion(CurveFn r, double t, double h = 1e-5);
+
 // ---- Surface differential geometry ----
 // Surface parameterised as r(u,v) via a function
 using SurfaceFn = std::function<std::array<double,3>(double, double)>;
