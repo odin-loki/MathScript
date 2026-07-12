@@ -183,5 +183,32 @@ double area(Point2D a, Point2D b, Point2D c);
 double area(Triangle3D t);
 double volume_tetrahedron(Point3D a, Point3D b, Point3D c, Point3D d);
 
+// ========================== Bounding Rectangles ==========================
+
+// Minimum-area oriented bounding rectangle of a 2D point set, computed via the rotating
+// calipers technique over the point set's convex hull: since the minimum-area bounding
+// rectangle of any point set always has at least one side flush with a convex hull edge,
+// this only needs to test each hull edge's orientation as a rectangle candidate (rather than
+// searching over all possible angles), giving an O(h) algorithm after O(n log n) hull
+// construction (h = hull vertex count).
+struct MinBoundingRect {
+    Point2D center;       // rectangle center
+    double width = 0.0;   // extent along `angle` direction
+    double height = 0.0;  // extent along the direction perpendicular to `angle`
+    double angle = 0.0;   // orientation of the `width` axis, in radians, measured from +x axis
+    double area() const { return width * height; }
+    // Returns the 4 corners of the rectangle, starting from the local corner
+    // (-width/2, -height/2) and proceeding counter-clockwise: (-w/2,-h/2), (+w/2,-h/2),
+    // (+w/2,+h/2), (-w/2,+h/2). Each local corner is rotated about the origin by `angle`
+    // (standard CCW rotation matrix [[cos,-sin],[sin,cos]]) and then translated by `center`.
+    std::array<Point2D, 4> corners() const;
+};
+
+// @param points input 2D point set. Fewer than 3 points (or fully degenerate/collinear input
+//        that convex_hull_2d cannot form a proper hull from) returns a MinBoundingRect with
+//        width/height derived defensively from the points' axis-aligned bounding box instead
+//        (still a valid, sensible non-crashing result, just not from the rotating-calipers path).
+MinBoundingRect min_bounding_rect(const std::vector<Point2D>& points);
+
 } // namespace geo
 } // namespace ms

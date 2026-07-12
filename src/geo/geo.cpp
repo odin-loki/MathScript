@@ -797,5 +797,78 @@ double volume_tetrahedron(Point3D a, Point3D b, Point3D c, Point3D d) {
     return std::abs(dot(ab, cross(ac, ad))) / 6.0;
 }
 
+// ---- Bounding Rectangles ----
+
+std::array<Point2D, 4> MinBoundingRect::corners() const {
+    double c = std::cos(angle), s = std::sin(angle);
+    double hw = width * 0.5, hh = height * 0.5;
+    std::array<Point2D, 4> local = {{ {-hw,-hh}, {hw,-hh}, {hw,hh}, {-hw,hh} }};
+    std::array<Point2D, 4> out;
+    for (int i = 0; i < 4; ++i) {
+        out[i] = { center.x + c*local[i].x - s*local[i].y,
+                   center.y + s*local[i].x + c*local[i].y };
+    }
+    return out;
+}
+
+// Axis-aligned bounding box of the raw points, used whenever the input is too degenerate
+// (fewer than 3 points, or fully collinear) for convex_hull_2d to yield a proper hull.
+static MinBoundingRect aabb_fallback(const std::vector<Point2D>& points) {
+    MinBoundingRect r;
+    r.center = {0.0, 0.0};
+    if (points.empty()) return r;
+    double minx = points[0].x, maxx = points[0].x;
+    double miny = points[0].y, maxy = points[0].y;
+    for (const auto& p : points) {
+        minx = std::min(minx, p.x); maxx = std::max(maxx, p.x);
+        miny = std::min(miny, p.y); maxy = std::max(maxy, p.y);
+    }
+    r.center = {(minx+maxx)*0.5, (miny+maxy)*0.5};
+    r.width  = maxx - minx;
+    r.height = maxy - miny;
+    r.angle  = 0.0;
+    return r;
+}
+
+MinBoundingRect min_bounding_rect(const std::vector<Point2D>& points) {
+    Polygon2D hull = convex_hull_2d(points);
+    if (hull.size() < 3) return aabb_fallback(points);
+
+    const int h = static_cast<int>(hull.size());
+    MinBoundingRect best;
+    double best_area = std::numeric_limits<double>::infinity();
+
+    for (int i = 0; i < h; ++i) {
+        const Point2D& a = hull[i];
+        const Point2D& b = hull[(i+1) % h];
+        double theta = std::atan2(b.y - a.y, b.x - a.x);
+        double c = std::cos(theta), s = std::sin(theta);
+
+        double minx = std::numeric_limits<double>::infinity();
+        double maxx = -std::numeric_limits<double>::infinity();
+        double miny = std::numeric_limits<double>::infinity();
+        double maxy = -std::numeric_limits<double>::infinity();
+        for (const auto& p : hull) {
+            // Rotate by -theta so the current hull edge becomes axis-aligned.
+            double rx =  c*p.x + s*p.y;
+            double ry = -s*p.x + c*p.y;
+            minx = std::min(minx, rx); maxx = std::max(maxx, rx);
+            miny = std::min(miny, ry); maxy = std::max(maxy, ry);
+        }
+        double w = maxx - minx, ht = maxy - miny;
+        double ar = w * ht;
+        if (ar < best_area) {
+            best_area = ar;
+            double cx_rot = (minx+maxx)*0.5, cy_rot = (miny+maxy)*0.5;
+            // Rotate the rotated-frame center back by +theta into the original frame.
+            best.center = { c*cx_rot - s*cy_rot, s*cx_rot + c*cy_rot };
+            best.width  = w;
+            best.height = ht;
+            best.angle  = theta;
+        }
+    }
+    return best;
+}
+
 } // namespace geo
 } // namespace ms
