@@ -1,6 +1,7 @@
 #include "ms/symbolic/symbolic.hpp"
 
 #include <cmath>
+#include <vector>
 
 namespace ms {
 
@@ -393,6 +394,199 @@ SymExpr sym_expand(SymExpr expr) {
     }
 
     return sym_simplify(std::move(expr));
+}
+
+namespace {
+
+bool extract_var_power_term(const SymExpr& term, const std::string& var, double& coef, double& power) {
+    switch (term.op) {
+    case SymOp::Const:
+        coef = term.value;
+        power = 0.0;
+        return true;
+    case SymOp::Var:
+        if (term.name != var) {
+            return false;
+        }
+        coef = 1.0;
+        power = 1.0;
+        return true;
+    case SymOp::Pow:
+        if (!term.left || !term.right) {
+            return false;
+        }
+        if (term.left->op == SymOp::Var && term.left->name == var && term.right->op == SymOp::Const) {
+            coef = 1.0;
+            power = term.right->value;
+            return true;
+        }
+        return false;
+    case SymOp::Mul:
+        if (!term.left || !term.right) {
+            return false;
+        }
+        if (term.left->op == SymOp::Const) {
+            double inner_coef = 0.0;
+            double inner_power = 0.0;
+            if (extract_var_power_term(*term.right, var, inner_coef, inner_power)) {
+                coef = term.left->value * inner_coef;
+                power = inner_power;
+                return true;
+            }
+        }
+        if (term.right->op == SymOp::Const) {
+            double inner_coef = 0.0;
+            double inner_power = 0.0;
+            if (extract_var_power_term(*term.left, var, inner_coef, inner_power)) {
+                coef = term.right->value * inner_coef;
+                power = inner_power;
+                return true;
+            }
+        }
+        return false;
+    case SymOp::Neg:
+        if (!term.left) {
+            return false;
+        }
+        if (extract_var_power_term(*term.left, var, coef, power)) {
+            coef = -coef;
+            return true;
+        }
+        return false;
+    default:
+        return false;
+    }
+}
+
+void flatten_sum_terms(
+    const SymExpr& expr,
+    const std::string& var,
+    bool negate,
+    std::map<double, double>& by_power,
+    std::vector<SymExpr>& other_terms) {
+    switch (expr.op) {
+    case SymOp::Add:
+        if (expr.left) {
+            flatten_sum_terms(*expr.left, var, negate, by_power, other_terms);
+        }
+        if (expr.right) {
+            flatten_sum_terms(*expr.right, var, negate, by_power, other_terms);
+        }
+        return;
+    case SymOp::Sub:
+        if (expr.left) {
+            flatten_sum_terms(*expr.left, var, negate, by_power, other_terms);
+        }
+        if (expr.right) {
+            flatten_sum_terms(*expr.right, var, !negate, by_power, other_terms);
+        }
+        return;
+    case SymOp::Neg:
+        if (expr.left) {
+            flatten_sum_terms(*expr.left, var, !negate, by_power, other_terms);
+        }
+        return;
+    default: {
+        SymExpr leaf = sym_simplify(clone_expr(expr));
+        double coef = 0.0;
+        double power = 0.0;
+        if (extract_var_power_term(leaf, var, coef, power)) {
+            by_power[power] += negate ? -coef : coef;
+        } else if (negate) {
+            other_terms.push_back(sym_simplify(sym_neg(std::move(leaf))));
+        } else {
+            other_terms.push_back(std::move(leaf));
+        }
+        return;
+    }
+    }
+}
+
+SymExpr build_var_power_term(double coef, double power, const std::string& var) {
+    if (coef == 0.0) {
+        return sym_const(0.0);
+    }
+    if (power == 0.0) {
+        return sym_const(coef);
+    }
+
+    SymExpr base = (power == 1.0) ? sym_var(var) : sym_pow(sym_var(var), sym_const(power));
+    if (coef == 1.0) {
+        return sym_simplify(std::move(base));
+    }
+    if (coef == -1.0) {
+        return sym_simplify(sym_neg(std::move(base)));
+    }
+    return sym_simplify(sym_mul(sym_const(coef), std::move(base)));
+}
+
+SymExpr rebuild_collected_sum(
+    std::map<double, double> by_power, std::vector<SymExpr> other_terms, const std::string& var) {
+    std::vector<SymExpr> parts;
+    parts.reserve(by_power.size() + other_terms.size());
+
+    for (const auto& [power, coef] : by_power) {
+        if (coef == 0.0) {
+            continue;
+        }
+        parts.push_back(build_var_power_term(coef, power, var));
+    }
+    for (auto& term : other_terms) {
+        if (term.op == SymOp::Const && term.value == 0.0) {
+            continue;
+        }
+        parts.push_back(std::move(term));
+    }
+
+    if (parts.empty()) {
+        return sym_const(0.0);
+    }
+
+    SymExpr result = std::move(parts.front());
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        result = sym_add(std::move(result), std::move(parts[i]));
+    }
+    return sym_simplify(std::move(result));
+}
+
+SymExpr collect_in_sum(const SymExpr& expr, const std::string& var) {
+    std::map<double, double> by_power;
+    std::vector<SymExpr> other_terms;
+    flatten_sum_terms(expr, var, false, by_power, other_terms);
+    return rebuild_collected_sum(std::move(by_power), std::move(other_terms), var);
+}
+
+} // namespace
+
+SymExpr sym_collect(const SymExpr& expr, const std::string& var) {
+    if (var.empty()) {
+        return sym_simplify(clone_expr(expr));
+    }
+
+    SymExpr e = sym_simplify(clone_expr(expr));
+
+    switch (e.op) {
+    case SymOp::Add:
+    case SymOp::Sub:
+    case SymOp::Neg:
+        if (e.left) {
+            e.left = std::make_unique<SymExpr>(sym_collect(*e.left, var));
+        }
+        if (e.right) {
+            e.right = std::make_unique<SymExpr>(sym_collect(*e.right, var));
+        }
+        return collect_in_sum(e, var);
+    default:
+        break;
+    }
+
+    if (e.left) {
+        e.left = std::make_unique<SymExpr>(sym_collect(*e.left, var));
+    }
+    if (e.right) {
+        e.right = std::make_unique<SymExpr>(sym_collect(*e.right, var));
+    }
+    return sym_simplify(std::move(e));
 }
 
 // Supported forms:
