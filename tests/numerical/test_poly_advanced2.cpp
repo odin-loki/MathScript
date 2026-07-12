@@ -358,3 +358,327 @@ TEST(PolyChebExpand, NegativeDegreeReturnsEmpty) {
     auto coeffs = ms::poly::poly_cheb_expand(f, -1);
     EXPECT_TRUE(coeffs.empty());
 }
+
+// -----------------------------------------------------------------------
+// poly_partial_fractions
+// -----------------------------------------------------------------------
+namespace {
+
+using ms::poly::PartialFractionResult;
+using ms::poly::PartialFractionTerm;
+
+double eval_pf_term(const PartialFractionTerm& t, double x) {
+    if (t.is_quadratic) {
+        double denom = std::pow(x * x + t.p * x + t.q, t.k);
+        return (t.B * x + t.C) / denom;
+    }
+    double denom = std::pow(x - t.r, t.k);
+    return t.A / denom;
+}
+
+// Reconstructs quotient(x) + sum of all terms at x, for comparison against
+// numerator(x)/denominator(x) evaluated directly.
+double eval_pf_result(const PartialFractionResult& res, double x) {
+    double v = res.quotient.empty() ? 0.0 : ms::poly::poly_eval(res.quotient, x)[0];
+    for (const auto& t : res.terms) v += eval_pf_term(t, x);
+    return v;
+}
+
+// Checks that poly_partial_fractions's reconstruction matches
+// numerator(x)/denominator(x) directly at every sample point (avoiding
+// exact pole locations), which is the strongest correctness signal since it
+// doesn't depend on any particular grouping/ordering of terms.
+void expect_reconstructs(const std::vector<double>& numerator,
+                          const std::vector<double>& denominator,
+                          const PartialFractionResult& res,
+                          const std::vector<double>& sample_xs,
+                          double tol = 1e-6) {
+    for (double x : sample_xs) {
+        double expected = eval_at(numerator, x) / eval_at(denominator, x);
+        double actual = eval_pf_result(res, x);
+        EXPECT_NEAR(actual, expected, tol) << "mismatch at x=" << x;
+    }
+}
+
+} // namespace
+
+TEST(PolyPartialFractions, TextbookDistinctRealPoles) {
+    // 1 / ((x-1)(x-2)) = -1/(x-1) + 1/(x-2)
+    // (x-1)(x-2) = x^2 - 3x + 2 => denominator {2, -3, 1}
+    std::vector<double> num = {1.0};
+    std::vector<double> den = {2.0, -3.0, 1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 2u);
+    for (const auto& t : res.terms) {
+        EXPECT_FALSE(t.is_quadratic);
+        EXPECT_EQ(t.k, 1);
+        if (std::abs(t.r - 1.0) < 1e-4) {
+            EXPECT_NEAR(t.A, -1.0, 1e-6);
+        } else {
+            ASSERT_NEAR(t.r, 2.0, 1e-4);
+            EXPECT_NEAR(t.A, 1.0, 1e-6);
+        }
+    }
+    expect_reconstructs(num, den, res, {0.0, 0.5, 1.5, 3.0, 5.0, -2.0});
+}
+
+TEST(PolyPartialFractions, AnotherDistinctRealPolesPair) {
+    // 1 / ((x-3)(x+4)) => denominator (x-3)(x+4) = x^2 + x - 12
+    std::vector<double> num = {1.0};
+    std::vector<double> den = {-12.0, 1.0, 1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    ASSERT_EQ(res.terms.size(), 2u);
+    // 1/((x-3)(x+4)) = (1/7)/(x-3) - (1/7)/(x+4)
+    for (const auto& t : res.terms) {
+        EXPECT_FALSE(t.is_quadratic);
+        if (std::abs(t.r - 3.0) < 1e-4) {
+            EXPECT_NEAR(t.A, 1.0 / 7.0, 1e-6);
+        } else {
+            ASSERT_NEAR(t.r, -4.0, 1e-4);
+            EXPECT_NEAR(t.A, -1.0 / 7.0, 1e-6);
+        }
+    }
+    expect_reconstructs(num, den, res, {0.0, 1.0, -1.0, 5.0, -10.0, 10.0});
+}
+
+TEST(PolyPartialFractions, LinearNumeratorOverDistinctPoles) {
+    // (2x - 1) / ((x-1)(x-5)); denominator x^2 - 6x + 5
+    std::vector<double> num = {-1.0, 2.0};
+    std::vector<double> den = {5.0, -6.0, 1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    ASSERT_EQ(res.terms.size(), 2u);
+    expect_reconstructs(num, den, res, {0.0, 2.0, 3.0, 6.0, -2.0, 10.0});
+}
+
+TEST(PolyPartialFractions, RepeatedRealPoleConstructedExactly) {
+    // D(x) = (x-1)^2 * (x-2), constructed by explicit polynomial multiplication.
+    std::vector<double> factor1 = {-1.0, 1.0}; // x - 1
+    std::vector<double> factor2 = {-2.0, 1.0}; // x - 2
+    auto den = ms::poly::poly_mul(ms::poly::poly_mul(factor1, factor1), factor2);
+    std::vector<double> num = {1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 3u);
+
+    bool found_k1 = false, found_k2 = false, found_pole2 = false;
+    for (const auto& t : res.terms) {
+        EXPECT_FALSE(t.is_quadratic);
+        if (std::abs(t.r - 1.0) < 1e-3 && t.k == 1) {
+            found_k1 = true;
+            EXPECT_NEAR(t.A, -1.0, 1e-4);
+        } else if (std::abs(t.r - 1.0) < 1e-3 && t.k == 2) {
+            found_k2 = true;
+            EXPECT_NEAR(t.A, -1.0, 1e-4);
+        } else if (std::abs(t.r - 2.0) < 1e-3) {
+            found_pole2 = true;
+            EXPECT_NEAR(t.A, 1.0, 1e-4);
+        }
+    }
+    EXPECT_TRUE(found_k1);
+    EXPECT_TRUE(found_k2);
+    EXPECT_TRUE(found_pole2);
+    expect_reconstructs(num, den, res, {0.0, 0.5, 1.5, 3.0, -1.0, 5.0}, 1e-4);
+}
+
+TEST(PolyPartialFractions, RepeatedRealPoleCubed) {
+    // D(x) = (x-2)^3, single pole of multiplicity 3.
+    std::vector<double> factor = {-2.0, 1.0}; // x - 2
+    auto den = ms::poly::poly_mul(ms::poly::poly_mul(factor, factor), factor);
+    std::vector<double> num = {1.0, 1.0}; // x + 1
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 3u);
+    for (const auto& t : res.terms) {
+        EXPECT_FALSE(t.is_quadratic);
+        EXPECT_NEAR(t.r, 2.0, 1e-3);
+    }
+    expect_reconstructs(num, den, res, {0.0, 1.0, 3.0, 4.0, -1.0, 10.0}, 1e-4);
+}
+
+TEST(PolyPartialFractions, TwoDistinctRepeatedRealPoles) {
+    // D(x) = (x-1)^2 * (x+3)^2
+    std::vector<double> f1 = {-1.0, 1.0}; // x - 1
+    std::vector<double> f2 = {3.0, 1.0};  // x + 3
+    auto den = ms::poly::poly_mul(ms::poly::poly_mul(f1, f1), ms::poly::poly_mul(f2, f2));
+    std::vector<double> num = {2.0, -1.0, 1.0}; // x^2 - x + 2
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 4u);
+    expect_reconstructs(num, den, res, {0.0, 2.0, 5.0, -5.0, -0.5, 10.0}, 1e-4);
+}
+
+TEST(PolyPartialFractions, ImproperFractionSplitsQuotientAndRemainder) {
+    // (x^3 + 1) / ((x-1)(x-2)) : deg(N)=3 >= deg(D)=2, so a polynomial
+    // quotient part is expected in addition to the proper-fraction terms.
+    std::vector<double> num = {1.0, 0.0, 0.0, 1.0}; // x^3 + 1
+    std::vector<double> den = {2.0, -3.0, 1.0};      // (x-1)(x-2)
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_FALSE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 2u);
+
+    // Verify quotient/remainder split directly via poly_div_quot/poly_mod.
+    auto expected_quot = ms::poly::poly_div_quot(num, den);
+    auto expected_rem = ms::poly::poly_mod(num, den);
+    ASSERT_EQ(res.quotient.size(), expected_quot.size());
+    for (size_t i = 0; i < res.quotient.size(); ++i) {
+        EXPECT_NEAR(res.quotient[i], expected_quot[i], 1e-8);
+    }
+    // The remainder N_r(x)/D(x) reconstructed from just the terms should
+    // match expected_rem(x)/den(x).
+    for (double x : {0.0, 3.0, -1.0, 5.0}) {
+        double term_sum = 0.0;
+        for (const auto& t : res.terms) term_sum += eval_pf_term(t, x);
+        double expected = eval_at(expected_rem, x) / eval_at(den, x);
+        EXPECT_NEAR(term_sum, expected, 1e-6) << "mismatch at x=" << x;
+    }
+
+    expect_reconstructs(num, den, res, {0.0, 3.0, -1.0, 5.0, 10.0});
+}
+
+TEST(PolyPartialFractions, ImproperFractionEqualDegree) {
+    // (3x^2 + 1) / (x^2 - 1): deg(N) == deg(D), quotient should be a nonzero constant.
+    std::vector<double> num = {1.0, 0.0, 3.0};
+    std::vector<double> den = {-1.0, 0.0, 1.0}; // (x-1)(x+1)
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    ASSERT_FALSE(res.quotient.empty());
+    EXPECT_NEAR(res.quotient[0], 3.0, 1e-6); // 3x^2+1 = 3*(x^2-1) + 4
+    ASSERT_EQ(res.terms.size(), 2u);
+    expect_reconstructs(num, den, res, {0.0, 2.0, -2.0, 5.0, -5.0});
+}
+
+TEST(PolyPartialFractions, ComplexConjugatePolePair) {
+    // 1 / (x^2 + 1) => single quadratic term with p=0, q=1, B=0, C=1.
+    std::vector<double> num = {1.0};
+    std::vector<double> den = {1.0, 0.0, 1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 1u);
+    const auto& t = res.terms[0];
+    EXPECT_TRUE(t.is_quadratic);
+    EXPECT_EQ(t.k, 1);
+    EXPECT_NEAR(t.p, 0.0, 1e-6);
+    EXPECT_NEAR(t.q, 1.0, 1e-6);
+    EXPECT_NEAR(t.B, 0.0, 1e-6);
+    EXPECT_NEAR(t.C, 1.0, 1e-6);
+    expect_reconstructs(num, den, res, {0.0, 1.0, -1.0, 2.5, -3.0});
+}
+
+TEST(PolyPartialFractions, ComplexPolePairWithLinearNumerator) {
+    // (x + 1) / ((x-1)(x^2+4)); denominator (x-1)(x^2+4) = x^3 - x^2 + 4x - 4
+    std::vector<double> lin = {-1.0, 1.0};      // x - 1
+    std::vector<double> quad = {4.0, 0.0, 1.0}; // x^2 + 4
+    auto den = ms::poly::poly_mul(lin, quad);
+    std::vector<double> num = {1.0, 1.0}; // x + 1
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 2u);
+    bool found_real = false, found_quad = false;
+    for (const auto& t : res.terms) {
+        if (!t.is_quadratic) {
+            found_real = true;
+            EXPECT_NEAR(t.r, 1.0, 1e-4);
+        } else {
+            found_quad = true;
+            EXPECT_NEAR(t.p, 0.0, 1e-4);
+            EXPECT_NEAR(t.q, 4.0, 1e-4);
+        }
+    }
+    EXPECT_TRUE(found_real);
+    EXPECT_TRUE(found_quad);
+    expect_reconstructs(num, den, res, {0.0, 2.0, -2.0, 5.0, -5.0});
+}
+
+TEST(PolyPartialFractions, DegenerateDegreeZeroDenominator) {
+    // N(x) / c is just N(x)/c, a polynomial quotient with no terms.
+    std::vector<double> num = {2.0, 4.0, 6.0}; // 2 + 4x + 6x^2
+    std::vector<double> den = {2.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.terms.empty());
+    ASSERT_GE(res.quotient.size(), 3u);
+    EXPECT_NEAR(res.quotient[0], 1.0, 1e-10);
+    EXPECT_NEAR(res.quotient[1], 2.0, 1e-10);
+    EXPECT_NEAR(res.quotient[2], 3.0, 1e-10);
+    expect_reconstructs(num, den, res, {0.0, 1.0, -1.0, 5.0});
+}
+
+TEST(PolyPartialFractions, DegenerateDegreeOneDenominator) {
+    // 5 / (x - 3): a single simple pole.
+    std::vector<double> num = {5.0};
+    std::vector<double> den = {-3.0, 1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 1u);
+    EXPECT_FALSE(res.terms[0].is_quadratic);
+    EXPECT_NEAR(res.terms[0].r, 3.0, 1e-8);
+    EXPECT_NEAR(res.terms[0].A, 5.0, 1e-8);
+    expect_reconstructs(num, den, res, {0.0, 1.0, 10.0, -10.0});
+}
+
+TEST(PolyPartialFractions, DegenerateDegreeOneWithNegativeSlope) {
+    // 3 / (2 - x) = 3 / (-(x - 2)) => denominator {2, -1}
+    std::vector<double> num = {3.0};
+    std::vector<double> den = {2.0, -1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    ASSERT_EQ(res.terms.size(), 1u);
+    EXPECT_NEAR(res.terms[0].r, 2.0, 1e-8);
+    EXPECT_NEAR(res.terms[0].A, -3.0, 1e-8);
+    expect_reconstructs(num, den, res, {0.0, 5.0, -5.0});
+}
+
+TEST(PolyPartialFractions, ThreeDistinctRealPolesReconstructs) {
+    // D(x) = (x+1)(x-2)(x+5), numerator a generic quadratic.
+    std::vector<double> f1 = {1.0, 1.0};  // x + 1
+    std::vector<double> f2 = {-2.0, 1.0}; // x - 2
+    std::vector<double> f3 = {5.0, 1.0};  // x + 5
+    auto den = ms::poly::poly_mul(ms::poly::poly_mul(f1, f2), f3);
+    std::vector<double> num = {1.0, 2.0, 3.0}; // 3x^2 + 2x + 1
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 3u);
+    for (const auto& t : res.terms) EXPECT_FALSE(t.is_quadratic);
+    expect_reconstructs(num, den, res, {0.0, 1.0, -3.0, 3.0, -6.0, 10.0});
+}
+
+TEST(PolyPartialFractions, MixedRepeatedAndSimplePole) {
+    // D(x) = (x-1)(x-2)^2, mixing a simple pole with a repeated one.
+    std::vector<double> f1 = {-1.0, 1.0}; // x - 1
+    std::vector<double> f2 = {-2.0, 1.0}; // x - 2
+    auto den = ms::poly::poly_mul(f1, ms::poly::poly_mul(f2, f2));
+    std::vector<double> num = {1.0, -2.0, 1.0}; // x^2 - 2x + 1
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 3u);
+    int max_k_at_2 = 0;
+    for (const auto& t : res.terms) {
+        EXPECT_FALSE(t.is_quadratic);
+        if (std::abs(t.r - 2.0) < 1e-3) max_k_at_2 = std::max(max_k_at_2, t.k);
+    }
+    EXPECT_EQ(max_k_at_2, 2);
+    expect_reconstructs(num, den, res, {0.0, 3.0, -3.0, 5.0, 1.5, 10.0}, 1e-4);
+}
+
+TEST(PolyPartialFractions, AllCoefficientsFinite) {
+    std::vector<double> f1 = {-1.0, 1.0};
+    std::vector<double> f2 = {-4.0, 1.0};
+    auto den = ms::poly::poly_mul(f1, f2);
+    std::vector<double> num = {1.0, 1.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    for (const auto& t : res.terms) {
+        EXPECT_TRUE(std::isfinite(t.A));
+        EXPECT_TRUE(std::isfinite(t.B));
+        EXPECT_TRUE(std::isfinite(t.C));
+        EXPECT_TRUE(std::isfinite(t.r));
+        EXPECT_TRUE(std::isfinite(t.p));
+        EXPECT_TRUE(std::isfinite(t.q));
+    }
+    for (double c : res.quotient) EXPECT_TRUE(std::isfinite(c));
+}
+
+TEST(PolyPartialFractions, ZeroDenominatorReturnsEmpty) {
+    std::vector<double> num = {1.0};
+    std::vector<double> den = {0.0};
+    auto res = ms::poly::poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    EXPECT_TRUE(res.terms.empty());
+}

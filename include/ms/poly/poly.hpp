@@ -200,6 +200,76 @@ struct RationalFactorization {
 Result<RationalFactorization> poly_factor_rational(const std::vector<double>& p,
                                                      double tol = 1e-6);
 
+// --- Partial fraction decomposition ---
+//
+// One term of a partial fraction decomposition: either a real-pole term
+// A / (x - r)^k, or (when is_quadratic is true) a term for a
+// complex-conjugate pole pair combined into a real quadratic factor,
+// (B*x + C) / (x^2 + p*x + q)^k with discriminant p^2 - 4*q < 0.
+struct PartialFractionTerm {
+    double A = 0.0, B = 0.0, C = 0.0;   // A/(x-r)^k  or  (B*x+C)/(x^2+p*x+q)^k
+    double r = 0.0;                      // real pole (for A-type terms)
+    double p = 0.0, q = 0.0;             // quadratic factor coefficients (for B,C-type terms)
+    int k = 1;                           // multiplicity
+    bool is_quadratic = false;           // true => (B*x+C)/(x^2+p*x+q)^k, false => A/(x-r)^k
+};
+
+// Result of a partial fraction decomposition: a polynomial quotient part
+// (nonempty only if deg(numerator) >= deg(denominator) to begin with) plus
+// the list of proper-fraction terms for the remainder.
+struct PartialFractionResult {
+    std::vector<double> quotient;        // polynomial quotient part (empty if deg(N)<deg(D))
+    std::vector<PartialFractionTerm> terms;
+};
+
+// Partial fraction decomposition of the real rational function
+// numerator(x) / denominator(x). Coefficients use this module's usual
+// ascending-power convention (index 0 = constant term; see poly_eval).
+//
+// Algorithm:
+//  1. If deg(numerator) >= deg(denominator), polynomial long division
+//     (poly_div_quot / poly_mod) splits off a polynomial `quotient`, leaving
+//     a proper-fraction remainder numerator N_r(x) with deg(N_r) <
+//     deg(denominator). Only N_r(x) / denominator(x) is decomposed into
+//     terms below.
+//  2. denominator's roots are found via poly_roots (Durand-Kerner; returns
+//     one complex root per degree, with algebraic multiplicity). Roots with
+//     near-zero imaginary part are treated as real poles; the remainder are
+//     paired up as complex-conjugate pairs and combined into real quadratic
+//     factors x^2 + p*x + q (p = -2*Re(root), q = |root|^2), since this
+//     module works in real (not ms::cplx) arithmetic.
+//  3. Roots are grouped into distinct real poles / distinct quadratic
+//     factors, each with a multiplicity, by clustering within a small
+//     relative tolerance (see kPartialFractionRootTol in poly.cpp) -- a
+//     numerical root-finder applied to a polynomial with an exact repeated
+//     root of multiplicity k will not return k EXACTLY equal roots in
+//     floating point, so nearby roots are merged rather than compared for
+//     exact equality.
+//  4. Rather than the classical calculus-based approach (where a repeated
+//     real pole's k coefficients come from Taylor-expanding N_r(x)/D_rest(x)
+//     around that pole -- only the simple-pole case reduces to the familiar
+//     residue formula A = N_r(r) / D'(r)), this implementation clears
+//     denominators (multiplies the assumed decomposition through by
+//     denominator(x)) and matches coefficients of every power of x, giving
+//     a square linear system of exactly deg(denominator) equations in
+//     deg(denominator) unknowns (the A / B,C coefficients), solved via
+//     straightforward Gaussian elimination with partial pivoting. This
+//     "coefficient matching" method is mathematically equivalent to the
+//     classical residue/Taylor-coefficient method for every pole shape
+//     (simple real, repeated real, complex-conjugate pair) but avoids
+//     needing separate case-by-case calculus for repeated poles, at the
+//     cost of a (typically small, at most deg(denominator) x
+//     deg(denominator)) dense linear solve.
+//
+// @param numerator N(x), ascending powers.
+// @param denominator D(x), ascending powers. A zero or empty denominator
+//        yields an empty result (no quotient, no terms) -- there is no
+//        finite decomposition to return.
+// @return quotient (empty if deg(N) < deg(D) initially) plus the list of
+//         partial fraction terms for the proper-fraction remainder.
+PartialFractionResult poly_partial_fractions(const std::vector<double>& numerator,
+                                              const std::vector<double>& denominator);
+
 } // namespace poly
 
 // Backward-compat aliases (unqualified namespace ms::)
