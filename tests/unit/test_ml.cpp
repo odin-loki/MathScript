@@ -988,6 +988,217 @@ TEST(MLMetrics, PrecisionRecallF1) {
     EXPECT_NEAR(f1_score(pred,true_), 0.5, 1e-10);
 }
 
+// ---- Confusion Matrix / ROC / AUC ----
+
+static std::pair<Vec,Vec> perfect_classifier_data() {
+    // 5 true positives scored 1.0, 5 true negatives scored 0.0: perfectly separable.
+    Vec pred={1,1,1,1,1, 0,0,0,0,0};
+    Vec truth={1,1,1,1,1, 0,0,0,0,0};
+    return {pred,truth};
+}
+
+static std::pair<Vec,Vec> anticorrelated_classifier_data() {
+    // Positives score 0.0, negatives score 1.0: perfectly wrong.
+    Vec pred={0,0,0,0,0, 1,1,1,1,1};
+    Vec truth={1,1,1,1,1, 0,0,0,0,0};
+    return {pred,truth};
+}
+
+static std::pair<Vec,Vec> decent_classifier_data() {
+    // Positives generally score higher than negatives, but with overlap.
+    Vec pred =  {0.9,0.8,0.75,0.6,0.55, 0.45,0.4,0.3,0.2,0.1};
+    Vec truth = {1,  1,  1,   1,  0,    1,   0,  0,  0,  0};
+    return {pred,truth};
+}
+
+TEST(MLConfusionMatrix, HandComputedExactCounts) {
+    // threshold 0.5: predicted-positive iff score>=0.5, true-positive iff label>=0.5.
+    Vec pred ={0.9, 0.4, 0.6, 0.3, 0.5, 0.1};
+    Vec truth={1,   1,   0,   0,   1,   0};
+    // idx0: pred_pos=T, true_pos=T -> tp
+    // idx1: pred_pos=F, true_pos=T -> fn
+    // idx2: pred_pos=T, true_pos=F -> fp
+    // idx3: pred_pos=F, true_pos=F -> tn
+    // idx4: pred_pos=T, true_pos=T -> tp
+    // idx5: pred_pos=F, true_pos=F -> tn
+    auto cm=confusion_matrix(pred, truth, 0.5);
+    EXPECT_EQ(cm.tp, 2);
+    EXPECT_EQ(cm.fp, 1);
+    EXPECT_EQ(cm.tn, 2);
+    EXPECT_EQ(cm.fn, 1);
+}
+
+TEST(MLConfusionMatrix, DifferentThresholdChangesCounts) {
+    Vec pred ={0.9, 0.4, 0.6, 0.3, 0.5, 0.1};
+    Vec truth={1,   1,   0,   0,   1,   0};
+    // At threshold 0.9, only idx0 is predicted positive (true positive).
+    auto cm=confusion_matrix(pred, truth, 0.9);
+    EXPECT_EQ(cm.tp, 1);
+    EXPECT_EQ(cm.fp, 0);
+    EXPECT_EQ(cm.tn, 3);
+    EXPECT_EQ(cm.fn, 2);
+}
+
+TEST(MLConfusionMatrix, MismatchedLengthReturnsZero) {
+    Vec pred={0.1,0.9,0.5};
+    Vec truth={1,0};
+    auto cm=confusion_matrix(pred, truth);
+    EXPECT_EQ(cm.tp, 0);
+    EXPECT_EQ(cm.fp, 0);
+    EXPECT_EQ(cm.tn, 0);
+    EXPECT_EQ(cm.fn, 0);
+}
+
+TEST(MLConfusionMatrix, PerfectClassifierZeroErrorsAtDefaultThreshold) {
+    auto [pred,truth]=perfect_classifier_data();
+    auto cm=confusion_matrix(pred, truth, 0.5);
+    EXPECT_EQ(cm.fp, 0);
+    EXPECT_EQ(cm.fn, 0);
+    EXPECT_EQ(cm.tp, 5);
+    EXPECT_EQ(cm.tn, 5);
+}
+
+TEST(MLROC, PerfectClassifierAUCNearOne) {
+    auto [pred,truth]=perfect_classifier_data();
+    EXPECT_NEAR(roc_auc(pred,truth), 1.0, 1e-9);
+}
+
+TEST(MLROC, AntiCorrelatedClassifierAUCNearZero) {
+    auto [pred,truth]=anticorrelated_classifier_data();
+    EXPECT_NEAR(roc_auc(pred,truth), 0.0, 1e-9);
+}
+
+TEST(MLROC, ConstantScoreClassifierAUCIsHalf) {
+    // All predictions identical (0.5) regardless of true label carries no
+    // discriminating information. Sweeping thresholds above/below the
+    // single distinct score only ever produces the (0,0) and (1,1)
+    // endpoints (everyone-negative, then everyone-positive), so the curve
+    // is a single straight diagonal segment -- its trapezoidal area works
+    // out to exactly 0.5, matching the "no better than random" expectation.
+    Vec pred(10, 0.5);
+    Vec truth={1,1,1,1,1,0,0,0,0,0};
+    auto curve=roc_curve(pred,truth);
+    ASSERT_EQ(curve.size(), 2u);
+    EXPECT_NEAR(curve[0].fpr, 0.0, 1e-12);
+    EXPECT_NEAR(curve[0].tpr, 0.0, 1e-12);
+    EXPECT_NEAR(curve[1].fpr, 1.0, 1e-12);
+    EXPECT_NEAR(curve[1].tpr, 1.0, 1e-12);
+    EXPECT_NEAR(roc_auc(pred,truth), 0.5, 1e-9);
+}
+
+TEST(MLROC, DecentClassifierAUCBetweenHalfAndOne) {
+    auto [pred,truth]=decent_classifier_data();
+    double auc=roc_auc(pred,truth);
+    EXPECT_GT(auc, 0.5);
+    EXPECT_LT(auc, 1.0);
+}
+
+TEST(MLROC, CurveStartsAtZeroFPREndsAtOneFPR) {
+    auto check_endpoints=[](const Vec& pred, const Vec& truth){
+        auto curve=roc_curve(pred,truth);
+        ASSERT_FALSE(curve.empty());
+        EXPECT_NEAR(curve.front().fpr, 0.0, 1e-12);
+        EXPECT_NEAR(curve.back().fpr, 1.0, 1e-12);
+    };
+    {
+        auto [p,t]=perfect_classifier_data();
+        check_endpoints(p,t);
+    }
+    {
+        auto [p,t]=anticorrelated_classifier_data();
+        check_endpoints(p,t);
+    }
+    {
+        auto [p,t]=decent_classifier_data();
+        check_endpoints(p,t);
+    }
+}
+
+TEST(MLROC, CurveIsMonotonicNonDecreasingFPR) {
+    auto check_monotonic=[](const Vec& pred, const Vec& truth){
+        auto curve=roc_curve(pred,truth);
+        for (size_t i=1;i<curve.size();++i)
+            EXPECT_GE(curve[i].fpr, curve[i-1].fpr);
+    };
+    {
+        auto [p,t]=decent_classifier_data();
+        check_monotonic(p,t);
+    }
+    {
+        auto [p,t]=perfect_classifier_data();
+        check_monotonic(p,t);
+    }
+    Vec pred(10,0.5), truth={1,1,1,1,1,0,0,0,0,0};
+    check_monotonic(pred,truth);
+}
+
+TEST(MLROC, NoPositivesTPRZeroByConvention) {
+    // All-negative true labels: tp+fn is always 0, so TPR is defined as 0.0
+    // at every threshold (documented convention), and roc_auc degenerates
+    // to 0.0 since every point has tpr==0.
+    Vec pred={0.1,0.4,0.6,0.9};
+    Vec truth={0,0,0,0};
+    auto curve=roc_curve(pred,truth);
+    for (auto& pt:curve) EXPECT_NEAR(pt.tpr, 0.0, 1e-12);
+    EXPECT_NEAR(roc_auc(pred,truth), 0.0, 1e-9);
+}
+
+TEST(MLROC, NoNegativesFPRZeroByConvention) {
+    // All-positive true labels: fp+tn is always 0, so FPR is defined as 0.0
+    // at every threshold (documented convention), and roc_auc degenerates
+    // to 0.0 since every point has fpr==0 (zero width, zero area).
+    Vec pred={0.1,0.4,0.6,0.9};
+    Vec truth={1,1,1,1};
+    auto curve=roc_curve(pred,truth);
+    for (auto& pt:curve) EXPECT_NEAR(pt.fpr, 0.0, 1e-12);
+    EXPECT_NEAR(roc_auc(pred,truth), 0.0, 1e-9);
+}
+
+TEST(MLROC, MismatchedLengthReturnsEmptyCurveAndZeroAUC) {
+    Vec pred={0.1,0.9,0.5};
+    Vec truth={1,0};
+    EXPECT_TRUE(roc_curve(pred,truth).empty());
+    EXPECT_NEAR(roc_auc(pred,truth), 0.0, 1e-12);
+}
+
+TEST(MLROC, EmptyInputReturnsEmptyCurveAndZeroAUC) {
+    Vec pred, truth;
+    EXPECT_TRUE(roc_curve(pred,truth).empty());
+    EXPECT_NEAR(roc_auc(pred,truth), 0.0, 1e-12);
+}
+
+TEST(MLROC, ThresholdSweepBoundedByCandidateCountAndFinite) {
+    Vec pred={0.2,0.8};
+    Vec truth={0,1};
+    auto curve=roc_curve(pred,truth);
+    // Distinct scores {0.2,0.8} plus one above max and one below min give at
+    // most 4 threshold candidates (fewer after deduping identical (fpr,tpr)).
+    EXPECT_LE(curve.size(), 4u);
+    ASSERT_FALSE(curve.empty());
+    for (auto& pt:curve) EXPECT_TRUE(std::isfinite(pt.threshold));
+    // The lowest-threshold sweep must classify everything as positive.
+    EXPECT_NEAR(curve.back().fpr, 1.0, 1e-12);
+    EXPECT_NEAR(curve.back().tpr, 1.0, 1e-12);
+}
+
+TEST(MLROC, AUCConsistentWithManualTrapezoidalIntegration) {
+    auto [pred,truth]=decent_classifier_data();
+    auto curve=roc_curve(pred,truth);
+    double manual=0.0;
+    for (size_t i=1;i<curve.size();++i)
+        manual += 0.5*(curve[i-1].tpr+curve[i].tpr)*(curve[i].fpr-curve[i-1].fpr);
+    EXPECT_NEAR(roc_auc(pred,truth), manual, 1e-12);
+}
+
+TEST(MLROC, SingleSampleNoCrash) {
+    Vec pred={0.7};
+    Vec truth={1};
+    auto curve=roc_curve(pred,truth);
+    EXPECT_FALSE(curve.empty());
+    double auc=roc_auc(pred,truth);
+    EXPECT_TRUE(std::isfinite(auc));
+}
+
 // ---- Preprocessing ----
 
 TEST(MLPreprocess, StandardScaler) {

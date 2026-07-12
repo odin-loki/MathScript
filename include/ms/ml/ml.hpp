@@ -386,6 +386,51 @@ double f1_score(const Vec& y_pred, const Vec& y_true, double threshold = 0.5);
 double r2_score(const Vec& y_pred, const Vec& y_true);
 double rmse(const Vec& y_pred, const Vec& y_true);
 
+/// Binary-classification confusion matrix counts.
+struct ConfusionMatrix {
+    int tp = 0, fp = 0, tn = 0, fn = 0;
+};
+
+/// Confusion matrix for binary classification.
+///
+/// Predicted-positive follows precision()/recall()/f1_score()'s exact
+/// thresholding convention: `y_pred[i] >= threshold`. True-positive uses the
+/// fixed `y_true[i] >= 0.5` cutoff (true labels are always encoded as
+/// 0.0/1.0, independent of `threshold`) -- this is what lets roc_curve()
+/// sweep `threshold` across many candidate values while the ground-truth
+/// classification stays fixed and correct.
+///
+/// @param y_pred predicted scores.
+/// @param y_true true binary labels (0.0/1.0).
+/// @return zeroed ConfusionMatrix{} if y_pred.size() != y_true.size().
+ConfusionMatrix confusion_matrix(const Vec& y_pred, const Vec& y_true, double threshold = 0.5);
+
+/// A single point on an ROC (Receiver Operating Characteristic) curve.
+struct ROCPoint { double fpr, tpr; double threshold; };
+
+/// ROC curve: sweeps the classification threshold across every distinct
+/// value in `y_pred` (plus one threshold above the max and one below the
+/// min, to guarantee the extreme ends of the curve are reached) and records
+/// the (FPR, TPR) pair produced by confusion_matrix() at each threshold.
+///
+/// Degenerate-denominator convention: if a threshold's confusion matrix has
+/// no true positives/negatives to form a rate from (tp+fn == 0, i.e. no
+/// positives in y_true; or fp+tn == 0, i.e. no negatives in y_true), the
+/// corresponding rate (TPR or FPR respectively) is defined as 0.0 rather
+/// than left undefined.
+///
+/// @return ROC points sorted by increasing FPR (TPR ascending as a
+///         secondary key), with duplicate (FPR,TPR) pairs collapsed.
+std::vector<ROCPoint> roc_curve(const Vec& y_pred, const Vec& y_true);
+
+/// AUC (Area Under the ROC Curve) via the trapezoidal rule over roc_curve()'s
+/// points. 0.5 ~ no better than random, 1.0 ~ perfect separation, < 0.5 ~
+/// worse than random.
+///
+/// @return the AUC in [0, 1] (0.0 if roc_curve() produced fewer than 2
+///         points, e.g. for empty or mismatched-length input).
+double roc_auc(const Vec& y_pred, const Vec& y_true);
+
 // ========================== Preprocessing ==========================
 
 struct StandardScaler {
