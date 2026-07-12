@@ -6357,12 +6357,13 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (call_args->size() != 1 || !trim_copy(call_args->at(0)).empty()) {
             return std::unexpected(DomainError{fn, "expected session_objects()"});
         }
-        if (session_objects_.empty()) {
+        const auto listed = list_session_objects();
+        if (listed.empty()) {
             return std::string{"(no session objects)\n"};
         }
         std::ostringstream out;
-        for (const auto& [handle, object] : session_objects_) {
-            out << handle << " " << session_object_kind_name(object) << "\n";
+        for (const auto& [handle, kind] : listed) {
+            out << handle << " " << kind << "\n";
         }
         return out.str();
     }
@@ -10576,6 +10577,15 @@ Result<std::string> Interpreter::set_plot_bars(std::vector<double> x, std::vecto
     state_.plot.valid = true;
     return "histogram updated (" + std::to_string(state_.plot.y.size()) + " bins)\n" +
            format_plot_preview(state_.plot);
+}
+
+std::vector<std::pair<std::string, std::string>> Interpreter::list_session_objects() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    out.reserve(session_objects_.size());
+    for (const auto& [handle, object] : session_objects_) {
+        out.emplace_back(handle, session_object_kind_name(object));
+    }
+    return out;
 }
 
 Result<void> Interpreter::save_session(const std::string& path) const {

@@ -2,6 +2,7 @@
 #include <cmath>
 #include <filesystem>
 #include <sstream>
+#include "ms/frameworks/izaac/izaac.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include "ms/cuda/nccl.hpp"
 
@@ -155,4 +156,91 @@ TEST(ReplEngineTest, multiline_independence) {
     ASSERT_TRUE(second.execute("x = 1").has_value());
     EXPECT_DOUBLE_EQ(second.state().scalars.at("x"), 1.0);
     EXPECT_DOUBLE_EQ(first.state().scalars.at("x"), 99.0);
+}
+
+namespace {
+
+bool session_list_contains(const std::vector<std::pair<std::string, std::string>>& listed,
+                           const std::string& handle,
+                           const std::string& kind) {
+    for (const auto& [entry_handle, entry_kind] : listed) {
+        if (entry_handle == handle && entry_kind == kind) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+TEST(ReplSessionTest, list_session_objects_empty_initially) {
+    Interpreter interp;
+    EXPECT_TRUE(interp.list_session_objects().empty());
+}
+
+TEST(ReplSessionTest, list_session_objects_after_bloom_new) {
+    ms::izaac::clear_session();
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("izaac seed 42").has_value());
+    ASSERT_TRUE(interp.execute("bloom_new(bf, 100, 0.01)").has_value());
+    const auto listed = interp.list_session_objects();
+    ASSERT_EQ(listed.size(), 1u);
+    EXPECT_EQ(listed[0].first, "bf");
+    EXPECT_EQ(listed[0].second, "bloom");
+}
+
+TEST(ReplSessionTest, list_session_objects_multiple_kinds) {
+    ms::izaac::clear_session();
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("izaac seed 42").has_value());
+    ASSERT_TRUE(interp.execute("bloom_new(bf, 100, 0.01)").has_value());
+    ASSERT_TRUE(interp.execute("tokenbucket_new(tb, 10, 1)").has_value());
+    ASSERT_TRUE(interp.execute("cellmemory_new(cm, 2, 4, [0.1, 1, 10])").has_value());
+    const auto listed = interp.list_session_objects();
+    EXPECT_EQ(listed.size(), 3u);
+    EXPECT_TRUE(session_list_contains(listed, "bf", "bloom"));
+    EXPECT_TRUE(session_list_contains(listed, "tb", "tokenbucket"));
+    EXPECT_TRUE(session_list_contains(listed, "cm", "cellmemory"));
+}
+
+TEST(ReplSessionTest, list_session_objects_matches_repl_command) {
+    ms::izaac::clear_session();
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("izaac seed 42").has_value());
+    ASSERT_TRUE(interp.execute("bloom_new(bf, 100, 0.01)").has_value());
+    ASSERT_TRUE(interp.execute("tokenbucket_new(tb, 10, 1)").has_value());
+    const auto listed = interp.list_session_objects();
+    const auto repl_out = interp.execute("session_objects()");
+    ASSERT_TRUE(repl_out.has_value());
+    for (const auto& [handle, kind] : listed) {
+        const std::string line = handle + " " + kind;
+        EXPECT_NE(repl_out->find(line), std::string::npos) << line;
+    }
+}
+
+TEST(ReplSessionTest, list_session_objects_after_clear) {
+    ms::izaac::clear_session();
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("izaac seed 42").has_value());
+    ASSERT_TRUE(interp.execute("tokenbucket_new(tb, 10, 1)").has_value());
+    ASSERT_TRUE(interp.execute("session_object_clear(tb)").has_value());
+    EXPECT_TRUE(interp.list_session_objects().empty());
+}
+
+TEST(ReplSessionTest, list_session_objects_reset_clears) {
+    ms::izaac::clear_session();
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("izaac seed 42").has_value());
+    ASSERT_TRUE(interp.execute("bloom_new(bf, 100, 0.01)").has_value());
+    ASSERT_FALSE(interp.list_session_objects().empty());
+    interp.reset();
+    EXPECT_TRUE(interp.list_session_objects().empty());
+}
+
+TEST(ReplSessionTest, list_session_objects_empty_repl_message) {
+    Interpreter interp;
+    const auto repl_out = interp.execute("session_objects()");
+    ASSERT_TRUE(repl_out.has_value());
+    EXPECT_NE(repl_out->find("(no session objects)"), std::string::npos);
+    EXPECT_TRUE(interp.list_session_objects().empty());
 }
