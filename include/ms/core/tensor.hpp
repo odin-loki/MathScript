@@ -21,6 +21,8 @@ public:
     value_type& at(size_t i, size_t j) { return data_[i * shape_[1] + j]; }
     const value_type& at(size_t i, size_t j) const { return data_[i * shape_[1] + j]; }
 
+    Tensor reshape(const std::vector<size_t>& new_shape) const;
+
 private:
     size_t dims_;
     std::vector<size_t> shape_;
