@@ -104,6 +104,25 @@ TuckerDecomposition decompose_tucker(const Tensor& T, const std::vector<int>& ra
 // core ×_1 factors[0] ×_2 factors[1] ×_3 ... ×_N factors[N-1]
 Tensor reconstruct_tucker(const TuckerDecomposition& tucker);
 
+// Non-negative Matrix Factorization (NMF) via Lee-Seung multiplicative updates.
+// Decomposes a non-negative m×n matrix V ≈ W*H with W (m×k) and H (k×n) both
+// element-wise non-negative, minimizing the Frobenius reconstruction error.
+// Negative entries in the input matrix are rejected (DomainError); callers must
+// ensure V is entry-wise non-negative.
+struct NMFDecomposition {
+    int rank;  // k
+    std::vector<std::vector<double>> W;  // m × k, non-negative
+    std::vector<std::vector<double>> H;  // k × n, non-negative
+    int iterations;
+    double final_error;
+    std::vector<double> error_history;  // Frobenius error after each iteration
+};
+Result<NMFDecomposition> decompose_nmf(const std::vector<std::vector<double>>& matrix, int rank,
+                                         int max_iter = 500, double tol = 1e-6);
+
+// Reconstruct the approximated m×n matrix as W * H from an NMF decomposition.
+std::vector<std::vector<double>> reconstruct_nmf(const NMFDecomposition& nmf);
+
 // Tensor-Train (TT) decomposition (Oseledets 2011): represents a d-way tensor as a chain
 // of d 3-way "core" tensors linked by TT-ranks. Scales linearly (not exponentially) with
 // tensor order, making it preferable to Tucker for order >= 4-5 tensors.

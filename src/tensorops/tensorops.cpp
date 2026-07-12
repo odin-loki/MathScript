@@ -590,6 +590,131 @@ Tensor reconstruct_tucker(const TuckerDecomposition& tucker) {
     return result;
 }
 
+// ========================== Non-negative Matrix Factorization (NMF) ==========================
+
+namespace {
+
+constexpr double kNmfEps = 1e-10;
+
+static double mat_frobenius_norm(const std::vector<std::vector<double>>& A) {
+    double s = 0.0;
+    for (const auto& row : A)
+        for (double v : row) s += v * v;
+    return std::sqrt(s);
+}
+
+static std::vector<std::vector<double>>
+mat_sub(const std::vector<std::vector<double>>& A,
+        const std::vector<std::vector<double>>& B) {
+    int m = static_cast<int>(A.size()), n = static_cast<int>(A[0].size());
+    std::vector<std::vector<double>> C(m, std::vector<double>(n));
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j < n; ++j) C[i][j] = A[i][j] - B[i][j];
+    return C;
+}
+
+static std::vector<std::vector<double>>
+mat_element_divide(const std::vector<std::vector<double>>& num,
+                   const std::vector<std::vector<double>>& den,
+                   double eps) {
+    int m = static_cast<int>(num.size()), n = static_cast<int>(num[0].size());
+    std::vector<std::vector<double>> C(m, std::vector<double>(n));
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j < n; ++j) C[i][j] = num[i][j] / (den[i][j] + eps);
+    return C;
+}
+
+// Deterministic seeded non-negative initialization in (0.1, 1.1].
+static std::vector<std::vector<double>>
+random_nonneg_matrix(int rows, int cols, unsigned seed) {
+    std::vector<std::vector<double>> M(rows, std::vector<double>(cols));
+    unsigned state = seed;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            state = state * 1664525u + 1013904223u;
+            M[i][j] = static_cast<double>(state % 10000u) / 10000.0 + 0.1;
+        }
+    }
+    return M;
+}
+
+static bool matrix_has_negative(const std::vector<std::vector<double>>& M) {
+    for (const auto& row : M)
+        for (double v : row)
+            if (v < 0.0) return true;
+    return false;
+}
+
+} // namespace
+
+std::vector<std::vector<double>> reconstruct_nmf(const NMFDecomposition& nmf) {
+    return mat_mul(nmf.W, nmf.H);
+}
+
+Result<NMFDecomposition> decompose_nmf(const std::vector<std::vector<double>>& matrix, int rank,
+                                       int max_iter, double tol) {
+    if (matrix.empty() || matrix[0].empty()) {
+        return std::unexpected(DomainError{"decompose_nmf", "matrix must not be empty"});
+    }
+    int m = static_cast<int>(matrix.size());
+    int n = static_cast<int>(matrix[0].size());
+    for (int i = 1; i < m; ++i) {
+        if (static_cast<int>(matrix[i].size()) != n) {
+            return std::unexpected(DomainError{"decompose_nmf", "matrix must be rectangular"});
+        }
+    }
+    if (rank <= 0) {
+        return std::unexpected(DomainError{"decompose_nmf", "rank must be positive"});
+    }
+    if (max_iter <= 0) {
+        return std::unexpected(DomainError{"decompose_nmf", "max_iter must be positive"});
+    }
+    if (matrix_has_negative(matrix)) {
+        return std::unexpected(
+            DomainError{"decompose_nmf", "matrix entries must be non-negative"});
+    }
+
+    // Lee-Seung: alternate multiplicative updates on W (m×k) and H (k×n).
+    auto W = random_nonneg_matrix(m, rank, 42u);
+    auto H = random_nonneg_matrix(rank, n, 137u);
+
+    std::vector<double> error_history;
+    error_history.reserve(static_cast<size_t>(max_iter));
+
+    double error = mat_frobenius_norm(mat_sub(matrix, mat_mul(W, H)));
+    error_history.push_back(error);
+
+    for (int iter = 1; iter <= max_iter; ++iter) {
+        // H <- H .* (W^T V) ./ (W^T W H + eps)
+        auto Wt = mat_T(W);
+        auto WtV = mat_mul(Wt, matrix);
+        auto WtW = mat_mul(Wt, W);
+        auto WtWH = mat_mul(WtW, H);
+        H = mat_hadamard(H, mat_element_divide(WtV, WtWH, kNmfEps));
+
+        // W <- W .* (V H^T) ./ (W H H^T + eps)
+        auto Ht = mat_T(H);
+        auto VHt = mat_mul(matrix, Ht);
+        auto WH = mat_mul(W, H);
+        auto WHHt = mat_mul(WH, Ht);
+        W = mat_hadamard(W, mat_element_divide(VHt, WHHt, kNmfEps));
+
+        error = mat_frobenius_norm(mat_sub(matrix, mat_mul(W, H)));
+        error_history.push_back(error);
+
+        if (error_history.size() >= 2u) {
+            double prev = error_history[error_history.size() - 2u];
+            if (std::abs(prev - error) < tol) {
+                return NMFDecomposition{rank, std::move(W), std::move(H), iter,
+                                        error, std::move(error_history)};
+            }
+        }
+    }
+
+    return NMFDecomposition{rank, std::move(W), std::move(H), max_iter,
+                            error, std::move(error_history)};
+}
+
 // ========================== Tensor-Train (TT) Decomposition ==========================
 
 namespace {
