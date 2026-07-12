@@ -383,6 +383,116 @@ TEST(SymbolicExpandTest, expand_parse_roundtrip) {
     EXPECT_FALSE(has_mul_with_sum_factor(expanded));
 }
 
+TEST(SymbolicCollectTest, collect_linear_like_terms) {
+    const auto original = sym_add(sym_var("x"), sym_mul(sym_const(2.0), sym_var("x")));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_mul(sym_const(3.0), sym_var("x"));
+
+    for (const double x : {0.0, 1.0, 2.0, -3.0, 0.5}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+        expect_eval_equivalent(collected, expected, {{"x", x}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_quadratic_and_linear) {
+    const auto original = sym_add(
+        sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_var("x")),
+        sym_pow(sym_var("x"), sym_const(2.0)));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_add(
+        sym_mul(sym_const(2.0), sym_pow(sym_var("x"), sym_const(2.0))), sym_var("x"));
+
+    for (const double x : {0.0, 1.0, 2.0, -2.0, 0.25}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+        expect_eval_equivalent(collected, expected, {{"x", x}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_subtracts_like_terms) {
+    const auto original = sym_sub(sym_var("x"), sym_mul(sym_const(2.0), sym_var("x")));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_mul(sym_const(-1.0), sym_var("x"));
+
+    for (const double x : {-1.0, 0.0, 1.0, 4.0}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+        expect_eval_equivalent(collected, expected, {{"x", x}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_with_constant_offset) {
+    const auto original = sym_add(
+        sym_add(sym_const(5.0), sym_var("x")), sym_mul(sym_const(3.0), sym_var("x")));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_add(sym_const(5.0), sym_mul(sym_const(4.0), sym_var("x")));
+
+    for (const double x : {0.0, 1.0, -2.0, 3.5}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+        expect_eval_equivalent(collected, expected, {{"x", x}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_constants_only) {
+    const auto original = sym_add(sym_const(2.0), sym_const(3.0));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_const(5.0);
+
+    expect_eval_equivalent(original, collected, {{"x", 10.0}});
+    expect_eval_equivalent(collected, expected, {{"x", 10.0}});
+    EXPECT_EQ(collected.op, SymOp::Const);
+    EXPECT_NEAR(collected.value, 5.0, 1e-12);
+}
+
+TEST(SymbolicCollectTest, collect_preserves_other_variables) {
+    const auto original = sym_add(
+        sym_add(sym_var("x"), sym_mul(sym_const(2.0), sym_var("x"))), sym_var("y"));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_add(sym_mul(sym_const(3.0), sym_var("x")), sym_var("y"));
+
+    for (const auto& point : std::vector<std::pair<double, double>>{{0.0, 0.0}, {1.0, 2.0}, {-1.0, 3.0}}) {
+        expect_eval_equivalent(
+            original, collected, {{"x", point.first}, {"y", point.second}});
+        expect_eval_equivalent(
+            collected, expected, {{"x", point.first}, {"y", point.second}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_cancels_to_zero) {
+    const auto original = sym_add(sym_var("x"), sym_neg(sym_var("x")));
+    const auto collected = sym_collect(original, "x");
+
+    for (const double x : {-2.0, 0.0, 5.0}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+    }
+    EXPECT_EQ(collected.op, SymOp::Const);
+    EXPECT_NEAR(collected.value, 0.0, 1e-12);
+}
+
+TEST(SymbolicCollectTest, collect_nested_sum) {
+    const auto original = sym_add(
+        sym_add(sym_var("x"), sym_mul(sym_const(2.0), sym_var("x"))), sym_const(3.0));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_add(sym_mul(sym_const(3.0), sym_var("x")), sym_const(3.0));
+
+    for (const double x : {0.0, 1.0, -4.0, 2.5}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+        expect_eval_equivalent(collected, expected, {{"x", x}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_higher_power_terms) {
+    const auto original = sym_add(
+        sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_mul(sym_const(3.0), sym_pow(sym_var("x"), sym_const(2.0)))),
+        sym_var("x"));
+    const auto collected = sym_collect(original, "x");
+    const auto expected = sym_add(
+        sym_mul(sym_const(4.0), sym_pow(sym_var("x"), sym_const(2.0))), sym_var("x"));
+
+    for (const double x : {0.0, 1.0, 2.0, -1.0}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+        expect_eval_equivalent(collected, expected, {{"x", x}});
+    }
+}
+
 TEST(SymbolicParseTest, parse_const_and_var) {
     const auto c = sym_parse("42");
     ASSERT_TRUE(c.has_value());
