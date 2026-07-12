@@ -300,6 +300,108 @@ SimplicialComplex alpha_complex(const std::vector<std::vector<double>>& pts,
     return sc;
 }
 
+// ========================== Witness complex ==========================
+
+// Squared Euclidean distance between two coordinate vectors (dimension-agnostic).
+static double sq_dist_pts(const std::vector<double>& a, const std::vector<double>& b) {
+    double d = 0.0;
+    size_t dim = std::min(a.size(), b.size());
+    for (size_t k = 0; k < dim; ++k) {
+        double diff = a[k] - b[k];
+        d += diff * diff;
+    }
+    return d;
+}
+
+static double dist_pts(const std::vector<double>& a, const std::vector<double>& b) {
+    return std::sqrt(sq_dist_pts(a, b));
+}
+
+std::vector<int> select_landmarks_maxmin(const std::vector<std::vector<double>>& points,
+                                          int n_landmarks, int seed_index) {
+    int n = static_cast<int>(points.size());
+    if (n <= 0 || n_landmarks <= 0) return {};
+    n_landmarks = std::min(n_landmarks, n);
+
+    std::vector<int> landmarks;
+    landmarks.reserve(static_cast<size_t>(n_landmarks));
+    std::vector<bool> selected(static_cast<size_t>(n), false);
+
+    int seed = (n > 0) ? (seed_index % n + n) % n : 0;
+    landmarks.push_back(seed);
+    selected[static_cast<size_t>(seed)] = true;
+
+    while (static_cast<int>(landmarks.size()) < n_landmarks) {
+        int best = -1;
+        double best_min_dist = -1.0;
+        for (int i = 0; i < n; ++i) {
+            if (selected[static_cast<size_t>(i)]) continue;
+            double min_d = std::numeric_limits<double>::infinity();
+            for (int lm : landmarks) {
+                min_d = std::min(min_d, dist_pts(points[i], points[lm]));
+            }
+            if (min_d > best_min_dist) {
+                best_min_dist = min_d;
+                best = i;
+            }
+        }
+        if (best < 0) break;
+        landmarks.push_back(best);
+        selected[static_cast<size_t>(best)] = true;
+    }
+    return landmarks;
+}
+
+SimplicialComplex witness_complex(const std::vector<std::vector<double>>& points,
+                                   const std::vector<int>& landmark_indices,
+                                   double max_epsilon, int max_dim) {
+    int dim_cap = std::min(max_dim, 2);
+    SimplicialComplex sc;
+
+    // Collect valid, distinct landmark vertex indices (original point-cloud indices).
+    std::vector<int> landmarks;
+    std::vector<bool> seen;
+    if (!points.empty()) seen.assign(points.size(), false);
+    for (int idx : landmark_indices) {
+        if (idx < 0 || idx >= static_cast<int>(points.size())) continue;
+        if (seen[static_cast<size_t>(idx)]) continue;
+        seen[static_cast<size_t>(idx)] = true;
+        landmarks.push_back(idx);
+    }
+    int m = static_cast<int>(landmarks.size());
+    if (m == 0) return sc;
+
+    for (int v : landmarks) sc.add_point(v);
+
+    if (m < 2 || max_epsilon < 0.0) return sc;
+
+    // For each witness (every point in the cloud), derive witnessed simplices.
+    int n = static_cast<int>(points.size());
+    for (int w = 0; w < n; ++w) {
+        std::vector<std::pair<double, int>> ranked;
+        ranked.reserve(static_cast<size_t>(m));
+        for (int lm : landmarks)
+            ranked.push_back({dist_pts(points[w], points[lm]), lm});
+        std::sort(ranked.begin(), ranked.end(),
+                  [](const auto& a, const auto& b) {
+                      if (a.first != b.first) return a.first < b.first;
+                      return a.second < b.second;
+                  });
+
+        int max_k = std::min(dim_cap, m - 1);
+        for (int k = 0; k <= max_k; ++k) {
+            if (ranked[static_cast<size_t>(k)].first > max_epsilon) break;
+            Simplex sigma;
+            sigma.reserve(static_cast<size_t>(k + 1));
+            for (int j = 0; j <= k; ++j)
+                sigma.push_back(ranked[static_cast<size_t>(j)].second);
+            sc.add_simplex(sigma);
+        }
+    }
+
+    return sc;
+}
+
 // ========================== Persistent Homology ==========================
 // Simplified persistence using reduction algorithm (Z/2 coefficients)
 

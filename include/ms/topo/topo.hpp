@@ -133,6 +133,44 @@ SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matr
 SimplicialComplex alpha_complex(const std::vector<std::vector<double>>& pts,
                                   double alpha, int max_dim = 2);
 
+// ========================== Witness complex ==========================
+// Build the weak witness complex of a point cloud at filtration scale max_epsilon,
+// using a landmark subset selected by index into `points`.
+//
+// Definition (weak witness, de Silva–Carlsson style, practical formulation):
+// Let L = { landmark_indices[i] } be the landmark vertex set (vertices of the
+// complex are these original point-cloud indices, not relabelled 0..|L|-1).
+// For each witness point w in the full point cloud (every point may witness,
+// including landmarks themselves), order landmarks by increasing distance d(w,·).
+// A k-simplex σ = {ℓ_0,…,ℓ_k} (the k+1 closest landmarks to w) is included in
+// Wit(max_epsilon) iff d(w, ℓ_k) ≤ max_epsilon — i.e. the farthest vertex of σ
+// lies within the filtration radius. Equivalently: ∃ witness w such that every
+// landmark in σ is among the |σ| closest landmarks to w and all are within
+// max_epsilon of w; no landmark outside σ may be strictly closer to w than the
+// farthest landmark in σ.
+//
+// This is the standard "weak" (0,ν)-witness rule with ν = max_epsilon; it is
+// an approximation of the Vietoris–Rips complex on L and is always a subcomplex
+// of VR(L, max_epsilon) when witnesses = landmarks = all points, but can be a
+// proper subset in general because the witness condition is stricter than pairwise
+// proximity alone.
+//
+// @param points           Euclidean point cloud; points[i] = coordinate vector
+// @param landmark_indices indices into `points` selecting the landmark vertex set
+// @param max_epsilon      filtration radius ν; a k-simplex is included iff some
+//                         witness w has its (k+1)-th nearest landmark within ν
+// @param max_dim          highest simplex dimension to construct (0..2 supported;
+//                         values > 2 are silently clamped to 2)
+// @return SimplicialComplex on landmark vertex indices (original point indices)
+// @note Defensive edge cases: empty landmarks → empty complex; invalid landmark
+//       indices are skipped; n_landmarks < 2 yields vertices only (no edges).
+std::vector<int> select_landmarks_maxmin(const std::vector<std::vector<double>>& points,
+                                          int n_landmarks, int seed_index = 0);
+
+SimplicialComplex witness_complex(const std::vector<std::vector<double>>& points,
+                                   const std::vector<int>& landmark_indices,
+                                   double max_epsilon, int max_dim = 2);
+
 // ========================== Persistence Diagram ==========================
 struct PersistencePair {
     int dim;
