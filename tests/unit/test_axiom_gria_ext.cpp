@@ -680,6 +680,182 @@ TEST(AxiomGriaExt, EvolveProducesFiniteRepresentations) {
 }
 
 // ---------------------------------------------------------------------------
+// Axiom: mse_fitness / rmse_fitness — supervised regression GP fitness
+// ---------------------------------------------------------------------------
+
+TEST(AxiomMseFitness, PerfectFitReturnsZero) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0");
+
+    DMatrix inputs{{1.0}, {2.0}, {3.0}, {-4.0}};
+    const std::vector<double> targets{1.0, 2.0, 3.0, -4.0};
+
+    const double mse = engine.mse_fitness(algo, inputs, targets);
+    EXPECT_NEAR(mse, 0.0, 1e-12);
+}
+
+TEST(AxiomMseFitness, ConstantOffsetMatchesHandComputedMse) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0");
+
+    // Predictions equal x0 exactly; every target is offset from the prediction by
+    // the same constant (-3.0 relative to x0), so the hand-computed MSE is exactly
+    // (-3.0)^2 = 9.0 (error is -(-3.0)=... prediction - target = x0 - (x0+3) = -3).
+    DMatrix inputs{{1.0}, {2.0}, {3.0}, {4.0}};
+    const std::vector<double> targets{4.0, 5.0, 6.0, 7.0}; // x0 + 3.0
+    const double mse = engine.mse_fitness(algo, inputs, targets);
+    EXPECT_NEAR(mse, 9.0, 1e-9);
+}
+
+TEST(AxiomMseFitness, RmseIsSqrtOfMse) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0*2");
+
+    DMatrix inputs{{1.0}, {2.0}, {5.0}, {-3.0}};
+    const std::vector<double> targets{1.5, 3.0, 9.0, -7.0};
+
+    const double mse = engine.mse_fitness(algo, inputs, targets);
+    const double rmse = engine.rmse_fitness(algo, inputs, targets);
+    ASSERT_GE(mse, 0.0);
+    EXPECT_NEAR(rmse, std::sqrt(mse), 1e-12);
+}
+
+TEST(AxiomMseFitness, AlwaysNonNegativeAcrossCombinations) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    DMatrix inputs{{1.0, 2.0}, {-1.0, 3.0}, {4.0, -2.0}, {0.5, 0.5}};
+    const std::vector<double> targets{0.0, 100.0, -50.0, 3.3};
+
+    const std::vector<std::string> exprs = {
+        "x0", "x0+x1", "sin(x0)", "x0*x1-2", "x1/(x0+1)", "cos(x1)+x0"};
+    for (const auto& expr : exprs) {
+        ms::axiom::Algorithm algo{};
+        algo.representation = ms::Sym(expr.c_str());
+        const double mse = engine.mse_fitness(algo, inputs, targets);
+        EXPECT_GE(mse, 0.0) << "expr=" << expr;
+        EXPECT_TRUE(std::isfinite(mse)) << "expr=" << expr;
+    }
+}
+
+TEST(AxiomMseFitness, SingleRowDatasetNoCrash) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0+x1");
+
+    DMatrix inputs{{2.0, 3.0}};
+    const std::vector<double> targets{10.0};
+    // prediction = 2.0 + 3.0 = 5.0, target = 10.0, error = -5.0, mse = 25.0
+    const double mse = engine.mse_fitness(algo, inputs, targets);
+    EXPECT_NEAR(mse, 25.0, 1e-9);
+}
+
+TEST(AxiomMseFitness, MismatchedRowCountsUsesOverlapGracefully) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0");
+
+    // 4 input rows but only 2 targets: documented convention is to evaluate over
+    // min(inputs.rows(), targets.size()) rows rather than crashing or reading OOB,
+    // and to simply ignore the surplus rows/targets.
+    DMatrix inputs{{1.0}, {2.0}, {3.0}, {4.0}};
+    const std::vector<double> targets{1.0, 2.0}; // matches first two rows exactly
+    const double mse = engine.mse_fitness(algo, inputs, targets);
+    EXPECT_NEAR(mse, 0.0, 1e-12);
+
+    // Fewer input rows than targets: same min() convention applies.
+    DMatrix inputs2{{5.0}};
+    const std::vector<double> targets2{5.0, 999.0, -999.0};
+    const double mse2 = engine.mse_fitness(algo, inputs2, targets2);
+    EXPECT_NEAR(mse2, 0.0, 1e-12);
+}
+
+TEST(AxiomMseFitness, EmptyInputsOrTargetsReturnsZero) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0");
+
+    DMatrix empty_inputs;
+    const std::vector<double> targets{1.0, 2.0};
+    EXPECT_DOUBLE_EQ(engine.mse_fitness(algo, empty_inputs, targets), 0.0);
+    EXPECT_DOUBLE_EQ(engine.rmse_fitness(algo, empty_inputs, targets), 0.0);
+
+    DMatrix inputs{{1.0}, {2.0}};
+    const std::vector<double> empty_targets;
+    EXPECT_DOUBLE_EQ(engine.mse_fitness(algo, inputs, empty_targets), 0.0);
+    EXPECT_DOUBLE_EQ(engine.rmse_fitness(algo, inputs, empty_targets), 0.0);
+}
+
+TEST(AxiomMseFitness, NonFinitePredictionGetsFinitePenaltyNotNaN) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    // exp() of a large argument overflows double range to +Inf. ms::Sym::eval
+    // already guards div-by-zero/log(<=0)/sqrt(<0) domain errors by returning 0.0
+    // (see sym.cpp), so those specific cases cannot produce NaN here; overflow in
+    // exp()/multiplication is the realistic way a GP-evolved expression yields a
+    // non-finite prediction. mse_fitness must substitute the documented finite
+    // sentinel penalty (1e12 per row) rather than letting +Inf (or Inf-Inf => NaN)
+    // silently propagate into the aggregate score.
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("exp(x0)");
+
+    DMatrix inputs{{1000.0}, {1.0}};
+    const std::vector<double> targets{0.0, std::exp(1.0)}; // row 1 is a perfect fit
+
+    const double mse = engine.mse_fitness(algo, inputs, targets);
+    ASSERT_TRUE(std::isfinite(mse));
+    // Row 0 contributes the ~1e12 sentinel penalty, row 1 contributes ~0, so the
+    // mean over 2 rows should be roughly half the sentinel.
+    EXPECT_GT(mse, 1e10);
+    EXPECT_LT(mse, 1e12);
+
+    const double rmse = engine.rmse_fitness(algo, inputs, targets);
+    EXPECT_TRUE(std::isfinite(rmse));
+    EXPECT_NEAR(rmse, std::sqrt(mse), 1e-6);
+}
+
+TEST(AxiomMseFitness, LargerDatasetGoodButImperfectFitIsSmallNonzero) {
+    auto registry = ms::axiom::PrimitiveRegistry::build_from_ms_namespace();
+    ms::axiom::Axiom engine(ms::axiom::EvolutionConfig{.population_size = 2}, registry);
+
+    // True relationship is y = 2*x0 + 1. The algorithm's slope matches exactly but
+    // its intercept is off by a constant 0.1, so every row's error is -0.1 and the
+    // hand-computed MSE is exactly 0.1^2 = 0.01 — small but clearly nonzero.
+    ms::axiom::Algorithm algo{};
+    algo.representation = ms::Sym("x0*2+0.9");
+
+    constexpr size_t kRows = 12;
+    DMatrix inputs(kRows, 1);
+    std::vector<double> targets(kRows);
+    for (size_t i = 0; i < kRows; ++i) {
+        const double x0 = static_cast<double>(i) - 5.0;
+        inputs(i, 0) = x0;
+        targets[i] = 2.0 * x0 + 1.0;
+    }
+
+    const double mse = engine.mse_fitness(algo, inputs, targets);
+    EXPECT_GT(mse, 0.0);
+    EXPECT_NEAR(mse, 0.01, 1e-9);
+    EXPECT_LT(mse, 1.0);
+}
+
+// ---------------------------------------------------------------------------
 // GRIA: compute_alpha template with identity transform → alpha ≈ 0
 // ---------------------------------------------------------------------------
 
