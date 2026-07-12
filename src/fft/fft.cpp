@@ -260,6 +260,35 @@ std::vector<std::complex<double>> ifftshift(const std::vector<std::complex<doubl
     return out;
 }
 
+std::vector<double> fftfreq(size_t n, double d) {
+    if (n == 0) {
+        return std::vector<double>{};
+    }
+    std::vector<double> out(n);
+    const double scale = 1.0 / (static_cast<double>(n) * d);
+    const size_t positive_count = (n - 1) / 2 + 1;
+    for (size_t i = 0; i < positive_count; ++i) {
+        out[i] = static_cast<double>(i) * scale;
+    }
+    for (size_t i = positive_count; i < n; ++i) {
+        out[i] = -static_cast<double>(n - i) * scale;
+    }
+    return out;
+}
+
+std::vector<double> rfftfreq(size_t n, double d) {
+    if (n == 0) {
+        return std::vector<double>{};
+    }
+    const size_t out_len = n / 2 + 1;
+    std::vector<double> out(out_len);
+    const double scale = 1.0 / (static_cast<double>(n) * d);
+    for (size_t i = 0; i < out_len; ++i) {
+        out[i] = static_cast<double>(i) * scale;
+    }
+    return out;
+}
+
 Result<std::vector<double>> dct2(const std::vector<double>& x) {
     const size_t n = x.size();
     if (n == 0) {
