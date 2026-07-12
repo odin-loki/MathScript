@@ -845,6 +845,73 @@ FlignerResult fligner_test(const std::vector<std::vector<double>>& groups) {
     return result;
 }
 
+ShapiroWilkResult shapiro_wilk(std::span<const double> x) {
+    ShapiroWilkResult result{};
+    const size_t n = x.size();
+    if (n < 3) {
+        return result;
+    }
+    std::vector<double> sorted(x.begin(), x.end());
+    std::sort(sorted.begin(), sorted.end());
+
+    const double n_d = static_cast<double>(n);
+    std::vector<double> m(n);
+    double sum_m2 = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        const double p = (static_cast<double>(i + 1) - 0.375) / (n_d + 0.25);
+        m[i] = norm_ppf(p, 0.0, 1.0);
+        sum_m2 += m[i] * m[i];
+    }
+    if (sum_m2 <= 0.0) {
+        return result;
+    }
+    const double norm_c = std::sqrt(sum_m2);
+
+    const double xbar = mean(sorted);
+    double denom = 0.0;
+    for (double v : sorted) {
+        const double d = v - xbar;
+        denom += d * d;
+    }
+    if (denom <= 1e-14) {
+        // Constant input: degenerate but not an error -- treat as trivially "normal".
+        return result;
+    }
+
+    double numer = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        numer += (m[i] / norm_c) * sorted[i];
+    }
+    double w = (numer * numer) / denom;
+    w = std::clamp(w, 1e-12, 1.0);
+    result.w_stat = w;
+
+    // Royston (1995) normalizing transformation of W (see the doc comment in stats.hpp for the
+    // simplifications relative to the textbook algorithm).
+    double w_trans;
+    double mu;
+    double sigma;
+    if (n <= 11) {
+        const double gamma = -2.273 + 0.459 * n_d;
+        w_trans = -std::log(std::max(gamma - std::log(1.0 - w), 1e-300));
+        mu = 0.5440 - 0.39978 * n_d + 0.025054 * n_d * n_d -
+             0.0006714 * n_d * n_d * n_d;
+        sigma = std::exp(1.3822 - 0.77857 * n_d + 0.062767 * n_d * n_d -
+                         0.0020322 * n_d * n_d * n_d);
+    } else {
+        const double ln_n = std::log(n_d);
+        w_trans = std::log(1.0 - w);
+        mu = -1.5861 - 0.31082 * ln_n - 0.083751 * ln_n * ln_n +
+             0.0038915 * ln_n * ln_n * ln_n;
+        sigma = std::exp(-0.4803 - 0.082676 * ln_n + 0.0030302 * ln_n * ln_n);
+    }
+    if (sigma <= 0.0) {
+        return result;
+    }
+    result.p_value = std::clamp(1.0 - norm_cdf(w_trans, mu, sigma), 0.0, 1.0);
+    return result;
+}
+
 std::vector<double> multiple_regression(
     const std::vector<std::vector<double>>& X,
     std::span<const double> y) {
