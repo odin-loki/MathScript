@@ -71,6 +71,46 @@ Image              histeq(const Image& img);                     // histogram eq
 Image              imadjust(const Image& img, float in_lo, float in_hi,
                              float out_lo = 0.f, float out_hi = 1.f);
 
+/// Contrast-Limited Adaptive Histogram Equalisation (CLAHE).
+///
+/// Unlike histeq(), which computes a single global CDF-based mapping for the
+/// whole image, adapthisteq() divides the image into a grid of roughly
+/// @p tile_size x @p tile_size tiles, equalises each tile's local histogram
+/// independently (after clipping it, see @p clip_limit), and then blends
+/// the per-tile mappings with bilinear interpolation. This brings out local
+/// contrast that a global histeq() cannot, since a pattern that spans only a
+/// narrow intensity band can still dominate a small tile's own histogram
+/// even though it is a small, low-slope contributor to the whole image's
+/// histogram.
+/// @param img Input image (RGB is converted to grayscale first, matching
+///            histeq()'s convention; the output is always single-channel).
+/// @param tile_size Approximate tile edge length in pixels. Clamped to
+///                   >= 1; the last tile in each row/column of the grid may
+///                   be smaller when the image dimension is not an exact
+///                   multiple of @p tile_size. A @p tile_size that is >= the
+///                   image dimension collapses that axis to a single tile
+///                   (equivalent to global histeq() along that axis).
+/// @param clip_limit Clipping strength, in (0, 1]. Any histogram bin whose
+///                    count exceeds `clip_limit * tile_pixel_count` is
+///                    clipped to that limit (with a floor of 1 count so a
+///                    tile is never fully zeroed out); the excess mass is
+///                    redistributed uniformly over the remaining bins
+///                    (iterated a bounded number of times to re-clip any
+///                    bin pushed back over the limit). Smaller values clip
+///                    more aggressively, giving a gentler, noise-safe local
+///                    contrast boost; values close to 1 approach unclipped
+///                    per-tile histogram equalisation.
+/// @return A single-channel image the same size as @p img, with values in
+///         [0, 1].
+/// @note Naively pasting together independently-equalised tiles produces
+///       visible blocky discontinuities at tile borders. To avoid this,
+///       each output pixel's value is computed by bilinearly interpolating
+///       between the (up to 4) nearest tile centers' mapping functions,
+///       all applied to that pixel's original intensity, so the effective
+///       mapping varies smoothly across the image.
+/// @note Defensive: returns an empty Image for an empty input.
+Image adapthisteq(const Image& img, int tile_size = 8, float clip_limit = 0.01f);
+
 // ========================== Transforms ==========================
 // Returns DFT magnitude spectrum (real-valued, same size as input)
 Image dft_magnitude(const Image& img);

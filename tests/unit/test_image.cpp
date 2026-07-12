@@ -407,6 +407,116 @@ TEST(ImageHist, Imadjust) {
     EXPECT_GT(bright.at(0,0,0), adj.at(0,0,0));
 }
 
+// ---- CLAHE (adaptive histogram equalisation) ----
+
+static float value_range(const Image& img, int r0, int r1, int c0, int c1) {
+    float mn=1e9f, mx=-1e9f;
+    for (int r=r0;r<r1;++r) for (int c=c0;c<c1;++c) {
+        float v=img.at(r,c,0);
+        mn=std::min(mn,v); mx=std::max(mx,v);
+    }
+    return mx-mn;
+}
+
+TEST(ImageAdaptHistEq, LocalContrastBeatsGlobalHistEq) {
+    // 32x32 image: a full-range ramp background (so the global histogram is
+    // busy/dense) plus an 8x8 tile-aligned patch (rows/cols 8-15) with a
+    // low-contrast checkerboard (values ~100/255 vs ~110/255), the classic
+    // scenario where global histeq barely helps but CLAHE, which equalises
+    // that tile using only its own local content, helps a lot.
+    const int N=32;
+    Image img(N,N,1,0.f);
+    for (int r=0;r<N;++r) for (int c=0;c<N;++c) img.at(r,c,0)=(float)(r*N+c)/(float)(N*N-1);
+    for (int r=8;r<16;++r) for (int c=8;c<16;++c)
+        img.at(r,c,0)=((r+c)%2==0)?(100.f/255.f):(110.f/255.f);
+
+    auto eq=histeq(img);
+    auto clahe=adapthisteq(img, 8, 1.0f);
+
+    // Compare near the checkerboard tile's center, where bilinear blending
+    // is dominated by that tile's own (checkerboard-only) mapping.
+    float range_orig=value_range(img, 10,14, 10,14);
+    float range_histeq=value_range(eq, 10,14, 10,14);
+    float range_clahe=value_range(clahe, 10,14, 10,14);
+
+    EXPECT_GT(range_clahe, range_orig);
+    EXPECT_GT(range_clahe, range_histeq);
+}
+
+TEST(ImageAdaptHistEq, ClipLimitMonotonicity) {
+    // Single 8x8 tile filled entirely with a narrow noisy band (bins
+    // 125-129), no dominant single spike -- the classic near-uniform
+    // region where unclipped local equalisation over-amplifies tiny
+    // differences. A lower clip_limit should visibly rein that in.
+    Image img(8,8,1,0.f);
+    int bins[8*8];
+    int idx=0;
+    for (int b=0;b<5;++b) {
+        int count = (b<4)?13:12;
+        for (int k=0;k<count;++k) bins[idx++]=125+b;
+    }
+    for (int i=0;i<64;++i) img.data[i]=(bins[i]+0.5f)/255.f;
+
+    auto low=adapthisteq(img, 8, 0.05f);
+    auto high=adapthisteq(img, 8, 0.5f);
+
+    float range_low=value_range(low, 0,8, 0,8);
+    float range_high=value_range(high, 0,8, 0,8);
+    EXPECT_LT(range_low, range_high);
+}
+
+TEST(ImageAdaptHistEq, UniformImageUnchanged) {
+    Image img(16,16,1,0.5f);
+    auto out=adapthisteq(img, 4, 0.01f);
+    for (float v:out.data) EXPECT_NEAR(v, 0.5f, 0.1f);
+}
+
+TEST(ImageAdaptHistEq, DimensionsAndRange) {
+    Image img(20,24,1,0.f);
+    for (int r=0;r<20;++r) for (int c=0;c<24;++c) img.at(r,c,0)=(float)((r*7+c*3)%256)/255.f;
+    auto out=adapthisteq(img, 6, 0.1f);
+    EXPECT_EQ(out.rows, 20);
+    EXPECT_EQ(out.cols, 24);
+    EXPECT_EQ(out.channels, 1);
+    for (float v:out.data) { EXPECT_GE(v, 0.f); EXPECT_LE(v, 1.f); }
+}
+
+TEST(ImageAdaptHistEq, RgbChannelHandling) {
+    Image img(8,8,3,0.f);
+    for (int r=0;r<8;++r) for (int c=0;c<8;++c) {
+        float v=(float)((r*8+c)%256)/255.f;
+        img.at(r,c,0)=v; img.at(r,c,1)=v; img.at(r,c,2)=v;
+    }
+    auto out=adapthisteq(img, 4, 0.1f);
+    EXPECT_EQ(out.channels, 1);
+    EXPECT_EQ(out.rows, 8);
+    EXPECT_EQ(out.cols, 8);
+}
+
+TEST(ImageAdaptHistEq, DegenerateTileSizeOne) {
+    Image img(6,6,1,0.f);
+    for (int r=0;r<6;++r) for (int c=0;c<6;++c) img.at(r,c,0)=(float)((r*6+c)%9)/8.f;
+    auto out=adapthisteq(img, 1, 0.1f);
+    EXPECT_EQ(out.rows, 6);
+    EXPECT_EQ(out.cols, 6);
+    for (float v:out.data) { EXPECT_TRUE(std::isfinite(v)); EXPECT_GE(v, 0.f); EXPECT_LE(v, 1.f); }
+}
+
+TEST(ImageAdaptHistEq, DegenerateTileSizeLargerThanImage) {
+    Image img(6,6,1,0.f);
+    for (int r=0;r<6;++r) for (int c=0;c<6;++c) img.at(r,c,0)=(float)((r*6+c)%9)/8.f;
+    auto out=adapthisteq(img, 1000, 0.1f);
+    EXPECT_EQ(out.rows, 6);
+    EXPECT_EQ(out.cols, 6);
+    for (float v:out.data) { EXPECT_TRUE(std::isfinite(v)); EXPECT_GE(v, 0.f); EXPECT_LE(v, 1.f); }
+}
+
+TEST(ImageAdaptHistEq, EmptyImage) {
+    Image empty;
+    auto out=adapthisteq(empty, 8, 0.01f);
+    EXPECT_TRUE(out.empty());
+}
+
 TEST(ImageTransform, DftMagnitudeSize) {
     Image img(4,4,1);
     for (int r=0;r<4;++r) for (int c=0;c<4;++c) img.at(r,c,0)=0.5f;
