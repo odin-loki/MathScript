@@ -7357,14 +7357,15 @@ Replace all Class A transitional libraries with own implementations. This runs i
 
 ### 15.12.1 Implementation progress
 
-Waves 1 through 207 incrementally implemented this plan; each wave's specific additions are tracked in full detail in `CHANGELOG.md` rather than duplicated here.
+Waves 1 through 208 incrementally implemented this plan; each wave's specific additions are tracked in full detail in `CHANGELOG.md` rather than duplicated here.
 
 **Current status:**
 - Phase 10 hardening substantially underway (see `docs/RELEASE.md`'s tag-criteria list for gate details)
 - Version 1.0.0 released; CI green on Windows and Linux
 - ~91% line coverage (90% gate); Valgrind memcheck; libFuzzer smoke (7 targets)
-- **368 CTest suites, all passing** (as of Wave 207; Waves 206-207 added test cases to existing binaries rather than new CTest registrations)
-- Wave 207: full documentation overhaul (README/ARCHITECTURE/API/USER_GUIDE/CONTRIBUTING/RELEASE/CHANGELOG/master-plan all rewritten or refreshed), plus 8 more spec-vs-implementation gaps closed (special spherical harmonics, signal coherence, stats partial correlation/VIF, ML PR-AUC, finance historical VaR, graph min arborescence, poly_roots rewritten via companion-matrix eigenvalues, quantum Schmidt decomposition)
+- **368 CTest suites, all passing** (as of Wave 208; Waves 206-208 added test cases to existing binaries rather than new CTest registrations)
+- Wave 207: full documentation overhaul (README/ARCHITECTURE/API/USER_GUIDE/CONTRIBUTING/RELEASE/CHANGELOG/master-plan all rewritten or refreshed), plus 8 spec-vs-implementation gaps closed (special spherical harmonics, signal coherence, stats partial correlation/VIF, ML PR-AUC, finance historical VaR, graph min arborescence, poly_roots rewritten via companion-matrix eigenvalues, quantum Schmidt decomposition)
+- Wave 208: 8 more gaps closed in previously-untouched modules (optim conjugate gradient, control step_info, image hough_circles, tensorops NMF, graph k-core decomposition, signal Chirp Z-Transform, ML IsolationForest, geo polygon triangulation)
 - Unsafe surface audit + delta baseline (blocking in CI); install/package smoke (DEB/RPM/NSIS/WiX)
 - ORC JIT scalar expr + native matrix/scalar dispatch; OpenGL PlotSurfWidget
 - docs/API.md, docs/ARCHITECTURE.md, docs/RELEASE.md; scripts/pre_release.sh + tag checklists

@@ -54,7 +54,7 @@ None of these were caught by code review; all three were caught by a test assert
 
 ## Status
 
-- **Version:** 1.0.0 — Phase 10 (hardening) complete; post-1.0 work continues via the wave process above (latest: Wave 207 in [`CHANGELOG.md`](CHANGELOG.md))
+- **Version:** 1.0.0 — Phase 10 (hardening) complete; post-1.0 work continues via the wave process above (latest: Wave 208 in [`CHANGELOG.md`](CHANGELOG.md))
 - **Tests:** **368** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
 - **CI:** Windows MSVC + Linux GCC 13 build/test; coverage; libFuzzer smoke (7 targets); Valgrind memcheck; benchmark regression gate (`bench_matmul`, `bench_fft`, 10% tolerance); Clang plugin compliance (20 enforced rules); vendor checksum verification; optional `jit-linux` and `plugin-linux` jobs
 
