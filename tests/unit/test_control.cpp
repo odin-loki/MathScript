@@ -413,6 +413,128 @@ TEST(ControlDare, ScalarSystem) {
     EXPECT_NEAR(X.value()[0][0], 4.0 / 3.0, 0.25);
 }
 
+// ---- LQE (linear quadratic estimator) ----
+TEST(ControlLQE, BasicDimensions) {
+    std::vector<std::vector<double>> A = {{-2.0, 1.0}, {0.0, -3.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    EXPECT_EQ(est->P.size(), 2u);
+    EXPECT_EQ(est->P[0].size(), 2u);
+    EXPECT_EQ(est->L.size(), 2u);
+    EXPECT_EQ(est->L[0].size(), 1u);
+}
+
+TEST(ControlLQE, CovarianceSymmetricPositive) {
+    std::vector<std::vector<double>> A = {{-1.0, 0.0}, {0.0, -2.0}};
+    std::vector<std::vector<double>> C = {{1.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    for (size_t i = 0; i < est->P.size(); ++i)
+        for (size_t j = 0; j < est->P[i].size(); ++j)
+            EXPECT_NEAR(est->P[i][j], est->P[j][i], 1e-8);
+    EXPECT_GT(est->P[0][0], 0.0);
+    EXPECT_GT(est->P[1][1], 0.0);
+}
+
+TEST(ControlLQE, SatisfiesFilterRiccatiEquation) {
+    std::vector<std::vector<double>> A = {{-2.0, 1.0}, {0.0, -3.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    ASSERT_TRUE(is_observable(A, C));
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    const auto& P = est->P;
+    auto Ct = mat_transpose(C);
+    auto Rinv = std::vector<std::vector<double>>{{1.0 / R[0][0]}};
+    auto CtRinvC = mat_matmul(mat_matmul(Ct, Rinv), C);
+    auto PCtRinvCP = mat_matmul(mat_matmul(P, CtRinvC), P);
+    auto AP = mat_matmul(A, P);
+    auto PAt = mat_matmul(P, mat_transpose(A));
+    auto residual = mat_add(mat_add(AP, PAt), Q);
+    for (size_t i = 0; i < P.size(); ++i)
+        for (size_t j = 0; j < P[i].size(); ++j)
+            residual[i][j] -= PCtRinvCP[i][j];
+    EXPECT_NEAR(mat_max_abs(residual), 0.0, 1e-6);
+}
+
+TEST(ControlLQE, GainMatchesCovarianceFormula) {
+    std::vector<std::vector<double>> A = {{-2.0, 1.0}, {0.0, -3.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    auto Ct = mat_transpose(C);
+    auto Rinv = std::vector<std::vector<double>>{{1.0 / R[0][0]}};
+    auto L_expected = mat_matmul(mat_matmul(est->P, Ct), Rinv);
+    for (size_t i = 0; i < est->L.size(); ++i)
+        for (size_t j = 0; j < est->L[i].size(); ++j)
+            EXPECT_NEAR(est->L[i][j], L_expected[i][j], 1e-10);
+}
+
+TEST(ControlLQE, ObserverClosedLoopStable) {
+    std::vector<std::vector<double>> A = {{-2.0, 1.0}, {0.0, -3.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    auto LC = mat_matmul(est->L, C);
+    std::vector<std::vector<double>> Aobs = A;
+    for (size_t i = 0; i < Aobs.size(); ++i)
+        for (size_t j = 0; j < Aobs[i].size(); ++j)
+            Aobs[i][j] -= LC[i][j];
+    auto cl_tf = ss2tf(ss(Aobs, {{0.0}, {0.0}}, C, {{0.0}}));
+    for (auto& p : poles(cl_tf))
+        EXPECT_LT(p.real(), 0.0);
+}
+
+TEST(ControlLQE, ScalarClosedForm) {
+    // A=-1, C=1, Q=1, R=1: -2P - P^2 + 1 = 0 => P = sqrt(2)-1
+    std::vector<std::vector<double>> A = {{-1.0}};
+    std::vector<std::vector<double>> C = {{1.0}};
+    std::vector<std::vector<double>> Q = {{1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    const double P_expected = std::sqrt(2.0) - 1.0;
+    EXPECT_NEAR(est->P[0][0], P_expected, 1e-4);
+    EXPECT_NEAR(est->L[0][0], P_expected, 1e-4);
+}
+
+TEST(ControlLQE, ObservablePlantConverges) {
+    std::vector<std::vector<double>> A = {{0.0, 1.0}, {-2.0, -3.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{0.1, 0.0}, {0.0, 0.1}};
+    std::vector<std::vector<double>> R = {{0.5}};
+    ASSERT_TRUE(is_observable(A, C));
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    for (const auto& row : est->P)
+        for (double x : row) EXPECT_TRUE(std::isfinite(x));
+    for (const auto& row : est->L)
+        for (double x : row) EXPECT_TRUE(std::isfinite(x));
+}
+
+TEST(ControlLQE, TraceIsFinite) {
+    std::vector<std::vector<double>> A = {{-1.0, 0.0}, {0.0, -2.0}};
+    std::vector<std::vector<double>> C = {{1.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    double trace = 0.0;
+    for (size_t i = 0; i < est->P.size(); ++i) trace += est->P[i][i];
+    EXPECT_TRUE(std::isfinite(trace));
+    EXPECT_GT(trace, 0.0);
+}
+
 // ---- LQR (closed-loop stabilisation) ----
 TEST(ControlLQR, StabilizesIntegrator) {
     // Double integrator: A = [[0,1],[0,0]], B = [[0],[1]]

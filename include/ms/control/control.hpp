@@ -181,6 +181,22 @@ Result<std::vector<std::vector<double>>>
         const std::vector<std::vector<double>>& Q,
         const std::vector<std::vector<double>>& R);
 
+// ---- LQE (Linear Quadratic Estimator) ----
+// Continuous-time Kalman filter design for dx/dt = A*x + w, y = C*x + v.
+// Solves the filter ARE  A*P + P*A^T - P*C^T*R^{-1}*C*P + Q = 0  via the
+// LQR dual: P = riccati(A^T, C^T, Q, R).  Estimator gain L (n×p) satisfies
+// dx_hat/dt = A*x_hat + L*(y - C*x_hat)  with  L = P*C^T*R^{-1}.
+struct LQEResult {
+    std::vector<std::vector<double>> P;  // steady-state error covariance (n×n)
+    std::vector<std::vector<double>> L;   // Kalman / LQE gain (n×p)
+};
+
+Result<LQEResult>
+    lqe(const std::vector<std::vector<double>>& A,
+        const std::vector<std::vector<double>>& C,
+        const std::vector<std::vector<double>>& Q,
+        const std::vector<std::vector<double>>& R);
+
 // ---- Observability / Controllability ----
 // Returns controllability matrix [B, AB, A^2 B, ...]
 std::vector<std::vector<double>>

@@ -1096,6 +1096,28 @@ lqr(const std::vector<std::vector<double>>& A,
     return matmul(matmul(Rinv, BT), X.value());
 }
 
+// ---- LQE (dual of LQR) ----
+// Filter ARE: A*P + P*A^T - P*C^T*R^{-1}*C*P + Q = 0
+// Dual control ARE with (A, B) -> (A^T, C^T) gives the same equation for P.
+Result<LQEResult>
+lqe(const std::vector<std::vector<double>>& A,
+    const std::vector<std::vector<double>>& C,
+    const std::vector<std::vector<double>>& Q,
+    const std::vector<std::vector<double>>& R) {
+    auto P = riccati(transpose(A), transpose(C), Q, R);
+    if (!P) return std::unexpected(P.error());
+
+    const int r_sz = static_cast<int>(R.size());
+    std::vector<std::vector<double>> Rinv(r_sz, std::vector<double>(r_sz, 0.0));
+    for (int i = 0; i < r_sz; ++i) Rinv[i][i] = 1.0 / R[i][i];
+
+    LQEResult out;
+    out.P = P.value();
+    // L = P * C^T * R^{-1}  (n×p; dual of K = R^{-1} B^T X)
+    out.L = matmul(matmul(out.P, transpose(C)), Rinv);
+    return out;
+}
+
 // ---- Controllability & Observability ----
 
 std::vector<std::vector<double>>
