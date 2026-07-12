@@ -484,6 +484,165 @@ Image watershed(const Image& gray, const Image& markers) {
     return out;
 }
 
+namespace {
+
+struct LabPixel {
+    float L, a, b;
+};
+
+float srgb_to_linear(float c) {
+    return c <= 0.04045f ? c / 12.92f
+                         : std::pow((c + 0.055f) / 1.055f, 2.4f);
+}
+
+LabPixel rgb_to_lab(float r, float g, float b) {
+    const float R = srgb_to_linear(r);
+    const float G = srgb_to_linear(g);
+    const float B = srgb_to_linear(b);
+    const float X = 0.4124564f * R + 0.3575761f * G + 0.1804375f * B;
+    const float Y = 0.2126729f * R + 0.7151522f * G + 0.0721750f * B;
+    const float Z = 0.0193339f * R + 0.1191920f * G + 0.9503041f * B;
+    constexpr float Xn = 0.95047f, Yn = 1.f, Zn = 1.08883f;
+    auto f = [](float t) {
+        return t > 0.008856f ? std::cbrt(t) : (7.787f * t + 16.f / 116.f);
+    };
+    const float fy = f(Y / Yn);
+    return {116.f * fy - 16.f, 500.f * (f(X / Xn) - fy), 200.f * (fy - f(Z / Zn))};
+}
+
+Image to_rgb(const Image& img) {
+    if (img.empty()) return Image{};
+    if (img.channels >= 3) return img;
+    return gray2rgb(img);
+}
+
+struct SlicCenter {
+    float L, a, b;
+    float x, y;
+};
+
+} // namespace
+
+Image slic(const Image& rgb, int num_superpixels, double compactness) {
+    if (rgb.empty() || num_superpixels <= 0) return Image{};
+
+    const Image src = to_rgb(rgb);
+    const int R = src.rows, C = src.cols;
+    const int N = R * C;
+    const int K = std::min(num_superpixels, N);
+    if (K <= 0) return Image{};
+
+    std::vector<LabPixel> lab(static_cast<size_t>(N));
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            lab[static_cast<size_t>(r * C + c)] =
+                rgb_to_lab(src.at(r, c, 0), src.at(r, c, 1), src.at(r, c, 2));
+        }
+
+    const float S = std::sqrt(static_cast<float>(N) / static_cast<float>(K));
+    const float m = static_cast<float>(compactness);
+    const float inv_s = m / (S + 1e-6f);
+
+    std::vector<SlicCenter> centers(static_cast<size_t>(K));
+    int cid = 0;
+    for (int r = static_cast<int>(S / 2.f); r < R && cid < K; r += std::max(1, static_cast<int>(S)))
+        for (int c = static_cast<int>(S / 2.f); c < C && cid < K; c += std::max(1, static_cast<int>(S))) {
+            const auto& px = lab[static_cast<size_t>(r * C + c)];
+            centers[static_cast<size_t>(cid)] = {px.L, px.a, px.b, static_cast<float>(c),
+                                                   static_cast<float>(r)};
+            ++cid;
+        }
+    while (cid < K) {
+        const int idx = cid % N;
+        const auto& px = lab[static_cast<size_t>(idx)];
+        centers[static_cast<size_t>(cid)] = {px.L, px.a, px.b, static_cast<float>(idx % C),
+                                               static_cast<float>(idx / C)};
+        ++cid;
+    }
+
+    std::vector<int> labels(static_cast<size_t>(N), -1);
+    std::vector<float> dist(static_cast<size_t>(N), 1e30f);
+    const int search = std::max(1, static_cast<int>(2.f * S));
+    constexpr int k_max_iter = 10;
+
+    for (int iter = 0; iter < k_max_iter; ++iter) {
+        std::fill(dist.begin(), dist.end(), 1e30f);
+
+        for (int k = 0; k < K; ++k) {
+            const auto& ctr = centers[static_cast<size_t>(k)];
+            const int cx = static_cast<int>(ctr.x);
+            const int cy = static_cast<int>(ctr.y);
+            const int r0 = std::max(0, cy - search);
+            const int r1 = std::min(R - 1, cy + search);
+            const int c0 = std::max(0, cx - search);
+            const int c1 = std::min(C - 1, cx + search);
+
+            for (int r = r0; r <= r1; ++r)
+                for (int c = c0; c <= c1; ++c) {
+                    const size_t pi = static_cast<size_t>(r * C + c);
+                    const auto& px = lab[pi];
+                    const float dL = px.L - ctr.L;
+                    const float da = px.a - ctr.a;
+                    const float db = px.b - ctr.b;
+                    const float dc = dL * dL + da * da + db * db;
+                    const float dr = static_cast<float>(r) - ctr.y;
+                    const float dc_col = static_cast<float>(c) - ctr.x;
+                    const float ds = inv_s * inv_s * (dr * dr + dc_col * dc_col);
+                    const float D = dc + ds;
+                    if (D < dist[pi]) {
+                        dist[pi] = D;
+                        labels[pi] = k;
+                    }
+                }
+        }
+
+        std::vector<double> sumL(static_cast<size_t>(K), 0.0);
+        std::vector<double> suma(static_cast<size_t>(K), 0.0);
+        std::vector<double> sumb(static_cast<size_t>(K), 0.0);
+        std::vector<double> sumx(static_cast<size_t>(K), 0.0);
+        std::vector<double> sumy(static_cast<size_t>(K), 0.0);
+        std::vector<int> count(static_cast<size_t>(K), 0);
+
+        for (int r = 0; r < R; ++r)
+            for (int c = 0; c < C; ++c) {
+                const int k = labels[static_cast<size_t>(r * C + c)];
+                if (k < 0) continue;
+                const size_t ki = static_cast<size_t>(k);
+                const auto& px = lab[static_cast<size_t>(r * C + c)];
+                sumL[ki] += px.L;
+                suma[ki] += px.a;
+                sumb[ki] += px.b;
+                sumx[ki] += c;
+                sumy[ki] += r;
+                ++count[ki];
+            }
+
+        float max_move = 0.f;
+        for (int k = 0; k < K; ++k) {
+            if (count[static_cast<size_t>(k)] == 0) continue;
+            const float inv = 1.f / static_cast<float>(count[static_cast<size_t>(k)]);
+            auto& ctr = centers[static_cast<size_t>(k)];
+            const float nL = static_cast<float>(sumL[static_cast<size_t>(k)] * inv);
+            const float na = static_cast<float>(suma[static_cast<size_t>(k)] * inv);
+            const float nb = static_cast<float>(sumb[static_cast<size_t>(k)] * inv);
+            const float nx = static_cast<float>(sumx[static_cast<size_t>(k)] * inv);
+            const float ny = static_cast<float>(sumy[static_cast<size_t>(k)] * inv);
+            max_move = std::max(max_move, std::hypot(nx - ctr.x, ny - ctr.y));
+            max_move = std::max(max_move, std::abs(nL - ctr.L));
+            ctr = {nL, na, nb, nx, ny};
+        }
+        if (max_move < 0.01f) break;
+    }
+
+    Image out(R, C, 1);
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            const int k = labels[static_cast<size_t>(r * C + c)];
+            out.at(r, c, 0) = k >= 0 ? static_cast<float>(k + 1) : 0.f;
+        }
+    return out;
+}
+
 // ========================== Histogram ==========================
 
 std::vector<int> imhist(const Image& img, int nbins) {

@@ -2,6 +2,7 @@
 #include "ms/image/image.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
+#include <set>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -1047,4 +1048,121 @@ TEST(ImageWatershed, DistinctLabelsDoNotMerge) {
     EXPECT_FLOAT_EQ(out.at(9, 2, 0), 1.f);
     EXPECT_FLOAT_EQ(out.at(9, 15, 0), 2.f);
     EXPECT_NE(out.at(9, 2, 0), out.at(9, 15, 0));
+}
+
+// ---- SLIC ----
+
+static int count_distinct_labels(const Image& labels) {
+    std::set<int> uniq;
+    for (int r = 0; r < labels.rows; ++r)
+        for (int c = 0; c < labels.cols; ++c) {
+            const int l = static_cast<int>(std::lround(labels.at(r, c, 0)));
+            if (l > 0) uniq.insert(l);
+        }
+    return static_cast<int>(uniq.size());
+}
+
+static Image make_checkerboard_rgb(int rows, int cols, int cell) {
+    Image img(rows, cols, 3, 0.f);
+    for (int r = 0; r < rows; ++r)
+        for (int c = 0; c < cols; ++c) {
+            const bool white = ((r / cell) + (c / cell)) % 2 == 0;
+            const float v = white ? 1.f : 0.f;
+            img.at(r, c, 0) = v;
+            img.at(r, c, 1) = v;
+            img.at(r, c, 2) = v;
+        }
+    return img;
+}
+
+TEST(ImageSlic, EmptyInputReturnsEmpty) {
+    auto out = slic(Image{}, 4);
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(ImageSlic, NonPositiveSuperpixelsReturnsEmpty) {
+    Image rgb(8, 8, 3, 0.5f);
+    EXPECT_TRUE(slic(rgb, 0).empty());
+    EXPECT_TRUE(slic(rgb, -1).empty());
+}
+
+TEST(ImageSlic, OutputShapeMatchesInput) {
+    Image rgb(12, 16, 3, 0.4f);
+    auto out = slic(rgb, 8);
+    EXPECT_EQ(out.rows, 12);
+    EXPECT_EQ(out.cols, 16);
+    EXPECT_EQ(out.channels, 1);
+}
+
+TEST(ImageSlic, UniformImageOneSuperpixel) {
+    Image rgb(20, 20, 3, 0.6f);
+    auto out = slic(rgb, 1);
+    EXPECT_EQ(count_distinct_labels(out), 1);
+    for (int r = 0; r < 20; ++r)
+        for (int c = 0; c < 20; ++c)
+            EXPECT_FLOAT_EQ(out.at(r, c, 0), out.at(0, 0, 0));
+}
+
+TEST(ImageSlic, CheckerboardMultipleLabels) {
+    auto rgb = make_checkerboard_rgb(32, 32, 4);
+    auto out = slic(rgb, 16, 10.0);
+    EXPECT_GE(count_distinct_labels(out), 2);
+}
+
+TEST(ImageSlic, EveryPixelHasPositiveLabel) {
+    Image rgb(10, 10, 3, 0.3f);
+    rgb.at(5, 5, 0) = 0.9f;
+    rgb.at(5, 5, 1) = 0.1f;
+    rgb.at(5, 5, 2) = 0.2f;
+    auto out = slic(rgb, 4);
+    for (int r = 0; r < 10; ++r)
+        for (int c = 0; c < 10; ++c)
+            EXPECT_GT(out.at(r, c, 0), 0.f);
+}
+
+TEST(ImageSlic, GrayscaleInputWorks) {
+    Image gray(14, 14, 1, 0.2f);
+    for (int r = 0; r < 14; ++r)
+        for (int c = 0; c < 14; ++c)
+            if (((r / 7) + (c / 7)) % 2 == 0) gray.at(r, c, 0) = 0.9f;
+    auto out = slic(gray, 8);
+    EXPECT_EQ(out.channels, 1);
+    EXPECT_GE(count_distinct_labels(out), 2);
+}
+
+TEST(ImageSlic, TwoColorBlocksSeparate) {
+    Image rgb(24, 24, 3, 0.f);
+    for (int r = 0; r < 24; ++r)
+        for (int c = 0; c < 12; ++c) {
+            rgb.at(r, c, 0) = 0.9f;
+            rgb.at(r, c, 1) = 0.1f;
+            rgb.at(r, c, 2) = 0.1f;
+        }
+    for (int r = 0; r < 24; ++r)
+        for (int c = 12; c < 24; ++c) {
+            rgb.at(r, c, 0) = 0.1f;
+            rgb.at(r, c, 1) = 0.8f;
+            rgb.at(r, c, 2) = 0.2f;
+        }
+    auto out = slic(rgb, 6, 5.0);
+    const float left = out.at(12, 4, 0);
+    const float right = out.at(12, 20, 0);
+    EXPECT_NE(left, right);
+}
+
+TEST(ImageSlic, CompactnessAffectsSegmentation) {
+    auto rgb = make_checkerboard_rgb(24, 24, 6);
+    auto tight = slic(rgb, 12, 1.0);
+    auto loose = slic(rgb, 12, 40.0);
+    EXPECT_GE(count_distinct_labels(tight), 1);
+    EXPECT_GE(count_distinct_labels(loose), 1);
+}
+
+TEST(ImageSlic, SuperpixelCountBoundedByPixels) {
+    Image rgb(4, 4, 3, 0.5f);
+    auto out = slic(rgb, 100);
+    EXPECT_LE(count_distinct_labels(out), 16);
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 4; ++c)
+            EXPECT_GT(out.at(r, c, 0), 0.f);
 }
