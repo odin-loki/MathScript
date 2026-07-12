@@ -260,6 +260,153 @@ TEST(GraphShortestPath, FloydWarshall) {
     EXPECT_NEAR(d[0][2], 2.0, 1e-10);
 }
 
+// ---- Transitive closure ----
+
+void expect_reachability_matrix(const std::vector<std::vector<bool>>& reach,
+                                const std::vector<std::vector<bool>>& expected) {
+    ASSERT_EQ(reach.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        ASSERT_EQ(reach[i].size(), expected[i].size());
+        for (size_t j = 0; j < expected[i].size(); ++j)
+            EXPECT_EQ(reach[i][j], expected[i][j])
+                << "reach[" << i << "][" << j << "]";
+    }
+}
+
+TEST(GraphTransitiveClosure, DirectedChainFullMatrix) {
+    // 0 -> 1 -> 2 -> 3
+    Graph G(4, true);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 3);
+    const std::vector<std::vector<bool>> expected = {
+        {true,  true,  true,  true},
+        {false, true,  true,  true},
+        {false, false, true,  true},
+        {false, false, false, true},
+    };
+    expect_reachability_matrix(transitive_closure(G), expected);
+}
+
+TEST(GraphTransitiveClosure, DirectedCycleMutualReachability) {
+    // 0 -> 1 -> 2 -> 0
+    Graph G(3, true);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 0);
+    const std::vector<std::vector<bool>> expected = {
+        {true, true, true},
+        {true, true, true},
+        {true, true, true},
+    };
+    expect_reachability_matrix(transitive_closure(G), expected);
+}
+
+TEST(GraphTransitiveClosure, DisconnectedDirectedComponents) {
+    // Component A: 0 -> 1. Component B: 2 -> 3.
+    Graph G(4, true);
+    G.add_edge(0, 1);
+    G.add_edge(2, 3);
+    auto reach = transitive_closure(G);
+    EXPECT_TRUE(reach[0][1]);
+    EXPECT_FALSE(reach[0][2]);
+    EXPECT_FALSE(reach[0][3]);
+    EXPECT_FALSE(reach[1][2]);
+    EXPECT_FALSE(reach[1][3]);
+    EXPECT_TRUE(reach[2][3]);
+    EXPECT_FALSE(reach[2][0]);
+    EXPECT_FALSE(reach[2][1]);
+    EXPECT_FALSE(reach[3][0]);
+    EXPECT_FALSE(reach[3][1]);
+    EXPECT_FALSE(reach[3][2]);
+}
+
+TEST(GraphTransitiveClosure, DiagonalSelfReachability) {
+    Graph G(5, true);
+    G.add_edge(0, 1);
+    G.add_edge(2, 3);
+    G.add_edge(3, 4);
+    G.add_edge(4, 2);  // cycle among 2,3,4
+    auto reach = transitive_closure(G);
+    for (int i = 0; i < G.n_vertices(); ++i)
+        EXPECT_TRUE(reach[i][i]) << "diagonal at " << i;
+}
+
+TEST(GraphTransitiveClosure, HubAndLeavesOutgoingRows) {
+    // Hub 0 -> leaves 1,2,3; leaf 4 has no outgoing edges.
+    Graph G(5, true);
+    G.add_edge(0, 1);
+    G.add_edge(0, 2);
+    G.add_edge(0, 3);
+    G.add_edge(0, 4);
+    auto reach = transitive_closure(G);
+    for (int j = 0; j < 5; ++j) {
+        if (j == 0) EXPECT_TRUE(reach[0][j]);
+        else EXPECT_TRUE(reach[0][j]);
+    }
+    for (int leaf : {1, 2, 3, 4}) {
+        for (int j = 0; j < 5; ++j) {
+            if (j == leaf) EXPECT_TRUE(reach[leaf][j]);
+            else EXPECT_FALSE(reach[leaf][j]) << "leaf " << leaf << " -> " << j;
+        }
+    }
+}
+
+TEST(GraphTransitiveClosure, ConsistentWithBfs) {
+    Graph G(6, true);
+    G.add_edge(0, 1);
+    G.add_edge(0, 2);
+    G.add_edge(1, 3);
+    G.add_edge(2, 3);
+    G.add_edge(3, 4);
+    G.add_edge(4, 5);
+    G.add_edge(5, 2);  // back-edge into the middle
+    auto reach = transitive_closure(G);
+    int n = G.n_vertices();
+    for (int i = 0; i < n; ++i) {
+        auto order = bfs(G, i);
+        std::set<int> reachable(order.begin(), order.end());
+        for (int j = 0; j < n; ++j) {
+            if (reach[i][j])
+                EXPECT_TRUE(reachable.count(j) > 0)
+                    << "closure says " << i << " reaches " << j << " but BFS disagrees";
+            else
+                EXPECT_EQ(reachable.count(j), 0u)
+                    << "closure says " << i << " does not reach " << j << " but BFS found it";
+        }
+    }
+}
+
+TEST(GraphTransitiveClosure, UndirectedConnectedComponent) {
+    Graph G(5, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(3, 4);
+    auto reach = transitive_closure(G);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            EXPECT_TRUE(reach[i][j]) << "component {0,1,2}: " << i << " -> " << j;
+    for (int i = 3; i < 5; ++i)
+        for (int j = 3; j < 5; ++j)
+            EXPECT_TRUE(reach[i][j]) << "component {3,4}: " << i << " -> " << j;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 3; j < 5; ++j) {
+            EXPECT_FALSE(reach[i][j]);
+            EXPECT_FALSE(reach[j][i]);
+        }
+}
+
+TEST(GraphTransitiveClosure, SelfLoopsDoNotChangeDiagonalConvention) {
+    Graph G(2, true);
+    G.add_edge(0, 0);
+    G.add_edge(0, 1);
+    auto reach = transitive_closure(G);
+    EXPECT_TRUE(reach[0][0]);
+    EXPECT_TRUE(reach[0][1]);
+    EXPECT_TRUE(reach[1][1]);
+    EXPECT_FALSE(reach[1][0]);
+}
+
 // ---- Connectivity ----
 TEST(GraphConnectivity, IsConnected) {
     Graph G(3, false);

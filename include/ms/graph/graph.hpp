@@ -50,6 +50,18 @@ Result<std::pair<std::vector<double>, std::vector<int>>>
 // Floyd-Warshall: returns n×n distance matrix
 std::vector<std::vector<double>> floyd_warshall(const Graph& G);
 
+// Transitive closure (Floyd-Warshall-style boolean reachability): returns an
+// n×n matrix where result[i][j] is true iff vertex j is reachable from vertex
+// i via a directed path of length >= 0. Self-reachability is included:
+// result[i][i] is always true (the zero-length path convention), even when G
+// has no self-loop at i; input self-loops are redundant with this diagonal.
+// Follows G's directed/undirected semantics (undirected edges appear in both
+// endpoints' adjacency lists, so closure matches component reachability).
+// @param G input graph
+// @return n×n boolean reachability matrix; empty for n == 0
+// @note O(V^3) time and O(V^2) space, same triple loop structure as floyd_warshall
+std::vector<std::vector<bool>> transitive_closure(const Graph& G);
+
 // A*: returns path from source to target using heuristic h
 Result<std::vector<int>> astar(const Graph& G, int source, int target,
                                 const std::vector<double>& heuristic);
