@@ -74,6 +74,64 @@ TEST(CompressRLE, AlternatingBytes) {
     EXPECT_EQ(dec, data);
 }
 
+TEST(CompressRunLength, EmptyRoundtrip) {
+    Bytes data;
+    EXPECT_EQ(run_length_decode(run_length_encode(data)), data);
+    EXPECT_TRUE(run_length_encode(data).empty());
+}
+
+TEST(CompressRunLength, SingleRun) {
+    Bytes data={0x7E,0x7E,0x7E};
+    auto enc=run_length_encode(data);
+    ASSERT_EQ(enc.size(), 2u);
+    EXPECT_EQ(enc[0], 3);
+    EXPECT_EQ(enc[1], 0x7E);
+    EXPECT_EQ(run_length_decode(enc), data);
+}
+
+TEST(CompressRunLength, SingleByteRun) {
+    Bytes data={0x01};
+    auto enc=run_length_encode(data);
+    ASSERT_EQ(enc.size(), 2u);
+    EXPECT_EQ(enc[0], 1);
+    EXPECT_EQ(enc[1], 0x01);
+    EXPECT_EQ(run_length_decode(enc), data);
+}
+
+TEST(CompressRunLength, MaxRunLength255) {
+    Bytes data(255, 0xAA);
+    auto enc=run_length_encode(data);
+    ASSERT_EQ(enc.size(), 2u);
+    EXPECT_EQ(enc[0], 255);
+    EXPECT_EQ(enc[1], 0xAA);
+    EXPECT_EQ(run_length_decode(enc), data);
+}
+
+TEST(CompressRunLength, SplitsRunsLongerThan255) {
+    Bytes data(260, 0xBB);
+    auto enc=run_length_encode(data);
+    ASSERT_EQ(enc.size(), 4u);
+    EXPECT_EQ(enc[0], 255);
+    EXPECT_EQ(enc[1], 0xBB);
+    EXPECT_EQ(enc[2], 5);
+    EXPECT_EQ(enc[3], 0xBB);
+    EXPECT_EQ(run_length_decode(enc), data);
+}
+
+TEST(CompressRunLength, AllDistinctBytes) {
+    Bytes data;
+    for (int i=0;i<16;++i) data.push_back(static_cast<uint8_t>(i));
+    auto enc=run_length_encode(data);
+    EXPECT_EQ(enc.size(), data.size()*2);
+    EXPECT_EQ(run_length_decode(enc), data);
+}
+
+TEST(CompressRunLength, RleAliasesMatchRunLength) {
+    Bytes data={'x','x','y','y','y','z'};
+    EXPECT_EQ(rle_encode(data), run_length_encode(data));
+    EXPECT_EQ(rle_decode(rle_encode(data)), run_length_decode(run_length_encode(data)));
+}
+
 // ---- Huffman ----
 
 TEST(CompressHuffman, SimpleRoundtrip) {

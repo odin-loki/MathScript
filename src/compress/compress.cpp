@@ -12,7 +12,7 @@ namespace compress {
 
 // ========================== RLE ==========================
 // Format: [count][byte] pairs (max run 255)
-Bytes rle_encode(const Bytes& data) {
+Bytes run_length_encode(const Bytes& data) {
     Bytes out; size_t i=0, n=data.size();
     while (i<n) {
         uint8_t v=data[i]; uint8_t cnt=1;
@@ -22,12 +22,14 @@ Bytes rle_encode(const Bytes& data) {
     }
     return out;
 }
-Bytes rle_decode(const Bytes& data) {
+Bytes run_length_decode(const Bytes& data) {
     Bytes out;
     for (size_t i=0;i+1<data.size();i+=2)
         for (uint8_t c=0;c<data[i];++c) out.push_back(data[i+1]);
     return out;
 }
+Bytes rle_encode(const Bytes& data) { return run_length_encode(data); }
+Bytes rle_decode(const Bytes& data) { return run_length_decode(data); }
 
 // ========================== Huffman ==========================
 struct HNode {

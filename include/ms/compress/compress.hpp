@@ -9,6 +9,8 @@ namespace compress {
 using Bytes = std::vector<uint8_t>;
 
 // ========================== RLE ==========================
+Bytes run_length_encode(const Bytes& data);
+Bytes run_length_decode(const Bytes& data);
 Bytes rle_encode(const Bytes& data);
 Bytes rle_decode(const Bytes& data);
 
