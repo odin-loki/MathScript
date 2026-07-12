@@ -73,6 +73,18 @@ double bernstein(int n, int i, double x);
 // Roots via companion matrix eigenvalues (real coefficients)
 std::vector<std::complex<double>> poly_roots(const std::vector<double>& coeffs);
 
+// Real polynomial factorization via poly_roots (companion matrix). Conjugate
+// complex root pairs are grouped into irreducible quadratic factors over R;
+// real roots become linear factors. Coefficients use the usual ascending-power
+// convention. Constant and linear inputs are handled directly without invoking
+// the root finder.
+struct PolyFactor {
+    std::vector<double> coeffs;
+    int multiplicity;
+};
+
+std::vector<PolyFactor> poly_factor(const std::vector<double>& p);
+
 // Polynomial fitting: find coefficients of degree n poly through (xs, ys)
 std::vector<double> poly_fit(const std::vector<double>& xs,
                               const std::vector<double>& ys, int degree);

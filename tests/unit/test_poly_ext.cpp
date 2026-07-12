@@ -742,3 +742,166 @@ TEST(PolyExtTest, rational_roots_near_integer_coefficients_within_tolerance) {
     ASSERT_TRUE(res.has_value());
     expect_roots_multiset(*res, {{{1, 1}, 1}, {{2, 1}, 1}, {{3, 1}, 1}});
 }
+
+// ---------------------------------------------------------------------------
+// poly_factor (real factorization via poly_roots)
+// ---------------------------------------------------------------------------
+
+static std::vector<double> reconstruct_from_poly_factors(
+    const std::vector<PolyFactor>& factors) {
+    std::vector<double> poly = {1.0};
+    for (const auto& f : factors) {
+        std::vector<double> term = f.coeffs;
+        for (int i = 1; i < f.multiplicity; ++i) {
+            term = poly_mul(term, f.coeffs);
+        }
+        poly = poly_mul(poly, term);
+    }
+    return poly;
+}
+
+static double linear_factor_root(const std::vector<double>& c) {
+    return -c[0] / c[1];
+}
+
+static void expect_linear_roots_near(const std::vector<PolyFactor>& factors,
+                                      const std::vector<double>& expected_roots,
+                                      double tol = 1e-4) {
+    std::vector<double> roots;
+    for (const auto& f : factors) {
+        ASSERT_EQ(f.coeffs.size(), 2u);
+        for (int i = 0; i < f.multiplicity; ++i) {
+            roots.push_back(linear_factor_root(f.coeffs));
+        }
+    }
+    ASSERT_EQ(roots.size(), expected_roots.size());
+    std::sort(roots.begin(), roots.end());
+    auto sorted_expected = expected_roots;
+    std::sort(sorted_expected.begin(), sorted_expected.end());
+    for (size_t i = 0; i < roots.size(); ++i) {
+        EXPECT_NEAR(roots[i], sorted_expected[i], tol) << "root index " << i;
+    }
+}
+
+TEST(PolyExtTest, poly_factor_three_distinct_real_roots) {
+    // (x-1)(x-2)(x-3) = x^3 - 6x^2 + 11x - 6
+    const std::vector<double> p{-6.0, 11.0, -6.0, 1.0};
+    const auto factors = poly_factor(p);
+    ASSERT_EQ(factors.size(), 3u);
+    for (const auto& f : factors) {
+        EXPECT_EQ(f.multiplicity, 1);
+    }
+    expect_linear_roots_near(factors, {1.0, 2.0, 3.0});
+    expect_poly_near(reconstruct_from_poly_factors(factors), p, 1e-5);
+}
+
+TEST(PolyExtTest, poly_factor_constant_polynomial) {
+    const auto factors = poly_factor({7.0});
+    ASSERT_EQ(factors.size(), 1u);
+    EXPECT_EQ(factors[0].multiplicity, 1);
+    ASSERT_EQ(factors[0].coeffs.size(), 1u);
+    EXPECT_NEAR(factors[0].coeffs[0], 7.0, 1e-12);
+}
+
+TEST(PolyExtTest, poly_factor_linear_polynomial) {
+    // 2 + 3x returned as a single irreducible linear factor
+    const auto factors = poly_factor({2.0, 3.0});
+    ASSERT_EQ(factors.size(), 1u);
+    EXPECT_EQ(factors[0].multiplicity, 1);
+    expect_poly_near(factors[0].coeffs, {2.0, 3.0}, 1e-12);
+    expect_poly_near(reconstruct_from_poly_factors(factors), {2.0, 3.0}, 1e-9);
+}
+
+TEST(PolyExtTest, poly_factor_zero_polynomial_returns_empty) {
+    EXPECT_TRUE(poly_factor({0.0}).empty());
+    EXPECT_TRUE(poly_factor({}).empty());
+}
+
+TEST(PolyExtTest, poly_factor_quadratic_complex_roots) {
+    // x^2 + 1 -> irreducible quadratic {1, 0, 1}
+    const std::vector<double> p{1.0, 0.0, 1.0};
+    const auto factors = poly_factor(p);
+    ASSERT_EQ(factors.size(), 1u);
+    EXPECT_EQ(factors[0].multiplicity, 1);
+    ASSERT_EQ(factors[0].coeffs.size(), 3u);
+    EXPECT_NEAR(factors[0].coeffs[0], 1.0, 1e-9);
+    EXPECT_NEAR(factors[0].coeffs[1], 0.0, 1e-9);
+    EXPECT_NEAR(factors[0].coeffs[2], 1.0, 1e-9);
+    expect_poly_near(reconstruct_from_poly_factors(factors), p, 1e-5);
+}
+
+TEST(PolyExtTest, poly_factor_repeated_real_root) {
+    // (x-2)^2 = x^2 - 4x + 4
+    const std::vector<double> p{4.0, -4.0, 1.0};
+    const auto factors = poly_factor(p);
+    ASSERT_EQ(factors.size(), 1u);
+    EXPECT_EQ(factors[0].multiplicity, 2);
+    expect_linear_roots_near(factors, {2.0, 2.0});
+    expect_poly_near(reconstruct_from_poly_factors(factors), p, 1e-4);
+}
+
+TEST(PolyExtTest, poly_factor_mixed_real_and_quadratic) {
+    // (x-1)(x^2+1) = x^3 - x^2 + x - 1
+    const std::vector<double> p{-1.0, 1.0, -1.0, 1.0};
+    const auto factors = poly_factor(p);
+    ASSERT_EQ(factors.size(), 2u);
+    int linear = 0;
+    int quadratic = 0;
+    for (const auto& f : factors) {
+        EXPECT_EQ(f.multiplicity, 1);
+        if (f.coeffs.size() == 2u) {
+            ++linear;
+            EXPECT_NEAR(linear_factor_root(f.coeffs), 1.0, 1e-4);
+        } else if (f.coeffs.size() == 3u) {
+            ++quadratic;
+            expect_poly_near(f.coeffs, {1.0, 0.0, 1.0}, 1e-4);
+        }
+    }
+    EXPECT_EQ(linear, 1);
+    EXPECT_EQ(quadratic, 1);
+    expect_poly_near(reconstruct_from_poly_factors(factors), p, 1e-5);
+}
+
+TEST(PolyExtTest, poly_factor_non_monic_leading_coefficient) {
+    // 2(x-1)(x-2) = 2x^2 - 6x + 4
+    const std::vector<double> p{4.0, -6.0, 2.0};
+    const auto factors = poly_factor(p);
+    ASSERT_EQ(factors.size(), 3u);
+    int constant = 0;
+    int linear = 0;
+    for (const auto& f : factors) {
+        EXPECT_EQ(f.multiplicity, 1);
+        if (f.coeffs.size() == 1u) {
+            ++constant;
+            EXPECT_NEAR(f.coeffs[0], 2.0, 1e-9);
+        } else {
+            ++linear;
+        }
+    }
+    EXPECT_EQ(constant, 1);
+    EXPECT_EQ(linear, 2);
+    expect_linear_roots_near(
+        std::vector<PolyFactor>(factors.begin() + 1, factors.end()), {1.0, 2.0});
+    expect_poly_near(reconstruct_from_poly_factors(factors), p, 1e-5);
+}
+
+TEST(PolyExtTest, poly_factor_repeated_and_simple_real_roots) {
+    // (x-2)^2 (x+1) = x^3 - 3x^2 + 0x + 4
+    const std::vector<double> p{4.0, 0.0, -3.0, 1.0};
+    const auto factors = poly_factor(p);
+    ASSERT_EQ(factors.size(), 2u);
+    int mult_two = 0;
+    int mult_one = 0;
+    for (const auto& f : factors) {
+        if (f.multiplicity == 2) {
+            ++mult_two;
+            EXPECT_NEAR(linear_factor_root(f.coeffs), 2.0, 1e-4);
+        } else if (f.multiplicity == 1) {
+            ++mult_one;
+            EXPECT_NEAR(linear_factor_root(f.coeffs), -1.0, 1e-4);
+        }
+    }
+    EXPECT_EQ(mult_two, 1);
+    EXPECT_EQ(mult_one, 1);
+    expect_poly_near(reconstruct_from_poly_factors(factors), p, 1e-4);
+}
