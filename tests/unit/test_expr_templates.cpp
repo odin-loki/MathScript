@@ -78,3 +78,92 @@ TEST(ExprTemplates, zero_scale_gives_zeros) {
         for (size_t j = 0; j < 2; ++j)
             EXPECT_DOUBLE_EQ(result(i, j), 0.0);
 }
+
+TEST(ExprTemplates, MatMul_evaluates_correctly) {
+    DMatrix A{{1.0, 2.0}, {3.0, 4.0}};
+    DMatrix B{{5.0, 6.0}, {7.0, 8.0}};
+    const MatLeaf la(A), lb(B);
+    const auto product = la * lb;
+
+    const DMatrix result = static_cast<DMatrix>(product);
+    EXPECT_DOUBLE_EQ(result(0, 0), 19.0);
+    EXPECT_DOUBLE_EQ(result(0, 1), 22.0);
+    EXPECT_DOUBLE_EQ(result(1, 0), 43.0);
+    EXPECT_DOUBLE_EQ(result(1, 1), 50.0);
+}
+
+TEST(ExprTemplates, MatMul_rectangular_shape) {
+    DMatrix A{{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}};  // 2x3
+    DMatrix B{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}};  // 3x2
+    const MatLeaf la(A), lb(B);
+    const auto product = la * lb;
+
+    EXPECT_EQ(product.rows(), 2u);
+    EXPECT_EQ(product.cols(), 2u);
+
+    const DMatrix result = static_cast<DMatrix>(product);
+    EXPECT_DOUBLE_EQ(result(0, 0), 22.0);
+    EXPECT_DOUBLE_EQ(result(0, 1), 28.0);
+    EXPECT_DOUBLE_EQ(result(1, 0), 49.0);
+    EXPECT_DOUBLE_EQ(result(1, 1), 64.0);
+}
+
+TEST(ExprTemplates, MatMul_add_then_mul_matches_dense) {
+    DMatrix A{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix B{{1.0, 1.0}, {1.0, 1.0}};
+    DMatrix C{{2.0, 0.0}, {0.0, 2.0}};
+    const MatLeaf la(A), lb(B), lc(C);
+
+    const auto add_expr = la + lb;
+    const auto lazy = add_expr * lc;
+    const DMatrix lazy_result = static_cast<DMatrix>(lazy);
+    const DMatrix dense_result = (A + B) * C;
+
+    for (size_t r = 0; r < 2; ++r)
+        for (size_t c = 0; c < 2; ++c)
+            EXPECT_DOUBLE_EQ(lazy_result(r, c), dense_result(r, c));
+}
+
+TEST(ExprTemplates, MatMul_dimension_mismatch_throws) {
+    DMatrix A{{1.0, 2.0}, {3.0, 4.0}};                              // 2x2
+    DMatrix B{{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}, {7.0, 8.0, 9.0}};  // 3x3
+    const MatLeaf la(A), lb(B);
+
+    EXPECT_THROW(static_cast<void>(la * lb), DimensionMismatch);
+}
+
+TEST(ExprTemplates, MatMul_identity_preserves_operand) {
+    DMatrix I{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix A{{2.0, 3.0}, {4.0, 5.0}};
+    const MatLeaf li(I), la(A);
+
+    const DMatrix result = static_cast<DMatrix>(li * la);
+    for (size_t r = 0; r < 2; ++r)
+        for (size_t c = 0; c < 2; ++c)
+            EXPECT_DOUBLE_EQ(result(r, c), A(r, c));
+}
+
+TEST(ExprTemplates, MatScale_still_works_after_matmul_operator) {
+    DMatrix A{{1.0, 2.0}, {3.0, 4.0}};
+    const MatLeaf la(A);
+    const auto scaled = la * 2.5;
+
+    const DMatrix result = static_cast<DMatrix>(scaled);
+    EXPECT_DOUBLE_EQ(result(0, 0), 2.5);
+    EXPECT_DOUBLE_EQ(result(1, 1), 10.0);
+}
+
+TEST(ExprTemplates, MatMul_chained_with_scale) {
+    DMatrix A{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix B{{2.0, 0.0}, {0.0, 2.0}};
+    const MatLeaf la(A), lb(B);
+
+    const auto mul_expr = la * lb;
+    const auto scaled = mul_expr * 3.0;
+    const DMatrix result = static_cast<DMatrix>(scaled);
+
+    EXPECT_DOUBLE_EQ(result(0, 0), 6.0);
+    EXPECT_DOUBLE_EQ(result(1, 1), 6.0);
+    EXPECT_DOUBLE_EQ(result(0, 1), 0.0);
+    EXPECT_DOUBLE_EQ(result(1, 0), 0.0);
+}
