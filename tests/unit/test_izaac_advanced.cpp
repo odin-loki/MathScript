@@ -574,6 +574,150 @@ TEST(IzaacAdvanced, DiffPriv_GaussianMeanNearTrueValue) {
 }
 
 // ---------------------------------------------------------------------------
+// diffpriv - exponential_mechanism
+// ---------------------------------------------------------------------------
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialPeakedScoresFavorsBest) {
+    ms::izaac::seed_session(0xE7D00001u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    const std::vector<double> scores = {0.0, 1.0, 150.0, 2.0, 0.5};
+    constexpr size_t best_index = 2;
+    constexpr int trials = 2000;
+
+    int best_count = 0;
+    for (int i = 0; i < trials; ++i) {
+        const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+            std::span<const double>(scores), /*epsilon=*/1.0, /*sensitivity=*/1.0, rng);
+        if (chosen == best_index) {
+            ++best_count;
+        }
+    }
+    ms::izaac::clear_session();
+
+    EXPECT_GT(static_cast<double>(best_count) / static_cast<double>(trials), 0.9);
+}
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialEqualScoresRoughlyUniform) {
+    ms::izaac::seed_session(0xE7D00002u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    const std::vector<double> scores = {5.0, 5.0, 5.0, 5.0};
+    constexpr int trials = 4000;
+
+    std::vector<int> counts(scores.size(), 0);
+    for (int i = 0; i < trials; ++i) {
+        const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+            std::span<const double>(scores), /*epsilon=*/1.0, /*sensitivity=*/1.0, rng);
+        ASSERT_LT(chosen, scores.size());
+        ++counts[chosen];
+    }
+    ms::izaac::clear_session();
+
+    // Generous tolerance to avoid flakiness: expect roughly 25% each, well above a floor of 10%.
+    for (int count : counts) {
+        EXPECT_GT(static_cast<double>(count) / static_cast<double>(trials), 0.10);
+    }
+}
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialAlwaysReturnsValidIndex) {
+    ms::izaac::seed_session(0xE7D00003u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    const std::vector<double> scores = {-3.0, 4.5, 0.0, 10.0, -1.0, 7.0, 2.0};
+
+    for (int i = 0; i < 3000; ++i) {
+        const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+            std::span<const double>(scores), /*epsilon=*/0.7, /*sensitivity=*/1.5, rng);
+        EXPECT_LT(chosen, scores.size());
+    }
+    ms::izaac::clear_session();
+}
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialSmallEpsilonCloserToUniform) {
+    ms::izaac::seed_session(0xE7D00004u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    const std::vector<double> scores = {0.0, 100.0, 0.0};
+    constexpr size_t best_index = 1;
+    constexpr int trials = 4000;
+
+    int best_count = 0;
+    int other_count = 0;
+    for (int i = 0; i < trials; ++i) {
+        const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+            std::span<const double>(scores), /*epsilon=*/1e-6, /*sensitivity=*/1.0, rng);
+        if (chosen == best_index) {
+            ++best_count;
+        } else {
+            ++other_count;
+        }
+    }
+    ms::izaac::clear_session();
+
+    // With a near-zero privacy budget, noise dominates: even non-best candidates should be
+    // selected a non-negligible fraction of the time.
+    EXPECT_GT(static_cast<double>(other_count) / static_cast<double>(trials), 0.3);
+}
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialLargeEpsilonNearDeterministic) {
+    ms::izaac::seed_session(0xE7D00005u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    const std::vector<double> scores = {1.0, 2.0, 10.0, 3.0};
+    constexpr size_t best_index = 2;
+    constexpr int trials = 1000;
+
+    int best_count = 0;
+    for (int i = 0; i < trials; ++i) {
+        const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+            std::span<const double>(scores), /*epsilon=*/50.0, /*sensitivity=*/1.0, rng);
+        if (chosen == best_index) {
+            ++best_count;
+        }
+    }
+    ms::izaac::clear_session();
+
+    EXPECT_GT(static_cast<double>(best_count) / static_cast<double>(trials), 0.99);
+}
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialSingleCandidateAlwaysSelected) {
+    ms::izaac::seed_session(0xE7D00006u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    const std::vector<double> scores = {42.0};
+
+    for (int i = 0; i < 50; ++i) {
+        const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+            std::span<const double>(scores), /*epsilon=*/1.0, /*sensitivity=*/1.0, rng);
+        EXPECT_EQ(chosen, 0u);
+    }
+    ms::izaac::clear_session();
+}
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialLargeMagnitudeScoresNumericallyStable) {
+    ms::izaac::seed_session(0xE7D00007u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    // Scores in the thousands with a moderate epsilon: naive unstabilized exp() would overflow
+    // (epsilon * score / (2*sensitivity) reaches into the hundreds), but the log-sum-exp
+    // stabilized softmax inside exponential_mechanism() must still produce a sane result.
+    const std::vector<double> scores = {1000.0, 5000.0, 3000.0, 4999.0};
+
+    for (int i = 0; i < 500; ++i) {
+        const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+            std::span<const double>(scores), /*epsilon=*/1.0, /*sensitivity=*/1.0, rng);
+        ASSERT_LT(chosen, scores.size());
+    }
+    ms::izaac::clear_session();
+}
+
+TEST(IzaacAdvanced, DiffPriv_ExponentialEmptyScoresReturnsSentinel) {
+    ms::izaac::seed_session(0xE7D00008u);
+    ms::izaac::CSPRNG& rng = *ms::izaac::g_session_rng;
+    const std::vector<double> empty_scores;
+
+    const size_t chosen = ms::izaac::diffpriv::exponential_mechanism(
+        std::span<const double>(empty_scores), /*epsilon=*/1.0, /*sensitivity=*/1.0, rng);
+    ms::izaac::clear_session();
+
+    EXPECT_EQ(chosen, SIZE_MAX);
+}
+
+// ---------------------------------------------------------------------------
 // backtest
 // ---------------------------------------------------------------------------
 

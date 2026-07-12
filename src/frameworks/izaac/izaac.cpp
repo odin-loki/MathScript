@@ -483,6 +483,49 @@ double gaussian_mechanism(
     return true_value + rng.next_normal() * sigma;
 }
 
+size_t exponential_mechanism(
+    std::span<const double> scores,
+    double epsilon,
+    double sensitivity,
+    CSPRNG& rng) {
+    if (scores.empty()) {
+        return SIZE_MAX;
+    }
+    if (scores.size() == 1) {
+        return 0;
+    }
+
+    // exponents[i] = epsilon * scores[i] / (2 * sensitivity); log-sum-exp stabilized below.
+    std::vector<double> exponents(scores.size());
+    for (size_t i = 0; i < scores.size(); ++i) {
+        exponents[i] = epsilon * scores[i] / (2.0 * sensitivity);
+    }
+    double max_exponent = exponents[0];
+    for (size_t i = 1; i < exponents.size(); ++i) {
+        max_exponent = std::max(max_exponent, exponents[i]);
+    }
+
+    std::vector<double> weights(scores.size());
+    double weight_sum = 0.0;
+    for (size_t i = 0; i < exponents.size(); ++i) {
+        weights[i] = std::exp(exponents[i] - max_exponent);
+        weight_sum += weights[i];
+    }
+    for (double& w : weights) {
+        w /= weight_sum;
+    }
+
+    const double u = rng.next_f64();
+    double cumulative = 0.0;
+    for (size_t i = 0; i < weights.size(); ++i) {
+        cumulative += weights[i];
+        if (u < cumulative) {
+            return i;
+        }
+    }
+    return weights.size() - 1;
+}
+
 } // namespace diffpriv
 
 namespace backtest {
