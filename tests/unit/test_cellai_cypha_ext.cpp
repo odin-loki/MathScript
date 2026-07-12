@@ -597,3 +597,148 @@ TEST(CellAiCyphaExtTest, Consolidate_AfterResetStillSucceeds) {
     memory.reset();
     EXPECT_TRUE(memory.consolidate().has_value());
 }
+
+// ---------------------------------------------------------------------------
+// nig_mean / nig_variance – closed-form moments of the NIG(alpha,beta,delta,mu)
+// distribution: mean = mu + delta*beta/sqrt(alpha^2-beta^2),
+//               variance = delta*alpha^2 / (alpha^2-beta^2)^1.5
+// ---------------------------------------------------------------------------
+
+TEST(CellAiCyphaExtTest, NigMeanVariance_HandComputedKnownCase) {
+    // alpha=5, beta=3, delta=2, mu=1 => gamma = sqrt(25-9) = 4
+    // mean     = 1 + 2*3/4        = 2.5
+    // variance = 2*25 / 4^3       = 50/64 = 0.78125
+    ms::cypha::NIGParams p;
+    p.mu = 1.0;
+    p.alpha = 5.0;
+    p.beta = 3.0;
+    p.delta = 2.0;
+
+    EXPECT_NEAR(ms::cypha::nig_mean(p), 2.5, 1e-9);
+    EXPECT_NEAR(ms::cypha::nig_variance(p), 0.78125, 1e-9);
+}
+
+TEST(CellAiCyphaExtTest, NigMean_SymmetricCaseReducesToMu) {
+    // beta = 0 removes the asymmetry term entirely, so mean must equal mu exactly
+    // regardless of alpha/delta.
+    ms::cypha::NIGParams p;
+    p.mu = 4.0;
+    p.alpha = 2.0;
+    p.beta = 0.0;
+    p.delta = 3.0;
+
+    EXPECT_NEAR(ms::cypha::nig_mean(p), p.mu, 1e-12);
+    // variance reduces to delta/alpha when beta == 0.
+    EXPECT_NEAR(ms::cypha::nig_variance(p), p.delta / p.alpha, 1e-9);
+}
+
+TEST(CellAiCyphaExtTest, NigMeanVariance_MonteCarloCrossCheckAgainstSample) {
+    // nig_sample implements a simplified variance-mixture heuristic (see its
+    // docstring) rather than the textbook Bessel-function NIG density, so its
+    // empirical moments only provably coincide with the closed-form NIG
+    // formulas in the delta=1, beta=0 regime (both reduce to mu / (1/alpha)
+    // in that case). We pick that regime here so the cross-check is a
+    // genuine agreement rather than a coincidence of loose tolerances.
+    ms::cypha::NIGParams p;
+    p.mu = 2.0;
+    p.alpha = 3.0;
+    p.beta = 0.0;
+    p.delta = 1.0;
+
+    const double analytic_mean = ms::cypha::nig_mean(p);
+    const double analytic_var = ms::cypha::nig_variance(p);
+    ASSERT_TRUE(std::isfinite(analytic_mean));
+    ASSERT_TRUE(std::isfinite(analytic_var));
+
+    std::array<uint8_t, 32> seed{};
+    seed[0] = 0x55;
+    ms::izaac::CSPRNG rng(seed);
+    constexpr size_t n = 80000;
+    const auto samples = ms::cypha::nig_sample(p, n, rng);
+
+    double sum = 0.0;
+    for (size_t i = 0; i < samples.rows(); ++i) {
+        sum += samples(i, 0);
+    }
+    const double empirical_mean = sum / static_cast<double>(n);
+
+    double sq_sum = 0.0;
+    for (size_t i = 0; i < samples.rows(); ++i) {
+        const double d = samples(i, 0) - empirical_mean;
+        sq_sum += d * d;
+    }
+    const double empirical_var = sq_sum / static_cast<double>(n);
+
+    // Generous absolute tolerances: the mixture's sqrt(Exp(1)) scaling gives
+    // it heavier tails than a Gaussian, so the variance estimator itself has
+    // non-trivial sampling noise even at n=80000.
+    EXPECT_NEAR(empirical_mean, analytic_mean, 0.1);
+    EXPECT_NEAR(empirical_var, analytic_var, 0.15);
+}
+
+TEST(CellAiCyphaExtTest, NigVariance_AlwaysPositiveForValidParams) {
+    const std::vector<ms::cypha::NIGParams> cases = {
+        {0.0, 1.0, 0.0, 1.0},
+        {5.0, 2.0, 1.5, 0.5},
+        {-3.0, 4.0, -3.9, 2.0},
+        {10.0, 10.0, 0.0, 0.01},
+        {0.0, 0.5, 0.49, 100.0},
+    };
+    for (const auto& p : cases) {
+        const double var = ms::cypha::nig_variance(p);
+        EXPECT_TRUE(std::isfinite(var)) << "alpha=" << p.alpha << " beta=" << p.beta;
+        EXPECT_GT(var, 0.0) << "alpha=" << p.alpha << " beta=" << p.beta;
+    }
+}
+
+TEST(CellAiCyphaExtTest, NigMeanVariance_InvalidBetaTooLargeReturnsNaN) {
+    ms::cypha::NIGParams p;
+    p.mu = 0.0;
+    p.alpha = 2.0;
+    p.delta = 1.0;
+
+    p.beta = 2.0; // |beta| == alpha, boundary case, undefined.
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_mean(p)));
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_variance(p)));
+
+    p.beta = 5.0; // |beta| > alpha, invalid.
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_mean(p)));
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_variance(p)));
+
+    p.beta = -5.0; // negative side too.
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_mean(p)));
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_variance(p)));
+}
+
+TEST(CellAiCyphaExtTest, NigMeanVariance_InvalidDeltaReturnsNaN) {
+    ms::cypha::NIGParams p;
+    p.mu = 1.0;
+    p.alpha = 3.0;
+    p.beta = 1.0;
+
+    p.delta = 0.0;
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_mean(p)));
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_variance(p)));
+
+    p.delta = -2.0;
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_mean(p)));
+    EXPECT_TRUE(std::isnan(ms::cypha::nig_variance(p)));
+}
+
+TEST(CellAiCyphaExtTest, NigVariance_ShrinksAsDeltaShrinks) {
+    ms::cypha::NIGParams p;
+    p.mu = 0.0;
+    p.alpha = 4.0;
+    p.beta = 1.5;
+
+    p.delta = 2.0;
+    const double var_large = ms::cypha::nig_variance(p);
+    p.delta = 1.0;
+    const double var_mid = ms::cypha::nig_variance(p);
+    p.delta = 0.25;
+    const double var_small = ms::cypha::nig_variance(p);
+
+    EXPECT_GT(var_large, var_mid);
+    EXPECT_GT(var_mid, var_small);
+    EXPECT_GT(var_small, 0.0);
+}

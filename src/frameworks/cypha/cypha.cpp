@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace ms::cypha {
 
@@ -217,6 +218,33 @@ double nig_cdf(double x, const NIGParams& params) {
     }
     const double partial = nig_cdf_integrate(left, x, params);
     return std::clamp(partial / total, 0.0, 1.0);
+}
+
+namespace {
+
+// Both closed-form moments require alpha^2 - beta^2 > 0 (a proper NIG tail-heaviness
+// vs. asymmetry balance) and delta > 0 (a proper scale). Outside this domain the
+// distribution is undefined, so callers get NaN rather than an inf/garbage value.
+bool nig_moments_domain_valid(const NIGParams& params) {
+    return params.delta > 0.0 && std::abs(params.beta) < params.alpha;
+}
+
+} // namespace
+
+double nig_mean(const NIGParams& params) {
+    if (!nig_moments_domain_valid(params)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double gamma = std::sqrt(params.alpha * params.alpha - params.beta * params.beta);
+    return params.mu + params.delta * params.beta / gamma;
+}
+
+double nig_variance(const NIGParams& params) {
+    if (!nig_moments_domain_valid(params)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double gamma = std::sqrt(params.alpha * params.alpha - params.beta * params.beta);
+    return params.delta * params.alpha * params.alpha / (gamma * gamma * gamma);
 }
 
 Matrix<double> nig_sample(const NIGParams& params, size_t n, izaac::CSPRNG& rng) {
