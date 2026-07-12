@@ -580,3 +580,263 @@ TEST(GeoMinBoundingRect, CornersFormARectangle) {
     double diag13 = dist(k[1], k[3]);
     EXPECT_NEAR(diag02, diag13, 1e-9);   // diagonals equal length (rectangle property)
 }
+
+// ---- Minkowski Sum ----
+
+namespace {
+
+// Verifies `poly` is convex and CCW-wound: every consecutive edge triple must turn left
+// (non-negative cross product), which for a CCW polygon also implies non-negative signed area.
+void expect_convex_ccw(const Polygon2D& poly, double eps = 1e-9) {
+    int n = static_cast<int>(poly.size());
+    if (n < 3) return;  // degenerate (point/segment) is trivially "convex"
+    for (int i = 0; i < n; ++i) {
+        Vec2D e1 = vec2(poly[i], poly[(i + 1) % n]);
+        Vec2D e2 = vec2(poly[(i + 1) % n], poly[(i + 2) % n]);
+        EXPECT_GE(cross2d(e1, e2), -eps) << "reflex/CW turn at vertex " << i;
+    }
+    EXPECT_GE(signed_area(poly), -eps) << "polygon is not CCW-wound";
+}
+
+// Compares two polygons as sets of (x,y) points (ignoring winding start / traversal order),
+// each matched at most once, within tolerance `eps`.
+void expect_same_point_set(const Polygon2D& p, const Polygon2D& q, double eps = 1e-6) {
+    ASSERT_EQ(p.size(), q.size()) << "point sets differ in size";
+    std::vector<bool> used(q.size(), false);
+    for (const auto& pt : p) {
+        bool found = false;
+        for (size_t i = 0; i < q.size(); ++i) {
+            if (used[i]) continue;
+            if (std::abs(pt.x - q[i].x) < eps && std::abs(pt.y - q[i].y) < eps) {
+                used[i] = true;
+                found = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found) << "point (" << pt.x << ", " << pt.y << ") had no match";
+    }
+}
+
+// Brute-force reference: pairwise vertex sums, then convex_hull_2d -- valid for any convex
+// a/b, used here purely as an independent cross-check of the merge-by-angle production code.
+Polygon2D minkowski_bruteforce_reference(const Polygon2D& a, const Polygon2D& b) {
+    std::vector<Point2D> sums;
+    for (const auto& pa : a)
+        for (const auto& pb : b)
+            sums.push_back({pa.x + pb.x, pa.y + pb.y});
+    return convex_hull_2d(sums);
+}
+
+// `phase` rotates the whole polygon's vertex placement. A nonzero phase matters for
+// cross-checks against an axis-aligned square: at phase 0, an odd-gon (e.g. a pentagon) has
+// one edge that is exactly vertical by construction, which can coincide (up to the sub-ULP
+// floating-point noise between cos() of two "symmetric" angles that are mathematically but not
+// bit-for-bit identical) with the square's exactly-vertical edge. The production merge-by-angle
+// code correctly treats that near-zero cross product as a tie and merges the two collinear
+// edges, while the epsilon-free brute-force convex_hull_2d reference can instead keep it as a
+// spurious extra near-duplicate vertex -- a genuine floating-point artifact, not a functional
+// disagreement. An arbitrary non-axis-aligned phase avoids the coincidence entirely.
+Polygon2D regular_ngon(int n, double radius, Point2D center = {0, 0}, double phase = 0.0) {
+    Polygon2D poly;
+    for (int i = 0; i < n; ++i) {
+        double a = phase + i * 2.0 * M_PI / n;
+        poly.push_back({center.x + radius * std::cos(a), center.y + radius * std::sin(a)});
+    }
+    return poly;
+}
+
+} // namespace
+
+TEST(GeoMinkowski, TwoIdenticalUnitSquaresGiveTwoByTwoSquare) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    auto sum = minkowski_sum_convex(a, b);
+
+    ASSERT_EQ(sum.size(), 4u);
+    Polygon2D expected = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    expect_same_point_set(sum, expected);
+    EXPECT_NEAR(area(sum), 4.0, 1e-9);
+    expect_convex_ccw(sum);
+}
+
+TEST(GeoMinkowski, TranslatedSquareShiftsResultButKeepsSize) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{1, 0}, {2, 0}, {2, 1}, {1, 1}};  // same unit square, translated by (1,0)
+    auto sum = minkowski_sum_convex(a, b);
+
+    ASSERT_EQ(sum.size(), 4u);
+    Polygon2D expected = {{1, 0}, {3, 0}, {3, 2}, {1, 2}};
+    expect_same_point_set(sum, expected);
+    EXPECT_NEAR(area(sum), 4.0, 1e-9);
+    expect_convex_ccw(sum);
+}
+
+TEST(GeoMinkowski, SquarePlusUnitSegmentGivesTwoByOneRectangle) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{0, 0}, {1, 0}};  // degenerate "polygon": a horizontal unit segment
+    auto sum = minkowski_sum_convex(a, b);
+
+    Polygon2D expected = {{0, 0}, {2, 0}, {2, 1}, {0, 1}};
+    ASSERT_EQ(sum.size(), 4u);
+    expect_same_point_set(sum, expected);
+    EXPECT_NEAR(area(sum), 2.0, 1e-9);
+    expect_convex_ccw(sum);
+}
+
+TEST(GeoMinkowski, SinglePointTranslatesPolygonExactly) {
+    Polygon2D a = {{0, 0}, {2, 0}, {2, 1}, {0, 1}};
+    Polygon2D b = {{3, 5}};  // single point: trivially convex, degenerate <3-vertex input
+    auto sum = minkowski_sum_convex(a, b);
+
+    Polygon2D expected = {{3, 5}, {5, 5}, {5, 6}, {3, 6}};
+    ASSERT_EQ(sum.size(), 4u);
+    expect_same_point_set(sum, expected);
+    expect_convex_ccw(sum);
+}
+
+TEST(GeoMinkowski, BothEmptyGivesEmpty) {
+    Polygon2D a, b;
+    auto sum = minkowski_sum_convex(a, b);
+    EXPECT_TRUE(sum.empty());
+}
+
+TEST(GeoMinkowski, OneEmptyGivesEmpty) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b;
+    EXPECT_TRUE(minkowski_sum_convex(a, b).empty());
+    EXPECT_TRUE(minkowski_sum_convex(b, a).empty());
+}
+
+TEST(GeoMinkowski, TwoSinglePointsSumsToOnePoint) {
+    Polygon2D a = {{2, 3}};
+    Polygon2D b = {{10, -1}};
+    auto sum = minkowski_sum_convex(a, b);
+    ASSERT_EQ(sum.size(), 1u);
+    EXPECT_NEAR(sum[0].x, 12.0, 1e-12);
+    EXPECT_NEAR(sum[0].y, 2.0, 1e-12);
+}
+
+TEST(GeoMinkowski, TriangleAndSquareMatchesBruteForceReference) {
+    Polygon2D tri = {{0, 0}, {2, 0}, {1, 2}};
+    Polygon2D sq  = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+
+    auto fast = minkowski_sum_convex(tri, sq);
+    auto brute = minkowski_bruteforce_reference(tri, sq);
+
+    expect_same_point_set(fast, brute);
+    expect_convex_ccw(fast);
+    EXPECT_LE(fast.size(), tri.size() + sq.size());
+}
+
+TEST(GeoMinkowski, ResultIsConvexForAsymmetricTriangles) {
+    Polygon2D t1 = {{0, 0}, {3, 0}, {0, 1}};
+    Polygon2D t2 = {{0, 0}, {1, 0}, {0, 4}};
+    auto sum = minkowski_sum_convex(t1, t2);
+    expect_convex_ccw(sum);
+    EXPECT_LE(sum.size(), t1.size() + t2.size());
+    auto brute = minkowski_bruteforce_reference(t1, t2);
+    expect_same_point_set(sum, brute);
+}
+
+TEST(GeoMinkowski, VertexCountNeverExceedsSumOfInputs) {
+    Polygon2D a = {{0, 0}, {2, 0}, {2, 1}, {0, 1}};                 // rectangle, 4 verts
+    Polygon2D b = {{0, 0}, {1, 0}, {1.5, 1}, {0.5, 1.5}, {-0.5, 1}}; // convex pentagon, 5 verts
+    auto sum = minkowski_sum_convex(a, b);
+    EXPECT_LE(sum.size(), a.size() + b.size());
+    expect_convex_ccw(sum);
+}
+
+TEST(GeoMinkowski, CommutativeForTriangleAndSquare) {
+    Polygon2D tri = {{0, 0}, {2, 0}, {1, 2}};
+    Polygon2D sq  = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+
+    auto ab = minkowski_sum_convex(tri, sq);
+    auto ba = minkowski_sum_convex(sq, tri);
+    expect_same_point_set(ab, ba);
+    expect_convex_ccw(ab);
+    expect_convex_ccw(ba);
+}
+
+TEST(GeoMinkowski, CommutativeForAsymmetricConvexPentagons) {
+    Polygon2D p1 = {{0, 0}, {2, 0}, {3, 1}, {1, 3}, {-1, 1}};
+    Polygon2D p2 = {{0, 0}, {1, 0}, {1.5, 0.5}, {0.5, 1.5}, {-0.5, 0.5}};
+
+    auto ab = minkowski_sum_convex(p1, p2);
+    auto ba = minkowski_sum_convex(p2, p1);
+    expect_same_point_set(ab, ba);
+}
+
+TEST(GeoMinkowski, RegularPentagonPlusSmallSquareMatchesBruteForce) {
+    Polygon2D pentagon = regular_ngon(5, 2.0, {0, 0}, 0.3);  // phase avoids an on-axis edge
+    Polygon2D square = {{-0.1, -0.1}, {0.1, -0.1}, {0.1, 0.1}, {-0.1, 0.1}};
+
+    auto fast = minkowski_sum_convex(pentagon, square);
+    auto brute = minkowski_bruteforce_reference(pentagon, square);
+
+    expect_same_point_set(fast, brute);
+    expect_convex_ccw(fast);
+    EXPECT_LE(fast.size(), pentagon.size() + square.size());
+}
+
+TEST(GeoMinkowski, RegularHexagonPlusSmallSquareMatchesBruteForce) {
+    Polygon2D hexagon = regular_ngon(6, 1.5);
+    Polygon2D square = {{-0.2, -0.2}, {0.2, -0.2}, {0.2, 0.2}, {-0.2, 0.2}};
+
+    auto fast = minkowski_sum_convex(hexagon, square);
+    auto brute = minkowski_bruteforce_reference(hexagon, square);
+
+    expect_same_point_set(fast, brute);
+    expect_convex_ccw(fast);
+    EXPECT_LE(fast.size(), hexagon.size() + square.size());
+}
+
+TEST(GeoMinkowski, TwoRegularPolygonsOfDifferentSizeMatchesBruteForce) {
+    Polygon2D pentagon = regular_ngon(5, 1.0);
+    Polygon2D hexagon = regular_ngon(6, 0.5, {0.3, -0.2});
+
+    auto fast = minkowski_sum_convex(pentagon, hexagon);
+    auto brute = minkowski_bruteforce_reference(pentagon, hexagon);
+
+    expect_same_point_set(fast, brute);
+    expect_convex_ccw(fast);
+    EXPECT_LE(fast.size(), pentagon.size() + hexagon.size());
+}
+
+TEST(GeoMinkowski, StartsFromBottomMostSummedVertex) {
+    // The lowest point of the sum must be exactly a's bottom-most vertex plus b's bottom-most
+    // vertex (both polygons' angular walk starts there by construction).
+    Polygon2D a = {{0, 0}, {2, 0}, {1, 3}};
+    Polygon2D b = {{5, -4}, {6, -4}, {6, -3}, {5, -3}};
+    auto sum = minkowski_sum_convex(a, b);
+    ASSERT_FALSE(sum.empty());
+
+    Point2D lowest = sum[0];
+    for (const auto& p : sum)
+        if (p.y < lowest.y || (p.y == lowest.y && p.x < lowest.x)) lowest = p;
+
+    EXPECT_NEAR(lowest.x, 0.0 + 5.0, 1e-9);
+    EXPECT_NEAR(lowest.y, 0.0 + -4.0, 1e-9);
+}
+
+TEST(GeoMinkowski, AreaGrowsMonotonicallyWithScaledSecondOperand) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D small = {{-0.1, -0.1}, {0.1, -0.1}, {0.1, 0.1}, {-0.1, 0.1}};
+    Polygon2D big   = {{-0.4, -0.4}, {0.4, -0.4}, {0.4, 0.4}, {-0.4, 0.4}};
+
+    auto sum_small = minkowski_sum_convex(a, small);
+    auto sum_big = minkowski_sum_convex(a, big);
+    EXPECT_GT(area(sum_big), area(sum_small));
+    expect_convex_ccw(sum_small);
+    expect_convex_ccw(sum_big);
+}
+
+TEST(GeoMinkowski, ThreeVertexTrianglesProduceAtMostSixVertices) {
+    Polygon2D t1 = {{0, 0}, {1, 0}, {0, 1}};
+    Polygon2D t2 = {{0, 0}, {1, 0}, {1, 1}};
+    auto sum = minkowski_sum_convex(t1, t2);
+    EXPECT_LE(sum.size(), 6u);
+    EXPECT_GE(sum.size(), 3u);
+    expect_convex_ccw(sum);
+    auto brute = minkowski_bruteforce_reference(t1, t2);
+    expect_same_point_set(sum, brute);
+}
