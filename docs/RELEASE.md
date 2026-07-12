@@ -1,14 +1,14 @@
 # MathScript 1.0.0 Release Checklist
 
 Version **1.0.0** is tagged when Phase 10 (Hardening) is complete. The authoritative
-item list lives in the README under **[Phase 10 checklist](../README.md#phase-10-checklist)**.
+item list lives in the README **Phase Progress** table and the collapsible **Phase 10 checklist detail** section (`README.md`).
 
 ## Tag criteria (summary)
 
 All of the following must be true before `git tag v1.0.0`:
 
 1. **CI green** — every job in `.github/workflows/ci.yml` passes on `main` without `continue-on-error` overrides.
-2. **Tests** — full CTest suite passing (currently **348** suites; CUDA optional/off in CI). **Wave 172** adds REPL `geo_voronoi`/`numthy_convergents`/`ml_mat_transpose`, Wave 63–172 integration pipeline, and fuzz repl corpus seeds for Wave 172 bindings. **Wave 171** adds REPL `combo_next_perm`/`cplx_mobius_re`/`boxfilter`, Wave 63–171 integration pipeline, and fuzz repl corpus seeds for Wave 171 bindings. **Wave 170** adds REPL `geo_kdtree_nearest`/`topo_pairwise_distances`/`numthy_continued_fraction`, Wave 63–170 integration pipeline, and fuzz repl corpus seeds for Wave 170 bindings. **Wave 169** adds REPL `prob_chi2_pdf`/`stats_two_sample_ttest`/`stats_chi2_gof`, Wave 63–169 integration pipeline, and fuzz repl corpus seeds for Wave 169 bindings.
+2. **Tests** — full CTest suite passing (currently **368** suites; CUDA optional/off in CI).
 3. **Coverage** — line coverage ≥ **90%** enforced in CI (target **~91%**; see `coverage-linux` job).
 4. **Memory** — Valgrind memcheck clean on the test suite (`valgrind-linux` job).
 5. **Fuzz** — all libFuzzer targets run ≥ **24 hours** total with **no crashes** (see `fuzz-24h.yml` and nightly workflows).
