@@ -3,6 +3,7 @@
 #include "ms/core/matrix.hpp"
 #include "ms/error/error_types.hpp"
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace ms::cellai {
@@ -34,6 +35,24 @@ private:
 };
 
 double energy(const Matrix<double>& w, const Matrix<double>& v, const Matrix<double>& h);
+
+/// Converts a vector of Boltzmann-machine energies into normalized Gibbs/
+/// softmax sampling weights: p[i] = exp(-energies[i] / temperature) /
+/// sum_j exp(-energies[j] / temperature).
+///
+/// Numerically stable: the minimum energy is subtracted from every term
+/// before exponentiating (log-sum-exp trick), so the largest exponential
+/// argument is always 0 and overflow/underflow in exp() is avoided
+/// regardless of the absolute magnitude of the input energies.
+///
+/// Zero-temperature convention: `temperature <= 0` is treated as the
+/// zero-temperature limit of the Boltzmann distribution rather than
+/// producing a division by zero. In that limit all probability mass
+/// concentrates on the minimum-energy state(s), with ties split evenly
+/// among them.
+///
+/// Returns an empty vector for an empty `energies` span.
+std::vector<double> boltzmann_weights(std::span<const double> energies, double temperature = 1.0);
 
 Matrix<double> cell_to_cypha_features(
     const CellMemory& cell,

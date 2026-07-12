@@ -34,6 +34,44 @@ double energy(const Matrix<double>& w, const Matrix<double>& v, const Matrix<dou
     return e;
 }
 
+std::vector<double> boltzmann_weights(std::span<const double> energies, double temperature) {
+    std::vector<double> weights(energies.size());
+    if (energies.empty()) {
+        return weights;
+    }
+
+    double min_e = energies[0];
+    for (const double e : energies) {
+        min_e = std::min(min_e, e);
+    }
+
+    if (temperature <= 0.0) {
+        // Zero-temperature limit: all mass on the minimum-energy state(s),
+        // ties split evenly. Avoids dividing by a non-positive temperature.
+        size_t tie_count = 0;
+        for (const double e : energies) {
+            if (e == min_e) {
+                ++tie_count;
+            }
+        }
+        const double share = 1.0 / static_cast<double>(tie_count);
+        for (size_t i = 0; i < energies.size(); ++i) {
+            weights[i] = (energies[i] == min_e) ? share : 0.0;
+        }
+        return weights;
+    }
+
+    double sum = 0.0;
+    for (size_t i = 0; i < energies.size(); ++i) {
+        weights[i] = std::exp(-(energies[i] - min_e) / temperature);
+        sum += weights[i];
+    }
+    for (double& w : weights) {
+        w /= sum;
+    }
+    return weights;
+}
+
 CellMemory::CellMemory(size_t input_dim, size_t memory_dim, std::vector<double> time_scales)
     : input_dim_(input_dim),
       memory_dim_(memory_dim),
