@@ -207,5 +207,45 @@ struct EulerianResult {
 // @note O(V+E) time and space: one connectivity BFS plus one Hierholzer pass, each linear.
 EulerianResult eulerian_path(const Graph& G);
 
+// Traveling Salesman Problem heuristic: finds a low-cost (not necessarily optimal -- TSP is
+// NP-hard, this is a practical heuristic) Hamiltonian cycle visiting every vertex exactly once
+// and returning to the start, via the classic two-phase approach:
+//   1. CONSTRUCTION: nearest-neighbor greedy tour -- starting from a given vertex, repeatedly
+//      move to the nearest unvisited vertex, until all vertices are visited, then return to
+//      the start.
+//   2. IMPROVEMENT: 2-opt local search -- repeatedly look for a pair of edges (i,i+1) and
+//      (j,j+1) in the current tour such that REVERSING the tour segment between them (i.e.
+//      replacing edges (tour[i],tour[i+1]) and (tour[j],tour[j+1]) with (tour[i],tour[j]) and
+//      (tour[i+1],tour[j+1])) would REDUCE the total tour length; apply the best such
+//      improvement found each pass, repeat until no improving swap exists (or a max iteration
+//      cap is hit, to guarantee termination on adversarial/large inputs).
+//
+// Distances: this operates on a COMPLETE graph given by a full pairwise distance matrix (NOT
+// this module's sparse Graph/Edge representation, since TSP conceptually needs a distance
+// between every pair of vertices, not just explicit edges) -- @param dist an n x n symmetric
+// distance matrix (dist[i][j] = distance from vertex i to vertex j, dist[i][i] should be 0).
+// This is a deliberate scope choice to keep the API simple and directly usable (callers with a
+// sparse graph can first compute all-pairs shortest paths via this module's existing
+// Floyd-Warshall or similar to get a dense distance matrix, then pass that in here).
+struct TSPResult {
+    std::vector<int> tour;        // vertex visit order (length n, tour[0] is the start,
+                                   // implicitly returns to tour[0] at the end -- the cycle is
+                                   // NOT explicitly repeated at the end of this vector)
+    double total_distance = 0.0;  // total cycle length including the return edge
+};
+// @param dist n x n symmetric distance matrix. n < 2 is a degenerate/trivial case: n == 0
+//        returns an empty tour with distance 0, n == 1 returns tour {0} with distance 0.
+// @param start_vertex which vertex to start the nearest-neighbor construction from (default 0).
+// @param max_2opt_iterations safety cap on 2-opt improvement passes to guarantee termination
+//        (a reasonable default, e.g. 1000, should be more than enough for the moderate-size
+//        test inputs this will actually see, since 2-opt on small instances converges
+//        quickly); 0 disables the improvement phase entirely, returning the plain
+//        nearest-neighbor construction unchanged.
+// @return the improved tour and its total cycle distance.
+// @note O(n^2) construction plus O(iterations * n^2) improvement; intended for the small/
+//       moderate instance sizes this library's other exact/heuristic graph algorithms target.
+TSPResult tsp_heuristic(const std::vector<std::vector<double>>& dist,
+                        int start_vertex = 0, int max_2opt_iterations = 1000);
+
 } // namespace graph
 } // namespace ms
