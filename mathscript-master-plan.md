@@ -8054,6 +8054,32 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       100% clean (367/367) even at 6x the usual parallel build load, reinforcing that this is
       environmental resource-contention noise, not a real defect. No new CTest registrations; 43
       new test cases across the six modules' existing test binaries; 367 suites, 100% passing.
+      Wave 203: tied for the largest single wave, using 7 parallel subagents across 7 independent
+      modules simultaneously (up from 6 in Wave 202). ms::topo gains alpha_complex (the subcomplex
+      of a 2D point cloud's Delaunay triangulation whose simplices have min-enclosing-ball radius
+      <= alpha; always a subcomplex of the existing cech_complex on the same points), verified via
+      the Alpha(a) subseteq Cech(a) invariant and hull-edge exactness. ms::stats gains fligner_test
+      (rank-based/normal-scores non-parametric alternative to the existing bartlett_test/
+      levene_test for equality of variances, generally the most outlier/non-normality-robust of the
+      three), verified against known chi-squared reference statistics. ms::poly gains
+      poly_cheb_expand (Chebyshev series coefficients via Chebyshev-node sampling and discrete
+      orthogonality; the dual/inverse of the existing poly_cheb_eval, an exact round-trip pair),
+      verified via exact reproduction of polynomials of degree <= n. ms::signal gains savgol
+      (Savitzky-Golay smoothing via per-window local polynomial least-squares fits; unlike a plain
+      moving average it preserves polynomial trends essentially undistorted), verified against known
+      reference outputs. ms::core gains a compile-time SI unit-dimension system (Units NTTP struct +
+      TypedScalar<T, Units>, zero-runtime-overhead dimensional analysis deduced through seven plain
+      int NTTPs rather than one structural-type NTTP, working around this project's MSVC toolchain's
+      NTTP-deduction limits), verified via dimension arithmetic and compile-time mismatch rejection.
+      ms::graph gains biconnected_components (Tarjan DFS low-link with an explicit edge stack,
+      extending the articulation_points/bridges family; every bridge forms its own singleton block
+      and vice versa), verified via that invariant. ms::finance gains bachelier_call/put (arithmetic-
+      Brownian-motion forward-option model, allowing negative F/K unlike black76/bs_call/bs_put),
+      verified via put-call parity and the sigma->0 discounted-intrinsic limit. As with prior
+      high-parallelism waves, isolated-worktree builds under heavy concurrent load took noticeably
+      longer than usual; the post-merge full-suite verification on main came back 100% clean
+      (368/368). 1 new CTest registration (test_units); 92 new test cases across the seven modules'
+      existing/new test binaries; 368 suites, 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
