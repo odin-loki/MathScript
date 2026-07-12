@@ -56,6 +56,13 @@ double laplace_pdf(double x, double mu, double b);
 double laplace_cdf(double x, double mu, double b);
 double laplace_ppf(double p, double mu, double b);
 
+/// Logistic(mu, s): location mu, scale s > 0. Support all reals. Sigmoid CDF:
+/// 1 / (1 + exp(-(x-mu)/s)). Used for growth curves, dose-response, and logistic
+/// regression link functions.
+double logistic_pdf(double x, double mu, double s);
+double logistic_cdf(double x, double mu, double s);
+double logistic_ppf(double p, double mu, double s);
+
 /// Gumbel(mu, beta): location mu, scale beta > 0. Support all reals. The standard
 /// extreme-value distribution (Type I), used for modeling the distribution of maxima
 /// (e.g. maximum river levels, extreme rainfall). CDF: exp(-exp(-(x-mu)/beta)).
