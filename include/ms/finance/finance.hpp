@@ -145,6 +145,27 @@ double digital_option(double S, double K, double T, double r, double sigma,
 // Black-76 model for options on forwards/futures (F is the forward price)
 double black76(double F, double K, double T, double r, double sigma, bool call);
 
+// --- Bachelier (normal) model for options on a forward F ---
+// Same forward-based setup as black76 above, but assumes the forward follows
+// ARITHMETIC Brownian motion dF = sigma*dW (normal/Gaussian dynamics) rather
+// than black76's geometric Brownian motion dF/F = sigma*dW (lognormal
+// dynamics). Because F itself is normally distributed under this model, F
+// (and K) are allowed to be zero or NEGATIVE -- unlike bs_call/bs_put and
+// black76, which require a strictly positive underlying/forward since they
+// take log(F/K). This makes Bachelier the standard choice for interest-rate
+// derivatives (e.g. swaption/cap/floor pricing) during negative-rate
+// environments, where Black-76 breaks down.
+//
+// With d = (F - K) / (sigma*sqrt(T)), Phi/phi the standard normal CDF/PDF:
+//   call = exp(-r*T) * [(F-K)*Phi(d) + sigma*sqrt(T)*phi(d)]
+//   put  = exp(-r*T) * [(K-F)*Phi(-d) + sigma*sqrt(T)*phi(d)]
+// Put-call parity call - put = exp(-r*T)*(F-K) holds exactly (model-
+// independent identity). As sigma -> 0, both collapse to the discounted
+// intrinsic value exp(-r*T)*max(+-(F-K), 0), and at F == K (at-the-money)
+// they simplify to exp(-r*T) * sigma*sqrt(T) / sqrt(2*pi).
+double bachelier_call(double F, double K, double T, double r, double sigma);
+double bachelier_put(double F, double K, double T, double r, double sigma);
+
 // European barrier option (continuous monitoring, Haug closed-form).
 // All 8 single-barrier types via call/put, knock_in/knock_out, up/down flags.
 // Down barriers require S > B; up barriers require S < B.
