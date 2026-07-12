@@ -1,6 +1,10 @@
+#define _USE_MATH_DEFINES
 #include "ms/image/image.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace ms::image;
 
@@ -581,6 +585,152 @@ TEST(ImageTransform, IradonFinite) {
 TEST(ImageTransform, IradonEmpty) {
     auto recon=iradon({}, {});
     EXPECT_TRUE(recon.empty());
+}
+
+// ---- Hough Transform ----
+
+TEST(HoughLines, HorizontalLine) {
+    // Horizontal line row=25 across the full width -> normal form theta=pi/2, rho=25
+    // (verifies this implementation's own x*cos(theta)+y*sin(theta)=rho convention).
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;
+    auto lines=hough_lines(img, 0.5);
+    ASSERT_FALSE(lines.empty());
+    EXPECT_NEAR(lines[0].theta, M_PI/2.0, 0.02);
+    EXPECT_NEAR(lines[0].rho, 25.0, 1.0);
+    EXPECT_GE(lines[0].votes, 50);
+}
+
+TEST(HoughLines, VerticalLine) {
+    // Vertical line col=25 across the full height -> normal form theta=0, rho=25.
+    Image img(50,50,1,0.f);
+    for (int r=0;r<50;++r) img.at(r,25,0)=1.f;
+    auto lines=hough_lines(img, 0.5);
+    ASSERT_FALSE(lines.empty());
+    EXPECT_NEAR(lines[0].theta, 0.0, 0.02);
+    EXPECT_NEAR(lines[0].rho, 25.0, 1.0);
+    EXPECT_GE(lines[0].votes, 50);
+}
+
+TEST(HoughLines, DiagonalLine) {
+    // Anti-diagonal x+y=49 -> normal form theta=pi/4, rho=49/sqrt(2)=34.648.
+    Image img(50,50,1,0.f);
+    for (int r=0;r<50;++r) img.at(r,49-r,0)=1.f;
+    auto lines=hough_lines(img, 0.5);
+    ASSERT_FALSE(lines.empty());
+    EXPECT_NEAR(lines[0].theta, M_PI/4.0, 0.03);
+    EXPECT_NEAR(lines[0].rho, 49.0/std::sqrt(2.0), 1.0);
+    EXPECT_GE(lines[0].votes, 50);
+}
+
+TEST(HoughLines, BlankImageNoLines) {
+    Image img(50,50,1,0.f);
+    auto lines=hough_lines(img, 0.1, 180, 200, 1);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, EmptyImageReturnsEmpty) {
+    Image empty;
+    auto lines=hough_lines(empty, 0.5);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, TwoPerpendicularLinesBothDetected) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;   // horizontal: theta=pi/2, rho=25
+    for (int r=0;r<50;++r) img.at(r,10,0)=1.f;   // vertical:   theta=0,    rho=10
+    auto lines=hough_lines(img, 0.5);
+    ASSERT_GE(lines.size(), 2u);
+
+    bool found_horizontal=false, found_vertical=false;
+    for (const auto& l:lines) {
+        if (std::abs(l.theta-M_PI/2.0)<0.02 && std::abs(l.rho-25.0)<1.0) found_horizontal=true;
+        if (std::abs(l.theta-0.0)<0.02 && std::abs(l.rho-10.0)<1.0) found_vertical=true;
+    }
+    EXPECT_TRUE(found_horizontal);
+    EXPECT_TRUE(found_vertical);
+}
+
+TEST(HoughLines, DegenerateNThetaZero) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;
+    auto lines=hough_lines(img, 0.5, 0, 200, 50);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, DegenerateNThetaNegative) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;
+    auto lines=hough_lines(img, 0.5, -5, 200, 50);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, DegenerateNRhoZero) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;
+    auto lines=hough_lines(img, 0.5, 180, 0, 50);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, DegenerateNRhoNegative) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;
+    auto lines=hough_lines(img, 0.5, 180, -10, 50);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, VotesProportionalToLineLength) {
+    // n_rho is set finer than the 200-bin default here so that the 25-pixel
+    // line's votes for theta bins adjacent to its true peak spread across
+    // more than one rho bin (rather than tying with the peak's count and
+    // getting rejected by the strict-local-max check).
+    Image full(50,50,1,0.f);
+    for (int c=0;c<50;++c) full.at(10,c,0)=1.f;    // 50-pixel line
+    Image half(50,50,1,0.f);
+    for (int c=0;c<25;++c) half.at(10,c,0)=1.f;    // 25-pixel line
+
+    auto full_lines=hough_lines(full, 0.5, 180, 500, 10);
+    auto half_lines=hough_lines(half, 0.5, 180, 500, 10);
+    ASSERT_FALSE(full_lines.empty());
+    ASSERT_FALSE(half_lines.empty());
+    EXPECT_EQ(full_lines[0].votes, 50);
+    EXPECT_EQ(half_lines[0].votes, 25);
+    EXPECT_GT(full_lines[0].votes, half_lines[0].votes);
+}
+
+TEST(HoughLines, EdgeThresholdFiltersLowIntensityPixels) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=0.3f;  // below edge_threshold
+    auto lines=hough_lines(img, 0.5, 180, 200, 5);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, VoteThresholdFiltersWeakPeaks) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;   // only 50 votes possible
+    auto lines=hough_lines(img, 0.5, 180, 200, 1000);
+    EXPECT_TRUE(lines.empty());
+}
+
+TEST(HoughLines, ResultsSortedDescendingByVotes) {
+    Image img(50,50,1,0.f);
+    for (int c=0;c<50;++c) img.at(25,c,0)=1.f;
+    for (int r=0;r<50;++r) img.at(r,10,0)=1.f;
+    auto lines=hough_lines(img, 0.5, 180, 200, 5);
+    for (size_t i=1;i<lines.size();++i) EXPECT_GE(lines[i-1].votes, lines[i].votes);
+}
+
+TEST(HoughLines, PeakDetectionAvoidsClusteredDuplicates) {
+    // A loose vote_threshold would flood many near-duplicate cells clustered
+    // around the true peak if we didn't require a strict local maximum;
+    // check the surviving peak count stays small for a single clean line.
+    Image img(50,50,1,0.f);
+    for (int r=0;r<50;++r) img.at(r,25,0)=1.f;
+    auto lines=hough_lines(img, 0.5, 180, 200, 10);
+    EXPECT_LT(lines.size(), 10u);
+    ASSERT_FALSE(lines.empty());
+    EXPECT_NEAR(lines[0].theta, 0.0, 0.02);
+    EXPECT_NEAR(lines[0].rho, 25.0, 1.0);
 }
 
 // ---- Harris ----
