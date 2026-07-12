@@ -1,5 +1,5 @@
 // MathScript: Advanced Domain Operation Tests
-// Tests for factorial, nchoosek, gcd, Graph, graph_num_edges
+// Tests for factorial, nchoosek, gcd, lcm, extended_gcd, Graph, graph_num_edges
 
 #include <gtest/gtest.h>
 #include <cstddef>
@@ -135,6 +135,117 @@ TEST(DomainAdv, GCD_SpecificValues) {
 TEST(DomainAdv, GCD_LargeNumbers) {
     EXPECT_EQ(gcd(1000000u, 999999u), 1u);  // Consecutive integers are coprime
     EXPECT_EQ(gcd(123456u, 654321u), 3u);
+}
+
+// ---------------------------------------------------------------------------
+// lcm
+// ---------------------------------------------------------------------------
+
+TEST(DomainAdv, LCM_SpecificValues) {
+    EXPECT_EQ(lcm(4u, 6u), 12u);
+    EXPECT_EQ(lcm(21u, 6u), 42u);
+    EXPECT_EQ(lcm(7u, 13u), 91u);  // coprime: lcm == product
+}
+
+TEST(DomainAdv, LCM_SelfIdentity) {
+    for (size_t a : {1u, 2u, 5u, 12u, 100u}) {
+        EXPECT_EQ(lcm(a, a), a) << "lcm(" << a << "," << a << ") should be " << a;
+    }
+}
+
+TEST(DomainAdv, LCM_WithZero_IsZero) {
+    EXPECT_EQ(lcm(0u, 5u), 0u);
+    EXPECT_EQ(lcm(5u, 0u), 0u);
+    EXPECT_EQ(lcm(0u, 0u), 0u);
+}
+
+TEST(DomainAdv, LCM_WithOne_IsOther) {
+    EXPECT_EQ(lcm(1u, 5u), 5u);
+    EXPECT_EQ(lcm(1u, 100u), 100u);
+    EXPECT_EQ(lcm(7u, 1u), 7u);
+}
+
+TEST(DomainAdv, LCM_GCD_Product_Identity) {
+    // Fundamental identity: lcm(a, b) * gcd(a, b) == a * b
+    for (size_t a : {6u, 12u, 18u, 24u, 36u, 7u}) {
+        for (size_t b : {4u, 8u, 12u, 16u, 13u}) {
+            EXPECT_EQ(lcm(a, b) * gcd(a, b), a * b)
+                << "lcm(" << a << "," << b << ") * gcd(" << a << "," << b << ") != " << a << "*" << b;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// extended_gcd
+// ---------------------------------------------------------------------------
+
+TEST(DomainAdv, ExtGCD_SpecificValues_MatchGCD) {
+    struct Case { long long a, b; };
+    for (const auto& c : std::vector<Case>{{12, 8}, {48, 36}, {100, 75}, {270, 192}, {7, 13}}) {
+        const auto r = extended_gcd(c.a, c.b);
+        EXPECT_EQ(static_cast<size_t>(r.gcd), gcd(static_cast<size_t>(c.a), static_cast<size_t>(c.b)))
+            << "extended_gcd(" << c.a << "," << c.b << ").gcd mismatch";
+        EXPECT_EQ(c.a * r.x + c.b * r.y, r.gcd)
+            << "Bezout identity failed for (" << c.a << "," << c.b << ")";
+    }
+}
+
+TEST(DomainAdv, ExtGCD_BezoutIdentity_Holds) {
+    for (long long a : {1, 2, 5, 12, 100, 17}) {
+        for (long long b : {1, 3, 6, 11, 40}) {
+            const auto r = extended_gcd(a, b);
+            EXPECT_EQ(a * r.x + b * r.y, r.gcd)
+                << "Bezout identity failed for (" << a << "," << b << ")";
+        }
+    }
+}
+
+TEST(DomainAdv, ExtGCD_NegativeInputs) {
+    {
+        const auto r = extended_gcd(-4, 6);
+        EXPECT_EQ(r.gcd, 2);
+        EXPECT_EQ(-4 * r.x + 6 * r.y, r.gcd);
+    }
+    {
+        const auto r = extended_gcd(4, -6);
+        EXPECT_EQ(r.gcd, 2);
+        EXPECT_EQ(4 * r.x + (-6) * r.y, r.gcd);
+    }
+    {
+        const auto r = extended_gcd(-12, -8);
+        EXPECT_EQ(r.gcd, 4);
+        EXPECT_EQ(-12 * r.x + (-8) * r.y, r.gcd);
+    }
+}
+
+TEST(DomainAdv, ExtGCD_WithZero_AIsZero) {
+    const auto r = extended_gcd(0, 7);
+    EXPECT_EQ(r.gcd, 7);
+    EXPECT_EQ(0 * r.x + 7 * r.y, r.gcd);
+}
+
+TEST(DomainAdv, ExtGCD_WithZero_BIsZero) {
+    const auto r = extended_gcd(9, 0);
+    EXPECT_EQ(r.gcd, 9);
+    EXPECT_EQ(9 * r.x + 0 * r.y, r.gcd);
+}
+
+TEST(DomainAdv, ExtGCD_WithZero_NegativeOther) {
+    const auto r = extended_gcd(-5, 0);
+    EXPECT_EQ(r.gcd, 5);
+    EXPECT_EQ(-5 * r.x + 0 * r.y, r.gcd);
+
+    const auto r2 = extended_gcd(0, -6);
+    EXPECT_EQ(r2.gcd, 6);
+    EXPECT_EQ(0 * r2.x + (-6) * r2.y, r2.gcd);
+}
+
+TEST(DomainAdv, ExtGCD_BothZero_Degenerate) {
+    // Documented convention: extended_gcd(0, 0) == {gcd=0, x=0, y=0}.
+    const auto r = extended_gcd(0, 0);
+    EXPECT_EQ(r.gcd, 0);
+    EXPECT_EQ(r.x, 0);
+    EXPECT_EQ(r.y, 0);
 }
 
 // ---------------------------------------------------------------------------
