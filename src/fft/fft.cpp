@@ -319,4 +319,27 @@ Result<std::vector<double>> idst2(const std::vector<double>& x) {
     return dst2(x);
 }
 
+std::complex<double> goertzel(std::span<const double> x, double f, double fs) {
+    if (x.empty() || fs <= 0.0 || f < 0.0 || f > fs / 2.0) {
+        return std::complex<double>(0.0, 0.0);
+    }
+
+    const size_t n = x.size();
+    const double k = std::round(f / fs * static_cast<double>(n));
+    const double w = 2.0 * M_PI * k / static_cast<double>(n);
+    const double coeff = 2.0 * std::cos(w);
+
+    double s_prev = 0.0;
+    double s_prev2 = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        const double s = x[i] + coeff * s_prev - s_prev2;
+        s_prev2 = s_prev;
+        s_prev = s;
+    }
+
+    const double real = s_prev * std::cos(w) - s_prev2;
+    const double imag = s_prev * std::sin(w);
+    return std::complex<double>(real, imag);
+}
+
 } // namespace ms
