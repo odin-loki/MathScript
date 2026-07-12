@@ -1163,5 +1163,107 @@ PIDGains pidtune(const TransferFunction& plant, double bandwidth) {
     return {Kp, Kp * bandwidth / 10.0, Kp / (10.0 * bandwidth)};
 }
 
+// ---- Kalman filter ----
+
+// Small dense matrix inverse via Gauss-Jordan with partial pivoting, in the
+// same defensive style as gauss_solve() above: never throws, and reports
+// singularity through `ok` instead (unlike mat_inv(), which throws — not
+// usable here since a singular innovation covariance is an expected,
+// recoverable degenerate input rather than a programming error).
+static std::vector<std::vector<double>> kalman_safe_inverse(
+    const std::vector<std::vector<double>>& M, bool& ok) {
+    const int n = static_cast<int>(M.size());
+    std::vector<std::vector<double>> aug(n, std::vector<double>(2 * n, 0.0));
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) aug[i][j] = M[i][j];
+        aug[i][n + i] = 1.0;
+    }
+    for (int col = 0; col < n; ++col) {
+        int pivot = col;
+        double best = std::abs(aug[col][col]);
+        for (int row = col + 1; row < n; ++row) {
+            if (std::abs(aug[row][col]) > best) { best = std::abs(aug[row][col]); pivot = row; }
+        }
+        if (best < 1e-12) { ok = false; return {}; }
+        std::swap(aug[col], aug[pivot]);
+        double sc = aug[col][col];
+        for (int j = col; j < 2 * n; ++j) aug[col][j] /= sc;
+        for (int row = 0; row < n; ++row) {
+            if (row == col) continue;
+            double f = aug[row][col];
+            for (int j = col; j < 2 * n; ++j) aug[row][j] -= f * aug[col][j];
+        }
+    }
+    std::vector<std::vector<double>> inv(n, std::vector<double>(n, 0.0));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            inv[i][j] = aug[i][n + j];
+    ok = true;
+    return inv;
+}
+
+// Checks A is r x c (non-ragged) with the given dimensions.
+static bool mat_has_shape(const std::vector<std::vector<double>>& M, int r, int c) {
+    if (static_cast<int>(M.size()) != r) return false;
+    for (const auto& row : M)
+        if (static_cast<int>(row.size()) != c) return false;
+    return true;
+}
+
+KalmanState kalman_predict(const KalmanState& state,
+                           const std::vector<std::vector<double>>& A,
+                           const std::vector<std::vector<double>>& Q) {
+    const int n = static_cast<int>(state.x.size());
+    if (n == 0) return state;
+    if (!mat_has_shape(A, n, n)) return state;
+    if (!mat_has_shape(Q, n, n)) return state;
+    if (!mat_has_shape(state.P, n, n)) return state;
+
+    KalmanState out;
+    out.x = matvec(A, state.x);
+    auto AP = matmul(A, state.P);
+    auto APAt = matmul(AP, transpose(A));
+    out.P = matadd(APAt, Q);
+    return out;
+}
+
+KalmanState kalman_update(const KalmanState& state,
+                          const std::vector<double>& z,
+                          const std::vector<std::vector<double>>& H,
+                          const std::vector<std::vector<double>>& R) {
+    const int n = static_cast<int>(state.x.size());
+    if (n == 0) return state;
+    const int m = static_cast<int>(H.size());
+    if (m == 0) return state;
+    if (!mat_has_shape(H, m, n)) return state;
+    if (z.size() != static_cast<size_t>(m)) return state;
+    if (!mat_has_shape(R, m, m)) return state;
+    if (!mat_has_shape(state.P, n, n)) return state;
+
+    const auto Ht = transpose(H);
+    const auto Hx = matvec(H, state.x);
+    std::vector<double> y(m);
+    for (int i = 0; i < m; ++i) y[i] = z[i] - Hx[i];
+
+    const auto PHt = matmul(state.P, Ht);
+    const auto HPHt = matmul(H, PHt);
+    const auto S = matadd(HPHt, R);
+
+    bool ok = false;
+    const auto Sinv = kalman_safe_inverse(S, ok);
+    if (!ok) return state;  // singular innovation covariance: safe fallback
+
+    const auto K = matmul(PHt, Sinv);
+
+    KalmanState out;
+    const auto Ky = matvec(K, y);
+    out.x.resize(n);
+    for (int i = 0; i < n; ++i) out.x[i] = state.x[i] + Ky[i];
+
+    const auto KH = matmul(K, H);
+    out.P = matmul(mat_sub(identity_mat(n), KH), state.P);
+    return out;
+}
+
 } // namespace control
 } // namespace ms
