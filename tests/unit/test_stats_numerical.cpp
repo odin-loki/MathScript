@@ -5,6 +5,8 @@
 #endif
 
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <random>
 #include <vector>
 #include "ms/stats/stats.hpp"
 #include "ms/prob/prob.hpp"
@@ -510,4 +512,144 @@ TEST(ProbNumerical, GammaPDF_Shape1_IsExponential) {
 TEST(ProbNumerical, GammaPDF_PositiveForPositiveX) {
     EXPECT_GT(gamma_pdf(1.0, 2.0, 1.0), 0.0);
     EXPECT_GT(gamma_pdf(3.0, 3.0, 2.0), 0.0);
+}
+
+// ============================================================
+// Kernel density estimation (kde)
+// ============================================================
+
+namespace {
+
+std::vector<double> linspace(double start, double stop, size_t count) {
+    std::vector<double> grid(count);
+    if (count == 0) {
+        return grid;
+    }
+    if (count == 1) {
+        grid[0] = start;
+        return grid;
+    }
+    const double step = (stop - start) / static_cast<double>(count - 1);
+    for (size_t i = 0; i < count; ++i) {
+        grid[i] = start + static_cast<double>(i) * step;
+    }
+    return grid;
+}
+
+double trapezoid_integral(const std::vector<double>& grid,
+                          const std::vector<double>& density) {
+    double integral = 0.0;
+    for (size_t i = 0; i + 1 < grid.size(); ++i) {
+        const double dx = grid[i + 1] - grid[i];
+        integral += 0.5 * (density[i] + density[i + 1]) * dx;
+    }
+    return integral;
+}
+
+size_t argmax(const std::vector<double>& values) {
+    return static_cast<size_t>(
+        std::distance(values.begin(),
+                      std::max_element(values.begin(), values.end())));
+}
+
+} // namespace
+
+TEST(StatsNumerical, Kde_EmptySamples_ReturnsEmpty) {
+    const std::vector<double> grid = linspace(-1.0, 1.0, 11);
+    const auto density = kde({}, grid, 0.5);
+    EXPECT_TRUE(density.empty());
+}
+
+TEST(StatsNumerical, Kde_NonPositiveBandwidth_ReturnsEmpty) {
+    const std::vector<double> samples = {1.0, 2.0, 3.0};
+    const std::vector<double> grid = linspace(0.0, 4.0, 21);
+    EXPECT_TRUE(kde(samples, grid, 0.0).empty());
+    EXPECT_TRUE(kde(samples, grid, -0.25).empty());
+}
+
+TEST(StatsNumerical, Kde_EmptyGrid_ReturnsEmpty) {
+    const std::vector<double> samples = {1.0, 2.0, 3.0};
+    EXPECT_TRUE(kde(samples, {}, 0.5).empty());
+}
+
+TEST(StatsNumerical, Kde_OutputSizeMatchesGrid) {
+    const std::vector<double> samples = {0.0, 1.0, 2.0, 3.0};
+    const std::vector<double> grid = linspace(-1.0, 5.0, 31);
+    const auto density = kde(samples, grid, 0.75, "gaussian");
+    ASSERT_EQ(density.size(), grid.size());
+}
+
+TEST(StatsNumerical, Kde_GaussianSingleSamplePeaksAtSample) {
+    const std::vector<double> samples = {5.0};
+    const std::vector<double> grid = linspace(3.0, 7.0, 41);
+    const auto density = kde(samples, grid, 1.0, "gaussian");
+    ASSERT_EQ(density.size(), grid.size());
+    EXPECT_NEAR(grid[argmax(density)], 5.0, 0.15);
+    EXPECT_GT(density[argmax(density)], 0.0);
+}
+
+TEST(StatsNumerical, Kde_EpanechnikovCompactSupport) {
+    const std::vector<double> samples = {0.0};
+    const std::vector<double> grid = linspace(-3.0, 3.0, 61);
+    const auto density = kde(samples, grid, 1.0, "epanechnikov");
+    ASSERT_EQ(density.size(), grid.size());
+    for (size_t i = 0; i < grid.size(); ++i) {
+        if (std::abs(grid[i]) > 1.0 + 1e-12) {
+            EXPECT_DOUBLE_EQ(density[i], 0.0);
+        }
+    }
+    EXPECT_GT(density[argmax(density)], 0.0);
+}
+
+TEST(StatsNumerical, Kde_NormalSamplesPeakNearMean) {
+    std::vector<double> samples;
+    samples.reserve(300);
+    std::mt19937 rng(214);
+    std::normal_distribution<double> dist(2.0, 0.6);
+    for (int i = 0; i < 300; ++i) {
+        samples.push_back(dist(rng));
+    }
+    const std::vector<double> grid = linspace(-2.0, 6.0, 201);
+    const auto density = kde(samples, grid, 0.35, "gaussian");
+    ASSERT_EQ(density.size(), grid.size());
+    EXPECT_NEAR(grid[argmax(density)], mean(samples), 0.6);
+}
+
+TEST(StatsNumerical, Kde_NormalSamplesIntegratesApproximatelyToOne) {
+    std::vector<double> samples;
+    samples.reserve(400);
+    std::mt19937 rng(214);
+    std::normal_distribution<double> dist(0.0, 1.0);
+    for (int i = 0; i < 400; ++i) {
+        samples.push_back(dist(rng));
+    }
+    const std::vector<double> grid = linspace(-10.0, 10.0, 401);
+    const auto density = kde(samples, grid, 0.4, "gaussian");
+    const double integral = trapezoid_integral(grid, density);
+    EXPECT_NEAR(integral, 1.0, 0.15);
+}
+
+TEST(StatsNumerical, Kde_EpanechnikovNormalSamplesIntegratesApproximatelyToOne) {
+    std::vector<double> samples;
+    samples.reserve(400);
+    std::mt19937 rng(99);
+    std::normal_distribution<double> dist(1.5, 0.8);
+    for (int i = 0; i < 400; ++i) {
+        samples.push_back(dist(rng));
+    }
+    const std::vector<double> grid = linspace(-8.0, 12.0, 401);
+    const auto density = kde(samples, grid, 0.5, "epanechnikov");
+    const double integral = trapezoid_integral(grid, density);
+    EXPECT_NEAR(integral, 1.0, 0.2);
+}
+
+TEST(StatsNumerical, Kde_UnknownKernelDefaultsToGaussian) {
+    const std::vector<double> samples = {1.0, 2.0, 3.0};
+    const std::vector<double> grid = linspace(0.0, 4.0, 41);
+    const auto gaussian = kde(samples, grid, 0.5, "gaussian");
+    const auto unknown = kde(samples, grid, 0.5, "unknown");
+    ASSERT_EQ(gaussian.size(), unknown.size());
+    for (size_t i = 0; i < gaussian.size(); ++i) {
+        EXPECT_NEAR(unknown[i], gaussian[i], 1e-12);
+    }
 }
