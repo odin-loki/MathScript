@@ -145,6 +145,76 @@ double heston_call(double S, double K, double T, double r, double v0, double kap
     return S * P1 - K * std::exp(-r * T) * P2;
 }
 
+// Hagan et al. (2002) asymptotic Black (lognormal) implied volatility for SABR.
+static double sabr_hagan_black_vol(double F, double K, double T, double alpha,
+                                   double beta, double rho, double nu) {
+    const double one_m_beta = 1.0 - beta;
+    const double log_fk = std::log(F / K);
+
+    if (std::abs(log_fk) < 1e-12) {
+        const double f_pow = std::pow(F, one_m_beta);
+        const double t1 =
+            one_m_beta * one_m_beta / 24.0 * alpha * alpha / std::pow(F, 2.0 - 2.0 * beta);
+        const double t2 = rho * beta * nu * alpha / (4.0 * f_pow);
+        const double t3 = (2.0 - 3.0 * rho * rho) / 24.0 * nu * nu;
+        return (alpha / f_pow) * (1.0 + (t1 + t2 + t3) * T);
+    }
+
+    const double fk_mid = std::pow(F * K, one_m_beta / 2.0);
+    const double z = (nu / alpha) * fk_mid * log_fk;
+
+    double z_over_x;
+    if (std::abs(z) < 1e-8) {
+        z_over_x = 1.0;
+    } else {
+        const double disc = 1.0 - 2.0 * rho * z + z * z;
+        const double sqrt_term = std::sqrt(std::max(disc, 0.0));
+        const double denom = 1.0 - rho;
+        if (std::abs(denom) < 1e-12) {
+            // rho -> 1 limit: x(z) ~ z
+            z_over_x = 1.0;
+        } else {
+            const double x_z = std::log((sqrt_term + z - rho) / denom);
+            z_over_x = z / x_z;
+        }
+    }
+
+    const double log_fk2 = log_fk * log_fk;
+    const double log_fk4 = log_fk2 * log_fk2;
+    const double denom_fk =
+        fk_mid * (1.0 + one_m_beta * one_m_beta / 24.0 * log_fk2 +
+                  one_m_beta * one_m_beta * one_m_beta * one_m_beta / 1920.0 * log_fk4);
+    const double A = alpha / denom_fk;
+    const double B =
+        1.0 + T * (one_m_beta * one_m_beta / 24.0 * alpha * alpha /
+                       std::pow(F * K, one_m_beta) +
+                   rho * beta * nu * alpha / (4.0 * fk_mid) +
+                   (2.0 - 3.0 * rho * rho) / 24.0 * nu * nu);
+    return A * z_over_x * B;
+}
+
+double sabr_call(double S, double K, double T, double r, double alpha, double beta,
+                 double rho, double nu) {
+    if (T <= 0.0) return std::max(S - K, 0.0);
+    if (S <= 0.0 || K <= 0.0 || alpha < 0.0 || beta < 0.0 || beta > 1.0 ||
+        rho < -1.0 || rho > 1.0 || nu < 0.0 || !std::isfinite(S) || !std::isfinite(K) ||
+        !std::isfinite(T) || !std::isfinite(r) || !std::isfinite(alpha) ||
+        !std::isfinite(beta) || !std::isfinite(rho) || !std::isfinite(nu)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    if (alpha <= 1e-14) {
+        return std::max(S - K * std::exp(-r * T), 0.0);
+    }
+
+    const double F = S * std::exp(r * T);
+    const double sigma = sabr_hagan_black_vol(F, K, T, alpha, beta, rho, nu);
+    if (!std::isfinite(sigma) || sigma < 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return bs_call(S, K, T, r, sigma);
+}
+
 double bs_delta(double S, double K, double T, double r, double sigma, bool call) {
     double d1, d2;
     bs_d1_d2(S, K, T, r, sigma, d1, d2);
