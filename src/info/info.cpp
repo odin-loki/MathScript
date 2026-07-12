@@ -2,6 +2,7 @@
 #include "ms/info/info.hpp"
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
@@ -294,6 +295,46 @@ double sample_entropy(std::span<const double> x, int m, double r) {
     double B = count_matches(m);
     if (B <= 0.0) return 0.0;
     return -std::log(A / B);
+}
+
+double permutation_entropy(std::span<const double> x, int order, int delay,
+                           bool normalize) {
+    if (order < 2 || delay < 1) return 0.0;
+
+    const size_t n = x.size();
+    const size_t span_needed =
+        static_cast<size_t>(order - 1) * static_cast<size_t>(delay) + 1;
+    if (n < span_needed) return 0.0;
+
+    const size_t n_windows = n - span_needed + 1;
+
+    // Frequency count of each ordinal pattern ("position-of-rank" encoding:
+    // pattern[k] = local window position holding the k-th smallest value).
+    std::map<std::vector<int>, long long> counts;
+    std::vector<int> idx(static_cast<size_t>(order));
+    for (size_t start = 0; start < n_windows; ++start) {
+        std::iota(idx.begin(), idx.end(), 0);
+        std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+            double va = x[start + static_cast<size_t>(a) * static_cast<size_t>(delay)];
+            double vb = x[start + static_cast<size_t>(b) * static_cast<size_t>(delay)];
+            return va < vb;
+        });
+        counts[idx] += 1;
+    }
+
+    std::vector<double> probs;
+    probs.reserve(counts.size());
+    const double total = static_cast<double>(n_windows);
+    for (const auto& kv : counts)
+        probs.push_back(static_cast<double>(kv.second) / total);
+
+    const double h = entropy(probs, 2.0);
+    if (!normalize) return h;
+
+    double log2_factorial = 0.0;
+    for (int i = 2; i <= order; ++i) log2_factorial += std::log2(static_cast<double>(i));
+    if (log2_factorial <= 0.0) return 0.0;
+    return h / log2_factorial;
 }
 
 } // namespace info

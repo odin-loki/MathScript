@@ -286,3 +286,205 @@ TEST(BlahutArimoto, DegenerateRowsNotSummingToOne) {
     std::vector<std::vector<double>> W = {{0.5, 0.2}, {0.3, 0.3}};
     EXPECT_NEAR(blahut_arimoto(W), 0.0, 1e-12);
 }
+
+// --- Permutation entropy (Bandt-Pompe ordinal pattern complexity) ---
+//
+// Encoding convention used by ms::info::permutation_entropy: for a window
+// starting at `start`, pattern[k] is the LOCAL window position (0..order-1)
+// holding the k-th smallest value ("position-of-rank" encoding). E.g. for
+// window values (5, 2, 8): smallest is position 1, next is position 0,
+// largest is position 2, so the pattern is (1, 0, 2).
+
+TEST(PermutationEntropy, MonotonicIncreasingIsZero) {
+    // Every window is already sorted ascending -> exactly one ordinal
+    // pattern occurs -> zero disorder in the pattern distribution.
+    std::vector<double> x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    EXPECT_NEAR(permutation_entropy(x, 3), 0.0, 1e-10);
+    EXPECT_NEAR(permutation_entropy(x, 3, 1, false), 0.0, 1e-10);
+}
+
+TEST(PermutationEntropy, MonotonicDecreasingIsZero) {
+    // Every window is sorted descending -> also exactly one ordinal
+    // pattern (just a different one from the ascending case).
+    std::vector<double> x = {10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0};
+    EXPECT_NEAR(permutation_entropy(x, 3), 0.0, 1e-10);
+    EXPECT_NEAR(permutation_entropy(x, 4, 1, false), 0.0, 1e-10);
+}
+
+TEST(PermutationEntropy, HandComputedExactEntropy) {
+    // x = {1, 3, 2, 5, 4, 6}, order=3, delay=1 -> 4 windows:
+    //   [1,3,2] -> sorted asc: 1(pos0),2(pos2),3(pos1) -> pattern (0,2,1)
+    //   [3,2,5] -> sorted asc: 2(pos1),3(pos0),5(pos2) -> pattern (1,0,2)
+    //   [2,5,4] -> sorted asc: 2(pos0),4(pos2),5(pos1) -> pattern (0,2,1)
+    //   [5,4,6] -> sorted asc: 4(pos1),5(pos0),6(pos2) -> pattern (1,0,2)
+    // Frequencies: (0,2,1) x2, (1,0,2) x2 -> probs {0.5, 0.5} -> H = 1 bit.
+    std::vector<double> x = {1.0, 3.0, 2.0, 5.0, 4.0, 6.0};
+    const double raw = permutation_entropy(x, 3, 1, false);
+    EXPECT_NEAR(raw, 1.0, 1e-10);
+}
+
+TEST(PermutationEntropy, HandComputedNormalizedEntropy) {
+    // Same series as above: normalized = H / log2(3!) = 1 / log2(6).
+    std::vector<double> x = {1.0, 3.0, 2.0, 5.0, 4.0, 6.0};
+    const double normalized = permutation_entropy(x, 3, 1, true);
+    EXPECT_NEAR(normalized, 1.0 / std::log2(6.0), 1e-10);
+}
+
+TEST(PermutationEntropy, NormalizeFalseReturnsRawEntropy) {
+    std::vector<double> x = {1.0, 3.0, 2.0, 5.0, 4.0, 6.0};
+    EXPECT_NEAR(permutation_entropy(x, 3, 1, false), 1.0, 1e-10);
+}
+
+TEST(PermutationEntropy, NormalizeRatioMatchesLog2Factorial) {
+    // The normalize=true result must equal normalize=false result divided
+    // by log2(order!), using the exact same base-2 convention entropy()
+    // uses internally.
+    std::vector<double> x = {5.0, -4.0, 7.0, -2.0, 9.0, 0.0, 11.0, 2.0,
+                              13.0, 4.0, 15.0, 6.0, 17.0, 8.0, 19.0, 10.0};
+    const int order = 3;
+    const double raw = permutation_entropy(x, order, 1, false);
+    const double normalized = permutation_entropy(x, order, 1, true);
+    double log2_factorial = 0.0;
+    for (int i = 2; i <= order; ++i) log2_factorial += std::log2(static_cast<double>(i));
+    EXPECT_NEAR(normalized, raw / log2_factorial, 1e-10);
+}
+
+TEST(PermutationEntropy, MaximalDiversityOrder2ApproachesOne) {
+    // order=2 has only 2! = 2 possible patterns: ascending or descending.
+    // A strictly alternating sequence hits each pattern equally often
+    // (4 ascending + 4 descending windows out of 8), giving the exact
+    // theoretical maximum entropy for order=2: normalized == 1.0.
+    std::vector<double> x = {1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0};
+    const double normalized = permutation_entropy(x, 2);
+    EXPECT_NEAR(normalized, 1.0, 1e-10);
+
+    // Monotonic series (order=2) has zero diversity by contrast.
+    std::vector<double> mono = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+    EXPECT_LT(permutation_entropy(mono, 2), normalized);
+}
+
+TEST(PermutationEntropy, DelayOneRevealsOscillation) {
+    // x[i] = i + 5*(-1)^i: an increasing trend with a superimposed
+    // zigzag. With delay=1, consecutive triples alternate between exactly
+    // two ordinal patterns, 7 windows each out of 14 -> exact 1 bit raw
+    // entropy, normalized = 1/log2(6).
+    std::vector<double> x = {5.0, -4.0, 7.0, -2.0, 9.0, 0.0, 11.0, 2.0,
+                              13.0, 4.0, 15.0, 6.0, 17.0, 8.0, 19.0, 10.0};
+    const double raw = permutation_entropy(x, 3, 1, false);
+    EXPECT_NEAR(raw, 1.0, 1e-10);
+    const double normalized = permutation_entropy(x, 3, 1, true);
+    EXPECT_NEAR(normalized, 1.0 / std::log2(6.0), 1e-10);
+}
+
+TEST(PermutationEntropy, DelayTwoLooksMonotonic) {
+    // Same zigzag series as above, but sampled with delay=2: every window
+    // then only ever sees same-parity elements, whose +5/-5 zigzag offset
+    // cancels out, leaving a purely (deceptively) monotonic increasing
+    // sub-sample -> exactly one ordinal pattern -> zero entropy, despite
+    // the raw series being far from monotonic.
+    std::vector<double> x = {5.0, -4.0, 7.0, -2.0, 9.0, 0.0, 11.0, 2.0,
+                              13.0, 4.0, 15.0, 6.0, 17.0, 8.0, 19.0, 10.0};
+    EXPECT_NEAR(permutation_entropy(x, 3, 2, false), 0.0, 1e-10);
+    EXPECT_NEAR(permutation_entropy(x, 3, 2, true), 0.0, 1e-10);
+}
+
+TEST(PermutationEntropy, DelayChangesEntropyComparison) {
+    // Direct demonstration that changing `delay` alone (same series, same
+    // order) genuinely changes which samples are grouped into windows and
+    // thus changes the resulting entropy.
+    std::vector<double> x = {5.0, -4.0, 7.0, -2.0, 9.0, 0.0, 11.0, 2.0,
+                              13.0, 4.0, 15.0, 6.0, 17.0, 8.0, 19.0, 10.0};
+    const double h_delay1 = permutation_entropy(x, 3, 1);
+    const double h_delay2 = permutation_entropy(x, 3, 2);
+    EXPECT_GT(h_delay1, h_delay2);
+    EXPECT_NEAR(h_delay2, 0.0, 1e-10);
+}
+
+TEST(PermutationEntropy, DegenerateOrderLessThanTwo) {
+    std::vector<double> x = {1.0, 2.0, 3.0, 4.0, 5.0};
+    EXPECT_NEAR(permutation_entropy(x, 0), 0.0, 1e-12);
+    EXPECT_NEAR(permutation_entropy(x, 1), 0.0, 1e-12);
+}
+
+TEST(PermutationEntropy, DegenerateNegativeOrder) {
+    std::vector<double> x = {1.0, 2.0, 3.0, 4.0, 5.0};
+    EXPECT_NEAR(permutation_entropy(x, -3), 0.0, 1e-12);
+}
+
+TEST(PermutationEntropy, DegenerateSeriesTooShortForOrder) {
+    // order=5 needs at least 5 samples (delay=1) to form a single window.
+    std::vector<double> x = {1.0, 2.0, 3.0};
+    EXPECT_NEAR(permutation_entropy(x, 5), 0.0, 1e-12);
+}
+
+TEST(PermutationEntropy, DegenerateEmptySeries) {
+    std::vector<double> x;
+    EXPECT_NEAR(permutation_entropy(x, 3), 0.0, 1e-12);
+}
+
+TEST(PermutationEntropy, DegenerateNonPositiveDelay) {
+    std::vector<double> x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+    EXPECT_NEAR(permutation_entropy(x, 3, 0), 0.0, 1e-12);
+    EXPECT_NEAR(permutation_entropy(x, 3, -1), 0.0, 1e-12);
+}
+
+TEST(PermutationEntropy, NoiseRobustnessSmallNoiseStaysLow) {
+    // A clean monotonic ramp has zero permutation entropy. Perturbing it
+    // with noise much smaller than the step size between samples should
+    // not flip most local orderings, so the noisy version's entropy
+    // should stay close to (not wildly different from) the clean value.
+    std::vector<double> clean(30);
+    for (size_t i = 0; i < clean.size(); ++i) clean[i] = static_cast<double>(i);
+
+    // Deterministic small perturbation pattern (amplitude << step size 1.0).
+    const double small_noise[6] = {0.02, -0.03, 0.01, -0.01, 0.025, -0.015};
+    std::vector<double> noisy = clean;
+    for (size_t i = 0; i < noisy.size(); ++i) noisy[i] += small_noise[i % 6];
+
+    const double h_clean = permutation_entropy(clean, 3);
+    const double h_noisy = permutation_entropy(noisy, 3);
+    EXPECT_NEAR(h_clean, 0.0, 1e-10);
+    // Small noise keeps the noisy entropy close to the clean value, and
+    // far below the theoretical maximum of 1.0.
+    EXPECT_NEAR(h_noisy, h_clean, 0.3);
+    EXPECT_LT(h_noisy, 0.5);
+}
+
+TEST(PermutationEntropy, NoiseRobustnessLargeNoiseIncreasesEntropy) {
+    // By contrast, noise comparable to (or larger than) the step size
+    // between samples should genuinely scramble local orderings and push
+    // entropy noticeably higher than the small-noise case, illustrating
+    // that permutation entropy tracks disorder in ordinal relationships.
+    std::vector<double> clean(30);
+    for (size_t i = 0; i < clean.size(); ++i) clean[i] = static_cast<double>(i);
+
+    const double small_noise[6] = {0.02, -0.03, 0.01, -0.01, 0.025, -0.015};
+    std::vector<double> small_noisy = clean;
+    for (size_t i = 0; i < small_noisy.size(); ++i) small_noisy[i] += small_noise[i % 6];
+
+    const double large_noise[6] = {4.0, -5.0, 3.5, -4.5, 5.0, -3.0};
+    std::vector<double> large_noisy = clean;
+    for (size_t i = 0; i < large_noisy.size(); ++i) large_noisy[i] += large_noise[i % 6];
+
+    const double h_small = permutation_entropy(small_noisy, 3);
+    const double h_large = permutation_entropy(large_noisy, 3);
+    EXPECT_GT(h_large, h_small);
+}
+
+TEST(PermutationEntropy, NormalizedEntropyBoundedZeroOne) {
+    // Sanity: for a variety of constructed series and orders, the
+    // normalized value must always lie within [0, 1].
+    std::vector<std::vector<double>> series = {
+        {1.0, 3.0, 2.0, 5.0, 4.0, 6.0, 2.5, 7.0, 1.5},
+        {5.0, -4.0, 7.0, -2.0, 9.0, 0.0, 11.0, 2.0, 13.0, 4.0},
+        {10.0, 9.0, 8.0, 7.0, 6.0, 5.0},
+        {1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0},
+    };
+    for (const auto& s : series) {
+        for (int order = 2; order <= 4; ++order) {
+            const double h = permutation_entropy(s, order);
+            EXPECT_GE(h, 0.0);
+            EXPECT_LE(h, 1.0 + 1e-9);
+        }
+    }
+}
