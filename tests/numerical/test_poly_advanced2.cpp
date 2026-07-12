@@ -183,6 +183,75 @@ TEST(PolyRoots, RootsAreRoots) {
     }
 }
 
+static std::complex<double> eval_poly_complex(const std::vector<double>& p,
+                                               std::complex<double> x) {
+    std::complex<double> v = p.back();
+    for (int k = static_cast<int>(p.size()) - 2; k >= 0; --k) {
+        v = v * x + p[static_cast<size_t>(k)];
+    }
+    return v;
+}
+
+TEST(PolyRoots, CubicThreeDistinctRealRoots) {
+    // (x-1)(x-2)(x-3) = x^3 - 6x^2 + 11x - 6
+    const std::vector<double> p{-6.0, 11.0, -6.0, 1.0};
+    auto roots = ms::poly::poly_roots(p);
+    ASSERT_EQ(roots.size(), 3u);
+    std::vector<double> real_roots;
+    for (const auto& r : roots) {
+        EXPECT_NEAR(r.imag(), 0.0, 1e-5);
+        real_roots.push_back(r.real());
+    }
+    std::sort(real_roots.begin(), real_roots.end());
+    EXPECT_NEAR(real_roots[0], 1.0, 1e-5);
+    EXPECT_NEAR(real_roots[1], 2.0, 1e-5);
+    EXPECT_NEAR(real_roots[2], 3.0, 1e-5);
+    for (const auto& r : roots) {
+        EXPECT_NEAR(std::abs(eval_poly_complex(p, r)), 0.0, 1e-5);
+    }
+}
+
+TEST(PolyRoots, RepeatedRootEvaluatesToZero) {
+    // (x-2)^2 (x-3) = x^3 - 7x^2 + 16x - 12
+    const std::vector<double> p{-12.0, 16.0, -7.0, 1.0};
+    auto roots = ms::poly::poly_roots(p);
+    ASSERT_EQ(roots.size(), 3u);
+    for (const auto& r : roots) {
+        EXPECT_NEAR(std::abs(eval_poly_complex(p, r)), 0.0, 1e-4);
+    }
+}
+
+TEST(PolyRoots, AllRootsEvaluateToZero) {
+    const std::vector<double> p{1.0, -2.0, 1.0, -1.0, 0.5};
+    auto roots = ms::poly::poly_roots(p);
+    ASSERT_EQ(roots.size(), 4u);
+    for (const auto& r : roots) {
+        EXPECT_NEAR(std::abs(eval_poly_complex(p, r)), 0.0, 1e-4);
+    }
+}
+
+TEST(PolyRoots, AgreesWithRationalRootsOnIntegerPoly) {
+    // (x-1)(x-2)(x-3)
+    const std::vector<double> p{-6.0, 11.0, -6.0, 1.0};
+    const auto numeric = ms::poly::poly_roots(p);
+    const auto rational = ms::poly::poly_rational_roots(p);
+    ASSERT_TRUE(rational.has_value());
+    ASSERT_EQ(numeric.size(), rational->size());
+    std::vector<double> numeric_real;
+    for (const auto& r : numeric) {
+        numeric_real.push_back(r.real());
+    }
+    std::sort(numeric_real.begin(), numeric_real.end());
+    std::vector<double> rational_real;
+    for (const auto& [num, den] : *rational) {
+        rational_real.push_back(static_cast<double>(num) / static_cast<double>(den));
+    }
+    std::sort(rational_real.begin(), rational_real.end());
+    for (size_t i = 0; i < numeric_real.size(); ++i) {
+        EXPECT_NEAR(numeric_real[i], rational_real[i], 1e-5);
+    }
+}
+
 // -----------------------------------------------------------------------
 // poly_fit
 // -----------------------------------------------------------------------

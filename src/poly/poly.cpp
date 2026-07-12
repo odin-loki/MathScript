@@ -1,5 +1,6 @@
 #include "ms/poly/poly.hpp"
 #include "ms/core/operations.hpp"
+#include "ms/linalg/linalg.hpp"
 #include "ms/numthy/numthy.hpp"
 #include <algorithm>
 #include <cmath>
@@ -359,48 +360,192 @@ double bernstein(int n, int i, double x) {
     return binom_double(n, i) * std::pow(x, i) * std::pow(1.0 - x, n - i);
 }
 
-std::vector<std::complex<double>> poly_roots(const std::vector<double>& coeffs) {
-    auto p = strip(coeffs);
-    int n = static_cast<int>(p.size()) - 1;
-    if (n <= 0) return {};
-    if (n == 1) return {{-p[0] / p[1], 0.0}};
+namespace {
 
-    // Companion matrix eigenvalues via QR iteration (Aberth method approximation)
-    // Use DKW (Durand-Kerner-Weierstrass) method
-    std::vector<std::complex<double>> roots(static_cast<size_t>(n));
-    const double PI = 3.14159265358979323846;
-    double scale = std::pow(std::abs(p[0] / p.back()), 1.0 / n);
-    for (int i = 0; i < n; ++i) {
-        double theta = 2.0 * PI * i / n + 0.1;
-        roots[static_cast<size_t>(i)] =
-            std::polar(0.5 + scale, theta);
+// Companion matrix for a monic polynomial (ascending coefficients, leading = 1).
+// Subdiagonal ones and negated coefficients in the last column (MATLAB/NumPy layout).
+ColMatrix<double> poly_companion_matrix(const std::vector<double>& monic) {
+    const int n = static_cast<int>(monic.size()) - 1;
+    ColMatrix<double> C(static_cast<size_t>(n), static_cast<size_t>(n), 0.0);
+    for (int i = 0; i < n - 1; ++i) {
+        C(static_cast<size_t>(i + 1), static_cast<size_t>(i)) = 1.0;
     }
+    for (int j = 0; j < n; ++j) {
+        C(static_cast<size_t>(j), static_cast<size_t>(n - 1)) =
+            -monic[static_cast<size_t>(j)];
+    }
+    return C;
+}
 
-    const auto eval_poly = [&](std::complex<double> x) {
-        std::complex<double> v = p.back();
-        for (int k = static_cast<int>(p.size()) - 2; k >= 0; --k)
-            v = v * x + p[static_cast<size_t>(k)];
-        return v;
-    };
+// Extract all eigenvalues (real and complex conjugate pairs) from a real
+// quasi-triangular matrix produced by Schur/QR iteration.
+std::vector<std::complex<double>> eigvals_from_quasi_triangular(const Matrix<double>& T,
+                                                                 double block_tol = 1e-8) {
+    const size_t n = T.rows();
+    std::vector<std::complex<double>> roots;
+    roots.reserve(n);
 
-    for (int iter = 0; iter < 200; ++iter) {
-        bool done = true;
-        for (int i = 0; i < n; ++i) {
-            std::complex<double> fi = eval_poly(roots[static_cast<size_t>(i)]);
-            std::complex<double> denom = {1.0, 0.0};
-            for (int j = 0; j < n; ++j) {
-                if (j != i)
-                    denom *= (roots[static_cast<size_t>(i)] -
-                              roots[static_cast<size_t>(j)]);
+    size_t i = 0;
+    while (i < n) {
+        if (i + 1 < n && std::abs(T(i + 1, i)) > block_tol) {
+            const double a = T(i, i);
+            const double b = T(i, i + 1);
+            const double c = T(i + 1, i);
+            const double d = T(i + 1, i + 1);
+            const double tr = a + d;
+            const double det = a * d - b * c;
+            const double disc = tr * tr - 4.0 * det;
+            if (disc >= 0.0) {
+                const double sq = std::sqrt(disc);
+                roots.emplace_back(0.5 * (tr + sq), 0.0);
+                roots.emplace_back(0.5 * (tr - sq), 0.0);
+            } else {
+                const double re = 0.5 * tr;
+                const double im = 0.5 * std::sqrt(-disc);
+                roots.emplace_back(re, im);
+                roots.emplace_back(re, -im);
             }
-            if (std::abs(denom) < 1e-30) continue;
-            std::complex<double> delta = fi / (p.back() * denom);
-            roots[static_cast<size_t>(i)] -= delta;
-            if (std::abs(delta) > 1e-10) done = false;
+            i += 2;
+        } else {
+            roots.emplace_back(T(i, i), 0.0);
+            ++i;
         }
-        if (done) break;
     }
     return roots;
+}
+
+// Wilkinson shift for the trailing 2×2 block of an upper Hessenberg matrix.
+double wilkinson_shift(const Matrix<double>& H, size_t n) {
+    const double a = H(n - 2, n - 2);
+    const double b = H(n - 2, n - 1);
+    const double c = H(n - 1, n - 2);
+    const double d = H(n - 1, n - 1);
+    const double tr = a + d;
+    const double det = a * d - b * c;
+    const double half = 0.5 * tr;
+    const double rad_sq = half * half - det;
+    if (rad_sq >= 0.0) {
+        const double rad = std::sqrt(rad_sq);
+        const double e1 = half + rad;
+        const double e2 = half - rad;
+        return (std::abs(e1 - d) <= std::abs(e2 - d)) ? e1 : e2;
+    }
+    return half;
+}
+
+// Eigenvalues of an upper Hessenberg matrix via Wilkinson-shifted QR iteration.
+std::vector<std::complex<double>> hessenberg_eigenvalues(Matrix<double> H) {
+    const size_t dim = H.rows();
+    std::vector<std::complex<double>> evals;
+    evals.reserve(dim);
+
+    size_t n = dim;
+    const double tol = 1e-12;
+    int total_iter = 0;
+
+    while (n > 0 && total_iter < 2000) {
+        if (n == 1) {
+            evals.emplace_back(H(0, 0), 0.0);
+            break;
+        }
+
+        while (n > 1 &&
+               std::abs(H(n - 1, n - 2)) <=
+                   tol * (std::abs(H(n - 2, n - 2)) + std::abs(H(n - 1, n - 1)) + 1.0)) {
+            H(n - 1, n - 2) = 0.0;
+            evals.emplace_back(H(n - 1, n - 1), 0.0);
+            --n;
+        }
+        if (n == 0) {
+            break;
+        }
+        if (n == 1) {
+            evals.emplace_back(H(0, 0), 0.0);
+            break;
+        }
+
+        if (n == 2) {
+            const double a = H(0, 0);
+            const double b = H(0, 1);
+            const double c = H(1, 0);
+            const double d = H(1, 1);
+            const double tr = a + d;
+            const double det = a * d - b * c;
+            const double disc = tr * tr - 4.0 * det;
+            if (disc >= 0.0) {
+                const double sq = std::sqrt(disc);
+                evals.emplace_back(0.5 * (tr + sq), 0.0);
+                evals.emplace_back(0.5 * (tr - sq), 0.0);
+            } else {
+                const double re = 0.5 * tr;
+                const double im = 0.5 * std::sqrt(-disc);
+                evals.emplace_back(re, im);
+                evals.emplace_back(re, -im);
+            }
+            break;
+        }
+
+        const double shift = wilkinson_shift(H, n);
+        for (size_t i = 0; i < n; ++i) {
+            H(i, i) -= shift;
+        }
+
+        Matrix<double> Hn(n, n, 0.0);
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = 0; j < n; ++j) {
+                Hn(i, j) = H(i, j);
+            }
+        }
+        const auto qr_result = qr(Hn);
+        if (!qr_result) {
+            break;
+        }
+        const auto [Q, R] = *qr_result;
+        const auto rq = matmul(R, Q);
+        if (!rq) {
+            break;
+        }
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = 0; j < n; ++j) {
+                H(i, j) = (*rq)(i, j);
+            }
+            H(i, i) += shift;
+        }
+        ++total_iter;
+    }
+
+    if (evals.size() < dim) {
+        return eigvals_from_quasi_triangular(H);
+    }
+    return evals;
+}
+
+} // namespace
+
+std::vector<std::complex<double>> poly_roots(const std::vector<double>& coeffs) {
+    auto p = strip(coeffs);
+    const int n = static_cast<int>(p.size()) - 1;
+    if (n <= 0) {
+        return {};
+    }
+    if (n == 1) {
+        return {{-p[0] / p[1], 0.0}};
+    }
+    if (n == 2) {
+        const std::complex<double> a = p[2];
+        const std::complex<double> b = p[1];
+        const std::complex<double> c = p[0];
+        const std::complex<double> disc = b * b - 4.0 * a * c;
+        const std::complex<double> sq = std::sqrt(disc);
+        return {(-b + sq) / (2.0 * a), (-b - sq) / (2.0 * a)};
+    }
+
+    const auto monic = poly_monic(p);
+    const ColMatrix<double> C = poly_companion_matrix(monic);
+
+    // Companion matrices are already upper Hessenberg; Wilkinson-shifted QR
+    // (same core algorithm as ms::linalg::eig) yields their eigenvalues/roots.
+    return hessenberg_eigenvalues(C);
 }
 
 std::vector<double> poly_fit(const std::vector<double>& xs,
@@ -814,7 +959,7 @@ namespace {
 // This is also used (relative to the real part) as the threshold below
 // which a root's imaginary part is treated as zero (a real root) rather
 // than a genuine complex pole. 1e-4 rather than a tighter value like 1e-6
-// is deliberate: poly_roots uses Durand-Kerner-Weierstrass iteration, whose
+// is deliberate: poly_roots uses companion-matrix eigenvalues, whose
 // convergence rate degrades for higher-multiplicity roots (a triple real
 // root was empirically observed to converge to only ~1e-5 accuracy, with a
 // similarly-sized spurious imaginary part), so a tighter tolerance would
