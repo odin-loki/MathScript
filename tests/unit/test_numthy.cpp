@@ -156,8 +156,45 @@ TEST(NumthyModular, PrimitiveRoot) {
     EXPECT_FALSE(is_primitive_root(4, 11));
 }
 
-TEST(NumthyModular, PrimitiveRootValue) {
-    EXPECT_EQ(primitive_root(7), 3u);
+TEST(NumthyModular, PrimitiveRootKnownValues) {
+    EXPECT_EQ(primitive_root(2), 1);
+    EXPECT_EQ(primitive_root(3), 2);
+    EXPECT_EQ(primitive_root(5), 2);
+    EXPECT_EQ(primitive_root(7), 3);
+    EXPECT_EQ(primitive_root(11), 2);
+}
+
+TEST(NumthyModular, PrimitiveRootNonPrime) {
+    EXPECT_EQ(primitive_root(0), -1);
+    EXPECT_EQ(primitive_root(1), -1);
+    EXPECT_EQ(primitive_root(4), -1);
+    EXPECT_EQ(primitive_root(6), -1);
+    EXPECT_EQ(primitive_root(9), -1);
+    EXPECT_EQ(primitive_root(-7), -1);
+}
+
+TEST(NumthyModular, PrimitiveRootOrderMatchesPhi) {
+    for (int p : {2, 3, 5, 7, 11, 13, 17}) {
+        const int g = primitive_root(p);
+        ASSERT_GE(g, 1);
+        auto ord = multiplicative_order(static_cast<uint64_t>(g),
+                                        static_cast<uint64_t>(p));
+        ASSERT_TRUE(ord.has_value());
+        EXPECT_EQ(ord.value(), euler_phi(static_cast<uint64_t>(p)));
+        EXPECT_EQ(mod_pow(static_cast<uint64_t>(g), ord.value(),
+                          static_cast<uint64_t>(p)),
+                  1u);
+    }
+}
+
+TEST(NumthyModular, PrimitiveRootSmallest) {
+    for (int p : {7, 11, 13, 17, 19}) {
+        const int g = primitive_root(p);
+        ASSERT_GE(g, 2);
+        for (int h = 2; h < g; ++h)
+            EXPECT_FALSE(is_primitive_root(static_cast<uint64_t>(h),
+                                           static_cast<uint64_t>(p)));
+    }
 }
 
 TEST(NumthyModular, DiscreteLog) {

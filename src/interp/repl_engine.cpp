@@ -7867,7 +7867,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
-            return static_cast<double>(numthy::primitive_root(p));
+            return static_cast<double>(numthy::primitive_root(static_cast<int>(p)));
         }
     }
     if (args.size() == 2) {
@@ -17691,7 +17691,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
-            return std::to_string(numthy::primitive_root(p)) + "\n";
+            return std::to_string(numthy::primitive_root(static_cast<int>(p))) + "\n";
         }
 
         if (fn == "numthy_von_mangoldt") {
