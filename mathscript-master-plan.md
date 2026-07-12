@@ -7357,13 +7357,13 @@ Replace all Class A transitional libraries with own implementations. This runs i
 
 ### 15.12.1 Implementation progress
 
-Waves 1 through 215 incrementally implemented this plan; each wave's specific additions are tracked in full detail in `CHANGELOG.md` rather than duplicated here.
+Waves 1 through 216 incrementally implemented this plan; each wave's specific additions are tracked in full detail in `CHANGELOG.md` rather than duplicated here.
 
 **Current status:**
 - Phase 10 hardening substantially underway (see `docs/RELEASE.md`'s tag-criteria list for gate details)
 - Version 1.0.0 released; CI green on Windows and Linux
 - ~91% line coverage (90% gate); Valgrind memcheck; libFuzzer smoke (7 targets)
-- **369 CTest suites, all passing** (as of Wave 215)
+- **369 CTest suites, all passing** (as of Wave 216)
 - Wave 207: full documentation overhaul (README/ARCHITECTURE/API/USER_GUIDE/CONTRIBUTING/RELEASE/CHANGELOG/master-plan all rewritten or refreshed), plus 8 spec-vs-implementation gaps closed (special spherical harmonics, signal coherence, stats partial correlation/VIF, ML PR-AUC, finance historical VaR, graph min arborescence, poly_roots rewritten via companion-matrix eigenvalues, quantum Schmidt decomposition)
 - Wave 208: 8 more gaps closed in previously-untouched modules (optim conjugate gradient, control step_info, image hough_circles, tensorops NMF, graph k-core decomposition, signal Chirp Z-Transform, ML IsolationForest, geo polygon triangulation)
 - Wave 209: 8 more gaps closed (numthy Carmichael lambda, combo Eulerian numbers, bignum modular inverse, diffgeo torsion, compress Golomb-Rice coding, ODE exponential Euler/ETD1, topo witness complex, symbolic sym_expand)
@@ -7373,6 +7373,7 @@ Waves 1 through 215 incrementally implemented this plan; each wave's specific ad
 - Wave 213: 8 more gaps closed (cpu BLAS L1/L2, core nextafter/sparse_add/Tensor reshape/MatMul expr, interp list_session_objects, runtime parallel_for, memory Arena bytes_used)
 - Wave 214: 8 more gaps closed (signal sosfilt, prob Logistic distribution, stats kde, optim rmsprop, control lqe, compress ANS coding, special lambert_w, error ValueOutOfRange)
 - Wave 215: 8 more gaps closed (image watershed, quantum purity, ode trapezoidal, combo restricted_partitions, finance heston_call, geo poly_union, poly poly_factor, ml AdaBoost)
+- Wave 216: 8 more gaps closed (signal cheby1, finance sabr_call, image slic, optim adadelta, graph eccentricity, symbolic sym_collect, pde pde_laplace_2d, bignum bigint_next_prime)
 - Unsafe surface audit + delta baseline (blocking in CI); install/package smoke (DEB/RPM/NSIS/WiX)
 - ORC JIT scalar expr + native matrix/scalar dispatch; OpenGL PlotSurfWidget
 - docs/API.md, docs/ARCHITECTURE.md, docs/RELEASE.md; scripts/pre_release.sh + tag checklists
@@ -7383,12 +7384,12 @@ Waves 1 through 215 incrementally implemented this plan; each wave's specific ad
 - Windows installer / Linux packages (post-1.0 packaging)
 - **REPL surface completeness:** two batches of 33 simple scalar bindings (Waves 194–195) covered numthy/poly/finance/special/prob; the large majority of library functions added since Wave 187 remain unbound (especially stateful/vector/callback-argument signatures, and entire modules like ml/image/tensorops/izaac beyond current bindings)
 - HOSVD/Tucker share one REPL session-object kind (`TuckerDecomposition`) — introspection cannot distinguish algorithm by kind alone (cosmetic)
-- **ms::signal:** sosfilt, advanced IIR/FIR design (cheby1/cheby2/ellip/bessel/remez), spectral analysis (periodogram/music/esprit/pburg/cohere), emd/hht/vmd, modulation family
+- **ms::signal:** cheby1 closed (Wave 216); advanced IIR/FIR design (cheby2/ellip/bessel/remez), spectral analysis (periodogram/music/esprit/pburg), emd/hht/vmd, modulation family
 - **ms::geo:** polygon boolean ops (poly_intersect/diff) — robust non-convex union/intersection deferred; convex `poly_union` MVP closed (Wave 215); convex_hull_3d closed (Wave 193)
 - **ms::graph:** planarity/embedding (Boyer-Myrvold), Blossom matching — substantial dedicated efforts
-- **ms::finance:** SABR stochastic-volatility model and related extensions (Heston call closed Wave 215; Monte Carlo, Markowitz, lookback, Black-Litterman, etc. now closed)
+- **ms::finance:** SABR put and related extensions (SABR call closed Wave 216; Heston call Wave 215; Monte Carlo, Markowitz, lookback, Black-Litterman, etc. now closed)
 - **ms::bignum:** APFloat/APComplex with full transcendental support — fundamental-rewrite scale
-- **ms::image:** SIFT/SURF/ORB, watershed/graph-cut/SLIC, marching-cubes
+- **ms::image:** SIFT/SURF/ORB, graph-cut, marching-cubes (watershed/SLIC closed Waves 215–216)
 - **ms::poly:** full factorization over R/C/Fp (rational-root subset closed Wave 196)
 - **ms::izaac:** military namespace, full generic MPC beyond secret sharing
 - **ms::crypto:** no standalone module planned; primitives routed through ms::izaac

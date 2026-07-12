@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-13 (Wave 216 — Signal Cheby1, Finance SABR, Image SLIC, Optim Adadelta, Graph Eccentricity, Symbolic Collect, PDE Laplace, Bignum Next Prime)
+
+8 parallel subagents targeting modules not touched in waves 214–215 (`signal`, `finance`, `image`, `optim`, `graph`, `symbolic`, `pde`, `bignum`).
+
+### Added (Wave 216)
+- `ms::signal` gains `cheby1` — Chebyshev Type I IIR filter design (bilinear zpk pipeline, scipy-compatible), complementing `firwin`/`sosfilt`. 18 new tests in `test_signal_filters.cpp`.
+- `ms::finance` gains `sabr_call` — SABR stochastic-volatility European call via Hagan et al. asymptotic formula. 8 new tests in `test_finance.cpp`.
+- `ms::image` gains `slic` — SLIC superpixel segmentation on Lab+xy features. 10 new tests in `test_image.cpp`.
+- `ms::optim` gains `adadelta` — adaptive gradient optimizer without manual learning-rate decay. 10 new tests in `test_optim_global.cpp`.
+- `ms::graph` gains `eccentricity` — per-node maximum shortest-path distance; `diameter` equals max eccentricity on connected graphs. 9 new tests in `test_graph.cpp`.
+- `ms::symbolic` gains `sym_collect` — combine like terms in a symbolic expression. 9 new tests in `test_symbolic_extended.cpp`.
+- `ms::pde` gains `pde_laplace_2d` — steady 2D Laplace equation (∇²u=0) via Jacobi iteration with Dirichlet BC. 9 new tests in `test_pde_extended.cpp`.
+- `ms::bignum` gains `bigint_next_prime` — smallest prime ≥ n via Miller–Rabin search. 8 new tests in `test_bignum.cpp`.
+- **Total Wave 216: 369 CTest suites — all passing** (no new CTest registrations; 81 new test cases). All eight branches merged with zero conflicts; cheby1 scipy bilinear convention fix applied before final merge. Full-suite verification on `main` passed on the first attempt.
+
 ## [1.0.0] — 2026-07-13 (Wave 215 — Image Watershed, Quantum Purity, ODE Trapezoidal, Combo Restricted Partitions, Finance Heston, Geo Poly Union, Poly Factor, ML AdaBoost)
 
 8 parallel subagents targeting modules not heavily touched in waves 213–214 (`image`, `quantum`, `ode`, `combo`, `finance`, `geo`, `poly`, `ml`).
