@@ -587,6 +587,40 @@ double poly_cheb_eval(const std::vector<double>& cheb_coeffs, double x) {
     return x * b1 - b2 + (cheb_coeffs.empty() ? 0.0 : cheb_coeffs[0]);
 }
 
+std::vector<double> poly_cheb_expand(std::function<double(double)> f, int n,
+                                      double a, double b) {
+    if (n < 0 || !f) return {};
+
+    const double PI = 3.14159265358979323846;
+    const int npts = n + 1;
+
+    // Chebyshev points of the first kind on [-1, 1], mapped onto [a, b].
+    std::vector<double> nodes(static_cast<size_t>(npts));
+    std::vector<double> samples(static_cast<size_t>(npts));
+    const double mid = 0.5 * (a + b);
+    const double half = 0.5 * (b - a);
+    for (int k = 0; k < npts; ++k) {
+        double xk = std::cos((2.0 * k + 1.0) * PI / (2.0 * npts));
+        nodes[static_cast<size_t>(k)] = xk;
+        samples[static_cast<size_t>(k)] = f(mid + half * xk);
+    }
+
+    std::vector<double> coeffs(static_cast<size_t>(npts));
+    for (int j = 0; j < npts; ++j) {
+        double sum = 0.0;
+        for (int k = 0; k < npts; ++k) {
+            double xk = nodes[static_cast<size_t>(k)];
+            double Tj = std::cos(j * std::acos(xk));
+            sum += samples[static_cast<size_t>(k)] * Tj;
+        }
+        coeffs[static_cast<size_t>(j)] = (2.0 / npts) * sum;
+    }
+    // Match poly_cheb_eval's convention, which evaluates the series as
+    // c_0 + sum_{j=1}^n c_j*T_j(x) (no implicit halving of coeffs[0]).
+    coeffs[0] *= 0.5;
+    return coeffs;
+}
+
 int poly_root_count(const std::vector<double>& p, double a, double b) {
     // Sturm's theorem: count sign changes of Sturm sequence at a and b
     auto build_sturm = [&]() {

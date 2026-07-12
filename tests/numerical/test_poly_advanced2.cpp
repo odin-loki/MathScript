@@ -248,3 +248,113 @@ TEST(PolyRootCount, OneRootInInterval) {
     int n = ms::poly::poly_root_count({6.0, -5.0, 1.0}, 1.5, 2.5);
     EXPECT_EQ(n, 1);
 }
+
+// -----------------------------------------------------------------------
+// poly_cheb_expand
+// -----------------------------------------------------------------------
+
+// Maps an evaluation point x in [a, b] back to the canonical [-1, 1]
+// argument expected by poly_cheb_eval.
+static double to_canonical(double x, double a, double b) {
+    return (2.0 * x - (a + b)) / (b - a);
+}
+
+TEST(PolyChebExpand, RoundTripExpOnDefaultInterval) {
+    auto f = [](double x) { return std::exp(x); };
+    int n = 16;
+    auto coeffs = ms::poly::poly_cheb_expand(f, n);
+    ASSERT_EQ(coeffs.size(), static_cast<size_t>(n + 1));
+
+    for (double x : {-0.9, -0.5, -0.1, 0.0, 0.3, 0.6, 0.95}) {
+        double approx = ms::poly::poly_cheb_eval(coeffs, x);
+        EXPECT_NEAR(approx, f(x), 1e-9)
+            << "mismatch at x=" << x;
+    }
+}
+
+TEST(PolyChebExpand, ExactForLowDegreePolynomial) {
+    // f(x) = x^3 - 2x + 1; Chebyshev polys T_0..T_n (n=3) exactly span
+    // degree-<=3 polynomials, so the expansion should reproduce f exactly.
+    auto f = [](double x) { return x * x * x - 2.0 * x + 1.0; };
+    int n = 3;
+    auto coeffs = ms::poly::poly_cheb_expand(f, n);
+    ASSERT_EQ(coeffs.size(), static_cast<size_t>(n + 1));
+
+    for (double x : {-1.0, -0.7, -0.25, 0.0, 0.4, 0.8, 1.0}) {
+        double approx = ms::poly::poly_cheb_eval(coeffs, x);
+        EXPECT_NEAR(approx, f(x), 1e-9) << "mismatch at x=" << x;
+    }
+
+    // Also check with a higher n: still exact, since higher-order Chebyshev
+    // terms simply pick up (near-)zero coefficients.
+    auto coeffs2 = ms::poly::poly_cheb_expand(f, 8);
+    for (double x : {-0.9, -0.3, 0.2, 0.6, 0.99}) {
+        double approx = ms::poly::poly_cheb_eval(coeffs2, x);
+        EXPECT_NEAR(approx, f(x), 1e-9) << "mismatch at x=" << x;
+    }
+}
+
+TEST(PolyChebExpand, RoundTripGeneralInterval) {
+    // f(x) = sin(x) on [0, 5] -- interval mapping must be correct for the
+    // round trip to hold outside the canonical [-1, 1] range.
+    auto f = [](double x) { return std::sin(x); };
+    double a = 0.0, b = 5.0;
+    int n = 18;
+    auto coeffs = ms::poly::poly_cheb_expand(f, n, a, b);
+    ASSERT_EQ(coeffs.size(), static_cast<size_t>(n + 1));
+
+    for (double x : {0.1, 1.0, 2.5, 3.7, 4.9}) {
+        double t = to_canonical(x, a, b);
+        double approx = ms::poly::poly_cheb_eval(coeffs, t);
+        EXPECT_NEAR(approx, f(x), 1e-8) << "mismatch at x=" << x;
+    }
+}
+
+TEST(PolyChebExpand, AccuracyImprovesWithN) {
+    auto f = [](double x) { return std::sin(x) + 0.3 * std::exp(0.5 * x); };
+    std::vector<double> test_pts = {-0.95, -0.6, -0.2, 0.1, 0.5, 0.8, 0.97};
+
+    auto max_err = [&](int n) {
+        auto coeffs = ms::poly::poly_cheb_expand(f, n);
+        double worst = 0.0;
+        for (double x : test_pts) {
+            double approx = ms::poly::poly_cheb_eval(coeffs, x);
+            worst = std::max(worst, std::abs(approx - f(x)));
+        }
+        return worst;
+    };
+
+    double err_low = max_err(3);
+    double err_high = max_err(14);
+    EXPECT_LT(err_high, err_low);
+    // The high-degree expansion of a smooth function should be very
+    // accurate in absolute terms, not merely "better than the low one".
+    EXPECT_LT(err_high, 1e-8);
+}
+
+TEST(PolyChebExpand, DegreeZeroConstantApproximation) {
+    auto f = [](double x) { return x * x; };  // f(0.5*(a+b)) at midpoint of [-1,1] is 0
+    auto coeffs = ms::poly::poly_cheb_expand(f, 0);
+    ASSERT_EQ(coeffs.size(), 1u);
+    // n=0 has exactly one Chebyshev node, x_0 = cos(pi/2) = 0, mapped to the
+    // midpoint of [-1,1] (which is 0), so the single coefficient equals
+    // f(0), and poly_cheb_eval should reproduce that constant everywhere.
+    EXPECT_NEAR(coeffs[0], f(0.0), 1e-12);
+    EXPECT_NEAR(ms::poly::poly_cheb_eval(coeffs, 0.3), f(0.0), 1e-12);
+    EXPECT_NEAR(ms::poly::poly_cheb_eval(coeffs, -0.7), f(0.0), 1e-12);
+}
+
+TEST(PolyChebExpand, SmallNHandledGracefully) {
+    auto f = [](double x) { return 1.0 + x; };
+    for (int n = 0; n <= 2; ++n) {
+        auto coeffs = ms::poly::poly_cheb_expand(f, n);
+        ASSERT_EQ(coeffs.size(), static_cast<size_t>(n + 1));
+        for (double c : coeffs) EXPECT_TRUE(std::isfinite(c));
+    }
+}
+
+TEST(PolyChebExpand, NegativeDegreeReturnsEmpty) {
+    auto f = [](double x) { return x; };
+    auto coeffs = ms::poly::poly_cheb_expand(f, -1);
+    EXPECT_TRUE(coeffs.empty());
+}
