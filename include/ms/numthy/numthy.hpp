@@ -88,6 +88,17 @@ Result<std::pair<uint64_t,uint64_t>> pell_solve(uint64_t D);
 // --- Partition function ---
 uint64_t partition(uint32_t n);   // number of integer partitions of n
 
+// Carmichael function λ(n): the smallest positive integer m such that a^m ≡ 1 (mod n) for
+// every integer a coprime to n. Equivalently the exponent of the multiplicative group
+// (Z/nZ)*; used in RSA key selection because λ(n) is typically tighter than Euler's
+// totient φ(n) (always λ(n) ≤ φ(n), with equality when (Z/nZ)* is cyclic). Computed as
+// lcm over prime power factors p^k of n of λ(p^k), where λ(2)=1, λ(4)=2,
+// λ(2^k)=2^(k-2) for k≥3 (the group mod 2^k is not cyclic for k≥3), and λ(p^k)=φ(p^k)
+// for odd prime p (the group mod p^k is cyclic). Uses factor_exp and lcm internally.
+// @param n positive integer. λ(1)=1 by convention.
+// @return λ(n), or 0 if n==0 (invalid input).
+uint64_t carmichael_lambda(uint64_t n);
+
 // Korselt's criterion Carmichael number test: n is a Carmichael number iff n is composite,
 // squarefree, and for every prime p dividing n, (p-1) divides (n-1). Carmichael numbers are the
 // classic counterexamples that make Fermat's little theorem primality tests unreliable (they

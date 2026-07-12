@@ -265,6 +265,32 @@ static bool pow_u64(uint64_t base, uint32_t exp, uint64_t& out) {
 #endif
 }
 
+static uint64_t lambda_prime_power(uint64_t p, int e) {
+    if (p == 2) {
+        if (e == 1) return 1;
+        if (e == 2) return 2;
+        // e >= 3: λ(2^k) = 2^(k-2)
+        uint64_t result = 1;
+        for (int i = 0; i < e - 2; ++i)
+            result *= 2;
+        return result;
+    }
+    // odd prime: λ(p^k) = φ(p^k) = p^(k-1)*(p-1)
+    uint64_t pk;
+    if (!pow_u64(p, static_cast<uint32_t>(e), pk)) return 0;
+    return (pk / p) * (p - 1);
+}
+
+uint64_t carmichael_lambda(uint64_t n) {
+    if (n == 0) return 0;
+    if (n == 1) return 1;
+    auto fe = factor_exp(n);
+    uint64_t result = 1;
+    for (auto& [p, e] : fe)
+        result = lcm(result, lambda_prime_power(p, e));
+    return result;
+}
+
 uint64_t jordan_totient(uint32_t k, uint64_t n) {
     if (n == 0 || k == 0) return 0;
     if (n == 1) return 1;

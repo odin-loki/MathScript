@@ -456,6 +456,58 @@ TEST(NumthyCarmichael, KorseltCriterionHoldsForEachFactor) {
     }
 }
 
+TEST(NumthyCarmichaelLambda, KnownSmallValues) {
+    EXPECT_EQ(carmichael_lambda(1), 1u);
+    EXPECT_EQ(carmichael_lambda(2), 1u);
+    EXPECT_EQ(carmichael_lambda(4), 2u);
+    EXPECT_EQ(carmichael_lambda(8), 2u);
+    EXPECT_EQ(carmichael_lambda(16), 4u);
+    EXPECT_EQ(carmichael_lambda(3), 2u);
+    EXPECT_EQ(carmichael_lambda(5), 4u);
+    EXPECT_EQ(carmichael_lambda(7), 6u);
+    EXPECT_EQ(carmichael_lambda(9), 6u);
+}
+
+TEST(NumthyCarmichaelLambda, PrimeEqualsPhiMinusOne) {
+    for (uint64_t p : {2u, 3u, 5u, 7u, 11u, 13u, 97u, 7919u}) {
+        EXPECT_EQ(carmichael_lambda(p), p - 1) << "p=" << p;
+        EXPECT_EQ(carmichael_lambda(p), euler_phi(p)) << "p=" << p;
+    }
+}
+
+TEST(NumthyCarmichaelLambda, ProductOfTwoOddPrimes) {
+    // λ(15) = lcm(λ(3), λ(5)) = lcm(2, 4) = 4; φ(15) = 8 shows λ < φ.
+    EXPECT_EQ(carmichael_lambda(15), 4u);
+    EXPECT_EQ(euler_phi(15), 8u);
+    EXPECT_LT(carmichael_lambda(15), euler_phi(15));
+}
+
+TEST(NumthyCarmichaelLambda, DefiningPropertyCoprimeBases) {
+    for (uint64_t n : {3u, 5u, 7u, 9u, 15u, 21u, 35u}) {
+        const uint64_t lam = carmichael_lambda(n);
+        ASSERT_GT(lam, 0u) << "n=" << n;
+        for (uint64_t a = 2; a < n; ++a) {
+            if (gcd(a, n) != 1) continue;
+            EXPECT_EQ(mod_pow(a, lam, n), 1u) << "n=" << n << " a=" << a;
+        }
+    }
+}
+
+TEST(NumthyCarmichaelLambda, PowerOfTwoNonCyclic) {
+    // mod 2^k for k>=3 is not cyclic: λ(32)=8, not φ(32)=16.
+    EXPECT_EQ(carmichael_lambda(32), 8u);
+    EXPECT_EQ(euler_phi(32), 16u);
+    EXPECT_LT(carmichael_lambda(32), euler_phi(32));
+}
+
+TEST(NumthyCarmichaelLambda, EdgeCaseOne) {
+    EXPECT_EQ(carmichael_lambda(1), 1u);
+}
+
+TEST(NumthyCarmichaelLambda, InvalidZero) {
+    EXPECT_EQ(carmichael_lambda(0), 0u);
+}
+
 TEST(NumthyLucas, FibonacciCase) {
     // P=1, Q=-1 gives U_k = Fibonacci numbers.
     std::vector<int64_t> fib = {0, 1, 1, 2, 3, 5, 8, 13};
