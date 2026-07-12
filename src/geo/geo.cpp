@@ -1041,5 +1041,59 @@ std::vector<Triangle2Di> triangulate_polygon(const Polygon2D& poly) {
     return result;
 }
 
+// ---- Polygon Clipping (Sutherland-Hodgman) ----
+
+// True if `p` lies on the clip window's interior side of the directed edge (a -> b). `ccw`
+// is the clip window's own winding (per signed_area, matching the ccw convention already used
+// by triangulate_polygon above): for a CCW window the interior is to the left of each directed
+// edge (cross2d_pts(a,b,p) >= 0), and for a CW window it is to the right, so the comparison is
+// flipped. Points exactly on the edge count as inside (non-strict), matching the standard
+// Sutherland-Hodgman convention of retaining boundary points rather than dropping them.
+static bool clip_inside(const Point2D& a, const Point2D& b, const Point2D& p, bool ccw) {
+    double cr = cross2d_pts(a, b, p);
+    return ccw ? cr >= -1e-12 : cr <= 1e-12;
+}
+
+// Intersection of the infinite line through clip edge (a, b) with segment (s, e). Only called
+// when s and e fall on opposite sides of that line (so a genuine crossing exists between
+// them); falls back to `s` if the two lines come out (near-)parallel regardless, which should
+// not occur given the caller's opposite-side precondition outside of degenerate input.
+static Point2D clip_line_intersection(const Point2D& a, const Point2D& b,
+                                      const Point2D& s, const Point2D& e) {
+    double A1 = b.y - a.y, B1 = a.x - b.x, C1 = A1 * a.x + B1 * a.y;
+    double A2 = e.y - s.y, B2 = s.x - e.x, C2 = A2 * s.x + B2 * s.y;
+    double det = A1 * B2 - A2 * B1;
+    if (std::abs(det) < 1e-15) return s;
+    return { (B2 * C1 - B1 * C2) / det, (A1 * C2 - A2 * C1) / det };
+}
+
+Polygon2D clip_polygon(const Polygon2D& subject, const Polygon2D& clip_window) {
+    if (subject.empty() || clip_window.size() < 3) return {};
+
+    const bool ccw = signed_area(clip_window) >= 0.0;
+    const int m = static_cast<int>(clip_window.size());
+
+    Polygon2D output = subject;
+    for (int i = 0; i < m && !output.empty(); ++i) {
+        const Point2D a = clip_window[i];
+        const Point2D b = clip_window[(i + 1) % m];
+
+        Polygon2D input = std::move(output);
+        output.clear();
+        const int n = static_cast<int>(input.size());
+        for (int j = 0; j < n; ++j) {
+            const Point2D curr = input[j];
+            const Point2D next = input[(j + 1) % n];
+            bool curr_in = clip_inside(a, b, curr, ccw);
+            bool next_in = clip_inside(a, b, next, ccw);
+
+            if (curr_in) output.push_back(curr);
+            if (curr_in != next_in)
+                output.push_back(clip_line_intersection(a, b, curr, next));
+        }
+    }
+    return output;
+}
+
 } // namespace geo
 } // namespace ms

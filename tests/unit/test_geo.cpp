@@ -926,3 +926,143 @@ TEST(GeoTriangulate, CollinearFlatVertexNoInfiniteLoop) {
     ASSERT_NO_THROW(tris = triangulate_polygon(poly));
     expect_valid_triangulation(poly, tris, static_cast<int>(poly.size()) - 2);
 }
+
+// ---- Polygon Clipping (Sutherland-Hodgman) ----
+
+namespace {
+
+// Shoelace-formula area, computed independently of the library's own `area()`/`signed_area()`
+// helpers, so clip_polygon tests have a cross-check that doesn't share implementation with the
+// code under test.
+double shoelace_area(const Polygon2D& poly) {
+    double total = 0.0;
+    const int n = static_cast<int>(poly.size());
+    for (int i = 0; i < n; ++i) {
+        const auto& a = poly[i];
+        const auto& b = poly[(i + 1) % n];
+        total += a.x * b.y - b.x * a.y;
+    }
+    return std::abs(total) * 0.5;
+}
+
+} // namespace
+
+TEST(GeoClip, ContainingWindowLeavesSquareUnchanged) {
+    Polygon2D square = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D window = {{-2, -2}, {8, -2}, {8, 8}, {-2, 8}};
+    auto result = clip_polygon(square, window);
+    ASSERT_FALSE(result.empty());
+    EXPECT_NEAR(shoelace_area(result), 16.0, 1e-9);
+    EXPECT_NEAR(area(result), 16.0, 1e-9);
+}
+
+TEST(GeoClip, SmallerWindowInsideLargerSquareYieldsWindow) {
+    Polygon2D big = {{-10, -10}, {10, -10}, {10, 10}, {-10, 10}};
+    Polygon2D window = {{1, 1}, {3, 1}, {3, 3}, {1, 3}};
+    auto result = clip_polygon(big, window);
+    ASSERT_FALSE(result.empty());
+    EXPECT_NEAR(shoelace_area(result), 4.0, 1e-9);
+    EXPECT_NEAR(area(result), 4.0, 1e-9);
+}
+
+TEST(GeoClip, PartialOverlapGivesRectangularIntersection) {
+    // Unit-ish squares offset diagonally: [0,4]x[0,4] and [2,6]x[2,6] overlap on [2,4]x[2,4].
+    Polygon2D a = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D b = {{2, 2}, {6, 2}, {6, 6}, {2, 6}};
+    auto result = clip_polygon(a, b);
+    ASSERT_FALSE(result.empty());
+    EXPECT_NEAR(shoelace_area(result), 4.0, 1e-9);  // 2x2 overlap region
+}
+
+TEST(GeoClip, DisjointPolygonsGiveEmptyResult) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{10, 10}, {11, 10}, {11, 11}, {10, 11}};
+    auto result = clip_polygon(a, b);
+    EXPECT_TRUE(result.empty());
+}
+
+TEST(GeoClip, TriangleStraddlingSquareEdge) {
+    // Triangle (0,0),(4,0),(2,4) clipped against the square [0,2]x[0,4] (i.e. the window is
+    // exactly the left half-plane x<=2 bounded to a finite square). The kept region is the
+    // left half of the triangle: a quadrilateral with vertices (0,0),(2,0),(2,4),(0, y_left)
+    // where y_left is where the triangle's left edge exits x=0 -- but since the left edge goes
+    // straight from (0,0) up to the apex (2,4), the kept region is the triangle (0,0),(2,0),(2,4)
+    // intersected with x<=... Actually compute directly: original triangle area is
+    // 0.5*base(4)*height(4) = 8. The window cuts it exactly at the apex's x-coordinate (x=2), so
+    // by symmetry (apex sits at x=2, exactly the cut line) half the triangle's area is kept: 4.
+    Polygon2D tri = {{0, 0}, {4, 0}, {2, 4}};
+    Polygon2D window = {{0, 0}, {2, 0}, {2, 4}, {0, 4}};
+    auto result = clip_polygon(tri, window);
+    ASSERT_FALSE(result.empty());
+    EXPECT_NEAR(shoelace_area(result), 4.0, 1e-9);
+}
+
+TEST(GeoClip, NonConvexLShapeSubjectClippedCorrectly) {
+    // L-shape (6x4 with a 2x2 bite from the top-right), same shape used in
+    // GeoTriangulate.LShapeConcavePolygon, area = 6*4 - 2*2 = 20.
+    Polygon2D lshape = {{0, 0}, {6, 0}, {6, 2}, {4, 2}, {4, 4}, {0, 4}};
+    ASSERT_NEAR(shoelace_area(lshape), 20.0, 1e-9);
+
+    // Clip window [0,3]x[0,3]: keeps the bottom-left 3x3 corner of the L, which for this shape
+    // lies entirely within the solid (non-bitten) region, so the intersection is the full 3x3
+    // square, area 9.
+    Polygon2D window = {{0, 0}, {3, 0}, {3, 3}, {0, 3}};
+    auto result = clip_polygon(lshape, window);
+    ASSERT_FALSE(result.empty());
+    EXPECT_NEAR(shoelace_area(result), 9.0, 1e-9);
+
+    // Clip window [4,6]x[2,4]: exactly the bitten-off notch itself (the 2x2 corner excluded
+    // from the L-shape, i.e. NOT part of its area) -- this region lies entirely outside the
+    // L-shape polygon, so the intersection must be empty.
+    Polygon2D window2 = {{4, 2}, {6, 2}, {6, 4}, {4, 4}};
+    auto result2 = clip_polygon(lshape, window2);
+    EXPECT_TRUE(result2.empty() || shoelace_area(result2) < 1e-9);
+}
+
+TEST(GeoClip, ResultHasSaneWindingAndAreaMatchesLibraryHelper) {
+    Polygon2D a = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D b = {{2, -1}, {5, -1}, {5, 5}, {2, 5}};
+    auto result = clip_polygon(a, b);
+    ASSERT_FALSE(result.empty());
+    // Expected overlap: [2,4]x[0,4], area 8.
+    EXPECT_NEAR(shoelace_area(result), 8.0, 1e-9);
+    EXPECT_NEAR(area(result), shoelace_area(result), 1e-9);
+    EXPECT_GE(area(result), 0.0);
+}
+
+TEST(GeoClip, ClipWindowGivenClockwiseStillWorks) {
+    // Same as ContainingWindowLeavesSquareUnchanged, but with the clip window's vertices
+    // reversed into clockwise order -- orientation is auto-detected via signed_area, so the
+    // result should be identical.
+    Polygon2D square = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D window_cw = {{-2, 8}, {8, 8}, {8, -2}, {-2, -2}};
+    ASSERT_LT(signed_area(window_cw), 0.0);  // sanity: confirm this really is CW
+    auto result = clip_polygon(square, window_cw);
+    ASSERT_FALSE(result.empty());
+    EXPECT_NEAR(shoelace_area(result), 16.0, 1e-9);
+}
+
+TEST(GeoClip, EmptySubjectReturnsEmpty) {
+    Polygon2D window = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    EXPECT_TRUE(clip_polygon({}, window).empty());
+}
+
+TEST(GeoClip, DegenerateClipWindowReturnsEmptyNoCrash) {
+    Polygon2D subject = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    std::vector<Polygon2D> degenerate_windows = {
+        {},                                   // 0 vertices
+        {{0, 0}},                             // 1 vertex
+        {{0, 0}, {1, 1}},                     // 2 vertices
+    };
+    for (auto& w : degenerate_windows) {
+        Polygon2D result;
+        ASSERT_NO_THROW(result = clip_polygon(subject, w));
+        EXPECT_TRUE(result.empty());
+    }
+}
+
+TEST(GeoClip, BothEmptyReturnsEmptyNoCrash) {
+    Polygon2D result;
+    ASSERT_NO_THROW(result = clip_polygon({}, {}));
+    EXPECT_TRUE(result.empty());
+}
