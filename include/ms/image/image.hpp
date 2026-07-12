@@ -76,6 +76,16 @@ Image threshold_otsu(const Image& img);   // auto threshold via Otsu
 /// Defensive: returns an empty Image for empty inputs or size mismatch.
 Image watershed(const Image& gray, const Image& markers);
 
+/// Simple Linear Iterative Clustering (SLIC) superpixel segmentation.
+///
+/// k-means on 5D Lab+xy features with a spatial compactness term. @p rgb is
+/// converted to CIELab internally (grayscale inputs are replicated to RGB
+/// first). Returns a single-channel label image with integer-like float labels
+/// 1 … K (one label per pixel). @p compactness balances colour vs spatial
+/// proximity (typical values 1–40; default 10). Defensive: returns an empty
+/// Image for empty input or @p num_superpixels <= 0.
+Image slic(const Image& rgb, int num_superpixels, double compactness = 10.0);
+
 // ========================== Histogram ==========================
 std::vector<int>   imhist(const Image& img, int nbins = 256);   // grayscale
 Image              histeq(const Image& img);                     // histogram equalisation
