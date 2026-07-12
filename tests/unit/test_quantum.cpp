@@ -776,3 +776,125 @@ TEST(QuantumGrover, N4_OneMarked_OneIteration_ExactCertainty) {
 TEST(QuantumGrover, N4_OneMarked_OptimalItersEqualsOne) {
     EXPECT_EQ(grover_optimal_iterations(2, 1), 1);
 }
+
+// ---- Schmidt decomposition ----
+namespace {
+
+double schmidt_coefficients_sum_sq(const std::vector<double>& coeffs) {
+    double sum = 0.0;
+    for (double lambda : coeffs) sum += lambda * lambda;
+    return sum;
+}
+
+double entropy_from_schmidt(const std::vector<double>& coeffs) {
+    double S = 0.0;
+    for (double lambda : coeffs) {
+        const double p = lambda * lambda;
+        if (p > 1e-15) S -= p * std::log(p);
+    }
+    return S;
+}
+
+} // namespace
+
+TEST(QuantumSchmidt, BellStateRankTwoEqualCoefficients) {
+    auto psi = bell_states()[0];  // (|00> + |11>) / sqrt(2)
+    auto decomp = schmidt_decomposition(psi, 2, 2);
+    ASSERT_EQ(decomp.coefficients.size(), 2u);
+    EXPECT_EQ(schmidt_rank(psi, 2, 2), 2);
+    EXPECT_EQ(schmidt_number(psi, 2, 2), 2);
+
+    const double h = 1.0 / std::sqrt(2.0);
+    EXPECT_NEAR(decomp.coefficients[0], h, 1e-8);
+    EXPECT_NEAR(decomp.coefficients[1], h, 1e-8);
+    EXPECT_NEAR(schmidt_coefficients_sum_sq(decomp.coefficients), 1.0, 1e-8);
+}
+
+TEST(QuantumSchmidt, ProductStateRankOne) {
+    auto psi = tensor_product_states(ket_basis(2, 0), ket_basis(2, 0));
+    auto decomp = schmidt_decomposition(psi, 2, 2);
+    EXPECT_EQ(schmidt_rank(psi, 2, 2), 1);
+    EXPECT_EQ(schmidt_number(psi, 2, 2), 1);
+    EXPECT_NEAR(decomp.coefficients[0], 1.0, 1e-8);
+    EXPECT_NEAR(decomp.coefficients[1], 0.0, 1e-8);
+    EXPECT_NEAR(schmidt_coefficients_sum_sq(decomp.coefficients), 1.0, 1e-8);
+}
+
+TEST(QuantumSchmidt, CoefficientsNormalised) {
+    auto psi = bell_states()[2];  // (|01> + |10>) / sqrt(2)
+    auto decomp = schmidt_decomposition(psi, 2, 2);
+    EXPECT_NEAR(schmidt_coefficients_sum_sq(decomp.coefficients), 1.0, 1e-8);
+}
+
+TEST(QuantumSchmidt, EntropyMatchesEntanglementEntropy) {
+    struct Case { Ket psi; int da; int db; };
+    std::vector<Case> cases = {
+        {bell_states()[0], 2, 2},
+        {bell_states()[1], 2, 2},
+        {bell_states()[2], 2, 2},
+        {tensor_product_states(ket_basis(2, 0), ket_basis(2, 1)), 2, 2},
+        {tensor_product_states(ket_basis(2, 1), ket_basis(2, 0)), 2, 2},
+    };
+    for (auto& c : cases) {
+        auto decomp = schmidt_decomposition(c.psi, c.da, c.db);
+        const double S_schmidt = entropy_from_schmidt(decomp.coefficients);
+        const double S_existing = entanglement_entropy(c.psi, c.da, c.db);
+        EXPECT_NEAR(S_schmidt, S_existing, 1e-8)
+            << "da=" << c.da << " db=" << c.db;
+    }
+}
+
+TEST(QuantumSchmidt, EntropyMatchesReducedDensityMatrix) {
+    auto psi = bell_states()[0];
+    auto decomp = schmidt_decomposition(psi, 2, 2);
+    const double S_schmidt = entropy_from_schmidt(decomp.coefficients);
+
+    auto rho = density_matrix(psi);
+    auto rhoA = partial_trace(rho, 2, 2, 0);
+    const double S_rho = von_neumann_entropy(rhoA);
+    EXPECT_NEAR(S_schmidt, S_rho, 1e-8);
+}
+
+TEST(QuantumSchmidt, BasisVectorsOrthonormal) {
+    auto psi = bell_states()[0];
+    auto decomp = schmidt_decomposition(psi, 2, 2);
+    ASSERT_GE(decomp.basis_a.size(), 2u);
+    ASSERT_GE(decomp.basis_b.size(), 2u);
+
+    for (size_t i = 0; i < decomp.basis_a.size(); ++i) {
+        double n2 = 0.0;
+        for (auto& c : decomp.basis_a[i]) n2 += std::norm(c);
+        if (decomp.coefficients[i] > 1e-8) EXPECT_NEAR(n2, 1.0, 1e-8);
+    }
+    for (size_t i = 0; i < decomp.basis_b.size(); ++i) {
+        double n2 = 0.0;
+        for (auto& c : decomp.basis_b[i]) n2 += std::norm(c);
+        if (decomp.coefficients[i] > 1e-8) EXPECT_NEAR(n2, 1.0, 1e-8);
+    }
+
+    C overlap = inner(decomp.basis_a[0], decomp.basis_a[1]);
+    EXPECT_NEAR(std::abs(overlap), 0.0, 1e-8);
+    overlap = inner(decomp.basis_b[0], decomp.basis_b[1]);
+    EXPECT_NEAR(std::abs(overlap), 0.0, 1e-8);
+}
+
+TEST(QuantumSchmidt, ReconstructsOriginalState) {
+    auto psi = bell_states()[0];
+    auto decomp = schmidt_decomposition(psi, 2, 2);
+
+    Ket reconstructed(4, C(0.0));
+    for (size_t k = 0; k < decomp.coefficients.size(); ++k) {
+        if (decomp.coefficients[k] < 1e-10) continue;
+        auto term = tensor_product_states(decomp.basis_a[k], decomp.basis_b[k]);
+        for (size_t i = 0; i < term.size(); ++i)
+            reconstructed[i] += decomp.coefficients[k] * term[i];
+    }
+    EXPECT_NEAR(ket_overlap_prob(psi, reconstructed), 1.0, 1e-8);
+}
+
+TEST(QuantumSchmidt, InvalidDimensionsReturnEmpty) {
+    auto psi = bell_states()[0];
+    auto decomp = schmidt_decomposition(psi, 3, 2);
+    EXPECT_TRUE(decomp.coefficients.empty());
+    EXPECT_EQ(schmidt_rank(psi, 3, 2), 0);
+}

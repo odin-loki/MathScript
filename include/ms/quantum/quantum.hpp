@@ -101,6 +101,22 @@ DensityMatrix partial_trace(const DensityMatrix& rho, int d1, int d2, int subsys
 // ---- Entanglement entropy ----
 double entanglement_entropy(const Ket& psi, int dim_a, int dim_b);
 
+// ---- Schmidt decomposition ----
+// For bipartite pure state |psi> in A (dim_a) ⊗ B (dim_b): reshape psi into a
+// dim_a × dim_b coefficient matrix and take its complex SVD.  The Schmidt
+// coefficients (singular values) satisfy sum_i lambda_i^2 = 1 for a normalised
+// |psi>; their squares are the eigenvalues of either reduced density matrix.
+struct SchmidtDecomposition {
+    std::vector<double> coefficients;  // Schmidt coefficients (singular values), descending
+    std::vector<Ket> basis_a;            // Left Schmidt vectors on subsystem A
+    std::vector<Ket> basis_b;            // Right Schmidt vectors on subsystem B
+};
+
+SchmidtDecomposition schmidt_decomposition(const Ket& psi, int dim_a, int dim_b);
+// Number of Schmidt coefficients above tol (Schmidt rank / Schmidt number for pure states).
+int schmidt_rank(const Ket& psi, int dim_a, int dim_b, double tol = 1e-10);
+int schmidt_number(const Ket& psi, int dim_a, int dim_b, double tol = 1e-10);
+
 // ---- Quantum states ----
 std::vector<Ket> bell_states();
 Ket ghz_state(int n_qubits);
