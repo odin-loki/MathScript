@@ -819,6 +819,162 @@ TEST(ProbPareto, PPF_Boundaries) {
 }
 
 // ---------------------------------------------------------------------------
+// Rayleigh distribution
+// ---------------------------------------------------------------------------
+
+TEST(ProbRayleigh, PDF_NonNegative_And_Finite) {
+    for (double sigma : {0.5, 1.0, 3.0}) {
+        for (double x : {0.0, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0}) {
+            const double p = rayleigh_pdf(x, sigma);
+            EXPECT_GE(p, 0.0);
+            EXPECT_TRUE(std::isfinite(p));
+        }
+    }
+}
+
+TEST(ProbRayleigh, PDF_Zero_ForNegativeX) {
+    EXPECT_DOUBLE_EQ(rayleigh_pdf(-1.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(rayleigh_pdf(-0.1, 2.5), 0.0);
+}
+
+TEST(ProbRayleigh, PDF_InvalidSigma_IsZero) {
+    EXPECT_DOUBLE_EQ(rayleigh_pdf(1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(rayleigh_pdf(1.0, -1.0), 0.0);
+}
+
+TEST(ProbRayleigh, PDF_IntegratesToOne) {
+    for (double sigma : {0.5, 1.0, 2.0, 3.5}) {
+        const auto f = [&](double x) { return rayleigh_pdf(x, sigma); };
+        const double area = simpson_integrate(f, 0.0, 10.0 * sigma, 20000);
+        EXPECT_NEAR(area, 1.0, 5e-3)
+            << "rayleigh_pdf should integrate to 1 for sigma=" << sigma;
+    }
+}
+
+TEST(ProbRayleigh, PDF_ModeIsAtSigma) {
+    // The Rayleigh mode (pdf maximum) is located at x = sigma.
+    for (double sigma : {0.5, 1.0, 2.0, 4.0}) {
+        const double eps = 1e-3 * sigma;
+        const double at_mode = rayleigh_pdf(sigma, sigma);
+        const double below = rayleigh_pdf(sigma - eps, sigma);
+        const double above = rayleigh_pdf(sigma + eps, sigma);
+        EXPECT_LT(below, at_mode) << "rayleigh_pdf should increase up to the mode at sigma=" << sigma;
+        EXPECT_GT(at_mode, above) << "rayleigh_pdf should decrease past the mode at sigma=" << sigma;
+    }
+}
+
+TEST(ProbRayleigh, CDF_MatchesNumericalIntegral) {
+    const double sigma = 1.7;
+    const auto f = [&](double x) { return rayleigh_pdf(x, sigma); };
+    for (double x : {0.2, 0.5, 1.0, 2.0, 5.0}) {
+        const double integral = simpson_integrate(f, 0.0, x, 20000);
+        EXPECT_NEAR(rayleigh_cdf(x, sigma), integral, 5e-3)
+            << "rayleigh_cdf mismatch at x=" << x;
+    }
+}
+
+TEST(ProbRayleigh, CDF_Zero_AtZero_And_ApproachesOne) {
+    for (double sigma : {0.5, 1.0, 3.0}) {
+        EXPECT_DOUBLE_EQ(rayleigh_cdf(0.0, sigma), 0.0);
+        EXPECT_NEAR(rayleigh_cdf(20.0 * sigma, sigma), 1.0, 1e-12);
+    }
+}
+
+TEST(ProbRayleigh, CDF_Zero_ForNegativeX) {
+    EXPECT_DOUBLE_EQ(rayleigh_cdf(-1.0, 1.0), 0.0);
+}
+
+TEST(ProbRayleigh, CDF_InvalidSigma_IsZero) {
+    EXPECT_DOUBLE_EQ(rayleigh_cdf(1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(rayleigh_cdf(1.0, -2.0), 0.0);
+}
+
+TEST(ProbRayleigh, CDF_Monotone) {
+    for (double sigma : {0.5, 1.0, 2.0}) {
+        double prev = rayleigh_cdf(0.0, sigma);
+        for (double x : {0.1, 0.5, 1.0, 2.0, 5.0, 10.0}) {
+            const double curr = rayleigh_cdf(x, sigma);
+            EXPECT_GE(curr, prev - 1e-12);
+            prev = curr;
+        }
+    }
+}
+
+TEST(ProbRayleigh, CDF_AtSigma_ClosedForm) {
+    // rayleigh_cdf(sigma, sigma) == 1 - exp(-0.5) regardless of sigma.
+    const double expected = 1.0 - std::exp(-0.5);
+    for (double sigma : {0.3, 1.0, 2.5, 7.0}) {
+        EXPECT_NEAR(rayleigh_cdf(sigma, sigma), expected, 1e-10)
+            << "rayleigh_cdf(sigma, sigma) should be 1-exp(-0.5) for sigma=" << sigma;
+    }
+}
+
+TEST(ProbRayleigh, PPF_RoundTrip_PPF_of_CDF) {
+    for (double sigma : {0.5, 1.0, 3.0}) {
+        for (double x : {0.1, 0.5, 1.0, 2.0, 5.0}) {
+            const double p = rayleigh_cdf(x, sigma);
+            if (p <= 0.0 || p >= 1.0) continue;
+            const double x_rt = rayleigh_ppf(p, sigma);
+            EXPECT_NEAR(x_rt, x, 1e-6 * std::max(1.0, x))
+                << "rayleigh ppf(cdf(x)) != x at x=" << x << " sigma=" << sigma;
+        }
+    }
+}
+
+TEST(ProbRayleigh, PPF_RoundTrip_CDF_of_PPF) {
+    for (double sigma : {0.5, 1.0, 3.0}) {
+        for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+            const double q = rayleigh_ppf(p, sigma);
+            EXPECT_TRUE(std::isfinite(q));
+            EXPECT_GE(q, 0.0);
+            EXPECT_NEAR(rayleigh_cdf(q, sigma), p, 1e-6)
+                << "rayleigh cdf(ppf(p)) != p at p=" << p << " sigma=" << sigma;
+        }
+    }
+}
+
+TEST(ProbRayleigh, PPF_Monotone) {
+    for (double sigma : {0.5, 2.0}) {
+        double prev = rayleigh_ppf(0.01, sigma);
+        for (double p : {0.05, 0.25, 0.5, 0.75, 0.95, 0.99}) {
+            const double curr = rayleigh_ppf(p, sigma);
+            EXPECT_GE(curr, prev - 1e-12);
+            prev = curr;
+        }
+    }
+}
+
+TEST(ProbRayleigh, PPF_ClosedForm) {
+    for (double sigma : {0.5, 1.0, 2.0}) {
+        for (double p : {0.1, 0.3, 0.5, 0.7, 0.9}) {
+            const double expected = sigma * std::sqrt(-2.0 * std::log(1.0 - p));
+            EXPECT_NEAR(rayleigh_ppf(p, sigma), expected, 1e-9)
+                << "rayleigh_ppf closed form mismatch at p=" << p;
+        }
+    }
+}
+
+TEST(ProbRayleigh, PPF_Boundaries) {
+    EXPECT_DOUBLE_EQ(rayleigh_ppf(0.0, 1.0), 0.0);
+    EXPECT_GT(rayleigh_ppf(0.999999, 1.0), 3.0);
+    EXPECT_DOUBLE_EQ(rayleigh_ppf(0.5, 0.0), 0.0);   // invalid sigma
+    EXPECT_DOUBLE_EQ(rayleigh_ppf(0.5, -1.0), 0.0);  // invalid sigma
+}
+
+TEST(ProbRayleigh, EquivalentToWeibull_K2) {
+    // Rayleigh(sigma) == Weibull(lambda=sigma*sqrt(2), k=2).
+    for (double sigma : {0.5, 1.0, 2.5}) {
+        const double lambda = sigma * std::sqrt(2.0);
+        for (double x : {0.0, 0.1, 0.5, 1.0, 2.0, 5.0}) {
+            EXPECT_NEAR(rayleigh_pdf(x, sigma), weibull_pdf(x, lambda, 2.0), 1e-9)
+                << "rayleigh_pdf(x,sigma) should equal weibull_pdf(x,sigma*sqrt(2),2) at x=" << x;
+            EXPECT_NEAR(rayleigh_cdf(x, sigma), weibull_cdf(x, lambda, 2.0), 1e-9)
+                << "rayleigh_cdf(x,sigma) should equal weibull_cdf(x,sigma*sqrt(2),2) at x=" << x;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Cross-distribution sanity: negative-x domain handling
 // ---------------------------------------------------------------------------
 
@@ -828,4 +984,5 @@ TEST(ProbLognormalWeibullLaplace, NegativeX_DomainHandling) {
     EXPECT_DOUBLE_EQ(lognormal_pdf(-1.0, 0.0, 1.0), 0.0);
     EXPECT_DOUBLE_EQ(weibull_pdf(-1.0, 1.0, 2.0), 0.0);
     EXPECT_GT(laplace_pdf(-1.0, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(rayleigh_pdf(-1.0, 1.0), 0.0);
 }

@@ -77,4 +77,13 @@ double pareto_pdf(double x, double x_m, double alpha);
 double pareto_cdf(double x, double x_m, double alpha);
 double pareto_ppf(double p, double x_m, double alpha);
 
+/// Rayleigh(sigma): scale sigma > 0. Support x >= 0. The distribution of the magnitude
+/// of a 2D vector whose components are i.i.d. Normal(0, sigma) (equivalently
+/// Weibull(lambda=sigma*sqrt(2), k=2)); used for wind speed, wave height, and
+/// signal-magnitude modeling. PDF: (x/sigma^2)*exp(-x^2/(2*sigma^2)). CDF:
+/// 1 - exp(-x^2/(2*sigma^2)).
+double rayleigh_pdf(double x, double sigma);
+double rayleigh_cdf(double x, double sigma);
+double rayleigh_ppf(double p, double sigma);
+
 } // namespace ms

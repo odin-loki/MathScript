@@ -538,4 +538,32 @@ double pareto_ppf(double p, double x_m, double alpha) {
     return x_m / std::pow(1.0 - p, 1.0 / alpha);
 }
 
+double rayleigh_pdf(double x, double sigma) {
+    if (x < 0.0 || sigma <= 0.0) {
+        return 0.0;
+    }
+    const double s2 = sigma * sigma;
+    return (x / s2) * std::exp(-x * x / (2.0 * s2));
+}
+
+double rayleigh_cdf(double x, double sigma) {
+    if (x < 0.0 || sigma <= 0.0) {
+        return 0.0;
+    }
+    return 1.0 - std::exp(-x * x / (2.0 * sigma * sigma));
+}
+
+double rayleigh_ppf(double p, double sigma) {
+    if (sigma <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return 0.0;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return sigma * std::sqrt(-2.0 * std::log(1.0 - p));
+}
+
 } // namespace ms
