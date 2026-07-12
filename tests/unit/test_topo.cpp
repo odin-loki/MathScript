@@ -2,6 +2,7 @@
 #include "ms/geo/geo.hpp"
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <set>
 #include <vector>
 #include <gtest/gtest.h>
@@ -810,4 +811,121 @@ TEST(TopoLandscape, OnlyEssentialPairIsAllZero) {
     ASSERT_EQ(land.size(), 2u);
     for (auto& layer : land)
         for (double v : layer) EXPECT_NEAR(v, 0.0, 1e-10);
+}
+
+// ---- Witness complex ----
+
+namespace {
+
+bool complex_has_simplex(const SimplicialComplex& sc, const Simplex& s) {
+    Simplex t = s;
+    std::sort(t.begin(), t.end());
+    for (auto& x : sc.all_simplices())
+        if (x == t) return true;
+    return false;
+}
+
+bool witness_is_subcomplex_of_vr(const SimplicialComplex& wc,
+                                const SimplicialComplex& vr) {
+    std::set<Simplex> vr_set(vr.all_simplices().begin(), vr.all_simplices().end());
+    for (auto& s : wc.all_simplices())
+        if (vr_set.find(s) == vr_set.end()) return false;
+    return true;
+}
+
+} // namespace
+
+// When every point is a landmark, the weak witness complex is a subcomplex of
+// Vietoris–Rips at the same epsilon; on a small equilateral triangle they agree.
+TEST(TopoWitness, AllLandmarksMatchesVietorisRips) {
+    std::vector<std::vector<double>> pts = {{0, 0}, {1, 0}, {0.5, 0.866}};
+    auto D = pairwise_distances(pts);
+    const double eps = 1.1;
+    std::vector<int> all_landmarks = {0, 1, 2};
+    auto wc = witness_complex(pts, all_landmarks, eps, 2);
+    auto vr = vietoris_rips(D, eps, 2);
+    EXPECT_TRUE(witness_is_subcomplex_of_vr(wc, vr));
+    EXPECT_EQ(wc.simplices(1).size(), vr.simplices(1).size());
+    EXPECT_EQ(wc.simplices(2).size(), vr.simplices(2).size());
+}
+
+TEST(TopoWitness, MaxMinIncludesSeedAndDistinctCount) {
+    std::vector<std::vector<double>> pts = {{0, 0}, {1, 0}, {2, 0}, {3, 0}};
+    auto lm = select_landmarks_maxmin(pts, 3, 2);
+    ASSERT_EQ(lm.size(), 3u);
+    EXPECT_EQ(lm[0], 2);
+    std::set<int> uniq(lm.begin(), lm.end());
+    EXPECT_EQ(uniq.size(), 3u);
+}
+
+TEST(TopoWitness, MaxMinSpreadsAcrossTwoClusters) {
+    std::vector<std::vector<double>> pts;
+    for (int i = 0; i < 5; ++i)
+        pts.push_back({static_cast<double>(i) * 0.1, 0.0});
+    for (int i = 0; i < 5; ++i)
+        pts.push_back({10.0 + static_cast<double>(i) * 0.1, 0.0});
+    auto lm = select_landmarks_maxmin(pts, 4, 0);
+    ASSERT_EQ(lm.size(), 4u);
+    bool has_left = false, has_right = false;
+    for (int idx : lm) {
+        if (idx < 5) has_left = true;
+        else has_right = true;
+    }
+    EXPECT_TRUE(has_left);
+    EXPECT_TRUE(has_right);
+}
+
+TEST(TopoWitness, CircleLandmarkLoopTopology) {
+    std::vector<std::vector<double>> pts;
+    const int N = 36;
+    for (int i = 0; i < N; ++i) {
+        double a = 2.0 * std::numbers::pi * i / N;
+        pts.push_back({std::cos(a), std::sin(a)});
+    }
+    auto landmarks = select_landmarks_maxmin(pts, 8, 0);
+    auto wc = witness_complex(pts, landmarks, 0.75, 2);
+    auto betti = wc.betti_numbers();
+    EXPECT_EQ(betti[0], 1);
+    ASSERT_GE(betti.size(), 2u);
+    EXPECT_GE(betti[1], 1);
+    EXPECT_GE(wc.simplices(1).size(), landmarks.size());
+}
+
+TEST(TopoWitness, OneLandmarkVerticesOnly) {
+    std::vector<std::vector<double>> pts = {{0, 0}, {1, 0}, {0, 1}};
+    std::vector<int> lm = {1};
+    auto wc = witness_complex(pts, lm, 2.0, 2);
+    EXPECT_EQ(wc.simplices(0).size(), 1u);
+    EXPECT_TRUE(wc.simplices(1).empty());
+    EXPECT_TRUE(wc.simplices(2).empty());
+}
+
+TEST(TopoWitness, TwoLandmarksMinimalComplex) {
+    std::vector<std::vector<double>> pts = {{0, 0}, {3, 0}, {0, 4}};
+    std::vector<int> lm = {0, 2};
+    auto wc = witness_complex(pts, lm, 5.0, 2);
+    EXPECT_EQ(wc.simplices(0).size(), 2u);
+    EXPECT_FALSE(wc.simplices(1).empty());
+    EXPECT_TRUE(wc.simplices(2).empty());
+}
+
+TEST(TopoWitness, TinyEpsilonNearEmpty) {
+    std::vector<std::vector<double>> pts = {{0, 0}, {1, 0}, {0, 1}};
+    std::vector<int> lm = {0, 1, 2};
+    auto wc = witness_complex(pts, lm, 1e-12, 2);
+    EXPECT_EQ(wc.simplices(0).size(), 3u);
+    EXPECT_TRUE(wc.simplices(1).empty());
+    EXPECT_TRUE(wc.simplices(2).empty());
+}
+
+TEST(TopoWitness, DownwardClosureInvariant) {
+    std::vector<std::vector<double>> pts = {{0, 0}, {2, 0}, {1, 1.732}, {1, -1.732}};
+    auto landmarks = select_landmarks_maxmin(pts, 4, 0);
+    auto wc = witness_complex(pts, landmarks, 2.5, 2);
+    for (auto& tri : wc.simplices(2)) {
+        ASSERT_EQ(tri.size(), 3u);
+        EXPECT_TRUE(complex_has_simplex(wc, {tri[0], tri[1]}));
+        EXPECT_TRUE(complex_has_simplex(wc, {tri[1], tri[2]}));
+        EXPECT_TRUE(complex_has_simplex(wc, {tri[0], tri[2]}));
+    }
 }
