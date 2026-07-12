@@ -1026,3 +1026,155 @@ TEST(StatsExtTest, bartlett_test_degenerate_inputs) {
     EXPECT_DOUBLE_EQ(flat.chi2_stat, 0.0);
     EXPECT_DOUBLE_EQ(flat.p_value, 1.0);
 }
+
+// ---------------------------------------------------------------------------
+// fligner_test
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, fligner_test_p_value_in_valid_range) {
+    // Three-group case with comparable (but not perfectly symmetric) spreads.
+    const std::vector<std::vector<double>> three_groups = {
+        {10.002, 10.597, 9.452, 8.219, 9.091, 8.017, 10.12, 12.68, 9.016, 8.759,
+         10.98, 10.714, 10.211, 8.139, 9.941, 11.391, 7.312, 9.085, 6.198, 7.421},
+        {16.317, 19.53, 17.465, 20.543, 20.314, 19.626, 14.966, 18.923, 19.903, 20.227,
+         16.94, 19.044, 18.043, 18.382, 22.122, 18.385, 19.935, 21.769, 18.833, 19.777},
+        {15.221, 15.128, 12.55, 15.152, 17.718, 11.906, 16.719, 15.239, 13.717, 19.001,
+         16.525, 12.601, 15.149, 16.153, 14.622, 16.366, 14.867, 16.334, 17.877, 13.649},
+    };
+    const auto r3 = fligner_test(three_groups);
+    EXPECT_GT(r3.p_value, 0.0);
+    EXPECT_LT(r3.p_value, 1.0);
+    EXPECT_EQ(r3.df, 2);
+
+    // Three-group case with a genuine spread difference.
+    const std::vector<std::vector<double>> unequal_groups = {
+        {10.0, 10.1, 9.9, 10.2, 9.8},
+        {20.0, 20.1, 19.9, 20.2, 19.8},
+        {0.0, 40.0, 10.0, 30.0, -10.0},
+    };
+    const auto r_uneq = fligner_test(unequal_groups);
+    EXPECT_GT(r_uneq.p_value, 0.0);
+    EXPECT_LT(r_uneq.p_value, 1.0);
+    EXPECT_EQ(r_uneq.df, 2);
+
+    // Four-group case (mixed means/spreads).
+    const std::vector<std::vector<double>> four_groups = {
+        {5.051, 7.04, 6.837, 4.235, 4.553, 4.209, 5.855, 4.916, 6.12, 2.229,
+         7.35, 4.855, 6.021, 4.795, 4.431},
+        {9.389, 10.474, 7.392, 7.542, 10.057, 5.389, 3.457, 9.185, 5.988, 2.239,
+         5.558, 6.597, 4.42, 3.523, 8.11},
+        {3.794, 1.534, 0.513, 2.77, 3.434, 1.4, 3.089, 4.086, 1.586, 0.373,
+         2.695, 2.495, 4.198, -0.569, 0.677},
+        {-0.838, -1.734, 0.126, 0.528, -0.739, 1.386, 0.822, 0.627, 0.402, 0.956,
+         -1.332, 0.614, 0.603, -1.768, 0.347},
+    };
+    const auto r4 = fligner_test(four_groups);
+    EXPECT_GT(r4.p_value, 0.0);
+    EXPECT_LT(r4.p_value, 1.0);
+    EXPECT_EQ(r4.df, 3);
+    EXPECT_NEAR(r4.chi2_stat, 13.2416415524, 1e-6);
+    EXPECT_NEAR(r4.p_value, 0.0041421417, 1e-6);
+}
+
+TEST(StatsExtTest, fligner_test_equal_variances_large_p_value) {
+    // Same underlying spread (sigma = 2) in all three groups, different means.
+    // scipy.stats.fligner on this fixture gives statistic ~= 0.1463, p ~= 0.9295.
+    const std::vector<std::vector<double>> groups = {
+        {10.002, 10.597, 9.452, 8.219, 9.091, 8.017, 10.12, 12.68, 9.016, 8.759,
+         10.98, 10.714, 10.211, 8.139, 9.941, 11.391, 7.312, 9.085, 6.198, 7.421},
+        {16.317, 19.53, 17.465, 20.543, 20.314, 19.626, 14.966, 18.923, 19.903, 20.227,
+         16.94, 19.044, 18.043, 18.382, 22.122, 18.385, 19.935, 21.769, 18.833, 19.777},
+        {15.221, 15.128, 12.55, 15.152, 17.718, 11.906, 16.719, 15.239, 13.717, 19.001,
+         16.525, 12.601, 15.149, 16.153, 14.622, 16.366, 14.867, 16.334, 17.877, 13.649},
+    };
+    const auto result = fligner_test(groups);
+    EXPECT_EQ(result.df, 2);
+    EXPECT_NEAR(result.chi2_stat, 0.1462656537, 1e-6);
+    EXPECT_GT(result.p_value, 0.5);
+    EXPECT_NEAR(result.p_value, 0.9294773623, 1e-6);
+}
+
+TEST(StatsExtTest, fligner_test_unequal_variances_small_p_value) {
+    // Group 3 has a much larger spread (sigma = 8) than groups 1 and 2 (sigma = 1).
+    // scipy.stats.fligner on this fixture gives statistic ~= 20.40, p ~= 3.71e-5.
+    const std::vector<std::vector<double>> groups = {
+        {10.305, 8.96, 10.75, 10.941, 8.049, 8.698, 10.128, 9.684, 9.983, 9.147,
+         10.879, 10.778, 10.066, 11.127, 10.468, 9.141, 10.369, 9.041, 10.878, 9.95},
+        {19.815, 19.319, 21.223, 19.845, 19.572, 19.648, 20.532, 20.365, 20.413, 20.431,
+         22.142, 19.594, 19.488, 19.186, 20.616, 21.129, 19.886, 19.16, 19.176, 20.651},
+        {20.946, 19.345, 9.676, 16.857, 15.933, 16.75, 21.971, 16.789, 20.431, 15.541,
+         17.313, 20.05, 3.343, 12.443, 11.237, 9.889, 12.799, 26.96, 8.073, 22.746},
+    };
+    const auto result = fligner_test(groups);
+    EXPECT_EQ(result.df, 2);
+    EXPECT_NEAR(result.chi2_stat, 20.4022585431, 1e-6);
+    EXPECT_LT(result.p_value, 0.01);
+    EXPECT_NEAR(result.p_value, 0.0000371284, 1e-6);
+}
+
+TEST(StatsExtTest, fligner_test_robust_to_outliers_unlike_bartlett) {
+    // Same three groups as the equal-variance fixture above, except group 3's
+    // first two values are replaced with two extreme outliers (heavy tail) while
+    // the rest of the group keeps its original, comparable spread. Bartlett's
+    // test assumes normality and is known to be very sensitive to outliers/heavy
+    // tails, so it sees the wildly inflated sample variance of group 3 and
+    // (falsely) rejects equal variances with a vanishingly small p-value, even
+    // though the bulk of the data across all three groups has comparable spread.
+    // Fligner-Killeen, being rank/normal-score-based rather than working directly
+    // with squared deviations, is far less swayed by just two extreme points and
+    // remains comfortably non-significant. scipy.stats.bartlett / scipy.stats.fligner
+    // on this fixture give chi2 ~= 120.25 (p ~= 7.7e-27) and FK ~= 3.16 (p ~= 0.206)
+    // respectively -- a striking illustration of Bartlett's outlier-sensitivity.
+    const std::vector<std::vector<double>> groups = {
+        {10.002, 10.597, 9.452, 8.219, 9.091, 8.017, 10.12, 12.68, 9.016, 8.759,
+         10.98, 10.714, 10.211, 8.139, 9.941, 11.391, 7.312, 9.085, 6.198, 7.421},
+        {16.317, 19.53, 17.465, 20.543, 20.314, 19.626, 14.966, 18.923, 19.903, 20.227,
+         16.94, 19.044, 18.043, 18.382, 22.122, 18.385, 19.935, 21.769, 18.833, 19.777},
+        {75.221, -39.872, 12.55, 15.152, 17.718, 11.906, 16.719, 15.239, 13.717, 19.001,
+         16.525, 12.601, 15.149, 16.153, 14.622, 16.366, 14.867, 16.334, 17.877, 13.649},
+    };
+    const auto bartlett = bartlett_test(groups);
+    const auto fligner = fligner_test(groups);
+
+    EXPECT_LT(bartlett.p_value, 1e-10);   // Bartlett: falsely "detects" a huge difference.
+    EXPECT_GT(fligner.p_value, 0.1);      // Fligner-Killeen: robust, fails to reject at alpha=0.05.
+    EXPECT_GT(fligner.p_value, bartlett.p_value * 1e6);
+}
+
+TEST(StatsExtTest, fligner_test_degenerate_inputs) {
+    // Fewer than 2 (non-empty) groups.
+    const std::vector<std::vector<double>> one_group = {{1.0, 2.0, 3.0}};
+    const auto too_few = fligner_test(one_group);
+    EXPECT_DOUBLE_EQ(too_few.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(too_few.p_value, 1.0);
+    EXPECT_EQ(too_few.df, 0);
+
+    const std::vector<std::vector<double>> empty_input = {};
+    const auto empty_result = fligner_test(empty_input);
+    EXPECT_DOUBLE_EQ(empty_result.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(empty_result.p_value, 1.0);
+
+    // Empty groups mixed in with valid ones should simply be skipped.
+    const std::vector<std::vector<double>> with_empty_group = {
+        {1.0, 2.0, 3.0, 4.0}, {}, {5.0, 6.0, 7.0, 8.0}};
+    const auto skips_empty = fligner_test(with_empty_group);
+    EXPECT_EQ(skips_empty.df, 1);
+    EXPECT_GE(skips_empty.p_value, 0.0);
+    EXPECT_LE(skips_empty.p_value, 1.0);
+
+    // All groups empty.
+    const std::vector<std::vector<double>> all_empty = {{}, {}, {}};
+    const auto all_empty_result = fligner_test(all_empty);
+    EXPECT_DOUBLE_EQ(all_empty_result.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(all_empty_result.p_value, 1.0);
+    EXPECT_EQ(all_empty_result.df, 0);
+
+    // Groups with only a single data point each: N == k, so the test degenerates
+    // gracefully to a zeroed result (mirrors levene_test's behavior in this case,
+    // since one_way_anova / this test both require N > k).
+    const std::vector<std::vector<double>> singletons = {{1.0}, {2.0}, {3.0}};
+    const auto singleton_result = fligner_test(singletons);
+    EXPECT_DOUBLE_EQ(singleton_result.chi2_stat, 0.0);
+    EXPECT_DOUBLE_EQ(singleton_result.p_value, 1.0);
+    EXPECT_EQ(singleton_result.df, 0);
+}

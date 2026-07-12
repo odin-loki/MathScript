@@ -779,6 +779,72 @@ BartlettResult bartlett_test(const std::vector<std::vector<double>>& groups) {
     return result;
 }
 
+FlignerResult fligner_test(const std::vector<std::vector<double>>& groups) {
+    FlignerResult result{};
+    int k = 0;
+    int N = 0;
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        ++k;
+        N += static_cast<int>(group.size());
+    }
+    if (k < 2 || N <= k) {
+        return result;
+    }
+    // Absolute deviations from each group's own median, pooled across groups but tracking
+    // which (non-empty) group each deviation came from and each group's size.
+    std::vector<double> pooled_devs;
+    pooled_devs.reserve(static_cast<size_t>(N));
+    std::vector<size_t> owner_group;
+    owner_group.reserve(static_cast<size_t>(N));
+    std::vector<int> group_sizes;
+    group_sizes.reserve(static_cast<size_t>(k));
+    for (const auto& group : groups) {
+        if (group.empty()) {
+            continue;
+        }
+        const double med = median(group);
+        group_sizes.push_back(static_cast<int>(group.size()));
+        const size_t gidx = group_sizes.size() - 1;
+        for (double v : group) {
+            pooled_devs.push_back(std::abs(v - med));
+            owner_group.push_back(gidx);
+        }
+    }
+    const auto ranks = average_ranks(pooled_devs);
+    const double N_d = static_cast<double>(N);
+    std::vector<double> scores(pooled_devs.size());
+    for (size_t i = 0; i < pooled_devs.size(); ++i) {
+        const double p = 0.5 + ranks[i] / (2.0 * (N_d + 1.0));
+        scores[i] = norm_ppf(p, 0.0, 1.0);
+    }
+    const double a_bar = mean(scores);
+    const double v = var(scores);
+    if (v <= 0.0) {
+        return result;
+    }
+    std::vector<double> group_score_sum(static_cast<size_t>(k), 0.0);
+    for (size_t i = 0; i < scores.size(); ++i) {
+        group_score_sum[owner_group[i]] += scores[i];
+    }
+    double numerator = 0.0;
+    for (size_t g = 0; g < group_sizes.size(); ++g) {
+        const double ni = static_cast<double>(group_sizes[g]);
+        const double a_bar_i = group_score_sum[g] / ni;
+        numerator += ni * (a_bar_i - a_bar) * (a_bar_i - a_bar);
+    }
+    double chi2_fk = numerator / v;
+    if (chi2_fk < 0.0) {
+        chi2_fk = 0.0;
+    }
+    result.chi2_stat = chi2_fk;
+    result.df = k - 1;
+    result.p_value = 1.0 - chi2_cdf(chi2_fk, static_cast<double>(result.df));
+    return result;
+}
+
 std::vector<double> multiple_regression(
     const std::vector<std::vector<double>>& X,
     std::span<const double> y) {

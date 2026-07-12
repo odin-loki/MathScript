@@ -140,6 +140,29 @@ struct BartlettResult {
 };
 BartlettResult bartlett_test(const std::vector<std::vector<double>>& groups);
 
+// Fligner-Killeen test for equality of variances across >= 2 groups: a rank-based
+// non-parametric alternative to Levene's and Bartlett's tests. Like Levene's median variant,
+// each group is transformed to absolute deviations from its own median (robust to skewness in
+// the raw data), but instead of running ANOVA on those deviations directly, the pooled
+// deviations are converted to ranks (average ranks for ties) and then to expected normal order
+// statistics (scores) via the standard normal quantile function `norm_ppf`. The Fligner-Killeen
+// statistic is a weighted sum of squared deviations of each group's mean score from the overall
+// mean score, normalized by the variance of the scores; under the null hypothesis of equal
+// variances it is asymptotically chi-squared with (k - 1) degrees of freedom, where k is the
+// number of non-empty groups. Because it operates on ranks/normal-scores rather than raw
+// deviations, Fligner-Killeen is generally considered the most robust of the three variance
+// tests here to non-normality and outliers/heavy tails, at some cost of power relative to
+// Bartlett's test when the normality assumption actually holds. Returns the chi-squared
+// statistic, df, and an upper-tail chi-squared p-value. Malformed input (fewer than 2 non-empty
+// groups, or total sample size not exceeding the group count) yields a zeroed result with
+// p_value == 1.0.
+struct FlignerResult {
+    double chi2_stat = 0.0;
+    int df = 0;
+    double p_value = 1.0;
+};
+FlignerResult fligner_test(const std::vector<std::vector<double>>& groups);
+
 // --- Regression ---
 struct LinearRegressionResult {
     double slope;
