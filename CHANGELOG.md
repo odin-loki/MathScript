@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-13 (Wave 217 — Signal Cheby2, Stats MAD, Numthy Primitive Root, Linalg Matrix Rank, Info Normalized Entropy, Geo Poly Intersect, Compress RLE)
+
+7 parallel subagents targeting modules not touched in wave 216 (`signal`, `stats`, `numthy`, `linalg`, `info`, `geo`, `compress`). The planned `special::digamma` slot was skipped — `digamma` already exists in `ms::special`.
+
+### Added (Wave 217)
+- `ms::signal` gains `cheby2` — Chebyshev Type II IIR filter design (stopband attenuation, scipy-compatible bilinear zpk). 8+ new tests in `test_signal_filters.cpp`.
+- `ms::stats` gains `mad` — median absolute deviation (robust scale estimate). 6+ new tests in `test_stats_numerical.cpp`.
+- `ms::numthy` gains `primitive_root` — smallest primitive root modulo a prime. 4+ new tests in `test_numthy.cpp`.
+- `ms::linalg` gains `matrix_rank` — numerical rank via SVD singular-value threshold. 6+ new tests in `test_linalg_cond_rank.cpp`.
+- `ms::info` gains `normalized_entropy` — Shannon entropy normalized to [0, 1] by log₂(n). 6+ new tests in `test_info.cpp`.
+- `ms::geo` gains `poly_intersect` — convex-polygon intersection MVP (Sutherland-Hodgman pipeline). 9+ new tests in `test_geo.cpp`.
+- `ms::compress` gains `run_length_encode`/`run_length_decode` — run-length encoding for integer sequences. 6+ new tests in `test_compress.cpp`.
+- **Total Wave 217: 369 CTest suites — all passing** (no new CTest registrations; ~45 new test cases). Seven branches merged with zero conflicts; full-suite verification on `main` passed on the first attempt.
+
 ## [1.0.0] — 2026-07-13 (Wave 216 — Signal Cheby1, Finance SABR, Image SLIC, Optim Adadelta, Graph Eccentricity, Symbolic Collect, PDE Laplace, Bignum Next Prime)
 
 8 parallel subagents targeting modules not touched in waves 214–215 (`signal`, `finance`, `image`, `optim`, `graph`, `symbolic`, `pde`, `bignum`).
