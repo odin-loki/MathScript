@@ -36,6 +36,20 @@ struct ArithmeticResult {
 ArithmeticResult arithmetic_encode(const Bytes& data);
 Bytes            arithmetic_decode(const ArithmeticResult& ar);
 
+// ========================== ANS (rANS) coding ==========================
+// Range Asymmetric Numeral Systems on a byte alphabet. Frequencies are
+// normalized to a fixed power-of-two scale (4096); the compact per-symbol
+// frequency table and original symbol count are stored alongside the coded
+// bytes because rANS has no natural end-of-stream marker.
+struct AnsResult {
+    Bytes encoded;                                      // rANS stream (renorm bytes + 4-byte final state)
+    std::vector<std::pair<uint8_t, uint32_t>> freq_table; // symbol → normalized frequency (present symbols only)
+    size_t original_size;                               // symbols to decode
+    int padding_bits;                                   // always 0 (byte-aligned output)
+};
+AnsResult ans_encode(const Bytes& data);
+Bytes     ans_decode(const AnsResult& ar);
+
 // ========================== LZ77 ==========================
 struct LZ77Token {
     uint16_t offset, length;

@@ -251,6 +251,104 @@ TEST(CompressArithmetic, IncrementalSequenceRoundtrip) {
     EXPECT_EQ(arithmetic_decode(ar), data);
 }
 
+// ---- ANS (rANS) coding ----
+
+TEST(CompressAns, EmptyRoundtrip) {
+    Bytes data;
+    auto ar = ans_encode(data);
+    EXPECT_TRUE(ar.encoded.empty());
+    EXPECT_TRUE(ar.freq_table.empty());
+    EXPECT_EQ(ar.original_size, 0u);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, SingleByteRoundtrip) {
+    Bytes data = {0xAB};
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, TwoByteRoundtrip) {
+    Bytes data = {0x01, 0xFF};
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, SkewedEnglishTextRoundtrip) {
+    Bytes data = make_skewed_text();
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, SingleRepeatedByteRoundtrip) {
+    Bytes data(4096, 0x42);
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ar.freq_table.size(), 1u);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, RandomLookingRoundtrip) {
+    Bytes data;
+    uint8_t x = 0x5A;
+    for (int i = 0; i < 512; ++i) {
+        x = static_cast<uint8_t>(x * 17 + 31);
+        data.push_back(x);
+    }
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, All256DistinctRoundtrip) {
+    Bytes data;
+    for (int i = 0; i < 256; ++i) data.push_back(static_cast<uint8_t>(i));
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ar.freq_table.size(), 256u);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, LargeInputRoundtrip) {
+    Bytes data;
+    data.reserve(4096);
+    for (size_t i = 0; i < 4096; ++i)
+        data.push_back(static_cast<uint8_t>((i * 7 + 13) % 251));
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, AlternatingPatternRoundtrip) {
+    Bytes data;
+    for (int i = 0; i < 1000; ++i)
+        data.push_back(static_cast<uint8_t>(i % 2 ? 0xAA : 0x55));
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, ResultMetadata) {
+    Bytes data = {'a', 'a', 'a', 'b', 'c'};
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ar.original_size, data.size());
+    EXPECT_FALSE(ar.freq_table.empty());
+    EXPECT_GE(ar.padding_bits, 0);
+    EXPECT_LT(ar.padding_bits, 8);
+    EXPECT_GE(ar.encoded.size(), 4u);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, HuffmanLikeSimpleRoundtrip) {
+    Bytes data = {'a', 'b', 'c', 'a', 'a', 'b'};
+    auto ar = ans_encode(data);
+    EXPECT_EQ(ans_decode(ar), data);
+}
+
+TEST(CompressAns, CompressionRatioNearEntropy) {
+    Bytes data = make_skewed_text();
+    auto ar = ans_encode(data);
+    double entropy_bits = shannon_entropy_bits(data) * static_cast<double>(data.size());
+    double payload_bits = static_cast<double>(ar.encoded.size() * 8u);
+    EXPECT_LT(payload_bits, static_cast<double>(data.size() * 8));
+    EXPECT_LT(payload_bits, entropy_bits * 1.15 + 64.0);
+}
+
 // ---- LZ77 ----
 
 TEST(CompressLZ77, SimpleRoundtrip) {
