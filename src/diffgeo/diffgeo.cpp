@@ -188,6 +188,35 @@ geodesic(MetricFn g, const Coords& x0, const Coords& v0,
     return traj;
 }
 
+// ---- Parallel transport (Euler method on the parallel transport ODE) ----
+std::vector<Coords>
+parallel_transport(MetricFn g, std::function<Coords(double)> curve,
+                    std::function<Coords(double)> curve_velocity,
+                    const Coords& V0, double s_end, int n_steps, double h) {
+    std::vector<Coords> traj;
+    traj.push_back(V0);
+    if (n_steps <= 0 || !(s_end > 0.0)) return traj;
+
+    int n = static_cast<int>(V0.size());
+    double ds = s_end / n_steps;
+    Coords V = V0;
+    for (int step = 0; step < n_steps; ++step) {
+        double s = step * ds;
+        Coords x  = curve(s);
+        Coords dx = curve_velocity(s);
+        auto Chr = christoffel(g, x, h);
+        // dV^k/ds = -Γ^k_{ij} dx^i/ds V^j
+        Coords dV(n, 0.0);
+        for (int k = 0; k < n; ++k)
+            for (int i = 0; i < n; ++i)
+                for (int j = 0; j < n; ++j)
+                    dV[k] -= Chr[k][i][j] * dx[i] * V[j];
+        for (int k = 0; k < n; ++k) V[k] += ds * dV[k];
+        traj.push_back(V);
+    }
+    return traj;
+}
+
 // ---- Surface geometry helpers ----
 
 static std::array<double,3> surf_deriv(SurfaceFn r, double u, double v, bool du, double h) {

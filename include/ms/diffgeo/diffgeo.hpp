@@ -47,6 +47,53 @@ std::vector<GeodesicState>
     geodesic(MetricFn g, const Coords& x0, const Coords& v0,
              double s_end = 1.0, int n_steps = 100, double h = 1e-5);
 
+// ---- Parallel transport of a vector along a curve ----
+// Integrates the parallel transport equation
+//   dV^k/ds + Γ^k_{ij} (dx^i/ds) V^j = 0     (sum over i,j)
+// which keeps V "as constant as possible" (zero covariant derivative) along
+// the curve x(s), given the manifold's intrinsic curvature. This is the
+// direct generalization of "keeping a vector pointing the same direction
+// while walking along a path" to curved manifolds/coordinates, and is the
+// same underlying equation as the geodesic equation (which parallel-
+// transports the curve's OWN tangent vector dx/ds) but for an arbitrary
+// initial vector V0 that need not be tangent to the curve.
+//
+// The curve is supplied explicitly as x(s) together with its velocity
+// dx/ds, rather than reconstructing the velocity via finite differences of
+// `curve` internally: this is more numerically accurate/robust (it avoids
+// stacking an extra finite-difference layer on top of christoffel()'s own
+// finite-difference derivatives of the metric) and lets callers supply an
+// exact closed-form velocity when they have one (e.g. a great-circle or a
+// coordinate line on a torus).
+//
+// Uses the same explicit-Euler integration scheme and step-size convention
+// (h_step = s_end / n_steps) as geodesic(), evaluating christoffel() at the
+// current point of each step, for consistency with geodesic()'s numerical
+// behaviour/accuracy characteristics.
+//
+// @param g the metric function (same convention as christoffel/geodesic).
+// @param curve the curve x(s), s in [0, s_end], with curve(0) the transport's
+//        starting point (must match where V0 lives).
+// @param curve_velocity the curve's velocity dx/ds as a function of s.
+// @param V0 initial vector to transport, in the coordinate basis at curve(0).
+// @param s_end final curve parameter value.
+// @param n_steps number of integration steps (matching geodesic's n_steps
+//        convention); step size is s_end/n_steps.
+// @param h finite-difference step passed through to the internal
+//        christoffel() calls (same convention/default as christoffel's h).
+// @return the transported vector's trajectory, one Coords per step
+//         (n_steps+1 points total, including V0 at s=0), analogous to
+//         geodesic()'s trajectory convention but for V alone -- the position
+//         x(s) is already fully determined by the given `curve` and is not
+//         duplicated in the return value.
+// @note Degenerate inputs (n_steps <= 0 or s_end <= 0) return the trivial
+//       single-element trajectory {V0} rather than throwing, consistent with
+//       this module's defensive error handling elsewhere.
+std::vector<Coords>
+    parallel_transport(MetricFn g, std::function<Coords(double)> curve,
+                        std::function<Coords(double)> curve_velocity,
+                        const Coords& V0, double s_end, int n_steps, double h = 1e-5);
+
 // ---- Surface differential geometry ----
 // Surface parameterised as r(u,v) via a function
 using SurfaceFn = std::function<std::array<double,3>(double, double)>;

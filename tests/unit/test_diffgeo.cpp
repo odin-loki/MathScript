@@ -356,3 +356,249 @@ TEST(DiffGeoLieBracket, OriginCommutingFields) {
     EXPECT_NEAR(lb[0], 0.0, 1e-6);
     EXPECT_NEAR(lb[1], 0.0, 1e-6);
 }
+
+// ---- Parallel transport ----
+
+// Metric inner product g_ij V^i W^j at coordinate point x.
+static double metric_inner(MetricFn g, const Coords& x, const Coords& V, const Coords& W) {
+    auto gv = g(x);
+    double sum = 0.0;
+    for (size_t i = 0; i < V.size(); ++i)
+        for (size_t j = 0; j < W.size(); ++j)
+            sum += gv[i][j] * V[i] * W[j];
+    return sum;
+}
+
+TEST(DiffGeoParallelTransport, FlatSpaceStraightLineUnchanged) {
+    // In flat space Christoffel symbols vanish everywhere, so parallel
+    // transport along ANY curve must leave the vector exactly unchanged.
+    auto g = euclidean_2d();
+    std::function<Coords(double)> curve = [](double s) -> Coords { return {s, 2.0*s}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {1.0, 2.0}; };
+    Coords V0 = {0.5, -1.3};
+    auto traj = parallel_transport(g, curve, vel, V0, 1.0, 50);
+    EXPECT_NEAR(traj.back()[0], V0[0], 1e-10);
+    EXPECT_NEAR(traj.back()[1], V0[1], 1e-10);
+}
+
+TEST(DiffGeoParallelTransport, FlatSpaceArbitraryCurveUnchanged) {
+    // A curved (non-straight) path in flat space still yields zero Christoffel
+    // symbols, so V must still come back exactly unchanged.
+    auto g = euclidean_2d();
+    std::function<Coords(double)> curve = [](double s) -> Coords {
+        return {std::cos(s), std::sin(s)};
+    };
+    std::function<Coords(double)> vel = [](double s) -> Coords {
+        return {-std::sin(s), std::cos(s)};
+    };
+    Coords V0 = {1.0, 0.0};
+    auto traj = parallel_transport(g, curve, vel, V0, 2*M_PI, 200);
+    EXPECT_NEAR(traj.back()[0], V0[0], 1e-9);
+    EXPECT_NEAR(traj.back()[1], V0[1], 1e-9);
+}
+
+TEST(DiffGeoParallelTransport, ZeroVectorStaysZero) {
+    auto g = sphere_metric();
+    std::function<Coords(double)> curve = [](double s) -> Coords { return {M_PI/3, s}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {0.0, 1.0}; };
+    Coords V0 = {0.0, 0.0};
+    auto traj = parallel_transport(g, curve, vel, V0, 2*M_PI, 100);
+    EXPECT_NEAR(traj.back()[0], 0.0, 1e-12);
+    EXPECT_NEAR(traj.back()[1], 0.0, 1e-12);
+}
+
+TEST(DiffGeoParallelTransport, InitialVectorIsV0) {
+    auto g = sphere_metric();
+    std::function<Coords(double)> curve = [](double s) -> Coords { return {M_PI/4, s}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {0.0, 1.0}; };
+    Coords V0 = {0.3, 0.9};
+    auto traj = parallel_transport(g, curve, vel, V0, 1.0, 30);
+    EXPECT_NEAR(traj.front()[0], V0[0], 1e-12);
+    EXPECT_NEAR(traj.front()[1], V0[1], 1e-12);
+}
+
+TEST(DiffGeoParallelTransport, TrajectorySize) {
+    auto g = euclidean_2d();
+    std::function<Coords(double)> curve = [](double s) -> Coords { return {s, 0.0}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {1.0, 0.0}; };
+    auto traj = parallel_transport(g, curve, vel, Coords{1.0, 0.0}, 3.0, 60);
+    EXPECT_EQ(traj.size(), 61u);
+}
+
+// Headline test: parallel transport around a FULL closed loop of latitude
+// (colatitude theta0 constant, phi: 0 -> 2*pi) on the unit sphere produces a
+// holonomy -- the returned vector differs from V0 -- unlike flat space.
+TEST(DiffGeoParallelTransport, SphereLoopHolonomyNonzero) {
+    auto g = sphere_metric();
+    double theta0 = M_PI / 3.0;
+    std::function<Coords(double)> curve = [theta0](double s) -> Coords { return {theta0, s}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {0.0, 1.0}; };
+    Coords V0 = {1.0, 0.0};
+    auto traj = parallel_transport(g, curve, vel, V0, 2*M_PI, 2000);
+    Coords Vf = traj.back();
+    double diff = std::abs(Vf[0]-V0[0]) + std::abs(Vf[1]-V0[1]);
+    EXPECT_GT(diff, 0.1);  // clearly different from the flat-space (zero) case
+}
+
+// Same loop, checked quantitatively: the rotation angle of the transported
+// vector (measured in the local orthonormal frame e_theta, sin(theta0)*e_phi,
+// where parallel transport acts as a pure rotation) should match the
+// analytic holonomy angle 2*pi*cos(theta0) predicted by the Gauss-Bonnet
+// theorem for the unit sphere (K=1).
+TEST(DiffGeoParallelTransport, SphereLoopHolonomyAngleMatchesTheory) {
+    auto g = sphere_metric();
+    double theta0 = M_PI / 3.0;
+    std::function<Coords(double)> curve = [theta0](double s) -> Coords { return {theta0, s}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {0.0, 1.0}; };
+    Coords V0 = {1.0, 0.0};
+    auto traj = parallel_transport(g, curve, vel, V0, 2*M_PI, 4000);
+    Coords Vf = traj.back();
+    // Orthonormal-frame components: a = V^theta, b = sin(theta0) * V^phi.
+    double a0 = V0[0], b0 = std::sin(theta0) * V0[1];
+    double af = Vf[0], bf = std::sin(theta0) * Vf[1];
+    double angle = std::atan2(a0*bf - b0*af, a0*af + b0*bf);
+    double expected = 2*M_PI*std::cos(theta0);
+    // Normalize expected into (-pi, pi] for comparison with atan2's range.
+    while (expected > M_PI) expected -= 2*M_PI;
+    while (expected <= -M_PI) expected += 2*M_PI;
+    EXPECT_NEAR(std::abs(angle), std::abs(expected), 0.05);
+}
+
+// Sanity check that the holonomy angle grows as the enclosed latitude
+// approaches the pole (smaller theta0 -> larger enclosed curvature integral).
+TEST(DiffGeoParallelTransport, SphereLoopHolonomyScalesWithLatitude) {
+    auto g = sphere_metric();
+    Coords V0 = {1.0, 0.0};
+    std::function<Coords(double)> vel = [](double) -> Coords { return {0.0, 1.0}; };
+
+    double theta_small = M_PI / 6.0;   // closer to pole -> bigger enclosed cap
+    double theta_large = M_PI / 2.2;   // closer to equator -> smaller enclosed cap
+
+    std::function<Coords(double)> curve_small = [theta_small](double s) -> Coords {
+        return {theta_small, s};
+    };
+    std::function<Coords(double)> curve_large = [theta_large](double s) -> Coords {
+        return {theta_large, s};
+    };
+
+    auto traj_small = parallel_transport(g, curve_small, vel, V0, 2*M_PI, 2000);
+    auto traj_large = parallel_transport(g, curve_large, vel, V0, 2*M_PI, 2000);
+
+    auto diff_mag = [&](const Coords& Vf) {
+        return std::abs(Vf[0]-V0[0]) + std::abs(Vf[1]-V0[1]);
+    };
+    EXPECT_GT(diff_mag(traj_small.back()), diff_mag(traj_large.back()));
+}
+
+TEST(DiffGeoParallelTransport, MagnitudePreservedSphere) {
+    // Parallel transport is an isometry: g_ij V^i V^j must stay constant
+    // along the transport, at every step, even though the raw coordinate
+    // components of V change. Explicit Euler (matching geodesic()'s scheme)
+    // has a small, step-size-dependent energy drift on this rotational ODE,
+    // so we use enough steps to keep that drift comfortably within tolerance.
+    auto g = sphere_metric();
+    double theta0 = M_PI / 4.0;
+    std::function<Coords(double)> curve = [theta0](double s) -> Coords { return {theta0, s}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {0.0, 1.0}; };
+    Coords V0 = {0.7, 0.4};
+    int n_steps = 5000;
+    auto traj = parallel_transport(g, curve, vel, V0, 2*M_PI, n_steps);
+    double mag0 = metric_inner(g, curve(0.0), V0, V0);
+    double ds = (2*M_PI) / n_steps;
+    for (size_t i = 0; i < traj.size(); ++i) {
+        double s = static_cast<double>(i) * ds;
+        double mag = metric_inner(g, curve(s), traj[i], traj[i]);
+        EXPECT_NEAR(mag, mag0, 0.01 * std::abs(mag0) + 1e-6);
+    }
+}
+
+TEST(DiffGeoParallelTransport, MagnitudePreservedFlat) {
+    auto g = euclidean_2d();
+    std::function<Coords(double)> curve = [](double s) -> Coords {
+        return {std::cos(s), std::sin(s)};
+    };
+    std::function<Coords(double)> vel = [](double s) -> Coords {
+        return {-std::sin(s), std::cos(s)};
+    };
+    Coords V0 = {2.0, -1.0};
+    auto traj = parallel_transport(g, curve, vel, V0, 2*M_PI, 200);
+    double mag0 = metric_inner(g, curve(0.0), V0, V0);
+    for (auto& V : traj) {
+        double mag = metric_inner(g, {0,0}, V, V);  // flat metric is x-independent
+        EXPECT_NEAR(mag, mag0, 1e-9);
+    }
+}
+
+// Cross-check with geodesic(): the sphere's equator (theta = pi/2 constant)
+// is itself a geodesic, so parallel-transporting its own tangent vector along
+// it should reproduce exactly the velocity trajectory that geodesic() computes
+// when started from the same initial position/velocity (both use the same
+// Euler scheme, and the equator's Euler-stepped position matches x0 + s*v0
+// exactly since the geodesic acceleration is identically zero along it).
+TEST(DiffGeoParallelTransport, MatchesGeodesicForGeodesicCurve) {
+    auto g = sphere_metric();
+    Coords x0 = {M_PI/2, 0.0};
+    Coords v0 = {0.0, 1.0};
+    std::function<Coords(double)> curve = [x0, v0](double s) -> Coords {
+        return {x0[0] + s*v0[0], x0[1] + s*v0[1]};
+    };
+    std::function<Coords(double)> vel = [v0](double) -> Coords { return v0; };
+
+    auto pt_traj  = parallel_transport(g, curve, vel, v0, 1.0, 100);
+    auto geo_traj = geodesic(g, x0, v0, 1.0, 100);
+
+    ASSERT_EQ(pt_traj.size(), geo_traj.size());
+    for (size_t i = 0; i < pt_traj.size(); ++i) {
+        EXPECT_NEAR(pt_traj[i][0], geo_traj[i].v[0], 1e-10);
+        EXPECT_NEAR(pt_traj[i][1], geo_traj[i].v[1], 1e-10);
+    }
+}
+
+TEST(DiffGeoParallelTransport, TangentStaysTangentAlongGeodesic) {
+    // Along a geodesic, parallel-transporting the tangent vector keeps it
+    // proportional to the curve's own velocity at every step (tangent stays
+    // tangent).
+    auto g = sphere_metric();
+    Coords x0 = {M_PI/2, 0.0};
+    Coords v0 = {0.0, 1.0};
+    std::function<Coords(double)> curve = [x0, v0](double s) -> Coords {
+        return {x0[0] + s*v0[0], x0[1] + s*v0[1]};
+    };
+    std::function<Coords(double)> vel = [v0](double) -> Coords { return v0; };
+
+    auto traj = parallel_transport(g, curve, vel, v0, 1.0, 100);
+    for (size_t i = 0; i < traj.size(); ++i) {
+        // Velocity along this curve is constant (0,1); V should stay parallel
+        // to it, i.e. its theta-component (v0's zero component) stays ~0.
+        EXPECT_NEAR(traj[i][0], 0.0, 1e-9);
+        EXPECT_GT(traj[i][1], 0.0);
+    }
+}
+
+TEST(DiffGeoParallelTransport, DegenerateNStepsReturnsV0) {
+    auto g = euclidean_2d();
+    std::function<Coords(double)> curve = [](double s) -> Coords { return {s, 0.0}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {1.0, 0.0}; };
+    Coords V0 = {3.0, -2.0};
+    auto traj_zero = parallel_transport(g, curve, vel, V0, 1.0, 0);
+    auto traj_neg  = parallel_transport(g, curve, vel, V0, 1.0, -5);
+    ASSERT_EQ(traj_zero.size(), 1u);
+    ASSERT_EQ(traj_neg.size(), 1u);
+    EXPECT_NEAR(traj_zero[0][0], V0[0], 1e-12);
+    EXPECT_NEAR(traj_zero[0][1], V0[1], 1e-12);
+    EXPECT_NEAR(traj_neg[0][0], V0[0], 1e-12);
+    EXPECT_NEAR(traj_neg[0][1], V0[1], 1e-12);
+}
+
+TEST(DiffGeoParallelTransport, DegenerateSEndReturnsV0) {
+    auto g = euclidean_2d();
+    std::function<Coords(double)> curve = [](double s) -> Coords { return {s, 0.0}; };
+    std::function<Coords(double)> vel   = [](double) -> Coords { return {1.0, 0.0}; };
+    Coords V0 = {1.5, 0.5};
+    auto traj_zero = parallel_transport(g, curve, vel, V0, 0.0, 50);
+    auto traj_neg  = parallel_transport(g, curve, vel, V0, -1.0, 50);
+    ASSERT_EQ(traj_zero.size(), 1u);
+    ASSERT_EQ(traj_neg.size(), 1u);
+    EXPECT_NEAR(traj_zero[0][0], V0[0], 1e-12);
+    EXPECT_NEAR(traj_neg[0][0], V0[0], 1e-12);
+}
