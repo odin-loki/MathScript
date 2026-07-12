@@ -390,6 +390,15 @@ bool bigint_is_prime(const BigInt& n, int rounds) {
     return true;
 }
 
+BigInt bigint_next_prime(const BigInt& n) {
+    if (n <= BigInt(1LL)) return BigInt(2LL);
+    BigInt candidate = n.negative ? BigInt(2LL) : n;
+    if (candidate == BigInt(2LL)) return BigInt(2LL);
+    if (bigint_is_even(candidate)) candidate = candidate + BigInt(1LL);
+    while (!bigint_is_prime(candidate)) candidate = candidate + BigInt(2LL);
+    return candidate;
+}
+
 BigInt bigint_isqrt(const BigInt& n) {
     if (n.negative) return BigInt(0LL);
     if (n.is_zero() || n.is_one()) return n;
