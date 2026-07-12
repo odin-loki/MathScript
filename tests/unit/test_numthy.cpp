@@ -406,3 +406,134 @@ TEST(NumthySternBrocot, AllDistinct) {
     std::set<std::pair<uint64_t,uint64_t>> unique(sb.begin(), sb.end());
     EXPECT_EQ(unique.size(), sb.size());
 }
+
+TEST(NumthyCarmichael, KnownCarmichaelNumbers) {
+    EXPECT_TRUE(is_carmichael(561));   // 3*11*17
+    EXPECT_TRUE(is_carmichael(1105));  // 5*13*17
+    EXPECT_TRUE(is_carmichael(1729));  // 7*13*19
+    EXPECT_TRUE(is_carmichael(2465));  // 5*17*29
+    EXPECT_TRUE(is_carmichael(2821));  // 7*13*31
+}
+
+TEST(NumthyCarmichael, KnownPrimesAreNotCarmichael) {
+    EXPECT_FALSE(is_carmichael(7));
+    EXPECT_FALSE(is_carmichael(97));
+    // Individual prime factors of 561 must not themselves be Carmichael numbers.
+    EXPECT_FALSE(is_carmichael(3));
+    EXPECT_FALSE(is_carmichael(11));
+    EXPECT_FALSE(is_carmichael(17));
+}
+
+TEST(NumthyCarmichael, OrdinaryCompositesAreNotCarmichael) {
+    for (uint64_t n : {4u, 6u, 8u, 9u, 15u, 100u}) {
+        EXPECT_FALSE(is_carmichael(n)) << "n=" << n;
+    }
+}
+
+TEST(NumthyCarmichael, NonSquarefreeCompositeFails) {
+    EXPECT_FALSE(is_carmichael(12)); // 2^2 * 3, not squarefree
+    EXPECT_FALSE(is_carmichael(18)); // 2 * 3^2, not squarefree
+}
+
+TEST(NumthyCarmichael, SmallInputsBelowThree) {
+    EXPECT_FALSE(is_carmichael(0));
+    EXPECT_FALSE(is_carmichael(1));
+    EXPECT_FALSE(is_carmichael(2));
+}
+
+TEST(NumthyCarmichael, LargerKnownCarmichaelNumber) {
+    EXPECT_TRUE(is_carmichael(6601));   // 7*23*41
+    EXPECT_TRUE(is_carmichael(10585));  // 5*29*73
+}
+
+TEST(NumthyCarmichael, KorseltCriterionHoldsForEachFactor) {
+    for (uint64_t n : {561u, 1105u, 1729u}) {
+        ASSERT_TRUE(is_carmichael(n)) << "n=" << n;
+        for (auto& [p, e] : factor_exp(n)) {
+            EXPECT_EQ(e, 1) << "n=" << n << " p=" << p;
+            EXPECT_EQ((n - 1) % (p - 1), 0u) << "n=" << n << " p=" << p;
+        }
+    }
+}
+
+TEST(NumthyLucas, FibonacciCase) {
+    // P=1, Q=-1 gives U_k = Fibonacci numbers.
+    std::vector<int64_t> fib = {0, 1, 1, 2, 3, 5, 8, 13};
+    for (size_t k = 0; k < fib.size(); ++k) {
+        auto [u, v] = lucas_sequence(static_cast<int64_t>(k), 1, -1);
+        EXPECT_EQ(u, fib[k]) << "k=" << k;
+    }
+}
+
+TEST(NumthyLucas, LucasNumberCase) {
+    // P=1, Q=-1 gives V_k = Lucas numbers.
+    std::vector<int64_t> lucas = {2, 1, 3, 4, 7, 11, 18};
+    for (size_t k = 0; k < lucas.size(); ++k) {
+        auto [u, v] = lucas_sequence(static_cast<int64_t>(k), 1, -1);
+        EXPECT_EQ(v, lucas[k]) << "k=" << k;
+    }
+}
+
+TEST(NumthyLucas, BaseCasesAnyPQ) {
+    for (auto [P, Q] : std::vector<std::pair<int64_t,int64_t>>{{1, -1}, {2, -1}, {3, 2}, {-2, 5}}) {
+        auto [u0, v0] = lucas_sequence(0, P, Q);
+        EXPECT_EQ(u0, 0) << "P=" << P << " Q=" << Q;
+        EXPECT_EQ(v0, 2) << "P=" << P << " Q=" << Q;
+        auto [u1, v1] = lucas_sequence(1, P, Q);
+        EXPECT_EQ(u1, 1) << "P=" << P << " Q=" << Q;
+        EXPECT_EQ(v1, P) << "P=" << P << " Q=" << Q;
+    }
+}
+
+TEST(NumthyLucas, RecurrenceIdentityHoldsPellCase) {
+    // P=2, Q=-1: Pell-number-related sequence. Cross-check against a naive
+    // linear recurrence computed independently in the test.
+    const int64_t P = 2, Q = -1;
+    std::vector<int64_t> u_naive = {0, 1}, v_naive = {2, P};
+    for (int k = 2; k <= 15; ++k) {
+        u_naive.push_back(P * u_naive[k - 1] - Q * u_naive[k - 2]);
+        v_naive.push_back(P * v_naive[k - 1] - Q * v_naive[k - 2]);
+    }
+    for (int k = 0; k <= 15; ++k) {
+        auto [u, v] = lucas_sequence(k, P, Q);
+        EXPECT_EQ(u, u_naive[static_cast<size_t>(k)]) << "k=" << k;
+        EXPECT_EQ(v, v_naive[static_cast<size_t>(k)]) << "k=" << k;
+    }
+}
+
+TEST(NumthyLucas, RecurrenceIdentityHoldsGeneralCase) {
+    // P=3, Q=2: arbitrary pair, cross-checked against a naive reference recurrence.
+    const int64_t P = 3, Q = 2;
+    std::vector<int64_t> u_naive = {0, 1}, v_naive = {2, P};
+    for (int k = 2; k <= 12; ++k) {
+        u_naive.push_back(P * u_naive[k - 1] - Q * u_naive[k - 2]);
+        v_naive.push_back(P * v_naive[k - 1] - Q * v_naive[k - 2]);
+    }
+    for (int k = 0; k <= 12; ++k) {
+        auto [u, v] = lucas_sequence(k, P, Q);
+        EXPECT_EQ(u, u_naive[static_cast<size_t>(k)]) << "k=" << k;
+        EXPECT_EQ(v, v_naive[static_cast<size_t>(k)]) << "k=" << k;
+    }
+}
+
+TEST(NumthyLucas, LargerKMatchesNaiveIteration) {
+    // Exercise the O(log k) path (k=30, k=40) against an independently computed
+    // naive iterative reference, using small P,Q to avoid overflow.
+    for (int64_t kmax : {30, 40}) {
+        const int64_t P = 1, Q = -1;
+        std::vector<int64_t> u_naive = {0, 1}, v_naive = {2, P};
+        for (int64_t k = 2; k <= kmax; ++k) {
+            u_naive.push_back(P * u_naive[static_cast<size_t>(k - 1)] - Q * u_naive[static_cast<size_t>(k - 2)]);
+            v_naive.push_back(P * v_naive[static_cast<size_t>(k - 1)] - Q * v_naive[static_cast<size_t>(k - 2)]);
+        }
+        auto [u, v] = lucas_sequence(kmax, P, Q);
+        EXPECT_EQ(u, u_naive[static_cast<size_t>(kmax)]) << "kmax=" << kmax;
+        EXPECT_EQ(v, v_naive[static_cast<size_t>(kmax)]) << "kmax=" << kmax;
+    }
+}
+
+TEST(NumthyLucas, NegativeKClampedToZero) {
+    auto [u, v] = lucas_sequence(-5, 1, -1);
+    EXPECT_EQ(u, 0);
+    EXPECT_EQ(v, 2);
+}

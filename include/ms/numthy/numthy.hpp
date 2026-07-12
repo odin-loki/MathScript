@@ -88,5 +88,31 @@ Result<std::pair<uint64_t,uint64_t>> pell_solve(uint64_t D);
 // --- Partition function ---
 uint64_t partition(uint32_t n);   // number of integer partitions of n
 
+// Korselt's criterion Carmichael number test: n is a Carmichael number iff n is composite,
+// squarefree, and for every prime p dividing n, (p-1) divides (n-1). Carmichael numbers are the
+// classic counterexamples that make Fermat's little theorem primality tests unreliable (they
+// pass Fermat's test for EVERY base coprime to n, despite being composite) -- the smallest is
+// 561 = 3*11*17. This function checks the criterion directly via existing factor_exp (squarefree
+// iff every exponent is exactly 1) rather than testing many Fermat bases, since Korselt's
+// criterion is both necessary AND sufficient (no probabilistic uncertainty, unlike a
+// finite-base Fermat test).
+// @param n candidate. Returns false for n < 3, prime n, or n failing any part of the criterion.
+bool is_carmichael(uint64_t n);
+
+// Lucas sequences U_k(P,Q) and V_k(P,Q): the generalizations of Fibonacci (U_k with P=1,Q=-1)
+// and Lucas numbers (V_k with P=1,Q=-1) satisfying the shared recurrence
+//   U_0=0, U_1=1, U_k = P*U_{k-1} - Q*U_{k-2}
+//   V_0=2, V_1=P, V_k = P*V_{k-1} - Q*V_{k-2}
+// Computed via binary (matrix) exponentiation of the companion matrix [[P,-Q],[1,0]] -- the
+// same O(log k) binary-exponentiation strategy mod_pow uses for modular exponentiation --
+// rather than naive O(k) iteration.
+// @param k index. k < 0 is clamped to k == 0 behavior (negative-index Lucas sequences require
+//        division and are out of scope here; documented limitation, not silently wrong output).
+// @param P, Q sequence parameters (may be negative).
+// @return {U_k, V_k} as a pair.
+// @note Uses int64_t arithmetic with no overflow checking; large k/P/Q combinations can overflow
+//       silently. BigInt support is out of scope for this function.
+std::pair<int64_t, int64_t> lucas_sequence(int64_t k, int64_t P, int64_t Q);
+
 } // namespace numthy
 } // namespace ms
