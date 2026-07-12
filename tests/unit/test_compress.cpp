@@ -348,6 +348,83 @@ TEST(CompressBits, Roundtrip) {
     EXPECT_EQ(back, data);
 }
 
+// ---- Golomb-Rice ----
+
+TEST(CompressGolombRice, HandPickedRoundtrip) {
+    std::vector<uint32_t> values = {0, 1, 2, 5, 10};
+    auto enc = golomb_rice_encode(values, 2);
+    auto dec = golomb_rice_decode(enc, 2, values.size());
+    EXPECT_EQ(dec, values);
+}
+
+TEST(CompressGolombRice, EmptyRoundtrip) {
+    std::vector<uint32_t> values;
+    auto enc = golomb_rice_encode(values, 4);
+    EXPECT_TRUE(enc.empty());
+    auto dec = golomb_rice_decode(enc, 4, 0);
+    EXPECT_TRUE(dec.empty());
+}
+
+TEST(CompressGolombRice, AllZerosRoundtrip) {
+    std::vector<uint32_t> values(64, 0);
+    auto enc = golomb_rice_encode(values, 3);
+    auto dec = golomb_rice_decode(enc, 3, values.size());
+    EXPECT_EQ(dec, values);
+}
+
+TEST(CompressGolombRice, WideRangeWithOutlier) {
+    std::vector<uint32_t> values = {0, 1, 2, 3, 0, 1, 65536, 4, 5};
+    auto enc = golomb_rice_encode(values, 4);
+    auto dec = golomb_rice_decode(enc, 4, values.size());
+    EXPECT_EQ(dec, values);
+}
+
+TEST(CompressGolombRice, MultipleMBitsRoundtrip) {
+    std::vector<uint32_t> values = {0, 1, 3, 7, 15, 31, 100, 250};
+    for (int m_bits : {0, 2, 4, 8}) {
+        auto enc = golomb_rice_encode(values, m_bits);
+        auto dec = golomb_rice_decode(enc, m_bits, values.size());
+        EXPECT_EQ(dec, values) << "m_bits=" << m_bits;
+    }
+}
+
+namespace {
+
+std::vector<uint32_t> make_geometric_like_values(size_t count, uint32_t seed = 42) {
+    std::vector<uint32_t> values;
+    values.reserve(count);
+    uint32_t state = seed;
+    for (size_t i = 0; i < count; ++i) {
+        uint32_t v = 0;
+        while (true) {
+            state = state * 1103515245u + 12345u;
+            if ((state >> 16) & 1u) break;
+            ++v;
+        }
+        values.push_back(v);
+    }
+    return values;
+}
+
+} // namespace
+
+TEST(CompressGolombRice, GeometricDistributionRoundtripAndCompression) {
+    auto values = make_geometric_like_values(512);
+    const int m_bits = 2;
+    auto enc = golomb_rice_encode(values, m_bits);
+    auto dec = golomb_rice_decode(enc, m_bits, values.size());
+    EXPECT_EQ(dec, values);
+    size_t naive_bytes = values.size() * 4u;
+    EXPECT_LT(enc.size(), naive_bytes);
+}
+
+TEST(CompressGolombRice, PureUnaryMBitsZero) {
+    std::vector<uint32_t> values = {0, 0, 5, 10, 0};
+    auto enc = golomb_rice_encode(values, 0);
+    auto dec = golomb_rice_decode(enc, 0, values.size());
+    EXPECT_EQ(dec, values);
+}
+
 // ---- bzip2-like pipeline ----
 
 TEST(CompressBzip2Like, Roundtrip) {

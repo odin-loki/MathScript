@@ -66,6 +66,17 @@ Bytes delta_decode(const Bytes& data);
 std::string  bytes_to_bits(const Bytes& data);
 Bytes        bits_to_bytes(const std::string& bits, int& padding);
 
+// ========================== Golomb-Rice coding ==========================
+// Entropy coding for non-negative integers (Rice coding: Golomb with M = 2^m_bits).
+// Each value v is split into quotient q = v >> m_bits and remainder r = v & (M-1).
+// The quotient is unary-coded as q ones followed by a terminating zero; the
+// remainder is written directly in m_bits bits (MSB first). When m_bits == 0 this
+// degenerates to pure unary coding (M = 1, remainder absent). The bitstream is
+// packed into bytes via bits_to_bytes(); decoders require an explicit symbol count
+// because there is no natural end-of-stream marker (same pattern as Huffman decode).
+Bytes                 golomb_rice_encode(const std::vector<uint32_t>& values, int m_bits);
+std::vector<uint32_t> golomb_rice_decode(const Bytes& encoded, int m_bits, size_t count);
+
 // ========================== Combined pipelines ==========================
 // BWT + MTF + RLE (like bzip2 core)
 Bytes bzip2_like_compress(const Bytes& data);
