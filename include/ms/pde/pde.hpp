@@ -163,6 +163,23 @@ Poisson2DResult pde_poisson_2d(
     std::size_t max_iterations,
     double tolerance);
 
+/// Gauss-Seidel iterative finite-difference solver for the 2D Laplace equation
+/// Laplacian(u) = 0 on the unit square [0,1]×[0,1] with Dirichlet boundaries
+/// prescribed by the perimeter of @p boundary (interior entries are used only as
+/// the initial guess and are overwritten). This is the homogeneous case of
+/// @ref pde_poisson_2d with f = 0. For this positive-definite elliptic problem
+/// Gauss-Seidel is guaranteed to converge; the iteration terminates when the
+/// maximum absolute change per sweep falls below 1e-8 or after 10000 sweeps.
+/// Finer grids converge more slowly per sweep (spectral radius of the iteration
+/// matrix approaches 1) but yield lower discretization error.
+/// @note Returns empty result when nx/ny < 3, the boundary grid is invalid, or
+///     dimensions mismatch.
+/// Complexity: O(max_iterations * nx * ny).
+Poisson2DResult pde_laplace_2d(
+    int nx,
+    int ny,
+    const std::vector<std::vector<double>>& boundary);
+
 /// Direct second-order central finite-difference solve for the 2D Helmholtz equation
 /// Laplacian(u) + k^2*u = f with Dirichlet boundaries prescribed by g on the grid
 /// perimeter (interior entries of g are ignored). When g is empty, zero Dirichlet
