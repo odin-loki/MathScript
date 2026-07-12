@@ -231,6 +231,24 @@ std::vector<double> sinusoid(size_t n, double fs, double freq, double amplitude 
     return x;
 }
 
+std::vector<double> lcg_noise(size_t n, uint32_t seed, double amplitude = 1.0) {
+    std::vector<double> x(n);
+    uint32_t state = seed;
+    for (size_t i = 0; i < n; ++i) {
+        state = state * 1664525u + 1013904223u;
+        x[i] = amplitude * (static_cast<double>(state % 10000u) / 10000.0 - 0.5);
+    }
+    return x;
+}
+
+double mean_value(const std::vector<double>& values) {
+    if (values.empty()) {
+        return 0.0;
+    }
+    return std::accumulate(values.begin(), values.end(), 0.0) /
+           static_cast<double>(values.size());
+}
+
 size_t peak_index(const std::vector<double>& values) {
     return static_cast<size_t>(std::distance(values.begin(), std::max_element(values.begin(), values.end())));
 }
@@ -341,6 +359,100 @@ TEST(SignalExtTest, welch_psd_invalid_overlap_negative) {
 TEST(SignalExtTest, welch_psd_invalid_overlap_ge_one) {
     const auto x = sinusoid(512, 1000.0, 50.0);
     const auto result = welch_psd(x, 1000.0, 256, 1.0);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, coherence_identical_signals_near_unity) {
+    const double fs = 1000.0;
+    const size_t nperseg = 256;
+    const auto x = sinusoid(8192, fs, 37.0);
+
+    const auto result = coherence(x, x, fs, nperseg, 0.5);
+    ASSERT_TRUE(result.has_value()) << "coherence failed";
+    const auto& coh = *result;
+
+    ASSERT_EQ(coh.frequencies.size(), coh.coherence.size());
+    ASSERT_FALSE(coh.coherence.empty());
+    for (double c : coh.coherence) {
+        EXPECT_GE(c, 0.0);
+        EXPECT_LE(c, 1.0);
+        EXPECT_NEAR(c, 1.0, 0.05);
+    }
+}
+
+TEST(SignalExtTest, coherence_independent_noise_is_low) {
+    const double fs = 1000.0;
+    const size_t nperseg = 256;
+    const auto x = lcg_noise(16384, 12345u);
+    const auto y = lcg_noise(16384, 67890u);
+
+    const auto result = coherence(x, y, fs, nperseg, 0.5);
+    ASSERT_TRUE(result.has_value());
+    const auto& coh = *result;
+
+    const double mean_coh = mean_value(coh.coherence);
+    const double max_coh = *std::max_element(coh.coherence.begin(), coh.coherence.end());
+    EXPECT_LT(mean_coh, 0.15);
+    EXPECT_LT(max_coh, 0.35);
+}
+
+TEST(SignalExtTest, coherence_scaled_copy_decreases_with_noise) {
+    const double fs = 1000.0;
+    const size_t nperseg = 256;
+    const auto x = sinusoid(8192, fs, 55.0);
+
+    std::vector<double> y_low_noise(x.size());
+    std::vector<double> y_high_noise(x.size());
+    const auto noise_low = lcg_noise(x.size(), 11111u, 0.05);
+    const auto noise_high = lcg_noise(x.size(), 22222u, 3.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        y_low_noise[i] = 2.0 * x[i] + noise_low[i];
+        y_high_noise[i] = 2.0 * x[i] + noise_high[i];
+    }
+
+    const auto psd_x = welch_psd(x, fs, nperseg, 0.5);
+    const auto low = coherence(x, y_low_noise, fs, nperseg, 0.5);
+    const auto high = coherence(x, y_high_noise, fs, nperseg, 0.5);
+    ASSERT_TRUE(psd_x.has_value());
+    ASSERT_TRUE(low.has_value());
+    ASSERT_TRUE(high.has_value());
+
+    const size_t peak = peak_index(psd_x->power);
+    const double coh_low = low->coherence[peak];
+    const double coh_high = high->coherence[peak];
+    EXPECT_GT(coh_low, 0.9);
+    EXPECT_LT(coh_high, 1.0);
+    EXPECT_GT(coh_low, coh_high);
+}
+
+TEST(SignalExtTest, coherence_frequencies_match_welch_psd) {
+    const double fs = 1000.0;
+    const size_t nperseg = 256;
+    const auto x = sinusoid(4096, fs, 40.0);
+    const auto y = sinusoid(4096, fs, 40.0, 0.7);
+
+    const auto psd = welch_psd(x, fs, nperseg, 0.5);
+    const auto coh_result = coherence(x, y, fs, nperseg, 0.5);
+    ASSERT_TRUE(psd.has_value());
+    ASSERT_TRUE(coh_result.has_value());
+    ASSERT_EQ(psd->frequencies.size(), coh_result->frequencies.size());
+    for (size_t i = 0; i < psd->frequencies.size(); ++i) {
+        EXPECT_NEAR(coh_result->frequencies[i], psd->frequencies[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, coherence_invalid_mismatched_lengths) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto y = sinusoid(256, 1000.0, 50.0);
+    const auto result = coherence(x, y, 1000.0, 256, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, coherence_invalid_nperseg_zero) {
+    const auto x = sinusoid(512, 1000.0, 50.0);
+    const auto result = coherence(x, x, 1000.0, 0, 0.5);
     ASSERT_FALSE(result.has_value());
     EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
 }
