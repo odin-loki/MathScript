@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <map>
 #include <numbers>
+#include <vector>
 
 #include "ms/symbolic/symbolic.hpp"
 
@@ -50,6 +51,28 @@ void expect_integrate_roundtrip(const SymExpr& expr, const std::string& var, dou
     const auto integral = sym_simplify(sym_integrate(expr, var));
     const auto d_integral = sym_simplify(sym_diff(clone_expr(integral), var));
     EXPECT_NEAR(sym_eval(d_integral, {{var, x_val}}), sym_eval(expr, {{var, x_val}}), 1e-5);
+}
+
+bool has_mul_with_sum_factor(const SymExpr& expr) {
+    if (expr.op == SymOp::Mul && expr.left && expr.right) {
+        if (expr.left->op == SymOp::Add || expr.left->op == SymOp::Sub || expr.right->op == SymOp::Add ||
+            expr.right->op == SymOp::Sub) {
+            return true;
+        }
+    }
+    if (expr.left && has_mul_with_sum_factor(*expr.left)) {
+        return true;
+    }
+    if (expr.right && has_mul_with_sum_factor(*expr.right)) {
+        return true;
+    }
+    return false;
+}
+
+void expect_eval_equivalent(
+    const SymExpr& original, const SymExpr& transformed, const std::map<std::string, double>& env,
+    double tol = 1e-9) {
+    EXPECT_NEAR(sym_eval(original, env), sym_eval(transformed, env), tol);
 }
 
 } // namespace
@@ -268,6 +291,96 @@ TEST(SymbolicExtendedTest, substitute_in_unary_ops) {
     const auto replaced = sym_substitute(expr, "x", sym_var("t"));
     EXPECT_NE(sym_to_string(replaced).find("t"), std::string::npos);
     EXPECT_EQ(sym_to_string(replaced).find("x"), std::string::npos);
+}
+
+TEST(SymbolicExpandTest, expand_binomial_product) {
+    const auto original =
+        sym_mul(sym_add(sym_var("x"), sym_const(1.0)), sym_add(sym_var("x"), sym_const(2.0)));
+    const auto expanded = sym_expand(clone_expr(original));
+
+    for (const double x : {0.0, 1.0, 2.0, -3.0, 0.5}) {
+        expect_eval_equivalent(original, expanded, {{"x", x}});
+    }
+
+    EXPECT_EQ(expanded.op, SymOp::Add);
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
+}
+
+TEST(SymbolicExpandTest, expand_difference_of_squares) {
+    const auto original =
+        sym_mul(sym_add(sym_var("x"), sym_var("y")), sym_sub(sym_var("x"), sym_var("y")));
+    const auto expanded = sym_expand(clone_expr(original));
+    const auto expected = sym_sub(sym_pow(sym_var("x"), sym_const(2.0)), sym_pow(sym_var("y"), sym_const(2.0)));
+
+    for (const auto& point : std::vector<std::pair<double, double>>{{0.0, 0.0}, {1.0, 2.0}, {3.0, -1.0}, {-2.0, 0.5}}) {
+        expect_eval_equivalent(original, expanded, {{"x", point.first}, {"y", point.second}});
+        expect_eval_equivalent(expanded, expected, {{"x", point.first}, {"y", point.second}});
+    }
+
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
+}
+
+TEST(SymbolicExpandTest, expand_nested_sum) {
+    const auto original = sym_mul(
+        sym_add(sym_add(sym_var("x"), sym_const(1.0)), sym_const(2.0)),
+        sym_var("x"));
+    const auto expanded = sym_expand(clone_expr(original));
+
+    for (const double x : {0.0, 1.0, 2.5, -4.0}) {
+        expect_eval_equivalent(original, expanded, {{"x", x}});
+    }
+
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
+}
+
+TEST(SymbolicExpandTest, expand_integer_power) {
+    const auto original = sym_pow(sym_add(sym_var("x"), sym_const(1.0)), sym_const(3.0));
+    const auto expanded = sym_expand(clone_expr(original));
+
+    for (const double x : {0.0, 1.0, 2.0, -1.0, 0.25}) {
+        expect_eval_equivalent(original, expanded, {{"x", x}});
+    }
+
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
+}
+
+TEST(SymbolicExpandTest, expand_triple_product) {
+    const auto original = sym_mul(
+        sym_mul(sym_add(sym_var("x"), sym_const(1.0)), sym_add(sym_var("x"), sym_const(2.0))),
+        sym_add(sym_var("x"), sym_const(3.0)));
+    const auto expanded = sym_expand(clone_expr(original));
+
+    for (const double x : {-2.0, 0.0, 1.0, 4.0, 0.75}) {
+        expect_eval_equivalent(original, expanded, {{"x", x}});
+    }
+
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
+}
+
+TEST(SymbolicExpandTest, expand_noop_trig_product) {
+    const auto original = sym_mul(sym_sin(sym_var("x")), sym_cos(sym_var("y")));
+    const auto expanded = sym_expand(clone_expr(original));
+
+    for (const auto& point : std::vector<std::pair<double, double>>{{0.0, 0.0}, {1.0, 0.5}, {-0.5, 2.0}}) {
+        expect_eval_equivalent(original, expanded, {{"x", point.first}, {"y", point.second}});
+    }
+
+    EXPECT_EQ(expanded.op, SymOp::Mul);
+    EXPECT_EQ(expanded.left->op, SymOp::Sin);
+    EXPECT_EQ(expanded.right->op, SymOp::Cos);
+}
+
+TEST(SymbolicExpandTest, expand_parse_roundtrip) {
+    const auto parsed = sym_parse("(x+1)*(x+2)");
+    ASSERT_TRUE(parsed.has_value());
+    const auto expanded = sym_expand(clone_expr(*parsed));
+
+    for (const double x : {0.0, 1.0, 2.0, -3.0, 0.5}) {
+        expect_eval_equivalent(*parsed, expanded, {{"x", x}});
+    }
+
+    EXPECT_EQ(expanded.op, SymOp::Add);
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
 }
 
 TEST(SymbolicParseTest, parse_const_and_var) {
