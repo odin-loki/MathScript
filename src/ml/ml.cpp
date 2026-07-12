@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include "ms/ml/ml.hpp"
+#include "ms/linalg/linalg.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -1238,6 +1239,238 @@ void DBSCAN::fit(const Mat& X) {
             if (labels_[q]==-1) labels_[q]=cluster;
         }
     }
+}
+
+// ========================== Spectral Clustering ==========================
+
+static ms::ColMatrix<double> ml_mat_to_col(const Mat& M) {
+    size_t rows = M.size(), cols = M.empty() ? 0 : M[0].size();
+    ms::ColMatrix<double> out(rows, cols);
+    for (size_t i = 0; i < rows; ++i)
+        for (size_t j = 0; j < cols; ++j)
+            out(i, j) = M[i][j];
+    return out;
+}
+
+static double sq_eucl_dist(const Vec& a, const Vec& b) {
+    double s = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        double d = a[i] - b[i];
+        s += d * d;
+    }
+    return s;
+}
+
+static double rbf_affinity(double sq_dist, double inv_two_sigma_sq) {
+    return std::exp(-sq_dist * inv_two_sigma_sq);
+}
+
+static Mat build_affinity(const Mat& X, double sigma, int n_neighbors) {
+    int n = (int)X.size();
+    Mat W(n, Vec(n, 0.0));
+    if (n == 0) return W;
+
+    double sig = sigma > 0.0 ? sigma : 1.0;
+    double inv_two_sigma_sq = 1.0 / (2.0 * sig * sig);
+
+    if (n_neighbors <= 0) {
+        for (int i = 0; i < n; ++i) {
+            W[i][i] = 1.0;
+            for (int j = i + 1; j < n; ++j) {
+                double w = rbf_affinity(sq_eucl_dist(X[i], X[j]), inv_two_sigma_sq);
+                W[i][j] = W[j][i] = w;
+            }
+        }
+        return W;
+    }
+
+    int k = std::min(n_neighbors, n - 1);
+    if (k <= 0) {
+        for (int i = 0; i < n; ++i) W[i][i] = 1.0;
+        return W;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        std::vector<std::pair<double, int>> dists;
+        dists.reserve((size_t)(n - 1));
+        for (int j = 0; j < n; ++j) {
+            if (j == i) continue;
+            dists.push_back({sq_eucl_dist(X[i], X[j]), j});
+        }
+        std::partial_sort(dists.begin(), dists.begin() + k, dists.end());
+        for (int t = 0; t < k; ++t) {
+            int j = dists[(size_t)t].second;
+            double w = rbf_affinity(dists[(size_t)t].first, inv_two_sigma_sq);
+            W[i][j] = std::max(W[i][j], w);
+            W[j][i] = std::max(W[j][i], w);
+        }
+        W[i][i] = 1.0;
+    }
+    return W;
+}
+
+static Mat symmetric_normalized_laplacian(const Mat& W) {
+    int n = (int)W.size();
+    Mat L = mat_eye(n);
+    if (n == 0) return L;
+
+    Vec deg(n, 0.0);
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) deg[i] += W[i][j];
+    }
+
+    for (int i = 0; i < n; ++i) {
+        double inv_sqrt_d = deg[i] > 1e-14 ? 1.0 / std::sqrt(deg[i]) : 0.0;
+        for (int j = 0; j < n; ++j) {
+            double inv_sqrt_e = deg[j] > 1e-14 ? 1.0 / std::sqrt(deg[j]) : 0.0;
+            L[i][j] -= inv_sqrt_d * W[i][j] * inv_sqrt_e;
+        }
+    }
+
+    // Numerical symmetrization for eig_sym's symmetry check.
+    for (int i = 0; i < n; ++i)
+        for (int j = i + 1; j < n; ++j)
+            L[i][j] = L[j][i] = 0.5 * (L[i][j] + L[j][i]);
+    return L;
+}
+
+static ms::ColMatrix<double> ml_jacobi_eigen_symmetric(ms::ColMatrix<double> A,
+                                                        ms::ColMatrix<double>& V,
+                                                        double tol = 1e-12) {
+    const size_t n = A.rows();
+    V = ms::ColMatrix<double>(n, n, 0.0);
+    for (size_t i = 0; i < n; ++i) V(i, i) = 1.0;
+
+    for (int sweep = 0; sweep < 100; ++sweep) {
+        double max_off = 0.0;
+        size_t p = 0, q = 1;
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = i + 1; j < n; ++j) {
+                if (std::abs(A(i, j)) > max_off) {
+                    max_off = std::abs(A(i, j));
+                    p = i;
+                    q = j;
+                }
+            }
+        }
+        if (max_off < tol) break;
+
+        const double app = A(p, p), aqq = A(q, q), apq = A(p, q);
+        const double phi = 0.5 * std::atan2(2.0 * apq, aqq - app);
+        const double c = std::cos(phi), s = std::sin(phi);
+
+        for (size_t k = 0; k < n; ++k) {
+            const double akp = A(k, p), akq = A(k, q);
+            A(k, p) = c * akp - s * akq;
+            A(p, k) = A(k, p);
+            A(k, q) = s * akp + c * akq;
+            A(q, k) = A(k, q);
+        }
+        A(p, p) = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        A(q, q) = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        A(p, q) = A(q, p) = 0.0;
+
+        for (size_t k = 0; k < n; ++k) {
+            const double vkp = V(k, p), vkq = V(k, q);
+            V(k, p) = c * vkp - s * vkq;
+            V(k, q) = s * vkp + c * vkq;
+        }
+    }
+
+    ms::ColMatrix<double> values(n, 1, 0.0);
+    for (size_t i = 0; i < n; ++i) values(i, 0) = A(i, i);
+    return values;
+}
+
+static void ml_sort_eig_descending(ms::ColMatrix<double>& values, ms::ColMatrix<double>& V) {
+    const size_t n = values.rows();
+    std::vector<size_t> order(n);
+    for (size_t i = 0; i < n; ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        return values(a, 0) > values(b, 0);
+    });
+    ms::ColMatrix<double> sv(n, 1, 0.0);
+    ms::ColMatrix<double> sV(n, n, 0.0);
+    for (size_t j = 0; j < n; ++j) {
+        sv(j, 0) = values(order[j], 0);
+        for (size_t i = 0; i < n; ++i) sV(i, j) = V(i, order[j]);
+    }
+    values = std::move(sv);
+    V = std::move(sV);
+}
+
+static Mat spectral_embedding_jacobi(const Mat& L, int k) {
+    ms::ColMatrix<double> Lm = ml_mat_to_col(L);
+    ms::ColMatrix<double> V;
+    ms::ColMatrix<double> evals = ml_jacobi_eigen_symmetric(Lm, V);
+    ml_sort_eig_descending(evals, V);
+    int dim = (int)evals.rows();
+    int n = (int)L.size();
+    int use_k = std::min(k, dim);
+    int start = std::max(0, dim - use_k);
+
+    Mat emb(n, Vec(use_k, 0.0));
+    for (int i = 0; i < n; ++i) {
+        for (int c = 0; c < use_k; ++c)
+            emb[i][c] = V((size_t)i, (size_t)(start + c));
+        double rn = vec_norm(emb[i]);
+        if (rn > 1e-14)
+            for (int c = 0; c < use_k; ++c) emb[i][c] /= rn;
+    }
+    return emb;
+}
+
+static bool spectral_eig_sym_valid(const ms::EigResult& res) {
+    if (res.values.rows() == 0) return false;
+    double max_ev = std::abs(res.values(0, 0));
+    return std::isfinite(max_ev) && max_ev > 1e-6 && max_ev <= 2.5;
+}
+
+static Mat spectral_embedding_from_eig(const ms::EigResult& res, int k) {
+    const auto& evecs = res.vectors;
+    int dim = (int)res.values.rows();
+    int n = (int)evecs.rows();
+    int use_k = std::min(k, dim);
+    int start = std::max(0, dim - use_k);
+
+    Mat emb(n, Vec(use_k, 0.0));
+    for (int i = 0; i < n; ++i) {
+        for (int c = 0; c < use_k; ++c)
+            emb[i][c] = evecs((size_t)i, (size_t)(start + c));
+        double rn = vec_norm(emb[i]);
+        if (rn > 1e-14)
+            for (int c = 0; c < use_k; ++c) emb[i][c] /= rn;
+    }
+    return emb;
+}
+
+std::vector<int> spectral_clustering(const Mat& X, int n_clusters,
+                                       double sigma, int n_neighbors) {
+    int n = (int)X.size();
+    if (n == 0 || X[0].empty()) return {};
+
+    int k = std::max(1, std::min(n_clusters, n));
+
+    if (k == 1) return std::vector<int>((size_t)n, 0);
+
+    Mat W = build_affinity(X, sigma, n_neighbors);
+    Mat L = symmetric_normalized_laplacian(W);
+
+    Mat embedding;
+    auto eig_res = ms::eig_sym(ml_mat_to_col(L));
+    bool used_eig_sym = eig_res.has_value() && spectral_eig_sym_valid(*eig_res);
+    if (used_eig_sym)
+        embedding = spectral_embedding_from_eig(*eig_res, k);
+    else
+        embedding = spectral_embedding_jacobi(L, k);
+
+    KMeans km(k, 300, 1e-6);
+    km.fit(embedding);
+    Vec labels = km.predict(embedding);
+
+    std::vector<int> out((size_t)n);
+    for (int i = 0; i < n; ++i) out[(size_t)i] = (int)labels[(size_t)i];
+    return out;
 }
 
 // ========================== Agglomerative Clustering ==========================
