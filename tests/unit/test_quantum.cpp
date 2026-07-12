@@ -619,3 +619,160 @@ TEST(QuantumPhaseSpace, ZeroDensityMatrixGivesZero) {
     EXPECT_NEAR(husimi_Q(rho, C(0.5, 0.5)), 0.0, 1e-12);
     EXPECT_NEAR(wigner_function(rho, 0.5, 0.5), 0.0, 1e-9);
 }
+
+// ---- Grover's search algorithm ----
+namespace {
+double state_norm_sq(const Ket& psi) {
+    double n2 = 0.0;
+    for (auto& c : psi) n2 += std::norm(c);
+    return n2;
+}
+} // namespace
+
+// Headline correctness check: 3 qubits (N=8), 1 marked index, optimal iterations
+// should amplify the marked-state probability well above 0.9.
+TEST(QuantumGrover, SingleMarkedNearCertainty) {
+    const int n_qubits = 3;
+    const int N = 8;
+    const int marked = 5;
+    const int iters = grover_optimal_iterations(n_qubits, 1);
+    auto psi = grover_search(n_qubits, {marked}, iters);
+    ASSERT_EQ(psi.size(), static_cast<size_t>(N));
+    EXPECT_NEAR(state_norm_sq(psi), 1.0, 1e-8);
+    EXPECT_GT(std::norm(psi[marked]), 0.9);
+}
+
+TEST(QuantumGrover, SingleMarkedNearCertainty_DifferentIndex) {
+    const int n_qubits = 3;
+    const int marked = 0;
+    const int iters = grover_optimal_iterations(n_qubits, 1);
+    auto psi = grover_search(n_qubits, {marked}, iters);
+    EXPECT_GT(std::norm(psi[marked]), 0.9);
+    EXPECT_NEAR(state_norm_sq(psi), 1.0, 1e-8);
+}
+
+// Normalisation must be preserved (unitarity) across many (n, marked, iters) combos.
+TEST(QuantumGrover, StaysNormalised_VariousConfigs) {
+    struct Cfg { int n; std::vector<int> marked; int iters; };
+    std::vector<Cfg> configs = {
+        {2, {1}, 1}, {2, {0, 3}, 2}, {3, {2}, 3}, {3, {1, 6}, 4},
+        {4, {5}, 5}, {4, {0, 1, 2}, 6}, {5, {10}, 8}, {3, {0}, 0},
+    };
+    for (auto& cfg : configs) {
+        auto psi = grover_search(cfg.n, cfg.marked, cfg.iters);
+        EXPECT_NEAR(state_norm_sq(psi), 1.0, 1e-8)
+            << "n=" << cfg.n << " iters=" << cfg.iters;
+    }
+}
+
+// 0 iterations: exact uniform superposition, amplitude 1/sqrt(N) for every entry.
+TEST(QuantumGrover, ZeroIterationsIsUniformSuperposition) {
+    const int n_qubits = 3;
+    const int N = 8;
+    auto psi = grover_search(n_qubits, {2}, 0);
+    ASSERT_EQ(psi.size(), static_cast<size_t>(N));
+    const double amp = 1.0 / std::sqrt(static_cast<double>(N));
+    for (int i = 0; i < N; ++i)
+        EXPECT_NEAR(std::abs(psi[i]), amp, 1e-10);
+}
+
+TEST(QuantumGrover, NegativeIterationsIsUniformSuperposition) {
+    auto psi = grover_search(3, {2}, -5);
+    const double amp = 1.0 / std::sqrt(8.0);
+    for (auto& c : psi) EXPECT_NEAR(std::abs(c), amp, 1e-10);
+}
+
+// Multiple marked indices: combined probability should be similarly amplified
+// at the recomputed optimal iteration count for M=2.
+TEST(QuantumGrover, MultipleMarkedIndices_CombinedAmplification) {
+    const int n_qubits = 3;
+    const std::vector<int> marked = {1, 6};
+    const int iters = grover_optimal_iterations(n_qubits, static_cast<int>(marked.size()));
+    auto psi = grover_search(n_qubits, marked, iters);
+    double combined_prob = 0.0;
+    for (int idx : marked) combined_prob += std::norm(psi[idx]);
+    EXPECT_GT(combined_prob, 0.9);
+    EXPECT_NEAR(state_norm_sq(psi), 1.0, 1e-8);
+}
+
+TEST(QuantumGrover, MultipleMarkedIndices_FourQubits) {
+    const int n_qubits = 4; // N = 16
+    const std::vector<int> marked = {3, 9};
+    const int iters = grover_optimal_iterations(n_qubits, static_cast<int>(marked.size()));
+    auto psi = grover_search(n_qubits, marked, iters);
+    double combined_prob = 0.0;
+    for (int idx : marked) combined_prob += std::norm(psi[idx]);
+    EXPECT_GT(combined_prob, 0.9);
+}
+
+// grover_optimal_iterations sanity: hand-computed floor(pi/4*sqrt(N/M)).
+TEST(QuantumGrover, OptimalIterationsFormula) {
+    struct Case { int n_qubits; int m; };
+    std::vector<Case> cases = {
+        {3, 1}, {4, 1}, {5, 1}, {3, 2}, {4, 2}, {6, 3}, {5, 4},
+    };
+    for (auto& c : cases) {
+        const int N = 1 << c.n_qubits;
+        const int expected = static_cast<int>(
+            std::floor(M_PI / 4.0 * std::sqrt(static_cast<double>(N) / c.m)));
+        EXPECT_EQ(grover_optimal_iterations(c.n_qubits, c.m), expected)
+            << "n_qubits=" << c.n_qubits << " m=" << c.m;
+    }
+}
+
+TEST(QuantumGrover, OptimalIterationsZeroWhenNoMarked) {
+    EXPECT_EQ(grover_optimal_iterations(3, 0), 0);
+    EXPECT_EQ(grover_optimal_iterations(3, -2), 0);
+}
+
+TEST(QuantumGrover, OptimalIterationsZeroWhenAllMarked) {
+    EXPECT_EQ(grover_optimal_iterations(3, 8), 0);  // M == N
+    EXPECT_EQ(grover_optimal_iterations(3, 20), 0); // M > N
+}
+
+// Defensive: n_qubits <= 0 returns {}.
+TEST(QuantumGrover, NonPositiveQubitsReturnsEmpty) {
+    EXPECT_TRUE(grover_search(0, {0}, 1).empty());
+    EXPECT_TRUE(grover_search(-1, {0}, 1).empty());
+}
+
+// Defensive: empty marked_indices degenerates the oracle to identity; the
+// function must not crash and must still return a normalised state.
+TEST(QuantumGrover, EmptyMarkedIndicesStaysNormalised) {
+    auto psi = grover_search(3, {}, 5);
+    EXPECT_NEAR(state_norm_sq(psi), 1.0, 1e-8);
+}
+
+// Defensive: out-of-range marked indices are ignored (oracle no-op); result
+// must still be a valid, normalised state.
+TEST(QuantumGrover, OutOfRangeMarkedIndicesIgnored) {
+    auto psi = grover_search(3, {100, -5}, 4);
+    EXPECT_NEAR(state_norm_sq(psi), 1.0, 1e-8);
+}
+
+// Mix of valid and invalid indices: only the valid one should be amplified.
+TEST(QuantumGrover, MixOfValidAndInvalidIndices) {
+    const int n_qubits = 3;
+    const int iters = grover_optimal_iterations(n_qubits, 1);
+    auto psi = grover_search(n_qubits, {4, -1, 99}, iters);
+    EXPECT_GT(std::norm(psi[4]), 0.9);
+    EXPECT_NEAR(state_norm_sq(psi), 1.0, 1e-8);
+}
+
+// Textbook exact special case: N=4, 1 marked state, 1 iteration reaches
+// EXACTLY probability 1.0 on the marked state.
+TEST(QuantumGrover, N4_OneMarked_OneIteration_ExactCertainty) {
+    const int n_qubits = 2; // N = 4
+    const int marked = 2;
+    auto psi = grover_search(n_qubits, {marked}, 1);
+    ASSERT_EQ(psi.size(), 4u);
+    EXPECT_NEAR(std::norm(psi[marked]), 1.0, 1e-10);
+    for (int i = 0; i < 4; ++i)
+        if (i != marked) EXPECT_NEAR(std::abs(psi[i]), 0.0, 1e-10);
+}
+
+// grover_optimal_iterations for N=4, M=1 is floor(pi/4*2) = 1, matching the
+// exact special case above.
+TEST(QuantumGrover, N4_OneMarked_OptimalItersEqualsOne) {
+    EXPECT_EQ(grover_optimal_iterations(2, 1), 1);
+}

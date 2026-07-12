@@ -247,6 +247,58 @@ DensityMatrix qft_gate(int n_qubits) {
     return Q;
 }
 
+// ---- Grover's search algorithm ----
+
+namespace {
+
+// n-fold Kronecker power of a single-qubit operator: op^{\otimes n}, using the
+// existing tensor_product() Kronecker-product-for-operators helper.
+DensityMatrix kronecker_power(const DensityMatrix& op, int n) {
+    DensityMatrix result = identity(1);
+    for (int i = 0; i < n; ++i) result = tensor_product(result, op);
+    return result;
+}
+
+} // namespace
+
+Ket grover_search(int n_qubits, const std::vector<int>& marked_indices, int n_iterations) {
+    if (n_qubits <= 0) return {};
+    const int N = 1 << n_qubits;
+
+    // Uniform superposition H^{\otimes n}|0> == closed-form 1/sqrt(N) for every entry.
+    const double inv_sqN = 1.0 / std::sqrt(static_cast<double>(N));
+    Ket psi(N, C(inv_sqN));
+
+    if (n_iterations <= 0) return psi;
+
+    // Oracle: diagonal +/-1 matrix, -1 at valid marked indices.
+    DensityMatrix O = identity(N);
+    for (int idx : marked_indices) {
+        if (idx >= 0 && idx < N) O[idx][idx] = C(-1.0);
+    }
+
+    // Diffusion: D = H^{\otimes n} (2|0><0| - I) H^{\otimes n}.
+    DensityMatrix Hn = kronecker_power(hadamard(), n_qubits);
+    DensityMatrix refl0 = identity(N);
+    refl0[0][0] = C(1.0); // 2|0><0| - I has (2-1)=1 at [0][0], -1 elsewhere on diagonal.
+    for (int i = 1; i < N; ++i) refl0[i][i] = C(-1.0);
+    DensityMatrix D = matmul_dm(Hn, matmul_dm(refl0, Hn));
+
+    for (int it = 0; it < n_iterations; ++it) {
+        psi = op_apply(O, psi);
+        psi = op_apply(D, psi);
+    }
+    return psi;
+}
+
+int grover_optimal_iterations(int n_qubits, int n_marked) {
+    if (n_qubits <= 0 || n_marked <= 0) return 0;
+    const int N = 1 << n_qubits;
+    if (n_marked >= N) return 0;
+    const double ratio = static_cast<double>(N) / static_cast<double>(n_marked);
+    return static_cast<int>(std::floor(M_PI / 4.0 * std::sqrt(ratio)));
+}
+
 // ---- Entropy & information ----
 
 namespace {
