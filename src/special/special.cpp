@@ -1339,6 +1339,47 @@ double spherical_kn(int n, double x) {
     return std::sqrt(M_PI / (2.0 * x)) * bessel_k_general(n + 0.5, x);
 }
 
+double sph_bessel_j(int n, double x) {
+    if (n < 0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (x == 0.0) {
+        return n == 0 ? 1.0 : 0.0;
+    }
+    const double j0 = std::sin(x) / x;
+    if (n == 0) {
+        return j0;
+    }
+    const double j1 = std::sin(x) / (x * x) - std::cos(x) / x;
+    double jPrev = j0;
+    double jCurr = j1;
+    for (int k = 1; k < n; ++k) {
+        const double jNext = ((2.0 * k + 1.0) / x) * jCurr - jPrev;
+        jPrev = jCurr;
+        jCurr = jNext;
+    }
+    return jCurr;
+}
+
+double sph_bessel_y(int n, double x) {
+    if (n < 0 || x <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double y0 = -std::cos(x) / x;
+    if (n == 0) {
+        return y0;
+    }
+    const double y1 = -std::cos(x) / (x * x) - std::sin(x) / x;
+    double yPrev = y0;
+    double yCurr = y1;
+    for (int k = 1; k < n; ++k) {
+        const double yNext = ((2.0 * k + 1.0) / x) * yCurr - yPrev;
+        yPrev = yCurr;
+        yCurr = yNext;
+    }
+    return yCurr;
+}
+
 double bessel_zero_jnu(int nu, int n) {
     if (nu < 0 || n <= 0) {
         return std::numeric_limits<double>::quiet_NaN();

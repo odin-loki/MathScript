@@ -95,6 +95,36 @@ double spherical_yn(int n, double x);
 double spherical_in(int n, double x);
 double spherical_kn(int n, double x);
 
+// Spherical Bessel functions of the first kind, j_n(x): solutions to the spherical Bessel
+// ODE arising in 3D wave/Helmholtz problems in spherical coordinates (radial part of the
+// solution). Closed forms for the lowest orders:
+//   j_0(x) = sin(x)/x
+//   j_1(x) = sin(x)/x^2 - cos(x)/x
+// Higher orders via the standard stable upward recurrence:
+//   j_{n+1}(x) = ((2n+1)/x) * j_n(x) - j_{n-1}(x)
+// (This upward recurrence is numerically stable for j_n specifically because j_n decays with
+// increasing n for fixed x -- unlike the OTHER direction, which would be unstable.)
+// @param n order (n >= 0; n < 0 returns NaN). @param x argument. x == 0 is a
+//        removable-singularity special case: j_0(0) = 1 (the limit of sin(x)/x as x->0),
+//        j_n(0) = 0 for n >= 1 (all higher orders vanish at the origin).
+// @return j_n(x).
+double sph_bessel_j(int n, double x);
+
+// Spherical Bessel functions of the second kind, y_n(x) (also called spherical Neumann
+// functions): the second linearly independent solution, singular at x=0. Closed forms:
+//   y_0(x) = -cos(x)/x
+//   y_1(x) = -cos(x)/x^2 - sin(x)/x
+// Higher orders via the SAME upward recurrence form as j_n (this direction is stable for y_n
+// too, for a different reason -- y_n GROWS with n, so accumulated round-off from the recurrence
+// is relatively small compared to the answer):
+//   y_{n+1}(x) = ((2n+1)/x) * y_n(x) - y_{n-1}(x)
+// @param n order (n >= 0; n < 0 returns NaN). @param x argument. x <= 0 is a domain error
+//        (y_n(0) is a genuine singularity for all n, and this module's other second-kind
+//        Bessel functions of this signature, e.g. bessel_y() and spherical_yn(), likewise
+//        restrict to x > 0) -- returns NaN, matching that convention.
+// @return y_n(x).
+double sph_bessel_y(int n, double x);
+
 // Bessel function zeros (n is 1-based index)
 double bessel_zero_jnu(int nu, int n);
 double bessel_zero_ynu(int nu, int n);
