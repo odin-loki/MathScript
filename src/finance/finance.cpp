@@ -122,6 +122,151 @@ Result<double> bs_implied_vol(double price, double S, double K, double T,
     return std::unexpected(Error{ConvergenceFail{100, 0.0}});
 }
 
+// Given asset volatility sigma_V, find firm asset value V such that the
+// Black-Scholes call price on assets equals the observed equity value E.
+static bool merton_solve_asset_value(double equity_value, double debt_face_value,
+                                     double risk_free_rate, double time_horizon,
+                                     double asset_volatility, double tol,
+                                     double& asset_value) {
+    if (equity_value <= 0.0 || debt_face_value <= 0.0 || time_horizon <= 0.0 ||
+        asset_volatility <= 0.0 || !std::isfinite(equity_value) ||
+        !std::isfinite(asset_volatility))
+        return false;
+
+    double lo = std::max(equity_value, 1e-12);
+    double hi = equity_value + debt_face_value;
+    double f_lo = bs_call(lo, debt_face_value, time_horizon, risk_free_rate, asset_volatility)
+                    - equity_value;
+    double f_hi = bs_call(hi, debt_face_value, time_horizon, risk_free_rate, asset_volatility)
+                    - equity_value;
+
+    // Expand the upper bracket if needed (deep out-of-the-money equity).
+    for (int expand = 0; expand < 20 && f_lo * f_hi > 0.0; ++expand) {
+        hi *= 2.0;
+        f_hi = bs_call(hi, debt_face_value, time_horizon, risk_free_rate, asset_volatility)
+               - equity_value;
+    }
+    if (f_lo * f_hi > 0.0) return false;
+
+    for (int i = 0; i < 200; ++i) {
+        double mid = 0.5 * (lo + hi);
+        double f_mid = bs_call(mid, debt_face_value, time_horizon, risk_free_rate,
+                               asset_volatility) - equity_value;
+        if (std::abs(f_mid) < tol) {
+            asset_value = mid;
+            return true;
+        }
+        if (f_lo * f_mid <= 0.0) {
+            hi = mid;
+            f_hi = f_mid;
+        } else {
+            lo = mid;
+            f_lo = f_mid;
+        }
+    }
+    asset_value = 0.5 * (lo + hi);
+    double f_final = bs_call(asset_value, debt_face_value, time_horizon, risk_free_rate,
+                             asset_volatility) - equity_value;
+    return std::abs(f_final) < tol * 100.0;
+}
+
+MertonResult merton_distance_to_default(double asset_value, double asset_volatility,
+                                        double debt_face_value, double risk_free_rate,
+                                        double time_horizon) {
+    MertonResult result{};
+    result.implied_asset_value = asset_value;
+    result.implied_asset_volatility = asset_volatility;
+    result.converged = true;
+    result.iterations = 0;
+
+    if (asset_value <= 0.0 || debt_face_value <= 0.0 || asset_volatility <= 0.0 ||
+        time_horizon <= 0.0 || !std::isfinite(asset_value) ||
+        !std::isfinite(asset_volatility) || !std::isfinite(debt_face_value) ||
+        !std::isfinite(risk_free_rate) || !std::isfinite(time_horizon)) {
+        result.distance_to_default = std::numeric_limits<double>::quiet_NaN();
+        result.probability_of_default = std::numeric_limits<double>::quiet_NaN();
+        result.converged = false;
+        return result;
+    }
+
+    double d1, d2;
+    bs_d1_d2(asset_value, debt_face_value, time_horizon, risk_free_rate, asset_volatility,
+             d1, d2);
+    result.distance_to_default = d2;
+    result.probability_of_default = norm_cdf(-d2);
+    return result;
+}
+
+MertonResult merton_implied_asset_params(double equity_value, double equity_volatility,
+                                         double debt_face_value, double risk_free_rate,
+                                         double time_horizon, int max_iter, double tol) {
+    MertonResult result{};
+    result.converged = false;
+    result.iterations = 0;
+
+    if (equity_value <= 0.0 || equity_volatility <= 0.0 || debt_face_value <= 0.0 ||
+        time_horizon <= 0.0 || max_iter <= 0 || tol <= 0.0 ||
+        !std::isfinite(equity_value) || !std::isfinite(equity_volatility) ||
+        !std::isfinite(debt_face_value) || !std::isfinite(risk_free_rate) ||
+        !std::isfinite(time_horizon)) {
+        result.distance_to_default = std::numeric_limits<double>::quiet_NaN();
+        result.probability_of_default = std::numeric_limits<double>::quiet_NaN();
+        result.implied_asset_value = std::numeric_limits<double>::quiet_NaN();
+        result.implied_asset_volatility = std::numeric_limits<double>::quiet_NaN();
+        return result;
+    }
+
+    double V = equity_value + debt_face_value;
+    double sigma_V = equity_volatility * equity_value / V;
+    if (sigma_V <= 0.0) sigma_V = equity_volatility;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        double V_prev = V;
+        double sigma_V_prev = sigma_V;
+
+        if (!merton_solve_asset_value(equity_value, debt_face_value, risk_free_rate,
+                                        time_horizon, sigma_V, tol, V))
+            break;
+
+        double d1, d2;
+        bs_d1_d2(V, debt_face_value, time_horizon, risk_free_rate, sigma_V, d1, d2);
+        double nd1 = norm_cdf(d1);
+        if (nd1 <= 0.0 || V <= 0.0) break;
+        sigma_V = equity_volatility * equity_value / (nd1 * V);
+
+        result.iterations = static_cast<size_t>(iter + 1);
+        if (std::abs(V - V_prev) < tol && std::abs(sigma_V - sigma_V_prev) < tol) {
+            result.converged = true;
+            break;
+        }
+    }
+
+    if (!result.converged) {
+        result.implied_asset_value = V;
+        result.implied_asset_volatility = sigma_V;
+        if (!std::isfinite(V) || !std::isfinite(sigma_V) || V <= 0.0 || sigma_V <= 0.0) {
+            result.distance_to_default = std::numeric_limits<double>::quiet_NaN();
+            result.probability_of_default = std::numeric_limits<double>::quiet_NaN();
+            result.implied_asset_value = std::numeric_limits<double>::quiet_NaN();
+            result.implied_asset_volatility = std::numeric_limits<double>::quiet_NaN();
+        } else {
+            MertonResult metrics = merton_distance_to_default(V, sigma_V, debt_face_value,
+                                                              risk_free_rate, time_horizon);
+            result.distance_to_default = metrics.distance_to_default;
+            result.probability_of_default = metrics.probability_of_default;
+        }
+        return result;
+    }
+
+    MertonResult metrics = merton_distance_to_default(V, sigma_V, debt_face_value,
+                                                      risk_free_rate, time_horizon);
+    result.distance_to_default = metrics.distance_to_default;
+    result.probability_of_default = metrics.probability_of_default;
+    result.implied_asset_value = V;
+    result.implied_asset_volatility = sigma_V;
+    return result;
+}
+
 double bond_price(double c, double y, int n, double fv) {
     double coupon = c * fv;
     double pv = 0.0;

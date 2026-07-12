@@ -1747,3 +1747,104 @@ TEST(FinanceHistoricalVaR, AliasesLegacyHistoricalBehavior) {
     // Worst 30% (3 observations): mean(-0.20, -0.15, -0.10) = -0.15
     EXPECT_NEAR(historical_cvar(returns, 0.70), 0.15, 1e-10);
 }
+
+// --- Merton (1974) structural credit-risk model ---
+namespace {
+
+double bs_d2_manual(double S, double K, double T, double r, double sigma) {
+    double d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * std::sqrt(T));
+    return d1 - sigma * std::sqrt(T);
+}
+
+double norm_cdf_manual(double x) {
+    return 0.5 * std::erfc(-x / std::sqrt(2.0));
+}
+
+std::pair<double, double> merton_forward_equity(double V, double sigma_V, double D,
+                                                double r, double T) {
+    double E = bs_call(V, D, T, r, sigma_V);
+    double d1 = (std::log(V / D) + (r + 0.5 * sigma_V * sigma_V) * T) /
+                (sigma_V * std::sqrt(T));
+    double sigma_E = norm_cdf_manual(d1) * sigma_V * V / E;
+    return {E, sigma_E};
+}
+
+} // namespace
+
+TEST(FinanceMerton, HealthyFirmLowDefaultRisk) {
+    double V = 150.0, sigma_V = 0.20, D = 100.0, r = 0.05, T = 1.0;
+    MertonResult result = merton_distance_to_default(V, sigma_V, D, r, T);
+    EXPECT_TRUE(result.converged);
+    EXPECT_GT(result.distance_to_default, 1.0);
+    EXPECT_LT(result.probability_of_default, 0.05);
+    EXPECT_NEAR(result.implied_asset_value, V, 1e-12);
+    EXPECT_NEAR(result.implied_asset_volatility, sigma_V, 1e-12);
+}
+
+TEST(FinanceMerton, DistressedFirmHigherDefaultRisk) {
+    double r = 0.05, T = 1.0, D = 100.0;
+    MertonResult healthy = merton_distance_to_default(150.0, 0.20, D, r, T);
+    MertonResult distressed = merton_distance_to_default(90.0, 0.30, D, r, T);
+    EXPECT_LT(distressed.distance_to_default, healthy.distance_to_default);
+    EXPECT_GT(distressed.probability_of_default, healthy.probability_of_default);
+    EXPECT_GT(distressed.probability_of_default, 0.30);
+}
+
+TEST(FinanceMerton, DistanceToDefaultMatchesBsD2) {
+    double V = 125.0, sigma_V = 0.25, D = 100.0, r = 0.04, T = 2.0;
+    MertonResult result = merton_distance_to_default(V, sigma_V, D, r, T);
+    double d2 = bs_d2_manual(V, D, T, r, sigma_V);
+    EXPECT_NEAR(result.distance_to_default, d2, 1e-14);
+    EXPECT_NEAR(result.probability_of_default, norm_cdf_manual(-d2), 1e-14);
+}
+
+TEST(FinanceMerton, ImpliedAssetParamsRoundTrip) {
+    double V_true = 180.0, sigma_V_true = 0.22, D = 100.0, r = 0.05, T = 1.0;
+    auto [E, sigma_E] = merton_forward_equity(V_true, sigma_V_true, D, r, T);
+    MertonResult result = merton_implied_asset_params(E, sigma_E, D, r, T);
+    EXPECT_TRUE(result.converged);
+    EXPECT_NEAR(result.implied_asset_value, V_true, 1e-6);
+    EXPECT_NEAR(result.implied_asset_volatility, sigma_V_true, 1e-6);
+    EXPECT_NEAR(result.distance_to_default,
+                merton_distance_to_default(V_true, sigma_V_true, D, r, T).distance_to_default,
+                1e-8);
+}
+
+TEST(FinanceMerton, ImpliedAssetParamsConverged) {
+    double V = 140.0, sigma_V = 0.18, D = 100.0, r = 0.03, T = 0.75;
+    auto [E, sigma_E] = merton_forward_equity(V, sigma_V, D, r, T);
+    MertonResult result = merton_implied_asset_params(E, sigma_E, D, r, T);
+    EXPECT_TRUE(result.converged);
+    EXPECT_GT(result.iterations, 0u);
+    EXPECT_TRUE(std::isfinite(result.implied_asset_value));
+    EXPECT_TRUE(std::isfinite(result.implied_asset_volatility));
+}
+
+TEST(FinanceMerton, ImpliedAssetParamsHighVolEdgeCase) {
+    double V = 105.0, sigma_V = 0.80, D = 100.0, r = 0.02, T = 0.5;
+    auto [E, sigma_E] = merton_forward_equity(V, sigma_V, D, r, T);
+    MertonResult result = merton_implied_asset_params(E, sigma_E, D, r, T, 200, 1e-8);
+    EXPECT_TRUE(std::isfinite(result.implied_asset_value));
+    EXPECT_TRUE(std::isfinite(result.implied_asset_volatility));
+    EXPECT_TRUE(std::isfinite(result.distance_to_default));
+    EXPECT_TRUE(std::isfinite(result.probability_of_default));
+    if (result.converged) {
+        EXPECT_GT(result.implied_asset_value, E);
+        EXPECT_GT(result.probability_of_default, 0.0);
+    }
+}
+
+TEST(FinanceMerton, NearDistressLowEquityEdgeCase) {
+    // Barely-above-par assets with short horizon: equity is small but positive.
+    double V = 100.01, sigma_V = 0.15, D = 100.0, r = 0.01, T = 0.02;
+    auto [E, sigma_E] = merton_forward_equity(V, sigma_V, D, r, T);
+    EXPECT_GT(E, 0.0);
+    EXPECT_LT(E, 2.0);
+    MertonResult result = merton_implied_asset_params(E, sigma_E, D, r, T, 300, 1e-7);
+    EXPECT_TRUE(std::isfinite(result.implied_asset_value));
+    EXPECT_TRUE(std::isfinite(result.implied_asset_volatility));
+    EXPECT_FALSE(std::isnan(result.distance_to_default));
+    EXPECT_FALSE(std::isinf(result.distance_to_default));
+    EXPECT_GE(result.probability_of_default, 0.0);
+    EXPECT_LE(result.probability_of_default, 1.0);
+}

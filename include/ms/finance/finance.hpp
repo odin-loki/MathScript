@@ -22,6 +22,41 @@ double bs_rho(double S, double K, double T, double r, double sigma, bool call);
 Result<double> bs_implied_vol(double price, double S, double K, double T,
                                double r, bool call);
 
+// --- Merton (1974) structural credit-risk model ---
+// Firm equity is modeled as a European call option on firm assets with strike
+// equal to the face value of debt. Distance to default and the implied
+// probability of default reuse the same d2 / normal-CDF machinery as
+// Black-Scholes above (S=asset value V, K=debt face value D).
+
+struct MertonResult {
+    double distance_to_default;
+    double probability_of_default;
+    double implied_asset_value;
+    double implied_asset_volatility;
+    bool converged;
+    size_t iterations;
+};
+
+// Direct distance-to-default when asset value V and asset volatility sigma_V
+// are known (not backed out from equity). distance_to_default is exactly
+// Black-Scholes d2 with S=V, K=D, sigma=sigma_V; probability_of_default is
+// N(-d2), the risk-neutral default probability over the horizon.
+MertonResult merton_distance_to_default(double asset_value, double asset_volatility,
+                                        double debt_face_value, double risk_free_rate,
+                                        double time_horizon);
+
+// Observable-equity version: given market equity value E and equity volatility
+// sigma_E, solves the coupled Merton system
+//   E = V*N(d1) - D*exp(-r*T)*N(d2)   (equity as a call on assets)
+//   sigma_E*E = N(d1)*sigma_V*V         (Ito's lemma link)
+// for (V, sigma_V) via fixed-point iteration, then delegates to
+// merton_distance_to_default for the final risk metrics. Non-convergence is
+// reported via converged=false (iterations holds the last iteration count).
+MertonResult merton_implied_asset_params(double equity_value, double equity_volatility,
+                                         double debt_face_value, double risk_free_rate,
+                                         double time_horizon, int max_iter = 100,
+                                         double tol = 1e-8);
+
 // --- Bond pricing ---
 // c=coupon rate (annual), y=yield, n=periods, fv=face value
 double bond_price(double c, double y, int n, double fv = 100.0);
