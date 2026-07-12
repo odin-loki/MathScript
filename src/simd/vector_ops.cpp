@@ -115,6 +115,31 @@ double dot_avx2(std::span<const double> a, std::span<const double> b) {
     return sum;
 }
 
+double sum_scalar(std::span<const double> x) {
+    double total = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        total += x[i];
+    }
+    return total;
+}
+
+double sum_avx2(std::span<const double> x) {
+    __m256d acc = _mm256_setzero_pd();
+    size_t i = 0;
+    const size_t n = x.size();
+    for (; i + 4 <= n; i += 4) {
+        const __m256d vx = _mm256_loadu_pd(x.data() + i);
+        acc = _mm256_add_pd(acc, vx);
+    }
+    alignas(32) double parts[4];
+    _mm256_store_pd(parts, acc);
+    double total = parts[0] + parts[1] + parts[2] + parts[3];
+    for (; i < n; ++i) {
+        total += x[i];
+    }
+    return total;
+}
+
 void exp_map_scalar(std::span<const double> x, std::span<double> out) {
     for (size_t i = 0; i < out.size(); ++i) {
         out[i] = std::exp(x[i]);
@@ -194,6 +219,23 @@ double dot(std::span<const double> a, std::span<const double> b) {
         return dot_avx2(a, b);
     }
     return dot_scalar(a, b);
+}
+
+double sum(std::span<const double> x) {
+    if (x.empty()) {
+        return 0.0;
+    }
+    if (active_kernel() == Kernel::Avx2) {
+        return sum_avx2(x);
+    }
+    return sum_scalar(x);
+}
+
+double sum_squares(std::span<const double> x) {
+    if (x.empty()) {
+        return 0.0;
+    }
+    return dot(x, x);
 }
 
 void exp_map(std::span<const double> x, std::span<double> out) {
