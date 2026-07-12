@@ -1848,3 +1848,87 @@ TEST(FinanceMerton, NearDistressLowEquityEdgeCase) {
     EXPECT_GE(result.probability_of_default, 0.0);
     EXPECT_LE(result.probability_of_default, 1.0);
 }
+
+// --- Heston stochastic-volatility European call ---
+namespace {
+struct HestonParams {
+    double S, K, T, r, v0, kappa, theta, sigma_v, rho;
+};
+
+constexpr HestonParams kHestonATM = {
+    100.0, 100.0, 1.0, 0.05, 0.04, 2.0, 0.04, 0.3, -0.7};
+} // namespace
+
+TEST(FinanceHeston, ZeroVolLimitMatchesBlackScholes) {
+    double sigma = 0.2;
+    double v = sigma * sigma;
+    double S = 100.0, K = 100.0, T = 1.0, r = 0.05;
+    double bs = bs_call(S, K, T, r, sigma);
+    double heston = heston_call(S, K, T, r, v, 2.0, v, 1e-14, -0.5);
+    EXPECT_NEAR(heston, bs, 0.05);
+}
+
+TEST(FinanceHeston, AtTheMoneyPositive) {
+    double c = heston_call(kHestonATM.S, kHestonATM.K, kHestonATM.T, kHestonATM.r,
+                           kHestonATM.v0, kHestonATM.kappa, kHestonATM.theta,
+                           kHestonATM.sigma_v, kHestonATM.rho);
+    EXPECT_GT(c, 0.0);
+    EXPECT_LT(c, kHestonATM.S);
+}
+
+TEST(FinanceHeston, PutCallParity) {
+    double S = 100.0, K = 105.0, T = 1.0, r = 0.05;
+    double v0 = 0.04, kappa = 1.5, theta = 0.04, sigma_v = 0.35, rho = -0.6;
+    double c = heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho);
+    // Put from complementary Heston probabilities: P = K*e^{-rT}*(1-P2) - S*(1-P1).
+    // Equivalently, model-independent put-call parity: P = C - S + K*e^{-rT}.
+    double p = c - S + K * std::exp(-r * T);
+    EXPECT_NEAR(c - p, S - K * std::exp(-r * T), 1e-10);
+}
+
+TEST(FinanceHeston, InTheMoneyExceedsOutOfTheMoney) {
+    double S = 100.0, T = 1.0, r = 0.05;
+    double v0 = 0.04, kappa = 2.0, theta = 0.04, sigma_v = 0.3, rho = -0.7;
+    double itm = heston_call(S, 90.0, T, r, v0, kappa, theta, sigma_v, rho);
+    double otm = heston_call(S, 120.0, T, r, v0, kappa, theta, sigma_v, rho);
+    EXPECT_GT(itm, otm);
+    EXPECT_GT(itm, S - 90.0 * std::exp(-r * T));
+}
+
+TEST(FinanceHeston, MonotoneDecreasingInStrike) {
+    double S = 100.0, T = 0.75, r = 0.03;
+    double v0 = 0.05, kappa = 1.8, theta = 0.05, sigma_v = 0.4, rho = -0.4;
+    double prev = heston_call(S, 80.0, T, r, v0, kappa, theta, sigma_v, rho);
+    for (double K : {90.0, 100.0, 110.0, 120.0}) {
+        double cur = heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho);
+        EXPECT_LT(cur, prev);
+        prev = cur;
+    }
+}
+
+TEST(FinanceHeston, ExpiredReturnsIntrinsic) {
+    double S = 110.0, K = 100.0, T = 0.0, r = 0.05;
+    EXPECT_NEAR(heston_call(S, K, T, r, 0.04, 2.0, 0.04, 0.3, -0.7), 10.0, 1e-12);
+    EXPECT_NEAR(heston_call(S, 120.0, T, r, 0.04, 2.0, 0.04, 0.3, -0.7), 0.0, 1e-12);
+}
+
+TEST(FinanceHeston, RouahReferenceCall) {
+    // Rouah (2013) Ch.1 example: 6-month ATM call, q=0, price ~ 6.8678.
+    double S = 100.0, K = 100.0, T = 0.5, r = 0.03;
+    double v0 = 0.05, kappa = 5.0, theta = 0.05, sigma_v = 0.5, rho = -0.8;
+    double c = heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho);
+    EXPECT_NEAR(c, 6.8678, 0.1);
+}
+
+TEST(FinanceHeston, StandardParametersReasonableMagnitude) {
+    double c = heston_call(kHestonATM.S, kHestonATM.K, kHestonATM.T, kHestonATM.r,
+                           kHestonATM.v0, kHestonATM.kappa, kHestonATM.theta,
+                           kHestonATM.sigma_v, kHestonATM.rho);
+    double bs = bs_call(kHestonATM.S, kHestonATM.K, kHestonATM.T, kHestonATM.r,
+                        std::sqrt(kHestonATM.v0));
+    EXPECT_TRUE(std::isfinite(c));
+    EXPECT_GE(c, std::max(kHestonATM.S - kHestonATM.K * std::exp(-kHestonATM.r * kHestonATM.T),
+                          0.0));
+    EXPECT_LE(c, kHestonATM.S);
+    EXPECT_NEAR(c, bs, 5.0);
+}

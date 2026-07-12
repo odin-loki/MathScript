@@ -11,6 +11,14 @@ namespace finance {
 double bs_call(double S, double K, double T, double r, double sigma);
 double bs_put(double S, double K, double T, double r, double sigma);
 
+// Heston (1993) stochastic-volatility European call via Lewis/Fourier inversion.
+// S=spot, K=strike, T=time_to_expiry(years), r=risk_free_rate, v0=initial
+// variance, kappa=mean-reversion speed, theta=long-run variance, sigma_v=vol-of-vol,
+// rho=spot-vol correlation. As sigma_v -> 0 with v0 ~= theta ~= sigma^2, the price
+// converges to bs_call(S, K, T, r, sigma).
+double heston_call(double S, double K, double T, double r, double v0, double kappa,
+                   double theta, double sigma_v, double rho);
+
 // Greeks
 double bs_delta(double S, double K, double T, double r, double sigma, bool call);
 double bs_gamma(double S, double K, double T, double r, double sigma);
