@@ -733,6 +733,102 @@ TEST(HoughLines, PeakDetectionAvoidsClusteredDuplicates) {
     EXPECT_NEAR(lines[0].rho, 25.0, 1.0);
 }
 
+// ---- Circle Hough Transform ----
+
+namespace {
+
+void draw_circle_outline(Image& img, int cx, int cy, int r, float val=1.f) {
+    int n=std::max(8,(int)std::lround(2*M_PI*r));
+    for (int i=0;i<n;++i) {
+        double theta=2.0*M_PI*i/n;
+        int x=(int)std::lround(cx+r*std::cos(theta));
+        int y=(int)std::lround(cy+r*std::sin(theta));
+        if (x>=0&&x<img.cols&&y>=0&&y<img.rows) img.at(y,x,0)=val;
+    }
+}
+
+} // namespace
+
+TEST(HoughCircles, SingleCircleOutline) {
+    const int cx=40, cy=40, r=20;
+    Image img(80,80,1,0.f);
+    draw_circle_outline(img, cx, cy, r);
+    auto circles=hough_circles(img, 0.5, 15, 25, 1, 20);
+    ASSERT_FALSE(circles.empty());
+    EXPECT_NEAR(circles[0].cx, (double)cx, 2.0);
+    EXPECT_NEAR(circles[0].cy, (double)cy, 2.0);
+    EXPECT_NEAR(circles[0].r, (double)r, 2.0);
+    EXPECT_GE(circles[0].votes, 20);
+}
+
+TEST(HoughCircles, TwoSeparatedCircles) {
+    Image img(120,120,1,0.f);
+    draw_circle_outline(img, 30, 30, 15);
+    draw_circle_outline(img, 85, 85, 22);
+    auto circles=hough_circles(img, 0.5, 10, 30, 1, 15);
+    ASSERT_GE(circles.size(), 2u);
+
+    bool found_small=false, found_large=false;
+    for (const auto& c:circles) {
+        if (std::abs(c.cx-30.0)<3.0&&std::abs(c.cy-30.0)<3.0&&std::abs(c.r-15.0)<3.0)
+            found_small=true;
+        if (std::abs(c.cx-85.0)<3.0&&std::abs(c.cy-85.0)<3.0&&std::abs(c.r-22.0)<3.0)
+            found_large=true;
+    }
+    EXPECT_TRUE(found_small);
+    EXPECT_TRUE(found_large);
+}
+
+TEST(HoughCircles, BlankImageNoCircles) {
+    Image img(60,60,1,0.f);
+    auto circles=hough_circles(img, 0.5, 5, 20, 1, 5);
+    EXPECT_TRUE(circles.empty());
+}
+
+TEST(HoughCircles, EmptyImageReturnsEmpty) {
+    Image empty;
+    auto circles=hough_circles(empty, 0.5, 5, 20);
+    EXPECT_TRUE(circles.empty());
+}
+
+TEST(HoughCircles, RadiusOutsideSearchRangeNotDetected) {
+    const int cx=50, cy=50, r=30;
+    Image img(100,100,1,0.f);
+    draw_circle_outline(img, cx, cy, r);
+    auto circles=hough_circles(img, 0.5, 5, 15, 1, 10);
+    for (const auto& c:circles) {
+        EXPECT_FALSE(std::abs(c.cx-cx)<3.0&&std::abs(c.cy-cy)<3.0&&std::abs(c.r-r)<3.0);
+    }
+}
+
+TEST(HoughCircles, CannyPipelineIntegration) {
+    const int cx=50, cy=50, r=25;
+    Image img(100,100,1,0.f);
+    for (int y=0;y<100;++y) for (int x=0;x<100;++x)
+        if ((x-cx)*(x-cx)+(y-cy)*(y-cy)<=r*r) img.at(y,x,0)=1.f;
+    auto edges=canny(img, 0.1f, 0.3f, 1.5f);
+    auto circles=hough_circles(edges, 0.5, 18, 32, 1, 15);
+    ASSERT_FALSE(circles.empty());
+    EXPECT_NEAR(circles[0].cx, (double)cx, 4.0);
+    EXPECT_NEAR(circles[0].cy, (double)cy, 4.0);
+    EXPECT_NEAR(circles[0].r, (double)r, 4.0);
+}
+
+TEST(HoughCircles, DegenerateRStepZero) {
+    Image img(50,50,1,0.f);
+    draw_circle_outline(img, 25, 25, 10);
+    auto circles=hough_circles(img, 0.5, 5, 15, 0, 10);
+    EXPECT_TRUE(circles.empty());
+}
+
+TEST(HoughCircles, ResultsSortedDescendingByVotes) {
+    Image img(120,120,1,0.f);
+    draw_circle_outline(img, 30, 30, 12);
+    draw_circle_outline(img, 85, 85, 22);
+    auto circles=hough_circles(img, 0.5, 8, 28, 1, 10);
+    for (size_t i=1;i<circles.size();++i) EXPECT_GE(circles[i-1].votes, circles[i].votes);
+}
+
 // ---- Harris ----
 
 TEST(ImageHarris, CornerDetection) {

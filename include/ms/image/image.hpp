@@ -173,6 +173,49 @@ std::vector<HoughLine> hough_lines(const Image& img, double edge_threshold,
                                     int n_theta = 180, int n_rho = 200,
                                     int vote_threshold = 50);
 
+/// Detected circle from hough_circles() (cx = column, cy = row, matching
+/// this module's KeyPoint / hough_lines coordinate convention).
+struct HoughCircle { double cx, cy, r; int votes; };
+
+/// Standard circle Hough transform.
+///
+/// For every "edge" pixel (a pixel whose value exceeds @p edge_threshold),
+/// and for every candidate integer radius in [@p r_min, @p r_max] stepped by
+/// @p r_step, casts votes for all integer centers (cx, cy) lying on the
+/// circle of that radius centred on the edge pixel — i.e. all (cx, cy) such
+/// that `(x-cx)^2 + (y-cy)^2 = r^2` for edge (x, y). Votes accumulate in a
+/// 3D accumulator indexed by (cx, cy, r). Simple local-maximum peak detection
+/// is then run on the accumulator: a cell is a peak if its vote count is >=
+/// @p vote_threshold AND it is a strict local maximum among its immediate
+/// neighbours in the discretised (cx, cy, r) grid, which avoids returning many
+/// near-duplicate circles clustered around a single true peak.
+/// @param img Input image (RGB is converted to grayscale first, matching
+///            this module's other analysis functions).
+/// @param edge_threshold Pixel intensity threshold above which a pixel is
+///        treated as an "edge" pixel that votes in the accumulator.
+/// @param r_min Minimum search radius in pixels (inclusive).
+/// @param r_max Maximum search radius in pixels (inclusive).
+/// @param r_step Radius discretisation step in pixels (typical: 1).
+/// @param vote_threshold Minimum accumulator vote count for a cell to be
+///        considered a candidate peak/detected circle.
+/// @return Detected circles as {cx, cy, r, votes} sorted by descending vote
+///         count. An empty image, invalid parameters (`r_step <= 0` or
+///         `r_min > r_max`), or an empty radius range return `{}`.
+/// @note Voting uses a full 360° sweep around each edge pixel (not gradient-
+///       directed voting), which is more robust when callers pass sparse
+///       synthetic outlines or Canny edge maps where gradient direction may
+///       be noisy. Angular resolution scales with radius (~2*pi*r samples
+///       per edge/radius pair, with a floor of 8).
+/// @note Complexity is O(edge_pixels * n_radii * n_angles_per_radius) in
+///       both time and accumulator memory; suitable for small-to-medium
+///       images and modest radius ranges. Callers working with noisy images
+///       will usually get cleaner peaks by running canny() first and passing
+///       the resulting edge map in, e.g.
+///       `hough_circles(canny(img, lo, hi), 0.5, 10, 40)`.
+std::vector<HoughCircle> hough_circles(const Image& img, double edge_threshold,
+                                        double r_min, double r_max,
+                                        int r_step = 1, int vote_threshold = 30);
+
 // ========================== Feature Detection ==========================
 struct KeyPoint { float x, y, response; };
 std::vector<KeyPoint> harris(const Image& img, float k = 0.04f,
