@@ -132,6 +132,114 @@ double ttest(std::span<const double> sample, double mu) {
     return (m - mu) / (s / std::sqrt(static_cast<double>(sample.size())));
 }
 
+namespace {
+
+bool weighted_inputs_valid(const std::vector<double>& x,
+                           const std::vector<double>& w,
+                           double& sum_w) {
+    sum_w = 0.0;
+    if (x.empty() || x.size() != w.size()) {
+        return false;
+    }
+    for (double wi : w) {
+        if (wi < 0.0) {
+            return false;
+        }
+        sum_w += wi;
+    }
+    return sum_w > 0.0;
+}
+
+} // namespace
+
+double weighted_mean(const std::vector<double>& x, const std::vector<double>& w) {
+    if (x.empty() || x.size() != w.size()) {
+        return 0.0;
+    }
+    double sum_w = 0.0;
+    double sum_wx = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        if (w[i] < 0.0) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        sum_w += w[i];
+        sum_wx += w[i] * x[i];
+    }
+    if (sum_w == 0.0) {
+        return 0.0;
+    }
+    return sum_wx / sum_w;
+}
+
+double weighted_variance(const std::vector<double>& x,
+                         const std::vector<double>& w,
+                         bool sample) {
+    if (x.size() < 2 || x.size() != w.size()) {
+        return 0.0;
+    }
+    double sum_w = 0.0;
+    if (!weighted_inputs_valid(x, w, sum_w)) {
+        for (double wi : w) {
+            if (wi < 0.0) {
+                return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+        return 0.0;
+    }
+    const double wmean = weighted_mean(x, w);
+    double sum_w_sq_dev = 0.0;
+    double sum_w2 = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        const double dev = x[i] - wmean;
+        sum_w_sq_dev += w[i] * dev * dev;
+        sum_w2 += w[i] * w[i];
+    }
+    if (sum_w_sq_dev == 0.0) {
+        return 0.0;
+    }
+    double denom = sum_w;
+    if (sample) {
+        denom = sum_w - sum_w2 / sum_w;
+        if (denom <= 0.0) {
+            return 0.0;
+        }
+    }
+    return sum_w_sq_dev / denom;
+}
+
+double weighted_correlation(const std::vector<double>& x,
+                            const std::vector<double>& y,
+                            const std::vector<double>& w) {
+    if (x.size() != y.size() || x.size() != w.size() || x.empty()) {
+        return 0.0;
+    }
+    double sum_w = 0.0;
+    if (!weighted_inputs_valid(x, w, sum_w)) {
+        for (double wi : w) {
+            if (wi < 0.0) {
+                return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+        return 0.0;
+    }
+    const double mx = weighted_mean(x, w);
+    const double my = weighted_mean(y, w);
+    double num = 0.0;
+    double dx = 0.0;
+    double dy = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        const double a = x[i] - mx;
+        const double b = y[i] - my;
+        num += w[i] * a * b;
+        dx += w[i] * a * a;
+        dy += w[i] * b * b;
+    }
+    if (dx == 0.0 || dy == 0.0) {
+        return 0.0;
+    }
+    return num / std::sqrt(dx * dy);
+}
+
 double correlation(std::span<const double> x, std::span<const double> y) {
     if (x.size() != y.size() || x.empty()) {
         return 0.0;
