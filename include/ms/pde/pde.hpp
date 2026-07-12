@@ -32,6 +32,10 @@ struct Poisson2DResult {
     bool converged = false;
 };
 
+struct Helmholtz2DResult {
+    std::vector<std::vector<double>> u;
+};
+
 struct Burgers1DResult {
     std::vector<double> t;
     std::vector<std::vector<double>> u;
@@ -158,6 +162,23 @@ Poisson2DResult pde_poisson_2d(
     double dy,
     std::size_t max_iterations,
     double tolerance);
+
+/// Direct second-order central finite-difference solve for the 2D Helmholtz equation
+/// Laplacian(u) + k^2*u = f with Dirichlet boundaries prescribed by g on the grid
+/// perimeter (interior entries of g are ignored). When g is empty, zero Dirichlet
+/// boundaries are used. The discrete 5-point Laplacian stencil is assembled over
+/// interior unknowns and solved as a dense linear system.
+/// @note Returns empty result when the grid is too small or inputs are invalid.
+/// @note Known limitation: for k^2 near an eigenvalue of the negative discrete
+///     Laplacian on the same grid (resonance), the linear system becomes
+///     ill-conditioned or singular and the solution may be unreliable.
+/// Complexity: O((nx*ny)^3) for the dense solve.
+Helmholtz2DResult pde_helmholtz_2d(
+    const std::vector<std::vector<double>>& f,
+    double k,
+    double dx,
+    double dy,
+    const std::vector<std::vector<double>>& g = {});
 
 /// Explicit finite-difference solver for the viscous Burgers equation
 /// u_t + u u_x = nu u_xx with upwind advection and central diffusion, fixed boundaries.

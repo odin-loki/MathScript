@@ -430,6 +430,168 @@ TEST(PdeExtTest, poisson_2d_max_iterations_used) {
 }
 
 // ---------------------------------------------------------------------------
+// pde_helmholtz_2d
+// ---------------------------------------------------------------------------
+
+TEST(PdeExtTest, helmholtz_2d_manufactured_solution) {
+    const std::size_t n = 21;
+    const double dx = 1.0 / static_cast<double>(n - 1);
+    const double dy = dx;
+    const double k = 1.0;
+    const double coeff = k * k - 2.0 * M_PI * M_PI;
+    auto f = make_grid(n, n);
+    for (std::size_t j = 1; j + 1 < n; ++j) {
+        for (std::size_t i = 1; i + 1 < n; ++i) {
+            const double x = static_cast<double>(i) * dx;
+            const double y = static_cast<double>(j) * dy;
+            f[j][i] = coeff * std::sin(M_PI * x) * std::sin(M_PI * y);
+        }
+    }
+    const auto result = pde_helmholtz_2d(f, k, dx, dy);
+    ASSERT_FALSE(result.u.empty());
+    double max_err = 0.0;
+    for (std::size_t j = 1; j + 1 < n; ++j) {
+        for (std::size_t i = 1; i + 1 < n; ++i) {
+            const double x = static_cast<double>(i) * dx;
+            const double y = static_cast<double>(j) * dy;
+            const double exact = std::sin(M_PI * x) * std::sin(M_PI * y);
+            max_err = std::max(max_err, std::abs(result.u[j][i] - exact));
+        }
+    }
+    EXPECT_LT(max_err, 0.01);
+}
+
+TEST(PdeExtTest, helmholtz_2d_convergence_with_refinement) {
+    const double k = 1.0;
+    const double coeff = k * k - 2.0 * M_PI * M_PI;
+    double prev_err = 1.0;
+    for (const std::size_t n : {11u, 21u, 41u}) {
+        const double dx = 1.0 / static_cast<double>(n - 1);
+        const double dy = dx;
+        auto f = make_grid(n, n);
+        for (std::size_t j = 1; j + 1 < n; ++j) {
+            for (std::size_t i = 1; i + 1 < n; ++i) {
+                const double x = static_cast<double>(i) * dx;
+                const double y = static_cast<double>(j) * dy;
+                f[j][i] = coeff * std::sin(M_PI * x) * std::sin(M_PI * y);
+            }
+        }
+        const auto result = pde_helmholtz_2d(f, k, dx, dy);
+        ASSERT_FALSE(result.u.empty());
+        double max_err = 0.0;
+        for (std::size_t j = 1; j + 1 < n; ++j) {
+            for (std::size_t i = 1; i + 1 < n; ++i) {
+                const double x = static_cast<double>(i) * dx;
+                const double y = static_cast<double>(j) * dy;
+                const double exact = std::sin(M_PI * x) * std::sin(M_PI * y);
+                max_err = std::max(max_err, std::abs(result.u[j][i] - exact));
+            }
+        }
+        EXPECT_LT(max_err, prev_err);
+        prev_err = max_err;
+    }
+}
+
+TEST(PdeExtTest, helmholtz_2d_k_zero_matches_poisson) {
+    const std::size_t n = 15;
+    const double dx = 1.0 / static_cast<double>(n - 1);
+    const double dy = dx;
+    auto f = make_grid(n, n);
+    for (std::size_t j = 1; j + 1 < n; ++j) {
+        for (std::size_t i = 1; i + 1 < n; ++i) {
+            const double x = static_cast<double>(i) * dx;
+            const double y = static_cast<double>(j) * dy;
+            f[j][i] = -2.0 * M_PI * M_PI * std::sin(M_PI * x) * std::sin(M_PI * y);
+        }
+    }
+    const auto helm = pde_helmholtz_2d(f, 0.0, dx, dy);
+    const auto pois = pde_poisson_2d(f, dx, dy, 10000, 1e-8);
+    ASSERT_FALSE(helm.u.empty());
+    ASSERT_FALSE(pois.u.empty());
+    ASSERT_TRUE(pois.converged);
+    for (std::size_t j = 1; j + 1 < n; ++j) {
+        for (std::size_t i = 1; i + 1 < n; ++i) {
+            EXPECT_NEAR(helm.u[j][i], pois.u[j][i], 0.02);
+        }
+    }
+}
+
+TEST(PdeExtTest, helmholtz_2d_zero_forcing_zero_solution) {
+    auto f = make_grid(9, 9, 0.0);
+    const auto result = pde_helmholtz_2d(f, 2.0, 0.1, 0.1);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& row : result.u) {
+        for (double v : row) {
+            EXPECT_NEAR(v, 0.0, 1e-10);
+        }
+    }
+}
+
+TEST(PdeExtTest, helmholtz_2d_nonzero_boundary_values) {
+    const std::size_t ny = 9;
+    const std::size_t nx = 11;
+    const double dx = 0.1;
+    const double dy = 0.15;
+    auto f = make_grid(ny, nx, 0.0);
+    auto g = make_grid(ny, nx, 0.0);
+    for (std::size_t i = 0; i < nx; ++i) {
+        g[0][i] = std::sin(M_PI * static_cast<double>(i) / static_cast<double>(nx - 1));
+        g[ny - 1][i] = -0.5 * g[0][i];
+    }
+    for (std::size_t j = 0; j < ny; ++j) {
+        g[j][0] = static_cast<double>(j) * 0.1;
+        g[j][nx - 1] = -g[j][0];
+    }
+    const auto result = pde_helmholtz_2d(f, 1.5, dx, dy, g);
+    ASSERT_FALSE(result.u.empty());
+    for (std::size_t i = 0; i < nx; ++i) {
+        EXPECT_NEAR(result.u[0][i], g[0][i], 1e-12);
+        EXPECT_NEAR(result.u[ny - 1][i], g[ny - 1][i], 1e-12);
+    }
+    for (std::size_t j = 0; j < ny; ++j) {
+        EXPECT_NEAR(result.u[j][0], g[j][0], 1e-12);
+        EXPECT_NEAR(result.u[j][nx - 1], g[j][nx - 1], 1e-12);
+    }
+    for (const auto& row : result.u) {
+        for (double v : row) {
+            EXPECT_TRUE(std::isfinite(v));
+        }
+    }
+}
+
+TEST(PdeExtTest, helmholtz_2d_non_square_grid) {
+    const std::size_t ny = 7;
+    const std::size_t nx = 13;
+    const double dx = 0.2;
+    const double dy = 0.1;
+    auto f = make_grid(ny, nx, 1.0);
+    const auto result = pde_helmholtz_2d(f, 0.5, dx, dy);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_EQ(result.u.size(), ny);
+    EXPECT_EQ(result.u[0].size(), nx);
+    for (const auto& row : result.u) {
+        for (double v : row) {
+            EXPECT_TRUE(std::isfinite(v));
+            EXPECT_LT(std::abs(v), 1e6);
+        }
+    }
+}
+
+TEST(PdeExtTest, helmholtz_2d_too_small_grid) {
+    auto f = make_grid(2, 2, 1.0);
+    const auto result = pde_helmholtz_2d(f, 1.0, 0.1, 0.1);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, helmholtz_2d_invalid_parameters) {
+    auto f = make_grid(7, 7, 1.0);
+    EXPECT_TRUE(pde_helmholtz_2d(f, 1.0, 0.0, 0.1).u.empty());
+    EXPECT_TRUE(pde_helmholtz_2d(f, 1.0, 0.1, 0.0).u.empty());
+    auto bad_g = make_grid(5, 7, 0.0);
+    EXPECT_TRUE(pde_helmholtz_2d(f, 1.0, 0.1, 0.1, bad_g).u.empty());
+}
+
+// ---------------------------------------------------------------------------
 // pde_burgers_1d
 // ---------------------------------------------------------------------------
 

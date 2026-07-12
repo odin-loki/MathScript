@@ -53,6 +53,64 @@ bool thomas_solve(
     return true;
 }
 
+/// Solve a dense n-by-n linear system A*x = b via Gaussian elimination with pivoting.
+/// Overwrites A and b; returns false if the system is singular.
+bool dense_solve(
+    std::vector<std::vector<double>>& A,
+    std::vector<double>& b) {
+    const std::size_t n = b.size();
+    if (n == 0 || A.size() != n) {
+        return false;
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        if (A[i].size() != n) {
+            return false;
+        }
+    }
+
+    for (std::size_t col = 0; col < n; ++col) {
+        std::size_t pivot = col;
+        double max_abs = std::abs(A[col][col]);
+        for (std::size_t row = col + 1; row < n; ++row) {
+            const double v = std::abs(A[row][col]);
+            if (v > max_abs) {
+                max_abs = v;
+                pivot = row;
+            }
+        }
+        if (max_abs < 1e-300) {
+            return false;
+        }
+        if (pivot != col) {
+            std::swap(A[pivot], A[col]);
+            std::swap(b[pivot], b[col]);
+        }
+        const double diag = A[col][col];
+        for (std::size_t row = col + 1; row < n; ++row) {
+            const double factor = A[row][col] / diag;
+            for (std::size_t j = col; j < n; ++j) {
+                A[row][j] -= factor * A[col][j];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+
+    std::vector<double> x(n, 0.0);
+    for (std::size_t row = n; row-- > 0;) {
+        double sum = b[row];
+        for (std::size_t j = row + 1; j < n; ++j) {
+            sum -= A[row][j] * x[j];
+        }
+        if (std::abs(A[row][row]) < 1e-300) {
+            return false;
+        }
+        x[row] = sum / A[row][row];
+    }
+
+    b = std::move(x);
+    return true;
+}
+
 } // namespace
 
 Heat1DResult pde_heat_1d(
@@ -485,6 +543,99 @@ Poisson2DResult pde_poisson_2d(
         if (max_change < tolerance) {
             result.converged = true;
             break;
+        }
+    }
+
+    result.u = std::move(u);
+    return result;
+}
+
+Helmholtz2DResult pde_helmholtz_2d(
+    const std::vector<std::vector<double>>& f,
+    double k,
+    double dx,
+    double dy,
+    const std::vector<std::vector<double>>& g) {
+    Helmholtz2DResult result;
+    if (!is_rectangular_grid(f) || dx <= 0.0 || dy <= 0.0) {
+        return result;
+    }
+    if (!g.empty() && !is_rectangular_grid(g)) {
+        return result;
+    }
+
+    const std::size_t ny = f.size();
+    const std::size_t nx = f[0].size();
+    if (!g.empty() && (g.size() != ny || g[0].size() != nx)) {
+        return result;
+    }
+
+    const double inv_dx2 = 1.0 / (dx * dx);
+    const double inv_dy2 = 1.0 / (dy * dy);
+    const double diag_coeff = -(2.0 * inv_dx2 + 2.0 * inv_dy2) + k * k;
+    const std::size_t m_x = nx - 2;
+    const std::size_t m_y = ny - 2;
+    const std::size_t m = m_x * m_y;
+
+    if (m == 0) {
+        return result;
+    }
+
+    auto boundary_value = [&](std::size_t j, std::size_t i) -> double {
+        if (!g.empty()) {
+            return g[j][i];
+        }
+        return 0.0;
+    };
+
+    auto interior_index = [&](std::size_t j, std::size_t i) -> std::size_t {
+        return (j - 1) * m_x + (i - 1);
+    };
+
+    std::vector<std::vector<double>> A(m, std::vector<double>(m, 0.0));
+    std::vector<double> rhs(m, 0.0);
+
+    for (std::size_t j = 1; j + 1 < ny; ++j) {
+        for (std::size_t i = 1; i + 1 < nx; ++i) {
+            const std::size_t p = interior_index(j, i);
+            A[p][p] = diag_coeff;
+            rhs[p] = f[j][i];
+
+            if (i > 1) {
+                A[p][interior_index(j, i - 1)] = inv_dx2;
+            } else {
+                rhs[p] -= inv_dx2 * boundary_value(j, i - 1);
+            }
+            if (i + 1 < nx - 1) {
+                A[p][interior_index(j, i + 1)] = inv_dx2;
+            } else {
+                rhs[p] -= inv_dx2 * boundary_value(j, i + 1);
+            }
+            if (j > 1) {
+                A[p][interior_index(j - 1, i)] = inv_dy2;
+            } else {
+                rhs[p] -= inv_dy2 * boundary_value(j - 1, i);
+            }
+            if (j + 1 < ny - 1) {
+                A[p][interior_index(j + 1, i)] = inv_dy2;
+            } else {
+                rhs[p] -= inv_dy2 * boundary_value(j + 1, i);
+            }
+        }
+    }
+
+    if (!dense_solve(A, rhs)) {
+        return Helmholtz2DResult{};
+    }
+
+    std::vector<std::vector<double>> u(ny, std::vector<double>(nx, 0.0));
+    for (std::size_t j = 0; j < ny; ++j) {
+        for (std::size_t i = 0; i < nx; ++i) {
+            if (i == 0 || i + 1 == nx || j == 0 || j + 1 == ny) {
+                u[j][i] = boundary_value(j, i);
+            } else {
+                u[j][i] = rhs[interior_index(j, i)];
+            }
         }
     }
 
