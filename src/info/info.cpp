@@ -297,6 +297,79 @@ double sample_entropy(std::span<const double> x, int m, double r) {
     return -std::log(A / B);
 }
 
+static int discretize_value(double value, double vmin, double vmax, int bins) {
+    if (bins <= 0) return 0;
+    const double width =
+        (vmax > vmin) ? (vmax - vmin) / static_cast<double>(bins) : 1.0;
+    int idx = static_cast<int>((value - vmin) / width);
+    if (idx >= bins) idx = bins - 1;
+    if (idx < 0) idx = 0;
+    return idx;
+}
+
+static double range_min(std::span<const double> data) {
+    return *std::min_element(data.begin(), data.end());
+}
+
+static double range_max(std::span<const double> data) {
+    return *std::max_element(data.begin(), data.end());
+}
+
+double transfer_entropy(const std::vector<double>& x,
+                        const std::vector<double>& y, int bins, int lag) {
+    if (x.size() != y.size() || lag < 1 || bins < 1) return 0.0;
+
+    const size_t n = x.size();
+    if (n < static_cast<size_t>(lag) + 1) return 0.0;
+
+    const double xmin = range_min(x);
+    const double xmax = range_max(x);
+    const double ymin = range_min(y);
+    const double ymax = range_max(y);
+
+    const size_t n_samples = n - static_cast<size_t>(lag);
+
+    // Joint p(y_t, y_{t+lag}) for H(y_{t+lag}|y_t): rows=y_t, cols=y_{t+lag}.
+    std::vector<double> p_yt_yfuture(static_cast<size_t>(bins * bins), 0.0);
+    // Joint p(y_t, x_t) marginal for H(y_{t+lag}|y_t, x_t).
+    std::vector<double> p_yt_xt(static_cast<size_t>(bins * bins), 0.0);
+    // Joint p(y_t, x_t, y_{t+lag}): index = iy_past * bins * bins + ix * bins + iy_future.
+    std::vector<double> p_yt_xt_yfuture(
+        static_cast<size_t>(bins * bins * bins), 0.0);
+
+    for (size_t t = 0; t < n_samples; ++t) {
+        const int iy_past =
+            discretize_value(y[t], ymin, ymax, bins);
+        const int iy_future =
+            discretize_value(y[t + static_cast<size_t>(lag)], ymin, ymax, bins);
+        const int ix =
+            discretize_value(x[t], xmin, xmax, bins);
+
+        p_yt_yfuture[static_cast<size_t>(iy_past * bins + iy_future)] += 1.0;
+        p_yt_xt[static_cast<size_t>(iy_past * bins + ix)] += 1.0;
+        p_yt_xt_yfuture[static_cast<size_t>(
+            iy_past * bins * bins + ix * bins + iy_future)] += 1.0;
+    }
+
+    const double inv_n = 1.0 / static_cast<double>(n_samples);
+    for (double& v : p_yt_yfuture) v *= inv_n;
+    for (double& v : p_yt_xt) v *= inv_n;
+    for (double& v : p_yt_xt_yfuture) v *= inv_n;
+
+    // H(y_{t+lag}|y_t) via conditional_entropy(rows=y_t, cols=y_{t+lag}).
+    const double h_future_given_past =
+        conditional_entropy(p_yt_yfuture, bins, bins, 2.0);
+
+    // H(y_{t+lag}|y_t, x_t) = H(y_t, x_t, y_{t+lag}) - H(y_t, x_t).
+    const double h_joint_3d = joint_entropy(p_yt_xt_yfuture, bins * bins, bins, 2.0);
+    const double h_joint_yt_xt = joint_entropy(p_yt_xt, bins, bins, 2.0);
+    const double h_future_given_past_and_x = h_joint_3d - h_joint_yt_xt;
+
+    double te = h_future_given_past - h_future_given_past_and_x;
+    if (te < 0.0) te = 0.0;
+    return te;
+}
+
 double permutation_entropy(std::span<const double> x, int order, int delay,
                            bool normalize) {
     if (order < 2 || delay < 1) return 0.0;
