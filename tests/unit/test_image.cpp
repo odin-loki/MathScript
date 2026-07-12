@@ -926,3 +926,125 @@ TEST(ImageComponents, BilinearInterp) {
     float v=bilinear_sample(img,0.5f,0.5f,0);
     EXPECT_NEAR(v, 0.5f, 0.01f);
 }
+
+// ---- Watershed ----
+
+static Image make_two_hill_gray(int rows, int cols) {
+    Image gray(rows, cols, 1, 0.f);
+    for (int r = 0; r < rows; ++r)
+        for (int c = 0; c < cols; ++c) {
+            float d1 = std::hypot(static_cast<float>(r - rows / 2),
+                                  static_cast<float>(c - cols / 4));
+            float d2 = std::hypot(static_cast<float>(r - rows / 2),
+                                  static_cast<float>(c - 3 * cols / 4));
+            gray.at(r, c, 0) = std::max(0.f, 1.f - d1 / 6.f) + std::max(0.f, 1.f - d2 / 6.f);
+        }
+    return gray;
+}
+
+TEST(ImageWatershed, EmptyGrayReturnsEmpty) {
+    Image markers(4, 4, 1, 0.f);
+    markers.at(1, 1, 0) = 1.f;
+    auto out = watershed(Image{}, markers);
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(ImageWatershed, EmptyMarkersReturnsEmpty) {
+    Image gray(4, 4, 1, 0.5f);
+    auto out = watershed(gray, Image{});
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(ImageWatershed, SizeMismatchReturnsEmpty) {
+    Image gray(4, 4, 1, 0.5f);
+    Image markers(3, 4, 1, 0.f);
+    auto out = watershed(gray, markers);
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(ImageWatershed, OutputShapeMatchesInput) {
+    Image gray(12, 16, 1, 0.4f);
+    Image markers(12, 16, 1, 0.f);
+    markers.at(6, 4, 0) = 1.f;
+    auto out = watershed(gray, markers);
+    EXPECT_EQ(out.rows, 12);
+    EXPECT_EQ(out.cols, 16);
+    EXPECT_EQ(out.channels, 1);
+}
+
+TEST(ImageWatershed, TwoBlobSyntheticSeparates) {
+    const int rows = 20, cols = 20;
+    auto gray = make_two_hill_gray(rows, cols);
+    Image markers(rows, cols, 1, 0.f);
+    markers.at(rows / 2, cols / 4, 0) = 1.f;
+    markers.at(rows / 2, 3 * cols / 4, 0) = 2.f;
+
+    auto out = watershed(gray, markers);
+    EXPECT_FLOAT_EQ(out.at(rows / 2, cols / 4, 0), 1.f);
+    EXPECT_FLOAT_EQ(out.at(rows / 2, 3 * cols / 4, 0), 2.f);
+    EXPECT_FLOAT_EQ(out.at(rows / 2, cols / 2, 0), 0.f);
+
+    int left = 0, right = 0, boundary = 0;
+    for (int r = 0; r < rows; ++r)
+        for (int c = 0; c < cols; ++c) {
+            float l = out.at(r, c, 0);
+            if (l == 1.f) ++left;
+            else if (l == 2.f) ++right;
+            else if (l == 0.f) ++boundary;
+        }
+    EXPECT_GT(left, 0);
+    EXPECT_GT(right, 0);
+    EXPECT_GT(boundary, 0);
+}
+
+TEST(ImageWatershed, SingleMarkerFloodsBasin) {
+    Image gray(8, 8, 1, 0.2f);
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+            gray.at(r, c, 0) = 0.2f + 0.6f * std::max(0.f, 1.f - std::hypot(static_cast<float>(r - 4),
+                                                                                 static_cast<float>(c - 4)) / 3.f);
+    Image markers(8, 8, 1, 0.f);
+    markers.at(4, 4, 0) = 1.f;
+    auto out = watershed(gray, markers);
+    EXPECT_FLOAT_EQ(out.at(4, 4, 0), 1.f);
+    EXPECT_FLOAT_EQ(out.at(0, 0, 0), 1.f);
+    EXPECT_FLOAT_EQ(out.at(7, 7, 0), 1.f);
+}
+
+TEST(ImageWatershed, NoMarkersAllZero) {
+    Image gray(5, 5, 1, 0.5f);
+    Image markers(5, 5, 1, 0.f);
+    auto out = watershed(gray, markers);
+    for (int r = 0; r < 5; ++r)
+        for (int c = 0; c < 5; ++c)
+            EXPECT_FLOAT_EQ(out.at(r, c, 0), 0.f);
+}
+
+TEST(ImageWatershed, RgbGrayInputWorks) {
+    Image gray(6, 6, 3, 0.f);
+    for (int r = 0; r < 6; ++r)
+        for (int c = 0; c < 6; ++c) {
+            float v = 0.3f + 0.5f * std::max(0.f, 1.f - std::hypot(static_cast<float>(r - 3),
+                                                                     static_cast<float>(c - 3)) / 2.5f);
+            gray.at(r, c, 0) = v;
+            gray.at(r, c, 1) = v;
+            gray.at(r, c, 2) = v;
+        }
+    Image markers(6, 6, 1, 0.f);
+    markers.at(3, 3, 0) = 1.f;
+    auto out = watershed(gray, markers);
+    EXPECT_EQ(out.channels, 1);
+    EXPECT_FLOAT_EQ(out.at(3, 3, 0), 1.f);
+    EXPECT_FLOAT_EQ(out.at(0, 0, 0), 1.f);
+}
+
+TEST(ImageWatershed, DistinctLabelsDoNotMerge) {
+    auto gray = make_two_hill_gray(18, 18);
+    Image markers(18, 18, 1, 0.f);
+    markers.at(9, 4, 0) = 1.f;
+    markers.at(9, 13, 0) = 2.f;
+    auto out = watershed(gray, markers);
+    EXPECT_FLOAT_EQ(out.at(9, 2, 0), 1.f);
+    EXPECT_FLOAT_EQ(out.at(9, 15, 0), 2.f);
+    EXPECT_NE(out.at(9, 2, 0), out.at(9, 15, 0));
+}

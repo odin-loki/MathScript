@@ -417,6 +417,73 @@ Image threshold_otsu(const Image& img) {
     return threshold_binary(g, best_t/255.f);
 }
 
+Image watershed(const Image& gray, const Image& markers) {
+    if (gray.empty() || markers.empty()) return Image{};
+    if (gray.rows != markers.rows || gray.cols != markers.cols) return Image{};
+
+    auto g = gray.channels > 1 ? rgb2gray(gray) : gray;
+    auto mk = markers.channels > 1 ? rgb2gray(markers) : markers;
+
+    const int R = g.rows, C = g.cols;
+    constexpr int k_watershed = -1;
+    constexpr int k_unlabeled = 0;
+
+    std::vector<int> labels(static_cast<size_t>(R * C), k_unlabeled);
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            int m = static_cast<int>(std::lround(mk.at(r, c, 0)));
+            if (m > 0) labels[static_cast<size_t>(r * C + c)] = m;
+        }
+
+    using Node = std::tuple<float, int, int>;
+    auto cmp = [](const Node& a, const Node& b) { return std::get<0>(a) < std::get<0>(b); };
+    std::vector<Node> pq;
+    pq.reserve(static_cast<size_t>(R * C));
+
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c)
+            if (labels[static_cast<size_t>(r * C + c)] > 0)
+                pq.push_back({g.at(r, c, 0), r, c});
+
+    std::make_heap(pq.begin(), pq.end(), cmp);
+
+    const int dr[] = {-1, 1, 0, 0}, dc[] = {0, 0, -1, 1};
+
+    while (!pq.empty()) {
+        std::pop_heap(pq.begin(), pq.end(), cmp);
+        auto [_, r, c] = pq.back();
+        pq.pop_back();
+
+        int cur = labels[static_cast<size_t>(r * C + c)];
+        if (cur <= k_unlabeled) continue;
+
+        for (int d = 0; d < 4; ++d) {
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
+
+            size_t ni = static_cast<size_t>(nr * C + nc);
+            int& nl = labels[ni];
+            if (nl == k_unlabeled) {
+                nl = cur;
+                pq.push_back({g.at(nr, nc, 0), nr, nc});
+                std::push_heap(pq.begin(), pq.end(), cmp);
+            } else if (nl > k_unlabeled && nl != cur) {
+                labels[static_cast<size_t>(r * C + c)] = k_watershed;
+                nl = k_watershed;
+                cur = k_watershed;
+            }
+        }
+    }
+
+    Image out(R, C, 1);
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            int l = labels[static_cast<size_t>(r * C + c)];
+            out.at(r, c, 0) = l > 0 ? static_cast<float>(l) : 0.f;
+        }
+    return out;
+}
+
 // ========================== Histogram ==========================
 
 std::vector<int> imhist(const Image& img, int nbins) {

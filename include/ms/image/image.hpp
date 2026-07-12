@@ -65,6 +65,17 @@ Image imgradient_morph(const Image& img, int ksize = 3);
 Image threshold_binary(const Image& img, float t);
 Image threshold_otsu(const Image& img);   // auto threshold via Otsu
 
+/// Marker-controlled watershed on a grayscale image.
+///
+/// Priority-flood segmentation from seed markers: each positive label in @p markers
+/// grows to 4-connected neighbors in descending @p gray order (catchment basins);
+/// pixels where two basins meet are labelled 0 (watershed boundary). @p gray and
+/// @p markers must share the same size; multi-channel inputs are converted to
+/// grayscale / single-channel first. Output is single-channel with integer-like
+/// float labels (1, 2, …) and 0 for boundaries or unlabelled pixels.
+/// Defensive: returns an empty Image for empty inputs or size mismatch.
+Image watershed(const Image& gray, const Image& markers);
+
 // ========================== Histogram ==========================
 std::vector<int>   imhist(const Image& img, int nbins = 256);   // grayscale
 Image              histeq(const Image& img);                     // histogram equalisation
