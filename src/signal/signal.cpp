@@ -749,19 +749,19 @@ Zpk cheb1ap(int order, double rp_db) {
 
     Zpk sys;
     sys.p.reserve(static_cast<size_t>(order));
-    for (int k = 0; k < order; ++k) {
-        const double theta = M_PI * (2.0 * static_cast<double>(k) + 1.0) /
-                             (2.0 * static_cast<double>(order));
-        const double real_part = -std::sin(theta) * std::sinh(mu);
-        const double imag_part = std::cos(theta) * std::cosh(mu);
-        sys.p.emplace_back(real_part, imag_part);
+    for (int m = -order + 1; m < order; m += 2) {
+        const double theta = M_PI * static_cast<double>(m) / (2.0 * static_cast<double>(order));
+        sys.p.emplace_back(-std::sinh(mu) * std::cos(theta), -std::cosh(mu) * std::sin(theta));
     }
 
-    double prod_neg_p = 1.0;
+    std::complex<double> neg_p_prod{1.0, 0.0};
     for (const auto& pole : sys.p) {
-        prod_neg_p *= std::norm(-pole);
+        neg_p_prod *= -pole;
     }
-    sys.k = prod_neg_p * std::pow(10.0, -0.05 * rp_db);
+    sys.k = neg_p_prod.real();
+    if (order % 2 == 0) {
+        sys.k /= std::sqrt(1.0 + epsilon * epsilon);
+    }
     return sys;
 }
 
@@ -784,6 +784,17 @@ Zpk lp2hp_zpk(const Zpk& sys, double wo) {
     Zpk out;
     out.z.reserve(sys.z.size() + sys.p.size());
     out.p.reserve(sys.p.size());
+
+    std::complex<double> neg_z_prod{1.0, 0.0};
+    std::complex<double> neg_p_prod{1.0, 0.0};
+    for (const auto& z : sys.z) {
+        neg_z_prod *= -z;
+    }
+    for (const auto& p : sys.p) {
+        neg_p_prod *= -p;
+    }
+    out.k = sys.k * (neg_z_prod / neg_p_prod).real();
+
     for (const auto& z : sys.z) {
         if (std::abs(z) < 1e-15) {
             out.z.emplace_back(std::numeric_limits<double>::infinity(), 0.0);
@@ -791,16 +802,13 @@ Zpk lp2hp_zpk(const Zpk& sys, double wo) {
             out.z.push_back(wo / z);
         }
     }
-    const int zeros_at_origin =
-        static_cast<int>(sys.p.size()) - static_cast<int>(sys.z.size());
-    for (int i = 0; i < zeros_at_origin; ++i) {
-        out.z.emplace_back(0.0, 0.0);
-    }
     for (const auto& p : sys.p) {
         out.p.push_back(wo / p);
     }
     const int degree = static_cast<int>(sys.p.size()) - static_cast<int>(sys.z.size());
-    out.k = sys.k * std::pow(wo, static_cast<double>(degree));
+    for (int i = 0; i < degree; ++i) {
+        out.z.emplace_back(0.0, 0.0);
+    }
     return out;
 }
 
