@@ -604,6 +604,87 @@ TEST(GraphProperties, Diameter) {
     EXPECT_EQ(diameter(G), 3);
 }
 
+// ---- Eccentricity ----
+TEST(GraphEccentricity, PathGraph) {
+    Graph G(5, false);
+    for (int i = 0; i < 4; ++i) G.add_edge(i, i + 1);
+    auto ecc = eccentricity(G);
+    ASSERT_EQ(ecc.size(), 5u);
+    EXPECT_EQ(ecc, (std::vector<int>{4, 3, 2, 3, 4}));
+    int max_ecc = *std::max_element(ecc.begin(), ecc.end());
+    EXPECT_EQ(max_ecc, diameter(G));
+}
+
+TEST(GraphEccentricity, StarGraph) {
+    auto G = make_star(6);
+    auto ecc = eccentricity(G);
+    ASSERT_EQ(ecc.size(), 6u);
+    EXPECT_EQ(ecc[0], 1);
+    for (int i = 1; i < 6; ++i) EXPECT_EQ(ecc[i], 2);
+    EXPECT_EQ(*std::max_element(ecc.begin(), ecc.end()), diameter(G));
+}
+
+TEST(GraphEccentricity, CycleGraph) {
+    Graph G(5, false);
+    for (int i = 0; i < 5; ++i) G.add_edge(i, (i + 1) % 5);
+    auto ecc = eccentricity(G);
+    ASSERT_EQ(ecc.size(), 5u);
+    for (int e : ecc) EXPECT_EQ(e, 2);
+    EXPECT_EQ(diameter(G), 2);
+}
+
+TEST(GraphEccentricity, SingleVertex) {
+    Graph G(1, false);
+    auto ecc = eccentricity(G);
+    ASSERT_EQ(ecc.size(), 1u);
+    EXPECT_EQ(ecc[0], 0);
+}
+
+TEST(GraphEccentricity, EmptyGraph) {
+    Graph G(0, false);
+    EXPECT_TRUE(eccentricity(G).empty());
+}
+
+TEST(GraphEccentricity, DisconnectedComponents) {
+    Graph G(4, false);
+    G.add_edge(0, 1);
+    G.add_edge(2, 3);
+    auto ecc = eccentricity(G);
+    ASSERT_EQ(ecc.size(), 4u);
+    for (int e : ecc) EXPECT_EQ(e, -1);
+}
+
+TEST(GraphEccentricity, IsolatedVertexAmongOthers) {
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    auto ecc = eccentricity(G);
+    ASSERT_EQ(ecc.size(), 3u);
+    EXPECT_EQ(ecc[0], -1);
+    EXPECT_EQ(ecc[1], -1);
+    EXPECT_EQ(ecc[2], -1);
+}
+
+TEST(GraphEccentricity, DiameterEqualsMaxEccentricityOnConnected) {
+    Graph G(6, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 3);
+    G.add_edge(3, 4); G.add_edge(4, 5);
+    auto ecc = eccentricity(G);
+    int max_finite = 0;
+    for (int e : ecc) {
+        ASSERT_GE(e, 0);
+        max_finite = std::max(max_finite, e);
+    }
+    EXPECT_EQ(max_finite, diameter(G));
+}
+
+TEST(GraphEccentricity, CompleteGraph) {
+    Graph G(4, false);
+    add_clique(G, 0, 4);
+    auto ecc = eccentricity(G);
+    ASSERT_EQ(ecc.size(), 4u);
+    for (int e : ecc) EXPECT_EQ(e, 1);
+}
+
 // ---- Graph coloring ----
 TEST(GraphColoring, Greedy) {
     // 2-colorable cycle
