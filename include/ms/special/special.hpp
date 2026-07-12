@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <complex>
+
 namespace ms {
 
 // Error functions and related
@@ -150,6 +152,10 @@ double kelvin_kei(int nu, double x);
 double legendre_p(int n, double x);
 double legendre_q(int n, double x);
 double legendre_pn(int n, int m, double x);
+/// Associated Legendre polynomial P_l^m(x), m may be negative (DLMF §14.9).
+/// For m >= 0 this matches legendre_pn(l, m, x); negative m uses
+/// P_l^{-m}(x) = (-1)^m (l-m)!/(l+m)! P_l^m(x).
+double assoc_legendre_p(int l, int m, double x);
 double hermite_h(int n, double x);
 double hermite_hf(int n, double x);
 double hermite_hn(int n, double x);
@@ -167,6 +173,14 @@ double chebyshev_v(int n, double x);
 double chebyshev_w(int n, double x);
 double gegenbauer_c(int n, double lambda, double x);
 double jacobi_p(int n, double alpha, double beta, double x);
+/// Complex orthonormal spherical harmonic Y_l^m(θ, φ) (DLMF §14.30):
+/// Y_l^m(θ, φ) = √((2l+1)/(4π) (l-m)!/(l+m)!) P_l^m(cos θ) e^{imφ},
+/// with Condon–Shortley phase in P_l^m. θ is colatitude [0, π], φ azimuth.
+/// @param l degree (l >= 0; |m| > l returns NaN+NaN i). @param m order.
+/// @param theta colatitude. @param phi azimuth.
+/// @return Y_l^m(θ, φ) as std::complex<double>.
+std::complex<double> sph_harm_y(int l, int m, double theta, double phi);
+/// Real part of sph_harm_y(l, m, theta, phi); legacy convenience wrapper.
 double sph_harm(int l, int m, double theta, double phi);
 
 // Elliptic integrals (k is the modulus, |k| < 1)

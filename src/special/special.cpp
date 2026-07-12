@@ -1501,6 +1501,21 @@ double legendre_pn(int n, int m, double x) {
     return pmmp1;
 }
 
+double assoc_legendre_p(int l, int m, double x) {
+    if (l < 0 || std::abs(m) > l || x < -1.0 || x > 1.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (m >= 0) {
+        return legendre_pn(l, m, x);
+    }
+    const int abs_m = -m;
+    const double plm = legendre_pn(l, abs_m, x);
+    const double ratio = std::tgamma(static_cast<double>(l - abs_m) + 1.0) /
+                         std::tgamma(static_cast<double>(l + abs_m) + 1.0);
+    const double sign = (abs_m % 2 == 0) ? 1.0 : -1.0;
+    return sign * ratio * plm;
+}
+
 double hermite_h(int n, double x) {
     if (n < 0) {
         return 0.0;
@@ -1675,18 +1690,27 @@ double jacobi_p(int n, double alpha, double beta, double x) {
     return jacobi_p_hyper(n, alpha, beta, x);
 }
 
-double sph_harm(int l, int m, double theta, double phi) {
+std::complex<double> sph_harm_y(int l, int m, double theta, double phi) {
     if (l < 0 || std::abs(m) > l) {
-        return std::numeric_limits<double>::quiet_NaN();
+        return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     }
-    const int abs_m = m >= 0 ? m : -m;
+    if (m < 0) {
+        const std::complex<double> positive = sph_harm_y(l, -m, theta, phi);
+        const int abs_m = -m;
+        const double sign = (abs_m % 2 == 0) ? 1.0 : -1.0;
+        return {sign * positive.real(), -sign * positive.imag()};
+    }
     const double cos_theta = std::cos(theta);
-    const double plm = legendre_pn(l, abs_m, cos_theta);
+    const double plm = assoc_legendre_p(l, m, cos_theta);
     const double norm = std::sqrt((2.0 * l + 1.0) / (4.0 * M_PI) *
-                                  std::tgamma(static_cast<double>(l - abs_m) + 1.0) /
-                                  std::tgamma(static_cast<double>(l + abs_m) + 1.0));
-    // Real part of the complex spherical harmonic (scipy sph_harm_y convention).
-    return norm * plm * std::cos(static_cast<double>(m) * phi);
+                                  std::tgamma(static_cast<double>(l - m) + 1.0) /
+                                  std::tgamma(static_cast<double>(l + m) + 1.0));
+    const double amp = norm * plm;
+    return {amp * std::cos(static_cast<double>(m) * phi), amp * std::sin(static_cast<double>(m) * phi)};
+}
+
+double sph_harm(int l, int m, double theta, double phi) {
+    return sph_harm_y(l, m, theta, phi).real();
 }
 
 double ellip_k(double k) {
