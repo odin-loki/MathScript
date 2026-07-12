@@ -759,6 +759,45 @@ OdeResult ode_bdf2(OdeFunc f, double t0, double y0, double t_end, size_t steps) 
     return result;
 }
 
+namespace {
+
+constexpr double kLambdaZeroTol = 1e-14;
+
+double etd1_phi(double lambda, double h) {
+    if (std::abs(lambda) < kLambdaZeroTol) {
+        return h;
+    }
+    return std::expm1(lambda * h) / lambda;
+}
+
+} // namespace
+
+OdeResult ode_exponential_euler(OdeFunc g, double lambda, double t0, double y0,
+                                 double t_end, int steps) {
+    OdeResult result;
+    if (steps <= 0) {
+        return result;
+    }
+    const size_t nsteps = static_cast<size_t>(steps);
+    const double h = (t_end - t0) / static_cast<double>(nsteps);
+    result.t.reserve(nsteps + 1);
+    result.y.reserve(nsteps + 1);
+    double t = t0;
+    double y = y0;
+    for (size_t i = 0; i <= nsteps; ++i) {
+        result.t.push_back(t);
+        result.y.push_back(y);
+        if (i < nsteps) {
+            const double lh = lambda * h;
+            const double exp_lh = std::exp(lh);
+            const double phi = etd1_phi(lambda, h);
+            y = y * exp_lh + g(t, y) * phi;
+            t += h;
+        }
+    }
+    return result;
+}
+
 OdeBvpResult ode_bvp_shooting(OdeBvpFunc f, double t0, double y_a,
                                double t_end, double y_b, size_t steps) {
     OdeBvpResult result;

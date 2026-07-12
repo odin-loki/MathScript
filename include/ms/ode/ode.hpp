@@ -111,6 +111,31 @@ OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
 /// one step of ode_backward_euler (BDF1) because y_{n-1} is unavailable at t_0.
 OdeResult ode_bdf2(OdeFunc f, double t0, double y0, double t_end, size_t steps);
 
+/// Exponential Euler (ETD1: exponential time differencing, order 1) for
+/// semi-linear scalar stiff IVPs of the form dy/dt = lambda*y + g(t, y).
+/// Unlike ode_euler, ode_rk4, ode_backward_euler, and ode_bdf2, which take
+/// the full right-hand side f(t, y) = dy/dt, this solver splits the ODE into
+/// a linear stiff part lambda*y (integrated EXACTLY via exp(lambda*h)) and a
+/// nonlinear/non-stiff remainder g(t, y) (approximated with a first-order
+/// exponential-integrator formula). The functor g must supply ONLY the
+/// remainder term; do NOT pass the full RHS lambda*y + g(t, y) as g.
+/// @param g Nonlinear/non-stiff remainder g(t, y) in dy/dt = lambda*y + g(t, y).
+/// @param lambda Real scalar linear stiff coefficient (the lambda in lambda*y).
+/// @param t0 Initial time.
+/// @param y0 Initial value y(t0).
+/// @param t_end Final time.
+/// @param steps Number of fixed steps. steps <= 0 returns an empty result
+///        (same convention as ode_rosenbrock23 for non-positive step counts).
+/// @return OdeResult with (t, y) pairs, steps+1 points when steps > 0.
+/// @note Defensive: no exceptions. When |lambda| is extremely small, the
+///       phi-factor (exp(lambda*h)-1)/lambda is evaluated as h to avoid 0/0
+///       and recover forward-Euler-like stepping on g; otherwise uses
+///       std::expm1(lambda*h)/lambda for numerical stability.
+/// @accuracy First order in h for the g(t, y) part; the linear lambda*y
+///           part is treated exactly (zero local truncation error when g=0).
+OdeResult ode_exponential_euler(OdeFunc g, double lambda, double t0, double y0,
+                                 double t_end, int steps);
+
 // Implicit backward Euler (vector stiff IVP, Picard iteration)
 OdeResultVec ode_backward_euler_vec(OdeFuncVec f, double t0,
                                      const std::vector<double>& y0,
