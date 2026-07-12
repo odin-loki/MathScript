@@ -1,6 +1,8 @@
 #define _USE_MATH_DEFINES
 #include "ms/geo/geo.hpp"
 #include <cmath>
+#include <limits>
+#include <random>
 #include <set>
 #include <gtest/gtest.h>
 #ifndef M_PI
@@ -351,4 +353,230 @@ TEST(GeoMeasure, TriangleArea2D) {
 TEST(GeoMeasure, TetrahedronVolume) {
     double vol = volume_tetrahedron({0,0,0},{1,0,0},{0,1,0},{0,0,1});
     EXPECT_NEAR(vol, 1.0/6.0, 1e-10);
+}
+
+// ---- Minimum Bounding Rectangle ----
+
+namespace {
+
+// Normalises an angle difference so it lies in (-pi/4, pi/4], accounting for the
+// mod-pi/2 ambiguity of which rectangle side is called "width" vs "height".
+double angle_diff_mod_halfpi(double a, double b) {
+    double d = std::fmod(a - b, M_PI / 2.0);
+    if (d > M_PI / 4.0) d -= M_PI / 2.0;
+    if (d < -M_PI / 4.0) d += M_PI / 2.0;
+    return d;
+}
+
+// Checks every point of `pts` lies within `r` (with tolerance `eps`), by rotating each
+// point into the rectangle's local frame and comparing against the half-extents.
+void expect_rect_contains_all(const MinBoundingRect& r, const std::vector<Point2D>& pts,
+                               double eps = 1e-9) {
+    double c = std::cos(r.angle), s = std::sin(r.angle);
+    for (const auto& p : pts) {
+        double dx = p.x - r.center.x, dy = p.y - r.center.y;
+        double lx =  c*dx + s*dy;   // rotate by -angle into local frame
+        double ly = -s*dx + c*dy;
+        EXPECT_LE(std::abs(lx), r.width * 0.5 + eps);
+        EXPECT_LE(std::abs(ly), r.height * 0.5 + eps);
+    }
+}
+
+} // namespace
+
+TEST(GeoMinBoundingRect, AxisAlignedRectangle) {
+    // 4x2 rectangle corners, plus a few interior/edge-redundant points.
+    std::vector<Point2D> pts = {
+        {0,0}, {4,0}, {4,2}, {0,2},
+        {2,0}, {2,2}, {2,1},   // edge midpoints / centroid: hull-redundant
+    };
+    auto r = min_bounding_rect(pts);
+    // Width/height axis convention may swap depending on which hull edge wins ties.
+    double lo = std::min(r.width, r.height), hi = std::max(r.width, r.height);
+    EXPECT_NEAR(lo, 2.0, 1e-9);
+    EXPECT_NEAR(hi, 4.0, 1e-9);
+    EXPECT_NEAR(r.area(), 8.0, 1e-9);
+    EXPECT_NEAR(angle_diff_mod_halfpi(r.angle, 0.0), 0.0, 1e-9);
+}
+
+TEST(GeoMinBoundingRect, RotatedRectangleRecoversAngleAndDims) {
+    const double rot = 30.0 * M_PI / 180.0;
+    double c = std::cos(rot), s = std::sin(rot);
+    // Original axis-aligned 4x2 rectangle corners, rotated by 30 degrees about the origin.
+    std::vector<Point2D> base = {{-2,-1}, {2,-1}, {2,1}, {-2,1}};
+    std::vector<Point2D> pts;
+    for (auto& p : base) pts.push_back({c*p.x - s*p.y, s*p.x + c*p.y});
+
+    auto r = min_bounding_rect(pts);
+    double lo = std::min(r.width, r.height), hi = std::max(r.width, r.height);
+    EXPECT_NEAR(lo, 2.0, 1e-9);
+    EXPECT_NEAR(hi, 4.0, 1e-9);
+    EXPECT_NEAR(r.area(), 8.0, 1e-9);
+    EXPECT_NEAR(angle_diff_mod_halfpi(r.angle, rot), 0.0, 1e-9);
+}
+
+TEST(GeoMinBoundingRect, RotatedSquareDiamond) {
+    // A square rotated 45 degrees ("diamond"): vertices at distance 1 along each axis.
+    std::vector<Point2D> pts = {{1,0}, {0,1}, {-1,0}, {0,-1}};
+    auto r = min_bounding_rect(pts);
+    // Side length sqrt(2), area 2, exactly recovered by the calipers (no looser AABB=area 2 too,
+    // coincidentally, since a diamond's AABB is also a 2x2 square of area 4 -- but the true
+    // minimum oriented rectangle here is the diamond itself, area 2).
+    EXPECT_NEAR(r.area(), 2.0, 1e-9);
+    double lo = std::min(r.width, r.height), hi = std::max(r.width, r.height);
+    EXPECT_NEAR(lo, std::sqrt(2.0), 1e-9);
+    EXPECT_NEAR(hi, std::sqrt(2.0), 1e-9);
+    EXPECT_NEAR(angle_diff_mod_halfpi(r.angle, M_PI / 4.0), 0.0, 1e-9);
+}
+
+TEST(GeoMinBoundingRect, ScatteredCloudMatchesBruteForceMinimum) {
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<double> ang_dist(0.0, 2.0 * M_PI);
+    std::uniform_real_distribution<double> rad_dist(0.5, 3.0);
+    std::vector<Point2D> pts;
+    for (int i = 0; i < 40; ++i) {
+        double a = ang_dist(rng), rr = rad_dist(rng);
+        pts.push_back({rr * std::cos(a), rr * std::sin(a) * 0.4});  // squashed ellipse-ish cloud
+    }
+
+    auto r = min_bounding_rect(pts);
+
+    // Brute-force scan of candidate orientations; the calipers result must be at least as
+    // good (smaller or equal area) as every sampled orientation's axis-aligned bbox area.
+    double brute_min_area = std::numeric_limits<double>::infinity();
+    const int kSteps = 4000;
+    for (int i = 0; i < kSteps; ++i) {
+        double theta = M_PI * static_cast<double>(i) / kSteps;
+        double c = std::cos(theta), s = std::sin(theta);
+        double minx =  std::numeric_limits<double>::infinity(), maxx = -minx;
+        double miny =  std::numeric_limits<double>::infinity(), maxy = -miny;
+        for (auto& p : pts) {
+            double rx =  c*p.x + s*p.y;
+            double ry = -s*p.x + c*p.y;
+            minx = std::min(minx, rx); maxx = std::max(maxx, rx);
+            miny = std::min(miny, ry); maxy = std::max(maxy, ry);
+        }
+        brute_min_area = std::min(brute_min_area, (maxx-minx) * (maxy-miny));
+    }
+
+    EXPECT_LE(r.area(), brute_min_area + 1e-6);
+}
+
+TEST(GeoMinBoundingRect, AreaMatchesWidthTimesHeight) {
+    MinBoundingRect r;
+    r.width = 3.5; r.height = 2.25;
+    EXPECT_DOUBLE_EQ(r.area(), 3.5 * 2.25);
+}
+
+TEST(GeoMinBoundingRect, CornersRoundTripReproducesDimensions) {
+    std::vector<Point2D> pts = {{-2,-1}, {2,-1}, {2,1}, {-2,1}, {0,0}};
+    auto r = min_bounding_rect(pts);
+    auto corners = r.corners();
+    ASSERT_EQ(corners.size(), 4u);
+
+    double c = std::cos(r.angle), s = std::sin(r.angle);
+    double minx =  std::numeric_limits<double>::infinity(), maxx = -minx;
+    double miny =  std::numeric_limits<double>::infinity(), maxy = -miny;
+    for (auto& corner : corners) {
+        double dx = corner.x - r.center.x, dy = corner.y - r.center.y;
+        double lx =  c*dx + s*dy;
+        double ly = -s*dx + c*dy;
+        minx = std::min(minx, lx); maxx = std::max(maxx, lx);
+        miny = std::min(miny, ly); maxy = std::max(maxy, ly);
+    }
+    EXPECT_NEAR(maxx - minx, r.width, 1e-9);
+    EXPECT_NEAR(maxy - miny, r.height, 1e-9);
+}
+
+TEST(GeoMinBoundingRect, ZeroPointsIsSensible) {
+    std::vector<Point2D> pts;
+    auto r = min_bounding_rect(pts);
+    EXPECT_NEAR(r.width, 0.0, 1e-12);
+    EXPECT_NEAR(r.height, 0.0, 1e-12);
+    EXPECT_NEAR(r.area(), 0.0, 1e-12);
+}
+
+TEST(GeoMinBoundingRect, OnePointIsSensible) {
+    std::vector<Point2D> pts = {{3, 5}};
+    auto r = min_bounding_rect(pts);
+    EXPECT_NEAR(r.width, 0.0, 1e-12);
+    EXPECT_NEAR(r.height, 0.0, 1e-12);
+    EXPECT_NEAR(r.center.x, 3.0, 1e-12);
+    EXPECT_NEAR(r.center.y, 5.0, 1e-12);
+}
+
+TEST(GeoMinBoundingRect, TwoPointsFallsBackToAABB) {
+    std::vector<Point2D> pts = {{0, 0}, {4, 3}};
+    auto r = min_bounding_rect(pts);
+    // Documented fallback: axis-aligned bbox of the raw points.
+    EXPECT_NEAR(r.width, 4.0, 1e-12);
+    EXPECT_NEAR(r.height, 3.0, 1e-12);
+    EXPECT_NEAR(r.center.x, 2.0, 1e-12);
+    EXPECT_NEAR(r.center.y, 1.5, 1e-12);
+}
+
+TEST(GeoMinBoundingRect, ThreeCollinearPointsNoCrash) {
+    std::vector<Point2D> pts = {{0,0}, {1,0}, {2,0}};
+    auto r = min_bounding_rect(pts);
+    // Degenerate hull (<3 verts) triggers the axis-aligned bbox fallback.
+    EXPECT_NEAR(r.width, 2.0, 1e-9);
+    EXPECT_NEAR(r.height, 0.0, 1e-9);
+    EXPECT_GE(r.area(), 0.0);
+}
+
+TEST(GeoMinBoundingRect, AllIdenticalPointsNoCrash) {
+    std::vector<Point2D> pts = {{2,2}, {2,2}, {2,2}, {2,2}};
+    auto r = min_bounding_rect(pts);
+    EXPECT_NEAR(r.width, 0.0, 1e-12);
+    EXPECT_NEAR(r.height, 0.0, 1e-12);
+}
+
+TEST(GeoMinBoundingRect, ContainsAllPointsRotatedCluster) {
+    const double rot = 17.0 * M_PI / 180.0;
+    double c = std::cos(rot), s = std::sin(rot);
+    std::vector<Point2D> base = {{-3,-1}, {3,-1}, {3,1}, {-3,1}, {1,0.5}, {-1,-0.7}, {0,0}};
+    std::vector<Point2D> pts;
+    for (auto& p : base) pts.push_back({c*p.x - s*p.y, s*p.x + c*p.y});
+
+    auto r = min_bounding_rect(pts);
+    expect_rect_contains_all(r, pts);
+}
+
+TEST(GeoMinBoundingRect, ContainsAllPointsScatteredCloud) {
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<double> d(-5.0, 5.0);
+    std::vector<Point2D> pts;
+    for (int i = 0; i < 30; ++i) pts.push_back({d(rng), d(rng)});
+
+    auto r = min_bounding_rect(pts);
+    expect_rect_contains_all(r, pts, 1e-7);
+}
+
+TEST(GeoMinBoundingRect, ContainsAllPointsRegularHexagon) {
+    std::vector<Point2D> pts;
+    for (int i = 0; i < 6; ++i) {
+        double a = i * M_PI / 3.0;
+        pts.push_back({std::cos(a), std::sin(a)});
+    }
+    auto r = min_bounding_rect(pts);
+    expect_rect_contains_all(r, pts);
+}
+
+TEST(GeoMinBoundingRect, CornersFormARectangle) {
+    std::vector<Point2D> pts = {{-2,-1}, {2,-1}, {2,1}, {-2,1}, {0.3, 0.1}};
+    auto r = min_bounding_rect(pts);
+    auto k = r.corners();
+
+    double side01 = dist(k[0], k[1]);
+    double side12 = dist(k[1], k[2]);
+    double side23 = dist(k[2], k[3]);
+    double side30 = dist(k[3], k[0]);
+    EXPECT_NEAR(side01, side23, 1e-9);   // opposite sides equal
+    EXPECT_NEAR(side12, side30, 1e-9);
+    EXPECT_NEAR(side01, r.width, 1e-9);
+    EXPECT_NEAR(side12, r.height, 1e-9);
+
+    double diag02 = dist(k[0], k[2]);
+    double diag13 = dist(k[1], k[3]);
+    EXPECT_NEAR(diag02, diag13, 1e-9);   // diagonals equal length (rectangle property)
 }
