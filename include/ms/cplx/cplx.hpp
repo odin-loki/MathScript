@@ -89,6 +89,29 @@ std::vector<C> laurent_coeffs(CFunc f, C z0, double r,
 // --- Complex integration (Gaussian quadrature on [a,b] parameterised path) ---
 C line_integral(CFunc f, C a, C b, int n_pts = 50);
 
+/// Cauchy principal value of a real definite integral with a simple pole:
+///   PV ∫[a,b] f(x)/(x-c) dx
+/// where the pole at x=c lies strictly inside (a,b). The caller supplies only
+/// the numerator f; the singular factor 1/(x-c) is applied internally.
+///
+/// Algorithm: decompose f(x)/(x-c) = f(c)/(x-c) + (f(x)-f(c))/(x-c). The
+/// principal value of the singular term is evaluated analytically in the
+/// symmetric-exclusion limit as f(c)*ln((b-c)/(c-a)). The regular remainder
+/// (f(x)-f(c))/(x-c) has a removable singularity at x=c and is integrated
+/// numerically over [a,b] with composite Simpson's rule (n_pts subdivisions).
+/// Two resolutions (n_pts and 2*n_pts) are compared for consistency.
+///
+/// @param f numerator function (RealFunc = std::function<double(double)>)
+/// @param a lower limit of integration
+/// @param c location of the simple pole (must be in (a,b) for a true PV)
+/// @param b upper limit of integration
+/// @param n_pts Simpson subdivisions on each side of the pole (forced even, >= 2)
+/// @return the principal-value estimate; if c is not strictly inside (a,b) the
+///   integrand has no singularity in [a,b] and an ordinary Simpson integral of
+///   f(x)/(x-c) over [a,b] is returned instead (well-defined finite answer).
+/// @note No exceptions are thrown; if a >= b, returns 0.0.
+double cauchy_principal_value(RealFunc f, double a, double c, double b, int n_pts = 200);
+
 // --- Power series: sum coefficients[k] * (z-z0)^k ---
 C power_series_eval(const std::vector<C>& coeffs, C z0, C z);
 
