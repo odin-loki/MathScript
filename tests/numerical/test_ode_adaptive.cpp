@@ -224,6 +224,81 @@ TEST(OdeRK2, BetterThanEuler) {
 }
 
 // -----------------------------------------------------------------------
+// Implicit trapezoidal (Crank-Nicolson)
+// -----------------------------------------------------------------------
+TEST(OdeTrapezoidal, ExponentialDecay_MatchesExact) {
+    auto r = ms::ode_trapezoidal(decay, 0.0, 1.0, 1.0, 200);
+    EXPECT_NEAR(r.y.back(), decay_exact(1.0, 1.0), 1e-5);
+}
+
+TEST(OdeTrapezoidal, BetterThanEuler) {
+    auto rt = ms::ode_trapezoidal(decay, 0.0, 1.0, 1.0, 50);
+    auto re = ms::ode_euler(decay, 0.0, 1.0, 1.0, 50);
+    const double exact = decay_exact(1.0, 1.0);
+    EXPECT_LT(std::abs(rt.y.back() - exact),
+              std::abs(re.y.back() - exact));
+}
+
+TEST(OdeTrapezoidal, ZeroSteps_Empty) {
+    auto r = ms::ode_trapezoidal(decay, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(r.t.empty());
+    EXPECT_TRUE(r.y.empty());
+}
+
+TEST(OdeTrapezoidal, NegativeSteps_Empty) {
+    auto r = ms::ode_trapezoidal(decay, 0.0, 1.0, 1.0, -5);
+    EXPECT_TRUE(r.t.empty());
+    EXPECT_TRUE(r.y.empty());
+}
+
+TEST(OdeTrapezoidal, SizeCheck) {
+    auto r = ms::ode_trapezoidal(decay, 0.0, 2.0, 1.0, 100);
+    EXPECT_EQ(r.t.size(), 101u);
+    EXPECT_EQ(r.y.size(), 101u);
+}
+
+TEST(OdeTrapezoidal, FirstPointIsIC) {
+    auto r = ms::ode_trapezoidal(decay, 0.0, 1.0, 2.5, 50);
+    ASSERT_FALSE(r.t.empty());
+    EXPECT_NEAR(r.t.front(), 0.0, 1e-14);
+    EXPECT_NEAR(r.y.front(), 2.5, 1e-14);
+}
+
+TEST(OdeTrapezoidal, LastTimeIsTEnd) {
+    auto r = ms::ode_trapezoidal(decay, 0.0, 3.0, 1.0, 60);
+    ASSERT_FALSE(r.t.empty());
+    EXPECT_NEAR(r.t.back(), 3.0, 1e-14);
+}
+
+TEST(OdeTrapezoidal, ConstantSolution) {
+    const auto f = [](double /*t*/, double /*y*/) { return 0.0; };
+    auto r = ms::ode_trapezoidal(f, 0.0, 5.0, 7.0, 100);
+    for (double y : r.y) {
+        EXPECT_NEAR(y, 7.0, 1e-12);
+    }
+}
+
+TEST(OdeTrapezoidal, ExponentialGrowth) {
+    auto r = ms::ode_trapezoidal(growth, 0.0, 1.0, 1.0, 200);
+    EXPECT_NEAR(r.y.back(), std::exp(1.0), 1e-5);
+}
+
+TEST(OdeTrapezoidal, RefinementImprovesAccuracy) {
+    auto coarse = ms::ode_trapezoidal(decay, 0.0, 1.0, 1.0, 20);
+    auto fine = ms::ode_trapezoidal(decay, 0.0, 1.0, 1.0, 200);
+    const double exact = decay_exact(1.0, 1.0);
+    EXPECT_LT(std::abs(fine.y.back() - exact),
+              std::abs(coarse.y.back() - exact));
+}
+
+TEST(OdeTrapezoidal, TimeVectorMonotone) {
+    auto r = ms::ode_trapezoidal(decay, 0.0, 2.0, 1.0, 50);
+    for (size_t i = 1; i < r.t.size(); ++i) {
+        EXPECT_GT(r.t[i], r.t[i - 1]);
+    }
+}
+
+// -----------------------------------------------------------------------
 // Adams-Bashforth 2-step
 // -----------------------------------------------------------------------
 TEST(OdeAdamsBashforth2, DecayCorrect) {

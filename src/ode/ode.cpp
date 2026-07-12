@@ -697,6 +697,44 @@ OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
     return result;
 }
 
+OdeResult ode_trapezoidal(OdeFunc f, double t0, double t1, double y0, int steps) {
+    OdeResult result;
+    if (steps <= 0) {
+        return result;
+    }
+    const size_t nsteps = static_cast<size_t>(steps);
+    const double h = (t1 - t0) / static_cast<double>(nsteps);
+    result.t.reserve(nsteps + 1);
+    result.y.reserve(nsteps + 1);
+    double t = t0;
+    double y = y0;
+    for (size_t i = 0; i <= nsteps; ++i) {
+        result.t.push_back(t);
+        result.y.push_back(y);
+        if (i < nsteps) {
+            const double t_next = t + h;
+            const double f_curr = f(t, y);
+            double y_next = y + h * f_curr;
+            for (int iter = 0; iter < kNewtonMaxIter; ++iter) {
+                const double f_next = f(t_next, y_next);
+                const double g = y_next - y - 0.5 * h * (f_curr + f_next);
+                if (std::abs(g) < kNewtonTol) {
+                    break;
+                }
+                const double dfdy = central_df(f, t_next, y_next);
+                const double dg = 1.0 - 0.5 * h * dfdy;
+                if (std::abs(dg) < 1e-14) {
+                    break;
+                }
+                y_next -= g / dg;
+            }
+            y = y_next;
+            t = t_next;
+        }
+    }
+    return result;
+}
+
 OdeResult ode_bdf2(OdeFunc f, double t0, double y0, double t_end, size_t steps) {
     OdeResult result;
     if (steps == 0) {

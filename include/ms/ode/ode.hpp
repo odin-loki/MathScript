@@ -25,6 +25,13 @@ OdeResult ode_rk4(OdeFunc f, double t0, double y0, double t_end, size_t steps);
 OdeResult ode_midpoint(OdeFunc f, double t0, double y0, double t_end, size_t steps);
 OdeResult ode_rk2(OdeFunc f, double t0, double y0, double t_end, size_t steps);
 
+/// Implicit trapezoidal rule (Crank-Nicolson) fixed-step scalar IVP solver.
+/// y_{n+1} = y_n + (h/2) * (f(t_n, y_n) + f(t_{n+1}, y_{n+1})); each step
+/// is solved with Newton iteration (same central-difference df/dy as
+/// ode_backward_euler). Second-order accurate and A-stable.
+/// @param steps Number of fixed steps. steps <= 0 returns an empty result.
+OdeResult ode_trapezoidal(OdeFunc f, double t0, double t1, double y0, int steps);
+
 // Adaptive scalar solvers (Dormand-Prince RK45)
 OdeResult ode_rk45(OdeFunc f, double t0, double y0, double t_end,
                    double rtol = 1e-6, double atol = 1e-9);
