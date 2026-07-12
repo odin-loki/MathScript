@@ -1,4 +1,5 @@
 #include "ms/compress/compress.hpp"
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <map>
@@ -366,4 +367,146 @@ TEST(CompressBzip2Like, PrimaryIndexHeader) {
     EXPECT_GE(pi, 0);
     EXPECT_LT(pi, (int)data.size()+1);
     EXPECT_EQ(bzip2_like_decompress(compressed, pi), data);
+}
+
+// ---- Haar Wavelet (lossy) ----
+
+namespace {
+
+// Slowly-varying synthetic ramp/sine, byte-valued, smooth enough that
+// small-to-moderate detail coefficients dominate — exactly the regime
+// where Haar thresholding is expected to zero out many coefficients.
+Bytes make_smooth_ramp(size_t n) {
+    Bytes data; data.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        double v = 128.0 + 40.0 * std::sin(static_cast<double>(i) * 0.05);
+        data.push_back(static_cast<uint8_t>(v));
+    }
+    return data;
+}
+
+} // namespace
+
+TEST(CompressWavelet, EmptyRoundtripLossless) {
+    Bytes data;
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_TRUE(compressed.empty());
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, SingleByteRoundtripLossless) {
+    Bytes data = {0x7F};
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, TwoByteRoundtripLossless) {
+    Bytes data = {10, 250};
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, OddLengthRoundtripLossless) {
+    Bytes data = {1, 2, 3, 4, 5};
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, EvenLengthRoundtripLossless) {
+    Bytes data = {1, 2, 3, 4, 5, 6, 7, 8};
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, AllBytesRoundtripLossless) {
+    Bytes data;
+    for (int i = 0; i < 256; ++i) data.push_back(static_cast<uint8_t>(i));
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, SmoothRampRoundtripLossless) {
+    Bytes data = make_smooth_ramp(257);  // odd length on purpose
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, ConstantSignalRoundtripLossless) {
+    Bytes data(129, 0x42);  // odd length, all-equal bytes -> all diffs are 0
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, MonotonicSizeReductionWithThreshold) {
+    Bytes data = make_smooth_ramp(512);
+    size_t prev_size = wavelet_compress(data, 0.0).size();
+    for (double thr : {2.0, 5.0, 10.0, 20.0, 40.0}) {
+        size_t sz = wavelet_compress(data, thr).size();
+        EXPECT_LE(sz, prev_size)
+            << "compressed size should not increase as threshold grows (thr=" << thr << ")";
+        prev_size = sz;
+    }
+    // A clearly nonzero threshold should strictly beat threshold=0 on a smooth signal.
+    size_t size_zero = wavelet_compress(data, 0.0).size();
+    size_t size_large = wavelet_compress(data, 40.0).size();
+    EXPECT_LT(size_large, size_zero);
+}
+
+TEST(CompressWavelet, LossyReconstructionCloseToOriginal) {
+    Bytes data = make_smooth_ramp(512);
+    for (double threshold : {1.0, 4.0, 8.0, 16.0}) {
+        auto compressed = wavelet_compress(data, threshold);
+        auto recon = wavelet_decompress(compressed);
+        ASSERT_EQ(recon.size(), data.size());
+        double max_abs_error = 0.0;
+        for (size_t i = 0; i < data.size(); ++i) {
+            double err = std::abs(static_cast<double>(data[i]) - static_cast<double>(recon[i]));
+            max_abs_error = std::max(max_abs_error, err);
+        }
+        // Any pair whose detail coefficient survives thresholding decodes
+        // exactly; a zeroed coefficient contributes at most |diff| < threshold
+        // of per-element error. So the aggregate error is bounded by threshold.
+        EXPECT_LE(max_abs_error, threshold)
+            << "reconstruction error should stay within the threshold bound";
+    }
+}
+
+TEST(CompressWavelet, LossyIsSmallerThanLosslessOnSmoothRamp) {
+    Bytes data = make_smooth_ramp(512);
+    size_t lossless_size = wavelet_compress(data, 0.0).size();
+    size_t lossy_size = wavelet_compress(data, 12.0).size();
+    EXPECT_LT(lossy_size, lossless_size);
+    auto recon = wavelet_decompress(wavelet_compress(data, 12.0));
+    ASSERT_EQ(recon.size(), data.size());
+    EXPECT_NE(recon, data);  // genuinely lossy at this threshold
+}
+
+TEST(CompressWavelet, ZeroThresholdNeverAltersData) {
+    // Threshold exactly 0.0 must never zero a coefficient (strict '<' comparison),
+    // so this is lossless even for data with lots of variation.
+    Bytes data;
+    uint8_t x = 3;
+    for (int i = 0; i < 300; ++i) { x = static_cast<uint8_t>(x * 37 + 11); data.push_back(x); }
+    auto compressed = wavelet_compress(data, 0.0);
+    EXPECT_EQ(wavelet_decompress(compressed), data);
+}
+
+TEST(CompressWavelet, NegativeThresholdTreatedAsZero) {
+    Bytes data = make_smooth_ramp(64);
+    auto compressed_neg = wavelet_compress(data, -5.0);
+    auto compressed_zero = wavelet_compress(data, 0.0);
+    EXPECT_EQ(compressed_neg, compressed_zero);
+    EXPECT_EQ(wavelet_decompress(compressed_neg), data);
+}
+
+TEST(CompressWavelet, EmptyInputWithNonzeroThreshold) {
+    Bytes data;
+    auto compressed = wavelet_compress(data, 25.0);
+    EXPECT_TRUE(compressed.empty());
+    EXPECT_TRUE(wavelet_decompress(compressed).empty());
+}
+
+TEST(CompressWavelet, MalformedShortInputDecodesToEmpty) {
+    Bytes garbage = {1, 2, 3};  // shorter than the 6-byte minimum header
+    EXPECT_TRUE(wavelet_decompress(garbage).empty());
 }
