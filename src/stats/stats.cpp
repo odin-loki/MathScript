@@ -2,6 +2,7 @@
 #include "ms/prob/prob.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <numeric>
@@ -1207,6 +1208,44 @@ double variance_inflation_factor(const std::vector<std::vector<double>>& X, size
 
 double vif(const std::vector<std::vector<double>>& X, size_t j) {
     return variance_inflation_factor(X, j);
+}
+
+namespace {
+
+double kde_kernel(double u, const char* kernel) {
+    if (std::strcmp(kernel, "epanechnikov") == 0) {
+        if (std::abs(u) > 1.0) {
+            return 0.0;
+        }
+        return 0.75 * (1.0 - u * u);
+    }
+    static constexpr double inv_sqrt_2pi = 0.3989422804014327;
+    return inv_sqrt_2pi * std::exp(-0.5 * u * u);
+}
+
+} // namespace
+
+std::vector<double> kde(std::span<const double> samples,
+                        std::span<const double> grid,
+                        double bandwidth,
+                        const char* kernel) {
+    if (samples.empty() || bandwidth <= 0.0) {
+        return {};
+    }
+    if (grid.empty()) {
+        return {};
+    }
+    const double inv_nh = 1.0 / (static_cast<double>(samples.size()) * bandwidth);
+    std::vector<double> result(grid.size(), 0.0);
+    for (size_t gi = 0; gi < grid.size(); ++gi) {
+        const double x = grid[gi];
+        double sum = 0.0;
+        for (double xi : samples) {
+            sum += kde_kernel((x - xi) / bandwidth, kernel);
+        }
+        result[gi] = inv_nh * sum;
+    }
+    return result;
 }
 
 std::vector<double> acf(std::span<const double> x, int max_lag) {

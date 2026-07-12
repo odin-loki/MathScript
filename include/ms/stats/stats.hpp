@@ -274,6 +274,14 @@ std::vector<double> multiple_regression(
 double variance_inflation_factor(const std::vector<std::vector<double>>& X, size_t j);
 double vif(const std::vector<std::vector<double>>& X, size_t j);
 
+// 1D kernel density estimation: evaluates a KDE of `samples` at each point in `grid`
+// using bandwidth `h` and the named `kernel` ("gaussian" or "epanechnikov"). Empty
+// `samples` or bandwidth <= 0 yields an empty result.
+std::vector<double> kde(std::span<const double> samples,
+                        std::span<const double> grid,
+                        double bandwidth,
+                        const char* kernel = "gaussian");
+
 // --- Time series ---
 std::vector<double> acf(std::span<const double> x, int max_lag);
 std::vector<double> pacf(std::span<const double> x, int max_lag);
