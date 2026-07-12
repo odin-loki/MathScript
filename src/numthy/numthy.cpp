@@ -707,6 +707,49 @@ Result<std::pair<uint64_t,uint64_t>> cornacchia(uint64_t d, uint64_t p) {
     return std::make_pair(b, c);
 }
 
+bool is_carmichael(uint64_t n) {
+    if (n < 3) return false;
+    if (isprime(n)) return false;
+    auto fe = factor_exp(n);
+    if (fe.size() < 3) return false; // Carmichael numbers have >= 3 distinct prime factors
+    for (auto& [p, e] : fe) {
+        if (e != 1) return false; // not squarefree
+        if ((n - 1) % (p - 1) != 0) return false; // Korselt's criterion
+    }
+    return true;
+}
+
+namespace {
+struct Mat2 { int64_t a, b, c, d; }; // [[a,b],[c,d]]
+
+Mat2 mat2_mul(const Mat2& x, const Mat2& y) {
+    return {x.a * y.a + x.b * y.c, x.a * y.b + x.b * y.d,
+            x.c * y.a + x.d * y.c, x.c * y.b + x.d * y.d};
+}
+
+// M^k for M = [[P,-Q],[1,0]] via binary exponentiation, analogous to mod_pow's approach.
+Mat2 mat2_pow(int64_t P, int64_t Q, int64_t k) {
+    Mat2 result{1, 0, 0, 1}; // identity
+    Mat2 base{P, -Q, 1, 0};
+    while (k > 0) {
+        if (k & 1) result = mat2_mul(result, base);
+        base = mat2_mul(base, base);
+        k >>= 1;
+    }
+    return result;
+}
+} // namespace
+
+std::pair<int64_t, int64_t> lucas_sequence(int64_t k, int64_t P, int64_t Q) {
+    if (k < 0) k = 0; // negative indices need division; clamp defensively (documented in header)
+    // [U_{k+1}; U_k] = M^k * [1; 0], M = [[P,-Q],[1,0]]
+    Mat2 mk = mat2_pow(P, Q, k);
+    int64_t u_next = mk.a; // U_{k+1}
+    int64_t u_k = mk.c;    // U_k
+    int64_t v_k = 2 * u_next - P * u_k; // V_k = 2*U_{k+1} - P*U_k
+    return {u_k, v_k};
+}
+
 uint64_t partition(uint32_t n) {
     // Dynamic programming via Euler's pentagonal theorem
     std::vector<uint64_t> p(n + 1, 0);
