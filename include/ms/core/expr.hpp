@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "ms/core/matrix.hpp"
 #include "ms/error/error_types.hpp"
 
@@ -56,13 +58,39 @@ public:
     auto   eval_at(size_t r, size_t c) const { return m_.eval_at(r, c) * s_; }
 };
 
+// Multiply expression (matrix-matrix)
+template<typename L, typename R>
+class MatMul : public MatExpr<MatMul<L, R>> {
+    const MatExpr<L>& l_;
+    const MatExpr<R>& r_;
+public:
+    MatMul(const MatExpr<L>& l, const MatExpr<R>& r) : l_(l.self()), r_(r.self()) {
+        if (l_.cols() != r_.rows())
+            throw DimensionMismatch(l_.rows(), l_.cols(), r_.rows(), r_.cols());
+    }
+    size_t rows_impl() const { return l_.rows(); }
+    size_t cols_impl() const { return r_.cols(); }
+    auto eval_at(size_t r, size_t c) const {
+        auto sum = l_.eval_at(r, 0) * r_.eval_at(0, c);
+        for (size_t k = 1; k < l_.cols(); ++k)
+            sum += l_.eval_at(r, k) * r_.eval_at(k, c);
+        return sum;
+    }
+};
+
 // Operators
 template<typename L, typename R>
 auto operator+(const MatExpr<L>& l, const MatExpr<R>& r) {
     return MatAdd<L, R>(l, r);
 }
 
+template<typename L, typename R>
+auto operator*(const MatExpr<L>& l, const MatExpr<R>& r) {
+    return MatMul<L, R>(l, r);
+}
+
 template<typename M, typename S>
+    requires std::is_arithmetic_v<S>
 auto operator*(const MatExpr<M>& m, S s) {
     return MatScale<M, S>(m, s);
 }
