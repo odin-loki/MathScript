@@ -2,6 +2,7 @@
 #include "ms/error/error_types.hpp"
 #include <complex>
 #include <functional>
+#include <limits>
 #include <vector>
 
 namespace ms {
@@ -41,6 +42,15 @@ struct BodeData {
 struct StepData {
     std::vector<double> t;
     std::vector<double> y;
+};
+
+// --- Step-response characteristics ---
+struct StepInfo {
+    double rise_time;       // 10%→90% of step size (s); NaN if undefined
+    double settling_time;   // time to enter ±tol band and stay (s); +inf if never
+    double overshoot_pct;   // peak above final value, percent of |final| (0 if none)
+    double peak_time;       // time of peak response (s)
+    double peak_value;      // peak response value
 };
 
 // --- Stability margins ---
@@ -101,6 +111,41 @@ Margins  margin(const TransferFunction& sys);
 // ---- Time response ----
 StepData step_response   (const TransferFunction& sys, double t_end = 10.0, int n_pts = 500);
 StepData impulse_response(const TransferFunction& sys, double t_end = 10.0, int n_pts = 500);
+
+/// @brief Extract standard step-response metrics from a simulated trace.
+///
+/// Rise time is the elapsed time between the first crossings of 10% and 90%
+/// of the step size (y_final − y_initial), with linear interpolation between
+/// samples.  Settling time is the earliest time after which the response
+/// remains within ±`settling_tol_pct`% of the final value; if the trace never
+/// settles, `settling_time` is +∞.  Overshoot is
+/// 100·(y_peak − y_final)/|y_final| when the peak exceeds the final value,
+/// otherwise 0.
+///
+/// @param data              Output of step_response() (or compatible trace).
+/// @param settling_tol_pct  Settling-band half-width as a percent of |y_final|
+///                          (default 2%, the usual control-engineering value).
+/// @return StepInfo with rise/settling time, overshoot, and peak data.
+/// @note Final value is taken as the mean of the last 5% of samples (at least
+///       one point) so that traces truncated before full settling still yield a
+///       consistent steady-state estimate.
+/// @note Degenerate input (empty trace, mismatched lengths, or |step size| <
+///       1e-12): returns zeros for overshoot/peak fields and NaN for
+///       rise_time; settling_time is 0 when already flat, otherwise +∞.
+StepInfo step_info(const StepData& data, double settling_tol_pct = 2.0);
+
+/// @brief Same as step_info(StepData) but with an explicit final value.
+///
+/// @param t                 Time samples (monotone non-decreasing).
+/// @param y                 Response samples, same length as @p t.
+/// @param final_value       Steady-state (final) response value.
+/// @param settling_tol_pct  Settling tolerance in percent (default 2%).
+/// @return StepInfo; see step_info(StepData) for metric definitions and edge
+///         cases.
+StepInfo step_info(const std::vector<double>& t,
+                   const std::vector<double>& y,
+                   double final_value,
+                   double settling_tol_pct = 2.0);
 
 // ---- Lyapunov equations ----
 // Solve A*X + X*A^T + Q = 0 (continuous Lyapunov)

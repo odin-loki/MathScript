@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cmath>
 #include <complex>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #ifndef M_PI
@@ -729,6 +730,125 @@ StepData impulse_response(const TransferFunction& sys, double t_end, int n_pts) 
         for (int j = 0; j < n; ++j) x[j] += dt * xdot[j];
     }
     return data;
+}
+
+// ---- Step-response metrics ----
+
+static double step_info_tail_mean(const std::vector<double>& y) {
+    const size_t n = y.size();
+    if (n == 0) return 0.0;
+    const size_t tail = std::max<size_t>(1, n / 20);  // last 5%
+    double sum = 0.0;
+    for (size_t i = n - tail; i < n; ++i) sum += y[i];
+    return sum / static_cast<double>(tail);
+}
+
+// Linear interpolation of crossing time: find first index where y crosses
+// `threshold` in the direction given by `rising` (true: y >= thresh).
+static double interp_cross_time(const std::vector<double>& t,
+                                const std::vector<double>& y,
+                                size_t start_idx,
+                                double threshold,
+                                bool rising) {
+    const size_t n = y.size();
+    for (size_t i = start_idx + 1; i < n; ++i) {
+        const bool crossed = rising
+            ? (y[i - 1] < threshold && y[i] >= threshold)
+            : (y[i - 1] > threshold && y[i] <= threshold);
+        if (!crossed) continue;
+        const double dy = y[i] - y[i - 1];
+        if (std::abs(dy) < 1e-30) return t[i];
+        const double frac = (threshold - y[i - 1]) / dy;
+        return t[i - 1] + frac * (t[i] - t[i - 1]);
+    }
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
+static StepInfo step_info_impl(const std::vector<double>& t,
+                               const std::vector<double>& y,
+                               double final_value,
+                               double settling_tol_pct) {
+    StepInfo info{};
+    info.rise_time = std::numeric_limits<double>::quiet_NaN();
+    info.settling_time = std::numeric_limits<double>::infinity();
+    info.overshoot_pct = 0.0;
+    info.peak_time = 0.0;
+    info.peak_value = 0.0;
+
+    if (t.empty() || y.empty() || t.size() != y.size()) return info;
+
+    const double y0 = y.front();
+    const double yf = final_value;
+    const double step = yf - y0;
+    const double abs_step = std::abs(step);
+    const double abs_yf = std::abs(yf);
+
+    info.peak_value = y[0];
+    info.peak_time = t[0];
+    for (size_t i = 1; i < y.size(); ++i) {
+        if (y[i] > info.peak_value) {
+            info.peak_value = y[i];
+            info.peak_time = t[i];
+        }
+    }
+
+    if (abs_step < 1e-12) {
+        info.rise_time = std::numeric_limits<double>::quiet_NaN();
+        info.settling_time = 0.0;
+        info.overshoot_pct = 0.0;
+        info.peak_value = y0;
+        info.peak_time = t.front();
+        return info;
+    }
+
+    const bool rising = step > 0.0;
+    const double lo = y0 + 0.1 * step;
+    const double hi = y0 + 0.9 * step;
+
+    const double t_lo = interp_cross_time(t, y, 0, lo, rising);
+    size_t hi_start = 0;
+    if (std::isfinite(t_lo)) {
+        for (size_t i = 0; i + 1 < y.size(); ++i) {
+            if (t[i] <= t_lo && t[i + 1] >= t_lo) {
+                hi_start = i;
+                break;
+            }
+        }
+    }
+    const double t_hi = interp_cross_time(t, y, hi_start, hi, rising);
+    if (std::isfinite(t_lo) && std::isfinite(t_hi) && t_hi >= t_lo)
+        info.rise_time = t_hi - t_lo;
+
+    if (info.peak_value > yf && abs_yf > 1e-12)
+        info.overshoot_pct = 100.0 * (info.peak_value - yf) / abs_yf;
+
+    const double tol = (settling_tol_pct / 100.0) * (abs_yf > 1e-12 ? abs_yf : abs_step);
+    int last_outside = -1;
+    for (size_t i = 0; i < y.size(); ++i) {
+        if (std::abs(y[i] - yf) > tol)
+            last_outside = static_cast<int>(i);
+    }
+
+    if (last_outside < 0) {
+        info.settling_time = t.front();
+    } else if (static_cast<size_t>(last_outside) + 1 >= y.size()) {
+        info.settling_time = std::numeric_limits<double>::infinity();
+    } else {
+        info.settling_time = t[static_cast<size_t>(last_outside) + 1];
+    }
+
+    return info;
+}
+
+StepInfo step_info(const StepData& data, double settling_tol_pct) {
+    return step_info_impl(data.t, data.y, step_info_tail_mean(data.y), settling_tol_pct);
+}
+
+StepInfo step_info(const std::vector<double>& t,
+                   const std::vector<double>& y,
+                   double final_value,
+                   double settling_tol_pct) {
+    return step_info_impl(t, y, final_value, settling_tol_pct);
 }
 
 // ---- Gaussian elimination helper for augmented matrix ----

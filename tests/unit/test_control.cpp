@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace ms::control;
 
@@ -876,4 +879,116 @@ TEST(ControlKalman, PosteriorCovarianceRemainsSymmetric) {
     auto pred = kalman_predict(state, A, Q);
     auto post = kalman_update(pred, {1.2}, H, R);
     EXPECT_NEAR(post.P[0][1], post.P[1][0], 1e-9);
+}
+
+// ---- step_info ----
+namespace {
+
+// Standard second-order step response y(t) for H(s)=ω_n²/(s²+2ζω_n s+ω_n²).
+double second_order_step(double t, double wn, double zeta) {
+    if (zeta >= 1.0 - 1e-12) {
+        // Critically/overdamped closed form not needed for underdamped tests;
+        // use library simulator for those cases.
+        return 1.0 - std::exp(-wn * t) * (1.0 + wn * t);
+    }
+    const double wd = wn * std::sqrt(1.0 - zeta * zeta);
+    const double phi = std::atan2(std::sqrt(1.0 - zeta * zeta), zeta);
+    return 1.0 - (std::exp(-zeta * wn * t) / std::sqrt(1.0 - zeta * zeta))
+                     * std::sin(wd * t + phi);
+}
+
+} // namespace
+
+TEST(ControlStepInfo, UnderdampedSecondOrderAnalytic) {
+    // ω_n = 1, ζ = 0.5 — textbook overshoot and peak time.
+    const double wn = 1.0, zeta = 0.5;
+    const double Mp = std::exp(-M_PI * zeta / std::sqrt(1.0 - zeta * zeta)) * 100.0;
+    const double tp = M_PI / (wn * std::sqrt(1.0 - zeta * zeta));
+
+    const int n_pts = 4000;
+    const double t_end = 20.0;
+    std::vector<double> t(n_pts), y(n_pts);
+    for (int i = 0; i < n_pts; ++i) {
+        t[i] = t_end * i / (n_pts - 1);
+        y[i] = second_order_step(t[i], wn, zeta);
+    }
+
+    auto info = step_info(t, y, 1.0);
+    EXPECT_NEAR(info.overshoot_pct, Mp, 0.5);
+    EXPECT_NEAR(info.peak_time, tp, 0.05);
+    EXPECT_NEAR(info.peak_value, 1.0 + Mp / 100.0, 0.01);
+    EXPECT_GT(info.rise_time, 0.0);
+    EXPECT_LT(info.rise_time, 3.0);
+    EXPECT_GT(info.settling_time, info.rise_time);
+    EXPECT_LT(info.settling_time, 12.0);
+}
+
+TEST(ControlStepInfo, CriticallyDampedNoOvershoot) {
+    // H(s) = 1/(s+1)² — monotonic, no overshoot.
+    auto sys = tf({1.0}, {1.0, 2.0, 1.0});
+    auto data = step_response(sys, 15.0, 3000);
+    auto info = step_info(data);
+    EXPECT_NEAR(info.overshoot_pct, 0.0, 0.1);
+    EXPECT_TRUE(std::isfinite(info.peak_value));
+    EXPECT_LE(info.peak_value, 1.02);
+    EXPECT_GT(info.rise_time, 0.0);
+    EXPECT_LT(info.settling_time, 15.0);
+}
+
+TEST(ControlStepInfo, OverdampedNoOvershoot) {
+    // H(s) = 1/(s² + 4s + 1), ζ = 2, ω_n = 1 — overdamped, no overshoot.
+    auto sys = tf({1.0}, {1.0, 4.0, 1.0});
+    auto data = step_response(sys, 20.0, 3000);
+    auto info = step_info(data);
+    EXPECT_NEAR(info.overshoot_pct, 0.0, 0.1);
+    EXPECT_GT(info.rise_time, 0.0);
+    EXPECT_LT(info.rise_time, info.settling_time);
+}
+
+TEST(ControlStepInfo, FirstOrderRiseAndSettling) {
+    // H(s) = 1/(τs+1), τ = 1: rise(10–90%) = τ ln 9, settling(2%) = −τ ln 0.02.
+    const double tau = 1.0;
+    const double rise_expected = tau * std::log(9.0);
+    const double settle_expected = -tau * std::log(0.02);
+
+    auto sys = tf({1.0}, {tau, 1.0});
+    auto data = step_response(sys, 20.0, 4000);
+    auto info = step_info(data);
+    EXPECT_NEAR(info.overshoot_pct, 0.0, 0.05);
+    EXPECT_NEAR(info.rise_time, rise_expected, 0.08);
+    EXPECT_NEAR(info.settling_time, settle_expected, 0.15);
+    EXPECT_NEAR(info.peak_value, 1.0, 0.02);
+}
+
+TEST(ControlStepInfo, SimulatedStepResponseCrossCheck) {
+    // Underdamped plant simulated by library; metrics must be self-consistent.
+    auto sys = tf({1.0}, {1.0, 1.0, 1.0});  // ω_n=1, ζ=0.5
+    auto data = step_response(sys, 25.0, 5000);
+    auto info = step_info(data);
+    EXPECT_GT(info.rise_time, 0.0);
+    EXPECT_LT(info.rise_time, info.settling_time);
+    EXPECT_GT(info.overshoot_pct, 5.0);
+    EXPECT_LT(info.overshoot_pct, 25.0);
+    EXPECT_GE(info.peak_value, 1.0);
+    EXPECT_NEAR(info.peak_value, 1.0 + info.overshoot_pct / 100.0, 0.05);
+    EXPECT_GE(info.peak_time, 0.0);
+    EXPECT_LT(info.peak_time, info.settling_time);
+}
+
+TEST(ControlStepInfo, FlatResponseDegenerate) {
+    std::vector<double> t = {0.0, 1.0, 2.0, 3.0};
+    std::vector<double> y = {2.0, 2.0, 2.0, 2.0};
+    auto info = step_info(t, y, 2.0);
+    EXPECT_TRUE(std::isnan(info.rise_time));
+    EXPECT_NEAR(info.settling_time, 0.0, 1e-12);
+    EXPECT_NEAR(info.overshoot_pct, 0.0, 1e-12);
+    EXPECT_NEAR(info.peak_value, 2.0, 1e-12);
+}
+
+TEST(ControlStepInfo, EmptyTraceDoesNotCrash) {
+    StepData empty;
+    auto info = step_info(empty);
+    EXPECT_TRUE(std::isnan(info.rise_time));
+    EXPECT_TRUE(std::isinf(info.settling_time));
+    EXPECT_NEAR(info.overshoot_pct, 0.0, 1e-12);
 }
