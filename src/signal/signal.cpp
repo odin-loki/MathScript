@@ -705,34 +705,42 @@ struct Zpk {
     double k = 1.0;
 };
 
-std::vector<double> poly_from_roots(const std::vector<std::complex<double>>& roots) {
+std::vector<double> poly_mul_asc(const std::vector<double>& a, const std::vector<double>& b) {
+    return poly::poly_mul(a, b);
+}
+
+std::vector<double> poly_from_poles_zinv(const std::vector<std::complex<double>>& poles) {
     std::vector<double> poly{1.0};
-    std::vector<bool> used(roots.size(), false);
-    for (size_t i = 0; i < roots.size(); ++i) {
+    std::vector<bool> used(poles.size(), false);
+    for (size_t i = 0; i < poles.size(); ++i) {
         if (used[i]) {
             continue;
         }
-        const auto& root = roots[i];
-        if (std::abs(root.imag()) < 1e-12) {
-            const std::vector<double> factor{-root.real(), 1.0};
-            poly = poly::poly_mul(poly, factor);
+        const auto& pole = poles[i];
+        if (std::abs(pole.imag()) < 1e-12) {
+            const std::vector<double> factor{1.0, -pole.real()};
+            poly = poly_mul_asc(poly, factor);
             used[i] = true;
             continue;
         }
-        for (size_t j = i + 1; j < roots.size(); ++j) {
-            if (!used[j] && std::abs(roots[j] - std::conj(root)) < 1e-10) {
+        for (size_t j = i + 1; j < poles.size(); ++j) {
+            if (!used[j] && std::abs(poles[j] - std::conj(pole)) < 1e-10) {
                 const std::vector<double> factor{
-                    std::norm(root),
-                    -2.0 * root.real(),
                     1.0,
+                    -2.0 * pole.real(),
+                    std::norm(pole),
                 };
-                poly = poly::poly_mul(poly, factor);
+                poly = poly_mul_asc(poly, factor);
                 used[i] = used[j] = true;
                 break;
             }
         }
     }
     return poly;
+}
+
+std::vector<double> poly_from_zeros_zinv(const std::vector<std::complex<double>>& zeros) {
+    return poly_from_poles_zinv(zeros);
 }
 
 Zpk cheb1ap(int order, double rp_db) {
@@ -842,7 +850,8 @@ IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs, FilterType t
     }
 
     const double wn = cutoff / (fs / 2.0);
-    const double warped = 2.0 * fs * std::tan(M_PI * wn / 2.0);
+    // Match scipy.signal.iirfilter: prewarp normalized Wn, then bilinear with fs=2.
+    const double warped = 4.0 * std::tan(M_PI * wn / 2.0);
 
     Zpk sys = cheb1ap(order, rp_db);
     if (type == FilterType::Highpass) {
@@ -850,11 +859,11 @@ IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs, FilterType t
     } else {
         sys = lp2lp_zpk(sys, warped);
     }
-    sys = bilinear_zpk(sys, fs);
+    sys = bilinear_zpk(sys, 2.0);
 
     IirCoeffs coeffs;
-    coeffs.a = poly_from_roots(sys.p);
-    coeffs.b = poly_from_roots(sys.z);
+    coeffs.a = poly_from_poles_zinv(sys.p);
+    coeffs.b = poly_from_zeros_zinv(sys.z);
     if (std::abs(sys.k - 1.0) > 1e-15) {
         for (double& v : coeffs.b) {
             v *= sys.k;
