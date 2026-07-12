@@ -176,6 +176,50 @@ double alpha_ca(uint8_t rule, size_t steps, size_t width) {
     });
 }
 
+size_t hamming_distance(std::span<const uint8_t> a, std::span<const uint8_t> b) {
+    const size_t common = std::min(a.size(), b.size());
+    size_t distance = 0;
+    for (size_t i = 0; i < common; ++i) {
+        if (a[i] != b[i]) {
+            ++distance;
+        }
+    }
+    distance += (a.size() > b.size()) ? (a.size() - b.size()) : (b.size() - a.size());
+    return distance;
+}
+
+std::vector<size_t> divergence_trajectory(std::vector<uint8_t> config_a,
+                                           std::vector<uint8_t> config_b,
+                                           uint8_t rule,
+                                           int n_steps) {
+    std::vector<size_t> trajectory;
+    trajectory.reserve(static_cast<size_t>(n_steps > 0 ? n_steps : 0) + 1);
+    trajectory.push_back(hamming_distance(config_a, config_b));
+    for (int i = 0; i < n_steps; ++i) {
+        config_a = step(config_a, rule);
+        config_b = step(config_b, rule);
+        trajectory.push_back(hamming_distance(config_a, config_b));
+    }
+    return trajectory;
+}
+
+std::optional<size_t> settling_time(std::vector<uint8_t> config_a,
+                                     std::vector<uint8_t> config_b,
+                                     uint8_t rule,
+                                     int n_steps) {
+    if (hamming_distance(config_a, config_b) == 0) {
+        return 0;
+    }
+    for (int i = 1; i <= n_steps; ++i) {
+        config_a = step(config_a, rule);
+        config_b = step(config_b, rule);
+        if (hamming_distance(config_a, config_b) == 0) {
+            return static_cast<size_t>(i);
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace ca
 
 namespace lfsr {
