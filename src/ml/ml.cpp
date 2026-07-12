@@ -1094,6 +1094,119 @@ double GaussianMixture::score(const Mat& X) const {
     return ll/X.size();
 }
 
+// ========================== Isolation Forest ==========================
+
+double IsolationForest::avg_path_length(size_t n) {
+    if (n <= 1) return 0.0;
+    if (n == 2) return 1.0;
+    double h = 0.0;
+    for (size_t i = 1; i <= n - 1; ++i) h += 1.0 / (double)i;
+    return 2.0 * h - 2.0 * (double)(n - 1) / (double)n;
+}
+
+int IsolationForest::build_tree(Tree& tree, const Mat& X, const std::vector<int>& idx,
+                                std::mt19937& rng, int depth, int n_feat) {
+    int node_idx = (int)tree.nodes.size();
+    tree.nodes.push_back({});
+    tree.nodes[node_idx].size = idx.size();
+
+    if (depth >= (int)tree.height_limit || idx.size() <= 1) return node_idx;
+
+    std::uniform_int_distribution<int> feat_dist(0, std::max(0, n_feat - 1));
+    int feat = feat_dist(rng);
+
+    double lo = X[idx[0]][feat], hi = lo;
+    for (int i : idx) {
+        lo = std::min(lo, X[i][feat]);
+        hi = std::max(hi, X[i][feat]);
+    }
+    if (lo >= hi) return node_idx;
+
+    std::uniform_real_distribution<double> thresh_dist(lo, hi);
+    double thresh = thresh_dist(rng);
+
+    std::vector<int> left_idx, right_idx;
+    left_idx.reserve(idx.size());
+    right_idx.reserve(idx.size());
+    for (int i : idx) {
+        if (X[i][feat] < thresh) left_idx.push_back(i);
+        else right_idx.push_back(i);
+    }
+    if (left_idx.empty() || right_idx.empty()) return node_idx;
+
+    tree.nodes[node_idx].feature = feat;
+    tree.nodes[node_idx].threshold = thresh;
+    tree.nodes[node_idx].left = build_tree(tree, X, left_idx, rng, depth + 1, n_feat);
+    tree.nodes[node_idx].right = build_tree(tree, X, right_idx, rng, depth + 1, n_feat);
+    return node_idx;
+}
+
+double IsolationForest::path_length_one(const Tree& tree, const Vec& x, int node) {
+    if (node < 0 || node >= (int)tree.nodes.size()) return 0.0;
+    const auto& nd = tree.nodes[node];
+    if (nd.feature < 0) {
+        return nd.size > 1 ? avg_path_length(nd.size) : 0.0;
+    }
+    double edge = 1.0;
+    if (x[nd.feature] < nd.threshold)
+        return edge + path_length_one(tree, x, nd.left);
+    return edge + path_length_one(tree, x, nd.right);
+}
+
+void IsolationForest::fit(const Mat& X) {
+    trees_.clear();
+    subsample_size_ = 0;
+    n_features_ = 0;
+    if (X.empty() || X[0].empty()) return;
+
+    int n = (int)X.size();
+    int p = (int)X[0].size();
+    n_features_ = p;
+    subsample_size_ = std::min(sample_size, (size_t)n);
+    if (subsample_size_ == 0) return;
+
+    size_t height_limit = subsample_size_ <= 1 ? 0
+        : (size_t)std::ceil(std::log2((double)subsample_size_));
+
+    std::mt19937 rng(seed);
+    std::vector<int> all_idx(n);
+    std::iota(all_idx.begin(), all_idx.end(), 0);
+
+    trees_.reserve(n_trees);
+    for (size_t t = 0; t < n_trees; ++t) {
+        std::shuffle(all_idx.begin(), all_idx.end(), rng);
+        std::vector<int> sample_idx(all_idx.begin(),
+                                    all_idx.begin() + (int)subsample_size_);
+
+        Tree tree;
+        tree.height_limit = height_limit;
+        build_tree(tree, X, sample_idx, rng, 0, p);
+        trees_.push_back(std::move(tree));
+    }
+}
+
+double IsolationForest::raw_score(const Vec& x) const {
+    if (trees_.empty() || x.size() != (size_t)n_features_) return 0.5;
+    double c = avg_path_length(subsample_size_);
+    if (c <= 0.0) return 0.5;
+
+    double sum = 0.0;
+    for (const auto& tree : trees_)
+        sum += path_length_one(tree, x, 0);
+    double eh = sum / (double)trees_.size();
+    return std::pow(2.0, -eh / c);
+}
+
+double IsolationForest::anomaly_score(const Vec& x) const {
+    return raw_score(x);
+}
+
+Vec IsolationForest::anomaly_scores(const Mat& X) const {
+    Vec scores(X.size(), 0.5);
+    for (size_t i = 0; i < X.size(); ++i) scores[i] = raw_score(X[i]);
+    return scores;
+}
+
 // ========================== DBSCAN ==========================
 
 void DBSCAN::fit(const Mat& X) {
