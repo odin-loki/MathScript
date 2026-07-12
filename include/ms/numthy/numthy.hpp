@@ -55,7 +55,8 @@ int kronecker_symbol(int64_t a, int64_t n);
 // --- Discrete log (baby-step giant-step): g^x ≡ h (mod p) ---
 Result<uint64_t> discrete_log(uint64_t g, uint64_t h, uint64_t p);
 bool is_primitive_root(uint64_t g, uint64_t p);
-uint64_t primitive_root(uint64_t p);
+// Smallest primitive root mod prime p, or -1 if p is not prime.
+int primitive_root(int p);
 
 // --- Tonelli-Shanks: modular square root, x^2 ≡ n (mod p) ---
 Result<uint64_t> tonelli_shanks(uint64_t n, uint64_t p);

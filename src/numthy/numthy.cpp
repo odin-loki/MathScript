@@ -483,10 +483,19 @@ bool is_primitive_root(uint64_t g, uint64_t p) {
     return true;
 }
 
-uint64_t primitive_root(uint64_t p) {
-    for (uint64_t g = 2; g < p; ++g)
-        if (is_primitive_root(g, p)) return g;
-    return 0;
+int primitive_root(int p) {
+    if (p < 2 || !isprime(static_cast<uint64_t>(p)))
+        return -1;
+    if (p == 2)
+        return 1;
+    const uint64_t up = static_cast<uint64_t>(p);
+    const uint64_t phi = euler_phi(up);
+    for (int g = 2; g < p; ++g) {
+        auto ord = multiplicative_order(static_cast<uint64_t>(g), up);
+        if (ord.has_value() && ord.value() == phi)
+            return g;
+    }
+    return -1;
 }
 
 Result<uint64_t> tonelli_shanks(uint64_t n, uint64_t p) {
