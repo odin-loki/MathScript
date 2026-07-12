@@ -125,5 +125,17 @@ bool is_carmichael(uint64_t n);
 //       silently. BigInt support is out of scope for this function.
 std::pair<int64_t, int64_t> lucas_sequence(int64_t k, int64_t P, int64_t Q);
 
+// Multiplicative order of a modulo n: the smallest positive integer k such that
+// a^k ≡ 1 (mod n). Exists iff gcd(a, n) == 1. By Euler's theorem the order always
+// divides φ(n), so it is found by starting at k = φ(n) and, for each prime factor p
+// of φ(n), repeatedly dividing k by p while p | k and a^(k/p) ≡ 1 (mod n) still holds
+// (mirrors the classic "reduce Euler's exponent down to the true order" algorithm).
+// Uses euler_phi, factor_exp, and mod_pow internally.
+// @param a base. @param n modulus.
+// @return the multiplicative order of a mod n, or an error (mirroring mod_inv's
+//         "gcd(a,m) != 1" convention) if n == 0 or gcd(a, n) != 1. n == 1 returns 1
+//         (the trivial group has order 1, and gcd(a,1) == 1 for every a).
+Result<uint64_t> multiplicative_order(uint64_t a, uint64_t n);
+
 } // namespace numthy
 } // namespace ms
