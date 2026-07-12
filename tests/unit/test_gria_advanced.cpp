@@ -3,8 +3,10 @@
 //         langton_lambda, alpha_ca, alpha_lfsr.
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "ms/frameworks/gria/gria.hpp"
@@ -212,4 +214,171 @@ TEST(GriaAdvanced, AlphaLfsrMoreStepsIsFinite) {
     EXPECT_TRUE(std::isfinite(alpha));
     EXPECT_GE(alpha, 0.0);
     EXPECT_LE(alpha, 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// ca::hamming_distance: hand-computable pairs, identity, symmetry, bounds.
+// ---------------------------------------------------------------------------
+
+TEST(GriaAdvanced, HammingDistanceKnownThreeDifferences) {
+    // Differ at indices 1, 4, 6 (3 positions) out of 8.
+    const std::vector<uint8_t> a{0, 0, 1, 1, 0, 1, 0, 1};
+    const std::vector<uint8_t> b{0, 1, 1, 1, 1, 1, 1, 1};
+    EXPECT_EQ(ms::gria::ca::hamming_distance(a, b), 3u);
+}
+
+TEST(GriaAdvanced, HammingDistanceIdenticalConfigsIsZero) {
+    const std::vector<uint8_t> a{1, 0, 1, 1, 0, 0, 1, 0};
+    EXPECT_EQ(ms::gria::ca::hamming_distance(a, a), 0u);
+}
+
+TEST(GriaAdvanced, HammingDistanceEmptyConfigsIsZero) {
+    const std::vector<uint8_t> a{};
+    const std::vector<uint8_t> b{};
+    EXPECT_EQ(ms::gria::ca::hamming_distance(a, b), 0u);
+}
+
+TEST(GriaAdvanced, HammingDistanceComplementaryConfigsIsFullLength) {
+    const std::vector<uint8_t> a{0, 1, 0, 1, 0, 1, 0, 1};
+    std::vector<uint8_t> b(a.size());
+    for (size_t i = 0; i < a.size(); ++i) {
+        b[i] = static_cast<uint8_t>(1 - a[i]);
+    }
+    EXPECT_EQ(ms::gria::ca::hamming_distance(a, b), a.size());
+}
+
+TEST(GriaAdvanced, HammingDistanceIsSymmetric) {
+    const std::vector<std::pair<std::vector<uint8_t>, std::vector<uint8_t>>> pairs{
+        {{0, 0, 0, 0}, {1, 1, 1, 1}},
+        {{1, 0, 1, 0, 1}, {1, 1, 1, 0, 0}},
+        {{0, 1}, {1, 0}},
+        {{1, 1, 1, 1, 1, 1}, {1, 1, 1, 1, 1, 0}},
+    };
+    for (const auto& [a, b] : pairs) {
+        EXPECT_EQ(ms::gria::ca::hamming_distance(a, b), ms::gria::ca::hamming_distance(b, a));
+    }
+}
+
+TEST(GriaAdvanced, HammingDistanceBoundedByLength) {
+    const std::vector<std::vector<uint8_t>> configs{
+        {0, 0, 0, 1, 1, 0, 1},
+        {1, 1, 0, 1, 0, 0, 1},
+        {0, 1, 1, 0, 1, 1, 0},
+        {1, 0, 0, 0, 1, 1, 1},
+    };
+    for (const auto& a : configs) {
+        for (const auto& b : configs) {
+            const size_t d = ms::gria::ca::hamming_distance(a, b);
+            EXPECT_GE(d, 0u);
+            EXPECT_LE(d, a.size());
+        }
+    }
+}
+
+TEST(GriaAdvanced, HammingDistanceMismatchedLengthCountsExtraAsDiffering) {
+    // Common prefix {1,0,1} matches exactly -> 0 mismatches there.
+    // b has 2 extra trailing cells beyond a's length -> +2.
+    const std::vector<uint8_t> a{1, 0, 1};
+    const std::vector<uint8_t> b{1, 0, 1, 1, 0};
+    EXPECT_EQ(ms::gria::ca::hamming_distance(a, b), 2u);
+    // Symmetric in the same defensive convention.
+    EXPECT_EQ(ms::gria::ca::hamming_distance(b, a), 2u);
+}
+
+TEST(GriaAdvanced, HammingDistanceSingleCellConfigsNoCrash) {
+    const std::vector<uint8_t> a{1};
+    const std::vector<uint8_t> b{0};
+    EXPECT_EQ(ms::gria::ca::hamming_distance(a, b), 1u);
+    EXPECT_EQ(ms::gria::ca::hamming_distance(a, a), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// ca::divergence_trajectory: length convention, deterministic identity,
+// qualitative sensitivity-to-initial-conditions check under a chaotic rule.
+// ---------------------------------------------------------------------------
+
+TEST(GriaAdvanced, DivergenceTrajectoryLengthIsNStepsPlusOne) {
+    const std::vector<uint8_t> a{0, 1, 0, 1, 0, 1, 0, 1};
+    const std::vector<uint8_t> b{0, 1, 0, 1, 0, 1, 0, 0};
+    const int n_steps = 5;
+    const auto trajectory = ms::gria::ca::divergence_trajectory(a, b, /*rule=*/110, n_steps);
+    EXPECT_EQ(trajectory.size(), static_cast<size_t>(n_steps + 1));
+}
+
+TEST(GriaAdvanced, DivergenceTrajectoryIdenticalConfigsStayZeroUnderDeterministicRule) {
+    // step() is a deterministic function of the configuration, so two
+    // identical configurations stay identical forever under any rule.
+    const std::vector<uint8_t> a{1, 0, 1, 1, 0, 0, 1, 0, 1, 1};
+    for (int rule : {0, 30, 110, 255}) {
+        const auto trajectory =
+            ms::gria::ca::divergence_trajectory(a, a, static_cast<uint8_t>(rule), 8);
+        for (size_t d : trajectory) {
+            EXPECT_EQ(d, 0u) << "rule=" << rule;
+        }
+    }
+}
+
+TEST(GriaAdvanced, DivergenceTrajectoryFirstEntryIsInitialDistance) {
+    const std::vector<uint8_t> a{0, 0, 0, 0, 0, 0};
+    const std::vector<uint8_t> b{0, 0, 1, 0, 0, 0};
+    const auto trajectory = ms::gria::ca::divergence_trajectory(a, b, /*rule=*/110, 4);
+    EXPECT_EQ(trajectory.front(), ms::gria::ca::hamming_distance(a, b));
+}
+
+TEST(GriaAdvanced, DivergenceTrajectoryZeroStepsReturnsSingleInitialEntry) {
+    const std::vector<uint8_t> a{1, 0, 1, 0};
+    const std::vector<uint8_t> b{1, 1, 1, 0};
+    const auto trajectory = ms::gria::ca::divergence_trajectory(a, b, /*rule=*/54, 0);
+    ASSERT_EQ(trajectory.size(), 1u);
+    EXPECT_EQ(trajectory.front(), 1u);
+}
+
+TEST(GriaAdvanced, DivergenceTrajectoryChaoticRuleShowsSensitivityToInitialConditions) {
+    // Rule 110 sits at Wolfram's edge-of-chaos / class IV boundary: a single
+    // differing cell in an otherwise-identical configuration tends to grow
+    // into a nonzero, non-trivial spread of differences over time. This is
+    // a qualitative check only (exact trajectories are rule/width-specific).
+    std::vector<uint8_t> a(40, 0);
+    a[20] = 1;
+    std::vector<uint8_t> b = a;
+    b[19] = 1; // Perturb one neighbouring cell.
+
+    const auto trajectory = ms::gria::ca::divergence_trajectory(a, b, /*rule=*/110, 30);
+    EXPECT_EQ(trajectory.front(), 1u);
+    const bool eventually_nonzero =
+        std::any_of(trajectory.begin() + 1, trajectory.end(), [](size_t d) { return d > 0; });
+    EXPECT_TRUE(eventually_nonzero);
+}
+
+// ---------------------------------------------------------------------------
+// ca::settling_time: convergence detection, deterministic identity.
+// ---------------------------------------------------------------------------
+
+TEST(GriaAdvanced, SettlingTimeAlreadyIdenticalIsZero) {
+    const std::vector<uint8_t> a{1, 0, 1, 1, 0};
+    const auto settled = ms::gria::ca::settling_time(a, a, /*rule=*/110, 10);
+    ASSERT_TRUE(settled.has_value());
+    EXPECT_EQ(*settled, 0u);
+}
+
+TEST(GriaAdvanced, SettlingTimeConvergesQuicklyUnderRuleZero) {
+    // Rule 0 maps every neighbourhood to 0, so any two distinct
+    // configurations both collapse to all-zero after one step -> settles
+    // by step 1 (rule 0's fixed point is the all-zero configuration).
+    const std::vector<uint8_t> a{1, 0, 1, 0};
+    const std::vector<uint8_t> b{0, 1, 0, 1};
+    const auto settled = ms::gria::ca::settling_time(a, b, /*rule=*/0, 5);
+    ASSERT_TRUE(settled.has_value());
+    EXPECT_LE(*settled, 5u);
+}
+
+TEST(GriaAdvanced, SettlingTimeReturnsNulloptWhenBudgetTooSmall) {
+    // Two configurations that differ and, under a chaotic rule, are highly
+    // unlikely to re-synchronise within a single step.
+    std::vector<uint8_t> a(20, 0);
+    a[10] = 1;
+    std::vector<uint8_t> b = a;
+    b[9] = 1;
+    const auto settled = ms::gria::ca::settling_time(a, b, /*rule=*/110, 0);
+    EXPECT_FALSE(settled.has_value());
 }
