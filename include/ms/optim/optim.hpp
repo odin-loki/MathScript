@@ -9,6 +9,7 @@ namespace ms {
 using Func1D = std::function<double(double)>;
 using Func2D = std::function<double(double, double)>;
 using FuncND = std::function<double(const std::vector<double>&)>;
+using GradND = std::function<std::vector<double>(const std::vector<double>&)>;
 
 // Residual function type: maps parameters to a vector of residuals r(x) (e.g.
 // r_i = model(x, t_i) - y_i for a curve-fitting problem with data points
@@ -52,6 +53,34 @@ OptimResult bfgs(FuncND f, std::vector<double> x0,
                  double tol = 1e-8, int max_iter = 500);
 OptimResult lbfgs(FuncND f, std::vector<double> x0,
                   int m = 5, double tol = 1e-8, int max_iter = 500);
+
+/// @brief Nonlinear conjugate gradient for N-dimensional unconstrained
+///        minimization of a differentiable objective.
+///
+/// At each iteration the search direction is
+///   d_k = -g_k + beta_k * d_{k-1},
+/// where g_k = grad(x_k) and beta_k is computed by the Polak-Ribière+
+/// formula: beta_PR = g_k^T (g_k - g_{k-1}) / ||g_{k-1}||^2, with beta_k =
+/// max(0, beta_PR) so a negative beta triggers an automatic restart to
+/// steepest descent (d_k = -g_k). Step length along d_k is chosen by
+/// backtracking line search satisfying the Armijo sufficient-decrease
+/// condition.
+///
+/// @param f        Objective function to minimize.
+/// @param grad     Gradient of f at x.
+/// @param x0       Initial parameter vector.
+/// @param tol      Convergence tolerance on ||grad(x)||.
+/// @param max_iter Maximum number of outer iterations.
+/// @return OptimResult{x, f_val, iterations, converged}.
+/// @note Polak-Ribière+ restarts (beta = 0) improve robustness on
+///       non-quadratic objectives compared with plain Fletcher-Reeves.
+/// @accuracy Superlinear on well-conditioned quadratics; for an exact
+///           quadratic with exact line search, CG terminates in at most N
+///           steps. With inexact Armijo line search, convergence is still
+///           linear to quadratic rate on smooth convex problems.
+OptimResult conjugate_gradient(FuncND f, GradND grad, std::vector<double> x0,
+                               double tol = 1e-8, int max_iter = 500);
+
 OptimResult adam(FuncND f, std::vector<double> x0,
                  double alpha = 0.001, double beta1 = 0.9,
                  double beta2 = 0.999, int max_iter = 1000);

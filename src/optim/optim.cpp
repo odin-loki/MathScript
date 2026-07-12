@@ -631,6 +631,98 @@ OptimResult lbfgs(FuncND f, std::vector<double> x0,
 }
 
 // ----------------------------------------------------------------
+// Nonlinear Conjugate Gradient (Polak-Ribière+ with Armijo line search)
+// ----------------------------------------------------------------
+OptimResult conjugate_gradient(FuncND f, GradND grad, std::vector<double> x0,
+                               double tol, int max_iter) {
+    const int n = static_cast<int>(x0.size());
+    if (n <= 0) {
+        return OptimResult{{}, 0.0, 0, false};
+    }
+
+    auto x = x0;
+    auto g = grad(x);
+    std::vector<double> d(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        d[static_cast<size_t>(i)] = -g[static_cast<size_t>(i)];
+    }
+
+    bool converged = false;
+    size_t iterations = 0;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        iterations = static_cast<size_t>(iter + 1);
+
+        double gnorm_sq = 0.0;
+        for (int i = 0; i < n; ++i) {
+            gnorm_sq += g[static_cast<size_t>(i)] * g[static_cast<size_t>(i)];
+        }
+        if (std::sqrt(gnorm_sq) < tol) {
+            converged = true;
+            break;
+        }
+
+        // Armijo backtracking along d (descent direction).
+        double step = 1.0;
+        const double fx = f(x);
+        double ddf = 0.0;
+        for (int i = 0; i < n; ++i) {
+            ddf += g[static_cast<size_t>(i)] * d[static_cast<size_t>(i)];
+        }
+        if (ddf >= 0.0) {
+            for (int i = 0; i < n; ++i) {
+                d[static_cast<size_t>(i)] = -g[static_cast<size_t>(i)];
+            }
+            ddf = -gnorm_sq;
+        }
+
+        for (int ls = 0; ls < 30; ++ls) {
+            auto xnew = x;
+            for (int i = 0; i < n; ++i) {
+                xnew[static_cast<size_t>(i)] +=
+                    step * d[static_cast<size_t>(i)];
+            }
+            if (f(xnew) <= fx + 1e-4 * step * ddf) {
+                break;
+            }
+            step *= 0.5;
+        }
+
+        auto xnew = x;
+        for (int i = 0; i < n; ++i) {
+            xnew[static_cast<size_t>(i)] += step * d[static_cast<size_t>(i)];
+        }
+        auto gnew = grad(xnew);
+
+        // Polak-Ribière+ beta with automatic restart when beta < 0.
+        double beta = 0.0;
+        if (gnorm_sq > 1e-300) {
+            double num = 0.0;
+            for (int i = 0; i < n; ++i) {
+                num += gnew[static_cast<size_t>(i)] *
+                       (gnew[static_cast<size_t>(i)] -
+                        g[static_cast<size_t>(i)]);
+            }
+            beta = num / gnorm_sq;
+            if (beta < 0.0) {
+                beta = 0.0;
+            }
+        }
+
+        for (int i = 0; i < n; ++i) {
+            d[static_cast<size_t>(i)] =
+                -gnew[static_cast<size_t>(i)] +
+                beta * d[static_cast<size_t>(i)];
+        }
+
+        x = xnew;
+        g = gnew;
+    }
+
+    return OptimResult{x, f(x), iterations, converged};
+}
+
+// ----------------------------------------------------------------
 // Adam
 // ----------------------------------------------------------------
 OptimResult adam(FuncND f, std::vector<double> x0,

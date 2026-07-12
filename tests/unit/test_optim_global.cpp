@@ -79,6 +79,95 @@ TEST(OptimLBFGS, ResultIsFinite) {
 }
 
 // -----------------------------------------------------------------------
+// Conjugate Gradient (Polak-Ribière+)
+// -----------------------------------------------------------------------
+namespace {
+
+ms::GradND sphere_grad = [](const std::vector<double>& x) {
+    return x;
+};
+
+ms::GradND rosenbrock_grad = [](const std::vector<double>& x) {
+    const double dx =
+        -400.0 * x[0] * (x[1] - x[0] * x[0]) - 2.0 * (1.0 - x[0]);
+    const double dy = 200.0 * (x[1] - x[0] * x[0]);
+    return std::vector<double>{dx, dy};
+};
+
+ms::GradND make_quadratic_grad(const std::vector<double>& diag) {
+    return [diag](const std::vector<double>& x) {
+        std::vector<double> g(x.size());
+        for (size_t i = 0; i < x.size(); ++i) {
+            g[i] = diag[i] * x[i];
+        }
+        return g;
+    };
+}
+
+} // namespace
+
+TEST(OptimConjugateGradient, Sphere2D_ConvergesNearZero) {
+    ms::OptimResult r = ms::conjugate_gradient(sphere, sphere_grad, {2.0, 3.0});
+    EXPECT_LT(r.f_val, 1e-6);
+    EXPECT_TRUE(r.converged);
+    EXPECT_NEAR(r.x[0], 0.0, 1e-4);
+    EXPECT_NEAR(r.x[1], 0.0, 1e-4);
+}
+
+TEST(OptimConjugateGradient, Rosenbrock_ConvergesToKnownMinimum) {
+    ms::OptimResult r = ms::conjugate_gradient(
+        rosenbrock, rosenbrock_grad, {-1.0, 1.0}, 1e-6, 2000);
+    EXPECT_LT(r.f_val, 1e-3);
+    EXPECT_NEAR(r.x[0], 1.0, 1e-2);
+    EXPECT_NEAR(r.x[1], 1.0, 1e-2);
+}
+
+TEST(OptimConjugateGradient, HighDimQuadratic_ConvergesWithinNSteps) {
+    const int n = 10;
+    std::vector<double> x0(static_cast<size_t>(n), 1.0);
+    ms::OptimResult r = ms::conjugate_gradient(
+        sphere, sphere_grad, x0, 1e-8, n + 20);
+    EXPECT_LT(r.f_val, 1e-6);
+    EXPECT_TRUE(r.converged);
+    EXPECT_LE(r.iterations, static_cast<size_t>(n + 15));
+}
+
+TEST(OptimConjugateGradient, AgreesWithBFGS_OnSphere) {
+    ms::OptimResult cg = ms::conjugate_gradient(sphere, sphere_grad, {3.0, -2.0});
+    ms::OptimResult bf = ms::bfgs(sphere, {3.0, -2.0});
+    EXPECT_LT(cg.f_val, 1e-6);
+    EXPECT_LT(bf.f_val, 1e-6);
+    EXPECT_NEAR(cg.x[0], bf.x[0], 1e-3);
+    EXPECT_NEAR(cg.x[1], bf.x[1], 1e-3);
+}
+
+TEST(OptimConjugateGradient, AlreadyAtMinimum_TerminatesImmediately) {
+    ms::OptimResult r = ms::conjugate_gradient(sphere, sphere_grad, {0.0, 0.0});
+    EXPECT_LT(r.f_val, 1e-12);
+    EXPECT_TRUE(r.converged);
+    EXPECT_LE(r.iterations, 2u);
+}
+
+TEST(OptimConjugateGradient, IllConditionedQuadratic_StillConverges) {
+    const std::vector<double> diag = {1.0, 100.0, 10000.0};
+    ms::FuncND f = [&diag](const std::vector<double>& x) {
+        double s = 0.0;
+        for (size_t i = 0; i < x.size(); ++i) {
+            s += 0.5 * diag[i] * x[i] * x[i];
+        }
+        return s;
+    };
+    ms::GradND g = make_quadratic_grad(diag);
+    ms::OptimResult r = ms::conjugate_gradient(
+        f, g, {10.0, -5.0, 2.0}, 1e-6, 5000);
+    EXPECT_LT(r.f_val, 1e-4);
+    EXPECT_TRUE(r.converged);
+    EXPECT_NEAR(r.x[0], 0.0, 1e-3);
+    EXPECT_NEAR(r.x[1], 0.0, 1e-3);
+    EXPECT_NEAR(r.x[2], 0.0, 1e-3);
+}
+
+// -----------------------------------------------------------------------
 // Adam
 // -----------------------------------------------------------------------
 TEST(OptimAdam, Sphere2D_ReducesObjective) {
