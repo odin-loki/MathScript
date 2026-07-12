@@ -112,6 +112,31 @@ Advection1DResult pde_advection_1d(
     double dt,
     std::size_t steps);
 
+/// Lax-Wendroff (second-order predictor-corrector) finite-difference solver for
+/// u_t + v u_x = 0 with periodic boundaries. Adds a central-difference advection term to a
+/// numerical-diffusion correction term proportional to (v*dt/dx)^2, giving second-order
+/// accuracy in both space and time versus the first-order upwind scheme of pde_advection_1d.
+/// CFL stability requires |v|*dt/dx <= 1.
+/// @param u0 Initial condition sampled on a periodic grid; requires at least 3 points.
+/// @param v Constant advection velocity.
+/// @param dx Grid spacing.
+/// @param dt Time step.
+/// @param steps Number of time steps to advance.
+/// @return Time series of solution snapshots (t and u), one entry per step plus the initial
+///     condition.
+/// @accuracy O(dx^2, dt^2), compared to O(dx, dt) for pde_advection_1d. For smooth profiles
+///     this yields substantially lower error at equal resolution; near sharp gradients it can
+///     introduce small dispersive (non-monotone) oscillations that upwind's numerical
+///     diffusion avoids.
+/// @note Returns empty result when CFL is violated or inputs are invalid.
+/// Complexity: O(steps * n).
+Advection1DResult pde_advection_1d_lax_wendroff(
+    const std::vector<double>& u0,
+    double v,
+    double dx,
+    double dt,
+    std::size_t steps);
+
 /// Direct tridiagonal finite-difference solve for the 1D Poisson equation u'' = f(x) on [0, L]
 /// with Dirichlet boundaries u(0)=ua, u(L)=ub. f is sampled at all grid points (including boundaries).
 /// @note Returns empty result when the grid is too small or inputs are invalid.

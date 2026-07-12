@@ -225,6 +225,143 @@ TEST(PdeExtTest, advection_1d_zero_steps) {
 }
 
 // ---------------------------------------------------------------------------
+// pde_advection_1d_lax_wendroff
+// ---------------------------------------------------------------------------
+
+TEST(PdeExtTest, lax_wendroff_gaussian_pulse_shifts_to_expected_location) {
+    const std::size_t n = 200;
+    const double dx = 1.0;
+    const double v = 1.0;
+    const double dt = 0.5;
+    const std::size_t steps = 40;
+    const double x0 = 50.0;
+    const double sigma = 5.0;
+
+    std::vector<double> u0(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = static_cast<double>(i) * dx;
+        u0[i] = std::exp(-(x - x0) * (x - x0) / (2.0 * sigma * sigma));
+    }
+
+    const auto result = pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps);
+    ASSERT_FALSE(result.u.empty());
+
+    const auto& last = result.u.back();
+    const std::size_t peak_idx = static_cast<std::size_t>(
+        std::distance(last.begin(), std::max_element(last.begin(), last.end())));
+
+    const double expected_x = x0 + v * dt * static_cast<double>(steps);
+    const double expected_idx = expected_x / dx;
+    EXPECT_NEAR(static_cast<double>(peak_idx), expected_idx, 2.0);
+}
+
+TEST(PdeExtTest, lax_wendroff_more_accurate_than_upwind_for_smooth_profile) {
+    const std::size_t n = 200;
+    const double dx = 1.0;
+    const double v = 1.0;
+    const double dt = 0.5;
+    const std::size_t steps = 40;
+    const double x0 = 50.0;
+    const double sigma = 8.0;
+
+    std::vector<double> u0(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = static_cast<double>(i) * dx;
+        u0[i] = std::exp(-(x - x0) * (x - x0) / (2.0 * sigma * sigma));
+    }
+
+    const auto lw_result = pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps);
+    const auto up_result = pde_advection_1d(u0, v, dx, dt, steps);
+    ASSERT_FALSE(lw_result.u.empty());
+    ASSERT_FALSE(up_result.u.empty());
+
+    // Exact solution for u_t + v u_x = 0 is a rigid shift: u(x, t) = u0(x - v*t).
+    // The pulse stays far from the periodic boundary for the whole run, so wraparound
+    // is negligible and this direct comparison is valid.
+    const double shift = v * dt * static_cast<double>(steps);
+    double lw_sq_err = 0.0;
+    double up_sq_err = 0.0;
+    const auto& lw_last = lw_result.u.back();
+    const auto& up_last = up_result.u.back();
+    for (std::size_t i = 0; i < n; ++i) {
+        const double x = static_cast<double>(i) * dx;
+        const double exact_x = x - shift;
+        const double exact = std::exp(-(exact_x - x0) * (exact_x - x0) / (2.0 * sigma * sigma));
+        lw_sq_err += (lw_last[i] - exact) * (lw_last[i] - exact);
+        up_sq_err += (up_last[i] - exact) * (up_last[i] - exact);
+    }
+    const double lw_rmse = std::sqrt(lw_sq_err / static_cast<double>(n));
+    const double up_rmse = std::sqrt(up_sq_err / static_cast<double>(n));
+
+    EXPECT_GT(up_rmse, 0.0);
+    EXPECT_LT(lw_rmse, up_rmse);
+    EXPECT_LT(lw_rmse, 0.5 * up_rmse);
+}
+
+TEST(PdeExtTest, lax_wendroff_bounded_over_many_periodic_steps) {
+    const std::size_t n = 64;
+    const double dx = 1.0;
+    const double v = 1.0;
+    const double dt = 0.5;
+    const std::size_t steps = 500;
+    ASSERT_LE(std::abs(v) * dt / dx, 1.0);
+
+    std::vector<double> u0(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        u0[i] = std::sin(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n));
+    }
+
+    const auto result = pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps);
+    ASSERT_FALSE(result.u.empty());
+
+    double max_abs = 0.0;
+    for (const auto& snap : result.u) {
+        for (double val : snap) {
+            ASSERT_TRUE(std::isfinite(val));
+            max_abs = std::max(max_abs, std::abs(val));
+        }
+    }
+    EXPECT_LT(max_abs, 2.0);
+}
+
+TEST(PdeExtTest, lax_wendroff_zero_velocity_unchanged) {
+    const std::vector<double> u0 = {0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0};
+    const auto result = pde_advection_1d_lax_wendroff(u0, 0.0, 0.1, 0.01, 10);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        for (std::size_t i = 0; i < u0.size(); ++i) {
+            EXPECT_NEAR(snap[i], u0[i], 1e-12);
+        }
+    }
+}
+
+TEST(PdeExtTest, lax_wendroff_cfl_rejection) {
+    const std::vector<double> u0(8, 0.0);
+    const auto result = pde_advection_1d_lax_wendroff(u0, 2.0, 0.1, 0.1, 5);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, lax_wendroff_zero_steps) {
+    const std::vector<double> u0(5, 1.0);
+    const auto result = pde_advection_1d_lax_wendroff(u0, 1.0, 0.1, 0.01, 0);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, lax_wendroff_too_short_input_handled_gracefully) {
+    const std::vector<double> two_points = {1.0, 2.0};
+    const auto result_two = pde_advection_1d_lax_wendroff(two_points, 1.0, 0.1, 0.01, 5);
+    EXPECT_TRUE(result_two.u.empty());
+
+    const std::vector<double> single_point = {1.0};
+    const auto result_single = pde_advection_1d_lax_wendroff(single_point, 1.0, 0.1, 0.01, 5);
+    EXPECT_TRUE(result_single.u.empty());
+
+    const std::vector<double> empty_input;
+    const auto result_empty = pde_advection_1d_lax_wendroff(empty_input, 1.0, 0.1, 0.01, 5);
+    EXPECT_TRUE(result_empty.u.empty());
+}
+
+// ---------------------------------------------------------------------------
 // pde_poisson_2d
 // ---------------------------------------------------------------------------
 
