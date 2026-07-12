@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-12 (Wave 212 — Domain LCM/ExtGCD, Izaac Exponential Mechanism, Gria CA Hamming Distance, Cellai Boltzmann Weights, Axiom MSE Fitness, Core Session Exponential, CUDA device_memory_free, Distributed allreduce_max/min)
+
+8 parallel subagents targeting modules untouched in waves 207–211 (`domain`, `frameworks/izaac`, `frameworks/gria`, `frameworks/cellai`, `frameworks/axiom`, `core/rng`, `cuda/nvml`, `distributed/mpi_context`).
+
+### Added (Wave 212)
+- `ms::domain` gains `lcm` and `extended_gcd` (with `ExtGcdResult` Bezout coefficients) — complementary number-theory primitives alongside the existing `gcd`, using signed `long long` for the extended algorithm where coefficients may be negative. Verified via the identity `lcm(a,b)*gcd(a,b)==a*b` and exact Bezout identity checks. 12 new tests in `test_domain_adv.cpp`.
+- `ms::frameworks::izaac::diffpriv` gains `exponential_mechanism` — differential-privacy discrete selection over a finite candidate set via stabilized softmax/Gumbel-max sampling, complementing the existing `laplace_mechanism`/`gaussian_mechanism` numeric-query mechanisms. Verified via peaked-score dominance and uniform-score fairness. 8 new tests in `test_izaac_advanced.cpp`.
+- `ms::frameworks::gria::ca` gains `hamming_distance` and `divergence_trajectory` — CA configuration comparison and sensitivity-over-time tracing via repeated `step` calls, complementing `langton_lambda`/`alpha_ca` dynamics analysis. 16 new tests in `test_gria_advanced.cpp`.
+- `ms::frameworks::cellai` gains `boltzmann_weights` — numerically-stable Gibbs/softmax probabilities over a vector of energies (`exp(-E/T)` with min-energy stabilization), complementing the existing single-configuration `energy()` function. 11 new tests in `test_cellai_cypha_ext.cpp`.
+- `ms::frameworks::axiom` gains `mse_fitness`/`rmse_fitness` — supervised regression GP fitness (mean squared error over a dataset) complementing the existing `gria_fitness` information-theoretic objective, with finite penalty for non-finite predictions. 9 new tests in `test_axiom_gria_ext.cpp`.
+- `ms::core` gains `session_exponential` — inverse-CDF exponential draws from the pluggable session RNG, complementing `session_uniform`/`session_normal`. 7 new tests in `test_rng.cpp`.
+- `ms::cuda` gains `device_memory_free` — host-side helper returning `memory_total - memory_used` from `device_stats`, with underflow guard; stub path returns 0 when CUDA/NVML unavailable. 7 new tests in `test_cuda_stub.cpp`.
+- `ms::distributed` gains `allreduce_max`/`allreduce_min` — MPI collective reductions complementing `allreduce_sum`; stub single-rank path returns input unchanged. 7 new tests in `test_distributed_adv.cpp`.
+- **Total Wave 212: 369 CTest suites — all passing** (no new CTest registrations; 77 new test cases across eight modules). All eight branches merged; one binary `build_output.log` conflict resolved by removal. Full-suite verification on `main` passed on the first attempt.
+
 ## [1.0.0] — 2026-07-12 (Wave 211 — Prob Rayleigh Distribution, FFT Frequency Helpers, Linalg Sylvester Equation, Geo Polygon Clipping, Numthy Multiplicative Order, Cypha NIG Moments, Units Typed Sqrt, SIMD Sum Reduction)
 
 8 parallel subagents, deliberately targeting modules untouched since before Wave 206 (`prob`, `fft`, `linalg`, `geo`, `numthy`, `frameworks/cypha`, `core/units`, `simd`) to keep merge-conflict risk at zero.
