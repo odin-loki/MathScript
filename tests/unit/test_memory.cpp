@@ -8,6 +8,61 @@
 
 using namespace ms::memory;
 
+TEST(MemoryTest, arena_bytes_used_empty) {
+    Arena arena(4096);
+    EXPECT_EQ(arena.bytes_used(), 0u);
+}
+
+TEST(MemoryTest, arena_bytes_used_after_single_allocation) {
+    Arena arena(4096);
+    (void)arena.allocate<int>();
+    EXPECT_EQ(arena.bytes_used(), sizeof(int));
+}
+
+TEST(MemoryTest, arena_bytes_used_cumulative) {
+    Arena arena(4096);
+    (void)arena.allocate<int>(4);
+    const size_t after_ints = arena.bytes_used();
+    EXPECT_EQ(after_ints, 4u * sizeof(int));
+
+    (void)arena.allocate<double>(2);
+    EXPECT_EQ(arena.bytes_used(), after_ints + 2u * sizeof(double));
+}
+
+TEST(MemoryTest, arena_bytes_used_construct_counts) {
+    Arena arena(4096);
+    (void)arena.construct<int>(42);
+    EXPECT_EQ(arena.bytes_used(), sizeof(int));
+}
+
+TEST(MemoryTest, arena_bytes_used_reset_clears) {
+    Arena arena(4096);
+    (void)arena.allocate<int>(8);
+    (void)arena.allocate<double>(4);
+    EXPECT_GT(arena.bytes_used(), 0u);
+
+    arena.reset();
+    EXPECT_EQ(arena.bytes_used(), 0u);
+}
+
+TEST(MemoryTest, arena_bytes_used_after_reset_only_new) {
+    Arena arena(4096);
+    (void)arena.allocate<int>(10);
+    arena.reset();
+
+    (void)arena.allocate<char>(3);
+    EXPECT_EQ(arena.bytes_used(), 3u * sizeof(char));
+}
+
+TEST(MemoryTest, arena_bytes_used_multiple_types) {
+    Arena arena(8192);
+    (void)arena.allocate<int>(1);
+    (void)arena.allocate<double>(1);
+    (void)arena.allocate<char>(16);
+    EXPECT_EQ(arena.bytes_used(),
+              sizeof(int) + sizeof(double) + 16u * sizeof(char));
+}
+
 TEST(MemoryTest, arena_allocate_and_reset) {
     Arena arena(4096);
     int* a = arena.construct<int>(1);

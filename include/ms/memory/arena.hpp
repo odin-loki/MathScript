@@ -13,6 +13,7 @@ class Arena {
     std::pmr::monotonic_buffer_resource resource_;
     std::pmr::polymorphic_allocator<std::byte> alloc_;
     size_t capacity_;
+    size_t bytes_used_{0};
 
 public:
     explicit Arena(size_t capacity = DEFAULT_CAPACITY)
@@ -22,6 +23,7 @@ public:
 
     template<typename T>
     T* allocate(size_t n = 1) {
+        bytes_used_ += n * sizeof(T);
         return alloc_.allocate_object<T>(n);
     }
 
@@ -34,9 +36,11 @@ public:
 
     void reset() noexcept {
         resource_.release();
+        bytes_used_ = 0;
     }
 
     size_t capacity() const { return capacity_; }
+    size_t bytes_used() const noexcept { return bytes_used_; }
 };
 
 // Per-thread arena — zero contention, no locking
