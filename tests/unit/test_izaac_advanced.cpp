@@ -1157,3 +1157,161 @@ TEST(IzaacAdvanced, Consensus_DeterminismReplayMatchesFirstRun) {
     EXPECT_EQ(leader_first, leader_replay);
     EXPECT_TRUE(clusters_match(first, replay));
 }
+
+// ---------------------------------------------------------------------------
+// fuzz::mutate
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<uint8_t> make_seed_corpus_input() {
+    std::vector<uint8_t> data(48);
+    for (size_t i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<uint8_t>((i * 37 + 11) & 0xFF);
+    }
+    return data;
+}
+
+std::array<uint8_t, 32> make_fuzz_seed(uint8_t marker) {
+    std::array<uint8_t, 32> seed{};
+    seed[0] = marker;
+    seed[31] = static_cast<uint8_t>(marker ^ 0xFF);
+    return seed;
+}
+
+} // namespace
+
+TEST(IzaacAdvanced, Fuzz_MutateIsDeterministicForSameSeed) {
+    const std::vector<uint8_t> input = make_seed_corpus_input();
+
+    ms::izaac::CSPRNG rng1(make_fuzz_seed(0x10));
+    ms::izaac::CSPRNG rng2(make_fuzz_seed(0x10));
+
+    const std::vector<uint8_t> out1 =
+        ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng1, 16);
+    const std::vector<uint8_t> out2 =
+        ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng2, 16);
+
+    EXPECT_EQ(out1, out2);
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateDeterministicAcrossMultipleSeedsAndMaxEdits) {
+    const std::vector<uint8_t> input = make_seed_corpus_input();
+    const std::array<uint8_t, 4> markers = {0x21, 0x22, 0x23, 0x24};
+    const std::array<std::size_t, 4> edit_caps = {1, 4, 16, 32};
+
+    for (size_t m = 0; m < markers.size(); ++m) {
+        for (size_t c = 0; c < edit_caps.size(); ++c) {
+            ms::izaac::CSPRNG rng_a(make_fuzz_seed(markers[m]));
+            ms::izaac::CSPRNG rng_b(make_fuzz_seed(markers[m]));
+            const std::vector<uint8_t> out_a =
+                ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng_a, edit_caps[c]);
+            const std::vector<uint8_t> out_b =
+                ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng_b, edit_caps[c]);
+            EXPECT_EQ(out_a, out_b)
+                << "mismatch for marker " << static_cast<int>(markers[m])
+                << " max_edits " << edit_caps[c];
+        }
+    }
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateOutputLengthBoundedByMaxEdits) {
+    const std::vector<uint8_t> input = make_seed_corpus_input();
+    constexpr std::size_t kMaxSpliceLength = 8;
+    const std::array<std::size_t, 5> edit_caps = {1, 2, 8, 16, 32};
+
+    for (std::size_t max_edits : edit_caps) {
+        for (uint8_t marker = 0; marker < 20; ++marker) {
+            ms::izaac::CSPRNG rng(make_fuzz_seed(static_cast<uint8_t>(0x30 + marker)));
+            const std::vector<uint8_t> out =
+                ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng, max_edits);
+
+            const long long delta =
+                static_cast<long long>(out.size()) - static_cast<long long>(input.size());
+            const long long max_possible_delta =
+                static_cast<long long>(max_edits) * static_cast<long long>(kMaxSpliceLength);
+
+            EXPECT_LE(delta, max_possible_delta)
+                << "growth exceeded bound for max_edits=" << max_edits;
+            EXPECT_GE(delta, -static_cast<long long>(max_edits))
+                << "shrinkage exceeded bound for max_edits=" << max_edits;
+        }
+    }
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateZeroMaxEditsReturnsInputUnchanged) {
+    const std::vector<uint8_t> input = make_seed_corpus_input();
+    ms::izaac::CSPRNG rng(make_fuzz_seed(0x40));
+    const std::vector<uint8_t> out =
+        ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng, 0);
+    EXPECT_EQ(out, input);
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateChangesInputWithHighProbabilityAcrossSeeds) {
+    const std::vector<uint8_t> input = make_seed_corpus_input();
+    int changed_count = 0;
+    constexpr int seed_trials = 16;
+    for (int i = 0; i < seed_trials; ++i) {
+        ms::izaac::CSPRNG rng(make_fuzz_seed(static_cast<uint8_t>(0x50 + i)));
+        const std::vector<uint8_t> out =
+            ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng, 16);
+        if (out != input) {
+            ++changed_count;
+        }
+    }
+    // With max_edits=16 (>=1 edit guaranteed) it would be extraordinarily unlikely for
+    // every single one of 16 independently-seeded runs to be a silent no-op; a handful
+    // of unchanged runs is still plausible (e.g. a flip that redraws the same byte value).
+    EXPECT_GT(changed_count, seed_trials / 2);
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateEmptyInputDoesNotCrashAndOnlyInserts) {
+    const std::vector<uint8_t> empty_input;
+    ms::izaac::CSPRNG rng(make_fuzz_seed(0x60));
+    const std::vector<uint8_t> out =
+        ms::izaac::fuzz::mutate(std::span<const uint8_t>(empty_input), rng, 5);
+    // Every edit on an empty buffer degrades to an insertion, so the output length
+    // equals the number of edits actually drawn (between 1 and max_edits).
+    EXPECT_GE(out.size(), 1u);
+    EXPECT_LE(out.size(), 5u);
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateEmptyInputWithZeroMaxEditsStaysEmpty) {
+    const std::vector<uint8_t> empty_input;
+    ms::izaac::CSPRNG rng(make_fuzz_seed(0x61));
+    const std::vector<uint8_t> out =
+        ms::izaac::fuzz::mutate(std::span<const uint8_t>(empty_input), rng, 0);
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateDifferentSeedsExploreDistinctCorpus) {
+    const std::vector<uint8_t> input = make_seed_corpus_input();
+    std::vector<std::vector<uint8_t>> outputs;
+    constexpr int seed_count = 10;
+    for (int i = 0; i < seed_count; ++i) {
+        ms::izaac::CSPRNG rng(make_fuzz_seed(static_cast<uint8_t>(0x70 + i)));
+        outputs.push_back(ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng, 16));
+    }
+
+    int distinct_pairs = 0;
+    int total_pairs = 0;
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        for (size_t j = i + 1; j < outputs.size(); ++j) {
+            ++total_pairs;
+            if (outputs[i] != outputs[j]) {
+                ++distinct_pairs;
+            }
+        }
+    }
+    // Different seeds should overwhelmingly diverge from one another, demonstrating that
+    // mutate() explores a mutation space rather than collapsing to one fixed transform.
+    EXPECT_GT(distinct_pairs, total_pairs / 2);
+}
+
+TEST(IzaacAdvanced, Fuzz_MutateDoesNotModifyInputBuffer) {
+    const std::vector<uint8_t> input = make_seed_corpus_input();
+    const std::vector<uint8_t> input_copy = input;
+    ms::izaac::CSPRNG rng(make_fuzz_seed(0x80));
+    (void)ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng, 16);
+    EXPECT_EQ(input, input_copy);
+}
