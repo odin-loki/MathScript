@@ -154,6 +154,15 @@ struct IirCoeffs {
 IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs,
                   FilterType type = FilterType::Lowpass);
 
+// Chebyshev Type II IIR design: flat passband, equiripple stopband. `cutoff` is the stopband
+// edge frequency in Hz (attenuation reaches rs_db beyond this edge); `fs` is the sample rate
+// in Hz; `rs_db` is the minimum stopband attenuation in dB. Uses the analog prototype
+// normalized to stopband edge 1 rad/s, frequency prewarping, and the bilinear transform;
+// returns ascending-power (b, a) with a[0] == 1. Defensive early returns for order < 1,
+// fs <= 0, rs_db < 0, or cutoff outside (0, fs/2).
+IirCoeffs cheby2(int order, double rs_db, double cutoff, double fs,
+                  FilterType type = FilterType::Lowpass);
+
 // Generic digital filter application (direct-form difference equation): applies an IIR/FIR
 // filter with numerator (feedforward) coefficients b and denominator (feedback) coefficients a
 // to input x:

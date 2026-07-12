@@ -1241,6 +1241,111 @@ TEST(SignalCheby1Test, fourth_order_lowpass_matches_scipy_reference) {
 }
 
 // ---------------------------------------------------------------------------
+// cheby2(): Chebyshev Type II IIR filter design.
+// ---------------------------------------------------------------------------
+
+TEST(SignalCheby2Test, invalid_order_returns_empty) {
+    const auto coeffs = cheby2(0, 40.0, 100.0, 1000.0);
+    EXPECT_TRUE(coeffs.b.empty());
+    EXPECT_TRUE(coeffs.a.empty());
+}
+
+TEST(SignalCheby2Test, invalid_cutoff_returns_empty) {
+    EXPECT_TRUE(cheby2(2, 40.0, 0.0, 1000.0).b.empty());
+    EXPECT_TRUE(cheby2(2, 40.0, -10.0, 1000.0).b.empty());
+    EXPECT_TRUE(cheby2(2, 40.0, 600.0, 1000.0).b.empty());
+}
+
+TEST(SignalCheby2Test, invalid_fs_or_attenuation_returns_empty) {
+    EXPECT_TRUE(cheby2(2, 40.0, 100.0, 0.0).b.empty());
+    EXPECT_TRUE(cheby2(2, -1.0, 100.0, 1000.0).b.empty());
+}
+
+TEST(SignalCheby2Test, lowpass_second_order_matches_scipy_reference) {
+    // scipy.signal.cheby2(2, 40.0, 0.25, fs=2.0, btype='low')
+    const auto coeffs = cheby2(2, 40.0, 0.25, 2.0, FilterType::Lowpass);
+    ASSERT_EQ(coeffs.b.size(), 3u);
+    ASSERT_EQ(coeffs.a.size(), 3u);
+    EXPECT_NEAR(coeffs.b[0], 0.01236943, 1e-6);
+    EXPECT_NEAR(coeffs.b[1], -0.01209834, 1e-6);
+    EXPECT_NEAR(coeffs.b[2], 0.01236943, 1e-6);
+    EXPECT_NEAR(coeffs.a[0], 1.0, 1e-12);
+    EXPECT_NEAR(coeffs.a[1], -1.83553964, 1e-6);
+    EXPECT_NEAR(coeffs.a[2], 0.84818017, 1e-6);
+}
+
+TEST(SignalCheby2Test, highpass_second_order_matches_scipy_reference) {
+    // scipy.signal.cheby2(2, 40.0, 0.25, fs=2.0, btype='high')
+    const auto coeffs = cheby2(2, 40.0, 0.25, 2.0, FilterType::Highpass);
+    ASSERT_EQ(coeffs.b.size(), 3u);
+    ASSERT_EQ(coeffs.a.size(), 3u);
+    EXPECT_NEAR(coeffs.b[0], 0.07925439, 1e-6);
+    EXPECT_NEAR(coeffs.b[1], -0.13346167, 1e-6);
+    EXPECT_NEAR(coeffs.b[2], 0.07925439, 1e-6);
+    EXPECT_NEAR(coeffs.a[0], 1.0, 1e-12);
+    EXPECT_NEAR(coeffs.a[1], 1.10637001, 1e-6);
+    EXPECT_NEAR(coeffs.a[2], 0.39834045, 1e-6);
+}
+
+TEST(SignalCheby2Test, lowpass_dc_magnitude_exceeds_nyquist) {
+    const auto coeffs = cheby2(4, 60.0, 100.0, 1000.0, FilterType::Lowpass);
+    ASSERT_FALSE(coeffs.b.empty());
+    ASSERT_FALSE(coeffs.a.empty());
+    const double dc = freqz_mag_dc(coeffs.b, coeffs.a);
+    const double nyq = freqz_mag_nyquist(coeffs.b, coeffs.a);
+    EXPECT_GT(dc, nyq);
+    EXPECT_GT(dc, 0.5);
+    EXPECT_LT(nyq, 0.01);
+}
+
+TEST(SignalCheby2Test, highpass_nyquist_exceeds_dc) {
+    const auto coeffs = cheby2(4, 60.0, 100.0, 1000.0, FilterType::Highpass);
+    ASSERT_FALSE(coeffs.b.empty());
+    const double dc = freqz_mag_dc(coeffs.b, coeffs.a);
+    const double nyq = freqz_mag_nyquist(coeffs.b, coeffs.a);
+    EXPECT_LT(dc, 0.01);
+    EXPECT_GT(nyq, 0.5);
+}
+
+TEST(SignalCheby2Test, denominator_leading_coefficient_is_one) {
+    for (const FilterType type : {FilterType::Lowpass, FilterType::Highpass}) {
+        const auto coeffs = cheby2(3, 30.0, 250.0, 1000.0, type);
+        ASSERT_FALSE(coeffs.a.empty());
+        EXPECT_NEAR(coeffs.a[0], 1.0, 1e-12);
+    }
+}
+
+TEST(SignalCheby2Test, filter_applies_designed_coefficients) {
+    const auto coeffs = cheby2(2, 40.0, 0.25, 2.0);
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0};
+    const auto y = filter(coeffs.b, coeffs.a, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (double v : y) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+    EXPECT_GT(std::abs(y.back()), 0.0);
+}
+
+TEST(SignalCheby2Test, fourth_order_lowpass_matches_scipy_reference) {
+    // scipy.signal.cheby2(4, 60.0, 100.0, fs=1000.0, btype='low')
+    const auto coeffs = cheby2(4, 60.0, 100.0, 1000.0, FilterType::Lowpass);
+    ASSERT_EQ(coeffs.b.size(), 5u);
+    ASSERT_EQ(coeffs.a.size(), 5u);
+    EXPECT_NEAR(coeffs.b[0], 0.00150402, 1e-5);
+    EXPECT_NEAR(coeffs.b[4], 0.00150402, 1e-5);
+    EXPECT_NEAR(coeffs.a[1], -3.49859765, 1e-5);
+    EXPECT_NEAR(coeffs.a[4], 0.60493786, 1e-5);
+}
+
+TEST(SignalCheby2Test, higher_attenuation_reduces_stopband_gain) {
+    const auto mild = cheby2(2, 20.0, 0.25, 2.0, FilterType::Lowpass);
+    const auto sharp = cheby2(2, 40.0, 0.25, 2.0, FilterType::Lowpass);
+    const double nyq_mild = freqz_mag_nyquist(mild.b, mild.a);
+    const double nyq_sharp = freqz_mag_nyquist(sharp.b, sharp.a);
+    EXPECT_LT(nyq_sharp, nyq_mild);
+}
+
+// ---------------------------------------------------------------------------
 // sosfilt(): second-order-sections IIR cascade via filter().
 // ---------------------------------------------------------------------------
 

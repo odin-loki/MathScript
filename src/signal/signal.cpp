@@ -765,6 +765,51 @@ Zpk cheb1ap(int order, double rp_db) {
     return sys;
 }
 
+Zpk cheb2ap(int order, double rs_db) {
+    const double de = 1.0 / std::sqrt(std::pow(10.0, 0.1 * rs_db) - 1.0);
+    const double mu = std::asinh(1.0 / de) / static_cast<double>(order);
+
+    Zpk sys;
+    sys.z.reserve(static_cast<size_t>(order));
+    sys.p.reserve(static_cast<size_t>(order));
+
+    if (order % 2 == 0) {
+        for (int m = -order + 1; m < order; m += 2) {
+            const double zm = M_PI * static_cast<double>(m) / (2.0 * static_cast<double>(order));
+            sys.z.emplace_back(0.0, 1.0 / std::sin(zm));
+        }
+    } else {
+        for (int m = -order + 1; m < 0; m += 2) {
+            const double zm = M_PI * static_cast<double>(m) / (2.0 * static_cast<double>(order));
+            sys.z.emplace_back(0.0, 1.0 / std::sin(zm));
+        }
+        for (int m = 2; m < order; m += 2) {
+            const double zm = M_PI * static_cast<double>(m) / (2.0 * static_cast<double>(order));
+            sys.z.emplace_back(0.0, 1.0 / std::sin(zm));
+        }
+    }
+
+    for (int m = -order + 1; m < order; m += 2) {
+        const double theta = M_PI * static_cast<double>(m) / (2.0 * static_cast<double>(order));
+        const std::complex<double> sinh_term{
+            std::sinh(mu) * std::cos(theta),
+            std::cosh(mu) * std::sin(theta),
+        };
+        sys.p.push_back(-1.0 / sinh_term);
+    }
+
+    std::complex<double> neg_p_prod{1.0, 0.0};
+    std::complex<double> neg_z_prod{1.0, 0.0};
+    for (const auto& pole : sys.p) {
+        neg_p_prod *= -pole;
+    }
+    for (const auto& zero : sys.z) {
+        neg_z_prod *= -zero;
+    }
+    sys.k = (neg_p_prod / neg_z_prod).real();
+    return sys;
+}
+
 Zpk lp2lp_zpk(const Zpk& sys, double wo) {
     Zpk out;
     out.z.reserve(sys.z.size());
@@ -862,6 +907,42 @@ IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs, FilterType t
     const double warped = 4.0 * std::tan(M_PI * wn / 2.0);
 
     Zpk sys = cheb1ap(order, rp_db);
+    if (type == FilterType::Highpass) {
+        sys = lp2hp_zpk(sys, warped);
+    } else {
+        sys = lp2lp_zpk(sys, warped);
+    }
+    sys = bilinear_zpk(sys, 2.0);
+
+    IirCoeffs coeffs;
+    coeffs.a = poly_from_poles_zinv(sys.p);
+    coeffs.b = poly_from_zeros_zinv(sys.z);
+    if (std::abs(sys.k - 1.0) > 1e-15) {
+        for (double& v : coeffs.b) {
+            v *= sys.k;
+        }
+    }
+    if (!coeffs.a.empty() && std::abs(coeffs.a[0]) > 1e-15) {
+        const double scale = coeffs.a[0];
+        for (double& v : coeffs.b) {
+            v /= scale;
+        }
+        for (double& v : coeffs.a) {
+            v /= scale;
+        }
+    }
+    return coeffs;
+}
+
+IirCoeffs cheby2(int order, double rs_db, double cutoff, double fs, FilterType type) {
+    if (order < 1 || rs_db < 0.0 || !valid_cutoff(cutoff, fs, type)) {
+        return {};
+    }
+
+    const double wn = cutoff / (fs / 2.0);
+    const double warped = 4.0 * std::tan(M_PI * wn / 2.0);
+
+    Zpk sys = cheb2ap(order, rs_db);
     if (type == FilterType::Highpass) {
         sys = lp2hp_zpk(sys, warped);
     } else {
