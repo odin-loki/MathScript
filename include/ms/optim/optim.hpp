@@ -10,6 +10,12 @@ using Func1D = std::function<double(double)>;
 using Func2D = std::function<double(double, double)>;
 using FuncND = std::function<double(const std::vector<double>&)>;
 
+// Residual function type: maps parameters to a vector of residuals r(x) (e.g.
+// r_i = model(x, t_i) - y_i for a curve-fitting problem with data points
+// (t_i, y_i)). Used by levenberg_marquardt, which minimizes sum(r_i(x)^2),
+// i.e. nonlinear least squares.
+using ResidualFunc = std::function<std::vector<double>(const std::vector<double>&)>;
+
 struct GradientDescentResult {
     double x;
     double y;
@@ -49,6 +55,38 @@ OptimResult lbfgs(FuncND f, std::vector<double> x0,
 OptimResult adam(FuncND f, std::vector<double> x0,
                  double alpha = 0.001, double beta1 = 0.9,
                  double beta2 = 0.999, int max_iter = 1000);
+
+/// @brief Levenberg-Marquardt algorithm for nonlinear least squares: a damped
+///        Gauss-Newton method that interpolates between Gauss-Newton (fast
+///        convergence near the optimum, using the Jacobian-transpose-Jacobian
+///        approximation to the Hessian) and gradient descent (robust but
+///        slow, used when far from the optimum or when the local quadratic
+///        approximation is poor).
+///
+/// At each iteration:
+///   1. Compute the Jacobian J via central finite differences of the
+///      residual function: J[i][j] = d(r_i)/d(x_j).
+///   2. Solve the damped normal equations
+///      (J^T*J + lambda*diag(J^T*J)) * delta = -J^T*r for the step `delta`.
+///   3. Evaluate the new sum-of-squares at x+delta. If it's lower than the
+///      current sum-of-squares, accept the step (x = x+delta) and decrease
+///      lambda (move toward Gauss-Newton). If not, reject the step (keep x
+///      unchanged), increase lambda (move toward gradient descent), and
+///      retry step 2 with the new lambda (the Jacobian, still valid at the
+///      unchanged x, is not recomputed).
+///   4. Repeat until convergence (step size or cost improvement below `tol`)
+///      or `max_iter` reached.
+///
+/// @param residuals the residual function r(x) (see ResidualFunc above).
+/// @param x0 initial parameter guess.
+/// @param max_iter maximum outer iterations.
+/// @param tol convergence tolerance on step size / cost improvement.
+/// @param lambda0 initial damping parameter.
+/// @return OptimResult{x, f_val, iterations, converged} where f_val is the
+///         final sum of squared residuals (sum(r_i(x)^2)) at the returned x.
+OptimResult levenberg_marquardt(ResidualFunc residuals, std::vector<double> x0,
+                                 int max_iter = 200, double tol = 1e-10,
+                                 double lambda0 = 1e-3);
 
 // --- global optimisers ---
 OptimResult simulated_annealing(FuncND f, std::vector<double> x0,
