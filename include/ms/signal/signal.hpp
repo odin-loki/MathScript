@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <complex>
 #include <vector>
 #include "ms/core/matrix.hpp"
@@ -153,6 +154,12 @@ std::vector<double> filter(const std::vector<double>& b, const std::vector<doubl
 // Empty x or empty b returns an empty vector.
 std::vector<double> filtfilt(const std::vector<double>& b, const std::vector<double>& a,
                               const std::vector<double>& x);
+
+// Second-order-sections (SOS) IIR filtering: cascades ms::filter once per SOS row. Each row is
+// [b0, b1, b2, a0, a1, a2]; a0 is normalized internally (same as filter). Empty sos returns x
+// unchanged. Output length matches x (or empty when x is empty and sos is non-empty).
+std::vector<double> sosfilt(const std::vector<std::array<double, 6>>& sos,
+                             const std::vector<double>& x);
 
 // Window functions usable with firwin/firwin_highpass.
 enum class FirWindow { Rectangular, Hamming, Hann, Blackman };

@@ -767,6 +767,24 @@ std::vector<double> filtfilt(const std::vector<double>& b, const std::vector<dou
                                 backward.end() - static_cast<ptrdiff_t>(pad_len));
 }
 
+std::vector<double> sosfilt(const std::vector<std::array<double, 6>>& sos,
+                             const std::vector<double>& x) {
+    if (sos.empty()) {
+        return x;
+    }
+
+    std::vector<double> y = x;
+    for (const auto& section : sos) {
+        const std::vector<double> b{section[0], section[1], section[2]};
+        const std::vector<double> a{section[3], section[4], section[5]};
+        y = filter(b, a, y);
+        if (y.empty()) {
+            break;
+        }
+    }
+    return y;
+}
+
 namespace {
 
 std::vector<double> fir_window(int n_taps, FirWindow window) {

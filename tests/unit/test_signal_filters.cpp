@@ -2,6 +2,7 @@
 
 #include "ms/signal/signal.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <random>
 
@@ -1114,4 +1115,156 @@ TEST(LMSAdaptiveFilterTest, two_tap_hand_computed_first_two_steps) {
     EXPECT_NEAR(result.error[0], 1.0, 1e-12);
     EXPECT_NEAR(result.output[1], 0.2, 1e-12);
     EXPECT_NEAR(result.error[1], 0.8, 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// sosfilt(): second-order-sections IIR cascade via filter().
+// ---------------------------------------------------------------------------
+
+TEST(SignalSosfiltTest, empty_sos_returns_x_unchanged) {
+    const std::vector<double> x{1.0, -2.0, 3.5, 0.0};
+    const auto y = sosfilt({}, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(SignalSosfiltTest, empty_input_with_nonempty_sos_returns_empty) {
+    const std::vector<std::array<double, 6>> sos{{1.0, 0.0, 0.0, 1.0, 0.0, 0.0}};
+    EXPECT_TRUE(sosfilt(sos, {}).empty());
+}
+
+TEST(SignalSosfiltTest, empty_sos_and_empty_input_returns_empty) {
+    EXPECT_TRUE(sosfilt({}, {}).empty());
+}
+
+TEST(SignalSosfiltTest, single_identity_section) {
+    const std::vector<double> x{1.0, -2.0, 3.5, 0.0, -7.25};
+    const std::vector<std::array<double, 6>> sos{{1.0, 0.0, 0.0, 1.0, 0.0, 0.0}};
+    const auto y = sosfilt(sos, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(SignalSosfiltTest, single_section_matches_filter) {
+    const std::vector<double> b{1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0};
+    const std::vector<double> a{1.0};
+    const std::vector<double> x{0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    const std::vector<std::array<double, 6>> sos{{b[0], b[1], b[2], a[0], 0.0, 0.0}};
+    const auto y_sos = sosfilt(sos, x);
+    const auto y_filter = filter(b, a, x);
+    ASSERT_EQ(y_sos.size(), y_filter.size());
+    for (size_t i = 0; i < y_filter.size(); ++i) {
+        EXPECT_NEAR(y_sos[i], y_filter[i], 1e-12);
+    }
+}
+
+TEST(SignalSosfiltTest, cascades_two_sections) {
+    // Section 1: 3-tap moving average. Section 2: first-order IIR y = 0.5*x + 0.5*y[-1].
+    const std::vector<std::array<double, 6>> sos{
+        {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 1.0, 0.0, 0.0},
+        {0.5, 0.0, 0.0, 1.0, -0.5, 0.0},
+    };
+    const std::vector<double> x{0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    const auto y = sosfilt(sos, x);
+
+    const auto stage1 = filter({1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0}, {1.0}, x);
+    const auto expected = filter({0.5}, {1.0, -0.5}, stage1);
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalSosfiltTest, normalizes_a0_per_section) {
+    // Same as filter_normalizes_when_a0_not_one, expressed as one SOS row scaled by 2.
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    const std::vector<std::array<double, 6>> sos{{2.0, -2.0, 0.0, 2.0, -1.0, 0.0}};
+    const auto y = sosfilt(sos, x);
+    const std::vector<double> expected{1.0, 1.5, 1.75, 1.875, 1.9375};
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalSosfiltTest, second_order_butterworth_matches_direct_form) {
+    // scipy.signal.butter(2, 0.25, output='sos') — single 2nd-order Butterworth lowpass section.
+    const std::vector<std::array<double, 6>> sos{
+        {0.09763107, 0.19526215, 0.09763107, 1.0, -0.94280904, 0.33333333},
+    };
+    const std::vector<double> b{0.09763107, 0.19526215, 0.09763107};
+    const std::vector<double> a{1.0, -0.94280904, 0.33333333};
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0};
+    const auto y_sos = sosfilt(sos, x);
+    const auto y_direct = filter(b, a, x);
+    const std::vector<double> expected{
+        0.09763107, 0.2873096, 0.2383344, -0.06632819, -0.14197961, 0.08351188, 0.12606229,
+        -0.10424677,
+    };
+    ASSERT_EQ(y_sos.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y_sos[i], expected[i], 1e-6);
+        EXPECT_NEAR(y_sos[i], y_direct[i], 1e-12);
+    }
+}
+
+TEST(SignalSosfiltTest, fourth_order_butterworth_chain_matches_direct_form) {
+    // scipy.signal.butter(4, 0.25, output='sos') — two cascaded 2nd-order Butterworth sections.
+    const std::vector<std::array<double, 6>> sos{
+        {0.01020948, 0.02041896, 0.01020948, 1.0, -0.85539793, 0.20971536},
+        {1.0, 2.0, 1.0, 1.0, -1.11302985, 0.57406192},
+    };
+    const std::vector<double> x{0.0, 1.0, 0.5, -0.25, 0.75, -1.0, 0.3, 0.6, -0.4, 0.2,
+                                0.9, -0.1, 0.4, -0.6, 0.8, 0.0};
+    const auto y_sos = sosfilt(sos, x);
+    const auto stage1 = filter({0.01020948, 0.02041896, 0.01020948},
+                               {1.0, -0.85539793, 0.20971536}, x);
+    const auto expected = filter({1.0, 2.0, 1.0}, {1.0, -1.11302985, 0.57406192}, stage1);
+    ASSERT_EQ(y_sos.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(y_sos[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalSosfiltTest, butterworth_preserves_length) {
+    const std::vector<std::array<double, 6>> sos{
+        {0.09763107, 0.19526215, 0.09763107, 1.0, -0.94280904, 0.33333333},
+    };
+    std::vector<double> x(32, 0.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        x[i] = std::sin(2.0 * M_PI * 0.05 * static_cast<double>(i));
+    }
+    const auto y = sosfilt(sos, x);
+    EXPECT_EQ(y.size(), x.size());
+    for (double v : y) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(SignalSosfiltTest, causal_sosfilt_differs_from_filtfilt_zero_phase) {
+    // sosfilt is causal; filtfilt on the same direct-form coeffs removes group delay.
+    const std::vector<std::array<double, 6>> sos{
+        {0.09763107, 0.19526215, 0.09763107, 1.0, -0.94280904, 0.33333333},
+    };
+    const std::vector<double> b{0.09763107, 0.19526215, 0.09763107};
+    const std::vector<double> a{1.0, -0.94280904, 0.33333333};
+    std::vector<double> x(64, 0.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        x[i] = (i < 32) ? 0.0 : 1.0;
+    }
+    const auto y_causal = sosfilt(sos, x);
+    const auto y_zero_phase = filtfilt(b, a, x);
+    ASSERT_EQ(y_causal.size(), y_zero_phase.size());
+    double max_abs_diff = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        max_abs_diff = std::max(max_abs_diff, std::abs(y_causal[i] - y_zero_phase[i]));
+    }
+    EXPECT_GT(max_abs_diff, 0.01);
+    // At the step edge, filtfilt tracks the input sooner than the causal pass.
+    EXPECT_GT(y_zero_phase[34], y_causal[34]);
+    EXPECT_NEAR(y_zero_phase[50], 1.0, 0.05);
 }
