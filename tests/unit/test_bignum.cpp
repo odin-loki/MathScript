@@ -414,6 +414,46 @@ TEST(BigIntNumThy, CompositeLarge) {
     EXPECT_TRUE(bigint_is_prime(BigInt("982451653")));
 }
 
+TEST(BigIntNumThy, NextPrimeSmall) {
+    EXPECT_EQ(bigint_next_prime(BigInt(2LL)).to_string(), "2");
+    EXPECT_EQ(bigint_next_prime(BigInt(14LL)).to_string(), "17");
+}
+
+TEST(BigIntNumThy, NextPrimeAlreadyPrime) {
+    EXPECT_EQ(bigint_next_prime(BigInt(3LL)).to_string(), "3");
+    EXPECT_EQ(bigint_next_prime(BigInt(97LL)).to_string(), "97");
+}
+
+TEST(BigIntNumThy, NextPrimeAtOrBelowOne) {
+    EXPECT_EQ(bigint_next_prime(BigInt(0LL)).to_string(), "2");
+    EXPECT_EQ(bigint_next_prime(BigInt(1LL)).to_string(), "2");
+}
+
+TEST(BigIntNumThy, NextPrimeEvenComposite) {
+    EXPECT_EQ(bigint_next_prime(BigInt(4LL)).to_string(), "5");
+    EXPECT_EQ(bigint_next_prime(BigInt(100LL)).to_string(), "101");
+}
+
+TEST(BigIntNumThy, NextPrimeOddComposite) {
+    EXPECT_EQ(bigint_next_prime(BigInt(9LL)).to_string(), "11");
+    EXPECT_EQ(bigint_next_prime(BigInt(15LL)).to_string(), "17");
+}
+
+TEST(BigIntNumThy, NextPrimeNegative) {
+    EXPECT_EQ(bigint_next_prime(BigInt(-10LL)).to_string(), "2");
+}
+
+TEST(BigIntNumThy, NextPrimeFiveAndSix) {
+    EXPECT_EQ(bigint_next_prime(BigInt(5LL)).to_string(), "5");
+    EXPECT_EQ(bigint_next_prime(BigInt(6LL)).to_string(), "7");
+}
+
+TEST(BigIntNumThy, NextPrimeLarge) {
+    EXPECT_EQ(bigint_next_prime(BigInt("982451652")).to_string(), "982451653");
+    EXPECT_EQ(bigint_next_prime(BigInt("1000000000000000000")).to_string(),
+              "1000000000000000003");
+}
+
 TEST(BigIntNumThy, PowMod) {
     // 3^10 mod 7 = 59049 mod 7 = 4
     auto r=bigint_pow_mod(BigInt(3LL),BigInt(10LL),BigInt(7LL));

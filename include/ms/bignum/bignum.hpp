@@ -114,6 +114,12 @@ BigInt bigint_factorial(int n);
 BigInt bigint_fibonacci(int n);
 bool   bigint_is_prime(const BigInt& n, int rounds = 10);  // Miller-Rabin
 
+/// @brief Smallest prime p such that p >= n.
+/// @param n Starting value (negative inputs are treated as 0).
+/// @return The least prime >= n. If n is already prime, returns n unchanged
+///   (e.g. next_prime(2) == 2, next_prime(97) == 97). For n <= 1, returns 2.
+BigInt bigint_next_prime(const BigInt& n);
+
 /// @brief Integer square root: floor(sqrt(n)) for a non-negative BigInt n, computed
 ///   exactly via Newton's method on BigInt arithmetic directly -- no floating-point
 ///   is involved at any point, so it stays exact for values far beyond what a
