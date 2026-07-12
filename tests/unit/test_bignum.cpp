@@ -108,6 +108,130 @@ TEST(BigIntArith, DivModIdentity) {
     EXPECT_EQ((q*b+r).to_string(), a.to_string());
 }
 
+// ---- BigInt Combined Divmod ----
+
+namespace {
+
+// Verifies bigint_divmod against the invariant a == q*b + r, against the
+// pre-existing operator/ and operator% (which must agree exactly), and
+// against the |r| < |b| remainder-magnitude bound.
+void expect_divmod_matches(const BigInt& a, const BigInt& b) {
+    auto [q, r] = bigint_divmod(a, b);
+    EXPECT_EQ(q * b + r, a) << "a=" << a.to_string() << " b=" << b.to_string();
+    EXPECT_EQ(q, a / b) << "a=" << a.to_string() << " b=" << b.to_string();
+    EXPECT_EQ(r, a % b) << "a=" << a.to_string() << " b=" << b.to_string();
+    if (!b.is_zero()) {
+        BigInt abs_r = r.negative ? -r : r;
+        BigInt abs_b = b.negative ? -b : b;
+        EXPECT_TRUE(abs_r < abs_b) << "|r| not < |b| for a=" << a.to_string() << " b=" << b.to_string();
+    }
+}
+
+} // namespace
+
+TEST(BigIntDivmod, BasicPositive) {
+    // a > b
+    expect_divmod_matches(BigInt(100LL), BigInt(7LL));
+    // a < b
+    expect_divmod_matches(BigInt(7LL), BigInt(100LL));
+    // exact division, no remainder
+    expect_divmod_matches(BigInt(42LL), BigInt(6LL));
+}
+
+TEST(BigIntDivmod, SignCombinations) {
+    expect_divmod_matches(BigInt(-100LL), BigInt(7LL));   // a negative
+    expect_divmod_matches(BigInt(100LL), BigInt(-7LL));   // b negative
+    expect_divmod_matches(BigInt(-100LL), BigInt(-7LL));  // both negative
+    expect_divmod_matches(BigInt(-7LL), BigInt(100LL));   // |a| < |b|, a negative
+    expect_divmod_matches(BigInt(-6LL), BigInt(3LL));     // exact, a negative
+}
+
+TEST(BigIntDivmod, ReturnedValues) {
+    BigInt a(100LL), b(7LL);
+    auto [q, r] = bigint_divmod(a, b);
+    EXPECT_EQ(q.to_string(), "14");
+    EXPECT_EQ(r.to_string(), "2");
+}
+
+TEST(BigIntDivmod, TruncatingSignConvention) {
+    // Truncating (C++-style) division: quotient rounds toward zero, and the
+    // remainder takes the sign of the dividend `a` (matching operator%'s
+    // existing convention, verified here rather than assumed).
+    {
+        auto [q, r] = bigint_divmod(BigInt(-7LL), BigInt(3LL));
+        EXPECT_EQ(q.to_string(), "-2");
+        EXPECT_EQ(r.to_string(), "-1");
+    }
+    {
+        auto [q, r] = bigint_divmod(BigInt(7LL), BigInt(-3LL));
+        EXPECT_EQ(q.to_string(), "-2");
+        EXPECT_EQ(r.to_string(), "1");
+    }
+    {
+        auto [q, r] = bigint_divmod(BigInt(-7LL), BigInt(-3LL));
+        EXPECT_EQ(q.to_string(), "2");
+        EXPECT_EQ(r.to_string(), "-1");
+    }
+}
+
+TEST(BigIntDivmod, ConsistencyWithOperatorsRandomizedFixed) {
+    // Fixed (non-random-seeded-at-runtime) set of varied a/b pairs, standing
+    // in for a randomized sweep while staying deterministic across runs.
+    std::vector<long long> as = {0, 1, -1, 17, -17, 12345, -12345, 999999999, -999999999,
+                                  123456789, -123456789, 7, -7, 1000000000, -1000000000};
+    std::vector<long long> bs = {1, -1, 3, -3, 7, -7, 100, -100, 999999999, -999999999,
+                                  123457, -123457, 2, -2, 999999998};
+    for (long long av : as) {
+        for (long long bv : bs) {
+            expect_divmod_matches(BigInt(av), BigInt(bv));
+        }
+    }
+}
+
+TEST(BigIntDivmod, LargeMultiLimb) {
+    // Both operands well beyond a single 64-bit word / single base-1e9 limb,
+    // exercising the actual long-division loop rather than a small-number path.
+    BigInt a("123456789123456789123456789123456789123456789");
+    BigInt b("987654321987654321987654321");
+    expect_divmod_matches(a, b);
+    expect_divmod_matches(-a, b);
+    expect_divmod_matches(a, -b);
+    expect_divmod_matches(-a, -b);
+
+    auto [q, r] = bigint_divmod(a, b);
+    EXPECT_EQ(q * b + r, a);
+    EXPECT_EQ(q, a / b);
+    EXPECT_EQ(r, a % b);
+
+    // |a| < |b|, both multi-limb.
+    expect_divmod_matches(b, a);
+}
+
+TEST(BigIntDivmod, DivideByZeroMatchesOperators) {
+    BigInt a(42LL);
+    BigInt zero(0LL);
+    auto [q, r] = bigint_divmod(a, zero);
+    // Must mirror operator/'s defensive (no-exception) convention exactly.
+    EXPECT_EQ(q, a / zero);
+    EXPECT_EQ(r, a % zero);
+    EXPECT_EQ(q.to_string(), "0");
+    EXPECT_EQ(r.to_string(), "42");
+
+    BigInt neg(-42LL);
+    auto [q2, r2] = bigint_divmod(neg, zero);
+    EXPECT_EQ(q2, neg / zero);
+    EXPECT_EQ(r2, neg % zero);
+    EXPECT_EQ(q2.to_string(), "0");
+    EXPECT_EQ(r2.to_string(), "-42");
+
+    // Zero divided by zero, still no crash / matches operators.
+    auto [q3, r3] = bigint_divmod(zero, zero);
+    EXPECT_EQ(q3, zero / zero);
+    EXPECT_EQ(r3, zero % zero);
+    EXPECT_EQ(q3.to_string(), "0");
+    EXPECT_EQ(r3.to_string(), "0");
+}
+
 // ---- BigInt Comparison ----
 
 TEST(BigIntCmp, LessGreater) {

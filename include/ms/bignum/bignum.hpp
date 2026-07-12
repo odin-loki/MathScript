@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace ms {
@@ -56,11 +57,38 @@ public:
     static BigInt add_abs(const BigInt& a, const BigInt& b);
     static BigInt sub_abs(const BigInt& a, const BigInt& b);  // |a| >= |b|
 
+    /// @brief Compute quotient and remainder of a/b in a single long-division pass.
+    /// @param a Dividend.
+    /// @param b Divisor.
+    /// @return {q, r} such that a == q*b + r.
+    /// @note Sign convention matches operator/ and operator%: truncating division
+    ///   (quotient rounds toward zero), remainder has the same sign as `a` (or is zero).
+    /// @note On b == 0, mirrors operator/'s defensive convention exactly: returns
+    ///   {BigInt(0), a} with no exception thrown.
+    /// @note This is the shared routine backing operator/ and operator%, so callers
+    ///   needing both quotient and remainder should prefer this over calling both
+    ///   operators separately, which would otherwise repeat the long-division work.
+    static std::pair<BigInt, BigInt> divmod(const BigInt& a, const BigInt& b);
+
 private:
     void trim();  // remove leading zeros
 };
 
 // ========================== Number theory ==========================
+
+/// @brief Combined division: returns {quotient, remainder} of a/b from a single
+///   long-division pass, instead of computing them via two separate passes
+///   (as calling operator/ then operator% would).
+/// @param a Dividend.
+/// @param b Divisor.
+/// @return {q, r} such that a == q*b + r.
+/// @note Sign convention matches operator/ and operator%: truncating division
+///   (quotient rounds toward zero), remainder has the same sign as `a` (or is zero),
+///   and |r| < |b| whenever b != 0.
+/// @note On b == 0, mirrors operator/'s defensive convention exactly: returns
+///   {BigInt(0), a} with no exception thrown.
+std::pair<BigInt, BigInt> bigint_divmod(const BigInt& a, const BigInt& b);
+
 BigInt bigint_gcd(BigInt a, BigInt b);
 // Returns {g, x, y} s.t. a*x + b*y = g and g == gcd(a,b)
 std::tuple<BigInt, BigInt, BigInt> bigint_extended_gcd(BigInt a, BigInt b);

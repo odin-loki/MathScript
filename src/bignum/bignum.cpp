@@ -201,17 +201,23 @@ BigInt BigInt::operator*(const BigInt& o) const {
     return r;
 }
 
-// Long division: *this / o
-BigInt BigInt::operator/(const BigInt& o) const {
-    if (o.is_zero()) return BigInt(0LL);
-    int c=cmp_abs(o); if (c<0) return BigInt(0LL);
-    if (c==0) { BigInt r(1LL); r.negative=negative!=o.negative; return r; }
+// Long division: computes quotient and remainder of a/b in a single pass,
+// shared by operator/, operator%, and bigint_divmod so neither of the latter
+// two need to re-run the (expensive) long-division loop.
+std::pair<BigInt, BigInt> BigInt::divmod(const BigInt& a, const BigInt& b) {
+    if (b.is_zero()) return {BigInt(0LL), a};
+    int c = a.cmp_abs(b);
+    if (c < 0) return {BigInt(0LL), a};
+    if (c == 0) {
+        BigInt q(1LL); q.negative = a.negative != b.negative;
+        return {q, BigInt(0LL)};
+    }
     // Simple long division in base BASE
-    BigInt divisor=o; divisor.negative=false;
+    BigInt divisor=b; divisor.negative=false;
     BigInt remainder; remainder.digits.clear();
-    BigInt quotient; quotient.digits.resize(digits.size(),0);
-    for (int i=(int)digits.size()-1;i>=0;--i) {
-        remainder.digits.insert(remainder.digits.begin(), digits[i]);
+    BigInt quotient; quotient.digits.resize(a.digits.size(),0);
+    for (int i=(int)a.digits.size()-1;i>=0;--i) {
+        remainder.digits.insert(remainder.digits.begin(), a.digits[i]);
         remainder.trim();
         // Binary search for q
         uint32_t lo=0,hi=BASE-1;
@@ -225,13 +231,19 @@ BigInt BigInt::operator/(const BigInt& o) const {
         remainder=remainder-t*divisor;
         if (remainder.is_zero()) remainder.digits={0};
     }
-    quotient.negative=negative!=o.negative; quotient.trim();
+    quotient.negative = a.negative != b.negative; quotient.trim();
     if (quotient.is_zero()) quotient.negative=false;
-    return quotient;
+    remainder.negative = a.negative; remainder.trim();
+    if (remainder.is_zero()) remainder.negative=false;
+    return {quotient, remainder};
+}
+
+BigInt BigInt::operator/(const BigInt& o) const {
+    return divmod(*this, o).first;
 }
 
 BigInt BigInt::operator%(const BigInt& o) const {
-    BigInt q=*this/o; return *this-q*o;
+    return divmod(*this, o).second;
 }
 
 BigInt BigInt::shift10(int n) const {
@@ -244,6 +256,10 @@ BigInt BigInt::shift10(int n) const {
 }
 
 // ========================== Number Theory ==========================
+
+std::pair<BigInt, BigInt> bigint_divmod(const BigInt& a, const BigInt& b) {
+    return BigInt::divmod(a, b);
+}
 
 BigInt bigint_gcd(BigInt a, BigInt b) {
     a.negative=false; b.negative=false;
