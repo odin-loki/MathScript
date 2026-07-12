@@ -257,6 +257,172 @@ Bytes arithmetic_decode(const ArithmeticResult& ar) {
     return out;
 }
 
+// ========================== ANS (rANS) coding ==========================
+// Byte-oriented range ANS (Fabian Giesen / ryg_rans style): 32-bit state,
+// 12-bit frequency scale (M = 4096), renormalization threshold L = 2^23.
+namespace {
+
+constexpr uint32_t kAnsScaleBits = 12;
+constexpr uint32_t kAnsScale = 1u << kAnsScaleBits;
+constexpr uint32_t kAnsByteL = 1u << 23;
+
+struct AnsModel {
+    std::vector<uint8_t> sym;
+    std::vector<uint32_t> freq;
+    std::vector<uint32_t> cum; // size n+1, cum[0]=0, cum[n]=kAnsScale
+    std::vector<uint8_t> slot_to_sym; // size kAnsScale
+
+    static AnsModel from_data(const Bytes& data) {
+        std::map<uint8_t, int> raw;
+        for (uint8_t b : data) ++raw[b];
+        std::vector<std::pair<uint8_t, int>> pairs(raw.begin(), raw.end());
+        return from_counts(pairs);
+    }
+
+    static AnsModel from_table(const std::vector<std::pair<uint8_t, uint32_t>>& ft) {
+        std::vector<std::pair<uint8_t, int>> pairs;
+        pairs.reserve(ft.size());
+        for (auto& [s, f] : ft) pairs.emplace_back(s, static_cast<int>(f));
+        return from_counts(pairs);
+    }
+
+    static AnsModel from_counts(const std::vector<std::pair<uint8_t, int>>& pairs) {
+        AnsModel m;
+        if (pairs.empty()) return m;
+
+        int raw_total = 0;
+        for (auto& [_, c] : pairs) raw_total += c;
+
+        m.sym.reserve(pairs.size());
+        m.freq.reserve(pairs.size());
+        uint32_t scaled_sum = 0;
+        for (auto& [s, c] : pairs) {
+            uint32_t f = static_cast<uint32_t>(
+                (static_cast<uint64_t>(c) * kAnsScale + raw_total / 2) / static_cast<uint64_t>(raw_total));
+            if (f == 0) f = 1;
+            m.sym.push_back(s);
+            m.freq.push_back(f);
+            scaled_sum += f;
+        }
+
+        if (scaled_sum > kAnsScale) {
+            int excess = static_cast<int>(scaled_sum - kAnsScale);
+            size_t max_i = 0;
+            for (size_t i = 1; i < m.freq.size(); ++i)
+                if (m.freq[i] > m.freq[max_i]) max_i = i;
+            m.freq[max_i] -= static_cast<uint32_t>(excess);
+            scaled_sum = kAnsScale;
+        } else if (scaled_sum < kAnsScale) {
+            int deficit = static_cast<int>(kAnsScale - scaled_sum);
+            size_t max_i = 0;
+            for (size_t i = 1; i < m.freq.size(); ++i)
+                if (m.freq[i] > m.freq[max_i]) max_i = i;
+            m.freq[max_i] += static_cast<uint32_t>(deficit);
+            scaled_sum = kAnsScale;
+        }
+
+        m.cum.reserve(m.sym.size() + 1);
+        m.cum.push_back(0);
+        for (uint32_t f : m.freq) m.cum.push_back(m.cum.back() + f);
+        (void)scaled_sum;
+
+        m.slot_to_sym.resize(kAnsScale);
+        uint32_t slot = 0;
+        for (size_t i = 0; i < m.sym.size(); ++i)
+            for (uint32_t j = 0; j < m.freq[i]; ++j)
+                m.slot_to_sym[slot++] = m.sym[i];
+
+        return m;
+    }
+
+    int index_of(uint8_t s) const {
+        auto it = std::lower_bound(sym.begin(), sym.end(), s);
+        if (it == sym.end() || *it != s) return -1;
+        return static_cast<int>(it - sym.begin());
+    }
+};
+
+void ans_renorm_encode(uint32_t& state, Bytes& out, uint32_t freq) {
+    const uint32_t x_max = ((kAnsByteL >> kAnsScaleBits) << 8) * freq;
+    while (state >= x_max) {
+        out.push_back(static_cast<uint8_t>(state & 0xFFu));
+        state >>= 8;
+    }
+}
+
+void ans_encode_symbol(uint32_t& state, Bytes& out, uint32_t start, uint32_t freq) {
+    ans_renorm_encode(state, out, freq);
+    state = ((state / freq) << kAnsScaleBits) + (state % freq) + start;
+}
+
+void ans_flush_state(uint32_t state, Bytes& out) {
+    out.push_back(static_cast<uint8_t>(state & 0xFFu));
+    out.push_back(static_cast<uint8_t>((state >> 8) & 0xFFu));
+    out.push_back(static_cast<uint8_t>((state >> 16) & 0xFFu));
+    out.push_back(static_cast<uint8_t>((state >> 24) & 0xFFu));
+}
+
+uint32_t ans_read_state(const Bytes& encoded) {
+    const size_t n = encoded.size();
+    return static_cast<uint32_t>(encoded[n - 4]) |
+           (static_cast<uint32_t>(encoded[n - 3]) << 8) |
+           (static_cast<uint32_t>(encoded[n - 2]) << 16) |
+           (static_cast<uint32_t>(encoded[n - 1]) << 24);
+}
+
+void ans_renorm_decode(uint32_t& state, const Bytes& encoded, size_t& pos) {
+    while (state < kAnsByteL) {
+        if (pos == 0) return;
+        state = (state << 8) | encoded[--pos];
+    }
+}
+
+} // namespace
+
+AnsResult ans_encode(const Bytes& data) {
+    AnsResult result;
+    result.original_size = data.size();
+    result.padding_bits = 0;
+    if (data.empty()) return result;
+
+    AnsModel model = AnsModel::from_data(data);
+    result.freq_table.reserve(model.sym.size());
+    for (size_t i = 0; i < model.sym.size(); ++i)
+        result.freq_table.emplace_back(model.sym[i], model.freq[i]);
+
+    uint32_t state = kAnsByteL;
+    Bytes stream;
+    stream.reserve(data.size());
+    for (auto it = data.rbegin(); it != data.rend(); ++it) {
+        int idx = model.index_of(*it);
+        ans_encode_symbol(state, stream, model.cum[idx], model.freq[idx]);
+    }
+    ans_flush_state(state, stream);
+    result.encoded = std::move(stream);
+    return result;
+}
+
+Bytes ans_decode(const AnsResult& ar) {
+    if (ar.original_size == 0) return {};
+    if (ar.encoded.size() < 4) return {};
+
+    AnsModel model = AnsModel::from_table(ar.freq_table);
+    uint32_t state = ans_read_state(ar.encoded);
+    size_t pos = ar.encoded.size() - 4;
+
+    Bytes out;
+    out.reserve(ar.original_size);
+    for (size_t i = 0; i < ar.original_size; ++i) {
+        uint32_t slot = state & (kAnsScale - 1);
+        uint8_t sym = model.slot_to_sym[slot];
+        int idx = model.index_of(sym);
+        state = model.freq[idx] * (state >> kAnsScaleBits) + (state & (kAnsScale - 1)) - model.cum[idx];
+        ans_renorm_decode(state, ar.encoded, pos);
+        out.push_back(sym);
+    }
+    return out;
+}
+
 // ========================== LZ77 ==========================
 std::vector<LZ77Token> lz77_encode(const Bytes& data, int window, int lookahead) {
     std::vector<LZ77Token> tokens;
