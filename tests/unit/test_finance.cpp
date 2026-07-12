@@ -189,9 +189,9 @@ TEST(FinanceIRR, MultiPeriodProject) {
 TEST(FinanceVaR, KnownQuantile) {
     std::vector<double> returns = {-0.20, -0.15, -0.10, -0.05, 0.0,
                                    0.05, 0.10, 0.15, 0.20, 0.25};
-    EXPECT_NEAR(var(returns, 0.95), 0.20, 1e-10);
+    EXPECT_NEAR(historical_var(returns, 0.95), 0.20, 1e-10);
     // idx=(1-0.5)*10=5 → sorted[5]=0.05 → VaR returns -0.05 (positive=loss convention)
-    EXPECT_NEAR(var(returns, 0.50), -0.05, 1e-10);
+    EXPECT_NEAR(historical_var(returns, 0.50), -0.05, 1e-10);
 }
 
 TEST(FinanceRisk, InformationRatio) {
@@ -1659,4 +1659,91 @@ TEST(FinanceCIR, ZeroSigmaContinuousWithSmallSigmaLimit) {
     double p_zero = cir_bond_price(r, a, b, 0.0, tau);
     double p_small = cir_bond_price(r, a, b, 1e-4, tau);
     EXPECT_NEAR(p_zero, p_small, 1e-6);
+}
+
+// --- Historical-simulation VaR / CVaR ---
+namespace {
+
+std::vector<double> generate_normal_returns(int n, double mu, double sigma, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd(mu, sigma);
+    std::vector<double> returns(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) returns[i] = nd(rng);
+    return returns;
+}
+
+std::vector<double> generate_skewed_returns(int n, unsigned seed) {
+    // Mixture: mostly small positive returns, rare large losses (left-skewed).
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    std::normal_distribution<double> nd(0.002, 0.01);
+    std::vector<double> returns(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        if (uni(rng) < 0.05)
+            returns[i] = -0.08 - 0.04 * uni(rng);
+        else
+            returns[i] = nd(rng);
+    }
+    return returns;
+}
+
+} // namespace
+
+TEST(FinanceHistoricalVaR, MatchesParametricForNormalReturns) {
+    constexpr int n = 10000;
+    constexpr double mu = 0.001, sigma = 0.02;
+    auto returns = generate_normal_returns(n, mu, sigma, 42);
+    for (double conf : {0.90, 0.95, 0.99}) {
+        double hist_v = historical_var(returns, conf);
+        double param_v = var(returns, conf);
+        EXPECT_NEAR(hist_v, param_v, 0.005);
+    }
+}
+
+TEST(FinanceHistoricalVaR, CvarMatchesParametricForNormalReturns) {
+    constexpr int n = 10000;
+    constexpr double mu = 0.001, sigma = 0.02;
+    auto returns = generate_normal_returns(n, mu, sigma, 43);
+    for (double conf : {0.90, 0.95, 0.99}) {
+        double hist_c = historical_cvar(returns, conf);
+        double param_c = cvar(returns, conf);
+        EXPECT_NEAR(hist_c, param_c, 0.006);
+    }
+}
+
+TEST(FinanceHistoricalVaR, CvarAtLeastAsExtremeAsVar) {
+    auto normal = generate_normal_returns(5000, 0.0, 0.015, 7);
+    auto skewed = generate_skewed_returns(5000, 11);
+    for (double conf : {0.90, 0.95, 0.99, 0.999}) {
+        EXPECT_GE(historical_cvar(normal, conf), historical_var(normal, conf) - 1e-12);
+        EXPECT_GE(historical_cvar(skewed, conf), historical_var(skewed, conf) - 1e-12);
+    }
+}
+
+TEST(FinanceHistoricalVaR, SkewedDistributionDivergesFromParametric) {
+    auto returns = generate_skewed_returns(8000, 99);
+    double hist_v = historical_var(returns, 0.95);
+    double param_v = var(returns, 0.95);
+    EXPECT_GT(hist_v, param_v + 0.01);
+    EXPECT_GT(historical_cvar(returns, 0.95), cvar(returns, 0.95) + 0.01);
+}
+
+TEST(FinanceHistoricalVaR, HighConfidenceSmallSample) {
+    std::vector<double> returns = {-0.12, -0.08, -0.05, -0.03, 0.01,
+                                   0.02, 0.03, 0.04, 0.05, 0.06};
+    double v = historical_var(returns, 0.999);
+    double c = historical_cvar(returns, 0.999);
+    EXPECT_GT(v, 0.0);
+    EXPECT_GE(c, v - 1e-12);
+    EXPECT_NEAR(v, 0.12, 1e-10);
+    EXPECT_NEAR(c, 0.12, 1e-10);
+}
+
+TEST(FinanceHistoricalVaR, AliasesLegacyHistoricalBehavior) {
+    std::vector<double> returns = {-0.20, -0.15, -0.10, -0.05, 0.0,
+                                   0.05, 0.10, 0.15, 0.20, 0.25};
+    EXPECT_NEAR(historical_var(returns, 0.95), 0.20, 1e-10);
+    EXPECT_NEAR(historical_cvar(returns, 0.95), 0.20, 1e-10);
+    // Worst 30% (3 observations): mean(-0.20, -0.15, -0.10) = -0.15
+    EXPECT_NEAR(historical_cvar(returns, 0.70), 0.15, 1e-10);
 }
