@@ -7357,19 +7357,20 @@ Replace all Class A transitional libraries with own implementations. This runs i
 
 ### 15.12.1 Implementation progress
 
-Waves 1 through 212 incrementally implemented this plan; each wave's specific additions are tracked in full detail in `CHANGELOG.md` rather than duplicated here.
+Waves 1 through 213 incrementally implemented this plan; each wave's specific additions are tracked in full detail in `CHANGELOG.md` rather than duplicated here.
 
 **Current status:**
 - Phase 10 hardening substantially underway (see `docs/RELEASE.md`'s tag-criteria list for gate details)
 - Version 1.0.0 released; CI green on Windows and Linux
 - ~91% line coverage (90% gate); Valgrind memcheck; libFuzzer smoke (7 targets)
-- **369 CTest suites, all passing** (as of Wave 212)
+- **369 CTest suites, all passing** (as of Wave 213)
 - Wave 207: full documentation overhaul (README/ARCHITECTURE/API/USER_GUIDE/CONTRIBUTING/RELEASE/CHANGELOG/master-plan all rewritten or refreshed), plus 8 spec-vs-implementation gaps closed (special spherical harmonics, signal coherence, stats partial correlation/VIF, ML PR-AUC, finance historical VaR, graph min arborescence, poly_roots rewritten via companion-matrix eigenvalues, quantum Schmidt decomposition)
 - Wave 208: 8 more gaps closed in previously-untouched modules (optim conjugate gradient, control step_info, image hough_circles, tensorops NMF, graph k-core decomposition, signal Chirp Z-Transform, ML IsolationForest, geo polygon triangulation)
 - Wave 209: 8 more gaps closed (numthy Carmichael lambda, combo Eulerian numbers, bignum modular inverse, diffgeo torsion, compress Golomb-Rice coding, ODE exponential Euler/ETD1, topo witness complex, symbolic sym_expand)
 - Wave 210: 8 more gaps closed (pde Helmholtz solver, cplx Cauchy principal value, info transfer entropy, special Kummer U, stats weighted statistics, finance Merton credit-risk model, ML spectral clustering, graph transitive closure)
 - Wave 211: 8 more gaps closed (prob Rayleigh distribution, fft frequency-axis helpers, linalg Sylvester equation solver, geo Sutherland-Hodgman polygon clipping, numthy multiplicative order, cypha NIG moments, core::units compile-time-checked sqrt, simd sum reduction)
 - Wave 212: 8 more gaps closed (domain lcm/extended_gcd, izaac exponential mechanism, gria CA hamming distance, cellai boltzmann weights, axiom mse/rmse fitness, core session_exponential, cuda device_memory_free, distributed allreduce_max/min)
+- Wave 213: 8 more gaps closed (cpu BLAS L1/L2, core nextafter/sparse_add/Tensor reshape/MatMul expr, interp list_session_objects, runtime parallel_for, memory Arena bytes_used)
 - Unsafe surface audit + delta baseline (blocking in CI); install/package smoke (DEB/RPM/NSIS/WiX)
 - ORC JIT scalar expr + native matrix/scalar dispatch; OpenGL PlotSurfWidget
 - docs/API.md, docs/ARCHITECTURE.md, docs/RELEASE.md; scripts/pre_release.sh + tag checklists

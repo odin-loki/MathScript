@@ -17,32 +17,32 @@ Foundation types, linear algebra, BLAS/LAPACK, numerics, memory, error handling,
 | Header | Description |
 |--------|-------------|
 | `core/matrix.hpp` | `Matrix<S, Order, Alloc>` dense matrix type with col/row-major storage |
-| `core/tensor.hpp` | Fixed-rank `Tensor<S, N>` multi-dimensional array wrapper |
-| `core/sparse.hpp` | COO `Sparse<S>` matrix with `spmv` and dense conversion |
+| `core/tensor.hpp` | Fixed-rank `Tensor<S, N>` multi-dimensional array wrapper; `reshape` (layout change preserving row-major data order) |
+| `core/sparse.hpp` | COO `Sparse<S>` matrix with `spmv`, `sparse_add`, and dense conversion |
 | `core/scalar.hpp` | `Scalar` value with physical units and arithmetic |
 | `core/sym.hpp` | String-based `Sym` with parse/eval: `+ - * /`, unary `-`, parentheses, literals, variables (`x0`, `x1`, …), and `sin`/`cos`/`exp`/`log`/`sqrt`/`tanh`; unbound variables default to 0 |
-| `core/expr.hpp` | CRTP expression templates for lazy matrix evaluation |
+| `core/expr.hpp` | CRTP expression templates for lazy matrix evaluation (`MatAdd`, `MatScale`, `MatMul`) |
 | `core/operations.hpp` | High-level `matmul`, `lu`, `qr`, `solve`, and related `Result<>` wrappers |
 | `core/rng.hpp` | Session RNG hooks (`set_session_rng`, `session_uniform`, `session_normal`, `session_exponential` via inverse-CDF transform) |
-| `core/checked_arith.hpp` | Overflow-safe `checked_add`/`sub`/`mul`/`div`/`mod`/`neg`/`abs`/`pow` (`Result<T>`), `saturating_add`/`sub`/`mul`, `wrapping_add`/`sub`/`mul`, float introspection (`is_nan`/`is_inf`/`is_finite`/`is_normal`/`signbit`/`ulp`/`eps`/`huge`/`tiny`), checked `narrow`/`widen` casts |
+| `core/checked_arith.hpp` | Overflow-safe `checked_add`/`sub`/`mul`/`div`/`mod`/`neg`/`abs`/`pow` (`Result<T>`), `saturating_add`/`sub`/`mul`, `wrapping_add`/`sub`/`mul`, float introspection (`is_nan`/`is_inf`/`is_finite`/`is_normal`/`signbit`/`ulp`/`eps`/`huge`/`tiny`/`nextafter`), checked `narrow`/`widen` casts |
 | `core/units.hpp` | Compile-time SI unit-dimension system: `Units` structural-type NTTP (7 base-dimension exponents), `TypedScalar<T, Units>` zero-runtime-overhead dimensional analysis (dimension-mismatched ops are compile errors); `is_dimensionless` and a compile-time-checked `sqrt` (halves the unit exponents, `static_assert` rejects quantities with any odd exponent) |
 | `linalg/linalg.hpp` | Eig/SVD/LDL/Schur result types; `rand`, `eig_sym`, `svd`, `expm`, `trace`, `det`, `norm`, decompositions; `solve_sylvester` (general Sylvester equation `A*X + X*B = C` via Kronecker-sum vectorization through the existing dense `solve()` — the non-symmetric counterpart to `ms::control::lyap`'s Lyapunov special case `B=A^T`) |
 | `linalg/matrix_operations.hpp` | `expected`-based matmul, LU, QR, solve, and matrix utilities |
 | `linalg/transpose.hpp` | `transpose()` returning row-major aligned matrix |
-| `cpu/blas.hpp` | Column-major BLAS: `dgemm`, `dsyrk`, `dtrsm`, `dger` |
+| `cpu/blas.hpp` | Column-major BLAS: `ddot`/`daxpy`/`dgemv` (Level-1/2), `dgemm`/`dsyrk`/`dtrsm`/`dger` (Level-3) |
 | `cpu/lapack.hpp` | LAPACK-style factorizations and solvers: Cholesky, LU, QR, SVD, least squares, symmetric eigen |
 | `cpu/blas_kernel.hpp` | AVX-512 micro-kernels for internal BLAS paths |
 | `memory/policy.hpp` | `PolicyFlag` alignment/pinning/NUMA/pool allocation flags |
 | `memory/aligned_allocator.hpp` | Cross-platform aligned `allocate`/`deallocate` helpers |
 | `memory/pinned_allocator.hpp` | Host pinned memory allocator (CPU builds) |
-| `memory/arena.hpp` | Per-thread monotonic PMR arena allocator |
+| `memory/arena.hpp` | Per-thread monotonic PMR arena allocator; `bytes_used()` occupancy tracking |
 | `memory/pool_allocator.hpp` | Slab-based pool for small fixed-size blocks |
 | `memory/numa_allocator.hpp` | NUMA topology-aware local allocation |
 | `error/error_types.hpp` | `DimensionMismatch`, `SingularMatrix`, and other `std::expected` error variants |
 | `error/expected.hpp` | Re-exports error types; `Result<T>` alias for `std::expected<T, Error>` |
 | `runtime/dispatch.hpp` | `ExecPolicy`, `Backend`, and `DispatchDecision` for CPU/GPU routing |
 | `runtime/topology.hpp` | `SystemTopology` CPU/GPU/NUMA discovery |
-| `runtime/thread_pool.hpp` | Configurable worker thread pool with futures |
+| `runtime/thread_pool.hpp` | Configurable worker thread pool with futures; `parallel_for` range-parallel dispatch |
 | `runtime/load_balancer.hpp` | `balance()` picks backend, device, and thread count for a workload |
 | `simd/isa.hpp` | `IsaFeatures` detection and human-readable `isa_summary` |
 | `simd/simd.hpp` | Vectorized `add`, `mul`, `dot`, `axpy`, `exp_map`, `gemv` with kernel dispatch; `sum` (reduction, mirroring `dot`'s ISA dispatch tiers and horizontal-reduction technique) |
@@ -114,7 +114,7 @@ REPL interpreter, plotting, JIT backends, and compile-time unsafe-site profiling
 
 | Header | Description |
 |--------|-------------|
-| `interp/repl_engine.hpp` | `Interpreter` REPL session, matrix/scalar state, plot series, save/load |
+| `interp/repl_engine.hpp` | `Interpreter` REPL session, matrix/scalar state, plot series, save/load; `list_session_objects()` public handle enumeration |
 | `interp/plot_console.hpp` | ASCII plot previews for console REPL (`format_plot_preview`) |
 | `interp/jit_backend.hpp` | `JitBackend` abstraction (`Repl` / `OrcJit`); `create_backend()` factory; optional `-DMS_BUILD_JIT=ON` links LLVM ORC LLJIT |
 | `interp/jit_backend_impl.hpp` | ORC JIT factory implementations (`create_orc_jit_stub_backend`, `create_orc_jit_llvm_backend` when `MS_JIT_LLVM` is defined) and `JitDispatchStats` counters; included by JIT-enabled builds. |

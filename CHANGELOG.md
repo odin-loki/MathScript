@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-12 (Wave 213 — CPU BLAS L1/L2, Core nextafter/sparse_add/Tensor reshape/MatMul, Interp list_session_objects, Runtime parallel_for, Memory Arena bytes_used)
+
+8 parallel subagents targeting infrastructure modules untouched in waves 207–212 (`cpu`, `core/checked_arith`, `core/sparse`, `core/tensor`, `core/expr`, `interp`, `runtime`, `memory`).
+
+### Added (Wave 213)
+- `ms::cpu::blas` gains Level-1/2 primitives — `ddot`, `daxpy`, `dgemv` complementing the existing Level-3 `dgemm`/`dsyrk`/`dtrsm`/`dger`; new `src/cpu/blas.cpp` wired into `ms_runtime`. 10 new tests in `test_cpu_blas_kernel.cpp`.
+- `ms::core::checked_arith` gains public `nextafter(x, toward)` — floating-point introspection complementing existing `ulp`/`eps`/`is_nan`. 6 new tests in `test_checked_arith.cpp`.
+- `ms::core::Sparse` gains `sparse_add` — COO merge-and-sum elementwise addition complementing `spmv`/`to_dense`. 9 new tests in `test_sparse_ext.cpp`.
+- `ms::core::Tensor` gains `reshape` — layout manipulation preserving row-major data order. 8 new tests in `test_tensor.cpp`.
+- `ms::expr` gains lazy `MatMul` expression — matrix-matrix product via CRTP complementing existing `MatAdd`/`MatScale`. 7 new tests in `test_expr_templates.cpp`.
+- `ms::interp::Interpreter` gains `list_session_objects()` — public `{handle, type_name}` enumeration complementing the existing REPL `session_objects` command. 7 new tests in `test_repl_session.cpp`.
+- `ms::runtime::ThreadPool` gains `parallel_for` — range-parallel chunk dispatch with configurable grain size. 8 new tests in `test_runtime.cpp`.
+- `ms::memory::Arena` gains `bytes_used()` — cumulative allocation occupancy tracking, reset on `reset()`. 7 new tests in `test_memory.cpp`.
+- **Total Wave 213: 369 CTest suites — all passing** (no new CTest registrations; 62 new test cases). All eight branches merged with zero conflicts; sparse MSVC template fix applied before merge. Full-suite verification on `main` passed on the first attempt.
+
 ## [1.0.0] — 2026-07-12 (Wave 212 — Domain LCM/ExtGCD, Izaac Exponential Mechanism, Gria CA Hamming Distance, Cellai Boltzmann Weights, Axiom MSE Fitness, Core Session Exponential, CUDA device_memory_free, Distributed allreduce_max/min)
 
 8 parallel subagents targeting modules untouched in waves 207–211 (`domain`, `frameworks/izaac`, `frameworks/gria`, `frameworks/cellai`, `frameworks/axiom`, `core/rng`, `cuda/nvml`, `distributed/mpi_context`).
