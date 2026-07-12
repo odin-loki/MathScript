@@ -1,5 +1,8 @@
 #include "ms/core/rng.hpp"
 
+#include <cmath>
+#include <limits>
+
 namespace ms {
 
 namespace {
@@ -29,6 +32,15 @@ double session_uniform() {
 
 double session_normal() {
     return g_normal ? g_normal() : 0.0;
+}
+
+double session_exponential(double rate) {
+    if (rate <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    // 1.0 - u lands in (0, 1] when session_uniform() is in its conventional
+    // [0, 1) range, so log() never sees a non-positive argument.
+    return -std::log(1.0 - session_uniform()) / rate;
 }
 
 } // namespace ms
