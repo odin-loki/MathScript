@@ -115,6 +115,68 @@ TEST(InfoEntropy, Efficiency) {
     EXPECT_GT(efficiency(q), 0.0);
 }
 
+TEST(InfoNormalizedEntropy, UniformDistribution) {
+    std::vector<double> p4 = {0.25, 0.25, 0.25, 0.25};
+    EXPECT_NEAR(normalized_entropy(p4), 1.0, 1e-10);
+
+    std::vector<double> p2 = {0.5, 0.5};
+    EXPECT_NEAR(normalized_entropy(p2), 1.0, 1e-10);
+
+    std::vector<double> p8(8, 0.125);
+    EXPECT_NEAR(normalized_entropy(p8), 1.0, 1e-10);
+}
+
+TEST(InfoNormalizedEntropy, SingleOutcome) {
+    std::vector<double> p = {1.0};
+    EXPECT_NEAR(normalized_entropy(p), 0.0, 1e-10);
+}
+
+TEST(InfoNormalizedEntropy, DegenerateSize) {
+    std::vector<double> empty;
+    EXPECT_NEAR(normalized_entropy(empty), 0.0, 1e-10);
+}
+
+TEST(InfoNormalizedEntropy, CertainDistribution) {
+    std::vector<double> p = {1.0, 0.0, 0.0};
+    EXPECT_NEAR(normalized_entropy(p), 0.0, 1e-10);
+}
+
+TEST(InfoNormalizedEntropy, SkewedBinary) {
+    std::vector<double> p = {0.9, 0.1};
+    const double h_norm = normalized_entropy(p);
+    EXPECT_GT(h_norm, 0.0);
+    EXPECT_LT(h_norm, 1.0);
+    EXPECT_NEAR(h_norm, efficiency(p), 1e-10);
+}
+
+TEST(InfoNormalizedEntropy, SkewedTernary) {
+    std::vector<double> p = {0.7, 0.2, 0.1};
+    const double h_norm = normalized_entropy(p);
+    EXPECT_GT(h_norm, 0.0);
+    EXPECT_LT(h_norm, 1.0);
+    EXPECT_NEAR(h_norm, efficiency(p), 1e-10);
+}
+
+TEST(InfoNormalizedEntropy, MatchesEntropyRatio) {
+    std::vector<double> p = {0.4, 0.35, 0.15, 0.1};
+    const double h = entropy(p, 2.0);
+    const double h_max = std::log2(static_cast<double>(p.size()));
+    EXPECT_NEAR(normalized_entropy(p), h / h_max, 1e-10);
+}
+
+TEST(InfoNormalizedEntropy, BoundedInUnitInterval) {
+    std::vector<double> p = {0.6, 0.25, 0.1, 0.05};
+    const double h_norm = normalized_entropy(p);
+    EXPECT_GE(h_norm, 0.0);
+    EXPECT_LE(h_norm, 1.0);
+}
+
+TEST(InfoNormalizedEntropy, MonotonicWithSpread) {
+    const std::vector<double> peaked = {0.95, 0.05};
+    const std::vector<double> spread = {0.6, 0.4};
+    EXPECT_LT(normalized_entropy(peaked), normalized_entropy(spread));
+}
+
 TEST(InfoDifferential, Gaussian) {
     double h = differential_entropy_gaussian(1.0);
     // h = 0.5*ln(2πe) ≈ 1.4189

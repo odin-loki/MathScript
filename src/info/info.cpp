@@ -27,6 +27,12 @@ double entropy(std::span<const double> p, double base) {
     return h;
 }
 
+double normalized_entropy(std::span<const double> p) {
+    if (p.size() <= 1) return 0.0;
+    const double h_max = std::log2(static_cast<double>(p.size()));
+    return entropy(p, 2.0) / h_max;
+}
+
 double joint_entropy(std::span<const double> pxy, int rows, int cols,
                      double base) {
     double h = 0.0;
