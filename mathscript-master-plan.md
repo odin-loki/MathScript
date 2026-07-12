@@ -8080,6 +8080,32 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       longer than usual; the post-merge full-suite verification on main came back 100% clean
       (368/368). 1 new CTest registration (test_units); 92 new test cases across the seven modules'
       existing/new test binaries; 368 suites, 100% passing.
+      Wave 204: the largest single wave yet, using 8 parallel subagents across 8 independent
+      modules simultaneously (up from 7 in Wave 203). ms::stats gains shapiro_wilk (normality
+      test via order-statistic correlation; direct normalized weights rather than Royston's full
+      tail-correction polynomials, documented as a simplification, plus Royston's normalizing
+      p-value transformation through the existing norm_cdf). ms::control gains kalman_predict/
+      kalman_update (standard discrete-time linear Kalman filter via a new KalmanState{x,P}
+      pair, pure-function style matching lyap/riccati/gram), verified via the scalar closed-form
+      recursion and the fundamental non-increasing-uncertainty-on-update property. ms::signal
+      gains median_filter (nonlinear sliding-window filter, verified to fully reject a single
+      outlier spike unlike moving_average). ms::bignum gains bigint_isqrt (exact BigInt-native
+      Newton's-method integer square root, verified via exact recovery of large squared values
+      -- no floating point involved anywhere, unlike a double-based sqrt which would lose
+      precision at these scales). ms::combo gains gray_code (closed-form i XOR (i>>1)) and
+      de_bruijn_sequence (FKM algorithm via Lyndon-word concatenation), verified via the
+      single-bit-transition and every-substring-exactly-once cyclic invariants. ms::quantum
+      gains grover_search/grover_optimal_iterations (explicit dense oracle/diffusion operator
+      matrices, same small-n envelope as qft_gate), verified via the exact N=4/1-marked/
+      1-iteration case reaching probability 1.0. ms::prob gains gumbel/cauchy/pareto pdf/cdf/ppf
+      trios (all three closed-form invertible, no iterative root-finding), verified via
+      round-trip ppf-cdf identities. ms::geo gains min_bounding_rect (rotating calipers over the
+      existing convex_hull_2d, since the optimal rectangle always has a side flush with a hull
+      edge), verified via exact dimension recovery at an arbitrary rotation and the point-
+      containment property. All eight branches merged with zero conflicts (distinct modules);
+      the build and full-suite verification on main both succeeded on the first attempt. No new
+      CTest registrations; 136 new test cases across the eight modules' existing test binaries;
+      368 suites, 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
