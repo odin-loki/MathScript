@@ -3,6 +3,7 @@
 #include "ms/signal/signal.hpp"
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -548,4 +549,135 @@ TEST(FirWinTest, highpass_edge_cases) {
     EXPECT_TRUE(firwin_highpass(-3, 0.3).empty());
     EXPECT_TRUE(firwin_highpass(10, 0.3).empty()); // even n_taps rejected
     EXPECT_EQ(firwin_highpass(11, 0.3).size(), 11u);
+}
+
+// ---------------------------------------------------------------------------
+// savgol(): Savitzky-Golay least-squares polynomial smoothing filter.
+// ---------------------------------------------------------------------------
+
+TEST(SavGolTest, known_kernel_window5_polyorder2_hand_computed) {
+    // Published Savitzky-Golay coefficients for window_length=5, polyorder=2:
+    // h = [-3, 12, 17, 12, -3] / 35 (e.g. Savitzky & Golay 1964 / standard references).
+    const std::vector<double> expected{-3.0 / 35.0, 12.0 / 35.0, 17.0 / 35.0, 12.0 / 35.0, -3.0 / 35.0};
+
+    // Apply the filter to a signal long enough that at least one interior point (index 2) has
+    // a full centered window, and check it matches the hand-applied kernel exactly.
+    const std::vector<double> x{2.0, -1.0, 3.0, 0.5, 4.0, -2.0, 1.5};
+    const auto y = savgol(x, 5, 2);
+    ASSERT_EQ(y.size(), x.size());
+
+    double expected_center = 0.0;
+    for (size_t j = 0; j < expected.size(); ++j) {
+        expected_center += expected[j] * x[j];
+    }
+    EXPECT_NEAR(y[2], expected_center, 1e-12);
+
+    // A second interior point, sliding the same kernel one sample forward.
+    double expected_center2 = 0.0;
+    for (size_t j = 0; j < expected.size(); ++j) {
+        expected_center2 += expected[j] * x[j + 1];
+    }
+    EXPECT_NEAR(y[3], expected_center2, 1e-12);
+
+    // Boundary points (no full centered window) are left unfiltered, i.e. copied from input.
+    EXPECT_DOUBLE_EQ(y[0], x[0]);
+    EXPECT_DOUBLE_EQ(y[1], x[1]);
+    EXPECT_DOUBLE_EQ(y[5], x[5]);
+    EXPECT_DOUBLE_EQ(y[6], x[6]);
+}
+
+TEST(SavGolTest, preserves_cubic_trend_better_than_raw_noisy_signal) {
+    std::mt19937 rng(42);
+    std::normal_distribution<double> noise(0.0, 5.0);
+
+    // Large N keeps the empirical noise statistics close to their theoretical values so the
+    // comparison below isn't sensitive to the particular fixed-seed noise realization.
+    const size_t N = 400;
+    std::vector<double> clean(N), noisy(N);
+    for (size_t i = 0; i < N; ++i) {
+        // f(t) = t^3 on a small, centered scale so the noise is meaningfully disruptive but the
+        // cubic curvature dominates over the smoothing window.
+        const double t = static_cast<double>(i) - static_cast<double>(N) / 2.0;
+        clean[i] = t * t * t;
+        noisy[i] = clean[i] + noise(rng);
+    }
+
+    const auto smoothed = savgol(noisy, 11, 3); // polyorder=3 matches the cubic exactly
+    ASSERT_EQ(smoothed.size(), noisy.size());
+
+    const size_t margin = 5; // (window_length-1)/2, skip unfiltered boundary points
+    double err_smoothed = 0.0;
+    double err_noisy = 0.0;
+    for (size_t i = margin; i + margin < N; ++i) {
+        err_smoothed += (smoothed[i] - clean[i]) * (smoothed[i] - clean[i]);
+        err_noisy += (noisy[i] - clean[i]) * (noisy[i] - clean[i]);
+    }
+    const double rmse_smoothed = std::sqrt(err_smoothed / static_cast<double>(N - 2 * margin));
+    const double rmse_noisy = std::sqrt(err_noisy / static_cast<double>(N - 2 * margin));
+
+    // The polynomial order matches the underlying trend exactly, so the smoothed signal should
+    // track it far more closely than the raw noisy samples (theoretically, residual variance is
+    // reduced by a factor of sum(h_i^2) ~= 0.21 for window_length=11, polyorder=3, i.e. RMSE
+    // should shrink by roughly sqrt(0.21) ~= 0.46; 0.7 leaves comfortable margin for sampling
+    // noise while still requiring a clear, substantial improvement).
+    EXPECT_LT(rmse_smoothed, rmse_noisy * 0.7);
+}
+
+TEST(SavGolTest, reduces_noise_variance_on_noisy_sine) {
+    std::mt19937 rng(123);
+    std::normal_distribution<double> noise(0.0, 0.3);
+
+    const size_t N = 200;
+    const double f = 0.02;
+    std::vector<double> clean(N), noisy(N);
+    for (size_t i = 0; i < N; ++i) {
+        clean[i] = std::sin(2.0 * M_PI * f * static_cast<double>(i));
+        noisy[i] = clean[i] + noise(rng);
+    }
+
+    const auto smoothed = savgol(noisy, 9, 2);
+    ASSERT_EQ(smoothed.size(), noisy.size());
+
+    const size_t margin = 4; // (window_length-1)/2
+    double residual_var_smoothed = 0.0;
+    double residual_var_noisy = 0.0;
+    // Roughness proxy: sum of squared second differences, which is inflated by high-frequency
+    // noise but small for the slowly-varying clean sine.
+    double roughness_smoothed = 0.0;
+    double roughness_noisy = 0.0;
+    size_t count = 0;
+    for (size_t i = margin; i + margin < N; ++i) {
+        const double res_s = smoothed[i] - clean[i];
+        const double res_n = noisy[i] - clean[i];
+        residual_var_smoothed += res_s * res_s;
+        residual_var_noisy += res_n * res_n;
+        if (i + 1 + margin < N && i >= margin + 1) {
+            const double d2_smoothed = smoothed[i + 1] - 2.0 * smoothed[i] + smoothed[i - 1];
+            const double d2_noisy = noisy[i + 1] - 2.0 * noisy[i] + noisy[i - 1];
+            roughness_smoothed += d2_smoothed * d2_smoothed;
+            roughness_noisy += d2_noisy * d2_noisy;
+        }
+        ++count;
+    }
+    residual_var_smoothed /= static_cast<double>(count);
+    residual_var_noisy /= static_cast<double>(count);
+
+    EXPECT_LT(residual_var_smoothed, residual_var_noisy);
+    EXPECT_LT(roughness_smoothed, roughness_noisy);
+}
+
+TEST(SavGolTest, edge_cases_return_empty) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+
+    EXPECT_TRUE(savgol(x, 4, 2).empty());   // even window_length
+    EXPECT_TRUE(savgol(x, 0, 0).empty());   // non-positive window_length
+    EXPECT_TRUE(savgol(x, -3, 1).empty());  // negative window_length
+    EXPECT_TRUE(savgol(x, 5, 5).empty());   // polyorder >= window_length
+    EXPECT_TRUE(savgol(x, 5, 6).empty());   // polyorder > window_length
+    EXPECT_TRUE(savgol(x, 5, -1).empty());  // negative polyorder
+    EXPECT_TRUE(savgol(x, 11, 2).empty());  // window_length > x.size()
+    EXPECT_TRUE(savgol(std::vector<double>{}, 5, 2).empty()); // empty input
+
+    // Sanity: a valid, small configuration on this same signal should NOT be empty.
+    EXPECT_FALSE(savgol(x, 5, 2).empty());
 }
