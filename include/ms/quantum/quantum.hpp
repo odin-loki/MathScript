@@ -90,6 +90,7 @@ int grover_optimal_iterations(int n_qubits, int n_marked);
 
 // ---- Entropy & information ----
 double von_neumann_entropy(const DensityMatrix& rho);
+double purity(const DensityMatrix& rho);  // Tr(rho^2)
 double fidelity(const DensityMatrix& rho, const DensityMatrix& sigma);
 double trace_distance(const DensityMatrix& rho, const DensityMatrix& sigma);
 double concurrence(const DensityMatrix& rho);   // for 2-qubit states

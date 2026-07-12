@@ -441,6 +441,14 @@ double von_neumann_entropy(const DensityMatrix& rho) {
     return S;
 }
 
+double purity(const DensityMatrix& rho) {
+    auto rho2 = matmul_dm(rho, rho);
+    C trace = 0.0;
+    for (int i = 0; i < static_cast<int>(rho2.size()); ++i)
+        trace += rho2[i][i];
+    return trace.real();
+}
+
 double fidelity(const DensityMatrix& rho, const DensityMatrix& sigma) {
     // F = Tr(sqrt(sqrt(rho) sigma sqrt(rho)))
     // For pure states: F = |<psi|phi>|^2
