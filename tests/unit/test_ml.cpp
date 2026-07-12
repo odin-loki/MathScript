@@ -1199,6 +1199,158 @@ TEST(MLROC, SingleSampleNoCrash) {
     EXPECT_TRUE(std::isfinite(auc));
 }
 
+// ---- Precision-Recall Curve / Average Precision ----
+
+static std::pair<Vec,Vec> imbalanced_random_classifier_data() {
+    // 10% positive prevalence; constant score carries no signal.
+    Vec pred(100, 0.5);
+    Vec truth(100, 0.0);
+    for (int i=0;i<10;++i) truth[i]=1.0;
+    return {pred,truth};
+}
+
+TEST(MLPR, PerfectClassifierAPNearOne) {
+    auto [pred,truth]=perfect_classifier_data();
+    EXPECT_NEAR(average_precision(pred,truth), 1.0, 1e-9);
+}
+
+TEST(MLPR, AntiCorrelatedClassifierAPNoBetterThanRandom) {
+    auto [pred,truth]=anticorrelated_classifier_data();
+    // Inverted 0/1 scores on balanced data: full-recall precision is 0.5, so
+    // PR-AUC is 0.5 (unlike ROC-AUC which hits 0.0 for perfect inversion).
+    EXPECT_NEAR(average_precision(pred,truth), 0.5, 1e-9);
+    EXPECT_NEAR(roc_auc(pred,truth), 0.0, 1e-9);
+}
+
+TEST(MLPR, ConstantScoreClassifierAPNearPrevalenceNotHalf) {
+    auto [pred,truth]=imbalanced_random_classifier_data();
+    double prevalence=0.1;
+    double ap=average_precision(pred,truth);
+    // PR-AUC for a no-signal classifier should track base rate, not ~0.5 ROC-AUC.
+    EXPECT_NEAR(ap, prevalence, 0.05);
+    EXPECT_NEAR(roc_auc(pred,truth), 0.5, 1e-9);
+    EXPECT_GT(std::abs(ap-0.5), 0.3);
+}
+
+TEST(MLPR, DecentClassifierAPBetweenPrevalenceAndOne) {
+    auto [pred,truth]=decent_classifier_data();
+    double prevalence=0.5;
+    double ap=average_precision(pred,truth);
+    EXPECT_GT(ap, prevalence);
+    EXPECT_LT(ap, 1.0);
+}
+
+TEST(MLPR, CurveStartsAtZeroRecallEndsAtOneRecall) {
+    auto check_endpoints=[](const Vec& pred, const Vec& truth){
+        auto curve=precision_recall_curve(pred,truth);
+        ASSERT_FALSE(curve.empty());
+        EXPECT_NEAR(curve.front().recall, 0.0, 1e-12);
+        EXPECT_NEAR(curve.back().recall, 1.0, 1e-12);
+    };
+    {
+        auto [p,t]=perfect_classifier_data();
+        check_endpoints(p,t);
+    }
+    {
+        auto [p,t]=anticorrelated_classifier_data();
+        check_endpoints(p,t);
+    }
+    {
+        auto [p,t]=decent_classifier_data();
+        check_endpoints(p,t);
+    }
+}
+
+TEST(MLPR, CurveIsMonotonicNonDecreasingRecallAlongSweep) {
+    auto check_sweep_monotonic=[](const Vec& pred, const Vec& truth){
+        std::vector<double> cand(pred.begin(), pred.end());
+        std::sort(cand.begin(), cand.end());
+        cand.erase(std::unique(cand.begin(), cand.end()), cand.end());
+        cand.push_back(cand.back()+1.0);
+        cand.push_back(cand.front()-1.0);
+        std::sort(cand.begin(), cand.end(), std::greater<double>());
+        double prev_recall=-1.0;
+        for (double thr : cand) {
+            auto cm=confusion_matrix(pred, truth, thr);
+            double rec=(cm.tp+cm.fn)>0 ? (double)cm.tp/(cm.tp+cm.fn) : 0.0;
+            EXPECT_GE(rec, prev_recall);
+            prev_recall=rec;
+        }
+    };
+    {
+        auto [p,t]=decent_classifier_data();
+        check_sweep_monotonic(p,t);
+    }
+    {
+        auto [p,t]=perfect_classifier_data();
+        check_sweep_monotonic(p,t);
+    }
+    {
+        auto [p,t]=imbalanced_random_classifier_data();
+        check_sweep_monotonic(p,t);
+    }
+}
+
+TEST(MLPR, ZeroPredictedPositivesPrecisionZeroByConvention) {
+    // Threshold above every score: no predicted positives -> precision 0.0.
+    Vec pred={0.1,0.4,0.6,0.9};
+    Vec truth={1,0,1,0};
+    auto curve=precision_recall_curve(pred,truth);
+    ASSERT_FALSE(curve.empty());
+    EXPECT_NEAR(curve.front().recall, 0.0, 1e-12);
+    EXPECT_NEAR(curve.front().precision, 0.0, 1e-12);
+    EXPECT_NEAR(precision(pred,truth, 1.0), 0.0, 1e-12);
+}
+
+TEST(MLPR, NoPositivesRecallZeroByConvention) {
+    Vec pred={0.1,0.4,0.6,0.9};
+    Vec truth={0,0,0,0};
+    auto curve=precision_recall_curve(pred,truth);
+    for (auto& pt:curve) EXPECT_NEAR(pt.recall, 0.0, 1e-12);
+    EXPECT_NEAR(average_precision(pred,truth), 0.0, 1e-9);
+}
+
+TEST(MLPR, MismatchedLengthReturnsEmptyCurveAndZeroAP) {
+    Vec pred={0.1,0.9,0.5};
+    Vec truth={1,0};
+    EXPECT_TRUE(precision_recall_curve(pred,truth).empty());
+    EXPECT_NEAR(average_precision(pred,truth), 0.0, 1e-12);
+}
+
+TEST(MLPR, EmptyInputReturnsEmptyCurveAndZeroAP) {
+    Vec pred, truth;
+    EXPECT_TRUE(precision_recall_curve(pred,truth).empty());
+    EXPECT_NEAR(average_precision(pred,truth), 0.0, 1e-12);
+}
+
+TEST(MLPR, ThresholdSweepBoundedByCandidateCountAndFinite) {
+    Vec pred={0.2,0.8};
+    Vec truth={0,1};
+    auto curve=precision_recall_curve(pred,truth);
+    EXPECT_LE(curve.size(), 4u);
+    ASSERT_FALSE(curve.empty());
+    for (auto& pt:curve) EXPECT_TRUE(std::isfinite(pt.threshold));
+    EXPECT_NEAR(curve.back().recall, 1.0, 1e-12);
+}
+
+TEST(MLPR, APConsistentWithManualStepIntegration) {
+    auto [pred,truth]=decent_classifier_data();
+    auto curve=precision_recall_curve(pred,truth);
+    double manual=0.0;
+    for (size_t i=1;i<curve.size();++i)
+        manual += (curve[i].recall-curve[i-1].recall)*curve[i].precision;
+    EXPECT_NEAR(average_precision(pred,truth), manual, 1e-12);
+}
+
+TEST(MLPR, SingleSampleNoCrash) {
+    Vec pred={0.7};
+    Vec truth={1};
+    auto curve=precision_recall_curve(pred,truth);
+    EXPECT_FALSE(curve.empty());
+    double ap=average_precision(pred,truth);
+    EXPECT_TRUE(std::isfinite(ap));
+}
+
 // ---- Preprocessing ----
 
 TEST(MLPreprocess, StandardScaler) {

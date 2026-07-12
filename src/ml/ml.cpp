@@ -1738,6 +1738,53 @@ double roc_auc(const Vec& yp, const Vec& yt) {
     return auc;
 }
 
+std::vector<PRPoint> precision_recall_curve(const Vec& yp, const Vec& yt) {
+    std::vector<PRPoint> pts;
+    if (yp.size()!=yt.size() || yp.empty()) return pts;
+
+    std::vector<double> cand(yp.begin(), yp.end());
+    std::sort(cand.begin(), cand.end());
+    cand.erase(std::unique(cand.begin(), cand.end()), cand.end());
+    cand.push_back(cand.back()+1.0);
+    cand.push_back(cand.front()-1.0);
+    std::sort(cand.begin(), cand.end(), std::greater<double>());
+
+    pts.reserve(cand.size());
+    for (double thr : cand) {
+        ConfusionMatrix cm = confusion_matrix(yp, yt, thr);
+        double rec = (cm.tp+cm.fn) > 0 ? (double)cm.tp/(cm.tp+cm.fn) : 0.0;
+        double prec = (double)cm.tp/(cm.tp+cm.fp+1e-12);
+        pts.push_back({prec, rec, thr});
+    }
+    std::sort(pts.begin(), pts.end(), [](const PRPoint& a, const PRPoint& b){
+        if (a.recall!=b.recall) return a.recall<b.recall;
+        return a.precision<b.precision;
+    });
+    pts.erase(std::unique(pts.begin(), pts.end(), [](const PRPoint& a, const PRPoint& b){
+        return a.recall==b.recall && a.precision==b.precision;
+    }), pts.end());
+    // At each recall level keep the maximum precision (interpolated-PR /
+    // scikit-learn average_precision_score convention).
+    std::vector<PRPoint> collapsed;
+    collapsed.reserve(pts.size());
+    for (const auto& pt : pts) {
+        if (!collapsed.empty() && collapsed.back().recall==pt.recall)
+            collapsed.back().precision=std::max(collapsed.back().precision, pt.precision);
+        else
+            collapsed.push_back(pt);
+    }
+    return collapsed;
+}
+
+double average_precision(const Vec& yp, const Vec& yt) {
+    auto pts = precision_recall_curve(yp, yt);
+    if (pts.size()<2) return 0.0;
+    double ap=0.0;
+    for (size_t i=1;i<pts.size();++i)
+        ap += (pts[i].recall-pts[i-1].recall)*pts[i].precision;
+    return ap;
+}
+
 // ========================== Preprocessing ==========================
 
 void StandardScaler::fit(const Mat& X) {

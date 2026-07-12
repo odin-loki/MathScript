@@ -431,6 +431,39 @@ std::vector<ROCPoint> roc_curve(const Vec& y_pred, const Vec& y_true);
 ///         points, e.g. for empty or mismatched-length input).
 double roc_auc(const Vec& y_pred, const Vec& y_true);
 
+/// A single point on a precision-recall (PR) curve.
+struct PRPoint { double precision, recall; double threshold; };
+
+/// Precision-recall curve: sweeps the classification threshold across every
+/// distinct value in `y_pred` (plus one threshold above the max and one below
+/// the min, to guarantee the extreme ends of the curve are reached) and records
+/// the (precision, recall) pair produced by confusion_matrix() at each
+/// threshold.
+///
+/// Zero-predicted-positive convention: when tp+fp == 0 at a threshold,
+/// precision is defined as 0.0 (matching precision()'s tp/(tp+fp+1e-12)
+/// convention) rather than left undefined.
+///
+/// Degenerate-denominator convention: if a threshold's confusion matrix has
+/// no true positives/negatives to form recall from (tp+fn == 0, i.e. no
+/// positives in y_true), recall is defined as 0.0.
+///
+/// @return PR points sorted by increasing recall, with duplicate (recall,precision)
+///         pairs collapsed and, when several thresholds share the same recall,
+///         the maximum precision kept (interpolated-PR convention).
+std::vector<PRPoint> precision_recall_curve(const Vec& y_pred, const Vec& y_true);
+
+/// Average precision (PR-AUC) via the step-function integral over
+/// precision_recall_curve()'s points:
+///   AP = sum_n (R_n - R_{n-1}) * P_n
+/// where recall R is non-decreasing and P_n is the precision at each recall
+/// level (the rectangle-rule / scikit-learn average_precision_score convention,
+/// not the trapezoidal rule used by roc_auc()).
+///
+/// @return the AP in [0, 1] (0.0 if precision_recall_curve() produced fewer
+///         than 2 points, e.g. for empty or mismatched-length input).
+double average_precision(const Vec& y_pred, const Vec& y_true);
+
 // ========================== Preprocessing ==========================
 
 struct StandardScaler {
