@@ -1928,6 +1928,152 @@ TEST(MLGradientBoosting, StoresTrees) {
     EXPECT_EQ(gb.trees.size(), 12u);
 }
 
+// ---- AdaBoost (SAMME) ----
+
+static std::pair<Mat,Vec> adaboost_xor_data() {
+    Mat X={{0,0},{0,1},{1,0},{1,1}};
+    Vec y={0,1,1,0};
+    return {X,y};
+}
+
+static std::pair<Mat,Vec> adaboost_linear_separable_data() {
+    Mat X; Vec y;
+    for (int i=0;i<30;++i) {
+        X.push_back({-2.0+0.1*(double)(i%6), -1.0+0.05*(double)(i/6)});
+        y.push_back(0.0);
+    }
+    for (int i=0;i<30;++i) {
+        X.push_back({2.0+0.1*(double)(i%6), 1.0+0.05*(double)(i/6)});
+        y.push_back(1.0);
+    }
+    return {X,y};
+}
+
+TEST(MLAdaBoost, XORHighAccuracy) {
+    auto [X,y]=adaboost_xor_data();
+    AdaBoost ab;
+    ab.config.n_estimators=50;
+    ab.config.max_depth=3;  // axis-aligned stumps cannot separate XOR
+    ab.config.seed=42;
+    ab.fit(X,y);
+    EXPECT_GE(ab.score(X,y), 0.85);
+}
+
+TEST(MLAdaBoost, StumpsOnLinearSeparable) {
+    auto [X,y]=adaboost_linear_separable_data();
+    AdaBoost ab;
+    ab.config.n_estimators=25;
+    ab.config.max_depth=1;
+    ab.fit(X,y);
+    EXPECT_GE(ab.score(X,y), 0.90);
+}
+
+TEST(MLAdaBoost, LinearSeparableHighAccuracy) {
+    auto [X,y]=adaboost_linear_separable_data();
+    auto split=train_test_split(X,y,0.25,42);
+    AdaBoost ab;
+    ab.config.n_estimators=40;
+    ab.config.max_depth=1;
+    ab.fit(split.first.first, split.first.second);
+    double acc=accuracy(ab.predict(split.second.first), split.second.second);
+    EXPECT_GE(acc, 0.90);
+}
+
+TEST(MLAdaBoost, ShallowTreesBeatStumpsOnXOR) {
+    auto [X,y]=adaboost_xor_data();
+    AdaBoost ab_stump, ab_tree;
+    ab_stump.config.n_estimators=30;
+    ab_stump.config.max_depth=1;
+    ab_tree.config.n_estimators=30;
+    ab_tree.config.max_depth=3;
+    ab_stump.fit(X,y);
+    ab_tree.fit(X,y);
+    EXPECT_GE(accuracy(ab_tree.predict(X),y), 0.85);
+    EXPECT_GT(accuracy(ab_tree.predict(X),y), accuracy(ab_stump.predict(X),y));
+}
+
+TEST(MLAdaBoost, MoreEstimatorsImprovesOrMatches) {
+    auto [X,y]=adaboost_xor_data();
+    AdaBoost ab_few, ab_many;
+    ab_few.config.n_estimators=5;
+    ab_few.config.max_depth=1;
+    ab_many.config.n_estimators=60;
+    ab_many.config.max_depth=1;
+    ab_few.fit(X,y);
+    ab_many.fit(X,y);
+    EXPECT_GE(accuracy(ab_many.predict(X),y), accuracy(ab_few.predict(X),y));
+}
+
+TEST(MLAdaBoost, PredictionsAreBinary) {
+    auto [X,y]=adaboost_linear_separable_data();
+    AdaBoost ab;
+    ab.config.n_estimators=20;
+    ab.fit(X,y);
+    auto pred=ab.predict(X);
+    for (double v:pred) {
+        EXPECT_TRUE(v==0.0 || v==1.0);
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(MLAdaBoost, StoresEstimatorsAndWeights) {
+    auto [X,y]=adaboost_linear_separable_data();
+    AdaBoost ab;
+    ab.config.n_estimators=15;
+    ab.config.max_depth=1;
+    ab.fit(X,y);
+    EXPECT_GE(ab.estimators.size(), 1u);
+    EXPECT_EQ(ab.estimators.size(), ab.estimator_weights.size());
+    for (double w:ab.estimator_weights) {
+        EXPECT_GT(w, 0.0);
+        EXPECT_TRUE(std::isfinite(w));
+    }
+}
+
+TEST(MLAdaBoost, BetterThanConstantBaseline) {
+    auto [X,y]=adaboost_linear_separable_data();
+    AdaBoost ab;
+    ab.config.n_estimators=25;
+    ab.fit(X,y);
+    double const_acc=std::max(
+        (double)std::count(y.begin(),y.end(),0.0)/y.size(),
+        (double)std::count(y.begin(),y.end(),1.0)/y.size());
+    EXPECT_GT(ab.score(X,y), const_acc);
+}
+
+TEST(MLAdaBoost, ThresholdClassification) {
+    auto [X,y]=threshold_classification_data();
+    AdaBoost ab;
+    ab.config.n_estimators=30;
+    ab.config.max_depth=2;
+    ab.fit(X,y);
+    EXPECT_GE(ab.score(X,y), 0.85);
+}
+
+TEST(MLAdaBoost, PredictBeforeFitNoCrash) {
+    Mat X={{1,2},{3,4}};
+    AdaBoost ab;
+    auto pred=ab.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+    for (double v:pred) EXPECT_DOUBLE_EQ(v, 0.0);
+}
+
+TEST(MLAdaBoost, EmptyFitNoCrash) {
+    Mat X; Vec y;
+    AdaBoost ab;
+    ab.fit(X,y);
+    EXPECT_TRUE(ab.estimators.empty());
+    EXPECT_TRUE(ab.estimator_weights.empty());
+}
+
+TEST(MLAdaBoost, InvalidLabelsNoOp) {
+    Mat X={{0,0},{1,1}};
+    Vec y={0,2};
+    AdaBoost ab;
+    ab.fit(X,y);
+    EXPECT_TRUE(ab.estimators.empty());
+}
+
 // ---- Support Vector Machine (SMO) ----
 
 static std::pair<Mat,Vec> linear_separable_svm_data() {

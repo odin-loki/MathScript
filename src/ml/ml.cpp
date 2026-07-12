@@ -573,91 +573,152 @@ double QDA::score(const Mat& X, const Vec& y) const { return accuracy(predict(X)
 
 // ========================== Decision Tree ==========================
 
-static double gini(const Vec& y, const std::vector<int>& idx) {
+static double tree_idx_weight_sum(const Vec& weights, const std::vector<int>& idx) {
+    if (weights.empty()) return (double)idx.size();
+    double s = 0.0;
+    for (int i : idx) s += weights[(size_t)i];
+    return s;
+}
+
+static double gini(const Vec& y, const std::vector<int>& idx, const Vec& weights = {}) {
     if (idx.empty()) return 0;
-    std::map<double,int> cnt;
-    for (int i:idx) cnt[y[i]]++;
-    double g=1.0;
-    for (auto&[k,v]:cnt) { double p=(double)v/idx.size(); g-=p*p; }
+    double tot = tree_idx_weight_sum(weights, idx);
+    if (tot <= 0.0) return 0;
+    std::map<double, double> cnt;
+    for (int i : idx) {
+        double w = weights.empty() ? 1.0 : weights[(size_t)i];
+        cnt[y[i]] += w;
+    }
+    double g = 1.0;
+    for (auto& [k, v] : cnt) {
+        double p = v / tot;
+        g -= p * p;
+    }
     return g;
 }
 
-static double mse_impurity(const Vec& y, const std::vector<int>& idx) {
+static double mse_impurity(const Vec& y, const std::vector<int>& idx, const Vec& weights = {}) {
     if (idx.empty()) return 0;
-    double mean=0; for (int i:idx) mean+=y[i]; mean/=idx.size();
-    double s=0; for (int i:idx) { double d=y[i]-mean; s+=d*d; }
-    return s/idx.size();
-}
-
-static double tree_impurity(const Vec& y, const std::vector<int>& idx, const std::string& criterion) {
-    return criterion=="mse" ? mse_impurity(y,idx) : gini(y,idx);
-}
-
-static double tree_leaf_value(const Vec& y, const std::vector<int>& idx, const std::string& criterion) {
-    if (idx.empty()) return 0;
-    if (criterion=="mse") {
-        double s=0; for (int i:idx) s+=y[i];
-        return s/idx.size();
+    double tot = tree_idx_weight_sum(weights, idx);
+    if (tot <= 0.0) return 0;
+    double mean = 0;
+    for (int i : idx) {
+        double w = weights.empty() ? 1.0 : weights[(size_t)i];
+        mean += w * y[i];
     }
-    std::map<double,int> cnt;
-    for (int i:idx) cnt[y[i]]++;
-    return std::max_element(cnt.begin(),cnt.end(),[](auto&a,auto&b){return a.second<b.second;})->first;
+    mean /= tot;
+    double s = 0;
+    for (int i : idx) {
+        double w = weights.empty() ? 1.0 : weights[(size_t)i];
+        double d = y[i] - mean;
+        s += w * d * d;
+    }
+    return s / tot;
+}
+
+static double tree_impurity(const Vec& y, const std::vector<int>& idx,
+                            const std::string& criterion, const Vec& weights = {}) {
+    return criterion == "mse" ? mse_impurity(y, idx, weights) : gini(y, idx, weights);
+}
+
+static double tree_leaf_value(const Vec& y, const std::vector<int>& idx,
+                              const std::string& criterion, const Vec& weights = {}) {
+    if (idx.empty()) return 0;
+    if (criterion == "mse") {
+        double tot = tree_idx_weight_sum(weights, idx);
+        if (tot <= 0.0) return 0;
+        double s = 0;
+        for (int i : idx) {
+            double w = weights.empty() ? 1.0 : weights[(size_t)i];
+            s += w * y[i];
+        }
+        return s / tot;
+    }
+    std::map<double, double> cnt;
+    for (int i : idx) {
+        double w = weights.empty() ? 1.0 : weights[(size_t)i];
+        cnt[y[i]] += w;
+    }
+    return std::max_element(cnt.begin(), cnt.end(),
+                            [](auto& a, auto& b) { return a.second < b.second; })->first;
 }
 
 static bool tree_all_same(const Vec& y, const std::vector<int>& idx, const std::string& criterion) {
-    if (idx.size()<=1) return true;
-    if (criterion=="mse") {
-        double ref=y[idx[0]];
-        for (int i:idx) if (std::abs(y[i]-ref)>1e-12) return false;
+    if (idx.size() <= 1) return true;
+    if (criterion == "mse") {
+        double ref = y[idx[0]];
+        for (int i : idx) if (std::abs(y[i] - ref) > 1e-12) return false;
         return true;
     }
-    for (int i:idx) if (y[i]!=y[idx[0]]) return false;
+    for (int i : idx) if (y[i] != y[idx[0]]) return false;
     return true;
 }
 
 int DecisionTree::build(const Mat& X, const Vec& y, std::vector<int>& idx, int depth) {
-    int node_idx=nodes.size();
+    const Vec& weights = fit_weights_;
+    int node_idx = (int)nodes.size();
     nodes.push_back({});
-    if (depth>=max_depth || idx.size()<=1) {
-        nodes[node_idx].value=tree_leaf_value(y,idx,criterion);
+    if (depth >= max_depth || idx.size() <= 1) {
+        nodes[node_idx].value = tree_leaf_value(y, idx, criterion, weights);
         return node_idx;
     }
-    if (tree_all_same(y,idx,criterion)) {
-        nodes[node_idx].value=tree_leaf_value(y,idx,criterion);
+    if (tree_all_same(y, idx, criterion)) {
+        nodes[node_idx].value = tree_leaf_value(y, idx, criterion, weights);
         return node_idx;
     }
 
-    double best_g=1e300; int best_f=-1; double best_t=0;
-    int p=X[0].size();
-    for (int f=0;f<p;++f) {
-        std::vector<double> vals; for (int i:idx) vals.push_back(X[i][f]);
-        std::sort(vals.begin(),vals.end());
-        vals.erase(std::unique(vals.begin(),vals.end()),vals.end());
-        for (size_t vi=0;vi+1<vals.size();++vi) {
-            double t=(vals[vi]+vals[vi+1])/2;
-            std::vector<int> li,ri;
-            for (int i:idx) (X[i][f]<=t?li:ri).push_back(i);
-            if (li.empty()||ri.empty()) continue;
-            double g=(li.size()*tree_impurity(y,li,criterion)+ri.size()*tree_impurity(y,ri,criterion))/idx.size();
-            if (g<best_g){best_g=g;best_f=f;best_t=t;}
+    double best_g = 1e300;
+    int best_f = -1;
+    double best_t = 0;
+    int p = (int)X[0].size();
+    double idx_w = tree_idx_weight_sum(weights, idx);
+    for (int f = 0; f < p; ++f) {
+        std::vector<double> vals;
+        for (int i : idx) vals.push_back(X[i][f]);
+        std::sort(vals.begin(), vals.end());
+        vals.erase(std::unique(vals.begin(), vals.end()), vals.end());
+        for (size_t vi = 0; vi + 1 < vals.size(); ++vi) {
+            double t = (vals[vi] + vals[vi + 1]) / 2;
+            std::vector<int> li, ri;
+            for (int i : idx) (X[i][f] <= t ? li : ri).push_back(i);
+            if (li.empty() || ri.empty()) continue;
+            double lw = tree_idx_weight_sum(weights, li);
+            double rw = tree_idx_weight_sum(weights, ri);
+            double g = (lw * tree_impurity(y, li, criterion, weights)
+                        + rw * tree_impurity(y, ri, criterion, weights)) / idx_w;
+            if (g < best_g) { best_g = g; best_f = f; best_t = t; }
         }
     }
-    if (best_f<0) {
-        nodes[node_idx].value=tree_leaf_value(y,idx,criterion);
+    if (best_f < 0) {
+        nodes[node_idx].value = tree_leaf_value(y, idx, criterion, weights);
         return node_idx;
     }
-    nodes[node_idx].feature=best_f; nodes[node_idx].threshold=best_t;
-    std::vector<int> li,ri;
-    for (int i:idx) (X[i][best_f]<=best_t?li:ri).push_back(i);
-    nodes[node_idx].left=build(X,y,li,depth+1);
-    nodes[node_idx].right=build(X,y,ri,depth+1);
+    nodes[node_idx].feature = best_f;
+    nodes[node_idx].threshold = best_t;
+    std::vector<int> li, ri;
+    for (int i : idx) (X[i][best_f] <= best_t ? li : ri).push_back(i);
+    nodes[node_idx].left = build(X, y, li, depth + 1);
+    nodes[node_idx].right = build(X, y, ri, depth + 1);
     return node_idx;
 }
 
 void DecisionTree::fit(const Mat& X, const Vec& y) {
+    fit_weights_.clear();
     nodes.clear();
-    std::vector<int> idx(X.size()); std::iota(idx.begin(),idx.end(),0);
-    build(X,y,idx,0);
+    std::vector<int> idx(X.size());
+    std::iota(idx.begin(), idx.end(), 0);
+    build(X, y, idx, 0);
+}
+
+void DecisionTree::fit(const Mat& X, const Vec& y, const Vec& sample_weights) {
+    fit_weights_.clear();
+    if (!sample_weights.empty() && sample_weights.size() == X.size())
+        fit_weights_ = sample_weights;
+    nodes.clear();
+    std::vector<int> idx(X.size());
+    std::iota(idx.begin(), idx.end(), 0);
+    build(X, y, idx, 0);
+    fit_weights_.clear();
 }
 
 double DecisionTree::predict_one(const Vec& x, int n) const {
@@ -760,6 +821,73 @@ Vec GradientBoosting::predict(const Mat& X) const {
             pred[i]+=config.learning_rate*tree_pred[i];
     }
     return pred;
+}
+
+// ========================== AdaBoost (SAMME) ==========================
+
+static bool adaboost_binary_labels(const Vec& y) {
+    for (double v : y)
+        if (v != 0.0 && v != 1.0) return false;
+    return true;
+}
+
+void AdaBoost::fit(const Mat& X, const Vec& y) {
+    estimators.clear();
+    estimator_weights.clear();
+    if (X.empty() || y.empty() || X.size() != y.size() || !adaboost_binary_labels(y))
+        return;
+
+    int n = (int)X.size();
+    Vec weights((size_t)n, 1.0 / n);
+
+    for (size_t m = 0; m < config.n_estimators; ++m) {
+        DecisionTree stump((int)config.max_depth, "gini");
+        stump.fit(X, y, weights);
+        Vec preds = stump.predict(X);
+
+        double err = 0.0;
+        for (int i = 0; i < n; ++i)
+            if (std::abs(preds[(size_t)i] - y[(size_t)i]) >= 0.5)
+                err += weights[(size_t)i];
+        err = std::clamp(err, 1e-10, 1.0 - 1e-10);
+
+        if (err >= 0.5 - 1e-12) break;
+
+        // SAMME: alpha = log((1-err)/err) + log(K-1); K=2 => second term is 0.
+        double alpha = std::log((1.0 - err) / err);
+
+        estimators.push_back(std::move(stump));
+        estimator_weights.push_back(alpha);
+
+        double norm = 0.0;
+        for (int i = 0; i < n; ++i) {
+            if (std::abs(preds[(size_t)i] - y[(size_t)i]) >= 0.5)
+                weights[(size_t)i] *= std::exp(alpha);
+            norm += weights[(size_t)i];
+        }
+        if (norm <= 1e-14) break;
+        for (int i = 0; i < n; ++i) weights[(size_t)i] /= norm;
+    }
+}
+
+Vec AdaBoost::predict(const Mat& X) const {
+    Vec pred(X.size(), 0.0);
+    if (estimators.empty()) return pred;
+
+    for (size_t i = 0; i < X.size(); ++i) {
+        double vote0 = 0.0, vote1 = 0.0;
+        for (size_t m = 0; m < estimators.size(); ++m) {
+            double h = estimators[m].predict({X[i]})[0];
+            if (h >= 0.5) vote1 += estimator_weights[m];
+            else vote0 += estimator_weights[m];
+        }
+        pred[i] = vote1 >= vote0 ? 1.0 : 0.0;
+    }
+    return pred;
+}
+
+double AdaBoost::score(const Mat& X, const Vec& y) const {
+    return accuracy(predict(X), y);
 }
 
 // ========================== Support Vector Machine (SMO) ==========================

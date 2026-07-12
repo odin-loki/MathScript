@@ -155,9 +155,11 @@ struct DecisionTree {
     std::vector<Node> nodes;
     explicit DecisionTree(int md = 5, std::string crit = "gini") : max_depth(md), criterion(std::move(crit)) {}
     void fit(const Mat& X, const Vec& y);
+    void fit(const Mat& X, const Vec& y, const Vec& sample_weights);
     Vec predict(const Mat& X) const;
     double score(const Mat& X, const Vec& y) const;
 private:
+    Vec fit_weights_;
     int build(const Mat& X, const Vec& y, std::vector<int>& idx, int depth);
     double predict_one(const Vec& x, int node) const;
 };
@@ -193,6 +195,26 @@ struct GradientBoosting {
 
     void fit(const Mat& X, const Vec& y);
     Vec predict(const Mat& X) const;
+};
+
+/// AdaBoost binary classifier (SAMME). Sequentially fits weighted weak
+/// learners — decision stumps by default (max_depth=1) or shallow trees —
+/// and combines them via a weighted majority vote. Each round reweights
+/// misclassified samples (exponential loss) before fitting the next stump.
+struct AdaBoostConfig {
+    size_t n_estimators = 50;
+    size_t max_depth = 1;
+    unsigned seed = 42;
+};
+
+struct AdaBoost {
+    AdaBoostConfig config;
+    std::vector<DecisionTree> estimators;
+    Vec estimator_weights;
+
+    void fit(const Mat& X, const Vec& y);
+    Vec predict(const Mat& X) const;
+    double score(const Mat& X, const Vec& y) const;
 };
 
 /// Support Vector Machine (binary classifier) trained via Platt's Sequential
