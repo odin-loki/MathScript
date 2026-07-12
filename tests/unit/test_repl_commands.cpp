@@ -4081,9 +4081,9 @@ TEST(ReplCommandsTest, wave166_stats_mad) {
     expect_contains(interp, "help", "stats_mad(x)");
 
     expect_ok(interp, "m = stats_mad([1; 1; 2; 2; 4; 6; 9])");
-    EXPECT_NEAR(interp.state().scalars.at("m"), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().scalars.at("m"), 1.4826, 1e-9);
 
-    expect_contains(interp, "stats_mad([1; 1; 2; 2; 4; 6; 9])", "1");
+    expect_contains(interp, "stats_mad([1; 1; 2; 2; 4; 6; 9])", "1.4826");
 }
 
 TEST(ReplCommandsTest, wave166_graph_astar) {

@@ -62,7 +62,8 @@ TEST(StatsRMS, AllOnes) {
 TEST(StatsMAD, KnownValue) {
     // mad([1, 1, 2, 2, 4, 6, 9]) median=2, devs=[1,1,0,0,2,4,7], median dev=1
     std::vector<double> x = {1.0, 1.0, 2.0, 2.0, 4.0, 6.0, 9.0};
-    EXPECT_NEAR(ms::mad(x), 1.0, 1e-10);
+    EXPECT_NEAR(ms::mad(x, false), 1.0, 1e-10);
+    EXPECT_NEAR(ms::mad(x), 1.4826, 1e-10);
 }
 
 TEST(StatsMAD, Uniform) {

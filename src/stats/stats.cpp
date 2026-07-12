@@ -391,13 +391,20 @@ double rms(std::span<const double> data) {
     return std::sqrt(sum_sq / static_cast<double>(data.size()));
 }
 
-double mad(std::span<const double> data) {
-    if (data.empty()) return 0.0;
-    double med = median(data);
-    std::vector<double> abs_dev(data.size());
-    for (size_t i = 0; i < data.size(); ++i)
-        abs_dev[i] = std::abs(data[i] - med);
-    return median(abs_dev);
+double mad(const std::vector<double>& x, bool scale) {
+    if (x.empty()) {
+        return 0.0;
+    }
+    const double med = median(x);
+    std::vector<double> abs_dev(x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        abs_dev[i] = std::abs(x[i] - med);
+    }
+    double result = median(abs_dev);
+    if (scale) {
+        result *= 1.4826;
+    }
+    return result;
 }
 
 double iqr(std::span<const double> data) {
