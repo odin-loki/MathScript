@@ -8106,6 +8106,35 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       the build and full-suite verification on main both succeeded on the first attempt. No new
       CTest registrations; 136 new test cases across the eight modules' existing test binaries;
       368 suites, 100% passing.
+      Wave 205: 8 parallel subagents across 8 independent modules. ms::numthy gains
+      is_carmichael (Korselt's-criterion Carmichael-number test, necessary AND sufficient
+      unlike finite-base Fermat testing) and lucas_sequence (generalized Fibonacci/Lucas via
+      O(log k) matrix exponentiation). ms::ode gains ode_rosenbrock23/_vec (linearly-implicit
+      2-stage stiff-ODE solver needing only one linear solve per stage per step via Gaussian
+      elimination on (I-h*gamma*J), unlike ode_backward_euler's full Newton iteration; verified
+      via stability at step sizes that blow up explicit methods). ms::image gains hough_lines
+      (accumulator-based line detection over (rho,theta) space, composable with the existing
+      canny edge detector). ms::poly gains poly_partial_fractions (simple/repeated real poles
+      plus complex-conjugate quadratic terms, via a coefficient-matching linear system rather
+      than case-by-case Taylor-coefficient calculus for repeated poles -- verified via full
+      rational-function reconstruction against direct N(x)/D(x) evaluation). ms::topo gains
+      persistence_landscape (Bubenik's vectorized functional persistence-diagram summary --
+      k-th-largest-tent-value-at-each-t, giving a genuine vector space unlike a raw diagram).
+      ms::diffgeo gains parallel_transport (integrates the parallel transport equation along
+      an explicit curve; verified via the classic holonomy signature -- transport around a
+      closed loop on a curved surface returns a rotated vector, unlike flat space). ms::graph
+      gains eulerian_path (Hierholzer's algorithm plus the classic degree-parity/connectivity
+      existence criteria, scoped to undirected graphs matching this module's convention).
+      ms::finance gains vasicek_bond_price/cir_bond_price (closed-form affine bond pricing
+      under two classic mean-reverting short-rate models). Encountered and fixed one build-
+      environment issue mid-wave: a newer MSVC toolset (14.51.36231) auto-installed alongside
+      the pinned older toolset (14.44.35207) that build-msvc's CMakeCache actually targets,
+      causing a transient cstddef-not-found failure until toolset selection was pinned
+      explicitly rather than auto-selecting the newest (one subagent was resumed mid-task with
+      this fix and completed successfully after being stuck on it). All eight branches merged
+      with zero conflicts (distinct modules); post-fix full-suite verification on main came
+      back 100% clean. No new CTest registrations; 132 new test cases across the eight
+      modules' existing test binaries; 368 suites, 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
