@@ -210,5 +210,34 @@ struct MinBoundingRect {
 //        (still a valid, sensible non-crashing result, just not from the rotating-calipers path).
 MinBoundingRect min_bounding_rect(const std::vector<Point2D>& points);
 
+// ========================== Minkowski Sum ==========================
+
+// Minkowski sum of two convex polygons A and B: the set {a + b : a in A, b in B}, which is
+// itself always a convex polygon when A and B are both convex. Computed via the efficient
+// O(|A|+|B|) "merge by angle" algorithm (valid ONLY because both inputs are convex -- this is
+// NOT a general-purpose Minkowski sum for arbitrary/non-convex polygons, which is a much
+// harder problem out of scope here):
+//   1. Both inputs are required to be in CCW order (matching this module's convention, e.g.
+//      convex_hull_2d's output) -- this is a precondition, NOT defensively checked/corrected,
+//      since silently reversing a caller's polygon would hide bugs; a CW-wound input is
+//      documented as producing unreliable/undefined results.
+//   2. Find the starting vertex of each polygon: the lowest-y, then lowest-x, vertex (the
+//      "bottom-most" vertex), a standard choice that ensures a clean angular merge.
+//   3. Walk around both polygons simultaneously starting from their respective starting
+//      vertices, at each step comparing the polar angle of the current edge vector of A
+//      against the current edge vector of B, and advancing whichever polygon's current edge
+//      has the smaller angle (adding that edge vector to a running sum point and appending the
+//      result to the output), until both polygons have been fully traversed (standard "merge
+//      two sorted-by-angle edge lists" pattern, analogous to merging two sorted arrays).
+//
+// @param a, b convex polygons in CCW order. Fewer than 3 vertices in either input is a
+//        degenerate case (no well-defined "edge list" to angularly merge) and is handled via
+//        a brute-force fallback instead: every pairwise sum of a vertex of `a` and a vertex of
+//        `b`, followed by convex_hull_2d over those candidate points. Note this fallback still
+//        assumes convex inputs; it does not generalise this function to non-convex polygons.
+//        Both empty returns an empty polygon.
+// @return the Minkowski sum polygon, convex and in CCW order.
+Polygon2D minkowski_sum_convex(const Polygon2D& a, const Polygon2D& b);
+
 } // namespace geo
 } // namespace ms

@@ -870,5 +870,70 @@ MinBoundingRect min_bounding_rect(const std::vector<Point2D>& points) {
     return best;
 }
 
+// ---- Minkowski Sum ----
+
+// Index of the "bottom-most" vertex: lowest y, tie-broken by lowest x. Used as the
+// canonical start of the angular edge walk (see minkowski_sum_convex).
+static int bottom_most_index(const Polygon2D& poly) {
+    int best = 0;
+    for (int i = 1; i < static_cast<int>(poly.size()); ++i) {
+        if (poly[i].y < poly[best].y ||
+            (poly[i].y == poly[best].y && poly[i].x < poly[best].x))
+            best = i;
+    }
+    return best;
+}
+
+// Brute-force Minkowski sum: every pairwise vertex sum, then convex_hull_2d over the
+// candidates. Correct for any convex a/b (not just the >=3-vertex case the merge-by-angle
+// walk requires), so it doubles as the fallback for degenerate/tiny inputs.
+static Polygon2D minkowski_sum_bruteforce(const Polygon2D& a, const Polygon2D& b) {
+    std::vector<Point2D> sums;
+    sums.reserve(a.size() * b.size());
+    for (const auto& pa : a)
+        for (const auto& pb : b)
+            sums.push_back({pa.x + pb.x, pa.y + pb.y});
+    if (sums.size() < 3) return sums;  // convex_hull_2d itself no-ops below 3 points anyway
+    return convex_hull_2d(sums);
+}
+
+Polygon2D minkowski_sum_convex(const Polygon2D& a, const Polygon2D& b) {
+    const int na = static_cast<int>(a.size());
+    const int nb = static_cast<int>(b.size());
+    if (na == 0 || nb == 0) return {};
+    if (na < 3 || nb < 3) return minkowski_sum_bruteforce(a, b);
+
+    constexpr double kEps = 1e-9;
+    const int ia0 = bottom_most_index(a);
+    const int ib0 = bottom_most_index(b);
+
+    Polygon2D result;
+    result.reserve(static_cast<size_t>(na) + static_cast<size_t>(nb));
+
+    int ia = ia0, ib = ib0;
+    Point2D cur = { a[ia0].x + b[ib0].x, a[ia0].y + b[ib0].y };
+
+    for (int i = 0, j = 0; i < na || j < nb; ) {
+        result.push_back(cur);
+
+        const bool have_a = i < na, have_b = j < nb;
+        const Vec2D ea = have_a ? vec2(a[ia], a[(ia + 1) % na]) : Vec2D{0.0, 0.0};
+        const Vec2D eb = have_b ? vec2(b[ib], b[(ib + 1) % nb]) : Vec2D{0.0, 0.0};
+        const double cr = (have_a && have_b) ? cross2d(ea, eb) : 0.0;
+
+        // Advance whichever edge has the smaller polar angle; a near-zero cross product means
+        // the two edges are collinear, in which case both advance and their vectors combine
+        // into a single merged output edge (avoiding a redundant near-duplicate vertex).
+        const bool advance_a = have_a && (!have_b || cr >= -kEps);
+        const bool advance_b = have_b && (!have_a || cr <= kEps);
+
+        Vec2D step{0.0, 0.0};
+        if (advance_a) { step = step + ea; ia = (ia + 1) % na; ++i; }
+        if (advance_b) { step = step + eb; ib = (ib + 1) % nb; ++j; }
+        cur = { cur.x + step.x, cur.y + step.y };
+    }
+    return result;
+}
+
 } // namespace geo
 } // namespace ms
