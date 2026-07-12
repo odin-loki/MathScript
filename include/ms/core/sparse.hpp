@@ -24,6 +24,9 @@ public:
     Matrix<S, StorageOrder::ColMajor, Alloc> spmv(
         const Matrix<S, StorageOrder::ColMajor, Alloc>& x) const;
 
+    template<typename U, template<typename> class A>
+    friend Sparse<U, A> sparse_add(const Sparse<U, A>& a, const Sparse<U, A>& b);
+
 private:
     size_t rows_;
     size_t cols_;
@@ -32,5 +35,11 @@ private:
     std::vector<IndexType> rowidx_;
     std::vector<IndexType> colind_;
 };
+
+/// Element-wise addition of two COO sparse matrices with the same shape.
+/// Merges sorted (row, col) entries and sums duplicates. Dimension mismatch
+/// returns an empty 0x0 matrix (Sparse does not use Result<>).
+template<typename S, template<typename> class Alloc = std::allocator>
+Sparse<S, Alloc> sparse_add(const Sparse<S, Alloc>& a, const Sparse<S, Alloc>& b);
 
 } // namespace ms
