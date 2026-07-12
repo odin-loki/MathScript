@@ -122,6 +122,57 @@ std::vector<std::vector<float>> radon(const Image& img,
 Image iradon(const std::vector<std::vector<float>>& sinogram,
              const std::vector<float>& theta_deg);
 
+// ========================== Hough Transform ==========================
+
+/// Detected straight line from hough_lines(), in normal form
+/// `x*cos(theta) + y*sin(theta) = rho` (x = column, y = row, matching this
+/// module's KeyPoint convention).
+struct HoughLine { double rho, theta; int votes; };
+
+/// Standard (straight-line) Hough transform.
+///
+/// For every "edge" pixel (a pixel whose value exceeds @p edge_threshold),
+/// casts a vote in (rho, theta) parameter space for every line -- in normal
+/// form `x*cos(theta) + y*sin(theta) = rho` -- passing through that pixel,
+/// across a discretised grid of @p n_theta bins spanning theta in [0, pi)
+/// and @p n_rho bins spanning rho in [-rho_max, rho_max], where
+/// `rho_max = sqrt(cols^2 + rows^2)` is the image diagonal (the largest
+/// |rho| any line intersecting the image can have). Simple local-maximum
+/// peak detection is then run on the resulting accumulator: a cell is a
+/// peak if its vote count is >= @p vote_threshold AND it is a strict local
+/// maximum among its immediate neighbours in the discretised (rho, theta)
+/// grid, which avoids returning many near-duplicate lines clustered around
+/// a single true line's peak.
+/// @param img Input image (RGB is converted to grayscale first, matching
+///            this module's other analysis functions).
+/// @param edge_threshold Pixel intensity threshold above which a pixel is
+///        treated as an "edge" pixel that votes in the accumulator.
+/// @param n_theta Number of theta bins over [0, pi) (typical: 180, for
+///        1-degree resolution). `n_theta <= 0` is degenerate.
+/// @param n_rho Number of rho bins over [-rho_max, rho_max] (typical: a
+///        few hundred, e.g. `2*ceil(rho_max)` for roughly 0.5-pixel
+///        resolution). `n_rho <= 0` is degenerate.
+/// @param vote_threshold Minimum accumulator vote count for a cell to be
+///        considered a candidate peak/detected line.
+/// @return Detected lines as {rho, theta, votes} sorted by descending vote
+///         count. An empty image or degenerate parameters (`n_theta <= 0`
+///         or `n_rho <= 0`) return `{}`.
+/// @note This votes directly on pixels above @p edge_threshold (simple
+///       thresholding), not a full Canny pipeline. Callers working with
+///       noisy images will usually get cleaner peaks by running canny() (or
+///       another edge detector already in this module) first and passing
+///       the resulting edge map in, e.g. `hough_lines(canny(img, lo, hi), 0.5)`.
+/// @note Peak detection treats theta as non-wrapping: it does not check
+///       neighbours across the theta=0/theta=pi boundary (which, since a
+///       line's normal form is periodic there only after flipping the sign
+///       of rho, would require special-casing rather than a plain
+///       neighbour lookup). This is an intentional simplification and can
+///       occasionally let a true peak that sits at a theta boundary be
+///       reported alongside a near-duplicate on the other side.
+std::vector<HoughLine> hough_lines(const Image& img, double edge_threshold,
+                                    int n_theta = 180, int n_rho = 200,
+                                    int vote_threshold = 50);
+
 // ========================== Feature Detection ==========================
 struct KeyPoint { float x, y, response; };
 std::vector<KeyPoint> harris(const Image& img, float k = 0.04f,

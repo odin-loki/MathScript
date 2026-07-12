@@ -629,6 +629,53 @@ Image iradon(const std::vector<std::vector<float>>& sinogram,
     return out;
 }
 
+// ========================== Hough Transform ==========================
+
+std::vector<HoughLine> hough_lines(const Image& img, double edge_threshold,
+                                    int n_theta, int n_rho, int vote_threshold) {
+    if (img.empty()||n_theta<=0||n_rho<=0) return {};
+    auto g=img.channels>1?rgb2gray(img):img;
+    int width=g.cols, height=g.rows;
+    double rho_max=std::sqrt((double)width*width+(double)height*height);
+
+    std::vector<double> costab(n_theta), sintab(n_theta);
+    for (int ti=0;ti<n_theta;++ti) {
+        double theta=ti*M_PI/n_theta;
+        costab[ti]=std::cos(theta); sintab[ti]=std::sin(theta);
+    }
+
+    std::vector<std::vector<int>> acc(n_rho, std::vector<int>(n_theta,0));
+    for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
+        if ((double)g.at(y,x,0)<=edge_threshold) continue;
+        for (int ti=0;ti<n_theta;++ti) {
+            double rho=x*costab[ti]+y*sintab[ti];
+            int rho_bin=(int)std::lround((rho+rho_max)/(2.0*rho_max)*(n_rho-1));
+            rho_bin=std::clamp(rho_bin,0,n_rho-1);
+            acc[rho_bin][ti]++;
+        }
+    }
+
+    std::vector<HoughLine> lines;
+    for (int rb=0;rb<n_rho;++rb) for (int tb=0;tb<n_theta;++tb) {
+        int votes=acc[rb][tb];
+        if (votes<vote_threshold) continue;
+        bool peak=true;
+        for (int drb=-1;drb<=1&&peak;++drb) for (int dtb=-1;dtb<=1&&peak;++dtb) {
+            if (drb==0&&dtb==0) continue;
+            int nr=rb+drb, nt=tb+dtb;
+            if (nr<0||nr>=n_rho||nt<0||nt>=n_theta) continue;  // no wraparound
+            if (acc[nr][nt]>=votes) peak=false;
+        }
+        if (!peak) continue;
+        double rho=(n_rho>1) ? (-rho_max+rb*(2.0*rho_max)/(n_rho-1)) : 0.0;
+        double theta=tb*M_PI/n_theta;
+        lines.push_back({rho,theta,votes});
+    }
+    std::sort(lines.begin(),lines.end(),
+              [](const HoughLine& a, const HoughLine& b){ return a.votes>b.votes; });
+    return lines;
+}
+
 // ========================== Harris Corner Detector ==========================
 
 static std::tuple<Image,Image,Image> structure_tensor_smoothed(const Image& g) {
