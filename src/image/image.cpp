@@ -676,6 +676,58 @@ std::vector<HoughLine> hough_lines(const Image& img, double edge_threshold,
     return lines;
 }
 
+std::vector<HoughCircle> hough_circles(const Image& img, double edge_threshold,
+                                        double r_min, double r_max,
+                                        int r_step, int vote_threshold) {
+    if (img.empty()||r_step<=0||r_min>r_max) return {};
+    auto g=img.channels>1?rgb2gray(img):img;
+    int width=g.cols, height=g.rows;
+
+    std::vector<int> radii;
+    for (int r=(int)std::ceil(r_min); r<=(int)std::floor(r_max); r+=r_step)
+        radii.push_back(r);
+    if (radii.empty()) return {};
+
+    int n_r=(int)radii.size();
+    std::vector<std::vector<std::vector<int>>> acc(
+        n_r, std::vector<std::vector<int>>(height, std::vector<int>(width,0)));
+
+    for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
+        if ((double)g.at(y,x,0)<=edge_threshold) continue;
+        for (int ri=0;ri<n_r;++ri) {
+            int rad=radii[ri];
+            int n_angles=std::max(8,(int)std::lround(2.0*M_PI*rad));
+            for (int ai=0;ai<n_angles;++ai) {
+                double theta=2.0*M_PI*ai/n_angles;
+                int cx=(int)std::lround(x+rad*std::cos(theta));
+                int cy=(int)std::lround(y+rad*std::sin(theta));
+                if (cx>=0&&cx<width&&cy>=0&&cy<height)
+                    acc[ri][cy][cx]++;
+            }
+        }
+    }
+
+    std::vector<HoughCircle> circles;
+    for (int ri=0;ri<n_r;++ri) for (int cy=0;cy<height;++cy) for (int cx=0;cx<width;++cx) {
+        int votes=acc[ri][cy][cx];
+        if (votes<vote_threshold) continue;
+        bool peak=true;
+        for (int dri=-1;dri<=1&&peak;++dri) for (int dcy=-1;dcy<=1&&peak;++dcy)
+            for (int dcx=-1;dcx<=1&&peak;++dcx) {
+                if (dri==0&&dcy==0&&dcx==0) continue;
+                int nri=ri+dri, ncy=cy+dcy, ncx=cx+dcx;
+                if (nri<0||nri>=n_r) continue;
+                if (ncy<0||ncy>=height||ncx<0||ncx>=width) continue;
+                if (acc[nri][ncy][ncx]>=votes) peak=false;
+            }
+        if (!peak) continue;
+        circles.push_back({(double)cx,(double)cy,(double)radii[ri],votes});
+    }
+    std::sort(circles.begin(),circles.end(),
+              [](const HoughCircle& a, const HoughCircle& b){ return a.votes>b.votes; });
+    return circles;
+}
+
 // ========================== Harris Corner Detector ==========================
 
 static std::tuple<Image,Image,Image> structure_tensor_smoothed(const Image& g) {
