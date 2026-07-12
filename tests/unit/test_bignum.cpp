@@ -232,6 +232,119 @@ TEST(BigIntDivmod, DivideByZeroMatchesOperators) {
     EXPECT_EQ(r3.to_string(), "0");
 }
 
+// ---- BigInt Integer Square Root ----
+
+namespace {
+
+// Verifies bigint_isqrt against the definitive correctness property for
+// floor(sqrt(n)): r*r <= n < (r+1)*(r+1). This is checked instead of hand-computed
+// expected values so it stays meaningful at sizes where double-precision sqrt
+// would already have lost precision.
+void expect_isqrt_floor(const BigInt& n) {
+    BigInt r = bigint_isqrt(n);
+    EXPECT_TRUE(r * r <= n) << "r^2 > n for n=" << n.to_string() << " r=" << r.to_string();
+    EXPECT_TRUE(n < (r + BigInt(1LL)) * (r + BigInt(1LL)))
+        << "n >= (r+1)^2 for n=" << n.to_string() << " r=" << r.to_string();
+}
+
+} // namespace
+
+TEST(BigIntIsqrt, SmallExactSquares) {
+    EXPECT_EQ(bigint_isqrt(BigInt(0LL)).to_string(), "0");
+    EXPECT_EQ(bigint_isqrt(BigInt(1LL)).to_string(), "1");
+    EXPECT_EQ(bigint_isqrt(BigInt(4LL)).to_string(), "2");
+    EXPECT_EQ(bigint_isqrt(BigInt(9LL)).to_string(), "3");
+    EXPECT_EQ(bigint_isqrt(BigInt(144LL)).to_string(), "12");
+    EXPECT_EQ(bigint_isqrt(BigInt(10000LL)).to_string(), "100");
+}
+
+TEST(BigIntIsqrt, SmallNonSquaresFloor) {
+    EXPECT_EQ(bigint_isqrt(BigInt(2LL)).to_string(), "1");
+    EXPECT_EQ(bigint_isqrt(BigInt(3LL)).to_string(), "1");
+    EXPECT_EQ(bigint_isqrt(BigInt(143LL)).to_string(), "11");
+    EXPECT_EQ(bigint_isqrt(BigInt(145LL)).to_string(), "12");
+    EXPECT_EQ(bigint_isqrt(BigInt(99LL)).to_string(), "9");
+    EXPECT_EQ(bigint_isqrt(BigInt(101LL)).to_string(), "10");
+}
+
+TEST(BigIntIsqrt, NegativeInputReturnsZero) {
+    EXPECT_EQ(bigint_isqrt(BigInt(-1LL)).to_string(), "0");
+    EXPECT_EQ(bigint_isqrt(BigInt(-144LL)).to_string(), "0");
+    EXPECT_EQ(bigint_isqrt(BigInt("-123456789123456789123456789")).to_string(), "0");
+}
+
+TEST(BigIntIsqrt, LargePerfectSquareExactRecovery) {
+    // Square a large (20+ digit) BigInt via operator*, then verify bigint_isqrt
+    // of the square exactly recovers the original -- the case that would be
+    // impossible to validate correctly via double-precision sqrt().
+    BigInt original("12345678901234567890123");
+    BigInt squared = original * original;
+    EXPECT_EQ(bigint_isqrt(squared), original);
+}
+
+TEST(BigIntIsqrt, AnotherLargePerfectSquareExactRecovery) {
+    BigInt original("99999999999999999999999999999999999999");
+    BigInt squared = original * original;
+    EXPECT_EQ(bigint_isqrt(squared), original);
+}
+
+TEST(BigIntIsqrt, PowerOfTenPerfectSquare) {
+    // 10^20 = (10^10)^2, a perfect square with an exact, easy-to-state answer
+    // even at a scale where double-precision sqrt would already be unreliable.
+    BigInt n = bigint_pow(BigInt(10LL), 20);
+    EXPECT_EQ(bigint_isqrt(n).to_string(), "10000000000");
+}
+
+TEST(BigIntIsqrt, LargeNonSquareFloorInvariant) {
+    // Not a perfect square: original^2 + 1 and original^2 - 1 must both floor
+    // down to original and original-1 respectively.
+    BigInt original("123456789012345678901234567890");
+    BigInt squared = original * original;
+    expect_isqrt_floor(squared + BigInt(1LL));
+    expect_isqrt_floor(squared - BigInt(1LL));
+    EXPECT_EQ(bigint_isqrt(squared + BigInt(1LL)), original);
+    EXPECT_EQ(bigint_isqrt(squared - BigInt(1LL)), original - BigInt(1LL));
+}
+
+TEST(BigIntIsqrt, FloorInvariantSweepSmall) {
+    for (long long v = 0; v <= 2000; ++v) {
+        expect_isqrt_floor(BigInt(v));
+    }
+}
+
+TEST(BigIntIsqrt, FloorInvariantSweepLarge) {
+    // A spread of large, non-perfect-square multi-limb values.
+    std::vector<std::string> values = {
+        "123456789123456789123456789123456789",
+        "987654321987654321987654321987654321",
+        "111111111111111111111111111111111111111",
+        "700000000000000000000000000000000000007",
+        "2718281828459045235360287471352662497757",
+        "31415926535897932384626433832795028841971",
+    };
+    for (const auto& s : values) {
+        expect_isqrt_floor(BigInt(s));
+    }
+}
+
+TEST(BigIntIsqrt, ConsistentWithBitLengthSeed) {
+    // Sanity check that the bit-length-seeded Newton iteration lands on the
+    // same result regardless of how far the seed starts from the true root,
+    // across a range of bit-lengths.
+    for (int exp = 1; exp <= 40; ++exp) {
+        BigInt n = bigint_pow(BigInt(2LL), exp);
+        expect_isqrt_floor(n);
+    }
+}
+
+TEST(BigIntIsqrt, OneIsItsOwnRoot) {
+    EXPECT_EQ(bigint_isqrt(BigInt(1LL)), BigInt(1LL));
+}
+
+TEST(BigIntIsqrt, ZeroIsItsOwnRoot) {
+    EXPECT_EQ(bigint_isqrt(BigInt(0LL)), BigInt(0LL));
+}
+
 // ---- BigInt Comparison ----
 
 TEST(BigIntCmp, LessGreater) {

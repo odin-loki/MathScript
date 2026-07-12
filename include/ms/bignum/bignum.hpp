@@ -102,6 +102,20 @@ BigInt bigint_factorial(int n);
 BigInt bigint_fibonacci(int n);
 bool   bigint_is_prime(const BigInt& n, int rounds = 10);  // Miller-Rabin
 
+/// @brief Integer square root: floor(sqrt(n)) for a non-negative BigInt n, computed
+///   exactly via Newton's method on BigInt arithmetic directly -- no floating-point
+///   is involved at any point, so it stays exact for values far beyond what a
+///   double's 53-bit mantissa could represent without precision loss.
+/// @param n BigInt to take the square root of.
+/// @return floor(sqrt(n)). On negative input, mirrors this module's defensive
+///   convention (see BigInt::divmod's handling of b == 0) and returns BigInt(0)
+///   rather than throwing/asserting.
+/// @note Uses Newton's method (x_{k+1} = (x_k + n/x_k) / 2), seeded from n's
+///   bit-length via bigint_bit_length (x0 = 2^ceil(bit_length(n)/2), which is
+///   guaranteed >= the true root) so the iteration converges quadratically and
+///   terminates in O(log(bit-length of n)) steps.
+BigInt bigint_isqrt(const BigInt& n);
+
 // ========================== Rational ==========================
 class Rational {
 public:
