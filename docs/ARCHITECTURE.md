@@ -144,7 +144,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-**369 CTest suites** as of Wave 214 (CHANGELOG); each suite is one GoogleTest executable or CLI smoke target. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
+**369 CTest suites** as of Wave 215 (CHANGELOG); each suite is one GoogleTest executable or CLI smoke target. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
 
 | Directory | Contents |
 |-----------|----------|

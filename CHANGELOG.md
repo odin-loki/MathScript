@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-13 (Wave 215 — Image Watershed, Quantum Purity, ODE Trapezoidal, Combo Restricted Partitions, Finance Heston, Geo Poly Union, Poly Factor, ML AdaBoost)
+
+8 parallel subagents targeting modules not heavily touched in waves 213–214 (`image`, `quantum`, `ode`, `combo`, `finance`, `geo`, `poly`, `ml`).
+
+### Added (Wave 215)
+- `ms::image` gains `watershed` — classic immersion watershed segmentation on grayscale with marker seeds, complementing `label_components` and morphological ops. 9 new tests in `test_image.cpp`.
+- `ms::quantum` gains `purity` — Tr(ρ²) purity measure for density matrices, complementing `von_neumann_entropy`. 8 new tests in `test_quantum.cpp`.
+- `ms::ode` gains `ode_trapezoidal` — implicit trapezoidal rule IVP integrator, second-order accurate complement to `ode_euler`. 11 new tests in `test_ode_adaptive.cpp`.
+- `ms::combo` gains `restricted_partitions` — partitions of `n` into exactly `k` positive parts, complementing `all_partitions`. 9 new tests in `test_combo.cpp`.
+- `ms::finance` gains `heston_call` — Heston stochastic-volatility European call via Lewis/Fourier integration; σ_v→0 limit matches Black–Scholes. 8 new tests in `test_finance.cpp`.
+- `ms::geo` gains `poly_union` — convex-polygon union MVP via combined-vertex convex hull (documented limitation). 10 new tests in `test_geo.cpp`.
+- `ms::poly` gains `poly_factor` — real polynomial factorization via `poly_roots`, grouping conjugate pairs into quadratics. 9 new tests in `test_poly_ext.cpp`.
+- `ms::ml` gains `AdaBoost` — SAMME binary classifier with decision stumps or shallow trees. 12 new tests in `test_ml.cpp`.
+- **Total Wave 215: 369 CTest suites — all passing** (no new CTest registrations; 76 new test cases). All eight branches merged with zero conflicts; full-suite verification on `main` passed on the first attempt.
+
 ## [1.0.0] — 2026-07-12 (Wave 214 — Signal sosfilt, Prob Logistic, Stats KDE, Optim RMSprop, Control LQE, Compress ANS, Special Lambert W, Error ValueOutOfRange)
 
 8 parallel subagents closing master-plan §2.x gaps across scientific and infrastructure modules.
