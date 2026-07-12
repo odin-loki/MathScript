@@ -1178,3 +1178,151 @@ TEST(StatsExtTest, fligner_test_degenerate_inputs) {
     EXPECT_DOUBLE_EQ(singleton_result.p_value, 1.0);
     EXPECT_EQ(singleton_result.df, 0);
 }
+
+// ---------------------------------------------------------------------------
+// shapiro_wilk
+// ---------------------------------------------------------------------------
+
+TEST(StatsExtTest, shapiro_wilk_normal_like_sample_high_w_and_p) {
+    // make_norm_ppf_sample builds a sample from evenly-spaced normal quantiles, i.e. a
+    // textbook-clean "normal-looking" dataset.
+    const auto normal = make_norm_ppf_sample(25);
+    const auto result = shapiro_wilk(normal);
+    EXPECT_GT(result.w_stat, 0.9);
+    EXPECT_LE(result.w_stat, 1.0);
+    EXPECT_GT(result.p_value, 0.1);
+}
+
+TEST(StatsExtTest, shapiro_wilk_skewed_exponential_shape_low_w_and_p) {
+    std::vector<double> skewed;
+    for (int i = 1; i <= 30; ++i) {
+        skewed.push_back(std::exp(static_cast<double>(i) / 8.0));
+    }
+    const auto result = shapiro_wilk(skewed);
+    EXPECT_GT(result.w_stat, 0.0);
+    EXPECT_LT(result.w_stat, 0.9);
+    EXPECT_LT(result.p_value, 0.05);
+}
+
+TEST(StatsExtTest, shapiro_wilk_bimodal_sample_low_w) {
+    std::vector<double> bimodal;
+    for (int i = 0; i < 15; ++i) {
+        bimodal.push_back(-8.0);
+    }
+    for (int i = 0; i < 15; ++i) {
+        bimodal.push_back(8.0);
+    }
+    const auto normal = make_norm_ppf_sample(30);
+    const auto bimodal_result = shapiro_wilk(bimodal);
+    const auto normal_result = shapiro_wilk(normal);
+    EXPECT_GT(bimodal_result.w_stat, 0.0);
+    EXPECT_LT(bimodal_result.w_stat, 1.0);
+    EXPECT_LT(bimodal_result.w_stat, normal_result.w_stat);
+    EXPECT_LT(bimodal_result.p_value, 0.05);
+}
+
+TEST(StatsExtTest, shapiro_wilk_uniform_linear_sequence_sane_bounds) {
+    std::vector<double> linear;
+    for (int i = 1; i <= 20; ++i) {
+        linear.push_back(static_cast<double>(i));
+    }
+    const auto result = shapiro_wilk(linear);
+    // A perfectly evenly-spaced (uniform) sequence is not too far from normal in small
+    // samples, so we only assert it's a valid, reasonably high W -- not a precise value.
+    EXPECT_GT(result.w_stat, 0.8);
+    EXPECT_LE(result.w_stat, 1.0);
+    EXPECT_GE(result.p_value, 0.0);
+    EXPECT_LE(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, shapiro_wilk_degenerate_empty_input) {
+    const std::vector<double> empty_input{};
+    const auto result = shapiro_wilk(empty_input);
+    EXPECT_DOUBLE_EQ(result.w_stat, 1.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, shapiro_wilk_degenerate_single_value) {
+    const std::vector<double> single{42.0};
+    const auto result = shapiro_wilk(single);
+    EXPECT_DOUBLE_EQ(result.w_stat, 1.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, shapiro_wilk_degenerate_two_values) {
+    const std::vector<double> pair{1.0, 2.0};
+    const auto result = shapiro_wilk(pair);
+    EXPECT_DOUBLE_EQ(result.w_stat, 1.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, shapiro_wilk_constant_sample_zero_variance) {
+    const std::vector<double> flat{5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0};
+    const auto result = shapiro_wilk(flat);
+    EXPECT_DOUBLE_EQ(result.w_stat, 1.0);
+    EXPECT_DOUBLE_EQ(result.p_value, 1.0);
+}
+
+TEST(StatsExtTest, shapiro_wilk_w_stat_in_valid_range_across_vectors) {
+    const std::vector<std::vector<double>> vectors = {
+        make_norm_ppf_sample(10),
+        make_norm_ppf_sample(50),
+        {1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 100.0},
+        {-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0},
+        {0.1, 0.2, 0.15, 0.9, 0.85, 0.4, 0.5, 0.55},
+    };
+    for (const auto& v : vectors) {
+        const auto result = shapiro_wilk(v);
+        EXPECT_GT(result.w_stat, 0.0);
+        EXPECT_LE(result.w_stat, 1.0);
+        EXPECT_GE(result.p_value, 0.0);
+        EXPECT_LE(result.p_value, 1.0);
+    }
+}
+
+TEST(StatsExtTest, shapiro_wilk_skewed_sample_has_lower_w_than_symmetric_sample) {
+    // Same sample size for both: a symmetric, roughly bell-shaped sample built from normal
+    // quantiles vs. a heavily right-skewed exponential-like sample. The skewed sample should
+    // score noticeably lower on W (relative-ordering check, more robust than absolute
+    // thresholds tied to a particular null-distribution approximation).
+    const auto symmetric = make_norm_ppf_sample(24);
+    std::vector<double> skewed;
+    for (int i = 1; i <= 24; ++i) {
+        skewed.push_back(std::exp(static_cast<double>(i) / 6.0));
+    }
+    const auto symmetric_result = shapiro_wilk(symmetric);
+    const auto skewed_result = shapiro_wilk(skewed);
+    EXPECT_LT(skewed_result.w_stat, symmetric_result.w_stat);
+}
+
+TEST(StatsExtTest, shapiro_wilk_outlier_laden_sample_lower_w_than_clean_normal) {
+    auto with_outliers = make_norm_ppf_sample(30);
+    // Inject two extreme outliers into an otherwise normal-quantile sample.
+    with_outliers[0] = -500.0;
+    with_outliers[29] = 500.0;
+    const auto clean = make_norm_ppf_sample(30);
+    const auto outlier_result = shapiro_wilk(with_outliers);
+    const auto clean_result = shapiro_wilk(clean);
+    EXPECT_LT(outlier_result.w_stat, clean_result.w_stat);
+    EXPECT_LT(outlier_result.p_value, clean_result.p_value);
+}
+
+TEST(StatsExtTest, shapiro_wilk_negative_and_shifted_values_still_sane) {
+    // Same normal-quantile shape as the "clean" normal test, just shifted and scaled to
+    // negative values -- W should be invariant to location/scale (affine-invariant statistic).
+    auto shifted = make_norm_ppf_sample(20);
+    for (double& v : shifted) {
+        v = v * 3.0 - 100.0;
+    }
+    const auto result = shapiro_wilk(shifted);
+    const auto baseline = shapiro_wilk(make_norm_ppf_sample(20));
+    EXPECT_NEAR(result.w_stat, baseline.w_stat, 1e-9);
+    EXPECT_NEAR(result.p_value, baseline.p_value, 1e-9);
+}
+
+TEST(StatsExtTest, shapiro_wilk_large_normal_like_sample_very_high_w) {
+    const auto normal = make_norm_ppf_sample(200);
+    const auto result = shapiro_wilk(normal);
+    EXPECT_GT(result.w_stat, 0.95);
+    EXPECT_GT(result.p_value, 0.1);
+}

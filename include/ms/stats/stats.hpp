@@ -163,6 +163,38 @@ struct FlignerResult {
 };
 FlignerResult fligner_test(const std::vector<std::vector<double>>& groups);
 
+// Shapiro-Wilk test for normality: tests the null hypothesis that a sample was drawn from a
+// normally distributed population, based on how closely the sample's order statistics
+// correlate with the expected order statistics of a standard normal sample of the same size.
+// Returns the W statistic (in (0, 1], with values close to 1 indicating consistency with
+// normality and values well below 1 indicating departure from normality) and a p-value.
+// Malformed/degenerate input (n < 3, or a constant sample with zero variance) yields the
+// neutral default result { w_stat = 1.0, p_value = 1.0 }.
+//
+// @note Weights: uses the direct normalized-order-statistic weights
+// a_i = m_i / sqrt(sum(m_j^2)), where m_i = norm_ppf((i - 0.375) / (n + 0.25)) approximates the
+// expected order statistics of a standard normal sample (the standard Blom-type approximation),
+// WITHOUT Royston's (1995) small-sample correction polynomial for the two most extreme weights
+// (a_1, a_n). This is a simpler, still-valid variant of the textbook Royston algorithm
+// (sometimes called the "Shapiro-Francia-style" simplification) that avoids needing to
+// hardcode Royston's tail-correction coefficient tables; it is slightly less powerful than the
+// full Royston weighting for small/moderate n but tracks it closely in practice.
+// @note p-value: uses Royston's (1995) normalizing transformation, which maps a function of W
+// to an approximately normally-distributed statistic via sample-size-dependent polynomial
+// coefficients (one polynomial for 3 <= n <= 11, another for n > 11), then reports the
+// upper-tail probability via norm_cdf. Because those coefficients were originally calibrated
+// against Royston's tail-adjusted W rather than the simplified W computed here, and because the
+// n <= 11 polynomial is nominally fitted for 4 <= n <= 11 (extended here down to n = 3 for
+// simplicity rather than using the n = 3 exact closed form), the resulting p-value is an
+// approximation: appropriate for statistical sanity-checking (monotonicity in W, clearly-normal
+// vs. clearly-non-normal discrimination) but not for reproducing published p-value tables to
+// high precision.
+struct ShapiroWilkResult {
+    double w_stat = 1.0;
+    double p_value = 1.0;
+};
+ShapiroWilkResult shapiro_wilk(std::span<const double> x);
+
 // --- Regression ---
 struct LinearRegressionResult {
     double slope;
