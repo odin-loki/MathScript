@@ -553,6 +553,132 @@ TEST(CellAiCyphaExtTest, Energy_IsNegativeOfBilinearForm) {
 }
 
 // ---------------------------------------------------------------------------
+// boltzmann_weights – normalized Gibbs/softmax weighting over energies
+// ---------------------------------------------------------------------------
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_SumsToOneForVariousInputs) {
+    const std::vector<std::vector<double>> energy_sets = {
+        {0.0, 1.0, 2.0},
+        {-3.0, 0.0, 3.0, 5.5},
+        {10.0, 10.5, 9.7, 8.2, 11.1},
+        {-1.0},
+    };
+    const std::vector<double> temperatures = {0.1, 0.5, 1.0, 2.0, 10.0};
+
+    for (const auto& energies : energy_sets) {
+        for (const double t : temperatures) {
+            const auto weights = ms::cellai::boltzmann_weights(energies, t);
+            double sum = 0.0;
+            for (const double w : weights) {
+                sum += w;
+            }
+            EXPECT_NEAR(sum, 1.0, 1e-9) << "temperature=" << t;
+        }
+    }
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_AllWeightsNonNegative) {
+    const std::vector<double> energies = {5.0, -3.0, 0.0, 100.0, -50.0};
+    const auto weights = ms::cellai::boltzmann_weights(energies, 2.0);
+    for (const double w : weights) {
+        EXPECT_GE(w, 0.0);
+    }
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_LowerEnergyGetsHigherWeight) {
+    const std::vector<double> energies = {5.0, 1.0, -3.0, 10.0};
+    const auto weights = ms::cellai::boltzmann_weights(energies, 1.0);
+    // Energies: idx2 (-3.0) < idx1 (1.0) < idx0 (5.0) < idx3 (10.0)
+    EXPECT_GT(weights[2], weights[1]);
+    EXPECT_GT(weights[1], weights[0]);
+    EXPECT_GT(weights[0], weights[3]);
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_EqualEnergiesGiveUniformWeights) {
+    const std::vector<double> energies = {3.0, 3.0, 3.0, 3.0, 3.0};
+    for (const double t : {0.2, 1.0, 5.0, 50.0}) {
+        const auto weights = ms::cellai::boltzmann_weights(energies, t);
+        for (const double w : weights) {
+            EXPECT_NEAR(w, 0.2, 1e-9) << "temperature=" << t;
+        }
+    }
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_HigherTemperatureIsMoreUniform) {
+    const std::vector<double> energies = {0.0, 2.0, 4.0, 8.0};
+    const auto cold = ms::cellai::boltzmann_weights(energies, 0.2);
+    const auto hot = ms::cellai::boltzmann_weights(energies, 20.0);
+
+    const double mean = 1.0 / static_cast<double>(energies.size());
+    auto variance = [&](const std::vector<double>& weights) {
+        double v = 0.0;
+        for (const double w : weights) {
+            v += (w - mean) * (w - mean);
+        }
+        return v;
+    };
+
+    EXPECT_LT(variance(hot), variance(cold));
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_LowerTemperatureConcentratesOnMinimum) {
+    const std::vector<double> energies = {0.0, 1.0, 2.0, 3.0};
+    const auto warm = ms::cellai::boltzmann_weights(energies, 1.0);
+    const auto cold = ms::cellai::boltzmann_weights(energies, 0.05);
+    const auto colder = ms::cellai::boltzmann_weights(energies, 0.001);
+
+    EXPECT_GT(cold[0], warm[0]);
+    EXPECT_GT(colder[0], cold[0]);
+    EXPECT_NEAR(colder[0], 1.0, 1e-6);
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_ZeroTemperatureLimitSplitsTiesEvenly) {
+    const std::vector<double> energies = {2.0, -1.0, -1.0, 5.0};
+    const auto weights = ms::cellai::boltzmann_weights(energies, 0.0);
+    EXPECT_DOUBLE_EQ(weights[0], 0.0);
+    EXPECT_DOUBLE_EQ(weights[1], 0.5);
+    EXPECT_DOUBLE_EQ(weights[2], 0.5);
+    EXPECT_DOUBLE_EQ(weights[3], 0.0);
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_NegativeTemperatureUsesZeroTemperatureLimit) {
+    const std::vector<double> energies = {4.0, -2.0, 1.0};
+    const auto weights = ms::cellai::boltzmann_weights(energies, -1.0);
+    EXPECT_DOUBLE_EQ(weights[0], 0.0);
+    EXPECT_DOUBLE_EQ(weights[1], 1.0);
+    EXPECT_DOUBLE_EQ(weights[2], 0.0);
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_NumericallyStableForLargeMagnitudeEnergies) {
+    const std::vector<double> energies = {-500.0, -300.0, 0.0, 400.0};
+    const auto weights = ms::cellai::boltzmann_weights(energies, 0.01);
+
+    double sum = 0.0;
+    for (const double w : weights) {
+        EXPECT_TRUE(std::isfinite(w));
+        EXPECT_GE(w, 0.0);
+        sum += w;
+    }
+    EXPECT_NEAR(sum, 1.0, 1e-9);
+    // Temperature is tiny relative to the energy gaps, so the minimum-energy
+    // state should dominate essentially all probability mass.
+    EXPECT_NEAR(weights[0], 1.0, 1e-6);
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_SingleElementIsExactlyOne) {
+    const std::vector<double> energies = {42.0};
+    const auto weights = ms::cellai::boltzmann_weights(energies, 3.0);
+    ASSERT_EQ(weights.size(), 1u);
+    EXPECT_DOUBLE_EQ(weights[0], 1.0);
+}
+
+TEST(CellAiCyphaExtTest, BoltzmannWeights_EmptyInputReturnsEmptyOutput) {
+    const std::vector<double> energies;
+    const auto weights = ms::cellai::boltzmann_weights(energies, 1.0);
+    EXPECT_TRUE(weights.empty());
+}
+
+// ---------------------------------------------------------------------------
 // CellMemory::consolidate – long-term moves toward short-term state
 // ---------------------------------------------------------------------------
 
