@@ -253,4 +253,42 @@ struct LMSResult {
 LMSResult lms_adaptive_filter(const std::vector<double>& x, const std::vector<double>& d,
                                int filter_length, double mu);
 
+// Chirp Z-Transform (CZT): evaluates the Z-transform of a real signal x (length N) at M
+// points z_k = a * w^(-k) for k = 0 .. m-1 along an arbitrary spiral/arc contour in the
+// complex plane. Generalizes the DFT (which is recovered when m = N, a = 1, and
+// w = exp(-2*pi*i/N)) and is most commonly used as a "zoom FFT" to obtain fine-grained
+// frequency resolution over a narrow band without computing a full-length FFT.
+// Implemented via Bluestein's algorithm (three zero-padded FFTs on a chirp-premultiplied
+// signal convolved with a chirp kernel, followed by a chirp postmultiply).
+//
+// @param x Real input samples, length N.
+// @param m Number of contour points to evaluate (output length).
+// @param w Complex ratio between successive contour points (W in the standard notation).
+// @param a Complex starting point on the contour (A in the standard notation).
+// @return Complex CZT values X[k] = sum_n x[n] * z_k^(-n) for k = 0 .. m-1. Empty x, m <= 0,
+//         or failed internal FFT steps return {} (no exceptions).
+// @note When m = N, a = 1, and w = exp(-2*pi*i/N), the output matches ms::fft(x) bin-for-bin
+//       (forward DFT convention used throughout ms::fft).
+// @accuracy Matches a direct O(N*M) Z-transform evaluation to within ordinary double-precision
+//           round-off; Bluestein sign conventions follow the scipy.signal.czt reference.
+std::vector<std::complex<double>> czt(const std::vector<double>& x, int m,
+                                       std::complex<double> w, std::complex<double> a);
+
+// Zoom-FFT convenience wrapper around czt: samples m equally spaced frequency points from
+// f_start to f_stop (Hz) at sample rate fs by setting
+//   a = exp(2*pi*i*f_start/fs),  w = exp(-2*pi*i*delta_f/fs)
+// where delta_f = (f_stop - f_start) / max(m - 1, 1). Output bin k corresponds to frequency
+// f_start + k * delta_f. Useful for resolving closely spaced tones in a narrow band without
+// zero-padding to a much longer FFT.
+//
+// @param x Real input signal.
+// @param f_start Lower frequency bound (Hz), must lie in [0, fs/2).
+// @param f_stop Upper frequency bound (Hz), must satisfy f_start < f_stop <= fs/2.
+// @param m Number of frequency bins in the zoomed spectrum.
+// @param fs Sample rate (Hz), must be positive.
+// @return Complex zoom-FFT spectrum of length m, or {} for empty x, invalid m/fs/frequency
+//         range, or other defensive early-return cases (no exceptions).
+std::vector<std::complex<double>> czt_zoom_fft(const std::vector<double>& x, double f_start,
+                                                double f_stop, int m, double fs);
+
 } // namespace ms

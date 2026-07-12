@@ -985,4 +985,82 @@ LMSResult lms_adaptive_filter(const std::vector<double>& x, const std::vector<do
     return result;
 }
 
+std::vector<std::complex<double>> czt(const std::vector<double>& x, int m,
+                                       std::complex<double> w, std::complex<double> a) {
+    if (x.empty() || m <= 0) {
+        return {};
+    }
+
+    const size_t n = x.size();
+    const size_t m_size = static_cast<size_t>(m);
+    const size_t max_nm = std::max(m_size, n);
+
+    std::vector<std::complex<double>> wk2(max_nm);
+    for (size_t k = 0; k < max_nm; ++k) {
+        const double k_d = static_cast<double>(k);
+        wk2[k] = std::pow(w, k_d * k_d / 2.0);
+    }
+
+    std::vector<std::complex<double>> ak(n);
+    for (size_t idx = 0; idx < n; ++idx) {
+        const double idx_d = static_cast<double>(idx);
+        ak[idx] = x[idx] * std::pow(a, -idx_d) * wk2[idx];
+    }
+
+    const size_t ww_len = n + m_size - 1;
+    std::vector<std::complex<double>> ww(ww_len);
+    for (size_t i = 0; i + 1 < n; ++i) {
+        ww[i] = wk2[n - 1 - i];
+    }
+    for (size_t k = 0; k < m_size; ++k) {
+        ww[n - 1 + k] = wk2[k];
+    }
+
+    const size_t conv_len = n + m_size - 1;
+    const size_t nfft = next_power_of_two(conv_len);
+
+    std::vector<std::complex<double>> Ak(nfft, std::complex<double>(0.0, 0.0));
+    for (size_t i = 0; i < n; ++i) {
+        Ak[i] = ak[i];
+    }
+
+    std::vector<std::complex<double>> Ww(nfft, std::complex<double>(0.0, 0.0));
+    for (size_t i = 0; i < ww_len; ++i) {
+        Ww[i] = 1.0 / ww[i];
+    }
+
+    Ak = fft_recursive(std::move(Ak));
+    Ww = fft_recursive(std::move(Ww));
+    for (size_t i = 0; i < nfft; ++i) {
+        Ak[i] *= Ww[i];
+    }
+
+    auto fk = complex_ifft(std::move(Ak));
+    if (fk.size() < n - 1 + m_size) {
+        return {};
+    }
+
+    std::vector<std::complex<double>> result(m_size);
+    for (size_t k = 0; k < m_size; ++k) {
+        result[k] = fk[n - 1 + k] * wk2[k];
+    }
+    return result;
+}
+
+std::vector<std::complex<double>> czt_zoom_fft(const std::vector<double>& x, double f_start,
+                                                double f_stop, int m, double fs) {
+    if (x.empty() || m <= 0 || fs <= 0.0 || f_start < 0.0 || f_stop < f_start ||
+        f_stop > fs / 2.0) {
+        return {};
+    }
+
+    const double delta_f = (m > 1) ? (f_stop - f_start) / static_cast<double>(m - 1) : 0.0;
+    const double arg_w = -2.0 * M_PI * delta_f / fs;
+    const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+    const double arg_a = 2.0 * M_PI * f_start / fs;
+    const std::complex<double> a(std::cos(arg_a), std::sin(arg_a));
+
+    return czt(x, m, w, a);
+}
+
 } // namespace ms
