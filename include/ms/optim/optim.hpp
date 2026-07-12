@@ -85,6 +85,26 @@ OptimResult adam(FuncND f, std::vector<double> x0,
                  double alpha = 0.001, double beta1 = 0.9,
                  double beta2 = 0.999, int max_iter = 1000);
 
+/// @brief RMSprop adaptive gradient optimizer for N-dimensional unconstrained
+///        minimization of a differentiable objective.
+///
+/// Maintains a running average of squared gradients:
+///   v_t = rho * v_{t-1} + (1 - rho) * g_t^2,
+/// and updates parameters as
+///   x_{t+1} = x_t - alpha * g_t / (sqrt(v_t) + eps).
+///
+/// @param f        Objective function to minimize.
+/// @param grad     Gradient of f at x.
+/// @param x0       Initial parameter vector.
+/// @param alpha    Learning rate.
+/// @param rho      Decay rate for squared-gradient moving average.
+/// @param eps      Small constant for numerical stability.
+/// @param max_iter Maximum number of iterations.
+/// @return OptimResult{x, f_val, iterations, converged}.
+OptimResult rmsprop(FuncND f, GradND grad, std::vector<double> x0,
+                    double alpha = 0.001, double rho = 0.9,
+                    double eps = 1e-8, int max_iter = 1000);
+
 /// @brief Levenberg-Marquardt algorithm for nonlinear least squares: a damped
 ///        Gauss-Newton method that interpolates between Gauss-Newton (fast
 ///        convergence near the optimum, using the Jacobian-transpose-Jacobian
