@@ -470,5 +470,116 @@ Bytes bzip2_like_decompress(const Bytes& data, int) {
     return ibwt({bwt_data,pi});
 }
 
+// ========================== Haar Wavelet (lossy) ==========================
+// Self-contained serialization helpers (deliberately independent of
+// bytes_to_bits/bits_to_bytes, which are shared with the Huffman path).
+namespace {
+
+void wv_push_u32_be(Bytes& out, uint32_t v) {
+    out.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
+    out.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+    out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>(v & 0xFF));
+}
+
+uint32_t wv_read_u32_be(const Bytes& data, size_t pos) {
+    return (static_cast<uint32_t>(data[pos]) << 24) |
+           (static_cast<uint32_t>(data[pos + 1]) << 16) |
+           (static_cast<uint32_t>(data[pos + 2]) << 8) |
+           static_cast<uint32_t>(data[pos + 3]);
+}
+
+// Zigzag maps a signed detail coefficient (range [-255,255]) to an
+// unsigned value in [0,510], used only to keep the on-disk magnitude
+// representation simple/unsigned; it does not affect the byte count.
+uint32_t wv_zigzag_encode(int32_t v) {
+    return (v >= 0) ? static_cast<uint32_t>(v) * 2u
+                     : static_cast<uint32_t>(-v) * 2u - 1u;
+}
+int32_t wv_zigzag_decode(uint32_t z) {
+    return (z % 2 == 0) ? static_cast<int32_t>(z / 2)
+                          : -static_cast<int32_t>((z + 1) / 2);
+}
+
+// Detail coefficients are marker-coded rather than fixed-width so that a
+// thresholded-to-zero coefficient always costs exactly 1 byte, while any
+// surviving (nonzero) coefficient costs exactly 3 bytes — independent of
+// its magnitude. This keeps the zero/nonzero size tradeoff unambiguous:
+// serialized size shrinks by exactly 2 bytes for every extra coefficient a
+// larger threshold zeroes out, regardless of the underlying data's scale.
+void wv_push_diff(Bytes& out, int32_t diff) {
+    if (diff == 0) { out.push_back(0); return; }
+    uint32_t z = wv_zigzag_encode(diff);
+    out.push_back(1);
+    out.push_back(static_cast<uint8_t>((z >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>(z & 0xFF));
+}
+
+int32_t wv_read_diff(const Bytes& data, size_t& pos) {
+    if (pos >= data.size()) return 0;
+    uint8_t marker = data[pos++];
+    if (marker == 0) return 0;
+    if (pos + 2 > data.size()) return 0;
+    uint32_t z = (static_cast<uint32_t>(data[pos]) << 8) | static_cast<uint32_t>(data[pos + 1]);
+    pos += 2;
+    return wv_zigzag_decode(z);
+}
+
+} // namespace
+
+Bytes wavelet_compress(const Bytes& data, double threshold) {
+    if (data.empty()) return {};
+    double thr = threshold > 0.0 ? threshold : 0.0;
+
+    size_t n = data.size();
+    size_t pairs = n / 2;
+    bool odd = (n % 2) != 0;
+
+    Bytes out;
+    wv_push_u32_be(out, static_cast<uint32_t>(n));
+    out.push_back(odd ? (uint8_t)1 : (uint8_t)0);
+    out.push_back(odd ? data[n - 1] : (uint8_t)0);
+
+    Bytes avg_bytes; avg_bytes.reserve(pairs);
+    std::vector<int32_t> diffs; diffs.reserve(pairs);
+    for (size_t i = 0; i < pairs; ++i) {
+        int32_t a = data[2 * i], b = data[2 * i + 1];
+        int32_t diff = a - b;               // detail coefficient
+        int32_t avg = b + (diff >> 1);      // approximation == floor((a+b)/2)
+        int32_t adiff = diff < 0 ? -diff : diff;
+        if (static_cast<double>(adiff) < thr) diff = 0;  // hard threshold
+        avg_bytes.push_back(static_cast<uint8_t>(avg));
+        diffs.push_back(diff);
+    }
+    out.insert(out.end(), avg_bytes.begin(), avg_bytes.end());
+    for (int32_t d : diffs) wv_push_diff(out, d);
+    return out;
+}
+
+Bytes wavelet_decompress(const Bytes& compressed) {
+    if (compressed.size() < 6) return {};
+    size_t pos = 0;
+    uint32_t n = wv_read_u32_be(compressed, pos); pos += 4;
+    uint8_t odd = compressed[pos++];
+    uint8_t odd_value = compressed[pos++];
+    size_t pairs = n / 2;
+    if (pos + pairs > compressed.size()) return {};
+
+    Bytes avg_bytes(compressed.begin() + pos, compressed.begin() + pos + pairs);
+    pos += pairs;
+
+    Bytes out; out.reserve(n);
+    for (size_t i = 0; i < pairs; ++i) {
+        int32_t diff = wv_read_diff(compressed, pos);
+        int32_t avg = avg_bytes[i];
+        int32_t b = avg - (diff >> 1);
+        int32_t a = b + diff;
+        out.push_back(static_cast<uint8_t>(a));
+        out.push_back(static_cast<uint8_t>(b));
+    }
+    if (odd) out.push_back(odd_value);
+    return out;
+}
+
 } // namespace compress
 } // namespace ms

@@ -71,5 +71,58 @@ Bytes        bits_to_bytes(const std::string& bits, int& padding);
 Bytes bzip2_like_compress(const Bytes& data);
 Bytes bzip2_like_decompress(const Bytes& data, int bwt_primary);
 
+// ========================== Haar Wavelet (lossy) ==========================
+/// Single-level Haar Discrete Wavelet Transform compressor with hard
+/// coefficient thresholding.
+///
+/// The input byte sequence is treated as a numeric signal and split into
+/// adjacent pairs (x[2i], x[2i+1]). Each pair is decomposed via the
+/// reversible integer Haar lifting scheme:
+///   diff = x[2i] - x[2i+1]
+///   avg  = x[2i+1] + (diff >> 1)      // == floor((x[2i]+x[2i+1]) / 2)
+/// `avg` is the low-frequency/approximation coefficient (always in
+/// [0,255]); `diff` is the high-frequency/detail coefficient (in
+/// [-255,255]). Any detail coefficient with |diff| < @p threshold is
+/// hard-thresholded to exactly 0 before serialization — this is the lossy
+/// step, and the source of any size/perceptual tradeoff. A trailing odd
+/// byte (when the input length is odd) is stored verbatim, untouched by
+/// thresholding.
+///
+/// Serialized layout (all multi-byte integers big-endian):
+///   [0..3]  original size n (uint32_t)
+///   [4]     odd_flag (1 if n is odd, else 0)
+///   [5]     odd_value (the unpaired trailing byte iff odd_flag==1, else 0)
+///   [6..]   n/2 raw approximation bytes (avg, one byte each)
+///   [...]   n/2 marker-coded detail coefficients (diff): a zero
+///           coefficient is a single 0x00 byte; a nonzero coefficient is
+///           a 0x01 marker followed by its zigzag magnitude as a 2-byte
+///           big-endian value. A thresholded-to-zero coefficient always
+///           costs exactly 1 byte versus 3 for a surviving one, so the
+///           serialized size shrinks by exactly 2 bytes per extra
+///           coefficient zeroed by a larger threshold.
+///
+/// @param data       Input bytes, treated as a numeric sequence.
+/// @param threshold  Hard-threshold magnitude applied to detail
+///                    coefficients; negative values are clamped to 0.
+/// @return Serialized compressed byte stream (see layout above); empty
+///         for empty input.
+/// @note @p threshold == 0.0 is lossless: wavelet_decompress() reproduces
+///       `data` exactly, including odd-length inputs.
+/// @note Defensive: empty input returns an empty result; a negative
+///       threshold is treated as 0.0 (no thresholding).
+Bytes wavelet_compress(const Bytes& data, double threshold);
+
+/// Inverse of wavelet_compress(): parses the serialized coefficient
+/// stream and reconstructs a byte sequence via the inverse Haar lifting
+/// step (b = avg - (diff >> 1), a = b + diff).
+///
+/// @param compressed  Byte stream produced by wavelet_compress().
+/// @return Reconstructed bytes; exactly equal to the original input when
+///         the data was compressed with threshold == 0.0, otherwise a
+///         lossy approximation whose per-element error is bounded by the
+///         threshold used at compression time. Empty on empty or
+///         malformed/truncated input.
+Bytes wavelet_decompress(const Bytes& compressed);
+
 } // namespace compress
 } // namespace ms
