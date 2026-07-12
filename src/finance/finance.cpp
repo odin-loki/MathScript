@@ -26,6 +26,29 @@ static double norm_pdf(double x) {
     return std::exp(-0.5 * x * x) / std::sqrt(2.0 * M_PI);
 }
 
+static double norm_ppf(double p) {
+    if (p <= 0.0 || p >= 1.0) return 0.0;
+    if (p == 0.5) return 0.0;
+    double lo = -8.0, hi = 8.0;
+    for (int i = 0; i < 80; ++i) {
+        double mid = 0.5 * (lo + hi);
+        if (norm_cdf(mid) < p) lo = mid; else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+}
+
+static double sample_mean(std::span<const double> data) {
+    return std::accumulate(data.begin(), data.end(), 0.0) / static_cast<double>(data.size());
+}
+
+static double sample_stddev(std::span<const double> data) {
+    if (data.size() < 2) return 0.0;
+    double m = sample_mean(data);
+    double var_r = 0.0;
+    for (double r : data) var_r += (r - m) * (r - m);
+    return std::sqrt(var_r / static_cast<double>(data.size() - 1));
+}
+
 static void bs_d1_d2(double S, double K, double T, double r, double sigma,
                      double& d1, double& d2) {
     d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * std::sqrt(T));
@@ -191,17 +214,39 @@ double pmt_annuity(double rate, int n, double pv0, double fv) {
 }
 
 double var(std::span<const double> returns, double alpha) {
+    if (returns.empty()) return 0.0;
+    double mu = sample_mean(returns);
+    double sigma = sample_stddev(returns);
+    if (sigma <= 0.0) return std::max(0.0, -mu);
+    double z = norm_ppf(1.0 - alpha);
+    return -(mu + z * sigma);
+}
+
+double cvar(std::span<const double> returns, double alpha) {
+    if (returns.empty()) return 0.0;
+    double mu = sample_mean(returns);
+    double sigma = sample_stddev(returns);
+    double tail = 1.0 - alpha;
+    if (sigma <= 0.0 || tail <= 0.0) return std::max(0.0, -mu);
+    double z = norm_ppf(tail);
+    double es = mu - sigma * norm_pdf(z) / tail;
+    return -es;
+}
+
+double historical_var(std::span<const double> returns, double confidence) {
+    if (returns.empty()) return 0.0;
     std::vector<double> sorted(returns.begin(), returns.end());
     std::sort(sorted.begin(), sorted.end());
-    size_t idx = static_cast<size_t>((1.0 - alpha) * sorted.size());
+    size_t idx = static_cast<size_t>((1.0 - confidence) * sorted.size());
     if (idx >= sorted.size()) idx = sorted.size() - 1;
     return -sorted[idx];
 }
 
-double cvar(std::span<const double> returns, double alpha) {
+double historical_cvar(std::span<const double> returns, double confidence) {
+    if (returns.empty()) return 0.0;
     std::vector<double> sorted(returns.begin(), returns.end());
     std::sort(sorted.begin(), sorted.end());
-    size_t cutoff = static_cast<size_t>((1.0 - alpha) * sorted.size());
+    size_t cutoff = static_cast<size_t>((1.0 - confidence) * sorted.size());
     if (cutoff == 0) return -sorted[0];
     double sum = 0.0;
     for (size_t i = 0; i < cutoff; ++i) sum += sorted[i];

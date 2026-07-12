@@ -40,9 +40,18 @@ double fv_annuity(double rate, int n, double pmt, double pv0 = 0.0);
 double pmt_annuity(double rate, int n, double pv0, double fv = 0.0);
 
 // --- Risk metrics ---
-// Returns sorted losses (positive = loss). VaR at confidence level alpha.
+// Parametric VaR/CVaR (variance-covariance method, assuming normally-distributed
+// returns). alpha is the confidence level (e.g. 0.95); reported VaR is a positive
+// loss magnitude.
 double var(std::span<const double> returns, double alpha = 0.95);
 double cvar(std::span<const double> returns, double alpha = 0.95); // ES
+
+// Historical-simulation VaR/CVaR: uses the empirical distribution of actual
+// return observations (no normality assumption). confidence in (0,1); VaR is
+// the empirical (1-confidence) percentile of returns, reported as a positive
+// loss. CVaR is the mean of all returns at or below the VaR threshold.
+double historical_var(std::span<const double> returns, double confidence = 0.95);
+double historical_cvar(std::span<const double> returns, double confidence = 0.95);
 
 // Sharpe ratio: (mean_return - risk_free) / std_dev
 double sharpe_ratio(std::span<const double> returns, double risk_free = 0.0);
