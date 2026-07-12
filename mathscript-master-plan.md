@@ -7360,7 +7360,7 @@ Replace all Class A transitional libraries with own implementations. This runs i
 Waves 1 through 206 incrementally implemented this plan; each wave's specific additions are tracked in full detail in `CHANGELOG.md` rather than duplicated here.
 
 **Current status:**
-- Phase 10 hardening substantially underway (see README "Phase 10 checklist" for gate details)
+- Phase 10 hardening substantially underway (see `docs/RELEASE.md`'s tag-criteria list for gate details)
 - Version 1.0.0 released; CI green on Windows and Linux
 - ~91% line coverage (90% gate); Valgrind memcheck; libFuzzer smoke (7 targets)
 - **368 CTest suites, all passing** (as of Wave 206)

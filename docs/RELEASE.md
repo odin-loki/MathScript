@@ -1,7 +1,9 @@
 # MathScript 1.0.0 Release Checklist
 
-Version **1.0.0** is tagged when Phase 10 (Hardening) is complete. The authoritative
-item list lives in the README **Phase Progress** table and the collapsible **Phase 10 checklist detail** section (`README.md`).
+Version **1.0.0** is tagged when Phase 10 (Hardening) is complete. `README.md` has a short
+**Phase progress** summary table; the authoritative, detailed tag criteria are the numbered
+list below. For the original phase-by-phase plan and current known gaps, see
+`mathscript-master-plan.md` §15.12.1.
 
 ## Tag criteria (summary)
 
