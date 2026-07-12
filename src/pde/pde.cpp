@@ -364,6 +364,45 @@ Advection1DResult pde_advection_1d(
     return result;
 }
 
+Advection1DResult pde_advection_1d_lax_wendroff(
+    const std::vector<double>& u0,
+    double v,
+    double dx,
+    double dt,
+    std::size_t steps) {
+    Advection1DResult result;
+    if (u0.size() < 3 || steps == 0 || dx <= 0.0 || dt <= 0.0) {
+        return result;
+    }
+
+    const double cfl = std::abs(v) * dt / dx;
+    if (cfl > 1.0) {
+        return result;
+    }
+
+    const std::size_t n = u0.size();
+    const double c1 = v * dt / (2.0 * dx);
+    const double c2 = 0.5 * cfl * cfl;
+
+    std::vector<double> u = u0;
+    std::vector<double> next(n);
+    result.t.push_back(0.0);
+    result.u.push_back(u);
+
+    for (std::size_t step = 1; step <= steps; ++step) {
+        for (std::size_t i = 0; i < n; ++i) {
+            const std::size_t ip = (i + 1) % n;
+            const std::size_t im = (i + n - 1) % n;
+            next[i] = u[i] - c1 * (u[ip] - u[im]) + c2 * (u[ip] - 2.0 * u[i] + u[im]);
+        }
+        u.swap(next);
+        result.t.push_back(static_cast<double>(step) * dt);
+        result.u.push_back(u);
+    }
+
+    return result;
+}
+
 Poisson1DResult pde_poisson_1d(
     const std::vector<double>& f,
     double dx,
