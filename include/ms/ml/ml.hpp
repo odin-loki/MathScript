@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -267,6 +268,51 @@ struct DBSCAN {
     Vec labels_;
     explicit DBSCAN(double e = 0.5, int ms = 5) : eps(e), min_samples(ms) {}
     void fit(const Mat& X);
+};
+
+/// Isolation Forest — unsupervised anomaly detection via an ensemble of
+/// random isolation trees (Liu, Ting, Zhou 2008). Each tree recursively
+/// splits a random subsample on a random feature at a random threshold until
+/// points are isolated or a height limit is reached. Anomalies isolate faster
+/// (shorter average path length) than normal points.
+///
+/// Anomaly score: s(x,n) = 2^(-E[h(x)]/c(n)), where E[h(x)] is the mean path
+/// length across trees and c(n) is the average path length of an unsuccessful
+/// BST search (c(n)=2*H(n-1)-2*(n-1)/n, with c(2)=1 and c(<=1)=0). Scores
+/// near 1 indicate anomalies; near 0.5 or below indicate normal points.
+struct IsolationForest {
+    size_t n_trees = 100;
+    size_t sample_size = 256;
+    unsigned seed = 42;
+
+    explicit IsolationForest(size_t nt = 100, size_t ss = 256, unsigned s = 42)
+        : n_trees(nt), sample_size(ss), seed(s) {}
+
+    void fit(const Mat& X);
+    double anomaly_score(const Vec& x) const;
+    Vec anomaly_scores(const Mat& X) const;
+
+private:
+    struct Node {
+        int feature = -1;
+        double threshold = 0.0;
+        int left = -1;
+        int right = -1;
+        size_t size = 0;
+    };
+    struct Tree {
+        std::vector<Node> nodes;
+        size_t height_limit = 0;
+    };
+    std::vector<Tree> trees_;
+    size_t subsample_size_ = 0;
+    int n_features_ = 0;
+
+    static double avg_path_length(size_t n);
+    static int build_tree(Tree& tree, const Mat& X, const std::vector<int>& idx,
+                          std::mt19937& rng, int depth, int n_feat);
+    static double path_length_one(const Tree& tree, const Vec& x, int node);
+    double raw_score(const Vec& x) const;
 };
 
 struct AgglomerativeClustering {

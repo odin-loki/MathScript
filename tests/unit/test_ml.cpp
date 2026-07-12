@@ -816,6 +816,117 @@ TEST(MLDBSCAN, TwoClusters) {
     EXPECT_EQ(cls.size(), 2u);
 }
 
+// ---- Isolation Forest ----
+
+static Mat isolation_cluster_outlier_data() {
+    Mat X;
+    std::mt19937 rng(123);
+    std::normal_distribution<double> nd(0.0, 0.05);
+    for (int i = 0; i < 80; ++i)
+        X.push_back({0.5 + nd(rng), 0.5 + nd(rng)});
+    X.push_back({10.0, 10.0});
+    X.push_back({-8.0, 9.0});
+    X.push_back({12.0, -7.0});
+    return X;
+}
+
+TEST(MLIsolationForest, OutliersScoreHigher) {
+    auto X = isolation_cluster_outlier_data();
+    IsolationForest iso(100, 64, 42);
+    iso.fit(X);
+    auto scores = iso.anomaly_scores(X);
+    double cluster_max = 0.0;
+    for (size_t i = 0; i < 80; ++i)
+        cluster_max = std::max(cluster_max, scores[i]);
+    for (size_t i = 80; i < X.size(); ++i) {
+        EXPECT_GT(scores[i], cluster_max + 0.05);
+        EXPECT_GT(scores[i], 0.55);
+    }
+}
+
+TEST(MLIsolationForest, ScoresInUnitInterval) {
+    auto X = isolation_cluster_outlier_data();
+    IsolationForest iso(50, 32, 7);
+    iso.fit(X);
+    auto scores = iso.anomaly_scores(X);
+    for (double s : scores) {
+        EXPECT_GE(s, 0.0);
+        EXPECT_LE(s, 1.0);
+        EXPECT_TRUE(std::isfinite(s));
+    }
+}
+
+TEST(MLIsolationForest, DeterministicWithSeed) {
+    auto X = isolation_cluster_outlier_data();
+    IsolationForest iso1(60, 48, 99);
+    IsolationForest iso2(60, 48, 99);
+    iso1.fit(X);
+    iso2.fit(X);
+    Vec probe = {0.5, 0.5};
+    EXPECT_NEAR(iso1.anomaly_score(probe), iso2.anomaly_score(probe), 1e-12);
+    auto s1 = iso1.anomaly_scores(X);
+    auto s2 = iso2.anomaly_scores(X);
+    ASSERT_EQ(s1.size(), s2.size());
+    for (size_t i = 0; i < s1.size(); ++i)
+        EXPECT_NEAR(s1[i], s2[i], 1e-12);
+}
+
+TEST(MLIsolationForest, OneDimensionalData) {
+    Mat X;
+    for (int i = 0; i < 50; ++i)
+        X.push_back({0.1 * (double)i});
+    X.push_back({100.0});
+    X.push_back({-50.0});
+    IsolationForest iso(80, 40, 11);
+    iso.fit(X);
+    auto scores = iso.anomaly_scores(X);
+    double inlier_max = 0.0;
+    for (size_t i = 0; i < 50; ++i)
+        inlier_max = std::max(inlier_max, scores[i]);
+    EXPECT_GT(scores[50], inlier_max);
+    EXPECT_GT(scores[51], inlier_max);
+}
+
+TEST(MLIsolationForest, HighDimSingleFeatureOutlier) {
+    Mat X;
+    std::mt19937 rng(77);
+    std::normal_distribution<double> nd(0.0, 0.02);
+    for (int i = 0; i < 60; ++i)
+        X.push_back({nd(rng), nd(rng), nd(rng), nd(rng), nd(rng)});
+    X.push_back({50.0, 0.0, 0.0, 0.0, 0.0});
+    X.push_back({0.0, 0.0, 0.0, 0.0, 40.0});
+    IsolationForest iso(150, 50, 17);
+    iso.fit(X);
+    auto scores = iso.anomaly_scores(X);
+    double normal_sum = 0.0;
+    for (size_t i = 0; i < 60; ++i) normal_sum += scores[i];
+    double normal_mean = normal_sum / 60.0;
+    EXPECT_GT(scores[60], normal_mean + 0.1);
+    EXPECT_GT(scores[61], normal_mean + 0.1);
+}
+
+TEST(MLIsolationForest, FewerSamplesThanSampleSize) {
+    Mat X = {{0,0},{1,0},{0,1},{1,1},{50,50}};
+    IsolationForest iso(30, 256, 3);
+    iso.fit(X);
+    auto scores = iso.anomaly_scores(X);
+    EXPECT_EQ(scores.size(), 5u);
+    for (double s : scores) {
+        EXPECT_GE(s, 0.0);
+        EXPECT_LE(s, 1.0);
+    }
+    EXPECT_GT(scores[4], scores[0]);
+}
+
+TEST(MLIsolationForest, BatchMatchesSingle) {
+    auto X = isolation_cluster_outlier_data();
+    IsolationForest iso(40, 32, 5);
+    iso.fit(X);
+    auto batch = iso.anomaly_scores(X);
+    for (size_t i = 0; i < X.size(); ++i)
+        EXPECT_NEAR(batch[i], iso.anomaly_score(X[i]), 1e-12);
+}
+
 TEST(MLAgglomerative, FitPredict) {
     Mat X;
     for (int i=0;i<5;++i) X.push_back({(double)i,0});
