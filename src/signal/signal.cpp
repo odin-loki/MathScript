@@ -6,6 +6,7 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <limits>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -694,6 +695,181 @@ Matrix<double> conv2(const Matrix<double>& A, const Matrix<double>& B) {
 
 std::vector<double> deconv(const std::vector<double>& y, const std::vector<double>& b) {
     return poly::poly_div_quot(y, b);
+}
+
+namespace {
+
+struct Zpk {
+    std::vector<std::complex<double>> z;
+    std::vector<std::complex<double>> p;
+    double k = 1.0;
+};
+
+std::vector<double> poly_from_roots(const std::vector<std::complex<double>>& roots) {
+    std::vector<double> poly{1.0};
+    std::vector<bool> used(roots.size(), false);
+    for (size_t i = 0; i < roots.size(); ++i) {
+        if (used[i]) {
+            continue;
+        }
+        const auto& root = roots[i];
+        if (std::abs(root.imag()) < 1e-12) {
+            const std::vector<double> factor{-root.real(), 1.0};
+            poly = poly::poly_mul(poly, factor);
+            used[i] = true;
+            continue;
+        }
+        for (size_t j = i + 1; j < roots.size(); ++j) {
+            if (!used[j] && std::abs(roots[j] - std::conj(root)) < 1e-10) {
+                const std::vector<double> factor{
+                    std::norm(root),
+                    -2.0 * root.real(),
+                    1.0,
+                };
+                poly = poly::poly_mul(poly, factor);
+                used[i] = used[j] = true;
+                break;
+            }
+        }
+    }
+    return poly;
+}
+
+Zpk cheb1ap(int order, double rp_db) {
+    const double epsilon = std::sqrt(std::pow(10.0, 0.1 * rp_db) - 1.0);
+    const double mu = std::asinh(1.0 / epsilon) / static_cast<double>(order);
+
+    Zpk sys;
+    sys.p.reserve(static_cast<size_t>(order));
+    for (int k = 0; k < order; ++k) {
+        const double theta = M_PI * (2.0 * static_cast<double>(k) + 1.0) /
+                             (2.0 * static_cast<double>(order));
+        const double real_part = -std::sin(theta) * std::sinh(mu);
+        const double imag_part = std::cos(theta) * std::cosh(mu);
+        sys.p.emplace_back(real_part, imag_part);
+    }
+
+    double prod_neg_p = 1.0;
+    for (const auto& pole : sys.p) {
+        prod_neg_p *= std::norm(-pole);
+    }
+    sys.k = prod_neg_p * std::pow(10.0, -0.05 * rp_db);
+    return sys;
+}
+
+Zpk lp2lp_zpk(const Zpk& sys, double wo) {
+    Zpk out;
+    out.z.reserve(sys.z.size());
+    out.p.reserve(sys.p.size());
+    for (const auto& z : sys.z) {
+        out.z.push_back(wo * z);
+    }
+    for (const auto& p : sys.p) {
+        out.p.push_back(wo * p);
+    }
+    const int degree = static_cast<int>(sys.p.size()) - static_cast<int>(sys.z.size());
+    out.k = sys.k * std::pow(wo, static_cast<double>(degree));
+    return out;
+}
+
+Zpk lp2hp_zpk(const Zpk& sys, double wo) {
+    Zpk out;
+    out.z.reserve(sys.z.size() + sys.p.size());
+    out.p.reserve(sys.p.size());
+    for (const auto& z : sys.z) {
+        if (std::abs(z) < 1e-15) {
+            out.z.emplace_back(std::numeric_limits<double>::infinity(), 0.0);
+        } else {
+            out.z.push_back(wo / z);
+        }
+    }
+    const int zeros_at_origin =
+        static_cast<int>(sys.p.size()) - static_cast<int>(sys.z.size());
+    for (int i = 0; i < zeros_at_origin; ++i) {
+        out.z.emplace_back(0.0, 0.0);
+    }
+    for (const auto& p : sys.p) {
+        out.p.push_back(wo / p);
+    }
+    const int degree = static_cast<int>(sys.p.size()) - static_cast<int>(sys.z.size());
+    out.k = sys.k * std::pow(wo, static_cast<double>(degree));
+    return out;
+}
+
+Zpk bilinear_zpk(const Zpk& sys, double fs) {
+    const double fs2 = 2.0 * fs;
+    Zpk out;
+    out.z.reserve(sys.z.size() + sys.p.size());
+    out.p.reserve(sys.p.size());
+
+    for (const auto& z : sys.z) {
+        out.z.push_back((fs2 + z) / (fs2 - z));
+    }
+    for (const auto& p : sys.p) {
+        out.p.push_back((fs2 + p) / (fs2 - p));
+    }
+
+    const int degree = static_cast<int>(sys.p.size()) - static_cast<int>(sys.z.size());
+    for (int i = 0; i < degree; ++i) {
+        out.z.emplace_back(-1.0, 0.0);
+    }
+
+    std::complex<double> num{1.0, 0.0};
+    std::complex<double> den{1.0, 0.0};
+    for (const auto& z : sys.z) {
+        num *= (fs2 - z);
+    }
+    for (const auto& p : sys.p) {
+        den *= (fs2 - p);
+    }
+    out.k = sys.k * (num / den).real();
+    return out;
+}
+
+bool valid_cutoff(double cutoff, double fs, FilterType type) {
+    if (!(cutoff > 0.0) || !(fs > 0.0) || !(cutoff < fs / 2.0)) {
+        return false;
+    }
+    (void)type;
+    return true;
+}
+
+} // namespace
+
+IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs, FilterType type) {
+    if (order < 1 || rp_db < 0.0 || !valid_cutoff(cutoff, fs, type)) {
+        return {};
+    }
+
+    const double wn = cutoff / (fs / 2.0);
+    const double warped = 2.0 * fs * std::tan(M_PI * wn / 2.0);
+
+    Zpk sys = cheb1ap(order, rp_db);
+    if (type == FilterType::Highpass) {
+        sys = lp2hp_zpk(sys, warped);
+    } else {
+        sys = lp2lp_zpk(sys, warped);
+    }
+    sys = bilinear_zpk(sys, fs);
+
+    IirCoeffs coeffs;
+    coeffs.a = poly_from_roots(sys.p);
+    coeffs.b = poly_from_roots(sys.z);
+    if (std::abs(sys.k - 1.0) > 1e-15) {
+        for (double& v : coeffs.b) {
+            v *= sys.k;
+        }
+    }
+    if (!coeffs.a.empty() && std::abs(coeffs.a[0]) > 1e-15) {
+        const double scale = coeffs.a[0];
+        for (double& v : coeffs.b) {
+            v /= scale;
+        }
+        for (double& v : coeffs.a) {
+            v /= scale;
+        }
+    }
+    return coeffs;
 }
 
 std::vector<double> filter(const std::vector<double>& b, const std::vector<double>& a,

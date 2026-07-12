@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <random>
 
 #ifndef M_PI
@@ -1118,6 +1119,128 @@ TEST(LMSAdaptiveFilterTest, two_tap_hand_computed_first_two_steps) {
 }
 
 // ---------------------------------------------------------------------------
+// cheby1(): Chebyshev Type I IIR filter design.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+double freqz_mag_at_z(const std::vector<double>& b, const std::vector<double>& a, double z_real) {
+    std::complex<double> num{0.0, 0.0};
+    std::complex<double> den{0.0, 0.0};
+    const std::complex<double> z{z_real, 0.0};
+    for (size_t i = 0; i < b.size(); ++i) {
+        num += b[i] * std::pow(z, -static_cast<int>(i));
+    }
+    for (size_t i = 0; i < a.size(); ++i) {
+        den += a[i] * std::pow(z, -static_cast<int>(i));
+    }
+    return std::abs(num / den);
+}
+
+double freqz_mag_dc(const std::vector<double>& b, const std::vector<double>& a) {
+    return freqz_mag_at_z(b, a, 1.0);
+}
+
+double freqz_mag_nyquist(const std::vector<double>& b, const std::vector<double>& a) {
+    return freqz_mag_at_z(b, a, -1.0);
+}
+
+} // namespace
+
+TEST(SignalCheby1Test, invalid_order_returns_empty) {
+    const auto coeffs = cheby1(0, 1.0, 100.0, 1000.0);
+    EXPECT_TRUE(coeffs.b.empty());
+    EXPECT_TRUE(coeffs.a.empty());
+}
+
+TEST(SignalCheby1Test, invalid_cutoff_returns_empty) {
+    EXPECT_TRUE(cheby1(2, 1.0, 0.0, 1000.0).b.empty());
+    EXPECT_TRUE(cheby1(2, 1.0, -10.0, 1000.0).b.empty());
+    EXPECT_TRUE(cheby1(2, 1.0, 600.0, 1000.0).b.empty());
+}
+
+TEST(SignalCheby1Test, invalid_fs_or_ripple_returns_empty) {
+    EXPECT_TRUE(cheby1(2, 1.0, 100.0, 0.0).b.empty());
+    EXPECT_TRUE(cheby1(2, -1.0, 100.0, 1000.0).b.empty());
+}
+
+TEST(SignalCheby1Test, lowpass_second_order_matches_scipy_reference) {
+    // scipy.signal.cheby1(2, 1.0, 0.25, fs=2.0, btype='low')
+    const auto coeffs = cheby1(2, 1.0, 0.25, 2.0, FilterType::Lowpass);
+    ASSERT_EQ(coeffs.b.size(), 3u);
+    ASSERT_EQ(coeffs.a.size(), 3u);
+    EXPECT_NEAR(coeffs.b[0], 0.10255744, 1e-6);
+    EXPECT_NEAR(coeffs.b[1], 0.20511488, 1e-6);
+    EXPECT_NEAR(coeffs.b[2], 0.10255744, 1e-6);
+    EXPECT_NEAR(coeffs.a[0], 1.0, 1e-12);
+    EXPECT_NEAR(coeffs.a[1], -0.98650792, 1e-6);
+    EXPECT_NEAR(coeffs.a[2], 0.44679329, 1e-6);
+}
+
+TEST(SignalCheby1Test, highpass_second_order_matches_scipy_reference) {
+    // scipy.signal.cheby1(2, 1.0, 0.25, fs=2.0, btype='high')
+    const auto coeffs = cheby1(2, 1.0, 0.25, 2.0, FilterType::Highpass);
+    ASSERT_EQ(coeffs.b.size(), 3u);
+    ASSERT_EQ(coeffs.a.size(), 3u);
+    EXPECT_NEAR(coeffs.b[0], 0.56838555, 1e-6);
+    EXPECT_NEAR(coeffs.b[1], -1.13677109, 1e-6);
+    EXPECT_NEAR(coeffs.b[2], 0.56838555, 1e-6);
+    EXPECT_NEAR(coeffs.a[0], 1.0, 1e-12);
+    EXPECT_NEAR(coeffs.a[1], -1.07698798, 1e-6);
+    EXPECT_NEAR(coeffs.a[2], 0.4739683, 1e-6);
+}
+
+TEST(SignalCheby1Test, lowpass_dc_magnitude_exceeds_nyquist) {
+    const auto coeffs = cheby1(4, 3.0, 100.0, 1000.0, FilterType::Lowpass);
+    ASSERT_FALSE(coeffs.b.empty());
+    ASSERT_FALSE(coeffs.a.empty());
+    const double dc = freqz_mag_dc(coeffs.b, coeffs.a);
+    const double nyq = freqz_mag_nyquist(coeffs.b, coeffs.a);
+    EXPECT_GT(dc, nyq);
+    EXPECT_GT(dc, 0.5);
+    EXPECT_LT(nyq, 1e-6);
+}
+
+TEST(SignalCheby1Test, highpass_nyquist_exceeds_dc) {
+    const auto coeffs = cheby1(4, 3.0, 100.0, 1000.0, FilterType::Highpass);
+    ASSERT_FALSE(coeffs.b.empty());
+    const double dc = freqz_mag_dc(coeffs.b, coeffs.a);
+    const double nyq = freqz_mag_nyquist(coeffs.b, coeffs.a);
+    EXPECT_LT(dc, 1e-6);
+    EXPECT_GT(nyq, 0.5);
+}
+
+TEST(SignalCheby1Test, denominator_leading_coefficient_is_one) {
+    for (const FilterType type : {FilterType::Lowpass, FilterType::Highpass}) {
+        const auto coeffs = cheby1(3, 2.0, 250.0, 1000.0, type);
+        ASSERT_FALSE(coeffs.a.empty());
+        EXPECT_NEAR(coeffs.a[0], 1.0, 1e-12);
+    }
+}
+
+TEST(SignalCheby1Test, filter_applies_designed_coefficients) {
+    const auto coeffs = cheby1(2, 1.0, 0.25, 2.0);
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0};
+    const auto y = filter(coeffs.b, coeffs.a, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (double v : y) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+    EXPECT_GT(std::abs(y.back()), 0.0);
+}
+
+TEST(SignalCheby1Test, fourth_order_lowpass_matches_scipy_reference) {
+    // scipy.signal.cheby1(4, 3.0, 100.0, fs=1000.0, btype='low')
+    const auto coeffs = cheby1(4, 3.0, 100.0, 1000.0, FilterType::Lowpass);
+    ASSERT_EQ(coeffs.b.size(), 5u);
+    ASSERT_EQ(coeffs.a.size(), 5u);
+    EXPECT_NEAR(coeffs.b[0], 0.00105139, 1e-5);
+    EXPECT_NEAR(coeffs.b[4], 0.00105139, 1e-5);
+    EXPECT_NEAR(coeffs.a[1], -3.26916646, 1e-5);
+    EXPECT_NEAR(coeffs.a[4], 0.69455867, 1e-5);
+}
+
+// ---------------------------------------------------------------------------
 // sosfilt(): second-order-sections IIR cascade via filter().
 // ---------------------------------------------------------------------------
 
@@ -1267,4 +1390,90 @@ TEST(SignalSosfiltTest, causal_sosfilt_differs_from_filtfilt_zero_phase) {
     // At the step edge, filtfilt tracks the input sooner than the causal pass.
     EXPECT_GT(y_zero_phase[34], y_causal[34]);
     EXPECT_NEAR(y_zero_phase[50], 1.0, 0.05);
+}
+
+// ---- cheby1 IIR design ----
+
+static double iir_dc_gain(const IirCoeffs& c) {
+    if (c.b.empty() || c.a.empty()) return 0.0;
+    double num = 0.0, den = 0.0;
+    for (double v : c.b) num += v;
+    for (double v : c.a) den += v;
+    return (std::abs(den) > 1e-15) ? num / den : 0.0;
+}
+
+TEST(SignalCheby1, InvalidArgsReturnEmpty) {
+    EXPECT_TRUE(cheby1(0, 1.0, 1000.0, 8000.0).b.empty());
+    EXPECT_TRUE(cheby1(2, -1.0, 1000.0, 8000.0).b.empty());
+    EXPECT_TRUE(cheby1(2, 1.0, 0.0, 8000.0).b.empty());
+    EXPECT_TRUE(cheby1(2, 1.0, 5000.0, 8000.0).b.empty());
+}
+
+TEST(SignalCheby1, LowpassSecondOrderNormalized) {
+    const auto c = cheby1(2, 1.0, 1000.0, 8000.0, FilterType::Lowpass);
+    ASSERT_EQ(c.a.size(), 3u);
+    ASSERT_EQ(c.b.size(), 3u);
+    EXPECT_NEAR(c.a[0], 1.0, 1e-12);
+    EXPECT_GT(std::abs(iir_dc_gain(c)), 0.5);
+}
+
+TEST(SignalCheby1, HighpassAttenuatesDC) {
+    const auto c = cheby1(2, 1.0, 1000.0, 8000.0, FilterType::Highpass);
+    ASSERT_FALSE(c.b.empty());
+    EXPECT_LT(std::abs(iir_dc_gain(c)), 0.1);
+}
+
+TEST(SignalCheby1, FilterProducesFiniteOutput) {
+    const auto c = cheby1(4, 0.5, 500.0, 4000.0);
+    std::vector<double> x(64);
+    for (size_t i = 0; i < x.size(); ++i) {
+        x[i] = std::sin(2.0 * M_PI * 50.0 * static_cast<double>(i) / 4000.0);
+    }
+    const auto y = filter(c.b, c.a, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (double v : y) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(SignalCheby1, HigherOrderMoreCoefficients) {
+    const auto c2 = cheby1(2, 1.0, 1000.0, 8000.0);
+    const auto c4 = cheby1(4, 1.0, 1000.0, 8000.0);
+    EXPECT_LT(c2.b.size(), c4.b.size());
+    EXPECT_LT(c2.a.size(), c4.a.size());
+}
+
+TEST(SignalCheby1, LowpassReducesHighFrequencyEnergy) {
+    const auto c = cheby1(4, 1.0, 200.0, 4000.0);
+    std::vector<double> x(256);
+    for (size_t i = 0; i < x.size(); ++i) {
+        x[i] = std::sin(2.0 * M_PI * 1500.0 * static_cast<double>(i) / 4000.0);
+    }
+    const auto y = filter(c.b, c.a, x);
+    double in_rms = 0.0, out_rms = 0.0;
+    for (size_t i = 32; i < x.size(); ++i) {
+        in_rms += x[i] * x[i];
+        out_rms += y[i] * y[i];
+    }
+    in_rms = std::sqrt(in_rms / (x.size() - 32));
+    out_rms = std::sqrt(out_rms / (y.size() - 32));
+    EXPECT_LT(out_rms, 0.5 * in_rms);
+}
+
+TEST(SignalCheby1, SosfiltCompatible) {
+    const auto c = cheby1(2, 1.0, 1000.0, 8000.0);
+    const std::vector<std::array<double, 6>> sos{{c.b[0], c.b[1], c.b[2], c.a[0], c.a[1], c.a[2]}};
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.5, -0.25};
+    const auto y1 = filter(c.b, c.a, x);
+    const auto y2 = sosfilt(sos, x);
+    ASSERT_EQ(y1.size(), y2.size());
+    for (size_t i = 0; i < y1.size(); ++i) {
+        EXPECT_NEAR(y1[i], y2[i], 1e-10);
+    }
+}
+
+TEST(SignalCheby1, RippleParameterAffectsGain) {
+    const auto mild = cheby1(3, 0.5, 1000.0, 8000.0);
+    const auto sharp = cheby1(3, 3.0, 1000.0, 8000.0);
+    EXPECT_NE(iir_dc_gain(mild), iir_dc_gain(sharp));
 }

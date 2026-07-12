@@ -136,6 +136,24 @@ Matrix<double> conv2(const Matrix<double>& A, const Matrix<double>& B);
 // division (ms::poly::poly_div_quot). Coefficient vectors use ascending-power convention.
 std::vector<double> deconv(const std::vector<double>& y, const std::vector<double>& b);
 
+// IIR filter design family: analog prototype + bilinear transform, returning direct-form
+// (b, a) coefficients usable with ms::filter / ms::filtfilt / ms::sosfilt.
+enum class FilterType { Lowpass, Highpass };
+
+struct IirCoeffs {
+    std::vector<double> b;
+    std::vector<double> a;
+};
+
+// Chebyshev Type I IIR design: equiripple passband, monotonic stopband. `cutoff` is the
+// -3 dB edge frequency in Hz; `fs` is the sample rate in Hz; `rp_db` is the passband ripple
+// in dB (peak-to-minimum within the passband). Designs the analog prototype at normalized
+// cutoff 1 rad/s, applies frequency prewarping and the bilinear transform, and returns
+// ascending-power (b, a) with a[0] == 1. Defensive early returns (empty b/a) for order < 1,
+// fs <= 0, rp_db < 0, or cutoff outside (0, fs/2) for lowpass/highpass.
+IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs,
+                  FilterType type = FilterType::Lowpass);
+
 // Generic digital filter application (direct-form difference equation): applies an IIR/FIR
 // filter with numerator (feedforward) coefficients b and denominator (feedback) coefficients a
 // to input x:
