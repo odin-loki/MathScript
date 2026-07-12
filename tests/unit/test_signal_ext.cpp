@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <span>
 #include <variant>
+#include "ms/fft/fft.hpp"
 #include "ms/signal/signal.hpp"
 
 #ifndef M_PI
@@ -773,4 +775,199 @@ TEST(SignalExtTest, deconv_roundtrip_longer_signals) {
     for (size_t i = 0; i < x.size(); ++i) {
         EXPECT_NEAR(recovered[i], x[i], 1e-10);
     }
+}
+
+namespace {
+
+std::vector<std::complex<double>> czt_direct(const std::vector<double>& x, int m,
+                                               std::complex<double> w, std::complex<double> a) {
+    const size_t n = x.size();
+    const size_t m_size = static_cast<size_t>(m);
+    std::vector<std::complex<double>> out(m_size);
+    for (size_t k = 0; k < m_size; ++k) {
+        const std::complex<double> zk = a * std::pow(w, -static_cast<double>(k));
+        std::complex<double> sum(0.0, 0.0);
+        for (size_t idx = 0; idx < n; ++idx) {
+            sum += x[idx] * std::pow(zk, -static_cast<double>(idx));
+        }
+        out[k] = sum;
+    }
+    return out;
+}
+
+size_t peak_magnitude_index(const std::vector<std::complex<double>>& spectrum) {
+    size_t peak = 0;
+    double peak_val = 0.0;
+    for (size_t i = 0; i < spectrum.size(); ++i) {
+        const double mag = std::abs(spectrum[i]);
+        if (mag > peak_val) {
+            peak_val = mag;
+            peak = i;
+        }
+    }
+    return peak;
+}
+
+std::vector<double> two_tone_signal(size_t n, double fs, double f1, double f2) {
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i) / fs;
+        x[i] = std::cos(2.0 * M_PI * f1 * t) + std::cos(2.0 * M_PI * f2 * t);
+    }
+    return x;
+}
+
+} // namespace
+
+TEST(SignalExtTest, czt_matches_fft_when_contour_is_unit_circle_dft) {
+    const std::vector<size_t> lengths{8, 16, 32};
+    for (size_t n : lengths) {
+        std::vector<double> x(n);
+        for (size_t i = 0; i < n; ++i) {
+            x[i] = std::sin(0.41 * static_cast<double>(i)) +
+                   0.6 * std::cos(1.17 * static_cast<double>(i));
+        }
+
+        const double arg_w = -2.0 * M_PI / static_cast<double>(n);
+        const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+        const std::complex<double> a(1.0, 0.0);
+
+        const auto czt_out = czt(x, static_cast<int>(n), w, a);
+        const auto fft_out = fft(x).value();
+        ASSERT_EQ(czt_out.size(), n);
+        ASSERT_EQ(fft_out.size(), n);
+
+        for (size_t k = 0; k < n; ++k) {
+            EXPECT_NEAR(czt_out[k].real(), fft_out[k].real(), 1e-9) << "n=" << n << " k=" << k;
+            EXPECT_NEAR(czt_out[k].imag(), fft_out[k].imag(), 1e-9) << "n=" << n << " k=" << k;
+        }
+    }
+}
+
+TEST(SignalExtTest, czt_matches_direct_evaluation_arbitrary_contour) {
+    const size_t n = 12;
+    const int m = 20;
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = std::sin(0.73 * static_cast<double>(i)) + 0.25 * static_cast<double>(i);
+    }
+
+    const double arg_w = -0.35;
+    const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+    const std::complex<double> a(0.92, 0.15);
+
+    const auto fast = czt(x, m, w, a);
+    const auto direct = czt_direct(x, m, w, a);
+    ASSERT_EQ(fast.size(), static_cast<size_t>(m));
+    ASSERT_EQ(direct.size(), static_cast<size_t>(m));
+
+    for (int k = 0; k < m; ++k) {
+        EXPECT_NEAR(fast[static_cast<size_t>(k)].real(), direct[static_cast<size_t>(k)].real(), 1e-9)
+            << "k=" << k;
+        EXPECT_NEAR(fast[static_cast<size_t>(k)].imag(), direct[static_cast<size_t>(k)].imag(), 1e-9)
+            << "k=" << k;
+    }
+}
+
+TEST(SignalExtTest, czt_single_point_matches_direct) {
+    const std::vector<double> x{1.0, -0.5, 2.0, 0.25, -1.0, 0.75, 0.3};
+    const std::complex<double> w(0.95, -0.2);
+    const std::complex<double> a(1.1, 0.05);
+
+    const auto fast = czt(x, 1, w, a);
+    const auto direct = czt_direct(x, 1, w, a);
+    ASSERT_EQ(fast.size(), 1u);
+    ASSERT_EQ(direct.size(), 1u);
+    EXPECT_NEAR(fast[0].real(), direct[0].real(), 1e-12);
+    EXPECT_NEAR(fast[0].imag(), direct[0].imag(), 1e-12);
+}
+
+TEST(SignalExtTest, czt_zoom_fft_finds_sine_peak_in_narrow_band) {
+    const double fs = 1000.0;
+    const double f0 = 123.5;
+    const size_t n = 128;
+    const auto x = sinusoid(n, fs, f0);
+
+    const double band_half = 8.0;
+    const int m = 64;
+    const auto zoom = czt_zoom_fft(x, f0 - band_half, f0 + band_half, m, fs);
+    ASSERT_EQ(zoom.size(), static_cast<size_t>(m));
+
+    const size_t peak = peak_magnitude_index(zoom);
+    const double delta_f = (2.0 * band_half) / static_cast<double>(m - 1);
+    const double peak_freq = (f0 - band_half) + static_cast<double>(peak) * delta_f;
+
+    const auto full_fft = fft(x).value();
+    const double full_df = fs / static_cast<double>(n);
+    const size_t full_peak = peak_magnitude_index(full_fft);
+    const double full_peak_freq = static_cast<double>(full_peak) * full_df;
+
+    EXPECT_NEAR(peak_freq, f0, 0.5);
+    EXPECT_GT(std::abs(zoom[peak]), std::abs(full_fft[full_peak]) * 0.5);
+    EXPECT_LT(std::abs(peak_freq - f0), std::abs(full_peak_freq - f0));
+}
+
+TEST(SignalExtTest, czt_zoom_fft_resolves_closely_spaced_tones) {
+    const double fs = 1000.0;
+    const size_t n = 256;
+    const int m = 512;
+    const double f_band_lo = 95.0;
+    const double f_band_hi = 115.0;
+    const double delta_f = (f_band_hi - f_band_lo) / static_cast<double>(m - 1);
+    const size_t bin1 = 128;
+    const size_t bin2 = 256;
+    const double f1 = f_band_lo + static_cast<double>(bin1) * delta_f;
+    const double f2 = f_band_lo + static_cast<double>(bin2) * delta_f;
+    const auto x = two_tone_signal(n, fs, f1, f2);
+
+    const auto plain_fft = fft(x).value();
+    const double plain_df = fs / static_cast<double>(n);
+    const size_t plain_peak = peak_magnitude_index(plain_fft);
+    const double plain_peak_freq = static_cast<double>(plain_peak) * plain_df;
+    EXPECT_GT(std::abs(plain_peak_freq - (f1 + f2) / 2.0), 2.0);
+
+    const auto zoom = czt_zoom_fft(x, f_band_lo, f_band_hi, m, fs);
+    ASSERT_EQ(zoom.size(), static_cast<size_t>(m));
+
+    const double mag1 = std::abs(zoom[bin1]);
+    const double mag2 = std::abs(zoom[bin2]);
+    double max_mag = 0.0;
+    for (const auto& z : zoom) {
+        max_mag = std::max(max_mag, std::abs(z));
+    }
+    EXPECT_GT(mag1, 0.9 * max_mag);
+    EXPECT_GT(mag2, 0.9 * max_mag);
+    EXPECT_LT(f2 - f1, 2.0 * plain_df);
+    EXPECT_GT(f2 - f1, 4.0);
+}
+
+TEST(SignalExtTest, czt_empty_and_invalid_args_return_empty) {
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    const std::complex<double> w(1.0, 0.0);
+    const std::complex<double> a(1.0, 0.0);
+
+    EXPECT_TRUE(czt({}, 8, w, a).empty());
+    EXPECT_TRUE(czt(x, 0, w, a).empty());
+    EXPECT_TRUE(czt(x, -3, w, a).empty());
+    EXPECT_TRUE(czt_zoom_fft({}, 10.0, 20.0, 32, 1000.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 20.0, 10.0, 32, 1000.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 20.0, 0, 1000.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 20.0, 32, 0.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, -1.0, 20.0, 32, 1000.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 600.0, 32, 1000.0).empty());
+}
+
+TEST(SignalExtTest, czt_zoom_fft_single_bin_matches_goertzel) {
+    const size_t n = 64;
+    const double fs = 256.0;
+    const size_t bin = 9;
+    const double f0 = static_cast<double>(bin) * fs / static_cast<double>(n);
+    const auto x = sinusoid(n, fs, f0);
+
+    const auto zoom = czt_zoom_fft(x, f0, f0, 1, fs);
+    ASSERT_EQ(zoom.size(), 1u);
+
+    const auto ref = goertzel(std::span<const double>(x), f0, fs);
+    EXPECT_NEAR(zoom[0].real(), ref.real(), 1e-9);
+    EXPECT_NEAR(zoom[0].imag(), ref.imag(), 1e-9);
 }
