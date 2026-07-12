@@ -14,6 +14,50 @@ double clip(double v, double lo, double hi) {
     return std::max(lo, std::min(hi, v));
 }
 
+// Solves A*x = b for a small dense n x n system via Gaussian elimination
+// with partial pivoting. Returns x, or a zero vector if A is (numerically)
+// singular.
+std::vector<double> solve_linear_system(std::vector<std::vector<double>> A,
+                                         std::vector<double> b) {
+    const int n = static_cast<int>(b.size());
+    for (int col = 0; col < n; ++col) {
+        int pivot = col;
+        double best = std::abs(A[static_cast<size_t>(col)][static_cast<size_t>(col)]);
+        for (int row = col + 1; row < n; ++row) {
+            double v = std::abs(A[static_cast<size_t>(row)][static_cast<size_t>(col)]);
+            if (v > best) { best = v; pivot = row; }
+        }
+        if (best < 1e-300) {
+            return std::vector<double>(static_cast<size_t>(n), 0.0);
+        }
+        if (pivot != col) {
+            std::swap(A[static_cast<size_t>(pivot)], A[static_cast<size_t>(col)]);
+            std::swap(b[static_cast<size_t>(pivot)], b[static_cast<size_t>(col)]);
+        }
+        for (int row = col + 1; row < n; ++row) {
+            double factor = A[static_cast<size_t>(row)][static_cast<size_t>(col)] /
+                             A[static_cast<size_t>(col)][static_cast<size_t>(col)];
+            if (factor == 0.0) continue;
+            for (int k = col; k < n; ++k) {
+                A[static_cast<size_t>(row)][static_cast<size_t>(k)] -=
+                    factor * A[static_cast<size_t>(col)][static_cast<size_t>(k)];
+            }
+            b[static_cast<size_t>(row)] -= factor * b[static_cast<size_t>(col)];
+        }
+    }
+
+    std::vector<double> x(static_cast<size_t>(n), 0.0);
+    for (int row = n - 1; row >= 0; --row) {
+        double sum = b[static_cast<size_t>(row)];
+        for (int col = row + 1; col < n; ++col) {
+            sum -= A[static_cast<size_t>(row)][static_cast<size_t>(col)] *
+                   x[static_cast<size_t>(col)];
+        }
+        x[static_cast<size_t>(row)] = sum / A[static_cast<size_t>(row)][static_cast<size_t>(row)];
+    }
+    return x;
+}
+
 } // namespace
 
 GradientDescentResult gradient_descent(
@@ -631,6 +675,121 @@ OptimResult adam(FuncND f, std::vector<double> x0,
         }
     }
     return OptimResult{x, f(x), static_cast<size_t>(max_iter), true};
+}
+
+// ----------------------------------------------------------------
+// Levenberg-Marquardt (damped Gauss-Newton for nonlinear least squares)
+// ----------------------------------------------------------------
+OptimResult levenberg_marquardt(ResidualFunc residuals, std::vector<double> x0,
+                                 int max_iter, double tol, double lambda0) {
+    const int n = static_cast<int>(x0.size());
+    constexpr double h = 1e-6;
+
+    const auto sum_sq = [](const std::vector<double>& r) {
+        double s = 0.0;
+        for (double v : r) s += v * v;
+        return s;
+    };
+
+    // Central-difference Jacobian: J[i][j] = d(r_i)/d(x_j)
+    const auto jacobian = [&](const std::vector<double>& x,
+                               const std::vector<double>& r0) {
+        const int m = static_cast<int>(r0.size());
+        std::vector<std::vector<double>> J(
+            static_cast<size_t>(m), std::vector<double>(static_cast<size_t>(n), 0.0));
+        for (int j = 0; j < n; ++j) {
+            auto xp = x; auto xm = x;
+            xp[static_cast<size_t>(j)] += h;
+            xm[static_cast<size_t>(j)] -= h;
+            auto rp = residuals(xp);
+            auto rm = residuals(xm);
+            for (int i = 0; i < m; ++i) {
+                J[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                    (rp[static_cast<size_t>(i)] - rm[static_cast<size_t>(i)]) / (2.0 * h);
+            }
+        }
+        return J;
+    };
+
+    auto x = x0;
+    auto r = residuals(x);
+    double cost = sum_sq(r);
+    double lambda = lambda0;
+    size_t iterations = 0;
+    bool converged = false;
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        ++iterations;
+
+        auto J = jacobian(x, r);
+        const int m = static_cast<int>(r.size());
+
+        // JtJ = J^T*J, Jtr = J^T*r
+        std::vector<std::vector<double>> JtJ(
+            static_cast<size_t>(n), std::vector<double>(static_cast<size_t>(n), 0.0));
+        std::vector<double> Jtr(static_cast<size_t>(n), 0.0);
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                double s = 0.0;
+                for (int k = 0; k < m; ++k) {
+                    s += J[static_cast<size_t>(k)][static_cast<size_t>(i)] *
+                         J[static_cast<size_t>(k)][static_cast<size_t>(j)];
+                }
+                JtJ[static_cast<size_t>(i)][static_cast<size_t>(j)] = s;
+            }
+            double s = 0.0;
+            for (int k = 0; k < m; ++k) {
+                s += J[static_cast<size_t>(k)][static_cast<size_t>(i)] * r[static_cast<size_t>(k)];
+            }
+            Jtr[static_cast<size_t>(i)] = s;
+        }
+
+        // Try increasing damping until a step improves the cost (or we give up).
+        const double cost_before = cost;
+        bool step_accepted = false;
+        std::vector<double> delta(static_cast<size_t>(n), 0.0);
+        for (int trial = 0; trial < 50; ++trial) {
+            auto A = JtJ;
+            for (int i = 0; i < n; ++i) {
+                A[static_cast<size_t>(i)][static_cast<size_t>(i)] +=
+                    lambda * JtJ[static_cast<size_t>(i)][static_cast<size_t>(i)];
+            }
+            std::vector<double> negJtr(static_cast<size_t>(n));
+            for (int i = 0; i < n; ++i) negJtr[static_cast<size_t>(i)] = -Jtr[static_cast<size_t>(i)];
+
+            delta = solve_linear_system(A, negJtr);
+
+            auto x_new = x;
+            for (int i = 0; i < n; ++i) x_new[static_cast<size_t>(i)] += delta[static_cast<size_t>(i)];
+            auto r_new = residuals(x_new);
+            double cost_new = sum_sq(r_new);
+
+            if (std::isfinite(cost_new) && cost_new < cost) {
+                x = x_new;
+                r = r_new;
+                cost = cost_new;
+                lambda = std::max(lambda / 10.0, 1e-15);
+                step_accepted = true;
+                break;
+            }
+            lambda *= 10.0;
+        }
+
+        double delta_norm = 0.0;
+        for (double v : delta) delta_norm += v * v;
+        delta_norm = std::sqrt(delta_norm);
+
+        // Converged if no improving step could be found (we're stuck at/near
+        // a stationary point even with heavy damping), the step size is
+        // negligible, or the cost improvement between iterations is negligible.
+        if (!step_accepted || delta_norm < tol ||
+            (cost_before - cost) < tol * (1.0 + cost_before)) {
+            converged = true;
+            break;
+        }
+    }
+
+    return OptimResult{x, cost, iterations, converged};
 }
 
 // ----------------------------------------------------------------

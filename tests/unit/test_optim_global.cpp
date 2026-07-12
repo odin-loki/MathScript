@@ -92,6 +92,344 @@ TEST(OptimAdam, ResultIsFinite) {
 }
 
 // -----------------------------------------------------------------------
+// Levenberg-Marquardt (nonlinear least squares)
+// -----------------------------------------------------------------------
+namespace {
+
+// Exponential decay model: y = A*exp(-k*t)
+double exp_decay_model(double A, double k, double t) {
+    return A * std::exp(-k * t);
+}
+
+// Gaussian peak model: y = A*exp(-(t-mu)^2 / (2*sigma^2))
+double gaussian_model(double A, double mu, double sigma, double t) {
+    double d = (t - mu) / sigma;
+    return A * std::exp(-0.5 * d * d);
+}
+
+// Power law model: y = A*t^p
+double power_law_model(double A, double p, double t) {
+    return A * std::pow(t, p);
+}
+
+} // namespace
+
+TEST(OptimLM, ExponentialDecay_RecoversTrueParameters) {
+    // True model: y = 5.0 * exp(-0.5*t), noise-free synthetic data
+    const double A_true = 5.0, k_true = 0.5;
+    std::vector<double> ts = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(exp_decay_model(A_true, k_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = exp_decay_model(p[0], p[1], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {1.0, 1.0});
+    EXPECT_NEAR(r.x[0], A_true, 1e-4);
+    EXPECT_NEAR(r.x[1], k_true, 1e-4);
+    EXPECT_LT(r.f_val, 1e-8);
+}
+
+TEST(OptimLM, ExponentialDecay_FValNearZero) {
+    const double A_true = 2.5, k_true = 1.2;
+    std::vector<double> ts = {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.5};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(exp_decay_model(A_true, k_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = exp_decay_model(p[0], p[1], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {1.0, 0.1});
+    EXPECT_LT(r.f_val, 1e-10);
+}
+
+TEST(OptimLM, ExponentialDecay_ConvergesFromPoorInitialGuess) {
+    // Initial guess far from the truth: A off by 10x, k off by 20x.
+    const double A_true = 4.0, k_true = 0.3;
+    std::vector<double> ts = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(exp_decay_model(A_true, k_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = exp_decay_model(p[0], p[1], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {40.0, 6.0}, 500);
+    ASSERT_TRUE(std::isfinite(r.x[0]));
+    ASSERT_TRUE(std::isfinite(r.x[1]));
+    EXPECT_NEAR(r.x[0], A_true, 1e-3);
+    EXPECT_NEAR(r.x[1], k_true, 1e-3);
+    EXPECT_LT(r.f_val, 1e-6);
+}
+
+TEST(OptimLM, GaussianPeak_RecoversTrueParameters) {
+    // True model: y = 3.0*exp(-(t-2.0)^2 / (2*1.5^2))
+    const double A_true = 3.0, mu_true = 2.0, sigma_true = 1.5;
+    std::vector<double> ts = {-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(gaussian_model(A_true, mu_true, sigma_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = gaussian_model(p[0], p[1], p[2], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {1.0, 1.0, 1.0});
+    EXPECT_NEAR(r.x[0], A_true, 1e-3);
+    EXPECT_NEAR(r.x[1], mu_true, 1e-3);
+    EXPECT_NEAR(r.x[2], sigma_true, 1e-3);
+    EXPECT_LT(r.f_val, 1e-6);
+}
+
+TEST(OptimLM, GaussianPeak_FValNearZero) {
+    const double A_true = 1.5, mu_true = 0.5, sigma_true = 0.8;
+    std::vector<double> ts = {-1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(gaussian_model(A_true, mu_true, sigma_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = gaussian_model(p[0], p[1], p[2], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {1.0, 0.0, 1.0});
+    EXPECT_LT(r.f_val, 1e-8);
+}
+
+TEST(OptimLM, PowerLaw_RecoversTrueParameters) {
+    // True model: y = 2.0*t^1.5
+    const double A_true = 2.0, p_true = 1.5;
+    std::vector<double> ts = {0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(power_law_model(A_true, p_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = power_law_model(p[0], p[1], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {1.0, 1.0});
+    EXPECT_NEAR(r.x[0], A_true, 1e-3);
+    EXPECT_NEAR(r.x[1], p_true, 1e-3);
+    EXPECT_LT(r.f_val, 1e-6);
+}
+
+TEST(OptimLM, LinearRegression_MatchesClosedFormOLS) {
+    // y = m*t + b, true m=2.0, b=1.0, with residuals as a nonlinear-least-
+    // squares call (even though the model itself is linear).
+    const double m_true = 2.0, b_true = 1.0;
+    std::vector<double> ts = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(m_true * t + b_true);
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = p[0] * ts[i] + p[1] - ys[i];
+        }
+        return r;
+    };
+
+    // Closed-form OLS via normal equations for y = m*t + b.
+    const size_t N = ts.size();
+    double sum_t = 0.0, sum_y = 0.0, sum_tt = 0.0, sum_ty = 0.0;
+    for (size_t i = 0; i < N; ++i) {
+        sum_t += ts[i];
+        sum_y += ys[i];
+        sum_tt += ts[i] * ts[i];
+        sum_ty += ts[i] * ys[i];
+    }
+    const double n = static_cast<double>(N);
+    const double m_ols = (n * sum_ty - sum_t * sum_y) / (n * sum_tt - sum_t * sum_t);
+    const double b_ols = (sum_y - m_ols * sum_t) / n;
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {0.5, 0.5});
+    EXPECT_NEAR(r.x[0], m_ols, 1e-6);
+    EXPECT_NEAR(r.x[1], b_ols, 1e-6);
+    EXPECT_NEAR(r.x[0], m_true, 1e-6);
+    EXPECT_NEAR(r.x[1], b_true, 1e-6);
+}
+
+TEST(OptimLM, LinearRegression_FValNearZero) {
+    std::vector<double> ts = {0.0, 1.0, 2.0, 3.0};
+    std::vector<double> ys = {1.0, 3.0, 5.0, 7.0};  // y = 2t + 1 exactly
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = p[0] * ts[i] + p[1] - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {0.0, 0.0});
+    EXPECT_LT(r.f_val, 1e-12);
+}
+
+TEST(OptimLM, TrivialSingleParameter_RecoversScaleFactor) {
+    // y = c*t, true c = 3.0
+    const double c_true = 3.0;
+    std::vector<double> ts = {1.0, 2.0, 3.0, 4.0, 5.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(c_true * t);
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) r[i] = p[0] * ts[i] - ys[i];
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {1.0});
+    ASSERT_EQ(r.x.size(), 1u);
+    EXPECT_NEAR(r.x[0], c_true, 1e-6);
+    EXPECT_LT(r.f_val, 1e-10);
+}
+
+TEST(OptimLM, TrivialSingleParameter_NegativeScaleFactor) {
+    const double c_true = -2.5;
+    std::vector<double> ts = {1.0, 2.0, 3.0, 4.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(c_true * t);
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) r[i] = p[0] * ts[i] - ys[i];
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {0.0});
+    EXPECT_NEAR(r.x[0], c_true, 1e-6);
+}
+
+TEST(OptimLM, AlreadyAtOptimum_StaysNearGoodStart) {
+    // Start exactly at the true parameters: should stay there (or improve
+    // negligibly further), not diverge away from a near-zero-cost point.
+    const double A_true = 5.0, k_true = 0.5;
+    std::vector<double> ts = {0.0, 0.5, 1.0, 1.5, 2.0, 3.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(exp_decay_model(A_true, k_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = exp_decay_model(p[0], p[1], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {A_true, k_true});
+    EXPECT_NEAR(r.x[0], A_true, 1e-6);
+    EXPECT_NEAR(r.x[1], k_true, 1e-6);
+    EXPECT_LT(r.f_val, 1e-12);
+    EXPECT_LE(r.iterations, 10u) << "Should converge almost immediately from the optimum";
+}
+
+TEST(OptimLM, AlreadyAtOptimum_ConvergedFlagTrue) {
+    const double c_true = 4.0;
+    std::vector<double> ts = {1.0, 2.0, 3.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(c_true * t);
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) r[i] = p[0] * ts[i] - ys[i];
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {c_true});
+    EXPECT_TRUE(r.converged);
+}
+
+TEST(OptimLM, ResultIsFinite) {
+    ms::ResidualFunc residuals = [](const std::vector<double>& p) {
+        return std::vector<double>{p[0] - 2.0, p[1] + 3.0};
+    };
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {0.0, 0.0});
+    EXPECT_TRUE(std::isfinite(r.f_val));
+    for (double v : r.x) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(OptimLM, CorrectDimensionPreserved) {
+    ms::ResidualFunc residuals = [](const std::vector<double>& p) {
+        return std::vector<double>{p[0] - 1.0, p[1] - 2.0, p[2] - 3.0};
+    };
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {0.0, 0.0, 0.0});
+    EXPECT_EQ(r.x.size(), 3u);
+    EXPECT_NEAR(r.x[0], 1.0, 1e-6);
+    EXPECT_NEAR(r.x[1], 2.0, 1e-6);
+    EXPECT_NEAR(r.x[2], 3.0, 1e-6);
+}
+
+TEST(OptimLM, OverdeterminedSystem_MoreResidualsThanParameters) {
+    // 10 residuals, 2 parameters: exercises the m > n case throughout.
+    const double A_true = 1.8, k_true = 0.7;
+    std::vector<double> ts;
+    for (int i = 0; i < 10; ++i) ts.push_back(0.1 * i);
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(exp_decay_model(A_true, k_true, t));
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) {
+            r[i] = exp_decay_model(p[0], p[1], ts[i]) - ys[i];
+        }
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {0.5, 0.1});
+    EXPECT_NEAR(r.x[0], A_true, 1e-4);
+    EXPECT_NEAR(r.x[1], k_true, 1e-4);
+}
+
+TEST(OptimLM, IterationsWithinMaxIter) {
+    ms::ResidualFunc residuals = [](const std::vector<double>& p) {
+        return std::vector<double>{p[0] - 7.0};
+    };
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {0.0}, 50);
+    EXPECT_LE(r.iterations, 50u);
+    EXPECT_NEAR(r.x[0], 7.0, 1e-6);
+}
+
+TEST(OptimLM, CustomLambda0_StillConverges) {
+    const double c_true = 6.0;
+    std::vector<double> ts = {1.0, 2.0, 3.0, 4.0};
+    std::vector<double> ys;
+    for (double t : ts) ys.push_back(c_true * t);
+
+    ms::ResidualFunc residuals = [&](const std::vector<double>& p) {
+        std::vector<double> r(ts.size());
+        for (size_t i = 0; i < ts.size(); ++i) r[i] = p[0] * ts[i] - ys[i];
+        return r;
+    };
+
+    ms::OptimResult r = ms::levenberg_marquardt(residuals, {20.0}, 200, 1e-10, 1.0);
+    EXPECT_NEAR(r.x[0], c_true, 1e-4);
+}
+
+// -----------------------------------------------------------------------
 // Simulated Annealing
 // -----------------------------------------------------------------------
 TEST(OptimSimulatedAnnealing, Sphere2D_FindsNearOptimum) {
