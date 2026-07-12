@@ -138,5 +138,34 @@ double sample_entropy(std::span<const double> x, int m, double r);
 double permutation_entropy(std::span<const double> x, int order, int delay = 1,
                            bool normalize = true);
 
+/// Transfer entropy TE(X->Y): directed information flow from time series X
+/// to time series Y, measuring how much knowing X's past reduces uncertainty
+/// about Y's future beyond what Y's own past already provides.
+///
+/// For lag @p lag (default 1), the estimator uses histogram-binned empirical
+/// distributions over the triple (y_{t+lag}, y_t, x_t) and computes
+/// TE(X->Y) = H(y_{t+lag} | y_t) - H(y_{t+lag} | y_t, x_t), equivalently
+/// the conditional mutual information I(y_{t+lag} ; x_t | y_t).
+///
+/// Each variable is discretized independently into @p bins equal-width bins
+/// spanning its observed [min, max] range (the same convention used by
+/// histogram-based entropy estimators elsewhere in the project).
+///
+/// @param x source time series (information donor).
+/// @param y target time series (information recipient); must be the same
+///        length as @p x.
+/// @param bins number of histogram bins per variable (default 8).
+/// @param lag forecast horizon / history offset in samples (default 1,
+///        i.e. y_{t+1} vs y_t and x_t).
+/// @return transfer entropy in bits (base 2). Transfer entropy is always
+///         >= 0 (it is a KL divergence); tiny negative values arising from
+///         finite-sample estimation noise are clamped to 0.
+/// @note Defensive: returns 0.0 for mismatched lengths, lag < 1, bins < 1,
+///       or series too short to form at least one (y_{t+lag}, y_t, x_t)
+///       sample (fewer than lag + 1 points).
+double transfer_entropy(const std::vector<double>& x,
+                        const std::vector<double>& y, int bins = 8,
+                        int lag = 1);
+
 } // namespace info
 } // namespace ms

@@ -1,7 +1,9 @@
 #define _USE_MATH_DEFINES
 #include "ms/info/info.hpp"
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <random>
 #include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -487,4 +489,137 @@ TEST(PermutationEntropy, NormalizedEntropyBoundedZeroOne) {
             EXPECT_LE(h, 1.0 + 1e-9);
         }
     }
+}
+
+// --- Transfer entropy (directed information flow between time series) ---
+
+namespace {
+
+std::vector<double> deterministic_noise_series(size_t n, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    std::vector<double> out(n);
+    for (size_t i = 0; i < n; ++i) out[i] = dist(rng);
+    return out;
+}
+
+std::vector<double> causal_y_from_x(const std::vector<double>& x, double noise_amp) {
+    std::vector<double> y(x.size(), 0.0);
+    const double noise[4] = {0.01, -0.02, 0.015, -0.005};
+    for (size_t t = 1; t < x.size(); ++t)
+        y[t] = x[t - 1] + noise_amp * noise[t % 4];
+    y[0] = x[0];
+    return y;
+}
+
+} // namespace
+
+TEST(TransferEntropy, IndependentSeriesNearZeroBothDirections) {
+    const std::vector<double> x = deterministic_noise_series(500, 42);
+    const std::vector<double> y = deterministic_noise_series(500, 137);
+    const double te_xy = transfer_entropy(x, y);
+    const double te_yx = transfer_entropy(y, x);
+    EXPECT_GE(te_xy, 0.0);
+    EXPECT_GE(te_yx, 0.0);
+    // Independent series: directions should be roughly symmetric (no preferred
+    // flow) and substantially weaker than a known causal driver.
+    EXPECT_NEAR(te_xy, te_yx, 0.15);
+
+    std::vector<double> x_drv(200);
+    for (size_t i = 0; i < x_drv.size(); ++i)
+        x_drv[i] = static_cast<double>(i % 17) + 0.1 * static_cast<double>(i % 5);
+    const std::vector<double> y_drv = causal_y_from_x(x_drv, 0.05);
+    const double te_causal = transfer_entropy(x_drv, y_drv);
+    EXPECT_GT(te_causal, te_xy + 0.2);
+    EXPECT_GT(te_causal, te_yx + 0.2);
+}
+
+TEST(TransferEntropy, CausalDriveAsymmetricDirection) {
+    std::vector<double> x(200);
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = static_cast<double>(i % 17) + 0.1 * static_cast<double>(i % 5);
+    const std::vector<double> y = causal_y_from_x(x, 0.05);
+
+    const double te_xy = transfer_entropy(x, y);
+    const double te_yx = transfer_entropy(y, x);
+    EXPECT_GE(te_xy, 0.0);
+    EXPECT_GE(te_yx, 0.0);
+    EXPECT_GT(te_xy, te_yx);
+    EXPECT_GT(te_xy, 0.3);
+}
+
+TEST(TransferEntropy, NonNegativityAcrossSyntheticPairs) {
+    const std::vector<std::vector<double>> series = {
+        {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0},
+        {5.0, -4.0, 7.0, -2.0, 9.0, 0.0, 11.0, 2.0, 13.0, 4.0},
+        deterministic_noise_series(80, 7),
+    };
+    for (size_t i = 0; i < series.size(); ++i) {
+        for (size_t j = 0; j < series.size(); ++j) {
+            const size_t n = std::min(series[i].size(), series[j].size());
+            std::vector<double> a(series[i].begin(), series[i].begin() + static_cast<std::ptrdiff_t>(n));
+            std::vector<double> b(series[j].begin(), series[j].begin() + static_cast<std::ptrdiff_t>(n));
+            EXPECT_GE(transfer_entropy(a, b), 0.0)
+                << "pair (" << i << "," << j << ")";
+        }
+    }
+}
+
+TEST(TransferEntropy, LaggedCopyStrongerThanShuffled) {
+    std::vector<double> x(120);
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = std::sin(static_cast<double>(i) * 0.17) + 0.3 * std::cos(static_cast<double>(i) * 0.05);
+
+    std::vector<double> y_lagged(x.size());
+    y_lagged[0] = x[0];
+    for (size_t t = 1; t < x.size(); ++t)
+        y_lagged[t] = x[t - 1];
+
+    std::vector<double> x_shuffled = x;
+    std::mt19937 rng(99);
+    std::shuffle(x_shuffled.begin(), x_shuffled.end(), rng);
+
+    const double te_aligned = transfer_entropy(x, y_lagged);
+    const double te_misaligned = transfer_entropy(x_shuffled, y_lagged);
+    EXPECT_GT(te_aligned, te_misaligned);
+    EXPECT_GT(te_aligned, 0.1);
+}
+
+TEST(TransferEntropy, BinCountQualitativelyStable) {
+    std::vector<double> x(150);
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = static_cast<double>((i * 7) % 23);
+    const std::vector<double> y = causal_y_from_x(x, 0.02);
+
+    const double te4 = transfer_entropy(x, y, 4);
+    const double te8 = transfer_entropy(x, y, 8);
+    const double te16 = transfer_entropy(x, y, 16);
+    EXPECT_GT(te4, 0.0);
+    EXPECT_GT(te8, 0.0);
+    EXPECT_GT(te16, 0.0);
+    const double te_max = std::max({te4, te8, te16});
+    const double te_min = std::min({te4, te8, te16});
+    EXPECT_LT(te_max / te_min, 4.0);
+}
+
+TEST(TransferEntropy, VeryShortSeriesNoCrash) {
+    const std::vector<double> x = {1.0, 2.0};
+    const std::vector<double> y = {2.0, 3.0};
+    const double te = transfer_entropy(x, y);
+    EXPECT_GE(te, 0.0);
+    EXPECT_TRUE(std::isfinite(te));
+}
+
+TEST(TransferEntropy, DegenerateMismatchedLength) {
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> y = {1.0, 2.0};
+    EXPECT_NEAR(transfer_entropy(x, y), 0.0, 1e-12);
+    EXPECT_NEAR(transfer_entropy(y, x), 0.0, 1e-12);
+}
+
+TEST(TransferEntropy, DegenerateTooShortForLag) {
+    const std::vector<double> x = {1.0};
+    const std::vector<double> y = {2.0};
+    EXPECT_NEAR(transfer_entropy(x, y, 8, 1), 0.0, 1e-12);
+    EXPECT_NEAR(transfer_entropy(x, y, 8, 2), 0.0, 1e-12);
 }
