@@ -25,6 +25,32 @@ double mad(std::span<const double> data);     // median absolute deviation
 double iqr(std::span<const double> data);     // interquartile range
 double trimmed_mean(std::span<const double> data, double frac);
 
+// Weighted mean: sum(w_i * x_i) / sum(w_i). Weights must be non-negative; negative
+// weights yield NaN. Empty input, mismatched lengths, or all-zero weights yield 0.0.
+double weighted_mean(const std::vector<double>& x, const std::vector<double>& w);
+
+// Weighted variance around the weighted mean. Implements reliability/precision weights
+// (not integer frequency counts). For sample=true (default), uses the bias-corrected
+// reliability-weights formula:
+//   sum(w_i * (x_i - wmean)^2) / (sum(w_i) - sum(w_i^2) / sum(w_i))
+// which reduces to the unweighted sample variance when all weights are equal. For
+// sample=false, uses the population form with denominator sum(w_i) only. Negative
+// weights yield NaN; empty input, mismatched lengths, or all-zero weights yield 0.0;
+// fewer than two points or zero spread returns 0.0.
+double weighted_variance(const std::vector<double>& x,
+                         const std::vector<double>& w,
+                         bool sample = true);
+
+// Weighted Pearson correlation: weighted covariance divided by the product of weighted
+// standard deviations (computed from sum(w_i * (x_i - wmean)^2) without the sample
+// bias correction, matching the standard weighted-correlation definition). Uniform
+// weights reduce exactly to correlation(). Negative weights yield NaN; empty input,
+// mismatched lengths, or all-zero weights yield 0.0; zero variance in either variable
+// yields 0.0.
+double weighted_correlation(const std::vector<double>& x,
+                            const std::vector<double>& y,
+                            const std::vector<double>& w);
+
 // --- Correlation ---
 double correlation(std::span<const double> x, std::span<const double> y);
 double spearman(std::span<const double> x, std::span<const double> y);

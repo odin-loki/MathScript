@@ -234,6 +234,103 @@ TEST(StatsNumerical, CorrelationBounded) {
 }
 
 // ============================================================
+// Weighted descriptive statistics
+// ============================================================
+
+TEST(StatsNumerical, WeightedMeanUniformWeightsMatchesMean) {
+    std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    std::vector<double> w1(5, 1.0);
+    std::vector<double> w2(5, 2.0);
+    EXPECT_DOUBLE_EQ(weighted_mean(x, w1), mean(x));
+    EXPECT_DOUBLE_EQ(weighted_mean(x, w2), mean(x));
+}
+
+TEST(StatsNumerical, WeightedVarianceUniformWeightsMatchesVar) {
+    std::vector<double> x{2.0, 4.0, 6.0, 8.0, 10.0};
+    std::vector<double> w1(5, 1.0);
+    std::vector<double> w2(5, 3.0);
+    EXPECT_DOUBLE_EQ(weighted_variance(x, w1), var(x));
+    EXPECT_DOUBLE_EQ(weighted_variance(x, w2), var(x));
+}
+
+TEST(StatsNumerical, WeightedCorrelationUniformWeightsMatchesCorrelation) {
+    std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    std::vector<double> y{2.0, 4.0, 6.0, 8.0, 10.0};
+    std::vector<double> w(5, 1.0);
+    EXPECT_NEAR(weighted_correlation(x, y, w), correlation(x, y), 1e-12);
+}
+
+TEST(StatsNumerical, WeightedMeanFrequencyWeightsMatchesExpanded) {
+    std::vector<double> x{1.0, 2.0, 3.0};
+    std::vector<double> w{2.0, 1.0, 1.0};
+    std::vector<double> expanded{1.0, 1.0, 2.0, 3.0};
+    EXPECT_DOUBLE_EQ(weighted_mean(x, w), mean(expanded));
+}
+
+TEST(StatsNumerical, WeightedVarianceFrequencyWeightsDiffersFromExpanded) {
+    // Reliability-weights bias correction differs from sum(w)-1 for integer counts.
+    std::vector<double> x{1.0, 2.0, 3.0};
+    std::vector<double> w{2.0, 1.0, 1.0};
+    std::vector<double> expanded{1.0, 1.0, 2.0, 3.0};
+    const double expanded_var = var(expanded);
+    const double weighted_var = weighted_variance(x, w);
+    EXPECT_DOUBLE_EQ(weighted_var, 1.1);
+    EXPECT_NEAR(expanded_var, 0.9166666666666666, 1e-12);
+    EXPECT_NE(weighted_var, expanded_var);
+}
+
+TEST(StatsNumerical, WeightedMeanEmphasizesHeavyWeight) {
+    std::vector<double> x{1.0, 2.0, 3.0, 4.0, 100.0};
+    std::vector<double> w{1.0, 1.0, 1.0, 1.0, 100.0};
+    const double unweighted = mean(x);
+    const double weighted = weighted_mean(x, w);
+    EXPECT_GT(weighted, unweighted);
+    EXPECT_GT(weighted, 50.0);
+}
+
+TEST(StatsNumerical, WeightedCorrelationReweightingChangesSign) {
+    std::vector<double> x{1.0, 2.0, 3.0, 4.0, 10.0, 11.0, 12.0, 13.0};
+    std::vector<double> y{4.0, 3.0, 2.0, 1.0, 10.0, 11.0, 12.0, 13.0};
+    std::vector<double> w_uniform(8, 1.0);
+    std::vector<double> w_neg{100.0, 100.0, 100.0, 100.0, 1.0, 1.0, 1.0, 1.0};
+    std::vector<double> w_pos{1.0, 1.0, 1.0, 1.0, 100.0, 100.0, 100.0, 100.0};
+    const double uniform_r = weighted_correlation(x, y, w_uniform);
+    const double neg_r = weighted_correlation(x, y, w_neg);
+    const double pos_r = weighted_correlation(x, y, w_pos);
+    EXPECT_LT(neg_r, 0.0);
+    EXPECT_GT(pos_r, 0.0);
+    EXPECT_LT(neg_r, uniform_r);
+    EXPECT_GT(pos_r, uniform_r);
+}
+
+TEST(StatsNumerical, WeightedStatsMismatchedLengthsReturnZero) {
+    std::vector<double> x{1.0, 2.0, 3.0};
+    std::vector<double> w{1.0, 2.0};
+    std::vector<double> y{4.0, 5.0, 6.0};
+    EXPECT_DOUBLE_EQ(weighted_mean(x, w), 0.0);
+    EXPECT_DOUBLE_EQ(weighted_variance(x, w), 0.0);
+    EXPECT_DOUBLE_EQ(weighted_correlation(x, y, w), 0.0);
+}
+
+TEST(StatsNumerical, WeightedVarianceDegenerateReturnsZero) {
+    std::vector<double> single{5.0};
+    std::vector<double> w1{1.0};
+    EXPECT_DOUBLE_EQ(weighted_variance(single, w1), 0.0);
+
+    std::vector<double> constant{3.0, 3.0, 3.0};
+    std::vector<double> w2{1.0, 2.0, 3.0};
+    EXPECT_DOUBLE_EQ(weighted_variance(constant, w2), 0.0);
+}
+
+TEST(StatsNumerical, WeightedStatsNegativeWeightsReturnNaN) {
+    std::vector<double> x{1.0, 2.0, 3.0};
+    std::vector<double> w{-1.0, 1.0, 1.0};
+    EXPECT_TRUE(std::isnan(weighted_mean(x, w)));
+    EXPECT_TRUE(std::isnan(weighted_variance(x, w)));
+    EXPECT_TRUE(std::isnan(weighted_correlation(x, x, w)));
+}
+
+// ============================================================
 // t-test / z-test — sign and direction checks
 // ============================================================
 
