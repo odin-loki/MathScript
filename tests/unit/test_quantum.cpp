@@ -374,6 +374,51 @@ TEST(QuantumEntropy, MaximumEntropy) {
     EXPECT_NEAR(S, std::log(2.0), 0.01);
 }
 
+// ---- Purity Tr(rho^2) ----
+TEST(QuantumPurity, PureStateZero) {
+    auto rho = density_matrix(ket_basis(2, 0));
+    EXPECT_NEAR(purity(rho), 1.0, 1e-10);
+}
+
+TEST(QuantumPurity, MaximallyMixedQubit) {
+    DensityMatrix rho = {{{0.5, 0}, {0, 0}}, {{0, 0}, {0.5, 0}}};
+    EXPECT_NEAR(purity(rho), 0.5, 1e-10);
+}
+
+TEST(QuantumPurity, PureStateOne) {
+    auto rho = density_matrix(ket_basis(2, 1));
+    EXPECT_NEAR(purity(rho), 1.0, 1e-10);
+}
+
+TEST(QuantumPurity, PureStateNonDiagonal) {
+    auto plus = op_apply(hadamard(), ket_basis(2, 0));
+    auto rho = density_matrix(plus);
+    EXPECT_NEAR(purity(rho), 1.0, 1e-10);
+}
+
+TEST(QuantumPurity, DiagonalMixed) {
+    DensityMatrix rho = {{{0.75, 0}, {0, 0}}, {{0, 0}, {0.25, 0}}};
+    EXPECT_NEAR(purity(rho), 0.75 * 0.75 + 0.25 * 0.25, 1e-10);
+}
+
+TEST(QuantumPurity, ClassicalMixture) {
+    DensityMatrix rho = {{{0.6, 0}, {0, 0}}, {{0, 0}, {0.4, 0}}};
+    EXPECT_NEAR(purity(rho), 0.6 * 0.6 + 0.4 * 0.4, 1e-10);
+}
+
+TEST(QuantumPurity, BellReducedState) {
+    auto bell = bell_states()[0];
+    auto rhoA = partial_trace(density_matrix(bell), 2, 2, 0);
+    EXPECT_NEAR(purity(rhoA), 0.5, 1e-10);
+}
+
+TEST(QuantumPurity, MaximallyMixedHigherDim) {
+    auto rho = identity(4);
+    for (auto& row : rho)
+        for (auto& c : row) c *= 0.25;
+    EXPECT_NEAR(purity(rho), 0.25, 1e-10);
+}
+
 // ---- Partial trace ----
 TEST(QuantumTrace, PartialTrace) {
     // Product state |00><00| should give |0><0| when tracing out either system
