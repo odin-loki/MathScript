@@ -3,6 +3,8 @@
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
+
 ## [1.0.0] — 2026-07-12 (Wave 206 — Special Spherical Bessel, Signal LMS Filter, Graph TSP Heuristic, Stats Wilcoxon Signed-Rank, ML ROC/AUC, Optim Levenberg-Marquardt, Info Permutation Entropy, Geo Minkowski Sum)
 
 8 parallel subagents across 8 independent modules.
@@ -1034,16 +1036,6 @@ The largest single wave to date, using 6 parallel subagents across 6 independent
 - Tag checklist suite count updated 283→284 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
 - **Total Wave 108: 284 CTest suites — all passing**
 
-## [1.0.0] — 2026-06-23 (Wave 105 — REPL Bindings, Fuzz Seeds)
-
-### Added (Wave 105)
-- `tests/integration/test_repl_wave105_pipeline.cpp`: REPL Wave 63–105 bindings end-to-end smoke
-- REPL bindings: `ml_binary_crossentropy(p,t)` binary cross-entropy loss on N×1 vectors; `numthy_is_primitive_root(g,p)` primitive root test; `numthy_discrete_log(g,h,p)` baby-step giant-step discrete log
-- `tests/unit/test_numthy.cpp`: `NumthyModular.PrimitiveRoot` and `NumthyModular.DiscreteLog` unit tests
-- Fuzz corpus seeds under `tests/fuzz/corpus/fuzz_repl_input/` for Wave 105 REPL bindings (`ml_binary_crossentropy`, `numthy_is_primitive_root`, `numthy_discrete_log`)
-- Tag checklist suite count updated 280→281 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
-- **Total Wave 105: 281 CTest suites — all passing**
-
 ## [1.0.0] — 2026-06-23 (Wave 107 — REPL Bindings, Fuzz Seeds)
 
 ### Added (Wave 107)
@@ -1062,6 +1054,16 @@ The largest single wave to date, using 6 parallel subagents across 6 independent
 - Fuzz corpus seeds under `tests/fuzz/corpus/fuzz_repl_input/` for Wave 106 REPL bindings (`ml_vec_norm`, `numthy_factor_count`, `geo_polygon_perimeter`)
 - Tag checklist suite count updated 281→282 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
 - **Total Wave 106: 282 CTest suites — all passing**
+
+## [1.0.0] — 2026-06-23 (Wave 105 — REPL Bindings, Fuzz Seeds)
+
+### Added (Wave 105)
+- `tests/integration/test_repl_wave105_pipeline.cpp`: REPL Wave 63–105 bindings end-to-end smoke
+- REPL bindings: `ml_binary_crossentropy(p,t)` binary cross-entropy loss on N×1 vectors; `numthy_is_primitive_root(g,p)` primitive root test; `numthy_discrete_log(g,h,p)` baby-step giant-step discrete log
+- `tests/unit/test_numthy.cpp`: `NumthyModular.PrimitiveRoot` and `NumthyModular.DiscreteLog` unit tests
+- Fuzz corpus seeds under `tests/fuzz/corpus/fuzz_repl_input/` for Wave 105 REPL bindings (`ml_binary_crossentropy`, `numthy_is_primitive_root`, `numthy_discrete_log`)
+- Tag checklist suite count updated 280→281 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
+- **Total Wave 105: 281 CTest suites — all passing**
 
 ## [1.0.0] — 2026-06-23 (Wave 104 — REPL Bindings, Fuzz Seeds)
 
@@ -1182,15 +1184,6 @@ The largest single wave to date, using 6 parallel subagents across 6 independent
 - Tag checklist suite count updated 267→268 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
 - **Total Wave 92: 268 CTest suites — all passing**
 
-## [1.0.0] — 2026-06-23 (Wave 90 — REPL Bindings, Fuzz Seeds)
-
-### Added (Wave 90)
-- `tests/integration/test_repl_wave90_pipeline.cpp`: REPL Wave 63–90 bindings end-to-end smoke
-- REPL bindings: `quantum_hadamard_gate()` nullary matrix assignment; `cplx_hyperbolic_distance(z1re,z1im,z2re,z2im)` scalar call; `info_lz_complexity(seq)` scalar matrix call
-- Fuzz corpus seeds under `tests/fuzz/corpus/fuzz_repl_input/` for Wave 90 REPL bindings (`quantum_hadamard_gate`, `cplx_hyperbolic_distance`, `info_lz_complexity`)
-- Tag checklist suite count updated 265→266 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
-- **Total Wave 90: 266 CTest suites — all passing**
-
 ## [1.0.0] — 2026-06-23 (Wave 91 — REPL Bindings, Fuzz Seeds)
 
 ### Added (Wave 91)
@@ -1199,6 +1192,15 @@ The largest single wave to date, using 6 parallel subagents across 6 independent
 - Fuzz corpus seeds under `tests/fuzz/corpus/fuzz_repl_input/` for Wave 91 REPL bindings (`quantum_pauli_plus`, `quantum_pauli_minus`, `quantum_toffoli_gate`)
 - Tag checklist suite count updated 266→267 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
 - **Total Wave 91: 267 CTest suites — all passing**
+
+## [1.0.0] — 2026-06-23 (Wave 90 — REPL Bindings, Fuzz Seeds)
+
+### Added (Wave 90)
+- `tests/integration/test_repl_wave90_pipeline.cpp`: REPL Wave 63–90 bindings end-to-end smoke
+- REPL bindings: `quantum_hadamard_gate()` nullary matrix assignment; `cplx_hyperbolic_distance(z1re,z1im,z2re,z2im)` scalar call; `info_lz_complexity(seq)` scalar matrix call
+- Fuzz corpus seeds under `tests/fuzz/corpus/fuzz_repl_input/` for Wave 90 REPL bindings (`quantum_hadamard_gate`, `cplx_hyperbolic_distance`, `info_lz_complexity`)
+- Tag checklist suite count updated 265→266 (`scripts/tag_1.0.0_checklist.sh` / `.ps1`)
+- **Total Wave 90: 266 CTest suites — all passing**
 
 ## [1.0.0] — 2026-06-23 (Wave 89 — REPL Bindings, Fuzz Seeds)
 
