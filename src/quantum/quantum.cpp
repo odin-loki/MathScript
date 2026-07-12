@@ -494,13 +494,114 @@ DensityMatrix partial_trace(const DensityMatrix& rho, int d1, int d2, int subsys
     }
 }
 
+// ---- Schmidt decomposition ----
+
+namespace {
+
+// Reshape |psi> into coefficient matrix M[i][j] = psi[i*dim_b + j] (subsystem A ⊗ B).
+DensityMatrix reshape_bipartite_coefficients(const Ket& psi, int dim_a, int dim_b) {
+    DensityMatrix M(dim_a, std::vector<C>(dim_b, C(0.0)));
+    for (int i = 0; i < dim_a; ++i)
+        for (int j = 0; j < dim_b; ++j)
+            M[i][j] = psi[static_cast<size_t>(i * dim_b + j)];
+    return M;
+}
+
+// Hermitian Gram matrix M M† for the left Schmidt spectrum.
+DensityMatrix gram_left(const DensityMatrix& M, int dim_a, int dim_b) {
+    DensityMatrix G(dim_a, std::vector<C>(dim_a, C(0.0)));
+    for (int i = 0; i < dim_a; ++i)
+        for (int j = 0; j < dim_a; ++j)
+            for (int k = 0; k < dim_b; ++k)
+                G[i][j] += M[i][k] * std::conj(M[j][k]);
+    return G;
+}
+
+// Right Schmidt vector v = M† u / sigma for sigma > 0.
+Ket right_schmidt_vector(const DensityMatrix& M, const Ket& u, int dim_b, double sigma) {
+    Ket v(dim_b, C(0.0));
+    const int dim_a = static_cast<int>(M.size());
+    for (int k = 0; k < dim_b; ++k)
+        for (int i = 0; i < dim_a; ++i)
+            v[k] += std::conj(M[i][k]) * u[i];
+    if (sigma > 1e-15) {
+        for (int k = 0; k < dim_b; ++k) v[k] /= sigma;
+    }
+    return ket_normalise(v);
+}
+
+double entropy_from_schmidt_coefficients(const std::vector<double>& coeffs) {
+    double S = 0.0;
+    for (double lambda : coeffs) {
+        const double p = lambda * lambda;
+        if (p > 1e-15) S -= p * std::log(p);
+    }
+    return S;
+}
+
+} // namespace
+
+SchmidtDecomposition schmidt_decomposition(const Ket& psi, int dim_a, int dim_b) {
+    SchmidtDecomposition result;
+    if (dim_a <= 0 || dim_b <= 0) return result;
+    const int expected = dim_a * dim_b;
+    if (static_cast<int>(psi.size()) != expected) return result;
+
+    const Ket psi_norm = ket_normalise(psi);
+    const DensityMatrix M = reshape_bipartite_coefficients(psi_norm, dim_a, dim_b);
+    const DensityMatrix G = gram_left(M, dim_a, dim_b);
+
+    std::vector<double> evals;
+    DensityMatrix evecs;
+    hermitian_eigendecomposition(G, dim_a, evals, evecs);
+
+    // Sort eigenvalues (Schmidt coefficient squares) descending.
+    std::vector<int> order(dim_a);
+    for (int i = 0; i < dim_a; ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        return evals[a] > evals[b];
+    });
+
+    result.coefficients.reserve(static_cast<size_t>(dim_a));
+    result.basis_a.reserve(static_cast<size_t>(dim_a));
+    result.basis_b.reserve(static_cast<size_t>(dim_a));
+
+    for (int idx : order) {
+        const double ev = std::max(0.0, evals[idx]);
+        const double sigma = std::sqrt(ev);
+        result.coefficients.push_back(sigma);
+
+        Ket u(dim_a);
+        for (int i = 0; i < dim_a; ++i) u[i] = evecs[i][idx];
+        result.basis_a.push_back(ket_normalise(u));
+        result.basis_b.push_back(right_schmidt_vector(M, result.basis_a.back(), dim_b, sigma));
+    }
+
+    return result;
+}
+
+int schmidt_rank(const Ket& psi, int dim_a, int dim_b, double tol) {
+    const auto decomp = schmidt_decomposition(psi, dim_a, dim_b);
+    int rank = 0;
+    for (double lambda : decomp.coefficients)
+        if (lambda > tol) ++rank;
+    return rank;
+}
+
+int schmidt_number(const Ket& psi, int dim_a, int dim_b, double tol) {
+    // For pure bipartite states the Schmidt number equals the Schmidt rank.
+    return schmidt_rank(psi, dim_a, dim_b, tol);
+}
+
 // ---- Entanglement entropy ----
 
 double entanglement_entropy(const Ket& psi, int dim_a, int dim_b) {
-    // Schmidt decomposition via SVD of reshaped psi (dim_a × dim_b matrix)
-    // Build coefficient matrix M[i][j] = psi[i*dim_b + j]
-    // Then S = -sum lambda^2 log(lambda^2)
-    // Approximate: build density matrix and trace
+    // Schmidt coefficients squared are reduced-density-matrix eigenvalues.
+    const auto decomp = schmidt_decomposition(psi, dim_a, dim_b);
+    if (!decomp.coefficients.empty())
+        return entropy_from_schmidt_coefficients(decomp.coefficients);
+
+    // Fallback for invalid subsystem dimensions.
     auto rho = density_matrix(psi);
     auto rhoA = partial_trace(rho, dim_a, dim_b, 0);
     return von_neumann_entropy(rhoA);
