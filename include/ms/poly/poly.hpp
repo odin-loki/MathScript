@@ -232,7 +232,7 @@ struct PartialFractionResult {
 //     a proper-fraction remainder numerator N_r(x) with deg(N_r) <
 //     deg(denominator). Only N_r(x) / denominator(x) is decomposed into
 //     terms below.
-//  2. denominator's roots are found via poly_roots (Durand-Kerner; returns
+//  2. denominator's roots are found via poly_roots (companion-matrix
 //     one complex root per degree, with algebraic multiplicity). Roots with
 //     near-zero imaginary part are treated as real poles; the remainder are
 //     paired up as complex-conjugate pairs and combined into real quadratic
