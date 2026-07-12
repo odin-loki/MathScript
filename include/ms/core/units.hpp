@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cmath>
+
 namespace ms::core {
 
 /// Exponents of the 7 SI base dimensions (metre, kilogram, second, ampere,
@@ -40,6 +42,20 @@ constexpr Units operator*(Units a, Units b) {
 constexpr Units operator/(Units a, Units b) {
     return Units{a.m - b.m, a.kg - b.kg, a.s - b.s, a.A - b.A,
                  a.K - b.K, a.mol - b.mol, a.cd - b.cd};
+}
+
+/// True iff `u` carries no physical dimension at all, i.e. every one of its
+/// seven SI base-dimension exponents is zero. A dimensionless `Units` value
+/// typically arises from dividing two quantities of the same dimension
+/// (e.g. `Metres{} / Metres{}` yields `Units{}`), and describes pure
+/// ratios, counts, and angles (radians/steradians are dimensionless in SI).
+///
+/// Being a plain `constexpr` function of a structural-type value (rather
+/// than, say, a template on seven separate `int` NTTPs), this works
+/// uniformly whether `u` is a compile-time constant (e.g. inside a
+/// `static_assert`) or only known at runtime.
+constexpr bool is_dimensionless(Units u) {
+    return u == Units{};
 }
 
 /// @cond MS_INTERNAL
@@ -102,6 +118,36 @@ constexpr auto operator/(TypedScalarImpl<T, M1, KG1, S1, A1, K1, MOL1, CD1> a,
                           TypedScalarImpl<T, M2, KG2, S2, A2, K2, MOL2, CD2> b) {
     return TypedScalarImpl<T, M1 - M2, KG1 - KG2, S1 - S2, A1 - A2,
                             K1 - K2, MOL1 - MOL2, CD1 - CD2>(a.value() / b.value());
+}
+
+/// Square root of a dimensioned quantity: halves every dimension exponent
+/// of the operand, e.g. `sqrt(Metres*Metres)` has the same dimension as
+/// `Metres`, and `sqrt(Seconds*Seconds)` has the same dimension as
+/// `Seconds`.
+///
+/// This is only well-defined -- and only compiles -- when every one of the
+/// operand's seven exponents is even; taking the square root of e.g. plain
+/// `Metres` (exponent m^1) cannot be expressed with an integer exponent, so
+/// that call is rejected by the `static_assert` below at compile time
+/// rather than silently truncating (e.g. to m^0) or producing wrong units.
+/// The runtime value itself is simply `std::sqrt` of the underlying value.
+template <typename T, int M, int KG, int S, int A, int K, int MOL, int CD>
+auto sqrt(TypedScalarImpl<T, M, KG, S, A, K, MOL, CD> a) {
+    static_assert(M % 2 == 0 && KG % 2 == 0 && S % 2 == 0 && A % 2 == 0 &&
+                      K % 2 == 0 && MOL % 2 == 0 && CD % 2 == 0,
+                  "sqrt() requires every dimension exponent to be even (e.g. "
+                  "Metres*Metres, not Metres) so the result's units are "
+                  "expressible with integer exponents");
+    return TypedScalarImpl<T, M / 2, KG / 2, S / 2, A / 2, K / 2, MOL / 2, CD / 2>(
+        std::sqrt(a.value()));
+}
+
+/// Convenience overload of `is_dimensionless(Units)` (see above) that
+/// checks a `TypedScalarImpl` quantity directly, without the caller having
+/// to spell out `decltype(a)::units()`.
+template <typename T, int M, int KG, int S, int A, int K, int MOL, int CD>
+constexpr bool is_dimensionless(TypedScalarImpl<T, M, KG, S, A, K, MOL, CD>) {
+    return M == 0 && KG == 0 && S == 0 && A == 0 && K == 0 && MOL == 0 && CD == 0;
 }
 
 } // namespace detail
