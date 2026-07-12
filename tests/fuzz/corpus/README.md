@@ -16,9 +16,7 @@ corpus/
   fuzz_mpi_message/   # seeds for tests/fuzz/fuzz_mpi_message.cpp
 ```
 
-Directories may be empty; each target should have at least one small seed under its folder. `fuzz_repl_input/` ships text seeds; other targets ship `seed.bin` byte seeds. CI smoke, nightly, and fuzz-24h pass `-corpus_dir=tests/fuzz/corpus/<target>` when the directory exists.
-runs can point `-corpus_dir=tests/fuzz/corpus/<target>` to improve coverage
-faster.
+Directories may be empty; each target should have at least one small seed under its folder. `fuzz_repl_input/` ships text seeds; other targets ship `seed.bin` byte seeds. CI smoke, nightly, and fuzz-24h pass `-corpus_dir=tests/fuzz/corpus/<target>` when the directory exists. Local runs can point `-corpus_dir=tests/fuzz/corpus/<target>` to improve coverage faster.
 
 ## Adding seeds
 
