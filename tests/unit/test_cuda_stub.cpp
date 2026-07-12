@@ -3,6 +3,7 @@
 #include "ms/cuda/buffer.hpp"
 #include "ms/cuda/blas.hpp"
 #include "ms/cuda/fft.hpp"
+#include "ms/cuda/nvml.hpp"
 #include "ms/cuda/solver.hpp"
 #include "ms/runtime/dispatch.hpp"
 #include <complex>
@@ -72,4 +73,61 @@ TEST(CudaStubTest, solve_stub) {
     }
 #endif
     EXPECT_FALSE(result.has_value());
+}
+
+TEST(CudaNvmlTest, device_memory_free_matches_device_stats_composition) {
+    const auto stats = cuda::device_stats(0);
+    const size_t expected =
+        stats.memory_total_bytes >= stats.memory_used_bytes
+            ? stats.memory_total_bytes - stats.memory_used_bytes
+            : 0;
+    EXPECT_EQ(cuda::device_memory_free(0), expected);
+}
+
+TEST(CudaNvmlTest, device_memory_free_stub_is_zero) {
+#if !(defined(MS_HAS_CUDA) && MS_HAS_CUDA)
+    EXPECT_EQ(cuda::device_memory_free(0), 0u);
+#else
+    if (!cuda::available()) {
+        EXPECT_EQ(cuda::device_memory_free(0), 0u);
+    }
+#endif
+}
+
+TEST(CudaNvmlTest, default_argument_matches_explicit_device_zero) {
+    EXPECT_EQ(cuda::device_memory_free(), cuda::device_memory_free(0));
+}
+
+TEST(CudaNvmlTest, multiple_device_indices_do_not_crash) {
+    for (const int device : {0, 1, 7}) {
+        const auto stats = cuda::device_stats(device);
+        const size_t expected =
+            stats.memory_total_bytes >= stats.memory_used_bytes
+                ? stats.memory_total_bytes - stats.memory_used_bytes
+                : 0;
+        EXPECT_EQ(cuda::device_memory_free(device), expected);
+    }
+}
+
+TEST(CudaNvmlTest, negative_device_index_does_not_crash) {
+    EXPECT_NO_THROW({
+        const size_t free_bytes = cuda::device_memory_free(-1);
+        EXPECT_GE(free_bytes, 0u);
+    });
+}
+
+TEST(CudaNvmlTest, out_of_range_device_index_does_not_crash) {
+    EXPECT_NO_THROW({
+        const size_t free_bytes = cuda::device_memory_free(9999);
+        EXPECT_GE(free_bytes, 0u);
+    });
+}
+
+TEST(CudaNvmlTest, result_never_underflows) {
+    for (const int device : {-1, 0, 1, 7, 9999}) {
+        const size_t free_bytes = cuda::device_memory_free(device);
+        // size_t is unsigned; an underflowed subtraction would produce a
+        // value near SIZE_MAX, so a sane upper bound catches that case.
+        EXPECT_LE(free_bytes, 64ULL * 1024 * 1024 * 1024 * 1024);
+    }
 }

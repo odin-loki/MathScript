@@ -14,5 +14,6 @@ struct DeviceStats {
 
 bool nvml_available();
 DeviceStats device_stats(int device = 0);
+size_t device_memory_free(int device = 0);
 
 } // namespace ms::cuda

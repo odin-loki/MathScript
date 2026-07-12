@@ -16,4 +16,11 @@ DeviceStats device_stats(int device) {
     return stats;
 }
 
+size_t device_memory_free(int device) {
+    const DeviceStats stats = device_stats(device);
+    return stats.memory_total_bytes >= stats.memory_used_bytes
+        ? stats.memory_total_bytes - stats.memory_used_bytes
+        : 0;
+}
+
 } // namespace ms::cuda
