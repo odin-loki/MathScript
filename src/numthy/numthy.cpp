@@ -797,5 +797,20 @@ uint64_t partition(uint32_t n) {
     return p[n];
 }
 
+Result<uint64_t> multiplicative_order(uint64_t a, uint64_t n) {
+    if (n == 0)
+        return std::unexpected(Error{DomainError{"multiplicative_order", "n == 0"}});
+    if (gcd(a, n) != 1)
+        return std::unexpected(Error{DomainError{"multiplicative_order", "gcd(a, n) != 1"}});
+
+    uint64_t order = euler_phi(n);
+    for (auto& [p, e] : factor_exp(order)) {
+        (void)e;
+        while (order % p == 0 && powmod(a, order / p, n) == 1)
+            order /= p;
+    }
+    return order;
+}
+
 } // namespace numthy
 } // namespace ms

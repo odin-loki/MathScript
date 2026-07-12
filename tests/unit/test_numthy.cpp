@@ -589,3 +589,88 @@ TEST(NumthyLucas, NegativeKClampedToZero) {
     EXPECT_EQ(u, 0);
     EXPECT_EQ(v, 2);
 }
+
+TEST(NumthyMultiplicativeOrder, HandVerifiedThreeModSeven) {
+    // 3^1=3, 3^2=2, 3^3=6, 3^4=4, 3^5=5, 3^6=1 (mod 7): order 6 (3 is a primitive root mod 7).
+    auto ord = multiplicative_order(3, 7);
+    ASSERT_TRUE(ord.has_value());
+    EXPECT_EQ(ord.value(), 6u);
+}
+
+TEST(NumthyMultiplicativeOrder, HandVerifiedTwoModSeven) {
+    // 2^1=2, 2^2=4, 2^3=1 (mod 7): order 3.
+    auto ord = multiplicative_order(2, 7);
+    ASSERT_TRUE(ord.has_value());
+    EXPECT_EQ(ord.value(), 3u);
+}
+
+TEST(NumthyMultiplicativeOrder, NonCoprimeReturnsError) {
+    // gcd(2, 4) == 2 != 1: no multiplicative order exists.
+    EXPECT_FALSE(multiplicative_order(2, 4).has_value());
+    EXPECT_FALSE(multiplicative_order(6, 9).has_value());
+    EXPECT_FALSE(multiplicative_order(0, 5).has_value()); // gcd(0,5) == 5
+}
+
+TEST(NumthyMultiplicativeOrder, DefiningPropertyAndMinimality) {
+    struct Case { uint64_t a, n; };
+    for (auto [a, n] : {Case{3, 7}, Case{2, 7}, Case{2, 9}, Case{5, 12}, Case{7, 10},
+                        Case{4, 15}, Case{10, 37}}) {
+        auto ord = multiplicative_order(a, n);
+        ASSERT_TRUE(ord.has_value()) << "a=" << a << " n=" << n;
+        const uint64_t k = ord.value();
+        ASSERT_GT(k, 0u) << "a=" << a << " n=" << n;
+        // Defining property: a^k ≡ 1 (mod n).
+        EXPECT_EQ(mod_pow(a, k, n), 1u) << "a=" << a << " n=" << n;
+        // Minimality: no smaller positive exponent works.
+        for (uint64_t e = 1; e < k; ++e) {
+            EXPECT_NE(mod_pow(a, e, n), 1u)
+                << "a=" << a << " n=" << n << " e=" << e << " (order should be minimal)";
+        }
+    }
+}
+
+TEST(NumthyMultiplicativeOrder, DividesEulerPhi) {
+    struct Case { uint64_t a, n; };
+    for (auto [a, n] : {Case{3, 7}, Case{2, 7}, Case{2, 9}, Case{5, 12}, Case{7, 10},
+                        Case{4, 15}, Case{10, 37}, Case{7, 100}}) {
+        auto ord = multiplicative_order(a, n);
+        ASSERT_TRUE(ord.has_value()) << "a=" << a << " n=" << n;
+        const uint64_t phi = euler_phi(n);
+        EXPECT_EQ(phi % ord.value(), 0u)
+            << "a=" << a << " n=" << n << " order=" << ord.value() << " phi=" << phi;
+    }
+}
+
+TEST(NumthyMultiplicativeOrder, DividesCarmichaelLambda) {
+    struct Case { uint64_t a, n; };
+    for (auto [a, n] : {Case{3, 7}, Case{2, 9}, Case{5, 12}, Case{7, 10}, Case{4, 15}}) {
+        auto ord = multiplicative_order(a, n);
+        ASSERT_TRUE(ord.has_value()) << "a=" << a << " n=" << n;
+        const uint64_t lam = carmichael_lambda(n);
+        EXPECT_EQ(lam % ord.value(), 0u)
+            << "a=" << a << " n=" << n << " order=" << ord.value() << " lambda=" << lam;
+    }
+}
+
+TEST(NumthyMultiplicativeOrder, ModeratelyLargeModulus) {
+    // n in the low thousands; still fast to factor via existing factor_exp.
+    struct Case { uint64_t a, n; };
+    for (auto [a, n] : {Case{3, 1000}, Case{7, 1009}, Case{2, 2003}, Case{5, 3001}}) {
+        auto ord = multiplicative_order(a, n);
+        ASSERT_TRUE(ord.has_value()) << "a=" << a << " n=" << n;
+        EXPECT_EQ(mod_pow(a, ord.value(), n), 1u) << "a=" << a << " n=" << n;
+        EXPECT_EQ(euler_phi(n) % ord.value(), 0u) << "a=" << a << " n=" << n;
+    }
+}
+
+TEST(NumthyMultiplicativeOrder, ModulusOneEdgeCase) {
+    // gcd(a,1) == 1 for every a, and the trivial group has order 1.
+    auto ord = multiplicative_order(5, 1);
+    ASSERT_TRUE(ord.has_value());
+    EXPECT_EQ(ord.value(), 1u);
+}
+
+TEST(NumthyMultiplicativeOrder, ModulusZeroIsError) {
+    EXPECT_FALSE(multiplicative_order(1, 0).has_value());
+    EXPECT_FALSE(multiplicative_order(0, 0).has_value());
+}
