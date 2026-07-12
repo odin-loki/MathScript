@@ -1,5 +1,6 @@
 #include "ms/tensorops/tensorops.hpp"
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <gtest/gtest.h>
 
@@ -713,4 +714,137 @@ TEST(TensorTT, ErrorEmptyTensor) {
     ASSERT_EQ(T.numel(), 0);
     auto res = decompose_tt(T, 0.1);
     EXPECT_FALSE(res.has_value());
+}
+
+// ---- Non-negative Matrix Factorization (NMF) ----
+
+static std::vector<std::vector<double>> test_mat_mul(
+    const std::vector<std::vector<double>>& A,
+    const std::vector<std::vector<double>>& B) {
+    int m = static_cast<int>(A.size()), k = static_cast<int>(A[0].size()),
+        n = static_cast<int>(B[0].size());
+    std::vector<std::vector<double>> C(m, std::vector<double>(n, 0.0));
+    for (int i = 0; i < m; ++i)
+        for (int l = 0; l < k; ++l)
+            for (int j = 0; j < n; ++j)
+                C[i][j] += A[i][l] * B[l][j];
+    return C;
+}
+
+static std::vector<std::vector<double>> make_nonneg_matrix(int m, int n,
+    const std::function<double(int, int)>& fill) {
+    std::vector<std::vector<double>> M(m, std::vector<double>(n));
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j < n; ++j) M[i][j] = fill(i, j);
+    return M;
+}
+
+static double mat_frobenius_norm_from_matrix(
+    const std::vector<std::vector<double>>& A,
+    const std::vector<std::vector<double>>& B) {
+    double s = 0.0;
+    for (size_t i = 0; i < A.size(); ++i)
+        for (size_t j = 0; j < A[0].size(); ++j) {
+            double d = A[i][j] - B[i][j];
+            s += d * d;
+        }
+    return std::sqrt(s);
+}
+
+static double mat_frobenius_norm_single(const std::vector<std::vector<double>>& A) {
+    double s = 0.0;
+    for (const auto& row : A)
+        for (double v : row) s += v * v;
+    return std::sqrt(s);
+}
+
+TEST(TensorNMF, ExactRankKRecovery) {
+    // V = W0 * H0 with known non-negative factors, rank 2.
+    std::vector<std::vector<double>> W0 = {{1, 2}, {3, 1}, {2, 3}};
+    std::vector<std::vector<double>> H0 = {{2, 1, 3}, {1, 3, 2}};
+    auto V = test_mat_mul(W0, H0);
+    auto res = decompose_nmf(V, 2, 1000, 1e-8);
+    ASSERT_TRUE(res.has_value());
+    const auto& nmf = *res;
+    EXPECT_EQ(nmf.rank, 2);
+    EXPECT_LT(nmf.final_error, 1e-4);
+    auto R = reconstruct_nmf(nmf);
+    double err = mat_frobenius_norm_from_matrix(V, R);
+    EXPECT_LT(err, 1e-3);
+    EXPECT_NEAR(err, nmf.final_error, 1e-10);
+}
+
+TEST(TensorNMF, FactorsAreNonNegative) {
+    auto V = make_nonneg_matrix(8, 6, [](int i, int j) {
+        return std::abs(std::sin(i * 0.7 + j * 1.1)) + 0.01;
+    });
+    auto res = decompose_nmf(V, 3, 500, 1e-6);
+    ASSERT_TRUE(res.has_value());
+    for (const auto& row : res->W)
+        for (double v : row) EXPECT_GE(v, 0.0);
+    for (const auto& row : res->H)
+        for (double v : row) EXPECT_GE(v, 0.0);
+}
+
+TEST(TensorNMF, ErrorMonotonicallyNonIncreasing) {
+    auto V = make_nonneg_matrix(10, 8, [](int i, int j) {
+        return (i + 1) * 0.1 + (j + 1) * 0.05 + 0.01;
+    });
+    auto res = decompose_nmf(V, 4, 200, 1e-12);
+    ASSERT_TRUE(res.has_value());
+    ASSERT_GT(res->error_history.size(), 2u);
+    for (size_t t = 1; t < res->error_history.size(); ++t) {
+        EXPECT_LE(res->error_history[t], res->error_history[t - 1] + 1e-9)
+            << "iteration " << t;
+    }
+}
+
+TEST(TensorNMF, ZeroRowColumnEdgeCase) {
+    // 4×3 matrix with an all-zero row and column — must not produce NaN/Inf.
+    auto V = make_nonneg_matrix(4, 3, [](int i, int j) {
+        if (i == 2 || j == 1) return 0.0;
+        return (i + 1) * (j + 1) * 0.1;
+    });
+    auto res = decompose_nmf(V, 2, 300, 1e-6);
+    ASSERT_TRUE(res.has_value());
+    for (const auto& row : res->W)
+        for (double v : row) EXPECT_TRUE(std::isfinite(v));
+    for (const auto& row : res->H)
+        for (double v : row) EXPECT_TRUE(std::isfinite(v));
+    EXPECT_TRUE(std::isfinite(res->final_error));
+    auto R = reconstruct_nmf(*res);
+    for (const auto& row : R)
+        for (double v : row) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(TensorNMF, RejectsNegativeInput) {
+    auto V = make_nonneg_matrix(3, 3, [](int i, int j) {
+        return (i == 1 && j == 1) ? -0.5 : 1.0;
+    });
+    auto res = decompose_nmf(V, 2, 100, 1e-6);
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorNMF, ModerateSizeLowRelativeError) {
+    auto V = make_nonneg_matrix(20, 15, [](int i, int j) {
+        return std::abs(std::sin(i * 0.31 + j * 0.47)) + 0.05;
+    });
+    auto res = decompose_nmf(V, 4, 800, 1e-7);
+    ASSERT_TRUE(res.has_value());
+    double normV = mat_frobenius_norm_single(V);
+    double relerr = res->final_error / normV;
+    EXPECT_LT(relerr, 0.15);
+}
+
+TEST(TensorNMF, ReconstructMatchesFinalError) {
+    std::vector<std::vector<double>> W0 = {{2, 1}, {1, 3}, {3, 2}, {1, 1}};
+    std::vector<std::vector<double>> H0 = {{1, 2, 1}, {2, 1, 3}};
+    auto V = test_mat_mul(W0, H0);
+    auto res = decompose_nmf(V, 2, 600, 1e-8);
+    ASSERT_TRUE(res.has_value());
+    auto R = reconstruct_nmf(*res);
+    double independent = mat_frobenius_norm_from_matrix(V, R);
+    EXPECT_NEAR(independent, res->final_error, 1e-10);
+    EXPECT_EQ(static_cast<int>(R.size()), 4);
+    EXPECT_EQ(static_cast<int>(R[0].size()), 3);
 }
