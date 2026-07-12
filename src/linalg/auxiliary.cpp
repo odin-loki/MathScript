@@ -35,6 +35,22 @@ Result<S> rank(const Matrix<S, OA, Alloc>& A, S tol) {
 }
 
 template<typename S, StorageOrder OA, template<typename> class Alloc>
+int matrix_rank(const Matrix<S, OA, Alloc>& A, double tol) {
+    auto svd_result = svd(A);
+    if (!svd_result) {
+        return 0;
+    }
+
+    int r = 0;
+    for (size_t i = 0; i < svd_result->S.rows(); ++i) {
+        if (svd_result->S(i, 0) > tol) {
+            ++r;
+        }
+    }
+    return r;
+}
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<S> cond(const Matrix<S, OA, Alloc>& A, int p) {
     if (p != 2) {
         return std::unexpected(DomainError{"cond", "only p=2 supported"});
@@ -114,6 +130,7 @@ Result<Matrix<S, OA, Alloc>> lsq(
 }
 
 template auto rank<double>(const Matrix<double>&, double) -> Result<double>;
+template auto matrix_rank<double>(const Matrix<double>&, double) -> int;
 template auto cond<double>(const Matrix<double>&, int) -> Result<double>;
 template auto lsq<double>(const Matrix<double>&, const Matrix<double>&) -> Result<Matrix<double>>;
 

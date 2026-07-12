@@ -57,6 +57,10 @@ Matrix<S, OA, Alloc> triu(const Matrix<S, OA, Alloc>& A, int k = 0);
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<S> rank(const Matrix<S, OA, Alloc>& A, S tol = S(0));
 
+/// @brief Matrix rank via SVD: count singular values strictly above @p tol.
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+int matrix_rank(const Matrix<S, OA, Alloc>& A, double tol = 1e-10);
+
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<S> cond(const Matrix<S, OA, Alloc>& A, int p = 2);
 
