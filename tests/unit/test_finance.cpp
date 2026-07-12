@@ -1466,3 +1466,197 @@ TEST(FinanceBachelier, ZeroExpiryGivesDiscountedIntrinsic) {
     EXPECT_NEAR(bachelier_call(K, F, T, r, sigma), std::max(K - F, 0.0), 1e-12);
     EXPECT_NEAR(bachelier_put(K, F, T, r, sigma), std::max(F - K, 0.0), 1e-12);
 }
+
+// --- Vasicek / CIR short-rate bond pricing ---
+//
+// Independent reference implementations of the closed-form formulas, coded
+// directly from the textbook definitions (structured differently from the
+// production code's log-combined form) so that a hand-checked cross-check
+// against vasicek_bond_price/cir_bond_price actually exercises the formula
+// derivation rather than just re-running the same code path.
+namespace {
+
+double ref_vasicek_price(double r, double a, double b, double sigma, double tau) {
+    double B = (1.0 - std::exp(-a * tau)) / a;
+    double A = std::exp((b - (sigma * sigma) / (2.0 * a * a)) * (B - tau) -
+                        (sigma * sigma) / (4.0 * a) * B * B);
+    return A * std::exp(-B * r);
+}
+
+double ref_cir_price(double r, double a, double b, double sigma, double tau) {
+    double h = std::sqrt(a * a + 2.0 * sigma * sigma);
+    double eht = std::exp(h * tau);
+    double denom = (h + a) * (eht - 1.0) + 2.0 * h;
+    double B = 2.0 * (eht - 1.0) / denom;
+    double A = std::pow(2.0 * h * std::exp((a + h) * tau / 2.0) / denom, 2.0 * a * b / (sigma * sigma));
+    return A * std::exp(-B * r);
+}
+
+} // namespace
+
+TEST(FinanceVasicek, ZeroOrNegativeTauGivesFaceValue) {
+    EXPECT_DOUBLE_EQ(vasicek_bond_price(0.05, 0.5, 0.05, 0.02, 0.0), 1.0);
+    EXPECT_DOUBLE_EQ(vasicek_bond_price(0.05, 0.5, 0.05, 0.02, -1.0), 1.0);
+    EXPECT_DOUBLE_EQ(vasicek_bond_price(0.1, 1.0, 0.03, 0.01, -0.5), 1.0);
+}
+
+TEST(FinanceVasicek, MonotoneDecreasingInTau) {
+    // Longer time to maturity means more discounting, so price should
+    // strictly decrease as tau increases (for r > 0).
+    double r = 0.05, a = 0.5, b = 0.04, sigma = 0.02;
+    double prev = vasicek_bond_price(r, a, b, sigma, 0.01);
+    for (double tau : {0.5, 1.0, 2.0, 5.0, 10.0, 20.0}) {
+        double p = vasicek_bond_price(r, a, b, sigma, tau);
+        EXPECT_LT(p, prev);
+        prev = p;
+    }
+}
+
+TEST(FinanceVasicek, ZeroVolAtMeanReducesToConstantRateDiscount) {
+    // sigma=0 and r==b (already at the mean, so zero drift): a deterministic
+    // process with no diffusion starting exactly at its own mean is just a
+    // constant short rate, so P(t,T) == exp(-b*tau) exactly.
+    double a = 0.5, b = 0.05, sigma = 0.0;
+    for (double tau : {0.1, 1.0, 3.0, 10.0}) {
+        double p = vasicek_bond_price(b, a, b, sigma, tau);
+        EXPECT_NEAR(p, std::exp(-b * tau), 1e-9);
+    }
+}
+
+TEST(FinanceVasicek, HigherRateGivesLowerPrice) {
+    double a = 0.5, b = 0.05, sigma = 0.02, tau = 2.0;
+    double prev = vasicek_bond_price(-0.02, a, b, sigma, tau);
+    for (double r : {0.0, 0.02, 0.05, 0.08, 0.15}) {
+        double p = vasicek_bond_price(r, a, b, sigma, tau);
+        EXPECT_LT(p, prev);
+        prev = p;
+    }
+}
+
+TEST(FinanceVasicek, ReferenceValueCrossCheck) {
+    // r=0.05, a=0.5, b=0.05, sigma=0.02, tau=1.0.
+    double r = 0.05, a = 0.5, b = 0.05, sigma = 0.02, tau = 1.0;
+    double expected = ref_vasicek_price(r, a, b, sigma, tau);
+    EXPECT_NEAR(vasicek_bond_price(r, a, b, sigma, tau), expected, 1e-12);
+    // Sanity on the reference value's magnitude too (roughly exp(-r*tau)).
+    EXPECT_NEAR(expected, std::exp(-r * tau), 0.01);
+}
+
+TEST(FinanceVasicek, PriceInReasonableRange) {
+    struct Params { double r, a, b, sigma, tau; };
+    std::vector<Params> cases = {
+        {0.01, 0.3, 0.02, 0.005, 0.5},
+        {0.05, 0.5, 0.05, 0.02, 1.0},
+        {0.08, 1.2, 0.04, 0.03, 5.0},
+        {0.001, 0.1, 0.01, 0.001, 30.0},
+        {0.2, 2.0, 0.1, 0.05, 10.0},
+    };
+    for (const auto& p : cases) {
+        double price = vasicek_bond_price(p.r, p.a, p.b, p.sigma, p.tau);
+        EXPECT_TRUE(std::isfinite(price));
+        EXPECT_GT(price, 0.0);
+        EXPECT_LE(price, 1.0);
+    }
+}
+
+TEST(FinanceVasicek, NonPositiveAIsDegenerateAndReturnsNaN) {
+    EXPECT_TRUE(std::isnan(vasicek_bond_price(0.05, 0.0, 0.05, 0.02, 1.0)));
+    EXPECT_TRUE(std::isnan(vasicek_bond_price(0.05, -0.5, 0.05, 0.02, 1.0)));
+}
+
+TEST(FinanceCIR, ZeroOrNegativeTauGivesFaceValue) {
+    EXPECT_DOUBLE_EQ(cir_bond_price(0.05, 0.5, 0.05, 0.05, 0.0), 1.0);
+    EXPECT_DOUBLE_EQ(cir_bond_price(0.05, 0.5, 0.05, 0.05, -1.0), 1.0);
+    EXPECT_DOUBLE_EQ(cir_bond_price(0.1, 1.0, 0.03, 0.02, -2.0), 1.0);
+}
+
+TEST(FinanceCIR, MonotoneDecreasingInTau) {
+    double r = 0.05, a = 0.5, b = 0.05, sigma = 0.05;
+    double prev = cir_bond_price(r, a, b, sigma, 0.01);
+    for (double tau : {0.5, 1.0, 2.0, 5.0, 10.0, 20.0}) {
+        double p = cir_bond_price(r, a, b, sigma, tau);
+        EXPECT_LT(p, prev);
+        prev = p;
+    }
+}
+
+TEST(FinanceCIR, ZeroVolAtMeanReducesToConstantRateDiscount) {
+    // sigma=0, r==b: same argument as the Vasicek case -- deterministic,
+    // zero-drift, so P(t,T) == exp(-b*tau) exactly.
+    double a = 0.5, b = 0.05, sigma = 0.0;
+    for (double tau : {0.1, 1.0, 3.0, 10.0}) {
+        double p = cir_bond_price(b, a, b, sigma, tau);
+        EXPECT_NEAR(p, std::exp(-b * tau), 1e-9);
+    }
+}
+
+TEST(FinanceCIR, HigherRateGivesLowerPrice) {
+    double a = 0.5, b = 0.05, sigma = 0.05, tau = 2.0;
+    double prev = cir_bond_price(0.0, a, b, sigma, tau);
+    for (double r : {0.02, 0.05, 0.08, 0.15, 0.3}) {
+        double p = cir_bond_price(r, a, b, sigma, tau);
+        EXPECT_LT(p, prev);
+        prev = p;
+    }
+}
+
+TEST(FinanceCIR, ReferenceValueCrossCheck) {
+    // a=0.5, b=0.05, sigma=0.05, r=0.05, tau=1.0.
+    // Feller condition: 2*a*b = 0.05 >= sigma^2 = 0.0025, comfortably
+    // satisfied, so this is a "well-behaved" (strictly positive r) case.
+    double r = 0.05, a = 0.5, b = 0.05, sigma = 0.05, tau = 1.0;
+    double expected = ref_cir_price(r, a, b, sigma, tau);
+    EXPECT_NEAR(cir_bond_price(r, a, b, sigma, tau), expected, 1e-12);
+    // Sanity on the reference value's magnitude too (roughly exp(-r*tau)).
+    EXPECT_NEAR(expected, std::exp(-r * tau), 0.01);
+}
+
+TEST(FinanceCIR, PriceInReasonableRange) {
+    struct Params { double r, a, b, sigma, tau; };
+    std::vector<Params> cases = {
+        {0.01, 0.3, 0.02, 0.01, 0.5},   // 2ab=0.012 >= sigma^2=0.0001
+        {0.05, 0.5, 0.05, 0.05, 1.0},   // 2ab=0.05  >= sigma^2=0.0025
+        {0.08, 1.2, 0.04, 0.05, 5.0},   // 2ab=0.096 >= sigma^2=0.0025
+        {0.001, 0.1, 0.01, 0.005, 30.0},
+        {0.2, 2.0, 0.1, 0.1, 10.0},
+    };
+    for (const auto& p : cases) {
+        double price = cir_bond_price(p.r, p.a, p.b, p.sigma, p.tau);
+        EXPECT_TRUE(std::isfinite(price));
+        EXPECT_GT(price, 0.0);
+        EXPECT_LE(price, 1.0);
+    }
+}
+
+TEST(FinanceCIR, NonPositiveAIsDegenerateAndReturnsNaN) {
+    EXPECT_TRUE(std::isnan(cir_bond_price(0.05, 0.0, 0.05, 0.05, 1.0)));
+    EXPECT_TRUE(std::isnan(cir_bond_price(0.05, -0.5, 0.05, 0.05, 1.0)));
+}
+
+TEST(FinanceCIR, ZeroSigmaHandledDefensivelyNoNanOrInf) {
+    // sigma == 0 would naively divide by zero in the A(tau) exponent
+    // (2*a*b/sigma^2); this must be handled without producing NaN/inf, and
+    // should agree with the documented deterministic sigma->0 limit.
+    double a = 0.5, b = 0.04, tau = 3.0;
+    for (double r : {0.0, 0.01, 0.04, 0.1}) {
+        double p = cir_bond_price(r, a, b, 0.0, tau);
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_GT(p, 0.0);
+        EXPECT_LE(p, 1.0);
+        // Matches the same deterministic-rate closed form as the Vasicek
+        // sigma=0 case, since both models degenerate to the same ODE for r.
+        double B = (1.0 - std::exp(-a * tau)) / a;
+        double expected = std::exp(b * (B - tau) - B * r);
+        EXPECT_NEAR(p, expected, 1e-9);
+    }
+}
+
+TEST(FinanceCIR, ZeroSigmaContinuousWithSmallSigmaLimit) {
+    // The sigma==0 defensive branch should agree closely with the general
+    // formula evaluated at a small-but-nonzero sigma, confirming the
+    // fallback is the correct limiting case and not an arbitrary sentinel.
+    double r = 0.03, a = 0.6, b = 0.03, tau = 4.0;
+    double p_zero = cir_bond_price(r, a, b, 0.0, tau);
+    double p_small = cir_bond_price(r, a, b, 1e-4, tau);
+    EXPECT_NEAR(p_zero, p_small, 1e-6);
+}
