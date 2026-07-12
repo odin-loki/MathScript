@@ -935,5 +935,111 @@ Polygon2D minkowski_sum_convex(const Polygon2D& a, const Polygon2D& b) {
     return result;
 }
 
+// ---- Polygon Triangulation (ear clipping) ----
+
+static bool pt_eq(const Point2D& a, const Point2D& b, double eps = 1e-12) {
+    return std::abs(a.x - b.x) < eps && std::abs(a.y - b.y) < eps;
+}
+
+static bool pt_on_seg(const Point2D& p, const Point2D& a, const Point2D& b, double eps = 1e-9) {
+    if (std::abs(cross2d_pts(a, b, p)) > eps) return false;
+    double minx = std::min(a.x, b.x), maxx = std::max(a.x, b.x);
+    double miny = std::min(a.y, b.y), maxy = std::max(a.y, b.y);
+    return p.x >= minx - eps && p.x <= maxx + eps &&
+           p.y >= miny - eps && p.y <= maxy + eps;
+}
+
+static bool pt_in_triangle_strict(const Point2D& p,
+                                  const Point2D& a, const Point2D& b, const Point2D& c,
+                                  bool ccw, double eps = 1e-9) {
+    double s1 = cross2d_pts(a, b, p);
+    double s2 = cross2d_pts(b, c, p);
+    double s3 = cross2d_pts(c, a, p);
+    if (ccw) return s1 > eps && s2 > eps && s3 > eps;
+    return s1 < -eps && s2 < -eps && s3 < -eps;
+}
+
+static bool pt_in_ear(const Point2D& p,
+                      const Point2D& a, const Point2D& b, const Point2D& c,
+                      bool ccw) {
+    if (pt_eq(p, a) || pt_eq(p, b) || pt_eq(p, c)) return false;
+    if (pt_on_seg(p, a, b) || pt_on_seg(p, b, c) || pt_on_seg(p, c, a)) return false;
+    return pt_in_triangle_strict(p, a, b, c, ccw);
+}
+
+std::vector<Triangle2Di> triangulate_polygon(const Polygon2D& poly) {
+    std::vector<Triangle2Di> result;
+    const int n = static_cast<int>(poly.size());
+    if (n < 3) return result;
+
+    std::vector<int> ring;
+    ring.reserve(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        if (ring.empty() || !pt_eq(poly[i], poly[ring.back()]))
+            ring.push_back(i);
+    }
+    if (ring.size() >= 2 && pt_eq(poly[ring.front()], poly[ring.back()]))
+        ring.pop_back();
+    if (ring.size() < 3) return result;
+
+    const bool ccw = signed_area(poly) >= 0.0;
+    constexpr double kEps = 1e-9;
+
+    auto is_convex = [&](int prev, int curr, int next) {
+        double cr = cross2d_pts(poly[prev], poly[curr], poly[next]);
+        return ccw ? cr > kEps : cr < -kEps;
+    };
+
+    auto is_collinear = [&](int prev, int curr, int next) {
+        return std::abs(cross2d_pts(poly[prev], poly[curr], poly[next])) <= kEps;
+    };
+
+    auto is_ear = [&](int i) {
+        const int m = static_cast<int>(ring.size());
+        const int prev = ring[(i + m - 1) % m];
+        const int curr = ring[i];
+        const int next = ring[(i + 1) % m];
+        if (!is_convex(prev, curr, next)) return false;
+        for (int j = 0; j < m; ++j) {
+            if (j == i || j == (i + m - 1) % m || j == (i + 1) % m) continue;
+            if (pt_in_ear(poly[ring[j]], poly[prev], poly[curr], poly[next], ccw))
+                return false;
+        }
+        return true;
+    };
+
+    int guard = 0;
+    const int max_steps = static_cast<int>(ring.size()) * static_cast<int>(ring.size()) + 8;
+    while (ring.size() > 3 && guard++ < max_steps) {
+        bool clipped = false;
+        for (int i = 0; i < static_cast<int>(ring.size()); ++i) {
+            const int m = static_cast<int>(ring.size());
+            const int prev = ring[(i + m - 1) % m];
+            const int curr = ring[i];
+            const int next = ring[(i + 1) % m];
+
+            if (is_collinear(prev, curr, next)) {
+                ring.erase(ring.begin() + i);
+                clipped = true;
+                break;
+            }
+            if (!is_ear(i)) continue;
+
+            result.push_back({prev, curr, next});
+            ring.erase(ring.begin() + i);
+            clipped = true;
+            break;
+        }
+        if (!clipped) break;
+    }
+
+    if (ring.size() == 3)
+        result.push_back({ring[0], ring[1], ring[2]});
+    else if (ring.size() > 3)
+        return {};
+
+    return result;
+}
+
 } // namespace geo
 } // namespace ms
