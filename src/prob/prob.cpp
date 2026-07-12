@@ -454,6 +454,46 @@ double laplace_ppf(double p, double mu, double b) {
     return mu - b * sign * std::log(1.0 - 2.0 * std::abs(d));
 }
 
+double logistic_pdf(double x, double mu, double s) {
+    if (s <= 0.0) {
+        return 0.0;
+    }
+    const double z = (x - mu) / s;
+    if (z >= 0.0) {
+        const double ez = std::exp(-z);
+        const double denom = 1.0 + ez;
+        return ez / (s * denom * denom);
+    }
+    const double ez = std::exp(z);
+    const double denom = 1.0 + ez;
+    return ez / (s * denom * denom);
+}
+
+double logistic_cdf(double x, double mu, double s) {
+    if (s <= 0.0) {
+        return 0.0;
+    }
+    const double z = (x - mu) / s;
+    if (z >= 0.0) {
+        return 1.0 / (1.0 + std::exp(-z));
+    }
+    const double ez = std::exp(z);
+    return ez / (1.0 + ez);
+}
+
+double logistic_ppf(double p, double mu, double s) {
+    if (s <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return k_ppf_neg_tail;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return mu + s * std::log(p / (1.0 - p));
+}
+
 double gumbel_pdf(double x, double mu, double beta) {
     if (beta <= 0.0) {
         return 0.0;

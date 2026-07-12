@@ -463,6 +463,109 @@ TEST(ProbLaplace, PPF_Boundaries) {
 }
 
 // ---------------------------------------------------------------------------
+// Logistic distribution
+// ---------------------------------------------------------------------------
+
+TEST(ProbLogistic, PDF_NonNegative_And_Finite) {
+    for (double mu : {-2.0, 0.0, 3.0}) {
+        for (double s : {0.5, 1.0, 2.0}) {
+            for (double x : {-10.0, -1.0, 0.0, 1.0, 10.0}) {
+                const double p = logistic_pdf(x, mu, s);
+                EXPECT_GE(p, 0.0);
+                EXPECT_TRUE(std::isfinite(p));
+            }
+        }
+    }
+}
+
+TEST(ProbLogistic, PDF_InvalidScale_IsZero) {
+    EXPECT_DOUBLE_EQ(logistic_pdf(0.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(logistic_pdf(0.0, 0.0, -1.0), 0.0);
+}
+
+TEST(ProbLogistic, PDF_Symmetric) {
+    for (double mu : {-1.0, 0.0, 2.0}) {
+        for (double s : {0.5, 1.0, 3.0}) {
+            for (double d : {0.1, 0.5, 1.0, 3.0}) {
+                EXPECT_NEAR(logistic_pdf(mu + d, mu, s), logistic_pdf(mu - d, mu, s), 1e-12)
+                    << "logistic_pdf should be symmetric around mu=" << mu << " for d=" << d;
+            }
+        }
+    }
+}
+
+TEST(ProbLogistic, PDF_IntegratesToOne) {
+    for (double mu : {-1.0, 0.0, 2.0}) {
+        for (double s : {0.5, 1.0, 2.0}) {
+            const auto f = [&](double x) { return logistic_pdf(x, mu, s); };
+            const double half_width = 30.0 * s;
+            const double area = simpson_integrate(f, mu - half_width, mu + half_width, 20000);
+            EXPECT_NEAR(area, 1.0, 5e-3)
+                << "logistic_pdf should integrate to 1 for mu=" << mu << " s=" << s;
+        }
+    }
+}
+
+TEST(ProbLogistic, CDF_AtMu_IsExactlyHalf) {
+    for (double mu : {-3.0, 0.0, 2.5}) {
+        for (double s : {0.5, 1.0, 4.0}) {
+            EXPECT_DOUBLE_EQ(logistic_cdf(mu, mu, s), 0.5);
+        }
+    }
+}
+
+TEST(ProbLogistic, CDF_Monotone) {
+    for (double s : {0.5, 1.0, 2.0}) {
+        double prev = logistic_cdf(-20.0, 0.0, s);
+        for (double x : {-10.0, -3.0, -1.0, 0.0, 1.0, 3.0, 10.0, 20.0}) {
+            const double curr = logistic_cdf(x, 0.0, s);
+            EXPECT_GE(curr, prev - 1e-12);
+            prev = curr;
+        }
+    }
+}
+
+TEST(ProbLogistic, CDF_InvalidScale_IsZero) {
+    EXPECT_DOUBLE_EQ(logistic_cdf(1.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(logistic_cdf(1.0, 0.0, -2.0), 0.0);
+}
+
+TEST(ProbLogistic, PPF_RoundTrip_PPF_of_CDF) {
+    for (double mu : {-2.0, 0.0, 3.0}) {
+        for (double s : {0.5, 1.0, 2.5}) {
+            for (double x : {-5.0, -1.0, 0.0, 1.0, 5.0}) {
+                const double p = logistic_cdf(x, mu, s);
+                if (p <= 0.0 || p >= 1.0) continue;
+                const double x_rt = logistic_ppf(p, mu, s);
+                EXPECT_NEAR(x_rt, x, 1e-6 * std::max(1.0, std::abs(x)))
+                    << "logistic ppf(cdf(x)) != x at x=" << x << " mu=" << mu << " s=" << s;
+            }
+        }
+    }
+}
+
+TEST(ProbLogistic, PPF_RoundTrip_CDF_of_PPF) {
+    for (double mu : {-2.0, 0.0, 3.0}) {
+        for (double s : {0.5, 1.0, 2.5}) {
+            for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+                const double q = logistic_ppf(p, mu, s);
+                EXPECT_TRUE(std::isfinite(q));
+                EXPECT_NEAR(logistic_cdf(q, mu, s), p, 1e-6)
+                    << "logistic cdf(ppf(p)) != p at p=" << p << " mu=" << mu << " s=" << s;
+            }
+        }
+    }
+}
+
+TEST(ProbLogistic, PPF_AtHalf_IsMu) {
+    for (double mu : {-3.0, 0.0, 4.0}) {
+        for (double s : {0.5, 1.0, 3.0}) {
+            EXPECT_NEAR(logistic_ppf(0.5, mu, s), mu, 1e-10);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Gumbel distribution
 // ---------------------------------------------------------------------------
 
