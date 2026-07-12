@@ -546,6 +546,131 @@ std::vector<Edge> mst_prim(const Graph& G, int start) {
     return mst;
 }
 
+namespace {
+
+struct ContractedEdge {
+    int from, to;
+    double weight;
+    int orig_from, orig_to;
+    double orig_weight;
+};
+
+ArborescenceResult edmonds_arborescence(const Graph& G, int root) {
+    int n = G.n_vertices();
+    if (n == 0) return {0.0, {}};
+    if (n == 1) return {0.0, {}};
+
+    std::vector<int> pred(n, -1);
+    std::vector<double> pred_w(n, INF);
+    for (int u = 0; u < n; ++u)
+        for (auto& [v, w] : G.neighbors(u))
+            if (v != root && w < pred_w[v]) { pred_w[v] = w; pred[v] = u; }
+
+    for (int v = 0; v < n; ++v)
+        if (v != root && pred[v] == -1) return {INF, {}};
+
+    std::vector<bool> in_cycle(n, false);
+    std::vector<int> stamp(n, -1);
+    int cur_stamp = 0;
+    for (int start = 0; start < n; ++start) {
+        if (start == root) continue;
+        if (stamp[start] != -1) continue;
+        std::vector<int> path;
+        int v = start;
+        while (v != root && pred[v] != -1) {
+            if (stamp[v] == cur_stamp) {
+                auto it = std::find(path.begin(), path.end(), v);
+                for (auto jt = it; jt != path.end(); ++jt) in_cycle[*jt] = true;
+                in_cycle[v] = true;
+                break;
+            }
+            if (stamp[v] != -1) break;
+            stamp[v] = cur_stamp;
+            path.push_back(v);
+            v = pred[v];
+        }
+        ++cur_stamp;
+    }
+
+    bool has_cycle = false;
+    for (bool b : in_cycle) if (b) { has_cycle = true; break; }
+
+    if (!has_cycle) {
+        ArborescenceResult result{0.0, {}};
+        result.edges.reserve(static_cast<size_t>(n - 1));
+        for (int v = 0; v < n; ++v) {
+            if (v == root) continue;
+            result.edges.push_back({pred[v], v, pred_w[v]});
+            result.total_weight += pred_w[v];
+        }
+        return result;
+    }
+
+    std::vector<int> new_id(n, -1);
+    int next_id = 0;
+    int super = -1;
+    for (int v = 0; v < n; ++v) {
+        if (in_cycle[v]) {
+            if (super == -1) super = next_id++;
+            new_id[v] = super;
+        } else {
+            new_id[v] = next_id++;
+        }
+    }
+    int new_n = next_id;
+    int new_root = new_id[root];
+
+    Graph H(new_n, true);
+    std::vector<ContractedEdge> mapping;
+    for (int u = 0; u < n; ++u) {
+        for (auto& [v, w] : G.neighbors(u)) {
+            int nu = new_id[u], nv = new_id[v];
+            if (nu == nv) continue;
+            double nw = w;
+            if (in_cycle[v] && !in_cycle[u]) nw = w - pred_w[v];
+            H.add_edge(nu, nv, nw);
+            mapping.push_back({nu, nv, nw, u, v, w});
+        }
+    }
+
+    auto sub = edmonds_arborescence(H, new_root);
+    if (sub.edges.size() != static_cast<size_t>(new_n - 1)) return {INF, {}};
+
+    auto lookup = [&](int nu, int nv, double nw) -> ContractedEdge {
+        for (const auto& e : mapping)
+            if (e.from == nu && e.to == nv && std::abs(e.weight - nw) < 1e-9)
+                return e;
+        for (const auto& e : mapping)
+            if (e.from == nu && e.to == nv) return e;
+        return {nu, nv, nw, -1, -1, nw};
+    };
+
+    int entry = -1;
+    ArborescenceResult result{0.0, {}};
+    result.edges.reserve(static_cast<size_t>(n - 1));
+    for (const auto& e : sub.edges) {
+        auto mapped = lookup(e.from, e.to, e.weight);
+        if (mapped.orig_from < 0) return {INF, {}};
+        result.edges.push_back({mapped.orig_from, mapped.orig_to, mapped.orig_weight});
+        result.total_weight += mapped.orig_weight;
+        if (e.to == super) entry = mapped.orig_to;
+    }
+
+    for (int v = 0; v < n; ++v) {
+        if (!in_cycle[v] || v == entry) continue;
+        result.edges.push_back({pred[v], v, pred_w[v]});
+        result.total_weight += pred_w[v];
+    }
+    return result;
+}
+
+} // namespace
+
+ArborescenceResult min_arborescence(const Graph& G, int root) {
+    if (root < 0 || root >= G.n_vertices()) return {INF, {}};
+    return edmonds_arborescence(G, root);
+}
+
 // ---- Properties ----
 
 int diameter(const Graph& G) {
