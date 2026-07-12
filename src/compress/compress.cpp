@@ -430,18 +430,97 @@ Bytes delta_decode(const Bytes& data) {
 // ========================== Bit helpers ==========================
 std::string bytes_to_bits(const Bytes& data) {
     std::string bits;
-    for (uint8_t b:data)
-        for (int i=7;i>=0;--i) bits+=(char)('0'+((b>>i)&1));
+    bits.reserve(data.size() * 8);
+    for (uint8_t byte : data) {
+        for (int bit = 7; bit >= 0; --bit) {
+            const uint8_t mask = static_cast<uint8_t>(1u << bit);
+            bits.push_back((byte & mask) ? '1' : '0');
+        }
+    }
     return bits;
 }
 Bytes bits_to_bytes(const std::string& bits, int& padding) {
-    Bytes out; std::string padded=bits;
-    padding=(8-bits.size()%8)%8;
-    padded+=std::string(padding,'0');
-    for (size_t i=0;i<padded.size();i+=8) {
-        uint8_t b=0;
-        for (int j=0;j<8;++j) b=(b<<1)|(padded[i+j]=='1'?1:0);
-        out.push_back(b);
+    const size_t nbits = bits.size();
+    padding = static_cast<int>((8 - (nbits % 8)) % 8);
+    const size_t total_bits = nbits + static_cast<size_t>(padding);
+    Bytes out;
+    out.reserve(total_bits / 8);
+    for (size_t base = 0; base < total_bits; base += 8) {
+        uint8_t byte = 0;
+        for (int j = 0; j < 8; ++j) {
+            const size_t idx = base + static_cast<size_t>(j);
+            const char c = (idx < nbits) ? bits[idx] : '0';
+            byte = static_cast<uint8_t>((byte << 1) | (c == '1' ? 1u : 0u));
+        }
+        out.push_back(byte);
+    }
+    return out;
+}
+
+// ========================== Golomb-Rice coding ==========================
+namespace {
+
+int golomb_rice_clamp_m_bits(int m_bits) {
+    if (m_bits < 0) return 0;
+    if (m_bits > 31) return 31;
+    return m_bits;
+}
+
+uint32_t golomb_rice_remainder_mask(int m_bits) {
+    return m_bits == 0 ? 0u : ((1u << m_bits) - 1u);
+}
+
+void golomb_rice_append_value(std::string& bits, uint32_t v, int m_bits) {
+    const uint32_t q = m_bits == 0 ? v : (v >> m_bits);
+    const uint32_t r = v & golomb_rice_remainder_mask(m_bits);
+    bits.append(static_cast<size_t>(q), '1');
+    bits += '0';
+    for (int i = m_bits - 1; i >= 0; --i)
+        bits += ((r >> i) & 1u) ? '1' : '0';
+}
+
+bool golomb_rice_read_value(const std::string& bits, size_t& pos, int m_bits, uint32_t& out) {
+    uint32_t q = 0;
+    while (pos < bits.size() && bits[pos] == '1') {
+        ++q;
+        ++pos;
+    }
+    if (pos >= bits.size()) return false;
+    ++pos; // terminating zero
+    uint32_t r = 0;
+    for (int i = 0; i < m_bits; ++i) {
+        if (pos >= bits.size()) return false;
+        r = (r << 1) | (bits[pos] == '1' ? 1u : 0u);
+        ++pos;
+    }
+    out = (q << m_bits) | r;
+    return true;
+}
+
+} // namespace
+
+Bytes golomb_rice_encode(const std::vector<uint32_t>& values, int m_bits) {
+    if (values.empty()) return {};
+    m_bits = golomb_rice_clamp_m_bits(m_bits);
+    std::string bits;
+    bits.reserve(values.size() * static_cast<size_t>(m_bits + 2));
+    for (uint32_t v : values) golomb_rice_append_value(bits, v, m_bits);
+    int padding = 0;
+    return bits_to_bytes(bits, padding);
+}
+
+std::vector<uint32_t> golomb_rice_decode(const Bytes& encoded, int m_bits, size_t count) {
+    if (count == 0) return {};
+    if (encoded.empty()) return {};
+    m_bits = golomb_rice_clamp_m_bits(m_bits);
+    std::string bits = bytes_to_bits(encoded);
+    std::vector<uint32_t> out;
+    out.reserve(count);
+    size_t pos = 0;
+    for (size_t i = 0; i < count; ++i) {
+        uint32_t v = 0;
+        if (!golomb_rice_read_value(bits, pos, m_bits, v)) return {};
+        out.push_back(v);
     }
     return out;
 }
