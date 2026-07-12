@@ -1,6 +1,8 @@
 #include "ms/graph/graph.hpp"
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <utility>
 #include <gtest/gtest.h>
 
 using namespace ms::graph;
@@ -396,6 +398,162 @@ TEST(GraphConnectivity, BridgesPath) {
     G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 3);
     auto br = bridges(G);
     EXPECT_EQ(br.size(), 3u);
+}
+
+// ---- Biconnected components ----
+
+namespace {
+
+// Order-independent comparison of two edge lists (as unordered (from,to) sets).
+bool same_edge_set(std::vector<Edge> a, std::vector<Edge> b) {
+    auto norm = [](std::vector<Edge>& v) {
+        for (auto& e : v) if (e.from > e.to) std::swap(e.from, e.to);
+        std::sort(v.begin(), v.end(), [](const Edge& x, const Edge& y) {
+            return x.from < y.from || (x.from == y.from && x.to < y.to);
+        });
+    };
+    norm(a); norm(b);
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (a[i].from != b[i].from || a[i].to != b[i].to) return false;
+    return true;
+}
+
+} // namespace
+
+TEST(GraphConnectivity, BiconnectedComponentsBarbellIsTwoTrianglesPlusBridge) {
+    auto G = make_barbell();
+    auto bcc = biconnected_components(G);
+    ASSERT_EQ(bcc.size(), 3u);
+
+    int triangle_blocks = 0, bridge_blocks = 0;
+    for (auto& comp : bcc) {
+        if (comp.size() == 3u) {
+            ++triangle_blocks;
+            bool is_012 = same_edge_set(comp, {{0,1,1.0},{1,2,1.0},{2,0,1.0}});
+            bool is_345 = same_edge_set(comp, {{3,4,1.0},{4,5,1.0},{5,3,1.0}});
+            EXPECT_TRUE(is_012 || is_345);
+        } else if (comp.size() == 1u) {
+            ++bridge_blocks;
+            EXPECT_EQ(comp[0].from, 2);
+            EXPECT_EQ(comp[0].to, 3);
+        }
+    }
+    EXPECT_EQ(triangle_blocks, 2);
+    EXPECT_EQ(bridge_blocks, 1);
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsCycleIsSingleBlock) {
+    // 5-cycle: no articulation points, so the whole cycle is one block.
+    Graph G(5, false);
+    for (int i = 0; i < 5; ++i) G.add_edge(i, (i + 1) % 5);
+    auto bcc = biconnected_components(G);
+    ASSERT_EQ(bcc.size(), 1u);
+    EXPECT_EQ(bcc[0].size(), 5u);
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsTreePathEveryEdgeIsOwnBlock) {
+    Graph G(4, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 3);
+    auto bcc = biconnected_components(G);
+    ASSERT_EQ(bcc.size(), 3u);
+    for (auto& comp : bcc) EXPECT_EQ(comp.size(), 1u);
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsStarEveryEdgeIsOwnBlock) {
+    auto G = make_star(6);
+    auto bcc = biconnected_components(G);
+    ASSERT_EQ(bcc.size(), 5u);  // star on 6 vertices has 5 edges, all bridges
+    for (auto& comp : bcc) EXPECT_EQ(comp.size(), 1u);
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsBridgesConsistency) {
+    // Every bridge must appear as a singleton block, and vice versa.
+    for (const Graph& G : {make_barbell(), make_two_k5_bridge(), make_two_disjoint_k4()}) {
+        auto br = bridges(G);
+        auto bcc = biconnected_components(G);
+
+        std::vector<std::pair<int,int>> singleton_blocks;
+        for (auto& comp : bcc)
+            if (comp.size() == 1u) {
+                int a = comp[0].from, b = comp[0].to;
+                if (a > b) std::swap(a, b);
+                singleton_blocks.push_back({a, b});
+            }
+        std::vector<std::pair<int,int>> bridge_edges;
+        for (auto& e : br) {
+            int a = e.from, b = e.to;
+            if (a > b) std::swap(a, b);
+            bridge_edges.push_back({a, b});
+        }
+        std::sort(singleton_blocks.begin(), singleton_blocks.end());
+        std::sort(bridge_edges.begin(), bridge_edges.end());
+        EXPECT_EQ(singleton_blocks, bridge_edges);
+    }
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsPartitionEveryEdgeExactlyOnce) {
+    for (const Graph& G : {make_barbell(), make_two_k5_bridge(), make_two_disjoint_k4(),
+                           make_disjoint_triangles(3), make_star(7)}) {
+        auto all_edges = G.edges();
+        auto bcc = biconnected_components(G);
+
+        std::map<std::pair<int,int>, int> count;
+        for (auto& e : all_edges) {
+            int a = e.from, b = e.to;
+            if (a > b) std::swap(a, b);
+            ++count[{a, b}];
+        }
+        std::map<std::pair<int,int>, int> covered;
+        for (auto& comp : bcc)
+            for (auto& e : comp) {
+                int a = e.from, b = e.to;
+                if (a > b) std::swap(a, b);
+                ++covered[{a, b}];
+            }
+        EXPECT_EQ(covered, count);  // every edge covered exactly as many times as it exists
+    }
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsEmptyGraph) {
+    Graph G(0, false);
+    EXPECT_TRUE(biconnected_components(G).empty());
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsSingleVertex) {
+    Graph G(1, false);
+    EXPECT_TRUE(biconnected_components(G).empty());
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsSingleEdge) {
+    Graph G(2, false);
+    G.add_edge(0, 1);
+    auto bcc = biconnected_components(G);
+    ASSERT_EQ(bcc.size(), 1u);
+    ASSERT_EQ(bcc[0].size(), 1u);
+    EXPECT_EQ(bcc[0][0].from, 0);
+    EXPECT_EQ(bcc[0][0].to, 1);
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsDisconnectedGraph) {
+    // Two disjoint triangles: expect two 3-edge blocks, no cross-contamination.
+    auto G = make_disjoint_triangles(2);
+    auto bcc = biconnected_components(G);
+    ASSERT_EQ(bcc.size(), 2u);
+    EXPECT_EQ(bcc[0].size(), 3u);
+    EXPECT_EQ(bcc[1].size(), 3u);
+    EXPECT_TRUE(same_edge_set(bcc[0], {{0,1,1.0},{1,2,1.0},{2,0,1.0}}));
+    EXPECT_TRUE(same_edge_set(bcc[1], {{3,4,1.0},{4,5,1.0},{5,3,1.0}}));
+}
+
+TEST(GraphConnectivity, BiconnectedComponentsDisconnectedWithIsolatedVertex) {
+    // Isolated vertex contributes zero blocks; other component unaffected.
+    Graph G(4, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 0);  // triangle 0-1-2
+    // vertex 3 isolated
+    auto bcc = biconnected_components(G);
+    ASSERT_EQ(bcc.size(), 1u);
+    EXPECT_EQ(bcc[0].size(), 3u);
 }
 
 // ---- Eigenvector & Katz centrality ----
