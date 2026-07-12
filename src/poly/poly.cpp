@@ -1225,5 +1225,42 @@ PartialFractionResult poly_partial_fractions(const std::vector<double>& numerato
     return out;
 }
 
+std::vector<PolyFactor> poly_factor(const std::vector<double>& p) {
+    auto sp = strip(p);
+    const int deg = static_cast<int>(sp.size()) - 1;
+    if (deg < 0) {
+        return {};
+    }
+    if (deg == 0) {
+        if (std::abs(sp[0]) < 1e-14) {
+            return {};
+        }
+        return {{sp, 1}};
+    }
+    if (deg == 1) {
+        return {{sp, 1}};
+    }
+
+    const double lc = sp.back();
+    const auto monic = poly_monic(sp);
+    const auto roots = poly_roots(monic);
+
+    std::vector<PFRealPole> real_poles;
+    std::vector<PFQuadFactor> quad_factors;
+    pf_group_roots(roots, real_poles, quad_factors);
+
+    std::vector<PolyFactor> out;
+    for (const auto& rp : real_poles) {
+        out.push_back({{-rp.r, 1.0}, rp.mult});
+    }
+    for (const auto& qf : quad_factors) {
+        out.push_back({{qf.q, qf.p, 1.0}, qf.mult});
+    }
+    if (std::abs(lc - 1.0) > 1e-10 * std::max(1.0, std::abs(lc))) {
+        out.insert(out.begin(), {{lc}, 1});
+    }
+    return out;
+}
+
 } // namespace poly
 } // namespace ms
