@@ -116,6 +116,49 @@ OdeResultVec ode_backward_euler_vec(OdeFuncVec f, double t0,
                                      const std::vector<double>& y0,
                                      double t_end, size_t steps);
 
+/// Rosenbrock23 (Rosenbrock-Wanner) linearly-implicit 2-stage Runge-Kutta
+/// method for stiff ODEs. Unlike ode_backward_euler_vec's fully implicit
+/// nonlinear solve (Newton iteration per step), Rosenbrock methods need only
+/// ONE linear solve per stage per step, using the Jacobian J = df/dy
+/// evaluated (and re-factored) once at the start of every step -- no
+/// per-step nonlinear iteration is required. This makes it substantially
+/// cheaper per step than ode_backward_euler_vec for stiff problems while
+/// remaining A-/L-stable for the standard parameter choice used here.
+///
+/// Per step, with h the fixed step size and gamma = 1/(2+sqrt(2)):
+///   J = df/dy at (t_n, y_n), via forward finite differences.
+///   (I - h*gamma*J) * k1 = f(t_n, y_n)
+///   (I - h*gamma*J) * k2 = f(t_n+h, y_n+h*k1) - 2*gamma*h*J*k1
+///   y_{n+1} = y_n + 0.5*h*k1 + 0.5*h*k2
+/// (b1 = b2 = 1/2 is the unique combination satisfying both the 1st- and
+/// 2nd-order consistency conditions for this stage structure at
+/// gamma = 1/(2+sqrt(2)); this is the standard Rosenbrock23/ROS2 method.)
+/// The dense (I - h*gamma*J) linear systems are solved via Gaussian
+/// elimination with partial pivoting; J and the system matrix are rebuilt
+/// from scratch every step (never reused across steps), so the method
+/// remains correct for genuinely nonlinear stiff problems.
+/// @param f Right-hand side dy/dt = f(t, y) (vector-valued; for scalar ODEs
+///        pass y0 as a length-1 vector, matching this module's *_vec
+///        convention).
+/// @param t0 Initial time. @param y0 Initial value y(t0).
+/// @param t_end Final time. If t_end <= t0, returns immediately with the
+///        single point (t0, y0) and takes no steps (same convention as
+///        ode_rk45/ode_cashkarp).
+/// @param n_steps Number of fixed steps. n_steps <= 0 is treated as zero
+///        steps and returns the same trivial single-point trajectory.
+/// @return Trajectory of (t, y) states, starting at (t0, y0); n_steps+1
+///         points total when n_steps > 0 and t_end > t0.
+OdeResultVec ode_rosenbrock23_vec(OdeFuncVec f, double t0,
+                                    const std::vector<double>& y0,
+                                    double t_end, int n_steps);
+
+/// Scalar convenience overload of ode_rosenbrock23_vec: wraps f/y0 in
+/// length-1 vectors and unwraps the result, following the same
+/// scalar/vector dual-overload convention as ode_rk4/ode_rk4_vec and
+/// ode_rk45/ode_rk45_vec.
+OdeResult ode_rosenbrock23(OdeFunc f, double t0, double y0,
+                            double t_end, int n_steps);
+
 // Semi-explicit index-1 DAE: dy/dt = f(t,y,z), 0 = g(t,y,z)
 using DaeDiffFunc = std::function<std::vector<double>(
     double t, const std::vector<double>& y, const std::vector<double>& z)>;

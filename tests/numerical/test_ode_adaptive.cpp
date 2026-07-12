@@ -279,3 +279,197 @@ TEST(OdeVectorEuler, ExponentialDecayVec) {
     auto r = ms::ode_euler_vec(f, 0.0, {1.0}, 1.0, 1000);
     EXPECT_NEAR(r.y.back()[0], std::exp(-1.0), 0.005);
 }
+
+// -----------------------------------------------------------------------
+// Rosenbrock23 (linearly-implicit 2-stage Rosenbrock-Wanner method)
+// -----------------------------------------------------------------------
+TEST(OdeRosenbrock23, TEndLessThanT0_ReturnsInitialPointOnly) {
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-y[0]};
+    };
+    auto r = ms::ode_rosenbrock23_vec(f, 2.0, {3.0}, 1.0, 10);
+    ASSERT_EQ(r.t.size(), 1u);
+    ASSERT_EQ(r.y.size(), 1u);
+    EXPECT_NEAR(r.t.front(), 2.0, 1e-14);
+    EXPECT_NEAR(r.y.front()[0], 3.0, 1e-14);
+}
+
+TEST(OdeRosenbrock23, ZeroSteps_ReturnsInitialPointOnly) {
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-y[0]};
+    };
+    auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 0);
+    ASSERT_EQ(r.t.size(), 1u);
+    ASSERT_EQ(r.y.size(), 1u);
+    EXPECT_NEAR(r.y.front()[0], 1.0, 1e-14);
+}
+
+TEST(OdeRosenbrock23, NegativeSteps_ReturnsInitialPointOnly) {
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-y[0]};
+    };
+    auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, -5);
+    ASSERT_EQ(r.t.size(), 1u);
+    ASSERT_EQ(r.y.size(), 1u);
+    EXPECT_NEAR(r.y.front()[0], 1.0, 1e-14);
+}
+
+TEST(OdeRosenbrock23, EmptyY0_ReturnsEmpty) {
+    auto f = [](double, const std::vector<double>&) -> std::vector<double> {
+        return {};
+    };
+    auto r = ms::ode_rosenbrock23_vec(f, 0.0, {}, 1.0, 10);
+    EXPECT_TRUE(r.t.empty());
+    EXPECT_TRUE(r.y.empty());
+}
+
+TEST(OdeRosenbrock23, FirstPointIsIC) {
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-y[0]};
+    };
+    auto r = ms::ode_rosenbrock23_vec(f, 0.5, {2.5}, 1.5, 20);
+    ASSERT_FALSE(r.t.empty());
+    EXPECT_NEAR(r.t.front(), 0.5, 1e-14);
+    EXPECT_NEAR(r.y.front()[0], 2.5, 1e-14);
+}
+
+TEST(OdeRosenbrock23, TrajectoryShape_SizeAndMonotoneGrid) {
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-y[0]};
+    };
+    auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 25);
+    ASSERT_EQ(r.t.size(), 26u);
+    ASSERT_EQ(r.y.size(), 26u);
+    for (size_t i = 1; i < r.t.size(); ++i) {
+        EXPECT_GT(r.t[i], r.t[i - 1]);
+    }
+    EXPECT_NEAR(r.t.back(), 1.0, 1e-10);
+}
+
+TEST(OdeRosenbrock23, StiffDecay_RemainsStableWhereEulerBlowsUp) {
+    // y' = -k*y, k large enough that explicit Euler is unstable at this h.
+    const double k = 1000.0;
+    const auto f_scalar = [k](double, double y) { return -k * y; };
+    auto f = [k](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-k * y[0]};
+    };
+    const size_t steps = 100; // h = 0.01, h*k = 10 >> 2 (explicit Euler stability limit)
+    const auto fwd = ms::ode_euler(f_scalar, 0.0, 1.0, 1.0, steps);
+    const auto rb = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, static_cast<int>(steps));
+    ASSERT_FALSE(fwd.y.empty());
+    ASSERT_FALSE(rb.y.empty());
+    EXPECT_TRUE(!std::isfinite(fwd.y.back()) || std::abs(fwd.y.back()) > 1e4);
+    EXPECT_TRUE(std::isfinite(rb.y.back()[0]));
+    EXPECT_LT(std::abs(rb.y.back()[0]), 1.0);
+}
+
+TEST(OdeRosenbrock23, StiffDecay_MatchesAnalytic) {
+    // y' = -k*y, y(0) = 1 => y(t) = exp(-k*t)
+    const double k = 5.0;
+    auto f = [k](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-k * y[0]};
+    };
+    const auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 50);
+    ASSERT_FALSE(r.y.empty());
+    const double exact = std::exp(-k * 1.0);
+    EXPECT_NEAR(r.y.back()[0], exact, 0.01);
+}
+
+TEST(OdeRosenbrock23, StiffCosProblem_MatchesAnalytic) {
+    // dy/dt = -k*(y - cos(t)) - sin(t), analytic solution y = cos(t)
+    const double k = 100.0;
+    auto f = [k](double t, const std::vector<double>& y) -> std::vector<double> {
+        return {-k * (y[0] - std::cos(t)) - std::sin(t)};
+    };
+    const auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 100);
+    ASSERT_FALSE(r.y.empty());
+    EXPECT_TRUE(std::isfinite(r.y.back()[0]));
+    EXPECT_NEAR(r.y.back()[0], std::cos(1.0), 0.05);
+}
+
+TEST(OdeRosenbrock23, NonStiff_ExponentialGrowth_MatchesAnalytic) {
+    // y' = y, y(0) = 1 => y(t) = exp(t); Rosenbrock23 should be reasonable
+    // on easy non-stiff problems too, not just stiff ones.
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {y[0]};
+    };
+    const auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 50);
+    ASSERT_FALSE(r.y.empty());
+    EXPECT_NEAR(r.y.back()[0], std::exp(1.0), 0.01);
+}
+
+TEST(OdeRosenbrock23, NonStiff_ExponentialDecay_MatchesAnalytic) {
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-y[0]};
+    };
+    const auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 50);
+    ASSERT_FALSE(r.y.empty());
+    EXPECT_NEAR(r.y.back()[0], std::exp(-1.0), 1e-3);
+}
+
+TEST(OdeRosenbrock23, CoupledLinearSystem2D_MatchesAnalytic) {
+    // y1' = -2*y1 + y2, y2' = -3*y2, y1(0) = y2(0) = 1.
+    // Closed form: y2(t) = exp(-3t); y1(t) = exp(-2t)*(2 - exp(-t)).
+    // Off-diagonal coupling exercises the full 2x2 finite-difference
+    // Jacobian and dense linear solve, not just a diagonal system.
+    auto f = [](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-2.0 * y[0] + y[1], -3.0 * y[1]};
+    };
+    const auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0, 1.0}, 1.0, 200);
+    ASSERT_FALSE(r.y.empty());
+    const double t_end = r.t.back();
+    const double exact_y2 = std::exp(-3.0 * t_end);
+    const double exact_y1 = std::exp(-2.0 * t_end) * (2.0 - std::exp(-t_end));
+    EXPECT_NEAR(r.y.back()[0], exact_y1, 0.01);
+    EXPECT_NEAR(r.y.back()[1], exact_y2, 0.01);
+}
+
+TEST(OdeRosenbrock23, SolutionRemainsFinite) {
+    const double k = 300.0;
+    auto f = [k](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-k * y[0]};
+    };
+    const auto r = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 2.0, 400);
+    for (const auto& state : r.y) {
+        for (double v : state) {
+            EXPECT_TRUE(std::isfinite(v));
+        }
+    }
+}
+
+TEST(OdeRosenbrock23, ConvergesWithMoreSteps) {
+    const double k = 100.0;
+    auto f = [k](double t, const std::vector<double>& y) -> std::vector<double> {
+        return {-k * (y[0] - std::cos(t)) - std::sin(t)};
+    };
+    const double exact = std::cos(1.0);
+    const auto coarse = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 20);
+    const auto fine = ms::ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 400);
+    ASSERT_FALSE(coarse.y.empty());
+    ASSERT_FALSE(fine.y.empty());
+    const double err_coarse = std::abs(coarse.y.back()[0] - exact);
+    const double err_fine = std::abs(fine.y.back()[0] - exact);
+    EXPECT_LT(err_fine, err_coarse);
+}
+
+TEST(OdeRosenbrock23, ScalarOverload_MatchesVecWrapper) {
+    const double k = 20.0;
+    auto f_scalar = [k](double, double y) { return -k * y; };
+    auto f_vec = [k](double, const std::vector<double>& y) -> std::vector<double> {
+        return {-k * y[0]};
+    };
+    const auto r_scalar = ms::ode_rosenbrock23(f_scalar, 0.0, 1.0, 1.0, 60);
+    const auto r_vec = ms::ode_rosenbrock23_vec(f_vec, 0.0, {1.0}, 1.0, 60);
+    ASSERT_EQ(r_scalar.y.size(), r_vec.y.size());
+    for (size_t i = 0; i < r_scalar.y.size(); ++i) {
+        EXPECT_NEAR(r_scalar.y[i], r_vec.y[i][0], 1e-12);
+    }
+}
+
+TEST(OdeRosenbrock23, ScalarOverload_StiffDecay_MatchesAnalytic) {
+    const double k = 10.0;
+    auto f = [k](double, double y) { return -k * y; };
+    const auto r = ms::ode_rosenbrock23(f, 0.0, 1.0, 1.0, 80);
+    ASSERT_FALSE(r.y.empty());
+    EXPECT_NEAR(r.y.back(), std::exp(-k * 1.0), 0.01);
+}

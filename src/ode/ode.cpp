@@ -605,6 +605,28 @@ double central_df(OdeFunc f, double t, double y) {
     return (fp - fm) / (2.0 * kNewtonEps);
 }
 
+// Forward-difference Jacobian df/dy for a vector field, reusing f0 = f(t, y)
+// as the base evaluation (n extra evaluations of f rather than 2n).
+std::vector<std::vector<double>> jacobian_fd_vec(const OdeFuncVec& f, double t,
+                                                  const std::vector<double>& y,
+                                                  const std::vector<double>& f0) {
+    const size_t n = y.size();
+    std::vector<std::vector<double>> J(n, std::vector<double>(n, 0.0));
+    for (size_t j = 0; j < n; ++j) {
+        const double hj = 1e-6 * std::max(1.0, std::abs(y[j]));
+        auto yp = y;
+        yp[j] += hj;
+        const auto fp = f(t, yp);
+        if (fp.size() != n) {
+            continue;
+        }
+        for (size_t i = 0; i < n; ++i) {
+            J[i][j] = (fp[i] - f0[i]) / hj;
+        }
+    }
+    return J;
+}
+
 double interpolate_linear(const std::vector<double>& xs,
                           const std::vector<double>& ys, double x) {
     if (xs.empty()) {
@@ -965,6 +987,98 @@ OdeResultVec ode_backward_euler_vec(OdeFuncVec f, double t0,
         t = t_next;
         result.t.push_back(t);
         result.y.push_back(y);
+    }
+    return result;
+}
+
+OdeResultVec ode_rosenbrock23_vec(OdeFuncVec f, double t0,
+                                    const std::vector<double>& y0,
+                                    double t_end, int n_steps) {
+    OdeResultVec result;
+    if (y0.empty()) {
+        return result;
+    }
+    result.t.push_back(t0);
+    result.y.push_back(y0);
+    if (t_end <= t0 || n_steps <= 0) {
+        return result;
+    }
+
+    const size_t n = y0.size();
+    const size_t steps = static_cast<size_t>(n_steps);
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    const double gamma = 1.0 / (2.0 + std::sqrt(2.0));
+
+    double t = t0;
+    auto y = y0;
+    for (size_t step = 0; step < steps; ++step) {
+        const auto f0 = f(t, y);
+        if (f0.size() != n) {
+            break;
+        }
+        const auto J = jacobian_fd_vec(f, t, y, f0);
+
+        std::vector<std::vector<double>> M(n, std::vector<double>(n, 0.0));
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = 0; j < n; ++j) {
+                M[i][j] = (i == j ? 1.0 : 0.0) - h * gamma * J[i][j];
+            }
+        }
+
+        const auto k1 = gauss_solve(M, f0);
+        if (k1.size() != n) {
+            break;
+        }
+
+        std::vector<double> y_stage(n);
+        for (size_t i = 0; i < n; ++i) {
+            y_stage[i] = y[i] + h * k1[i];
+        }
+        const auto f1 = f(t + h, y_stage);
+        if (f1.size() != n) {
+            break;
+        }
+
+        std::vector<double> rhs2(n);
+        for (size_t i = 0; i < n; ++i) {
+            double jk1 = 0.0;
+            for (size_t j = 0; j < n; ++j) {
+                jk1 += J[i][j] * k1[j];
+            }
+            rhs2[i] = f1[i] - 2.0 * gamma * h * jk1;
+        }
+
+        const auto k2 = gauss_solve(M, rhs2);
+        if (k2.size() != n) {
+            break;
+        }
+
+        // Combination weights b1 = b2 = 1/2: the unique choice (given this
+        // stage structure and gamma = 1/(2+sqrt(2))) that satisfies both the
+        // 1st-order (b1+b2=1) and 2nd-order (b1*gamma+b2*(1-gamma)=1/2)
+        // consistency conditions, verified via the linear test equation
+        // y'=lambda*y; this is the standard Rosenbrock23/ROS2 combination.
+        for (size_t i = 0; i < n; ++i) {
+            y[i] = y[i] + 0.5 * h * k1[i] + 0.5 * h * k2[i];
+        }
+        t += h;
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+    return result;
+}
+
+OdeResult ode_rosenbrock23(OdeFunc f, double t0, double y0,
+                            double t_end, int n_steps) {
+    OdeFuncVec fvec = [&](double t, const std::vector<double>& yv) {
+        return std::vector<double>{f(t, yv[0])};
+    };
+    const auto rv = ode_rosenbrock23_vec(fvec, t0, {y0}, t_end, n_steps);
+    OdeResult result;
+    result.t = rv.t;
+    result.y.reserve(rv.y.size());
+    for (const auto& yv : rv.y) {
+        result.y.push_back(yv[0]);
     }
     return result;
 }
