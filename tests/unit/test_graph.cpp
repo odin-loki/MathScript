@@ -1641,3 +1641,93 @@ TEST(GraphTSP, TotalDistanceMatchesIndependentRecomputationAcrossManyInstances) 
         }
     }
 }
+
+// ---- K-core decomposition ----
+
+// Every vertex in `sub` must have induced degree >= k (the defining k-core
+// invariant). Checked programmatically for k_core_subgraph() regression tests.
+void expect_k_core_subgraph_invariant(const Graph& sub, int k) {
+    for (int v = 0; v < sub.n_vertices(); ++v)
+        EXPECT_GE(static_cast<int>(sub.neighbors(v).size()), k)
+            << "vertex " << v << " in k-core subgraph has degree "
+            << sub.neighbors(v).size() << " < k=" << k;
+}
+
+TEST(GraphKCore, TriangleWithPendantExactCoreNumbers) {
+    // Triangle 0-1-2 with pendant 3 attached to 0: pendant core 1, triangle core 2.
+    Graph G(4, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 0);
+    G.add_edge(0, 3);
+
+    auto core = k_core_decomposition(G);
+    ASSERT_EQ(core.size(), 4u);
+    EXPECT_EQ(core[3], 1);
+    EXPECT_EQ(core[0], 2);
+    EXPECT_EQ(core[1], 2);
+    EXPECT_EQ(core[2], 2);
+}
+
+TEST(GraphKCore, CompleteGraphUniformCoreNumber) {
+    Graph G(5, false);
+    add_clique(G, 0, 5);
+    auto core = k_core_decomposition(G);
+    ASSERT_EQ(core.size(), 5u);
+    for (int v = 0; v < 5; ++v) EXPECT_EQ(core[v], 4);
+}
+
+TEST(GraphKCore, PathGraphAllCoreOne) {
+    Graph G(5, false);
+    for (int i = 0; i < 4; ++i) G.add_edge(i, i + 1);
+    auto core = k_core_decomposition(G);
+    ASSERT_EQ(core.size(), 5u);
+    for (int v = 0; v < 5; ++v) EXPECT_EQ(core[v], 1);
+}
+
+TEST(GraphKCore, IsolatedVertexCoreZero) {
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    auto core = k_core_decomposition(G);
+    ASSERT_EQ(core.size(), 3u);
+    EXPECT_EQ(core[0], 1);
+    EXPECT_EQ(core[1], 1);
+    EXPECT_EQ(core[2], 0);
+}
+
+TEST(GraphKCore, SubgraphSatisfiesDegreeInvariant) {
+    // Barbell: two triangles joined by a bridge; degeneracy 2, pendant-like ends core 1.
+    Graph G = make_barbell();
+    auto core = k_core_decomposition(G);
+    for (int k = 0; k <= 3; ++k) {
+        auto sub = k_core_subgraph(G, k);
+        expect_k_core_subgraph_invariant(sub, k);
+        int expected = 0;
+        for (int c : core) if (c >= k) ++expected;
+        EXPECT_EQ(sub.n_vertices(), expected);
+    }
+}
+
+TEST(GraphKCore, DisconnectedComponentsDecomposedIndependently) {
+    // Component A: K4 (core 3). Component B: path of length 2 (all core 1).
+    Graph G(6, false);
+    add_clique(G, 0, 4);
+    G.add_edge(4, 5);
+    auto core = k_core_decomposition(G);
+    ASSERT_EQ(core.size(), 6u);
+    for (int v = 0; v < 4; ++v) EXPECT_EQ(core[v], 3);
+    EXPECT_EQ(core[4], 1);
+    EXPECT_EQ(core[5], 1);
+
+    auto sub3 = k_core_subgraph(G, 3);
+    EXPECT_EQ(sub3.n_vertices(), 4);
+    expect_k_core_subgraph_invariant(sub3, 3);
+}
+
+TEST(GraphKCore, SubgraphEmptyWhenKExceedsDegeneracy) {
+    Graph G(4, false);
+    add_clique(G, 0, 4);
+    auto sub = k_core_subgraph(G, 10);
+    EXPECT_EQ(sub.n_vertices(), 0);
+    EXPECT_EQ(sub.n_edges(), 0);
+}
