@@ -261,5 +261,31 @@ Polygon2D minkowski_sum_convex(const Polygon2D& a, const Polygon2D& b);
 //       and typically yields an empty result once ear detection stalls.
 std::vector<Triangle2Di> triangulate_polygon(const Polygon2D& poly);
 
+// ========================== Polygon Clipping ==========================
+
+// Sutherland-Hodgman polygon clipping: intersects an arbitrary simple `subject` polygon against
+// a CONVEX `clip_window`, returning the clipped result's vertices in order. Standard textbook
+// algorithm: for each edge of the clip window (taken in the order given), the current working
+// polygon is clipped against the half-plane bounded by that edge — keeping only the side the
+// clip window's interior lies on, and inserting an edge-intersection point wherever the working
+// polygon crosses the boundary — producing a new intermediate polygon; this repeats for every
+// clip-window edge in turn, and the final intermediate polygon (after all edges) is the result.
+//
+// @param subject an arbitrary simple polygon (convex OR concave — e.g. an L-shape is fine).
+//        An empty subject returns an empty result.
+// @param clip_window a CONVEX polygon. Either winding order is accepted: orientation is
+//        detected via `signed_area` and the interior half-plane test is flipped to match, so
+//        both CCW and CW clip windows produce correct results. Fewer than 3 vertices is
+//        degenerate (no well-defined interior half-plane to clip against) and returns an empty
+//        result rather than crashing.
+// @return the clipped polygon's vertices in order, or an empty polygon if `subject` and
+//         `clip_window` do not overlap at all.
+// @note Requires the clip window to be CONVEX as a precondition — this is NOT checked. A
+//       non-convex clip window is out of scope: clipping against each edge's half-plane
+//       independently cannot represent a concave region as an intersection of half-planes, so
+//       results for a concave `clip_window` are undefined (typically some spurious extra area
+//       that should have been excluded survives). The `subject` polygon has no such restriction.
+Polygon2D clip_polygon(const Polygon2D& subject, const Polygon2D& clip_window);
+
 } // namespace geo
 } // namespace ms
