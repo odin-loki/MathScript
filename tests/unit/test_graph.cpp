@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 #include <utility>
 #include <gtest/gtest.h>
 
@@ -113,6 +114,31 @@ std::vector<std::vector<int>> canonicalise(std::vector<std::vector<int>> parts) 
         return a.front() < b.front();
     });
     return parts;
+}
+
+// Structural completeness check for an Eulerian path/circuit result: every
+// consecutive pair in `path` must be a real edge of G, and the walk must
+// consume every physical edge of G exactly once (checked via a multiset of
+// normalised (min,max) endpoint pairs, so multi-edges are each counted
+// separately). Used broadly across every positive eulerian_path() test case
+// below, rather than spot-checking a handful of properties.
+bool eulerian_path_uses_every_edge_exactly_once(const Graph& G, const std::vector<int>& path) {
+    if (path.size() < 2) return false;
+    if (path.size() - 1 != static_cast<size_t>(G.n_edges())) return false;
+    std::multiset<std::pair<int,int>> remaining;
+    for (auto& e : G.edges()) {
+        int a = e.from, b = e.to;
+        if (a > b) std::swap(a, b);
+        remaining.insert({a, b});
+    }
+    for (size_t i = 0; i + 1 < path.size(); ++i) {
+        int a = path[i], b = path[i + 1];
+        if (a > b) std::swap(a, b);
+        auto it = remaining.find({a, b});
+        if (it == remaining.end()) return false;  // not a real edge, or already consumed
+        remaining.erase(it);
+    }
+    return remaining.empty();
 }
 
 } // namespace
@@ -1017,4 +1043,191 @@ TEST(GraphCommunity, LouvainWeightedEdgesFavourHeavyNeighbour) {
             if (v == 3) comm_of_3 = c;
         }
     EXPECT_EQ(comm_of_6, comm_of_3);
+}
+
+// ---- Eulerian path/circuit (Hierholzer's) ----
+
+TEST(GraphEulerian, SquareCycleIsEulerianCircuit) {
+    // 4-cycle: every vertex has degree 2 (even) and it's connected.
+    Graph G(4, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 3); G.add_edge(3, 0);
+    auto res = eulerian_path(G);
+    EXPECT_TRUE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    ASSERT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    EXPECT_EQ(res.path.front(), res.path.back());
+}
+
+TEST(GraphEulerian, FigureEightTwoTrianglesIsEulerianCircuit) {
+    // Two triangles sharing vertex 0: {0,1,2} and {0,3,4}. Vertex 0 has
+    // degree 4, all others degree 2 -- all even, single connected graph.
+    Graph G(5, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 0);
+    G.add_edge(0, 3); G.add_edge(3, 4); G.add_edge(4, 0);
+    auto res = eulerian_path(G);
+    EXPECT_TRUE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    ASSERT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    EXPECT_EQ(res.path.front(), res.path.back());
+}
+
+TEST(GraphEulerian, SimplePathGraphHasEulerianPathNotCircuit) {
+    // 0-1-2-3: endpoints 0 and 3 have odd degree 1, interior vertices even.
+    Graph G(4, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 3);
+    auto res = eulerian_path(G);
+    EXPECT_FALSE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    ASSERT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    std::set<int> ends = {res.path.front(), res.path.back()};
+    EXPECT_EQ(ends, std::set<int>({0, 3}));
+}
+
+TEST(GraphEulerian, SingleEdgeHasEulerianPath) {
+    Graph G(2, false);
+    G.add_edge(0, 1);
+    auto res = eulerian_path(G);
+    EXPECT_FALSE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    ASSERT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    std::set<int> ends = {res.path.front(), res.path.back()};
+    EXPECT_EQ(ends, std::set<int>({0, 1}));
+}
+
+TEST(GraphEulerian, BarbellHasEulerianPathBetweenTheTwoOddVertices) {
+    // Two triangles joined by bridge 2-3 (see make_barbell): vertices 2 and
+    // 3 are the only odd-degree vertices (degree 3 each), everything else
+    // even -- so an Eulerian path (not circuit) must start/end at {2,3}.
+    auto G = make_barbell();
+    auto res = eulerian_path(G);
+    EXPECT_FALSE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    ASSERT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    std::set<int> ends = {res.path.front(), res.path.back()};
+    EXPECT_EQ(ends, std::set<int>({2, 3}));
+}
+
+TEST(GraphEulerian, StarGraphWithThreeLeavesHasNeitherPathNorCircuit) {
+    // Star on 4 vertices: center (degree 3) plus 3 leaves (degree 1 each)
+    // -- 4 odd-degree vertices, far more than the 0-or-2 that's allowed.
+    auto G = make_star(4);
+    auto res = eulerian_path(G);
+    EXPECT_FALSE(res.has_circuit);
+    EXPECT_FALSE(res.has_path);
+    EXPECT_TRUE(res.path.empty());
+}
+
+TEST(GraphEulerian, KonigsbergBridgesHasNeitherPathNorCircuit) {
+    // The original 1736 Konigsberg bridges problem: 4 landmasses, 7
+    // bridges, all 4 vertices have odd degree (3, 3, 5, 3) -- Euler's
+    // famous proof that no such walk exists.
+    Graph G(4, false);
+    G.add_edge(0, 2); G.add_edge(0, 2);  // two bridges between north bank and island
+    G.add_edge(1, 2); G.add_edge(1, 2);  // two bridges between south bank and island
+    G.add_edge(0, 3);                    // north bank <-> east
+    G.add_edge(1, 3);                    // south bank <-> east
+    G.add_edge(2, 3);                    // island <-> east
+    ASSERT_EQ(G.n_edges(), 7);
+    auto res = eulerian_path(G);
+    EXPECT_FALSE(res.has_circuit);
+    EXPECT_FALSE(res.has_path);
+    EXPECT_TRUE(res.path.empty());
+}
+
+TEST(GraphEulerian, DisconnectedTwoCyclesBothLocallyEvenButNoOverallCircuit) {
+    // Two disjoint 4-cycles: every vertex has even degree (globally 0 odd
+    // vertices), which would satisfy the naive degree-only circuit test --
+    // but the graph is disconnected, so no single walk can cover both.
+    Graph G(8, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 3); G.add_edge(3, 0);
+    G.add_edge(4, 5); G.add_edge(5, 6); G.add_edge(6, 7); G.add_edge(7, 4);
+    auto res = eulerian_path(G);
+    EXPECT_FALSE(res.has_circuit);
+    EXPECT_FALSE(res.has_path);
+    EXPECT_TRUE(res.path.empty());
+}
+
+TEST(GraphEulerian, DisconnectedCircuitComponentPlusPathComponentIsNeitherOverall) {
+    // Component A = 4-cycle on {0,1,2,3} (0 odd vertices, its own circuit).
+    // Component B = path 4-5-6 (exactly 2 odd vertices, its own path).
+    // Combined globally: exactly 2 odd-degree vertices (4 and 6), which
+    // passes the degree-only test -- but the two components are disjoint,
+    // so the connectivity requirement must still reject both flags.
+    Graph G(7, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 3); G.add_edge(3, 0);
+    G.add_edge(4, 5); G.add_edge(5, 6);
+    auto res = eulerian_path(G);
+    EXPECT_FALSE(res.has_circuit);
+    EXPECT_FALSE(res.has_path);
+    EXPECT_TRUE(res.path.empty());
+}
+
+TEST(GraphEulerian, IsolatedVertexIsIgnoredAndCircuitStillFound) {
+    // Triangle {0,1,2} plus an isolated vertex 3 with no edges at all.
+    // Connectivity is judged only over vertices with nonzero degree, so
+    // the isolated vertex must not block the circuit.
+    Graph G(4, false);
+    G.add_edge(0, 1); G.add_edge(1, 2); G.add_edge(2, 0);
+    auto res = eulerian_path(G);
+    EXPECT_TRUE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    ASSERT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    EXPECT_EQ(res.path.front(), res.path.back());
+}
+
+TEST(GraphEulerian, ZeroEdgeGraphConventionIsVacuousCircuitWithEmptyPath) {
+    // Documented convention: a graph with no edges vacuously satisfies
+    // "every vertex has even degree" and "connected ignoring isolated
+    // vertices" (there's nothing to connect), so both flags are true, but
+    // there's nothing to traverse so `path` stays empty.
+    Graph G(5, false);
+    auto res = eulerian_path(G);
+    EXPECT_TRUE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    EXPECT_TRUE(res.path.empty());
+}
+
+TEST(GraphEulerian, ZeroVertexGraphConventionIsVacuousCircuitWithEmptyPath) {
+    Graph G(0, false);
+    auto res = eulerian_path(G);
+    EXPECT_TRUE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+    EXPECT_TRUE(res.path.empty());
+}
+
+TEST(GraphEulerian, HasPathIsTrueWheneverHasCircuitIsTrueAcrossManyGraphs) {
+    // has_path documents "Eulerian path (possibly a circuit) exists", so
+    // it must be true any time has_circuit is true.
+    for (const Graph& G : {make_barbell(), make_disjoint_triangles(1)}) {
+        auto res = eulerian_path(G);
+        if (res.has_circuit) EXPECT_TRUE(res.has_path);
+    }
+    Graph square(4, false);
+    square.add_edge(0, 1); square.add_edge(1, 2); square.add_edge(2, 3); square.add_edge(3, 0);
+    auto res = eulerian_path(square);
+    EXPECT_TRUE(res.has_circuit);
+    EXPECT_TRUE(res.has_path);
+}
+
+TEST(GraphEulerian, AllPositiveCaseGraphsProduceStructurallyValidPaths) {
+    // Broad regression sweep: every graph here is expected to have either
+    // an Eulerian circuit or path, and in every case the returned `path`
+    // must pass the full structural-completeness check (real edges,
+    // exactly matching the edge count) -- not just a spot-check.
+    Graph square(4, false);
+    square.add_edge(0, 1); square.add_edge(1, 2); square.add_edge(2, 3); square.add_edge(3, 0);
+
+    Graph figure_eight(5, false);
+    figure_eight.add_edge(0, 1); figure_eight.add_edge(1, 2); figure_eight.add_edge(2, 0);
+    figure_eight.add_edge(0, 3); figure_eight.add_edge(3, 4); figure_eight.add_edge(4, 0);
+
+    Graph simple_path(4, false);
+    simple_path.add_edge(0, 1); simple_path.add_edge(1, 2); simple_path.add_edge(2, 3);
+
+    for (const Graph& G : {square, figure_eight, simple_path, make_barbell(),
+                           make_disjoint_triangles(1)}) {
+        auto res = eulerian_path(G);
+        ASSERT_TRUE(res.has_circuit || res.has_path);
+        EXPECT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    }
 }

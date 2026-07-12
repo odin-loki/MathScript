@@ -1126,6 +1126,82 @@ std::vector<int> euler_circuit(const Graph& G) {
     return circuit;
 }
 
+// ---- Eulerian path/circuit (Hierholzer's), undirected graphs ----
+
+EulerianResult eulerian_path(const Graph& G) {
+    EulerianResult result;
+    int n = G.n_vertices();
+
+    // Degenerate zero-edge case (see header @note): vacuously a circuit,
+    // but there is nothing to traverse so `path` stays empty.
+    if (n == 0 || G.n_edges() == 0) {
+        result.has_circuit = true;
+        result.has_path = true;
+        return result;
+    }
+
+    std::vector<int> degree(n, 0);
+    for (int v = 0; v < n; ++v) degree[v] = static_cast<int>(G.neighbors(v).size());
+
+    int any_nonzero = -1;
+    for (int v = 0; v < n; ++v)
+        if (degree[v] > 0) { any_nonzero = v; break; }
+
+    // Connectivity, ignoring isolated (zero-degree) vertices: every vertex
+    // with an incident edge must be reachable from any one of them.
+    std::vector<bool> visited(n, false);
+    for (int v : bfs(G, any_nonzero)) visited[v] = true;
+    for (int v = 0; v < n; ++v)
+        if (degree[v] > 0 && !visited[v]) return result;  // disconnected -> both false
+
+    int odd_count = 0, first_odd = -1;
+    for (int v = 0; v < n; ++v)
+        if (degree[v] % 2 != 0) {
+            ++odd_count;
+            if (first_odd == -1) first_odd = v;
+        }
+
+    if (odd_count != 0 && odd_count != 2) return result;  // neither circuit nor path
+
+    result.has_circuit = (odd_count == 0);
+    result.has_path = true;
+    int start = (odd_count == 2) ? first_odd : any_nonzero;
+
+    // Edge-indexed adjacency: each physical (undirected) edge gets one
+    // shared index into `used`, referenced from both endpoints' lists, so
+    // traversing it from either side marks the same slot used.
+    auto edge_list = G.edges();
+    int m = static_cast<int>(edge_list.size());
+    std::vector<std::vector<std::pair<int,int>>> adj(n);  // (neighbor, edge index)
+    for (int i = 0; i < m; ++i) {
+        const Edge& e = edge_list[i];
+        adj[e.from].push_back({e.to, i});
+        if (e.to != e.from) adj[e.to].push_back({e.from, i});
+    }
+    std::vector<bool> used(m, false);
+    std::vector<size_t> ptr(n, 0);
+
+    // Iterative Hierholzer: descend on unused edges, backtrack (emitting
+    // to `circuit`) once the top of the stack has none left, then reverse.
+    std::vector<int> stack_path{start};
+    std::vector<int> circuit;
+    while (!stack_path.empty()) {
+        int v = stack_path.back();
+        while (ptr[v] < adj[v].size() && used[adj[v][ptr[v]].second]) ++ptr[v];
+        if (ptr[v] < adj[v].size()) {
+            auto [nv, eidx] = adj[v][ptr[v]];
+            used[eidx] = true;
+            stack_path.push_back(nv);
+        } else {
+            circuit.push_back(v);
+            stack_path.pop_back();
+        }
+    }
+    std::reverse(circuit.begin(), circuit.end());
+    result.path = std::move(circuit);
+    return result;
+}
+
 // ---- Hamiltonian path (backtracking) ----
 
 Result<std::vector<int>> hamiltonian_path(const Graph& G) {

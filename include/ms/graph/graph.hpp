@@ -154,5 +154,58 @@ std::vector<double> adjacency_spectrum(const Graph& G);  // eigenvalues of adj m
 std::vector<int>    euler_circuit(const Graph& G);        // Hierholzer
 Result<std::vector<int>> hamiltonian_path(const Graph& G);  // backtracking
 
+// Eulerian path/circuit existence check and construction, via Hierholzer's
+// algorithm. An Eulerian CIRCUIT is a closed walk using every edge of G
+// exactly once and returning to its start vertex; an Eulerian PATH is an
+// open walk using every edge exactly once (start and end vertices differ).
+//
+// @note This module represents graphs with a single Graph type whose
+//       is_directed() flag toggles whether add_edge mirrors an edge into
+//       both endpoints' adjacency lists or just one (see Graph::add_edge);
+//       there is no separate directed-graph representation. Nearly all of
+//       ms::graph's structural-analysis algorithms (mst_kruskal, mst_prim,
+//       articulation_points, bridges, biconnected_components, ...) are
+//       specified for undirected graphs, with directed input either
+//       rejected or treated in an unspecified/best-effort way. This
+//       function follows that same convention: it is specified for
+//       UNDIRECTED graphs only (using degree = neighbors(v).size(), which
+//       double-counts each undirected edge across its two endpoints as
+//       classic graph theory expects). Passing a directed Graph gives
+//       unspecified results (degree would only reflect out-edges), exactly
+//       as with biconnected_components/articulation_points/bridges. A full
+//       directed-Eulerian-circuit implementation (in/out-degree balance
+//       plus single-SCC-over-nonzero-degree-vertices connectivity) is
+//       intentionally out of scope here to stay consistent with the rest
+//       of the module.
+//
+// Existence criteria (classic graph theory, undirected case):
+//   - Eulerian circuit: every vertex has even degree, AND the graph is
+//     connected when isolated (zero-degree) vertices are ignored.
+//   - Eulerian path that is not a circuit: EXACTLY 2 vertices have odd
+//     degree (all others even), AND the graph is connected when isolated
+//     vertices are ignored. Any odd-degree-vertex count other than 0 or 2
+//     makes an Eulerian path/circuit impossible.
+//
+// @note Degenerate zero-edge convention: a graph with no edges (including
+//       n == 0 vertices) vacuously satisfies "every vertex has even degree"
+//       (0 is even) and is vacuously "connected ignoring isolated vertices"
+//       (there are none to connect), so this function reports
+//       has_circuit = has_path = true for it -- but leaves `path` empty
+//       since there is nothing to traverse. This is a deliberate, documented
+//       choice among the genuinely ambiguous conventions in the literature;
+//       callers that want "no edges" treated as failure should special-case
+//       G.n_edges() == 0 themselves.
+struct EulerianResult {
+    bool has_circuit = false;   // Eulerian circuit exists
+    bool has_path = false;      // Eulerian path (possibly a circuit) exists
+    std::vector<int> path;      // vertex sequence of the actual Eulerian path/circuit found
+                                 // (empty if neither exists, or if the graph has no edges)
+};
+// @param G the graph, assumed undirected per this function's documented scope (see above).
+// @return has_circuit/has_path flags plus a constructed vertex sequence (via Hierholzer's
+//         algorithm) if either exists; `path` is empty when neither exists.
+// @note O(V+E) time and space: one connectivity BFS plus one Hierholzer pass, each linear.
+EulerianResult eulerian_path(const Graph& G);
+
 } // namespace graph
 } // namespace ms
