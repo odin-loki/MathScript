@@ -114,6 +114,48 @@ void apply_one_sided_psd_scaling(std::vector<double>& psd, size_t n_fft) {
     }
 }
 
+struct WelchSetup {
+    SegmentPlan plan;
+    std::vector<double> window;
+    double scale;
+    std::vector<double> frequencies;
+};
+
+Result<WelchSetup> prepare_welch(size_t signal_len, double fs, size_t segment_len,
+                                  double overlap_frac, const char* fn) {
+    if (fs <= 0.0) {
+        return std::unexpected(DomainError{fn, "fs must be > 0"});
+    }
+
+    const auto plan = plan_segments(signal_len, segment_len, overlap_frac, fn);
+    if (!plan) {
+        return std::unexpected(plan.error());
+    }
+
+    const auto window = hanning(segment_len);
+    double win_sq_sum = 0.0;
+    for (const double w : window) {
+        win_sq_sum += w * w;
+    }
+    const double scale = 1.0 / (fs * win_sq_sum);
+
+    return WelchSetup{*plan, window, scale, segment_frequencies(plan->n_fft, fs)};
+}
+
+Result<std::vector<std::complex<double>>> rfft_windowed_segment(
+    const std::vector<double>& signal, size_t start, size_t segment_len,
+    const std::vector<double>& window) {
+    std::vector<double> segment(segment_len);
+    for (size_t i = 0; i < segment_len; ++i) {
+        segment[i] = signal[start + i] * window[i];
+    }
+    const auto spec = rfft(segment);
+    if (!spec) {
+        return std::unexpected(spec.error());
+    }
+    return *spec;
+}
+
 std::vector<std::complex<double>> fft_recursive(std::vector<std::complex<double>> x) {
     const size_t n = x.size();
     if (n <= 1) {
@@ -427,48 +469,85 @@ std::vector<double> triangular(size_t n) {
 
 Result<PSDResult> welch_psd(const std::vector<double>& x, double fs,
                              size_t segment_len, double overlap_frac) {
-    if (fs <= 0.0) {
-        return std::unexpected(DomainError{"welch_psd", "fs must be > 0"});
+    const auto setup = prepare_welch(x.size(), fs, segment_len, overlap_frac, "welch_psd");
+    if (!setup) {
+        return std::unexpected(setup.error());
     }
 
-    const auto plan = plan_segments(x.size(), segment_len, overlap_frac, "welch_psd");
-    if (!plan) {
-        return std::unexpected(plan.error());
-    }
-
-    const auto window = hanning(segment_len);
-    double win_sq_sum = 0.0;
-    for (const double w : window) {
-        win_sq_sum += w * w;
-    }
-    const double scale = 1.0 / (fs * win_sq_sum);
-
-    std::vector<double> psd(plan->n_freq_bins, 0.0);
+    std::vector<double> psd(setup->plan.n_freq_bins, 0.0);
     size_t seg_count = 0;
 
-    for (size_t start = 0; start + segment_len <= x.size(); start += plan->hop) {
-        std::vector<double> segment(segment_len);
-        for (size_t i = 0; i < segment_len; ++i) {
-            segment[i] = x[start + i] * window[i];
-        }
-
-        const auto spec = rfft(segment);
+    for (size_t start = 0; start + segment_len <= x.size(); start += setup->plan.hop) {
+        const auto spec = rfft_windowed_segment(x, start, segment_len, setup->window);
         if (!spec) {
             return std::unexpected(spec.error());
         }
 
-        for (size_t k = 0; k < plan->n_freq_bins && k < spec->size(); ++k) {
+        for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec->size(); ++k) {
             psd[k] += std::norm((*spec)[k]);
         }
         ++seg_count;
     }
 
     for (double& p : psd) {
-        p = (p / static_cast<double>(seg_count)) * scale;
+        p = (p / static_cast<double>(seg_count)) * setup->scale;
     }
-    apply_one_sided_psd_scaling(psd, plan->n_fft);
+    apply_one_sided_psd_scaling(psd, setup->plan.n_fft);
 
-    return PSDResult{segment_frequencies(plan->n_fft, fs), std::move(psd)};
+    return PSDResult{setup->frequencies, std::move(psd)};
+}
+
+Result<CoherenceResult> coherence(const std::vector<double>& x, const std::vector<double>& y,
+                                   double fs, size_t nperseg, double overlap_frac) {
+    if (x.size() != y.size()) {
+        return std::unexpected(DomainError{"coherence", "x and y must have the same length"});
+    }
+
+    const auto setup = prepare_welch(x.size(), fs, nperseg, overlap_frac, "coherence");
+    if (!setup) {
+        return std::unexpected(setup.error());
+    }
+
+    std::vector<double> pxx(setup->plan.n_freq_bins, 0.0);
+    std::vector<double> pyy(setup->plan.n_freq_bins, 0.0);
+    std::vector<std::complex<double>> pxy(setup->plan.n_freq_bins, 0.0);
+    size_t seg_count = 0;
+
+    for (size_t start = 0; start + nperseg <= x.size(); start += setup->plan.hop) {
+        const auto spec_x = rfft_windowed_segment(x, start, nperseg, setup->window);
+        if (!spec_x) {
+            return std::unexpected(spec_x.error());
+        }
+        const auto spec_y = rfft_windowed_segment(y, start, nperseg, setup->window);
+        if (!spec_y) {
+            return std::unexpected(spec_y.error());
+        }
+
+        for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_x->size() && k < spec_y->size();
+             ++k) {
+            pxx[k] += std::norm((*spec_x)[k]);
+            pyy[k] += std::norm((*spec_y)[k]);
+            pxy[k] += (*spec_x)[k] * std::conj((*spec_y)[k]);
+        }
+        ++seg_count;
+    }
+
+    const double inv_seg = 1.0 / static_cast<double>(seg_count);
+    std::vector<double> coh(setup->plan.n_freq_bins, 0.0);
+    for (size_t k = 0; k < coh.size(); ++k) {
+        const double auto_x = pxx[k] * inv_seg * setup->scale;
+        const double auto_y = pyy[k] * inv_seg * setup->scale;
+        const auto cross = pxy[k] * inv_seg * setup->scale;
+        const double denom = auto_x * auto_y;
+        if (denom > 0.0) {
+            coh[k] = std::norm(cross) / denom;
+            if (coh[k] > 1.0) {
+                coh[k] = 1.0;
+            }
+        }
+    }
+
+    return CoherenceResult{setup->frequencies, std::move(coh)};
 }
 
 Result<SpectrogramResult> spectrogram(const std::vector<double>& x, double fs,

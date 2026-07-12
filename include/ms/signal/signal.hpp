@@ -68,6 +68,18 @@ struct PSDResult {
 Result<PSDResult> welch_psd(const std::vector<double>& x, double fs,
                              size_t segment_len, double overlap_frac = 0.5);
 
+// Magnitude-squared coherence via Welch cross/auto spectral density estimation: same segmented,
+// Hanning-windowed, overlapped FFT convention as welch_psd. For each frequency bin k,
+// Cxy(k) = |Pxy(k)|^2 / (Pxx(k) * Pyy(k)) where Pxx/Pyy are Welch auto-PSDs of x/y and Pxy is
+// the Welch cross-PSD (complex cross-periodogram averaged across segments). Values lie in [0, 1]:
+// 1 means perfectly linearly related at that frequency, 0 means unrelated.
+struct CoherenceResult {
+    std::vector<double> frequencies; // Hz
+    std::vector<double> coherence;   // magnitude-squared coherence, one per frequency bin
+};
+Result<CoherenceResult> coherence(const std::vector<double>& x, const std::vector<double>& y,
+                                   double fs, size_t nperseg, double overlap_frac = 0.5);
+
 // Short-time Fourier transform spectrogram: same windowing and overlap convention as welch_psd,
 // but stores the FFT magnitude (not magnitude-squared) of each segment. `magnitude` is a
 // times.size() x frequencies.size() matrix where row i is the frequency-magnitude spectrum of
