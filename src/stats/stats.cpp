@@ -154,6 +154,23 @@ double correlation(std::span<const double> x, std::span<const double> y) {
     return num / std::sqrt(dx * dy);
 }
 
+double partial_correlation(std::span<const double> x,
+                           std::span<const double> y,
+                           std::span<const double> z) {
+    if (x.size() != y.size() || x.size() != z.size() || x.empty()) {
+        return 0.0;
+    }
+    const double r_xy = correlation(x, y);
+    const double r_xz = correlation(x, z);
+    const double r_yz = correlation(y, z);
+    const double denom =
+        std::sqrt((1.0 - r_xz * r_xz) * (1.0 - r_yz * r_yz));
+    if (denom == 0.0) {
+        return 0.0;
+    }
+    return (r_xy - r_xz * r_yz) / denom;
+}
+
 double skewness(std::span<const double> data) {
     if (data.size() < 3) {
         return 0.0;
@@ -1014,6 +1031,74 @@ std::vector<double> multiple_regression(
                 : 0.0;
     }
     return beta;
+}
+
+double variance_inflation_factor(const std::vector<std::vector<double>>& X, size_t j) {
+    if (X.empty() || X[0].empty()) {
+        return 1.0;
+    }
+    const size_t m = X.size();
+    const size_t p = X[0].size();
+    if (j >= p) {
+        return 0.0;
+    }
+    for (const auto& row : X) {
+        if (row.size() != p) {
+            return 0.0;
+        }
+    }
+    if (p < 2) {
+        return 1.0;
+    }
+
+    std::vector<double> y(m);
+    for (size_t i = 0; i < m; ++i) {
+        y[i] = X[i][j];
+    }
+
+    std::vector<std::vector<double>> X_other(
+        m, std::vector<double>(p - 1, 0.0));
+    for (size_t i = 0; i < m; ++i) {
+        size_t col = 0;
+        for (size_t k = 0; k < p; ++k) {
+            if (k == j) {
+                continue;
+            }
+            X_other[i][col++] = X[i][k];
+        }
+    }
+
+    const auto beta = multiple_regression(X_other, y);
+    if (beta.size() != p - 1) {
+        return 1.0;
+    }
+
+    const double my = mean(y);
+    double ss_tot = 0.0;
+    double ss_res = 0.0;
+    for (size_t i = 0; i < m; ++i) {
+        double y_hat = 0.0;
+        for (size_t k = 0; k < beta.size(); ++k) {
+            y_hat += beta[k] * X_other[i][k];
+        }
+        const double centered = y[i] - my;
+        ss_tot += centered * centered;
+        const double residual = y[i] - y_hat;
+        ss_res += residual * residual;
+    }
+    if (ss_tot == 0.0) {
+        return 1.0;
+    }
+
+    const double r_squared = 1.0 - ss_res / ss_tot;
+    if (r_squared >= 1.0 - 1e-14) {
+        return std::numeric_limits<double>::infinity();
+    }
+    return 1.0 / (1.0 - r_squared);
+}
+
+double vif(const std::vector<std::vector<double>>& X, size_t j) {
+    return variance_inflation_factor(X, j);
 }
 
 std::vector<double> acf(std::span<const double> x, int max_lag) {
