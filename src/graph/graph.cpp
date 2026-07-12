@@ -340,6 +340,20 @@ std::vector<std::vector<double>> floyd_warshall(const Graph& G) {
     return d;
 }
 
+std::vector<std::vector<bool>> transitive_closure(const Graph& G) {
+    int n = G.n_vertices();
+    std::vector<std::vector<bool>> reach(n, std::vector<bool>(n, false));
+    for (int i = 0; i < n; ++i) {
+        reach[i][i] = true;
+        for (auto& [v, w] : G.neighbors(i)) reach[i][v] = true;
+    }
+    for (int k = 0; k < n; ++k)
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j)
+                reach[i][j] = reach[i][j] || (reach[i][k] && reach[k][j]);
+    return reach;
+}
+
 Result<std::vector<int>> astar(const Graph& G, int source, int target,
                                 const std::vector<double>& h) {
     int n = G.n_vertices();
