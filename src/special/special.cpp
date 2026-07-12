@@ -2233,6 +2233,79 @@ double debye(int n, double x) {
     return static_cast<double>(n) / std::pow(x, static_cast<double>(n)) * integral;
 }
 
+namespace {
+
+const double kMinusInvE = -std::exp(-1.0);
+
+double lambert_w_fritsch(double w, double z) {
+    for (int iter = 0; iter < 64; ++iter) {
+        const double ew = std::exp(w);
+        const double w1 = w + 1.0;
+        const double f = w * ew - z;
+        if (std::abs(f) <= 1e-15 * std::max(1.0, std::abs(z))) {
+            break;
+        }
+        const double sigma = f / (ew * w1);
+        const double denom = 1.0 + sigma * (w + 2.0) / (2.0 * w1);
+        w -= sigma / denom;
+    }
+    return w;
+}
+
+double lambert_w0_initial(double z) {
+    if (z == 0.0) {
+        return 0.0;
+    }
+    if (z < 0.0) {
+        const double p = std::sqrt(2.0 * (1.0 + std::exp(1.0) * z));
+        return -1.0 + p - p * p * p / 3.0;
+    }
+    if (z < 1.35) {
+        return z * (6.0 + z) / (6.0 + 4.0 * z);
+    }
+    const double l1 = std::log(z);
+    const double l2 = std::log(l1);
+    return l1 - l2 + l2 / l1;
+}
+
+double lambert_wm1_initial(double z) {
+    if (z <= kMinusInvE + 1e-10) {
+        const double p = std::sqrt(2.0 * (1.0 + std::exp(1.0) * z));
+        return -1.0 - p + p * p * p / 3.0;
+    }
+    const double l1 = std::log(-z);
+    const double l2 = std::log(-l1);
+    return l1 - l2 + l2 / l1;
+}
+
+} // namespace
+
+double lambert_w(int branch, double z) {
+    if (branch != 0 && branch != -1) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (branch == 0) {
+        if (z < kMinusInvE - 1e-15) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        if (z == 0.0) {
+            return 0.0;
+        }
+        if (std::abs(z - kMinusInvE) <= 1e-15) {
+            return -1.0;
+        }
+        return lambert_w_fritsch(lambert_w0_initial(z), z);
+    }
+    // branch -1: z in [−1/e, 0)
+    if (z < kMinusInvE - 1e-15 || z >= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (std::abs(z - kMinusInvE) <= 1e-15) {
+        return -1.0;
+    }
+    return lambert_w_fritsch(lambert_wm1_initial(z), z);
+}
+
 double mathieu_a(int n, double q) {
     if (n < 0) {
         return std::numeric_limits<double>::quiet_NaN();

@@ -89,3 +89,38 @@ TEST(SpecialExtTest, reciprocal_gamma) {
     EXPECT_EQ(rgamma(-1.0), 0.0);
     EXPECT_EQ(rgamma(-3.0), 0.0);
 }
+
+namespace {
+
+void expect_lambert_identity(int branch, double z, double tol) {
+    const double w = lambert_w(branch, z);
+    ASSERT_TRUE(std::isfinite(w));
+    EXPECT_NEAR(w * std::exp(w), z, tol) << "branch=" << branch << " z=" << z;
+}
+
+} // namespace
+
+TEST(SpecialExtTest, lambert_w_principal_branch) {
+    EXPECT_NEAR(lambert_w(0, 0.0), 0.0, 1e-15);
+    EXPECT_NEAR(lambert_w(0, std::exp(1.0)), 1.0, 1e-12);
+    EXPECT_NEAR(lambert_w(0, 1.0), 0.5671432904097838, 1e-10);
+    expect_lambert_identity(0, 0.5, 1e-14);
+    expect_lambert_identity(0, 2.0, 1e-14);
+    expect_lambert_identity(0, 10.0, 1e-12);
+}
+
+TEST(SpecialExtTest, lambert_w_minus_one_branch) {
+    const double minus_inv_e = -std::exp(-1.0);
+    EXPECT_NEAR(lambert_w(-1, minus_inv_e), -1.0, 1e-12);
+    EXPECT_NEAR(lambert_w(-1, -0.1), -3.5771522592158035, 1e-6);
+    EXPECT_NEAR(lambert_w(-1, -0.2), -2.542641493804526, 1e-6);
+    expect_lambert_identity(-1, -0.05, 1e-14);
+    expect_lambert_identity(-1, -0.25, 1e-14);
+}
+
+TEST(SpecialExtTest, lambert_w_domain_errors) {
+    EXPECT_TRUE(std::isnan(lambert_w(0, -1.0)));
+    EXPECT_TRUE(std::isnan(lambert_w(-1, 0.0)));
+    EXPECT_TRUE(std::isnan(lambert_w(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(lambert_w(2, 1.0)));
+}

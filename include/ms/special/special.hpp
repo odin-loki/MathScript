@@ -234,6 +234,9 @@ double polylog(int n, double z);
 double clausen(double x);
 /// Debye function D_n(x) = (n/x^n) ∫_0^x t^n/(e^t - 1) dt, n ≥ 1, x > 0 (DLMF §6.3).
 double debye(int n, double x);
+/// Lambert W function W_k(z), branch k = 0 (principal, z ≥ −1/e) or k = −1 (z ∈ [−1/e, 0)).
+/// Satisfies W_k(z) exp(W_k(z)) = z; evaluated via Fritsch–Halley iteration.
+double lambert_w(int branch, double z);
 
 // Mathieu functions (x in radians)
 double mathieu_a(int n, double q);
