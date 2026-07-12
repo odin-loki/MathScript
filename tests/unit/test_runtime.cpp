@@ -82,3 +82,110 @@ TEST(RuntimeTest, initialize_thread_pool_singleton) {
     ThreadPool& b = ThreadPool::instance();
     EXPECT_EQ(&a, &b);
 }
+
+namespace {
+
+long long serial_sum_0_to_n_minus_1(size_t n) {
+    long long total = 0;
+    for (size_t i = 0; i < n; ++i) {
+        total += static_cast<long long>(i);
+    }
+    return total;
+}
+
+} // namespace
+
+TEST(RuntimeTest, parallel_for_n_zero_is_noop) {
+    ThreadPool pool;
+    std::atomic<int> counter{0};
+    pool.parallel_for(0, [&](size_t) { counter.fetch_add(1, std::memory_order_relaxed); });
+    EXPECT_EQ(counter.load(), 0);
+}
+
+TEST(RuntimeTest, parallel_for_sum_default_grain_matches_serial) {
+    ThreadPool pool;
+    pool.initialize(4);
+
+    std::atomic<long long> sum{0};
+    pool.parallel_for(1000, [&](size_t i) {
+        sum.fetch_add(static_cast<long long>(i), std::memory_order_relaxed);
+    });
+
+    EXPECT_EQ(sum.load(), serial_sum_0_to_n_minus_1(1000));
+    EXPECT_EQ(sum.load(), 499500LL);
+}
+
+TEST(RuntimeTest, parallel_for_sum_grain_one_matches_serial) {
+    ThreadPool pool;
+    pool.initialize(4);
+
+    std::atomic<long long> sum{0};
+    pool.parallel_for(1000, 1, [&](size_t i) {
+        sum.fetch_add(static_cast<long long>(i), std::memory_order_relaxed);
+    });
+
+    EXPECT_EQ(sum.load(), serial_sum_0_to_n_minus_1(1000));
+    EXPECT_EQ(sum.load(), 499500LL);
+}
+
+TEST(RuntimeTest, parallel_for_sum_large_grain_matches_serial) {
+    ThreadPool pool;
+    pool.initialize(4);
+
+    std::atomic<long long> sum{0};
+    pool.parallel_for(1000, 500, [&](size_t i) {
+        sum.fetch_add(static_cast<long long>(i), std::memory_order_relaxed);
+    });
+
+    EXPECT_EQ(sum.load(), serial_sum_0_to_n_minus_1(1000));
+    EXPECT_EQ(sum.load(), 499500LL);
+}
+
+TEST(RuntimeTest, parallel_for_visits_every_index) {
+    ThreadPool pool;
+    pool.initialize(4);
+
+    std::vector<std::atomic<int>> seen(100);
+    for (auto& slot : seen) {
+        slot.store(0, std::memory_order_relaxed);
+    }
+
+    pool.parallel_for(100, 7, [&](size_t i) {
+        seen[i].store(1, std::memory_order_relaxed);
+    });
+
+    for (size_t i = 0; i < seen.size(); ++i) {
+        EXPECT_EQ(seen[i].load(std::memory_order_relaxed), 1) << "missing index " << i;
+    }
+}
+
+TEST(RuntimeTest, parallel_for_single_element) {
+    ThreadPool pool;
+    pool.initialize(2);
+
+    std::atomic<size_t> captured{999};
+    pool.parallel_for(1, [&](size_t i) { captured.store(i, std::memory_order_relaxed); });
+    EXPECT_EQ(captured.load(), 0u);
+}
+
+TEST(RuntimeTest, parallel_for_grain_larger_than_range) {
+    ThreadPool pool;
+    pool.initialize(2);
+
+    std::atomic<int> counter{0};
+    pool.parallel_for(10, 1000, [&](size_t) {
+        counter.fetch_add(1, std::memory_order_relaxed);
+    });
+    EXPECT_EQ(counter.load(), 10);
+}
+
+TEST(RuntimeTest, parallel_for_zero_grain_treated_as_one) {
+    ThreadPool pool;
+    pool.initialize(2);
+
+    std::atomic<int> counter{0};
+    pool.parallel_for(5, 0, [&](size_t) {
+        counter.fetch_add(1, std::memory_order_relaxed);
+    });
+    EXPECT_EQ(counter.load(), 5);
+}
