@@ -269,6 +269,94 @@ TEST(OptimRMSprop, IllConditionedQuadratic_StillConverges) {
 }
 
 // -----------------------------------------------------------------------
+// Adadelta (adaptive learning rate)
+// -----------------------------------------------------------------------
+TEST(OptimAdadelta, Sphere2D_ConvergesNearZero) {
+    ms::OptimResult r = ms::adadelta(sphere, sphere_grad, {2.0, 3.0}, 1.0, 0.95, 1e-6, 3000);
+    EXPECT_LT(r.f_val, 1e-4);
+    EXPECT_NEAR(r.x[0], 0.0, 1e-2);
+    EXPECT_NEAR(r.x[1], 0.0, 1e-2);
+}
+
+TEST(OptimAdadelta, Rosenbrock_ImprovesObjective) {
+    const double f0 = rosenbrock({-1.0, 1.0});
+    ms::OptimResult r = ms::adadelta(
+        rosenbrock, rosenbrock_grad, {-1.0, 1.0}, 1.0, 0.95, 1e-6, 8000);
+    EXPECT_LT(r.f_val, f0);
+    EXPECT_LT(r.f_val, 10.0);
+}
+
+TEST(OptimAdadelta, QuadraticMinimum_Found) {
+    const std::vector<double> diag = {2.0, 4.0, 8.0};
+    ms::FuncND f = [&diag](const std::vector<double>& x) {
+        double s = 0.0;
+        for (size_t i = 0; i < x.size(); ++i) {
+            s += 0.5 * diag[i] * x[i] * x[i];
+        }
+        return s;
+    };
+    ms::GradND g = make_quadratic_grad(diag);
+    ms::OptimResult r = ms::adadelta(f, g, {5.0, -3.0, 2.0}, 1.0, 0.95, 1e-6, 8000);
+    EXPECT_LT(r.f_val, 0.02);
+    EXPECT_NEAR(r.x[0], 0.0, 5e-2);
+    EXPECT_NEAR(r.x[1], 0.0, 5e-2);
+    EXPECT_NEAR(r.x[2], 0.0, 5e-2);
+}
+
+TEST(OptimAdadelta, ResultIsFinite) {
+    ms::OptimResult r = ms::adadelta(sphere, sphere_grad, {3.0, -2.0});
+    EXPECT_TRUE(std::isfinite(r.f_val));
+    for (auto v : r.x) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(OptimAdadelta, CorrectDimension) {
+    ms::OptimResult r = ms::adadelta(sphere, sphere_grad, {1.0, 2.0, 3.0});
+    EXPECT_EQ(r.x.size(), 3u);
+}
+
+TEST(OptimAdadelta, AlreadyAtMinimum_TerminatesImmediately) {
+    ms::OptimResult r = ms::adadelta(sphere, sphere_grad, {0.0, 0.0});
+    EXPECT_LT(r.f_val, 1e-12);
+    EXPECT_TRUE(r.converged);
+    EXPECT_LE(r.iterations, 2u);
+}
+
+TEST(OptimAdadelta, Sphere2D_ReducesObjective) {
+    ms::OptimResult r = ms::adadelta(sphere, sphere_grad, {2.0, 2.0});
+    EXPECT_LT(r.f_val, 4.0);
+}
+
+TEST(OptimAdadelta, IterationsWithinMaxIter) {
+    ms::OptimResult r = ms::adadelta(sphere, sphere_grad, {1.0, 1.0}, 1.0, 0.95, 1e-6, 50);
+    EXPECT_LE(r.iterations, 50u);
+}
+
+TEST(OptimAdadelta, HighDimQuadratic_Converges) {
+    const int n = 8;
+    std::vector<double> x0(static_cast<size_t>(n), 1.0);
+    ms::OptimResult r = ms::adadelta(sphere, sphere_grad, x0, 1.0, 0.95, 1e-6, 2000);
+    EXPECT_LT(r.f_val, 1e-3);
+    EXPECT_TRUE(r.converged);
+}
+
+TEST(OptimAdadelta, IllConditionedQuadratic_StillConverges) {
+    const std::vector<double> diag = {1.0, 10.0, 100.0};
+    ms::FuncND f = [&diag](const std::vector<double>& x) {
+        double s = 0.0;
+        for (size_t i = 0; i < x.size(); ++i) {
+            s += 0.5 * diag[i] * x[i] * x[i];
+        }
+        return s;
+    };
+    ms::GradND g = make_quadratic_grad(diag);
+    const double f0 = f({10.0, -5.0, 2.0});
+    ms::OptimResult r = ms::adadelta(
+        f, g, {10.0, -5.0, 2.0}, 1.0, 0.95, 1e-6, 8000);
+    EXPECT_LT(r.f_val, 0.5 * f0);
+    EXPECT_LT(r.f_val, 1.0);
+}
+
+// -----------------------------------------------------------------------
 // Levenberg-Marquardt (nonlinear least squares)
 // -----------------------------------------------------------------------
 namespace {
