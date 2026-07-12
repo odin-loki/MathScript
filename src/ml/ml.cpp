@@ -1685,6 +1685,59 @@ double f1_score(const Vec& yp, const Vec& yt, double thr) {
     return 2*p*r/(p+r+1e-12);
 }
 
+ConfusionMatrix confusion_matrix(const Vec& yp, const Vec& yt, double thr) {
+    ConfusionMatrix cm;
+    if (yp.size()!=yt.size()) return cm;
+    for (size_t i=0;i<yp.size();++i) {
+        bool pred_pos = yp[i]>=thr;
+        bool true_pos = yt[i]>=0.5;
+        if (pred_pos && true_pos) ++cm.tp;
+        else if (pred_pos && !true_pos) ++cm.fp;
+        else if (!pred_pos && !true_pos) ++cm.tn;
+        else ++cm.fn;
+    }
+    return cm;
+}
+
+std::vector<ROCPoint> roc_curve(const Vec& yp, const Vec& yt) {
+    std::vector<ROCPoint> pts;
+    if (yp.size()!=yt.size() || yp.empty()) return pts;
+
+    std::vector<double> cand(yp.begin(), yp.end());
+    std::sort(cand.begin(), cand.end());
+    cand.erase(std::unique(cand.begin(), cand.end()), cand.end());
+    // Trivial endpoints: a threshold above every score classifies nothing as
+    // positive, one below every score classifies everything as positive.
+    cand.push_back(cand.back()+1.0);
+    cand.push_back(cand.front()-1.0);
+    std::sort(cand.begin(), cand.end(), std::greater<double>());
+
+    pts.reserve(cand.size());
+    for (double thr : cand) {
+        ConfusionMatrix cm = confusion_matrix(yp, yt, thr);
+        double tpr = (cm.tp+cm.fn) > 0 ? (double)cm.tp/(cm.tp+cm.fn) : 0.0;
+        double fpr = (cm.fp+cm.tn) > 0 ? (double)cm.fp/(cm.fp+cm.tn) : 0.0;
+        pts.push_back({fpr, tpr, thr});
+    }
+    std::sort(pts.begin(), pts.end(), [](const ROCPoint& a, const ROCPoint& b){
+        if (a.fpr!=b.fpr) return a.fpr<b.fpr;
+        return a.tpr<b.tpr;
+    });
+    pts.erase(std::unique(pts.begin(), pts.end(), [](const ROCPoint& a, const ROCPoint& b){
+        return a.fpr==b.fpr && a.tpr==b.tpr;
+    }), pts.end());
+    return pts;
+}
+
+double roc_auc(const Vec& yp, const Vec& yt) {
+    auto pts = roc_curve(yp, yt);
+    if (pts.size()<2) return 0.0;
+    double auc=0.0;
+    for (size_t i=1;i<pts.size();++i)
+        auc += 0.5*(pts[i-1].tpr+pts[i].tpr)*(pts[i].fpr-pts[i-1].fpr);
+    return auc;
+}
+
 // ========================== Preprocessing ==========================
 
 void StandardScaler::fit(const Mat& X) {
