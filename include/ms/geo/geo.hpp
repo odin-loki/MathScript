@@ -239,5 +239,27 @@ MinBoundingRect min_bounding_rect(const std::vector<Point2D>& points);
 // @return the Minkowski sum polygon, convex and in CCW order.
 Polygon2D minkowski_sum_convex(const Polygon2D& a, const Polygon2D& b);
 
+// ========================== Polygon Triangulation ==========================
+
+// Ear-clipping triangulation of a simple (non-self-intersecting) 2D polygon. Repeatedly
+// finds a valid "ear" — a triangle formed by three consecutive vertices where the middle
+// vertex is convex and no other remaining polygon vertex lies strictly inside that triangle
+// — and clips it off until three vertices remain. Works for both convex and concave simple
+// polygons (unlike naive fan triangulation from a single vertex, which fails on reflex
+// vertices). Standard O(n^2) textbook implementation.
+//
+// @param poly ordered vertex ring of a simple polygon. Fewer than 3 vertices, fewer than 3
+//        distinct vertices after removing duplicate consecutive points, or a polygon where
+//        no valid ear can be found (e.g. self-intersecting input violating the simple-polygon
+//        precondition) returns an empty result rather than crashing or looping indefinitely.
+//        Collinear consecutive vertices are skipped as non-ears; if the walk stalls with only
+//        collinear/degenerate ears left, remaining collinear vertices may be removed without
+//        emitting a triangle.
+// @return triangle index triples referencing the original `poly` vertex array (`n`-gon yields
+//         exactly `n-2` triangles when successful).
+// @note Requires a SIMPLE polygon as a precondition — self-intersecting input is undefined
+//       and typically yields an empty result once ear detection stalls.
+std::vector<Triangle2Di> triangulate_polygon(const Polygon2D& poly);
+
 } // namespace geo
 } // namespace ms

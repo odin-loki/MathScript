@@ -840,3 +840,89 @@ TEST(GeoMinkowski, ThreeVertexTrianglesProduceAtMostSixVertices) {
     auto brute = minkowski_bruteforce_reference(t1, t2);
     expect_same_point_set(sum, brute);
 }
+
+// ---- Polygon Triangulation (ear clipping) ----
+
+namespace {
+
+double triangulation_total_area(const Polygon2D& poly, const std::vector<Triangle2Di>& tris) {
+    double total = 0.0;
+    for (const auto& t : tris)
+        total += area(poly[t.a], poly[t.b], poly[t.c]);
+    return total;
+}
+
+Point2D triangle_centroid(const Polygon2D& poly, const Triangle2Di& t) {
+    const auto& a = poly[t.a];
+    const auto& b = poly[t.b];
+    const auto& c = poly[t.c];
+    return {(a.x + b.x + c.x) / 3.0, (a.y + b.y + c.y) / 3.0};
+}
+
+void expect_valid_triangulation(const Polygon2D& poly, const std::vector<Triangle2Di>& tris,
+                                int expected_count, double area_tol = 1e-9) {
+    ASSERT_EQ(tris.size(), static_cast<size_t>(expected_count));
+    EXPECT_NEAR(triangulation_total_area(poly, tris), area(poly), area_tol);
+    for (const auto& t : tris) {
+        EXPECT_GT(area(poly[t.a], poly[t.b], poly[t.c]), 0.0);
+        EXPECT_TRUE(point_in_polygon(triangle_centroid(poly, t), poly));
+    }
+}
+
+Polygon2D reverse_polygon(Polygon2D poly) {
+    std::reverse(poly.begin(), poly.end());
+    return poly;
+}
+
+} // namespace
+
+TEST(GeoTriangulate, ConvexPentagonAreaAndCount) {
+    Polygon2D pent = regular_ngon(5, 2.0, {0, 0}, 0.2);
+    auto tris = triangulate_polygon(pent);
+    expect_valid_triangulation(pent, tris, 3);
+}
+
+TEST(GeoTriangulate, ConvexSquareCCW) {
+    Polygon2D sq = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    auto tris = triangulate_polygon(sq);
+    expect_valid_triangulation(sq, tris, 2);
+}
+
+TEST(GeoTriangulate, LShapeConcavePolygon) {
+    // 6x4 L with a 2x2 bite from the top-right interior corner.
+    Polygon2D lshape = {{0, 0}, {6, 0}, {6, 2}, {4, 2}, {4, 4}, {0, 4}};
+    auto tris = triangulate_polygon(lshape);
+    expect_valid_triangulation(lshape, tris, 4);
+}
+
+TEST(GeoTriangulate, ReflexVertexRequiresEarClipping) {
+    // Concave hexagon with a reflex notch; no collinear consecutive triples.
+    Polygon2D notch = {{0, 0}, {5, 0}, {5, 5}, {3, 5}, {3, 2}, {0, 2}};
+    auto tris = triangulate_polygon(notch);
+    expect_valid_triangulation(notch, tris, static_cast<int>(notch.size()) - 2);
+}
+
+TEST(GeoTriangulate, CWInputMatchesCCWArea) {
+    Polygon2D ccw = {{0, 0}, {5, 0}, {5, 3}, {0, 3}};
+    Polygon2D cw = reverse_polygon(ccw);
+    auto tris_ccw = triangulate_polygon(ccw);
+    auto tris_cw = triangulate_polygon(cw);
+    expect_valid_triangulation(ccw, tris_ccw, 2);
+    expect_valid_triangulation(cw, tris_cw, 2);
+    EXPECT_NEAR(triangulation_total_area(ccw, tris_ccw),
+                triangulation_total_area(cw, tris_cw), 1e-9);
+}
+
+TEST(GeoTriangulate, FewerThanThreeVerticesIsEmpty) {
+    EXPECT_TRUE(triangulate_polygon({}).empty());
+    EXPECT_TRUE(triangulate_polygon({{1, 2}}).empty());
+    EXPECT_TRUE(triangulate_polygon({{0, 0}, {1, 1}}).empty());
+}
+
+TEST(GeoTriangulate, CollinearFlatVertexNoInfiniteLoop) {
+    // Middle bottom vertex is collinear; triangulation must finish without looping.
+    Polygon2D poly = {{0, 0}, {2, 0}, {4, 0}, {4, 3}, {0, 3}};
+    std::vector<Triangle2Di> tris;
+    ASSERT_NO_THROW(tris = triangulate_polygon(poly));
+    expect_valid_triangulation(poly, tris, static_cast<int>(poly.size()) - 2);
+}
