@@ -4,6 +4,7 @@
 #include "ms/error/error_types.hpp"
 #include <complex>
 #include <cstdint>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -95,6 +96,49 @@ std::vector<double> interp_hermite(const std::vector<double>& xs,
 
 // Chebyshev evaluation
 double poly_cheb_eval(const std::vector<double>& cheb_coeffs, double x);
+
+// Chebyshev series expansion: computes the coefficients c_0..c_n such that
+// poly_cheb_eval(poly_cheb_expand(f, n, a, b), x) approximates f(x) for x in
+// [a, b]. This is the dual/inverse operation of poly_cheb_eval: that function
+// consumes a coefficient vector and evaluates the resulting series at a
+// point, while this function produces the coefficient vector from an
+// arbitrary callable f.
+//
+// Algorithm (discrete-cosine-transform / Chebyshev-node-sampling, closely
+// related to Clenshaw-Curtis quadrature):
+//  1. Sample f at the n+1 Chebyshev points of the first kind on [-1, 1],
+//     x_k = cos((2k+1)*pi / (2*(n+1))) for k = 0..n, mapped onto [a, b] via
+//     x_mapped_k = (a+b)/2 + (b-a)/2 * x_k.
+//  2. For each order j = 0..n, use the discrete orthogonality of the
+//     Chebyshev polynomials over these nodes:
+//       c_j = (2/(n+1)) * sum_{k=0}^{n} f(x_mapped_k) * T_j(x_k),
+//     evaluating T_j(x_k) = cos(j * acos(x_k)) directly.
+//  3. c_0 is then halved so the result matches poly_cheb_eval's convention,
+//     which evaluates the series as c_0 + sum_{j=1}^{n} c_j*T_j(x) (i.e.
+//     poly_cheb_eval does NOT itself halve coeffs[0] -- see PolyChebEval.
+//     T0IsOne, where coeffs={1.0} evaluates to exactly 1.0). Folding the
+//     usual 1/2 factor into c_0 here (rather than leaving it to the caller
+//     or to poly_cheb_eval) keeps the two functions a true round-trip pair.
+//
+// @param f function to expand; sampled at n+1 points, no derivatives needed.
+// @param n degree of the expansion; returns n+1 coefficients c_0..c_n.
+//          n < 0 returns {} (invalid). n == 0 returns a single coefficient
+//          equal to f evaluated at the midpoint (a+b)/2 (the one Chebyshev
+//          node for degree 0), i.e. a constant approximation.
+// @param a left endpoint of the interval (default -1.0).
+// @param b right endpoint of the interval (default 1.0).
+// @return vector of n+1 coefficients c_0..c_n, directly usable with
+//         poly_cheb_eval (after mapping the evaluation point x in [a, b]
+//         back to [-1, 1] via t = (2*x - (a+b)) / (b-a), since poly_cheb_eval
+//         itself always operates on the canonical [-1, 1] argument).
+// @note If f is itself a polynomial of degree <= n, the expansion reproduces
+//       it exactly (up to floating-point error), since {T_0..T_n} exactly
+//       spans that space. For smooth-but-non-polynomial f, the approximation
+//       error shrinks rapidly (typically geometrically) as n grows, provided
+//       f is analytic in a neighborhood of [a, b]; for less smooth f
+//       convergence is slower but still improves with n.
+std::vector<double> poly_cheb_expand(std::function<double(double)> f, int n,
+                                      double a = -1.0, double b = 1.0);
 
 // Sturm chain: count real roots in [a, b]
 int poly_root_count(const std::vector<double>& p, double a, double b);
