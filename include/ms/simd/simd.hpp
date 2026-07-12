@@ -22,6 +22,8 @@ void mul(std::span<const double> a, std::span<const double> b, std::span<double>
 void scale(double alpha, std::span<const double> x, std::span<double> out);
 void axpy(double alpha, std::span<const double> x, std::span<double> y);
 double dot(std::span<const double> a, std::span<const double> b);
+double sum(std::span<const double> x);
+double sum_squares(std::span<const double> x);
 void exp_map(std::span<const double> x, std::span<double> out);
 
 std::vector<double> gemv(
