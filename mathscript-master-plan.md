@@ -8135,6 +8135,31 @@ DONE: CI green (Win/Linux), ~91% coverage (90% gate), 238 CTest suites, Valgrind
       with zero conflicts (distinct modules); post-fix full-suite verification on main came
       back 100% clean. No new CTest registrations; 132 new test cases across the eight
       modules' existing test binaries; 368 suites, 100% passing.
+      Wave 206: 8 parallel subagents across 8 independent modules. ms::special gains
+      sph_bessel_j/sph_bessel_y (spherical Bessel functions of the first/second kind via
+      closed-form n=0/1 base cases plus the standard stable upward recurrence, stable in each
+      direction for the reason that matters -- j_n decays with n while y_n grows with n, so
+      round-off stays small relative to the answer in both cases). ms::signal gains
+      lms_adaptive_filter (online adaptive FIR filter via stochastic gradient descent on the
+      instantaneous squared error -- the classic w[k] += mu*e[n]*x[n-k] update -- for noise
+      cancellation/system identification/equalization). ms::graph gains tsp_heuristic
+      (nearest-neighbor greedy construction followed by 2-opt local search on a dense pairwise
+      distance matrix, with an iteration cap to guarantee termination). ms::stats gains
+      wilcoxon_signed_rank (paired non-parametric test via rank-sum of signed differences, with
+      tie correction and a continuity-corrected normal approximation mirroring this module's
+      existing mann_whitney_u treatment). ms::ml gains confusion_matrix/roc_curve/roc_auc
+      (threshold-swept classification evaluation reusing precision/recall's exact thresholding
+      convention, AUC via the trapezoidal rule). ms::optim gains levenberg_marquardt (damped
+      Gauss-Newton nonlinear least squares -- finite-difference Jacobian, adaptive damping that
+      interpolates between Gauss-Newton and gradient descent based on step acceptance). ms::info
+      gains permutation_entropy (Bandt-Pompe ordinal-pattern Shannon entropy of a time series,
+      the natural complement to this module's existing sample_entropy). ms::geo gains
+      minkowski_sum_convex (angular edge-merge of two convex polygons' edge vectors sorted by
+      angle, with a brute-force pairwise-sum-plus-hull fallback for degenerate <3-vertex inputs).
+      All eight branches merged with zero conflicts (distinct modules); full-suite verification
+      on main succeeded on the first attempt this time (toolset fix from Wave 205 held). No new
+      CTest registrations; 123 new test cases across the eight modules' existing test binaries;
+      368 suites, 100% passing.
 REMAINING: 24h fuzz marathon (fuzz-24h.yml workflow_dispatch — manual step),
       full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement),
       Windows installer/Linux packages (post-1.0 packaging),
