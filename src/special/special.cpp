@@ -564,6 +564,19 @@ double hypergeo_2f1_series(double a, double b, double c, double z) {
     return sum;
 }
 
+double kummer_u_connection(double a, double b, double z) {
+    const double log_c1 = log_gamma(1.0 - b) - log_gamma(a - b + 1.0);
+    const double log_c2 = log_gamma(b - 1.0) - log_gamma(a);
+    if (!std::isfinite(log_c1) || !std::isfinite(log_c2)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double c1 = std::exp(log_c1);
+    const double c2 = std::exp(log_c2);
+    const double m1 = kummer_m_series(a, b, z);
+    const double m2 = kummer_m_series(a - b + 1.0, 2.0 - b, z);
+    return c1 * m1 - c2 * std::pow(z, 1.0 - b) * m2;
+}
+
 double tricomi_u_series(double a, double b, double z) {
     double sum = 1.0;
     double term = 1.0;
@@ -1583,6 +1596,28 @@ double hypergeo_2f1(double a, double b, double c, double z) {
 
 double kummer_m(double a, double b, double z) {
     return kummer_m_series(a, b, z);
+}
+
+double kummer_u(double a, double b, double z) {
+    if (z <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (std::abs(b - a - 1.0) <= 1e-12 * std::max(1.0, std::abs(a))) {
+        return std::pow(z, -a);
+    }
+    if (b == std::floor(b)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (z > 20.0) {
+        return std::pow(z, -a);
+    }
+    if (b < 2.0 - 1e-12) {
+        const double connected = kummer_u_connection(a, b, z);
+        if (std::isfinite(connected)) {
+            return connected;
+        }
+    }
+    return tricomi_u_impl(a, b, z);
 }
 
 double tricomi_u(double a, double b, double z) {

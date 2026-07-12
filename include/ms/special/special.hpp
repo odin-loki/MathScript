@@ -258,6 +258,19 @@ double hypergeo_0f1(double b, double z);
 double hypergeo_1f1(double a, double z);
 double hypergeo_2f1(double a, double b, double c, double z);
 double kummer_m(double a, double b, double z);
+/// Kummer confluent hypergeometric function of the second kind U(a,b,z) (DLMF §13.2).
+/// Linearly independent from kummer_m(a,b,z); decays as z^(-a) for large z when Re(a)>0.
+/// Evaluated via the connection formula in terms of kummer_m() for z in (0, 20], and via
+/// the leading large-z asymptotic U(a,b,z) ~ z^(-a) for z > 20.
+/// @param a upper parameter. @param b lower parameter (non-integer; integer b returns NaN).
+/// @param z argument (z > 0).
+/// @return U(a,b,z).
+/// @note Returns NaN for z <= 0 or integer b (except the exact U(a,a+1,z)=z^(-a)
+///       identity). For b >= 2 the connection formula is bypassed in favour of the
+///       existing Tricomi U series because M(a-b+1,2-b,z) is ill-conditioned there.
+/// @accuracy Relative error typically below ~1e-3 for non-integer b and z in (0, 20]; the
+///           z > 20 branch matches the leading asymptotic z^(-a) (O(1/z) corrections omitted).
+double kummer_u(double a, double b, double z);
 double tricomi_u(double a, double b, double z);
 double whittaker_m(double kappa, double mu, double z);
 double whittaker_w(double kappa, double mu, double z);
