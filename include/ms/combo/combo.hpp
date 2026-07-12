@@ -102,5 +102,42 @@ std::vector<std::vector<int>> bracelets(int n, int k);
 // Lyndon words of length n over k symbols (aperiodic, strictly minimal rotation)
 std::vector<std::vector<int>> lyndon_words(int n, int k);
 
+/// Standard binary reflected Gray code of n bits: a sequence of all 2^n
+/// distinct n-bit binary strings such that consecutive strings (including
+/// wrapping from the last back to the first) differ in exactly one bit.
+///
+/// Each code is returned as a length-n vector of 0/1 ints in
+/// most-significant-bit-first order (i.e. code[0] is the highest-order
+/// bit), matching how a binary string literal reads left-to-right. Codes
+/// are produced in Gray-code order via the standard closed-form
+/// construction: entry i is the binary representation of `i XOR (i >> 1)`.
+///
+/// @param n  Number of bits. n < 0 returns {}. n == 0 returns {{}} (one
+///           empty representative), matching this module's convention for
+///           a "trivial" n == 0 case (see necklaces(), bracelets()).
+/// @return   2^n codes, each a length-n 0/1 vector, in Gray-code order.
+/// @note 2^n grows exponentially; intended for small n (e.g. n <= 20), like
+///       the other brute-force enumeration functions in this module.
+std::vector<std::vector<int>> gray_code(int n);
+
+/// De Bruijn sequence B(k, n): a cyclic sequence over a k-symbol alphabet
+/// (symbols 0..k-1) of length k^n such that every one of the k^n possible
+/// length-n strings over that alphabet appears exactly once as a
+/// contiguous, cyclically-wrapping substring.
+///
+/// Constructed via the standard FKM (Fredricksen-Kessler-Maiorana)
+/// algorithm: the sequence is the concatenation, in lexicographic order,
+/// of all Lyndon words over {0,...,k-1} whose length divides n.
+///
+/// @param k  Alphabet size. k <= 0 returns {}.
+/// @param n  Substring length. n <= 0 returns {}.
+/// @return   The k^n symbols of the sequence, each in [0, k), NOT
+///           including the wrap-around repetition of the first n-1
+///           symbols at the end — the caller must conceptually wrap
+///           around to the front to read the final few length-n windows.
+/// @note k^n grows exponentially; intended for small k, n (e.g. k^n up to
+///       a few thousand).
+std::vector<int> de_bruijn_sequence(int k, int n);
+
 } // namespace combo
 } // namespace ms

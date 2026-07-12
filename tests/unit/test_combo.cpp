@@ -73,6 +73,37 @@ bool is_valid_motzkin_path(const std::string& s) {
     return height == 0;
 }
 
+// Hamming distance between two equal-length 0/1 vectors.
+int hamming_distance(const std::vector<int>& a, const std::vector<int>& b) {
+    int dist = 0;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        if (a[i] != b[i]) ++dist;
+    return dist;
+}
+
+std::size_t ipow(int base, int exp) {
+    std::size_t r = 1;
+    for (int i = 0; i < exp; ++i) r *= static_cast<std::size_t>(base);
+    return r;
+}
+
+// Extracts every cyclic length-n window of `seq` (wrapping past the end
+// back to the beginning), encoding each window as a base-k integer for
+// easy deduplication/hashing.
+std::set<uint64_t> cyclic_windows(const std::vector<int>& seq, int k, int n) {
+    std::set<uint64_t> windows;
+    int len = static_cast<int>(seq.size());
+    for (int start = 0; start < len; ++start) {
+        uint64_t code = 0;
+        for (int j = 0; j < n; ++j) {
+            code = code * static_cast<uint64_t>(k) +
+                   static_cast<uint64_t>(seq[(start + j) % len]);
+        }
+        windows.insert(code);
+    }
+    return windows;
+}
+
 } // namespace
 
 TEST(ComboFactorials, Factorial) {
@@ -456,4 +487,98 @@ TEST(ComboBracelets, DegenerateCasesMatchNecklacesConvention) {
 
     // n == 1: every single symbol is trivially its own bracelet.
     EXPECT_EQ(bracelets(1, 5).size(), 5u);
+}
+
+TEST(ComboGrayCode, DegenerateCases) {
+    EXPECT_EQ(gray_code(0), (std::vector<std::vector<int>>{{}}));
+    EXPECT_EQ(gray_code(-1), (std::vector<std::vector<int>>{}));
+    EXPECT_EQ(gray_code(-5), (std::vector<std::vector<int>>{}));
+}
+
+TEST(ComboGrayCode, OneBitCase) {
+    EXPECT_EQ(gray_code(1), (std::vector<std::vector<int>>{{0}, {1}}));
+}
+
+TEST(ComboGrayCode, CountIsPowerOfTwo) {
+    for (int n : {2, 3, 4, 5}) {
+        EXPECT_EQ(gray_code(n).size(), static_cast<std::size_t>(1) << n)
+            << "n=" << n;
+    }
+}
+
+TEST(ComboGrayCode, EveryCodeHasExactlyNBits) {
+    for (int n : {0, 1, 2, 3, 4, 5}) {
+        auto codes = gray_code(n);
+        for (const auto& c : codes)
+            EXPECT_EQ(static_cast<int>(c.size()), n) << "n=" << n;
+    }
+}
+
+TEST(ComboGrayCode, AllCodesDistinct) {
+    for (int n : {1, 2, 3, 4, 5}) {
+        auto codes = gray_code(n);
+        std::set<std::vector<int>> unique(codes.begin(), codes.end());
+        EXPECT_EQ(unique.size(), codes.size()) << "n=" << n;
+    }
+}
+
+TEST(ComboGrayCode, ConsecutivePairsDifferByExactlyOneBit) {
+    // The definitive Gray code correctness check: every consecutive pair
+    // (including the wrap-around from last back to first) must have
+    // Hamming distance exactly 1.
+    for (int n : {1, 2, 3, 4, 5, 6}) {
+        auto codes = gray_code(n);
+        std::size_t count = codes.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto& cur = codes[i];
+            const auto& next = codes[(i + 1) % count];
+            EXPECT_EQ(hamming_distance(cur, next), 1)
+                << "n=" << n << " i=" << i;
+        }
+    }
+}
+
+TEST(ComboDeBruijnSequence, DegenerateCases) {
+    EXPECT_EQ(de_bruijn_sequence(0, 3), (std::vector<int>{}));
+    EXPECT_EQ(de_bruijn_sequence(2, 0), (std::vector<int>{}));
+    EXPECT_EQ(de_bruijn_sequence(-1, 3), (std::vector<int>{}));
+    EXPECT_EQ(de_bruijn_sequence(2, -1), (std::vector<int>{}));
+}
+
+TEST(ComboDeBruijnSequence, LengthIsKToTheN) {
+    EXPECT_EQ(de_bruijn_sequence(2, 3).size(), 8u);
+    EXPECT_EQ(de_bruijn_sequence(2, 4).size(), 16u);
+    EXPECT_EQ(de_bruijn_sequence(3, 2).size(), 9u);
+    EXPECT_EQ(de_bruijn_sequence(2, 5).size(), 32u);
+}
+
+TEST(ComboDeBruijnSequence, SymbolsWithinAlphabetRange) {
+    for (int sym : de_bruijn_sequence(4, 3)) {
+        EXPECT_GE(sym, 0);
+        EXPECT_LT(sym, 4);
+    }
+}
+
+TEST(ComboDeBruijnSequence, EveryWindowAppearsExactlyOnceCyclically) {
+    // The definitive De Bruijn sequence correctness check: treating the
+    // sequence as cyclic, every one of the k^n possible length-n strings
+    // must appear as a contiguous window exactly once.
+    const std::vector<std::pair<int, int>> cases{{2, 3}, {3, 2}, {2, 5}};
+    for (const auto& [k, n] : cases) {
+        auto seq = de_bruijn_sequence(k, n);
+        ASSERT_EQ(seq.size(), ipow(k, n)) << "k=" << k << " n=" << n;
+        auto windows = cyclic_windows(seq, k, n);
+        EXPECT_EQ(windows.size(), seq.size())
+            << "k=" << k << " n=" << n
+            << ": expected every length-n window to be distinct";
+    }
+}
+
+TEST(ComboDeBruijnSequence, LargerCaseExercisesAlgorithm) {
+    // k=2, n=5 gives a 32-symbol sequence, meaningfully exercising the
+    // FKM construction beyond the trivial small cases above.
+    auto seq = de_bruijn_sequence(2, 5);
+    ASSERT_EQ(seq.size(), 32u);
+    auto windows = cyclic_windows(seq, 2, 5);
+    EXPECT_EQ(windows.size(), 32u);
 }

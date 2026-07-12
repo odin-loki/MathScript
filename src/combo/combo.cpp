@@ -462,5 +462,54 @@ std::vector<std::vector<int>> lyndon_words(int n, int k) {
     return result;
 }
 
+std::vector<std::vector<int>> gray_code(int n) {
+    if (n < 0) return {};
+    if (n == 0) return {{}};
+    int total = 1 << n;
+    std::vector<std::vector<int>> result;
+    result.reserve(static_cast<std::size_t>(total));
+    for (int i = 0; i < total; ++i) {
+        int g = i ^ (i >> 1);
+        std::vector<int> code(n);
+        for (int bit = 0; bit < n; ++bit)
+            code[bit] = (g >> (n - 1 - bit)) & 1; // MSB first
+        result.push_back(std::move(code));
+    }
+    return result;
+}
+
+// FKM (Fredricksen-Kessler-Maiorana) algorithm: builds B(k,n) as the
+// concatenation, in lexicographic order, of all Lyndon words over
+// {0,...,k-1} whose length divides n. `a` holds the current candidate
+// prefix (1-indexed; a[0] is unused), `t` is the next position to fill,
+// and `p` tracks the length of the current longest proper "period" seen
+// so far (used to detect when a[1..t-1] is itself a Lyndon word).
+static void de_bruijn_helper(int t, int p, int k, int n,
+                              std::vector<int>& a, std::vector<int>& seq) {
+    if (t > n) {
+        if (n % p == 0) {
+            for (int i = 1; i <= p; ++i) seq.push_back(a[i]);
+        }
+        return;
+    }
+    a[t] = a[t - p];
+    de_bruijn_helper(t + 1, p, k, n, a, seq);
+    for (int j = a[t - p] + 1; j < k; ++j) {
+        a[t] = j;
+        de_bruijn_helper(t + 1, t, k, n, a, seq);
+    }
+}
+
+std::vector<int> de_bruijn_sequence(int k, int n) {
+    if (k <= 0 || n <= 0) return {};
+    std::vector<int> a(static_cast<std::size_t>(n) + 1, 0);
+    std::size_t expected_len = 1;
+    for (int i = 0; i < n; ++i) expected_len *= static_cast<std::size_t>(k);
+    std::vector<int> seq;
+    seq.reserve(expected_len);
+    de_bruijn_helper(1, 1, k, n, a, seq);
+    return seq;
+}
+
 } // namespace combo
 } // namespace ms
