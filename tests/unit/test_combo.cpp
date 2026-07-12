@@ -204,6 +204,84 @@ TEST(ComboEnum, AllPartitions) {
     EXPECT_EQ(parts.size(), 5u);  // p(4)=5
 }
 
+namespace {
+
+void assert_valid_restricted_partitions(const std::vector<std::vector<int>>& parts,
+                                        int n, int k) {
+    std::set<std::vector<int>> seen;
+    for (const auto& part : parts) {
+        ASSERT_EQ(static_cast<int>(part.size()), k);
+        int sum = std::accumulate(part.begin(), part.end(), 0);
+        ASSERT_EQ(sum, n);
+        for (int x : part)
+            ASSERT_GE(x, 1);
+        for (size_t i = 1; i < part.size(); ++i)
+            ASSERT_GE(part[i - 1], part[i]);
+        ASSERT_TRUE(seen.insert(part).second);
+    }
+}
+
+} // namespace
+
+TEST(ComboEnum, RestrictedPartitionsBasic) {
+    auto parts = restricted_partitions(5, 2);
+    EXPECT_EQ(parts.size(), 2u);
+    assert_valid_restricted_partitions(parts, 5, 2);
+    EXPECT_EQ(parts, (std::vector<std::vector<int>>{{4, 1}, {3, 2}}));
+}
+
+TEST(ComboEnum, RestrictedPartitionsSinglePart) {
+    auto parts = restricted_partitions(4, 1);
+    EXPECT_EQ(parts, (std::vector<std::vector<int>>{{4}}));
+}
+
+TEST(ComboEnum, RestrictedPartitionsAllOnes) {
+    auto parts = restricted_partitions(4, 4);
+    EXPECT_EQ(parts, (std::vector<std::vector<int>>{{1, 1, 1, 1}}));
+}
+
+TEST(ComboEnum, RestrictedPartitionsCountSixIntoThree) {
+    auto parts = restricted_partitions(6, 3);
+    EXPECT_EQ(parts.size(), 3u);
+    assert_valid_restricted_partitions(parts, 6, 3);
+}
+
+TEST(ComboEnum, RestrictedPartitionsSevenIntoTwo) {
+    auto parts = restricted_partitions(7, 2);
+    EXPECT_EQ(parts.size(), 3u);
+    assert_valid_restricted_partitions(parts, 7, 2);
+    EXPECT_EQ(parts, (std::vector<std::vector<int>>{{6, 1}, {5, 2}, {4, 3}}));
+}
+
+TEST(ComboEnum, RestrictedPartitionsImpossible) {
+    EXPECT_TRUE(restricted_partitions(5, 6).empty());
+    EXPECT_TRUE(restricted_partitions(3, 5).empty());
+}
+
+TEST(ComboEnum, RestrictedPartitionsInvalidInput) {
+    EXPECT_TRUE(restricted_partitions(-1, 2).empty());
+    EXPECT_TRUE(restricted_partitions(5, 0).empty());
+    EXPECT_TRUE(restricted_partitions(5, -1).empty());
+}
+
+TEST(ComboEnum, RestrictedPartitionsZero) {
+    EXPECT_EQ(restricted_partitions(0, 0), (std::vector<std::vector<int>>{{}}));
+    EXPECT_TRUE(restricted_partitions(0, 1).empty());
+}
+
+TEST(ComboEnum, RestrictedPartitionsSubsetOfAllPartitions) {
+    const int n = 8;
+    auto all = all_partitions(n);
+    for (int k = 1; k <= n; ++k) {
+        auto restricted = restricted_partitions(n, k);
+        assert_valid_restricted_partitions(restricted, n, k);
+        for (const auto& part : restricted) {
+            EXPECT_TRUE(std::find(all.begin(), all.end(), part) != all.end())
+                << "k=" << k;
+        }
+    }
+}
+
 TEST(ComboEnum, AllCompositions) {
     auto comps = all_compositions(3);
     EXPECT_EQ(comps.size(), 4u);
