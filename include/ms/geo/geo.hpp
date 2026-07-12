@@ -287,5 +287,30 @@ std::vector<Triangle2Di> triangulate_polygon(const Polygon2D& poly);
 //       that should have been excluded survives). The `subject` polygon has no such restriction.
 Polygon2D clip_polygon(const Polygon2D& subject, const Polygon2D& clip_window);
 
+// ========================== Polygon Union ==========================
+
+// Union of two CONVEX polygons. Overlapping/touching operands are merged by collecting
+// exterior vertices and edge–edge intersections, then `convex_hull_2d` on that set.
+// This is exact when the union region is itself convex (e.g. two overlapping axis-aligned
+// rectangles); when the union region is non-convex — which can occur even with convex
+// inputs — the hull step returns a documented convex over-approximation of the union.
+//
+// Disjoint operands cannot be represented as one polygon; the implementation falls back
+// to `convex_hull_2d` over all vertices (also an over-approximation bridging the gap).
+//
+// Degenerate inputs (<3 vertices in either polygon, or either operand empty) also use the
+// hull fallback over all vertices.
+//
+// @param a, b convex polygons in any winding (both CCW is the usual convention in this
+//        module). Fewer than 3 vertices in either operand uses the hull fallback above.
+//        Both empty returns an empty polygon.
+// @return the union polygon in CCW order (via `convex_hull_2d`), or empty when both inputs
+//         are empty / produce no area.
+// @note Requires CONVEX inputs as a precondition — non-convex polygons are out of scope and
+//       yield undefined/over-approximated results. This is an MVP boolean-union helper, not a
+//       general simple-polygon clipper (cf. `clip_polygon` for intersection against a convex
+//       window).
+Polygon2D poly_union(const Polygon2D& a, const Polygon2D& b);
+
 } // namespace geo
 } // namespace ms

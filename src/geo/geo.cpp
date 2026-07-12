@@ -1095,5 +1095,104 @@ Polygon2D clip_polygon(const Polygon2D& subject, const Polygon2D& clip_window) {
     return output;
 }
 
+// ---- Polygon Union (convex MVP) ----
+
+static bool point_strictly_inside(const Point2D& p, const Polygon2D& poly) {
+    if (!point_in_polygon(p, poly)) return false;
+    const int n = static_cast<int>(poly.size());
+    constexpr double kEps = 1e-9;
+    for (int i = 0; i < n; ++i)
+        if (pt_on_seg(p, poly[i], poly[(i + 1) % n], kEps)) return false;
+    return true;
+}
+
+static void collect_segment_intersections(std::vector<Point2D>& out,
+                                          const Point2D& a, const Point2D& b,
+                                          const Point2D& c, const Point2D& d) {
+    Vec2D r = vec2(a, b), s = vec2(c, d);
+    double denom = cross2d(r, s);
+    constexpr double kEps = 1e-9;
+    if (std::abs(denom) < 1e-12) {
+        if (pt_on_seg(a, c, d, kEps)) out.push_back(a);
+        if (pt_on_seg(b, c, d, kEps)) out.push_back(b);
+        if (pt_on_seg(c, a, b, kEps)) out.push_back(c);
+        if (pt_on_seg(d, a, b, kEps)) out.push_back(d);
+        return;
+    }
+    Vec2D qp = vec2(c, a);
+    double t = cross2d(qp, s) / denom;
+    double u = cross2d(qp, r) / denom;
+    if (t >= -kEps && t <= 1.0 + kEps && u >= -kEps && u <= 1.0 + kEps)
+        out.push_back({a.x + t * r.x, a.y + t * r.y});
+}
+
+static Polygon2D poly_union_hull_fallback(const Polygon2D& a, const Polygon2D& b) {
+    std::vector<Point2D> pts;
+    pts.reserve(a.size() + b.size());
+    pts.insert(pts.end(), a.begin(), a.end());
+    pts.insert(pts.end(), b.begin(), b.end());
+    return convex_hull_2d(std::move(pts));
+}
+
+static Polygon2D poly_union_from_candidates(Polygon2D a, Polygon2D b) {
+    std::vector<Point2D> candidates;
+    candidates.reserve(a.size() + b.size() + 8);
+
+    for (const auto& p : a)
+        if (!point_strictly_inside(p, b)) candidates.push_back(p);
+    for (const auto& p : b)
+        if (!point_strictly_inside(p, a)) candidates.push_back(p);
+
+    const int na = static_cast<int>(a.size());
+    const int nb = static_cast<int>(b.size());
+    for (int i = 0; i < na; ++i) {
+        const Point2D& s1 = a[i];
+        const Point2D& e1 = a[(i + 1) % na];
+        for (int j = 0; j < nb; ++j)
+            collect_segment_intersections(candidates, s1, e1, b[j], b[(j + 1) % nb]);
+    }
+
+    if (candidates.size() < 3) return poly_union_hull_fallback(a, b);
+    return convex_hull_2d(std::move(candidates));
+}
+
+static bool polygons_overlap(const Polygon2D& a, const Polygon2D& b) {
+    for (const auto& p : a)
+        if (point_in_polygon(p, b)) return true;
+    for (const auto& p : b)
+        if (point_in_polygon(p, a)) return true;
+
+    const int na = static_cast<int>(a.size());
+    const int nb = static_cast<int>(b.size());
+    for (int i = 0; i < na; ++i) {
+        const Point2D& s1 = a[i];
+        const Point2D& e1 = a[(i + 1) % na];
+        for (int j = 0; j < nb; ++j) {
+            Point2D ip;
+            if (intersect_seg_seg({s1, e1}, {b[j], b[(j + 1) % nb]}, &ip))
+                return true;
+        }
+    }
+    return false;
+}
+
+Polygon2D poly_union(const Polygon2D& a, const Polygon2D& b) {
+    if (a.empty()) return b;
+    if (b.empty()) return a;
+    if (a.size() < 3 || b.size() < 3) return poly_union_hull_fallback(a, b);
+
+    auto all_not_outside = [](const Polygon2D& inner, const Polygon2D& outer) {
+        for (const auto& p : inner)
+            if (!point_in_polygon(p, outer)) return false;
+        return true;
+    };
+    if (all_not_outside(a, b)) return b;
+    if (all_not_outside(b, a)) return a;
+
+    if (!polygons_overlap(a, b)) return poly_union_hull_fallback(a, b);
+
+    return poly_union_from_candidates(a, b);
+}
+
 } // namespace geo
 } // namespace ms
