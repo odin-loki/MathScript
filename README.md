@@ -1,10 +1,48 @@
-# MathScript HPC Computer Algebra System
+# MathScript
 
 [![CI](https://github.com/odin-loki/MathScript/actions/workflows/ci.yml/badge.svg)](https://github.com/odin-loki/MathScript/actions/workflows/ci.yml)
 
-A high-performance Computer Algebra System built in C++23 with CPU math libraries, runtime dispatch, and a console REPL.
+A computer algebra and HPC math system written in C++23: its own BLAS/LAPACK CPU kernels (no external linear-algebra dependency), 40+ math/domain modules, a console REPL with an optional LLVM JIT backend, and a compliance layer that forbids exceptions, raw `new`, and most other classic C++ footguns at the language-subset level.
 
-## Project Status: v1.0.0 — Phase 10 (Hardening) + Wave 205 Complete
+## What this actually is
+
+Most of the surface area is a fairly conventional (if unusually broad) numerical library: linear algebra, FFT, statistics, ODE/PDE solvers, optimization, signal/image processing, number theory, graph theory, computational/differential geometry, topology, quantum computing primitives, control theory, and financial math, all implemented from scratch against the same conventions (`std::vector`-of-coefficients polynomials, `Result<T>` instead of exceptions, defensive early-returns on malformed input, doc comments that cite the reference formula rather than just restating the signature).
+
+Two things make it a bit more interesting than "yet another math library":
+
+- **It doesn't borrow BLAS/LAPACK.** The `linalg` module implements its own LU/QR/SVD/eig/Cholesky kernels, LAPACK-style (`dorgbr`, `dlartg`, `dbdsqr`, ...). That's more work than linking Eigen, but it means every numerical bug is *this repository's* bug to find, not a black box — see [Bugs that were worth finding](#bugs-that-were-worth-finding) below.
+- **It's built almost entirely by waves of parallel AI subagents**, each working in an isolated git worktree on one self-contained module addition, tested and merged independently. The `mathscript-master-plan.md` and `CHANGELOG.md` track this in detail; the tail end of this README keeps a [full log of every wave](#full-wave-by-wave-development-log) for the curious, collapsed by default because 200+ waves of changelog is not something anyone should have to scroll past.
+
+## Architecture, briefly
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full repository layout, module table, and CMake option reference. The short version: static libraries per module under `src/`, mirrored public headers under `include/ms/`, GoogleTest suites under `tests/{unit,numerical,integration,fuzz}/`, everything wired through a single CMake monorepo build.
+
+The module set falls into a few natural groups:
+
+- **Numerical core** — `linalg`, `fft`, `ode`, `pde`, `poly`, `optim`, `special`, `interp` (dense/sparse matrices, spectral methods, adaptive/stiff ODE solvers, root-finding, special functions)
+- **Statistics & data** — `stats`, `prob`, `ml`, `info` (hypothesis tests, distributions, classical ML, information theory)
+- **Applied domains** — `finance`, `control`, `signal`, `image`, `graph`, `geo`, `diffgeo`, `topo`, `quantum`, `numthy`, `combo`, `bignum`, `compress`, `cplx`, `tensorops`
+- **Interpreter & tooling** — `interp` (REPL engine, session objects, optional ORC JIT), `symbolic` (expression AST), `cpu`/`simd`/`runtime` (dispatch, threading, ISA detection), `cuda`/`distributed` (optional GPU/MPI backends)
+- **Research frameworks** — `frameworks/{axiom,cellai,cypha,gria,izaac}`, a grab-bag of genetic programming, associative memory, cryptographic/statistical utilities, and simulation toys layered on top of the core math
+
+## Bugs that were worth finding
+
+A few things surfaced during development that are worth calling out on their own merits, independent of which wave found them:
+
+- **A sign error in `dlartg` and a wrong transpose flag in `dorgbr`** silently corrupted right singular vectors and `U`/`V` orthogonality in `ms::linalg::svd` for dozens of waves before anyone noticed, for essentially any `m×n` matrix with `n≥3` — masked because reconstruction (`U·Σ·Vᵗ`) still looked self-consistent even with the wrong orthogonal factors. Found while investigating an unrelated rank-deficient-tensor-decomposition bug, fixed by computing the Givens rotation directly via `hypot`/`cs=f/r`/`sn=g/r` instead of a sign-fragile `copysign` formula.
+- **`ms::izaac::CSPRNG` was badly biased** — only 8 of 32 internal state bytes were mutated per call. It was caught by a Monte Carlo π estimator returning `4.0` and `3.0` instead of something near `3.14159`, which is about as visible as a broken RNG can get. Replaced with a proper xoshiro256** generator with SplitMix64 seed expansion.
+- **A mirror-index bug in the shared low-pass FFT filter helper** made every "low-pass" filter in `ms::signal` (`lowpass`, `butterworth`, `highpass`, `bandpass`) zero out nearly all non-DC frequency content regardless of the requested cutoff — functionally a no-op beyond the mean. A pre-existing test had been passing by silently relying on the bug.
+
+None of these were caught by code review; all three were caught by a test asserting a *property* of the correct answer (orthogonality, a known constant, a known filter response) rather than checking that the code ran without crashing.
+
+## Status
+
+- **Version:** 1.0.0 — Phase 10 (hardening) complete, development continuing past 1.0 via the wave process described above
+- **Tests:** 368 CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (90% minimum enforced in CI)
+- **CI:** Windows MSVC + Linux GCC 13, coverage, libFuzzer smoke (7 targets), Valgrind memcheck, benchmark regression gate, Clang plugin compliance (20 enforced rules), vendor checksum verification
+
+<details>
+<summary><b>Full wave-by-wave development log (200+ entries) — click to expand</b></summary>
 
 Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage reporting, Valgrind memcheck, fuzz testing, and install/packaging. **Wave 56** added adaptive ODE solvers, global optimisers, advanced polynomial operations, time-series statistics, and new linalg functions. **Wave 57** adds `ms::numthy`, `ms::combo`, `ms::info`, `ms::finance`, plus QMR/LSQR/LSMR/TFQMR iterative solvers and preconditioners. **Wave 58** adds `ms::control` (control theory: TF/SS, Bode, LQR, Lyapunov, Riccati, pole placement), `ms::graph` (graph theory: BFS/DFS, Dijkstra, A*, Floyd-Warshall, SCC, MST, PageRank, betweenness centrality, max-flow, coloring), `ms::cplx` (complex analysis: residues, contour integrals, Möbius transforms, Joukowski, Blaschke products), and `ms::quantum` (quantum mechanics: gates, density matrices, QFT, Bell/GHZ/W states, von Neumann entropy, time evolution). **Wave 59** adds `ms::geo` (computational geometry: 2D/3D primitives, convex hull, Delaunay triangulation, Voronoi, KD-trees, ray intersections, Bezier/B-spline curves, polygon measurements), `ms::diffgeo` (differential geometry: metric tensor, Christoffel symbols, Riemann/Ricci curvature, Einstein tensor, geodesics, surface fundamental forms, Gaussian/mean curvature, principal curvatures, Lie brackets), `ms::topo` (topology/TDA: simplicial complexes, Vietoris-Rips, persistent homology, Betti numbers, Euler characteristic, bottleneck/Wasserstein distances), and `ms::tensorops` (tensor analysis: einsum, contractions, mode products, CP/Tucker/HOSVD decompositions, Khatri-Rao/Kronecker products, symmetrization). **Wave 60** adds `ms::ml` (machine learning: linear/ridge/lasso/logistic regression, KNN, naive Bayes, decision trees, KMeans/DBSCAN/agglomerative clustering, PCA/t-SNE, autodiff, neural nets, scalers, cross-validation), `ms::image` (image processing: color conversion, resize/crop/flip, Gaussian/median/bilateral filters, Sobel/Canny edge detection, morphology, Otsu thresholding, histogram equalisation, Harris corners, connected components), `ms::compress` (compression: RLE, Huffman, LZ77/LZW, BWT/MTF, delta coding, bzip2-like pipeline), and `ms::bignum` (arbitrary-precision integers and rationals: gcd/lcm, pow/mod, factorial, Fibonacci, Miller-Rabin primality). **Wave 61** adds REPL linalg bindings (`pinv`, `null`, `orth`, `kron`, `repmat`, `linspace`) with nested matrix operand evaluation, expanded Wave 60 unit tests, and fixes `null()` for wide matrices (replaced thin-SVD column indexing with an `A^T A` eigenvector basis and relative eigenvalue cutoff). **Wave 62** fixes `dgesvd`/`pinv` crashes on wide matrices (`dbdsqr` OOB guard, VT column-major, bidiagonal copy before `dorgbr`), expands REPL Wave 60 bindings (image filters, delta compress, ML metrics, bignum ops), and adds +31 unit tests across ml/image/compress/bignum. **Wave 63** adds a Wave 57–59 integration pipeline (geo/topo/graph/tensorops/diffgeo/control/quantum), REPL bindings for graph/geo/combo/numthy/control/quantum, `docs/API.md` coverage for Waves 57–62, and Windows CPack ZIP packaging smoke. **Wave 64** adds Wave 58 integration pipeline (control/graph/cplx/quantum/finance/info), REPL bindings for cplx/finance/info/tensorops, +20 unit tests, and Linux CPack TGZ packaging smoke. **Wave 65** adds mega Wave 57–60 integration pipeline, fixes `von_neumann_entropy` for pure states, REPL diffgeo/topo bindings, and +12 control/graph/quantum unit tests. **Wave 66** fixes `ss2tf` DC gain for strictly proper systems, adds full cross-module integration pipeline, REPL `tensorops_matmul`/`combo_factorial`/`numthy_partition`/`finance_bond_price`, and +48 diffgeo/topo/cplx unit tests. **Wave 67** adds REPL Wave 63–66 integration pipeline test, `tensorops_einsum`/`geo_polygon_area` bindings, Kleinman LQR fix for the double integrator, and CI package artifact uploads (Windows ZIP, Linux TGZ). **Wave 68** adds REPL `finance_irr`/`info_kl_divergence` bindings, REPL Wave 63–68 integration pipeline test, fuzz `fuzz_repl_input` corpus seeds for recent REPL bindings, expanded ml/image unit tests, and tag checklist update to **244** suites. **Wave 69** adds REPL `control_dcgain`/`info_cross_entropy` bindings, REPL Wave 63–69 integration pipeline test, fuzz seeds for Wave 68–69 REPL bindings, matrix literal negative-entry fix, and tag checklist update to **245** suites. **Wave 70** adds REPL `control_is_stable`/`finance_var`/`info_mutual_info`/`combo_nchoosek` bindings, REPL Wave 63–70 integration pipeline test, fuzz seeds for Wave 70 REPL bindings, and tag checklist update to **246** suites. **Wave 71** adds REPL `finance_cvar`/`info_js_divergence`/`quantum_von_neumann_entropy` bindings, REPL Wave 63–71 integration pipeline test, fuzz seeds for Wave 71 REPL bindings, and tag checklist update to **247** suites. **Wave 72** adds REPL `finance_sortino`/`info_tv_distance`/`quantum_fidelity` bindings, REPL Wave 63–72 integration pipeline test, fuzz seeds for Wave 72 REPL bindings, and tag checklist update to **248** suites. **Wave 73** adds REPL `finance_max_drawdown`/`info_hellinger_dist`/`quantum_trace_distance` bindings, REPL Wave 63–73 integration pipeline test, fuzz seeds for Wave 73 REPL bindings, and tag checklist update to **249** suites. **Wave 74** adds REPL `finance_kelly_fraction`/`info_renyi_entropy`/`quantum_concurrence` bindings, REPL Wave 63–74 integration pipeline test, fuzz seeds for Wave 74 REPL bindings, and tag checklist update to **250** suites. **Wave 75** adds REPL `finance_compound`/`info_redundancy`/`quantum_entanglement_entropy` bindings, REPL Wave 63–75 integration pipeline test, fuzz seeds for Wave 75 REPL bindings, and tag checklist update to **251** suites. **Wave 76** adds REPL `finance_continuous_compound`/`info_efficiency`/`quantum_expectation` bindings, REPL Wave 63–76 integration pipeline test, fuzz seeds for Wave 76 REPL bindings, and tag checklist update to **252** suites. **Wave 77** adds REPL `finance_pv`/`info_channel_capacity_bsc`/`quantum_expectation_dm` bindings, REPL Wave 63–77 integration pipeline test, fuzz seeds for Wave 77 REPL bindings, and tag checklist update to **253** suites. **Wave 78** adds REPL `finance_fv_annuity`/`info_channel_capacity_bec`/`quantum_inner` bindings, REPL Wave 63–78 integration pipeline test, fuzz seeds for Wave 78 REPL bindings, and tag checklist update to **254** suites. **Wave 79** adds REPL `finance_pmt_annuity`/`info_shannon_hartley`/`quantum_ket_normalise` bindings, REPL Wave 63–79 integration pipeline test, fuzz seeds for Wave 79 REPL bindings, and tag checklist update to **255** suites. **Wave 80** adds REPL `finance_binomial_call`/`info_differential_entropy_gaussian`/`quantum_partial_trace` bindings, REPL Wave 63–80 integration pipeline test, fuzz seeds for Wave 80 REPL bindings, and tag checklist update to **256** suites. **Wave 81** adds REPL `finance_binomial_put`/`info_differential_entropy_uniform`/`finance_bs_put` bindings, REPL Wave 63–81 integration pipeline test, fuzz seeds for Wave 81 REPL bindings, and tag checklist update to **257** suites. **Wave 82** adds REPL `finance_bs_gamma`/`finance_bond_duration`/`info_rate_distortion_gaussian` bindings, REPL Wave 63–82 integration pipeline test, fuzz seeds for Wave 82 REPL bindings, and tag checklist update to **258** suites. **Wave 83** adds REPL `finance_bs_delta`/`finance_bs_vega`/`finance_bond_modified_duration` bindings, REPL Wave 63–83 integration pipeline test, fuzz seeds for Wave 83 REPL bindings, and tag checklist update to **259** suites. **Wave 84** adds REPL `finance_bs_theta`/`finance_bs_rho`/`finance_bond_convexity` bindings, REPL Wave 63–84 integration pipeline test, fuzz seeds for Wave 84 REPL bindings, and tag checklist update to **260** suites.
 
@@ -170,7 +208,11 @@ Phase 9 (own BLAS/LAPACK SVD pipeline) is complete. Phase 10 adds CI, coverage r
 - **Wave 204** (largest single wave yet — 8 parallel subagents across 8 modules): `ms::stats` gains `shapiro_wilk` (Shapiro-Wilk normality test, using direct normalized-order-statistic weights — a documented simplified variant of Royston's textbook algorithm that skips its small-sample tail-correction polynomial — plus Royston's normalizing transformation for an approximate p-value via the existing `norm_cdf`); `ms::control` gains `kalman_predict`/`kalman_update` (the standard discrete-time linear Kalman filter time-update and measurement-update steps, operating on a new `KalmanState{x, P}` pair, reusing this module's existing matrix-helper machinery), verified via the scalar closed-form recursion, a 2D position-velocity tracking example, and the fundamental property that a valid update never increases estimate uncertainty; `ms::signal` gains `median_filter` (a nonlinear sliding-window filter using the true median rather than a linear average, verified to fully reject a single sharp outlier spike unlike `moving_average`); `ms::bignum` gains `bigint_isqrt` (exact arbitrary-precision integer square root via BigInt-native Newton's method, verified via exact recovery of large squared values and the `floor(sqrt(n))^2 <= n < (...+1)^2` invariant at scales where `double`-precision `sqrt` would lose precision); `ms::combo` gains `gray_code` (closed-form binary reflected Gray code via `i XOR (i>>1)`) and `de_bruijn_sequence` (the FKM algorithm: concatenation of all Lyndon words whose length divides `n`), verified via the single-bit-transition and every-substring-appears-exactly-once cyclic invariants respectively; `ms::quantum` gains `grover_search`/`grover_optimal_iterations` (Grover's search algorithm via explicit dense oracle/diffusion operator matrices, same small-n scalability envelope as the existing `qft_gate`), verified via the famous exact `N=4`, 1-marked-state, 1-iteration case reaching probability 1.0, and near-certainty amplification at the optimal iteration count for larger `N`; `ms::prob` gains `gumbel_pdf/cdf/ppf`, `cauchy_pdf/cdf/ppf`, and `pareto_pdf/cdf/ppf` (all three closed-form invertible, no iterative root-finding needed), verified via round-trip `ppf∘cdf`/`cdf∘ppf` identities and known closed-form special values (Cauchy's exact `cdf(x0)=0.5`, Pareto's support-boundary vanishing); `ms::geo` gains `min_bounding_rect` (the minimum-area oriented bounding rectangle via the rotating-calipers technique over `convex_hull_2d`, since the optimal rectangle always has a side flush with a hull edge), verified via exact recovery of a known rectangle's dimensions at an arbitrary rotation and the fundamental point-containment property. 368 suites (no new CTest registrations — all tests added to existing binaries; 136 new test cases across the eight modules).
 - **CI baseline:** ~91% line coverage (**90%** enforced in CI)
 
-### Build Instructions (Native Windows)
+For the complete, exhaustively detailed changelog (including Wave 206 onward), see [`CHANGELOG.md`](CHANGELOG.md).
+
+</details>
+
+## Build Instructions (Native Windows)
 
 #### Prerequisites
 - Visual Studio 2022/2026 Build Tools with C++ workload
@@ -216,7 +258,7 @@ cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure
 ```
 
-For libFuzzer targets, use Clang with the project’s Linux Clang flags (see `cmake/options.cmake`).
+For libFuzzer targets, use Clang with the project's Linux Clang flags (see `cmake/options.cmake`).
 
 ### Coverage (Linux, GCC/Clang)
 
@@ -289,7 +331,8 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 | 9 | Own BLAS/LAPACK core | Complete |
 | 10 | Hardening (CI, coverage, packaging) | Complete — **v1.0.0** |
 
-### Phase 10 checklist
+<details>
+<summary><b>Phase 10 checklist detail</b></summary>
 
 **Done**
 - **244** CTest suites passing (CUDA off in CI)
@@ -338,9 +381,12 @@ Review entries and the approved baseline live in `UNSAFE_REVIEW.md`.
 - Full ORC JIT v2 matrix LLVM IR lowering (post-1.0 enhancement)
 - Windows installer / Linux packages (post-1.0 packaging)
 
+</details>
+
 ## Documentation
 
 - [Architecture overview](docs/ARCHITECTURE.md) — module layout, build flags, test structure, CI pipeline
 - [Public API index](docs/API.md) — headers under `include/ms/` grouped by module
+- [Changelog](CHANGELOG.md) — full per-wave release notes
 - `mathscript-master-plan.md` — complete 10-phase delivery plan
 - [1.0.0 release checklist](docs/RELEASE.md) — tag criteria for Phase 10 exit
