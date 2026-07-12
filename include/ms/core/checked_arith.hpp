@@ -472,6 +472,18 @@ T ulp(T x) {
 
 template<typename T>
   requires std::is_floating_point_v<T>
+T nextafter(T x, T toward) {
+    if (std::isnan(x) || std::isinf(x)) {
+        return std::numeric_limits<T>::quiet_NaN();
+    }
+    if (std::isnan(toward)) {
+        return std::numeric_limits<T>::quiet_NaN();
+    }
+    return std::nextafter(x, toward);
+}
+
+template<typename T>
+  requires std::is_floating_point_v<T>
 constexpr T eps() {
     return std::numeric_limits<T>::epsilon();
 }

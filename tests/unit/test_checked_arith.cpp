@@ -258,6 +258,50 @@ TEST(CheckedArith, FloatLimitsAndUlp) {
     EXPECT_NE(x + ulp(x), x);
 }
 
+TEST(CheckedArith, NextafterDoubleTowardLarger) {
+    const double x = 1.0;
+    const double y = ms::nextafter(x, 2.0);
+    EXPECT_GT(y, x);
+    EXPECT_EQ(y, std::nextafter(x, 2.0));
+}
+
+TEST(CheckedArith, NextafterDoubleTowardSmaller) {
+    const double x = 1.0;
+    const double y = ms::nextafter(x, 0.0);
+    EXPECT_LT(y, x);
+    EXPECT_EQ(y, std::nextafter(x, 0.0));
+}
+
+TEST(CheckedArith, NextafterTowardSelf) {
+    const double x = 3.14;
+    EXPECT_EQ(ms::nextafter(x, x), x);
+
+    const float xf = 2.5f;
+    EXPECT_EQ(ms::nextafter(xf, xf), xf);
+}
+
+TEST(CheckedArith, NextafterFloatTowardLarger) {
+    const float x = 1.0f;
+    const float y = ms::nextafter(x, 2.0f);
+    EXPECT_GT(y, x);
+    EXPECT_EQ(y, std::nextafter(x, 2.0f));
+}
+
+TEST(CheckedArith, NextafterNanPropagation) {
+    const double nan_val = std::numeric_limits<double>::quiet_NaN();
+    const double inf_val = std::numeric_limits<double>::infinity();
+
+    EXPECT_TRUE(is_nan(ms::nextafter(nan_val, 1.0)));
+    EXPECT_TRUE(is_nan(ms::nextafter(1.0, nan_val)));
+    EXPECT_TRUE(is_nan(ms::nextafter(inf_val, 1.0)));
+    EXPECT_GT(ms::nextafter(1.0, inf_val), 1.0);
+}
+
+TEST(CheckedArith, NextafterMatchesUlpStep) {
+    const double x = 1.0;
+    EXPECT_EQ(ms::nextafter(x, std::numeric_limits<double>::infinity()) - x, ulp(x));
+}
+
 // ---------------------------------------------------------------------------
 // narrow / widen
 // ---------------------------------------------------------------------------
