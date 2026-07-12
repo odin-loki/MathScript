@@ -1228,5 +1228,91 @@ Result<std::vector<int>> hamiltonian_path(const Graph& G) {
     return std::unexpected(Error{DomainError{"hamiltonian_path", "no Hamiltonian path"}});
 }
 
+// ---- Traveling Salesman Problem heuristic (nearest-neighbor + 2-opt) ----
+
+namespace {
+
+// Sums the cycle length of `tour` under `dist`, including the wraparound
+// edge from the last vertex back to tour[0]. Shared by both the
+// nearest-neighbor construction and the final TSPResult bookkeeping so the
+// two phases can never disagree on how a tour's length is computed.
+double tour_cycle_length(const std::vector<int>& tour,
+                          const std::vector<std::vector<double>>& dist) {
+    int n = static_cast<int>(tour.size());
+    if (n < 2) return 0.0;
+    double total = 0.0;
+    for (int i = 0; i + 1 < n; ++i) total += dist[tour[i]][tour[i + 1]];
+    total += dist[tour[n - 1]][tour[0]];
+    return total;
+}
+
+// Nearest-neighbor greedy construction: from `start`, repeatedly hop to the
+// closest unvisited vertex until every vertex has been appended.
+std::vector<int> nearest_neighbor_tour(const std::vector<std::vector<double>>& dist, int start) {
+    int n = static_cast<int>(dist.size());
+    std::vector<int> tour;
+    tour.reserve(n);
+    std::vector<bool> visited(n, false);
+    int current = start;
+    tour.push_back(current);
+    visited[current] = true;
+    for (int step = 1; step < n; ++step) {
+        int best = -1;
+        double best_dist = INF;
+        for (int v = 0; v < n; ++v) {
+            if (!visited[v] && dist[current][v] < best_dist) {
+                best_dist = dist[current][v];
+                best = v;
+            }
+        }
+        tour.push_back(best);
+        visited[best] = true;
+        current = best;
+    }
+    return tour;
+}
+
+} // namespace
+
+TSPResult tsp_heuristic(const std::vector<std::vector<double>>& dist,
+                         int start_vertex, int max_2opt_iterations) {
+    TSPResult result;
+    int n = static_cast<int>(dist.size());
+    if (n == 0) return result;
+    if (n == 1) { result.tour = {0}; return result; }
+
+    std::vector<int> tour = nearest_neighbor_tour(dist, start_vertex);
+
+    // 2-opt local search: each pass scans every pair of tour edges (i,i+1)
+    // and (j,j+1) (cyclically, so the edge out of the last vertex wraps
+    // back to tour[0]) and finds the single most-improving segment
+    // reversal; apply it and start a fresh pass, converging once no
+    // improving reversal remains anywhere in a full pass.
+    for (int iter = 0; iter < max_2opt_iterations; ++iter) {
+        double best_delta = 0.0;
+        int best_i = -1, best_j = -1;
+        for (int i = 0; i < n; ++i) {
+            int ip1 = (i + 1) % n;
+            for (int j = i + 1; j < n; ++j) {
+                int jp1 = (j + 1) % n;
+                if (ip1 == j || jp1 == i) continue;  // adjacent edges share a vertex, no-op
+                double delta = dist[tour[i]][tour[j]] + dist[tour[ip1]][tour[jp1]]
+                             - dist[tour[i]][tour[ip1]] - dist[tour[j]][tour[jp1]];
+                if (delta < best_delta) {
+                    best_delta = delta;
+                    best_i = i;
+                    best_j = j;
+                }
+            }
+        }
+        if (best_i < 0) break;  // no improving reversal found in this pass -> converged
+        std::reverse(tour.begin() + best_i + 1, tour.begin() + best_j + 1);
+    }
+
+    result.tour = tour;
+    result.total_distance = tour_cycle_length(tour, dist);
+    return result;
+}
+
 } // namespace graph
 } // namespace ms

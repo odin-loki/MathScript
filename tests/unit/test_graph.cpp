@@ -141,6 +141,51 @@ bool eulerian_path_uses_every_edge_exactly_once(const Graph& G, const std::vecto
     return remaining.empty();
 }
 
+// ---- TSP heuristic helpers ----
+
+// Builds an n x n symmetric Euclidean distance matrix from 2D points, for
+// the geometrically-obvious TSP test cases below.
+std::vector<std::vector<double>> euclidean_dist_matrix(
+        const std::vector<std::pair<double, double>>& pts) {
+    int n = static_cast<int>(pts.size());
+    std::vector<std::vector<double>> d(n, std::vector<double>(n, 0.0));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
+            double dx = pts[i].first - pts[j].first;
+            double dy = pts[i].second - pts[j].second;
+            d[i][j] = std::sqrt(dx * dx + dy * dy);
+        }
+    return d;
+}
+
+// Validity check used broadly (per every tsp_heuristic() test below, not
+// spot-checked once): `tour` must be a permutation of 0..n-1 -- every
+// vertex visited exactly once, no repeats, no omissions.
+bool is_valid_tour_permutation(const std::vector<int>& tour, int n) {
+    if (static_cast<int>(tour.size()) != n) return false;
+    std::vector<bool> seen(n, false);
+    for (int v : tour) {
+        if (v < 0 || v >= n || seen[v]) return false;
+        seen[v] = true;
+    }
+    return true;
+}
+
+// Independently recomputes a tour's cycle length (consecutive edges plus
+// the wraparound edge back to tour.front()) directly from `tour` and
+// `dist`, deliberately duplicating tsp_heuristic's own bookkeeping so
+// tests can catch any drift between the reported total_distance and the
+// tour actually returned.
+double recompute_tour_distance(const std::vector<int>& tour,
+                                const std::vector<std::vector<double>>& dist) {
+    int n = static_cast<int>(tour.size());
+    if (n < 2) return 0.0;
+    double total = 0.0;
+    for (int i = 0; i + 1 < n; ++i) total += dist[tour[i]][tour[i + 1]];
+    total += dist[tour.back()][tour.front()];
+    return total;
+}
+
 } // namespace
 
 // ---- Basic graph ----
@@ -1229,5 +1274,249 @@ TEST(GraphEulerian, AllPositiveCaseGraphsProduceStructurallyValidPaths) {
         auto res = eulerian_path(G);
         ASSERT_TRUE(res.has_circuit || res.has_path);
         EXPECT_TRUE(eulerian_path_uses_every_edge_exactly_once(G, res.path));
+    }
+}
+
+// ---- TSP heuristic (nearest-neighbor + 2-opt) ----
+
+TEST(GraphTSP, EmptyDistanceMatrixReturnsEmptyTour) {
+    std::vector<std::vector<double>> dist;
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(res.tour.empty());
+    EXPECT_DOUBLE_EQ(res.total_distance, 0.0);
+}
+
+TEST(GraphTSP, SingleVertexReturnsTrivialTour) {
+    std::vector<std::vector<double>> dist = {{0.0}};
+    auto res = tsp_heuristic(dist);
+    ASSERT_TRUE(is_valid_tour_permutation(res.tour, 1));
+    EXPECT_EQ(res.tour[0], 0);
+    EXPECT_DOUBLE_EQ(res.total_distance, 0.0);
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+}
+
+TEST(GraphTSP, TwoVerticesTourVisitsBothAndReturns) {
+    std::vector<std::vector<double>> dist = {{0.0, 5.0}, {5.0, 0.0}};
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 2));
+    EXPECT_DOUBLE_EQ(res.total_distance, 10.0);  // there and back: 5 + 5
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+}
+
+TEST(GraphTSP, ThreeVerticesAnyTourHasSameOptimalCost) {
+    // With only 3 vertices there is exactly one Hamiltonian cycle (up to
+    // direction/start), so the result is trivially optimal: sum of all
+    // three edges, 3 + 4 + 5 = 12.
+    std::vector<std::vector<double>> dist = {
+        {0.0, 3.0, 4.0},
+        {3.0, 0.0, 5.0},
+        {4.0, 5.0, 0.0},
+    };
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 3));
+    EXPECT_DOUBLE_EQ(res.total_distance, 12.0);
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+}
+
+TEST(GraphTSP, SquareFourPointsOptimalTourIsPerimeter) {
+    // Four corners of a 10x10 square, already in convex position -- the
+    // provably optimal Hamiltonian cycle for points in convex position is
+    // the convex-hull perimeter, i.e. exactly the four sides: 4 * 10 = 40.
+    auto dist = euclidean_dist_matrix({{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}});
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 4));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+    EXPECT_NEAR(res.total_distance, 40.0, 1e-9);
+}
+
+TEST(GraphTSP, RegularPentagonOptimalTourIsHullPerimeter) {
+    // Five points in convex position (a regular pentagon inscribed in a
+    // circle of radius R): the optimal Hamiltonian cycle for points in
+    // convex position is the hull perimeter, i.e. 5 equal sides of length
+    // 2*R*sin(pi/5) each -- computable by hand from basic circle geometry.
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double R = 10.0;
+    std::vector<std::pair<double, double>> pts;
+    for (int k = 0; k < 5; ++k) {
+        double angle = k * (2.0 * kPi / 5.0);
+        pts.push_back({R * std::cos(angle), R * std::sin(angle)});
+    }
+    auto dist = euclidean_dist_matrix(pts);
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 5));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+    double side = 2.0 * R * std::sin(kPi / 5.0);
+    EXPECT_NEAR(res.total_distance, 5.0 * side, 1e-6);
+}
+
+TEST(GraphTSP, DifferentStartVertexOnPentagonStillFindsHullPerimeter) {
+    // Symmetric distance matrix invariance: starting the nearest-neighbor
+    // construction from a different vertex of the same convex point set
+    // should still converge (after 2-opt) to the same optimal perimeter,
+    // since 2-opt eliminates crossings and the hull order is the unique
+    // crossing-free cycle for points in convex position. Some tolerance is
+    // allowed in general (2-opt is a local search), though for this highly
+    // symmetric convex layout both starts should land on the exact optimum.
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double R = 10.0;
+    std::vector<std::pair<double, double>> pts;
+    for (int k = 0; k < 5; ++k) {
+        double angle = k * (2.0 * kPi / 5.0);
+        pts.push_back({R * std::cos(angle), R * std::sin(angle)});
+    }
+    auto dist = euclidean_dist_matrix(pts);
+    double side = 2.0 * R * std::sin(kPi / 5.0);
+    double expected = 5.0 * side;
+
+    auto res_a = tsp_heuristic(dist, /*start_vertex=*/0);
+    auto res_b = tsp_heuristic(dist, /*start_vertex=*/3);
+    EXPECT_TRUE(is_valid_tour_permutation(res_a.tour, 5));
+    EXPECT_TRUE(is_valid_tour_permutation(res_b.tour, 5));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res_a.tour, dist), res_a.total_distance);
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res_b.tour, dist), res_b.total_distance);
+    EXPECT_NEAR(res_a.total_distance, expected, 1e-6);
+    EXPECT_NEAR(res_b.total_distance, expected, 1e-6);
+    EXPECT_NEAR(res_a.total_distance, res_b.total_distance, 1e-6);
+}
+
+TEST(GraphTSP, CollinearPointsOptimalTourIsTwiceTheSpan) {
+    // For points all on a line, the optimal Hamiltonian cycle is simply
+    // "walk from one end to the other, then walk straight back" -- total
+    // cost = 2 * (max - min) = 2 * 20 = 40, regardless of intermediate
+    // spacing, since the full span must be crossed once each way at
+    // minimum, and visiting in sorted order achieves exactly that.
+    auto dist = euclidean_dist_matrix(
+        {{0.0, 0.0}, {3.0, 0.0}, {7.0, 0.0}, {12.0, 0.0}, {20.0, 0.0}});
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 5));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+    EXPECT_NEAR(res.total_distance, 40.0, 1e-9);
+}
+
+TEST(GraphTSP, ZeroIterationsReturnsPlainNearestNeighborTour) {
+    // A rectangle {A(0,0), B(2,0), C(2,1), D(0,1)} plus an outlier E(1,5)
+    // above the far side. Greedy nearest-neighbor from A visits D (dist 1,
+    // the closest point) before the outlier E ever gets picked. With
+    // max_2opt_iterations = 0 the improvement phase is disabled entirely,
+    // so the result must be exactly that plain construction: A,D,C,B,E.
+    auto dist = euclidean_dist_matrix(
+        {{0.0, 0.0}, {2.0, 0.0}, {2.0, 1.0}, {0.0, 1.0}, {1.0, 5.0}});
+    auto res = tsp_heuristic(dist, /*start_vertex=*/0, /*max_2opt_iterations=*/0);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 5));
+    EXPECT_EQ(res.tour, std::vector<int>({0, 3, 2, 1, 4}));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+    EXPECT_NEAR(res.total_distance, 4.0 + 2.0 * std::sqrt(26.0), 1e-9);
+}
+
+TEST(GraphTSP, TwoOptImprovesOverPlainNearestNeighbor) {
+    // Same rectangle-plus-outlier layout as ZeroIterationsReturnsPlain...:
+    // plain nearest-neighbor greedily grabs the closest rectangle corner
+    // first and is forced to visit the outlier E last, creating two long
+    // "spike" edges (E to both its tour neighbors, each sqrt(26)) instead
+    // of the shorter sqrt(17) pair achievable by placing E between D and C
+    // instead. NN-only cost is hand-verified to be 4 + 2*sqrt(26) ~= 14.20;
+    // the fully 2-opt-optimized cost is hand-verified to be
+    // 4 + 2*sqrt(17) ~= 12.25, strictly better.
+    auto dist = euclidean_dist_matrix(
+        {{0.0, 0.0}, {2.0, 0.0}, {2.0, 1.0}, {0.0, 1.0}, {1.0, 5.0}});
+
+    auto nn_only = tsp_heuristic(dist, /*start_vertex=*/0, /*max_2opt_iterations=*/0);
+    auto optimised = tsp_heuristic(dist, /*start_vertex=*/0);
+
+    EXPECT_TRUE(is_valid_tour_permutation(nn_only.tour, 5));
+    EXPECT_TRUE(is_valid_tour_permutation(optimised.tour, 5));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(nn_only.tour, dist), nn_only.total_distance);
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(optimised.tour, dist), optimised.total_distance);
+
+    double expected_nn = 4.0 + 2.0 * std::sqrt(26.0);
+    double expected_optimised = 4.0 + 2.0 * std::sqrt(17.0);
+    EXPECT_NEAR(nn_only.total_distance, expected_nn, 1e-9);
+    EXPECT_NEAR(optimised.total_distance, expected_optimised, 1e-9);
+    EXPECT_LT(optimised.total_distance, nn_only.total_distance);
+}
+
+TEST(GraphTSP, SingleImprovementPassWithIterationCapOne) {
+    // Same layout again, but capped at exactly one 2-opt pass: only the
+    // single best-improving reversal of that first pass gets applied
+    // (hand-verified: reversing the segment covering C,B turns
+    // A,D,C,B,E into A,D,B,C,E, cost 2 + sqrt5 + sqrt17 + sqrt26), which is
+    // strictly between the plain nearest-neighbor cost and the fully
+    // converged cost -- demonstrating the iteration cap actually limits
+    // how many passes run.
+    auto dist = euclidean_dist_matrix(
+        {{0.0, 0.0}, {2.0, 0.0}, {2.0, 1.0}, {0.0, 1.0}, {1.0, 5.0}});
+    auto res = tsp_heuristic(dist, /*start_vertex=*/0, /*max_2opt_iterations=*/1);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 5));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+
+    double expected_nn = 4.0 + 2.0 * std::sqrt(26.0);
+    double expected_optimised = 4.0 + 2.0 * std::sqrt(17.0);
+    double expected_one_pass = 2.0 + std::sqrt(5.0) + std::sqrt(17.0) + std::sqrt(26.0);
+    EXPECT_NEAR(res.total_distance, expected_one_pass, 1e-9);
+    EXPECT_LT(res.total_distance, expected_nn);
+    EXPECT_GT(res.total_distance, expected_optimised);
+}
+
+TEST(GraphTSP, AllStartVerticesProduceValidToursWithConsistentBookkeeping) {
+    auto dist = euclidean_dist_matrix(
+        {{0.0, 0.0}, {2.0, 0.0}, {2.0, 1.0}, {0.0, 1.0}, {1.0, 5.0}});
+    for (int start = 0; start < 5; ++start) {
+        auto res = tsp_heuristic(dist, start);
+        EXPECT_TRUE(is_valid_tour_permutation(res.tour, 5));
+        ASSERT_FALSE(res.tour.empty());
+        EXPECT_EQ(res.tour.front(), start);
+        EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+    }
+}
+
+TEST(GraphTSP, DuplicateCoincidentPointsHandledCorrectly) {
+    // Two coincident points (0 and 1 both at the origin) exercise the
+    // dist[i][j] == 0 case for i != j, not just the diagonal.
+    auto dist = euclidean_dist_matrix(
+        {{0.0, 0.0}, {0.0, 0.0}, {5.0, 0.0}, {5.0, 5.0}, {0.0, 5.0}});
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 5));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+    EXPECT_GE(res.total_distance, 0.0);
+}
+
+TEST(GraphTSP, LargerEightPointInstanceProducesValidTourAndConsistentDistance) {
+    auto dist = euclidean_dist_matrix({
+        {0.0, 0.0}, {4.0, 1.0}, {7.0, 0.0}, {9.0, 4.0},
+        {6.0, 8.0}, {2.0, 9.0}, {-1.0, 6.0}, {-2.0, 3.0},
+    });
+    auto res = tsp_heuristic(dist);
+    EXPECT_TRUE(is_valid_tour_permutation(res.tour, 8));
+    EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+    EXPECT_GT(res.total_distance, 0.0);
+
+    // 2-opt-improved distance must never exceed the plain nearest-neighbor
+    // construction it started from.
+    auto nn_only = tsp_heuristic(dist, /*start_vertex=*/0, /*max_2opt_iterations=*/0);
+    EXPECT_LE(res.total_distance, nn_only.total_distance);
+}
+
+TEST(GraphTSP, TotalDistanceMatchesIndependentRecomputationAcrossManyInstances) {
+    // Broad regression sweep, reinforcing that validity + bookkeeping
+    // checks are applied everywhere rather than spot-checked once.
+    std::vector<std::vector<std::vector<double>>> matrices;
+    matrices.push_back(euclidean_dist_matrix({{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}}));
+    matrices.push_back(euclidean_dist_matrix(
+        {{0.0, 0.0}, {2.0, 0.0}, {2.0, 1.0}, {0.0, 1.0}, {1.0, 5.0}}));
+    matrices.push_back(euclidean_dist_matrix(
+        {{0.0, 0.0}, {3.0, 0.0}, {7.0, 0.0}, {12.0, 0.0}, {20.0, 0.0}}));
+    matrices.push_back(euclidean_dist_matrix({
+        {0.0, 0.0}, {4.0, 1.0}, {7.0, 0.0}, {9.0, 4.0},
+        {6.0, 8.0}, {2.0, 9.0}, {-1.0, 6.0}, {-2.0, 3.0},
+    }));
+    matrices.push_back(euclidean_dist_matrix({{1.0, 1.0}, {1.0, 1.0}, {5.0, 5.0}}));
+
+    for (const auto& dist : matrices) {
+        int n = static_cast<int>(dist.size());
+        for (int max_iter : {0, 1000}) {
+            auto res = tsp_heuristic(dist, /*start_vertex=*/0, max_iter);
+            EXPECT_TRUE(is_valid_tour_permutation(res.tour, n));
+            EXPECT_DOUBLE_EQ(recompute_tour_distance(res.tour, dist), res.total_distance);
+        }
     }
 }
