@@ -3,6 +3,7 @@
 #include "ms/error/error_types.hpp"
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -67,6 +68,81 @@ double bs_put(double S, double K, double T, double r, double sigma) {
     double d1, d2;
     bs_d1_d2(S, K, T, r, sigma, d1, d2);
     return K * std::exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1);
+}
+
+// Heston type-j integrand (Rouah / Haug with Albrecher "little trap").
+// j=1: u=1, b=kappa-rho*sigma_v; j=2: u=0, b=kappa.
+static double heston_integrand(double phi, double S, double K, double T, double r,
+                               double v0, double kappa, double theta, double sigma_v,
+                               double rho, int j) {
+    const std::complex<double> i(0.0, 1.0);
+    const double u = (j == 1) ? 1.0 : 0.0;
+    const double b = (j == 1) ? (kappa - rho * sigma_v) : kappa;
+    const double a = kappa * theta;
+    const std::complex<double> phi_c(phi, 0.0);
+    const std::complex<double> d = std::sqrt(
+        std::pow(rho * sigma_v * i * phi_c - b, 2) -
+        sigma_v * sigma_v * (2.0 * u * i * phi_c - phi_c * phi_c));
+    const std::complex<double> g =
+        (b - rho * sigma_v * i * phi_c + d) / (b - rho * sigma_v * i * phi_c - d);
+    const std::complex<double> c_inv = 1.0 / g;
+    const std::complex<double> exp_dt = std::exp(-d * T);
+    const std::complex<double> one(1.0, 0.0);
+    const std::complex<double> G = (one - c_inv * exp_dt) / (one - c_inv);
+    const std::complex<double> D =
+        (b - rho * sigma_v * i * phi_c - d) / (sigma_v * sigma_v) *
+        ((one - exp_dt) / G);
+    const std::complex<double> C =
+        r * i * phi_c * T +
+        (a / (sigma_v * sigma_v)) *
+            ((b - rho * sigma_v * i * phi_c - d) * T - 2.0 * std::log(G));
+    const std::complex<double> f = std::exp(C + D * v0 + i * phi_c * std::log(S));
+    const std::complex<double> integrand =
+        std::exp(-i * phi_c * std::log(K)) * f / (i * phi_c);
+    return std::real(integrand);
+}
+
+// Trapezoidal rule on [Lphi, Uphi] with step dphi (Rouah HestonPrice.m convention).
+static double heston_trapz(int j, double S, double K, double T, double r, double v0,
+                           double kappa, double theta, double sigma_v, double rho,
+                           double Lphi, double Uphi, double dphi) {
+    double integral = 0.0;
+    double prev_y = heston_integrand(Lphi, S, K, T, r, v0, kappa, theta, sigma_v, rho, j);
+    for (double phi = Lphi + dphi; phi <= Uphi + 0.5 * dphi; phi += dphi) {
+        const double cur_phi = std::min(phi, Uphi);
+        const double cur_y =
+            heston_integrand(cur_phi, S, K, T, r, v0, kappa, theta, sigma_v, rho, j);
+        integral += 0.5 * (prev_y + cur_y) * dphi;
+        prev_y = cur_y;
+        if (cur_phi >= Uphi) break;
+    }
+    return 0.5 + integral / M_PI;
+}
+
+double heston_call(double S, double K, double T, double r, double v0, double kappa,
+                   double theta, double sigma_v, double rho) {
+    if (T <= 0.0) return std::max(S - K, 0.0);
+    if (S <= 0.0 || K <= 0.0 || v0 < 0.0 || kappa <= 0.0 || theta < 0.0 ||
+        sigma_v < 0.0 || rho < -1.0 || rho > 1.0 ||
+        !std::isfinite(S) || !std::isfinite(K) || !std::isfinite(T) ||
+        !std::isfinite(r) || !std::isfinite(v0) || !std::isfinite(kappa) ||
+        !std::isfinite(theta) || !std::isfinite(sigma_v) || !std::isfinite(rho)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    // Deterministic-vol limit: variance process has no diffusion term.
+    if (sigma_v <= 1e-12) {
+        return bs_call(S, K, T, r, std::sqrt(std::max(v0, 0.0)));
+    }
+
+    constexpr double Lphi = 1e-5;
+    constexpr double Uphi = 100.0;
+    constexpr double dphi = 0.001;
+    const double P1 = heston_trapz(1, S, K, T, r, v0, kappa, theta, sigma_v, rho,
+                                   Lphi, Uphi, dphi);
+    const double P2 = heston_trapz(2, S, K, T, r, v0, kappa, theta, sigma_v, rho,
+                                   Lphi, Uphi, dphi);
+    return S * P1 - K * std::exp(-r * T) * P2;
 }
 
 double bs_delta(double S, double K, double T, double r, double sigma, bool call) {
