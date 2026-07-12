@@ -109,6 +109,12 @@ struct ArborescenceResult { double total_weight; std::vector<Edge> edges; };
 ArborescenceResult min_arborescence(const Graph& G, int root);
 
 // --- Graph properties ---
+// Per-vertex eccentricity: max finite shortest-path distance from v to any
+// vertex reachable from v (Floyd–Warshall on G). On a connected graph,
+// ecc[v] is the usual graph eccentricity and max(ecc) == diameter(G).
+// If v cannot reach every other vertex (disconnected G), ecc[v] is -1
+// (unreachable/infinite eccentricity sentinel; floyd_warshall uses INF).
+std::vector<int> eccentricity(const Graph& G);
 int    diameter(const Graph& G);   // longest shortest path
 int    radius(const Graph& G);
 bool   is_tree(const Graph& G);

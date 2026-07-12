@@ -697,6 +697,25 @@ ArborescenceResult min_arborescence(const Graph& G, int root) {
 
 // ---- Properties ----
 
+std::vector<int> eccentricity(const Graph& G) {
+    auto d = floyd_warshall(G);
+    int n = G.n_vertices();
+    std::vector<int> ecc(n);
+    for (int i = 0; i < n; ++i) {
+        bool all_reachable = true;
+        double max_d = 0.0;
+        for (int j = 0; j < n; ++j) {
+            if (d[i][j] >= INF) {
+                if (j != i) all_reachable = false;
+            } else {
+                max_d = std::max(max_d, d[i][j]);
+            }
+        }
+        ecc[i] = all_reachable ? static_cast<int>(max_d) : -1;
+    }
+    return ecc;
+}
+
 int diameter(const Graph& G) {
     auto d = floyd_warshall(G);
     int n = G.n_vertices();
