@@ -1639,7 +1639,7 @@ TEST(ReplWave171Pipeline, Wave63_171_BindingsPipeline) {
     EXPECT_NEAR(interp.state().scalars.at("cc"), 0.682689492, 1e-3);
 
     expect_ok(interp, "m = stats_mad([1; 1; 2; 2; 4; 6; 9])");
-    EXPECT_NEAR(interp.state().scalars.at("m"), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().scalars.at("m"), 1.4826, 1e-9);
 
     expect_ok(interp, "A2 = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
     expect_ok(interp, "h = [3; 2; 1; 0]");

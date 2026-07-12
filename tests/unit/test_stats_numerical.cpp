@@ -653,3 +653,64 @@ TEST(StatsNumerical, Kde_UnknownKernelDefaultsToGaussian) {
         EXPECT_NEAR(unknown[i], gaussian[i], 1e-12);
     }
 }
+
+// ============================================================
+// MAD (median absolute deviation)
+// ============================================================
+
+TEST(StatsNumerical, MadKnownValue_Unscaled) {
+    // median=2, abs devs=[1,1,0,0,2,4,7], median dev=1
+    std::vector<double> v{1.0, 1.0, 2.0, 2.0, 4.0, 6.0, 9.0};
+    EXPECT_NEAR(mad(v, false), 1.0, 1e-12);
+}
+
+TEST(StatsNumerical, MadKnownValue_ScaledDefault) {
+    std::vector<double> v{1.0, 1.0, 2.0, 2.0, 4.0, 6.0, 9.0};
+    EXPECT_NEAR(mad(v), 1.4826, 1e-12);
+    EXPECT_NEAR(mad(v, true), 1.4826, 1e-12);
+}
+
+TEST(StatsNumerical, MadEmpty) {
+    std::vector<double> v{};
+    EXPECT_DOUBLE_EQ(mad(v), 0.0);
+    EXPECT_DOUBLE_EQ(mad(v, false), 0.0);
+}
+
+TEST(StatsNumerical, MadSingleElement) {
+    std::vector<double> v{7.0};
+    EXPECT_DOUBLE_EQ(mad(v), 0.0);
+    EXPECT_DOUBLE_EQ(mad(v, false), 0.0);
+}
+
+TEST(StatsNumerical, MadConstantData) {
+    std::vector<double> v{3.0, 3.0, 3.0, 3.0};
+    EXPECT_DOUBLE_EQ(mad(v), 0.0);
+    EXPECT_DOUBLE_EQ(mad(v, false), 0.0);
+}
+
+TEST(StatsNumerical, MadSymmetricEvenLength) {
+    // median=0, abs devs=[3,1,1,3], median dev=2
+    std::vector<double> v{-3.0, -1.0, 1.0, 3.0};
+    EXPECT_NEAR(mad(v, false), 2.0, 1e-12);
+    EXPECT_NEAR(mad(v), 2.0 * 1.4826, 1e-12);
+}
+
+TEST(StatsNumerical, MadScaleOffPreservesRawMedianDev) {
+    std::vector<double> v{10.0, 12.0, 14.0, 18.0, 22.0};
+    const double raw = mad(v, false);
+    EXPECT_GT(raw, 0.0);
+    EXPECT_NEAR(mad(v, true), raw * 1.4826, 1e-12);
+}
+
+TEST(StatsNumerical, MadOddLengthKnownMedian) {
+    // median=5, abs devs=[4,2,0,1,3], median dev=2
+    std::vector<double> v{1.0, 3.0, 5.0, 6.0, 7.0};
+    EXPECT_NEAR(mad(v, false), 2.0, 1e-12);
+}
+
+TEST(StatsNumerical, MadTwoElements) {
+    std::vector<double> v{2.0, 8.0};
+    // median=5, abs devs=[3,3], median dev=3
+    EXPECT_NEAR(mad(v, false), 3.0, 1e-12);
+    EXPECT_NEAR(mad(v), 3.0 * 1.4826, 1e-12);
+}

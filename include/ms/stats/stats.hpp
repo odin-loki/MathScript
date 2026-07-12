@@ -21,7 +21,9 @@ double kurtosis(std::span<const double> data);
 double geometric_mean(std::span<const double> data);
 double harmonic_mean(std::span<const double> data);
 double rms(std::span<const double> data);
-double mad(std::span<const double> data);     // median absolute deviation
+// Median absolute deviation. When scale=true (default), multiplies by 1.4826 for
+// consistency with the normal distribution standard deviation.
+double mad(const std::vector<double>& x, bool scale = true);
 double iqr(std::span<const double> data);     // interquartile range
 double trimmed_mean(std::span<const double> data, double frac);
 
