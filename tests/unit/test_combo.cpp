@@ -232,6 +232,61 @@ TEST(ComboSpecial, Stirling) {
     EXPECT_EQ(stirling2(0, 0), 1u);
 }
 
+TEST(ComboSpecial, EulerianNumberSmallTriangle) {
+    EXPECT_EQ(eulerian_number(0, 0), 1u);
+    EXPECT_EQ(eulerian_number(1, 0), 1u);
+    EXPECT_EQ(eulerian_number(2, 0), 1u);
+    EXPECT_EQ(eulerian_number(2, 1), 1u);
+    EXPECT_EQ(eulerian_number(3, 0), 1u);
+    EXPECT_EQ(eulerian_number(3, 1), 4u);
+    EXPECT_EQ(eulerian_number(3, 2), 1u);
+    EXPECT_EQ(eulerian_number(4, 0), 1u);
+    EXPECT_EQ(eulerian_number(4, 1), 11u);
+    EXPECT_EQ(eulerian_number(4, 2), 11u);
+    EXPECT_EQ(eulerian_number(4, 3), 1u);
+}
+
+TEST(ComboSpecial, EulerianNumberRowSumEqualsFactorial) {
+    for (uint32_t n = 1; n <= 5; ++n) {
+        uint64_t sum = 0;
+        for (uint32_t k = 0; k < n; ++k)
+            sum += eulerian_number(n, k);
+        EXPECT_EQ(sum, factorial(n)) << "n=" << n;
+    }
+}
+
+TEST(ComboSpecial, EulerianNumberSymmetry) {
+    for (uint32_t n = 1; n <= 6; ++n) {
+        for (uint32_t k = 0; k < n; ++k)
+            EXPECT_EQ(eulerian_number(n, k), eulerian_number(n, n - 1 - k))
+                << "n=" << n << " k=" << k;
+    }
+}
+
+TEST(ComboSpecial, EulerianNumberOutOfRangeK) {
+    EXPECT_EQ(eulerian_number(3, 3), 0u);
+    EXPECT_EQ(eulerian_number(4, 4), 0u);
+    EXPECT_EQ(eulerian_number(5, 10), 0u);
+    EXPECT_EQ(eulerian_number(1, 1), 0u);
+}
+
+TEST(ComboSpecial, EulerianNumberNZero) {
+    EXPECT_EQ(eulerian_number(0, 0), 1u);
+    EXPECT_EQ(eulerian_number(0, 1), 0u);
+    EXPECT_EQ(eulerian_number(0, 5), 0u);
+}
+
+TEST(ComboSpecial, EulerianNumberLargerN) {
+    EXPECT_EQ(eulerian_number(6, 1), 57u);
+    EXPECT_EQ(eulerian_number(6, 2), 302u);
+    EXPECT_EQ(eulerian_number(6, 3), 302u);
+    EXPECT_EQ(eulerian_number(7, 2), 1191u);
+    uint64_t sum6 = 0;
+    for (uint32_t k = 0; k < 6; ++k)
+        sum6 += eulerian_number(6, k);
+    EXPECT_EQ(sum6, factorial(6));
+}
+
 TEST(ComboSpecial, BellNum) {
     EXPECT_EQ(bell_num(0), 1u);
     EXPECT_EQ(bell_num(1), 1u);
