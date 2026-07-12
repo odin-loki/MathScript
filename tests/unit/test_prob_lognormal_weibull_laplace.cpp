@@ -463,6 +463,362 @@ TEST(ProbLaplace, PPF_Boundaries) {
 }
 
 // ---------------------------------------------------------------------------
+// Gumbel distribution
+// ---------------------------------------------------------------------------
+
+TEST(ProbGumbel, PDF_NonNegative_And_Finite) {
+    for (double mu : {-2.0, 0.0, 3.0}) {
+        for (double beta : {0.5, 1.0, 2.0}) {
+            for (double x : {-10.0, -1.0, 0.0, 1.0, 10.0}) {
+                const double p = gumbel_pdf(x, mu, beta);
+                EXPECT_GE(p, 0.0);
+                EXPECT_TRUE(std::isfinite(p));
+            }
+        }
+    }
+}
+
+TEST(ProbGumbel, PDF_InvalidScale_IsZero) {
+    EXPECT_DOUBLE_EQ(gumbel_pdf(0.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(gumbel_pdf(0.0, 0.0, -1.0), 0.0);
+}
+
+TEST(ProbGumbel, PDF_IntegratesToOne) {
+    for (double mu : {-1.0, 0.0, 2.0}) {
+        for (double beta : {0.5, 1.0, 2.0}) {
+            const auto f = [&](double x) { return gumbel_pdf(x, mu, beta); };
+            // Gumbel's left tail decays doubly-exponentially fast, so a modest
+            // window around mu comfortably captures essentially all the mass.
+            const double area = simpson_integrate(f, mu - 20.0 * beta, mu + 20.0 * beta, 20000);
+            EXPECT_NEAR(area, 1.0, 5e-3)
+                << "gumbel_pdf should integrate to 1 for mu=" << mu << " beta=" << beta;
+        }
+    }
+}
+
+TEST(ProbGumbel, CDF_MatchesNumericalIntegral) {
+    const double mu = 0.4, beta = 1.3;
+    const auto f = [&](double x) { return gumbel_pdf(x, mu, beta); };
+    const double lo = mu - 20.0 * beta;
+    for (double x : {-2.0, 0.0, 0.5, 1.5, 3.0}) {
+        const double integral = simpson_integrate(f, lo, x, 20000);
+        EXPECT_NEAR(gumbel_cdf(x, mu, beta), integral, 5e-3)
+            << "gumbel_cdf mismatch at x=" << x;
+    }
+}
+
+TEST(ProbGumbel, CDF_Monotone) {
+    for (double beta : {0.5, 1.0, 2.0}) {
+        double prev = gumbel_cdf(-20.0, 0.0, beta);
+        for (double x : {-10.0, -3.0, -1.0, 0.0, 1.0, 3.0, 10.0, 20.0}) {
+            const double curr = gumbel_cdf(x, 0.0, beta);
+            EXPECT_GE(curr, prev - 1e-12);
+            prev = curr;
+        }
+    }
+}
+
+TEST(ProbGumbel, CDF_InvalidScale_IsZero) {
+    EXPECT_DOUBLE_EQ(gumbel_cdf(1.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(gumbel_cdf(1.0, 0.0, -2.0), 0.0);
+}
+
+TEST(ProbGumbel, PPF_RoundTrip_PPF_of_CDF) {
+    for (double mu : {-2.0, 0.0, 3.0}) {
+        for (double beta : {0.5, 1.0, 2.5}) {
+            for (double x : {-5.0, -1.0, 0.0, 1.0, 5.0}) {
+                const double p = gumbel_cdf(x, mu, beta);
+                if (p <= 0.0 || p >= 1.0) continue;
+                const double x_rt = gumbel_ppf(p, mu, beta);
+                EXPECT_NEAR(x_rt, x, 1e-6 * std::max(1.0, std::abs(x)))
+                    << "gumbel ppf(cdf(x)) != x at x=" << x << " mu=" << mu << " beta=" << beta;
+            }
+        }
+    }
+}
+
+TEST(ProbGumbel, PPF_RoundTrip_CDF_of_PPF) {
+    for (double mu : {-2.0, 0.0, 3.0}) {
+        for (double beta : {0.5, 1.0, 2.5}) {
+            for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+                const double q = gumbel_ppf(p, mu, beta);
+                EXPECT_TRUE(std::isfinite(q));
+                EXPECT_NEAR(gumbel_cdf(q, mu, beta), p, 1e-6)
+                    << "gumbel cdf(ppf(p)) != p at p=" << p << " mu=" << mu << " beta=" << beta;
+            }
+        }
+    }
+}
+
+TEST(ProbGumbel, PPF_MedianClosedForm) {
+    // Gumbel's median is mu - beta*log(log(2)).
+    for (double mu : {-2.0, -0.5, 0.0, 0.5, 2.0}) {
+        for (double beta : {0.3, 1.0, 2.0}) {
+            const double expected = mu - beta * std::log(std::log(2.0));
+            EXPECT_NEAR(gumbel_ppf(0.5, mu, beta), expected, 1e-9)
+                << "gumbel median should equal mu - beta*log(log(2)) for mu=" << mu;
+        }
+    }
+}
+
+TEST(ProbGumbel, PPF_Boundaries) {
+    // Gumbel's left tail decays doubly-exponentially, so even tiny-but-nonzero p only
+    // maps to a modestly negative x; check the exact p=0/p=1 sentinel values instead.
+    EXPECT_LT(gumbel_ppf(0.0, 0.0, 1.0), -1e50);
+    EXPECT_GT(gumbel_ppf(1.0, 0.0, 1.0), 1e50);
+    EXPECT_LT(gumbel_ppf(1e-10, 0.0, 1.0), 0.0);
+    EXPECT_GT(gumbel_ppf(1.0 - 1e-10, 0.0, 1.0), 10.0);
+    EXPECT_DOUBLE_EQ(gumbel_ppf(0.5, 0.0, 0.0), 0.0);   // invalid scale
+}
+
+// ---------------------------------------------------------------------------
+// Cauchy distribution
+// ---------------------------------------------------------------------------
+
+TEST(ProbCauchy, PDF_NonNegative_And_Finite) {
+    for (double x0 : {-2.0, 0.0, 3.0}) {
+        for (double gamma : {0.5, 1.0, 2.0}) {
+            for (double x : {-10.0, -1.0, 0.0, 1.0, 10.0}) {
+                const double p = cauchy_pdf(x, x0, gamma);
+                EXPECT_GE(p, 0.0);
+                EXPECT_TRUE(std::isfinite(p));
+            }
+        }
+    }
+}
+
+TEST(ProbCauchy, PDF_InvalidScale_IsZero) {
+    EXPECT_DOUBLE_EQ(cauchy_pdf(0.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(cauchy_pdf(0.0, 0.0, -1.0), 0.0);
+}
+
+TEST(ProbCauchy, PDF_Symmetric) {
+    for (double x0 : {-1.0, 0.0, 2.0}) {
+        for (double gamma : {0.5, 1.0, 3.0}) {
+            for (double d : {0.1, 0.5, 1.0, 3.0}) {
+                EXPECT_NEAR(cauchy_pdf(x0 + d, x0, gamma), cauchy_pdf(x0 - d, x0, gamma), 1e-12)
+                    << "cauchy_pdf should be symmetric around x0=" << x0 << " for d=" << d;
+            }
+        }
+    }
+}
+
+TEST(ProbCauchy, PDF_IntegratesToOne) {
+    // Cauchy's heavy tails decay only as 1/x^2, so the truncated-domain error is
+    // O(1/window) rather than exponentially small; use a wide window accordingly.
+    for (double x0 : {-1.0, 0.0, 2.0}) {
+        for (double gamma : {0.5, 1.0, 2.0}) {
+            const auto f = [&](double x) { return cauchy_pdf(x, x0, gamma); };
+            const double half_width = 2000.0 * gamma;
+            const double area = simpson_integrate(f, x0 - half_width, x0 + half_width, 40000);
+            EXPECT_NEAR(area, 1.0, 5e-3)
+                << "cauchy_pdf should integrate to 1 for x0=" << x0 << " gamma=" << gamma;
+        }
+    }
+}
+
+TEST(ProbCauchy, CDF_AtX0_IsExactlyHalf) {
+    for (double x0 : {-3.0, 0.0, 2.5}) {
+        for (double gamma : {0.5, 1.0, 4.0}) {
+            EXPECT_DOUBLE_EQ(cauchy_cdf(x0, x0, gamma), 0.5);
+        }
+    }
+}
+
+TEST(ProbCauchy, CDF_Monotone) {
+    for (double gamma : {0.5, 1.0, 2.0}) {
+        double prev = cauchy_cdf(-1000.0, 0.0, gamma);
+        for (double x : {-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0, 1000.0}) {
+            const double curr = cauchy_cdf(x, 0.0, gamma);
+            EXPECT_GE(curr, prev - 1e-12);
+            prev = curr;
+        }
+    }
+}
+
+TEST(ProbCauchy, CDF_InvalidScale_IsZero) {
+    EXPECT_DOUBLE_EQ(cauchy_cdf(1.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(cauchy_cdf(1.0, 0.0, -2.0), 0.0);
+}
+
+TEST(ProbCauchy, PPF_RoundTrip_PPF_of_CDF) {
+    for (double x0 : {-2.0, 0.0, 3.0}) {
+        for (double gamma : {0.5, 1.0, 2.5}) {
+            for (double x : {-5.0, -1.0, 0.0, 1.0, 5.0}) {
+                const double p = cauchy_cdf(x, x0, gamma);
+                if (p <= 0.0 || p >= 1.0) continue;
+                const double x_rt = cauchy_ppf(p, x0, gamma);
+                EXPECT_NEAR(x_rt, x, 1e-6 * std::max(1.0, std::abs(x)))
+                    << "cauchy ppf(cdf(x)) != x at x=" << x << " x0=" << x0 << " gamma=" << gamma;
+            }
+        }
+    }
+}
+
+TEST(ProbCauchy, PPF_RoundTrip_CDF_of_PPF) {
+    for (double x0 : {-2.0, 0.0, 3.0}) {
+        for (double gamma : {0.5, 1.0, 2.5}) {
+            for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+                const double q = cauchy_ppf(p, x0, gamma);
+                EXPECT_TRUE(std::isfinite(q));
+                EXPECT_NEAR(cauchy_cdf(q, x0, gamma), p, 1e-6)
+                    << "cauchy cdf(ppf(p)) != p at p=" << p << " x0=" << x0 << " gamma=" << gamma;
+            }
+        }
+    }
+}
+
+TEST(ProbCauchy, PPF_MedianAndModeEqualsX0) {
+    for (double x0 : {-3.0, 0.0, 4.0}) {
+        for (double gamma : {0.5, 1.0, 3.0}) {
+            EXPECT_NEAR(cauchy_ppf(0.5, x0, gamma), x0, 1e-10);
+        }
+    }
+}
+
+TEST(ProbCauchy, PPF_Boundaries) {
+    EXPECT_LT(cauchy_ppf(1e-10, 0.0, 1.0), -1000.0);
+    EXPECT_GT(cauchy_ppf(1.0 - 1e-10, 0.0, 1.0), 1000.0);
+    EXPECT_DOUBLE_EQ(cauchy_ppf(0.5, 0.0, 0.0), 0.0);   // invalid scale
+}
+
+// ---------------------------------------------------------------------------
+// Pareto distribution
+// ---------------------------------------------------------------------------
+
+TEST(ProbPareto, PDF_NonNegative_And_Finite) {
+    for (double x_m : {0.5, 1.0, 3.0}) {
+        for (double alpha : {0.5, 1.0, 2.0, 5.0}) {
+            for (double x : {x_m, x_m + 0.1, x_m + 1.0, x_m + 5.0, x_m * 10.0}) {
+                const double p = pareto_pdf(x, x_m, alpha);
+                EXPECT_GE(p, 0.0);
+                EXPECT_TRUE(std::isfinite(p));
+            }
+        }
+    }
+}
+
+TEST(ProbPareto, PDF_Zero_BelowSupport) {
+    EXPECT_DOUBLE_EQ(pareto_pdf(0.5, 1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_pdf(0.0, 1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_pdf(-3.0, 1.0, 2.0), 0.0);
+}
+
+TEST(ProbPareto, PDF_InvalidParams_IsZero) {
+    EXPECT_DOUBLE_EQ(pareto_pdf(1.0, 0.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_pdf(1.0, -1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_pdf(1.0, 1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_pdf(1.0, 1.0, -2.0), 0.0);
+}
+
+TEST(ProbPareto, PDF_Decreasing_AboveSupport) {
+    for (double x_m : {0.5, 1.0, 2.0}) {
+        for (double alpha : {0.5, 1.0, 3.0}) {
+            double prev = pareto_pdf(x_m, x_m, alpha);
+            for (double x : {x_m * 1.1, x_m * 1.5, x_m * 2.0, x_m * 5.0, x_m * 20.0}) {
+                const double curr = pareto_pdf(x, x_m, alpha);
+                EXPECT_LT(curr, prev)
+                    << "pareto_pdf should strictly decrease for x > x_m at x=" << x;
+                prev = curr;
+            }
+        }
+    }
+}
+
+TEST(ProbPareto, PDF_IntegratesToOne) {
+    // Integrate via the substitution u = ln(x/x_m) (x = x_m*exp(u), dx = x du), i.e.
+    // integrate h(u) = pareto_pdf(x_m*exp(u), x_m, alpha) * x_m*exp(u) over u >= 0.
+    // This keeps the quadrature well-conditioned for the power-law tail.
+    for (double x_m : {0.5, 1.0, 2.5}) {
+        for (double alpha : {0.5, 1.0, 2.0, 4.0}) {
+            const auto h = [&](double u) {
+                const double x = x_m * std::exp(u);
+                return pareto_pdf(x, x_m, alpha) * x;
+            };
+            const double area = simpson_integrate(h, 0.0, 40.0, 40000);
+            EXPECT_NEAR(area, 1.0, 5e-3)
+                << "pareto_pdf should integrate to 1 for x_m=" << x_m << " alpha=" << alpha;
+        }
+    }
+}
+
+TEST(ProbPareto, CDF_Zero_AtAndBelowSupport) {
+    EXPECT_DOUBLE_EQ(pareto_cdf(1.0, 1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_cdf(0.5, 1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_cdf(-1.0, 1.0, 2.0), 0.0);
+}
+
+TEST(ProbPareto, CDF_MatchesNumericalIntegral) {
+    const double x_m = 1.5, alpha = 2.5;
+    const auto f = [&](double x) { return pareto_pdf(x, x_m, alpha); };
+    for (double x : {2.0, 3.0, 5.0, 10.0}) {
+        const double integral = simpson_integrate(f, x_m, x, 20000);
+        EXPECT_NEAR(pareto_cdf(x, x_m, alpha), integral, 5e-3)
+            << "pareto_cdf mismatch at x=" << x;
+    }
+}
+
+TEST(ProbPareto, CDF_Monotone) {
+    for (double alpha : {0.5, 1.0, 3.0}) {
+        double prev = pareto_cdf(1.0, 1.0, alpha);
+        for (double x : {1.1, 1.5, 2.0, 5.0, 20.0}) {
+            const double curr = pareto_cdf(x, 1.0, alpha);
+            EXPECT_GE(curr, prev - 1e-12);
+            prev = curr;
+        }
+    }
+}
+
+TEST(ProbPareto, CDF_InvalidParams_IsZero) {
+    EXPECT_DOUBLE_EQ(pareto_cdf(2.0, 0.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_cdf(2.0, -1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_cdf(2.0, 1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(pareto_cdf(2.0, 1.0, -2.0), 0.0);
+}
+
+TEST(ProbPareto, PPF_RoundTrip_PPF_of_CDF) {
+    for (double x_m : {0.5, 1.0, 3.0}) {
+        for (double alpha : {0.5, 1.0, 2.0, 4.0}) {
+            for (double x : {x_m + 0.1, x_m + 1.0, x_m * 2.0, x_m * 5.0}) {
+                const double p = pareto_cdf(x, x_m, alpha);
+                if (p <= 0.0 || p >= 1.0) continue;
+                const double x_rt = pareto_ppf(p, x_m, alpha);
+                EXPECT_NEAR(x_rt, x, 1e-6 * std::max(1.0, x))
+                    << "pareto ppf(cdf(x)) != x at x=" << x << " x_m=" << x_m << " alpha=" << alpha;
+            }
+        }
+    }
+}
+
+TEST(ProbPareto, PPF_RoundTrip_CDF_of_PPF) {
+    for (double x_m : {0.5, 1.0, 3.0}) {
+        for (double alpha : {0.5, 1.0, 2.0, 4.0}) {
+            for (double p : {0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99}) {
+                const double q = pareto_ppf(p, x_m, alpha);
+                EXPECT_TRUE(std::isfinite(q));
+                EXPECT_GE(q, x_m);
+                EXPECT_NEAR(pareto_cdf(q, x_m, alpha), p, 1e-6)
+                    << "pareto cdf(ppf(p)) != p at p=" << p << " x_m=" << x_m << " alpha=" << alpha;
+            }
+        }
+    }
+}
+
+TEST(ProbPareto, PPF_AtZero_IsXm) {
+    for (double x_m : {0.5, 1.0, 4.0}) {
+        for (double alpha : {0.5, 1.0, 3.0}) {
+            EXPECT_NEAR(pareto_ppf(0.0, x_m, alpha), x_m, 1e-10);
+        }
+    }
+}
+
+TEST(ProbPareto, PPF_Boundaries) {
+    EXPECT_GT(pareto_ppf(1.0 - 1e-10, 1.0, 2.0), 1000.0);
+    EXPECT_DOUBLE_EQ(pareto_ppf(0.5, 0.0, 2.0), 0.0);   // invalid x_m
+    EXPECT_DOUBLE_EQ(pareto_ppf(0.5, 1.0, 0.0), 0.0);   // invalid alpha
+}
+
+// ---------------------------------------------------------------------------
 // Cross-distribution sanity: negative-x domain handling
 // ---------------------------------------------------------------------------
 

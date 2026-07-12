@@ -56,4 +56,25 @@ double laplace_pdf(double x, double mu, double b);
 double laplace_cdf(double x, double mu, double b);
 double laplace_ppf(double p, double mu, double b);
 
+/// Gumbel(mu, beta): location mu, scale beta > 0. Support all reals. The standard
+/// extreme-value distribution (Type I), used for modeling the distribution of maxima
+/// (e.g. maximum river levels, extreme rainfall). CDF: exp(-exp(-(x-mu)/beta)).
+double gumbel_pdf(double x, double mu, double beta);
+double gumbel_cdf(double x, double mu, double beta);
+double gumbel_ppf(double p, double mu, double beta);
+
+/// Cauchy(x0, gamma): location x0, scale gamma > 0. Support all reals. Heavy-tailed
+/// distribution with UNDEFINED mean/variance (the classic pathological example). PDF:
+/// 1 / (pi*gamma*(1+((x-x0)/gamma)^2)). CDF: 1/pi * atan((x-x0)/gamma) + 0.5.
+double cauchy_pdf(double x, double x0, double gamma);
+double cauchy_cdf(double x, double x0, double gamma);
+double cauchy_ppf(double p, double x0, double gamma);
+
+/// Pareto(x_m, alpha): scale (minimum value) x_m > 0, shape alpha > 0. Support x >= x_m.
+/// Classic power-law/"80-20 rule" distribution. PDF: alpha*x_m^alpha / x^(alpha+1) for
+/// x >= x_m, 0 otherwise. CDF: 1 - (x_m/x)^alpha for x >= x_m, 0 otherwise.
+double pareto_pdf(double x, double x_m, double alpha);
+double pareto_cdf(double x, double x_m, double alpha);
+double pareto_ppf(double p, double x_m, double alpha);
+
 } // namespace ms

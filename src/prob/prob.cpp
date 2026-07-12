@@ -454,4 +454,88 @@ double laplace_ppf(double p, double mu, double b) {
     return mu - b * sign * std::log(1.0 - 2.0 * std::abs(d));
 }
 
+double gumbel_pdf(double x, double mu, double beta) {
+    if (beta <= 0.0) {
+        return 0.0;
+    }
+    const double z = (x - mu) / beta;
+    return std::exp(-z - std::exp(-z)) / beta;
+}
+
+double gumbel_cdf(double x, double mu, double beta) {
+    if (beta <= 0.0) {
+        return 0.0;
+    }
+    const double z = (x - mu) / beta;
+    return std::exp(-std::exp(-z));
+}
+
+double gumbel_ppf(double p, double mu, double beta) {
+    if (beta <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return k_ppf_neg_tail;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return mu - beta * std::log(-std::log(p));
+}
+
+double cauchy_pdf(double x, double x0, double gamma) {
+    if (gamma <= 0.0) {
+        return 0.0;
+    }
+    const double z = (x - x0) / gamma;
+    return 1.0 / (M_PI * gamma * (1.0 + z * z));
+}
+
+double cauchy_cdf(double x, double x0, double gamma) {
+    if (gamma <= 0.0) {
+        return 0.0;
+    }
+    return std::atan((x - x0) / gamma) / M_PI + 0.5;
+}
+
+double cauchy_ppf(double p, double x0, double gamma) {
+    if (gamma <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return k_ppf_neg_tail;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return x0 + gamma * std::tan(M_PI * (p - 0.5));
+}
+
+double pareto_pdf(double x, double x_m, double alpha) {
+    if (x_m <= 0.0 || alpha <= 0.0 || x < x_m) {
+        return 0.0;
+    }
+    return alpha * std::pow(x_m, alpha) / std::pow(x, alpha + 1.0);
+}
+
+double pareto_cdf(double x, double x_m, double alpha) {
+    if (x_m <= 0.0 || alpha <= 0.0 || x < x_m) {
+        return 0.0;
+    }
+    return 1.0 - std::pow(x_m / x, alpha);
+}
+
+double pareto_ppf(double p, double x_m, double alpha) {
+    if (x_m <= 0.0 || alpha <= 0.0) {
+        return 0.0;
+    }
+    if (p <= 0.0) {
+        return x_m;
+    }
+    if (p >= 1.0) {
+        return k_ppf_pos_tail;
+    }
+    return x_m / std::pow(1.0 - p, 1.0 / alpha);
+}
+
 } // namespace ms
