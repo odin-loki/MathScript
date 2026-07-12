@@ -550,6 +550,54 @@ Poisson2DResult pde_poisson_2d(
     return result;
 }
 
+Poisson2DResult pde_laplace_2d(
+    int nx,
+    int ny,
+    const std::vector<std::vector<double>>& boundary) {
+    Poisson2DResult result;
+    constexpr std::size_t max_iterations = 10000;
+    constexpr double tolerance = 1e-8;
+
+    if (nx < 3 || ny < 3) {
+        return result;
+    }
+    if (!is_rectangular_grid(boundary)) {
+        return result;
+    }
+    if (boundary.size() != static_cast<std::size_t>(ny)
+        || boundary[0].size() != static_cast<std::size_t>(nx)) {
+        return result;
+    }
+
+    const double dx = 1.0 / static_cast<double>(nx - 1);
+    const double dy = 1.0 / static_cast<double>(ny - 1);
+    const double inv_dx2 = 1.0 / (dx * dx);
+    const double inv_dy2 = 1.0 / (dy * dy);
+    const double denom = 2.0 * inv_dx2 + 2.0 * inv_dy2;
+
+    std::vector<std::vector<double>> u = boundary;
+
+    for (std::size_t iter = 1; iter <= max_iterations; ++iter) {
+        double max_change = 0.0;
+        for (std::size_t j = 1; j + 1 < static_cast<std::size_t>(ny); ++j) {
+            for (std::size_t i = 1; i + 1 < static_cast<std::size_t>(nx); ++i) {
+                const double old = u[j][i];
+                u[j][i] = ((u[j][i - 1] + u[j][i + 1]) * inv_dx2
+                    + (u[j - 1][i] + u[j + 1][i]) * inv_dy2) / denom;
+                max_change = std::max(max_change, std::abs(u[j][i] - old));
+            }
+        }
+        result.iterations = iter;
+        if (max_change < tolerance) {
+            result.converged = true;
+            break;
+        }
+    }
+
+    result.u = std::move(u);
+    return result;
+}
+
 Helmholtz2DResult pde_helmholtz_2d(
     const std::vector<std::vector<double>>& f,
     double k,

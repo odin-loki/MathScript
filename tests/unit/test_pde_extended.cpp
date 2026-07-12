@@ -430,6 +430,178 @@ TEST(PdeExtTest, poisson_2d_max_iterations_used) {
 }
 
 // ---------------------------------------------------------------------------
+// pde_laplace_2d
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<std::vector<double>> make_harmonic_boundary(std::size_t nx, std::size_t ny) {
+    auto b = make_grid(ny, nx);
+    for (std::size_t j = 0; j < ny; ++j) {
+        for (std::size_t i = 0; i < nx; ++i) {
+            const double x = static_cast<double>(i) / static_cast<double>(nx - 1);
+            const double y = static_cast<double>(j) / static_cast<double>(ny - 1);
+            b[j][i] = x * x - y * y;
+        }
+    }
+    return b;
+}
+
+std::vector<std::vector<double>> make_sinh_harmonic_boundary(std::size_t nx, std::size_t ny) {
+    auto b = make_grid(ny, nx);
+    for (std::size_t j = 0; j < ny; ++j) {
+        for (std::size_t i = 0; i < nx; ++i) {
+            const double x = static_cast<double>(i) / static_cast<double>(nx - 1);
+            const double y = static_cast<double>(j) / static_cast<double>(ny - 1);
+            b[j][i] = std::sin(M_PI * x) * std::sinh(M_PI * (1.0 - y));
+        }
+    }
+    return b;
+}
+
+} // namespace
+
+TEST(PdeExtTest, laplace_2d_manufactured_harmonic) {
+    const int nx = 21;
+    const int ny = 21;
+    const auto boundary = make_harmonic_boundary(static_cast<std::size_t>(nx),
+        static_cast<std::size_t>(ny));
+    const auto result = pde_laplace_2d(nx, ny, boundary);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_TRUE(result.converged);
+    EXPECT_GT(result.iterations, 0u);
+    double max_err = 0.0;
+    for (int j = 1; j + 1 < ny; ++j) {
+        for (int i = 1; i + 1 < nx; ++i) {
+            const double x = static_cast<double>(i) / static_cast<double>(nx - 1);
+            const double y = static_cast<double>(j) / static_cast<double>(ny - 1);
+            const double exact = x * x - y * y;
+            max_err = std::max(max_err, std::abs(result.u[static_cast<std::size_t>(j)]
+                [static_cast<std::size_t>(i)] - exact));
+        }
+    }
+    EXPECT_LT(max_err, 0.01);
+}
+
+TEST(PdeExtTest, laplace_2d_boundary_values_preserved) {
+    const int nx = 11;
+    const int ny = 11;
+    const auto boundary = make_harmonic_boundary(static_cast<std::size_t>(nx),
+        static_cast<std::size_t>(ny));
+    const auto result = pde_laplace_2d(nx, ny, boundary);
+    ASSERT_FALSE(result.u.empty());
+    for (int i = 0; i < nx; ++i) {
+        EXPECT_NEAR(result.u[0][static_cast<std::size_t>(i)],
+            boundary[0][static_cast<std::size_t>(i)], 1e-12);
+        EXPECT_NEAR(result.u[static_cast<std::size_t>(ny - 1)][static_cast<std::size_t>(i)],
+            boundary[static_cast<std::size_t>(ny - 1)][static_cast<std::size_t>(i)], 1e-12);
+    }
+    for (int j = 0; j < ny; ++j) {
+        EXPECT_NEAR(result.u[static_cast<std::size_t>(j)][0],
+            boundary[static_cast<std::size_t>(j)][0], 1e-12);
+        EXPECT_NEAR(result.u[static_cast<std::size_t>(j)][static_cast<std::size_t>(nx - 1)],
+            boundary[static_cast<std::size_t>(j)][static_cast<std::size_t>(nx - 1)], 1e-12);
+    }
+}
+
+TEST(PdeExtTest, laplace_2d_converged_flag) {
+    const int nx = 15;
+    const int ny = 15;
+    auto boundary = make_grid(static_cast<std::size_t>(ny), static_cast<std::size_t>(nx));
+    for (int i = 0; i < nx; ++i) {
+        boundary[0][static_cast<std::size_t>(i)] = 1.0;
+        boundary[static_cast<std::size_t>(ny - 1)][static_cast<std::size_t>(i)] = 0.0;
+    }
+    const auto result = pde_laplace_2d(nx, ny, boundary);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_TRUE(result.converged);
+    EXPECT_LE(result.iterations, 10000u);
+}
+
+TEST(PdeExtTest, laplace_2d_too_small_grid) {
+    auto boundary = make_grid(2, 2, 1.0);
+    const auto result = pde_laplace_2d(2, 2, boundary);
+    EXPECT_TRUE(result.u.empty());
+    EXPECT_FALSE(result.converged);
+}
+
+TEST(PdeExtTest, laplace_2d_dimension_mismatch) {
+    auto boundary = make_grid(7, 7);
+    const auto result = pde_laplace_2d(9, 7, boundary);
+    EXPECT_TRUE(result.u.empty());
+    EXPECT_FALSE(result.converged);
+}
+
+TEST(PdeExtTest, laplace_2d_zero_boundary_is_zero) {
+    const int nx = 9;
+    const int ny = 9;
+    auto boundary = make_grid(static_cast<std::size_t>(ny), static_cast<std::size_t>(nx), 0.0);
+    const auto result = pde_laplace_2d(nx, ny, boundary);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_TRUE(result.converged);
+    for (const auto& row : result.u) {
+        for (double v : row) {
+            EXPECT_NEAR(v, 0.0, 1e-6);
+        }
+    }
+}
+
+TEST(PdeExtTest, laplace_2d_convergence_with_refinement) {
+    auto max_interior_error = [](int n, const Poisson2DResult& result) {
+        double max_err = 0.0;
+        for (int j = 1; j + 1 < n; ++j) {
+            for (int i = 1; i + 1 < n; ++i) {
+                const double x = static_cast<double>(i) / static_cast<double>(n - 1);
+                const double y = static_cast<double>(j) / static_cast<double>(n - 1);
+                const double exact = std::sin(M_PI * x) * std::sinh(M_PI * (1.0 - y));
+                max_err = std::max(max_err, std::abs(result.u[static_cast<std::size_t>(j)]
+                    [static_cast<std::size_t>(i)] - exact));
+            }
+        }
+        return max_err;
+    };
+
+    const auto coarse = pde_laplace_2d(11, 11, make_sinh_harmonic_boundary(11, 11));
+    const auto fine = pde_laplace_2d(41, 41, make_sinh_harmonic_boundary(41, 41));
+    ASSERT_FALSE(coarse.u.empty());
+    ASSERT_FALSE(fine.u.empty());
+    EXPECT_TRUE(coarse.converged);
+    EXPECT_TRUE(fine.converged);
+    const double coarse_err = max_interior_error(11, coarse);
+    const double fine_err = max_interior_error(41, fine);
+    EXPECT_GT(coarse_err, 1e-3);
+    EXPECT_LT(fine_err, coarse_err * 0.25);
+}
+
+TEST(PdeExtTest, laplace_2d_rectangular_grid) {
+    const int nx = 17;
+    const int ny = 11;
+    const auto boundary = make_harmonic_boundary(static_cast<std::size_t>(nx),
+        static_cast<std::size_t>(ny));
+    const auto result = pde_laplace_2d(nx, ny, boundary);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_TRUE(result.converged);
+    double max_err = 0.0;
+    for (int j = 1; j + 1 < ny; ++j) {
+        for (int i = 1; i + 1 < nx; ++i) {
+            const double x = static_cast<double>(i) / static_cast<double>(nx - 1);
+            const double y = static_cast<double>(j) / static_cast<double>(ny - 1);
+            const double exact = x * x - y * y;
+            max_err = std::max(max_err, std::abs(result.u[static_cast<std::size_t>(j)]
+                [static_cast<std::size_t>(i)] - exact));
+        }
+    }
+    EXPECT_LT(max_err, 0.02);
+}
+
+TEST(PdeExtTest, laplace_2d_invalid_empty_boundary) {
+    const std::vector<std::vector<double>> empty;
+    const auto result = pde_laplace_2d(5, 5, empty);
+    EXPECT_TRUE(result.u.empty());
+    EXPECT_FALSE(result.converged);
+}
+
+// ---------------------------------------------------------------------------
 // pde_helmholtz_2d
 // ---------------------------------------------------------------------------
 
