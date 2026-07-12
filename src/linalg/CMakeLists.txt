@@ -21,6 +21,7 @@ add_library(ms_linalg STATIC
     matrix_funcs.cpp
     auxiliary.cpp
     iterative.cpp
+    sylvester.cpp
 )
 
 target_include_directories(ms_linalg PUBLIC
