@@ -323,6 +323,29 @@ struct AgglomerativeClustering {
     void fit(const Mat& X);
 };
 
+/// Spectral clustering — partitions non-convex clusters via the eigenvectors
+/// of a symmetric-normalized graph Laplacian built from pairwise similarities,
+/// then runs KMeans on the spectral embedding.
+///
+/// Affinity modes:
+///   n_neighbors == 0 (default): fully-connected Gaussian/RBF kernel
+///     W_ij = exp(-||x_i - x_j||^2 / (2*sigma^2))
+///   n_neighbors > 0: sparse k-nearest-neighbor graph with the same Gaussian
+///     edge weights, symmetrized by max(W_ij, W_ji).
+///
+/// Laplacian: L_sym = I - D^(-1/2) W D^(-1/2) where D is the degree matrix.
+/// The n_clusters eigenvectors of L_sym with the smallest eigenvalues (via
+/// eig_sym) form an n_samples x n_clusters embedding; KMeans assigns final
+/// labels in {0, ..., n_clusters-1}.
+///
+/// @param X          rows-as-samples feature matrix.
+/// @param n_clusters target number of clusters (clamped to [1, n_samples]).
+/// @param sigma      RBF kernel bandwidth (> 0; values <= 0 fall back to 1.0).
+/// @param n_neighbors 0 for fully-connected RBF; > 0 for k-NN sparsification.
+/// @return per-sample cluster labels (empty if X is empty).
+std::vector<int> spectral_clustering(const Mat& X, int n_clusters,
+                                     double sigma = 1.0, int n_neighbors = 0);
+
 // ========================== Dimensionality Reduction ==========================
 
 struct PCA {

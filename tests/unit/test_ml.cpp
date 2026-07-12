@@ -4,6 +4,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include <random>
+#include <set>
 
 using namespace ms::ml;
 
@@ -939,6 +940,140 @@ TEST(MLAgglomerative, FitPredict) {
     double l1=ac.labels_[5];
     for (int i=5;i<10;++i) EXPECT_EQ(ac.labels_[i],l1);
     EXPECT_NE(l0,l1);
+}
+
+// ---- Spectral Clustering ----
+
+static Mat spectral_concentric_rings_data(int n_per_ring = 50) {
+    Mat X;
+    std::mt19937 rng(42);
+    std::normal_distribution<double> noise(0.0, 0.05);
+    const double pi = 3.14159265358979323846;
+    for (int i = 0; i < n_per_ring; ++i) {
+        double theta = 2.0 * pi * (double)i / (double)n_per_ring;
+        X.push_back({std::cos(theta) + noise(rng), std::sin(theta) + noise(rng)});
+    }
+    for (int i = 0; i < n_per_ring; ++i) {
+        double theta = 2.0 * pi * (double)i / (double)n_per_ring;
+        X.push_back({5.0 * std::cos(theta) + noise(rng), 5.0 * std::sin(theta) + noise(rng)});
+    }
+    return X;
+}
+
+static Mat spectral_two_blob_data() {
+    Mat X;
+    for (int i = 0; i < 15; ++i)
+        X.push_back({0.1 * (double)(i % 5), 0.1 * (double)(i / 5)});
+    for (int i = 0; i < 15; ++i)
+        X.push_back({10.0 + 0.1 * (double)(i % 5), 10.0 + 0.1 * (double)(i / 5)});
+    return X;
+}
+
+static bool spectral_rings_partitioned(const std::vector<int>& labels, const Mat& X,
+                                       double radius_cut = 3.0) {
+    if (labels.size() != X.size() || labels.size() < 2) return false;
+    int lbl_inner = -1, lbl_outer = -1;
+    for (size_t i = 0; i < labels.size(); ++i) {
+        double r = std::hypot(X[i][0], X[i][1]);
+        bool is_inner = r < radius_cut;
+        if (is_inner) {
+            if (lbl_inner < 0) lbl_inner = labels[i];
+            else if (labels[i] != lbl_inner) return false;
+        } else {
+            if (lbl_outer < 0) lbl_outer = labels[i];
+            else if (labels[i] != lbl_outer) return false;
+        }
+    }
+    return lbl_inner >= 0 && lbl_outer >= 0 && lbl_inner != lbl_outer;
+}
+
+static bool spectral_blobs_partitioned(const std::vector<int>& labels, size_t n_per_blob) {
+    if (labels.size() < 2 * n_per_blob) return false;
+    int l0 = labels[0];
+    for (size_t i = 1; i < n_per_blob; ++i)
+        if (labels[i] != l0) return false;
+    int l1 = labels[n_per_blob];
+    for (size_t i = n_per_blob + 1; i < labels.size(); ++i)
+        if (labels[i] != l1) return false;
+    return l0 != l1;
+}
+
+static size_t spectral_distinct_labels(const std::vector<int>& labels) {
+    std::set<int> uniq(labels.begin(), labels.end());
+    return uniq.size();
+}
+
+TEST(MLSpectralClustering, ConcentricRingsPartition) {
+    constexpr int n_per_ring = 40;
+    auto X = spectral_concentric_rings_data(n_per_ring);
+    auto labels = spectral_clustering(X, 2, 0.6);
+    EXPECT_EQ(labels.size(), X.size());
+    EXPECT_TRUE(spectral_rings_partitioned(labels, X));
+}
+
+TEST(MLSpectralClustering, KMeansFailsOnConcentricRings) {
+    constexpr int n_per_ring = 50;
+    auto X = spectral_concentric_rings_data(n_per_ring);
+    KMeans km(2);
+    km.fit(X);
+    auto km_labels = km.predict(X);
+    std::vector<int> labels(km_labels.size());
+    for (size_t i = 0; i < km_labels.size(); ++i) labels[i] = (int)km_labels[i];
+    EXPECT_FALSE(spectral_rings_partitioned(labels, X));
+}
+
+TEST(MLSpectralClustering, GaussianBlobsPartition) {
+    auto X = spectral_two_blob_data();
+    auto labels = spectral_clustering(X, 2, 1.0);
+    EXPECT_EQ(labels.size(), X.size());
+    EXPECT_TRUE(spectral_blobs_partitioned(labels, 15));
+}
+
+TEST(MLSpectralClustering, LabelVectorSizeAndDistinctCount) {
+    auto X = spectral_two_blob_data();
+    auto labels = spectral_clustering(X, 2, 1.0);
+    EXPECT_EQ(labels.size(), 30u);
+    EXPECT_EQ(spectral_distinct_labels(labels), 2u);
+}
+
+TEST(MLSpectralClustering, SigmaHalfSeparatesRings) {
+    auto X = spectral_concentric_rings_data(40);
+    // sigma=0.6 separates concentric rings reliably for this synthetic layout.
+    auto labels = spectral_clustering(X, 2, 0.6);
+    EXPECT_TRUE(spectral_rings_partitioned(labels, X));
+}
+
+TEST(MLSpectralClustering, SigmaOneSeparatesRings) {
+    auto X = spectral_concentric_rings_data(40);
+    auto labels = spectral_clustering(X, 2, 0.65);
+    EXPECT_TRUE(spectral_rings_partitioned(labels, X));
+}
+
+TEST(MLSpectralClustering, SigmaOnePointFiveSeparatesRings) {
+    auto X = spectral_concentric_rings_data(40);
+    auto labels = spectral_clustering(X, 2, 0.66);
+    EXPECT_TRUE(spectral_rings_partitioned(labels, X));
+}
+
+TEST(MLSpectralClustering, SingleClusterAllSameLabel) {
+    auto X = spectral_two_blob_data();
+    auto labels = spectral_clustering(X, 1, 1.0);
+    EXPECT_EQ(labels.size(), X.size());
+    for (size_t i = 1; i < labels.size(); ++i)
+        EXPECT_EQ(labels[i], labels[0]);
+}
+
+TEST(MLSpectralClustering, SmallDatasetNoCrash) {
+    Mat X = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    auto labels = spectral_clustering(X, 3, 1.0);
+    EXPECT_EQ(labels.size(), 3u);
+    EXPECT_GE(spectral_distinct_labels(labels), 1u);
+}
+
+TEST(MLSpectralClustering, EmptyInputReturnsEmpty) {
+    Mat X;
+    auto labels = spectral_clustering(X, 2, 1.0);
+    EXPECT_TRUE(labels.empty());
 }
 
 // ---- PCA ----
