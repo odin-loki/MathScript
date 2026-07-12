@@ -1,6 +1,7 @@
 # MathScript Runtime Library
 
 set(MS_RUNTIME_CPU_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/cpu/blas.cpp
     cpu/blas_dgemm.cpp
     cpu/blas_dger.cpp
     cpu/blas_dsyrk_dtrsm.cpp
