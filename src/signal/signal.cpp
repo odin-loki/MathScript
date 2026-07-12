@@ -870,4 +870,40 @@ std::vector<double> median_filter(const std::vector<double>& x, int window_lengt
     return y;
 }
 
+LMSResult lms_adaptive_filter(const std::vector<double>& x, const std::vector<double>& d,
+                               int filter_length, double mu) {
+    if (filter_length <= 0 || x.size() != d.size() ||
+        x.size() < static_cast<size_t>(filter_length)) {
+        return LMSResult{};
+    }
+
+    const size_t n_taps = static_cast<size_t>(filter_length);
+    const size_t n = x.size();
+
+    LMSResult result;
+    result.output.assign(n, 0.0);
+    result.error.assign(n, 0.0);
+    result.weights.assign(n_taps, 0.0);
+
+    for (size_t i = 0; i < n; ++i) {
+        double y_n = 0.0;
+        for (size_t k = 0; k < n_taps; ++k) {
+            if (i >= k) {
+                y_n += result.weights[k] * x[i - k];
+            }
+        }
+        const double e_n = d[i] - y_n;
+        result.output[i] = y_n;
+        result.error[i] = e_n;
+
+        for (size_t k = 0; k < n_taps; ++k) {
+            if (i >= k) {
+                result.weights[k] += mu * e_n * x[i - k];
+            }
+        }
+    }
+
+    return result;
+}
+
 } // namespace ms

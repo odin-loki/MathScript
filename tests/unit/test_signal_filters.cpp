@@ -854,3 +854,264 @@ TEST(MedianFilterTest, two_outlier_spikes_within_one_window_still_rejected) {
         EXPECT_DOUBLE_EQ(y[center], 1.0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// lms_adaptive_filter(): online LMS adaptive FIR filter.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Deterministic "random-ish" input signal: sum of a few incommensurate sinusoids plus a
+// simple congruential noise term, used as a stand-in for a broadband excitation signal (LMS
+// needs a spectrally-rich input to identify all taps of the unknown system).
+std::vector<double> lms_test_signal(size_t n) {
+    std::vector<double> x(n);
+    uint32_t state = 12345u;
+    for (size_t i = 0; i < n; ++i) {
+        state = state * 1664525u + 1013904223u;
+        const double noise = (static_cast<double>(state % 10000u) / 10000.0 - 0.5) * 0.2;
+        x[i] = std::sin(2.0 * M_PI * 0.017 * static_cast<double>(i)) +
+               0.6 * std::sin(2.0 * M_PI * 0.083 * static_cast<double>(i)) + noise;
+    }
+    return x;
+}
+
+// Applies a fixed causal FIR filter (true_weights) directly, i.e.
+// d[n] = sum_k true_weights[k] * x[n-k], with zero-padding for n-k < 0. Used to build the
+// "desired" reference signal for an LMS system-identification scenario.
+std::vector<double> apply_known_fir(const std::vector<double>& x,
+                                     const std::vector<double>& true_weights) {
+    std::vector<double> d(x.size(), 0.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        double acc = 0.0;
+        for (size_t k = 0; k < true_weights.size(); ++k) {
+            if (i >= k) {
+                acc += true_weights[k] * x[i - k];
+            }
+        }
+        d[i] = acc;
+    }
+    return d;
+}
+
+} // namespace
+
+TEST(LMSAdaptiveFilterTest, converges_to_known_true_weights) {
+    const std::vector<double> true_weights{0.5, 0.3, -0.2};
+    const size_t N = 20000;
+    const auto x = lms_test_signal(N);
+    const auto d = apply_known_fir(x, true_weights);
+
+    const auto result = lms_adaptive_filter(x, d, 3, 0.01);
+    ASSERT_EQ(result.weights.size(), true_weights.size());
+    ASSERT_EQ(result.output.size(), N);
+    ASSERT_EQ(result.error.size(), N);
+
+    for (size_t k = 0; k < true_weights.size(); ++k) {
+        EXPECT_NEAR(result.weights[k], true_weights[k], 0.05);
+    }
+}
+
+TEST(LMSAdaptiveFilterTest, error_decreases_substantially_over_time) {
+    const std::vector<double> true_weights{0.5, 0.3, -0.2};
+    const size_t N = 4000;
+    const auto x = lms_test_signal(N);
+    const auto d = apply_known_fir(x, true_weights);
+
+    const auto result = lms_adaptive_filter(x, d, 3, 0.01);
+    ASSERT_EQ(result.error.size(), N);
+
+    const size_t window = 200;
+    double mse_early = 0.0;
+    for (size_t i = 0; i < window; ++i) {
+        mse_early += result.error[i] * result.error[i];
+    }
+    mse_early /= static_cast<double>(window);
+
+    double mse_late = 0.0;
+    for (size_t i = N - window; i < N; ++i) {
+        mse_late += result.error[i] * result.error[i];
+    }
+    mse_late /= static_cast<double>(window);
+
+    EXPECT_LT(mse_late, mse_early * 0.1);
+}
+
+TEST(LMSAdaptiveFilterTest, zero_input_and_desired_converges_trivially) {
+    const std::vector<double> x(50, 0.0);
+    const std::vector<double> d(50, 0.0);
+
+    const auto result = lms_adaptive_filter(x, d, 4, 0.1);
+    ASSERT_EQ(result.weights.size(), 4u);
+    for (double w : result.weights) {
+        EXPECT_DOUBLE_EQ(w, 0.0);
+    }
+    for (double y : result.output) {
+        EXPECT_DOUBLE_EQ(y, 0.0);
+    }
+    for (double e : result.error) {
+        EXPECT_DOUBLE_EQ(e, 0.0);
+    }
+}
+
+TEST(LMSAdaptiveFilterTest, mu_zero_means_no_adaptation) {
+    const size_t N = 30;
+    const auto x = lms_test_signal(N);
+    const std::vector<double> true_weights{0.4, -0.1};
+    const auto d = apply_known_fir(x, true_weights);
+
+    const auto result = lms_adaptive_filter(x, d, 2, 0.0);
+    ASSERT_EQ(result.weights.size(), 2u);
+
+    // Weights never move away from their zero initial value.
+    EXPECT_DOUBLE_EQ(result.weights[0], 0.0);
+    EXPECT_DOUBLE_EQ(result.weights[1], 0.0);
+
+    // Output is computed from all-zero weights, so it's all-zero too.
+    ASSERT_EQ(result.output.size(), N);
+    for (double y : result.output) {
+        EXPECT_DOUBLE_EQ(y, 0.0);
+    }
+
+    // Error exactly equals the desired signal at every step (e[n] = d[n] - 0).
+    ASSERT_EQ(result.error.size(), N);
+    for (size_t i = 0; i < N; ++i) {
+        EXPECT_DOUBLE_EQ(result.error[i], d[i]);
+    }
+}
+
+TEST(LMSAdaptiveFilterTest, mismatched_lengths_returns_empty_result) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> d{1.0, 2.0, 3.0};
+
+    const auto result = lms_adaptive_filter(x, d, 2, 0.01);
+    EXPECT_TRUE(result.output.empty());
+    EXPECT_TRUE(result.error.empty());
+    EXPECT_TRUE(result.weights.empty());
+}
+
+TEST(LMSAdaptiveFilterTest, non_positive_filter_length_returns_empty_result) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> d{1.0, 2.0, 3.0, 4.0};
+
+    const auto zero_len = lms_adaptive_filter(x, d, 0, 0.01);
+    EXPECT_TRUE(zero_len.output.empty());
+    EXPECT_TRUE(zero_len.error.empty());
+    EXPECT_TRUE(zero_len.weights.empty());
+
+    const auto neg_len = lms_adaptive_filter(x, d, -3, 0.01);
+    EXPECT_TRUE(neg_len.output.empty());
+    EXPECT_TRUE(neg_len.error.empty());
+    EXPECT_TRUE(neg_len.weights.empty());
+}
+
+TEST(LMSAdaptiveFilterTest, signal_shorter_than_filter_length_returns_empty_result) {
+    const std::vector<double> x{1.0, 2.0};
+    const std::vector<double> d{1.0, 2.0};
+
+    const auto result = lms_adaptive_filter(x, d, 5, 0.01);
+    EXPECT_TRUE(result.output.empty());
+    EXPECT_TRUE(result.error.empty());
+    EXPECT_TRUE(result.weights.empty());
+}
+
+TEST(LMSAdaptiveFilterTest, empty_input_returns_empty_result) {
+    const auto result = lms_adaptive_filter({}, {}, 3, 0.01);
+    EXPECT_TRUE(result.output.empty());
+    EXPECT_TRUE(result.error.empty());
+    EXPECT_TRUE(result.weights.empty());
+}
+
+TEST(LMSAdaptiveFilterTest, single_tap_learns_scalar_gain) {
+    // x all equal to 2.0, d all equal to 6.0: the ideal single-tap gain is d/x = 3.0.
+    const size_t N = 3000;
+    const std::vector<double> x(N, 2.0);
+    const std::vector<double> d(N, 6.0);
+
+    const auto result = lms_adaptive_filter(x, d, 1, 0.01);
+    ASSERT_EQ(result.weights.size(), 1u);
+    EXPECT_NEAR(result.weights[0], 3.0, 0.05);
+
+    // Output should converge close to the desired constant too.
+    ASSERT_EQ(result.output.size(), N);
+    EXPECT_NEAR(result.output.back(), 6.0, 0.5);
+}
+
+TEST(LMSAdaptiveFilterTest, single_tap_output_and_error_consistency) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    const std::vector<double> d{2.0, 4.0, 6.0, 8.0, 10.0};
+
+    const auto result = lms_adaptive_filter(x, d, 1, 0.05);
+    ASSERT_EQ(result.output.size(), x.size());
+    ASSERT_EQ(result.error.size(), x.size());
+    ASSERT_EQ(result.weights.size(), 1u);
+
+    // First sample: weight starts at 0, so y[0] = 0*x[0] = 0, e[0] = d[0] - 0 = d[0].
+    EXPECT_DOUBLE_EQ(result.output[0], 0.0);
+    EXPECT_DOUBLE_EQ(result.error[0], d[0]);
+
+    // Every sample must satisfy the defining relation e[n] = d[n] - y[n].
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(result.error[i], d[i] - result.output[i], 1e-12);
+    }
+}
+
+TEST(LMSAdaptiveFilterTest, first_sample_output_is_always_zero_from_zero_initial_weights) {
+    // At n=0, only w[0] (still 0) can contribute (zero-padding for k>0), so y[0] must be 0
+    // regardless of filter_length or the input's value at n=0.
+    const std::vector<double> x{7.0, -3.0, 2.5, 0.0, 1.0, -1.0, 4.0, 8.0};
+    const std::vector<double> d{1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+
+    const auto result = lms_adaptive_filter(x, d, 4, 0.02);
+    ASSERT_FALSE(result.output.empty());
+    EXPECT_DOUBLE_EQ(result.output[0], 0.0);
+}
+
+TEST(LMSAdaptiveFilterTest, weight_vector_has_exactly_filter_length_entries) {
+    const std::vector<double> x(20, 1.0);
+    const std::vector<double> d(20, 1.0);
+    for (int filter_length : {1, 2, 5, 10}) {
+        const auto result = lms_adaptive_filter(x, d, filter_length, 0.01);
+        EXPECT_EQ(result.weights.size(), static_cast<size_t>(filter_length));
+    }
+}
+
+TEST(LMSAdaptiveFilterTest, negative_mu_still_updates_weights_deterministically) {
+    // mu need not be positive for the mechanics of the update rule to be well-defined; a
+    // negative mu simply moves weights in the opposite direction of the gradient step. This
+    // test only checks the implementation applies the documented update rule literally,
+    // regardless of the sign of mu (stability/convergence for bad mu values is the caller's
+    // responsibility per the documented contract).
+    const std::vector<double> x{1.0, 1.0, 1.0};
+    const std::vector<double> d{2.0, 2.0, 2.0};
+    const double mu = -0.1;
+
+    const auto result = lms_adaptive_filter(x, d, 1, mu);
+    ASSERT_EQ(result.weights.size(), 1u);
+
+    // Hand-computed trace: w0 = 0.
+    // n=0: y=0, e=2, w += mu*e*x[0] = -0.1*2*1 = -0.2 -> w=-0.2
+    // n=1: y=w*x[1]=-0.2, e=2.2, w += mu*e*x[1] = -0.1*2.2*1=-0.22 -> w=-0.42
+    // n=2: y=w*x[2]=-0.42, e=2.42, w += mu*e*x[2] = -0.1*2.42*1=-0.242 -> w=-0.662
+    EXPECT_NEAR(result.weights[0], -0.662, 1e-9);
+}
+
+TEST(LMSAdaptiveFilterTest, two_tap_hand_computed_first_two_steps) {
+    // filter_length=2, mu=0.1, x={1,2,3}, d={1,1,1}. Weights start at {0,0}.
+    // n=0: y = w0*x[0] + w1*x[-1](=0) = 0. e = 1 - 0 = 1.
+    //      w0 += mu*e*x[0] = 0.1*1*1 = 0.1 -> w0=0.1
+    //      w1 += mu*e*x[-1] = 0.1*1*0 = 0   -> w1=0.0
+    // n=1: y = w0*x[1] + w1*x[0] = 0.1*2 + 0.0*1 = 0.2. e = 1 - 0.2 = 0.8.
+    //      w0 += mu*e*x[1] = 0.1*0.8*2 = 0.16 -> w0 = 0.26
+    //      w1 += mu*e*x[0] = 0.1*0.8*1 = 0.08 -> w1 = 0.08
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    const std::vector<double> d{1.0, 1.0, 1.0};
+    const auto result = lms_adaptive_filter(x, d, 2, 0.1);
+
+    ASSERT_EQ(result.output.size(), 3u);
+    ASSERT_EQ(result.error.size(), 3u);
+    EXPECT_NEAR(result.output[0], 0.0, 1e-12);
+    EXPECT_NEAR(result.error[0], 1.0, 1e-12);
+    EXPECT_NEAR(result.output[1], 0.2, 1e-12);
+    EXPECT_NEAR(result.error[1], 0.8, 1e-12);
+}

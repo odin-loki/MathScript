@@ -209,4 +209,36 @@ std::vector<double> savgol(const std::vector<double>& x, int window_length, int 
 //       unfiltered from the input rather than using a shrinking/asymmetric window.
 std::vector<double> median_filter(const std::vector<double>& x, int window_length);
 
+// LMS (Least Mean Squares) adaptive filter: an online adaptive FIR filter that adjusts its
+// filter_length taps to minimize the mean squared error between its output and a "desired"
+// reference signal, sample by sample, via stochastic gradient descent on the instantaneous
+// squared error. Classic applications: adaptive noise cancellation, system identification,
+// channel equalization. At each time step n:
+//   y[n] = sum_{k=0}^{filter_length-1} w[k] * x[n-k]     (filter output, using current weights)
+//   e[n] = d[n] - y[n]                                    (error vs desired signal)
+//   w[k] = w[k] + mu * e[n] * x[n-k]  for all k            (weight update, gradient step)
+// where x is the input signal, d is the desired/reference signal (same length as x), mu is the
+// step size (learning rate; must be small enough for stability -- typically mu <
+// 2/(filter_length * signal_power), though you don't need to auto-tune this, just accept it as
+// a caller-supplied parameter), and weights w start at all-zero.
+struct LMSResult {
+    std::vector<double> output;      // y[n] at each time step
+    std::vector<double> error;       // e[n] at each time step
+    std::vector<double> weights;     // final filter_length weights after processing all samples
+};
+
+// @param x input signal. @param d desired/reference signal, same length as x (mismatched
+//        lengths, or filter_length<=0, or x/d shorter than filter_length, are defensive early-
+//        return cases -- document and return a sane empty/trivial LMSResult).
+// @param filter_length number of adaptive FIR taps.
+// @param mu step size / learning rate (small positive value for stable convergence; this
+//        function does not clamp or validate mu's stability bound itself -- that's the
+//        caller's responsibility, matching how e.g. other numeric methods in this module with
+//        tunable step sizes don't second-guess the caller's choice).
+// @return per-sample output/error and final converged weights. x[n-k] for k > n (before the
+//         start of the signal) is treated as 0 (zero-padding convention, matching how a causal
+//         FIR filter naturally handles startup transients).
+LMSResult lms_adaptive_filter(const std::vector<double>& x, const std::vector<double>& d,
+                               int filter_length, double mu);
+
 } // namespace ms
