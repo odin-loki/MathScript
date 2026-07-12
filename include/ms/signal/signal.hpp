@@ -159,4 +159,40 @@ std::vector<double> firwin(int n_taps, double cutoff, FirWindow window = FirWind
 // module's defensive early-return style for inputs that can't be validated any other way.
 std::vector<double> firwin_highpass(int n_taps, double cutoff, FirWindow window = FirWindow::Hamming);
 
+// Savitzky-Golay smoothing filter: fits a degree-`polyorder` polynomial by least squares to
+// every sliding window of `window_length` consecutive samples, and takes the fitted
+// polynomial's value at the window center as the smoothed output. Because the window is
+// uniformly spaced, this reduces to a single fixed set of FIR coefficients (independent of
+// position): letting A be the (window_length x (polyorder+1)) Vandermonde design matrix of
+// integer offsets -(window_length-1)/2 .. +(window_length-1)/2 raised to powers 0..polyorder,
+// the coefficients are the first row of the least-squares pseudoinverse (A^T A)^{-1} A^T,
+// obtained here by solving the (polyorder+1) x (polyorder+1) normal-equations system
+// (A^T A) v = e_0 (ms::solve) and forming h = A*v. These taps are then convolved directly with
+// x over every fully-covered centered window.
+//
+// @param window_length Number of samples in the sliding window; must be odd and positive (so a
+//                       unique integer center offset 0 exists) and no larger than x.size().
+// @param polyorder      Degree of the local polynomial fit; must satisfy 0 <= polyorder <
+//                       window_length (a polynomial of degree >= window_length - 1 would exactly
+//                       interpolate every window with no smoothing effect at all, and one of
+//                       degree >= window_length is not identifiable by least squares).
+// @return Vector the same length as x with each interior point (indices with a full centered
+//         window available) replaced by its local polynomial fit at the center; window_length
+//         <= 0, even, polyorder out of [0, window_length), or x.size() < window_length returns
+//         an empty vector, matching this module's defensive early-return style (e.g. firwin).
+// @note Boundary handling: the first/last (window_length-1)/2 points, where a full centered
+//       window does not fit, are simply copied unfiltered from the input rather than using a
+//       reduced/asymmetric window — the simplest of the standard choices, at the cost of no
+//       smoothing directly at the edges.
+// @note Unlike a plain moving average (ms::moving_average), which is only exact for locally
+//       constant/linear signals, Savitzky-Golay with polyorder >= 2 preserves polynomial trends
+//       (e.g. quadratic/cubic peaks and slopes) up to that order essentially undistorted while
+//       still averaging out higher-frequency noise, at the cost of slightly weaker noise
+//       rejection than a same-length moving average for genuinely flat signals.
+// @accuracy For a signal that is exactly a polynomial of degree <= polyorder plus i.i.d. noise,
+//           the filtered output reproduces the polynomial trend to within the least-squares fit
+//           residual; noise variance is reduced by a factor approximately equal to sum(h_i^2)
+//           (< 1 for window_length > polyorder + 1) relative to the raw signal's noise variance.
+std::vector<double> savgol(const std::vector<double>& x, int window_length, int polyorder);
+
 } // namespace ms

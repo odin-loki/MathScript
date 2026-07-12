@@ -1,4 +1,5 @@
 #include "ms/signal/signal.hpp"
+#include "ms/core/operations.hpp"
 #include "ms/fft/fft.hpp"
 #include "ms/poly/poly.hpp"
 #include <algorithm>
@@ -754,6 +755,94 @@ std::vector<double> firwin_highpass(int n_taps, double cutoff, FirWindow window)
     const size_t center = static_cast<size_t>(n_taps - 1) / 2;
     taps[center] += 1.0;
     return taps;
+}
+
+namespace {
+
+// Builds the fixed FIR taps (length window_length) of the centered Savitzky-Golay smoothing
+// filter: A is the Vandermonde design matrix of integer window offsets -half..+half raised to
+// powers 0..polyorder; v solves the (polyorder+1)x(polyorder+1) normal-equations system
+// (A^T A) v = e_0 (e_0 selects the polynomial's value at offset 0, the window center); the taps
+// are h = A*v, the first row of the least-squares pseudoinverse (A^T A)^{-1} A^T. Returns an
+// empty vector if the normal-equations solve fails (e.g. a degenerate/singular design, which
+// should not occur for the valid window_length/polyorder ranges validated by the caller).
+std::vector<double> savgol_coefficients(int window_length, int polyorder) {
+    const int m = window_length;
+    const int half = (m - 1) / 2;
+    const size_t n_coef = static_cast<size_t>(polyorder + 1);
+
+    Matrix<double> A(static_cast<size_t>(m), n_coef);
+    for (int i = 0; i < m; ++i) {
+        const double offset = static_cast<double>(i - half);
+        double power = 1.0;
+        for (size_t j = 0; j < n_coef; ++j) {
+            A(static_cast<size_t>(i), j) = power;
+            power *= offset;
+        }
+    }
+
+    Matrix<double> ata(n_coef, n_coef, 0.0);
+    for (size_t j = 0; j < n_coef; ++j) {
+        for (size_t k = 0; k < n_coef; ++k) {
+            double sum = 0.0;
+            for (int i = 0; i < m; ++i) {
+                sum += A(static_cast<size_t>(i), j) * A(static_cast<size_t>(i), k);
+            }
+            ata(j, k) = sum;
+        }
+    }
+
+    Matrix<double> e0(n_coef, 1, 0.0);
+    e0(0, 0) = 1.0;
+
+    const auto v = solve(ata, e0);
+    if (!v) {
+        return {};
+    }
+
+    std::vector<double> h(static_cast<size_t>(m), 0.0);
+    for (int i = 0; i < m; ++i) {
+        double sum = 0.0;
+        for (size_t j = 0; j < n_coef; ++j) {
+            sum += A(static_cast<size_t>(i), j) * (*v)(j, 0);
+        }
+        h[static_cast<size_t>(i)] = sum;
+    }
+    return h;
+}
+
+} // namespace
+
+std::vector<double> savgol(const std::vector<double>& x, int window_length, int polyorder) {
+    if (window_length <= 0 || window_length % 2 == 0) {
+        return {};
+    }
+    if (polyorder < 0 || polyorder >= window_length) {
+        return {};
+    }
+    if (x.size() < static_cast<size_t>(window_length)) {
+        return {};
+    }
+
+    const auto h = savgol_coefficients(window_length, polyorder);
+    if (h.size() != static_cast<size_t>(window_length)) {
+        return {};
+    }
+
+    const size_t half = static_cast<size_t>((window_length - 1) / 2);
+    const size_t n = x.size();
+
+    // Boundary points without a full centered window are left unfiltered (copied from x); see
+    // the @note on boundary handling in signal.hpp.
+    std::vector<double> y = x;
+    for (size_t center = half; center + half < n; ++center) {
+        double acc = 0.0;
+        for (size_t j = 0; j < h.size(); ++j) {
+            acc += h[j] * x[center - half + j];
+        }
+        y[center] = acc;
+    }
+    return y;
 }
 
 } // namespace ms
