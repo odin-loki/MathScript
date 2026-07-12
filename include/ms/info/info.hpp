@@ -7,6 +7,7 @@ namespace info {
 
 // --- Shannon entropy (bits or nats depending on base) ---
 double entropy(std::span<const double> p, double base = 2.0);
+double normalized_entropy(std::span<const double> p); // H/log(n), 0 if n<=1
 double joint_entropy(std::span<const double> pxy, int rows, int cols,
                      double base = 2.0);
 double conditional_entropy(std::span<const double> pxy, int rows, int cols,
