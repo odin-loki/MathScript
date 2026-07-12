@@ -98,5 +98,45 @@ double differential_entropy_uniform(double a, double b);
 // --- Entropy rate from empirical counts (sample entropy) ---
 double sample_entropy(std::span<const double> x, int m, double r);
 
+/// Permutation entropy (Bandt & Pompe, 2002): a complexity/regularity
+/// measure for time series based on the distribution of ORDINAL PATTERNS
+/// (the relative rank ordering of consecutive values within a sliding
+/// window), rather than the raw values themselves -- this makes it robust
+/// to noise/scale and able to detect determinism vs randomness in a time
+/// series.
+///
+/// Algorithm:
+///   1. For each sliding window of length `order` starting at position i
+///      (i = 0 .. n-1-(order-1)*delay), take the subsequence x[i],
+///      x[i+delay], x[i+2*delay], ..., x[i+(order-1)*delay].
+///   2. Determine the ordinal pattern of the subsequence: the permutation
+///      idx of {0, ..., order-1} such that x[i + idx[0]*delay] <=
+///      x[i + idx[1]*delay] <= ... <= x[i + idx[order-1]*delay], i.e. idx[k]
+///      is the (local, in-window) position holding the k-th smallest value
+///      ("position-of-rank" encoding). Different relative orderings map to
+///      different patterns; identical relative orderings map to the same
+///      pattern.
+///   3. Count the frequency of each observed ordinal pattern across all
+///      windows, normalise to a probability distribution, and compute the
+///      Shannon entropy of that distribution via entropy() (base 2).
+///   4. If `normalize` is true, divide by log2(order!) -- the maximum
+///      possible entropy when all order! patterns are equally likely -- to
+///      return a value in [0,1].
+///
+/// @param x input time series.
+/// @param order embedding dimension (window length; order! is the number
+///        of possible ordinal patterns, so practical values are small,
+///        e.g. 3-7).
+/// @param delay embedding delay between consecutive samples within a
+///        window (default 1, i.e. consecutive samples).
+/// @param normalize if true (default), divide by log2(order!) to return a
+///        value in [0,1]; if false, return the raw Shannon entropy (bits)
+///        of the ordinal pattern distribution.
+/// @return the permutation entropy value.
+/// @note Defensive: returns 0.0 for order < 2, delay < 1, or a series too
+///       short to form at least one window of the requested order/delay.
+double permutation_entropy(std::span<const double> x, int order, int delay = 1,
+                           bool normalize = true);
+
 } // namespace info
 } // namespace ms
