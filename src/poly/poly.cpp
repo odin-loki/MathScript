@@ -804,5 +804,281 @@ Result<RationalFactorization> poly_factor_rational(const std::vector<double>& p,
     return out;
 }
 
+namespace {
+
+// Poles/quadratic factors found via poly_roots are merged when clustering
+// if within this relative tolerance of each other -- a numerical
+// root-finder applied to a polynomial with an exact repeated root of
+// multiplicity k will not return k EXACTLY equal roots in floating point,
+// so nearby roots must be merged rather than compared for exact equality.
+// This is also used (relative to the real part) as the threshold below
+// which a root's imaginary part is treated as zero (a real root) rather
+// than a genuine complex pole. 1e-4 rather than a tighter value like 1e-6
+// is deliberate: poly_roots uses Durand-Kerner-Weierstrass iteration, whose
+// convergence rate degrades for higher-multiplicity roots (a triple real
+// root was empirically observed to converge to only ~1e-5 accuracy, with a
+// similarly-sized spurious imaginary part), so a tighter tolerance would
+// misclassify those as complex or fail to merge them into one pole. 1e-4
+// is still many orders of magnitude tighter than the well-separated root
+// gaps used throughout this module's test suite.
+constexpr double kPartialFractionRootTol = 1e-4;
+
+bool pf_near(double a, double b, double tol) {
+    const double scale = std::max({1.0, std::abs(a), std::abs(b)});
+    return std::abs(a - b) <= tol * scale;
+}
+
+struct PFRealPole {
+    double r;
+    int mult;
+};
+struct PFQuadFactor {
+    double p, q;
+    int mult;
+};
+
+// Groups the roots of D(x) (as returned by poly_roots, one complex root per
+// degree, with algebraic multiplicity) into distinct real poles and
+// distinct complex-conjugate-pair quadratic factors x^2+p*x+q, each with a
+// multiplicity, by clustering within kPartialFractionRootTol.
+void pf_group_roots(const std::vector<std::complex<double>>& roots,
+                     std::vector<PFRealPole>& real_poles,
+                     std::vector<PFQuadFactor>& quad_factors) {
+    std::vector<double> real_vals;
+    std::vector<std::complex<double>> complex_vals; // only the +imag half of each pair
+
+    for (const auto& rt : roots) {
+        const double im_tol =
+            std::max(kPartialFractionRootTol, kPartialFractionRootTol * std::abs(rt.real()));
+        if (std::abs(rt.imag()) <= im_tol) {
+            real_vals.push_back(rt.real());
+        } else if (rt.imag() > 0.0) {
+            complex_vals.push_back(rt);
+        }
+        // The rt.imag() < 0 half of each pair is the conjugate of an entry
+        // already captured (or about to be captured) above.
+    }
+
+    std::vector<bool> used(real_vals.size(), false);
+    for (size_t i = 0; i < real_vals.size(); ++i) {
+        if (used[i]) continue;
+        int count = 1;
+        used[i] = true;
+        double sum = real_vals[i];
+        for (size_t j = i + 1; j < real_vals.size(); ++j) {
+            if (!used[j] && pf_near(real_vals[i], real_vals[j], kPartialFractionRootTol)) {
+                used[j] = true;
+                sum += real_vals[j];
+                ++count;
+            }
+        }
+        real_poles.push_back({sum / count, count});
+    }
+
+    std::vector<bool> used_c(complex_vals.size(), false);
+    for (size_t i = 0; i < complex_vals.size(); ++i) {
+        if (used_c[i]) continue;
+        int count = 1;
+        used_c[i] = true;
+        double re_sum = complex_vals[i].real();
+        double im_sum = complex_vals[i].imag();
+        for (size_t j = i + 1; j < complex_vals.size(); ++j) {
+            if (!used_c[j] &&
+                pf_near(complex_vals[i].real(), complex_vals[j].real(), kPartialFractionRootTol) &&
+                pf_near(complex_vals[i].imag(), complex_vals[j].imag(), kPartialFractionRootTol)) {
+                used_c[j] = true;
+                re_sum += complex_vals[j].real();
+                im_sum += complex_vals[j].imag();
+                ++count;
+            }
+        }
+        const double re = re_sum / count;
+        const double im = im_sum / count;
+        quad_factors.push_back({-2.0 * re, re * re + im * im, count});
+    }
+}
+
+// Small dense linear solver (Gaussian elimination with partial pivoting),
+// self-contained here rather than pulled from another module, matching the
+// approach poly_fit already uses above for its normal-equations solve.
+std::vector<double> pf_solve_linear(std::vector<std::vector<double>> A,
+                                     std::vector<double> b) {
+    const int n = static_cast<int>(b.size());
+    for (int col = 0; col < n; ++col) {
+        int pivot = col;
+        for (int row = col + 1; row < n; ++row) {
+            if (std::abs(A[static_cast<size_t>(row)][static_cast<size_t>(col)]) >
+                std::abs(A[static_cast<size_t>(pivot)][static_cast<size_t>(col)])) {
+                pivot = row;
+            }
+        }
+        std::swap(A[static_cast<size_t>(col)], A[static_cast<size_t>(pivot)]);
+        std::swap(b[static_cast<size_t>(col)], b[static_cast<size_t>(pivot)]);
+        const double diag = A[static_cast<size_t>(col)][static_cast<size_t>(col)];
+        if (std::abs(diag) < 1e-14) continue;
+        for (int row = col + 1; row < n; ++row) {
+            const double factor = A[static_cast<size_t>(row)][static_cast<size_t>(col)] / diag;
+            if (factor == 0.0) continue;
+            for (int k = col; k < n; ++k) {
+                A[static_cast<size_t>(row)][static_cast<size_t>(k)] -=
+                    factor * A[static_cast<size_t>(col)][static_cast<size_t>(k)];
+            }
+            b[static_cast<size_t>(row)] -= factor * b[static_cast<size_t>(col)];
+        }
+    }
+    std::vector<double> x(static_cast<size_t>(n), 0.0);
+    for (int i = n - 1; i >= 0; --i) {
+        double sum = b[static_cast<size_t>(i)];
+        for (int j = i + 1; j < n; ++j) {
+            sum -= A[static_cast<size_t>(i)][static_cast<size_t>(j)] * x[static_cast<size_t>(j)];
+        }
+        const double diag = A[static_cast<size_t>(i)][static_cast<size_t>(i)];
+        x[static_cast<size_t>(i)] = (std::abs(diag) > 1e-14) ? sum / diag : 0.0;
+    }
+    return x;
+}
+
+} // namespace
+
+PartialFractionResult poly_partial_fractions(const std::vector<double>& numerator,
+                                              const std::vector<double>& denominator) {
+    PartialFractionResult out;
+    auto D = strip(denominator);
+    if (D.empty() || (D.size() == 1 && std::abs(D[0]) < 1e-14)) {
+        return out; // zero/empty denominator: no finite decomposition
+    }
+    const int n = static_cast<int>(D.size()) - 1; // degree of D
+
+    if (n == 0) {
+        // D(x) is a nonzero constant: N(x)/D(x) is itself a polynomial;
+        // there is no proper-fraction remainder to decompose into terms.
+        std::vector<double> q(numerator.size(), 0.0);
+        for (size_t i = 0; i < numerator.size(); ++i) q[i] = numerator[i] / D[0];
+        out.quotient = strip(q.empty() ? std::vector<double>{0.0} : q);
+        return out;
+    }
+
+    out.quotient = poly_div_quot(numerator, D);
+    // poly_div_quot returns {0.0} when deg(numerator) < deg(D); treat that
+    // as "no polynomial part" rather than a spurious zero quotient term.
+    if (out.quotient.size() == 1 && std::abs(out.quotient[0]) < 1e-14) {
+        out.quotient.clear();
+    }
+    const std::vector<double> Nr = strip(poly_mod(numerator, D));
+
+    const auto roots = poly_roots(D);
+    std::vector<PFRealPole> real_poles;
+    std::vector<PFQuadFactor> quad_factors;
+    pf_group_roots(roots, real_poles, quad_factors);
+
+    // The declared unknowns must total deg(D); if root grouping produced a
+    // mismatch (e.g. a pathological/near-degenerate denominator), bail out
+    // with just the quotient rather than returning an incorrect decomposition.
+    int total_unknowns = 0;
+    for (const auto& rp : real_poles) total_unknowns += rp.mult;
+    for (const auto& qf : quad_factors) total_unknowns += 2 * qf.mult;
+    if (total_unknowns != n) {
+        return out;
+    }
+
+    const double lead = D.back();
+
+    // One monic primitive factor polynomial per grouped pole (ascending powers).
+    std::vector<std::vector<double>> primitives;
+    std::vector<int> mults;
+    std::vector<bool> is_quad;
+    for (const auto& rp : real_poles) {
+        primitives.push_back({-rp.r, 1.0});
+        mults.push_back(rp.mult);
+        is_quad.push_back(false);
+    }
+    for (const auto& qf : quad_factors) {
+        primitives.push_back({qf.q, qf.p, 1.0});
+        mults.push_back(qf.mult);
+        is_quad.push_back(true);
+    }
+    const size_t num_factors = primitives.size();
+
+    // D_other[i] = lead * product_{j != i} primitives[j]^mults[j], i.e.
+    // D(x) with factor i entirely divided out (a polynomial, since factor
+    // i's full power exactly divides D by construction).
+    std::vector<std::vector<double>> D_other(num_factors);
+    for (size_t i = 0; i < num_factors; ++i) {
+        std::vector<double> prod = {lead};
+        for (size_t j = 0; j < num_factors; ++j) {
+            if (j == i) continue;
+            std::vector<double> fj = {1.0};
+            for (int p = 0; p < mults[j]; ++p) fj = poly_mul(fj, primitives[j]);
+            prod = poly_mul(prod, fj);
+        }
+        D_other[i] = prod;
+    }
+
+    // One basis polynomial per unknown coefficient (A_d for real poles;
+    // B_d then C_d for quadratic factors), in the exact order the solved
+    // unknowns are assigned back to PartialFractionTerm entries below.
+    // For pole/factor i with multiplicity K, the d-th term's basis is
+    // D_other[i](x) * primitives[i](x)^(K-d) (times an extra factor of x
+    // for the B_d coefficient), since D(x)/primitives[i]^d ==
+    // D_other[i](x) * primitives[i](x)^(K-d).
+    std::vector<std::vector<double>> basis;
+    for (size_t i = 0; i < num_factors; ++i) {
+        const int K = mults[i];
+        for (int d = 1; d <= K; ++d) {
+            std::vector<double> rest = {1.0};
+            for (int p = 0; p < K - d; ++p) rest = poly_mul(rest, primitives[i]);
+            std::vector<double> base = poly_mul(D_other[i], rest);
+            if (!is_quad[i]) {
+                basis.push_back(base); // A_d
+            } else {
+                basis.push_back(poly_mul(base, {0.0, 1.0})); // B_d (times x)
+                basis.push_back(base);                        // C_d
+            }
+        }
+    }
+
+    // Linear system: sum_m unknown_m * basis_m(x) == Nr(x), matched by
+    // power of x (rows 0..n-1); solved via Gaussian elimination.
+    std::vector<std::vector<double>> Amat(static_cast<size_t>(n),
+                                           std::vector<double>(static_cast<size_t>(n), 0.0));
+    for (size_t m = 0; m < basis.size(); ++m) {
+        for (size_t row = 0; row < basis[m].size() && row < static_cast<size_t>(n); ++row) {
+            Amat[row][m] = basis[m][row];
+        }
+    }
+    std::vector<double> rhs(static_cast<size_t>(n), 0.0);
+    for (size_t row = 0; row < Nr.size() && row < static_cast<size_t>(n); ++row) {
+        rhs[row] = Nr[row];
+    }
+
+    const auto sol = pf_solve_linear(Amat, rhs);
+
+    size_t idx = 0;
+    for (const auto& rp : real_poles) {
+        for (int d = 1; d <= rp.mult; ++d) {
+            PartialFractionTerm term;
+            term.is_quadratic = false;
+            term.r = rp.r;
+            term.k = d;
+            term.A = sol[idx++];
+            out.terms.push_back(term);
+        }
+    }
+    for (const auto& qf : quad_factors) {
+        for (int d = 1; d <= qf.mult; ++d) {
+            PartialFractionTerm term;
+            term.is_quadratic = true;
+            term.p = qf.p;
+            term.q = qf.q;
+            term.k = d;
+            term.B = sol[idx++];
+            term.C = sol[idx++];
+            out.terms.push_back(term);
+        }
+    }
+
+    return out;
+}
+
 } // namespace poly
 } // namespace ms
