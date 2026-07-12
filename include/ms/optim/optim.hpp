@@ -105,6 +105,29 @@ OptimResult rmsprop(FuncND f, GradND grad, std::vector<double> x0,
                     double alpha = 0.001, double rho = 0.9,
                     double eps = 1e-8, int max_iter = 1000);
 
+/// @brief Adadelta adaptive gradient optimizer for N-dimensional unconstrained
+///        minimization of a differentiable objective.
+///
+/// Maintains exponentially decaying averages of squared gradients and squared
+/// parameter updates:
+///   E[g^2]_t = rho * E[g^2]_{t-1} + (1 - rho) * g_t^2,
+///   E[dx^2]_t = rho * E[dx^2]_{t-1} + (1 - rho) * dx_t^2,
+/// and updates parameters as
+///   dx_t = -lr * sqrt(E[dx^2]_{t-1} + eps) / sqrt(E[g^2]_t + eps) * g_t,
+///   x_{t+1} = x_t + dx_t.
+///
+/// @param f        Objective function to minimize.
+/// @param grad     Gradient of f at x.
+/// @param x0       Initial parameter vector.
+/// @param lr       Step-size scaling factor (typically 1.0 for Adadelta).
+/// @param rho      Decay rate for running averages.
+/// @param eps      Small constant for numerical stability.
+/// @param max_iter Maximum number of iterations.
+/// @return OptimResult{x, f_val, iterations, converged}.
+OptimResult adadelta(FuncND f, GradND grad, std::vector<double> x0,
+                     double lr = 1.0, double rho = 0.95,
+                     double eps = 1e-6, int max_iter = 1000);
+
 /// @brief Levenberg-Marquardt algorithm for nonlinear least squares: a damped
 ///        Gauss-Newton method that interpolates between Gauss-Newton (fast
 ///        convergence near the optimum, using the Jacobian-transpose-Jacobian

@@ -811,6 +811,57 @@ OptimResult rmsprop(FuncND f, GradND grad, std::vector<double> x0,
 }
 
 // ----------------------------------------------------------------
+// Adadelta (adaptive learning rate via running averages of gradients
+//           and parameter updates)
+// ----------------------------------------------------------------
+OptimResult adadelta(FuncND f, GradND grad, std::vector<double> x0,
+                     double lr, double rho, double eps, int max_iter) {
+    const int n = static_cast<int>(x0.size());
+    if (n <= 0) {
+        return OptimResult{{}, 0.0, 0, false};
+    }
+
+    auto x = x0;
+    std::vector<double> sq_grad_avg(static_cast<size_t>(n), 0.0);
+    std::vector<double> sq_update_avg(static_cast<size_t>(n), 0.0);
+
+    bool converged = false;
+    size_t iterations = 0;
+
+    for (int t = 1; t <= max_iter; ++t) {
+        iterations = static_cast<size_t>(t);
+        auto g = grad(x);
+
+        double gnorm_sq = 0.0;
+        for (int i = 0; i < n; ++i) {
+            gnorm_sq += g[static_cast<size_t>(i)] * g[static_cast<size_t>(i)];
+        }
+        if (std::sqrt(gnorm_sq) < 1e-8) {
+            converged = true;
+            break;
+        }
+
+        for (int i = 0; i < n; ++i) {
+            const double gi = g[static_cast<size_t>(i)];
+            sq_grad_avg[static_cast<size_t>(i)] =
+                rho * sq_grad_avg[static_cast<size_t>(i)] + (1.0 - rho) * gi * gi;
+
+            const double rms_update =
+                std::sqrt(sq_update_avg[static_cast<size_t>(i)] + eps);
+            const double rms_grad =
+                std::sqrt(sq_grad_avg[static_cast<size_t>(i)] + eps);
+            const double dx = -lr * (rms_update / rms_grad) * gi;
+
+            sq_update_avg[static_cast<size_t>(i)] =
+                rho * sq_update_avg[static_cast<size_t>(i)] + (1.0 - rho) * dx * dx;
+            x[static_cast<size_t>(i)] += dx;
+        }
+    }
+
+    return OptimResult{x, f(x), iterations, converged};
+}
+
+// ----------------------------------------------------------------
 // Levenberg-Marquardt (damped Gauss-Newton for nonlinear least squares)
 // ----------------------------------------------------------------
 OptimResult levenberg_marquardt(ResidualFunc residuals, std::vector<double> x0,
