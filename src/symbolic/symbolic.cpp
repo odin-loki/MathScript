@@ -319,6 +319,82 @@ SymExpr sym_simplify(SymExpr expr) {
     return expr;
 }
 
+namespace {
+
+constexpr int kMaxExpandExponent = 8;
+
+bool is_small_nonneg_integer_exponent(const SymExpr& expr, int& exponent) {
+    if (expr.op != SymOp::Const) {
+        return false;
+    }
+    const double value = expr.value;
+    if (value < 0.0 || value > static_cast<double>(kMaxExpandExponent) || value != std::floor(value)) {
+        return false;
+    }
+    exponent = static_cast<int>(value);
+    return true;
+}
+
+} // namespace
+
+SymExpr sym_expand(SymExpr expr) {
+    if (expr.left) {
+        expr.left = std::make_unique<SymExpr>(sym_expand(clone_expr(*expr.left)));
+    }
+    if (expr.right) {
+        expr.right = std::make_unique<SymExpr>(sym_expand(clone_expr(*expr.right)));
+    }
+
+    switch (expr.op) {
+    case SymOp::Pow: {
+        int exponent = 0;
+        if (!is_small_nonneg_integer_exponent(*expr.right, exponent)) {
+            break;
+        }
+        if (exponent == 0) {
+            return sym_simplify(sym_const(1.0));
+        }
+        if (exponent == 1) {
+            return sym_simplify(clone_expr(*expr.left));
+        }
+        SymExpr result = clone_expr(*expr.left);
+        for (int i = 1; i < exponent; ++i) {
+            result = sym_mul(std::move(result), clone_expr(*expr.left));
+        }
+        return sym_simplify(sym_expand(std::move(result)));
+    }
+    case SymOp::Mul: {
+        const SymExpr& left = *expr.left;
+        const SymExpr& right = *expr.right;
+        if (left.op == SymOp::Add) {
+            return sym_simplify(sym_expand(sym_add(
+                sym_mul(clone_expr(*left.left), clone_expr(right)),
+                sym_mul(clone_expr(*left.right), clone_expr(right)))));
+        }
+        if (left.op == SymOp::Sub) {
+            return sym_simplify(sym_expand(sym_sub(
+                sym_mul(clone_expr(*left.left), clone_expr(right)),
+                sym_mul(clone_expr(*left.right), clone_expr(right)))));
+        }
+        if (right.op == SymOp::Add) {
+            return sym_simplify(sym_expand(sym_add(
+                sym_mul(clone_expr(left), clone_expr(*right.left)),
+                sym_mul(clone_expr(left), clone_expr(*right.right)))));
+        }
+        if (right.op == SymOp::Sub) {
+            return sym_simplify(sym_expand(sym_sub(
+                sym_mul(clone_expr(left), clone_expr(*right.left)),
+                sym_mul(clone_expr(left), clone_expr(*right.right)))));
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    return sym_simplify(std::move(expr));
+}
+
 // Supported forms:
 //   Const c                          -> c * var
 //   Var v (v == var)                 -> var^2 / 2

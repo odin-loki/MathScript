@@ -51,6 +51,7 @@ SymExpr sym_pow(SymExpr base, SymExpr exponent);
 SymExpr sym_deriv(SymExpr expr, const std::string& var);
 SymExpr sym_diff(SymExpr expr, const std::string& var);
 SymExpr sym_simplify(SymExpr expr);
+SymExpr sym_expand(SymExpr expr);
 SymExpr sym_integrate(const SymExpr& expr, const std::string& var);
 SymExpr sym_substitute(const SymExpr& expr, const std::string& var, const SymExpr& replacement);
 double sym_eval(const SymExpr& expr, const std::map<std::string, double>& env);
