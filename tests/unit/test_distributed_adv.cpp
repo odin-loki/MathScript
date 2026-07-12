@@ -46,6 +46,66 @@ TEST(DistributedAdv, AllreduceSum_SingleProcess) {
     EXPECT_NEAR(allreduce_sum(ctx, -1.5), -1.5, 1e-10);
 }
 
+TEST(DistributedAdv, AllreduceMax_SingleProcess) {
+    // In a 1-process context, allreduce_max(ctx, x) = x
+    MPIContext ctx;
+    EXPECT_NEAR(allreduce_max(ctx, 3.14), 3.14, 1e-10);
+    EXPECT_NEAR(allreduce_max(ctx, 0.0), 0.0, 1e-10);
+    EXPECT_NEAR(allreduce_max(ctx, -1.5), -1.5, 1e-10);
+}
+
+TEST(DistributedAdv, AllreduceMin_SingleProcess) {
+    // In a 1-process context, allreduce_min(ctx, x) = x
+    MPIContext ctx;
+    EXPECT_NEAR(allreduce_min(ctx, 3.14), 3.14, 1e-10);
+    EXPECT_NEAR(allreduce_min(ctx, 0.0), 0.0, 1e-10);
+    EXPECT_NEAR(allreduce_min(ctx, -1.5), -1.5, 1e-10);
+}
+
+TEST(DistributedAdv, AllreduceMax_Idempotent) {
+    // Applying allreduce_max twice should give the same result in the stub path
+    MPIContext ctx;
+    double once = allreduce_max(ctx, 42.0);
+    double twice = allreduce_max(ctx, once);
+    EXPECT_NEAR(once, twice, 1e-10);
+}
+
+TEST(DistributedAdv, AllreduceMin_Idempotent) {
+    // Applying allreduce_min twice should give the same result in the stub path
+    MPIContext ctx;
+    double once = allreduce_min(ctx, -7.0);
+    double twice = allreduce_min(ctx, once);
+    EXPECT_NEAR(once, twice, 1e-10);
+}
+
+TEST(DistributedAdv, AllreduceMinMax_Ordering) {
+    // With a single rank, min <= value <= max should hold (in fact, equality)
+    MPIContext ctx;
+    for (double v : {-100.0, -1.5, 0.0, 1.5, 100.0}) {
+        EXPECT_LE(allreduce_min(ctx, v), v);
+        EXPECT_LE(v, allreduce_max(ctx, v));
+        EXPECT_NEAR(allreduce_min(ctx, v), allreduce_max(ctx, v), 1e-10);
+    }
+}
+
+TEST(DistributedAdv, AllreduceMaxMin_EdgeCaseMagnitudes) {
+    // Very large/small magnitude values should pass through unchanged, no overflow
+    MPIContext ctx;
+    EXPECT_NEAR(allreduce_max(ctx, 1e300), 1e300, 1e290);
+    EXPECT_NEAR(allreduce_min(ctx, -1e300), -1e300, 1e290);
+    EXPECT_NEAR(allreduce_max(ctx, 1e-300), 1e-300, 1e-310);
+    EXPECT_NEAR(allreduce_min(ctx, 1e-300), 1e-300, 1e-310);
+}
+
+TEST(DistributedAdv, AllreduceMaxMin_MultipleContexts) {
+    // Mirrors allreduce_sum's usage with a freshly constructed MPIContext each time
+    for (double v : {-3.0, 0.0, 2.0}) {
+        MPIContext ctx;
+        EXPECT_NEAR(allreduce_max(ctx, v), v, 1e-10);
+        EXPECT_NEAR(allreduce_min(ctx, v), v, 1e-10);
+    }
+}
+
 TEST(DistributedAdv, Barrier_DoesNotCrash) {
     MPIContext ctx;
     EXPECT_NO_THROW(barrier(ctx));
