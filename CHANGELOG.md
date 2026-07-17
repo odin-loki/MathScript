@@ -7,13 +7,17 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [1.0.0] — 2026-07-18 (Wave 226 — Performance Pass VIII: final sign-off)
 
-Final profiling closure — REPL hot-path micro-opts and documentation sign-off for Waves 218–226.
+8 parallel subagents — final profiling closure across remaining modules and benchmark infra.
 
 ### Performance (Wave 226)
-- `ms::interp` — scalar call fallback reuses thread-local arg buffer and cached lowered function names (no per-call string/vector alloc).
-- **Intentional complexity comments** — `topo::bottleneck_distance` (greedy O(n²) vs Hungarian); `image::dft_magnitude` (naive DFT reference; use `ms::fft` at scale).
-- **Benchmark/test counts unchanged** on this branch (**374 CTest**, **23-bench smoke**); other Wave 226 feature branches may add benches on merge.
-- **Total Wave 226 profiling: 374 CTest suites — all passing**. **Profiling iteration complete (Waves 218–226).**
+- `ms::topo` — persistence `bottleneck_distance` / `wasserstein_distance` opts (empty-diagram fast paths, p=2 squared inner loop); new `bench_topo`.
+- `ms::geo` — point-in-polygon, convex hull, KD-tree hot paths; new `bench_geo`.
+- `ms::ode` / `ms::pde` / `ms::cfd` — buffer reuse in vector integrators, ADI/CN solvers, FVM advection.
+- `ms::poly` / `ms::compress` / `ms::diffgeo` — Horner/raw-pointer eval, RLE/Huffman reserves, geodesic reserve.
+- `ms::ml` / `ms::prob` / `ms::control` — KMeans squared-distance, Naive Bayes log cache, sequential binom/pois CDF, flat Lyapunov solve.
+- `ms::interp` — scalar call fallback reuses thread-local arg buffer and cached lowered names.
+- **Benchmark infra** — smoke-safe args across all benches (~16s smoke vs ~103s); MSVC baseline script auto-discovers all targets; **39 medians populated** (0 null in `msvc-release.json`).
+- **Total Wave 226: 374 CTest suites — all passing**. **25-bench smoke OK**. **Profiling iteration complete (Waves 218–226).**
 
 ## [1.0.0] — 2026-07-17 (Wave 225 sign-off — benchmark smoke fix)
 

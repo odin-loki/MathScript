@@ -200,7 +200,7 @@ static void BM_Lyap4x4(benchmark::State& state) {
         {0.0, 0.1, -2.4, 0.2},
         {0.0, 0.0, 0.3, -1.6},
     };
-    const std::vector<std::vector<double>> Q(4, std::vector<double>(4, 0.0));
+    std::vector<std::vector<double>> Q(4, std::vector<double>(4, 0.0));
     for (int i = 0; i < 4; ++i) Q[static_cast<size_t>(i)][static_cast<size_t>(i)] = 1.0;
     for (auto _ : state) {
         auto X = ms::control::lyap(A, Q);
