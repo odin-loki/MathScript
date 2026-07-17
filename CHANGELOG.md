@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 229 — Profiling infra closure)
+
+Wave 229 closes benchmark **infrastructure** only — no new hot-path optimizations.
+
+### Benchmark infra (Wave 229)
+- **`benchmark-linux` CI** — builds all **28** Google Benchmark executables (`cmake --build build-bench`); job timeout **30 min** (was 15; stale 20-target subset removed).
+- **`scripts/bench_cmake_targets.sh`** — shared `add_ms_bench` discovery for smoke/regression/CI (same logic as `bench_smoke.sh` and `build.ps1 -Benchmark`).
+- **Docs** — `docs/PERFORMANCE.md`, `docs/ARCHITECTURE.md`, `MathScript_Remaining_TODO.md` updated; **profiling + infra complete**.
+- **Baselines** — Linux median refresh still manual or scheduled (`bench_regression.sh --write-baseline`); null placeholders continue to skip during compare.
+- **Total Wave 229: 374 CTest suites — all passing**. **28-bench smoke OK**. **Profiling iteration + benchmark infra complete (Waves 218–229).**
+
 ## [1.0.0] — 2026-07-18 (Wave 228 — Performance Pass X: profiling certification closed)
 
 8 parallel subagents — final certification audit of all remaining `src/` modules and benchmark infra gaps.

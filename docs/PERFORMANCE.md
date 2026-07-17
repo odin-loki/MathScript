@@ -12,7 +12,7 @@ MathScript completed an eleven-wave profiling iteration (Waves **218–228**) co
 | ML / crypto | `ml`, `prob`, `control`, `crypto`, `interp`, `quantum`, `bignum`, `compress` |
 | Frameworks | `frameworks`, `distributed`, `finance`, `info`, `combo`, `symbolic` |
 | CPU runtime | `runtime/cpu`, `cpu/blas` |
-| Infra | `bench_*` targets, `build.ps1 -Benchmark`, baseline JSON |
+| Infra | `bench_*` targets, `build.ps1 -Benchmark`, `scripts/bench_cmake_targets.sh`, baseline JSON |
 
 ## Benchmark smoke policy
 
@@ -60,4 +60,16 @@ Wave **228** is a **certification pass**, not a new optimization sweep. Eight pa
 
 - **`domain`** — helpers already O(n) or minimal; no opts warranted.
 
-**PROFILING ITERATION DONE.** Do not start Wave 229 profiling.
+**PROFILING ITERATION DONE (Waves 218–228).** No further code-profiling waves.
+
+## Profiling infra closure (Wave 229)
+
+Wave **229** closed remaining **benchmark infrastructure** gaps — not a code-profiling sweep.
+
+| Fix | Detail |
+|-----|--------|
+| **Linux CI build** | `benchmark-linux` now runs `cmake --build build-bench` (all **28** `add_ms_bench` targets); stale 20-target subset removed. Job timeout raised to **30 min**. |
+| **Target discovery** | `scripts/bench_cmake_targets.sh` shares CMakeLists parsing with `bench_smoke.sh` / `build.ps1 -Benchmark`. |
+| **Regression gate** | `bench_regression.sh` still compares against `linux-gcc13.json`; null medians skipped. |
+
+**PROFILING + INFRA DONE.** Baseline median refresh remains manual (`bash scripts/bench_regression.sh --write-baseline build-bench` on Linux; `.\scripts\bench_write_msvc_baseline.ps1` on Windows) or on a CI schedule — not part of the default PR gate.
