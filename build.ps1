@@ -1,10 +1,12 @@
 # Build MathScript on native Windows (MSVC + Ninja)
-# Usage: .\build.ps1 [-Test] [-Configure] [-Clean]
+# Usage: .\build.ps1 [-Test] [-Benchmark] [-Configure] [-Clean]
 #   -Configure  Run CMake configure only (no build)
-#   -Clean      Remove build-msvc before configure+build
+#   -Clean      Remove build directory before configure+build
+#   -Benchmark  Configure build-msvc-bench with MS_BUILD_BENCHMARKS=ON
 
 param(
     [switch]$Test,
+    [switch]$Benchmark,
     [switch]$Configure,
     [switch]$Clean
 )
@@ -12,7 +14,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$BuildDir = Join-Path $Root "build-msvc"
+$BuildDir = if ($Benchmark) {
+    Join-Path $Root "build-msvc-bench"
+} else {
+    Join-Path $Root "build-msvc"
+}
 
 if ($Clean -and (Test-Path $BuildDir)) {
     Remove-Item -Recurse -Force $BuildDir
@@ -74,6 +80,9 @@ $CmakeConfigureArgs = "-S `"$Root`" -B `"$BuildDir`" -G Ninja -DCMAKE_BUILD_TYPE
     "-DCMAKE_C_COMPILER=`"$ClExe`" -DCMAKE_CXX_COMPILER=`"$ClExe`" " +
     "-DCMAKE_LINKER=`"$LinkExe`" -DCMAKE_AR=`"$LibExe`" " +
     "-DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF"
+if ($Benchmark) {
+    $CmakeConfigureArgs += " -DMS_BUILD_BENCHMARKS=ON"
+}
 
 # Build the batch content that runs inside a single cmd session so VsDevCmd
 # environment variables (PATH, INCLUDE, LIB) are visible to cmake.
@@ -112,6 +121,19 @@ Remove-Item $batchFile -Force -ErrorAction SilentlyContinue
 if ($LASTEXITCODE -ne 0) { throw "MathScript build failed with exit code $LASTEXITCODE" }
 
 Write-Host "Build complete. Binaries in $BuildDir\bin"
+
+if ($Benchmark) {
+    $BenchDir = Join-Path $BuildDir "tests\performance"
+    foreach ($bench in @("bench_matmul", "bench_fft")) {
+        $exe = Join-Path $BenchDir "$bench.exe"
+        if (-not (Test-Path $exe)) {
+            throw "Missing benchmark executable: $exe"
+        }
+        & $exe --benchmark_min_time=0.01s
+        if ($LASTEXITCODE -ne 0) { throw "Benchmark smoke failed: $bench (exit $LASTEXITCODE)" }
+    }
+    Write-Host "Benchmark smoke OK (bench_matmul, bench_fft)"
+}
 
 if ($Test) {
     ctest --test-dir $BuildDir -C Release --output-on-failure
