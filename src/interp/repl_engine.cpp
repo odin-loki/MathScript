@@ -40,6 +40,7 @@
 #include "ms/ode/ode.hpp"
 #include "ms/optim/optim.hpp"
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -49,7 +50,9 @@
 #include <memory>
 #include <optional>
 #include <regex>
+#include <span>
 #include <sstream>
+#include <string_view>
 #include <type_traits>
 
 #ifndef M_PI
@@ -85,6 +88,198 @@ bool parse_number(const std::string& text, double& value) {
     value = std::strtod(text.c_str(), &end);
     return end == text.c_str() + text.size();
 }
+
+std::string_view trim_view(std::string_view s) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
+        s.remove_prefix(1);
+    }
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+        s.remove_suffix(1);
+    }
+    return s;
+}
+
+bool iequals(std::string_view a, std::string_view b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parse_number_view(std::string_view text, double& value) {
+    text = trim_view(text);
+    if (text.empty()) {
+        return false;
+    }
+    std::string scratch(text);
+    return parse_number(scratch, value);
+}
+
+bool is_literal_arith_char(char c) {
+    return std::isspace(static_cast<unsigned char>(c)) ||
+           std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == '+' || c == '-' ||
+           c == '*' || c == '/' || c == '(' || c == ')';
+}
+
+bool is_literal_arith_expr(std::string_view expr) {
+    expr = trim_view(expr);
+    if (expr.empty()) {
+        return false;
+    }
+    for (char c : expr) {
+        if (!is_literal_arith_char(c)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string_view strip_outer_parens_view(std::string_view expr) {
+    while (true) {
+        expr = trim_view(expr);
+        if (expr.size() < 2 || expr.front() != '(' || expr.back() != ')') {
+            return expr;
+        }
+        int depth = 0;
+        bool wraps_all = true;
+        for (size_t i = 0; i < expr.size(); ++i) {
+            if (expr[i] == '(') {
+                ++depth;
+            } else if (expr[i] == ')') {
+                --depth;
+                if (depth == 0 && i + 1 != expr.size()) {
+                    wraps_all = false;
+                    break;
+                }
+            }
+        }
+        if (!wraps_all) {
+            return expr;
+        }
+        expr = expr.substr(1, expr.size() - 2);
+    }
+}
+
+bool is_binary_minus_view(std::string_view expr, size_t index) {
+    size_t j = index;
+    while (j > 0 && std::isspace(static_cast<unsigned char>(expr[j - 1]))) {
+        --j;
+    }
+    if (j == 0) {
+        return false;
+    }
+    const char prev = expr[j - 1];
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+}
+
+std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view expr,
+                                                              const char* ops) {
+    int depth = 0;
+    std::optional<std::pair<size_t, char>> last;
+    for (size_t i = 0; i < expr.size(); ++i) {
+        const char c = expr[i];
+        if (c == '(') {
+            ++depth;
+        } else if (c == ')' && depth > 0) {
+            --depth;
+        } else if (depth == 0) {
+            for (const char* p = ops; *p != '\0'; ++p) {
+                if (c == *p) {
+                    if (c == '-' && !is_binary_minus_view(expr, i)) {
+                        continue;
+                    }
+                    last = std::pair{i, *p};
+                }
+            }
+        }
+    }
+    return last;
+}
+
+std::optional<std::pair<size_t, char>> find_scalar_binop_view(std::string_view rhs) {
+    if (auto add_sub = find_top_level_op_view(rhs, "+-")) {
+        return add_sub;
+    }
+    return find_top_level_op_view(rhs, "*/");
+}
+
+Result<double> eval_literal_arith(std::string_view expr_text);
+
+Result<double> eval_literal_arith(std::string_view expr_text) {
+    std::string_view expr = strip_outer_parens_view(expr_text);
+    if (expr.empty()) {
+        return std::unexpected(DomainError{"eval", "empty expression"});
+    }
+
+    if (expr.front() == '-') {
+        auto inner = eval_literal_arith(expr.substr(1));
+        if (!inner) {
+            return std::unexpected(inner.error());
+        }
+        return -(*inner);
+    }
+    if (expr.front() == '+') {
+        return eval_literal_arith(expr.substr(1));
+    }
+
+    double value = 0.0;
+    if (parse_number_view(expr, value)) {
+        return value;
+    }
+
+    const auto op_pos = find_scalar_binop_view(expr);
+    if (!op_pos) {
+        return std::unexpected(DomainError{"eval", "invalid scalar expression"});
+    }
+
+    auto left = eval_literal_arith(trim_view(expr.substr(0, op_pos->first)));
+    if (!left) {
+        return std::unexpected(left.error());
+    }
+    auto right = eval_literal_arith(trim_view(expr.substr(op_pos->first + 1)));
+    if (!right) {
+        return std::unexpected(right.error());
+    }
+    return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+}
+
+struct ScalarFnCache {
+    static constexpr size_t kCapacity = 32;
+    std::array<std::string, kCapacity> keys{};
+    std::array<std::string, kCapacity> lowered{};
+    size_t count = 0;
+
+    std::string_view lookup(std::string_view name) {
+        for (size_t i = 0; i < count; ++i) {
+            if (iequals(keys[i], name)) {
+                return lowered[i];
+            }
+        }
+        std::string key(name);
+        std::string value = lower(key);
+        if (count < kCapacity) {
+            keys[count] = std::move(key);
+            lowered[count] = std::move(value);
+            return lowered[count++];
+        }
+        const size_t slot = count % kCapacity;
+        keys[slot] = std::move(key);
+        lowered[slot] = std::move(value);
+        ++count;
+        return lowered[slot];
+    }
+};
+
+thread_local ScalarFnCache g_scalar_fn_cache;
+
+Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args);
+Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text);
 
 double matrix_max_value(const Matrix<double>& m) {
     double max_val = 0.0;
@@ -5619,6 +5814,107 @@ bool is_identifier(const std::string& text) {
     return true;
 }
 
+bool is_identifier_view(std::string_view text) {
+    text = trim_view(text);
+    if (text.empty()) {
+        return false;
+    }
+    const unsigned char first = static_cast<unsigned char>(text.front());
+    if (!std::isalpha(first) && text.front() != '_') {
+        return false;
+    }
+    for (char c : text) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc) && c != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parse_scalar_operand_view(std::string_view text, ScalarOperand& out) {
+    text = trim_view(text);
+    double value = 0.0;
+    if (parse_number_view(text, value)) {
+        out.is_literal = true;
+        out.literal = value;
+        out.name.clear();
+        return true;
+    }
+    if (is_identifier_view(text)) {
+        out.is_literal = false;
+        out.literal = 0.0;
+        out.name.assign(text.begin(), text.end());
+        return true;
+    }
+    return false;
+}
+
+std::optional<std::pair<std::string_view, std::string_view>> parse_scalar_unary_call_view(
+    std::string_view expr) {
+    expr = trim_view(expr);
+    const auto open = expr.find('(');
+    if (open == std::string_view::npos || open == 0) {
+        return std::nullopt;
+    }
+    const std::string_view name = trim_view(expr.substr(0, open));
+    if (!is_identifier_view(name)) {
+        return std::nullopt;
+    }
+
+    int depth = 0;
+    size_t close = std::string_view::npos;
+    for (size_t i = open; i < expr.size(); ++i) {
+        if (expr[i] == '(') {
+            ++depth;
+        } else if (expr[i] == ')') {
+            --depth;
+            if (depth == 0) {
+                close = i;
+                break;
+            }
+        }
+    }
+    if (close == std::string_view::npos || close + 1 != expr.size()) {
+        return std::nullopt;
+    }
+
+    const std::string_view arg = trim_view(expr.substr(open + 1, close - open - 1));
+    if (arg.empty()) {
+        return std::nullopt;
+    }
+    return std::pair{name, arg};
+}
+
+size_t split_scalar_call_args_view(std::string_view args_text, std::string_view* out, size_t cap) {
+    size_t count = 0;
+    size_t start = 0;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    for (size_t i = 0; i <= args_text.size(); ++i) {
+        const char c = i < args_text.size() ? args_text[i] : ',';
+        if (i < args_text.size()) {
+            if (c == '(') {
+                ++paren_depth;
+            } else if (c == ')') {
+                --paren_depth;
+            } else if (c == '[') {
+                ++bracket_depth;
+            } else if (c == ']') {
+                --bracket_depth;
+            }
+        }
+        if ((c == ',' && paren_depth == 0 && bracket_depth == 0) || i == args_text.size()) {
+            if (count < cap) {
+                out[count] = trim_view(args_text.substr(start, i - start));
+            }
+            ++count;
+            start = i + 1;
+        }
+    }
+    return count;
+}
+
 bool try_parse_bigint_assignment(const std::string& line, std::string& name, std::string& decimal) {
     static const std::regex pattern(
         R"((\w+)\s*=\s*bigint\s*\(\s*(\"([^\"]*)\"|'([^']*)')\s*\))",
@@ -6085,55 +6381,161 @@ Result<double> resolve_scalar_operand(const SessionState& state, const ScalarOpe
     return it->second;
 }
 
-Result<double> eval_scalar_expr(const SessionState& state, const std::string& expr_text) {
-    const std::string expr = trim_copy(strip_outer_parens(expr_text));
+Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args) {
+    if (args.size() == 1) {
+        const double arg = args[0];
+        if (iequals(fn_name, "sin")) {
+            return std::sin(arg);
+        }
+        if (iequals(fn_name, "cos")) {
+            return std::cos(arg);
+        }
+        if (iequals(fn_name, "tan")) {
+            return std::tan(arg);
+        }
+        if (iequals(fn_name, "asin")) {
+            return std::asin(arg);
+        }
+        if (iequals(fn_name, "acos")) {
+            return std::acos(arg);
+        }
+        if (iequals(fn_name, "atan")) {
+            return std::atan(arg);
+        }
+        if (iequals(fn_name, "sinh")) {
+            return std::sinh(arg);
+        }
+        if (iequals(fn_name, "cosh")) {
+            return std::cosh(arg);
+        }
+        if (iequals(fn_name, "tanh")) {
+            return std::tanh(arg);
+        }
+        if (iequals(fn_name, "sqrt")) {
+            return std::sqrt(arg);
+        }
+        if (iequals(fn_name, "abs")) {
+            return std::fabs(arg);
+        }
+        if (iequals(fn_name, "exp")) {
+            return std::exp(arg);
+        }
+        if (iequals(fn_name, "log")) {
+            return std::log(arg);
+        }
+        if (iequals(fn_name, "log10")) {
+            return std::log10(arg);
+        }
+        if (iequals(fn_name, "floor")) {
+            return std::floor(arg);
+        }
+        if (iequals(fn_name, "ceil")) {
+            return std::ceil(arg);
+        }
+        if (iequals(fn_name, "erf")) {
+            return ms::erf(arg);
+        }
+    }
+    if (args.size() == 2) {
+        if (iequals(fn_name, "pow")) {
+            return std::pow(args[0], args[1]);
+        }
+        if (iequals(fn_name, "min")) {
+            return std::fmin(args[0], args[1]);
+        }
+        if (iequals(fn_name, "max")) {
+            return std::fmax(args[0], args[1]);
+        }
+        if (iequals(fn_name, "atan2")) {
+            return std::atan2(args[0], args[1]);
+        }
+    }
+
+    const std::string_view cached = g_scalar_fn_cache.lookup(fn_name);
+    return Interpreter::eval_scalar_call(std::string(cached), std::vector<double>(args.begin(), args.end()));
+}
+
+Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text) {
+    std::string_view expr = strip_outer_parens_view(expr_text);
     if (expr.empty()) {
         return std::unexpected(DomainError{"eval", "empty expression"});
     }
 
+    if (is_literal_arith_expr(expr)) {
+        return eval_literal_arith(expr);
+    }
+
     if (expr.front() == '-') {
-        auto inner = eval_scalar_expr(state, expr.substr(1));
+        auto inner = eval_scalar_expr_impl(state, expr.substr(1));
         if (!inner) {
             return std::unexpected(inner.error());
         }
         return -(*inner);
     }
     if (expr.front() == '+') {
-        return eval_scalar_expr(state, expr.substr(1));
+        return eval_scalar_expr_impl(state, expr.substr(1));
     }
 
-    if (const auto call = parse_scalar_call(expr)) {
-        std::vector<double> arg_values;
-        arg_values.reserve(call->second.size());
-        for (const auto& arg_text : call->second) {
-            auto arg = eval_scalar_expr(state, arg_text);
+    if (const auto call = parse_scalar_unary_call_view(expr)) {
+        std::string_view arg_views[16];
+        const size_t arg_count = split_scalar_call_args_view(call->second, arg_views, 16);
+        if (arg_count == 0) {
+            return std::unexpected(DomainError{"eval", "invalid scalar expression"});
+        }
+        if (arg_count > 16) {
+            const std::string legacy_expr(expr);
+            if (const auto legacy_call = parse_scalar_call(legacy_expr)) {
+                std::vector<double> arg_values;
+                arg_values.reserve(legacy_call->second.size());
+                for (const auto& arg_text : legacy_call->second) {
+                    auto arg = eval_scalar_expr_impl(state, std::string_view{arg_text});
+                    if (!arg) {
+                        return std::unexpected(arg.error());
+                    }
+                    arg_values.push_back(*arg);
+                }
+                return eval_scalar_call_cached(legacy_call->first,
+                                               std::span<const double>(arg_values));
+            }
+            return std::unexpected(DomainError{"eval", "invalid scalar expression"});
+        }
+        std::array<double, 16> arg_values{};
+        for (size_t i = 0; i < arg_count; ++i) {
+            if (arg_views[i].empty()) {
+                return std::unexpected(DomainError{"eval", "invalid scalar expression"});
+            }
+            auto arg = eval_scalar_expr_impl(state, arg_views[i]);
             if (!arg) {
                 return std::unexpected(arg.error());
             }
-            arg_values.push_back(*arg);
+            arg_values[i] = *arg;
         }
-        return Interpreter::eval_scalar_call(call->first, arg_values);
+        return eval_scalar_call_cached(call->first, std::span(arg_values.data(), arg_count));
     }
 
     ScalarOperand single;
-    if (parse_scalar_operand(expr, single)) {
+    if (parse_scalar_operand_view(expr, single)) {
         return resolve_scalar_operand(state, single);
     }
 
-    const auto op_pos = find_scalar_binop(expr);
+    const auto op_pos = find_scalar_binop_view(expr);
     if (!op_pos) {
         return std::unexpected(DomainError{"eval", "invalid scalar expression"});
     }
 
-    auto left = eval_scalar_expr(state, expr.substr(0, op_pos->first));
+    auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
     if (!left) {
         return std::unexpected(left.error());
     }
-    auto right = eval_scalar_expr(state, expr.substr(op_pos->first + 1));
+    auto right = eval_scalar_expr_impl(state, trim_view(expr.substr(op_pos->first + 1)));
     if (!right) {
         return std::unexpected(right.error());
     }
     return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+}
+
+Result<double> eval_scalar_expr(const SessionState& state, const std::string& expr_text) {
+    return eval_scalar_expr_impl(state, std::string_view{expr_text});
 }
 
 void append_unique_var(std::vector<std::string>& vars, const std::string& name) {

@@ -5,6 +5,20 @@
 
 using namespace ms::interp;
 
+static void BM_repl_simple_arith(benchmark::State& state) {
+    Interpreter interp;
+    constexpr int kIterations = 10000;
+
+    for (auto _ : state) {
+        for (int i = 0; i < kIterations; ++i) {
+            auto result = interp.execute("r = 1+2*3");
+            benchmark::DoNotOptimize(result);
+        }
+    }
+
+    state.SetItemsProcessed(state.iterations() * kIterations);
+}
+
 static void BM_repl_scalar_expr(benchmark::State& state) {
     Interpreter interp;
     constexpr int kIterations = 1000;
@@ -67,6 +81,7 @@ static void BM_repl_matmul_pipeline(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * kIterations);
 }
 
+BENCHMARK(BM_repl_simple_arith);
 BENCHMARK(BM_repl_scalar_expr);
 BENCHMARK(BM_repl_matrix_assign);
 BENCHMARK(BM_repl_zeros_eye);
