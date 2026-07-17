@@ -66,6 +66,26 @@ static void BM_Correlate(benchmark::State& state) {
 BENCHMARK(BM_Correlate)->Arg(64)->Arg(256)->Arg(1024)->Arg(4096);
 
 // ---------------------------------------------------------------------------
+// Signal: xcorr (partial FFT lag extraction)
+// ---------------------------------------------------------------------------
+
+static void BM_Xcorr8192(benchmark::State& state) {
+    constexpr int n = 8192;
+    constexpr int max_lag = 64;
+    std::vector<double> a(n), b(n);
+    for (int i = 0; i < n; ++i) {
+        a[static_cast<size_t>(i)] = std::sin(2.0 * M_PI * i / n);
+        b[static_cast<size_t>(i)] = std::cos(2.0 * M_PI * i / n);
+    }
+    for (auto _ : state) {
+        auto r = xcorr(a, b, max_lag);
+        benchmark::DoNotOptimize(r);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n));
+}
+BENCHMARK(BM_Xcorr8192);
+
+// ---------------------------------------------------------------------------
 // Signal: moving_average
 // ---------------------------------------------------------------------------
 
