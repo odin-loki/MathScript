@@ -14,7 +14,7 @@ Ten profiling waves optimized all identified hot paths across signal, fft, simd,
 | 218–224 | (see CHANGELOG.md) |
 | **225** | tensorops einsum, imfilter/sharpen/LoG, Floyd-Warshall, CZT, hilbert buffers, smoke fix |
 | **226** | topo/geo/ode-pde/ml benches, smoke-safe args, MSVC baseline populated, REPL micro-opts |
-| **227** | documentation closure; intentional O(n²) audit; `docs/PERFORMANCE.md`; final verify |
+| **227** | quantum/bignum/compress benches, finance/symbolic/frameworks opts, Linux+MSVC baseline sync, `docs/PERFORMANCE.md` |
 
 **No further profiling waves planned.** Remaining: Linux CI `bench_regression.sh --write-baseline` only.
 
