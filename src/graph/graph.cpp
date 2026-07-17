@@ -331,27 +331,80 @@ Result<std::vector<int>> topological_sort(const Graph& G) {
 
 // ---- Shortest paths ----
 
-std::pair<std::vector<double>, std::vector<int>>
-dijkstra(const Graph& G, int source) {
-    int n = G.n_vertices();
-    std::vector<double> dist(n, INF);
-    std::vector<int> parent(n, -1);
-    dist[source] = 0.0;
-    using P = std::pair<double,int>;
-    std::priority_queue<P, std::vector<P>, std::greater<P>> pq;
-    pq.push({0.0, source});
-    while (!pq.empty()) {
-        auto [d, u] = pq.top(); pq.pop();
-        if (d > dist[u]) continue;
-        for (auto& [v, w] : G.neighbors(u)) {
-            if (dist[u] + w < dist[v]) {
-                dist[v] = dist[u] + w;
-                parent[v] = u;
-                pq.push({dist[v], v});
-            }
+namespace {
+
+using DijkstraEntry = std::pair<double, int>;
+
+inline void dijkstra_relax_neighbors(const Graph& G, int u, double du,
+                                     std::vector<double>& dist,
+                                     std::vector<int>& parent,
+                                     std::priority_queue<DijkstraEntry,
+                                                         std::vector<DijkstraEntry>,
+                                                         std::greater<DijkstraEntry>>& pq) {
+    const auto& nbrs = G.neighbors(u);
+    for (size_t i = 0, end = nbrs.size(); i < end; ++i) {
+        const int v = nbrs[i].first;
+        const double nd = du + nbrs[i].second;
+        if (nd < dist[static_cast<size_t>(v)]) {
+            dist[static_cast<size_t>(v)] = nd;
+            parent[static_cast<size_t>(v)] = u;
+            pq.push({nd, v});
         }
     }
+}
+
+inline void dijkstra_relax_neighbors_sparse(const Graph& G, int u, double du,
+                                            std::vector<double>& dist,
+                                            std::vector<int>& parent,
+                                            std::priority_queue<DijkstraEntry,
+                                                                std::vector<DijkstraEntry>,
+                                                                std::greater<DijkstraEntry>>& pq) {
+    for (const auto& nbr : G.neighbors(u)) {
+        const int v = nbr.first;
+        const double nd = du + nbr.second;
+        if (nd < dist[static_cast<size_t>(v)]) {
+            dist[static_cast<size_t>(v)] = nd;
+            parent[static_cast<size_t>(v)] = u;
+            pq.push({nd, v});
+        }
+    }
+}
+
+std::pair<std::vector<double>, std::vector<int>>
+dijkstra_impl(const Graph& G, int source, bool dense) {
+    const int n = G.n_vertices();
+    std::vector<double> dist(static_cast<size_t>(n), INF);
+    std::vector<int> parent(static_cast<size_t>(n), -1);
+    dist[static_cast<size_t>(source)] = 0.0;
+
+    std::vector<DijkstraEntry> heap;
+    heap.reserve(static_cast<size_t>(n));
+    std::priority_queue<DijkstraEntry, std::vector<DijkstraEntry>, std::greater<DijkstraEntry>>
+        pq(std::greater<DijkstraEntry>(), std::move(heap));
+    pq.push({0.0, source});
+
+    while (!pq.empty()) {
+        const auto [d, u] = pq.top();
+        pq.pop();
+        if (d > dist[static_cast<size_t>(u)]) continue;
+        if (dense)
+            dijkstra_relax_neighbors(G, u, d, dist, parent, pq);
+        else
+            dijkstra_relax_neighbors_sparse(G, u, d, dist, parent, pq);
+    }
     return {dist, parent};
+}
+
+} // namespace
+
+std::pair<std::vector<double>, std::vector<int>>
+dijkstra(const Graph& G, int source) {
+    const int n = G.n_vertices();
+    if (n == 0) return {{}, {}};
+    const int m = G.n_edges();
+    const bool dense =
+        static_cast<long long>(m) * 4LL >= static_cast<long long>(n) * static_cast<long long>(n);
+    return dijkstra_impl(G, source, dense);
 }
 
 Result<std::pair<std::vector<double>, std::vector<int>>>

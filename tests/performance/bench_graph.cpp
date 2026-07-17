@@ -1,10 +1,11 @@
-// MathScript Benchmark: graph traversal (BFS)
+// MathScript Benchmark: graph traversal (BFS, Dijkstra)
 
 #include <benchmark/benchmark.h>
 #include "ms/graph/graph.hpp"
 
 using ms::graph::Graph;
 using ms::graph::bfs;
+using ms::graph::dijkstra;
 
 namespace {
 
@@ -61,3 +62,27 @@ static void BM_Bfs_Dense(benchmark::State& state) {
         benchmark::DoNotOptimize(bfs(G, 0));
 }
 BENCHMARK(BM_Bfs_Dense)->Arg(64)->Arg(128)->Arg(192);
+
+static void BM_Dijkstra(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const Graph G = make_path_graph(n);
+    for (auto _ : state)
+        benchmark::DoNotOptimize(dijkstra(G, 0));
+}
+BENCHMARK(BM_Dijkstra)->Arg(1000)->Arg(10000)->Arg(50000);
+
+static void BM_Dijkstra_Grid(benchmark::State& state) {
+    const int side = static_cast<int>(state.range(0));
+    const Graph G = make_grid_graph(side);
+    for (auto _ : state)
+        benchmark::DoNotOptimize(dijkstra(G, 0));
+}
+BENCHMARK(BM_Dijkstra_Grid)->Arg(32)->Arg(100)->Arg(224);
+
+static void BM_Dijkstra_Dense(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const Graph G = make_dense_graph(n);
+    for (auto _ : state)
+        benchmark::DoNotOptimize(dijkstra(G, 0));
+}
+BENCHMARK(BM_Dijkstra_Dense)->Arg(64)->Arg(128)->Arg(192);
