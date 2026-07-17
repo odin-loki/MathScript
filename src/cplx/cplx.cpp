@@ -15,15 +15,17 @@ C residue(CFunc f, C z0, double eps) {
     // res = lim_{z→z0} (z - z0) f(z)
     // Numerical: average over small circle
     const int N = 64;
+    const double two_pi_over_N = 2.0 * M_PI / N;
+    const C inv_N(N, 0.0);
     C sum = 0.0;
     for (int k = 0; k < N; ++k) {
-        double theta = 2.0 * M_PI * k / N;
+        const double theta = two_pi_over_N * k;
         C z = z0 + C(eps * std::cos(theta), eps * std::sin(theta));
         C delta = z - z0;
         sum += f(z) * delta;
     }
     // Divide by N (circle average gives residue)
-    return sum / C(N, 0.0);
+    return sum / inv_N;
 }
 
 // ---- Winding number ----
@@ -154,17 +156,22 @@ std::vector<double> harmonic_conjugate(const std::vector<double>& u) {
     // FFT-based Hilbert on circle: multiply by -i*sign(k)
     // Simple: use the fact that conjugate function's DFT is -i*sign(k)*U_k
     // Approximate using direct DFT
+    const double two_pi_over_n = 2.0 * M_PI / n;
+    const double two_over_n = 2.0 / n;
     std::vector<double> v(n, 0.0);
     for (int j = 0; j < n; ++j) {
         for (int k = 1; k <= n / 2; ++k) {
             double Uc_k = 0.0, Us_k = 0.0;
+            const double k_two_pi_over_n = two_pi_over_n * k;
             for (int m = 0; m < n; ++m) {
-                Uc_k += u[m] * std::cos(2.0 * M_PI * k * m / n);
-                Us_k += u[m] * std::sin(2.0 * M_PI * k * m / n);
+                const double angle = k_two_pi_over_n * m;
+                Uc_k += u[m] * std::cos(angle);
+                Us_k += u[m] * std::sin(angle);
             }
             // v_j += (2/n) * (Us_k * cos - Uc_k * sin)
-            v[j] += (2.0 / n) * (Us_k * std::cos(2.0 * M_PI * k * j / n)
-                                  - Uc_k * std::sin(2.0 * M_PI * k * j / n));
+            const double j_angle = k_two_pi_over_n * j;
+            v[j] += two_over_n * (Us_k * std::cos(j_angle)
+                                  - Uc_k * std::sin(j_angle));
         }
     }
     return v;
@@ -186,19 +193,22 @@ std::vector<C> laurent_coeffs(CFunc f, C z0, double r,
     // a_k = (1/2πi) ∮ f(z) / (z-z0)^{k+1} dz = (1/N) sum f(z_j) z_j^{-k}
     std::vector<C> coeffs;
     int total = neg_terms + pos_terms + 1;
+    const double two_pi_over_N = 2.0 * M_PI / N;
+    const C radial_step(0.0, r * two_pi_over_N);
+    const C inv_two_pi_i(0.0, 2.0 * M_PI);
     coeffs.reserve(total);
     for (int k = -neg_terms; k <= pos_terms; ++k) {
         C sum = 0.0;
         for (int j = 0; j < N; ++j) {
-            double theta = 2.0 * M_PI * j / N;
-            C z = z0 + C(r * std::cos(theta), r * std::sin(theta));
+            const double theta = two_pi_over_N * j;
+            const C radial(std::cos(theta), std::sin(theta));
+            C z = z0 + C(r * radial.real(), r * radial.imag());
             // a_k = (1/2πi) ∮ f(z)/(z-z0)^{k+1} dz
             // ≈ (r * i * e^{itheta}) / (r^{k+1} e^{i(k+1)theta}) * f(z) * (2πr/N)
             C integrand = f(z) * std::pow(z - z0, C(-(k + 1)));
-            sum += integrand * C(0.0, r * 2.0 * M_PI / N) *
-                   C(std::cos(theta), std::sin(theta));
+            sum += integrand * radial_step * radial;
         }
-        coeffs.push_back(sum / C(0.0, 2.0 * M_PI));
+        coeffs.push_back(sum / inv_two_pi_i);
     }
     return coeffs;
 }
@@ -268,13 +278,13 @@ double cauchy_principal_value(RealFunc f, double a, double c, double b, int n_pt
 C line_integral(CFunc f, C a, C b, int n_pts) {
     // Parameterise: z(t) = a + t(b-a), t in [0,1]
     C result = 0.0;
-    C dz = b - a;
+    const C dz = b - a;
+    const C dz_step = dz / C(static_cast<double>(n_pts));
+    const double inv_n_pts = 1.0 / static_cast<double>(n_pts);
     for (int k = 0; k < n_pts; ++k) {
-        double t0 = static_cast<double>(k) / n_pts;
-        double t1 = static_cast<double>(k + 1) / n_pts;
-        double tm = (t0 + t1) / 2.0;
-        C z = a + C(tm) * dz;
-        result += f(z) * dz / C(n_pts);
+        const double tm = (static_cast<double>(k) + 0.5) * inv_n_pts;
+        const C z = a + C(tm) * dz;
+        result += f(z) * dz_step;
     }
     return result;
 }
@@ -284,14 +294,14 @@ C power_series_eval(const std::vector<C>& coeffs, C z0, C z) {
     C result = 0.0;
     C pw = 1.0;
     C dz = z - z0;
-    for (auto& c : coeffs) { result += c * pw; pw *= dz; }
+    for (const auto& c : coeffs) { result += c * pw; pw *= dz; }
     return result;
 }
 
 // ---- Blaschke product ----
 C blaschke_product(C z, const std::vector<C>& zeros) {
     C result = 1.0;
-    for (auto& a : zeros) {
+    for (const auto& a : zeros) {
         if (std::abs(a) < 1e-15) { result *= z; continue; }
         result *= (z - a) / (C(1.0) - std::conj(a) * z);
     }

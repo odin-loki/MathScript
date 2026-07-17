@@ -70,8 +70,9 @@ GradientDescentResult gradient_descent(
 
     for (int i = 0; i < max_iterations; ++i) {
         constexpr double h = 1e-7;
-        const double grad_x = (f(x0 + h, y0) - f(x0 - h, y0)) / (2.0 * h);
-        const double grad_y = (f(x0, y0 + h) - f(x0, y0 - h)) / (2.0 * h);
+        constexpr double inv_2h = 1.0 / (2.0 * h);
+        const double grad_x = (f(x0 + h, y0) - f(x0 - h, y0)) * inv_2h;
+        const double grad_y = (f(x0, y0 + h) - f(x0, y0 - h)) * inv_2h;
 
         x0 -= learning_rate * grad_x;
         y0 -= learning_rate * grad_y;
@@ -280,17 +281,25 @@ std::tuple<std::vector<double>, double> simplex_solver(
 }
 
 double golden_section(Func1D f, double a, double b, double tol) {
-    const double phi = (1.0 + std::sqrt(5.0)) / 2.0;
-    double c = b - (b - a) / phi;
-    double d = a + (b - a) / phi;
+    const double inv_phi = 2.0 / (1.0 + std::sqrt(5.0));
+    double c = b - (b - a) * inv_phi;
+    double d = a + (b - a) * inv_phi;
+    double fc = f(c);
+    double fd = f(d);
     while (std::abs(b - a) > tol) {
-        if (f(c) < f(d)) {
+        if (fc < fd) {
             b = d;
+            d = c;
+            fd = fc;
+            c = b - (b - a) * inv_phi;
+            fc = f(c);
         } else {
             a = c;
+            c = d;
+            fc = fd;
+            d = a + (b - a) * inv_phi;
+            fd = f(d);
         }
-        c = b - (b - a) / phi;
-        d = a + (b - a) / phi;
     }
     return (a + b) / 2.0;
 }
@@ -361,9 +370,9 @@ OptimResult nelder_mead(FuncND f, std::vector<double> x0,
         return r;
     };
 
+    std::vector<size_t> idx(static_cast<size_t>(n + 1));
     for (int iter = 0; iter < max_iter; ++iter) {
         // Sort
-        std::vector<size_t> idx(static_cast<size_t>(n + 1));
         std::iota(idx.begin(), idx.end(), 0u);
         std::sort(idx.begin(), idx.end(),
                   [&](size_t a, size_t b) { return fvals[a] < fvals[b]; });
@@ -421,11 +430,14 @@ OptimResult bfgs(FuncND f, std::vector<double> x0, double tol, int max_iter) {
 
     const auto grad = [&](const std::vector<double>& x) {
         std::vector<double> g(static_cast<size_t>(n));
+        std::vector<double> xp = x;
+        std::vector<double> xm = x;
         for (int i = 0; i < n; ++i) {
-            auto xp = x; auto xm = x;
             xp[static_cast<size_t>(i)] += h;
             xm[static_cast<size_t>(i)] -= h;
             g[static_cast<size_t>(i)] = (f(xp) - f(xm)) / (2.0 * h);
+            xp[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
+            xm[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
         }
         return g;
     };
@@ -460,19 +472,18 @@ OptimResult bfgs(FuncND f, std::vector<double> x0, double tol, int max_iter) {
         double fx = f(x);
         double ddf = 0.0;
         for (int i = 0; i < n; ++i) ddf += g[static_cast<size_t>(i)] * p[static_cast<size_t>(i)];
+        std::vector<double> xnew = x;
         for (int ls = 0; ls < 30; ++ls) {
-            auto xnew = x;
             for (int i = 0; i < n; ++i)
-                xnew[static_cast<size_t>(i)] += step * p[static_cast<size_t>(i)];
+                xnew[static_cast<size_t>(i)] =
+                    x[static_cast<size_t>(i)] + step * p[static_cast<size_t>(i)];
             if (f(xnew) <= fx + 1e-4 * step * ddf) break;
             step *= 0.5;
         }
 
         std::vector<double> s(static_cast<size_t>(n)), y(static_cast<size_t>(n));
-        auto xnew = x;
         for (int i = 0; i < n; ++i) {
-            xnew[static_cast<size_t>(i)] += step * p[static_cast<size_t>(i)];
-            s[static_cast<size_t>(i)]     = step * p[static_cast<size_t>(i)];
+            s[static_cast<size_t>(i)] = step * p[static_cast<size_t>(i)];
         }
         auto gnew = grad(xnew);
         for (int i = 0; i < n; ++i)
@@ -531,11 +542,14 @@ OptimResult lbfgs(FuncND f, std::vector<double> x0,
 
     const auto grad = [&](const std::vector<double>& x) {
         std::vector<double> g(static_cast<size_t>(n));
+        std::vector<double> xp = x;
+        std::vector<double> xm = x;
         for (int i = 0; i < n; ++i) {
-            auto xp = x; auto xm = x;
             xp[static_cast<size_t>(i)] += h;
             xm[static_cast<size_t>(i)] -= h;
             g[static_cast<size_t>(i)] = (f(xp) - f(xm)) / (2.0 * h);
+            xp[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
+            xm[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
         }
         return g;
     };
@@ -544,6 +558,8 @@ OptimResult lbfgs(FuncND f, std::vector<double> x0,
     auto g = grad(x);
     std::vector<std::vector<double>> S, Y;
     std::vector<double> rho_list;
+    std::vector<double> alpha_buf;
+    alpha_buf.reserve(static_cast<size_t>(m));
     bool converged = false;
 
     for (int iter = 0; iter < max_iter; ++iter) {
@@ -554,7 +570,7 @@ OptimResult lbfgs(FuncND f, std::vector<double> x0,
         // Two-loop L-BFGS direction
         std::vector<double> q = g;
         const int k = static_cast<int>(S.size());
-        std::vector<double> alpha_buf(static_cast<size_t>(k));
+        alpha_buf.resize(static_cast<size_t>(k));
         for (int i = k - 1; i >= 0; --i) {
             double si_q = 0.0;
             for (int j = 0; j < n; ++j)
@@ -594,20 +610,19 @@ OptimResult lbfgs(FuncND f, std::vector<double> x0,
         double fx = f(x);
         double ddf = 0.0;
         for (int j = 0; j < n; ++j) ddf -= g[static_cast<size_t>(j)] * r[static_cast<size_t>(j)];
+        std::vector<double> xnew = x;
         for (int ls = 0; ls < 30; ++ls) {
-            auto xnew = x;
             for (int j = 0; j < n; ++j)
-                xnew[static_cast<size_t>(j)] -= step * r[static_cast<size_t>(j)];
+                xnew[static_cast<size_t>(j)] =
+                    x[static_cast<size_t>(j)] - step * r[static_cast<size_t>(j)];
             if (f(xnew) <= fx + 1e-4 * step * ddf) break;
             step *= 0.5;
         }
 
         std::vector<double> s(static_cast<size_t>(n)), y(static_cast<size_t>(n));
-        auto xnew = x;
         for (int j = 0; j < n; ++j) {
-            xnew[static_cast<size_t>(j)] -= step * r[static_cast<size_t>(j)];
-            s[static_cast<size_t>(j)]     = xnew[static_cast<size_t>(j)] -
-                                             x[static_cast<size_t>(j)];
+            s[static_cast<size_t>(j)] = xnew[static_cast<size_t>(j)] -
+                                         x[static_cast<size_t>(j)];
         }
         auto gnew = grad(xnew);
         for (int j = 0; j < n; ++j)
@@ -676,11 +691,11 @@ OptimResult conjugate_gradient(FuncND f, GradND grad, std::vector<double> x0,
             ddf = -gnorm_sq;
         }
 
+        std::vector<double> xnew = x;
         for (int ls = 0; ls < 30; ++ls) {
-            auto xnew = x;
             for (int i = 0; i < n; ++i) {
-                xnew[static_cast<size_t>(i)] +=
-                    step * d[static_cast<size_t>(i)];
+                xnew[static_cast<size_t>(i)] =
+                    x[static_cast<size_t>(i)] + step * d[static_cast<size_t>(i)];
             }
             if (f(xnew) <= fx + 1e-4 * step * ddf) {
                 break;
@@ -688,10 +703,6 @@ OptimResult conjugate_gradient(FuncND f, GradND grad, std::vector<double> x0,
             step *= 0.5;
         }
 
-        auto xnew = x;
-        for (int i = 0; i < n; ++i) {
-            xnew[static_cast<size_t>(i)] += step * d[static_cast<size_t>(i)];
-        }
         auto gnew = grad(xnew);
 
         // Polak-Ribière+ beta with automatic restart when beta < 0.
@@ -733,11 +744,14 @@ OptimResult adam(FuncND f, std::vector<double> x0,
 
     const auto grad = [&](const std::vector<double>& x) {
         std::vector<double> g(static_cast<size_t>(n));
+        std::vector<double> xp = x;
+        std::vector<double> xm = x;
         for (int i = 0; i < n; ++i) {
-            auto xp = x; auto xm = x;
             xp[static_cast<size_t>(i)] += h;
             xm[static_cast<size_t>(i)] -= h;
             g[static_cast<size_t>(i)] = (f(xp) - f(xm)) / (2.0 * h);
+            xp[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
+            xm[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
         }
         return g;
     };
@@ -881,8 +895,9 @@ OptimResult levenberg_marquardt(ResidualFunc residuals, std::vector<double> x0,
         const int m = static_cast<int>(r0.size());
         std::vector<std::vector<double>> J(
             static_cast<size_t>(m), std::vector<double>(static_cast<size_t>(n), 0.0));
+        std::vector<double> xp = x;
+        std::vector<double> xm = x;
         for (int j = 0; j < n; ++j) {
-            auto xp = x; auto xm = x;
             xp[static_cast<size_t>(j)] += h;
             xm[static_cast<size_t>(j)] -= h;
             auto rp = residuals(xp);
@@ -891,6 +906,8 @@ OptimResult levenberg_marquardt(ResidualFunc residuals, std::vector<double> x0,
                 J[static_cast<size_t>(i)][static_cast<size_t>(j)] =
                     (rp[static_cast<size_t>(i)] - rm[static_cast<size_t>(i)]) / (2.0 * h);
             }
+            xp[static_cast<size_t>(j)] = x[static_cast<size_t>(j)];
+            xm[static_cast<size_t>(j)] = x[static_cast<size_t>(j)];
         }
         return J;
     };
