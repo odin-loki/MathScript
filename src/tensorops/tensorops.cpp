@@ -2,9 +2,11 @@
 #include "ms/error/error_types.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <map>
 #include <numeric>
 #include <sstream>
+#include <vector>
 
 namespace ms {
 namespace tensorops {
@@ -120,6 +122,134 @@ Tensor Tensor::operator*(double s) const {
 
 // ========================== Contractions ==========================
 
+namespace {
+
+std::vector<long> row_major_strides(const std::vector<int>& shape) {
+    const int nd = static_cast<int>(shape.size());
+    std::vector<long> strides(nd, 1);
+    long stride = 1;
+    for (int i = nd - 1; i >= 0; --i) {
+        strides[i] = stride;
+        stride *= shape[i];
+    }
+    return strides;
+}
+
+long linear_index(const std::vector<int>& idx, const std::vector<long>& strides) {
+    long flat = 0;
+    for (size_t i = 0; i < idx.size(); ++i)
+        flat += static_cast<long>(idx[i]) * strides[i];
+    return flat;
+}
+
+bool odometer_advance(std::vector<int>& idx, const std::vector<int>& sizes) {
+    for (int d = static_cast<int>(idx.size()) - 1; d >= 0; --d) {
+        ++idx[d];
+        if (idx[d] < sizes[d]) return true;
+        idx[d] = 0;
+    }
+    return false;
+}
+
+Tensor contract_matmul_2d(const Tensor& A, const Tensor& B, int m, int k, int n) {
+    Tensor C({m, n}, 0.0);
+    const double* Ap = A.data.data();
+    const double* Bp = B.data.data();
+    double* Cp = C.data.data();
+    for (int i = 0; i < m; ++i) {
+        const double* Ai = Ap + static_cast<long>(i) * k;
+        double* Ci = Cp + static_cast<long>(i) * n;
+        for (int j = 0; j < n; ++j) {
+            double sum = 0.0;
+            for (int l = 0; l < k; ++l)
+                sum += Ai[l] * Bp[static_cast<long>(l) * n + j];
+            Ci[j] = sum;
+        }
+    }
+    return C;
+}
+
+Tensor contract_vec_inner(const Tensor& A, const Tensor& B) {
+    const int n = A.shape[0];
+    const double* Ap = A.data.data();
+    const double* Bp = B.data.data();
+    double sum = 0.0;
+    for (int i = 0; i < n; ++i)
+        sum += Ap[i] * Bp[i];
+    return Tensor({}, sum);
+}
+
+// Iterate contracted indices in the inner loop; free indices in the outer loop.
+Tensor contract_general(const Tensor& A, const Tensor& B,
+                        const std::vector<std::pair<int, int>>& contractions,
+                        const std::vector<bool>& skipA, const std::vector<bool>& skipB,
+                        const std::vector<int>& rshape) {
+    const int NA = A.ndim();
+    const int NB = B.ndim();
+    const auto stA = row_major_strides(A.shape);
+    const auto stB = row_major_strides(B.shape);
+    const auto stC = row_major_strides(rshape);
+
+    std::vector<int> freeA_axes, freeB_axes, conA_axes, conB_axes;
+    std::vector<int> freeA_sizes, freeB_sizes, con_sizes;
+    freeA_axes.reserve(NA);
+    freeB_axes.reserve(NB);
+    conA_axes.reserve(contractions.size());
+    conB_axes.reserve(contractions.size());
+    con_sizes.reserve(contractions.size());
+
+    for (int i = 0; i < NA; ++i) {
+        if (skipA[i]) continue;
+        freeA_axes.push_back(i);
+        freeA_sizes.push_back(A.shape[i]);
+    }
+    for (int i = 0; i < NB; ++i) {
+        if (skipB[i]) continue;
+        freeB_axes.push_back(i);
+        freeB_sizes.push_back(B.shape[i]);
+    }
+    for (const auto& [a_ax, b_ax] : contractions) {
+        conA_axes.push_back(a_ax);
+        conB_axes.push_back(b_ax);
+        con_sizes.push_back(A.shape[a_ax]);
+    }
+
+    Tensor C(rshape, 0.0);
+    std::vector<int> idxA(NA, 0), idxB(NB, 0);
+    std::vector<int> free_all;
+    free_all.reserve(freeA_sizes.size() + freeB_sizes.size());
+    free_all.insert(free_all.end(), freeA_sizes.begin(), freeA_sizes.end());
+    free_all.insert(free_all.end(), freeB_sizes.begin(), freeB_sizes.end());
+    std::vector<int> free_idx(free_all.size(), 0);
+    std::vector<int> con(con_sizes.size(), 0);
+
+    do {
+        for (size_t i = 0; i < freeA_axes.size(); ++i)
+            idxA[freeA_axes[i]] = free_idx[i];
+        for (size_t i = 0; i < freeB_axes.size(); ++i)
+            idxB[freeB_axes[i]] = free_idx[freeA_axes.size() + i];
+
+        double acc = 0.0;
+        do {
+            for (size_t i = 0; i < conA_axes.size(); ++i) {
+                idxA[conA_axes[i]] = con[i];
+                idxB[conB_axes[i]] = con[i];
+            }
+            acc += A.data[static_cast<size_t>(linear_index(idxA, stA))] *
+                   B.data[static_cast<size_t>(linear_index(idxB, stB))];
+        } while (odometer_advance(con, con_sizes));
+
+        long c_flat = 0;
+        for (size_t i = 0; i < free_idx.size(); ++i)
+            c_flat += static_cast<long>(free_idx[i]) * stC[static_cast<int>(i)];
+        C.data[static_cast<size_t>(c_flat)] = acc;
+    } while (odometer_advance(free_idx, free_all));
+
+    return C;
+}
+
+} // namespace
+
 Tensor outer(const Tensor& A, const Tensor& B) {
     std::vector<int> shape;
     for (int s : A.shape) shape.push_back(s);
@@ -134,41 +264,35 @@ Tensor outer(const Tensor& A, const Tensor& B) {
 
 Tensor contract(const Tensor& A, const Tensor& B,
                 const std::vector<std::pair<int,int>>& contractions) {
-    // Build result shape
-    int NA = A.ndim(), NB = B.ndim();
-    std::vector<bool> skipA(NA, false), skipB(NB, false);
-    for (auto& p : contractions) { skipA[p.first]=true; skipB[p.second]=true; }
-    std::vector<int> rshape;
-    for (int i=0;i<NA;++i) if (!skipA[i]) rshape.push_back(A.shape[i]);
-    for (int i=0;i<NB;++i) if (!skipB[i]) rshape.push_back(B.shape[i]);
+    if (contractions.empty())
+        return outer(A, B);
 
-    Tensor C(rshape, 0.0);
-    // Iterate over free and contracted indices
-    // This is a general but slow implementation
-    long totalA = A.numel();
-    for (long fa=0; fa<totalA; ++fa) {
-        std::vector<int> ia(NA);
-        long tmp = fa;
-        for (int k=NA-1; k>=0; --k) { ia[k]=tmp%A.shape[k]; tmp/=A.shape[k]; }
-        // Iterate over free B indices and contracted indices
-        long totalB = B.numel();
-        for (long fb=0; fb<totalB; ++fb) {
-            std::vector<int> ib(NB);
-            tmp = fb;
-            for (int k=NB-1; k>=0; --k) { ib[k]=tmp%B.shape[k]; tmp/=B.shape[k]; }
-            // Check contracted indices match
-            bool ok = true;
-            for (auto& p : contractions)
-                if (ia[p.first] != ib[p.second]) { ok=false; break; }
-            if (!ok) continue;
-            // Build result index
-            std::vector<int> ic;
-            for (int k=0;k<NA;++k) if (!skipA[k]) ic.push_back(ia[k]);
-            for (int k=0;k<NB;++k) if (!skipB[k]) ic.push_back(ib[k]);
-            C.at(ic) += A.data[fa] * B.data[fb];
-        }
+    const int NA = A.ndim(), NB = B.ndim();
+    std::vector<bool> skipA(NA, false), skipB(NB, false);
+    for (const auto& p : contractions) {
+        skipA[p.first] = true;
+        skipB[p.second] = true;
     }
-    return C;
+    std::vector<int> rshape;
+    rshape.reserve(NA + NB);
+    for (int i = 0; i < NA; ++i) if (!skipA[i]) rshape.push_back(A.shape[i]);
+    for (int i = 0; i < NB; ++i) if (!skipB[i]) rshape.push_back(B.shape[i]);
+
+    // 2D matrix multiply: contract A's last axis with B's first axis.
+    if (NA == 2 && NB == 2 && contractions.size() == 1) {
+        const auto [a_ax, b_ax] = contractions[0];
+        if (a_ax == 1 && b_ax == 0 && A.shape[1] == B.shape[0])
+            return contract_matmul_2d(A, B, A.shape[0], A.shape[1], B.shape[1]);
+    }
+
+    // Vector inner product.
+    if (NA == 1 && NB == 1 && contractions.size() == 1 &&
+        contractions[0].first == 0 && contractions[0].second == 0 &&
+        A.shape[0] == B.shape[0]) {
+        return contract_vec_inner(A, B);
+    }
+
+    return contract_general(A, B, contractions, skipA, skipB, rshape);
 }
 
 Tensor mode_product(const Tensor& T, const std::vector<std::vector<double>>& M, int mode) {
@@ -205,48 +329,16 @@ Tensor einsum(const std::string& subscripts, const Tensor& A, const Tensor& B) {
     std::string sB = subscripts.substr(comma+1, arrow-comma-1);
     std::string sC = subscripts.substr(arrow+2);
 
-    // Build index universe
-    std::string all_idx;
-    for (char c : sA) if (all_idx.find(c)==std::string::npos) all_idx+=c;
-    for (char c : sB) if (all_idx.find(c)==std::string::npos) all_idx+=c;
-
-    // Map each char to a size
-    std::map<char, int> idx_size;
-    for (int i=0;i<(int)sA.size();++i) idx_size[sA[i]] = A.shape[i];
-    for (int i=0;i<(int)sB.size();++i) idx_size[sB[i]] = B.shape[i];
-
-    // Output shape
-    std::vector<int> oshape;
-    if (sC.empty()) { oshape = {1}; }  // scalar
-    else for (char c : sC) oshape.push_back(idx_size[c]);
-
-    Tensor C(oshape, 0.0);
-
-    // Iterate over all combinations of all_idx
-    int M = static_cast<int>(all_idx.size());
-    std::vector<int> sizes(M);
-    for (int i=0;i<M;++i) sizes[i] = idx_size[all_idx[i]];
-    long total = 1;
-    for (int s : sizes) total *= s;
-
-    for (long f=0; f<total; ++f) {
-        std::map<char, int> val;
-        long tmp = f;
-        for (int k=M-1; k>=0; --k) { val[all_idx[k]] = tmp%sizes[k]; tmp/=sizes[k]; }
-        // Get A index
-        std::vector<int> ia, ib;
-        for (char c : sA) ia.push_back(val[c]);
-        for (char c : sB) ib.push_back(val[c]);
-        // Get C index
-        if (sC.empty()) {
-            C.data[0] += A.at(ia) * B.at(ib);
-        } else {
-            std::vector<int> ic;
-            for (char c : sC) ic.push_back(val[c]);
-            C.at(ic) += A.at(ia) * B.at(ib);
-        }
+    std::vector<std::pair<int,int>> contractions;
+    for (int i = 0; i < static_cast<int>(sA.size()); ++i) {
+        const char c = sA[static_cast<size_t>(i)];
+        if (sC.find(c) != std::string::npos) continue;
+        const auto posB = sB.find(c);
+        if (posB == std::string::npos) continue;
+        contractions.emplace_back(i, static_cast<int>(posB));
     }
-    return C;
+
+    return contract(A, B, contractions);
 }
 
 // ========================== Khatri-Rao / Kronecker ==========================
