@@ -255,13 +255,16 @@ struct ScalarFnCache {
     std::array<std::string, kCapacity> lowered{};
     size_t count = 0;
 
-    std::string_view lookup(std::string_view name) {
-        for (size_t i = 0; i < count; ++i) {
+    const std::string& lookup_lowered(std::string_view name) {
+        const size_t search_limit = count < kCapacity ? count : kCapacity;
+        for (size_t i = 0; i < search_limit; ++i) {
             if (iequals(keys[i], name)) {
                 return lowered[i];
             }
         }
-        std::string key(name);
+        std::string key;
+        key.reserve(name.size());
+        key.assign(name);
         std::string value = lower(key);
         if (count < kCapacity) {
             keys[count] = std::move(key);
@@ -274,9 +277,14 @@ struct ScalarFnCache {
         ++count;
         return lowered[slot];
     }
+
+    std::string_view lookup(std::string_view name) {
+        return lookup_lowered(name);
+    }
 };
 
 thread_local ScalarFnCache g_scalar_fn_cache;
+thread_local std::vector<double> g_scalar_call_arg_buf;
 
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args);
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text);
@@ -6451,8 +6459,9 @@ Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const
         }
     }
 
-    const std::string_view cached = g_scalar_fn_cache.lookup(fn_name);
-    return Interpreter::eval_scalar_call(std::string(cached), std::vector<double>(args.begin(), args.end()));
+    const std::string& fn_lower = g_scalar_fn_cache.lookup_lowered(fn_name);
+    g_scalar_call_arg_buf.assign(args.begin(), args.end());
+    return Interpreter::eval_scalar_call(fn_lower, g_scalar_call_arg_buf);
 }
 
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text) {
@@ -11103,7 +11112,7 @@ Result<void> Interpreter::load_session(const std::string& path) {
 }
 
 Result<std::string> Interpreter::execute(const std::string& line) {
-    const std::string cmd = trim(line);
+    std::string cmd = trim(line);
     if (cmd.empty()) {
         return std::string{};
     }
