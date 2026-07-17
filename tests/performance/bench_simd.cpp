@@ -63,7 +63,8 @@ static void BM_simd_sub(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_simd_sub)->Arg(1000000);
+// 1M elements ~4ms/run; 65536 keeps smoke under per-bench budget.
+BENCHMARK(BM_simd_sub)->Arg(65536);
 
 // ---------------------------------------------------------------------------
 // simd::abs
@@ -82,7 +83,7 @@ static void BM_simd_abs(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_simd_abs)->Arg(1000000);
+BENCHMARK(BM_simd_abs)->Arg(65536);
 
 // ---------------------------------------------------------------------------
 // simd::scale
@@ -130,7 +131,7 @@ static void BM_simd_dot(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_simd_dot)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(1000000);
+BENCHMARK(BM_simd_dot)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(65536);
 
 // ---------------------------------------------------------------------------
 // simd::sum
@@ -145,7 +146,7 @@ static void BM_simd_sum(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_simd_sum)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(1000000);
+BENCHMARK(BM_simd_sum)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(65536);
 
 // ---------------------------------------------------------------------------
 // simd::sum_squares
@@ -160,7 +161,7 @@ static void BM_simd_sum_squares(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_simd_sum_squares)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(1000000);
+BENCHMARK(BM_simd_sum_squares)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(65536);
 
 // ---------------------------------------------------------------------------
 // simd::norm_l2
@@ -175,7 +176,7 @@ static void BM_simd_norm_l2(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_simd_norm_l2)->Arg(1000000);
+BENCHMARK(BM_simd_norm_l2)->Arg(65536);
 
 // ---------------------------------------------------------------------------
 // simd::exp_map

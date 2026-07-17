@@ -134,18 +134,23 @@ if ($Benchmark) {
     if ($SmokeBenches.Count -eq 0) {
         throw "No add_ms_bench targets found in $CmakeLists"
     }
+    $smokeSw = [System.Diagnostics.Stopwatch]::StartNew()
     foreach ($bench in $SmokeBenches) {
         $exe = Join-Path $BenchDir "$bench.exe"
         if (-not (Test-Path $exe)) {
             throw "Missing benchmark executable: $exe"
         }
+        $benchSw = [System.Diagnostics.Stopwatch]::StartNew()
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         & $exe --benchmark_min_time=0.001s 2>&1 | Out-Null
         $ErrorActionPreference = $prevEap
+        $benchSw.Stop()
         if ($LASTEXITCODE -ne 0) { throw "Benchmark smoke failed: $bench (exit $LASTEXITCODE)" }
+        Write-Host "  $bench smoke: $([math]::Round($benchSw.Elapsed.TotalSeconds, 2))s"
     }
-    Write-Host "Benchmark smoke OK ($($SmokeBenches.Count) executables: $($SmokeBenches -join ', '))"
+    $smokeSw.Stop()
+    Write-Host "Benchmark smoke OK ($($SmokeBenches.Count) executables, $([math]::Round($smokeSw.Elapsed.TotalSeconds, 2))s total: $($SmokeBenches -join ', '))"
 }
 
 if ($Test) {
