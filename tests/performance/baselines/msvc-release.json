@@ -1,19 +1,19 @@
 {
-  "_comment": "Linux GCC 13 Release regression baseline. Matmul/FFT medians captured via --write-baseline. Wave 218–222 targets below use median_time_ns=null as schema placeholders until regenerated on benchmark-linux CI (bash scripts/bench_regression.sh --write-baseline build-bench); regression skips null entries.",
-  "_generate": "bash scripts/bench_regression.sh --write-baseline build-bench",
+  "_comment": "MSVC Release regression baseline placeholder. Smoke runs via .\\build.ps1 -Benchmark (0.001s min_time). Full median capture pending Windows CI profile; null median_time_ns entries are schema placeholders only.",
+  "_generate": ".\\build.ps1 -Benchmark",
   "profile": {
-    "os": "linux",
-    "compiler": "gcc-13",
+    "os": "windows",
+    "compiler": "msvc",
     "build_type": "Release",
-    "benchmark_min_time": "0.1s",
-    "benchmark_repetitions": 5
+    "benchmark_min_time": "0.001s",
+    "benchmark_repetitions": 1
   },
   "benchmarks": {
-    "BM_matmul/64": { "median_time_ns": 70959 },
-    "BM_matmul/256": { "median_time_ns": 3390052 },
-    "BM_matmul/512": { "median_time_ns": 44329392 },
-    "BM_fft/256": { "median_time_ns": 39796 },
-    "BM_fft/1024": { "median_time_ns": 167995 },
+    "BM_matmul/64": { "median_time_ns": null },
+    "BM_matmul/256": { "median_time_ns": null },
+    "BM_matmul/512": { "median_time_ns": null },
+    "BM_fft/256": { "median_time_ns": null },
+    "BM_fft/1024": { "median_time_ns": null },
     "BM_fft/8192": { "median_time_ns": null },
     "BM_ConvolveFFT/4096": { "median_time_ns": null },
     "BM_KDE": { "median_time_ns": null },

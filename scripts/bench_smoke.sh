@@ -14,6 +14,8 @@ MS_BENCH_TARGETS=(
     bench_simd
     bench_signal_linalg
     bench_crypto
+    bench_graph
+    bench_image
     bench_ode_pde
     bench_special_memory
     bench_optim_symbolic
