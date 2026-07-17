@@ -6,6 +6,7 @@
 
 #include "ms/ode/ode.hpp"
 #include "ms/pde/pde.hpp"
+#include "ms/cfd/cfd.hpp"
 
 using namespace ms;
 
@@ -42,6 +43,34 @@ static void BM_ODE_RK4(benchmark::State& state) {
 BENCHMARK(BM_ODE_RK4)->Arg(100)->Arg(1000)->Arg(10000);
 
 // ---------------------------------------------------------------------------
+// ODE: RK4 vector method - coupled linear system
+// ---------------------------------------------------------------------------
+
+static void BM_ODE_RK4Vec(benchmark::State& state) {
+    const size_t dim  = static_cast<size_t>(state.range(0));
+    const size_t steps = static_cast<size_t>(state.range(1));
+    std::vector<double> y0(dim, 1.0);
+    auto f = [dim](double /*t*/, const std::vector<double>& y) {
+        std::vector<double> dy(dim);
+        for (size_t i = 0; i + 1 < dim; ++i) {
+            dy[i] = y[i + 1];
+        }
+        if (dim > 0) {
+            dy[dim - 1] = -y[0];
+        }
+        return dy;
+    };
+    for (auto _ : state) {
+        auto result = ode_rk4_vec(f, 0.0, y0, 5.0, steps);
+        benchmark::DoNotOptimize(result);
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(steps) *
+                            static_cast<int64_t>(dim));
+}
+BENCHMARK(BM_ODE_RK4Vec)->Args({8, 1000})->Args({32, 1000});
+
+// ---------------------------------------------------------------------------
 // PDE: 1-D heat equation - varying grid size, fixed time steps
 // ---------------------------------------------------------------------------
 
@@ -61,5 +90,29 @@ static void BM_PDE_Heat1D(benchmark::State& state) {
                             static_cast<int64_t>(nx) * 50);
 }
 BENCHMARK(BM_PDE_Heat1D)->Arg(20)->Arg(100)->Arg(500)->Arg(2000);
+
+// ---------------------------------------------------------------------------
+// CFD: 1-D upwind advection time integration
+// ---------------------------------------------------------------------------
+
+static void BM_CFD_Advection(benchmark::State& state) {
+    const size_t n = static_cast<size_t>(state.range(0));
+    const double dx = 1.0 / static_cast<double>(n);
+    const double dt = 0.4 * dx;
+    const double t_end = 1.0;
+    std::vector<double> u0(n, 0.0);
+    for (size_t i = n / 4; i < 3 * n / 4; ++i) {
+        u0[i] = 1.0;
+    }
+    const std::vector<double> v(n, 1.0);
+    for (auto _ : state) {
+        auto result = ms::cfd::run_advection(u0, v, t_end, dt, dx);
+        benchmark::DoNotOptimize(result);
+    }
+    const int64_t steps = static_cast<int64_t>(std::ceil(t_end / dt));
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(n) * steps);
+}
+BENCHMARK(BM_CFD_Advection)->Arg(100)->Arg(500)->Arg(2000);
 
 BENCHMARK_MAIN();

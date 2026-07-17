@@ -178,9 +178,12 @@ Heat1DResult pde_heat_1d_cn(
     result.t.push_back(0.0);
     result.u.push_back(u);
 
-    std::vector<double> a(m, -0.5 * r);
-    std::vector<double> b(m, 1.0 + r);
-    std::vector<double> c(m, -0.5 * r);
+    const std::vector<double> a(m, -0.5 * r);
+    const std::vector<double> b(m, 1.0 + r);
+    const std::vector<double> c(m, -0.5 * r);
+    std::vector<double> a_work = a;
+    std::vector<double> b_work = b;
+    std::vector<double> c_work = c;
     std::vector<double> rhs(m);
 
     for (std::size_t step = 1; step <= steps; ++step) {
@@ -189,10 +192,10 @@ Heat1DResult pde_heat_1d_cn(
             rhs[k] = (1.0 - r) * u[i] + 0.5 * r * (u[i - 1] + u[i + 1]);
         }
 
-        std::vector<double> a_copy = a;
-        std::vector<double> b_copy = b;
-        std::vector<double> c_copy = c;
-        if (!thomas_solve(a_copy, b_copy, c_copy, rhs)) {
+        a_work = a;
+        b_work = b;
+        c_work = c;
+        if (!thomas_solve(a_work, b_work, c_work, rhs)) {
             return Heat1DResult{};
         }
 
@@ -814,27 +817,34 @@ Heat2DResult pde_heat_2d_cn_adi(
     std::vector<double> a_y(m_y, -lam_y);
     std::vector<double> b_y(m_y, 1.0 + 2.0 * lam_y);
     std::vector<double> c_y(m_y, -lam_y);
+    std::vector<double> a_x_work(m_x, -lam_x);
+    std::vector<double> b_x_work(m_x, 1.0 + 2.0 * lam_x);
+    std::vector<double> c_x_work(m_x, -lam_x);
+    std::vector<double> a_y_work(m_y, -lam_y);
+    std::vector<double> b_y_work(m_y, 1.0 + 2.0 * lam_y);
+    std::vector<double> c_y_work(m_y, -lam_y);
+    std::vector<double> rhs_x(m_x);
+    std::vector<double> rhs_y(m_y);
 
     for (std::size_t step = 1; step <= steps; ++step) {
         for (std::size_t j = 1; j + 1 < ny; ++j) {
-            std::vector<double> rhs(m_x);
             for (std::size_t k = 0; k < m_x; ++k) {
                 const std::size_t i = k + 1;
-                rhs[k] = u[j][i]
+                rhs_x[k] = u[j][i]
                     + lam_y * (u[j - 1][i] - 2.0 * u[j][i] + u[j + 1][i]);
             }
 
-            std::vector<double> a_copy = a_x;
-            std::vector<double> b_copy = b_x;
-            std::vector<double> c_copy = c_x;
-            if (!thomas_solve(a_copy, b_copy, c_copy, rhs)) {
+            a_x_work = a_x;
+            b_x_work = b_x;
+            c_x_work = c_x;
+            if (!thomas_solve(a_x_work, b_x_work, c_x_work, rhs_x)) {
                 return Heat2DResult{};
             }
 
             half[j][0] = 0.0;
             half[j][nx - 1] = 0.0;
             for (std::size_t k = 0; k < m_x; ++k) {
-                half[j][k + 1] = rhs[k];
+                half[j][k + 1] = rhs_x[k];
             }
         }
 
@@ -844,24 +854,23 @@ Heat2DResult pde_heat_2d_cn_adi(
         }
 
         for (std::size_t i = 1; i + 1 < nx; ++i) {
-            std::vector<double> rhs(m_y);
             for (std::size_t k = 0; k < m_y; ++k) {
                 const std::size_t j = k + 1;
-                rhs[k] = half[j][i]
+                rhs_y[k] = half[j][i]
                     + lam_x * (half[j][i - 1] - 2.0 * half[j][i] + half[j][i + 1]);
             }
 
-            std::vector<double> a_copy = a_y;
-            std::vector<double> b_copy = b_y;
-            std::vector<double> c_copy = c_y;
-            if (!thomas_solve(a_copy, b_copy, c_copy, rhs)) {
+            a_y_work = a_y;
+            b_y_work = b_y;
+            c_y_work = c_y;
+            if (!thomas_solve(a_y_work, b_y_work, c_y_work, rhs_y)) {
                 return Heat2DResult{};
             }
 
             u[0][i] = 0.0;
             u[ny - 1][i] = 0.0;
             for (std::size_t k = 0; k < m_y; ++k) {
-                u[k + 1][i] = rhs[k];
+                u[k + 1][i] = rhs_y[k];
             }
         }
 
