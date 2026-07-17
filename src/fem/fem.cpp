@@ -3,6 +3,7 @@
 #include "ms/core/operations.hpp"
 #include <cmath>
 #include <stdexcept>
+#include <vector>
 
 namespace ms {
 namespace fem {
@@ -32,6 +33,74 @@ void validate_dirichlet(
             throw std::invalid_argument("apply_dirichlet: node index out of range");
         }
     }
+}
+
+constexpr double k_tridiag_singular_tol = 1e-300;
+
+bool is_tridiagonal(const ColMatrix<double>& K) {
+    if (K.rows() != K.cols()) {
+        return false;
+    }
+    const std::size_t n = K.rows();
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = 0; j < n; ++j) {
+            if (i + 1 < j || j + 1 < i) {
+                if (std::abs(K(i, j)) > 1e-14) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+/// Thomas algorithm for a tridiagonal system. Returns nullopt on singularity.
+Result<ColMatrix<double>> solve_fem_tridiag(
+    const ColMatrix<double>& K,
+    const ColMatrix<double>& f) {
+    const std::size_t n = K.rows();
+    if (n == 0) {
+        return std::unexpected(SingularMatrix{});
+    }
+    if (f.rows() != n || f.cols() != 1) {
+        return std::unexpected(DimensionMismatch{f.rows(), f.cols(), n, 1});
+    }
+
+    std::vector<double> lower(n, 0.0);
+    std::vector<double> diag(n);
+    std::vector<double> upper(n, 0.0);
+    std::vector<double> rhs(n);
+
+    for (std::size_t i = 0; i < n; ++i) {
+        diag[i] = K(i, i);
+        rhs[i] = f(i, 0);
+        if (i > 0) {
+            lower[i] = K(i, i - 1);
+        }
+        if (i + 1 < n) {
+            upper[i] = K(i, i + 1);
+        }
+    }
+
+    for (std::size_t i = 1; i < n; ++i) {
+        if (std::abs(diag[i - 1]) < k_tridiag_singular_tol) {
+            return std::unexpected(SingularMatrix{});
+        }
+        const double w = lower[i] / diag[i - 1];
+        diag[i] -= w * upper[i - 1];
+        rhs[i] -= w * rhs[i - 1];
+    }
+
+    if (std::abs(diag[n - 1]) < k_tridiag_singular_tol) {
+        return std::unexpected(SingularMatrix{});
+    }
+
+    ColMatrix<double> u(n, 1);
+    u(n - 1, 0) = rhs[n - 1] / diag[n - 1];
+    for (std::size_t i = n - 1; i-- > 0;) {
+        u(i, 0) = (rhs[i] - upper[i] * u(i + 1, 0)) / diag[i];
+    }
+    return u;
 }
 
 } // namespace
@@ -168,6 +237,15 @@ void apply_dirichlet(
 Result<ColMatrix<double>> solve_fem(
     const ColMatrix<double>& K,
     const ColMatrix<double>& f) {
+    if (K.rows() != K.cols()) {
+        return std::unexpected(DimensionMismatch{K.rows(), K.cols()});
+    }
+    if (K.rows() != f.rows() || f.cols() != 1) {
+        return std::unexpected(DimensionMismatch{f.rows(), f.cols(), K.rows(), 1});
+    }
+    if (is_tridiagonal(K)) {
+        return solve_fem_tridiag(K, f);
+    }
     return solve(K, f);
 }
 
