@@ -6,9 +6,18 @@ CMake build.
 
 ## Current status
 
-The directory is **empty** — no vendored libraries are checked in yet. Planned
-vendored dependencies (see `mathscript-master-plan.md` §3.6) include mimalloc,
-oneTBB, highway, symengine, and optionally googletest.
+| Package     | Version | Path                  | CMake option           |
+|-------------|---------|-----------------------|------------------------|
+| googletest  | 1.14.0  | `vendor/googletest/`  | `MS_USE_VENDOR_GTEST`  |
+
+When `vendor/googletest/` is present, `MS_USE_VENDOR_GTEST` defaults to **ON**
+and CMake uses `add_subdirectory(vendor/googletest)` with no network access.
+Set `MS_USE_VENDOR_GTEST=OFF` to fall back to FetchContent (v1.14.0 zip) at
+configure time — useful before the vendor tree is checked in or when refreshing
+from upstream.
+
+Planned future vendored dependencies (see `mathscript-master-plan.md` §3.6):
+mimalloc, oneTBB, highway, symengine.
 
 ## Checksum policy
 

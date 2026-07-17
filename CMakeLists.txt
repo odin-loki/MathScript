@@ -23,15 +23,19 @@ include(cmake/coverage.cmake)
 include(cmake/jit.cmake)
 
 if(MS_BUILD_TESTS)
-    include(FetchContent)
-    FetchContent_Declare(
-        googletest
-        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(googletest)
+    if(MS_USE_VENDOR_GTEST AND EXISTS "${CMAKE_SOURCE_DIR}/vendor/googletest/CMakeLists.txt")
+        add_subdirectory(vendor/googletest)
+    else()
+        include(FetchContent)
+        FetchContent_Declare(
+            googletest
+            URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_MakeAvailable(googletest)
+    endif()
     enable_testing()
 endif()
 

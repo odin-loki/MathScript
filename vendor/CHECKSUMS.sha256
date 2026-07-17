@@ -1,3 +1,8 @@
 # SHA-256 checksums for files under vendor/
 # Format: <hash>  <path-relative-to-repo-root>
 # Regenerate when vendored sources change; see vendor/README.md
+e9934d724b827530afbc2227a56e7459e608a49947ff0c4c802345eaa3ac7efb  vendor/googletest/CMakeLists.txt
+c92217b7373c96b606d48bd551f73d17a2d0dcfc0857ac95870b9c1883495d28  vendor/googletest/googletest/CMakeLists.txt
+4681e82176968f13310ec408401c3eb48f862268a9f2fc0e98cf6f183135475c  vendor/googletest/googlemock/CMakeLists.txt
+93da03ddf6d5b9bdf40ae4ded9939067c9ed0b6de93f787f7e8d187609b6b02d  vendor/googletest/googletest/include/gtest/gtest.h
+972d3016860f9aa6452e078cf77406290fb7003b66fd6c0744a030bd1c323606  vendor/googletest/googletest/src/gtest-all.cc
