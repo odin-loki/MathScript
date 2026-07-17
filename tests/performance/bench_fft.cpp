@@ -2,6 +2,7 @@
 
 #include <benchmark/benchmark.h>
 
+#include <cmath>
 #include <vector>
 
 #include "ms/fft/fft.hpp"
@@ -41,3 +42,20 @@ static void BM_ifft(benchmark::State& state) {
 
 BENCHMARK(BM_fft)->Arg(256)->Arg(1024)->Arg(4096)->Arg(8192);
 BENCHMARK(BM_ifft)->Arg(256)->Arg(1024)->Arg(8192);
+
+static void BM_rfft(benchmark::State& state) {
+    const auto n = static_cast<size_t>(state.range(0));
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * 17.0 * static_cast<double>(i) / static_cast<double>(n));
+    }
+
+    for (auto _ : state) {
+        auto result = rfft(x);
+        benchmark::DoNotOptimize(result);
+    }
+
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n));
+}
+
+BENCHMARK(BM_rfft)->Arg(4096);

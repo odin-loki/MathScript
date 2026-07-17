@@ -143,6 +143,133 @@ std::vector<std::complex<double>> ifft_transform(std::vector<std::complex<double
     return x;
 }
 
+// Real-input FFT via N/2-point complex FFT (two-real-sequences packing).
+// Post-processing follows the standard even/odd deinterleave + untangle step
+// used by FFTW/phastft (twiddle W^k pre-multiplied by 0.5).
+std::vector<std::complex<double>> rfft_half_transform(const std::vector<double>& x, size_t full_len) {
+    const size_t half = full_len / 2;
+    const size_t out_len = half + 1;
+
+    if (full_len == 1) {
+        return {{x.empty() ? 0.0 : x[0], 0.0}};
+    }
+
+    std::vector<std::complex<double>> packed(half);
+    for (size_t j = 0; j < half; ++j) {
+        const double re = (2 * j < x.size()) ? x[2 * j] : 0.0;
+        const double im = (2 * j + 1 < x.size()) ? x[2 * j + 1] : 0.0;
+        packed[j] = {re, im};
+    }
+
+    auto z = fft_transform(std::move(packed));
+
+    std::vector<std::complex<double>> out(out_len);
+    const double a0 = z[0].real();
+    const double b0 = z[0].imag();
+    out[0] = {a0 + b0, 0.0};
+    out[half] = {a0 - b0, 0.0};
+
+    const size_t q = half / 2;
+    for (size_t k = 1; k < q; ++k) {
+        const size_t mirror = half - k;
+        const double a = z[k].real();
+        const double b = z[k].imag();
+        const double c = z[mirror].real();
+        const double d = z[mirror].imag();
+        const double s_re = 0.5 * (a + c);
+        const double s_im = 0.5 * (b - d);
+        const double t_re = b + d;
+        const double t_im = c - a;
+        const double angle = -2.0 * M_PI * static_cast<double>(k) / static_cast<double>(full_len);
+        const double wkr = 0.5 * std::cos(angle);
+        const double wki = 0.5 * std::sin(angle);
+        const double wzr = wkr * t_re - wki * t_im;
+        const double wzi = wkr * t_im + wki * t_re;
+        out[k] = {s_re + wzr, s_im + wzi};
+        out[mirror] = {s_re - wzr, wzi - s_im};
+    }
+
+    if (q >= 1 && half >= 2) {
+        const double a = z[q].real();
+        const double b = z[q].imag();
+        const double angle = -2.0 * M_PI * static_cast<double>(q) / static_cast<double>(full_len);
+        const double wkr = 0.5 * std::cos(angle);
+        const double wki = 0.5 * std::sin(angle);
+        out[q] = {a + 2.0 * wkr * b, 2.0 * wki * b};
+    }
+
+    return out;
+}
+
+std::vector<std::complex<double>> hermitian_extend_rfft_spectrum(
+    const std::vector<std::complex<double>>& x, size_t full_len) {
+    const size_t half = full_len / 2;
+    std::vector<std::complex<double>> spectrum(half + 1);
+    for (size_t i = 0; i < x.size() && i <= half; ++i) {
+        spectrum[i] = x[i];
+    }
+    for (size_t i = x.size(); i <= half; ++i) {
+        spectrum[i] = std::conj(spectrum[full_len - i]);
+    }
+    return spectrum;
+}
+
+std::vector<double> irfft_half_transform(
+    const std::vector<std::complex<double>>& x, size_t full_len) {
+    const size_t half = full_len / 2;
+
+    if (full_len == 1) {
+        return {x.empty() ? 0.0 : x[0].real()};
+    }
+
+    const auto spectrum = hermitian_extend_rfft_spectrum(x, full_len);
+
+    std::vector<std::complex<double>> z(half);
+
+    {
+        const double re_first = spectrum[0].real();
+        const double im_first = spectrum[0].imag();
+        const double re_second = spectrum[half].real();
+        const double im_second = -spectrum[half].imag();
+        const double zx_re = 0.5 * (re_first + re_second);
+        const double zx_im = 0.5 * (im_first + im_second);
+        const double dr = re_first - re_second;
+        const double di = im_first - im_second;
+        const double c_h = 0.5;
+        const double s_h = 0.0;
+        const double zy_re = c_h * dr + s_h * di;
+        const double zy_im = c_h * di - s_h * dr;
+        z[0] = {zx_re - zy_im, zx_im + zy_re};
+    }
+
+    for (size_t k = 1; k < half; ++k) {
+        const size_t mirror = half - k;
+        const double re_first = spectrum[k].real();
+        const double im_first = spectrum[k].imag();
+        const double re_second = spectrum[mirror].real();
+        const double im_second = -spectrum[mirror].imag();
+        const double zx_re = 0.5 * (re_first + re_second);
+        const double zx_im = 0.5 * (im_first + im_second);
+        const double dr = re_first - re_second;
+        const double di = im_first - im_second;
+        const double angle = -2.0 * M_PI * static_cast<double>(k) / static_cast<double>(full_len);
+        const double c_h = 0.5 * std::cos(angle);
+        const double s_h = 0.5 * std::sin(angle);
+        const double zy_re = c_h * dr + s_h * di;
+        const double zy_im = c_h * di - s_h * dr;
+        z[k] = {zx_re - zy_im, zx_im + zy_re};
+    }
+
+    auto packed = ifft_transform(std::move(z));
+
+    std::vector<double> out(full_len);
+    for (size_t j = 0; j < half; ++j) {
+        out[2 * j] = packed[j].real();
+        out[2 * j + 1] = packed[j].imag();
+    }
+    return out;
+}
+
 } // namespace
 
 Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x) {
@@ -276,17 +403,12 @@ Result<std::vector<std::complex<double>>> dft(std::span<const double> data) {
 }
 
 Result<std::vector<std::complex<double>>> rfft(const std::vector<double>& x) {
-    auto full = fft(x);
-    if (!full) {
-        return std::unexpected(full.error());
+    if (x.empty()) {
+        return std::vector<std::complex<double>>{};
     }
-    const size_t n = full->size();
-    const size_t out_len = n / 2 + 1;
-    std::vector<std::complex<double>> out(out_len);
-    for (size_t i = 0; i < out_len; ++i) {
-        out[i] = (*full)[i];
-    }
-    return out;
+
+    const size_t full_len = next_power_of_two(x.size());
+    return rfft_half_transform(x, full_len);
 }
 
 Result<std::vector<double>> irfft(const std::vector<std::complex<double>>& x, size_t n) {
@@ -294,15 +416,7 @@ Result<std::vector<double>> irfft(const std::vector<std::complex<double>>& x, si
         return std::vector<double>{};
     }
     const size_t full_len = next_power_of_two(n);
-    std::vector<std::complex<double>> full(full_len);
-    for (size_t i = 0; i < x.size() && i < full_len; ++i) {
-        full[i] = x[i];
-    }
-    for (size_t i = x.size(); i < full_len; ++i) {
-        const size_t k = full_len - i;
-        full[i] = std::conj(full[k]);
-    }
-    return ifft(full);
+    return irfft_half_transform(x, full_len);
 }
 
 std::vector<std::complex<double>> fftshift(const std::vector<std::complex<double>>& x) {

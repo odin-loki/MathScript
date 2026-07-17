@@ -2,6 +2,10 @@
 #include "ms/fft/fft.hpp"
 #include <cmath>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 using namespace ms;
 
 TEST(FftExtTest, rfft_roundtrip) {
@@ -161,6 +165,38 @@ TEST(FftExtTest, rfft_irfft_roundtrip) {
     ASSERT_EQ(back.size(), signal.size());
     for (size_t i = 0; i < signal.size(); ++i) {
         EXPECT_NEAR(back[i], signal[i], 1e-6);
+    }
+}
+
+TEST(FftExtTest, rfft_irfft_roundtrip_1024) {
+    constexpr size_t n = 1024;
+    std::vector<double> signal(n);
+    for (size_t i = 0; i < n; ++i) {
+        signal[i] = std::sin(2.0 * M_PI * 7.0 * static_cast<double>(i) / static_cast<double>(n))
+                  + 0.25 * std::cos(2.0 * M_PI * 31.0 * static_cast<double>(i) / static_cast<double>(n));
+    }
+    const auto spec = rfft(signal).value();
+    ASSERT_EQ(spec.size(), n / 2 + 1);
+    const auto back = irfft(spec, n).value();
+    ASSERT_EQ(back.size(), n);
+    for (size_t i = 0; i < n; ++i) {
+        EXPECT_NEAR(back[i], signal[i], 1e-9);
+    }
+}
+
+TEST(FftExtTest, rfft_irfft_roundtrip_4096) {
+    constexpr size_t n = 4096;
+    std::vector<double> signal(n);
+    for (size_t i = 0; i < n; ++i) {
+        signal[i] = std::sin(2.0 * M_PI * 13.0 * static_cast<double>(i) / static_cast<double>(n))
+                  + 0.5 * std::cos(2.0 * M_PI * 97.0 * static_cast<double>(i) / static_cast<double>(n));
+    }
+    const auto spec = rfft(signal).value();
+    ASSERT_EQ(spec.size(), n / 2 + 1);
+    const auto back = irfft(spec, n).value();
+    ASSERT_EQ(back.size(), n);
+    for (size_t i = 0; i < n; ++i) {
+        EXPECT_NEAR(back[i], signal[i], 1e-9);
     }
 }
 
