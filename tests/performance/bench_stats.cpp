@@ -58,6 +58,19 @@ static void BM_Quantile(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * state.range(0) * 2);
 }
 
+static void BM_BootstrapCI(benchmark::State& state) {
+    const int n_data = static_cast<int>(state.range(0));
+    const int n_boot = static_cast<int>(state.range(1));
+    const auto data = make_data(n_data);
+    for (auto _ : state) {
+        const auto ci = bootstrap_ci(data, 0.95, n_boot, 42);
+        benchmark::DoNotOptimize(ci.first);
+        benchmark::DoNotOptimize(ci.second);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n_data) *
+                           static_cast<int64_t>(n_boot));
+}
+
 static void BM_linear_regression(benchmark::State& state) {
     const int n = static_cast<int>(state.range(0));
     const auto x = make_data(n);
@@ -119,6 +132,10 @@ BENCHMARK(BM_mean_stddev)->Arg(1000)->Arg(10000)->Arg(100000);
 BENCHMARK(BM_percentile)->Arg(1000)->Arg(10000);
 BENCHMARK(BM_Percentile)->Arg(100000);
 BENCHMARK(BM_Quantile)->Arg(1000)->Arg(10000)->Arg(100000);
+BENCHMARK(BM_BootstrapCI)
+    ->Args({100, 1000})
+    ->Args({100, 5000})
+    ->Args({500, 1000});
 BENCHMARK(BM_linear_regression)->Arg(500)->Arg(5000);
 BENCHMARK(BM_moving_average)->Arg(1000)->Arg(10000);
 BENCHMARK(BM_convolve)->Arg(1000)->Arg(10000);

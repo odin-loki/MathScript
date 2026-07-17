@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <numeric>
 #include <random>
 #include <vector>
@@ -935,4 +936,110 @@ TEST(StatsNumerical, MadTwoElements) {
     // median=5, abs devs=[3,3], median dev=3
     EXPECT_NEAR(mad(v, false), 3.0, 1e-12);
     EXPECT_NEAR(mad(v), 3.0 * 1.4826, 1e-12);
+}
+
+// ============================================================
+// Bootstrap CI — nth_element order stats match full sort
+// ============================================================
+
+namespace {
+
+std::pair<double, double> bootstrap_ci_full_sort(std::span<const double> data,
+                                                 double level,
+                                                 int n_boot,
+                                                 unsigned seed) {
+    if (data.empty()) {
+        return {0.0, 0.0};
+    }
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<size_t> idx_dist(0, data.size() - 1);
+    std::vector<double> boot_means(static_cast<size_t>(n_boot));
+    for (int b = 0; b < n_boot; ++b) {
+        double s = 0.0;
+        for (size_t i = 0; i < data.size(); ++i) {
+            s += data[idx_dist(rng)];
+        }
+        boot_means[static_cast<size_t>(b)] = s / static_cast<double>(data.size());
+    }
+    std::sort(boot_means.begin(), boot_means.end());
+    const double alpha = (1.0 - level) / 2.0;
+    size_t lo = static_cast<size_t>(alpha * static_cast<double>(n_boot));
+    size_t hi = static_cast<size_t>((1.0 - alpha) * static_cast<double>(n_boot));
+    hi = std::min(hi, boot_means.size() - 1);
+    return {boot_means[lo], boot_means[hi]};
+}
+
+BootstrapResult bootstrap_ci_full_sort(
+    std::span<const double> data,
+    const std::function<double(std::span<const double>)>& stat_fn,
+    size_t n_resamples,
+    double confidence_level,
+    unsigned seed) {
+    BootstrapResult result{};
+    if (data.empty() || n_resamples == 0) {
+        return result;
+    }
+    result.point_estimate = stat_fn(data);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<size_t> idx_dist(0, data.size() - 1);
+    std::vector<double> boot_stats(n_resamples);
+    std::vector<double> sample(data.size());
+    for (size_t b = 0; b < n_resamples; ++b) {
+        for (size_t i = 0; i < data.size(); ++i) {
+            sample[i] = data[idx_dist(rng)];
+        }
+        boot_stats[b] = stat_fn(sample);
+    }
+    std::sort(boot_stats.begin(), boot_stats.end());
+    const double alpha = (1.0 - confidence_level) / 2.0;
+    size_t lo = static_cast<size_t>(alpha * static_cast<double>(n_resamples));
+    size_t hi = static_cast<size_t>((1.0 - alpha) * static_cast<double>(n_resamples));
+    hi = std::min(hi, boot_stats.size() - 1);
+    result.lower = boot_stats[lo];
+    result.upper = boot_stats[hi];
+    if (n_resamples >= 2) {
+        const double m = std::accumulate(boot_stats.begin(), boot_stats.end(), 0.0) /
+                         static_cast<double>(n_resamples);
+        double sum_sq = 0.0;
+        for (double v : boot_stats) {
+            const double d = v - m;
+            sum_sq += d * d;
+        }
+        result.std_error =
+            std::sqrt(sum_sq / static_cast<double>(n_resamples - 1));
+    }
+    return result;
+}
+
+double mean_stat(std::span<const double> data) {
+    return mean(data);
+}
+
+} // namespace
+
+TEST(StatsNumerical, BootstrapCIMatchesFullSort_MeanCI) {
+    std::vector<double> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    const auto ref = bootstrap_ci_full_sort(v, 0.95, 1000, 42);
+    const auto got = bootstrap_ci(v, 0.95, 1000, 42);
+    EXPECT_DOUBLE_EQ(got.first, ref.first);
+    EXPECT_DOUBLE_EQ(got.second, ref.second);
+}
+
+TEST(StatsNumerical, BootstrapCIMatchesFullSort_StatFn) {
+    std::vector<double> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    const auto ref = bootstrap_ci_full_sort(v, mean_stat, 1000, 0.95, 42);
+    const auto got = bootstrap_ci(v, mean_stat, 1000, 0.95, 42);
+    EXPECT_DOUBLE_EQ(got.lower, ref.lower);
+    EXPECT_DOUBLE_EQ(got.upper, ref.upper);
+    EXPECT_NEAR(got.std_error, ref.std_error, 1e-10);
+}
+
+TEST(StatsNumerical, BootstrapCIMatchesFullSort_VariousLevels) {
+    std::vector<double> v{2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0};
+    for (double level : {0.90, 0.95, 0.99}) {
+        const auto ref = bootstrap_ci_full_sort(v, level, 500, 7);
+        const auto got = bootstrap_ci(v, level, 500, 7);
+        EXPECT_DOUBLE_EQ(got.first, ref.first) << "level=" << level;
+        EXPECT_DOUBLE_EQ(got.second, ref.second) << "level=" << level;
+    }
 }
