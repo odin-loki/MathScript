@@ -213,5 +213,38 @@ static void BM_IzaacKeygen(benchmark::State& state) {
 BENCHMARK(BM_IzaacKeygen);
 
 // ---------------------------------------------------------------------------
+// Izaac – consensus election simulation
+// ---------------------------------------------------------------------------
+
+static void BM_IzaacConsensus_Election(benchmark::State& state) {
+    ms::izaac::consensus::Cluster cluster(7, 42);
+    for (auto _ : state)
+        benchmark::DoNotOptimize(cluster.run_election());
+}
+BENCHMARK(BM_IzaacConsensus_Election);
+
+static void BM_IzaacConsensus_Replicate(benchmark::State& state) {
+    ms::izaac::consensus::Cluster cluster(7, 42);
+    const int leader = cluster.run_election();
+    for (auto _ : state)
+        benchmark::DoNotOptimize(cluster.replicate(leader, "cmd"));
+}
+BENCHMARK(BM_IzaacConsensus_Replicate);
+
+// ---------------------------------------------------------------------------
+// Gria – CA divergence trajectory
+// ---------------------------------------------------------------------------
+
+static void BM_GriaCADivergence(benchmark::State& state) {
+    std::vector<uint8_t> a(64, 0);
+    std::vector<uint8_t> b(64, 0);
+    a[32] = 1;
+    b[33] = 1;
+    for (auto _ : state)
+        benchmark::DoNotOptimize(ms::gria::ca::divergence_trajectory(a, b, 30, 50));
+}
+BENCHMARK(BM_GriaCADivergence);
+
+// ---------------------------------------------------------------------------
 
 BENCHMARK_MAIN();

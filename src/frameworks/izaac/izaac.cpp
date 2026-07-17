@@ -787,14 +787,15 @@ int Cluster::run_election() {
         ++votes[static_cast<size_t>(cid)];
     }
 
+    std::vector<int> eligible;
+    eligible.reserve(candidates.size());
     for (int i = 0; i < n; ++i) {
         Node& voter = nodes[static_cast<size_t>(i)];
         if (voter.voted_for != -1) {
             continue;
         }
 
-        std::vector<int> eligible;
-        eligible.reserve(candidates.size());
+        eligible.clear();
         for (int cid : candidates) {
             const Node& candidate = nodes[static_cast<size_t>(cid)];
             if (candidate.current_term >= voter.current_term) {

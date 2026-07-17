@@ -89,6 +89,34 @@ static void BM_DistMatrix_ScatterGather_4x4(benchmark::State& state) {
 }
 BENCHMARK(BM_DistMatrix_ScatterGather_4x4);
 
+static void BM_DistMatrix_ScatterGather_64x64(benchmark::State& state) {
+    auto ctx = init(0, nullptr);
+    DMatrix A(64, 64, 2.0);
+    for (auto _ : state) {
+        auto dm = scatter(A, ctx);
+        if (dm.has_value()) {
+            auto gathered = gather(dm.value(), ctx);
+            benchmark::DoNotOptimize(gathered);
+        }
+    }
+    finalize(ctx);
+}
+BENCHMARK(BM_DistMatrix_ScatterGather_64x64);
+
+static void BM_DistMatrix_ScatterGather_BlockCyclic_64x64(benchmark::State& state) {
+    auto ctx = init(0, nullptr);
+    DMatrix A(64, 64, 3.0);
+    for (auto _ : state) {
+        auto dm = scatter(A, ctx, Distribution::BlockCyclic);
+        if (dm.has_value()) {
+            auto gathered = gather(dm.value(), ctx);
+            benchmark::DoNotOptimize(gathered);
+        }
+    }
+    finalize(ctx);
+}
+BENCHMARK(BM_DistMatrix_ScatterGather_BlockCyclic_64x64);
+
 // ---------------------------------------------------------------------------
 // Distributed: solve 2x2 system
 // ---------------------------------------------------------------------------
