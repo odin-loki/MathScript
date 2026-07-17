@@ -152,4 +152,22 @@ BENCHMARK(BM_Imresize)
     ->Args({512, 512, 3, 256, 256})
     ->Args({256, 256, 3, 512, 512});
 
+static void BM_Bilateral(benchmark::State& state) {
+    const int rows = static_cast<int>(state.range(0));
+    const int cols = static_cast<int>(state.range(1));
+    const int channels = static_cast<int>(state.range(2));
+    const float sigma_s = static_cast<float>(state.range(3)) * 0.1f;
+    const float sigma_r = static_cast<float>(state.range(4)) * 0.01f;
+    const auto img = make_gaussian_bench_image(rows, cols, channels);
+
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(ms::image::bilateral(img, sigma_s, sigma_r));
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * rows * cols * channels);
+}
+BENCHMARK(BM_Bilateral)
+    ->Args({128, 128, 1, 10, 10})
+    ->Args({256, 256, 1, 10, 10})
+    ->Args({128, 128, 3, 10, 10});
+
 BENCHMARK_MAIN();
