@@ -6,6 +6,7 @@
 #include <cmath>
 #include <complex>
 #include <random>
+#include <span>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -1722,6 +1723,154 @@ TEST(SignalSosfiltTest, causal_sosfilt_differs_from_filtfilt_zero_phase) {
     // At the step edge, filtfilt tracks the input sooner than the causal pass.
     EXPECT_GT(y_zero_phase[34], y_causal[34]);
     EXPECT_NEAR(y_zero_phase[50], 1.0, 0.05);
+}
+
+// ---------------------------------------------------------------------------
+// filter_in_place() / filter(x, y span): scipy lfilter parity and sosfilt support.
+// ---------------------------------------------------------------------------
+
+TEST(SignalFilterInPlaceTest, fir_impulse_matches_filter) {
+    const std::vector<double> b{0.25, 0.5, 0.25};
+    const std::vector<double> a{1.0};
+    std::vector<double> impulse(16, 0.0);
+    impulse[0] = 1.0;
+    const auto expected = filter(b, a, impulse);
+    std::vector<double> y = impulse;
+    filter_in_place(b, a, std::span<double>(y));
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterInPlaceTest, iir_matches_scipy_lfilter_reference) {
+    // scipy.signal.lfilter(b, a, [1,0,-1,0,1,0,-1,0])
+    const std::vector<double> b{0.09763107, 0.19526215, 0.09763107};
+    const std::vector<double> a{1.0, -0.94280904, 0.33333333};
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0};
+    const std::vector<double> expected{
+        0.09763107, 0.2873096, 0.2383344, -0.06632819,
+        -0.14197961, 0.08351188, 0.12606229, -0.10424677,
+    };
+    std::vector<double> y = x;
+    filter_in_place(b, a, std::span<double>(y));
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-6);
+    }
+}
+
+TEST(SignalFilterInPlaceTest, output_span_matches_filter) {
+    const std::vector<double> b{0.5};
+    const std::vector<double> a{1.0, -0.5};
+    const std::vector<double> x{0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    std::vector<double> y(x.size(), -1.0);
+    filter(b, a, std::span<const double>(x), std::span<double>(y));
+    const auto expected = filter(b, a, x);
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterInPlaceTest, normalizes_a0_in_place) {
+    const std::vector<double> b{2.0, -2.0, 0.0};
+    const std::vector<double> a{2.0, -1.0, 0.0};
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    std::vector<double> y = x;
+    filter_in_place(b, a, std::span<double>(y));
+    const std::vector<double> expected{1.0, 1.5, 1.75, 1.875, 1.9375};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalSosfiltScipyTest, second_order_impulse_matches_scipy_sosfilt) {
+    // scipy.signal.sosfilt(scipy.signal.butter(2, 0.25, output='sos'), unit impulse)
+    const std::vector<std::array<double, 6>> sos{
+        {0.09763107, 0.19526215, 0.09763107, 1.0, -0.94280904, 0.33333333},
+    };
+    std::vector<double> impulse(16, 0.0);
+    impulse[0] = 1.0;
+    const auto y = sosfilt(sos, impulse);
+    const std::vector<double> expected{
+        0.09763107, 0.28730961, 0.33596547, 0.22098142,
+        0.09635479, 0.01718369, -0.01591732, -0.02073489,
+    };
+    ASSERT_GE(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-6);
+    }
+}
+
+TEST(SignalSosfiltScipyTest, fourth_order_step_matches_scipy_sosfilt) {
+    // scipy.signal.sosfilt(scipy.signal.butter(4, 0.25, output='sos'), step at n=4)
+    const std::vector<std::array<double, 6>> sos{
+        {0.01020948, 0.02041896, 0.01020948, 1.0, -0.85539793, 0.20971536},
+        {1.0, 2.0, 1.0, 1.0, -1.11302985, 0.57406192},
+    };
+    std::vector<double> step(20, 0.0);
+    for (size_t i = 4; i < step.size(); ++i) {
+        step[i] = 1.0;
+    }
+    const auto y = sosfilt(sos, step);
+    const std::vector<double> expected_tail{
+        0.01020948, 0.07114403, 0.23462394, 0.49888283, 0.78840471, 1.01069152,
+        1.11744398, 1.11965569, 1.06488676, 1.00381688, 0.9674269, 0.96185989,
+        0.97641985, 0.99573232, 1.00882129, 1.01228073,
+    };
+    ASSERT_EQ(y.size(), step.size());
+    for (size_t i = 0; i < expected_tail.size(); ++i) {
+        EXPECT_NEAR(y[i + 4], expected_tail[i], 1e-5);
+    }
+}
+
+TEST(SignalSosfiltScipyTest, mixed_signal_matches_scipy_sosfilt) {
+    // scipy.signal.sosfilt(butter(4,0.25,'sos'), alternating sine-like pattern)
+    const std::vector<std::array<double, 6>> sos{
+        {0.01020948, 0.02041896, 0.01020948, 1.0, -0.85539793, 0.20971536},
+        {1.0, 2.0, 1.0, 1.0, -1.11302985, 0.57406192},
+    };
+    const std::vector<double> x{1.0, -0.5, 0.25, -0.125, 0.0625, -0.03125,
+                                0.015625, -0.0078125, 0.00390625, -0.001953125};
+    const auto y = sosfilt(sos, x);
+    const std::vector<double> expected{
+        0.010209480791203138, 0.05582980844883029, 0.13556500308587335,
+        0.19647639562280456, 0.19128367910091504, 0.12664496934309172,
+        0.04342997783811017, -0.01950328169628366, -0.04501729257481829,
+        -0.038561234710196936,
+    };
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-5);
+    }
+}
+
+TEST(SignalSosfiltScipyTest, input_vector_unchanged) {
+    const std::vector<std::array<double, 6>> sos{
+        {0.09763107, 0.19526215, 0.09763107, 1.0, -0.94280904, 0.33333333},
+    };
+    const std::vector<double> x_orig{1.0, 0.0, -1.0, 0.5, -0.25};
+    const std::vector<double> x = x_orig;
+    const auto y = sosfilt(sos, x);
+    ASSERT_EQ(x, x_orig);
+    ASSERT_EQ(y.size(), x.size());
+    EXPECT_NE(y, x);
+}
+
+TEST(SignalSosfiltScipyTest, single_section_via_filter_in_place_matches_sosfilt) {
+    const std::vector<std::array<double, 6>> sos{
+        {0.09763107, 0.19526215, 0.09763107, 1.0, -0.94280904, 0.33333333},
+    };
+    const std::vector<double> b{0.09763107, 0.19526215, 0.09763107};
+    const std::vector<double> a{1.0, -0.94280904, 0.33333333};
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0};
+    std::vector<double> y = x;
+    filter_in_place(b, a, std::span<double>(y));
+    const auto y_sos = sosfilt(sos, x);
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(y[i], y_sos[i], 1e-12);
+    }
 }
 
 // ---- cheby1 IIR design ----

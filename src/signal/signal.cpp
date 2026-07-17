@@ -3,11 +3,13 @@
 #include "ms/fft/fft.hpp"
 #include "ms/poly/poly.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstddef>
 #include <limits>
 #include <set>
+#include <span>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -1106,47 +1108,144 @@ IirCoeffs cheby2(int order, double rs_db, double cutoff, double fs, FilterType t
     return coeffs;
 }
 
+namespace {
+
+void filter_df2t(std::span<const double> b, std::span<const double> a, std::span<const double> x,
+                 std::span<double> y) {
+    if (x.empty() || b.empty() || y.size() < x.size()) {
+        return;
+    }
+
+    const double a0 = a.empty() ? 1.0 : a[0];
+    const double inv_a0 = (a0 != 1.0 && a0 != 0.0) ? (1.0 / a0) : 1.0;
+    const size_t b_len = b.size();
+    const size_t a_len = a.empty() ? 1 : a.size();
+    const size_t order = std::max(b_len, a_len) - 1;
+    std::vector<double> z(order, 0.0);
+
+    for (size_t n = 0; n < x.size(); ++n) {
+        const double xi = x[n];
+        double yi = b[0] * inv_a0 * xi;
+        if (order > 0) {
+            yi += z[0];
+        }
+        for (size_t i = 0; i + 1 < order; ++i) {
+            const double bi = (i + 1 < b_len) ? b[i + 1] * inv_a0 : 0.0;
+            const double ai = (i + 1 < a_len) ? a[i + 1] * inv_a0 : 0.0;
+            z[i] = z[i + 1] + bi * xi - ai * yi;
+        }
+        if (order > 0) {
+            const double bi = (order < b_len) ? b[order] * inv_a0 : 0.0;
+            const double ai = (order < a_len) ? a[order] * inv_a0 : 0.0;
+            z[order - 1] = bi * xi - ai * yi;
+        }
+        y[n] = yi;
+    }
+}
+
+void filter_df2t_in_place(std::span<const double> b, std::span<const double> a,
+                          std::span<double> x_y) {
+    if (x_y.empty() || b.empty()) {
+        return;
+    }
+
+    const double a0 = a.empty() ? 1.0 : a[0];
+    const double inv_a0 = (a0 != 1.0 && a0 != 0.0) ? (1.0 / a0) : 1.0;
+    const size_t b_len = b.size();
+    const size_t a_len = a.empty() ? 1 : a.size();
+    const size_t order = std::max(b_len, a_len) - 1;
+    std::vector<double> z(order, 0.0);
+
+    for (size_t n = 0; n < x_y.size(); ++n) {
+        const double xi = x_y[n];
+        double yi = b[0] * inv_a0 * xi;
+        if (order > 0) {
+            yi += z[0];
+        }
+        for (size_t i = 0; i + 1 < order; ++i) {
+            const double bi = (i + 1 < b_len) ? b[i + 1] * inv_a0 : 0.0;
+            const double ai = (i + 1 < a_len) ? a[i + 1] * inv_a0 : 0.0;
+            z[i] = z[i + 1] + bi * xi - ai * yi;
+        }
+        if (order > 0) {
+            const double bi = (order < b_len) ? b[order] * inv_a0 : 0.0;
+            const double ai = (order < a_len) ? a[order] * inv_a0 : 0.0;
+            z[order - 1] = bi * xi - ai * yi;
+        }
+        x_y[n] = yi;
+    }
+}
+
+void filter_sos_section(std::span<const double> x, std::span<double> y,
+                        const std::array<double, 6>& section) {
+    if (x.empty() || y.size() < x.size()) {
+        return;
+    }
+
+    const double inv_a0 =
+        (section[3] != 1.0 && section[3] != 0.0) ? (1.0 / section[3]) : 1.0;
+    const double b0 = section[0] * inv_a0;
+    const double b1 = section[1] * inv_a0;
+    const double b2 = section[2] * inv_a0;
+    const double a1 = section[4] * inv_a0;
+    const double a2 = section[5] * inv_a0;
+    double z1 = 0.0;
+    double z2 = 0.0;
+
+    for (size_t n = 0; n < x.size(); ++n) {
+        const double xi = x[n];
+        const double yi = b0 * xi + z1;
+        z1 = z2 + b1 * xi - a1 * yi;
+        z2 = b2 * xi - a2 * yi;
+        y[n] = yi;
+    }
+}
+
+void filter_sos_section_in_place(std::span<double> y, const std::array<double, 6>& section) {
+    if (y.empty()) {
+        return;
+    }
+
+    const double inv_a0 =
+        (section[3] != 1.0 && section[3] != 0.0) ? (1.0 / section[3]) : 1.0;
+    const double b0 = section[0] * inv_a0;
+    const double b1 = section[1] * inv_a0;
+    const double b2 = section[2] * inv_a0;
+    const double a1 = section[4] * inv_a0;
+    const double a2 = section[5] * inv_a0;
+    double z1 = 0.0;
+    double z2 = 0.0;
+
+    for (size_t n = 0; n < y.size(); ++n) {
+        const double xi = y[n];
+        const double yi = b0 * xi + z1;
+        z1 = z2 + b1 * xi - a1 * yi;
+        z2 = b2 * xi - a2 * yi;
+        y[n] = yi;
+    }
+}
+
+} // namespace
+
 std::vector<double> filter(const std::vector<double>& b, const std::vector<double>& a,
                             const std::vector<double>& x) {
     if (x.empty() || b.empty()) {
         return {};
     }
 
-    const double a0 = a.empty() ? 1.0 : a[0];
-    std::vector<double> bn = b;
-    std::vector<double> an = a.empty() ? std::vector<double>{1.0} : a;
-    if (a0 != 1.0 && a0 != 0.0) {
-        for (double& v : bn) {
-            v /= a0;
-        }
-        for (double& v : an) {
-            v /= a0;
-        }
-    }
-
-    const size_t order = std::max(bn.size(), an.size()) - 1;
-    std::vector<double> z(order, 0.0);
     std::vector<double> y(x.size());
-
-    for (size_t n = 0; n < x.size(); ++n) {
-        const double xi = x[n];
-        double yi = bn[0] * xi;
-        if (order > 0) {
-            yi += z[0];
-        }
-        for (size_t i = 0; i + 1 < order; ++i) {
-            const double bi = (i + 1 < bn.size()) ? bn[i + 1] : 0.0;
-            const double ai = (i + 1 < an.size()) ? an[i + 1] : 0.0;
-            z[i] = z[i + 1] + bi * xi - ai * yi;
-        }
-        if (order > 0) {
-            const double bi = (order < bn.size()) ? bn[order] : 0.0;
-            const double ai = (order < an.size()) ? an[order] : 0.0;
-            z[order - 1] = bi * xi - ai * yi;
-        }
-        y[n] = yi;
-    }
+    filter(b, a, std::span<const double>(x), std::span<double>(y));
     return y;
+}
+
+void filter(const std::vector<double>& b, const std::vector<double>& a,
+            std::span<const double> x, std::span<double> y) {
+    filter_df2t(std::span<const double>(b), std::span<const double>(a), x, y);
+}
+
+void filter_in_place(const std::vector<double>& b, const std::vector<double>& a,
+                     std::span<double> x_y) {
+    filter_df2t_in_place(std::span<const double>(b), std::span<const double>(a), x_y);
 }
 
 std::vector<double> filtfilt(const std::vector<double>& b, const std::vector<double>& a,
@@ -1186,18 +1285,17 @@ std::vector<double> filtfilt(const std::vector<double>& b, const std::vector<dou
 
 std::vector<double> sosfilt(const std::vector<std::array<double, 6>>& sos,
                              const std::vector<double>& x) {
+    if (x.empty()) {
+        return sos.empty() ? x : std::vector<double>{};
+    }
     if (sos.empty()) {
         return x;
     }
 
-    std::vector<double> y = x;
-    for (const auto& section : sos) {
-        const std::vector<double> b{section[0], section[1], section[2]};
-        const std::vector<double> a{section[3], section[4], section[5]};
-        y = filter(b, a, y);
-        if (y.empty()) {
-            break;
-        }
+    std::vector<double> y(x.size());
+    filter_sos_section(std::span<const double>(x), std::span<double>(y), sos.front());
+    for (size_t i = 1; i < sos.size(); ++i) {
+        filter_sos_section_in_place(std::span<double>(y), sos[i]);
     }
     return y;
 }
