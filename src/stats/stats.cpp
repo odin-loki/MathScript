@@ -46,6 +46,43 @@ std::vector<double> average_ranks(const std::vector<double>& values) {
     return ranks;
 }
 
+double median_nth(std::vector<double>& scratch) {
+    const size_t n = scratch.size();
+    const size_t mid = n / 2;
+    std::nth_element(scratch.begin(),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(mid),
+                     scratch.end());
+    if (n % 2 == 1) {
+        return scratch[mid];
+    }
+    std::nth_element(scratch.begin(),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(mid - 1),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(mid));
+    return (scratch[mid - 1] + scratch[mid]) / 2.0;
+}
+
+void order_stats_at(std::vector<double>& scratch, size_t lo, size_t hi,
+                    double& out_lo, double& out_hi) {
+    if (lo > hi) {
+        std::swap(lo, hi);
+    }
+    if (lo == hi) {
+        std::nth_element(scratch.begin(),
+                         scratch.begin() + static_cast<std::ptrdiff_t>(lo),
+                         scratch.end());
+        out_lo = out_hi = scratch[lo];
+        return;
+    }
+    std::nth_element(scratch.begin(),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(hi),
+                     scratch.end());
+    out_hi = scratch[hi];
+    std::nth_element(scratch.begin(),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(lo),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(hi));
+    out_lo = scratch[lo];
+}
+
 } // namespace
 
 double mean(std::span<const double> data) {
@@ -75,13 +112,8 @@ double median(std::span<const double> data) {
     if (data.empty()) {
         return 0.0;
     }
-    std::vector<double> sorted(data.begin(), data.end());
-    std::sort(sorted.begin(), sorted.end());
-    const size_t n = sorted.size();
-    if (n % 2 == 0) {
-        return (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
-    }
-    return sorted[n / 2];
+    std::vector<double> scratch(data.begin(), data.end());
+    return median_nth(scratch);
 }
 
 double min_value(std::span<const double> data) {
@@ -416,12 +448,21 @@ double iqr(std::span<const double> data) {
 
 double trimmed_mean(std::span<const double> data, double frac) {
     if (data.empty()) return 0.0;
-    std::vector<double> sorted(data.begin(), data.end());
-    std::sort(sorted.begin(), sorted.end());
-    size_t trim = static_cast<size_t>(frac * static_cast<double>(sorted.size()));
-    if (2 * trim >= sorted.size()) return median(data);
-    return mean(std::span<const double>(sorted.data() + trim,
-                                         sorted.size() - 2 * trim));
+    std::vector<double> scratch(data.begin(), data.end());
+    const size_t n = scratch.size();
+    size_t trim = static_cast<size_t>(frac * static_cast<double>(n));
+    if (2 * trim >= n) return median(data);
+    std::nth_element(scratch.begin(),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(trim),
+                     scratch.end());
+    std::nth_element(scratch.begin() + static_cast<std::ptrdiff_t>(trim),
+                     scratch.begin() + static_cast<std::ptrdiff_t>(n - trim),
+                     scratch.end());
+    double sum = 0.0;
+    for (size_t i = trim; i < n - trim; ++i) {
+        sum += scratch[i];
+    }
+    return sum / static_cast<double>(n - 2 * trim);
 }
 
 double spearman(std::span<const double> x, std::span<const double> y) {
@@ -1425,12 +1466,14 @@ std::pair<double, double> bootstrap_ci(std::span<const double> data,
             s += data[idx_dist(rng)];
         boot_means[static_cast<size_t>(b)] = s / static_cast<double>(data.size());
     }
-    std::sort(boot_means.begin(), boot_means.end());
     double alpha = (1.0 - level) / 2.0;
     size_t lo = static_cast<size_t>(alpha * static_cast<double>(n_boot));
     size_t hi = static_cast<size_t>((1.0 - alpha) * static_cast<double>(n_boot));
     hi = std::min(hi, boot_means.size() - 1);
-    return {boot_means[lo], boot_means[hi]};
+    double ci_lo = 0.0;
+    double ci_hi = 0.0;
+    order_stats_at(boot_means, lo, hi, ci_lo, ci_hi);
+    return {ci_lo, ci_hi};
 }
 
 BootstrapResult bootstrap_ci(
@@ -1454,13 +1497,11 @@ BootstrapResult bootstrap_ci(
         }
         boot_stats[b] = stat_fn(sample);
     }
-    std::sort(boot_stats.begin(), boot_stats.end());
     const double alpha = (1.0 - confidence_level) / 2.0;
     size_t lo = static_cast<size_t>(alpha * static_cast<double>(n_resamples));
     size_t hi = static_cast<size_t>((1.0 - alpha) * static_cast<double>(n_resamples));
     hi = std::min(hi, boot_stats.size() - 1);
-    result.lower = boot_stats[lo];
-    result.upper = boot_stats[hi];
+    order_stats_at(boot_stats, lo, hi, result.lower, result.upper);
     if (n_resamples >= 2) {
         const double m = std::accumulate(boot_stats.begin(), boot_stats.end(), 0.0) /
                          static_cast<double>(n_resamples);

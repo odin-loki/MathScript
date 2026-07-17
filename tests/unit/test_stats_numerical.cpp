@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cstring>
+#include <numeric>
 #include <random>
 #include <vector>
 #include "ms/stats/stats.hpp"
@@ -101,6 +102,75 @@ TEST(StatsNumerical, MedianExact_EvenCount) {
 TEST(StatsNumerical, MedianExact_SingleElement) {
     std::vector<double> v{99.0};
     EXPECT_DOUBLE_EQ(median(v), 99.0);
+}
+
+namespace {
+
+double median_full_sort(std::span<const double> data) {
+    if (data.empty()) {
+        return 0.0;
+    }
+    std::vector<double> sorted(data.begin(), data.end());
+    std::sort(sorted.begin(), sorted.end());
+    const size_t n = sorted.size();
+    if (n % 2 == 0) {
+        return (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
+    }
+    return sorted[n / 2];
+}
+
+double trimmed_mean_full_sort(std::span<const double> data, double frac) {
+    if (data.empty()) {
+        return 0.0;
+    }
+    std::vector<double> sorted(data.begin(), data.end());
+    std::sort(sorted.begin(), sorted.end());
+    const size_t trim =
+        static_cast<size_t>(frac * static_cast<double>(sorted.size()));
+    if (2 * trim >= sorted.size()) {
+        return median_full_sort(data);
+    }
+    return std::accumulate(sorted.begin() + static_cast<std::ptrdiff_t>(trim),
+                           sorted.begin() + static_cast<std::ptrdiff_t>(sorted.size() - trim),
+                           0.0) /
+           static_cast<double>(sorted.size() - 2 * trim);
+}
+
+} // namespace
+
+TEST(StatsNumerical, MedianMatchesFullSort_Unsorted) {
+    std::vector<double> v{42.0, 7.0, 19.0, 3.0, 55.0, 11.0, 31.0, 8.0};
+    EXPECT_DOUBLE_EQ(median(v), median_full_sort(v));
+}
+
+TEST(StatsNumerical, MedianMatchesFullSort_Duplicates) {
+    std::vector<double> v{5.0, 2.0, 5.0, 2.0, 5.0, 1.0, 2.0, 5.0};
+    EXPECT_DOUBLE_EQ(median(v), median_full_sort(v));
+}
+
+TEST(StatsNumerical, MedianMatchesFullSort_Random) {
+    std::mt19937 rng(224);
+    std::uniform_real_distribution<double> dist(-1000.0, 1000.0);
+    for (size_t n : {1u, 2u, 3u, 4u, 15u, 16u, 127u, 128u, 511u, 512u}) {
+        std::vector<double> v(n);
+        for (double& x : v) {
+            x = dist(rng);
+        }
+        EXPECT_DOUBLE_EQ(median(v), median_full_sort(v)) << "n=" << n;
+    }
+}
+
+TEST(StatsNumerical, IqrMatchesPercentileDifference) {
+    std::vector<double> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+    EXPECT_DOUBLE_EQ(iqr(v), percentile(v, 75.0) - percentile(v, 25.0));
+}
+
+TEST(StatsNumerical, TrimmedMeanMatchesFullSort) {
+    std::vector<double> v{10.0, 1.0, 9.0, 2.0, 8.0, 3.0, 7.0, 4.0, 6.0, 5.0};
+    for (double frac : {0.1, 0.2, 0.25}) {
+        EXPECT_DOUBLE_EQ(trimmed_mean(v, frac), trimmed_mean_full_sort(v, frac))
+            << "frac=" << frac;
+    }
 }
 
 // ============================================================
