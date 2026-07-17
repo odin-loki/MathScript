@@ -967,6 +967,123 @@ TEST(MedianFilterTest, two_outlier_spikes_within_one_window_still_rejected) {
     }
 }
 
+namespace {
+
+std::vector<double> median_filter_reference(const std::vector<double>& x, int window_length) {
+    if (window_length <= 0 || window_length % 2 == 0) {
+        return {};
+    }
+    if (x.size() < static_cast<size_t>(window_length)) {
+        return {};
+    }
+
+    const size_t half = static_cast<size_t>((window_length - 1) / 2);
+    const size_t n = x.size();
+
+    std::vector<double> y = x;
+    std::vector<double> window(static_cast<size_t>(window_length));
+    for (size_t center = half; center + half < n; ++center) {
+        for (size_t j = 0; j < window.size(); ++j) {
+            window[j] = x[center - half + j];
+        }
+        std::sort(window.begin(), window.end());
+        y[center] = window[half];
+    }
+    return y;
+}
+
+} // namespace
+
+TEST(MedianFilterTest, window_three_hand_computed_even_spread) {
+    // x = {10, 2, 8, 4, 6}, window=3.
+    // center=1: {10,2,8} -> median 8; center=2: {2,8,4} -> 4; center=3: {8,4,6} -> 6
+    const std::vector<double> x{10.0, 2.0, 8.0, 4.0, 6.0};
+    const auto y = median_filter(x, 3);
+    ASSERT_EQ(y.size(), x.size());
+    const std::vector<double> expected{10.0, 8.0, 4.0, 6.0, 6.0};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], expected[i]);
+    }
+}
+
+TEST(MedianFilterTest, window_five_hand_computed) {
+    // x = {9, 1, 7, 3, 5, 2, 8}, window=5.
+    // center=2: {9,1,7,3,5} sorted {1,3,5,7,9} median 5
+    // center=3: {1,7,3,5,2} sorted {1,2,3,5,7} median 3
+    // center=4: {7,3,5,2,8} sorted {2,3,5,7,8} median 5
+    const std::vector<double> x{9.0, 1.0, 7.0, 3.0, 5.0, 2.0, 8.0};
+    const auto y = median_filter(x, 5);
+    ASSERT_EQ(y.size(), x.size());
+    const std::vector<double> expected{9.0, 1.0, 5.0, 3.0, 5.0, 2.0, 8.0};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], expected[i]);
+    }
+}
+
+TEST(MedianFilterTest, window_seven_hand_computed) {
+    const std::vector<double> x{6.0, 2.0, 8.0, 1.0, 9.0, 3.0, 7.0, 4.0, 5.0};
+    const auto y = median_filter(x, 7);
+    ASSERT_EQ(y.size(), x.size());
+
+    const std::vector<double> expected{6.0, 2.0, 8.0, 6.0, 4.0, 5.0, 7.0, 4.0, 5.0};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], expected[i]);
+    }
+}
+
+TEST(MedianFilterTest, large_n_matches_reference_implementation) {
+    std::mt19937 rng(219);
+    std::uniform_real_distribution<double> dist(-100.0, 100.0);
+
+    std::vector<double> x(10000);
+    for (double& v : x) {
+        v = dist(rng);
+    }
+
+    for (int window_length : {3, 5, 7, 15, 31, 101}) {
+        const auto fast = median_filter(x, window_length);
+        const auto ref = median_filter_reference(x, window_length);
+        ASSERT_EQ(fast.size(), ref.size());
+        for (size_t i = 0; i < ref.size(); ++i) {
+            EXPECT_DOUBLE_EQ(fast[i], ref[i]) << "window_length=" << window_length << " i=" << i;
+        }
+    }
+}
+
+TEST(MedianFilterTest, sliding_multiset_path_handles_duplicate_values) {
+    const std::vector<double> x{5.0, 5.0, 1.0, 5.0, 5.0, 5.0, 1.0, 5.0, 5.0};
+    const auto y = median_filter(x, 7);
+    const auto ref = median_filter_reference(x, 7);
+    ASSERT_EQ(y.size(), ref.size());
+    for (size_t i = 0; i < ref.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], ref[i]);
+    }
+}
+
+TEST(MedianFilterTest, window_seven_random_matches_reference) {
+    std::mt19937 rng(42);
+    std::uniform_int_distribution<int> dist(0, 20);
+    std::vector<double> x(500);
+    for (double& v : x) {
+        v = static_cast<double>(dist(rng));
+    }
+
+    const auto y = median_filter(x, 7);
+    const auto ref = median_filter_reference(x, 7);
+    for (size_t i = 0; i < ref.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], ref[i]) << "i=" << i;
+    }
+}
+
+TEST(MedianFilterTest, large_window_odd_size_preserves_constant_signal) {
+    std::vector<double> x(50000, -2.25);
+    const auto y = median_filter(x, 401);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], -2.25);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // lms_adaptive_filter(): online LMS adaptive FIR filter.
 // ---------------------------------------------------------------------------
