@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 230 — Profiling iteration final sign-off)
+
+Wave 230 closes the **baseline refresh path** — no code profiling.
+
+### Benchmark baseline (Wave 230)
+- **`bench-baseline-linux.yml`** — manual `workflow_dispatch` on ubuntu-24.04/gcc-13: builds all **28** benches, runs `bench_regression.sh --write-baseline`, uploads `linux-gcc13.json` as artifact (maintainer review + commit; no auto-commit).
+- **Docs** — `docs/PERFORMANCE.md`, `MathScript_Remaining_TODO.md`, `README.md`: **profiling iteration fully complete** (code + infra + baseline path).
+- **Total Wave 230: 374 CTest suites — all passing**. **28-bench smoke OK**. **Profiling iteration FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] — 2026-07-18 (Wave 229 — Profiling infra closure)
 
 Wave 229 closes benchmark **infrastructure** only — no new hot-path optimizations.
