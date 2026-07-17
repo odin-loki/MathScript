@@ -91,7 +91,7 @@ static void BM_Butterworth(benchmark::State& state) {
     std::vector<double> x(n);
     for (int i = 0; i < n; ++i) x[i] = std::sin(2.0 * M_PI * i / n);
     for (auto _ : state) {
-        auto r = lowpass(x, 0.3);
+        auto r = lowpass(x, 0.3, 1.0);
         benchmark::DoNotOptimize(r);
     }
     state.SetItemsProcessed(state.iterations() * n);
@@ -185,7 +185,7 @@ static void BM_Trace(benchmark::State& state) {
     const int n = static_cast<int>(state.range(0));
     DMatrix A = make_spd(n);
     for (auto _ : state) {
-        double r = trace(A);
+        const double r = trace(A).value();
         benchmark::DoNotOptimize(r);
     }
 }

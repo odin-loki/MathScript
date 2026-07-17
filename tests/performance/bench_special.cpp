@@ -23,7 +23,7 @@ static void BM_gamma(benchmark::State& state) {
     for (auto _ : state) {
         double sum = 0.0;
         for (int i = 1; i <= n; ++i) {
-            sum += ms::tgamma(static_cast<double>(i) / n + 0.5);
+            sum += ms::gamma_func(static_cast<double>(i) / n + 0.5);
         }
         benchmark::DoNotOptimize(sum);
     }
@@ -35,7 +35,7 @@ static void BM_bessel_j0(benchmark::State& state) {
     for (auto _ : state) {
         double sum = 0.0;
         for (int i = 1; i <= n; ++i) {
-            sum += ms::cyl_bessel_j(0, static_cast<double>(i) * 0.1);
+            sum += ms::bessel_j0(static_cast<double>(i) * 0.1);
         }
         benchmark::DoNotOptimize(sum);
     }

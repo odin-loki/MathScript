@@ -129,7 +129,10 @@ if ($Benchmark) {
         if (-not (Test-Path $exe)) {
             throw "Missing benchmark executable: $exe"
         }
-        & $exe --benchmark_min_time=0.01s
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & $exe --benchmark_min_time=0.01s 2>&1 | Out-Null
+        $ErrorActionPreference = $prevEap
         if ($LASTEXITCODE -ne 0) { throw "Benchmark smoke failed: $bench (exit $LASTEXITCODE)" }
     }
     Write-Host "Benchmark smoke OK (bench_matmul, bench_fft)"
