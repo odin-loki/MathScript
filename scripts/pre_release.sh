@@ -32,7 +32,13 @@
 #     -DCMAKE_BUILD_TYPE=Release \
 #     -DMS_BUILD_TESTS=OFF -DMS_BUILD_BENCHMARKS=ON \
 #     -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF
-#   cmake --build build-bench --target bench_matmul bench_fft
+#   cmake --build build-bench --target $(bash scripts/bench_cmake_targets.sh | xargs)
+#   (28 add_ms_bench targets: bench_matmul bench_fft bench_linalg bench_repl bench_special
+#    bench_stats bench_rng_dispatch bench_simd bench_signal_linalg bench_signal_filters
+#    bench_ode_pde bench_fem bench_special_memory bench_optim_symbolic bench_frameworks
+#    bench_tensorops bench_distributed_cellai bench_poly_domain bench_prob bench_optim_ml
+#    bench_crypto bench_graph bench_topo bench_image bench_geo bench_quantum bench_compress
+#    bench_finance)
 #   MS_BENCH_REGRESSION=on MS_BENCH_TOLERANCE=10 bash scripts/bench_regression.sh build-bench
 #
 # Phase 10 fuzz marathon (not run by this script — trigger in GitHub Actions):
