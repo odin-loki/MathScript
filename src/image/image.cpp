@@ -192,6 +192,169 @@ void conv1d_horizontal_replicate(
     }
 }
 
+void box1d_horizontal_replicate(
+    const float* src, float* dst,
+    int rows, int cols, int channels,
+    int half) {
+    const int ksize = 2 * half + 1;
+    const float inv_ksize = 1.f / static_cast<float>(ksize);
+    const int interior_start = half;
+    const int interior_end = cols - half;
+
+    if (channels == 1) {
+        for (int r = 0; r < rows; ++r) {
+            const float* src_row = src + r * cols;
+            float* dst_row = dst + r * cols;
+
+            for (int c = 0; c < std::min(interior_start, cols); ++c) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int cc = std::min(std::max(c + d - half, 0), cols - 1);
+                    sum += src_row[cc];
+                }
+                dst_row[c] = sum * inv_ksize;
+            }
+
+            if (interior_start < interior_end) {
+                float sum = 0.f;
+                for (int d = -half; d <= half; ++d) {
+                    sum += src_row[interior_start + d];
+                }
+                dst_row[interior_start] = sum * inv_ksize;
+                for (int c = interior_start + 1; c < interior_end; ++c) {
+                    sum += src_row[c + half] - src_row[c - half - 1];
+                    dst_row[c] = sum * inv_ksize;
+                }
+            }
+
+            for (int c = std::max(interior_end, interior_start); c < cols; ++c) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int cc = std::min(std::max(c + d - half, 0), cols - 1);
+                    sum += src_row[cc];
+                }
+                dst_row[c] = sum * inv_ksize;
+            }
+        }
+        return;
+    }
+
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < std::min(interior_start, cols); ++c) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int cc = std::min(std::max(c + d - half, 0), cols - 1);
+                    sum += src[(r * cols + cc) * channels + ch];
+                }
+                dst[(r * cols + c) * channels + ch] = sum * inv_ksize;
+            }
+
+            if (interior_start < interior_end) {
+                float sum = 0.f;
+                for (int d = -half; d <= half; ++d) {
+                    sum += src[(r * cols + interior_start + d) * channels + ch];
+                }
+                dst[(r * cols + interior_start) * channels + ch] = sum * inv_ksize;
+                for (int c = interior_start + 1; c < interior_end; ++c) {
+                    sum += src[(r * cols + c + half) * channels + ch] -
+                           src[(r * cols + c - half - 1) * channels + ch];
+                    dst[(r * cols + c) * channels + ch] = sum * inv_ksize;
+                }
+            }
+
+            for (int c = std::max(interior_end, interior_start); c < cols; ++c) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int cc = std::min(std::max(c + d - half, 0), cols - 1);
+                    sum += src[(r * cols + cc) * channels + ch];
+                }
+                dst[(r * cols + c) * channels + ch] = sum * inv_ksize;
+            }
+        }
+    }
+}
+
+void box1d_vertical_replicate(
+    const float* src, float* dst,
+    int rows, int cols, int channels,
+    int half) {
+    const int ksize = 2 * half + 1;
+    const float inv_ksize = 1.f / static_cast<float>(ksize);
+    const int interior_start = half;
+    const int interior_end = rows - half;
+
+    if (channels == 1) {
+        for (int c = 0; c < cols; ++c) {
+            for (int r = 0; r < std::min(interior_start, rows); ++r) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int rr = std::min(std::max(r + d - half, 0), rows - 1);
+                    sum += src[rr * cols + c];
+                }
+                dst[r * cols + c] = sum * inv_ksize;
+            }
+
+            if (interior_start < interior_end) {
+                float sum = 0.f;
+                for (int d = -half; d <= half; ++d) {
+                    sum += src[(interior_start + d) * cols + c];
+                }
+                dst[interior_start * cols + c] = sum * inv_ksize;
+                for (int r = interior_start + 1; r < interior_end; ++r) {
+                    sum += src[(r + half) * cols + c] - src[(r - half - 1) * cols + c];
+                    dst[r * cols + c] = sum * inv_ksize;
+                }
+            }
+
+            for (int r = std::max(interior_end, interior_start); r < rows; ++r) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int rr = std::min(std::max(r + d - half, 0), rows - 1);
+                    sum += src[rr * cols + c];
+                }
+                dst[r * cols + c] = sum * inv_ksize;
+            }
+        }
+        return;
+    }
+
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int c = 0; c < cols; ++c) {
+            for (int r = 0; r < std::min(interior_start, rows); ++r) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int rr = std::min(std::max(r + d - half, 0), rows - 1);
+                    sum += src[(rr * cols + c) * channels + ch];
+                }
+                dst[(r * cols + c) * channels + ch] = sum * inv_ksize;
+            }
+
+            if (interior_start < interior_end) {
+                float sum = 0.f;
+                for (int d = -half; d <= half; ++d) {
+                    sum += src[((interior_start + d) * cols + c) * channels + ch];
+                }
+                dst[(interior_start * cols + c) * channels + ch] = sum * inv_ksize;
+                for (int r = interior_start + 1; r < interior_end; ++r) {
+                    sum += src[((r + half) * cols + c) * channels + ch] -
+                           src[((r - half - 1) * cols + c) * channels + ch];
+                    dst[(r * cols + c) * channels + ch] = sum * inv_ksize;
+                }
+            }
+
+            for (int r = std::max(interior_end, interior_start); r < rows; ++r) {
+                float sum = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int rr = std::min(std::max(r + d - half, 0), rows - 1);
+                    sum += src[(rr * cols + c) * channels + ch];
+                }
+                dst[(r * cols + c) * channels + ch] = sum * inv_ksize;
+            }
+        }
+    }
+}
+
 void conv1d_vertical_replicate(
     const float* src, float* dst,
     int rows, int cols, int channels,
@@ -289,9 +452,26 @@ Image bilateral(const Image& img, float sigma_s, float sigma_r) {
 }
 
 Image boxfilter(const Image& img, int ksize) {
-    int h=ksize/2;
-    std::vector<std::vector<float>> K(ksize,std::vector<float>(ksize,1.f/(ksize*ksize)));
-    return imfilter(img,K);
+    if (img.empty()) {
+        return img;
+    }
+
+    const int half = ksize / 2;
+    const int rows = img.rows;
+    const int cols = img.cols;
+    const int channels = img.channels;
+    const std::size_t npix = static_cast<std::size_t>(rows) * cols * channels;
+
+    thread_local std::vector<float> tmp;
+    if (tmp.size() < npix) {
+        tmp.resize(npix);
+    }
+
+    Image out(rows, cols, channels);
+    const float* src = img.data.data();
+    box1d_horizontal_replicate(src, tmp.data(), rows, cols, channels, half);
+    box1d_vertical_replicate(tmp.data(), out.data.data(), rows, cols, channels, half);
+    return out;
 }
 
 Image sharpen(const Image& img) {
