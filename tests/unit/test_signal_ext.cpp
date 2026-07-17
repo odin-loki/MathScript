@@ -1189,3 +1189,166 @@ TEST(SignalExtTest, czt_zoom_fft_single_bin_matches_goertzel) {
     EXPECT_NEAR(zoom[0].real(), ref.real(), 1e-9);
     EXPECT_NEAR(zoom[0].imag(), ref.imag(), 1e-9);
 }
+
+// ---------------------------------------------------------------------------
+// Wave 221: FFT-accelerated xcorr / xcov / autocorr (partial lag extraction)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<double> reference_xcorr_via_correlate(const std::vector<double>& a,
+                                                  const std::vector<double>& b, int max_lag) {
+    const auto full = correlate(a, b);
+    const ptrdiff_t zero_idx = static_cast<ptrdiff_t>(b.size() - 1);
+    const size_t out_len = static_cast<size_t>(2 * max_lag + 1);
+    std::vector<double> out(out_len, 0.0);
+    for (int lag = -max_lag; lag <= max_lag; ++lag) {
+        const ptrdiff_t idx = zero_idx - lag;
+        if (idx >= 0 && idx < static_cast<ptrdiff_t>(full.size())) {
+            out[static_cast<size_t>(lag + max_lag)] = full[static_cast<size_t>(idx)];
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST(SignalExtTest, xcorr_large_fft_partial_matches_reference) {
+    constexpr size_t n = 8192;
+    constexpr int max_lag = 32;
+    std::vector<double> a(n), b(n);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = std::sin(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n));
+        b[i] = std::cos(2.0 * M_PI * 3.0 * static_cast<double>(i) / static_cast<double>(n));
+    }
+    const auto out = xcorr(a, b, max_lag);
+    const auto ref = reference_xcorr_via_correlate(a, b, max_lag);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-9) << "mismatch at i=" << i;
+    }
+}
+
+TEST(SignalExtTest, xcorr_large_fft_partial_unequal_lengths) {
+    constexpr size_t na = 8192;
+    constexpr size_t nb = 512;
+    constexpr int max_lag = 48;
+    std::vector<double> a(na), b(nb);
+    for (size_t i = 0; i < na; ++i) {
+        a[i] = std::sin(2.0 * M_PI * static_cast<double>(i) / 97.0);
+    }
+    for (size_t i = 0; i < nb; ++i) {
+        b[i] = std::exp(-0.01 * static_cast<double>(i)) * std::cos(0.1 * static_cast<double>(i));
+    }
+    const auto out = xcorr(a, b, max_lag);
+    const auto ref = reference_xcorr_via_correlate(a, b, max_lag);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-9) << "mismatch at i=" << i;
+    }
+}
+
+TEST(SignalExtTest, xcorr_small_direct_partial_matches_reference) {
+    constexpr size_t n = 32;
+    constexpr int max_lag = 5;
+    std::vector<double> a(n), b(n);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = static_cast<double>(i % 7) - 3.0;
+        b[i] = static_cast<double>((i * 3) % 11) - 5.0;
+    }
+    const auto out = xcorr(a, b, max_lag);
+    const auto ref = reference_xcorr_via_correlate(a, b, max_lag);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-12) << "mismatch at i=" << i;
+    }
+}
+
+TEST(SignalExtTest, xcorr_full_correlate_path_when_max_lag_large) {
+    constexpr size_t n = 256;
+    const int max_lag = static_cast<int>(n) - 1;
+    std::vector<double> a(n), b(n);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = std::sin(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n));
+        b[i] = std::cos(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n));
+    }
+    const auto out = xcorr(a, b, max_lag);
+    const auto ref = reference_xcorr_via_correlate(a, b, max_lag);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-9) << "mismatch at i=" << i;
+    }
+}
+
+TEST(SignalExtTest, autocorr_large_fft_partial_matches_reference) {
+    constexpr size_t n = 4096;
+    constexpr int max_lag = 16;
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * 17.0 * static_cast<double>(i) / static_cast<double>(n));
+    }
+    const auto out = autocorr(x, max_lag);
+    const auto ref = reference_xcorr_via_correlate(x, x, max_lag);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-9) << "mismatch at i=" << i;
+    }
+}
+
+TEST(SignalExtTest, xcov_large_fft_partial_matches_demeaned_reference) {
+    constexpr size_t n = 4096;
+    constexpr int max_lag = 24;
+    std::vector<double> a(n), b(n);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = 2.0 + std::sin(2.0 * M_PI * static_cast<double>(i) / 101.0);
+        b[i] = -1.5 + std::cos(2.0 * M_PI * static_cast<double>(i) / 89.0);
+    }
+    auto demean_copy = [](const std::vector<double>& v) {
+        double mean = std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size());
+        std::vector<double> out(v.size());
+        for (size_t i = 0; i < v.size(); ++i) {
+            out[i] = v[i] - mean;
+        }
+        return out;
+    };
+    const auto out = xcov(a, b, max_lag);
+    const auto ref = reference_xcorr_via_correlate(demean_copy(a), demean_copy(b), max_lag);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-9) << "mismatch at i=" << i;
+    }
+}
+
+TEST(SignalExtTest, xcorr_large_fft_partial_finds_known_delay) {
+    constexpr size_t n = 8192;
+    const double fs = 1000.0;
+    const int delay = 37;
+    const int max_lag = 64;
+    const auto x = sinusoid(n, fs, 60.0);
+
+    std::vector<double> y(n, 0.0);
+    for (size_t i = static_cast<size_t>(delay); i < n; ++i) {
+        y[i] = x[i - static_cast<size_t>(delay)];
+    }
+
+    const auto xc = xcorr(x, y, max_lag);
+    ASSERT_EQ(xc.size(), static_cast<size_t>(2 * max_lag + 1));
+    EXPECT_EQ(lag_at_peak(xc, max_lag), delay);
+}
+
+TEST(SignalExtTest, xcorr_fft_partial_zero_lag_matches_dot_product) {
+    constexpr size_t n = 2048;
+    constexpr int max_lag = 8;
+    std::vector<double> a(n), b(n);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = std::sin(0.07 * static_cast<double>(i));
+        b[i] = std::cos(0.11 * static_cast<double>(i));
+    }
+    const auto out = xcorr(a, b, max_lag);
+    double expected = 0.0;
+    const size_t count = std::min(a.size(), b.size());
+    for (size_t i = 0; i < count; ++i) {
+        expected += a[i] * b[i];
+    }
+    EXPECT_NEAR(out[static_cast<size_t>(max_lag)], expected, 1e-9);
+}

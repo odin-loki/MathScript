@@ -335,7 +335,7 @@ bool convolve_use_fft(size_t a_len, size_t b_len) {
     return a_len >= kConvolveFftCrossover || b_len >= kConvolveFftCrossover;
 }
 
-std::vector<double> convolve_fft(const std::vector<double>& a, const std::vector<double>& b) {
+std::vector<double> convolve_fft_linear(const std::vector<double>& a, const std::vector<double>& b) {
     const size_t out_len = a.size() + b.size() - 1;
     const size_t n_fft = next_power_of_two(out_len);
 
@@ -347,7 +347,7 @@ std::vector<double> convolve_fft(const std::vector<double>& a, const std::vector
     const auto spec_a = fft(a_pad);
     const auto spec_b = fft(b_pad);
     if (!spec_a || !spec_b) {
-        return convolve_direct(a, b);
+        return {};
     }
 
     std::vector<std::complex<double>> product(n_fft);
@@ -357,12 +357,77 @@ std::vector<double> convolve_fft(const std::vector<double>& a, const std::vector
 
     const auto restored = ifft(product);
     if (!restored) {
-        return convolve_direct(a, b);
+        return {};
     }
 
     std::vector<double> result = *restored;
     result.resize(out_len);
     return result;
+}
+
+std::vector<double> convolve_fft(const std::vector<double>& a, const std::vector<double>& b) {
+    auto result = convolve_fft_linear(a, b);
+    if (result.empty() && !a.empty() && !b.empty()) {
+        return convolve_direct(a, b);
+    }
+    return result;
+}
+
+bool xcorr_use_fft_partial(size_t a_len, size_t b_len, int max_lag) {
+    if (max_lag < 0 || a_len == 0 || b_len == 0) {
+        return false;
+    }
+    const size_t full_len = a_len + b_len - 1;
+    const size_t out_len = static_cast<size_t>(2 * max_lag + 1);
+    if (out_len >= full_len) {
+        return false;
+    }
+    if (!convolve_use_fft(a_len, b_len)) {
+        return false;
+    }
+    const size_t n = std::max(a_len, b_len);
+    return static_cast<size_t>(max_lag) <= n / 8 || out_len * 4 < full_len;
+}
+
+std::vector<double> xcorr_direct_lags(const std::vector<double>& a, const std::vector<double>& b,
+                                      int max_lag) {
+    const size_t out_len = static_cast<size_t>(2 * max_lag + 1);
+    std::vector<double> out(out_len, 0.0);
+    for (int lag = -max_lag; lag <= max_lag; ++lag) {
+        double sum = 0.0;
+        for (size_t i = 0; i < a.size(); ++i) {
+            const ptrdiff_t bi = static_cast<ptrdiff_t>(lag) + static_cast<ptrdiff_t>(i);
+            if (bi >= 0 && bi < static_cast<ptrdiff_t>(b.size())) {
+                sum += a[i] * b[static_cast<size_t>(bi)];
+            }
+        }
+        out[static_cast<size_t>(lag + max_lag)] = sum;
+    }
+    return out;
+}
+
+std::vector<double> xcorr_slice_from_correlate(const std::vector<double>& full, size_t b_len,
+                                               int max_lag) {
+    const ptrdiff_t zero_idx = static_cast<ptrdiff_t>(b_len - 1);
+    const size_t out_len = static_cast<size_t>(2 * max_lag + 1);
+    std::vector<double> out(out_len, 0.0);
+    for (int lag = -max_lag; lag <= max_lag; ++lag) {
+        const ptrdiff_t idx = zero_idx - lag;
+        if (idx >= 0 && idx < static_cast<ptrdiff_t>(full.size())) {
+            out[static_cast<size_t>(lag + max_lag)] = full[static_cast<size_t>(idx)];
+        }
+    }
+    return out;
+}
+
+std::vector<double> xcorr_fft_lags(const std::vector<double>& a, const std::vector<double>& b,
+                                   int max_lag) {
+    std::vector<double> rev_b(b.rbegin(), b.rend());
+    auto linear = convolve_fft_linear(a, rev_b);
+    if (linear.empty()) {
+        return xcorr_direct_lags(a, b, max_lag);
+    }
+    return xcorr_slice_from_correlate(linear, b.size(), max_lag);
 }
 
 } // namespace
@@ -724,17 +789,17 @@ std::vector<double> xcorr(const std::vector<double>& a, const std::vector<double
     if (max_lag < 0 || a.empty() || b.empty()) {
         return {};
     }
-    const auto full = correlate(a, b);
-    const ptrdiff_t zero_idx = static_cast<ptrdiff_t>(b.size() - 1);
+
+    const size_t full_len = a.size() + b.size() - 1;
     const size_t out_len = static_cast<size_t>(2 * max_lag + 1);
-    std::vector<double> out(out_len, 0.0);
-    for (int lag = -max_lag; lag <= max_lag; ++lag) {
-        const ptrdiff_t idx = zero_idx - lag;
-        if (idx >= 0 && idx < static_cast<ptrdiff_t>(full.size())) {
-            out[static_cast<size_t>(lag + max_lag)] = full[static_cast<size_t>(idx)];
-        }
+
+    if (out_len >= full_len) {
+        return xcorr_slice_from_correlate(correlate(a, b), b.size(), max_lag);
     }
-    return out;
+    if (xcorr_use_fft_partial(a.size(), b.size(), max_lag)) {
+        return xcorr_fft_lags(a, b, max_lag);
+    }
+    return xcorr_direct_lags(a, b, max_lag);
 }
 
 std::vector<double> xcov(const std::vector<double>& a, const std::vector<double>& b, int max_lag) {
