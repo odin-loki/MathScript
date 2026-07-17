@@ -138,6 +138,7 @@ CI builds typically pass `-DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF` for deter
 .\build.ps1
 # or: cmake -S . -B build-msvc -G Ninja -DCMAKE_BUILD_TYPE=Release -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF
 ctest --test-dir build-msvc --output-on-failure
+.\build.ps1 -Benchmark   # build-msvc-bench with MS_BUILD_BENCHMARKS=ON (+ matmul/fft smoke)
 ```
 
 Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
@@ -173,7 +174,7 @@ Triggered on push/PR to `main` (concurrency group cancels in-flight runs on the 
 
 ### Performance benchmarks
 
-Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). CI **`benchmark-linux`** runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`.
+Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). On Windows MSVC: `.\build.ps1 -Benchmark` configures `build-msvc-bench` with benchmarks and tests enabled, builds all targets, and runs a short `bench_matmul` / `bench_fft` smoke. CI **`benchmark-linux`** runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`.
 
 Regression detection compares JSON output from Google Benchmark against `tests/performance/baselines/linux-gcc13.json`. A run more than 10% slower than the stored median fails (`MS_BENCH_TOLERANCE`, default 10). Skip compare for smoke-only runs: `MS_BENCH_REGRESSION=off`.
 

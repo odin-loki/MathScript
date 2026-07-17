@@ -5,6 +5,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/bench_smoke.sh"
 BUILD_DIR="build-bench"
 WRITE_BASELINE=0
 BASELINE="${ROOT}/tests/performance/baselines/linux-gcc13.json"
@@ -64,7 +66,7 @@ run_json_suite() {
     local merged="${BENCH_JSON_DIR}/bench_results.json"
     echo '{"benchmarks":[]}' > "${merged}"
 
-    for bench in bench_matmul bench_fft bench_linalg bench_repl bench_special bench_stats; do
+    for bench in "${MS_BENCH_TARGETS[@]}"; do
         local path
         path="$(bench_path "${bench}")"
         if [[ ! -x "${path}" ]]; then
