@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 221 — Performance Pass III: xcorr, sosfilt, savgol, conv2, SHA, FEM, norm_l2)
+
+8 parallel subagents continuing hot-path profiling across `signal`, `crypto`, `fem`, `simd`, and `bench`.
+
+### Performance (Wave 221)
+- `ms::signal` — FFT-accelerated `xcorr`; in-place `sosfilt` / `filter_in_place()`; Savitzky–Golay via `correlate`/`convolve`; hybrid `conv2` (separable detection + row-wise FFT `convolve` for large matrices).
+- `ms::crypto` — unrolled SHA-256/512 compression rounds; `bench_crypto` (SHA-256 1 MiB + HMAC-SHA256).
+- `ms::fem` — Thomas algorithm for tridiagonal `solve_fem`; assemble + scaled solve benchmarks.
+- `ms::simd` — AVX2 `norm_l2` with scalar fallback.
+- **Benchmark coverage** — xcorr, savgol, coherence, autocorr benches in `bench_signal_linalg.cpp`; `bench_fem` assemble/solve; extended signal bench suite merged.
+- **Total Wave 221: 374 CTest suites — all passing**. Eight branches merged; bench merge conflict resolved in `tests/performance/CMakeLists.txt`.
+
 ## [1.0.0] — 2026-07-17 (Wave 220 — Remaining-TODO P0: No-Exceptions, Vendor GTest, Crypto/FEM/CFD, Sym CAS, GUI Thread)
 
 8 parallel subagents closing the highest-priority items from `MathScript_Remaining_TODO.md`.
