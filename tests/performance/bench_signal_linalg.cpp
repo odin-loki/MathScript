@@ -83,6 +83,27 @@ static void BM_MovingAverage(benchmark::State& state) {
 BENCHMARK(BM_MovingAverage)->Arg(256)->Arg(1024)->Arg(4096)->Arg(16384)->Arg(65536);
 
 // ---------------------------------------------------------------------------
+// Signal: median_filter
+// ---------------------------------------------------------------------------
+
+static void BM_MedianFilter(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int window = static_cast<int>(state.range(1));
+    std::vector<double> x(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        x[static_cast<size_t>(i)] = std::sin(2.0 * M_PI * i / 97.0) +
+                                     0.3 * std::cos(2.0 * M_PI * i / 23.0);
+    }
+    for (auto _ : state) {
+        auto r = median_filter(x, window);
+        benchmark::DoNotOptimize(r);
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_MedianFilter)->Args({4096, 3})->Args({4096, 5})->Args({4096, 7})
+    ->Args({65536, 7})->Args({65536, 31})->Args({65536, 101});
+
+// ---------------------------------------------------------------------------
 // Signal: butterworth filter
 // ---------------------------------------------------------------------------
 

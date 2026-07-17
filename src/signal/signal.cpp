@@ -7,6 +7,7 @@
 #include <complex>
 #include <cstddef>
 #include <limits>
+#include <set>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -1271,6 +1272,63 @@ std::vector<double> savgol(const std::vector<double>& x, int window_length, int 
     return y;
 }
 
+namespace {
+
+inline void median_compare_swap(double& a, double& b) {
+    if (a > b) {
+        std::swap(a, b);
+    }
+}
+
+// Fixed 3-comparator sorting network: median of three values in O(1).
+inline double median_of_three(double a, double b, double c) {
+    median_compare_swap(a, b);
+    median_compare_swap(b, c);
+    median_compare_swap(a, b);
+    return b;
+}
+
+// Fixed 9-comparator full-sort network for five values: median at index 2 in O(1).
+inline double median_of_five(double a, double b, double c, double d, double e) {
+    median_compare_swap(a, b);
+    median_compare_swap(d, e);
+    median_compare_swap(a, c);
+    median_compare_swap(b, e);
+    median_compare_swap(b, c);
+    median_compare_swap(a, b);
+    median_compare_swap(c, e);
+    median_compare_swap(c, d);
+    median_compare_swap(b, c);
+    return c;
+}
+
+std::vector<double> median_filter_sliding_multiset(const std::vector<double>& x, size_t half,
+                                                    size_t window_length) {
+    const size_t n = x.size();
+    std::vector<double> y = x;
+
+    std::multiset<double> window;
+    for (size_t j = 0; j < window_length; ++j) {
+        window.insert(x[j]);
+    }
+
+    auto median_it = std::next(window.begin(), static_cast<std::ptrdiff_t>(half));
+    y[half] = *median_it;
+
+    for (size_t center = half + 1; center + half < n; ++center) {
+        const double outgoing = x[center - half - 1];
+        const double incoming = x[center + half];
+        const auto outgoing_it = window.find(outgoing);
+        window.erase(outgoing_it);
+        window.insert(incoming);
+        median_it = std::next(window.begin(), static_cast<std::ptrdiff_t>(half));
+        y[center] = *median_it;
+    }
+    return y;
+}
+
+} // namespace
+
 std::vector<double> median_filter(const std::vector<double>& x, int window_length) {
     if (window_length <= 0 || window_length % 2 == 0) {
         return {};
@@ -1285,15 +1343,25 @@ std::vector<double> median_filter(const std::vector<double>& x, int window_lengt
     // Boundary points without a full centered window are left unfiltered (copied from x),
     // mirroring savgol's boundary convention exactly; see the @note in signal.hpp.
     std::vector<double> y = x;
-    std::vector<double> window(static_cast<size_t>(window_length));
-    for (size_t center = half; center + half < n; ++center) {
-        for (size_t j = 0; j < window.size(); ++j) {
-            window[j] = x[center - half + j];
-        }
-        std::sort(window.begin(), window.end());
-        y[center] = window[half];
+
+    if (window_length == 1) {
+        return y;
     }
-    return y;
+    if (window_length == 3) {
+        for (size_t center = half; center + half < n; ++center) {
+            y[center] = median_of_three(x[center - 1], x[center], x[center + 1]);
+        }
+        return y;
+    }
+    if (window_length == 5) {
+        for (size_t center = half; center + half < n; ++center) {
+            y[center] = median_of_five(x[center - 2], x[center - 1], x[center], x[center + 1],
+                                       x[center + 2]);
+        }
+        return y;
+    }
+
+    return median_filter_sliding_multiset(x, half, static_cast<size_t>(window_length));
 }
 
 LMSResult lms_adaptive_filter(const std::vector<double>& x, const std::vector<double>& d,
