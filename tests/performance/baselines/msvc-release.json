@@ -1,41 +1,97 @@
 {
-  "_comment": "MSVC Release regression baseline placeholder. Smoke runs via .\\build.ps1 -Benchmark (0.001s min_time). Full median capture pending Windows CI profile; null median_time_ns entries are schema placeholders only.",
-  "_generate": ".\\build.ps1 -Benchmark",
+  "_comment": "MSVC Release regression baseline. Matmul/FFT/SIMD/signal_linalg medians captured via scripts/bench_write_msvc_baseline.ps1 (0.1s min_time, 3 repetitions). Null median_time_ns entries are schema placeholders until regenerated; regression skips null entries.",
+  "_generate": ".\\scripts\\bench_write_msvc_baseline.ps1",
   "profile": {
     "os": "windows",
     "compiler": "msvc",
     "build_type": "Release",
-    "benchmark_min_time": "0.001s",
-    "benchmark_repetitions": 1
+    "benchmark_min_time": "0.1s",
+    "benchmark_repetitions": 3
   },
   "benchmarks": {
-    "BM_matmul/64": { "median_time_ns": null },
-    "BM_matmul/256": { "median_time_ns": null },
-    "BM_matmul/512": { "median_time_ns": null },
-    "BM_fft/256": { "median_time_ns": null },
-    "BM_fft/1024": { "median_time_ns": null },
-    "BM_fft/8192": { "median_time_ns": null },
-    "BM_ConvolveFFT/4096": { "median_time_ns": null },
-    "BM_KDE": { "median_time_ns": null },
-    "BM_MovingAverage/65536": { "median_time_ns": null },
-    "BM_Xcorr8192": { "median_time_ns": null },
-    "BM_Savgol65536/65536/11/3": { "median_time_ns": null },
-    "BM_Coherence65536": { "median_time_ns": null },
-    "BM_Autocorr/65536": { "median_time_ns": null },
-    "BM_Conv2/64/7": { "median_time_ns": null },
-    "BM_Sosfilt8192": { "median_time_ns": null },
-    "BM_FemAssemble1D": { "median_time_ns": null },
-    "BM_FemSolve1D/1000": { "median_time_ns": null },
-    "BM_Sha256_1MB": { "median_time_ns": null },
-    "BM_HmacSha256": { "median_time_ns": null },
-    "BM_simd_norm_l2/1000000": { "median_time_ns": null },
-    "BM_Spectrogram": { "median_time_ns": null },
-    "BM_Periodogram/65536": { "median_time_ns": null },
-    "BM_Bfs/10000": { "median_time_ns": null },
-    "BM_Bfs_Grid/100": { "median_time_ns": null },
-    "BM_SLIC/128/128/64": { "median_time_ns": null },
-    "BM_SLIC/256/256/256": { "median_time_ns": null },
-    "BM_repl_simple_arith": { "median_time_ns": null },
-    "BM_simd_sum_squares/1000000": { "median_time_ns": null }
+    "BM_matmul/64": {
+      "median_time_ns": 13249566
+    },
+    "BM_matmul/256": {
+      "median_time_ns": 234086799
+    },
+    "BM_matmul/512": {
+      "median_time_ns": 1248161599
+    },
+    "BM_fft/256": {
+      "median_time_ns": 15210
+    },
+    "BM_fft/1024": {
+      "median_time_ns": 51301
+    },
+    "BM_fft/8192": {
+      "median_time_ns": 235911
+    },
+    "BM_ConvolveFFT/4096": {
+      "median_time_ns": 1192410
+    },
+    "BM_KDE": {
+      "median_time_ns": null
+    },
+    "BM_MovingAverage/65536": {
+      "median_time_ns": 189247
+    },
+    "BM_Xcorr8192": {
+      "median_time_ns": 2534350
+    },
+    "BM_Savgol65536/65536/11/3": {
+      "median_time_ns": 45712733
+    },
+    "BM_Coherence65536": {
+      "median_time_ns": 6141159
+    },
+    "BM_Autocorr/65536": {
+      "median_time_ns": 29106600
+    },
+    "BM_Conv2/64/7": {
+      "median_time_ns": 3739948
+    },
+    "BM_Sosfilt8192": {
+      "median_time_ns": null
+    },
+    "BM_FemAssemble1D": {
+      "median_time_ns": null
+    },
+    "BM_FemSolve1D/1000": {
+      "median_time_ns": null
+    },
+    "BM_Sha256_1MB": {
+      "median_time_ns": null
+    },
+    "BM_HmacSha256": {
+      "median_time_ns": null
+    },
+    "BM_simd_norm_l2/1000000": {
+      "median_time_ns": 415954
+    },
+    "BM_Spectrogram": {
+      "median_time_ns": 3822890
+    },
+    "BM_Periodogram/65536": {
+      "median_time_ns": 2123496
+    },
+    "BM_Bfs/10000": {
+      "median_time_ns": null
+    },
+    "BM_Bfs_Grid/100": {
+      "median_time_ns": null
+    },
+    "BM_SLIC/128/128/64": {
+      "median_time_ns": null
+    },
+    "BM_SLIC/256/256/256": {
+      "median_time_ns": null
+    },
+    "BM_repl_simple_arith": {
+      "median_time_ns": null
+    },
+    "BM_simd_sum_squares/1000000": {
+      "median_time_ns": 377020
+    }
   }
 }
