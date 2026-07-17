@@ -21,9 +21,10 @@ static double log_base(double x, double base) {
 }
 
 double entropy(std::span<const double> p, double base) {
+    const double log_base_val = std::log(base);
     double h = 0.0;
     for (double pi : p)
-        if (pi > 0.0) h -= pi * log_base(pi, base);
+        if (pi > 0.0) h -= pi * std::log(pi) / log_base_val;
     return h;
 }
 
@@ -35,11 +36,13 @@ double normalized_entropy(std::span<const double> p) {
 
 double joint_entropy(std::span<const double> pxy, int rows, int cols,
                      double base) {
+    const double log_base_val = std::log(base);
+    const int cols_i = cols;
     double h = 0.0;
     for (int i = 0; i < rows; ++i)
-        for (int j = 0; j < cols; ++j) {
-            double v = pxy[static_cast<size_t>(i * cols + j)];
-            if (v > 0.0) h -= v * log_base(v, base);
+        for (int j = 0; j < cols_i; ++j) {
+            double v = pxy[static_cast<size_t>(i * cols_i + j)];
+            if (v > 0.0) h -= v * std::log(v) / log_base_val;
         }
     return h;
 }
@@ -69,19 +72,21 @@ double mutual_info(std::span<const double> pxy, int rows, int cols,
 
 double cross_entropy(std::span<const double> p, std::span<const double> q,
                      double base) {
+    const double log_base_val = std::log(base);
     double h = 0.0;
     for (size_t i = 0; i < p.size(); ++i)
         if (p[i] > 0.0 && q[i] > 0.0)
-            h -= p[i] * log_base(q[i], base);
+            h -= p[i] * std::log(q[i]) / log_base_val;
     return h;
 }
 
 double kl_divergence(std::span<const double> p, std::span<const double> q,
                      double base) {
+    const double log_base_val = std::log(base);
     double kl = 0.0;
     for (size_t i = 0; i < p.size(); ++i)
         if (p[i] > 0.0 && q[i] > 0.0)
-            kl += p[i] * log_base(p[i] / q[i], base);
+            kl += p[i] * std::log(p[i] / q[i]) / log_base_val;
     return kl;
 }
 
@@ -95,9 +100,10 @@ double js_divergence(std::span<const double> p, std::span<const double> q,
 
 double renyi_entropy(std::span<const double> p, double alpha, double base) {
     if (std::abs(alpha - 1.0) < 1e-12) return entropy(p, base);
+    const double log_base_val = std::log(base);
     double sum = 0.0;
     for (double pi : p) if (pi > 0.0) sum += std::pow(pi, alpha);
-    return log_base(sum, base) / (1.0 - alpha);
+    return std::log(sum) / log_base_val / (1.0 - alpha);
 }
 
 double tsallis_entropy(std::span<const double> p, double q_param) {
@@ -174,6 +180,7 @@ ChannelCapacityResult channel_capacity(const std::vector<std::vector<double>>& W
 
     std::vector<double> p(n_inputs, 1.0 / static_cast<double>(n_inputs));
     double capacity = 0.0;
+    const double log2 = std::log(2.0);
 
     for (int iter = 0; iter < max_iter; ++iter) {
         // p(y) = sum_x p(x) W(y|x)
@@ -188,7 +195,7 @@ ChannelCapacityResult channel_capacity(const std::vector<std::vector<double>>& W
             double cx = 0.0;
             for (size_t y = 0; y < n_outputs; ++y) {
                 if (W[x][y] > 0.0 && py[y] > 0.0)
-                    cx += W[x][y] * log_base(W[x][y] / py[y], 2.0);
+                    cx += W[x][y] * std::log(W[x][y] / py[y]) / log2;
             }
             c[x] = cx;
         }

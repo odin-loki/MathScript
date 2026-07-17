@@ -44,16 +44,18 @@ static double sample_mean(std::span<const double> data) {
 
 static double sample_stddev(std::span<const double> data) {
     if (data.size() < 2) return 0.0;
+    const double denom = static_cast<double>(data.size() - 1);
     double m = sample_mean(data);
     double var_r = 0.0;
     for (double r : data) var_r += (r - m) * (r - m);
-    return std::sqrt(var_r / static_cast<double>(data.size() - 1));
+    return std::sqrt(var_r / denom);
 }
 
 static void bs_d1_d2(double S, double K, double T, double r, double sigma,
                      double& d1, double& d2) {
-    d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * std::sqrt(T));
-    d2 = d1 - sigma * std::sqrt(T);
+    const double sigma_sqrt_T = sigma * std::sqrt(T);
+    d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / sigma_sqrt_T;
+    d2 = d1 - sigma_sqrt_T;
 }
 
 double bs_call(double S, double K, double T, double r, double sigma) {
@@ -79,10 +81,11 @@ static double heston_integrand(double phi, double S, double K, double T, double 
     const double u = (j == 1) ? 1.0 : 0.0;
     const double b = (j == 1) ? (kappa - rho * sigma_v) : kappa;
     const double a = kappa * theta;
+    const double sigma_v2 = sigma_v * sigma_v;
     const std::complex<double> phi_c(phi, 0.0);
     const std::complex<double> d = std::sqrt(
         std::pow(rho * sigma_v * i * phi_c - b, 2) -
-        sigma_v * sigma_v * (2.0 * u * i * phi_c - phi_c * phi_c));
+        sigma_v2 * (2.0 * u * i * phi_c - phi_c * phi_c));
     const std::complex<double> g =
         (b - rho * sigma_v * i * phi_c + d) / (b - rho * sigma_v * i * phi_c - d);
     const std::complex<double> c_inv = 1.0 / g;
@@ -90,11 +93,11 @@ static double heston_integrand(double phi, double S, double K, double T, double 
     const std::complex<double> one(1.0, 0.0);
     const std::complex<double> G = (one - c_inv * exp_dt) / (one - c_inv);
     const std::complex<double> D =
-        (b - rho * sigma_v * i * phi_c - d) / (sigma_v * sigma_v) *
+        (b - rho * sigma_v * i * phi_c - d) / sigma_v2 *
         ((one - exp_dt) / G);
     const std::complex<double> C =
         r * i * phi_c * T +
-        (a / (sigma_v * sigma_v)) *
+        (a / sigma_v2) *
             ((b - rho * sigma_v * i * phi_c - d) * T - 2.0 * std::log(G));
     const std::complex<double> f = std::exp(C + D * v0 + i * phi_c * std::log(S));
     const std::complex<double> integrand =
@@ -414,21 +417,23 @@ MertonResult merton_implied_asset_params(double equity_value, double equity_vola
 }
 
 double bond_price(double c, double y, int n, double fv) {
+    const double one_plus_y = 1.0 + y;
     double coupon = c * fv;
     double pv = 0.0;
     for (int i = 1; i <= n; ++i)
-        pv += coupon / std::pow(1.0 + y, i);
-    pv += fv / std::pow(1.0 + y, n);
+        pv += coupon / std::pow(one_plus_y, i);
+    pv += fv / std::pow(one_plus_y, n);
     return pv;
 }
 
 double bond_duration(double c, double y, int n, double fv) {
+    const double one_plus_y = 1.0 + y;
     double coupon = c * fv;
     double bp = bond_price(c, y, n, fv);
     double dur = 0.0;
     for (int i = 1; i <= n; ++i)
-        dur += static_cast<double>(i) * coupon / std::pow(1.0 + y, i);
-    dur += static_cast<double>(n) * fv / std::pow(1.0 + y, n);
+        dur += static_cast<double>(i) * coupon / std::pow(one_plus_y, i);
+    dur += static_cast<double>(n) * fv / std::pow(one_plus_y, n);
     return dur / bp;
 }
 
@@ -437,15 +442,16 @@ double bond_modified_duration(double c, double y, int n, double fv) {
 }
 
 double bond_convexity(double c, double y, int n, double fv) {
+    const double one_plus_y = 1.0 + y;
     double coupon = c * fv;
     double bp = bond_price(c, y, n, fv);
     double conv = 0.0;
     for (int i = 1; i <= n; ++i) {
         double t = static_cast<double>(i);
-        conv += t * (t + 1.0) * coupon / std::pow(1.0 + y, i + 2);
+        conv += t * (t + 1.0) * coupon / std::pow(one_plus_y, i + 2);
     }
     conv += static_cast<double>(n) * (n + 1.0) * fv /
-            std::pow(1.0 + y, n + 2);
+            std::pow(one_plus_y, n + 2);
     return conv / bp;
 }
 
@@ -969,8 +975,9 @@ double digital_option(double S, double K, double T, double r, double sigma,
 
 static void black76_d1_d2(double F, double K, double T, double sigma,
                             double& d1, double& d2) {
-    d1 = (std::log(F / K) + 0.5 * sigma * sigma * T) / (sigma * std::sqrt(T));
-    d2 = d1 - sigma * std::sqrt(T);
+    const double sigma_sqrt_T = sigma * std::sqrt(T);
+    d1 = (std::log(F / K) + 0.5 * sigma * sigma * T) / sigma_sqrt_T;
+    d2 = d1 - sigma_sqrt_T;
 }
 
 double black76(double F, double K, double T, double r, double sigma, bool call) {
@@ -1220,6 +1227,7 @@ static double mc_european(double S, double K, double T, double r, double sigma,
     if (n_paths <= 0 || S <= 0.0 || K <= 0.0 || T <= 0.0 || sigma <= 0.0) return 0.0;
     std::mt19937 rng(seed);
     std::normal_distribution<double> nd(0.0, 1.0);
+    const double disc = std::exp(-r * T);
     double drift = (r - 0.5 * sigma * sigma) * T;
     double vol_sqrtT = sigma * std::sqrt(T);
     int n_draws = (n_paths + 1) / 2;
@@ -1237,7 +1245,7 @@ static double mc_european(double S, double K, double T, double r, double sigma,
         sum += payoff2;
         ++used;
     }
-    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+    return disc * sum / static_cast<double>(n_paths);
 }
 
 double mc_european_call(double S, double K, double T, double r, double sigma,
@@ -1256,7 +1264,9 @@ static double mc_asian(double S, double K, double T, double r, double sigma,
         return 0.0;
     std::mt19937 rng(seed);
     std::normal_distribution<double> nd(0.0, 1.0);
-    double dt = T / static_cast<double>(n_steps);
+    const double disc = std::exp(-r * T);
+    const double n_steps_d = static_cast<double>(n_steps);
+    double dt = T / n_steps_d;
     double drift = (r - 0.5 * sigma * sigma) * dt;
     double vol_sqrtdt = sigma * std::sqrt(dt);
     std::vector<double> z(static_cast<size_t>(n_steps));
@@ -1274,7 +1284,7 @@ static double mc_asian(double S, double K, double T, double r, double sigma,
             s *= std::exp(drift + vol_sqrtdt * zi);
             avg += s;
         }
-        avg /= static_cast<double>(n_steps);
+        avg /= n_steps_d;
         double payoff1 = call ? std::max(avg - K, 0.0) : std::max(K - avg, 0.0);
         sum += payoff1;
         ++used;
@@ -1285,12 +1295,12 @@ static double mc_asian(double S, double K, double T, double r, double sigma,
             s *= std::exp(drift - vol_sqrtdt * zi);
             avg += s;
         }
-        avg /= static_cast<double>(n_steps);
+        avg /= n_steps_d;
         double payoff2 = call ? std::max(avg - K, 0.0) : std::max(K - avg, 0.0);
         sum += payoff2;
         ++used;
     }
-    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+    return disc * sum / static_cast<double>(n_paths);
 }
 
 double mc_asian_call(double S, double K, double T, double r, double sigma,
@@ -1308,6 +1318,7 @@ static double mc_lookback_floating(double S, double T, double r, double sigma,
     if (n_paths <= 0 || n_steps <= 0 || S <= 0.0 || T <= 0.0 || sigma <= 0.0) return 0.0;
     std::mt19937 rng(seed);
     std::normal_distribution<double> nd(0.0, 1.0);
+    const double disc = std::exp(-r * T);
     double dt = T / static_cast<double>(n_steps);
     double drift = (r - 0.5 * sigma * sigma) * dt;
     double vol_sqrtdt = sigma * std::sqrt(dt);
@@ -1342,7 +1353,7 @@ static double mc_lookback_floating(double S, double T, double r, double sigma,
         sum += payoff2;
         ++used;
     }
-    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+    return disc * sum / static_cast<double>(n_paths);
 }
 
 double mc_lookback_floating_call(double S, double T, double r, double sigma,
@@ -1361,6 +1372,7 @@ static double mc_lookback_fixed(double S, double K, double T, double r, double s
         return 0.0;
     std::mt19937 rng(seed);
     std::normal_distribution<double> nd(0.0, 1.0);
+    const double disc = std::exp(-r * T);
     double dt = T / static_cast<double>(n_steps);
     double drift = (r - 0.5 * sigma * sigma) * dt;
     double vol_sqrtdt = sigma * std::sqrt(dt);
@@ -1393,7 +1405,7 @@ static double mc_lookback_fixed(double S, double K, double T, double r, double s
         sum += payoff2;
         ++used;
     }
-    return std::exp(-r * T) * sum / static_cast<double>(n_paths);
+    return disc * sum / static_cast<double>(n_paths);
 }
 
 double mc_lookback_fixed_call(double S, double K, double T, double r, double sigma,

@@ -101,6 +101,7 @@ uint64_t rank_permutation(const std::vector<int>& v) {
 
 std::vector<int> unrank_permutation(int n, uint64_t rank) {
     std::vector<int> v;
+    v.reserve(static_cast<size_t>(n));
     std::vector<int> avail(n);
     std::iota(avail.begin(), avail.end(), 0);
     for (int i = n; i > 0; --i) {
@@ -141,12 +142,16 @@ std::vector<std::vector<int>> all_permutations(int n) {
     std::vector<int> v(n);
     std::iota(v.begin(), v.end(), 0);
     std::vector<std::vector<int>> result;
+    if (n <= 20)
+        result.reserve(static_cast<size_t>(factorial(static_cast<uint32_t>(n))));
     do { result.push_back(v); } while (std::next_permutation(v.begin(), v.end()));
     return result;
 }
 
 std::vector<std::vector<int>> all_subsets(int n) {
     std::vector<std::vector<int>> result;
+    if (n >= 0 && n < 31)
+        result.reserve(static_cast<size_t>(1) << n);
     for (int mask = 0; mask < (1 << n); ++mask) {
         std::vector<int> subset;
         for (int i = 0; i < n; ++i)
@@ -505,6 +510,7 @@ std::vector<std::vector<int>> lyndon_words(int n, int k) {
     if (n < 0 || k <= 0) return {};
     auto reps = necklaces(n, k);
     std::vector<std::vector<int>> result;
+    result.reserve(reps.size());
     for (const auto& w : reps) {
         if (is_aperiodic(w))
             result.push_back(w);
