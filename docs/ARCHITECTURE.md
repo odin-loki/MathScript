@@ -145,7 +145,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-**374 CTest suites** as of Wave 228 (CHANGELOG); profiling passes 218–228 complete; **28** benchmark executables in smoke. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
+**374 CTest suites** as of Wave 229 (CHANGELOG); profiling passes 218–228 and benchmark infra Wave 229 complete; **28** benchmark executables in smoke. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
 
 | Directory | Contents |
 |-----------|----------|
@@ -170,17 +170,17 @@ Triggered on push/PR to `main` (concurrency group cancels in-flight runs on the 
 6. **sanitizer-linux** — Debug + AddressSanitizer/UBSan (GCC 13); full `ctest` excluding `test_fuzz_stress`, `test_cuda_matmul`, and `test_cuda_stub`
 7. **plugin-linux** — Clang + LLVM 18, `MS_BUILD_PLUGIN=ON`; builds `ms_plugin`, runs `test_plugin_smoke`, and compliance rule tests (`compliance_*`). **Twenty** compile-fail rules enforced (all `DiagnosticID`s in `diagnostics.hpp` except partial **`UnsafeAudit`** via `MS_UNSAFE` + `scripts/unsafe_report.sh`). Each rule has `fail.cpp` + `ok.cpp`; `[[ms::unsafe]]` escape where applicable. When `MS_UNSAFE` is defined, also runs `compliance_unsafe_annotation`.
 8. **jit-linux** — Clang + LLVM 18, `-DMS_BUILD_JIT=ON`; links ORC LLJIT, runs `test_jit_backend` and `test_plot_console`. LLVM backend JIT-compiles scalar assignments; matrix calls dispatch to native kernels; other lines delegate to REPL when unsupported.
-9. **benchmark-linux** — Google Benchmark regression (`bench_matmul`, `bench_fft`, `bench_linalg`, `bench_repl`, `bench_special`, `bench_stats`) when `MS_BUILD_BENCHMARKS=ON`
+9. **benchmark-linux** — Google Benchmark regression on all **28** `add_ms_bench` targets when `MS_BUILD_BENCHMARKS=ON` (`cmake --build build-bench`; 30 min timeout)
 
 ### Performance benchmarks
 
-Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). On Windows MSVC: `.\build.ps1 -Benchmark` configures `build-msvc-bench` with benchmarks and tests enabled, builds all targets, and runs smoke on all **28** registered executables (`--benchmark_min_time=0.001s`). CI **`benchmark-linux`** runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`. See [`PERFORMANCE.md`](PERFORMANCE.md) for smoke policy and intentional remaining complexity.
+Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). Target names are discovered from `tests/performance/CMakeLists.txt` (`scripts/bench_cmake_targets.sh`, `scripts/bench_smoke.sh`, `build.ps1 -Benchmark`). On Windows MSVC: `.\build.ps1 -Benchmark` configures `build-msvc-bench`, builds all targets, and runs smoke on all **28** executables (`--benchmark_min_time=0.001s`). CI **`benchmark-linux`** builds the full bench tree, then runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`. See [`PERFORMANCE.md`](PERFORMANCE.md) for smoke policy and intentional remaining complexity.
 
 Regression detection compares JSON output from Google Benchmark against `tests/performance/baselines/linux-gcc13.json` (Linux CI) and `tests/performance/baselines/msvc-release.json` (Windows local). A run more than 10% slower than the stored median fails (`MS_BENCH_TOLERANCE`, default 10). Skip compare for smoke-only runs: `MS_BENCH_REGRESSION=off`.
 
 ```bash
 cmake -S . -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DMS_BUILD_TESTS=OFF -DMS_BUILD_BENCHMARKS=ON
-cmake --build build-bench --target bench_matmul bench_fft
+cmake --build build-bench                                       # all 28 add_ms_bench targets
 bash scripts/bench_regression.sh build-bench                    # compare (default)
 MS_BENCH_REGRESSION=off bash scripts/bench_regression.sh build-bench  # smoke only
 bash scripts/bench_regression.sh --write-baseline build-bench   # refresh Linux baseline medians
