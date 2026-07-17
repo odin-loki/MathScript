@@ -144,3 +144,131 @@ TEST(SimdTest, sum_squares_matches_manual_computation_with_tail) {
     }
     EXPECT_NEAR(sum_squares(x), expected, 1e-12);
 }
+
+TEST(SimdTest, sub_matches_scalar) {
+    std::vector<double> a(16);
+    std::vector<double> b(16);
+    std::vector<double> out(16);
+    std::iota(a.begin(), a.end(), 0.0);
+    std::iota(b.begin(), b.end(), 1.0);
+    sub(a, b, out);
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], a[i] - b[i], 1e-12);
+    }
+}
+
+TEST(SimdTest, sub_single_element) {
+    const std::vector<double> a{7.5};
+    const std::vector<double> b{2.5};
+    std::vector<double> out(1);
+    sub(a, b, out);
+    EXPECT_NEAR(out[0], 5.0, 1e-12);
+}
+
+TEST(SimdTest, sub_negative_values) {
+    const std::vector<double> a{-1.0, -2.0, -3.0, -4.0};
+    const std::vector<double> b{1.0, 2.0, 3.0, 4.0};
+    std::vector<double> out(4);
+    sub(a, b, out);
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], -2.0 * (static_cast<double>(i) + 1.0), 1e-12);
+    }
+}
+
+TEST(SimdTest, sub_non_multiple_of_vector_width_tail_7) {
+    const std::vector<double> a{10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0};
+    const std::vector<double> b{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+    std::vector<double> out(7);
+    sub(a, b, out);
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], a[i] - b[i], 1e-12);
+    }
+}
+
+TEST(SimdTest, sub_non_multiple_of_vector_width_tail_13) {
+    std::vector<double> a(13);
+    std::vector<double> b(13);
+    std::vector<double> out(13);
+    std::iota(a.begin(), a.end(), 20.0);
+    std::iota(b.begin(), b.end(), 1.0);
+    sub(a, b, out);
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], a[i] - b[i], 1e-12);
+    }
+}
+
+TEST(SimdTest, sub_cross_check_against_naive_loop_various_sizes) {
+    for (const size_t n : {0, 1, 3, 4, 5, 7, 8, 15, 16, 17, 63, 64, 65, 200}) {
+        std::vector<double> a(n);
+        std::vector<double> b(n);
+        std::vector<double> out(n);
+        for (size_t i = 0; i < n; ++i) {
+            a[i] = static_cast<double>(i) * 1.25;
+            b[i] = static_cast<double>(i) * 0.75 + 2.0;
+        }
+        sub(a, b, out);
+        for (size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(out[i], a[i] - b[i], 1e-12) << "mismatch at n=" << n << " i=" << i;
+        }
+    }
+}
+
+TEST(SimdTest, abs_matches_scalar) {
+    const std::vector<double> x{-4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0};
+    std::vector<double> out(x.size());
+    abs(x, out);
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(out[i], std::abs(x[i]), 1e-12);
+    }
+}
+
+TEST(SimdTest, abs_single_element) {
+    const std::vector<double> x{-3.5};
+    std::vector<double> out(1);
+    abs(x, out);
+    EXPECT_NEAR(out[0], 3.5, 1e-12);
+}
+
+TEST(SimdTest, abs_zero) {
+    const std::vector<double> x{0.0, -0.0, 0.0, 0.0};
+    std::vector<double> out(4);
+    abs(x, out);
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_DOUBLE_EQ(out[i], 0.0);
+    }
+}
+
+TEST(SimdTest, abs_non_multiple_of_vector_width_tail_7) {
+    const std::vector<double> x{-7.0, 6.0, -5.0, 4.0, -3.0, 2.0, -1.0};
+    std::vector<double> out(7);
+    abs(x, out);
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(out[i], std::abs(x[i]), 1e-12);
+    }
+}
+
+TEST(SimdTest, abs_non_multiple_of_vector_width_tail_13) {
+    std::vector<double> x(13);
+    for (size_t i = 0; i < x.size(); ++i) {
+        x[i] = static_cast<double>(i) - 6.0;
+    }
+    std::vector<double> out(13);
+    abs(x, out);
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(out[i], std::abs(x[i]), 1e-12);
+    }
+}
+
+TEST(SimdTest, abs_cross_check_against_naive_loop_various_sizes) {
+    for (const size_t n : {0, 1, 3, 4, 5, 7, 8, 15, 16, 17, 63, 64, 65, 200}) {
+        std::vector<double> x(n);
+        std::vector<double> out(n);
+        for (size_t i = 0; i < n; ++i) {
+            x[i] = static_cast<double>(i) * 0.5 - 3.0;
+        }
+        abs(x, out);
+        for (size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(out[i], std::abs(x[i]), 1e-12) << "mismatch at n=" << n << " i=" << i;
+        }
+    }
+}
