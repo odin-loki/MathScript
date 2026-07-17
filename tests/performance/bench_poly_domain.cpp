@@ -1,11 +1,13 @@
-// MathScript Benchmark: Polynomial and Domain Operations
-// Benchmarks for poly_eval, poly_mul, poly_deriv, factorial, nchoosek, gcd, Graph
+// MathScript Benchmark: Polynomial, Domain, and DiffGeo Operations
+// Benchmarks for poly_eval, poly_mul, poly_deriv, factorial, nchoosek, gcd, Graph, geodesic
 
 #include <benchmark/benchmark.h>
+#include <cmath>
 #include <vector>
 #include <numeric>
 #include "ms/poly/poly.hpp"
 #include "ms/domain/domain.hpp"
+#include "ms/diffgeo/diffgeo.hpp"
 
 using namespace ms;
 
@@ -244,5 +246,48 @@ static void BM_GraphEdges_Sparse_100Nodes(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_GraphEdges_Sparse_100Nodes);
+
+// ---------------------------------------------------------------------------
+// DiffGeo geodesic (Wave 228 certification)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+ms::diffgeo::MetricFn euclidean_2d_metric() {
+    return [](const ms::diffgeo::Coords& x) -> std::vector<std::vector<double>> {
+        (void)x;
+        return {{1, 0}, {0, 1}};
+    };
+}
+
+ms::diffgeo::MetricFn sphere_metric_2d() {
+    return [](const ms::diffgeo::Coords& x) -> std::vector<std::vector<double>> {
+        const double s2 = std::sin(x[0]) * std::sin(x[0]);
+        return {{1, 0}, {0, s2}};
+    };
+}
+
+} // namespace
+
+static void BM_Geodesic_Euclidean(benchmark::State& state) {
+    const int n_steps = static_cast<int>(state.range(0));
+    const ms::diffgeo::Coords x0 = {0.0, 0.0};
+    const ms::diffgeo::Coords v0 = {1.0, 0.5};
+    for (auto _ : state) {
+        auto traj = ms::diffgeo::geodesic(euclidean_2d_metric(), x0, v0, 1.0, n_steps);
+        benchmark::DoNotOptimize(traj.back().x[0]);
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n_steps);
+}
+BENCHMARK(BM_Geodesic_Euclidean)->Arg(50)->Arg(100);
+
+static void BM_Christoffel_Sphere(benchmark::State& state) {
+    const ms::diffgeo::Coords x = {0.7853981633974483, 0.5};  // pi/4, 0.5
+    for (auto _ : state) {
+        auto Chr = ms::diffgeo::christoffel(sphere_metric_2d(), x);
+        benchmark::DoNotOptimize(Chr[0][1][1]);
+    }
+}
+BENCHMARK(BM_Christoffel_Sphere);
 
 BENCHMARK_MAIN();
