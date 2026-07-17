@@ -252,18 +252,228 @@ Image imgaussfilt(const Image& img, float sigma) {
     return out;
 }
 
-Image medfilt2(const Image& img, int ksize) {
-    int half=ksize/2;
-    Image out(img.rows,img.cols,img.channels);
-    for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch) {
-        std::vector<float> vals;
-        for (int dr=-half;dr<=half;++dr) for (int dc=-half;dc<=half;++dc) {
-            int sr=std::min(std::max(r+dr,0),img.rows-1);
-            int sc=std::min(std::max(c+dc,0),img.cols-1);
-            vals.push_back(img.at(sr,sc,ch));
+namespace {
+
+inline void median_compare_swap(float& a, float& b) {
+    if (a > b) {
+        std::swap(a, b);
+    }
+}
+
+#define MEDFILT_PIX_SORT(a, b) median_compare_swap((a), (b))
+
+// Devillard opt_med9: fixed 19-comparator network, median at index 4.
+inline float median_of_nine(float* p) {
+    MEDFILT_PIX_SORT(p[1], p[2]);
+    MEDFILT_PIX_SORT(p[4], p[5]);
+    MEDFILT_PIX_SORT(p[7], p[8]);
+    MEDFILT_PIX_SORT(p[0], p[1]);
+    MEDFILT_PIX_SORT(p[3], p[4]);
+    MEDFILT_PIX_SORT(p[6], p[7]);
+    MEDFILT_PIX_SORT(p[1], p[2]);
+    MEDFILT_PIX_SORT(p[4], p[5]);
+    MEDFILT_PIX_SORT(p[7], p[8]);
+    MEDFILT_PIX_SORT(p[0], p[3]);
+    MEDFILT_PIX_SORT(p[5], p[8]);
+    MEDFILT_PIX_SORT(p[4], p[7]);
+    MEDFILT_PIX_SORT(p[3], p[6]);
+    MEDFILT_PIX_SORT(p[1], p[4]);
+    MEDFILT_PIX_SORT(p[2], p[5]);
+    MEDFILT_PIX_SORT(p[4], p[7]);
+    MEDFILT_PIX_SORT(p[4], p[2]);
+    MEDFILT_PIX_SORT(p[6], p[4]);
+    MEDFILT_PIX_SORT(p[4], p[2]);
+    return p[4];
+}
+
+// Devillard opt_med25: fixed comparator network, median at index 12.
+inline float median_of_twentyfive(float* p) {
+    MEDFILT_PIX_SORT(p[0], p[1]);
+    MEDFILT_PIX_SORT(p[3], p[4]);
+    MEDFILT_PIX_SORT(p[2], p[4]);
+    MEDFILT_PIX_SORT(p[2], p[3]);
+    MEDFILT_PIX_SORT(p[6], p[7]);
+    MEDFILT_PIX_SORT(p[5], p[7]);
+    MEDFILT_PIX_SORT(p[5], p[6]);
+    MEDFILT_PIX_SORT(p[9], p[10]);
+    MEDFILT_PIX_SORT(p[8], p[10]);
+    MEDFILT_PIX_SORT(p[8], p[9]);
+    MEDFILT_PIX_SORT(p[12], p[13]);
+    MEDFILT_PIX_SORT(p[11], p[13]);
+    MEDFILT_PIX_SORT(p[11], p[12]);
+    MEDFILT_PIX_SORT(p[15], p[16]);
+    MEDFILT_PIX_SORT(p[14], p[16]);
+    MEDFILT_PIX_SORT(p[14], p[15]);
+    MEDFILT_PIX_SORT(p[18], p[19]);
+    MEDFILT_PIX_SORT(p[17], p[19]);
+    MEDFILT_PIX_SORT(p[17], p[18]);
+    MEDFILT_PIX_SORT(p[21], p[22]);
+    MEDFILT_PIX_SORT(p[20], p[22]);
+    MEDFILT_PIX_SORT(p[20], p[21]);
+    MEDFILT_PIX_SORT(p[23], p[24]);
+    MEDFILT_PIX_SORT(p[2], p[5]);
+    MEDFILT_PIX_SORT(p[3], p[6]);
+    MEDFILT_PIX_SORT(p[0], p[6]);
+    MEDFILT_PIX_SORT(p[0], p[3]);
+    MEDFILT_PIX_SORT(p[4], p[7]);
+    MEDFILT_PIX_SORT(p[1], p[7]);
+    MEDFILT_PIX_SORT(p[1], p[4]);
+    MEDFILT_PIX_SORT(p[11], p[14]);
+    MEDFILT_PIX_SORT(p[8], p[14]);
+    MEDFILT_PIX_SORT(p[8], p[11]);
+    MEDFILT_PIX_SORT(p[12], p[15]);
+    MEDFILT_PIX_SORT(p[9], p[15]);
+    MEDFILT_PIX_SORT(p[9], p[12]);
+    MEDFILT_PIX_SORT(p[13], p[16]);
+    MEDFILT_PIX_SORT(p[10], p[16]);
+    MEDFILT_PIX_SORT(p[10], p[13]);
+    MEDFILT_PIX_SORT(p[20], p[23]);
+    MEDFILT_PIX_SORT(p[17], p[23]);
+    MEDFILT_PIX_SORT(p[17], p[20]);
+    MEDFILT_PIX_SORT(p[21], p[24]);
+    MEDFILT_PIX_SORT(p[18], p[24]);
+    MEDFILT_PIX_SORT(p[18], p[21]);
+    MEDFILT_PIX_SORT(p[19], p[22]);
+    MEDFILT_PIX_SORT(p[8], p[17]);
+    MEDFILT_PIX_SORT(p[9], p[18]);
+    MEDFILT_PIX_SORT(p[0], p[18]);
+    MEDFILT_PIX_SORT(p[0], p[9]);
+    MEDFILT_PIX_SORT(p[10], p[19]);
+    MEDFILT_PIX_SORT(p[1], p[19]);
+    MEDFILT_PIX_SORT(p[1], p[10]);
+    MEDFILT_PIX_SORT(p[11], p[20]);
+    MEDFILT_PIX_SORT(p[2], p[20]);
+    MEDFILT_PIX_SORT(p[2], p[11]);
+    MEDFILT_PIX_SORT(p[12], p[21]);
+    MEDFILT_PIX_SORT(p[3], p[21]);
+    MEDFILT_PIX_SORT(p[3], p[12]);
+    MEDFILT_PIX_SORT(p[13], p[22]);
+    MEDFILT_PIX_SORT(p[4], p[22]);
+    MEDFILT_PIX_SORT(p[4], p[13]);
+    MEDFILT_PIX_SORT(p[14], p[23]);
+    MEDFILT_PIX_SORT(p[5], p[23]);
+    MEDFILT_PIX_SORT(p[5], p[14]);
+    MEDFILT_PIX_SORT(p[15], p[24]);
+    MEDFILT_PIX_SORT(p[6], p[24]);
+    MEDFILT_PIX_SORT(p[6], p[15]);
+    MEDFILT_PIX_SORT(p[7], p[16]);
+    MEDFILT_PIX_SORT(p[7], p[19]);
+    MEDFILT_PIX_SORT(p[13], p[21]);
+    MEDFILT_PIX_SORT(p[15], p[23]);
+    MEDFILT_PIX_SORT(p[7], p[13]);
+    MEDFILT_PIX_SORT(p[7], p[15]);
+    MEDFILT_PIX_SORT(p[1], p[9]);
+    MEDFILT_PIX_SORT(p[3], p[11]);
+    MEDFILT_PIX_SORT(p[5], p[17]);
+    MEDFILT_PIX_SORT(p[11], p[17]);
+    MEDFILT_PIX_SORT(p[9], p[17]);
+    MEDFILT_PIX_SORT(p[4], p[10]);
+    MEDFILT_PIX_SORT(p[6], p[12]);
+    MEDFILT_PIX_SORT(p[7], p[14]);
+    MEDFILT_PIX_SORT(p[4], p[6]);
+    MEDFILT_PIX_SORT(p[4], p[7]);
+    MEDFILT_PIX_SORT(p[12], p[14]);
+    MEDFILT_PIX_SORT(p[10], p[14]);
+    MEDFILT_PIX_SORT(p[6], p[7]);
+    MEDFILT_PIX_SORT(p[10], p[12]);
+    MEDFILT_PIX_SORT(p[6], p[10]);
+    MEDFILT_PIX_SORT(p[6], p[17]);
+    MEDFILT_PIX_SORT(p[12], p[17]);
+    MEDFILT_PIX_SORT(p[7], p[17]);
+    MEDFILT_PIX_SORT(p[7], p[10]);
+    MEDFILT_PIX_SORT(p[12], p[18]);
+    MEDFILT_PIX_SORT(p[7], p[12]);
+    MEDFILT_PIX_SORT(p[10], p[18]);
+    MEDFILT_PIX_SORT(p[12], p[20]);
+    MEDFILT_PIX_SORT(p[10], p[20]);
+    MEDFILT_PIX_SORT(p[10], p[12]);
+    return p[12];
+}
+
+#undef MEDFILT_PIX_SORT
+
+inline float sample_replicate(const Image& img, int r, int c, int ch) {
+    const int sr = std::min(std::max(r, 0), img.rows - 1);
+    const int sc = std::min(std::max(c, 0), img.cols - 1);
+    return img.at(sr, sc, ch);
+}
+
+void medfilt2_channel_k3(const Image& img, Image& out, int ch) {
+    for (int r = 0; r < img.rows; ++r) {
+        for (int c = 0; c < img.cols; ++c) {
+            float window[9];
+            int idx = 0;
+            for (int dr = -1; dr <= 1; ++dr) {
+                for (int dc = -1; dc <= 1; ++dc) {
+                    window[idx++] = sample_replicate(img, r + dr, c + dc, ch);
+                }
+            }
+            out.at(r, c, ch) = median_of_nine(window);
         }
-        std::nth_element(vals.begin(),vals.begin()+vals.size()/2,vals.end());
-        out.at(r,c,ch)=vals[vals.size()/2];
+    }
+}
+
+void medfilt2_channel_k5(const Image& img, Image& out, int ch) {
+    for (int r = 0; r < img.rows; ++r) {
+        for (int c = 0; c < img.cols; ++c) {
+            float window[25];
+            int idx = 0;
+            for (int dr = -2; dr <= 2; ++dr) {
+                for (int dc = -2; dc <= 2; ++dc) {
+                    window[idx++] = sample_replicate(img, r + dr, c + dc, ch);
+                }
+            }
+            out.at(r, c, ch) = median_of_twentyfive(window);
+        }
+    }
+}
+
+void medfilt2_channel_large(const Image& img, Image& out, int ch, int ksize) {
+    const int half = ksize / 2;
+    const std::size_t win_area = static_cast<std::size_t>(ksize) * static_cast<std::size_t>(ksize);
+    const std::size_t mid = win_area / 2;
+
+    thread_local std::vector<float> window;
+    if (window.size() < win_area) {
+        window.resize(win_area);
+    }
+
+    for (int r = 0; r < img.rows; ++r) {
+        for (int c = 0; c < img.cols; ++c) {
+            std::size_t idx = 0;
+            for (int dr = -half; dr <= half; ++dr) {
+                for (int dc = -half; dc <= half; ++dc) {
+                    window[idx++] = sample_replicate(img, r + dr, c + dc, ch);
+                }
+            }
+            std::nth_element(window.begin(), window.begin() + static_cast<std::ptrdiff_t>(mid),
+                             window.begin() + static_cast<std::ptrdiff_t>(win_area));
+            out.at(r, c, ch) = window[mid];
+        }
+    }
+}
+
+} // namespace
+
+Image medfilt2(const Image& img, int ksize) {
+    if (img.empty()) {
+        return img;
+    }
+
+    Image out(img.rows, img.cols, img.channels);
+    if (ksize <= 1) {
+        out.data = img.data;
+        return out;
+    }
+
+    for (int ch = 0; ch < img.channels; ++ch) {
+        if (ksize == 3) {
+            medfilt2_channel_k3(img, out, ch);
+        } else if (ksize == 5) {
+            medfilt2_channel_k5(img, out, ch);
+        } else {
+            medfilt2_channel_large(img, out, ch, ksize);
+        }
     }
     return out;
 }
