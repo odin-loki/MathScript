@@ -173,11 +173,12 @@ geodesic(MetricFn g, const Coords& x0, const Coords& v0,
     std::vector<GeodesicState> traj;
     traj.reserve(static_cast<size_t>(n_steps) + 1);
     Coords x = x0, v = v0;
+    Coords acc(n);
     traj.push_back({x, v});
     for (int step = 0; step < n_steps; ++step) {
         auto Chr = christoffel(g, x, h);
         // d²x^k/ds² = -Γ^k_{ij} dx^i/ds dx^j/ds
-        Coords acc(n, 0.0);
+        for (int k = 0; k < n; ++k) acc[k] = 0.0;
         for (int k=0;k<n;++k)
             for (int i=0;i<n;++i)
                 for (int j=0;j<n;++j)
@@ -195,21 +196,25 @@ parallel_transport(MetricFn g, std::function<Coords(double)> curve,
                     std::function<Coords(double)> curve_velocity,
                     const Coords& V0, double s_end, int n_steps, double h) {
     std::vector<Coords> traj;
-    traj.push_back(V0);
-    if (n_steps <= 0 || !(s_end > 0.0)) return traj;
+    if (n_steps <= 0 || !(s_end > 0.0)) {
+        traj.push_back(V0);
+        return traj;
+    }
 
     traj.reserve(static_cast<size_t>(n_steps) + 1);
+    traj.push_back(V0);
 
     int n = static_cast<int>(V0.size());
     double ds = s_end / n_steps;
     Coords V = V0;
+    Coords dV(n);
     for (int step = 0; step < n_steps; ++step) {
         double s = step * ds;
         Coords x  = curve(s);
         Coords dx = curve_velocity(s);
         auto Chr = christoffel(g, x, h);
         // dV^k/ds = -Γ^k_{ij} dx^i/ds V^j
-        Coords dV(n, 0.0);
+        for (int k = 0; k < n; ++k) dV[k] = 0.0;
         for (int k = 0; k < n; ++k)
             for (int i = 0; i < n; ++i)
                 for (int j = 0; j < n; ++j)
@@ -365,7 +370,9 @@ double gauss_bonnet_integral(SurfaceFn r, double u0, double u1, double v0, doubl
             double jac = fff.E * fff.G - fff.F * fff.F;
             if (jac < 0.0) jac = 0.0;  // guard against numerical noise
             double dA = std::sqrt(jac);
-            double K = gaussian_curvature(r, u, v, h);
+            auto sff = second_fundamental_form(r, u, v, h);
+            double K = (jac < 1e-15) ? 0.0
+                                     : (sff.e * sff.g - sff.f * sff.f) / jac;
 
             total += wu * wv * K * dA;
         }
