@@ -13,6 +13,7 @@ MS_BENCH_TARGETS=(
     bench_rng_dispatch
     bench_simd
     bench_signal_linalg
+    bench_crypto
     bench_ode_pde
     bench_special_memory
     bench_optim_symbolic
