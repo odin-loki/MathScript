@@ -288,6 +288,76 @@ std::vector<double> irfft_half_transform(
     return out;
 }
 
+std::pair<size_t, size_t> infer_fft2_dims(size_t n) {
+    size_t cols = 1;
+    const size_t root = static_cast<size_t>(std::sqrt(static_cast<double>(n)));
+    for (size_t c = root; c >= 1; --c) {
+        if (n % c == 0) {
+            cols = c;
+            break;
+        }
+    }
+    return {n / cols, cols};
+}
+
+std::vector<std::complex<double>> fft2_impl(const std::vector<std::complex<double>>& data,
+                                            size_t rows, size_t cols) {
+    std::vector<std::complex<double>> out = data;
+
+    for (size_t r = 0; r < rows; ++r) {
+        std::vector<std::complex<double>> row(cols);
+        for (size_t c = 0; c < cols; ++c) {
+            row[c] = out[r * cols + c];
+        }
+        row = fft_transform(std::move(row));
+        for (size_t c = 0; c < cols; ++c) {
+            out[r * cols + c] = row[c];
+        }
+    }
+
+    for (size_t c = 0; c < cols; ++c) {
+        std::vector<std::complex<double>> col(rows);
+        for (size_t r = 0; r < rows; ++r) {
+            col[r] = out[r * cols + c];
+        }
+        col = fft_transform(std::move(col));
+        for (size_t r = 0; r < rows; ++r) {
+            out[r * cols + c] = col[r];
+        }
+    }
+
+    return out;
+}
+
+std::vector<std::complex<double>> ifft2_impl(const std::vector<std::complex<double>>& data,
+                                             size_t rows, size_t cols) {
+    std::vector<std::complex<double>> out = data;
+
+    for (size_t r = 0; r < rows; ++r) {
+        std::vector<std::complex<double>> row(cols);
+        for (size_t c = 0; c < cols; ++c) {
+            row[c] = out[r * cols + c];
+        }
+        row = ifft_transform(std::move(row));
+        for (size_t c = 0; c < cols; ++c) {
+            out[r * cols + c] = row[c];
+        }
+    }
+
+    for (size_t c = 0; c < cols; ++c) {
+        std::vector<std::complex<double>> col(rows);
+        for (size_t r = 0; r < rows; ++r) {
+            col[r] = out[r * cols + c];
+        }
+        col = ifft_transform(std::move(col));
+        for (size_t r = 0; r < rows; ++r) {
+            out[r * cols + c] = col[r];
+        }
+    }
+
+    return out;
+}
+
 } // namespace
 
 Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x) {
@@ -333,86 +403,38 @@ Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<do
     if (data.empty()) {
         return std::vector<std::complex<double>>{};
     }
+    const auto [rows, cols] = infer_fft2_dims(data.size());
+    return fft2(data, rows, cols);
+}
 
-    const size_t n = data.size();
-    size_t cols = 1;
-    const size_t root = static_cast<size_t>(std::sqrt(static_cast<double>(n)));
-    for (size_t c = root; c >= 1; --c) {
-        if (n % c == 0) {
-            cols = c;
-            break;
-        }
+Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<double>>& data,
+                                               size_t rows, size_t cols) {
+    if (data.empty()) {
+        return std::vector<std::complex<double>>{};
     }
-    const size_t rows = n / cols;
-
-    std::vector<std::complex<double>> out = data;
-
-    for (size_t r = 0; r < rows; ++r) {
-        std::vector<std::complex<double>> row(cols);
-        for (size_t c = 0; c < cols; ++c) {
-            row[c] = out[r * cols + c];
-        }
-        row = fft_transform(std::move(row));
-        for (size_t c = 0; c < cols; ++c) {
-            out[r * cols + c] = row[c];
-        }
+    if (rows * cols != data.size()) {
+        return std::unexpected(DimensionMismatch{data.size(), 1, rows * cols, 1});
     }
-
-    for (size_t c = 0; c < cols; ++c) {
-        std::vector<std::complex<double>> col(rows);
-        for (size_t r = 0; r < rows; ++r) {
-            col[r] = out[r * cols + c];
-        }
-        col = fft_transform(std::move(col));
-        for (size_t r = 0; r < rows; ++r) {
-            out[r * cols + c] = col[r];
-        }
-    }
-
-    return out;
+    return fft2_impl(data, rows, cols);
 }
 
 Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<double>>& data) {
     if (data.empty()) {
         return std::vector<std::complex<double>>{};
     }
+    const auto [rows, cols] = infer_fft2_dims(data.size());
+    return ifft2(data, rows, cols);
+}
 
-    const size_t n = data.size();
-    size_t cols = 1;
-    const size_t root = static_cast<size_t>(std::sqrt(static_cast<double>(n)));
-    for (size_t c = root; c >= 1; --c) {
-        if (n % c == 0) {
-            cols = c;
-            break;
-        }
+Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<double>>& data,
+                                                size_t rows, size_t cols) {
+    if (data.empty()) {
+        return std::vector<std::complex<double>>{};
     }
-    const size_t rows = n / cols;
-
-    std::vector<std::complex<double>> out = data;
-
-    for (size_t r = 0; r < rows; ++r) {
-        std::vector<std::complex<double>> row(cols);
-        for (size_t c = 0; c < cols; ++c) {
-            row[c] = out[r * cols + c];
-        }
-        row = ifft_transform(std::move(row));
-        for (size_t c = 0; c < cols; ++c) {
-            out[r * cols + c] = row[c];
-        }
+    if (rows * cols != data.size()) {
+        return std::unexpected(DimensionMismatch{data.size(), 1, rows * cols, 1});
     }
-
-    for (size_t c = 0; c < cols; ++c) {
-        std::vector<std::complex<double>> col(rows);
-        for (size_t r = 0; r < rows; ++r) {
-            col[r] = out[r * cols + c];
-        }
-        col = ifft_transform(std::move(col));
-        for (size_t r = 0; r < rows; ++r) {
-            out[r * cols + c] = col[r];
-        }
-    }
-
-    return out;
+    return ifft2_impl(data, rows, cols);
 }
 
 Result<std::vector<std::complex<double>>> dft(std::span<const double> data) {

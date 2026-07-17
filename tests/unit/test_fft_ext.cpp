@@ -143,6 +143,47 @@ TEST(FftExtTest, fft2_empty_guard) {
     EXPECT_TRUE(ifft2({}).value().empty());
 }
 
+namespace {
+
+std::vector<std::complex<double>> make_rect_grid(size_t rows, size_t cols) {
+    std::vector<std::complex<double>> data(rows * cols);
+    for (size_t r = 0; r < rows; ++r) {
+        for (size_t c = 0; c < cols; ++c) {
+            const double t = static_cast<double>(r * cols + c);
+            data[r * cols + c] = {std::sin(0.17 * t), 0.25 * std::cos(0.09 * t)};
+        }
+    }
+    return data;
+}
+
+void expect_fft2_rect_roundtrip(size_t rows, size_t cols) {
+    const auto data = make_rect_grid(rows, cols);
+    const auto spectrum = fft2(data, rows, cols).value();
+    ASSERT_EQ(spectrum.size(), rows * cols);
+    const auto back = ifft2(spectrum, rows, cols).value();
+    ASSERT_EQ(back.size(), rows * cols);
+    for (size_t i = 0; i < data.size(); ++i) {
+        EXPECT_NEAR(back[i].real(), data[i].real(), 1e-8) << "rows=" << rows << " cols=" << cols;
+        EXPECT_NEAR(back[i].imag(), data[i].imag(), 1e-8) << "rows=" << rows << " cols=" << cols;
+    }
+}
+
+} // namespace
+
+TEST(FftExtTest, fft2_ifft2_rect_roundtrip_8x16) {
+    expect_fft2_rect_roundtrip(8, 16);
+}
+
+TEST(FftExtTest, fft2_ifft2_rect_roundtrip_32x64) {
+    expect_fft2_rect_roundtrip(32, 64);
+}
+
+TEST(FftExtTest, fft2_explicit_dims_mismatch) {
+    const std::vector<std::complex<double>> data(128, {1.0, 0.0});
+    EXPECT_FALSE(fft2(data, 8, 15).has_value());
+    EXPECT_FALSE(ifft2(data, 8, 15).has_value());
+}
+
 TEST(FftExtTest, dst2_inverse) {
     const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
     const auto coeffs = dst2(x).value();

@@ -63,3 +63,22 @@ static void BM_rfft(benchmark::State& state) {
 }
 
 BENCHMARK(BM_rfft)->Arg(4096);
+
+static void BM_fft2_rect(benchmark::State& state) {
+    const auto rows = static_cast<size_t>(state.range(0));
+    const auto cols = static_cast<size_t>(state.range(1));
+    std::vector<std::complex<double>> data(rows * cols);
+    for (size_t i = 0; i < data.size(); ++i) {
+        const double t = static_cast<double>(i);
+        data[i] = {std::sin(0.13 * t), 0.2 * std::cos(0.07 * t)};
+    }
+
+    for (auto _ : state) {
+        auto result = fft2(data, rows, cols);
+        benchmark::DoNotOptimize(result);
+    }
+
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(rows * cols));
+}
+
+BENCHMARK(BM_fft2_rect)->Args({8, 16})->Args({32, 64});
