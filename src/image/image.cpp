@@ -542,6 +542,7 @@ Image slic(const Image& rgb, int num_superpixels, double compactness) {
     const float S = std::sqrt(static_cast<float>(N) / static_cast<float>(K));
     const float m = static_cast<float>(compactness);
     const float inv_s = m / (S + 1e-6f);
+    const float inv_s2 = inv_s * inv_s;
 
     std::vector<SlicCenter> centers(static_cast<size_t>(K));
     int cid = 0;
@@ -562,6 +563,12 @@ Image slic(const Image& rgb, int num_superpixels, double compactness) {
 
     std::vector<int> labels(static_cast<size_t>(N), -1);
     std::vector<float> dist(static_cast<size_t>(N), 1e30f);
+    std::vector<double> sumL(static_cast<size_t>(K), 0.0);
+    std::vector<double> suma(static_cast<size_t>(K), 0.0);
+    std::vector<double> sumb(static_cast<size_t>(K), 0.0);
+    std::vector<double> sumx(static_cast<size_t>(K), 0.0);
+    std::vector<double> sumy(static_cast<size_t>(K), 0.0);
+    std::vector<int> count(static_cast<size_t>(K), 0);
     const int search = std::max(1, static_cast<int>(2.f * S));
     constexpr int k_max_iter = 10;
 
@@ -577,31 +584,35 @@ Image slic(const Image& rgb, int num_superpixels, double compactness) {
             const int c0 = std::max(0, cx - search);
             const int c1 = std::min(C - 1, cx + search);
 
-            for (int r = r0; r <= r1; ++r)
+            for (int r = r0; r <= r1; ++r) {
+                const float dr = static_cast<float>(r) - ctr.y;
+                const int row_base = r * C;
                 for (int c = c0; c <= c1; ++c) {
-                    const size_t pi = static_cast<size_t>(r * C + c);
+                    const size_t pi = static_cast<size_t>(row_base + c);
+                    const float dc_col = static_cast<float>(c) - ctr.x;
+                    const float ds = inv_s2 * (dr * dr + dc_col * dc_col);
+                    if (ds >= dist[pi]) continue;
+
                     const auto& px = lab[pi];
                     const float dL = px.L - ctr.L;
                     const float da = px.a - ctr.a;
                     const float db = px.b - ctr.b;
                     const float dc = dL * dL + da * da + db * db;
-                    const float dr = static_cast<float>(r) - ctr.y;
-                    const float dc_col = static_cast<float>(c) - ctr.x;
-                    const float ds = inv_s * inv_s * (dr * dr + dc_col * dc_col);
                     const float D = dc + ds;
                     if (D < dist[pi]) {
                         dist[pi] = D;
                         labels[pi] = k;
                     }
                 }
+            }
         }
 
-        std::vector<double> sumL(static_cast<size_t>(K), 0.0);
-        std::vector<double> suma(static_cast<size_t>(K), 0.0);
-        std::vector<double> sumb(static_cast<size_t>(K), 0.0);
-        std::vector<double> sumx(static_cast<size_t>(K), 0.0);
-        std::vector<double> sumy(static_cast<size_t>(K), 0.0);
-        std::vector<int> count(static_cast<size_t>(K), 0);
+        std::fill(sumL.begin(), sumL.end(), 0.0);
+        std::fill(suma.begin(), suma.end(), 0.0);
+        std::fill(sumb.begin(), sumb.end(), 0.0);
+        std::fill(sumx.begin(), sumx.end(), 0.0);
+        std::fill(sumy.begin(), sumy.end(), 0.0);
+        std::fill(count.begin(), count.end(), 0);
 
         for (int r = 0; r < R; ++r)
             for (int c = 0; c < C; ++c) {

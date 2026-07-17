@@ -1075,6 +1075,45 @@ static Image make_checkerboard_rgb(int rows, int cols, int cell) {
     return img;
 }
 
+static Image make_slic_golden_rgb() {
+    Image rgb(12, 12, 3, 0.f);
+    for (int r = 0; r < 12; ++r)
+        for (int c = 0; c < 12; ++c) {
+            rgb.at(r, c, 0) = 0.1f + 0.07f * static_cast<float>(r);
+            rgb.at(r, c, 1) = 0.15f + 0.06f * static_cast<float>(c);
+            rgb.at(r, c, 2) = 0.12f + 0.04f * static_cast<float>((r + c) % 5);
+        }
+    rgb.at(6, 6, 0) = 0.92f;
+    rgb.at(6, 6, 1) = 0.08f;
+    rgb.at(6, 6, 2) = 0.12f;
+    return rgb;
+}
+
+TEST(ImageSlic, DeterministicGoldenLabels) {
+    static constexpr float k_expected[12][12] = {
+        {1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3},
+        {1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3},
+        {1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3},
+        {4, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3},
+        {4, 4, 4, 1, 1, 2, 2, 2, 2, 3, 3, 3},
+        {4, 4, 4, 4, 1, 2, 2, 2, 2, 3, 3, 3},
+        {4, 4, 4, 4, 8, 8, 5, 2, 2, 6, 3, 3},
+        {4, 4, 4, 8, 8, 8, 8, 8, 6, 6, 6, 3},
+        {7, 4, 7, 7, 8, 8, 8, 8, 6, 6, 6, 6},
+        {7, 7, 7, 7, 7, 8, 8, 8, 6, 6, 6, 6},
+        {7, 7, 7, 7, 7, 8, 8, 8, 8, 6, 6, 6},
+        {7, 7, 7, 7, 7, 7, 8, 8, 8, 6, 6, 6},
+    };
+
+    const auto rgb = make_slic_golden_rgb();
+    const auto out = slic(rgb, 8, 10.0);
+    ASSERT_EQ(out.rows, 12);
+    ASSERT_EQ(out.cols, 12);
+    for (int r = 0; r < 12; ++r)
+        for (int c = 0; c < 12; ++c)
+            EXPECT_FLOAT_EQ(out.at(r, c, 0), k_expected[r][c]) << "mismatch at (" << r << "," << c << ")";
+}
+
 TEST(ImageSlic, EmptyInputReturnsEmpty) {
     auto out = slic(Image{}, 4);
     EXPECT_TRUE(out.empty());
