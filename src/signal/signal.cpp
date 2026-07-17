@@ -1596,25 +1596,29 @@ std::vector<double> filtfilt(const std::vector<double>& b, const std::vector<dou
         pad_len = n - 1;
     }
 
-    std::vector<double> padded;
-    padded.reserve(n + 2 * pad_len);
+    std::vector<double> work;
+    work.reserve(n + 2 * pad_len);
     for (size_t j = 0; j < pad_len; ++j) {
         const size_t k = pad_len - j; // k = pad_len .. 1
-        padded.push_back(2.0 * x[0] - x[k]);
+        work.push_back(2.0 * x[0] - x[k]);
     }
-    padded.insert(padded.end(), x.begin(), x.end());
+    work.insert(work.end(), x.begin(), x.end());
     for (size_t j = 0; j < pad_len; ++j) {
         const size_t k = j + 1; // k = 1 .. pad_len
-        padded.push_back(2.0 * x[n - 1] - x[n - 1 - k]);
+        work.push_back(2.0 * x[n - 1] - x[n - 1 - k]);
     }
 
-    auto forward = filter(b, a, padded);
-    std::reverse(forward.begin(), forward.end());
-    auto backward = filter(b, a, forward);
-    std::reverse(backward.begin(), backward.end());
+    // Single work buffer: forward pass, reverse, backward pass, reverse again.
+    filter_in_place(b, a, std::span<double>(work));
+    std::reverse(work.begin(), work.end());
+    filter_in_place(b, a, std::span<double>(work));
+    std::reverse(work.begin(), work.end());
 
-    return std::vector<double>(backward.begin() + static_cast<ptrdiff_t>(pad_len),
-                                backward.end() - static_cast<ptrdiff_t>(pad_len));
+    if (pad_len > 0) {
+        work.erase(work.begin(), work.begin() + static_cast<ptrdiff_t>(pad_len));
+        work.resize(n);
+    }
+    return work;
 }
 
 std::vector<double> sosfilt(const std::vector<std::array<double, 6>>& sos,

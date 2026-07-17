@@ -82,7 +82,7 @@ static void BM_Sosfilt8192(benchmark::State& state) {
 BENCHMARK(BM_Sosfilt8192);
 
 // ---------------------------------------------------------------------------
-// filtfilt on 8192 samples
+// filtfilt on 8192 samples (in-place double pass, single work buffer)
 // ---------------------------------------------------------------------------
 
 static void BM_Filtfilt8192(benchmark::State& state) {
