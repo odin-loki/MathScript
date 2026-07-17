@@ -143,27 +143,36 @@ std::vector<std::complex<double>> ifft_transform(std::vector<std::complex<double
     return x;
 }
 
-// Real-input FFT via N/2-point complex FFT (two-real-sequences packing).
-// Post-processing follows the standard even/odd deinterleave + untangle step
-// used by FFTW/phastft (twiddle W^k pre-multiplied by 0.5).
-std::vector<std::complex<double>> rfft_half_transform(const std::vector<double>& x, size_t full_len) {
+void rfft_half_transform_impl(const std::vector<double>& x, size_t full_len,
+                              std::vector<std::complex<double>>& z,
+                              std::vector<std::complex<double>>& out) {
     const size_t half = full_len / 2;
     const size_t out_len = half + 1;
 
-    if (full_len == 1) {
-        return {{x.empty() ? 0.0 : x[0], 0.0}};
+    if (out.size() != out_len) {
+        out.resize(out_len);
     }
 
-    std::vector<std::complex<double>> packed(half);
+    if (full_len == 1) {
+        out[0] = {x.empty() ? 0.0 : x[0], 0.0};
+        return;
+    }
+
+    if (z.size() != half) {
+        z.resize(half);
+    }
     for (size_t j = 0; j < half; ++j) {
         const double re = (2 * j < x.size()) ? x[2 * j] : 0.0;
         const double im = (2 * j + 1 < x.size()) ? x[2 * j + 1] : 0.0;
-        packed[j] = {re, im};
+        z[j] = {re, im};
     }
 
-    auto z = fft_transform(std::move(packed));
+    if (is_power_of_two(half)) {
+        fft_inplace(z);
+    } else {
+        z = fft_transform(std::move(z));
+    }
 
-    std::vector<std::complex<double>> out(out_len);
     const double a0 = z[0].real();
     const double b0 = z[0].imag();
     out[0] = {a0 + b0, 0.0};
@@ -197,7 +206,16 @@ std::vector<std::complex<double>> rfft_half_transform(const std::vector<double>&
         const double wki = 0.5 * std::sin(angle);
         out[q] = {a + 2.0 * wkr * b, 2.0 * wki * b};
     }
+}
 
+// Real-input FFT via N/2-point complex FFT (two-real-sequences packing).
+// Post-processing follows the standard even/odd deinterleave + untangle step
+// used by FFTW/phastft (twiddle W^k pre-multiplied by 0.5).
+std::vector<std::complex<double>> rfft_half_transform(const std::vector<double>& x, size_t full_len) {
+    const size_t half = full_len / 2;
+    std::vector<std::complex<double>> z(half);
+    std::vector<std::complex<double>> out;
+    rfft_half_transform_impl(x, full_len, z, out);
     return out;
 }
 
@@ -409,6 +427,18 @@ Result<std::vector<std::complex<double>>> rfft(const std::vector<double>& x) {
 
     const size_t full_len = next_power_of_two(x.size());
     return rfft_half_transform(x, full_len);
+}
+
+Result<void> rfft(const std::vector<double>& x, std::vector<std::complex<double>>& out,
+                  std::vector<std::complex<double>>& fft_work) {
+    if (x.empty()) {
+        out.clear();
+        return {};
+    }
+
+    const size_t full_len = next_power_of_two(x.size());
+    rfft_half_transform_impl(x, full_len, fft_work, out);
+    return {};
 }
 
 Result<std::vector<double>> irfft(const std::vector<std::complex<double>>& x, size_t n) {

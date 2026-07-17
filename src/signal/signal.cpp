@@ -163,19 +163,15 @@ Result<WelchSetup> prepare_welch(size_t signal_len, double fs, size_t segment_le
 Result<void> rfft_windowed_segment(const std::vector<double>& signal, size_t start,
                                    size_t segment_len, const std::vector<double>& window,
                                    std::vector<double>& segment_buf,
-                                   std::vector<std::complex<double>>& spec_buf) {
+                                   std::vector<std::complex<double>>& spec_buf,
+                                   std::vector<std::complex<double>>& fft_work) {
     if (segment_buf.size() != segment_len) {
         segment_buf.resize(segment_len);
     }
     for (size_t i = 0; i < segment_len; ++i) {
         segment_buf[i] = signal[start + i] * window[i];
     }
-    const auto spec = rfft(segment_buf);
-    if (!spec) {
-        return std::unexpected(spec.error());
-    }
-    spec_buf = std::move(*spec);
-    return {};
+    return rfft(segment_buf, spec_buf, fft_work);
 }
 
 Result<std::vector<std::complex<double>>> rfft_windowed_segment(
@@ -183,7 +179,9 @@ Result<std::vector<std::complex<double>>> rfft_windowed_segment(
     const std::vector<double>& window) {
     std::vector<double> segment;
     std::vector<std::complex<double>> spec;
-    const auto status = rfft_windowed_segment(signal, start, segment_len, window, segment, spec);
+    std::vector<std::complex<double>> fft_work;
+    const auto status =
+        rfft_windowed_segment(signal, start, segment_len, window, segment, spec, fft_work);
     if (!status) {
         return std::unexpected(status.error());
     }
@@ -722,19 +720,23 @@ Result<PSDResult> welch_psd(const std::vector<double>& x, double fs,
     std::vector<double> psd(setup->plan.n_freq_bins, 0.0);
     std::vector<double> segment_buf;
     std::vector<std::complex<double>> spec_buf;
+    std::vector<std::complex<double>> fft_work;
     segment_buf.reserve(segment_len);
     spec_buf.reserve(setup->plan.n_freq_bins);
+    fft_work.reserve(setup->plan.n_fft / 2);
     size_t seg_count = 0;
 
     for (size_t start = 0; start + segment_len <= x.size(); start += setup->plan.hop) {
-        const auto status =
-            rfft_windowed_segment(x, start, segment_len, setup->window, segment_buf, spec_buf);
+        const auto status = rfft_windowed_segment(x, start, segment_len, setup->window,
+                                                  segment_buf, spec_buf, fft_work);
         if (!status) {
             return std::unexpected(status.error());
         }
 
         for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_buf.size(); ++k) {
-            psd[k] += std::norm(spec_buf[k]);
+            const double re = spec_buf[k].real();
+            const double im = spec_buf[k].imag();
+            psd[k] += re * re + im * im;
         }
         ++seg_count;
     }
@@ -822,13 +824,15 @@ Result<SpectrogramResult> spectrogram(const std::vector<double>& x, double fs,
 
     std::vector<double> segment_buf;
     std::vector<std::complex<double>> spec_buf;
+    std::vector<std::complex<double>> fft_work;
     segment_buf.reserve(segment_len);
     spec_buf.reserve(setup->plan.n_freq_bins);
+    fft_work.reserve(setup->plan.n_fft / 2);
 
     size_t row = 0;
     for (size_t start = 0; start + segment_len <= x.size(); start += setup->plan.hop) {
-        const auto status =
-            rfft_windowed_segment(x, start, segment_len, setup->window, segment_buf, spec_buf);
+        const auto status = rfft_windowed_segment(x, start, segment_len, setup->window,
+                                                  segment_buf, spec_buf, fft_work);
         if (!status) {
             return std::unexpected(status.error());
         }
@@ -836,7 +840,9 @@ Result<SpectrogramResult> spectrogram(const std::vector<double>& x, double fs,
         out.times.push_back((static_cast<double>(start) + static_cast<double>(segment_len) / 2.0) / fs);
 
         for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_buf.size(); ++k) {
-            out.magnitude(row, k) = std::abs(spec_buf[k]);
+            const double re = spec_buf[k].real();
+            const double im = spec_buf[k].imag();
+            out.magnitude(row, k) = std::hypot(re, im);
         }
         ++row;
     }

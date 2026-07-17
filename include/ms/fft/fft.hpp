@@ -14,6 +14,10 @@ Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<d
 Result<std::vector<std::complex<double>>> dft(std::span<const double> data);
 
 Result<std::vector<std::complex<double>>> rfft(const std::vector<double>& x);
+// Reuses `out` and `fft_work` across calls; `fft_work` must hold at least n/2 complexes
+// where n is the next power of two >= x.size().
+Result<void> rfft(const std::vector<double>& x, std::vector<std::complex<double>>& out,
+                    std::vector<std::complex<double>>& fft_work);
 Result<std::vector<double>> irfft(const std::vector<std::complex<double>>& x, size_t n);
 
 std::vector<std::complex<double>> fftshift(const std::vector<std::complex<double>>& x);
