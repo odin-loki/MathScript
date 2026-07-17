@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "ms/core/operations.hpp"
 #include "ms/signal/signal.hpp"
 #include <algorithm>
 #include <array>
@@ -792,6 +793,106 @@ TEST(SavGolTest, edge_cases_return_empty) {
 
     // Sanity: a valid, small configuration on this same signal should NOT be empty.
     EXPECT_FALSE(savgol(x, 5, 2).empty());
+}
+
+namespace {
+
+// Reference Savitzky-Golay: per-center inner loop (pre-convolve implementation).
+std::vector<double> savgol_reference(const std::vector<double>& x, int window_length,
+                                    int polyorder) {
+    if (window_length <= 0 || window_length % 2 == 0) {
+        return {};
+    }
+    if (polyorder < 0 || polyorder >= window_length) {
+        return {};
+    }
+    if (x.size() < static_cast<size_t>(window_length)) {
+        return {};
+    }
+
+    const int m = window_length;
+    const int half_i = (m - 1) / 2;
+    const size_t n_coef = static_cast<size_t>(polyorder + 1);
+
+    Matrix<double> A(static_cast<size_t>(m), n_coef);
+    for (int i = 0; i < m; ++i) {
+        const double offset = static_cast<double>(i - half_i);
+        double power = 1.0;
+        for (size_t j = 0; j < n_coef; ++j) {
+            A(static_cast<size_t>(i), j) = power;
+            power *= offset;
+        }
+    }
+
+    Matrix<double> ata(n_coef, n_coef, 0.0);
+    for (size_t j = 0; j < n_coef; ++j) {
+        for (size_t k = 0; k < n_coef; ++k) {
+            double sum = 0.0;
+            for (int i = 0; i < m; ++i) {
+                sum += A(static_cast<size_t>(i), j) * A(static_cast<size_t>(i), k);
+            }
+            ata(j, k) = sum;
+        }
+    }
+
+    Matrix<double> e0(n_coef, 1, 0.0);
+    e0(0, 0) = 1.0;
+
+    const auto v = solve(ata, e0);
+    if (!v) {
+        return {};
+    }
+
+    std::vector<double> h(static_cast<size_t>(m), 0.0);
+    for (int i = 0; i < m; ++i) {
+        double sum = 0.0;
+        for (size_t j = 0; j < n_coef; ++j) {
+            sum += A(static_cast<size_t>(i), j) * (*v)(j, 0);
+        }
+        h[static_cast<size_t>(i)] = sum;
+    }
+
+    const size_t half = static_cast<size_t>(half_i);
+    const size_t n = x.size();
+
+    std::vector<double> y = x;
+    for (size_t center = half; center + half < n; ++center) {
+        double acc = 0.0;
+        for (size_t j = 0; j < h.size(); ++j) {
+            acc += h[j] * x[center - half + j];
+        }
+        y[center] = acc;
+    }
+    return y;
+}
+
+} // namespace
+
+TEST(SavGolTest, convolve_path_matches_reference_on_random_data) {
+    std::mt19937 rng(221);
+    std::uniform_real_distribution<double> dist(-50.0, 50.0);
+
+    std::vector<double> x(4096);
+    for (double& v : x) {
+        v = dist(rng);
+    }
+
+    for (int window_length : {5, 7, 11, 21, 51}) {
+        for (int polyorder : {0, 1, 2, 3, 4}) {
+            if (polyorder >= window_length) {
+                continue;
+            }
+            const auto fast = savgol(x, window_length, polyorder);
+            const auto ref = savgol_reference(x, window_length, polyorder);
+            ASSERT_EQ(fast.size(), ref.size()) << "window_length=" << window_length
+                                              << " polyorder=" << polyorder;
+            for (size_t i = 0; i < ref.size(); ++i) {
+                EXPECT_NEAR(fast[i], ref[i], 1e-12)
+                    << "window_length=" << window_length << " polyorder=" << polyorder
+                    << " i=" << i;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
