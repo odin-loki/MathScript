@@ -521,6 +521,224 @@ TEST(SignalExtTest, spectrogram_invalid_overlap_ge_one) {
     EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
 }
 
+namespace welch_reuse_reference {
+
+size_t next_power_of_two(size_t n) {
+    size_t p = 1;
+    while (p < n) {
+        p <<= 1;
+    }
+    return p;
+}
+
+std::vector<double> segment_frequencies(size_t n_fft, double fs) {
+    std::vector<double> frequencies(n_fft / 2 + 1);
+    for (size_t k = 0; k < frequencies.size(); ++k) {
+        frequencies[k] = static_cast<double>(k) * fs / static_cast<double>(n_fft);
+    }
+    return frequencies;
+}
+
+void apply_one_sided_psd_scaling(std::vector<double>& psd, size_t n_fft) {
+    if (psd.size() <= 1) {
+        return;
+    }
+    for (size_t k = 1; k + 1 < psd.size(); ++k) {
+        psd[k] *= 2.0;
+    }
+    if (n_fft % 2 != 0) {
+        psd.back() *= 2.0;
+    }
+}
+
+Result<PSDResult> welch_psd_allocating(const std::vector<double>& x, double fs,
+                                       size_t segment_len, double overlap_frac) {
+    const auto window = hanning(segment_len);
+    double win_sq_sum = 0.0;
+    for (const double w : window) {
+        win_sq_sum += w * w;
+    }
+    const double scale = 1.0 / (fs * win_sq_sum);
+    const size_t n_fft = next_power_of_two(segment_len);
+    const size_t n_freq_bins = n_fft / 2 + 1;
+
+    const double hop_d = static_cast<double>(segment_len) * (1.0 - overlap_frac);
+    size_t hop = static_cast<size_t>(std::floor(hop_d));
+    if (hop == 0) {
+        hop = 1;
+    }
+
+    std::vector<double> psd(n_freq_bins, 0.0);
+    size_t seg_count = 0;
+    for (size_t start = 0; start + segment_len <= x.size(); start += hop) {
+        std::vector<double> segment(segment_len);
+        for (size_t i = 0; i < segment_len; ++i) {
+            segment[i] = x[start + i] * window[i];
+        }
+        const auto spec = rfft(segment);
+        if (!spec) {
+            return std::unexpected(spec.error());
+        }
+        for (size_t k = 0; k < n_freq_bins && k < spec->size(); ++k) {
+            psd[k] += std::norm((*spec)[k]);
+        }
+        ++seg_count;
+    }
+
+    for (double& p : psd) {
+        p = (p / static_cast<double>(seg_count)) * scale;
+    }
+    apply_one_sided_psd_scaling(psd, n_fft);
+    return PSDResult{segment_frequencies(n_fft, fs), std::move(psd)};
+}
+
+Result<SpectrogramResult> spectrogram_allocating(const std::vector<double>& x, double fs,
+                                                 size_t segment_len, double overlap_frac) {
+    const auto window = hanning(segment_len);
+    const size_t n_fft = next_power_of_two(segment_len);
+    const size_t n_freq_bins = n_fft / 2 + 1;
+
+    const double hop_d = static_cast<double>(segment_len) * (1.0 - overlap_frac);
+    size_t hop = static_cast<size_t>(std::floor(hop_d));
+    if (hop == 0) {
+        hop = 1;
+    }
+
+    size_t n_segments = 0;
+    for (size_t start = 0; start + segment_len <= x.size(); start += hop) {
+        ++n_segments;
+    }
+
+    SpectrogramResult out;
+    out.frequencies = segment_frequencies(n_fft, fs);
+    out.times.reserve(n_segments);
+    out.magnitude = Matrix<double>(n_segments, n_freq_bins);
+
+    size_t row = 0;
+    for (size_t start = 0; start + segment_len <= x.size(); start += hop) {
+        std::vector<double> segment(segment_len);
+        for (size_t i = 0; i < segment_len; ++i) {
+            segment[i] = x[start + i] * window[i];
+        }
+        const auto spec = rfft(segment);
+        if (!spec) {
+            return std::unexpected(spec.error());
+        }
+        out.times.push_back((static_cast<double>(start) + static_cast<double>(segment_len) / 2.0) / fs);
+        for (size_t k = 0; k < n_freq_bins && k < spec->size(); ++k) {
+            out.magnitude(row, k) = std::abs((*spec)[k]);
+        }
+        ++row;
+    }
+    return out;
+}
+
+void expect_vectors_near(const std::vector<double>& expected, const std::vector<double>& actual,
+                         double tol) {
+    ASSERT_EQ(expected.size(), actual.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(actual[i], expected[i], tol) << "index " << i;
+    }
+}
+
+} // namespace welch_reuse_reference
+
+TEST(SignalExtTest, welch_psd_reuse_matches_allocating_noise_seed_31415) {
+    constexpr double fs = 1000.0;
+    constexpr size_t segment_len = 128;
+    constexpr double overlap_frac = 0.5;
+    const auto x = lcg_noise(4096, 31415u);
+
+    const auto optimized = welch_psd(x, fs, segment_len, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::welch_psd_allocating(x, fs, segment_len, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near(reference->power, optimized->power, 1e-12);
+}
+
+TEST(SignalExtTest, welch_psd_reuse_matches_allocating_sinusoid_seed_27182) {
+    constexpr double fs = 800.0;
+    constexpr size_t segment_len = 256;
+    constexpr double overlap_frac = 0.75;
+    const auto x = sinusoid(8192, fs, 42.0);
+
+    const auto optimized = welch_psd(x, fs, segment_len, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::welch_psd_allocating(x, fs, segment_len, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near(reference->power, optimized->power, 1e-12);
+}
+
+TEST(SignalExtTest, welch_psd_reuse_matches_allocating_zero_overlap_seed_16180) {
+    constexpr double fs = 500.0;
+    constexpr size_t segment_len = 64;
+    constexpr double overlap_frac = 0.0;
+    const auto x = lcg_noise(2048, 16180u, 2.0);
+
+    const auto optimized = welch_psd(x, fs, segment_len, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::welch_psd_allocating(x, fs, segment_len, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near(reference->power, optimized->power, 1e-12);
+}
+
+TEST(SignalExtTest, spectrogram_reuse_matches_allocating_noise_seed_57721) {
+    constexpr double fs = 1000.0;
+    constexpr size_t segment_len = 128;
+    constexpr double overlap_frac = 0.5;
+    const auto x = lcg_noise(4096, 57721u);
+
+    const auto optimized = spectrogram(x, fs, segment_len, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::spectrogram_allocating(x, fs, segment_len, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near(reference->times, optimized->times, 1e-12);
+    ASSERT_EQ(reference->magnitude.rows(), optimized->magnitude.rows());
+    ASSERT_EQ(reference->magnitude.cols(), optimized->magnitude.cols());
+    for (size_t r = 0; r < reference->magnitude.rows(); ++r) {
+        for (size_t c = 0; c < reference->magnitude.cols(); ++c) {
+            EXPECT_NEAR(optimized->magnitude(r, c), reference->magnitude(r, c), 1e-12)
+                << "row " << r << " col " << c;
+        }
+    }
+}
+
+TEST(SignalExtTest, spectrogram_reuse_matches_allocating_chirp_seed_14142) {
+    constexpr double fs = 1000.0;
+    constexpr size_t segment_len = 256;
+    constexpr double overlap_frac = 0.25;
+    constexpr size_t n = 6000;
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i) / fs;
+        x[i] = std::sin(2.0 * M_PI * (20.0 * t + 30.0 * t * t));
+    }
+
+    const auto optimized = spectrogram(x, fs, segment_len, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::spectrogram_allocating(x, fs, segment_len, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near(reference->times, optimized->times, 1e-12);
+    ASSERT_EQ(reference->magnitude.rows(), optimized->magnitude.rows());
+    ASSERT_EQ(reference->magnitude.cols(), optimized->magnitude.cols());
+    for (size_t r = 0; r < reference->magnitude.rows(); ++r) {
+        for (size_t c = 0; c < reference->magnitude.cols(); ++c) {
+            EXPECT_NEAR(optimized->magnitude(r, c), reference->magnitude(r, c), 1e-12)
+                << "row " << r << " col " << c;
+        }
+    }
+}
+
 namespace {
 
 std::vector<double> cosine_signal(size_t n, double fs, double freq, double amplitude = 1.0) {
