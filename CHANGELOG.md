@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 219 — Performance Pass II: Welch, DF2T Filter, Fast RFFT, Poly Batch, Median, FMA, Percentile)
+
+8 parallel subagents continuing hot-path profiling and optimization across `signal`, `fft`, `poly`, `simd`, `stats`, `bench`.
+
+### Performance (Wave 219)
+- `ms::signal` — buffer reuse in `welch_psd`/`spectrogram`; Direct Form II Transposed `filter()`; sliding-window `median_filter` (sorting networks w=3/5, multiset w≥7).
+- `ms::fft` — half-length real-input `rfft`/`irfft` via conjugate-symmetry packing (exploits Wave 218 iterative FFT).
+- `ms::poly` — `poly_eval_at(coeffs, xs)` batch Horner with SIMD batches of 4 for degree ≥3.
+- `ms::simd` — AVX2 FMA path for `dot()` when `__FMA__` available.
+- `ms::stats` — `percentile()` via `std::nth_element` O(n) instead of full sort.
+- **Benchmark infra** — expanded `linux-gcc13.json` schema with Wave 218 targets (null placeholders until Linux CI `--write-baseline`); regression script skips null entries.
+- **Fix:** `M_PI` define in `bench_fft.cpp` for MSVC.
+- **Total Wave 219: 370 CTest suites — all passing**. Eight branches merged with zero conflicts; `.\build.ps1 -Benchmark` smoke verified.
+
 ## [1.0.0] — 2026-07-17 (Wave 218 — Performance Profiling & Hot-Path Optimization)
 
 8 parallel subagents profiling and optimizing core hot paths (`signal`, `fft`, `simd`, `stats`, `linalg`, `bench`, `build`).
