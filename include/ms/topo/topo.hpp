@@ -184,10 +184,11 @@ std::vector<PersistencePair>
 persistence_diagram(const std::vector<std::pair<Simplex,double>>& filtration);
 
 // ========================== Distances between diagrams ==========================
-// Bottleneck distance between two persistence diagrams
+// Bottleneck distance between two persistence diagrams (greedy O(n^2) matching;
+// exact bottleneck requires Hungarian assignment).
 double bottleneck_distance(const std::vector<PersistencePair>& dgm1,
                             const std::vector<PersistencePair>& dgm2, int dim = 0);
-// Wasserstein distance (p=2) between two persistence diagrams
+// Wasserstein distance (default p=2) between two persistence diagrams (greedy matching).
 double wasserstein_distance(const std::vector<PersistencePair>& dgm1,
                              const std::vector<PersistencePair>& dgm2,
                              int dim = 0, int p = 2);
