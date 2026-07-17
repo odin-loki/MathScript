@@ -124,18 +124,25 @@ Write-Host "Build complete. Binaries in $BuildDir\bin"
 
 if ($Benchmark) {
     $BenchDir = Join-Path $BuildDir "tests\performance"
-    foreach ($bench in @("bench_matmul", "bench_fft")) {
+    $SmokeBenches = @(
+        "bench_matmul",
+        "bench_fft",
+        "bench_signal_linalg",
+        "bench_simd",
+        "bench_crypto"
+    )
+    foreach ($bench in $SmokeBenches) {
         $exe = Join-Path $BenchDir "$bench.exe"
         if (-not (Test-Path $exe)) {
             throw "Missing benchmark executable: $exe"
         }
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
-        & $exe --benchmark_min_time=0.01s 2>&1 | Out-Null
+        & $exe --benchmark_min_time=0.001s 2>&1 | Out-Null
         $ErrorActionPreference = $prevEap
         if ($LASTEXITCODE -ne 0) { throw "Benchmark smoke failed: $bench (exit $LASTEXITCODE)" }
     }
-    Write-Host "Benchmark smoke OK (bench_matmul, bench_fft)"
+    Write-Host "Benchmark smoke OK ($($SmokeBenches -join ', '))"
 }
 
 if ($Test) {
