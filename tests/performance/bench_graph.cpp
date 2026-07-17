@@ -1,4 +1,4 @@
-// MathScript Benchmark: graph traversal (BFS, Dijkstra)
+// MathScript Benchmark: graph traversal (BFS, Dijkstra, Floyd-Warshall)
 
 #include <benchmark/benchmark.h>
 #include "ms/graph/graph.hpp"
@@ -6,6 +6,7 @@
 using ms::graph::Graph;
 using ms::graph::bfs;
 using ms::graph::dijkstra;
+using ms::graph::floyd_warshall;
 
 namespace {
 
@@ -86,3 +87,19 @@ static void BM_Dijkstra_Dense(benchmark::State& state) {
         benchmark::DoNotOptimize(dijkstra(G, 0));
 }
 BENCHMARK(BM_Dijkstra_Dense)->Arg(64)->Arg(128)->Arg(192);
+
+static void BM_FloydWarshall(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const Graph G = make_dense_graph(n);
+    for (auto _ : state)
+        benchmark::DoNotOptimize(floyd_warshall(G));
+}
+BENCHMARK(BM_FloydWarshall)->Arg(64)->Arg(128)->Arg(192);
+
+static void BM_FloydWarshall_Grid(benchmark::State& state) {
+    const int side = static_cast<int>(state.range(0));
+    const Graph G = make_grid_graph(side);
+    for (auto _ : state)
+        benchmark::DoNotOptimize(floyd_warshall(G));
+}
+BENCHMARK(BM_FloydWarshall_Grid)->Arg(32)->Arg(100)->Arg(224);

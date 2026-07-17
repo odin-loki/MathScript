@@ -428,16 +428,38 @@ bellman_ford(const Graph& G, int source) {
 }
 
 std::vector<std::vector<double>> floyd_warshall(const Graph& G) {
-    int n = G.n_vertices();
-    std::vector<std::vector<double>> d(n, std::vector<double>(n, INF));
-    for (int i = 0; i < n; ++i) d[i][i] = 0.0;
-    for (int u = 0; u < n; ++u)
-        for (auto& [v, w] : G.neighbors(u)) d[u][v] = std::min(d[u][v], w);
-    for (int k = 0; k < n; ++k)
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < n; ++j)
-                if (d[i][k] < INF && d[k][j] < INF)
-                    d[i][j] = std::min(d[i][j], d[i][k] + d[k][j]);
+    const int n = G.n_vertices();
+    const size_t ns = static_cast<size_t>(n);
+    std::vector<double> flat(ns * ns, INF);
+    for (int i = 0; i < n; ++i)
+        flat[static_cast<size_t>(i) * ns + static_cast<size_t>(i)] = 0.0;
+    for (int u = 0; u < n; ++u) {
+        const size_t row = static_cast<size_t>(u) * ns;
+        for (auto& [v, w] : G.neighbors(u)) {
+            const size_t col = static_cast<size_t>(v);
+            flat[row + col] = std::min(flat[row + col], w);
+        }
+    }
+    for (int k = 0; k < n; ++k) {
+        const size_t k_row = static_cast<size_t>(k) * ns;
+        const double* row_k = flat.data() + k_row;
+        for (int i = 0; i < n; ++i) {
+            const size_t i_row = static_cast<size_t>(i) * ns;
+            const double dik = flat[i_row + static_cast<size_t>(k)];
+            if (dik >= INF) continue;
+            double* row_i = flat.data() + i_row;
+            for (int j = 0; j < n; ++j) {
+                const double dkj = row_k[static_cast<size_t>(j)];
+                if (dkj >= INF) continue;
+                const double alt = dik + dkj;
+                if (alt < row_i[static_cast<size_t>(j)]) row_i[static_cast<size_t>(j)] = alt;
+            }
+        }
+    }
+    std::vector<std::vector<double>> d(n, std::vector<double>(n));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            d[i][j] = flat[static_cast<size_t>(i) * ns + static_cast<size_t>(j)];
     return d;
 }
 
