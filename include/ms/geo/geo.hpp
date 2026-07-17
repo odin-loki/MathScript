@@ -114,7 +114,7 @@ public:
 private:
     Node* root_ = nullptr;
     std::vector<Point2D> pts_;
-    Node* build(std::vector<int>& idx, int depth);
+    Node* build(std::vector<int>& idx, int beg, int end, int depth);
 };
 
 // ========================== KD-Tree (3D) ==========================
@@ -137,7 +137,7 @@ public:
 private:
     Node* root_ = nullptr;
     std::vector<Point3D> pts_;
-    Node* build(std::vector<int>& idx, int depth);
+    Node* build(std::vector<int>& idx, int beg, int end, int depth);
 };
 
 // ========================== Intersection tests ==========================
