@@ -1,6 +1,6 @@
 # Performance Guide
 
-MathScript completed an eleven-wave profiling iteration (Waves **218–228**) covering hot paths across all `src/` modules. See [`CHANGELOG.md`](../CHANGELOG.md) for per-wave optimizations.
+MathScript completed a twelve-wave profiling iteration (Waves **218–230**) covering hot paths across all `src/` modules, benchmark infra, and baseline refresh. See [`CHANGELOG.md`](../CHANGELOG.md) for per-wave optimizations.
 
 ## Modules covered (Waves 218–228)
 
@@ -26,7 +26,7 @@ MathScript completed an eleven-wave profiling iteration (Waves **218–228**) co
 | File | Status |
 |------|--------|
 | `tests/performance/baselines/msvc-release.json` | All medians populated; regenerate via `.\scripts\bench_write_msvc_baseline.ps1`. |
-| `tests/performance/baselines/linux-gcc13.json` | Schema placeholders (null medians) for Wave 218+ targets; regenerate on Linux CI: `bash scripts/bench_regression.sh --write-baseline build-bench`. Regression skips null entries. |
+| `tests/performance/baselines/linux-gcc13.json` | Schema placeholders (null medians) for Wave 218+ targets until refreshed; regenerate via **`.github/workflows/bench-baseline-linux.yml`** (`workflow_dispatch`) or locally: `bash scripts/bench_regression.sh --write-baseline build-bench`. Regression skips null entries. |
 
 ## Intentional remaining complexity (not perf debt)
 
@@ -72,4 +72,17 @@ Wave **229** closed remaining **benchmark infrastructure** gaps — not a code-p
 | **Target discovery** | `scripts/bench_cmake_targets.sh` shares CMakeLists parsing with `bench_smoke.sh` / `build.ps1 -Benchmark`. |
 | **Regression gate** | `bench_regression.sh` still compares against `linux-gcc13.json`; null medians skipped. |
 
-**PROFILING + INFRA DONE.** Baseline median refresh remains manual (`bash scripts/bench_regression.sh --write-baseline build-bench` on Linux; `.\scripts\bench_write_msvc_baseline.ps1` on Windows) or on a CI schedule — not part of the default PR gate.
+**PROFILING + INFRA DONE (Wave 229).** Linux median refresh was the remaining baseline-path gap — closed in Wave 230 below.
+
+## Baseline refresh workflow (Wave 230)
+
+Wave **230** completes the **baseline path** for the profiling iteration — not a code-profiling sweep.
+
+| Path | Refresh |
+|------|---------|
+| **Linux** | **`.github/workflows/bench-baseline-linux.yml`** — `workflow_dispatch` only: ubuntu-24.04, gcc-13, Release, all **28** `add_ms_bench` targets; runs `bash scripts/bench_regression.sh --write-baseline build-bench`; uploads `linux-gcc13.json` as artifact (**60 min** timeout). Maintainer downloads, reviews, and commits — no auto-commit to the repo. Trigger: GitHub Actions UI or `gh workflow run bench-baseline-linux.yml`. |
+| **Windows** | `.\scripts\bench_write_msvc_baseline.ps1` — local refresh; `msvc-release.json` medians populated. |
+
+Baseline refresh is **not** part of the default PR gate (`benchmark-linux` still runs regression compare only).
+
+**PROFILING ITERATION FULLY COMPLETE (Waves 218–230).** Code profiling (218–228), benchmark infra (229), baseline refresh path (230). No further profiling waves.
