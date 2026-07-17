@@ -1,6 +1,7 @@
 #include "ms/graph/graph.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <numeric>
@@ -229,20 +230,67 @@ Graph from_edge_list(int n, const std::vector<Edge>& edges, bool directed) {
 
 // ---- Traversal ----
 
-std::vector<int> bfs(const Graph& G, int source) {
-    int n = G.n_vertices();
-    std::vector<bool> visited(n, false);
+namespace {
+
+// Index-based queue: one reserve, no pop/shift overhead from std::queue.
+inline void bfs_visit_neighbors(const Graph& G, int v,
+                                std::vector<std::uint8_t>& visited,
+                                std::vector<int>& q) {
+    const auto& nbrs = G.neighbors(v);
+    for (size_t i = 0, end = nbrs.size(); i < end; ++i) {
+        const int u = nbrs[i].first;
+        if (!visited[static_cast<size_t>(u)]) {
+            visited[static_cast<size_t>(u)] = 1;
+            q.push_back(u);
+        }
+    }
+}
+
+// Sparse graphs: skip weight reads when scanning adjacency lists.
+inline void bfs_visit_neighbors_sparse(const Graph& G, int v,
+                                       std::vector<std::uint8_t>& visited,
+                                       std::vector<int>& q) {
+    for (const auto& nbr : G.neighbors(v)) {
+        const int u = nbr.first;
+        if (!visited[static_cast<size_t>(u)]) {
+            visited[static_cast<size_t>(u)] = 1;
+            q.push_back(u);
+        }
+    }
+}
+
+std::vector<int> bfs_impl(const Graph& G, int source, bool dense) {
+    const int n = G.n_vertices();
+    std::vector<std::uint8_t> visited(static_cast<size_t>(n), 0);
     std::vector<int> order;
-    std::queue<int> q;
-    q.push(source);
-    visited[source] = true;
-    while (!q.empty()) {
-        int v = q.front(); q.pop();
+    std::vector<int> q;
+    order.reserve(static_cast<size_t>(n));
+    q.reserve(static_cast<size_t>(n));
+
+    q.push_back(source);
+    visited[static_cast<size_t>(source)] = 1;
+
+    size_t head = 0;
+    while (head < q.size()) {
+        const int v = q[head++];
         order.push_back(v);
-        for (auto& [u, w] : G.neighbors(v))
-            if (!visited[u]) { visited[u] = true; q.push(u); }
+        if (dense)
+            bfs_visit_neighbors(G, v, visited, q);
+        else
+            bfs_visit_neighbors_sparse(G, v, visited, q);
     }
     return order;
+}
+
+} // namespace
+
+std::vector<int> bfs(const Graph& G, int source) {
+    const int n = G.n_vertices();
+    if (n == 0) return {};
+    const int m = G.n_edges();
+    const bool dense =
+        static_cast<long long>(m) * 4LL >= static_cast<long long>(n) * static_cast<long long>(n);
+    return bfs_impl(G, source, dense);
 }
 
 std::vector<int> dfs(const Graph& G, int source) {
