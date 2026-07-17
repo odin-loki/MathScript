@@ -130,7 +130,7 @@ static void BM_simd_dot(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_simd_dot)->Arg(8)->Arg(64)->Arg(512)->Arg(4096);
+BENCHMARK(BM_simd_dot)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(1000000);
 
 // ---------------------------------------------------------------------------
 // simd::exp_map

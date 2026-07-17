@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "ms/simd/simd.hpp"
 #include <cmath>
+#include <cstdlib>
 #include <numeric>
 #include <vector>
 
@@ -37,6 +38,64 @@ TEST(SimdTest, dot_and_gemv) {
     ASSERT_EQ(y.size(), 2);
     EXPECT_NEAR(y[0], 4.0, 1e-12);
     EXPECT_NEAR(y[1], 3.0, 1e-12);
+}
+
+TEST(SimdTest, dot_cross_check_against_naive_loop_various_sizes) {
+    for (const size_t n : {0, 1, 3, 4, 5, 7, 8, 15, 16, 17, 63, 64, 65, 200}) {
+        std::vector<double> a(n);
+        std::vector<double> b(n);
+        for (size_t i = 0; i < n; ++i) {
+            a[i] = static_cast<double>(i) * 0.25 + 1.0;
+            b[i] = static_cast<double>(i) * 0.5 - 2.0;
+        }
+        double naive = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            naive += a[i] * b[i];
+        }
+        EXPECT_NEAR(dot(a, b), naive, 1e-9) << "mismatch at n=" << n;
+    }
+}
+
+TEST(SimdTest, dot_cross_check_large_array) {
+    constexpr size_t n = 1024;
+    std::vector<double> a(n);
+    std::vector<double> b(n);
+    std::iota(a.begin(), a.end(), 1.0);
+    std::iota(b.begin(), b.end(), 0.5);
+    const double expected = std::inner_product(a.begin(), a.end(), b.begin(), 0.0);
+    EXPECT_NEAR(dot(a, b), expected, 1e-6);
+}
+
+TEST(SimdTest, dot_cross_check_odd_length_tail) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+    const std::vector<double> b{2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+    const double expected = std::inner_product(a.begin(), a.end(), b.begin(), 0.0);
+    EXPECT_NEAR(dot(a, b), expected, 1e-12);
+}
+
+TEST(SimdTest, dot_cross_check_mixed_sign) {
+    const std::vector<double> a{1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0};
+    const std::vector<double> b{-1.0, 2.0, -3.0, 4.0, -5.0, 6.0, -7.0, 8.0};
+    const double expected = std::inner_product(a.begin(), a.end(), b.begin(), 0.0);
+    EXPECT_NEAR(dot(a, b), expected, 1e-12);
+}
+
+TEST(SimdTest, dot_cross_check_simd_matches_scalar_dispatch) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+    const std::vector<double> b{9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0};
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "1");
+#else
+    setenv("MS_SIMD_FORCE_SCALAR", "1", 1);
+#endif
+    const double scalar_ref = dot(a, b);
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "0");
+#else
+    unsetenv("MS_SIMD_FORCE_SCALAR");
+#endif
+    const double simd_result = dot(a, b);
+    EXPECT_NEAR(simd_result, scalar_ref, 1e-12);
 }
 
 TEST(SimdTest, axpy_matches_scalar) {

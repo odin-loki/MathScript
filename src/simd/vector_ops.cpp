@@ -123,7 +123,11 @@ double dot_avx2(std::span<const double> a, std::span<const double> b) {
     for (; i + 4 <= n; i += 4) {
         const __m256d va = _mm256_loadu_pd(a.data() + i);
         const __m256d vb = _mm256_loadu_pd(b.data() + i);
+#if defined(__FMA__)
+        acc = _mm256_fmadd_pd(va, vb, acc);
+#else
         acc = _mm256_add_pd(acc, _mm256_mul_pd(va, vb));
+#endif
     }
     alignas(32) double parts[4];
     _mm256_store_pd(parts, acc);
