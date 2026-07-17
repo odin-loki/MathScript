@@ -381,6 +381,33 @@ Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x) {
     return fft_transform(std::move(input));
 }
 
+Result<void> fft(const std::vector<double>& x, std::vector<std::complex<double>>& out) {
+    if (x.empty()) {
+        out.clear();
+        return {};
+    }
+
+    const size_t n = next_power_of_two(x.size());
+    if (out.size() != n) {
+        out.assign(n, std::complex<double>(0.0, 0.0));
+    } else {
+        std::fill(out.begin(), out.end(), std::complex<double>(0.0, 0.0));
+    }
+    for (size_t i = 0; i < x.size(); ++i) {
+        out[i] = std::complex<double>(x[i], 0.0);
+    }
+
+    if (n <= 1) {
+        return {};
+    }
+    if (is_power_of_two(n)) {
+        fft_inplace(out);
+    } else {
+        out = fft_transform(std::move(out));
+    }
+    return {};
+}
+
 Result<std::vector<double>> ifft(const std::vector<std::complex<double>>& x) {
     if (x.empty()) {
         return std::vector<double>{};
@@ -397,6 +424,14 @@ Result<std::vector<double>> ifft(const std::vector<std::complex<double>>& x) {
         out[i] = spectrum[i].real() / static_cast<double>(x.size());
     }
     return out;
+}
+
+Result<void> complex_ifft(std::vector<std::complex<double>>& x) {
+    if (x.empty()) {
+        return {};
+    }
+    x = ifft_transform(std::move(x));
+    return {};
 }
 
 Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<double>>& data) {

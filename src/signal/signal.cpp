@@ -249,22 +249,6 @@ std::vector<std::complex<double>> fft_recursive(std::vector<std::complex<double>
     return out;
 }
 
-std::vector<std::complex<double>> complex_ifft(const std::vector<std::complex<double>>& x) {
-    if (x.empty()) {
-        return {};
-    }
-    std::vector<std::complex<double>> conj(x.size());
-    for (size_t i = 0; i < x.size(); ++i) {
-        conj[i] = std::conj(x[i]);
-    }
-    auto spectrum = fft_recursive(std::move(conj));
-    const double inv_n = 1.0 / static_cast<double>(x.size());
-    for (size_t i = 0; i < spectrum.size(); ++i) {
-        spectrum[i] = std::conj(spectrum[i]) * inv_n;
-    }
-    return spectrum;
-}
-
 void apply_hilbert_frequency_mask(std::vector<std::complex<double>>& spectrum) {
     const size_t n = spectrum.size();
     if (n == 0) {
@@ -282,6 +266,26 @@ void apply_hilbert_frequency_mask(std::vector<std::complex<double>>& spectrum) {
             spectrum[k] = 0.0;
         }
     }
+}
+
+struct HilbertBuffers {
+    std::vector<std::complex<double>> spectrum;
+};
+
+bool hilbert_into(const std::vector<double>& x, HilbertBuffers& work) {
+    if (x.empty()) {
+        work.spectrum.clear();
+        return true;
+    }
+    if (!fft(x, work.spectrum)) {
+        return false;
+    }
+    apply_hilbert_frequency_mask(work.spectrum);
+    if (!complex_ifft(work.spectrum)) {
+        return false;
+    }
+    work.spectrum.resize(x.size());
+    return true;
 }
 
 std::vector<double> unwrap_phase(const std::vector<double>& wrapped) {
@@ -995,40 +999,33 @@ Result<SpectrogramResult> spectrogram(const std::vector<double>& x, double fs,
 }
 
 std::vector<std::complex<double>> hilbert(const std::vector<double>& x) {
-    if (x.empty()) {
+    HilbertBuffers work;
+    if (!hilbert_into(x, work)) {
         return {};
     }
-    const auto spectrum = fft(x);
-    if (!spectrum) {
-        return {};
-    }
-    auto masked = *spectrum;
-    apply_hilbert_frequency_mask(masked);
-    auto analytic = complex_ifft(masked);
-    analytic.resize(x.size());
-    return analytic;
+    return work.spectrum;
 }
 
 std::vector<double> envelope(const std::vector<double>& x) {
-    const auto analytic = hilbert(x);
-    if (analytic.empty()) {
+    HilbertBuffers work;
+    if (!hilbert_into(x, work)) {
         return {};
     }
-    std::vector<double> out(analytic.size());
-    for (size_t i = 0; i < analytic.size(); ++i) {
-        out[i] = std::abs(analytic[i]);
+    std::vector<double> out(work.spectrum.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = std::abs(work.spectrum[i]);
     }
     return out;
 }
 
 std::vector<double> instantaneous_phase(const std::vector<double>& x) {
-    const auto analytic = hilbert(x);
-    if (analytic.empty()) {
+    HilbertBuffers work;
+    if (!hilbert_into(x, work)) {
         return {};
     }
-    std::vector<double> out(analytic.size());
-    for (size_t i = 0; i < analytic.size(); ++i) {
-        out[i] = std::arg(analytic[i]);
+    std::vector<double> out(work.spectrum.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = std::arg(work.spectrum[i]);
     }
     return out;
 }
@@ -2113,7 +2110,10 @@ std::vector<std::complex<double>> czt(const std::vector<double>& x, int m,
         Ak[i] *= Ww[i];
     }
 
-    auto fk = complex_ifft(std::move(Ak));
+    if (!complex_ifft(Ak)) {
+        return {};
+    }
+    const auto& fk = Ak;
     if (fk.size() < n - 1 + m_size) {
         return {};
     }

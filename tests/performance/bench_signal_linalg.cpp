@@ -416,6 +416,24 @@ static void BM_Autocorr(benchmark::State& state) {
 BENCHMARK(BM_Autocorr)->Arg(4096)->Arg(65536);
 
 // ---------------------------------------------------------------------------
+// Signal: Hilbert transform / analytic signal
+// ---------------------------------------------------------------------------
+
+static void BM_Hilbert(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    std::vector<double> x(n);
+    for (int i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * 8.0 * static_cast<double>(i) / static_cast<double>(n));
+    }
+    for (auto _ : state) {
+        auto z = hilbert(x);
+        benchmark::DoNotOptimize(z.data());
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_Hilbert)->Arg(256)->Arg(1024)->Arg(4096)->Arg(16384);
+
+// ---------------------------------------------------------------------------
 // Linear Algebra: solve Ax=b
 // ---------------------------------------------------------------------------
 
