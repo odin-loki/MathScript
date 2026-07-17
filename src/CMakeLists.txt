@@ -34,6 +34,7 @@ add_subdirectory(ml)
 add_subdirectory(image)
 add_subdirectory(compress)
 add_subdirectory(bignum)
+add_subdirectory(crypto)
 add_subdirectory(gui)
 add_subdirectory(exe)
 
@@ -74,6 +75,7 @@ target_link_libraries(mathscript INTERFACE
     ms_image
     ms_compress
     ms_bignum
+    ms_crypto
 )
 target_include_directories(mathscript INTERFACE
     ${CMAKE_SOURCE_DIR}/include
