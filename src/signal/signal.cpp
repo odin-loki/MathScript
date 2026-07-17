@@ -936,6 +936,7 @@ std::vector<double> autocorr(const std::vector<double>& x, int max_lag) {
 namespace {
 
 constexpr size_t kConv2FastCrossover = 32;
+constexpr size_t kConv2Fft2dCrossover = 64;
 
 Matrix<double> conv2_direct(const Matrix<double>& A, const Matrix<double>& B) {
     const size_t out_rows = A.rows() + B.rows() - 1;
@@ -1055,6 +1056,62 @@ Matrix<double> conv2_separable(const Matrix<double>& A,
     return out;
 }
 
+bool conv2_use_fft2d(const Matrix<double>& A, const Matrix<double>& B) {
+    if (B.rows() < 3 || B.cols() < 3) {
+        return false;
+    }
+    const size_t out_rows = A.rows() + B.rows() - 1;
+    const size_t out_cols = A.cols() + B.cols() - 1;
+    const size_t n_fft_rows = next_power_of_two(out_rows);
+    const size_t n_fft_cols = next_power_of_two(out_cols);
+    return n_fft_rows >= kConv2Fft2dCrossover && n_fft_cols >= kConv2Fft2dCrossover;
+}
+
+Matrix<double> conv2_fft2d(const Matrix<double>& A, const Matrix<double>& B) {
+    const size_t out_rows = A.rows() + B.rows() - 1;
+    const size_t out_cols = A.cols() + B.cols() - 1;
+    const size_t n_fft_rows = next_power_of_two(out_rows);
+    const size_t n_fft_cols = next_power_of_two(out_cols);
+    const size_t n_fft = n_fft_rows * n_fft_cols;
+
+    std::vector<std::complex<double>> a_pad(n_fft, 0.0);
+    std::vector<std::complex<double>> b_pad(n_fft, 0.0);
+    for (size_t r = 0; r < A.rows(); ++r) {
+        for (size_t c = 0; c < A.cols(); ++c) {
+            a_pad[r * n_fft_cols + c] = std::complex<double>(A(r, c), 0.0);
+        }
+    }
+    for (size_t r = 0; r < B.rows(); ++r) {
+        for (size_t c = 0; c < B.cols(); ++c) {
+            b_pad[r * n_fft_cols + c] = std::complex<double>(B(r, c), 0.0);
+        }
+    }
+
+    const auto spec_a = fft2(a_pad, n_fft_rows, n_fft_cols);
+    const auto spec_b = fft2(b_pad, n_fft_rows, n_fft_cols);
+    if (!spec_a || !spec_b) {
+        return Matrix<double>{};
+    }
+
+    std::vector<std::complex<double>> product(n_fft);
+    for (size_t k = 0; k < n_fft; ++k) {
+        product[k] = (*spec_a)[k] * (*spec_b)[k];
+    }
+
+    const auto restored = ifft2(product, n_fft_rows, n_fft_cols);
+    if (!restored) {
+        return Matrix<double>{};
+    }
+
+    Matrix<double> out(out_rows, out_cols, 0.0);
+    for (size_t r = 0; r < out_rows; ++r) {
+        for (size_t c = 0; c < out_cols; ++c) {
+            out(r, c) = (*restored)[r * n_fft_cols + c].real();
+        }
+    }
+    return out;
+}
+
 Matrix<double> conv2_by_rows(const Matrix<double>& A, const Matrix<double>& B) {
     // Accumulate 1D convolutions of each row-pair. Uses FFT-accelerated
     // convolve() when lengths cross its crossover — much faster than O(n^4).
@@ -1085,6 +1142,12 @@ Matrix<double> conv2_fast(const Matrix<double>& A, const Matrix<double>& B) {
     std::vector<double> col_k;
     if (try_separable_kernel(B, row_k, col_k)) {
         return conv2_separable(A, row_k, col_k);
+    }
+    if (conv2_use_fft2d(A, B)) {
+        Matrix<double> fft_out = conv2_fft2d(A, B);
+        if (!fft_out.empty()) {
+            return fft_out;
+        }
     }
     // Non-separable kernels: row-wise 1D convolutions (FFT-accelerated via
     // convolve when lengths are large). Correct and O(R_a R_b C log C).
