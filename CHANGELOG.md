@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 225 sign-off — benchmark smoke fix)
+
+- **Benchmark infra** — `bench_graph` Floyd-Warshall grid args capped at side 48 (was 224); O(V³) on 50k+ vertices hung MSVC smoke for 20+ minutes. **23-exe smoke verified** on MSVC; **374/374 CTest passing**.
+
 ## [1.0.0] — 2026-07-17 (Wave 225 — Performance Pass VII: final closure)
 
 8 parallel subagents — last profiling sweep for remaining hotspots and benchmark tracking.

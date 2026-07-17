@@ -102,4 +102,5 @@ static void BM_FloydWarshall_Grid(benchmark::State& state) {
     for (auto _ : state)
         benchmark::DoNotOptimize(floyd_warshall(G));
 }
-BENCHMARK(BM_FloydWarshall_Grid)->Arg(32)->Arg(100)->Arg(224);
+// Grid side^2 vertices → O(V^3); keep sides small (64² = 4096 → ~68B ops max).
+BENCHMARK(BM_FloydWarshall_Grid)->Arg(16)->Arg(32)->Arg(48);
