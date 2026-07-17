@@ -33,6 +33,7 @@ add_subdirectory(tensorops)
 add_subdirectory(ml)
 add_subdirectory(image)
 add_subdirectory(compress)
+add_subdirectory(cfd)
 add_subdirectory(bignum)
 add_subdirectory(gui)
 add_subdirectory(exe)
@@ -73,6 +74,7 @@ target_link_libraries(mathscript INTERFACE
     ms_ml
     ms_image
     ms_compress
+    ms_cfd
     ms_bignum
 )
 target_include_directories(mathscript INTERFACE

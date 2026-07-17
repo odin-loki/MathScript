@@ -67,4 +67,5 @@
 #include "ms/ml/ml.hpp"
 #include "ms/image/image.hpp"
 #include "ms/compress/compress.hpp"
+#include "ms/cfd/cfd.hpp"
 #include "ms/bignum/bignum.hpp"
