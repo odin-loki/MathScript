@@ -324,7 +324,7 @@ jobs:
   benchmark-linux:
     name: Benchmark regression (Linux GCC 13)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -344,12 +344,7 @@ jobs:
           -DMS_ENABLE_AVX512=OFF
 
       - name: Build benchmarks
-        run: |
-          cmake --build build-bench --target \
-            bench_matmul bench_fft bench_linalg bench_repl bench_special bench_stats \
-            bench_rng_dispatch bench_simd bench_signal_linalg bench_ode_pde \
-            bench_special_memory bench_optim_symbolic bench_frameworks \
-            bench_distributed_cellai bench_poly_domain bench_prob bench_optim_ml
+        run: cmake --build build-bench
 
       - name: Benchmark regression
         env:
