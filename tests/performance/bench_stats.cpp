@@ -38,6 +38,15 @@ static void BM_percentile(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * state.range(0));
 }
 
+static void BM_Percentile(benchmark::State& state) {
+    const auto data = make_data(static_cast<int>(state.range(0)));
+    for (auto _ : state) {
+        const double p50 = percentile(data, 50.0);
+        benchmark::DoNotOptimize(p50);
+    }
+    state.SetItemsProcessed(state.iterations() * state.range(0));
+}
+
 static void BM_linear_regression(benchmark::State& state) {
     const int n = static_cast<int>(state.range(0));
     const auto x = make_data(n);
@@ -97,6 +106,7 @@ static void BM_KDE(benchmark::State& state) {
 
 BENCHMARK(BM_mean_stddev)->Arg(1000)->Arg(10000)->Arg(100000);
 BENCHMARK(BM_percentile)->Arg(1000)->Arg(10000);
+BENCHMARK(BM_Percentile)->Arg(100000);
 BENCHMARK(BM_linear_regression)->Arg(500)->Arg(5000);
 BENCHMARK(BM_moving_average)->Arg(1000)->Arg(10000);
 BENCHMARK(BM_convolve)->Arg(1000)->Arg(10000);
