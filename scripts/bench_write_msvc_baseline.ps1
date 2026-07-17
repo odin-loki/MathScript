@@ -2,7 +2,7 @@
 # Usage: .\scripts\bench_write_msvc_baseline.ps1 [-BuildDir build-msvc-bench]
 #
 # Requires a Release benchmark build: .\build.ps1 -Benchmark
-# Runs matmul/fft/simd/signal_linalg with 0.1s min time and 3 repetitions,
+# Runs matmul/fft/simd/signal_linalg/graph/image/stats with 0.1s min time and 3 repetitions,
 # then writes median_time_ns into tests/performance/baselines/msvc-release.json.
 
 param(
@@ -23,7 +23,10 @@ $BenchTargets = @(
     "bench_matmul",
     "bench_fft",
     "bench_simd",
-    "bench_signal_linalg"
+    "bench_signal_linalg",
+    "bench_graph",
+    "bench_image",
+    "bench_stats"
 )
 
 if (-not (Test-Path $BaselinePath)) {
@@ -87,9 +90,10 @@ with open(baseline_path, encoding="utf-8") as f:
     baseline = json.load(f)
 
 baseline["_comment"] = (
-    "MSVC Release regression baseline. Matmul/FFT/SIMD/signal_linalg medians captured via "
-    "scripts/bench_write_msvc_baseline.ps1 (0.1s min_time, 3 repetitions). "
-    "Null median_time_ns entries are schema placeholders until regenerated; regression skips null entries."
+    "MSVC Release regression baseline. Wave 218-225 profiling targets; matmul/fft/simd/signal_linalg/"
+    "graph/image/stats medians captured via scripts/bench_write_msvc_baseline.ps1 "
+    "(0.1s min_time, 3 repetitions). Null median_time_ns entries are schema placeholders until "
+    "regenerated; regression skips null entries."
 )
 baseline["_generate"] = ".\\scripts\\bench_write_msvc_baseline.ps1"
 baseline["profile"] = {

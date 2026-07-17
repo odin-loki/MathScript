@@ -1,5 +1,5 @@
 {
-  "_comment": "MSVC Release regression baseline. Matmul/FFT/SIMD/signal_linalg medians captured via scripts/bench_write_msvc_baseline.ps1 (0.1s min_time, 3 repetitions). Null median_time_ns entries are schema placeholders until regenerated; regression skips null entries.",
+  "_comment": "MSVC Release regression baseline. Wave 218-225 profiling targets; matmul/fft/simd/signal_linalg/graph/image/stats medians captured via scripts/bench_write_msvc_baseline.ps1 (0.1s min_time, 3 repetitions). Null median_time_ns entries are schema placeholders until regenerated; regression skips null entries.",
   "_generate": ".\\scripts\\bench_write_msvc_baseline.ps1",
   "profile": {
     "os": "windows",
@@ -10,46 +10,46 @@
   },
   "benchmarks": {
     "BM_matmul/64": {
-      "median_time_ns": 13249566
+      "median_time_ns": 10231731
     },
     "BM_matmul/256": {
-      "median_time_ns": 234086799
+      "median_time_ns": 164077300
     },
     "BM_matmul/512": {
-      "median_time_ns": 1248161599
+      "median_time_ns": 691644799
     },
     "BM_fft/256": {
-      "median_time_ns": 15210
+      "median_time_ns": 11174
     },
     "BM_fft/1024": {
-      "median_time_ns": 51301
+      "median_time_ns": 26524
     },
     "BM_fft/8192": {
-      "median_time_ns": 235911
+      "median_time_ns": 231080
     },
     "BM_ConvolveFFT/4096": {
-      "median_time_ns": 1192410
+      "median_time_ns": 682315
     },
     "BM_KDE": {
-      "median_time_ns": null
+      "median_time_ns": 76004
     },
     "BM_MovingAverage/65536": {
-      "median_time_ns": 189247
+      "median_time_ns": 157605
     },
     "BM_Xcorr8192": {
-      "median_time_ns": 2534350
+      "median_time_ns": 3179985
     },
     "BM_Savgol65536/65536/11/3": {
-      "median_time_ns": 45712733
+      "median_time_ns": 19451299
     },
     "BM_Coherence65536": {
-      "median_time_ns": 6141159
+      "median_time_ns": 3198613
     },
     "BM_Autocorr/65536": {
-      "median_time_ns": 29106600
+      "median_time_ns": 17810055
     },
     "BM_Conv2/64/7": {
-      "median_time_ns": 3739948
+      "median_time_ns": 5686313
     },
     "BM_Sosfilt8192": {
       "median_time_ns": null
@@ -67,31 +67,64 @@
       "median_time_ns": null
     },
     "BM_simd_norm_l2/1000000": {
-      "median_time_ns": 415954
+      "median_time_ns": 358974
     },
     "BM_Spectrogram": {
-      "median_time_ns": 3822890
+      "median_time_ns": 1898530
     },
     "BM_Periodogram/65536": {
-      "median_time_ns": 2123496
+      "median_time_ns": 1526923
     },
     "BM_Bfs/10000": {
-      "median_time_ns": null
+      "median_time_ns": 106868
     },
     "BM_Bfs_Grid/100": {
-      "median_time_ns": null
+      "median_time_ns": 122130
+    },
+    "BM_Bfs_Dense/128": {
+      "median_time_ns": 15675
     },
     "BM_SLIC/128/128/64": {
-      "median_time_ns": null
+      "median_time_ns": 6890307
     },
     "BM_SLIC/256/256/256": {
-      "median_time_ns": null
+      "median_time_ns": 26716475
+    },
+    "BM_GaussianBlur/256/256/1/10": {
+      "median_time_ns": 1258049
+    },
+    "BM_Watershed/128/128": {
+      "median_time_ns": 377256
+    },
+    "BM_Medfilt2/256/256/5": {
+      "median_time_ns": 4446073
+    },
+    "BM_Boxfilter/256/256/1/15": {
+      "median_time_ns": 332227
+    },
+    "BM_Imresize/256/256/1/128/128": {
+      "median_time_ns": 77033
+    },
+    "BM_Bilateral/128/128/1/10/10": {
+      "median_time_ns": 3320771
+    },
+    "BM_Dijkstra/10000": {
+      "median_time_ns": 175607
+    },
+    "BM_Dijkstra_Grid/100": {
+      "median_time_ns": 682990
+    },
+    "BM_Dijkstra_Dense/128": {
+      "median_time_ns": 30121
+    },
+    "BM_Quantile/100000": {
+      "median_time_ns": 547214
     },
     "BM_repl_simple_arith": {
       "median_time_ns": null
     },
     "BM_simd_sum_squares/1000000": {
-      "median_time_ns": 377020
+      "median_time_ns": 386783
     }
   }
 }
