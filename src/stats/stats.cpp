@@ -115,10 +115,12 @@ double percentile(std::span<const double> data, double p) {
     if (data.empty()) {
         return 0.0;
     }
-    std::vector<double> sorted(data.begin(), data.end());
-    std::sort(sorted.begin(), sorted.end());
-    const size_t idx = static_cast<size_t>((p / 100.0) * static_cast<double>(sorted.size() - 1));
-    return sorted[idx];
+    const size_t idx = static_cast<size_t>(
+        (p / 100.0) * static_cast<double>(data.size() - 1));
+    std::vector<double> scratch(data.begin(), data.end());
+    std::nth_element(scratch.begin(), scratch.begin() + static_cast<std::ptrdiff_t>(idx),
+                     scratch.end());
+    return scratch[idx];
 }
 
 double ttest(std::span<const double> sample, double mu) {

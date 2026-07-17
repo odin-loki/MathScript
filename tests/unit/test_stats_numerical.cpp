@@ -130,6 +130,69 @@ TEST(StatsNumerical, PercentileMonotone) {
     EXPECT_LE(q2, q3);
 }
 
+namespace {
+
+double percentile_full_sort(std::span<const double> data, double p) {
+    if (data.empty()) {
+        return 0.0;
+    }
+    std::vector<double> sorted(data.begin(), data.end());
+    std::sort(sorted.begin(), sorted.end());
+    const size_t idx = static_cast<size_t>(
+        (p / 100.0) * static_cast<double>(sorted.size() - 1));
+    return sorted[idx];
+}
+
+} // namespace
+
+TEST(StatsNumerical, PercentileMatchesFullSort_Unsorted) {
+    std::vector<double> v{42.0, 7.0, 19.0, 3.0, 55.0, 11.0, 31.0, 8.0};
+    for (double p : {0.0, 25.0, 50.0, 75.0, 90.0, 100.0}) {
+        EXPECT_DOUBLE_EQ(percentile(v, p), percentile_full_sort(v, p))
+            << "p=" << p;
+    }
+}
+
+TEST(StatsNumerical, PercentileMatchesFullSort_Duplicates) {
+    std::vector<double> v{5.0, 2.0, 5.0, 2.0, 5.0, 1.0, 2.0, 5.0};
+    for (double p : {0.0, 12.5, 37.5, 50.0, 62.5, 87.5, 100.0}) {
+        EXPECT_DOUBLE_EQ(percentile(v, p), percentile_full_sort(v, p))
+            << "p=" << p;
+    }
+}
+
+TEST(StatsNumerical, PercentileMatchesFullSort_Random) {
+    std::mt19937 rng(219);
+    std::uniform_real_distribution<double> dist(-1000.0, 1000.0);
+    std::vector<double> v(512);
+    for (double& x : v) {
+        x = dist(rng);
+    }
+    for (double p : {0.0, 1.0, 10.0, 33.3, 50.0, 66.7, 90.0, 99.0, 100.0}) {
+        EXPECT_DOUBLE_EQ(percentile(v, p), percentile_full_sort(v, p))
+            << "p=" << p;
+    }
+}
+
+TEST(StatsNumerical, PercentileMatchesFullSort_SingleElement) {
+    std::vector<double> v{17.5};
+    for (double p : {0.0, 50.0, 100.0}) {
+        EXPECT_DOUBLE_EQ(percentile(v, p), percentile_full_sort(v, p))
+            << "p=" << p;
+    }
+}
+
+TEST(StatsNumerical, PercentileMatchesFullSort_LargeSorted) {
+    std::vector<double> v(1000);
+    for (size_t i = 0; i < v.size(); ++i) {
+        v[i] = static_cast<double>(i);
+    }
+    for (double p : {0.0, 25.0, 50.0, 75.0, 100.0}) {
+        EXPECT_DOUBLE_EQ(percentile(v, p), percentile_full_sort(v, p))
+            << "p=" << p;
+    }
+}
+
 // ============================================================
 // Mode
 // ============================================================
