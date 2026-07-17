@@ -47,6 +47,35 @@ static void BM_ConvolveFFT(benchmark::State& state) {
 BENCHMARK(BM_ConvolveFFT)->Arg(4096)->Arg(16384);
 
 // ---------------------------------------------------------------------------
+// Signal: conv2
+// ---------------------------------------------------------------------------
+
+static Matrix<double> make_conv2_matrix(int rows, int cols) {
+    Matrix<double> m(static_cast<size_t>(rows), static_cast<size_t>(cols));
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            m(static_cast<size_t>(i), static_cast<size_t>(j)) =
+                std::sin(0.13 * static_cast<double>(i)) *
+                std::cos(0.07 * static_cast<double>(j));
+        }
+    }
+    return m;
+}
+
+static void BM_Conv2(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int k = static_cast<int>(state.range(1));
+    const auto A = make_conv2_matrix(n, n);
+    const auto B = make_conv2_matrix(k, k);
+    for (auto _ : state) {
+        auto r = conv2(A, B);
+        benchmark::DoNotOptimize(r);
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n * n);
+}
+BENCHMARK(BM_Conv2)->Args({8, 3})->Args({16, 4})->Args({32, 5})->Args({64, 7})->Args({128, 9});
+
+// ---------------------------------------------------------------------------
 // Signal: correlate
 // ---------------------------------------------------------------------------
 

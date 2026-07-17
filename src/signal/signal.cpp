@@ -812,10 +812,11 @@ std::vector<double> autocorr(const std::vector<double>& x, int max_lag) {
     return xcorr(x, x, max_lag);
 }
 
-Matrix<double> conv2(const Matrix<double>& A, const Matrix<double>& B) {
-    if (A.empty() || B.empty()) {
-        return Matrix<double>{};
-    }
+namespace {
+
+constexpr size_t kConv2FastCrossover = 32;
+
+Matrix<double> conv2_direct(const Matrix<double>& A, const Matrix<double>& B) {
     const size_t out_rows = A.rows() + B.rows() - 1;
     const size_t out_cols = A.cols() + B.cols() - 1;
     Matrix<double> out(out_rows, out_cols, 0.0);
@@ -829,6 +830,156 @@ Matrix<double> conv2(const Matrix<double>& A, const Matrix<double>& B) {
         }
     }
     return out;
+}
+
+bool conv2_use_fast(const Matrix<double>& A) {
+    return A.rows() >= kConv2FastCrossover && A.cols() >= kConv2FastCrossover;
+}
+
+bool try_separable_kernel(const Matrix<double>& B,
+                          std::vector<double>& row_k,
+                          std::vector<double>& col_k) {
+    if (B.empty()) {
+        return false;
+    }
+    if (B.rows() == 1) {
+        col_k.resize(B.cols());
+        for (size_t j = 0; j < B.cols(); ++j) {
+            col_k[j] = B(0, j);
+        }
+        row_k = {1.0};
+        return true;
+    }
+    if (B.cols() == 1) {
+        row_k.resize(B.rows());
+        for (size_t i = 0; i < B.rows(); ++i) {
+            row_k[i] = B(i, 0);
+        }
+        col_k = {1.0};
+        return true;
+    }
+
+    size_t i0 = 0;
+    size_t j0 = 0;
+    double pivot = B(i0, j0);
+    if (std::abs(pivot) < 1e-15) {
+        bool found = false;
+        for (size_t i = 0; i < B.rows() && !found; ++i) {
+            for (size_t j = 0; j < B.cols(); ++j) {
+                if (std::abs(B(i, j)) >= 1e-15) {
+                    i0 = i;
+                    j0 = j;
+                    pivot = B(i0, j0);
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            row_k.assign(B.rows(), 0.0);
+            col_k.assign(B.cols(), 0.0);
+            return true;
+        }
+    }
+
+    col_k.resize(B.cols());
+    row_k.resize(B.rows());
+    for (size_t j = 0; j < B.cols(); ++j) {
+        col_k[j] = B(i0, j);
+    }
+    const double col_pivot = col_k[j0];
+    for (size_t i = 0; i < B.rows(); ++i) {
+        row_k[i] = B(i, j0) / col_pivot;
+    }
+
+    for (size_t i = 0; i < B.rows(); ++i) {
+        for (size_t j = 0; j < B.cols(); ++j) {
+            const double expected = row_k[i] * col_k[j];
+            if (std::abs(B(i, j) - expected) > 1e-10 * (1.0 + std::abs(B(i, j)))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+Matrix<double> conv2_separable(const Matrix<double>& A,
+                               const std::vector<double>& row_k,
+                               const std::vector<double>& col_k) {
+    Matrix<double> temp(A.rows(), A.cols() + col_k.size() - 1, 0.0);
+    for (size_t r = 0; r < A.rows(); ++r) {
+        std::vector<double> row(A.cols());
+        for (size_t c = 0; c < A.cols(); ++c) {
+            row[c] = A(r, c);
+        }
+        const auto conv_row = convolve(row, col_k);
+        for (size_t c = 0; c < conv_row.size(); ++c) {
+            temp(r, c) = conv_row[c];
+        }
+    }
+
+    const size_t out_rows = A.rows() + row_k.size() - 1;
+    const size_t out_cols = temp.cols();
+    Matrix<double> out(out_rows, out_cols, 0.0);
+    for (size_t c = 0; c < out_cols; ++c) {
+        std::vector<double> col(temp.rows());
+        for (size_t r = 0; r < temp.rows(); ++r) {
+            col[r] = temp(r, c);
+        }
+        const auto conv_col = convolve(col, row_k);
+        for (size_t r = 0; r < conv_col.size(); ++r) {
+            out(r, c) = conv_col[r];
+        }
+    }
+    return out;
+}
+
+Matrix<double> conv2_by_rows(const Matrix<double>& A, const Matrix<double>& B) {
+    // Accumulate 1D convolutions of each row-pair. Uses FFT-accelerated
+    // convolve() when lengths cross its crossover — much faster than O(n^4).
+    const size_t out_rows = A.rows() + B.rows() - 1;
+    const size_t out_cols = A.cols() + B.cols() - 1;
+    Matrix<double> out(out_rows, out_cols, 0.0);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        std::vector<double> a_row(A.cols());
+        for (size_t j = 0; j < A.cols(); ++j) {
+            a_row[j] = A(i, j);
+        }
+        for (size_t k = 0; k < B.rows(); ++k) {
+            std::vector<double> b_row(B.cols());
+            for (size_t l = 0; l < B.cols(); ++l) {
+                b_row[l] = B(k, l);
+            }
+            const auto crow = convolve(a_row, b_row);
+            for (size_t c = 0; c < crow.size(); ++c) {
+                out(i + k, c) += crow[c];
+            }
+        }
+    }
+    return out;
+}
+
+Matrix<double> conv2_fast(const Matrix<double>& A, const Matrix<double>& B) {
+    std::vector<double> row_k;
+    std::vector<double> col_k;
+    if (try_separable_kernel(B, row_k, col_k)) {
+        return conv2_separable(A, row_k, col_k);
+    }
+    // Non-separable kernels: row-wise 1D convolutions (FFT-accelerated via
+    // convolve when lengths are large). Correct and O(R_a R_b C log C).
+    return conv2_by_rows(A, B);
+}
+
+} // namespace
+
+Matrix<double> conv2(const Matrix<double>& A, const Matrix<double>& B) {
+    if (A.empty() || B.empty()) {
+        return Matrix<double>{};
+    }
+    if (conv2_use_fast(A)) {
+        return conv2_fast(A, B);
+    }
+    return conv2_direct(A, B);
 }
 
 std::vector<double> deconv(const std::vector<double>& y, const std::vector<double>& b) {
