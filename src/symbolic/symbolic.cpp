@@ -1,6 +1,8 @@
 #include "ms/symbolic/symbolic.hpp"
 
 #include <cmath>
+#include <optional>
+#include <algorithm>
 #include <vector>
 
 namespace ms {
@@ -743,6 +745,430 @@ std::string sym_to_string(const SymExpr& expr) {
         return "d/d" + expr.name + "(" + sym_to_string(*expr.left) + ")";
     }
     return "?";
+}
+
+double sym_limit(const SymExpr& expr, const std::string& var, double point) {
+    const auto eval_at = [&](double x) {
+        return sym_eval(expr, {{var, x}});
+    };
+
+    const double direct = eval_at(point);
+    if (std::isfinite(direct)) {
+        const double probe = 1e-8;
+        const double left = eval_at(point - probe);
+        const double right = eval_at(point + probe);
+        if (std::isfinite(left) && std::isfinite(right) &&
+            std::abs(left - direct) < 1e-6 && std::abs(right - direct) < 1e-6) {
+            return direct;
+        }
+    }
+
+    double h = 1e-4;
+    double estimate = 0.0;
+    double prev = 0.0;
+    for (int step = 0; step < 12; ++step) {
+        const double left = eval_at(point - h);
+        const double right = eval_at(point + h);
+        if (std::isfinite(left) && std::isfinite(right)) {
+            estimate = 0.5 * (left + right);
+            if (step > 0) {
+                const double scale = std::max(1.0, std::abs(estimate));
+                if (std::abs(estimate - prev) < 1e-10 * scale) {
+                    return estimate;
+                }
+            }
+            prev = estimate;
+        }
+        h *= 0.1;
+    }
+    return estimate;
+}
+
+SymExpr sym_series(const SymExpr& expr, const std::string& var, double point, int order) {
+    if (order <= 0) {
+        return sym_const(0.0);
+    }
+
+    SymExpr result = sym_const(0.0);
+    const SymExpr x_shift = sym_sub(sym_var(var), sym_const(point));
+    SymExpr deriv = clone_expr(expr);
+    double factorial = 1.0;
+
+    for (int n = 0; n < order; ++n) {
+        const double coeff = sym_eval(sym_simplify(clone_expr(deriv)), {{var, point}}) / factorial;
+        if (coeff != 0.0) {
+            SymExpr term = sym_const(coeff);
+            if (n > 0) {
+                term = sym_mul(
+                    sym_const(coeff),
+                    sym_pow(clone_expr(x_shift), sym_const(static_cast<double>(n))));
+            }
+            result = sym_add(std::move(result), std::move(term));
+        }
+        if (n + 1 < order) {
+            deriv = sym_diff(std::move(deriv), var);
+            factorial *= static_cast<double>(n + 1);
+        }
+    }
+
+    return sym_simplify(std::move(result));
+}
+
+namespace {
+
+SymExpr scale_expr(SymExpr expr, double sign) {
+    if (sign == 1.0) {
+        return expr;
+    }
+    if (sign == -1.0) {
+        return sym_neg(std::move(expr));
+    }
+    return sym_mul(sym_const(sign), std::move(expr));
+}
+
+bool contains_var_name(const SymExpr& expr, const std::string& name) {
+    if (expr.op == SymOp::Var) {
+        return expr.name == name;
+    }
+    if (expr.left && contains_var_name(*expr.left, name)) {
+        return true;
+    }
+    if (expr.right && contains_var_name(*expr.right, name)) {
+        return true;
+    }
+    return false;
+}
+
+bool is_allowed_other_var(const SymExpr& expr, const std::vector<std::string>& vars) {
+    if (expr.op == SymOp::Var) {
+        return std::find(vars.begin(), vars.end(), expr.name) != vars.end();
+    }
+    if (expr.left && !is_allowed_other_var(*expr.left, vars)) {
+        return false;
+    }
+    if (expr.right && !is_allowed_other_var(*expr.right, vars)) {
+        return false;
+    }
+    return true;
+}
+
+void gather_mul_factors(const SymExpr& expr, std::vector<SymExpr>& factors) {
+    if (expr.op == SymOp::Mul) {
+        if (expr.left) {
+            gather_mul_factors(*expr.left, factors);
+        }
+        if (expr.right) {
+            gather_mul_factors(*expr.right, factors);
+        }
+        return;
+    }
+    factors.push_back(clone_expr(expr));
+}
+
+std::optional<SymExpr> extract_linear_term(
+    const SymExpr& term, const std::vector<std::string>& vars, std::string& matched_var) {
+    SymExpr leaf = sym_simplify(clone_expr(term));
+    matched_var.clear();
+
+    if (leaf.op == SymOp::Const) {
+        return leaf;
+    }
+    if (leaf.op == SymOp::Var) {
+        if (std::find(vars.begin(), vars.end(), leaf.name) != vars.end()) {
+            matched_var = leaf.name;
+            return sym_const(1.0);
+        }
+        return clone_expr(leaf);
+    }
+    if (leaf.op == SymOp::Pow) {
+        if (leaf.left && leaf.left->op == SymOp::Var && leaf.right && leaf.right->op == SymOp::Const) {
+            if (leaf.right->value == 1.0 &&
+                std::find(vars.begin(), vars.end(), leaf.left->name) != vars.end()) {
+                matched_var = leaf.left->name;
+                return sym_const(1.0);
+            }
+            if (std::find(vars.begin(), vars.end(), leaf.left->name) == vars.end()) {
+                return clone_expr(leaf);
+            }
+        }
+        return std::nullopt;
+    }
+    if (leaf.op == SymOp::Mul) {
+        SymExpr coef = sym_const(1.0);
+        bool have_var = false;
+        std::vector<SymExpr> factors;
+        gather_mul_factors(leaf, factors);
+
+        for (SymExpr& factor : factors) {
+            factor = sym_simplify(std::move(factor));
+            if (factor.op == SymOp::Const) {
+                coef = sym_mul(std::move(coef), std::move(factor));
+                continue;
+            }
+            if (factor.op == SymOp::Var) {
+                if (std::find(vars.begin(), vars.end(), factor.name) != vars.end()) {
+                    if (have_var) {
+                        return std::nullopt;
+                    }
+                    have_var = true;
+                    matched_var = factor.name;
+                    continue;
+                }
+                coef = sym_mul(std::move(coef), std::move(factor));
+                continue;
+            }
+            if (factor.op == SymOp::Pow && factor.left && factor.left->op == SymOp::Var && factor.right &&
+                factor.right->op == SymOp::Const && factor.right->value == 1.0) {
+                if (std::find(vars.begin(), vars.end(), factor.left->name) != vars.end()) {
+                    if (have_var) {
+                        return std::nullopt;
+                    }
+                    have_var = true;
+                    matched_var = factor.left->name;
+                    continue;
+                }
+                coef = sym_mul(std::move(coef), std::move(factor));
+                continue;
+            }
+            bool uses_any_solve_var = false;
+            for (const auto& solve_var : vars) {
+                if (contains_var_name(factor, solve_var)) {
+                    uses_any_solve_var = true;
+                    break;
+                }
+            }
+            if (!uses_any_solve_var) {
+                coef = sym_mul(std::move(coef), std::move(factor));
+                continue;
+            }
+            return std::nullopt;
+        }
+
+        if (!have_var) {
+            return sym_simplify(std::move(coef));
+        }
+        return sym_simplify(std::move(coef));
+    }
+    if (leaf.op == SymOp::Neg && leaf.left) {
+        auto inner = extract_linear_term(*leaf.left, vars, matched_var);
+        if (!inner) {
+            return std::nullopt;
+        }
+        return sym_neg(std::move(*inner));
+    }
+
+    if (!is_allowed_other_var(leaf, vars)) {
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+void flatten_linear_sum(
+    const SymExpr& expr,
+    double sign,
+    const std::vector<std::string>& vars,
+    std::map<std::string, SymExpr>& var_coeffs,
+    SymExpr& constant) {
+    switch (expr.op) {
+    case SymOp::Add:
+        if (expr.left) {
+            flatten_linear_sum(*expr.left, sign, vars, var_coeffs, constant);
+        }
+        if (expr.right) {
+            flatten_linear_sum(*expr.right, sign, vars, var_coeffs, constant);
+        }
+        return;
+    case SymOp::Sub:
+        if (expr.left) {
+            flatten_linear_sum(*expr.left, sign, vars, var_coeffs, constant);
+        }
+        if (expr.right) {
+            flatten_linear_sum(*expr.right, -sign, vars, var_coeffs, constant);
+        }
+        return;
+    case SymOp::Neg:
+        if (expr.left) {
+            flatten_linear_sum(*expr.left, -sign, vars, var_coeffs, constant);
+        }
+        return;
+    default: {
+        std::string matched_var;
+        auto parsed = extract_linear_term(expr, vars, matched_var);
+        if (!parsed) {
+            return;
+        }
+        SymExpr scaled = scale_expr(std::move(*parsed), sign);
+        if (matched_var.empty()) {
+            constant = sym_simplify(sym_add(std::move(constant), std::move(scaled)));
+        } else {
+            var_coeffs[matched_var] =
+                sym_simplify(sym_add(std::move(var_coeffs[matched_var]), std::move(scaled)));
+        }
+        return;
+    }
+    }
+}
+
+struct LinearRow {
+    std::map<std::string, SymExpr> var_coeffs;
+    SymExpr constant = sym_const(0.0);
+};
+
+std::optional<LinearRow> extract_linear_row(const SymExpr& equation, const std::vector<std::string>& vars) {
+    LinearRow row;
+    for (const auto& v : vars) {
+        row.var_coeffs[v] = sym_const(0.0);
+    }
+    flatten_linear_sum(sym_simplify(clone_expr(equation)), 1.0, vars, row.var_coeffs, row.constant);
+    return row;
+}
+
+bool try_eval_const(const SymExpr& expr, double& out) {
+    const SymExpr simplified = sym_simplify(clone_expr(expr));
+    if (simplified.op != SymOp::Const) {
+        return false;
+    }
+    out = simplified.value;
+    return true;
+}
+
+std::expected<std::map<std::string, SymExpr>, SymSolveError> solve_numeric_system(
+    std::vector<std::vector<double>> a, std::vector<double> b, const std::vector<std::string>& vars) {
+    const int n = static_cast<int>(vars.size());
+    for (int col = 0; col < n; ++col) {
+        int pivot = col;
+        for (int row = col + 1; row < n; ++row) {
+            if (std::abs(a[static_cast<size_t>(row)][static_cast<size_t>(col)]) >
+                std::abs(a[static_cast<size_t>(pivot)][static_cast<size_t>(col)])) {
+                pivot = row;
+            }
+        }
+        std::swap(a[static_cast<size_t>(col)], a[static_cast<size_t>(pivot)]);
+        std::swap(b[static_cast<size_t>(col)], b[static_cast<size_t>(pivot)]);
+        const double diag = a[static_cast<size_t>(col)][static_cast<size_t>(col)];
+        if (std::abs(diag) < 1e-14) {
+            return std::unexpected(SymSolveError{"singular linear system"});
+        }
+        for (int row = col + 1; row < n; ++row) {
+            const double factor = a[static_cast<size_t>(row)][static_cast<size_t>(col)] / diag;
+            for (int k = col; k < n; ++k) {
+                a[static_cast<size_t>(row)][static_cast<size_t>(k)] -=
+                    factor * a[static_cast<size_t>(col)][static_cast<size_t>(k)];
+            }
+            b[static_cast<size_t>(row)] -= factor * b[static_cast<size_t>(col)];
+        }
+    }
+
+    std::vector<double> x(static_cast<size_t>(n), 0.0);
+    for (int i = n - 1; i >= 0; --i) {
+        double sum = b[static_cast<size_t>(i)];
+        for (int j = i + 1; j < n; ++j) {
+            sum -= a[static_cast<size_t>(i)][static_cast<size_t>(j)] * x[static_cast<size_t>(j)];
+        }
+        const double diag = a[static_cast<size_t>(i)][static_cast<size_t>(i)];
+        if (std::abs(diag) < 1e-14) {
+            return std::unexpected(SymSolveError{"singular linear system"});
+        }
+        x[static_cast<size_t>(i)] = sum / diag;
+    }
+
+    std::map<std::string, SymExpr> solution;
+    for (int i = 0; i < n; ++i) {
+        solution[vars[static_cast<size_t>(i)]] = sym_const(x[static_cast<size_t>(i)]);
+    }
+    return solution;
+}
+
+} // namespace
+
+std::expected<std::map<std::string, SymExpr>, SymSolveError> sym_solve_linear(
+    const std::vector<SymExpr>& equations, const std::vector<std::string>& vars) {
+    if (vars.empty()) {
+        return std::unexpected(SymSolveError{"no variables specified"});
+    }
+    if (equations.size() != vars.size()) {
+        return std::unexpected(SymSolveError{"equation count must match variable count"});
+    }
+
+    std::vector<LinearRow> rows;
+    rows.reserve(equations.size());
+    for (const auto& equation : equations) {
+        auto row = extract_linear_row(equation, vars);
+        if (!row) {
+            return std::unexpected(SymSolveError{"failed to extract linear form"});
+        }
+        rows.push_back(std::move(*row));
+    }
+
+    bool all_numeric = true;
+    std::vector<std::vector<double>> a(
+        equations.size(), std::vector<double>(vars.size(), 0.0));
+    std::vector<double> b(equations.size(), 0.0);
+
+    for (std::size_t i = 0; i < equations.size(); ++i) {
+        for (std::size_t j = 0; j < vars.size(); ++j) {
+            double value = 0.0;
+            if (!try_eval_const(rows[i].var_coeffs.at(vars[j]), value)) {
+                all_numeric = false;
+                break;
+            }
+            a[i][j] = value;
+        }
+        if (!all_numeric) {
+            break;
+        }
+        double constant = 0.0;
+        if (!try_eval_const(rows[i].constant, constant)) {
+            all_numeric = false;
+            break;
+        }
+        b[i] = -constant;
+    }
+
+    if (all_numeric) {
+        return solve_numeric_system(std::move(a), std::move(b), vars);
+    }
+
+    if (vars.size() == 1) {
+        SymExpr coeff = std::move(rows.front().var_coeffs.at(vars.front()));
+        SymExpr constant = std::move(rows.front().constant);
+        std::map<std::string, SymExpr> solution;
+        solution.emplace(
+            vars.front(), sym_simplify(sym_div(sym_neg(std::move(constant)), std::move(coeff))));
+        return solution;
+    }
+
+    if (vars.size() == 2) {
+        const std::string& x = vars[0];
+        const std::string& y = vars[1];
+        SymExpr a_coef = std::move(rows[0].var_coeffs.at(x));
+        SymExpr b_coef = std::move(rows[0].var_coeffs.at(y));
+        SymExpr e_rhs = sym_neg(std::move(rows[0].constant));
+        SymExpr c_coef = std::move(rows[1].var_coeffs.at(x));
+        SymExpr d_coef = std::move(rows[1].var_coeffs.at(y));
+        SymExpr f_rhs = sym_neg(std::move(rows[1].constant));
+        const SymExpr det = sym_sub(
+            sym_mul(clone_expr(a_coef), clone_expr(d_coef)),
+            sym_mul(clone_expr(b_coef), clone_expr(c_coef)));
+        std::map<std::string, SymExpr> solution;
+        solution.emplace(
+            x,
+            sym_simplify(sym_div(
+                sym_sub(
+                    sym_mul(clone_expr(e_rhs), clone_expr(d_coef)),
+                    sym_mul(clone_expr(b_coef), clone_expr(f_rhs))),
+                clone_expr(det))));
+        solution.emplace(
+            y,
+            sym_simplify(sym_div(
+                sym_sub(
+                    sym_mul(clone_expr(a_coef), clone_expr(f_rhs)),
+                    sym_mul(clone_expr(e_rhs), clone_expr(c_coef))),
+                clone_expr(det))));
+        return solution;
+    }
+
+    return std::unexpected(SymSolveError{"symbolic solve supports 1 or 2 variables"});
 }
 
 } // namespace ms

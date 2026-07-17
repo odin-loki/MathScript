@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace ms {
 
@@ -64,5 +65,15 @@ struct SymParseError {
 };
 
 std::expected<SymExpr, SymParseError> sym_parse(const std::string& text);
+
+double sym_limit(const SymExpr& expr, const std::string& var, double point);
+SymExpr sym_series(const SymExpr& expr, const std::string& var, double point, int order);
+
+struct SymSolveError {
+    std::string message;
+};
+
+std::expected<std::map<std::string, SymExpr>, SymSolveError> sym_solve_linear(
+    const std::vector<SymExpr>& equations, const std::vector<std::string>& vars);
 
 } // namespace ms
