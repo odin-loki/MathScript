@@ -57,6 +57,13 @@ static uint64_t powmod(uint64_t base, uint64_t exp, uint64_t mod) {
     return result;
 }
 
+static uint64_t isqrt_u64(uint64_t n) {
+    uint64_t r = static_cast<uint64_t>(std::sqrt(static_cast<double>(n)));
+    while ((r + 1) <= n / (r + 1)) ++r;
+    while (r > 0 && r > n / r) --r;
+    return r;
+}
+
 static bool miller_rabin_witness(uint64_t n, uint64_t a, uint64_t d, int r) {
     uint64_t x = powmod(a, d, n);
     if (x == 1 || x == n - 1) return false;
@@ -105,7 +112,7 @@ std::vector<uint64_t> primes(uint64_t lo, uint64_t hi) {
     // Segmented sieve
     std::vector<bool> sieve(hi - lo + 1, true);
     if (lo == 1) sieve[0] = false;
-    uint64_t sqrthi = static_cast<uint64_t>(std::sqrt(static_cast<double>(hi))) + 1;
+    const uint64_t sqrthi = isqrt_u64(hi);
     for (uint64_t p = 2; p <= sqrthi; ++p) {
         if (!isprime(p)) continue;
         uint64_t start = ((lo + p - 1) / p) * p;
@@ -175,6 +182,7 @@ static void factor_recursive(uint64_t n, std::vector<uint64_t>& factors) {
 
 std::vector<uint64_t> factor(uint64_t n) {
     std::vector<uint64_t> factors;
+    factors.reserve(32);
     factor_recursive(n, factors);
     std::sort(factors.begin(), factors.end());
     return factors;
@@ -455,7 +463,8 @@ int kronecker_symbol(int64_t a, int64_t n) {
 
 Result<uint64_t> discrete_log(uint64_t g, uint64_t h, uint64_t p) {
     // Baby-step giant-step
-    uint64_t m = static_cast<uint64_t>(std::ceil(std::sqrt(static_cast<double>(p)))) + 1;
+    const uint64_t r = isqrt_u64(p);
+    const uint64_t m = r + (r * r < p ? 2u : 1u);
     std::unordered_map<uint64_t,uint64_t> table;
     uint64_t gj = 1;
     for (uint64_t j = 0; j < m; ++j) {
@@ -549,13 +558,6 @@ std::vector<std::pair<int64_t,int64_t>> convergents(
         k_prev = k_curr; k_curr = k_next;
     }
     return conv;
-}
-
-static uint64_t isqrt_u64(uint64_t n) {
-    uint64_t r = static_cast<uint64_t>(std::sqrt(static_cast<double>(n)));
-    while ((r + 1) <= n / (r + 1)) ++r;
-    while (r > 0 && r > n / r) --r;
-    return r;
 }
 
 struct u128 {
