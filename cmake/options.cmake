@@ -6,6 +6,15 @@ option(MS_BUILD_GUI "Build Qt6 IDE" OFF)
 # Tests
 option(MS_BUILD_TESTS "Build test suite" ON)
 
+if(EXISTS "${CMAKE_SOURCE_DIR}/vendor/googletest/CMakeLists.txt")
+    set(_MS_VENDOR_GTEST_DEFAULT ON)
+else()
+    set(_MS_VENDOR_GTEST_DEFAULT OFF)
+endif()
+option(MS_USE_VENDOR_GTEST
+    "Use vendored GoogleTest from vendor/googletest instead of FetchContent"
+    ${_MS_VENDOR_GTEST_DEFAULT})
+
 # Performance benchmarks (Google Benchmark)
 option(MS_BUILD_BENCHMARKS "Build performance benchmarks" OFF)
 

@@ -1,0 +1,3 @@
+# Vendored dependency versions (upstream URL and commit/tag)
+# Format: <name>  <version>  <url>  commit:<hash>
+googletest  1.14.0  https://github.com/google/googletest  commit:b76777a7af295eb14a6f7399a1c896514406925e
