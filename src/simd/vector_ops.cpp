@@ -146,6 +146,35 @@ double sum_scalar(std::span<const double> x) {
     return total;
 }
 
+double norm_l2_scalar(std::span<const double> x) {
+    double sum = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        sum += x[i] * x[i];
+    }
+    return std::sqrt(sum);
+}
+
+double norm_l2_avx2(std::span<const double> x) {
+    __m256d acc = _mm256_setzero_pd();
+    size_t i = 0;
+    const size_t n = x.size();
+    for (; i + 4 <= n; i += 4) {
+        const __m256d vx = _mm256_loadu_pd(x.data() + i);
+#if defined(__FMA__)
+        acc = _mm256_fmadd_pd(vx, vx, acc);
+#else
+        acc = _mm256_add_pd(acc, _mm256_mul_pd(vx, vx));
+#endif
+    }
+    alignas(32) double parts[4];
+    _mm256_store_pd(parts, acc);
+    double sum = parts[0] + parts[1] + parts[2] + parts[3];
+    for (; i < n; ++i) {
+        sum += x[i] * x[i];
+    }
+    return std::sqrt(sum);
+}
+
 double sum_avx2(std::span<const double> x) {
     __m256d acc = _mm256_setzero_pd();
     size_t i = 0;
@@ -286,6 +315,16 @@ double sum_squares(std::span<const double> x) {
         return 0.0;
     }
     return dot(x, x);
+}
+
+double norm_l2(std::span<const double> x) {
+    if (x.empty()) {
+        return 0.0;
+    }
+    if (active_kernel() == Kernel::Avx2) {
+        return norm_l2_avx2(x);
+    }
+    return norm_l2_scalar(x);
 }
 
 void abs(std::span<const double> x, std::span<double> out) {

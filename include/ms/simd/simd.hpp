@@ -25,6 +25,7 @@ void axpy(double alpha, std::span<const double> x, std::span<double> y);
 double dot(std::span<const double> a, std::span<const double> b);
 double sum(std::span<const double> x);
 double sum_squares(std::span<const double> x);
+double norm_l2(std::span<const double> x);
 void abs(std::span<const double> x, std::span<double> out);
 void exp_map(std::span<const double> x, std::span<double> out);
 

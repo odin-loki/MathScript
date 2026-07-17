@@ -133,6 +133,21 @@ static void BM_simd_dot(benchmark::State& state) {
 BENCHMARK(BM_simd_dot)->Arg(8)->Arg(64)->Arg(512)->Arg(4096)->Arg(1000000);
 
 // ---------------------------------------------------------------------------
+// simd::norm_l2
+// ---------------------------------------------------------------------------
+
+static void BM_simd_norm_l2(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const auto x = make_vec(n);
+    for (auto _ : state) {
+        const double result = norm_l2(x);
+        benchmark::DoNotOptimize(result);
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_simd_norm_l2)->Arg(1000000);
+
+// ---------------------------------------------------------------------------
 // simd::exp_map
 // ---------------------------------------------------------------------------
 

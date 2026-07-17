@@ -204,6 +204,88 @@ TEST(SimdTest, sum_squares_matches_manual_computation_with_tail) {
     EXPECT_NEAR(sum_squares(x), expected, 1e-12);
 }
 
+TEST(SimdTest, norm_l2_pythagorean_triple) {
+    std::vector<double> x{3.0, 4.0};
+    EXPECT_DOUBLE_EQ(norm_l2(x), 5.0);
+}
+
+TEST(SimdTest, norm_l2_empty_span_is_zero) {
+    std::vector<double> empty;
+    EXPECT_EQ(norm_l2(empty), 0.0);
+}
+
+TEST(SimdTest, norm_l2_single_element) {
+    std::vector<double> x{7.0};
+    EXPECT_DOUBLE_EQ(norm_l2(x), 7.0);
+}
+
+TEST(SimdTest, norm_l2_unit_vector) {
+    std::vector<double> x{1.0, 0.0, 0.0, 0.0};
+    EXPECT_DOUBLE_EQ(norm_l2(x), 1.0);
+}
+
+TEST(SimdTest, norm_l2_negative_values_match_positive) {
+    std::vector<double> pos{1.0, -2.0, 3.0, -4.0};
+    std::vector<double> neg{-1.0, 2.0, -3.0, 4.0};
+    EXPECT_NEAR(norm_l2(pos), norm_l2(neg), 1e-12);
+    EXPECT_NEAR(norm_l2(pos), std::sqrt(30.0), 1e-12);
+}
+
+TEST(SimdTest, norm_l2_non_multiple_of_vector_width_tail_7) {
+    std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+    double expected = 0.0;
+    for (double v : x) {
+        expected += v * v;
+    }
+    EXPECT_NEAR(norm_l2(x), std::sqrt(expected), 1e-12);
+}
+
+TEST(SimdTest, norm_l2_large_array_closed_form) {
+    constexpr size_t n = 1000;
+    std::vector<double> x(n);
+    std::iota(x.begin(), x.end(), 1.0);
+    const double sum_sq =
+        static_cast<double>(n) * (static_cast<double>(n) + 1.0) *
+        (2.0 * static_cast<double>(n) + 1.0) / 6.0;
+    EXPECT_NEAR(norm_l2(x), std::sqrt(sum_sq), 1e-6);
+}
+
+TEST(SimdTest, norm_l2_zero_vector) {
+    std::vector<double> x(16, 0.0);
+    EXPECT_DOUBLE_EQ(norm_l2(x), 0.0);
+}
+
+TEST(SimdTest, norm_l2_cross_check_against_naive_loop_various_sizes) {
+    for (const size_t n : {0, 1, 3, 4, 5, 7, 8, 15, 16, 17, 63, 64, 65, 200}) {
+        std::vector<double> x(n);
+        for (size_t i = 0; i < n; ++i) {
+            x[i] = static_cast<double>(i) * 0.25 - 1.0;
+        }
+        double sum_sq = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            sum_sq += x[i] * x[i];
+        }
+        EXPECT_NEAR(norm_l2(x), std::sqrt(sum_sq), 1e-9) << "mismatch at n=" << n;
+    }
+}
+
+TEST(SimdTest, norm_l2_cross_check_simd_matches_scalar_dispatch) {
+    const std::vector<double> x{1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0, 9.0};
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "1");
+#else
+    setenv("MS_SIMD_FORCE_SCALAR", "1", 1);
+#endif
+    const double scalar_ref = norm_l2(x);
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "0");
+#else
+    unsetenv("MS_SIMD_FORCE_SCALAR");
+#endif
+    const double simd_result = norm_l2(x);
+    EXPECT_NEAR(simd_result, scalar_ref, 1e-12);
+}
+
 TEST(SimdTest, sub_matches_scalar) {
     std::vector<double> a(16);
     std::vector<double> b(16);
