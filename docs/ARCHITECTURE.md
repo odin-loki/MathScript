@@ -145,7 +145,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-**370 CTest suites** as of Wave 218 (CHANGELOG); each suite is one GoogleTest executable or CLI smoke target. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
+**374 CTest suites** as of Wave 220 (CHANGELOG); each suite is one GoogleTest executable or CLI smoke target. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
 
 | Directory | Contents |
 |-----------|----------|
@@ -154,7 +154,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 | **`tests/integration/`** | 146 cross-module pipeline tests: REPL→plot→save, session roundtrip, `mathscriptc` multi-line scripts, wave pipelines (57–99+), JIT/REPL parity, scientific and tensor decomposition pipelines. |
 | **`tests/compliance/`** | `test_plugin_smoke`; 20 compile-fail/pass rule pairs when `MS_BUILD_PLUGIN=ON` (`compliance_*`). Each rule has `fail.cpp` + `ok.cpp`; `[[ms::unsafe]]` escape where applicable. When `MS_UNSAFE` is defined, also runs `compliance_unsafe_annotation`. |
 | **`tests/fuzz/`** | Seven libFuzzer targets (built when `MS_BUILD_FUZZ=ON`): `fuzz_special_fns`, `fuzz_matrix_ops`, `fuzz_repl_input`, `fuzz_sym_parser`, `fuzz_poly_ops`, `fuzz_bignum`, `fuzz_mpi_message`. Corpus seeds under `tests/fuzz/corpus/<target>/`. |
-| **`tests/performance/`** | Google Benchmark targets (`bench_matmul`, `bench_fft`, `bench_linalg`, `bench_repl`, `bench_special`, `bench_stats`, …) built when `MS_BUILD_BENCHMARKS=ON`. |
+| **`tests/performance/`** | Google Benchmark targets (`bench_matmul`, `bench_fft`, `bench_linalg`, `bench_repl`, `bench_special`, `bench_stats`, `bench_signal_filters`, …) built when `MS_BUILD_BENCHMARKS=ON`. Windows: `.\build.ps1 -Benchmark` uses `build-msvc-bench` and runs matmul/fft smoke. Linux: `scripts/bench_smoke.sh` covers all registered targets. |
 
 CUDA-off is the CI default. Coverage and Valgrind scripts (`scripts/coverage_report.sh`, `scripts/valgrind_tests.sh`) expect a Debug Linux build with tests enabled.
 

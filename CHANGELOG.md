@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 220 — Remaining-TODO P0: No-Exceptions, Vendor GTest, Crypto/FEM/CFD, Sym CAS, GUI Thread)
+
+8 parallel subagents closing the highest-priority items from `MathScript_Remaining_TODO.md`.
+
+### Fixed / Infrastructure (Wave 220)
+- **Linux `-fno-exceptions` unblock:** removed `throw` from `matrix.hpp` (ragged init → empty 0×0) and `numa_allocator.hpp` (fallback to `AlignedAllocator`).
+- **Offline builds:** vendored GoogleTest v1.14.0 under `vendor/googletest/`; `MS_USE_VENDOR_GTEST` defaults ON when present.
+- **`UNSAFE_REVIEW.md`** refreshed — 40 approved sites with per-file match counts.
+
+### Added (Wave 220)
+- **`ms::crypto`** — `sha256`, `sha512`, `hmac_sha256` + hex helpers (pure C++, NIST vectors). 20 tests in `test_crypto.cpp`.
+- **`ms::fem`** — 1D Poisson FEM MVP: `mesh1d`, P1 assembly, Dirichlet BCs, `solve_fem`. 12 tests in `test_fem.cpp`.
+- **`ms::cfd`** — 1D upwind FVM advection: `grid1d`, `upwind_fvm_advection`, `run_advection`. 15 tests in `test_cfd.cpp`.
+- **`ms::symbolic`** — `sym_limit`, `sym_series`, `sym_solve_linear`. 17 tests in `test_symbolic_cas.cpp`.
+- **`ms::gui`** — `ReplWorker` on background `QThread`; Run/Run Script no longer block UI (when `MS_BUILD_GUI=ON`).
+
+### Total Wave 220
+- **374 CTest suites — all passing** (+4 new: crypto, fem, cfd, symbolic_cas). Eight branches merged; one conflict in `tests/CMakeLists.txt` resolved.
+
 ## [1.0.0] — 2026-07-17 (Wave 219 — Performance Pass II: Welch, DF2T Filter, Fast RFFT, Poly Batch, Median, FMA, Percentile)
 
 8 parallel subagents continuing hot-path profiling and optimization across `signal`, `fft`, `poly`, `simd`, `stats`, `bench`.
