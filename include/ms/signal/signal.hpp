@@ -2,6 +2,7 @@
 
 #include <array>
 #include <complex>
+#include <span>
 #include <vector>
 #include "ms/core/matrix.hpp"
 #include "ms/error/error_types.hpp"
@@ -173,6 +174,16 @@ IirCoeffs cheby2(int order, double rs_db, double cutoff, double fs,
 // returns an empty vector.
 std::vector<double> filter(const std::vector<double>& b, const std::vector<double>& a,
                             const std::vector<double>& x);
+
+// Same DF2T direct-form IIR/FIR as filter(), writing into y (length must be >= x.size()).
+// Empty x or empty b is a no-op; y is not modified in those cases.
+void filter(const std::vector<double>& b, const std::vector<double>& a,
+            std::span<const double> x, std::span<double> y);
+
+// In-place variant of filter(): overwrites x_y with the filtered signal. Empty x or empty b
+// is a no-op.
+void filter_in_place(const std::vector<double>& b, const std::vector<double>& a,
+                     std::span<double> x_y);
 
 // Zero-phase filtering: applies ms::filter forward, reverses, applies ms::filter again, then
 // reverses back, cancelling the phase delay a single causal pass would introduce (the standard
