@@ -31,6 +31,25 @@ void add_avx2(std::span<const double> a, std::span<const double> b, std::span<do
     }
 }
 
+void sub_scalar(std::span<const double> a, std::span<const double> b, std::span<double> out) {
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = a[i] - b[i];
+    }
+}
+
+void sub_avx2(std::span<const double> a, std::span<const double> b, std::span<double> out) {
+    size_t i = 0;
+    const size_t n = out.size();
+    for (; i + 4 <= n; i += 4) {
+        const __m256d va = _mm256_loadu_pd(a.data() + i);
+        const __m256d vb = _mm256_loadu_pd(b.data() + i);
+        _mm256_storeu_pd(out.data() + i, _mm256_sub_pd(va, vb));
+    }
+    for (; i < n; ++i) {
+        out[i] = a[i] - b[i];
+    }
+}
+
 void mul_scalar(std::span<const double> a, std::span<const double> b, std::span<double> out) {
     for (size_t i = 0; i < out.size(); ++i) {
         out[i] = a[i] * b[i];
@@ -140,6 +159,25 @@ double sum_avx2(std::span<const double> x) {
     return total;
 }
 
+void abs_scalar(std::span<const double> x, std::span<double> out) {
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = std::abs(x[i]);
+    }
+}
+
+void abs_avx2(std::span<const double> x, std::span<double> out) {
+    const __m256d sign_mask = _mm256_set1_pd(-0.0);
+    size_t i = 0;
+    const size_t n = out.size();
+    for (; i + 4 <= n; i += 4) {
+        const __m256d vx = _mm256_loadu_pd(x.data() + i);
+        _mm256_storeu_pd(out.data() + i, _mm256_andnot_pd(sign_mask, vx));
+    }
+    for (; i < n; ++i) {
+        out[i] = std::abs(x[i]);
+    }
+}
+
 void exp_map_scalar(std::span<const double> x, std::span<double> out) {
     for (size_t i = 0; i < out.size(); ++i) {
         out[i] = std::exp(x[i]);
@@ -190,6 +228,14 @@ void add(std::span<const double> a, std::span<const double> b, std::span<double>
     }
 }
 
+void sub(std::span<const double> a, std::span<const double> b, std::span<double> out) {
+    if (active_kernel() == Kernel::Avx2) {
+        sub_avx2(a, b, out);
+    } else {
+        sub_scalar(a, b, out);
+    }
+}
+
 void mul(std::span<const double> a, std::span<const double> b, std::span<double> out) {
     if (active_kernel() == Kernel::Avx2) {
         mul_avx2(a, b, out);
@@ -236,6 +282,14 @@ double sum_squares(std::span<const double> x) {
         return 0.0;
     }
     return dot(x, x);
+}
+
+void abs(std::span<const double> x, std::span<double> out) {
+    if (active_kernel() == Kernel::Avx2) {
+        abs_avx2(x, out);
+    } else {
+        abs_scalar(x, out);
+    }
 }
 
 void exp_map(std::span<const double> x, std::span<double> out) {
