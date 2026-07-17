@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 228 — Performance Pass X: profiling certification closed)
+
+8 parallel subagents — final certification audit of all remaining `src/` modules and benchmark infra gaps.
+
+### Performance (Wave 228)
+- **Certification audit** — `numthy`, `cplx`, `optim`, `diffgeo`, `domain`, `runtime/cpu`, `cpu/blas` certified **no changes**; all 35 `src/` libraries audited Waves 218–228.
+- **`bench_finance`** — `BM_BlackScholes`, `BM_MCEuropean`, `BM_Entropy` for Wave 227 finance/info/combo opts (smoke-safe sizes).
+- **Benchmark infra** — `linux-gcc13.json` schema completed for all benchmark keys; smoke guard verified (total ≤120 s, no single bench >15 s at `min_time=0.001s`).
+- **docs/PERFORMANCE.md** — Wave 228 certification section; explicit **PROFILING ITERATION DONE** sign-off.
+- **Total Wave 228: 374 CTest suites — all passing**. **27-bench smoke OK** on merged baseline; **`bench_finance`** (28th target) on `wave228/finance-bench`. **Profiling iteration complete (Waves 218–228).** Do not start Wave 229 profiling.
+
 ## [1.0.0] — 2026-07-18 (Wave 227 — Performance Pass IX: profiling iteration closed)
 
 8 parallel subagents — final closure across uncovered modules, new benches, and baseline infra.

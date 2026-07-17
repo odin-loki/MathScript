@@ -1,13 +1,13 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (reconciled against `main` @ Wave 227 — **374 CTest suites**, **27-bench smoke verified on MSVC**)
+**Updated:** 2026-07-18 (reconciled against `main` @ Wave 228 — **374 CTest suites**, **27-bench smoke verified on MSVC**; `bench_finance` on parallel branch)
 
 ---
 
-## Performance profiling ✅ COMPLETE (Waves 218–227)
+## Performance profiling ✅ COMPLETE (Waves 218–228)
 
-Ten profiling waves optimized all identified hot paths across signal, fft, simd, stats, linalg, graph, image, tensorops, topo, geo, ode/pde/cfd, ml/prob/control, interp, crypto, fem, and benchmark infra.
+Eleven profiling waves optimized and **certified** all identified hot paths across every `src/` module (35 libraries). Wave 228 was a certification pass — not a new optimization sweep.
 
 | Wave | Focus |
 |------|--------|
@@ -15,18 +15,21 @@ Ten profiling waves optimized all identified hot paths across signal, fft, simd,
 | **225** | tensorops einsum, imfilter/sharpen/LoG, Floyd-Warshall, CZT, hilbert buffers, smoke fix |
 | **226** | topo/geo/ode-pde/ml benches, smoke-safe args, MSVC baseline populated, REPL micro-opts |
 | **227** | quantum/bignum/compress benches, finance/symbolic/frameworks opts, Linux+MSVC baseline sync, `docs/PERFORMANCE.md` |
+| **228** | Certification audit (`numthy`, `cplx`, `optim`, `diffgeo`, `domain`, `runtime/cpu`); `bench_finance`; Linux schema + smoke guard |
 
-**No further profiling waves planned.** Remaining: Linux CI `bench_regression.sh --write-baseline` only.
+**PROFILING ITERATION DONE — do not start Wave 229 profiling.**
+
+Remaining perf infra only: Linux CI `bench_regression.sh --write-baseline` to populate null medians.
 
 ---
 
-## Next: Feature work (Wave 228+)
+## Next: Feature work (Wave 229+)
 
 | Wave | Focus |
 |------|--------|
-| **228** | crypto AES/ChaCha + fem 2D + cfd 2D |
-| **228–229** | sym transforms + CUDA/MPI/plugin |
-| **230–234** | GUI polish + REPL bindings |
-| **235+** | Remaining API gaps |
+| **229** | crypto AES/ChaCha + fem 2D + cfd 2D |
+| **229–230** | sym transforms + CUDA/MPI/plugin |
+| **231–235** | GUI polish + REPL bindings |
+| **236+** | Remaining API gaps |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

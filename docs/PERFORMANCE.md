@@ -1,6 +1,6 @@
 # Performance Guide
 
-MathScript completed a ten-wave profiling iteration (Waves **218–227**) covering hot paths across all major modules. See [`CHANGELOG.md`](../CHANGELOG.md) for per-wave optimizations.
+MathScript completed an eleven-wave profiling iteration (Waves **218–228**) covering hot paths across all `src/` modules. See [`CHANGELOG.md`](../CHANGELOG.md) for per-wave optimizations.
 
 ## Modules covered (Waves 218–227)
 
@@ -38,4 +38,30 @@ These paths are deliberately sub-optimal for correctness, API simplicity, or sma
 | `geo::convex_hull_3d` | O(n³) face enumeration | Small point sets; research/education path. |
 | `geo::minkowski_sum_convex` | O(n·m) brute fallback | Used when either polygon has fewer than 3 vertices. |
 
-No further profiling waves are planned.
+## Profiling certification (Wave 228)
+
+Wave **228** is a **certification pass**, not a new optimization sweep. Eight parallel subagents re-audited every remaining `src/` module not fully signed off in Waves 218–227, plus benchmark infra gaps (finance bench coverage, Linux baseline schema, smoke timing guard).
+
+**Scope:** all **35** library directories under `src/` (excluding `exe`/`gui`/`plugin` runtime stubs) are now audited across Waves **218–228**. Waves 218–227 applied hot-path opts; Wave 228 confirms closure on gaps.
+
+### Wave 228 audit targets
+
+| Area | Modules / files | Outcome |
+|------|-----------------|---------|
+| Number theory | `numthy` | Certified — no changes |
+| Complex / optimization | `cplx`, `optim` | Certified — no changes |
+| Differential geometry / legacy | `diffgeo`, `domain` | Certified — no changes |
+| CPU kernels | `runtime/cpu`, `cpu/blas` | Certified — no changes |
+| Finance / info / combo | `finance`, `info`, `combo` | Wave 227 opts confirmed; **`bench_finance`** added (Wave 228) |
+| Benchmark infra | `linux-gcc13.json`, smoke guard | Schema completed; smoke args verified ≤120 s total |
+
+### Modules certified no-change (Wave 228)
+
+These modules were profiled in Wave 228 and required **no code changes** — hot loops already use appropriate reserves, hoisted invariants, or are intentionally small-input paths:
+
+- `numthy` — Pollard rho, GCD, modular exp already reserve and avoid redundant `sqrt`
+- `cplx`, `optim` — vector ops and gradient/line-search loops already optimal from Waves 218–226 benches
+- `diffgeo`, `domain` — geodesic trajectory reserved in Wave 226; domain helpers are O(n) legacy stubs
+- `runtime`, `cpu` — BLAS/dgemm micro-kernels already tuned in Waves 218–220; no safe MSVC micro-opt found
+
+**PROFILING ITERATION DONE.** Do not start Wave 229 profiling.
