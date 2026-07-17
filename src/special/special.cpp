@@ -233,9 +233,11 @@ double bessel_y0_impl(double x) {
     const double half = 0.5 * x;
     double fact = 1.0;
     double sum = 0.0;
+    double sign = 1.0;
     for (int k = 1; k < 120; ++k) {
         fact *= half / static_cast<double>(k);
-        sum += std::pow(-1.0, static_cast<double>(k + 1)) * fact * fact * harmonic(k);
+        sum += sign * fact * fact * harmonic(k);
+        sign = -sign;
         if (fact * fact <= 1e-16) {
             break;
         }
