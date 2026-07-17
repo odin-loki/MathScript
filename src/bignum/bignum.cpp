@@ -40,6 +40,7 @@ BigInt::BigInt(const std::string& s) {
     if (!str.empty() && str[0] == '-') { negative = true; str = str.substr(1); }
     if (!str.empty() && str[0] == '+') str = str.substr(1);
     digits.clear();
+    digits.reserve((str.size() + 8) / 9);
     // Parse from right in chunks of 9
     int i = (int)str.size();
     while (i > 0) {
@@ -83,7 +84,9 @@ bool BigInt::is_one()  const { return digits.size()==1 && digits[0]==1 && !negat
 
 std::string BigInt::to_string() const {
     if (is_zero()) return "0";
-    std::string s = negative ? "-" : "";
+    std::string s;
+    s.reserve((negative ? 1 : 0) + digits.size() * 9);
+    if (negative) s += '-';
     s += std::to_string(digits.back());
     for (int i=(int)digits.size()-2; i>=0; --i) {
         std::string chunk = std::to_string(digits[i]);
@@ -141,7 +144,9 @@ bool BigInt::operator<(const BigInt& o) const {
 }
 
 BigInt BigInt::add_abs(const BigInt& a, const BigInt& b) {
-    BigInt r; r.digits.clear();
+    BigInt r;
+    r.digits.clear();
+    r.digits.reserve(std::max(a.digits.size(), b.digits.size()) + 1);
     uint64_t carry = 0;
     for (size_t i=0; i<std::max(a.digits.size(),b.digits.size())||carry; ++i) {
         uint64_t sum = carry;
@@ -215,7 +220,10 @@ std::pair<BigInt, BigInt> BigInt::divmod(const BigInt& a, const BigInt& b) {
     // Simple long division in base BASE
     BigInt divisor=b; divisor.negative=false;
     BigInt remainder; remainder.digits.clear();
+    remainder.digits.reserve(a.digits.size() + 1);
     BigInt quotient; quotient.digits.resize(a.digits.size(),0);
+    BigInt t;
+    t.negative = false;
     for (int i=(int)a.digits.size()-1;i>=0;--i) {
         remainder.digits.insert(remainder.digits.begin(), a.digits[i]);
         remainder.trim();
@@ -223,11 +231,11 @@ std::pair<BigInt, BigInt> BigInt::divmod(const BigInt& a, const BigInt& b) {
         uint32_t lo=0,hi=BASE-1;
         while (lo<hi) {
             uint32_t mid=(lo+hi+1)/2;
-            BigInt t(0LL); t.digits={mid};
+            t.digits.assign(1, mid);
             if ((t*divisor).cmp_abs(remainder)<=0) lo=mid; else hi=mid-1;
         }
         quotient.digits[i]=lo;
-        BigInt t(0LL); t.digits={lo};
+        t.digits.assign(1, lo);
         remainder=remainder-t*divisor;
         if (remainder.is_zero()) remainder.digits={0};
     }
@@ -263,7 +271,7 @@ std::pair<BigInt, BigInt> bigint_divmod(const BigInt& a, const BigInt& b) {
 
 BigInt bigint_gcd(BigInt a, BigInt b) {
     a.negative=false; b.negative=false;
-    while (!b.is_zero()) { BigInt t=a%b; a=b; b=t; }
+    while (!b.is_zero()) { BigInt t=std::move(a)%b; a=std::move(b); b=std::move(t); }
     return a;
 }
 
@@ -358,7 +366,7 @@ BigInt bigint_fibonacci(int n) {
     if (n<=0) return BigInt(0LL);
     if (n==1) return BigInt(1LL);
     BigInt a(0LL), b(1LL);
-    for (int i=2;i<=n;++i) { BigInt c=a+b; a=b; b=c; }
+    for (int i=2;i<=n;++i) { BigInt c=std::move(a)+b; a=std::move(b); b=std::move(c); }
     return b;
 }
 

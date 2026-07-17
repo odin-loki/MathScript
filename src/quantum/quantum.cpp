@@ -61,8 +61,10 @@ Ket op_apply(const DensityMatrix& op, const Ket& psi) {
     int m = static_cast<int>(op.size());
     Ket result(m, C(0.0));
     for (int i = 0; i < m; ++i)
-        for (int j = 0; j < (int)psi.size(); ++j)
+        for (int j = 0; j < (int)psi.size(); ++j) {
+            if (std::norm(op[i][j]) < 1e-30) continue;
             result[i] += op[i][j] * psi[j];
+        }
     return result;
 }
 
@@ -212,25 +214,39 @@ Ket tensor_product_states(const Ket& psi1, const Ket& psi2) {
 // ---- Commutator / anti-commutator ----
 
 DensityMatrix commutator(const DensityMatrix& A, const DensityMatrix& B) {
-    auto AB = matmul_dm(A, B);
-    auto BA = matmul_dm(B, A);
-    int n = static_cast<int>(AB.size());
-    DensityMatrix C(n, std::vector<::ms::quantum::C>(n));
+    int n = static_cast<int>(A.size());
+    DensityMatrix result(n, std::vector<::ms::quantum::C>(n, 0.0));
     for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            C[i][j] = AB[i][j] - BA[i][j];
-    return C;
+        for (int l = 0; l < n; ++l) {
+            const C a_il = A[i][l];
+            const C b_il = B[i][l];
+            const bool a_nz = std::norm(a_il) >= 1e-30;
+            const bool b_nz = std::norm(b_il) >= 1e-30;
+            if (!a_nz && !b_nz) continue;
+            for (int j = 0; j < n; ++j) {
+                if (a_nz) result[i][j] += a_il * B[l][j];
+                if (b_nz) result[i][j] -= b_il * A[l][j];
+            }
+        }
+    return result;
 }
 
 DensityMatrix anticommutator(const DensityMatrix& A, const DensityMatrix& B) {
-    auto AB = matmul_dm(A, B);
-    auto BA = matmul_dm(B, A);
-    int n = static_cast<int>(AB.size());
-    DensityMatrix C(n, std::vector<::ms::quantum::C>(n));
+    int n = static_cast<int>(A.size());
+    DensityMatrix result(n, std::vector<::ms::quantum::C>(n, 0.0));
     for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            C[i][j] = AB[i][j] + BA[i][j];
-    return C;
+        for (int l = 0; l < n; ++l) {
+            const C a_il = A[i][l];
+            const C b_il = B[i][l];
+            const bool a_nz = std::norm(a_il) >= 1e-30;
+            const bool b_nz = std::norm(b_il) >= 1e-30;
+            if (!a_nz && !b_nz) continue;
+            for (int j = 0; j < n; ++j) {
+                if (a_nz) result[i][j] += a_il * B[l][j];
+                if (b_nz) result[i][j] += b_il * A[l][j];
+            }
+        }
+    return result;
 }
 
 // ---- QFT gate ----
