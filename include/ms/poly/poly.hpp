@@ -5,6 +5,7 @@
 #include <complex>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -13,6 +14,9 @@ namespace poly {
 
 // Evaluate polynomial (Horner) at x — returns {value}
 std::vector<double> poly_eval(const std::vector<double>& coeffs, double x);
+
+// Evaluate polynomial (Horner) at many x — one value per element of xs
+std::vector<double> poly_eval_at(const std::vector<double>& coeffs, std::span<const double> xs);
 
 // Arithmetic
 std::vector<double> poly_add(const std::vector<double>& a, const std::vector<double>& b);
@@ -286,6 +290,7 @@ PartialFractionResult poly_partial_fractions(const std::vector<double>& numerato
 
 // Backward-compat aliases (unqualified namespace ms::)
 using poly::poly_eval;
+using poly::poly_eval_at;
 using poly::poly_add;
 using poly::poly_sub;
 using poly::poly_mul;
