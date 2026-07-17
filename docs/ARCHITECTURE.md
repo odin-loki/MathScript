@@ -145,7 +145,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-**374 CTest suites** as of Wave 226 (CHANGELOG); profiling passes 218–226 complete; **25** benchmark executables in smoke. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
+**374 CTest suites** as of Wave 227 (CHANGELOG); profiling passes 218–227 complete; **25** benchmark executables in smoke. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
 
 | Directory | Contents |
 |-----------|----------|
@@ -174,7 +174,7 @@ Triggered on push/PR to `main` (concurrency group cancels in-flight runs on the 
 
 ### Performance benchmarks
 
-Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). On Windows MSVC: `.\build.ps1 -Benchmark` configures `build-msvc-bench` with benchmarks and tests enabled, builds all targets, and runs a short `bench_matmul` / `bench_fft` smoke. CI **`benchmark-linux`** runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`.
+Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). On Windows MSVC: `.\build.ps1 -Benchmark` configures `build-msvc-bench` with benchmarks and tests enabled, builds all targets, and runs smoke on all **25** registered executables (`--benchmark_min_time=0.001s`). CI **`benchmark-linux`** runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`. See [`PERFORMANCE.md`](PERFORMANCE.md) for smoke policy and intentional remaining complexity.
 
 Regression detection compares JSON output from Google Benchmark against `tests/performance/baselines/linux-gcc13.json` (Linux CI) and `tests/performance/baselines/msvc-release.json` (Windows local). A run more than 10% slower than the stored median fails (`MS_BENCH_TOLERANCE`, default 10). Skip compare for smoke-only runs: `MS_BENCH_REGRESSION=off`.
 

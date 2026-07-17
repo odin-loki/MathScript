@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 227 — Performance Pass IX: profiling iteration closed)
+
+Documentation and verification closure for the ten-wave profiling iteration (Waves 218–227).
+
+### Performance (Wave 227)
+- **docs/PERFORMANCE.md** — audit of remaining intentional O(n²) paths (`dft_magnitude`, `bottleneck_distance`, `convex_hull_3d`, Minkowski fallback); smoke/regression policy; baseline status.
+- **Verification** — full `.\build.ps1 -Test` and `.\build.ps1 -Benchmark` on MSVC.
+- **Total Wave 227: 374 CTest suites — all passing**. **25-bench smoke OK**. **Profiling iteration complete (Waves 218–227).** No further profiling waves planned; Linux CI `bench_regression.sh --write-baseline` remains.
+
 ## [1.0.0] — 2026-07-18 (Wave 226 — Performance Pass VIII: final sign-off)
 
 8 parallel subagents — final profiling closure across remaining modules and benchmark infra.
