@@ -7,6 +7,10 @@
 
 #include "ms/fft/fft.hpp"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 using namespace ms;
 
 static void BM_fft(benchmark::State& state) {
