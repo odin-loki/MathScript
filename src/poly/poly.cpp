@@ -15,20 +15,14 @@
 namespace ms {
 namespace poly {
 
-std::vector<double> poly_eval(const std::vector<double>& coeffs, double x) {
-    double value = 0.0;
-    for (size_t i = coeffs.size(); i > 0; --i) {
-        value = value * x + coeffs[i - 1];
-    }
-    return {value};
-}
-
 namespace {
 
 double horner_scalar(const std::vector<double>& coeffs, double x) {
+    const double* c = coeffs.data();
+    const size_t n = coeffs.size();
     double value = 0.0;
-    for (size_t i = coeffs.size(); i > 0; --i) {
-        value = value * x + coeffs[i - 1];
+    for (size_t i = n; i > 0; --i) {
+        value = value * x + c[i - 1];
     }
     return value;
 }
@@ -61,24 +55,31 @@ void horner_simd4(const std::vector<double>& coeffs,
 
 } // namespace
 
+std::vector<double> poly_eval(const std::vector<double>& coeffs, double x) {
+    return {horner_scalar(coeffs, x)};
+}
+
 std::vector<double> poly_eval_at(const std::vector<double>& coeffs, std::span<const double> xs) {
-    std::vector<double> out(xs.size(), 0.0);
-    if (xs.empty()) {
+    const size_t nx = xs.size();
+    std::vector<double> out(nx, 0.0);
+    if (nx == 0) {
         return out;
     }
 
     const bool use_simd = coeffs.size() >= 4;
+    const double* px = xs.data();
+    double* po = out.data();
 
     size_t i = 0;
     if (use_simd) {
-        for (; i + 4 <= xs.size(); i += 4) {
-            horner_simd4(coeffs, xs[i], xs[i + 1], xs[i + 2], xs[i + 3],
-                         out[i], out[i + 1], out[i + 2], out[i + 3]);
+        for (; i + 4 <= nx; i += 4) {
+            horner_simd4(coeffs, px[i], px[i + 1], px[i + 2], px[i + 3],
+                         po[i], po[i + 1], po[i + 2], po[i + 3]);
         }
     }
 
-    for (; i < xs.size(); ++i) {
-        out[i] = horner_scalar(coeffs, xs[i]);
+    for (; i < nx; ++i) {
+        po[i] = horner_scalar(coeffs, px[i]);
     }
 
     return out;
@@ -112,10 +113,16 @@ std::vector<double> poly_mul(const std::vector<double>& a, const std::vector<dou
     if (a.empty() || b.empty()) {
         return {};
     }
-    std::vector<double> out(a.size() + b.size() - 1, 0.0);
-    for (size_t i = 0; i < a.size(); ++i) {
-        for (size_t j = 0; j < b.size(); ++j) {
-            out[i + j] += a[i] * b[j];
+    const size_t na = a.size();
+    const size_t nb = b.size();
+    std::vector<double> out(na + nb - 1, 0.0);
+    const double* pa = a.data();
+    const double* pb = b.data();
+    double* po = out.data();
+    for (size_t i = 0; i < na; ++i) {
+        const double ai = pa[i];
+        for (size_t j = 0; j < nb; ++j) {
+            po[i + j] += ai * pb[j];
         }
     }
     return out;
@@ -914,7 +921,7 @@ std::vector<std::pair<int64_t, int64_t>> rational_root_candidates(uint64_t a0, u
 // pre-filter; the actual accept/reject decision is made by checking that
 // synthetic division leaves (near-)zero remainder, below.
 bool looks_like_root(const std::vector<double>& p, int64_t num, int64_t den, double tol) {
-    const double val = poly_eval(p, static_cast<double>(num) / static_cast<double>(den))[0];
+    const double val = horner_scalar(p, static_cast<double>(num) / static_cast<double>(den));
     double scale = 1.0;
     for (double c : p) scale = std::max(scale, std::abs(c));
     return std::abs(val) <= tol * scale;

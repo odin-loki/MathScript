@@ -13,19 +13,30 @@ namespace compress {
 // ========================== RLE ==========================
 // Format: [count][byte] pairs (max run 255)
 Bytes run_length_encode(const Bytes& data) {
-    Bytes out; size_t i=0, n=data.size();
-    while (i<n) {
-        uint8_t v=data[i]; uint8_t cnt=1;
-        while (i+cnt<n && data[i+cnt]==v && cnt<255) ++cnt;
-        out.push_back(cnt); out.push_back(v);
-        i+=cnt;
+    Bytes out;
+    out.reserve(data.size() * 2);
+    size_t i = 0;
+    const size_t n = data.size();
+    while (i < n) {
+        uint8_t v = data[i];
+        uint8_t cnt = 1;
+        while (i + cnt < n && data[i + cnt] == v && cnt < 255) ++cnt;
+        out.push_back(cnt);
+        out.push_back(v);
+        i += cnt;
     }
     return out;
 }
 Bytes run_length_decode(const Bytes& data) {
     Bytes out;
-    for (size_t i=0;i+1<data.size();i+=2)
-        for (uint8_t c=0;c<data[i];++c) out.push_back(data[i+1]);
+    size_t est = 0;
+    for (size_t i = 0; i + 1 < data.size(); i += 2) est += data[i];
+    out.reserve(est);
+    for (size_t i = 0; i + 1 < data.size(); i += 2) {
+        const uint8_t cnt = data[i];
+        const uint8_t v = data[i + 1];
+        out.insert(out.end(), cnt, v);
+    }
     return out;
 }
 Bytes rle_encode(const Bytes& data) { return run_length_encode(data); }
@@ -64,7 +75,8 @@ HuffmanResult huffman_encode(const Bytes& data) {
     build(root,"");
     // Encode
     std::string bits;
-    for (uint8_t b:data) bits+=codes[b];
+    bits.reserve(data.size() * 8);
+    for (uint8_t b : data) bits += codes[b];
     Bytes encoded; int padding=0;
     encoded=bits_to_bytes(bits,padding);
     std::vector<std::pair<uint8_t,std::string>> cb(codes.begin(),codes.end());
@@ -445,6 +457,9 @@ std::vector<LZ77Token> lz77_encode(const Bytes& data, int window, int lookahead)
 }
 Bytes lz77_decode(const std::vector<LZ77Token>& tokens) {
     Bytes out;
+    size_t est = 0;
+    for (const auto& t : tokens) est += t.length + 1;
+    out.reserve(est);
     for (auto&t:tokens) {
         if (t.offset>0&&t.length>0) {
             size_t start=out.size()-t.offset;
@@ -584,14 +599,18 @@ Bytes mtf_decode(const Bytes& data) {
 // ========================== Delta ==========================
 Bytes delta_encode(const Bytes& data) {
     if (data.empty()) return {};
-    Bytes out; out.push_back(data[0]);
-    for (size_t i=1;i<data.size();++i) out.push_back((uint8_t)(data[i]-data[i-1]));
+    Bytes out;
+    out.reserve(data.size());
+    out.push_back(data[0]);
+    for (size_t i = 1; i < data.size(); ++i) out.push_back(static_cast<uint8_t>(data[i] - data[i - 1]));
     return out;
 }
 Bytes delta_decode(const Bytes& data) {
     if (data.empty()) return {};
-    Bytes out; out.push_back(data[0]);
-    for (size_t i=1;i<data.size();++i) out.push_back((uint8_t)(out.back()+data[i]));
+    Bytes out;
+    out.reserve(data.size());
+    out.push_back(data[0]);
+    for (size_t i = 1; i < data.size(); ++i) out.push_back(static_cast<uint8_t>(out.back() + data[i]));
     return out;
 }
 

@@ -64,6 +64,35 @@ static void BM_PolyEvalBatch(benchmark::State& state) {
 }
 BENCHMARK(BM_PolyEvalBatch);
 
+static void BM_PolyEvalAt_Degree100_Large(benchmark::State& state) {
+    auto p = make_poly(100);
+    std::vector<double> xs(65536);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        xs[i] = -1.0 + 2.0 * static_cast<double>(i) / static_cast<double>(xs.size() - 1);
+    }
+    for (auto _ : state) {
+        auto r = poly_eval_at(p, xs);
+        benchmark::DoNotOptimize(r.data());
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(xs.size()));
+}
+BENCHMARK(BM_PolyEvalAt_Degree100_Large);
+
+static void BM_PolyEvalAt_ScalarSweep(benchmark::State& state) {
+    auto p = make_poly(50);
+    const int count = 8192;
+    for (auto _ : state) {
+        double sum = 0.0;
+        for (int i = 0; i < count; ++i) {
+            const double x = -1.0 + 2.0 * static_cast<double>(i) / static_cast<double>(count - 1);
+            sum += poly_eval(p, x)[0];
+        }
+        benchmark::DoNotOptimize(sum);
+    }
+    state.SetItemsProcessed(state.iterations() * count);
+}
+BENCHMARK(BM_PolyEvalAt_ScalarSweep);
+
 // ---------------------------------------------------------------------------
 // Polynomial addition
 // ---------------------------------------------------------------------------
