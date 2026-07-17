@@ -766,19 +766,21 @@ Result<CoherenceResult> coherence(const std::vector<double>& x, const std::vecto
     std::vector<double> segment_buf;
     std::vector<std::complex<double>> spec_x_buf;
     std::vector<std::complex<double>> spec_y_buf;
+    std::vector<std::complex<double>> fft_work;
     segment_buf.reserve(nperseg);
     spec_x_buf.reserve(setup->plan.n_freq_bins);
     spec_y_buf.reserve(setup->plan.n_freq_bins);
+    fft_work.reserve(setup->plan.n_fft / 2);
     size_t seg_count = 0;
 
     for (size_t start = 0; start + nperseg <= x.size(); start += setup->plan.hop) {
         const auto status_x =
-            rfft_windowed_segment(x, start, nperseg, setup->window, segment_buf, spec_x_buf);
+            rfft_windowed_segment(x, start, nperseg, setup->window, segment_buf, spec_x_buf, fft_work);
         if (!status_x) {
             return std::unexpected(status_x.error());
         }
         const auto status_y =
-            rfft_windowed_segment(y, start, nperseg, setup->window, segment_buf, spec_y_buf);
+            rfft_windowed_segment(y, start, nperseg, setup->window, segment_buf, spec_y_buf, fft_work);
         if (!status_y) {
             return std::unexpected(status_y.error());
         }
