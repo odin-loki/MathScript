@@ -265,6 +265,84 @@ std::vector<std::complex<double>> complex_ifft(const std::vector<std::complex<do
     return spectrum;
 }
 
+void fft_recursive_inplace(std::complex<double>* x, size_t n, std::complex<double>* scratch) {
+    if (n <= 1) {
+        return;
+    }
+    if (n % 2 != 0) {
+        for (size_t k = 0; k < n; ++k) {
+            std::complex<double> sum(0.0, 0.0);
+            for (size_t t = 0; t < n; ++t) {
+                const double angle =
+                    -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n);
+                sum += x[t] * std::complex<double>(std::cos(angle), std::sin(angle));
+            }
+            scratch[k] = sum;
+        }
+        std::copy(scratch, scratch + n, x);
+        return;
+    }
+
+    std::complex<double>* even = scratch;
+    std::complex<double>* odd = scratch + n / 2;
+    for (size_t i = 0; i < n / 2; ++i) {
+        even[i] = x[2 * i];
+        odd[i] = x[2 * i + 1];
+    }
+
+    fft_recursive_inplace(even, n / 2, scratch + n);
+    fft_recursive_inplace(odd, n / 2, scratch + n);
+
+    for (size_t k = 0; k < n / 2; ++k) {
+        const double angle = -2.0 * M_PI * static_cast<double>(k) / static_cast<double>(n);
+        const std::complex<double> w(std::cos(angle), std::sin(angle));
+        const std::complex<double> t = w * odd[k];
+        x[k] = even[k] + t;
+        x[k + n / 2] = even[k] - t;
+    }
+}
+
+void complex_fft_inplace(std::vector<std::complex<double>>& x,
+                         std::vector<std::complex<double>>& scratch) {
+    if (x.empty()) {
+        return;
+    }
+    if (scratch.size() < 2 * x.size()) {
+        scratch.resize(2 * x.size());
+    }
+    fft_recursive_inplace(x.data(), x.size(), scratch.data());
+}
+
+void complex_ifft_inplace(std::vector<std::complex<double>>& x,
+                          std::vector<std::complex<double>>& scratch) {
+    if (x.empty()) {
+        return;
+    }
+    for (auto& sample : x) {
+        sample = std::conj(sample);
+    }
+    complex_fft_inplace(x, scratch);
+    const double inv_n = 1.0 / static_cast<double>(x.size());
+    for (auto& sample : x) {
+        sample = std::conj(sample) * inv_n;
+    }
+}
+
+void fill_wk2_powers(std::vector<std::complex<double>>& wk2, std::complex<double> w) {
+    if (wk2.empty()) {
+        return;
+    }
+    wk2[0] = std::complex<double>(1.0, 0.0);
+    if (wk2.size() == 1) {
+        return;
+    }
+    std::complex<double> step = std::sqrt(w);
+    for (size_t k = 1; k < wk2.size(); ++k) {
+        wk2[k] = wk2[k - 1] * step;
+        step *= w;
+    }
+}
+
 void apply_hilbert_frequency_mask(std::vector<std::complex<double>>& spectrum) {
     const size_t n = spectrum.size();
     if (n == 0) {
@@ -2074,53 +2152,44 @@ std::vector<std::complex<double>> czt(const std::vector<double>& x, int m,
     const size_t max_nm = std::max(m_size, n);
 
     std::vector<std::complex<double>> wk2(max_nm);
-    for (size_t k = 0; k < max_nm; ++k) {
-        const double k_d = static_cast<double>(k);
-        wk2[k] = std::pow(w, k_d * k_d / 2.0);
-    }
-
-    std::vector<std::complex<double>> ak(n);
-    for (size_t idx = 0; idx < n; ++idx) {
-        const double idx_d = static_cast<double>(idx);
-        ak[idx] = x[idx] * std::pow(a, -idx_d) * wk2[idx];
-    }
-
-    const size_t ww_len = n + m_size - 1;
-    std::vector<std::complex<double>> ww(ww_len);
-    for (size_t i = 0; i + 1 < n; ++i) {
-        ww[i] = wk2[n - 1 - i];
-    }
-    for (size_t k = 0; k < m_size; ++k) {
-        ww[n - 1 + k] = wk2[k];
-    }
+    fill_wk2_powers(wk2, w);
 
     const size_t conv_len = n + m_size - 1;
     const size_t nfft = next_power_of_two(conv_len);
 
-    std::vector<std::complex<double>> Ak(nfft, std::complex<double>(0.0, 0.0));
-    for (size_t i = 0; i < n; ++i) {
-        Ak[i] = ak[i];
+    std::vector<std::complex<double>> fft_a(nfft, std::complex<double>(0.0, 0.0));
+    std::vector<std::complex<double>> fft_b(nfft, std::complex<double>(0.0, 0.0));
+    std::vector<std::complex<double>> fft_scratch;
+    fft_scratch.reserve(2 * nfft);
+
+    std::complex<double> a_inv_pow(1.0, 0.0);
+    const std::complex<double> a_inv = 1.0 / a;
+    for (size_t idx = 0; idx < n; ++idx) {
+        fft_a[idx] = x[idx] * a_inv_pow * wk2[idx];
+        a_inv_pow *= a_inv;
     }
 
-    std::vector<std::complex<double>> Ww(nfft, std::complex<double>(0.0, 0.0));
-    for (size_t i = 0; i < ww_len; ++i) {
-        Ww[i] = 1.0 / ww[i];
+    for (size_t i = 0; i + 1 < n; ++i) {
+        fft_b[i] = 1.0 / wk2[n - 1 - i];
+    }
+    for (size_t k = 0; k < m_size; ++k) {
+        fft_b[n - 1 + k] = 1.0 / wk2[k];
     }
 
-    Ak = fft_recursive(std::move(Ak));
-    Ww = fft_recursive(std::move(Ww));
+    complex_fft_inplace(fft_a, fft_scratch);
+    complex_fft_inplace(fft_b, fft_scratch);
     for (size_t i = 0; i < nfft; ++i) {
-        Ak[i] *= Ww[i];
+        fft_a[i] *= fft_b[i];
     }
+    complex_ifft_inplace(fft_a, fft_scratch);
 
-    auto fk = complex_ifft(std::move(Ak));
-    if (fk.size() < n - 1 + m_size) {
+    if (fft_a.size() < n - 1 + m_size) {
         return {};
     }
 
     std::vector<std::complex<double>> result(m_size);
     for (size_t k = 0; k < m_size; ++k) {
-        result[k] = fk[n - 1 + k] * wk2[k];
+        result[k] = fft_a[n - 1 + k] * wk2[k];
     }
     return result;
 }
