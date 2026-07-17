@@ -8,8 +8,10 @@
 #include <complex>
 #include <cstddef>
 #include <limits>
+#include <mutex>
 #include <set>
 #include <span>
+#include <unordered_map>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -125,6 +127,18 @@ struct WelchSetup {
     std::vector<double> frequencies;
 };
 
+const std::vector<double>& cached_hanning_window(size_t segment_len) {
+    static std::mutex cache_mutex;
+    static std::unordered_map<size_t, std::vector<double>> cache;
+
+    std::lock_guard lock(cache_mutex);
+    const auto found = cache.find(segment_len);
+    if (found != cache.end()) {
+        return found->second;
+    }
+    return cache.emplace(segment_len, hanning(segment_len)).first->second;
+}
+
 Result<WelchSetup> prepare_welch(size_t signal_len, double fs, size_t segment_len,
                                   double overlap_frac, const char* fn) {
     if (fs <= 0.0) {
@@ -136,7 +150,7 @@ Result<WelchSetup> prepare_welch(size_t signal_len, double fs, size_t segment_le
         return std::unexpected(plan.error());
     }
 
-    const auto window = hanning(segment_len);
+    const auto& window = cached_hanning_window(segment_len);
     double win_sq_sum = 0.0;
     for (const double w : window) {
         win_sq_sum += w * w;
@@ -747,23 +761,31 @@ Result<CoherenceResult> coherence(const std::vector<double>& x, const std::vecto
     std::vector<double> pxx(setup->plan.n_freq_bins, 0.0);
     std::vector<double> pyy(setup->plan.n_freq_bins, 0.0);
     std::vector<std::complex<double>> pxy(setup->plan.n_freq_bins, 0.0);
+    std::vector<double> segment_buf;
+    std::vector<std::complex<double>> spec_x_buf;
+    std::vector<std::complex<double>> spec_y_buf;
+    segment_buf.reserve(nperseg);
+    spec_x_buf.reserve(setup->plan.n_freq_bins);
+    spec_y_buf.reserve(setup->plan.n_freq_bins);
     size_t seg_count = 0;
 
     for (size_t start = 0; start + nperseg <= x.size(); start += setup->plan.hop) {
-        const auto spec_x = rfft_windowed_segment(x, start, nperseg, setup->window);
-        if (!spec_x) {
-            return std::unexpected(spec_x.error());
+        const auto status_x =
+            rfft_windowed_segment(x, start, nperseg, setup->window, segment_buf, spec_x_buf);
+        if (!status_x) {
+            return std::unexpected(status_x.error());
         }
-        const auto spec_y = rfft_windowed_segment(y, start, nperseg, setup->window);
-        if (!spec_y) {
-            return std::unexpected(spec_y.error());
+        const auto status_y =
+            rfft_windowed_segment(y, start, nperseg, setup->window, segment_buf, spec_y_buf);
+        if (!status_y) {
+            return std::unexpected(status_y.error());
         }
 
-        for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_x->size() && k < spec_y->size();
+        for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_x_buf.size() && k < spec_y_buf.size();
              ++k) {
-            pxx[k] += std::norm((*spec_x)[k]);
-            pyy[k] += std::norm((*spec_y)[k]);
-            pxy[k] += (*spec_x)[k] * std::conj((*spec_y)[k]);
+            pxx[k] += std::norm(spec_x_buf[k]);
+            pyy[k] += std::norm(spec_y_buf[k]);
+            pxy[k] += spec_x_buf[k] * std::conj(spec_y_buf[k]);
         }
         ++seg_count;
     }

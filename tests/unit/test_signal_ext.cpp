@@ -727,11 +727,103 @@ Result<SpectrogramResult> spectrogram_allocating(const std::vector<double>& x, d
     return out;
 }
 
+Result<CoherenceResult> coherence_allocating(const std::vector<double>& x, const std::vector<double>& y,
+                                               double fs, size_t nperseg, double overlap_frac) {
+    if (x.size() != y.size()) {
+        return std::unexpected(DomainError{"coherence", "x and y must have the same length"});
+    }
+    if (fs <= 0.0) {
+        return std::unexpected(DomainError{"coherence", "fs must be > 0"});
+    }
+    if (nperseg == 0) {
+        return std::unexpected(DomainError{"coherence", "segment_len must be > 0"});
+    }
+    if (x.empty()) {
+        return std::unexpected(DomainError{"coherence", "input signal must not be empty"});
+    }
+    if (nperseg > x.size()) {
+        return std::unexpected(DomainError{"coherence", "segment_len must be <= signal length"});
+    }
+    if (overlap_frac < 0.0 || overlap_frac >= 1.0) {
+        return std::unexpected(DomainError{"coherence", "overlap_frac must be in [0, 1)"});
+    }
+
+    const auto window = hanning(nperseg);
+    double win_sq_sum = 0.0;
+    for (const double w : window) {
+        win_sq_sum += w * w;
+    }
+    const double scale = 1.0 / (fs * win_sq_sum);
+    const size_t n_fft = next_power_of_two(nperseg);
+    const size_t n_freq_bins = n_fft / 2 + 1;
+
+    const double hop_d = static_cast<double>(nperseg) * (1.0 - overlap_frac);
+    size_t hop = static_cast<size_t>(std::floor(hop_d));
+    if (hop == 0) {
+        hop = 1;
+    }
+
+    std::vector<double> pxx(n_freq_bins, 0.0);
+    std::vector<double> pyy(n_freq_bins, 0.0);
+    std::vector<std::complex<double>> pxy(n_freq_bins, 0.0);
+    size_t seg_count = 0;
+
+    for (size_t start = 0; start + nperseg <= x.size(); start += hop) {
+        std::vector<double> segment_x(nperseg);
+        std::vector<double> segment_y(nperseg);
+        for (size_t i = 0; i < nperseg; ++i) {
+            segment_x[i] = x[start + i] * window[i];
+            segment_y[i] = y[start + i] * window[i];
+        }
+        const auto spec_x = rfft(segment_x);
+        if (!spec_x) {
+            return std::unexpected(spec_x.error());
+        }
+        const auto spec_y = rfft(segment_y);
+        if (!spec_y) {
+            return std::unexpected(spec_y.error());
+        }
+
+        for (size_t k = 0; k < n_freq_bins && k < spec_x->size() && k < spec_y->size(); ++k) {
+            pxx[k] += std::norm((*spec_x)[k]);
+            pyy[k] += std::norm((*spec_y)[k]);
+            pxy[k] += (*spec_x)[k] * std::conj((*spec_y)[k]);
+        }
+        ++seg_count;
+    }
+
+    const double inv_seg = 1.0 / static_cast<double>(seg_count);
+    std::vector<double> coh(n_freq_bins, 0.0);
+    for (size_t k = 0; k < coh.size(); ++k) {
+        const double auto_x = pxx[k] * inv_seg * scale;
+        const double auto_y = pyy[k] * inv_seg * scale;
+        const auto cross = pxy[k] * inv_seg * scale;
+        const double denom = auto_x * auto_y;
+        if (denom > 0.0) {
+            coh[k] = std::norm(cross) / denom;
+            if (coh[k] > 1.0) {
+                coh[k] = 1.0;
+            }
+        }
+    }
+
+    return CoherenceResult{segment_frequencies(n_fft, fs), std::move(coh)};
+}
+
 void expect_vectors_near(const std::vector<double>& expected, const std::vector<double>& actual,
                          double tol) {
     ASSERT_EQ(expected.size(), actual.size());
     for (size_t i = 0; i < expected.size(); ++i) {
         EXPECT_NEAR(actual[i], expected[i], tol) << "index " << i;
+    }
+}
+
+void expect_vectors_near_rel(const std::vector<double>& expected, const std::vector<double>& actual,
+                             double rel_tol) {
+    ASSERT_EQ(expected.size(), actual.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const double scale = std::max(std::abs(expected[i]), 1.0);
+        EXPECT_NEAR(actual[i], expected[i], rel_tol * scale) << "index " << i;
     }
 }
 
@@ -831,6 +923,53 @@ TEST(SignalExtTest, spectrogram_reuse_matches_allocating_chirp_seed_14142) {
                 << "row " << r << " col " << c;
         }
     }
+}
+
+TEST(SignalExtTest, coherence_reuse_matches_allocating_noise_seed_42424) {
+    constexpr double fs = 1000.0;
+    constexpr size_t nperseg = 128;
+    constexpr double overlap_frac = 0.5;
+    const auto x = lcg_noise(4096, 42424u);
+    const auto y = lcg_noise(4096, 52525u);
+
+    const auto optimized = coherence(x, y, fs, nperseg, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::coherence_allocating(x, y, fs, nperseg, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near_rel(reference->coherence, optimized->coherence, 1e-10);
+}
+
+TEST(SignalExtTest, coherence_reuse_matches_allocating_sinusoid_seed_31313) {
+    constexpr double fs = 800.0;
+    constexpr size_t nperseg = 256;
+    constexpr double overlap_frac = 0.75;
+    const auto x = sinusoid(8192, fs, 42.0);
+    const auto y = sinusoid(8192, fs, 42.0, 0.65);
+
+    const auto optimized = coherence(x, y, fs, nperseg, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::coherence_allocating(x, y, fs, nperseg, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near_rel(reference->coherence, optimized->coherence, 1e-10);
+}
+
+TEST(SignalExtTest, coherence_reuse_matches_allocating_self_coherence_seed_21212) {
+    constexpr double fs = 500.0;
+    constexpr size_t nperseg = 64;
+    constexpr double overlap_frac = 0.0;
+    const auto x = lcg_noise(2048, 21212u, 2.0);
+
+    const auto optimized = coherence(x, x, fs, nperseg, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::coherence_allocating(x, x, fs, nperseg, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near_rel(reference->coherence, optimized->coherence, 1e-10);
 }
 
 namespace {
