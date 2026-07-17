@@ -54,7 +54,8 @@ BENCHMARK(BM_PolyEval_Degree100);
 
 static void BM_PolyEvalBatch(benchmark::State& state) {
     auto p = make_poly(50);
-    std::vector<double> xs(4096);
+    // 4096 xs ~8s smoke; 1024 ~2s.
+    std::vector<double> xs(1024);
     for (size_t i = 0; i < xs.size(); ++i) {
         xs[i] = -1.0 + 2.0 * static_cast<double>(i) / static_cast<double>(xs.size() - 1);
     }
@@ -68,7 +69,8 @@ BENCHMARK(BM_PolyEvalBatch);
 
 static void BM_PolyEvalAt_Degree100_Large(benchmark::State& state) {
     auto p = make_poly(100);
-    std::vector<double> xs(65536);
+    // 65536 xs ~40s smoke; 4096 ~2.5s.
+    std::vector<double> xs(4096);
     for (size_t i = 0; i < xs.size(); ++i) {
         xs[i] = -1.0 + 2.0 * static_cast<double>(i) / static_cast<double>(xs.size() - 1);
     }
