@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-17 (reconciled against `main` @ Wave 221 — **374 CTest suites**, MSVC green, `.\build.ps1 -Benchmark` smoke OK)
+**Updated:** 2026-07-17 (reconciled against `main` @ Wave 222 — **374 CTest suites**, MSVC green, `.\build.ps1 -Benchmark` smoke OK — 5 benches)
 
 This document tracks open items from `mathscript-master-plan.md` and the original audit below. Work proceeds in **waves** of up to 8 parallel Composer 2.5 subagents (isolated git worktrees).
 

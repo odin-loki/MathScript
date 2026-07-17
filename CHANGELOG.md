@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 222 — Performance Pass IV: coherence, spectrogram, periodogram, BFS, SLIC, REPL, bench smoke)
+
+8 parallel subagents continuing hot-path profiling across `signal`, `fft`, `graph`, `image`, `interp`, `simd`, and `bench`.
+
+### Performance (Wave 222)
+- `ms::signal` — FFT buffer reuse in `coherence()` and `spectrogram()`; cached Hanning windows; new hybrid `periodogram()` (direct/FFT crossover at n≥64).
+- `ms::fft` — buffer-based `rfft()` overload for in-place segment FFT without per-call allocation.
+- `ms::graph` — faster `bfs()` with vector ring queue, `uint8_t` visited flags, sparse/dense neighbor paths.
+- `ms::image` — SLIC superpixel loop optimizations (spatial early exit, buffer reuse).
+- `ms::interp` — REPL scalar eval hot path (literal-arithmetic fast path, function lookup cache).
+- `ms::simd` — dedicated AVX2 `sum_squares()` horizontal reduction.
+- **Benchmark coverage** — `BM_Spectrogram`, `BM_Periodogram`, `BM_Bfs`, `BM_SLIC`, `BM_repl_simple_arith`; `build.ps1 -Benchmark` smoke expanded to 5 benches.
+- **Total Wave 222: 374 CTest suites — all passing**. Eight branches merged; coherence/spectrogram merge conflict resolved.
+
 ## [1.0.0] — 2026-07-17 (Wave 221 — Performance Pass III: xcorr, sosfilt, savgol, conv2, SHA, FEM, norm_l2)
 
 8 parallel subagents continuing hot-path profiling across `signal`, `crypto`, `fem`, `simd`, and `bench`.
