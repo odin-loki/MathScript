@@ -2,8 +2,8 @@
 # Usage: .\scripts\bench_write_msvc_baseline.ps1 [-BuildDir build-msvc-bench]
 #
 # Requires a Release benchmark build: .\build.ps1 -Benchmark
-# Runs matmul/fft/simd/signal_linalg/graph/image/stats with 0.1s min time and 3 repetitions,
-# then writes median_time_ns into tests/performance/baselines/msvc-release.json.
+# Runs all add_ms_bench targets from tests/performance/CMakeLists.txt with 0.1s min time
+# and 3 repetitions, then writes median_time_ns into tests/performance/baselines/msvc-release.json.
 
 param(
     [string]$BuildDir = "build-msvc-bench"
@@ -19,15 +19,22 @@ $BaselinePath = Join-Path $Root "tests\performance\baselines\msvc-release.json"
 $MinTime = "0.1s"
 $Repetitions = 3
 
-$BenchTargets = @(
-    "bench_matmul",
-    "bench_fft",
-    "bench_simd",
-    "bench_signal_linalg",
-    "bench_graph",
-    "bench_image",
-    "bench_stats"
-)
+$CmakeListsPath = Join-Path $Root "tests\performance\CMakeLists.txt"
+if (-not (Test-Path $CmakeListsPath)) {
+    throw "CMakeLists not found: $CmakeListsPath"
+}
+
+$BenchTargets = Get-Content $CmakeListsPath | ForEach-Object {
+    if ($_ -match '^\s*add_ms_bench\s*\(\s*(\w+)') {
+        $matches[1]
+    }
+}
+
+if ($BenchTargets.Count -eq 0) {
+    throw "No add_ms_bench targets found in $CmakeListsPath"
+}
+
+Write-Host "Benchmark targets ($($BenchTargets.Count)): $($BenchTargets -join ', ')"
 
 if (-not (Test-Path $BaselinePath)) {
     throw "Baseline file not found: $BaselinePath"
@@ -90,10 +97,9 @@ with open(baseline_path, encoding="utf-8") as f:
     baseline = json.load(f)
 
 baseline["_comment"] = (
-    "MSVC Release regression baseline. Wave 218-225 profiling targets; matmul/fft/simd/signal_linalg/"
-    "graph/image/stats medians captured via scripts/bench_write_msvc_baseline.ps1 "
-    "(0.1s min_time, 3 repetitions). Null median_time_ns entries are schema placeholders until "
-    "regenerated; regression skips null entries."
+    "MSVC Release regression baseline. Wave 218-225 profiling targets; all add_ms_bench targets "
+    "medians captured via scripts/bench_write_msvc_baseline.ps1 (0.1s min_time, 3 repetitions). "
+    "Null median_time_ns entries are schema placeholders until regenerated; regression skips null entries."
 )
 baseline["_generate"] = ".\\scripts\\bench_write_msvc_baseline.ps1"
 baseline["profile"] = {
