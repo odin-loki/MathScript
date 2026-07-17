@@ -10,7 +10,7 @@ namespace ms::cpu::blas {
 
 namespace {
 
-void scale_matrix(int m, int n, double beta, double* C, int ldc) {
+__forceinline void scale_matrix(int m, int n, double beta, double* C, int ldc) {
     if (beta == 1.0) {
         return;
     }
@@ -27,7 +27,7 @@ void scale_matrix(int m, int n, double beta, double* C, int ldc) {
     }
 }
 
-void dgemm_nn_rank1(
+__forceinline void dgemm_nn_rank1(
     int m,
     int n,
     int k,
