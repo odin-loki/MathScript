@@ -1,7 +1,9 @@
 #include "ms/symbolic/symbolic.hpp"
 
+#include <charconv>
 #include <cctype>
 #include <cstdlib>
+#include <string_view>
 
 namespace ms {
 
@@ -204,10 +206,10 @@ private:
             }
         }
 
-        const std::string token = text_.substr(start, pos_ - start);
-        char* end = nullptr;
-        const double value = std::strtod(token.c_str(), &end);
-        if (end != token.c_str() + token.size()) {
+        const std::string_view token(text_.data() + start, pos_ - start);
+        double value = 0.0;
+        const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+        if (ec != std::errc{} || ptr != token.data() + token.size()) {
             return std::unexpected(make_error("invalid numeric literal"));
         }
         return sym_expr_ok(sym_const(value));
@@ -273,7 +275,7 @@ private:
             if (peek() == '(') {
                 return parse_function_call(*ident);
             }
-            return sym_expr_ok(sym_var(*ident));
+            return sym_expr_ok(sym_var(std::move(*ident)));
         }
 
         if (at_end()) {

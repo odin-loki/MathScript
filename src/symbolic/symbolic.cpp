@@ -23,6 +23,10 @@ SymExpr clone_expr(const SymExpr& expr) {
     return copy;
 }
 
+SymExpr take_child(std::unique_ptr<SymExpr>& child) {
+    return std::move(*child);
+}
+
 bool is_bare_var(const SymExpr& expr, const std::string& var) {
     return expr.op == SymOp::Var && expr.name == var;
 }
@@ -201,10 +205,10 @@ SymExpr sym_diff(SymExpr expr, const std::string& var) {
 
 SymExpr sym_simplify(SymExpr expr) {
     if (expr.left) {
-        expr.left = std::make_unique<SymExpr>(sym_simplify(clone_expr(*expr.left)));
+        expr.left = std::make_unique<SymExpr>(sym_simplify(std::move(*expr.left)));
     }
     if (expr.right) {
-        expr.right = std::make_unique<SymExpr>(sym_simplify(clone_expr(*expr.right)));
+        expr.right = std::make_unique<SymExpr>(sym_simplify(std::move(*expr.right)));
     }
 
     switch (expr.op) {
@@ -213,10 +217,10 @@ SymExpr sym_simplify(SymExpr expr) {
             return sym_const(expr.left->value + expr.right->value);
         }
         if (expr.left->op == SymOp::Const && expr.left->value == 0.0) {
-            return clone_expr(*expr.right);
+            return take_child(expr.right);
         }
         if (expr.right->op == SymOp::Const && expr.right->value == 0.0) {
-            return clone_expr(*expr.left);
+            return take_child(expr.left);
         }
         break;
     case SymOp::Sub:
@@ -224,10 +228,10 @@ SymExpr sym_simplify(SymExpr expr) {
             return sym_const(expr.left->value - expr.right->value);
         }
         if (expr.right->op == SymOp::Const && expr.right->value == 0.0) {
-            return clone_expr(*expr.left);
+            return take_child(expr.left);
         }
         if (expr.left->op == SymOp::Const && expr.left->value == 0.0) {
-            return sym_neg(clone_expr(*expr.right));
+            return sym_neg(take_child(expr.right));
         }
         break;
     case SymOp::Mul:
@@ -239,10 +243,10 @@ SymExpr sym_simplify(SymExpr expr) {
             return sym_const(0.0);
         }
         if (expr.left->op == SymOp::Const && expr.left->value == 1.0) {
-            return clone_expr(*expr.right);
+            return take_child(expr.right);
         }
         if (expr.right->op == SymOp::Const && expr.right->value == 1.0) {
-            return clone_expr(*expr.left);
+            return take_child(expr.left);
         }
         break;
     case SymOp::Div:
@@ -251,7 +255,7 @@ SymExpr sym_simplify(SymExpr expr) {
             return sym_const(expr.left->value / expr.right->value);
         }
         if (expr.right->op == SymOp::Const && expr.right->value == 1.0) {
-            return clone_expr(*expr.left);
+            return take_child(expr.left);
         }
         if (expr.left->op == SymOp::Const && expr.left->value == 0.0 && !is_const_zero(*expr.right)) {
             return sym_const(0.0);
@@ -262,7 +266,7 @@ SymExpr sym_simplify(SymExpr expr) {
             return sym_const(-expr.left->value);
         }
         if (expr.left->op == SymOp::Neg) {
-            return clone_expr(*expr.left->left);
+            return take_child(expr.left->left);
         }
         break;
     case SymOp::Sin:
@@ -287,7 +291,7 @@ SymExpr sym_simplify(SymExpr expr) {
         break;
     case SymOp::Exp:
         if (expr.left->op == SymOp::Log) {
-            return clone_expr(*expr.left->left);
+            return take_child(expr.left->left);
         }
         if (expr.left->op == SymOp::Const) {
             return sym_const(std::exp(expr.left->value));
@@ -295,7 +299,7 @@ SymExpr sym_simplify(SymExpr expr) {
         break;
     case SymOp::Log:
         if (expr.left->op == SymOp::Exp) {
-            return clone_expr(*expr.left->left);
+            return take_child(expr.left->left);
         }
         if (expr.left->op == SymOp::Const && expr.left->value > 0.0) {
             return sym_const(std::log(expr.left->value));
@@ -306,7 +310,7 @@ SymExpr sym_simplify(SymExpr expr) {
             return sym_const(1.0);
         }
         if (expr.right->op == SymOp::Const && expr.right->value == 1.0) {
-            return clone_expr(*expr.left);
+            return take_child(expr.left);
         }
         if (expr.left->op == SymOp::Const && expr.left->value == 1.0) {
             return sym_const(1.0);
@@ -717,32 +721,140 @@ std::string sym_to_string(const SymExpr& expr) {
         return std::to_string(expr.value);
     case SymOp::Var:
         return expr.name;
-    case SymOp::Add:
-        return "(" + sym_to_string(*expr.left) + " + " + sym_to_string(*expr.right) + ")";
-    case SymOp::Sub:
-        return "(" + sym_to_string(*expr.left) + " - " + sym_to_string(*expr.right) + ")";
-    case SymOp::Mul:
-        return "(" + sym_to_string(*expr.left) + " * " + sym_to_string(*expr.right) + ")";
-    case SymOp::Div:
-        return "(" + sym_to_string(*expr.left) + " / " + sym_to_string(*expr.right) + ")";
-    case SymOp::Neg:
-        return "(-" + sym_to_string(*expr.left) + ")";
-    case SymOp::Sin:
-        return "sin(" + sym_to_string(*expr.left) + ")";
-    case SymOp::Cos:
-        return "cos(" + sym_to_string(*expr.left) + ")";
-    case SymOp::Tan:
-        return "tan(" + sym_to_string(*expr.left) + ")";
-    case SymOp::Exp:
-        return "exp(" + sym_to_string(*expr.left) + ")";
-    case SymOp::Log:
-        return "log(" + sym_to_string(*expr.left) + ")";
-    case SymOp::Sqrt:
-        return "sqrt(" + sym_to_string(*expr.left) + ")";
-    case SymOp::Pow:
-        return "(" + sym_to_string(*expr.left) + " ^ " + sym_to_string(*expr.right) + ")";
-    case SymOp::Deriv:
-        return "d/d" + expr.name + "(" + sym_to_string(*expr.left) + ")";
+    case SymOp::Add: {
+        const std::string left = sym_to_string(*expr.left);
+        const std::string right = sym_to_string(*expr.right);
+        std::string out;
+        out.reserve(left.size() + right.size() + 7);
+        out.push_back('(');
+        out += left;
+        out += " + ";
+        out += right;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Sub: {
+        const std::string left = sym_to_string(*expr.left);
+        const std::string right = sym_to_string(*expr.right);
+        std::string out;
+        out.reserve(left.size() + right.size() + 7);
+        out.push_back('(');
+        out += left;
+        out += " - ";
+        out += right;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Mul: {
+        const std::string left = sym_to_string(*expr.left);
+        const std::string right = sym_to_string(*expr.right);
+        std::string out;
+        out.reserve(left.size() + right.size() + 7);
+        out.push_back('(');
+        out += left;
+        out += " * ";
+        out += right;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Div: {
+        const std::string left = sym_to_string(*expr.left);
+        const std::string right = sym_to_string(*expr.right);
+        std::string out;
+        out.reserve(left.size() + right.size() + 7);
+        out.push_back('(');
+        out += left;
+        out += " / ";
+        out += right;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Neg: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(inner.size() + 3);
+        out += "(-";
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Sin: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(inner.size() + 5);
+        out += "sin(";
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Cos: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(inner.size() + 5);
+        out += "cos(";
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Tan: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(inner.size() + 5);
+        out += "tan(";
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Exp: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(inner.size() + 5);
+        out += "exp(";
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Log: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(inner.size() + 5);
+        out += "log(";
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Sqrt: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(inner.size() + 7);
+        out += "sqrt(";
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Pow: {
+        const std::string left = sym_to_string(*expr.left);
+        const std::string right = sym_to_string(*expr.right);
+        std::string out;
+        out.reserve(left.size() + right.size() + 7);
+        out.push_back('(');
+        out += left;
+        out += " ^ ";
+        out += right;
+        out.push_back(')');
+        return out;
+    }
+    case SymOp::Deriv: {
+        const std::string inner = sym_to_string(*expr.left);
+        std::string out;
+        out.reserve(expr.name.size() + inner.size() + 6);
+        out += "d/d";
+        out += expr.name;
+        out.push_back('(');
+        out += inner;
+        out.push_back(')');
+        return out;
+    }
     }
     return "?";
 }

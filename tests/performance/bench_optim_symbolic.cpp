@@ -102,6 +102,15 @@ static void BM_SymSimplify(benchmark::State& state) {
 }
 BENCHMARK(BM_SymSimplify);
 
+static void BM_SymParse(benchmark::State& state) {
+    const std::string text = "x^2 + sin(y) - 3*x + 2.5e-3";
+    for (auto _ : state) {
+        auto parsed = sym_parse(text);
+        benchmark::DoNotOptimize(parsed);
+    }
+}
+BENCHMARK(BM_SymParse);
+
 // ---------------------------------------------------------------------------
 // Polynomial benchmarks
 // ---------------------------------------------------------------------------
