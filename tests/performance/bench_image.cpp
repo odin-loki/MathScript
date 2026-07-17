@@ -225,4 +225,20 @@ BENCHMARK(BM_Imfilter)
     ->Args({256, 256, 1, 1})
     ->Args({512, 512, 1, 1});
 
+static void BM_Sharpen(benchmark::State& state) {
+    const int rows = static_cast<int>(state.range(0));
+    const int cols = static_cast<int>(state.range(1));
+    const int channels = static_cast<int>(state.range(2));
+    const auto img = make_gaussian_bench_image(rows, cols, channels);
+
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(ms::image::sharpen(img));
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * rows * cols * channels);
+}
+BENCHMARK(BM_Sharpen)
+    ->Args({256, 256, 1})
+    ->Args({512, 512, 1})
+    ->Args({256, 256, 3});
+
 BENCHMARK_MAIN();

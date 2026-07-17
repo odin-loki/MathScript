@@ -412,6 +412,70 @@ void box1d_vertical_replicate(
     }
 }
 
+void filter3x3_laplacian_replicate(
+    const float* src, float* dst,
+    int rows, int cols) {
+    for (int r = 0; r < rows; ++r) {
+        const int rm = std::min(std::max(r - 1, 0), rows - 1);
+        const int rp = std::min(std::max(r + 1, 0), rows - 1);
+        for (int c = 0; c < cols; ++c) {
+            const int cm = std::min(std::max(c - 1, 0), cols - 1);
+            const int cp = std::min(std::max(c + 1, 0), cols - 1);
+            const float center = src[r * cols + c];
+            dst[r * cols + c] = src[rm * cols + c] + src[rp * cols + c]
+                              + src[r * cols + cm] + src[r * cols + cp]
+                              - 4.f * center;
+        }
+    }
+}
+
+Image laplacian3x3(const Image& g) {
+    Image out(g.rows, g.cols, 1);
+    if (g.empty()) {
+        return out;
+    }
+    filter3x3_laplacian_replicate(g.data.data(), out.data.data(), g.rows, g.cols);
+    return out;
+}
+
+void filter3x3_sharpen_replicate(
+    const float* src, float* dst,
+    int rows, int cols, int channels) {
+    if (channels == 1) {
+        for (int r = 0; r < rows; ++r) {
+            const int rm = std::min(std::max(r - 1, 0), rows - 1);
+            const int rp = std::min(std::max(r + 1, 0), rows - 1);
+            for (int c = 0; c < cols; ++c) {
+                const int cm = std::min(std::max(c - 1, 0), cols - 1);
+                const int cp = std::min(std::max(c + 1, 0), cols - 1);
+                const float center = src[r * cols + c];
+                dst[r * cols + c] = 5.f * center
+                                    - src[rm * cols + c]
+                                    - src[rp * cols + c]
+                                    - src[r * cols + cm]
+                                    - src[r * cols + cp];
+            }
+        }
+        return;
+    }
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            const int rm = std::min(std::max(r - 1, 0), rows - 1);
+            const int rp = std::min(std::max(r + 1, 0), rows - 1);
+            for (int c = 0; c < cols; ++c) {
+                const int cm = std::min(std::max(c - 1, 0), cols - 1);
+                const int cp = std::min(std::max(c + 1, 0), cols - 1);
+                const float center = src[(r * cols + c) * channels + ch];
+                dst[(r * cols + c) * channels + ch] = 5.f * center
+                    - src[(rm * cols + c) * channels + ch]
+                    - src[(rp * cols + c) * channels + ch]
+                    - src[(r * cols + cm) * channels + ch]
+                    - src[(r * cols + cp) * channels + ch];
+            }
+        }
+    }
+}
+
 void conv1d_vertical_replicate(
     const float* src, float* dst,
     int rows, int cols, int channels,
@@ -1046,8 +1110,14 @@ Image boxfilter(const Image& img, int ksize) {
 }
 
 Image sharpen(const Image& img) {
-    std::vector<std::vector<float>> K={{0,-1,0},{-1,5,-1},{0,-1,0}};
-    return imfilter(img,K);
+    if (img.empty()) {
+        return img;
+    }
+    Image out(img.rows, img.cols, img.channels);
+    filter3x3_sharpen_replicate(
+        img.data.data(), out.data.data(),
+        img.rows, img.cols, img.channels);
+    return out;
 }
 
 // ========================== Edge Detection ==========================
@@ -1085,9 +1155,8 @@ Image prewitt(const Image& img) {
     return out;
 }
 Image laplacian(const Image& img) {
-    auto g=img.channels>1?rgb2gray(img):img;
-    std::vector<std::vector<float>> K={{0,1,0},{1,-4,1},{0,1,0}};
-    return imfilter(g,K);
+    const Image g = img.channels > 1 ? rgb2gray(img) : img;
+    return laplacian3x3(g);
 }
 Image scharr(const Image& img) {
     auto g=img.channels>1?rgb2gray(img):img;
@@ -1114,9 +1183,13 @@ Image roberts(const Image& img) {
     return out;
 }
 
-// LoG edge/blob detector: Gaussian smooth then Laplacian (sequential composition).
+// LoG edge/blob detector: separable Gaussian blur then fast 3x3 Laplacian.
 Image laplacian_of_gaussian(const Image& img, float sigma) {
-    return laplacian(imgaussfilt(img, sigma));
+    const Image g = img.channels > 1 ? rgb2gray(img) : img;
+    if (g.empty()) {
+        return g;
+    }
+    return laplacian3x3(imgaussfilt(g, sigma));
 }
 
 Image canny(const Image& img, float low, float high, float sigma) {
