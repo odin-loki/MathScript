@@ -1,0 +1,40 @@
+name: Benchmark baseline refresh (Linux)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  write-baseline-linux:
+    name: Refresh linux-gcc13.json baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-bench -G Ninja
+          -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+          -DCMAKE_BUILD_TYPE=Release
+          -DMS_BUILD_TESTS=OFF
+          -DMS_BUILD_BENCHMARKS=ON
+          -DMS_ENABLE_CUDA=OFF
+          -DMS_ENABLE_AVX512=OFF
+
+      - name: Build benchmarks
+        run: cmake --build build-bench
+
+      - name: Write baseline medians
+        run: bash scripts/bench_regression.sh --write-baseline build-bench
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-gcc13-baseline
+          path: tests/performance/baselines/linux-gcc13.json
+          if-no-files-found: error
