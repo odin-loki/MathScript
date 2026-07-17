@@ -734,15 +734,14 @@ Result<PSDResult> welch_psd(const std::vector<double>& x, double fs,
         }
 
         for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_buf.size(); ++k) {
-            const double re = spec_buf[k].real();
-            const double im = spec_buf[k].imag();
-            psd[k] += re * re + im * im;
+            psd[k] += std::norm(spec_buf[k]);
         }
         ++seg_count;
     }
 
+    const double norm = setup->scale / static_cast<double>(seg_count);
     for (double& p : psd) {
-        p = (p / static_cast<double>(seg_count)) * setup->scale;
+        p *= norm;
     }
     apply_one_sided_psd_scaling(psd, setup->plan.n_fft);
 

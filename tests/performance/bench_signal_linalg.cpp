@@ -348,6 +348,32 @@ static void BM_Spectrogram(benchmark::State& state) {
 BENCHMARK(BM_Spectrogram);
 
 // ---------------------------------------------------------------------------
+// Signal: Welch PSD (65536 samples)
+// ---------------------------------------------------------------------------
+
+static void BM_Welch65536(benchmark::State& state) {
+    constexpr double fs = 1000.0;
+    constexpr size_t n = 65536;
+    constexpr size_t segment_len = 256;
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * 50.0 * static_cast<double>(i) / fs) +
+               0.2 * std::sin(2.0 * M_PI * 120.0 * static_cast<double>(i) / fs);
+    }
+    for (auto _ : state) {
+        auto result = welch_psd(x, fs, segment_len, 0.5);
+        benchmark::DoNotOptimize(result.has_value());
+        if (result.has_value()) {
+            benchmark::DoNotOptimize(result->power.data());
+            benchmark::DoNotOptimize(result->frequencies.data());
+        }
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(n));
+}
+BENCHMARK(BM_Welch65536);
+
+// ---------------------------------------------------------------------------
 // Signal: autocorrelation (lag-limited)
 // ---------------------------------------------------------------------------
 
