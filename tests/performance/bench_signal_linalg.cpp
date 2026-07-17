@@ -209,6 +209,88 @@ static void BM_Filter8192(benchmark::State& state) {
 BENCHMARK(BM_Filter8192)->Arg(8192);
 
 // ---------------------------------------------------------------------------
+// Signal: cross-correlation (lag-limited)
+// ---------------------------------------------------------------------------
+
+static void BM_Xcorr(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int max_lag = n / 16;
+    std::vector<double> a(n), b(n);
+    for (int i = 0; i < n; ++i) {
+        a[i] = std::sin(2.0 * M_PI * i / n);
+        b[i] = std::cos(2.0 * M_PI * i / n);
+    }
+    for (auto _ : state) {
+        auto r = xcorr(a, b, max_lag);
+        benchmark::DoNotOptimize(r.data());
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_Xcorr)->Arg(4096)->Arg(65536);
+
+// ---------------------------------------------------------------------------
+// Signal: Savitzky-Golay smoothing
+// ---------------------------------------------------------------------------
+
+static void BM_Savgol(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    std::vector<double> x(n);
+    for (int i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * i / 97.0) + 0.05 * std::cos(2.0 * M_PI * i / 23.0);
+    }
+    for (auto _ : state) {
+        auto r = savgol(x, 11, 3);
+        benchmark::DoNotOptimize(r.data());
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_Savgol)->Arg(4096)->Arg(65536);
+
+// ---------------------------------------------------------------------------
+// Signal: magnitude-squared coherence (65536 samples)
+// ---------------------------------------------------------------------------
+
+static void BM_Coherence65536(benchmark::State& state) {
+    constexpr double fs = 1000.0;
+    constexpr size_t n = 65536;
+    constexpr size_t segment_len = 256;
+    std::vector<double> x(n), y(n);
+    for (size_t i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * 50.0 * static_cast<double>(i) / fs);
+        y[i] = 0.9 * x[i] + 0.1 * std::sin(2.0 * M_PI * 120.0 * static_cast<double>(i) / fs);
+    }
+    for (auto _ : state) {
+        auto result = coherence(x, y, fs, segment_len, 0.5);
+        benchmark::DoNotOptimize(result.has_value());
+        if (result.has_value()) {
+            benchmark::DoNotOptimize(result->coherence.data());
+        }
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(n));
+}
+BENCHMARK(BM_Coherence65536);
+
+// ---------------------------------------------------------------------------
+// Signal: autocorrelation (lag-limited)
+// ---------------------------------------------------------------------------
+
+static void BM_Autocorr(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int max_lag = n / 16;
+    std::vector<double> x(n);
+    for (int i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * i / n) + 0.3 * std::cos(2.0 * M_PI * i / 17.0);
+    }
+    for (auto _ : state) {
+        auto r = autocorr(x, max_lag);
+        benchmark::DoNotOptimize(r.data());
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_Autocorr)->Arg(4096)->Arg(65536);
+
+// ---------------------------------------------------------------------------
 // Linear Algebra: solve Ax=b
 // ---------------------------------------------------------------------------
 
