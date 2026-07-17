@@ -69,8 +69,35 @@ static void BM_convolve(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * state.range(0));
 }
 
+static std::vector<double> make_kde_grid(size_t count) {
+    std::vector<double> grid(count);
+    if (count == 0) {
+        return grid;
+    }
+    if (count == 1) {
+        grid[0] = 0.0;
+        return grid;
+    }
+    const double step = 20.0 / static_cast<double>(count - 1);
+    for (size_t i = 0; i < count; ++i) {
+        grid[i] = -10.0 + static_cast<double>(i) * step;
+    }
+    return grid;
+}
+
+static void BM_KDE(benchmark::State& state) {
+    const auto samples = make_data(1000);
+    const auto grid = make_kde_grid(256);
+    for (auto _ : state) {
+        const auto density = kde(samples, grid, 0.4, "gaussian");
+        benchmark::DoNotOptimize(density);
+    }
+    state.SetItemsProcessed(state.iterations() * 1000 * 256);
+}
+
 BENCHMARK(BM_mean_stddev)->Arg(1000)->Arg(10000)->Arg(100000);
 BENCHMARK(BM_percentile)->Arg(1000)->Arg(10000);
 BENCHMARK(BM_linear_regression)->Arg(500)->Arg(5000);
 BENCHMARK(BM_moving_average)->Arg(1000)->Arg(10000);
 BENCHMARK(BM_convolve)->Arg(1000)->Arg(10000);
+BENCHMARK(BM_KDE);

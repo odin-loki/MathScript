@@ -1230,6 +1230,37 @@ double kde_kernel(double u, const char* kernel) {
     return inv_sqrt_2pi * std::exp(-0.5 * u * u);
 }
 
+bool kde_is_epanechnikov(const char* kernel) {
+    return std::strcmp(kernel, "epanechnikov") == 0;
+}
+
+// Gaussian tail cutoff in sigma units: at least 4σ for large n·h, widened when
+// needed so omitted per-sample mass stays below 1e-13 (safe for 1e-10 tests).
+double kde_gaussian_support_sigmas(size_t n, double bandwidth) {
+    static constexpr double inv_sqrt_2pi = 0.3989422804014327;
+    static constexpr double k_min_sigmas = 4.0;
+    static constexpr double k_omit_threshold = 1e-13;
+
+    const double nh = static_cast<double>(n) * bandwidth;
+    if (nh <= 0.0) {
+        return k_min_sigmas;
+    }
+    const double log_thresh =
+        std::log(k_omit_threshold * nh / inv_sqrt_2pi);
+    if (log_thresh >= 0.0) {
+        return 100.0;
+    }
+    const double needed = std::sqrt(-2.0 * log_thresh);
+    return std::max(k_min_sigmas, needed);
+}
+
+double kde_support_radius(const char* kernel, size_t n, double bandwidth) {
+    if (kde_is_epanechnikov(kernel)) {
+        return bandwidth;
+    }
+    return kde_gaussian_support_sigmas(n, bandwidth) * bandwidth;
+}
+
 } // namespace
 
 std::vector<double> kde(std::span<const double> samples,
@@ -1242,13 +1273,28 @@ std::vector<double> kde(std::span<const double> samples,
     if (grid.empty()) {
         return {};
     }
-    const double inv_nh = 1.0 / (static_cast<double>(samples.size()) * bandwidth);
+
+    std::vector<double> sorted(samples.begin(), samples.end());
+    std::sort(sorted.begin(), sorted.end());
+
+    const double inv_nh =
+        1.0 / (static_cast<double>(samples.size()) * bandwidth);
+    const double support = kde_support_radius(kernel, samples.size(), bandwidth);
+
     std::vector<double> result(grid.size(), 0.0);
     for (size_t gi = 0; gi < grid.size(); ++gi) {
         const double x = grid[gi];
+        const double lo_val = x - support;
+        const double hi_val = x + support;
+
+        const auto lo_it =
+            std::lower_bound(sorted.begin(), sorted.end(), lo_val);
+        const auto hi_it =
+            std::upper_bound(sorted.begin(), sorted.end(), hi_val);
+
         double sum = 0.0;
-        for (double xi : samples) {
-            sum += kde_kernel((x - xi) / bandwidth, kernel);
+        for (auto it = lo_it; it != hi_it; ++it) {
+            sum += kde_kernel((x - *it) / bandwidth, kernel);
         }
         result[gi] = inv_nh * sum;
     }
