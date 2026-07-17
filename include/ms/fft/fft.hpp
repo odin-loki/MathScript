@@ -8,7 +8,11 @@
 namespace ms {
 
 Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x);
+// Reuses `out` across calls; resized to the next power of two >= x.size().
+Result<void> fft(const std::vector<double>& x, std::vector<std::complex<double>>& out);
 Result<std::vector<double>> ifft(const std::vector<std::complex<double>>& x);
+// In-place complex inverse FFT; overwrites `x` with the time-domain result.
+Result<void> complex_ifft(std::vector<std::complex<double>>& x);
 Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<double>>& data);
 Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<double>>& data,
                                              size_t rows, size_t cols);

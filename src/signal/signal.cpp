@@ -362,6 +362,26 @@ void apply_hilbert_frequency_mask(std::vector<std::complex<double>>& spectrum) {
     }
 }
 
+struct HilbertBuffers {
+    std::vector<std::complex<double>> spectrum;
+};
+
+bool hilbert_into(const std::vector<double>& x, HilbertBuffers& work) {
+    if (x.empty()) {
+        work.spectrum.clear();
+        return true;
+    }
+    if (!fft(x, work.spectrum)) {
+        return false;
+    }
+    apply_hilbert_frequency_mask(work.spectrum);
+    if (!complex_ifft(work.spectrum)) {
+        return false;
+    }
+    work.spectrum.resize(x.size());
+    return true;
+}
+
 std::vector<double> unwrap_phase(const std::vector<double>& wrapped) {
     if (wrapped.empty()) {
         return wrapped;
@@ -1073,40 +1093,33 @@ Result<SpectrogramResult> spectrogram(const std::vector<double>& x, double fs,
 }
 
 std::vector<std::complex<double>> hilbert(const std::vector<double>& x) {
-    if (x.empty()) {
+    HilbertBuffers work;
+    if (!hilbert_into(x, work)) {
         return {};
     }
-    const auto spectrum = fft(x);
-    if (!spectrum) {
-        return {};
-    }
-    auto masked = *spectrum;
-    apply_hilbert_frequency_mask(masked);
-    auto analytic = complex_ifft(masked);
-    analytic.resize(x.size());
-    return analytic;
+    return work.spectrum;
 }
 
 std::vector<double> envelope(const std::vector<double>& x) {
-    const auto analytic = hilbert(x);
-    if (analytic.empty()) {
+    HilbertBuffers work;
+    if (!hilbert_into(x, work)) {
         return {};
     }
-    std::vector<double> out(analytic.size());
-    for (size_t i = 0; i < analytic.size(); ++i) {
-        out[i] = std::abs(analytic[i]);
+    std::vector<double> out(work.spectrum.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = std::abs(work.spectrum[i]);
     }
     return out;
 }
 
 std::vector<double> instantaneous_phase(const std::vector<double>& x) {
-    const auto analytic = hilbert(x);
-    if (analytic.empty()) {
+    HilbertBuffers work;
+    if (!hilbert_into(x, work)) {
         return {};
     }
-    std::vector<double> out(analytic.size());
-    for (size_t i = 0; i < analytic.size(); ++i) {
-        out[i] = std::arg(analytic[i]);
+    std::vector<double> out(work.spectrum.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = std::arg(work.spectrum[i]);
     }
     return out;
 }
