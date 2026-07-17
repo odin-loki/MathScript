@@ -493,73 +493,150 @@ persistence_diagram(const std::vector<std::pair<Simplex,double>>& filtration) {
 
 // ========================== Distances ==========================
 
+namespace {
+
+using PersistencePoint = std::pair<double, double>;
+
+void collect_finite_points(int dim,
+                           const std::vector<PersistencePair>& dgm,
+                           std::vector<PersistencePoint>& out) {
+    out.clear();
+    out.reserve(dgm.size());
+    for (const auto& pair : dgm) {
+        if (pair.dim == dim && !pair.is_essential())
+            out.emplace_back(pair.birth, pair.death);
+    }
+}
+
+inline double l_inf_cost(PersistencePoint a, PersistencePoint b) {
+    return std::max(std::abs(a.first - b.first), std::abs(a.second - b.second));
+}
+
+inline double diag_l_inf_cost(PersistencePoint a) {
+    return (a.second - a.first) * 0.5;
+}
+
+inline double raise_to_p(double x, int p) {
+    if (p == 1) return x;
+    if (p == 2) return x * x;
+    return std::pow(x, static_cast<double>(p));
+}
+
+inline double wasserstein_point_cost(PersistencePoint a, PersistencePoint b, int p) {
+    return raise_to_p(l_inf_cost(a, b), p);
+}
+
+inline double wasserstein_diag_cost(PersistencePoint a, int p) {
+    return raise_to_p(diag_l_inf_cost(a), p);
+}
+
+} // namespace
+
 double bottleneck_distance(const std::vector<PersistencePair>& dgm1,
                             const std::vector<PersistencePair>& dgm2, int dim) {
-    // Filter by dimension
-    std::vector<std::pair<double,double>> pts1, pts2;
-    for (auto& p : dgm1) if (p.dim==dim && !p.is_essential()) pts1.push_back({p.birth,p.death});
-    for (auto& p : dgm2) if (p.dim==dim && !p.is_essential()) pts2.push_back({p.birth,p.death});
+    // Bottleneck distance: L-infinity optimal matching between off-diagonal points,
+    // allowing unmatched points to be projected to the diagonal at cost (d-b)/2.
+    // Exact bottleneck requires the Hungarian algorithm (O(n^3)); for typical
+    // diagram sizes (n < 500) we use greedy O(n^2) matching, which is fast and
+    // sufficient for approximate comparisons.
+    std::vector<PersistencePoint> pts1, pts2;
+    collect_finite_points(dim, dgm1, pts1);
+    collect_finite_points(dim, dgm2, pts2);
 
-    // Bottleneck: optimal matching minimising max cost
-    // Distance from a point (b,d) to diagonal is (d-b)/2
-    // Simple O(n^2) approximation
+    if (pts1.empty() && pts2.empty()) return 0.0;
+    if (pts1.empty()) {
+        double result = 0.0;
+        for (const auto& pt : pts2)
+            result = std::max(result, diag_l_inf_cost(pt));
+        return result;
+    }
+    if (pts2.empty()) {
+        double result = 0.0;
+        for (const auto& pt : pts1)
+            result = std::max(result, diag_l_inf_cost(pt));
+        return result;
+    }
+
     double result = 0.0;
-    // Cost between two persistence points
-    auto cost = [](std::pair<double,double> a, std::pair<double,double> b) {
-        return std::max(std::abs(a.first-b.first), std::abs(a.second-b.second));
-    };
-    auto diag_cost = [](std::pair<double,double> a) {
-        return (a.second - a.first) / 2.0;
-    };
-
-    // Greedy matching
     std::vector<bool> used2(pts2.size(), false);
-    for (auto& p : pts1) {
-        double best = diag_cost(p);
+
+    for (const auto& pt : pts1) {
+        double best = diag_l_inf_cost(pt);
         int best_j = -1;
-        for (int j=0; j<(int)pts2.size(); ++j) {
+        const int n2 = static_cast<int>(pts2.size());
+        for (int j = 0; j < n2; ++j) {
             if (used2[j]) continue;
-            double c = cost(p, pts2[j]);
-            if (c < best) { best = c; best_j = j; }
+            const double c = l_inf_cost(pt, pts2[j]);
+            if (c < best) {
+                best = c;
+                best_j = j;
+                if (best == 0.0) break;
+            }
         }
         if (best_j >= 0) used2[best_j] = true;
         result = std::max(result, best);
     }
-    for (int j=0; j<(int)pts2.size(); ++j)
-        if (!used2[j]) result = std::max(result, diag_cost(pts2[j]));
+    for (int j = 0; j < static_cast<int>(pts2.size()); ++j) {
+        if (!used2[j])
+            result = std::max(result, diag_l_inf_cost(pts2[j]));
+    }
     return result;
 }
 
 double wasserstein_distance(const std::vector<PersistencePair>& dgm1,
                              const std::vector<PersistencePair>& dgm2,
                              int dim, int p) {
-    std::vector<std::pair<double,double>> pts1, pts2;
-    for (auto& pp : dgm1) if (pp.dim==dim && !pp.is_essential()) pts1.push_back({pp.birth,pp.death});
-    for (auto& pp : dgm2) if (pp.dim==dim && !pp.is_essential()) pts2.push_back({pp.birth,pp.death});
+    // Wasserstein-p distance via greedy matching (same complexity trade-off as
+    // bottleneck_distance above). For p=2 the inner loop uses squared costs and
+    // a single sqrt at the end.
+    std::vector<PersistencePoint> pts1, pts2;
+    collect_finite_points(dim, dgm1, pts1);
+    collect_finite_points(dim, dgm2, pts2);
 
-    auto cost = [&](std::pair<double,double> a, std::pair<double,double> b) {
-        return std::pow(std::max(std::abs(a.first-b.first), std::abs(a.second-b.second)), p);
+    if (pts1.empty() && pts2.empty()) return 0.0;
+
+    const bool p_is_two = (p == 2);
+    auto point_cost = [&](PersistencePoint a, PersistencePoint b) {
+        return wasserstein_point_cost(a, b, p);
     };
-    auto diag_cost = [&](std::pair<double,double> a) {
-        return std::pow((a.second - a.first) / 2.0, p);
+    auto diag_cost = [&](PersistencePoint a) {
+        return wasserstein_diag_cost(a, p);
     };
+
+    auto accumulate_empty = [&](const std::vector<PersistencePoint>& pts) {
+        double total = 0.0;
+        for (const auto& pt : pts)
+            total += diag_cost(pt);
+        return p_is_two ? std::sqrt(total) : std::pow(total, 1.0 / p);
+    };
+
+    if (pts1.empty()) return accumulate_empty(pts2);
+    if (pts2.empty()) return accumulate_empty(pts1);
 
     double total = 0.0;
     std::vector<bool> used2(pts2.size(), false);
-    for (auto& pt : pts1) {
+
+    for (const auto& pt : pts1) {
         double best = diag_cost(pt);
         int best_j = -1;
-        for (int j=0; j<(int)pts2.size(); ++j) {
+        const int n2 = static_cast<int>(pts2.size());
+        for (int j = 0; j < n2; ++j) {
             if (used2[j]) continue;
-            double c = cost(pt, pts2[j]);
-            if (c < best) { best = c; best_j = j; }
+            const double c = point_cost(pt, pts2[j]);
+            if (c < best) {
+                best = c;
+                best_j = j;
+                if (best == 0.0) break;
+            }
         }
         if (best_j >= 0) used2[best_j] = true;
         total += best;
     }
-    for (int j=0; j<(int)pts2.size(); ++j)
-        if (!used2[j]) total += diag_cost(pts2[j]);
-    return std::pow(total, 1.0/p);
+    for (int j = 0; j < static_cast<int>(pts2.size()); ++j) {
+        if (!used2[j])
+            total += diag_cost(pts2[j]);
+    }
+    return p_is_two ? std::sqrt(total) : std::pow(total, 1.0 / p);
 }
 
 // ========================== Persistence Landscape ==========================
