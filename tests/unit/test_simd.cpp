@@ -185,6 +185,23 @@ TEST(SimdTest, sum_cross_check_against_naive_loop_various_sizes) {
     }
 }
 
+TEST(SimdTest, sum_cross_check_simd_matches_scalar_dispatch) {
+    const std::vector<double> x{1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0, 9.0};
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "1");
+#else
+    setenv("MS_SIMD_FORCE_SCALAR", "1", 1);
+#endif
+    const double scalar_ref = sum(x);
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "0");
+#else
+    unsetenv("MS_SIMD_FORCE_SCALAR");
+#endif
+    const double simd_result = sum(x);
+    EXPECT_NEAR(simd_result, scalar_ref, 1e-12);
+}
+
 TEST(SimdTest, sum_squares_pythagorean_triple) {
     std::vector<double> x{3.0, 4.0};
     EXPECT_DOUBLE_EQ(sum_squares(x), 25.0);
@@ -202,6 +219,47 @@ TEST(SimdTest, sum_squares_matches_manual_computation_with_tail) {
         expected += v * v;
     }
     EXPECT_NEAR(sum_squares(x), expected, 1e-12);
+}
+
+TEST(SimdTest, sum_squares_large_array_closed_form) {
+    constexpr size_t n = 1000;
+    std::vector<double> x(n);
+    std::iota(x.begin(), x.end(), 1.0);
+    const double expected =
+        static_cast<double>(n) * (static_cast<double>(n) + 1.0) *
+        (2.0 * static_cast<double>(n) + 1.0) / 6.0;
+    EXPECT_NEAR(sum_squares(x), expected, 1e-6);
+}
+
+TEST(SimdTest, sum_squares_cross_check_against_naive_loop_various_sizes) {
+    for (const size_t n : {0, 1, 3, 4, 5, 7, 8, 15, 16, 17, 63, 64, 65, 200}) {
+        std::vector<double> x(n);
+        for (size_t i = 0; i < n; ++i) {
+            x[i] = static_cast<double>(i) * 0.25 - 1.0;
+        }
+        double naive = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            naive += x[i] * x[i];
+        }
+        EXPECT_NEAR(sum_squares(x), naive, 1e-9) << "mismatch at n=" << n;
+    }
+}
+
+TEST(SimdTest, sum_squares_cross_check_simd_matches_scalar_dispatch) {
+    const std::vector<double> x{1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0, 9.0};
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "1");
+#else
+    setenv("MS_SIMD_FORCE_SCALAR", "1", 1);
+#endif
+    const double scalar_ref = sum_squares(x);
+#if defined(_WIN32)
+    _putenv_s("MS_SIMD_FORCE_SCALAR", "0");
+#else
+    unsetenv("MS_SIMD_FORCE_SCALAR");
+#endif
+    const double simd_result = sum_squares(x);
+    EXPECT_NEAR(simd_result, scalar_ref, 1e-12);
 }
 
 TEST(SimdTest, norm_l2_pythagorean_triple) {
