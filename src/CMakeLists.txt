@@ -13,6 +13,7 @@ add_subdirectory(cuda)
 add_subdirectory(interp)
 add_subdirectory(ode)
 add_subdirectory(pde)
+add_subdirectory(fem)
 add_subdirectory(poly)
 add_subdirectory(symbolic)
 add_subdirectory(domain)
@@ -54,6 +55,7 @@ target_link_libraries(mathscript INTERFACE
     ms_interp
     ms_ode
     ms_pde
+    ms_fem
     ms_poly
     ms_symbolic
     ms_domain

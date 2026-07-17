@@ -193,6 +193,7 @@ add_ms_test(test_crypto     unit/test_crypto.cpp)
 add_ms_test(test_checked_arith unit/test_checked_arith.cpp)
 add_ms_test(test_prob_lognormal_weibull_laplace unit/test_prob_lognormal_weibull_laplace.cpp)
 add_ms_test(test_units unit/test_units.cpp)
+add_ms_test(test_fem unit/test_fem.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
