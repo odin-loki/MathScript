@@ -371,11 +371,11 @@ bool hilbert_into(const std::vector<double>& x, HilbertBuffers& work) {
         work.spectrum.clear();
         return true;
     }
-    if (!fft(x, work.spectrum)) {
+    if (!ms::fft(x, work.spectrum)) {
         return false;
     }
     apply_hilbert_frequency_mask(work.spectrum);
-    if (!complex_ifft(work.spectrum)) {
+    if (!ms::complex_ifft(work.spectrum)) {
         return false;
     }
     work.spectrum.resize(x.size());
