@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <cstring>
 #include <random>
 #include <vector>
 #include "ms/stats/stats.hpp"
@@ -552,6 +553,52 @@ size_t argmax(const std::vector<double>& values) {
                       std::max_element(values.begin(), values.end())));
 }
 
+double kde_naive_kernel(double u, const char* kernel) {
+    if (std::strcmp(kernel, "epanechnikov") == 0) {
+        if (std::abs(u) > 1.0) {
+            return 0.0;
+        }
+        return 0.75 * (1.0 - u * u);
+    }
+    static constexpr double inv_sqrt_2pi = 0.3989422804014327;
+    return inv_sqrt_2pi * std::exp(-0.5 * u * u);
+}
+
+std::vector<double> kde_naive_reference(std::span<const double> samples,
+                                        std::span<const double> grid,
+                                        double bandwidth,
+                                        const char* kernel) {
+    if (samples.empty() || bandwidth <= 0.0 || grid.empty()) {
+        return {};
+    }
+    const double inv_nh =
+        1.0 / (static_cast<double>(samples.size()) * bandwidth);
+    std::vector<double> result(grid.size(), 0.0);
+    for (size_t gi = 0; gi < grid.size(); ++gi) {
+        const double x = grid[gi];
+        double sum = 0.0;
+        for (double xi : samples) {
+            sum += kde_naive_kernel((x - xi) / bandwidth, kernel);
+        }
+        result[gi] = inv_nh * sum;
+    }
+    return result;
+}
+
+void expect_kde_matches_naive(const std::vector<double>& samples,
+                              const std::vector<double>& grid,
+                              double bandwidth,
+                              const char* kernel,
+                              double tol = 1e-10) {
+    const auto optimized = kde(samples, grid, bandwidth, kernel);
+    const auto naive =
+        kde_naive_reference(samples, grid, bandwidth, kernel);
+    ASSERT_EQ(optimized.size(), naive.size());
+    for (size_t i = 0; i < optimized.size(); ++i) {
+        EXPECT_NEAR(optimized[i], naive[i], tol) << "grid index " << i;
+    }
+}
+
 } // namespace
 
 TEST(StatsNumerical, Kde_EmptySamples_ReturnsEmpty) {
@@ -652,6 +699,48 @@ TEST(StatsNumerical, Kde_UnknownKernelDefaultsToGaussian) {
     for (size_t i = 0; i < gaussian.size(); ++i) {
         EXPECT_NEAR(unknown[i], gaussian[i], 1e-12);
     }
+}
+
+TEST(StatsNumerical, Kde_OptimizedMatchesNaive_GaussianSmallUniform) {
+    const std::vector<double> samples = {0.5, 1.5, 2.5, 3.5, 4.5};
+    const std::vector<double> grid = linspace(-1.0, 6.0, 37);
+    expect_kde_matches_naive(samples, grid, 0.75, "gaussian");
+}
+
+TEST(StatsNumerical, Kde_OptimizedMatchesNaive_GaussianSingleSample) {
+    const std::vector<double> samples = {5.0};
+    const std::vector<double> grid = linspace(0.0, 10.0, 51);
+    expect_kde_matches_naive(samples, grid, 1.0, "gaussian");
+}
+
+TEST(StatsNumerical, Kde_OptimizedMatchesNaive_GaussianRandomSmall) {
+    std::vector<double> samples;
+    samples.reserve(24);
+    std::mt19937 rng(218);
+    std::normal_distribution<double> dist(1.0, 0.8);
+    for (int i = 0; i < 24; ++i) {
+        samples.push_back(dist(rng));
+    }
+    const std::vector<double> grid = linspace(-3.0, 5.0, 41);
+    expect_kde_matches_naive(samples, grid, 0.35, "gaussian");
+}
+
+TEST(StatsNumerical, Kde_OptimizedMatchesNaive_GaussianWideGridSparseSamples) {
+    const std::vector<double> samples = {-2.0, 0.0, 4.0, 8.0};
+    const std::vector<double> grid = linspace(-10.0, 12.0, 45);
+    expect_kde_matches_naive(samples, grid, 0.5, "gaussian");
+}
+
+TEST(StatsNumerical, Kde_OptimizedMatchesNaive_EpanechnikovSmall) {
+    const std::vector<double> samples = {1.0, 2.0, 2.5, 4.0, 5.0};
+    const std::vector<double> grid = linspace(-1.0, 7.0, 33);
+    expect_kde_matches_naive(samples, grid, 0.6, "epanechnikov");
+}
+
+TEST(StatsNumerical, Kde_OptimizedMatchesNaive_EpanechnikovBoundarySupport) {
+    const std::vector<double> samples = {0.0, 3.0};
+    const std::vector<double> grid = linspace(-2.0, 5.0, 29);
+    expect_kde_matches_naive(samples, grid, 1.0, "epanechnikov");
 }
 
 // ============================================================
