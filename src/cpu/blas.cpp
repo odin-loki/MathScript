@@ -12,7 +12,7 @@ bool is_no_transpose(char trans) {
     return trans == 'N' || trans == 'n';
 }
 
-void scale_vector(int n, double beta, double* y, int incy) {
+__forceinline void scale_vector(int n, double beta, double* y, int incy) {
     if (beta == 1.0) {
         return;
     }
@@ -35,7 +35,7 @@ void scale_vector(int n, double beta, double* y, int incy) {
     }
 }
 
-void dgemv_nn(
+__forceinline void dgemv_nn(
     int m,
     int n,
     double alpha,
@@ -78,7 +78,7 @@ void dgemv_nn(
     }
 }
 
-void dgemv_t(
+__forceinline void dgemv_t(
     int m,
     int n,
     double alpha,
