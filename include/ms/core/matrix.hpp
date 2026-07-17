@@ -39,12 +39,18 @@ public:
         if (m_rows_ > 0) {
             m_cols_ = rows.begin()->size();
         }
+        for (const auto& row : rows) {
+            if (row.size() != m_cols_) {
+                // Ragged initializer_list: leave matrix empty (matches Sparse pattern).
+                m_rows_ = 0;
+                m_cols_ = 0;
+                m_data_.clear();
+                return;
+            }
+        }
         m_data_.resize(m_rows_ * m_cols_);
         size_t i = 0;
         for (const auto& row : rows) {
-            if (row.size() != m_cols_) {
-                throw std::invalid_argument("Matrix initializer rows must have equal length");
-            }
             size_t j = 0;
             for (S v : row) {
                 m_data_[index(i, j)] = v;

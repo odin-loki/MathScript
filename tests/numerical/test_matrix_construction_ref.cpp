@@ -74,11 +74,11 @@ TEST(MatrixConstruction, InitList1x1) {
     EXPECT_DOUBLE_EQ(A(0, 0), 42.0);
 }
 
-TEST(MatrixConstruction, InitListRowMismatchThrows) {
-    EXPECT_THROW(
-        (DMatrix{{1.0, 2.0}, {3.0}}),
-        std::invalid_argument
-    );
+TEST(MatrixConstruction, InitListRowMismatchEmpty) {
+    DMatrix A{{1.0, 2.0}, {3.0}};
+    EXPECT_EQ(A.rows(), 0u);
+    EXPECT_EQ(A.cols(), 0u);
+    EXPECT_TRUE(A.empty());
 }
 
 // ---------------------------------------------------------------------------

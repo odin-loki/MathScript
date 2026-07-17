@@ -46,7 +46,7 @@ public:
     [[nodiscard]] T* allocate(size_t n) {
         if (!NumaTopology::instance().available()) {
             // Fall back to aligned allocator on non-NUMA systems
-            return AlignedAllocator<T, 64>{}.allocate(n);
+            return AlignedAllocator<T, 64>::allocate(n);
         }
 #if defined(_WIN32)
         void* ptr = VirtualAllocExNuma(GetCurrentProcess(),
@@ -55,12 +55,19 @@ public:
 #else
         void* ptr = numa_alloc_onnode(n * sizeof(T), node_);
 #endif
-        if (!ptr) throw std::bad_alloc{};
+        if (!ptr) {
+            // NUMA-local allocation failed; fall back to aligned heap (no exceptions).
+            return AlignedAllocator<T, 64>::allocate(n);
+        }
         return static_cast<T*>(ptr);
     }
 
     void deallocate(T* ptr, size_t n) noexcept {
         if (!ptr) return;
+        if (!NumaTopology::instance().available()) {
+            AlignedAllocator<T, 64>::deallocate(ptr, n);
+            return;
+        }
 #if defined(_WIN32)
         VirtualFree(ptr, 0, MEM_RELEASE);
 #else
