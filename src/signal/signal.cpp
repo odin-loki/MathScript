@@ -1043,20 +1043,27 @@ std::vector<double> filter(const std::vector<double>& b, const std::vector<doubl
         }
     }
 
-    std::vector<double> y(x.size(), 0.0);
+    const size_t order = std::max(bn.size(), an.size()) - 1;
+    std::vector<double> z(order, 0.0);
+    std::vector<double> y(x.size());
+
     for (size_t n = 0; n < x.size(); ++n) {
-        double acc = 0.0;
-        for (size_t j = 0; j < bn.size(); ++j) {
-            if (n >= j) {
-                acc += bn[j] * x[n - j];
-            }
+        const double xi = x[n];
+        double yi = bn[0] * xi;
+        if (order > 0) {
+            yi += z[0];
         }
-        for (size_t k = 1; k < an.size(); ++k) {
-            if (n >= k) {
-                acc -= an[k] * y[n - k];
-            }
+        for (size_t i = 0; i + 1 < order; ++i) {
+            const double bi = (i + 1 < bn.size()) ? bn[i + 1] : 0.0;
+            const double ai = (i + 1 < an.size()) ? an[i + 1] : 0.0;
+            z[i] = z[i + 1] + bi * xi - ai * yi;
         }
-        y[n] = acc;
+        if (order > 0) {
+            const double bi = (order < bn.size()) ? bn[order] : 0.0;
+            const double ai = (order < an.size()) ? an[order] : 0.0;
+            z[order - 1] = bi * xi - ai * yi;
+        }
+        y[n] = yi;
     }
     return y;
 }

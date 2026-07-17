@@ -304,6 +304,116 @@ TEST(SignalFilterApplyTest, filter_empty_input_or_b) {
     EXPECT_TRUE(filter({}, {1.0}, x).empty());
 }
 
+// ---------------------------------------------------------------------------
+// filter() DF2T: impulse/step response, scipy reference, sosfilt consistency.
+// ---------------------------------------------------------------------------
+
+TEST(SignalFilterDf2tTest, fir_impulse_response_equals_b_taps) {
+    // scipy.signal.lfilter([0.25, 0.5, 0.25], [1], unit impulse)
+    const std::vector<double> b{0.25, 0.5, 0.25};
+    const std::vector<double> a{1.0};
+    std::vector<double> impulse(16, 0.0);
+    impulse[0] = 1.0;
+    const auto y = filter(b, a, impulse);
+    const std::vector<double> expected{0.25, 0.5, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0};
+    ASSERT_GE(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterDf2tTest, iir_impulse_response_matches_scipy_reference) {
+    // scipy.signal.lfilter on 2nd-order Butterworth lowpass (Wn=0.25, fs=2).
+    const std::vector<double> b{0.09763107, 0.19526215, 0.09763107};
+    const std::vector<double> a{1.0, -0.94280904, 0.33333333};
+    std::vector<double> impulse(16, 0.0);
+    impulse[0] = 1.0;
+    const auto y = filter(b, a, impulse);
+    const std::vector<double> expected{
+        0.09763107, 0.28730961, 0.33596547, 0.22098142,
+        0.09635479, 0.01718369, -0.01591732, -0.02073489,
+    };
+    ASSERT_GE(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-6);
+    }
+}
+
+TEST(SignalFilterDf2tTest, fir_step_response_hand_computed) {
+    const std::vector<double> b{1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0};
+    const std::vector<double> a{1.0};
+    const std::vector<double> step(12, 1.0);
+    const auto y = filter(b, a, step);
+    const std::vector<double> expected{1.0 / 3.0, 2.0 / 3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-12);
+    }
+}
+
+TEST(SignalFilterDf2tTest, iir_step_response_matches_scipy_reference) {
+    // scipy.signal.lfilter([0.5], [1, -0.5], step starting at index 3)
+    const std::vector<double> b{0.5};
+    const std::vector<double> a{1.0, -0.5};
+    const std::vector<double> step{0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    const auto y = filter(b, a, step);
+    const std::vector<double> expected_tail{0.5, 0.75, 0.875, 0.9375, 0.96875, 0.984375, 0.9921875};
+    ASSERT_EQ(y.size(), step.size());
+    for (size_t i = 0; i < expected_tail.size(); ++i) {
+        EXPECT_NEAR(y[i + 3], expected_tail[i], 1e-10);
+    }
+}
+
+TEST(SignalFilterDf2tTest, butterworth_signal_matches_scipy_lfilter) {
+    // scipy.signal.lfilter(b, a, [1,0,-1,0,1,0,-1,0]) — same coeffs as sosfilt reference test.
+    const std::vector<double> b{0.09763107, 0.19526215, 0.09763107};
+    const std::vector<double> a{1.0, -0.94280904, 0.33333333};
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0};
+    const auto y = filter(b, a, x);
+    const std::vector<double> expected{
+        0.09763107, 0.2873096, 0.2383344, -0.06632819,
+        -0.14197961, 0.08351188, 0.12606229, -0.10424677,
+    };
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-6);
+    }
+}
+
+TEST(SignalFilterDf2tTest, fourth_order_direct_matches_sosfilt_cascade) {
+    // Direct-form coeffs from convolving two 2nd-order Butterworth SOS sections.
+    const std::vector<double> b{0.01020948, 0.04083792, 0.06125688, 0.04083792, 0.01020948};
+    const std::vector<double> a{1.0, -1.96842778, 1.73586071, -0.72447083, 0.1203896};
+    const std::vector<std::array<double, 6>> sos{
+        {0.01020948, 0.02041896, 0.01020948, 1.0, -0.85539793, 0.20971536},
+        {1.0, 2.0, 1.0, 1.0, -1.11302985, 0.57406192},
+    };
+    const std::vector<double> x{0.0, 1.0, 0.5, -0.25, 0.75, -1.0, 0.3, 0.6, -0.4, 0.2,
+                                0.9, -0.1, 0.4, -0.6, 0.8, 0.0};
+    const auto y_direct = filter(b, a, x);
+    const auto y_sos = sosfilt(sos, x);
+    ASSERT_EQ(y_direct.size(), x.size());
+    ASSERT_EQ(y_sos.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(y_direct[i], y_sos[i], 1e-8);
+    }
+}
+
+TEST(SignalFilterDf2tTest, fourth_order_direct_matches_scipy_lfilter) {
+    // scipy.signal.lfilter on 4th-order Butterworth (product of two SOS sections).
+    const std::vector<double> b{0.01020948, 0.04083792, 0.06125688, 0.04083792, 0.01020948};
+    const std::vector<double> a{1.0, -1.96842778, 1.73586071, -0.72447083, 0.1203896};
+    const std::vector<double> x{0.0, 1.0, 0.5, -0.25, 0.75, -1.0, 0.3, 0.6};
+    const auto y = filter(b, a, x);
+    const std::vector<double> expected{
+        0.0, 0.01020948, 0.06603928, 0.1913948, 0.3384223, 0.41627274, 0.36572121, 0.20463569,
+    };
+    ASSERT_EQ(y.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(y[i], expected[i], 1e-6);
+    }
+}
+
 TEST(SignalFilterApplyTest, filtfilt_preserves_length) {
     const std::vector<double> b{0.25, 0.5, 0.25};
     const std::vector<double> a{1.0};
