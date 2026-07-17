@@ -367,13 +367,14 @@ std::vector<double> moving_average(const std::vector<double>& x, size_t window) 
         return x;
     }
     std::vector<double> out(x.size(), 0.0);
+    double sum = 0.0;
     for (size_t i = 0; i < x.size(); ++i) {
-        const size_t start = (i >= window - 1) ? i - window + 1 : 0;
-        double sum = 0.0;
-        for (size_t j = start; j <= i; ++j) {
-            sum += x[j];
+        sum += x[i];
+        if (i >= window) {
+            sum -= x[i - window];
         }
-        out[i] = sum / static_cast<double>(i - start + 1);
+        const size_t count = std::min(i + 1, window);
+        out[i] = sum / static_cast<double>(count);
     }
     return out;
 }
