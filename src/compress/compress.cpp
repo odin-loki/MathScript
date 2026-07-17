@@ -91,7 +91,10 @@ Bytes huffman_decode(const HuffmanResult& hr, size_t orig_size) {
     std::string bits=bytes_to_bits(hr.encoded);
     if (hr.padding_bits>0 && hr.padding_bits<8)
         bits=bits.substr(0,bits.size()-hr.padding_bits);
-    Bytes out; std::string cur;
+    Bytes out;
+    out.reserve(orig_size);
+    std::string cur;
+    cur.reserve(256);
     for (char b:bits) {
         cur+=b;
         auto it=decode_map.find(cur);
@@ -440,6 +443,7 @@ Bytes ans_decode(const AnsResult& ar) {
 // ========================== LZ77 ==========================
 std::vector<LZ77Token> lz77_encode(const Bytes& data, int window, int lookahead) {
     std::vector<LZ77Token> tokens;
+    tokens.reserve(data.size() / 4 + 1);
     size_t pos=0, n=data.size();
     while (pos<n) {
         int best_off=0, best_len=0;
