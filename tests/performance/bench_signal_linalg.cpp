@@ -124,6 +124,27 @@ BENCHMARK(BM_MedianFilter)->Args({4096, 3})->Args({4096, 5})->Args({4096, 7})
     ->Args({65536, 7})->Args({65536, 31})->Args({65536, 101});
 
 // ---------------------------------------------------------------------------
+// Signal: savgol
+// ---------------------------------------------------------------------------
+
+static void BM_Savgol65536(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int window = static_cast<int>(state.range(1));
+    const int polyorder = static_cast<int>(state.range(2));
+    std::vector<double> x(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        x[static_cast<size_t>(i)] = std::sin(2.0 * M_PI * i / 97.0) +
+                                       0.3 * std::cos(2.0 * M_PI * i / 23.0);
+    }
+    for (auto _ : state) {
+        auto r = savgol(x, window, polyorder);
+        benchmark::DoNotOptimize(r);
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_Savgol65536)->Args({65536, 11, 3})->Args({65536, 21, 3})->Args({65536, 51, 5});
+
+// ---------------------------------------------------------------------------
 // Signal: butterworth filter
 // ---------------------------------------------------------------------------
 

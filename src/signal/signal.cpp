@@ -1447,12 +1447,9 @@ std::vector<double> savgol(const std::vector<double>& x, int window_length, int 
     // Boundary points without a full centered window are left unfiltered (copied from x); see
     // the @note on boundary handling in signal.hpp.
     std::vector<double> y = x;
+    const auto filtered = correlate(x, h);
     for (size_t center = half; center + half < n; ++center) {
-        double acc = 0.0;
-        for (size_t j = 0; j < h.size(); ++j) {
-            acc += h[j] * x[center - half + j];
-        }
-        y[center] = acc;
+        y[center] = filtered[center + half];
     }
     return y;
 }
