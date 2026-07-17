@@ -417,58 +417,137 @@ Image threshold_otsu(const Image& img) {
     return threshold_binary(g, best_t/255.f);
 }
 
+namespace {
+
+struct WatershedNode {
+    float height;
+    int r, c;
+};
+
+// Max-heap on height; matches std::make_heap/pop_heap/push_heap ordering.
+class WatershedHeap {
+    std::vector<WatershedNode> nodes_;
+
+    static bool less_height(const WatershedNode& a, const WatershedNode& b) {
+        return a.height < b.height;
+    }
+
+    void sift_up(size_t i) {
+        while (i > 0) {
+            const size_t p = (i - 1) / 2;
+            if (!less_height(nodes_[p], nodes_[i])) break;
+            std::swap(nodes_[p], nodes_[i]);
+            i = p;
+        }
+    }
+
+    void sift_down(size_t i) {
+        const size_t n = nodes_.size();
+        while (true) {
+            const size_t left = 2 * i + 1;
+            if (left >= n) break;
+            size_t best = left;
+            const size_t right = left + 1;
+            if (right < n && less_height(nodes_[left], nodes_[right])) best = right;
+            if (!less_height(nodes_[i], nodes_[best])) break;
+            std::swap(nodes_[i], nodes_[best]);
+            i = best;
+        }
+    }
+
+public:
+    void clear() { nodes_.clear(); }
+    void reserve(size_t n) { nodes_.reserve(n); }
+    bool empty() const { return nodes_.empty(); }
+
+    void push(WatershedNode node) {
+        nodes_.push_back(node);
+        sift_up(nodes_.size() - 1);
+    }
+
+    WatershedNode pop() {
+        std::swap(nodes_.front(), nodes_.back());
+        WatershedNode top = nodes_.back();
+        nodes_.pop_back();
+        if (!nodes_.empty()) sift_down(0);
+        return top;
+    }
+
+    void build(std::vector<WatershedNode>&& seed) {
+        nodes_ = std::move(seed);
+        for (int i = static_cast<int>(nodes_.size()) / 2 - 1; i >= 0; --i)
+            sift_down(static_cast<size_t>(i));
+    }
+};
+
+} // namespace
+
 Image watershed(const Image& gray, const Image& markers) {
     if (gray.empty() || markers.empty()) return Image{};
     if (gray.rows != markers.rows || gray.cols != markers.cols) return Image{};
 
-    auto g = gray.channels > 1 ? rgb2gray(gray) : gray;
-    auto mk = markers.channels > 1 ? rgb2gray(markers) : markers;
+    const Image g = gray.channels > 1 ? rgb2gray(gray) : gray;
+    const Image mk = markers.channels > 1 ? rgb2gray(markers) : markers;
 
     const int R = g.rows, C = g.cols;
+    const size_t N = static_cast<size_t>(R * C);
     constexpr int k_watershed = -1;
     constexpr int k_unlabeled = 0;
 
-    std::vector<int> labels(static_cast<size_t>(R * C), k_unlabeled);
-    for (int r = 0; r < R; ++r)
+    std::vector<float> gray_flat;
+    const float* gray_vals = nullptr;
+    if (g.channels == 1 && g.data.size() == N) {
+        gray_vals = g.data.data();
+    } else {
+        gray_flat.resize(N);
+        for (size_t i = 0; i < N; ++i)
+            gray_flat[i] = g.data[i * g.channels];
+        gray_vals = gray_flat.data();
+    }
+
+    std::vector<int> labels(N, k_unlabeled);
+    for (int r = 0; r < R; ++r) {
+        const int row_base = r * C;
         for (int c = 0; c < C; ++c) {
-            int m = static_cast<int>(std::lround(mk.at(r, c, 0)));
-            if (m > 0) labels[static_cast<size_t>(r * C + c)] = m;
+            const int m = static_cast<int>(std::lround(mk.at(r, c, 0)));
+            if (m > 0) labels[static_cast<size_t>(row_base + c)] = m;
         }
+    }
 
-    using Node = std::tuple<float, int, int>;
-    auto cmp = [](const Node& a, const Node& b) { return std::get<0>(a) < std::get<0>(b); };
-    std::vector<Node> pq;
-    pq.reserve(static_cast<size_t>(R * C));
+    std::vector<WatershedNode> seed;
+    seed.reserve(N);
+    for (int r = 0; r < R; ++r) {
+        const int row_base = r * C;
+        for (int c = 0; c < C; ++c) {
+            const size_t idx = static_cast<size_t>(row_base + c);
+            if (labels[idx] > 0) seed.push_back({gray_vals[idx], r, c});
+        }
+    }
 
-    for (int r = 0; r < R; ++r)
-        for (int c = 0; c < C; ++c)
-            if (labels[static_cast<size_t>(r * C + c)] > 0)
-                pq.push_back({g.at(r, c, 0), r, c});
-
-    std::make_heap(pq.begin(), pq.end(), cmp);
+    WatershedHeap pq;
+    pq.build(std::move(seed));
 
     const int dr[] = {-1, 1, 0, 0}, dc[] = {0, 0, -1, 1};
 
     while (!pq.empty()) {
-        std::pop_heap(pq.begin(), pq.end(), cmp);
-        auto [_, r, c] = pq.back();
-        pq.pop_back();
+        const auto node = pq.pop();
+        const int r = node.r, c = node.c;
+        const size_t ci = static_cast<size_t>(r * C + c);
 
-        int cur = labels[static_cast<size_t>(r * C + c)];
+        int cur = labels[ci];
         if (cur <= k_unlabeled) continue;
 
         for (int d = 0; d < 4; ++d) {
-            int nr = r + dr[d], nc = c + dc[d];
+            const int nr = r + dr[d], nc = c + dc[d];
             if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
 
-            size_t ni = static_cast<size_t>(nr * C + nc);
+            const size_t ni = static_cast<size_t>(nr * C + nc);
             int& nl = labels[ni];
             if (nl == k_unlabeled) {
                 nl = cur;
-                pq.push_back({g.at(nr, nc, 0), nr, nc});
-                std::push_heap(pq.begin(), pq.end(), cmp);
+                pq.push({gray_vals[ni], nr, nc});
             } else if (nl > k_unlabeled && nl != cur) {
-                labels[static_cast<size_t>(r * C + c)] = k_watershed;
+                labels[ci] = k_watershed;
                 nl = k_watershed;
                 cur = k_watershed;
             }
@@ -476,11 +555,8 @@ Image watershed(const Image& gray, const Image& markers) {
     }
 
     Image out(R, C, 1);
-    for (int r = 0; r < R; ++r)
-        for (int c = 0; c < C; ++c) {
-            int l = labels[static_cast<size_t>(r * C + c)];
-            out.at(r, c, 0) = l > 0 ? static_cast<float>(l) : 0.f;
-        }
+    for (size_t i = 0; i < N; ++i)
+        out.data[i] = labels[i] > 0 ? static_cast<float>(labels[i]) : 0.f;
     return out;
 }
 

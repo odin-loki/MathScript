@@ -1050,6 +1050,35 @@ TEST(ImageWatershed, DistinctLabelsDoNotMerge) {
     EXPECT_NE(out.at(9, 2, 0), out.at(9, 15, 0));
 }
 
+TEST(ImageWatershed, DeterministicGoldenLabels) {
+    static constexpr float k_expected[12][12] = {
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2},
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 2},
+        {1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 2, 2},
+        {1, 1, 1, 1, 1, 1, 0, 0, 2, 2, 2, 2},
+        {1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 2, 2},
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 2},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    };
+
+    auto gray = make_two_hill_gray(12, 12);
+    Image markers(12, 12, 1, 0.f);
+    markers.at(6, 3, 0) = 1.f;
+    markers.at(6, 9, 0) = 2.f;
+    const auto out = watershed(gray, markers);
+    ASSERT_EQ(out.rows, 12);
+    ASSERT_EQ(out.cols, 12);
+    for (int r = 0; r < 12; ++r)
+        for (int c = 0; c < 12; ++c)
+            EXPECT_FLOAT_EQ(out.at(r, c, 0), k_expected[r][c])
+                << "mismatch at (" << r << "," << c << ")";
+}
+
 // ---- SLIC ----
 
 static int count_distinct_labels(const Image& labels) {
