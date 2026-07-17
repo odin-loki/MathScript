@@ -7380,6 +7380,7 @@ Waves 1 through 217 incrementally implemented this plan; each wave's specific ad
 - Wave 220: Remaining-TODO P0/P1 batch — no-exceptions fix, vendor gtest, crypto/fem/cfd MVPs, sym_limit/series/solve_linear, GUI REPL QThread
 - Wave 221: Performance pass III — FFT xcorr, in-place sosfilt, savgol via convolve, hybrid conv2, SHA unrolling, FEM Thomas solve, AVX2 norm_l2, extended signal/crypto/fem benches
 - Wave 222: Performance pass IV — coherence/spectrogram buffer reuse, periodogram, faster BFS, SLIC opts, REPL eval hot path, AVX2 sum_squares, expanded bench smoke
+- Wave 223: Performance pass V — explicit fft2 dims, 2D FFT conv2, watershed/blur opts, welch/filtfilt/resample buffer reuse, baseline schema + 7-bench smoke
 - Unsafe surface audit + delta baseline (blocking in CI); install/package smoke (DEB/RPM/NSIS/WiX)
 - ORC JIT scalar expr + native matrix/scalar dispatch; OpenGL PlotSurfWidget
 - docs/API.md, docs/ARCHITECTURE.md, docs/RELEASE.md; scripts/pre_release.sh + tag checklists

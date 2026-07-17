@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-17 (reconciled against `main` @ Wave 222 — **374 CTest suites**, MSVC green, `.\build.ps1 -Benchmark` smoke OK — 5 benches)
+**Updated:** 2026-07-17 (reconciled against `main` @ Wave 223 — **374 CTest suites**, MSVC green, `.\build.ps1 -Benchmark` smoke OK — 7 benches)
 
 This document tracks open items from `mathscript-master-plan.md` and the original audit below. Work proceeds in **waves** of up to 8 parallel Composer 2.5 subagents (isolated git worktrees).
 
@@ -11,13 +11,26 @@ This document tracks open items from `mathscript-master-plan.md` and the origina
 
 | Original claim | Current reality |
 |---|---|
-| Wave 141 / 342 tests | **Wave 221 / 374 tests** — full MSVC suite passing |
+| Wave 141 / 342 tests | **Wave 223 / 374 tests** — full MSVC suite passing |
 | `ms::sym` still 13 functions | **Expanded:** sub/div/neg/tan/sqrt, expand, collect, integrate, substitute, sym_parse, sym_limit, sym_series, sym_solve_linear |
 | UNSAFE `approved_sites: 6` | **40** sites documented in `UNSAFE_REVIEW.md` |
 | Build broken on Linux `-fno-exceptions` | **Fixed (Wave 220)** — matrix/numa fallbacks |
 | `ms::crypto` / `ms::fem` / `ms::cfd` absent | **MVP present (Wave 220)** — sha256/512/hmac; 1D Poisson FEM; 1D upwind advection |
 | GUI incomplete | **Partial (Wave 220)** — REPL on `QThread`; syntax highlight / multi-plot still open |
 | `vendor/` empty | **Fixed (Wave 220)** — GoogleTest v1.14.0 vendored |
+
+---
+
+## Performance profiling ✅ (Waves 218–223 — done)
+
+Six profiling waves completed. Hot paths optimized across signal, fft, simd, stats, linalg, graph, image, interp, crypto, fem, and bench infra.
+
+- [x] FFT convolve, moving_average, iterative FFT, twiddle cache (218)
+- [x] welch/spectrogram, rfft, poly batch, median_filter, FMA dot, percentile (219)
+- [x] xcorr, sosfilt in-place, savgol, hybrid conv2, SHA, FEM Thomas, norm_l2 (221)
+- [x] coherence/spectrogram buffers, periodogram, BFS, SLIC, REPL eval, sum_squares (222)
+- [x] explicit fft2 dims, 2D FFT conv2, watershed, gaussian blur, welch/filtfilt/resample, baseline schema (223)
+- [ ] **Linux CI:** run `bench_regression.sh --write-baseline` to fill null medians (infra only)
 
 ---
 
@@ -30,9 +43,9 @@ This document tracks open items from `mathscript-master-plan.md` and the origina
 
 ---
 
-## P1 — Missing §2 modules (partial — Waves 220–223)
+## P1 — Missing §2 modules (Waves 224+)
 
-- [x] **`ms::crypto` MVP start** — sha256/sha512, hmac (Wave 220–221 perf)
+- [x] **`ms::crypto` MVP start** — sha256/sha512, hmac (Wave 220–221)
 - [ ] **`ms::crypto` finish** — aes256_cbc, chacha20
 - [x] **`ms::fem` 1D MVP** — mesh1d, P1, assemble, Dirichlet, Thomas solve (Wave 220–221)
 - [ ] **`ms::fem` 2D** — lagrange P1 on quads/tris
@@ -41,16 +54,15 @@ This document tracks open items from `mathscript-master-plan.md` and the origina
 
 ---
 
-## P2 — Symbolic CAS depth (Waves 224–225)
+## P2 — Symbolic CAS depth (Waves 225–226)
 
 - [x] `sym_limit`, `sym_series`, `sym_solve_linear` (Wave 220)
 - [ ] `sym_dsolve` (separable ODEs)
 - [ ] `sym_laplace_transform`, `sym_fourier_transform`
-- [ ] Boolean/set algebra, codegen (long-term)
 
 ---
 
-## P3 — Infrastructure stubs (Waves 226–227)
+## P3 — Infrastructure (Waves 227–228)
 
 - [ ] **CUDA** — real `cuda::lu` or document+test stub boundary
 - [ ] **MPI** — non-stub `MpiContext` when `mpiexec -n > 1`
@@ -58,7 +70,7 @@ This document tracks open items from `mathscript-master-plan.md` and the origina
 
 ---
 
-## P4 — GUI (Waves 228–230)
+## P4 — GUI (Waves 229–231)
 
 - [x] Phase 1: REPL/script eval on worker `QThread` (Wave 220)
 - [ ] Phase 2: Syntax highlighting in editor
@@ -66,19 +78,12 @@ This document tracks open items from `mathscript-master-plan.md` and the origina
 
 ---
 
-## P5 — Master-plan API gaps (Waves 231+)
+## P5 — Master-plan API gaps (Waves 232+)
 
 - [ ] REPL bindings for post-Wave-187 functions
-- [ ] `ms::signal`: ellip/bessel/remez, periodogram, EMD/VMD
-- [ ] Performance: coherence/spectrogram FFT reuse, REPL eval, graph BFS, image filters (Wave 222+)
+- [ ] `ms::signal`: ellip/bessel/remez, EMD/VMD
 - [ ] `ms::geo`: `poly_diff`, robust non-convex booleans
 - [ ] 24h fuzz marathon, packaging, full ORC JIT v2
-
----
-
-## P6 — Non-code
-
-- [ ] **Trademark:** USPTO clearance for "MathScript"
 
 ---
 
@@ -86,23 +91,20 @@ This document tracks open items from `mathscript-master-plan.md` and the origina
 
 | Wave | Focus | Status |
 |------|--------|--------|
-| **220** | P0: exceptions, vendor gtest, crypto/fem/cfd, sym CAS, GUI thread | ✅ |
-| **221** | Performance III: xcorr, sosfilt, savgol, conv2, SHA, FEM, norm_l2 | ✅ |
-| **222** | Performance IV: coherence, spectrogram, graph BFS, image filters, REPL, bench smoke | in progress |
-| **223** | crypto AES/ChaCha + fem 2D + cfd 2D | planned |
-| **224–225** | sym transforms + CUDA/MPI/plugin | planned |
-| **226–230** | GUI polish + REPL bindings | planned |
-| **231+** | Remaining API gaps | ongoing |
+| **218–223** | Performance profiling passes I–V | ✅ |
+| **224** | crypto AES/ChaCha + fem 2D + cfd 2D | planned |
+| **225–226** | sym transforms + CUDA/MPI/plugin | planned |
+| **227–231** | GUI polish + REPL bindings | planned |
+| **232+** | Remaining API gaps | ongoing |
 
 ---
 
 ## Suggested immediate order
 
-1. Wave 222 — continue profiling hot paths (signal coherence, image/graph, REPL, bench infra)
-2. Waves 223 — extend crypto/fem/cfd to 2D
-3. Waves 224–225 — sym transforms + infrastructure
-4. Waves 226–230 — GUI + REPL bindings
-5. Waves 231+ — long-tail API + packaging + fuzz
+1. Wave 224 — extend crypto/fem/cfd to 2D
+2. Waves 225–226 — sym transforms + infrastructure
+3. Waves 227–231 — GUI + REPL bindings
+4. Linux CI baseline regeneration (when benchmark-linux runs)
 
 ---
 

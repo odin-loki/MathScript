@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 223 — Performance Pass V: conv2 FFT2D, watershed, blur, resample, welch, baseline)
+
+8 parallel subagents closing remaining hot-path gaps from Waves 218–222.
+
+### Performance (Wave 223)
+- `ms::fft` — explicit `fft2`/`ifft2(data, rows, cols)` for rectangular padded buffers.
+- `ms::signal` — true 2D FFT `conv2_fft2d` for large non-separable kernels; `welch_psd` buffer reuse; `filtfilt` in-place paths; `resample`/`interpolate`/`decimate` with FFT lowpass buffer reuse and freq-domain upsample fast path.
+- `ms::image` — faster `watershed` (flat gray buffer, heap reuse); separable `imgaussfilt` with buffer reuse.
+- **Benchmark infra** — expanded `linux-gcc13.json` and new `msvc-release.json` schema; smoke covers 7 benches (added `bench_graph`, `bench_image`).
+- **Total Wave 223: 374 CTest suites — all passing**. Eight branches merged; fft/conv2 and image bench conflicts resolved.
+
 ## [1.0.0] — 2026-07-17 (Wave 222 — Performance Pass IV: coherence, spectrogram, periodogram, BFS, SLIC, REPL, bench smoke)
 
 8 parallel subagents continuing hot-path profiling across `signal`, `fft`, `graph`, `image`, `interp`, `simd`, and `bench`.

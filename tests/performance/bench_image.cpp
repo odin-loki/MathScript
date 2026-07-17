@@ -1,4 +1,5 @@
 #include <benchmark/benchmark.h>
+#include <cmath>
 #include "ms/image/image.hpp"
 
 namespace {
