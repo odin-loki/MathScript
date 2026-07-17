@@ -52,6 +52,11 @@
     "BM_PointInPolygonBatch/128/128": { "median_time_ns": null },
     "BM_ConvexHull2D/1024": { "median_time_ns": null },
     "BM_KDTreeNearestBatch/50000/1000": { "median_time_ns": null },
+    "BM_RLE/65536": { "median_time_ns": null },
+    "BM_Huffman/65536": { "median_time_ns": null },
+    "BM_LZ77/65536": { "median_time_ns": null },
+    "BM_MatmulDM/16": { "median_time_ns": null },
+    "BM_Commutator/8": { "median_time_ns": null },
     "BM_repl_simple_arith": { "median_time_ns": null },
     "BM_simd_sum_squares/1000000": { "median_time_ns": null }
   }

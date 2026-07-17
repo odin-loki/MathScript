@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (reconciled against `main` @ Wave 227 — **374 CTest suites**, **25-bench smoke verified on MSVC**)
+**Updated:** 2026-07-18 (reconciled against `main` @ Wave 227 — **374 CTest suites**, **27-bench smoke verified on MSVC**)
 
 ---
 

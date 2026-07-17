@@ -7,12 +7,17 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [1.0.0] — 2026-07-18 (Wave 227 — Performance Pass IX: profiling iteration closed)
 
-Documentation and verification closure for the ten-wave profiling iteration (Waves 218–227).
+8 parallel subagents — final closure across uncovered modules, new benches, and baseline infra.
 
 ### Performance (Wave 227)
-- **docs/PERFORMANCE.md** — audit of remaining intentional O(n²) paths (`dft_magnitude`, `bottleneck_distance`, `convex_hull_3d`, Minkowski fallback); smoke/regression policy; baseline status.
-- **Verification** — full `.\build.ps1 -Test` and `.\build.ps1 -Benchmark` on MSVC.
-- **Total Wave 227: 374 CTest suites — all passing**. **25-bench smoke OK**. **Profiling iteration complete (Waves 218–227).** No further profiling waves planned; Linux CI `bench_regression.sh --write-baseline` remains.
+- `ms::quantum` / `ms::bignum` — fused commutator loops, sparsity skip in `op_apply`, bignum reserve/move opts; new `bench_quantum`.
+- `ms::finance` / `ms::info` / `ms::combo` — MC discount hoists, entropy log-base hoists, combo vector reserves.
+- `ms::symbolic` / `ms::special` — move-based simplify, `from_chars` parser, `BM_SymParse`.
+- `ms::compress` — Huffman/LZ77 closure reserves; new `bench_compress`.
+- `ms::frameworks` / `ms::distributed` — CA double-buffer, MPI gather buffer reuse, izaac consensus reuse.
+- **Benchmark infra** — Linux baseline schema synced (Wave 226–227 args); MSVC baseline refreshed (**0 null medians**); **27-bench smoke OK**.
+- **docs/PERFORMANCE.md** — intentional complexity audit, smoke/regression policy.
+- **Total Wave 227: 374 CTest suites — all passing**. **Profiling iteration complete (Waves 218–227).** No further profiling waves planned.
 
 ## [1.0.0] — 2026-07-18 (Wave 226 — Performance Pass VIII: final sign-off)
 

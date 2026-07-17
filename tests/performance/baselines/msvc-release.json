@@ -10,166 +10,166 @@
   },
   "benchmarks": {
     "BM_matmul/64": {
-      "median_time_ns": 16532633
+      "median_time_ns": 12828211
     },
     "BM_matmul/256": {
-      "median_time_ns": 263424600
+      "median_time_ns": 205335599
     },
     "BM_matmul/512": {
-      "median_time_ns": 1290773100
+      "median_time_ns": 868012899
     },
     "BM_fft/256": {
-      "median_time_ns": 21684
+      "median_time_ns": 10407
     },
     "BM_fft/1024": {
-      "median_time_ns": 52928
+      "median_time_ns": 24147
     },
     "BM_fft/8192": {
-      "median_time_ns": 406814
+      "median_time_ns": 203967
     },
     "BM_ConvolveFFT/4096": {
-      "median_time_ns": 2386926
+      "median_time_ns": 645588
     },
     "BM_KDE": {
-      "median_time_ns": 162518
+      "median_time_ns": 73015
     },
     "BM_MovingAverage/65536": {
-      "median_time_ns": 234034
+      "median_time_ns": 160285
     },
     "BM_Xcorr8192": {
-      "median_time_ns": 4760339
+      "median_time_ns": 1794928
     },
     "BM_Savgol65536/65536/11/3": {
-      "median_time_ns": 1252991349
+      "median_time_ns": 18634233
     },
     "BM_Coherence65536": {
-      "median_time_ns": 6738653
+      "median_time_ns": 3219810
     },
     "BM_Autocorr/65536": {
-      "median_time_ns": 124694650
+      "median_time_ns": 17769155
     },
     "BM_Conv2/64/7": {
       "median_time_ns": 5887981
     },
     "BM_Sosfilt8192": {
-      "median_time_ns": 112713
+      "median_time_ns": 66632
     },
     "BM_FemAssemble1D": {
-      "median_time_ns": 142374989
+      "median_time_ns": 2698566
     },
     "BM_FemSolve1D/1000": {
-      "median_time_ns": 393369666
+      "median_time_ns": 2734791
     },
     "BM_Sha256_1MB": {
-      "median_time_ns": 34355284
+      "median_time_ns": 7051220
     },
     "BM_HmacSha256": {
-      "median_time_ns": 85332
+      "median_time_ns": 29447
     },
     "BM_simd_norm_l2/1000000": {
-      "median_time_ns": 1406933
+      "median_time_ns": 316029
     },
     "BM_Spectrogram": {
-      "median_time_ns": 9487820
+      "median_time_ns": 1958575
     },
     "BM_Periodogram/65536": {
-      "median_time_ns": 7525319
+      "median_time_ns": 1499961
     },
     "BM_Bfs/10000": {
-      "median_time_ns": 287889
+      "median_time_ns": 75671
     },
     "BM_Bfs_Grid/100": {
-      "median_time_ns": 340406
+      "median_time_ns": 120984
     },
     "BM_Bfs_Dense/128": {
-      "median_time_ns": 130615
+      "median_time_ns": 15610
     },
     "BM_SLIC/128/128/64": {
-      "median_time_ns": 12320439
+      "median_time_ns": 6565005
     },
     "BM_SLIC/256/256/256": {
       "median_time_ns": 54966233
     },
     "BM_GaussianBlur/256/256/1/10": {
-      "median_time_ns": 2563816
+      "median_time_ns": 1260654
     },
     "BM_Watershed/128/128": {
-      "median_time_ns": 875117
+      "median_time_ns": 357161
     },
     "BM_Medfilt2/256/256/5": {
-      "median_time_ns": 8667493
+      "median_time_ns": 4356144
     },
     "BM_Boxfilter/256/256/1/15": {
-      "median_time_ns": 505046
+      "median_time_ns": 315934
     },
     "BM_Imresize/256/256/1/128/128": {
-      "median_time_ns": 182238
+      "median_time_ns": 75063
     },
     "BM_Bilateral/128/128/1/10/10": {
-      "median_time_ns": 6219154
+      "median_time_ns": 3208604
     },
     "BM_Dijkstra/10000": {
-      "median_time_ns": 235836
+      "median_time_ns": 175279
     },
     "BM_Dijkstra_Grid/100": {
-      "median_time_ns": 2598704
+      "median_time_ns": 622923
     },
     "BM_Dijkstra_Dense/128": {
-      "median_time_ns": 68352
+      "median_time_ns": 28511
     },
     "BM_Quantile/100000": {
       "median_time_ns": 837575
     },
     "BM_repl_simple_arith": {
-      "median_time_ns": 226917199
+      "median_time_ns": 119966600
     },
     "BM_simd_sum_squares/1000000": {
-      "median_time_ns": 1537081
+      "median_time_ns": 318808
     },
     "BM_Bottleneck/50": {
-      "median_time_ns": 25403
+      "median_time_ns": 3501
     },
     "BM_Bottleneck/200": {
-      "median_time_ns": 476627
+      "median_time_ns": 49235
     },
     "BM_Bottleneck/500": {
-      "median_time_ns": 1520986
+      "median_time_ns": 288101
     },
     "BM_Wasserstein/50": {
-      "median_time_ns": 42376
+      "median_time_ns": 5514
     },
     "BM_Wasserstein/200": {
-      "median_time_ns": 128029
+      "median_time_ns": 72225
     },
     "BM_Wasserstein/500": {
-      "median_time_ns": 737119
+      "median_time_ns": 433215
     },
     "BM_PointInPolygonBatch/64/64": {
-      "median_time_ns": 1597660
+      "median_time_ns": 840321
     },
     "BM_PointInPolygonBatch/128/128": {
-      "median_time_ns": 12282992
+      "median_time_ns": 6788216
     },
     "BM_PointInPolygonBatch/256/64": {
-      "median_time_ns": 6046573
+      "median_time_ns": 3366551
     },
     "BM_ConvexHull2D/256": {
-      "median_time_ns": 22250
+      "median_time_ns": 12979
     },
     "BM_ConvexHull2D/1024": {
-      "median_time_ns": 163779
+      "median_time_ns": 92217
     },
     "BM_ConvexHull2D/4096": {
-      "median_time_ns": 849866
+      "median_time_ns": 450151
     },
     "BM_KDTreeNearestBatch/10000/1000": {
-      "median_time_ns": 491692
+      "median_time_ns": 354253
     },
     "BM_KDTreeNearestBatch/50000/1000": {
-      "median_time_ns": 2786995
+      "median_time_ns": 560815
     },
     "BM_KDTreeNearestBatch/100000/500": {
-      "median_time_ns": 962276
+      "median_time_ns": 284227
     }
   }
 }
