@@ -3,6 +3,8 @@
 #include "ms/runtime/dispatch.hpp"
 #include "ms/runtime/topology.hpp"
 #include <cmath>
+#include <mutex>
+#include <unordered_map>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -12,43 +14,112 @@ namespace ms {
 
 namespace {
 
-std::vector<std::complex<double>> fft_recursive(std::vector<std::complex<double>> x) {
+bool is_power_of_two(size_t n) {
+    return n > 0 && (n & (n - 1)) == 0;
+}
+
+size_t log2_power_of_two(size_t n) {
+    size_t log_n = 0;
+    while (n > 1) {
+        n >>= 1;
+        ++log_n;
+    }
+    return log_n;
+}
+
+void bit_reverse_permute(std::vector<std::complex<double>>& x) {
+    const size_t n = x.size();
+    size_t j = 0;
+    for (size_t i = 1; i < n; ++i) {
+        size_t bit = n >> 1;
+        while (j & bit) {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j ^= bit;
+        if (i < j) {
+            std::swap(x[i], x[j]);
+        }
+    }
+}
+
+using StageTwiddles = std::vector<std::vector<std::complex<double>>>;
+
+const StageTwiddles& twiddles_for_size(size_t n) {
+    static std::mutex cache_mutex;
+    static std::unordered_map<size_t, StageTwiddles> cache;
+
+    std::lock_guard lock(cache_mutex);
+    const auto found = cache.find(n);
+    if (found != cache.end()) {
+        return found->second;
+    }
+
+    const size_t log_n = log2_power_of_two(n);
+    StageTwiddles stages(log_n);
+    for (size_t stage = 1; stage <= log_n; ++stage) {
+        const size_t m = size_t{1} << stage;
+        const size_t half_m = m / 2;
+        stages[stage - 1].resize(half_m);
+        for (size_t j = 0; j < half_m; ++j) {
+            const double angle = -2.0 * M_PI * static_cast<double>(j) / static_cast<double>(m);
+            stages[stage - 1][j] = std::complex<double>(std::cos(angle), std::sin(angle));
+        }
+    }
+
+    return cache.emplace(n, std::move(stages)).first->second;
+}
+
+void fft_inplace(std::vector<std::complex<double>>& x) {
+    const size_t n = x.size();
+    if (n <= 1) {
+        return;
+    }
+
+    bit_reverse_permute(x);
+
+    const auto& stages = twiddles_for_size(n);
+    const size_t log_n = stages.size();
+    for (size_t stage = 0; stage < log_n; ++stage) {
+        const size_t m = size_t{1} << (stage + 1);
+        const size_t half_m = m / 2;
+        const auto& tw = stages[stage];
+        for (size_t k = 0; k < n; k += m) {
+            for (size_t j = 0; j < half_m; ++j) {
+                const std::complex<double> t = tw[j] * x[k + j + half_m];
+                const std::complex<double> u = x[k + j];
+                x[k + j] = u + t;
+                x[k + j + half_m] = u - t;
+            }
+        }
+    }
+}
+
+std::vector<std::complex<double>> dft_direct(const std::vector<std::complex<double>>& x) {
+    const size_t n = x.size();
+    std::vector<std::complex<double>> out(n);
+    for (size_t k = 0; k < n; ++k) {
+        std::complex<double> sum(0.0, 0.0);
+        for (size_t t = 0; t < n; ++t) {
+            const double angle = -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n);
+            sum += x[t] * std::complex<double>(std::cos(angle), std::sin(angle));
+        }
+        out[k] = sum;
+    }
+    return out;
+}
+
+std::vector<std::complex<double>> fft_transform(std::vector<std::complex<double>> x) {
     const size_t n = x.size();
     if (n <= 1) {
         return x;
     }
-    if (n % 2 != 0) {
-        std::vector<std::complex<double>> out(n);
-        for (size_t k = 0; k < n; ++k) {
-            std::complex<double> sum(0.0, 0.0);
-            for (size_t t = 0; t < n; ++t) {
-                const double angle = -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n);
-                sum += x[t] * std::complex<double>(std::cos(angle), std::sin(angle));
-            }
-            out[k] = sum;
-        }
-        return out;
+    if (!is_power_of_two(n)) {
+        return dft_direct(x);
     }
 
-    std::vector<std::complex<double>> even(n / 2);
-    std::vector<std::complex<double>> odd(n / 2);
-    for (size_t i = 0; i < n / 2; ++i) {
-        even[i] = x[2 * i];
-        odd[i] = x[2 * i + 1];
-    }
-
-    even = fft_recursive(std::move(even));
-    odd = fft_recursive(std::move(odd));
-
-    std::vector<std::complex<double>> out(n);
-    for (size_t k = 0; k < n / 2; ++k) {
-        const double angle = -2.0 * M_PI * static_cast<double>(k) / static_cast<double>(n);
-        const std::complex<double> w(std::cos(angle), std::sin(angle));
-        const std::complex<double> t = w * odd[k];
-        out[k] = even[k] + t;
-        out[k + n / 2] = even[k] - t;
-    }
-    return out;
+    fft_inplace(x);
+    return x;
 }
 
 size_t next_power_of_two(size_t n) {
@@ -59,12 +130,12 @@ size_t next_power_of_two(size_t n) {
     return p;
 }
 
-std::vector<std::complex<double>> ifft_recursive(std::vector<std::complex<double>> x) {
+std::vector<std::complex<double>> ifft_transform(std::vector<std::complex<double>> x) {
     const size_t n = x.size();
     for (size_t i = 0; i < n; ++i) {
         x[i] = std::conj(x[i]);
     }
-    x = fft_recursive(std::move(x));
+    x = fft_transform(std::move(x));
     const double inv_n = 1.0 / static_cast<double>(n);
     for (size_t i = 0; i < n; ++i) {
         x[i] = std::conj(x[i]) * inv_n;
@@ -92,7 +163,7 @@ Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x) {
         input[i] = std::complex<double>(x[i], 0.0);
     }
 
-    return fft_recursive(std::move(input));
+    return fft_transform(std::move(input));
 }
 
 Result<std::vector<double>> ifft(const std::vector<std::complex<double>>& x) {
@@ -105,7 +176,7 @@ Result<std::vector<double>> ifft(const std::vector<std::complex<double>>& x) {
         conj[i] = std::conj(x[i]);
     }
 
-    auto spectrum = fft_recursive(std::move(conj));
+    auto spectrum = fft_transform(std::move(conj));
     std::vector<double> out(x.size());
     for (size_t i = 0; i < x.size(); ++i) {
         out[i] = spectrum[i].real() / static_cast<double>(x.size());
@@ -136,7 +207,7 @@ Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<do
         for (size_t c = 0; c < cols; ++c) {
             row[c] = out[r * cols + c];
         }
-        row = fft_recursive(std::move(row));
+        row = fft_transform(std::move(row));
         for (size_t c = 0; c < cols; ++c) {
             out[r * cols + c] = row[c];
         }
@@ -147,7 +218,7 @@ Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<do
         for (size_t r = 0; r < rows; ++r) {
             col[r] = out[r * cols + c];
         }
-        col = fft_recursive(std::move(col));
+        col = fft_transform(std::move(col));
         for (size_t r = 0; r < rows; ++r) {
             out[r * cols + c] = col[r];
         }
@@ -179,7 +250,7 @@ Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<d
         for (size_t c = 0; c < cols; ++c) {
             row[c] = out[r * cols + c];
         }
-        row = ifft_recursive(std::move(row));
+        row = ifft_transform(std::move(row));
         for (size_t c = 0; c < cols; ++c) {
             out[r * cols + c] = row[c];
         }
@@ -190,7 +261,7 @@ Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<d
         for (size_t r = 0; r < rows; ++r) {
             col[r] = out[r * cols + c];
         }
-        col = ifft_recursive(std::move(col));
+        col = ifft_transform(std::move(col));
         for (size_t r = 0; r < rows; ++r) {
             out[r * cols + c] = col[r];
         }

@@ -39,5 +39,5 @@ static void BM_ifft(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n));
 }
 
-BENCHMARK(BM_fft)->Arg(256)->Arg(1024)->Arg(4096);
-BENCHMARK(BM_ifft)->Arg(256)->Arg(1024);
+BENCHMARK(BM_fft)->Arg(256)->Arg(1024)->Arg(4096)->Arg(8192);
+BENCHMARK(BM_ifft)->Arg(256)->Arg(1024)->Arg(8192);

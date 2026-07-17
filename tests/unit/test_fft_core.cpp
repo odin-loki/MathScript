@@ -194,3 +194,55 @@ TEST(FftCoreTest, goertzel_edge_cases) {
     const auto nyquist = goertzel(std::span<const double>(x), 4.0, 8.0);
     EXPECT_TRUE(std::isfinite(nyquist.real()) && std::isfinite(nyquist.imag()));
 }
+
+namespace {
+
+std::vector<double> make_test_signal(size_t n) {
+    std::vector<double> x(n);
+    for (size_t i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i);
+        x[i] = std::sin(0.13 * t) + 0.3 * std::cos(0.07 * t);
+    }
+    return x;
+}
+
+void expect_fft_roundtrip(size_t n, double tol) {
+    const auto x = make_test_signal(n);
+    const auto spec = fft(x).value();
+    ASSERT_EQ(spec.size(), n);
+    const auto back = ifft(spec).value();
+    ASSERT_GE(back.size(), n);
+    for (size_t i = 0; i < n; ++i) {
+        EXPECT_NEAR(back[i], x[i], tol) << "n=" << n << " i=" << i;
+    }
+}
+
+} // namespace
+
+TEST(FftCoreTest, iterative_fft_roundtrip_512) {
+    expect_fft_roundtrip(512, 1e-9);
+}
+
+TEST(FftCoreTest, iterative_fft_roundtrip_2048) {
+    expect_fft_roundtrip(2048, 1e-9);
+}
+
+TEST(FftCoreTest, iterative_fft_roundtrip_8192) {
+    expect_fft_roundtrip(8192, 1e-9);
+}
+
+TEST(FftCoreTest, iterative_fft_ifft2_roundtrip_512) {
+    const size_t n = 512;
+    std::vector<std::complex<double>> data(n);
+    for (size_t i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i);
+        data[i] = {std::sin(0.11 * t), 0.2 * std::cos(0.05 * t)};
+    }
+    const auto spectrum = fft2(data).value();
+    const auto back = ifft2(spectrum).value();
+    ASSERT_EQ(back.size(), n);
+    for (size_t i = 0; i < n; ++i) {
+        EXPECT_NEAR(back[i].real(), data[i].real(), 1e-8);
+        EXPECT_NEAR(back[i].imag(), data[i].imag(), 1e-8);
+    }
+}
