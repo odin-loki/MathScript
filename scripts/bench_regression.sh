@@ -4,8 +4,9 @@
 # MS_BENCH_TOLERANCE=10    — allowed slowdown percent before failing (default 10).
 #
 # Baseline entries with median_time_ns=null are schema placeholders (e.g. Wave 218–222
-# targets added before Linux CI calibration); they are skipped during compare.
-# Regenerate all medians: bash scripts/bench_regression.sh --write-baseline build-bench
+# targets added before CI calibration); they are skipped during compare.
+# Regenerate Linux medians: bash scripts/bench_regression.sh --write-baseline build-bench
+# Regenerate Windows MSVC medians: .\scripts\bench_write_msvc_baseline.ps1
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

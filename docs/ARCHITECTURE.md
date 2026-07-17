@@ -176,17 +176,18 @@ Triggered on push/PR to `main` (concurrency group cancels in-flight runs on the 
 
 Build with `-DMS_BUILD_BENCHMARKS=ON` (see `tests/performance/`). On Windows MSVC: `.\build.ps1 -Benchmark` configures `build-msvc-bench` with benchmarks and tests enabled, builds all targets, and runs a short `bench_matmul` / `bench_fft` smoke. CI **`benchmark-linux`** runs `scripts/bench_regression.sh` with `MS_BENCH_REGRESSION=on` and `MS_BENCH_TOLERANCE=10`.
 
-Regression detection compares JSON output from Google Benchmark against `tests/performance/baselines/linux-gcc13.json`. A run more than 10% slower than the stored median fails (`MS_BENCH_TOLERANCE`, default 10). Skip compare for smoke-only runs: `MS_BENCH_REGRESSION=off`.
+Regression detection compares JSON output from Google Benchmark against `tests/performance/baselines/linux-gcc13.json` (Linux CI) and `tests/performance/baselines/msvc-release.json` (Windows local). A run more than 10% slower than the stored median fails (`MS_BENCH_TOLERANCE`, default 10). Skip compare for smoke-only runs: `MS_BENCH_REGRESSION=off`.
 
 ```bash
 cmake -S . -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DMS_BUILD_TESTS=OFF -DMS_BUILD_BENCHMARKS=ON
 cmake --build build-bench --target bench_matmul bench_fft
 bash scripts/bench_regression.sh build-bench                    # compare (default)
 MS_BENCH_REGRESSION=off bash scripts/bench_regression.sh build-bench  # smoke only
-bash scripts/bench_regression.sh --write-baseline build-bench   # refresh baseline medians
+bash scripts/bench_regression.sh --write-baseline build-bench   # refresh Linux baseline medians
+.\scripts\bench_write_msvc_baseline.ps1                         # refresh MSVC baseline medians (Windows)
 ```
 
-Baselines are captured with `--benchmark_out=… --benchmark_out_format=json` (wrapped by `bench_regression.sh`). Calibrate on the target runner profile (Linux GCC 13 Release) before enabling the CI regression gate.
+Baselines are captured with `--benchmark_out=… --benchmark_out_format=json` (wrapped by `bench_regression.sh` on Linux and `bench_write_msvc_baseline.ps1` on Windows). Calibrate on the target runner profile before enabling the CI regression gate.
 
 ### Scheduled and manual fuzz workflows
 
