@@ -3,7 +3,7 @@
 # MS_BENCH_REGRESSION=off  — smoke only, skip baseline compare.
 # MS_BENCH_TOLERANCE=10    — allowed slowdown percent before failing (default 10).
 #
-# Baseline entries with median_time_ns=null are schema placeholders (e.g. Wave 218
+# Baseline entries with median_time_ns=null are schema placeholders (e.g. Wave 218–222
 # targets added before Linux CI calibration); they are skipped during compare.
 # Regenerate all medians: bash scripts/bench_regression.sh --write-baseline build-bench
 set -euo pipefail

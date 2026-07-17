@@ -129,7 +129,9 @@ if ($Benchmark) {
         "bench_fft",
         "bench_signal_linalg",
         "bench_simd",
-        "bench_crypto"
+        "bench_crypto",
+        "bench_graph",
+        "bench_image"
     )
     foreach ($bench in $SmokeBenches) {
         $exe = Join-Path $BenchDir "$bench.exe"
