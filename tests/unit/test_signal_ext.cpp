@@ -255,6 +255,14 @@ size_t peak_index(const std::vector<double>& values) {
     return static_cast<size_t>(std::distance(values.begin(), std::max_element(values.begin(), values.end())));
 }
 
+size_t next_power_of_two(size_t n) {
+    size_t p = 1;
+    while (p < n) {
+        p <<= 1;
+    }
+    return p;
+}
+
 size_t peak_column(const Matrix<double>& magnitude, size_t row) {
     size_t best = 0;
     for (size_t j = 1; j < magnitude.cols(); ++j) {
@@ -361,6 +369,92 @@ TEST(SignalExtTest, welch_psd_invalid_overlap_negative) {
 TEST(SignalExtTest, welch_psd_invalid_overlap_ge_one) {
     const auto x = sinusoid(512, 1000.0, 50.0);
     const auto result = welch_psd(x, 1000.0, 256, 1.0);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, periodogram_sinusoid_peak_at_known_frequency) {
+    const double fs = 1000.0;
+    const double f0 = 50.0;
+    const auto x = sinusoid(4096, fs, f0);
+    const auto window = hanning(x.size());
+
+    const auto result = periodogram(x, fs, window);
+    ASSERT_TRUE(result.has_value()) << "periodogram failed";
+    const auto& psd = *result;
+
+    ASSERT_EQ(psd.frequencies.size(), psd.power.size());
+    ASSERT_FALSE(psd.power.empty());
+
+    const size_t peak = peak_index(psd.power);
+    const double peak_freq = psd.frequencies[peak];
+    const double df = fs / static_cast<double>(next_power_of_two(x.size()));
+    EXPECT_NEAR(peak_freq, f0, df);
+}
+
+TEST(SignalExtTest, periodogram_frequencies_monotonic_and_nyquist) {
+    const double fs = 1000.0;
+    const auto x = sinusoid(2048, fs, 40.0);
+
+    const auto result = periodogram(x, fs);
+    ASSERT_TRUE(result.has_value());
+    const auto& psd = *result;
+
+    for (size_t i = 1; i < psd.frequencies.size(); ++i) {
+        EXPECT_GT(psd.frequencies[i], psd.frequencies[i - 1]);
+    }
+    EXPECT_NEAR(psd.frequencies.front(), 0.0, 1e-12);
+    EXPECT_NEAR(psd.frequencies.back(), fs / 2.0, 1e-9);
+}
+
+TEST(SignalExtTest, periodogram_matches_welch_single_segment) {
+    const double fs = 1000.0;
+    const auto x = sinusoid(512, fs, 60.0);
+    const auto window = hanning(x.size());
+
+    const auto pgram = periodogram(x, fs, window);
+    const auto welch = welch_psd(x, fs, x.size(), 0.0);
+    ASSERT_TRUE(pgram.has_value());
+    ASSERT_TRUE(welch.has_value());
+
+    ASSERT_EQ(pgram->frequencies.size(), welch->frequencies.size());
+    ASSERT_EQ(pgram->power.size(), welch->power.size());
+    for (size_t i = 0; i < pgram->frequencies.size(); ++i) {
+        EXPECT_NEAR(pgram->frequencies[i], welch->frequencies[i], 1e-12);
+        EXPECT_NEAR(pgram->power[i], welch->power[i], 1e-9 * std::max(1.0, welch->power[i]));
+    }
+}
+
+TEST(SignalExtTest, periodogram_small_n_uses_direct_path) {
+    const double fs = 1000.0;
+    const double f0 = 80.0;
+    const auto x = sinusoid(32, fs, f0);
+    const auto window = hanning(x.size());
+
+    const auto result = periodogram(x, fs, window);
+    ASSERT_TRUE(result.has_value());
+    const size_t peak = peak_index(result->power);
+    const double df = fs / static_cast<double>(next_power_of_two(x.size()));
+    EXPECT_NEAR(result->frequencies[peak], f0, df);
+}
+
+TEST(SignalExtTest, periodogram_invalid_empty_signal) {
+    const auto result = periodogram({}, 1000.0);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, periodogram_invalid_fs_nonpositive) {
+    const auto x = sinusoid(64, 1000.0, 50.0);
+    const auto result = periodogram(x, 0.0);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, periodogram_invalid_window_length) {
+    const auto x = sinusoid(128, 1000.0, 50.0);
+    const auto bad_window = hanning(x.size() / 2);
+    const auto result = periodogram(x, 1000.0, bad_window);
     ASSERT_FALSE(result.has_value());
     EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
 }

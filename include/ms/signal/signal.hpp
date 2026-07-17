@@ -70,6 +70,14 @@ struct PSDResult {
 Result<PSDResult> welch_psd(const std::vector<double>& x, double fs,
                              size_t segment_len, double overlap_frac = 0.5);
 
+// Periodogram (single-segment PSD): window x (boxcar if `window` is empty), optionally zero-pad
+// to `nfft` (next power of two when `nfft` is 0), compute |X[k]|^2 / (fs * sum(window^2)), and
+// apply the same one-sided density scaling as welch_psd. Uses direct DFT for n_fft < 64 and rfft
+// otherwise (matching convolve's hybrid crossover).
+Result<PSDResult> periodogram(const std::vector<double>& x, double fs,
+                               const std::vector<double>& window = {},
+                               size_t nfft = 0);
+
 // Magnitude-squared coherence via Welch cross/auto spectral density estimation: same segmented,
 // Hanning-windowed, overlapped FFT convention as welch_psd. For each frequency bin k,
 // Cxy(k) = |Pxy(k)|^2 / (Pxx(k) * Pyy(k)) where Pxx/Pyy are Welch auto-PSDs of x/y and Pxy is

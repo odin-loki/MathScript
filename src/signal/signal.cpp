@@ -607,6 +607,97 @@ std::vector<double> triangular(size_t n) {
     return w;
 }
 
+namespace {
+
+constexpr size_t kPeriodogramFftCrossover = 64;
+
+bool periodogram_use_fft(size_t n_fft) {
+    return n_fft >= kPeriodogramFftCrossover;
+}
+
+std::vector<std::complex<double>> periodogram_rfft_direct(const std::vector<double>& x,
+                                                          size_t n_fft) {
+    const size_t n_freq = n_fft / 2 + 1;
+    const size_t n_samples = std::min(x.size(), n_fft);
+    std::vector<std::complex<double>> spec(n_freq);
+    for (size_t k = 0; k < n_freq; ++k) {
+        std::complex<double> sum(0.0, 0.0);
+        for (size_t t = 0; t < n_samples; ++t) {
+            const double angle =
+                -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n_fft);
+            sum += x[t] * std::complex<double>(std::cos(angle), std::sin(angle));
+        }
+        spec[k] = sum;
+    }
+    return spec;
+}
+
+Result<std::vector<std::complex<double>>> periodogram_spectrum(const std::vector<double>& x,
+                                                               size_t n_fft) {
+    if (periodogram_use_fft(n_fft)) {
+        const auto spec = rfft(x);
+        if (!spec) {
+            return std::unexpected(spec.error());
+        }
+        return *spec;
+    }
+    return periodogram_rfft_direct(x, n_fft);
+}
+
+} // namespace
+
+Result<PSDResult> periodogram(const std::vector<double>& x, double fs,
+                               const std::vector<double>& window, size_t nfft) {
+    if (x.empty()) {
+        return std::unexpected(DomainError{"periodogram", "input signal must not be empty"});
+    }
+    if (fs <= 0.0) {
+        return std::unexpected(DomainError{"periodogram", "fs must be > 0"});
+    }
+    if (!window.empty() && window.size() != x.size()) {
+        return std::unexpected(
+            DomainError{"periodogram", "window length must match signal length"});
+    }
+
+    std::vector<double> boxcar_window;
+    const std::vector<double>* effective_window = &window;
+    if (window.empty()) {
+        boxcar_window.assign(x.size(), 1.0);
+        effective_window = &boxcar_window;
+    }
+
+    double win_sq_sum = 0.0;
+    for (const double w : *effective_window) {
+        win_sq_sum += w * w;
+    }
+    if (win_sq_sum <= 0.0) {
+        return std::unexpected(DomainError{"periodogram", "window energy must be > 0"});
+    }
+
+    const size_t requested_fft = (nfft == 0) ? x.size() : std::max(nfft, x.size());
+    const size_t n_fft = next_power_of_two(requested_fft);
+
+    std::vector<double> windowed(n_fft, 0.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        windowed[i] = x[i] * (*effective_window)[i];
+    }
+
+    const auto spec = periodogram_spectrum(windowed, n_fft);
+    if (!spec) {
+        return std::unexpected(spec.error());
+    }
+
+    const size_t n_freq_bins = n_fft / 2 + 1;
+    const double scale = 1.0 / (fs * win_sq_sum);
+    std::vector<double> psd(n_freq_bins, 0.0);
+    for (size_t k = 0; k < n_freq_bins && k < spec->size(); ++k) {
+        psd[k] = std::norm((*spec)[k]) * scale;
+    }
+    apply_one_sided_psd_scaling(psd, n_fft);
+
+    return PSDResult{segment_frequencies(n_fft, fs), std::move(psd)};
+}
+
 Result<PSDResult> welch_psd(const std::vector<double>& x, double fs,
                              size_t segment_len, double overlap_frac) {
     const auto setup = prepare_welch(x.size(), fs, segment_len, overlap_frac, "welch_psd");

@@ -272,6 +272,31 @@ static void BM_Coherence65536(benchmark::State& state) {
 BENCHMARK(BM_Coherence65536);
 
 // ---------------------------------------------------------------------------
+// Signal: periodogram
+// ---------------------------------------------------------------------------
+
+static void BM_Periodogram(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    constexpr double fs = 1000.0;
+    std::vector<double> x(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        x[static_cast<size_t>(i)] =
+            std::sin(2.0 * M_PI * 50.0 * static_cast<double>(i) / fs) +
+            0.2 * std::sin(2.0 * M_PI * 120.0 * static_cast<double>(i) / fs);
+    }
+    const auto window = hanning(x.size());
+    for (auto _ : state) {
+        auto result = periodogram(x, fs, window);
+        benchmark::DoNotOptimize(result.has_value());
+        if (result.has_value()) {
+            benchmark::DoNotOptimize(result->power.data());
+        }
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n);
+}
+BENCHMARK(BM_Periodogram)->Arg(64)->Arg(256)->Arg(1024)->Arg(4096)->Arg(65536);
+
+// ---------------------------------------------------------------------------
 // Signal: autocorrelation (lag-limited)
 // ---------------------------------------------------------------------------
 
