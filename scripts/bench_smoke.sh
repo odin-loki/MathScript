@@ -2,33 +2,21 @@
 # Run performance benchmarks with a short min time for CI smoke.
 set -euo pipefail
 
-# All targets from tests/performance/CMakeLists.txt (add_ms_bench).
-MS_BENCH_TARGETS=(
-    bench_matmul
-    bench_fft
-    bench_linalg
-    bench_repl
-    bench_special
-    bench_stats
-    bench_rng_dispatch
-    bench_simd
-    bench_signal_linalg
-    bench_crypto
-    bench_graph
-    bench_image
-    bench_ode_pde
-    bench_special_memory
-    bench_optim_symbolic
-    bench_frameworks
-    bench_distributed_cellai
-    bench_poly_domain
-    bench_prob
-    bench_optim_ml
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CMAKE_LISTS="${ROOT}/tests/performance/CMakeLists.txt"
+
+mapfile -t MS_BENCH_TARGETS < <(
+    grep -E '^\s*add_ms_bench\s*\(' "${CMAKE_LISTS}" \
+        | sed -E 's/^\s*add_ms_bench\s*\(\s*([[:alnum:]_]+).*/\1/'
 )
+
+if [[ ${#MS_BENCH_TARGETS[@]} -eq 0 ]]; then
+    echo "No add_ms_bench targets found in ${CMAKE_LISTS}" >&2
+    exit 1
+fi
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     BUILD_DIR="${1:-build-bench}"
-    ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
     if [[ -d "${BUILD_DIR}" ]]; then
         BUILD_PATH="${BUILD_DIR}"
@@ -47,8 +35,8 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             echo "Missing benchmark executable: ${path}" >&2
             exit 1
         fi
-        "${path}" --benchmark_min_time=0.01s
+        "${path}" --benchmark_min_time=0.001s
     done
 
-    echo "Benchmark smoke OK"
+    echo "Benchmark smoke OK (${#MS_BENCH_TARGETS[@]} executables)"
 fi

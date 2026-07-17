@@ -124,15 +124,16 @@ Write-Host "Build complete. Binaries in $BuildDir\bin"
 
 if ($Benchmark) {
     $BenchDir = Join-Path $BuildDir "tests\performance"
-    $SmokeBenches = @(
-        "bench_matmul",
-        "bench_fft",
-        "bench_signal_linalg",
-        "bench_simd",
-        "bench_crypto",
-        "bench_graph",
-        "bench_image"
-    )
+    $CmakeLists = Join-Path $Root "tests\performance\CMakeLists.txt"
+    $SmokeBenches = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in Get-Content $CmakeLists) {
+        if ($line -match '^\s*add_ms_bench\s*\(\s*(\w+)') {
+            $SmokeBenches.Add($Matches[1])
+        }
+    }
+    if ($SmokeBenches.Count -eq 0) {
+        throw "No add_ms_bench targets found in $CmakeLists"
+    }
     foreach ($bench in $SmokeBenches) {
         $exe = Join-Path $BenchDir "$bench.exe"
         if (-not (Test-Path $exe)) {
@@ -144,7 +145,7 @@ if ($Benchmark) {
         $ErrorActionPreference = $prevEap
         if ($LASTEXITCODE -ne 0) { throw "Benchmark smoke failed: $bench (exit $LASTEXITCODE)" }
     }
-    Write-Host "Benchmark smoke OK ($($SmokeBenches -join ', '))"
+    Write-Host "Benchmark smoke OK ($($SmokeBenches.Count) executables: $($SmokeBenches -join ', '))"
 }
 
 if ($Test) {
