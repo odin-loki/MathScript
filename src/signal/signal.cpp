@@ -144,18 +144,34 @@ Result<WelchSetup> prepare_welch(size_t signal_len, double fs, size_t segment_le
     return WelchSetup{*plan, window, scale, segment_frequencies(plan->n_fft, fs)};
 }
 
-Result<std::vector<std::complex<double>>> rfft_windowed_segment(
-    const std::vector<double>& signal, size_t start, size_t segment_len,
-    const std::vector<double>& window) {
-    std::vector<double> segment(segment_len);
-    for (size_t i = 0; i < segment_len; ++i) {
-        segment[i] = signal[start + i] * window[i];
+Result<void> rfft_windowed_segment(const std::vector<double>& signal, size_t start,
+                                   size_t segment_len, const std::vector<double>& window,
+                                   std::vector<double>& segment_buf,
+                                   std::vector<std::complex<double>>& spec_buf) {
+    if (segment_buf.size() != segment_len) {
+        segment_buf.resize(segment_len);
     }
-    const auto spec = rfft(segment);
+    for (size_t i = 0; i < segment_len; ++i) {
+        segment_buf[i] = signal[start + i] * window[i];
+    }
+    const auto spec = rfft(segment_buf);
     if (!spec) {
         return std::unexpected(spec.error());
     }
-    return *spec;
+    spec_buf = std::move(*spec);
+    return {};
+}
+
+Result<std::vector<std::complex<double>>> rfft_windowed_segment(
+    const std::vector<double>& signal, size_t start, size_t segment_len,
+    const std::vector<double>& window) {
+    std::vector<double> segment;
+    std::vector<std::complex<double>> spec;
+    const auto status = rfft_windowed_segment(signal, start, segment_len, window, segment, spec);
+    if (!status) {
+        return std::unexpected(status.error());
+    }
+    return spec;
 }
 
 std::vector<std::complex<double>> fft_recursive(std::vector<std::complex<double>> x) {
@@ -532,16 +548,21 @@ Result<PSDResult> welch_psd(const std::vector<double>& x, double fs,
     }
 
     std::vector<double> psd(setup->plan.n_freq_bins, 0.0);
+    std::vector<double> segment_buf;
+    std::vector<std::complex<double>> spec_buf;
+    segment_buf.reserve(segment_len);
+    spec_buf.reserve(setup->plan.n_freq_bins);
     size_t seg_count = 0;
 
     for (size_t start = 0; start + segment_len <= x.size(); start += setup->plan.hop) {
-        const auto spec = rfft_windowed_segment(x, start, segment_len, setup->window);
-        if (!spec) {
-            return std::unexpected(spec.error());
+        const auto status =
+            rfft_windowed_segment(x, start, segment_len, setup->window, segment_buf, spec_buf);
+        if (!status) {
+            return std::unexpected(status.error());
         }
 
-        for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec->size(); ++k) {
-            psd[k] += std::norm((*spec)[k]);
+        for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_buf.size(); ++k) {
+            psd[k] += std::norm(spec_buf[k]);
         }
         ++seg_count;
     }
@@ -609,39 +630,33 @@ Result<CoherenceResult> coherence(const std::vector<double>& x, const std::vecto
 
 Result<SpectrogramResult> spectrogram(const std::vector<double>& x, double fs,
                                        size_t segment_len, double overlap_frac) {
-    if (fs <= 0.0) {
-        return std::unexpected(DomainError{"spectrogram", "fs must be > 0"});
+    const auto setup = prepare_welch(x.size(), fs, segment_len, overlap_frac, "spectrogram");
+    if (!setup) {
+        return std::unexpected(setup.error());
     }
-
-    const auto plan = plan_segments(x.size(), segment_len, overlap_frac, "spectrogram");
-    if (!plan) {
-        return std::unexpected(plan.error());
-    }
-
-    const auto window = hanning(segment_len);
-    const auto frequencies = segment_frequencies(plan->n_fft, fs);
 
     SpectrogramResult out;
-    out.frequencies = frequencies;
-    out.times.reserve(plan->n_segments);
-    out.magnitude = Matrix<double>(plan->n_segments, plan->n_freq_bins);
+    out.frequencies = setup->frequencies;
+    out.times.reserve(setup->plan.n_segments);
+    out.magnitude = Matrix<double>(setup->plan.n_segments, setup->plan.n_freq_bins);
+
+    std::vector<double> segment_buf;
+    std::vector<std::complex<double>> spec_buf;
+    segment_buf.reserve(segment_len);
+    spec_buf.reserve(setup->plan.n_freq_bins);
 
     size_t row = 0;
-    for (size_t start = 0; start + segment_len <= x.size(); start += plan->hop) {
-        std::vector<double> segment(segment_len);
-        for (size_t i = 0; i < segment_len; ++i) {
-            segment[i] = x[start + i] * window[i];
-        }
-
-        const auto spec = rfft(segment);
-        if (!spec) {
-            return std::unexpected(spec.error());
+    for (size_t start = 0; start + segment_len <= x.size(); start += setup->plan.hop) {
+        const auto status =
+            rfft_windowed_segment(x, start, segment_len, setup->window, segment_buf, spec_buf);
+        if (!status) {
+            return std::unexpected(status.error());
         }
 
         out.times.push_back((static_cast<double>(start) + static_cast<double>(segment_len) / 2.0) / fs);
 
-        for (size_t k = 0; k < plan->n_freq_bins && k < spec->size(); ++k) {
-            out.magnitude(row, k) = std::abs((*spec)[k]);
+        for (size_t k = 0; k < setup->plan.n_freq_bins && k < spec_buf.size(); ++k) {
+            out.magnitude(row, k) = std::abs(spec_buf[k]);
         }
         ++row;
     }

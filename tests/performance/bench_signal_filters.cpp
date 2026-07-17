@@ -117,4 +117,24 @@ static void BM_WelchPsd65536(benchmark::State& state) {
 }
 BENCHMARK(BM_WelchPsd65536);
 
+// ---------------------------------------------------------------------------
+// welch_psd buffer reuse on 65536 samples (same workload, dedicated tag)
+// ---------------------------------------------------------------------------
+
+static void BM_WelchReuse(benchmark::State& state) {
+    constexpr double welch_fs = 1000.0;
+    constexpr size_t segment_len = 256;
+    const auto x = make_sinusoid(kWelchSamples, welch_fs, 50.0);
+    for (auto _ : state) {
+        auto result = welch_psd(x, welch_fs, segment_len, 0.5);
+        benchmark::DoNotOptimize(result.has_value());
+        if (result.has_value()) {
+            benchmark::DoNotOptimize(result->power.data());
+        }
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(kWelchSamples));
+}
+BENCHMARK(BM_WelchReuse);
+
 BENCHMARK_MAIN();
