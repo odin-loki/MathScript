@@ -84,10 +84,82 @@ Image hsv2rgb(const Image& img) {
 // ========================== Geometric ==========================
 
 Image imresize(const Image& img, int nr, int nc) {
-    Image out(nr, nc, img.channels);
-    float sr=(float)(img.rows-1)/(nr-1+1e-6f), sc=(float)(img.cols-1)/(nc-1+1e-6f);
-    for (int r=0;r<nr;++r) for (int c=0;c<nc;++c) for (int ch=0;ch<img.channels;++ch)
-        out.at(r,c,ch)=bilinear_sample(img, r*sr, c*sc, ch);
+    const int channels = img.channels;
+    Image out(nr, nc, channels);
+    if (img.empty() || nr <= 0 || nc <= 0) {
+        return out;
+    }
+
+    const int src_rows = img.rows;
+    const int src_cols = img.cols;
+    const float inv_denom_r = 1.f / (static_cast<float>(nr - 1) + 1e-6f);
+    const float inv_denom_c = 1.f / (static_cast<float>(nc - 1) + 1e-6f);
+    const float scale_r = static_cast<float>(src_rows - 1) * inv_denom_r;
+    const float scale_c = static_cast<float>(src_cols - 1) * inv_denom_c;
+
+    std::vector<int> row_r0(static_cast<std::size_t>(nr));
+    std::vector<int> row_r1(static_cast<std::size_t>(nr));
+    std::vector<float> row_wr0(static_cast<std::size_t>(nr));
+    std::vector<float> row_wr1(static_cast<std::size_t>(nr));
+    for (int r = 0; r < nr; ++r) {
+        const float src_r = static_cast<float>(r) * scale_r;
+        int r0 = static_cast<int>(src_r);
+        int r1 = std::min(r0 + 1, src_rows - 1);
+        r0 = std::max(0, r0);
+        const float dr = src_r - static_cast<float>(r0);
+        row_r0[static_cast<std::size_t>(r)] = r0;
+        row_r1[static_cast<std::size_t>(r)] = r1;
+        row_wr0[static_cast<std::size_t>(r)] = 1.f - dr;
+        row_wr1[static_cast<std::size_t>(r)] = dr;
+    }
+
+    std::vector<int> col_c0(static_cast<std::size_t>(nc));
+    std::vector<int> col_c1(static_cast<std::size_t>(nc));
+    std::vector<float> col_wc0(static_cast<std::size_t>(nc));
+    std::vector<float> col_wc1(static_cast<std::size_t>(nc));
+    for (int c = 0; c < nc; ++c) {
+        const float src_c = static_cast<float>(c) * scale_c;
+        int c0 = static_cast<int>(src_c);
+        int c1 = std::min(c0 + 1, src_cols - 1);
+        c0 = std::max(0, c0);
+        const float dc = src_c - static_cast<float>(c0);
+        col_c0[static_cast<std::size_t>(c)] = c0;
+        col_c1[static_cast<std::size_t>(c)] = c1;
+        col_wc0[static_cast<std::size_t>(c)] = 1.f - dc;
+        col_wc1[static_cast<std::size_t>(c)] = dc;
+    }
+
+    const float* src = img.data.data();
+    float* dst = out.data.data();
+    const int src_stride = src_cols * channels;
+
+    for (int r = 0; r < nr; ++r) {
+        const int r0 = row_r0[static_cast<std::size_t>(r)];
+        const int r1 = row_r1[static_cast<std::size_t>(r)];
+        const float wr0 = row_wr0[static_cast<std::size_t>(r)];
+        const float wr1 = row_wr1[static_cast<std::size_t>(r)];
+        const float* src_row0 = src + r0 * src_stride;
+        const float* src_row1 = src + r1 * src_stride;
+
+        for (int c = 0; c < nc; ++c) {
+            const int c0 = col_c0[static_cast<std::size_t>(c)];
+            const int c1 = col_c1[static_cast<std::size_t>(c)];
+            const float wc0 = col_wc0[static_cast<std::size_t>(c)];
+            const float wc1 = col_wc1[static_cast<std::size_t>(c)];
+            const float w00 = wr0 * wc0;
+            const float w01 = wr0 * wc1;
+            const float w10 = wr1 * wc0;
+            const float w11 = wr1 * wc1;
+
+            const int off00 = c0 * channels;
+            const int off01 = c1 * channels;
+            float* dst_px = dst + (r * nc + c) * channels;
+            for (int ch = 0; ch < channels; ++ch) {
+                dst_px[ch] = w00 * src_row0[off00 + ch] + w01 * src_row0[off01 + ch]
+                           + w10 * src_row1[off00 + ch] + w11 * src_row1[off01 + ch];
+            }
+        }
+    }
     return out;
 }
 

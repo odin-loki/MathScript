@@ -99,4 +99,22 @@ static void BM_Watershed(benchmark::State& state) {
 }
 BENCHMARK(BM_Watershed)->Args({64, 64})->Args({128, 128})->Args({256, 256});
 
+static void BM_Imresize(benchmark::State& state) {
+    const int rows = static_cast<int>(state.range(0));
+    const int cols = static_cast<int>(state.range(1));
+    const int channels = static_cast<int>(state.range(2));
+    const int out_rows = static_cast<int>(state.range(3));
+    const int out_cols = static_cast<int>(state.range(4));
+    const auto img = make_gaussian_bench_image(rows, cols, channels);
+
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(ms::image::imresize(img, out_rows, out_cols));
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * out_rows * out_cols * channels);
+}
+BENCHMARK(BM_Imresize)
+    ->Args({256, 256, 1, 128, 128})
+    ->Args({512, 512, 3, 256, 256})
+    ->Args({256, 256, 3, 512, 512});
+
 BENCHMARK_MAIN();
