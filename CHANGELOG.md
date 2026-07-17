@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 218 — Performance Profiling & Hot-Path Optimization)
+
+8 parallel subagents profiling and optimizing core hot paths (`signal`, `fft`, `simd`, `stats`, `linalg`, `bench`, `build`).
+
+### Performance (Wave 218)
+- `ms::signal` — hybrid FFT/direct `convolve` (crossover at output length ≥64); O(n) sliding-window `moving_average`. 15+ new tests; `BM_ConvolveFFT` and `BM_MovingAverage/65536` benchmarks.
+- `ms::fft` — iterative in-place Cooley-Tukey FFT with per-size twiddle cache (replaces recursive implementation for power-of-2 sizes). 4 round-trip tests at 512/2048/8192; `BM_fft/8192`.
+- `ms::simd` — AVX2 `sub` and `abs` elementwise ops with scalar fallback. 13 new tests; n=1M benchmarks.
+- `ms::stats` — `kde` accelerated via sorted-sample support windowing (Gaussian adaptive cutoff, exact Epanechnikov). 6 naive-parity tests; `BM_KDE`.
+- `ms::linalg` — `matmul` skips redundant col-major copies when inputs already col-major; GPU results move instead of element copy.
+- **Benchmark coverage** — new `bench_signal_filters.cpp` (cheby1/cheby2/sosfilt/filtfilt/welch_psd); `build.ps1 -Benchmark` flag; expanded `bench_smoke.sh`/`bench_regression.sh` to all 18 benchmark executables; CI `benchmark-linux` builds full suite.
+- **Fix:** repaired stale `bench_special.cpp`/`bench_signal_linalg.cpp` API drift; benchmark smoke stderr handling on Windows.
+- **Total Wave 218: 370 CTest suites — all passing** (+1 `test_signal_moving_average`). Eight branches merged with zero conflicts; full build+test and `.\build.ps1 -Benchmark` smoke verified on `main`.
+
 ## [1.0.0] — 2026-07-13 (Wave 217 — Signal Cheby2, Stats MAD, Numthy Primitive Root, Linalg Matrix Rank, Info Normalized Entropy, Geo Poly Intersect, Compress RLE)
 
 7 parallel subagents targeting modules not touched in wave 216 (`signal`, `stats`, `numthy`, `linalg`, `info`, `geo`, `compress`). The planned `special::digamma` slot was skipped — `digamma` already exists in `ms::special`.
