@@ -3,6 +3,7 @@
 
 #include <benchmark/benchmark.h>
 #include <cmath>
+#include "ms/control/control.hpp"
 #include "ms/prob/prob.hpp"
 
 using namespace ms;
@@ -191,5 +192,22 @@ static void BM_UniformCDF(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_UniformCDF);
+
+static void BM_Lyap4x4(benchmark::State& state) {
+    const std::vector<std::vector<double>> A = {
+        {-2.1, 0.3, 0.0, 0.0},
+        {0.2, -1.8, 0.4, 0.0},
+        {0.0, 0.1, -2.4, 0.2},
+        {0.0, 0.0, 0.3, -1.6},
+    };
+    const std::vector<std::vector<double>> Q(4, std::vector<double>(4, 0.0));
+    for (int i = 0; i < 4; ++i) Q[static_cast<size_t>(i)][static_cast<size_t>(i)] = 1.0;
+    for (auto _ : state) {
+        auto X = ms::control::lyap(A, Q);
+        benchmark::DoNotOptimize(X.has_value());
+        if (X) benchmark::DoNotOptimize(X.value()[0][0]);
+    }
+}
+BENCHMARK(BM_Lyap4x4);
 
 BENCHMARK_MAIN();
