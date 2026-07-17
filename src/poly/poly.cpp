@@ -2,7 +2,9 @@
 #include "ms/core/operations.hpp"
 #include "ms/linalg/linalg.hpp"
 #include "ms/numthy/numthy.hpp"
+#include "ms/simd/simd.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <numeric>
@@ -19,6 +21,67 @@ std::vector<double> poly_eval(const std::vector<double>& coeffs, double x) {
         value = value * x + coeffs[i - 1];
     }
     return {value};
+}
+
+namespace {
+
+double horner_scalar(const std::vector<double>& coeffs, double x) {
+    double value = 0.0;
+    for (size_t i = coeffs.size(); i > 0; --i) {
+        value = value * x + coeffs[i - 1];
+    }
+    return value;
+}
+
+void horner_simd4(const std::vector<double>& coeffs,
+                  const double x0,
+                  const double x1,
+                  const double x2,
+                  const double x3,
+                  double& out0,
+                  double& out1,
+                  double& out2,
+                  double& out3) {
+    const std::array<double, 4> xs{x0, x1, x2, x3};
+    std::array<double, 4> values{0.0, 0.0, 0.0, 0.0};
+    std::array<double, 4> scaled{};
+    std::array<double, 4> coeff_lane{};
+
+    for (size_t i = coeffs.size(); i > 0; --i) {
+        coeff_lane.fill(coeffs[i - 1]);
+        ms::simd::mul(values, xs, scaled);
+        ms::simd::add(scaled, coeff_lane, values);
+    }
+
+    out0 = values[0];
+    out1 = values[1];
+    out2 = values[2];
+    out3 = values[3];
+}
+
+} // namespace
+
+std::vector<double> poly_eval_at(const std::vector<double>& coeffs, std::span<const double> xs) {
+    std::vector<double> out(xs.size(), 0.0);
+    if (xs.empty()) {
+        return out;
+    }
+
+    const bool use_simd = coeffs.size() >= 4;
+
+    size_t i = 0;
+    if (use_simd) {
+        for (; i + 4 <= xs.size(); i += 4) {
+            horner_simd4(coeffs, xs[i], xs[i + 1], xs[i + 2], xs[i + 3],
+                         out[i], out[i + 1], out[i + 2], out[i + 3]);
+        }
+    }
+
+    for (; i < xs.size(); ++i) {
+        out[i] = horner_scalar(coeffs, xs[i]);
+    }
+
+    return out;
 }
 
 std::vector<double> poly_add(const std::vector<double>& a, const std::vector<double>& b) {

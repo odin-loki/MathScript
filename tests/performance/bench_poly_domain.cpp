@@ -50,6 +50,20 @@ static void BM_PolyEval_Degree100(benchmark::State& state) {
 }
 BENCHMARK(BM_PolyEval_Degree100);
 
+static void BM_PolyEvalBatch(benchmark::State& state) {
+    auto p = make_poly(50);
+    std::vector<double> xs(4096);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        xs[i] = -1.0 + 2.0 * static_cast<double>(i) / static_cast<double>(xs.size() - 1);
+    }
+    for (auto _ : state) {
+        auto r = poly_eval_at(p, xs);
+        benchmark::DoNotOptimize(r.data());
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(xs.size()));
+}
+BENCHMARK(BM_PolyEvalBatch);
+
 // ---------------------------------------------------------------------------
 // Polynomial addition
 // ---------------------------------------------------------------------------
