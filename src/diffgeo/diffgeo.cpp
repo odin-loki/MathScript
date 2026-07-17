@@ -171,6 +171,7 @@ geodesic(MetricFn g, const Coords& x0, const Coords& v0,
     int n = static_cast<int>(x0.size());
     double ds = s_end / n_steps;
     std::vector<GeodesicState> traj;
+    traj.reserve(static_cast<size_t>(n_steps) + 1);
     Coords x = x0, v = v0;
     traj.push_back({x, v});
     for (int step = 0; step < n_steps; ++step) {
@@ -196,6 +197,8 @@ parallel_transport(MetricFn g, std::function<Coords(double)> curve,
     std::vector<Coords> traj;
     traj.push_back(V0);
     if (n_steps <= 0 || !(s_end > 0.0)) return traj;
+
+    traj.reserve(static_cast<size_t>(n_steps) + 1);
 
     int n = static_cast<int>(V0.size());
     double ds = s_end / n_steps;
