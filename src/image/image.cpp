@@ -195,21 +195,6 @@ Image impad(const Image& img, int pad, float val) {
 
 // ========================== Filtering ==========================
 
-Image imfilter(const Image& img, const std::vector<std::vector<float>>& K) {
-    int kr=K.size(), kc=K[0].size(), pr=kr/2, pc=kc/2;
-    Image out(img.rows, img.cols, img.channels, 0.f);
-    for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch) {
-        float val=0;
-        for (int dr=0;dr<kr;++dr) for (int dc=0;dc<kc;++dc) {
-            int sr=std::min(std::max(r+dr-pr,0),img.rows-1);
-            int sc=std::min(std::max(c+dc-pc,0),img.cols-1);
-            val+=K[dr][dc]*img.at(sr,sc,ch);
-        }
-        out.at(r,c,ch)=val;
-    }
-    return out;
-}
-
 namespace {
 
 std::vector<float> make_gaussian_kernel_1d(float sigma, int& half) {
@@ -460,7 +445,235 @@ void conv1d_vertical_replicate(
     }
 }
 
+bool try_separable_kernel(
+    const std::vector<std::vector<float>>& K,
+    std::vector<float>& row_k,
+    std::vector<float>& col_k) {
+    const int kr = static_cast<int>(K.size());
+    if (kr == 0) {
+        return false;
+    }
+    const int kc = static_cast<int>(K[0].size());
+    if (kc == 0) {
+        return false;
+    }
+
+    if (kr == 1) {
+        col_k = K[0];
+        row_k = {1.f};
+        return true;
+    }
+    if (kc == 1) {
+        row_k.resize(static_cast<std::size_t>(kr));
+        for (int i = 0; i < kr; ++i) {
+            row_k[static_cast<std::size_t>(i)] = K[static_cast<std::size_t>(i)][0];
+        }
+        col_k = {1.f};
+        return true;
+    }
+
+    int i0 = 0;
+    int j0 = 0;
+    float pivot = K[static_cast<std::size_t>(i0)][static_cast<std::size_t>(j0)];
+    if (std::abs(pivot) < 1e-15f) {
+        bool found = false;
+        for (int i = 0; i < kr && !found; ++i) {
+            for (int j = 0; j < kc; ++j) {
+                if (std::abs(K[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)]) >= 1e-15f) {
+                    i0 = i;
+                    j0 = j;
+                    pivot = K[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            row_k.assign(static_cast<std::size_t>(kr), 0.f);
+            col_k.assign(static_cast<std::size_t>(kc), 0.f);
+            return true;
+        }
+    }
+
+    col_k.resize(static_cast<std::size_t>(kc));
+    row_k.resize(static_cast<std::size_t>(kr));
+    for (int j = 0; j < kc; ++j) {
+        col_k[static_cast<std::size_t>(j)] = K[static_cast<std::size_t>(i0)][static_cast<std::size_t>(j)];
+    }
+    const float col_pivot = col_k[static_cast<std::size_t>(j0)];
+    for (int i = 0; i < kr; ++i) {
+        row_k[static_cast<std::size_t>(i)] =
+            K[static_cast<std::size_t>(i)][static_cast<std::size_t>(j0)] / col_pivot;
+    }
+
+    for (int i = 0; i < kr; ++i) {
+        for (int j = 0; j < kc; ++j) {
+            const float expected = row_k[static_cast<std::size_t>(i)] * col_k[static_cast<std::size_t>(j)];
+            const float actual = K[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+            if (std::abs(actual - expected) > 1e-6f * (1.f + std::abs(actual))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+void imfilter_3x3_replicate(
+    const float* src, float* dst,
+    int rows, int cols, int channels,
+    const float k[9]) {
+    if (channels == 1) {
+        for (int r = 0; r < rows; ++r) {
+            const int sr0 = std::min(std::max(r - 1, 0), rows - 1);
+            const int sr1 = r;
+            const int sr2 = std::min(r + 1, rows - 1);
+            const float* row0 = src + sr0 * cols;
+            const float* row1 = src + sr1 * cols;
+            const float* row2 = src + sr2 * cols;
+            float* dst_row = dst + r * cols;
+
+            for (int c = 0; c < cols; ++c) {
+                const int sc0 = std::min(std::max(c - 1, 0), cols - 1);
+                const int sc1 = c;
+                const int sc2 = std::min(c + 1, cols - 1);
+                dst_row[c] = k[0] * row0[sc0] + k[1] * row0[sc1] + k[2] * row0[sc2]
+                           + k[3] * row1[sc0] + k[4] * row1[sc1] + k[5] * row1[sc2]
+                           + k[6] * row2[sc0] + k[7] * row2[sc1] + k[8] * row2[sc2];
+            }
+        }
+        return;
+    }
+
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            const int sr0 = std::min(std::max(r - 1, 0), rows - 1);
+            const int sr1 = r;
+            const int sr2 = std::min(r + 1, rows - 1);
+
+            for (int c = 0; c < cols; ++c) {
+                const int sc0 = std::min(std::max(c - 1, 0), cols - 1);
+                const int sc1 = c;
+                const int sc2 = std::min(c + 1, cols - 1);
+                float val = 0.f;
+                val += k[0] * src[(sr0 * cols + sc0) * channels + ch];
+                val += k[1] * src[(sr0 * cols + sc1) * channels + ch];
+                val += k[2] * src[(sr0 * cols + sc2) * channels + ch];
+                val += k[3] * src[(sr1 * cols + sc0) * channels + ch];
+                val += k[4] * src[(sr1 * cols + sc1) * channels + ch];
+                val += k[5] * src[(sr1 * cols + sc2) * channels + ch];
+                val += k[6] * src[(sr2 * cols + sc0) * channels + ch];
+                val += k[7] * src[(sr2 * cols + sc1) * channels + ch];
+                val += k[8] * src[(sr2 * cols + sc2) * channels + ch];
+                dst[(r * cols + c) * channels + ch] = val;
+            }
+        }
+    }
+}
+
+void imfilter_general_replicate(
+    const float* src, float* dst,
+    int rows, int cols, int channels,
+    const float* kernel, int kr, int kc) {
+    const int pr = kr / 2;
+    const int pc = kc / 2;
+
+    if (channels == 1) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                float val = 0.f;
+                for (int dr = 0; dr < kr; ++dr) {
+                    const int sr = std::min(std::max(r + dr - pr, 0), rows - 1);
+                    const float* src_row = src + sr * cols;
+                    const float* k_row = kernel + dr * kc;
+                    for (int dc = 0; dc < kc; ++dc) {
+                        const int sc = std::min(std::max(c + dc - pc, 0), cols - 1);
+                        val += k_row[dc] * src_row[sc];
+                    }
+                }
+                dst[r * cols + c] = val;
+            }
+        }
+        return;
+    }
+
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                float val = 0.f;
+                for (int dr = 0; dr < kr; ++dr) {
+                    const int sr = std::min(std::max(r + dr - pr, 0), rows - 1);
+                    for (int dc = 0; dc < kc; ++dc) {
+                        const int sc = std::min(std::max(c + dc - pc, 0), cols - 1);
+                        val += kernel[dr * kc + dc] *
+                               src[(sr * cols + sc) * channels + ch];
+                    }
+                }
+                dst[(r * cols + c) * channels + ch] = val;
+            }
+        }
+    }
+}
+
+Image imfilter_impl(const Image& img, const std::vector<std::vector<float>>& K) {
+    if (img.empty() || K.empty()) {
+        return img;
+    }
+
+    const int kr = static_cast<int>(K.size());
+    const int kc = static_cast<int>(K[0].size());
+    const int rows = img.rows;
+    const int cols = img.cols;
+    const int channels = img.channels;
+
+    std::vector<float> row_k;
+    std::vector<float> col_k;
+    if (try_separable_kernel(K, row_k, col_k)) {
+        const int half_r = kr / 2;
+        const int half_c = kc / 2;
+        const std::size_t npix = static_cast<std::size_t>(rows) * cols * channels;
+
+        thread_local std::vector<float> tmp;
+        if (tmp.size() < npix) {
+            tmp.resize(npix);
+        }
+
+        Image out(rows, cols, channels);
+        const float* src = img.data.data();
+        conv1d_horizontal_replicate(src, tmp.data(), rows, cols, channels, col_k, half_c);
+        conv1d_vertical_replicate(tmp.data(), out.data.data(), rows, cols, channels, row_k, half_r);
+        return out;
+    }
+
+    Image out(rows, cols, channels);
+    const float* src = img.data.data();
+    float* dst = out.data.data();
+
+    if (kr == 3 && kc == 3) {
+        const float k3[9] = {
+            K[0][0], K[0][1], K[0][2],
+            K[1][0], K[1][1], K[1][2],
+            K[2][0], K[2][1], K[2][2],
+        };
+        imfilter_3x3_replicate(src, dst, rows, cols, channels, k3);
+        return out;
+    }
+
+    std::vector<float> kernel_flat(static_cast<std::size_t>(kr * kc));
+    for (int dr = 0; dr < kr; ++dr) {
+        for (int dc = 0; dc < kc; ++dc) {
+            kernel_flat[static_cast<std::size_t>(dr * kc + dc)] =
+                K[static_cast<std::size_t>(dr)][static_cast<std::size_t>(dc)];
+        }
+    }
+    imfilter_general_replicate(src, dst, rows, cols, channels, kernel_flat.data(), kr, kc);
+    return out;
+}
+
 } // namespace
+
+Image imfilter(const Image& img, const std::vector<std::vector<float>>& K) {
+    return imfilter_impl(img, K);
+}
 
 Image imgaussfilt(const Image& img, float sigma) {
     if (img.empty()) {
