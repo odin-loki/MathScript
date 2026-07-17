@@ -502,7 +502,8 @@ double bottleneck_distance(const std::vector<PersistencePair>& dgm1,
 
     // Bottleneck: optimal matching minimising max cost
     // Distance from a point (b,d) to diagonal is (d-b)/2
-    // Simple O(n^2) approximation
+    // Intentional O(n^2) greedy matching: exact bottleneck distance needs
+    // Hungarian O(n^3); diagrams here are small (filtration samples).
     double result = 0.0;
     // Cost between two persistence points
     auto cost = [](std::pair<double,double> a, std::pair<double,double> b) {

@@ -145,7 +145,7 @@ Binaries land in `build-msvc/bin/` (or `build-linux/bin/` on Linux).
 
 ## Test Layout
 
-**374 CTest suites** as of Wave 225 (CHANGELOG); profiling passes 218–225 complete; 23 benchmark executables in smoke. Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
+**374 CTest suites** as of Wave 226 profiling sign-off (CHANGELOG); profiling passes 218–226 complete; **23** benchmark executables in smoke (counts may increase when other Wave 226 feature branches merge). Individual suites contain many `TEST()` cases (several thousand total across the tree). Tests link the `mathscript` INTERFACE library and `GTest::gtest_main` unless noted.
 
 | Directory | Contents |
 |-----------|----------|

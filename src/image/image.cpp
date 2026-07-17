@@ -1774,7 +1774,7 @@ Image dft_magnitude(const Image& img) {
     auto g=img.channels>1?rgb2gray(img):img;
     int R=g.rows, C=g.cols;
     using Cplx=std::complex<double>;
-    // Simple DFT O(N^2) for small images
+    // Intentional O(N^2) naive DFT reference path; use ms::fft for production sizes.
     std::vector<Cplx> F(R*C,0);
     for (int u=0;u<R;++u) for (int v=0;v<C;++v) {
         Cplx sum=0;
