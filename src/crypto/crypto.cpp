@@ -3,6 +3,25 @@
 #include <array>
 #include <cstring>
 
+#if defined(_MSC_VER)
+#include <stdlib.h>
+#elif defined(__GNUC__) || defined(__clang__)
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_bswap32)
+#define MS_HAVE_BSWAP32 1
+#endif
+#if __has_builtin(__builtin_bswap64)
+#define MS_HAVE_BSWAP64 1
+#endif
+#endif
+#ifndef MS_HAVE_BSWAP32
+#define MS_HAVE_BSWAP32 1
+#endif
+#ifndef MS_HAVE_BSWAP64
+#define MS_HAVE_BSWAP64 1
+#endif
+#endif
+
 namespace ms {
 namespace crypto {
 namespace {
@@ -70,47 +89,203 @@ inline std::uint64_t rotr64(std::uint64_t x, unsigned n) {
     return (x >> n) | (x << (64u - n));
 }
 
+inline std::uint32_t bswap32(std::uint32_t v) {
+#if defined(_MSC_VER)
+    return _byteswap_ulong(v);
+#elif defined(MS_HAVE_BSWAP32)
+    return __builtin_bswap32(v);
+#else
+    return ((v & 0x000000ffu) << 24) | ((v & 0x0000ff00u) << 8) |
+           ((v & 0x00ff0000u) >> 8) | ((v & 0xff000000u) >> 24);
+#endif
+}
+
+inline std::uint64_t bswap64(std::uint64_t v) {
+#if defined(_MSC_VER)
+    return _byteswap_uint64(v);
+#elif defined(MS_HAVE_BSWAP64)
+    return __builtin_bswap64(v);
+#else
+    return ((v & 0x00000000000000ffull) << 56) | ((v & 0x000000000000ff00ull) << 40) |
+           ((v & 0x0000000000ff0000ull) << 24) | ((v & 0x00000000ff000000ull) << 8) |
+           ((v & 0x000000ff00000000ull) >> 8) | ((v & 0x0000ff0000000000ull) >> 24) |
+           ((v & 0x00ff000000000000ull) >> 40) | ((v & 0xff00000000000000ull) >> 56);
+#endif
+}
+
 inline void store_be32(std::uint8_t* out, std::uint32_t v) {
-    out[0] = static_cast<std::uint8_t>((v >> 24) & 0xffu);
-    out[1] = static_cast<std::uint8_t>((v >> 16) & 0xffu);
-    out[2] = static_cast<std::uint8_t>((v >> 8) & 0xffu);
-    out[3] = static_cast<std::uint8_t>(v & 0xffu);
+    const std::uint32_t be = bswap32(v);
+    std::memcpy(out, &be, sizeof(be));
 }
 
 inline void store_be64(std::uint8_t* out, std::uint64_t v) {
-    for (int i = 7; i >= 0; --i) {
-        out[i] = static_cast<std::uint8_t>(v & 0xffull);
-        v >>= 8;
-    }
+    const std::uint64_t be = bswap64(v);
+    std::memcpy(out, &be, sizeof(be));
 }
 
 inline std::uint32_t load_be32(const std::uint8_t* in) {
-    return (static_cast<std::uint32_t>(in[0]) << 24) |
-           (static_cast<std::uint32_t>(in[1]) << 16) |
-           (static_cast<std::uint32_t>(in[2]) << 8) |
-           static_cast<std::uint32_t>(in[3]);
+    std::uint32_t v;
+    std::memcpy(&v, in, sizeof(v));
+    return bswap32(v);
 }
 
 inline std::uint64_t load_be64(const std::uint8_t* in) {
-    std::uint64_t v = 0;
-    for (int i = 0; i < 8; ++i) {
-        v = (v << 8) | static_cast<std::uint64_t>(in[i]);
+    std::uint64_t v;
+    std::memcpy(&v, in, sizeof(v));
+    return bswap64(v);
+}
+
+#define SHA256_SIGMA0(x) (rotr32((x), 7) ^ rotr32((x), 18) ^ ((x) >> 3))
+#define SHA256_SIGMA1(x) (rotr32((x), 17) ^ rotr32((x), 19) ^ ((x) >> 10))
+#define SHA256_S0(x) (rotr32((x), 2) ^ rotr32((x), 13) ^ rotr32((x), 22))
+#define SHA256_S1(x) (rotr32((x), 6) ^ rotr32((x), 11) ^ rotr32((x), 25))
+#define SHA256_CH(x, y, z) (((x) & (y)) ^ (~(x) & (z)))
+#define SHA256_MAJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+
+#define SHA256_ROUND(i, a, b, c, d, e, f, g, h) \
+    do { \
+        const std::uint32_t t1 = \
+            (h) + SHA256_S1(e) + SHA256_CH(e, f, g) + kSha256K[i] + w[i]; \
+        const std::uint32_t t2 = SHA256_S0(a) + SHA256_MAJ(a, b, c); \
+        (h) = (g); \
+        (g) = (f); \
+        (f) = (e); \
+        (e) = (d) + t1; \
+        (d) = (c); \
+        (c) = (b); \
+        (b) = (a); \
+        (a) = t1 + t2; \
+    } while (0)
+
+#define SHA512_SIGMA0(x) (rotr64((x), 1) ^ rotr64((x), 8) ^ ((x) >> 7))
+#define SHA512_SIGMA1(x) (rotr64((x), 19) ^ rotr64((x), 61) ^ ((x) >> 6))
+#define SHA512_S0(x) (rotr64((x), 28) ^ rotr64((x), 34) ^ rotr64((x), 39))
+#define SHA512_S1(x) (rotr64((x), 14) ^ rotr64((x), 18) ^ rotr64((x), 41))
+#define SHA512_CH(x, y, z) (((x) & (y)) ^ (~(x) & (z)))
+#define SHA512_MAJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+
+#define SHA512_ROUND(i, a, b, c, d, e, f, g, h) \
+    do { \
+        const std::uint64_t t1 = \
+            (h) + SHA512_S1(e) + SHA512_CH(e, f, g) + kSha512K[i] + w[i]; \
+        const std::uint64_t t2 = SHA512_S0(a) + SHA512_MAJ(a, b, c); \
+        (h) = (g); \
+        (g) = (f); \
+        (f) = (e); \
+        (e) = (d) + t1; \
+        (d) = (c); \
+        (c) = (b); \
+        (b) = (a); \
+        (a) = t1 + t2; \
+    } while (0)
+
+inline void sha256_expand(std::uint32_t w[64], const std::uint8_t block[64]) {
+    w[0] = load_be32(block + 0);
+    w[1] = load_be32(block + 4);
+    w[2] = load_be32(block + 8);
+    w[3] = load_be32(block + 12);
+    w[4] = load_be32(block + 16);
+    w[5] = load_be32(block + 20);
+    w[6] = load_be32(block + 24);
+    w[7] = load_be32(block + 28);
+    w[8] = load_be32(block + 32);
+    w[9] = load_be32(block + 36);
+    w[10] = load_be32(block + 40);
+    w[11] = load_be32(block + 44);
+    w[12] = load_be32(block + 48);
+    w[13] = load_be32(block + 52);
+    w[14] = load_be32(block + 56);
+    w[15] = load_be32(block + 60);
+
+    for (int i = 16; i < 64; i += 4) {
+        w[i] = w[i - 16] + SHA256_SIGMA0(w[i - 15]) + w[i - 7] + SHA256_SIGMA1(w[i - 2]);
+        w[i + 1] =
+            w[i - 15] + SHA256_SIGMA0(w[i - 14]) + w[i - 6] + SHA256_SIGMA1(w[i - 1]);
+        w[i + 2] =
+            w[i - 14] + SHA256_SIGMA0(w[i - 13]) + w[i - 5] + SHA256_SIGMA1(w[i]);
+        w[i + 3] =
+            w[i - 13] + SHA256_SIGMA0(w[i - 12]) + w[i - 4] + SHA256_SIGMA1(w[i + 1]);
     }
-    return v;
+}
+
+inline void sha256_rounds(std::uint32_t w[64],
+                          std::uint32_t& a,
+                          std::uint32_t& b,
+                          std::uint32_t& c,
+                          std::uint32_t& d,
+                          std::uint32_t& e,
+                          std::uint32_t& f,
+                          std::uint32_t& g,
+                          std::uint32_t& h) {
+    SHA256_ROUND(0, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(1, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(2, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(3, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(4, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(5, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(6, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(7, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(8, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(9, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(10, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(11, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(12, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(13, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(14, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(15, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(16, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(17, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(18, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(19, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(20, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(21, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(22, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(23, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(24, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(25, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(26, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(27, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(28, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(29, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(30, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(31, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(32, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(33, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(34, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(35, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(36, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(37, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(38, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(39, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(40, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(41, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(42, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(43, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(44, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(45, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(46, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(47, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(48, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(49, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(50, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(51, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(52, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(53, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(54, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(55, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(56, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(57, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(58, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(59, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(60, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(61, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(62, a, b, c, d, e, f, g, h);
+    SHA256_ROUND(63, a, b, c, d, e, f, g, h);
 }
 
 void sha256_transform(std::uint32_t state[8], const std::uint8_t block[64]) {
     std::uint32_t w[64];
-    for (int i = 0; i < 16; ++i) {
-        w[i] = load_be32(block + i * 4);
-    }
-    for (int i = 16; i < 64; ++i) {
-        const std::uint32_t s0 = rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^
-                                 (w[i - 15] >> 3);
-        const std::uint32_t s1 = rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^
-                                 (w[i - 2] >> 10);
-        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
-    }
+    sha256_expand(w, block);
 
     std::uint32_t a = state[0];
     std::uint32_t b = state[1];
@@ -121,20 +296,7 @@ void sha256_transform(std::uint32_t state[8], const std::uint8_t block[64]) {
     std::uint32_t g = state[6];
     std::uint32_t h = state[7];
 
-    for (int i = 0; i < 64; ++i) {
-        const std::uint32_t t1 = h + (rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25)) +
-                                 ((e & f) ^ (~e & g)) + kSha256K[i] + w[i];
-        const std::uint32_t t2 = (rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22)) +
-                                 ((a & b) ^ (a & c) ^ (b & c));
-        h = g;
-        g = f;
-        f = e;
-        e = d + t1;
-        d = c;
-        c = b;
-        b = a;
-        a = t1 + t2;
-    }
+    sha256_rounds(w, a, b, c, d, e, f, g, h);
 
     state[0] += a;
     state[1] += b;
@@ -146,18 +308,129 @@ void sha256_transform(std::uint32_t state[8], const std::uint8_t block[64]) {
     state[7] += h;
 }
 
+inline void sha512_expand(std::uint64_t w[80], const std::uint8_t block[128]) {
+    w[0] = load_be64(block + 0);
+    w[1] = load_be64(block + 8);
+    w[2] = load_be64(block + 16);
+    w[3] = load_be64(block + 24);
+    w[4] = load_be64(block + 32);
+    w[5] = load_be64(block + 40);
+    w[6] = load_be64(block + 48);
+    w[7] = load_be64(block + 56);
+    w[8] = load_be64(block + 64);
+    w[9] = load_be64(block + 72);
+    w[10] = load_be64(block + 80);
+    w[11] = load_be64(block + 88);
+    w[12] = load_be64(block + 96);
+    w[13] = load_be64(block + 104);
+    w[14] = load_be64(block + 112);
+    w[15] = load_be64(block + 120);
+
+    for (int i = 16; i < 80; i += 4) {
+        w[i] = w[i - 16] + SHA512_SIGMA0(w[i - 15]) + w[i - 7] + SHA512_SIGMA1(w[i - 2]);
+        w[i + 1] =
+            w[i - 15] + SHA512_SIGMA0(w[i - 14]) + w[i - 6] + SHA512_SIGMA1(w[i - 1]);
+        w[i + 2] =
+            w[i - 14] + SHA512_SIGMA0(w[i - 13]) + w[i - 5] + SHA512_SIGMA1(w[i]);
+        w[i + 3] =
+            w[i - 13] + SHA512_SIGMA0(w[i - 12]) + w[i - 4] + SHA512_SIGMA1(w[i + 1]);
+    }
+}
+
+inline void sha512_rounds(std::uint64_t w[80],
+                           std::uint64_t& a,
+                           std::uint64_t& b,
+                           std::uint64_t& c,
+                           std::uint64_t& d,
+                           std::uint64_t& e,
+                           std::uint64_t& f,
+                           std::uint64_t& g,
+                           std::uint64_t& h) {
+    SHA512_ROUND(0, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(1, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(2, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(3, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(4, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(5, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(6, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(7, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(8, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(9, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(10, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(11, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(12, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(13, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(14, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(15, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(16, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(17, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(18, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(19, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(20, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(21, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(22, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(23, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(24, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(25, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(26, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(27, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(28, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(29, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(30, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(31, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(32, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(33, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(34, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(35, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(36, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(37, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(38, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(39, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(40, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(41, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(42, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(43, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(44, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(45, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(46, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(47, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(48, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(49, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(50, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(51, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(52, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(53, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(54, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(55, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(56, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(57, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(58, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(59, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(60, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(61, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(62, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(63, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(64, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(65, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(66, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(67, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(68, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(69, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(70, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(71, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(72, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(73, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(74, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(75, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(76, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(77, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(78, a, b, c, d, e, f, g, h);
+    SHA512_ROUND(79, a, b, c, d, e, f, g, h);
+}
+
 void sha512_transform(std::uint64_t state[8], const std::uint8_t block[128]) {
     std::uint64_t w[80];
-    for (int i = 0; i < 16; ++i) {
-        w[i] = load_be64(block + i * 8);
-    }
-    for (int i = 16; i < 80; ++i) {
-        const std::uint64_t s0 = rotr64(w[i - 15], 1) ^ rotr64(w[i - 15], 8) ^
-                                 (w[i - 15] >> 7);
-        const std::uint64_t s1 = rotr64(w[i - 2], 19) ^ rotr64(w[i - 2], 61) ^
-                                 (w[i - 2] >> 6);
-        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
-    }
+    sha512_expand(w, block);
 
     std::uint64_t a = state[0];
     std::uint64_t b = state[1];
@@ -168,20 +441,7 @@ void sha512_transform(std::uint64_t state[8], const std::uint8_t block[128]) {
     std::uint64_t g = state[6];
     std::uint64_t h = state[7];
 
-    for (int i = 0; i < 80; ++i) {
-        const std::uint64_t t1 = h + (rotr64(e, 14) ^ rotr64(e, 18) ^ rotr64(e, 41)) +
-                                 ((e & f) ^ (~e & g)) + kSha512K[i] + w[i];
-        const std::uint64_t t2 = (rotr64(a, 28) ^ rotr64(a, 34) ^ rotr64(a, 39)) +
-                                 ((a & b) ^ (a & c) ^ (b & c));
-        h = g;
-        g = f;
-        f = e;
-        e = d + t1;
-        d = c;
-        c = b;
-        b = a;
-        a = t1 + t2;
-    }
+    sha512_rounds(w, a, b, c, d, e, f, g, h);
 
     state[0] += a;
     state[1] += b;
@@ -198,17 +458,17 @@ void sha256_hash(std::span<const std::uint8_t> data, std::uint8_t digest[32]) {
     std::memcpy(state, kSha256Init, sizeof(state));
 
     const std::uint64_t total_bits = static_cast<std::uint64_t>(data.size()) * 8u;
-    std::size_t offset = 0;
-
-    while (offset + 64 <= data.size()) {
-        sha256_transform(state, data.data() + offset);
-        offset += 64;
+    const std::uint8_t* ptr = data.data();
+    const std::size_t full_blocks = data.size() / 64;
+    for (std::size_t i = 0; i < full_blocks; ++i) {
+        sha256_transform(state, ptr);
+        ptr += 64;
     }
 
     std::array<std::uint8_t, 64> block{};
-    const std::size_t rem = data.size() - offset;
+    const std::size_t rem = data.size() - full_blocks * 64;
     if (rem > 0) {
-        std::memcpy(block.data(), data.data() + offset, rem);
+        std::memcpy(block.data(), ptr, rem);
     }
     block[rem] = 0x80;
 
@@ -230,17 +490,17 @@ void sha512_hash(std::span<const std::uint8_t> data, std::uint8_t digest[64]) {
     std::memcpy(state, kSha512Init, sizeof(state));
 
     const std::uint64_t total_bits = static_cast<std::uint64_t>(data.size()) * 8u;
-    std::size_t offset = 0;
-
-    while (offset + 128 <= data.size()) {
-        sha512_transform(state, data.data() + offset);
-        offset += 128;
+    const std::uint8_t* ptr = data.data();
+    const std::size_t full_blocks = data.size() / 128;
+    for (std::size_t i = 0; i < full_blocks; ++i) {
+        sha512_transform(state, ptr);
+        ptr += 128;
     }
 
     std::array<std::uint8_t, 128> block{};
-    const std::size_t rem = data.size() - offset;
+    const std::size_t rem = data.size() - full_blocks * 128;
     if (rem > 0) {
-        std::memcpy(block.data(), data.data() + offset, rem);
+        std::memcpy(block.data(), ptr, rem);
     }
     block[rem] = 0x80;
 
@@ -260,6 +520,21 @@ void sha512_hash(std::span<const std::uint8_t> data, std::uint8_t digest[64]) {
 char hex_digit(int v) {
     return static_cast<char>(v < 10 ? ('0' + v) : ('a' + v - 10));
 }
+
+#undef SHA256_SIGMA0
+#undef SHA256_SIGMA1
+#undef SHA256_S0
+#undef SHA256_S1
+#undef SHA256_CH
+#undef SHA256_MAJ
+#undef SHA256_ROUND
+#undef SHA512_SIGMA0
+#undef SHA512_SIGMA1
+#undef SHA512_S0
+#undef SHA512_S1
+#undef SHA512_CH
+#undef SHA512_MAJ
+#undef SHA512_ROUND
 
 } // namespace
 
