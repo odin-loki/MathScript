@@ -123,20 +123,34 @@ double binom_pdf(int k, int n, double p) {
     if (k < 0 || k > n || p < 0.0 || p > 1.0) {
         return 0.0;
     }
-    double binom = 1.0;
-    for (int i = 0; i < k; ++i) {
-        binom *= (n - i);
+    if (k == 0) {
+        return std::pow(1.0 - p, static_cast<double>(n));
     }
-    for (int i = 0; i < k; ++i) {
-        binom /= (i + 1);
+    if (k == n) {
+        return std::pow(p, static_cast<double>(n));
     }
-    return binom * std::pow(p, k) * std::pow(1.0 - p, n - k);
+    const double log_coef = std::lgamma(static_cast<double>(n + 1))
+        - std::lgamma(static_cast<double>(k + 1))
+        - std::lgamma(static_cast<double>(n - k + 1));
+    return std::exp(log_coef + static_cast<double>(k) * std::log(p)
+                    + static_cast<double>(n - k) * std::log1p(-p));
 }
 
 double binom_cdf(int k, int n, double p) {
-    double sum = 0.0;
-    for (int i = 0; i <= k; ++i) {
-        sum += binom_pdf(i, n, p);
+    if (k < 0 || p < 0.0 || p > 1.0 || n < 0) {
+        return 0.0;
+    }
+    if (k >= n) {
+        return 1.0;
+    }
+    double sum = std::pow(1.0 - p, static_cast<double>(n));
+    if (k == 0) {
+        return sum;
+    }
+    double term = sum;
+    for (int i = 0; i < k; ++i) {
+        term *= static_cast<double>(n - i) / static_cast<double>(i + 1) * p / (1.0 - p);
+        sum += term;
     }
     return sum;
 }
@@ -149,9 +163,21 @@ double pois_pdf(double k, double lambda) {
 }
 
 double pois_cdf(double k, double lambda) {
-    double sum = 0.0;
-    for (double i = 0.0; i <= k; i += 1.0) {
-        sum += pois_pdf(i, lambda);
+    if (lambda <= 0.0) {
+        return 0.0;
+    }
+    if (k < 0.0) {
+        return 0.0;
+    }
+    const int k_int = static_cast<int>(std::floor(k));
+    double sum = std::exp(-lambda);
+    if (k_int == 0) {
+        return sum;
+    }
+    double term = sum;
+    for (int i = 0; i < k_int; ++i) {
+        term *= lambda / static_cast<double>(i + 1);
+        sum += term;
     }
     return sum;
 }
@@ -223,17 +249,9 @@ double t_cdf(double x, double df) {
     if (x == 0.0) {
         return 0.5;  // By symmetry of the t-distribution
     }
-    // Integrate t_pdf from 0 to |x| and use symmetry
-    const double limit = std::abs(x);
-    const int steps = 2000;
-    const double dx = limit / static_cast<double>(steps);
-    double sum = 0.0;
-    for (int i = 0; i < steps; ++i) {
-        const double t = (static_cast<double>(i) + 0.5) * dx;
-        sum += t_pdf(t, df);
-    }
-    const double half_area = sum * dx;
-    return x > 0.0 ? 0.5 + half_area : 0.5 - half_area;
+    const double z = df / (df + x * x);
+    const double ib = beta_inc_reg(z, df / 2.0, 0.5);
+    return x > 0.0 ? 1.0 - 0.5 * ib : 0.5 * ib;
 }
 
 double t_ppf(double p, double df) {

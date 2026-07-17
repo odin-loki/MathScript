@@ -18,14 +18,21 @@ namespace control {
 
 // ---- Helpers ----
 
-// Matrix-vector multiplication
+// Matrix-vector multiplication (optional output buffer reuse)
+static void matvec(const std::vector<std::vector<double>>& A,
+                   const std::vector<double>& x,
+                   std::vector<double>& y) {
+    const int n = static_cast<int>(A.size());
+    y.assign(static_cast<size_t>(n), 0.0);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < static_cast<int>(x.size()); ++j)
+            y[static_cast<size_t>(i)] += A[static_cast<size_t>(i)][static_cast<size_t>(j)] * x[static_cast<size_t>(j)];
+}
+
 static std::vector<double> matvec(const std::vector<std::vector<double>>& A,
                                    const std::vector<double>& x) {
-    int n = static_cast<int>(A.size());
-    std::vector<double> y(n, 0.0);
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < (int)x.size(); ++j)
-            y[i] += A[i][j] * x[j];
+    std::vector<double> y;
+    matvec(A, x, y);
     return y;
 }
 
@@ -694,6 +701,8 @@ StepData step_response(const TransferFunction& sys, double t_end, int n_pts) {
 
     // State vector x
     std::vector<double> x(n, 0.0);
+    std::vector<double> xdot;
+    xdot.reserve(static_cast<size_t>(n));
     // Simple forward Euler integration: u(t) = 1 (step)
     for (int i = 0; i < n_pts; ++i) {
         data.t[i] = i * dt;
@@ -702,7 +711,7 @@ StepData step_response(const TransferFunction& sys, double t_end, int n_pts) {
         for (int j = 0; j < n; ++j) y += s.C[0][j] * x[j];
         data.y[i] = y;
         // dx = A*x + B*u
-        auto xdot = matvec(s.A, x);
+        matvec(s.A, x, xdot);
         for (int j = 0; j < n; ++j) xdot[j] += s.B[j][0]; // B*1
         for (int j = 0; j < n; ++j) x[j] += dt * xdot[j];
     }
@@ -720,13 +729,15 @@ StepData impulse_response(const TransferFunction& sys, double t_end, int n_pts) 
     // Impulse: x(0) = B*u(0) = B (apply B at t=0), then free response
     std::vector<double> x(n, 0.0);
     for (int j = 0; j < n; ++j) x[j] = s.B[j][0];
+    std::vector<double> xdot;
+    xdot.reserve(static_cast<size_t>(n));
 
     for (int i = 0; i < n_pts; ++i) {
         data.t[i] = i * dt;
         double y = 0.0;
         for (int j = 0; j < n; ++j) y += s.C[0][j] * x[j];
         data.y[i] = y;
-        auto xdot = matvec(s.A, x);
+        matvec(s.A, x, xdot);
         for (int j = 0; j < n; ++j) x[j] += dt * xdot[j];
     }
     return data;
@@ -852,21 +863,46 @@ StepInfo step_info(const std::vector<double>& t,
 }
 
 // ---- Gaussian elimination helper for augmented matrix ----
-static bool gauss_solve(std::vector<std::vector<double>>& K, int n) {
+static bool gauss_solve_flat(std::vector<double>& K, int n, int cols) {
     for (int col = 0; col < n; ++col) {
-        int pivot = -1; double best = 0.0;
-        for (int row = col; row < n; ++row)
-            if (std::abs(K[row][col]) > best) { best = std::abs(K[row][col]); pivot = row; }
+        int pivot = -1;
+        double best = 0.0;
+        for (int row = col; row < n; ++row) {
+            const double v = std::abs(K[static_cast<size_t>(row * cols + col)]);
+            if (v > best) {
+                best = v;
+                pivot = row;
+            }
+        }
         if (pivot < 0 || best < 1e-12) return false;
-        std::swap(K[col], K[pivot]);
-        double sc = K[col][col];
-        for (int j = col; j <= n; ++j) K[col][j] /= sc;
+        if (pivot != col) {
+            for (int j = 0; j < cols; ++j)
+                std::swap(K[static_cast<size_t>(col * cols + j)],
+                          K[static_cast<size_t>(pivot * cols + j)]);
+        }
+        const double sc = K[static_cast<size_t>(col * cols + col)];
+        for (int j = col; j < cols; ++j)
+            K[static_cast<size_t>(col * cols + j)] /= sc;
         for (int row = 0; row < n; ++row) {
             if (row == col) continue;
-            double f = K[row][col];
-            for (int j = col; j <= n; ++j) K[row][j] -= f * K[col][j];
+            const double f = K[static_cast<size_t>(row * cols + col)];
+            for (int j = col; j < cols; ++j)
+                K[static_cast<size_t>(row * cols + j)] -= f * K[static_cast<size_t>(col * cols + j)];
         }
     }
+    return true;
+}
+
+static bool gauss_solve(std::vector<std::vector<double>>& K, int n) {
+    const int cols = n + 1;
+    std::vector<double> flat(static_cast<size_t>(n * cols));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < cols; ++j)
+            flat[static_cast<size_t>(i * cols + j)] = K[static_cast<size_t>(i)][static_cast<size_t>(j)];
+    if (!gauss_solve_flat(flat, n, cols)) return false;
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < cols; ++j)
+            K[static_cast<size_t>(i)][static_cast<size_t>(j)] = flat[static_cast<size_t>(i * cols + j)];
     return true;
 }
 
@@ -879,20 +915,21 @@ lyap(const std::vector<std::vector<double>>& A,
      const std::vector<std::vector<double>>& Q) {
     int n = static_cast<int>(A.size());
     int n2 = n * n;
-    std::vector<std::vector<double>> K(n2, std::vector<double>(n2 + 1, 0.0));
+    const int cols = n2 + 1;
+    std::vector<double> K(static_cast<size_t>(n2 * cols), 0.0);
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j) {
-            int row = i * n + j;
-            for (int k = 0; k < n; ++k)  K[row][k * n + j] += A[i][k];
-            for (int l = 0; l < n; ++l)  K[row][i * n + l] += A[j][l];
-            K[row][n2] = -Q[i][j];
+            const int row = i * n + j;
+            for (int k = 0; k < n; ++k)  K[static_cast<size_t>(row * cols + k * n + j)] += A[i][k];
+            for (int l = 0; l < n; ++l)  K[static_cast<size_t>(row * cols + i * n + l)] += A[j][l];
+            K[static_cast<size_t>(row * cols + n2)] = -Q[i][j];
         }
-    if (!gauss_solve(K, n2))
+    if (!gauss_solve_flat(K, n2, cols))
         return std::unexpected(Error{DomainError{"lyap", "singular — system may be unstable"}});
     std::vector<std::vector<double>> X(n, std::vector<double>(n));
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-            X[i][j] = K[i * n + j][n2];
+            X[i][j] = K[static_cast<size_t>((i * n + j) * cols + n2)];
     return X;
 }
 
@@ -904,22 +941,23 @@ dlyap(const std::vector<std::vector<double>>& A,
       const std::vector<std::vector<double>>& Q) {
     int n = static_cast<int>(A.size());
     int n2 = n * n;
-    std::vector<std::vector<double>> K(n2, std::vector<double>(n2 + 1, 0.0));
+    const int cols = n2 + 1;
+    std::vector<double> K(static_cast<size_t>(n2 * cols), 0.0);
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j) {
-            int row = i * n + j;
+            const int row = i * n + j;
             for (int k = 0; k < n; ++k)
                 for (int l = 0; l < n; ++l)
-                    K[row][k * n + l] += A[i][k] * A[j][l];
-            K[row][row] -= 1.0; // -I term
-            K[row][n2]   = -Q[i][j];
+                    K[static_cast<size_t>(row * cols + k * n + l)] += A[i][k] * A[j][l];
+            K[static_cast<size_t>(row * cols + row)] -= 1.0; // -I term
+            K[static_cast<size_t>(row * cols + n2)] = -Q[i][j];
         }
-    if (!gauss_solve(K, n2))
+    if (!gauss_solve_flat(K, n2, cols))
         return std::unexpected(Error{DomainError{"dlyap", "singular"}});
     std::vector<std::vector<double>> X(n, std::vector<double>(n));
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-            X[i][j] = K[i * n + j][n2];
+            X[i][j] = K[static_cast<size_t>((i * n + j) * cols + n2)];
     return X;
 }
 

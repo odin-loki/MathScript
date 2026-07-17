@@ -58,9 +58,12 @@ double vec_dot(const Vec& a, const Vec& b) {
 }
 double vec_norm(const Vec& v) { return std::sqrt(vec_dot(v,v)); }
 
+static double sq_eucl_dist(const Vec& a, const Vec& b) {
+    double s=0; for (size_t i=0;i<a.size();++i) { double d=a[i]-b[i]; s+=d*d; }
+    return s;
+}
 static double eucl_dist(const Vec& a, const Vec& b) {
-    double s=0; for (size_t i=0;i<a.size();++i) s+=(a[i]-b[i])*(a[i]-b[i]);
-    return std::sqrt(s);
+    return std::sqrt(sq_eucl_dist(a, b));
 }
 
 // Add bias column to design matrix
@@ -260,28 +263,43 @@ void NaiveBayes::fit(const Mat& X, const Vec& y) {
     int C=classes.size(), n=X.size(), p=X[0].size();
     mean.assign(C,Vec(p,0)); var.assign(C,Vec(p,0)); class_prior.assign(C,0);
     std::vector<int> counts(C,0);
+    std::vector<int> class_idx(n);
     for (int i=0;i<n;++i) {
-        int ci=std::find(classes.begin(),classes.end(),y[i])-classes.begin();
+        int ci=static_cast<int>(std::find(classes.begin(),classes.end(),y[i])-classes.begin());
+        class_idx[i]=ci;
         counts[ci]++;
         for (int j=0;j<p;++j) mean[ci][j]+=X[i][j];
     }
     for (int c=0;c<C;++c) { class_prior[c]=(double)counts[c]/n; for (int j=0;j<p;++j) mean[c][j]/=counts[c]; }
     for (int i=0;i<n;++i) {
-        int ci=std::find(classes.begin(),classes.end(),y[i])-classes.begin();
-        for (int j=0;j<p;++j) var[ci][j]+=(X[i][j]-mean[ci][j])*(X[i][j]-mean[ci][j]);
+        const int ci=class_idx[i];
+        for (int j=0;j<p;++j) {
+            const double diff=X[i][j]-mean[ci][j];
+            var[ci][j]+=diff*diff;
+        }
     }
     for (int c=0;c<C;++c) for (int j=0;j<p;++j) var[c][j]=var[c][j]/counts[c]+1e-9;
 }
 Vec NaiveBayes::predict(const Mat& X) const {
     Vec pred(X.size());
-    int C=classes.size(), p=X[0].size();
+    if (X.empty()) return pred;
+    const int C=static_cast<int>(classes.size()), p=static_cast<int>(X[0].size());
+    Vec log_prior(C);
+    Mat inv_var(C, Vec(p)), log_norm(C, Vec(p));
+    for (int c=0;c<C;++c) {
+        log_prior[c]=std::log(class_prior[c]);
+        for (int j=0;j<p;++j) {
+            inv_var[c][j]=1.0/var[c][j];
+            log_norm[c][j]=0.5*std::log(2*M_PI*var[c][j]);
+        }
+    }
     for (size_t i=0;i<X.size();++i) {
         double best=-1e300; int best_c=0;
         for (int c=0;c<C;++c) {
-            double log_prob=std::log(class_prior[c]);
+            double log_prob=log_prior[c];
             for (int j=0;j<p;++j) {
-                double diff=X[i][j]-mean[c][j];
-                log_prob-=0.5*std::log(2*M_PI*var[c][j])+0.5*diff*diff/var[c][j];
+                const double diff=X[i][j]-mean[c][j];
+                log_prob-=log_norm[c][j]+0.5*diff*diff*inv_var[c][j];
             }
             if (log_prob>best){best=log_prob;best_c=c;}
         }
@@ -1047,13 +1065,14 @@ void KMeans::fit(const Mat& X) {
     // K-means++ init
     std::mt19937 rng(42);
     centers.clear();
+    centers.reserve(static_cast<size_t>(k));
     std::uniform_int_distribution<int> uid(0,n-1);
     centers.push_back(X[uid(rng)]);
+    Vec dists(n);
     for (int ci=1;ci<k;++ci) {
-        Vec dists(n);
         for (int i=0;i<n;++i) {
             double best=1e300;
-            for (auto&c:centers) best=std::min(best,eucl_dist(X[i],c)*eucl_dist(X[i],c));
+            for (const auto& c:centers) best=std::min(best,sq_eucl_dist(X[i],c));
             dists[i]=best;
         }
         double tot=0; for (double d:dists) tot+=d;
@@ -1063,22 +1082,35 @@ void KMeans::fit(const Mat& X) {
         if ((int)centers.size()<ci+1) centers.push_back(X[n-1]);
     }
 
-    labels_.resize(n);
+    labels_.resize(static_cast<size_t>(n));
+    Mat new_centers(k, Vec(p,0.0));
+    std::vector<int> cnt(static_cast<size_t>(k),0);
     for (int iter=0;iter<max_iter;++iter) {
         // Assign
         bool changed=false;
         for (int i=0;i<n;++i) {
             double best=1e300; int bi=0;
-            for (int c=0;c<k;++c) { double d=eucl_dist(X[i],centers[c]); if (d<best){best=d;bi=c;} }
+            for (int c=0;c<k;++c) {
+                const double d=sq_eucl_dist(X[i],centers[c]);
+                if (d<best){best=d;bi=c;}
+            }
             if (labels_[i]!=bi) changed=true;
             labels_[i]=bi;
         }
-        // Update
-        Mat new_centers(k, Vec(p,0));
-        std::vector<int> cnt(k,0);
-        for (int i=0;i<n;++i) { cnt[labels_[i]]++; for (int j=0;j<p;++j) new_centers[labels_[i]][j]+=X[i][j]; }
-        for (int c=0;c<k;++c) if (cnt[c]>0) for (int j=0;j<p;++j) new_centers[c][j]/=cnt[c];
-        centers=new_centers;
+        // Update (reuse accumulation buffers)
+        for (int c=0;c<k;++c) {
+            cnt[c]=0;
+            std::fill(new_centers[c].begin(), new_centers[c].end(), 0.0);
+        }
+        for (int i=0;i<n;++i) {
+            const int lab=labels_[i];
+            cnt[lab]++;
+            for (int j=0;j<p;++j) new_centers[lab][j]+=X[i][j];
+        }
+        for (int c=0;c<k;++c)
+            if (cnt[c]>0)
+                for (int j=0;j<p;++j) new_centers[c][j]/=cnt[c];
+        centers.swap(new_centers);
         if (!changed) break;
     }
 }
@@ -1086,7 +1118,10 @@ Vec KMeans::predict(const Mat& X) const {
     Vec pred(X.size());
     for (size_t i=0;i<X.size();++i) {
         double best=1e300; int bi=0;
-        for (int c=0;c<k;++c) { double d=eucl_dist(X[i],centers[c]); if (d<best){best=d;bi=c;} }
+        for (int c=0;c<k;++c) {
+            const double d=sq_eucl_dist(X[i],centers[c]);
+            if (d<best){best=d;bi=c;}
+        }
         pred[i]=bi;
     }
     return pred;
@@ -1378,15 +1413,6 @@ static ms::ColMatrix<double> ml_mat_to_col(const Mat& M) {
         for (size_t j = 0; j < cols; ++j)
             out(i, j) = M[i][j];
     return out;
-}
-
-static double sq_eucl_dist(const Vec& a, const Vec& b) {
-    double s = 0;
-    for (size_t i = 0; i < a.size(); ++i) {
-        double d = a[i] - b[i];
-        s += d * d;
-    }
-    return s;
 }
 
 static double rbf_affinity(double sq_dist, double inv_two_sigma_sq) {

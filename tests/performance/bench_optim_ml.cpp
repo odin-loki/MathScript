@@ -12,7 +12,9 @@
 using namespace ms;
 using ms::ml::GaussianMixture;
 using ms::ml::GradientBoosting;
+using ms::ml::KMeans;
 using ms::ml::Mat;
+using ms::ml::NaiveBayes;
 using ms::ml::RandomForest;
 using ms::ml::SVM;
 using ms::ml::SVMKernel;
@@ -147,6 +149,45 @@ static Mat make_gmm_data() {
     }
     return X;
 }
+
+static Mat make_cluster_data() {
+    constexpr int n_rows = 400;
+    constexpr int n_features = 8;
+    std::mt19937 rng(42);
+    std::normal_distribution<double> dist(0.0, 0.4);
+
+    Mat X;
+    X.reserve(n_rows);
+    for (int i = 0; i < n_rows; ++i) {
+        const int cluster = i / (n_rows / 4);
+        Vec row(n_features);
+        for (int j = 0; j < n_features; ++j)
+            row[j] = static_cast<double>(cluster * 4 + j) + dist(rng);
+        X.push_back(std::move(row));
+    }
+    return X;
+}
+
+static void BM_KMeans(benchmark::State& state) {
+    const Mat X = make_cluster_data();
+    for (auto _ : state) {
+        KMeans km(4, 50, 1e-6);
+        km.fit(X);
+        benchmark::DoNotOptimize(&km.centers);
+    }
+}
+BENCHMARK(BM_KMeans);
+
+static void BM_NaiveBayesPredict(benchmark::State& state) {
+    const auto [X, y] = make_classification_data();
+    NaiveBayes nb;
+    nb.fit(X, y);
+    for (auto _ : state) {
+        const Vec pred = nb.predict(X);
+        benchmark::DoNotOptimize(pred.data());
+    }
+}
+BENCHMARK(BM_NaiveBayesPredict);
 
 static void BM_RandomForest(benchmark::State& state) {
     const auto [X, y] = make_classification_data();
