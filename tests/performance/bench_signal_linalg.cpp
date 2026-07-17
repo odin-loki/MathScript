@@ -33,6 +33,19 @@ static void BM_Convolve(benchmark::State& state) {
 }
 BENCHMARK(BM_Convolve)->Arg(64)->Arg(256)->Arg(1024)->Arg(4096);
 
+static void BM_ConvolveFFT(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    std::vector<double> a(n), b(n / 4 + 1);
+    for (int i = 0; i < n; ++i) a[i] = std::sin(2.0 * M_PI * i / n);
+    for (int i = 0; i < static_cast<int>(b.size()); ++i) b[i] = 1.0 / b.size();
+    for (auto _ : state) {
+        auto r = convolve(a, b);
+        benchmark::DoNotOptimize(r);
+    }
+    state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n));
+}
+BENCHMARK(BM_ConvolveFFT)->Arg(4096)->Arg(16384);
+
 // ---------------------------------------------------------------------------
 // Signal: correlate
 // ---------------------------------------------------------------------------

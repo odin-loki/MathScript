@@ -1582,3 +1582,128 @@ TEST(SignalCheby1, RippleParameterAffectsGain) {
     const auto sharp = cheby1(3, 3.0, 1000.0, 8000.0);
     EXPECT_NE(iir_dc_gain(mild), iir_dc_gain(sharp));
 }
+
+// ---------------------------------------------------------------------------
+// Wave 218: FFT-accelerated convolve / correlate
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<double> reference_convolve_direct(const std::vector<double>& a,
+                                              const std::vector<double>& b) {
+    std::vector<double> result(a.size() + b.size() - 1, 0.0);
+    for (size_t i = 0; i < a.size(); ++i) {
+        for (size_t j = 0; j < b.size(); ++j) {
+            result[i + j] += a[i] * b[j];
+        }
+    }
+    return result;
+}
+
+} // namespace
+
+TEST(SignalConvolveTest, SmallDirectPath) {
+    const std::vector<double> a{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> b{0.5, -0.25};
+    const auto out = convolve(a, b);
+    const std::vector<double> expected{0.5, 0.75, 1.0, 1.25, -1.0};
+    ASSERT_EQ(out.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_DOUBLE_EQ(out[i], expected[i]);
+    }
+}
+
+TEST(SignalConvolveTest, LargeFftPath) {
+    constexpr size_t n = 256;
+    std::vector<double> a(n), b(32);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = std::sin(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n));
+    }
+    for (size_t i = 0; i < b.size(); ++i) {
+        b[i] = 1.0 / static_cast<double>(b.size());
+    }
+    const auto out = convolve(a, b);
+    const auto ref = reference_convolve_direct(a, b);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-10) << "mismatch at i=" << i;
+    }
+}
+
+TEST(SignalConvolveTest, EmptyInput) {
+    const std::vector<double> empty;
+    const std::vector<double> b{1.0, 2.0};
+    const auto ab = convolve(empty, b);
+    const auto ba = convolve(b, empty);
+    EXPECT_EQ(ab.size(), b.size() - 1);
+    EXPECT_EQ(ba.size(), b.size() - 1);
+    for (double v : ab) {
+        EXPECT_DOUBLE_EQ(v, 0.0);
+    }
+    for (double v : ba) {
+        EXPECT_DOUBLE_EQ(v, 0.0);
+    }
+}
+
+TEST(SignalConvolveTest, SingleElement) {
+    const std::vector<double> a{3.0};
+    const std::vector<double> b{4.0};
+    const auto out = convolve(a, b);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_DOUBLE_EQ(out[0], 12.0);
+}
+
+TEST(SignalConvolveTest, IdentityKernel) {
+    const std::vector<double> x{1.0, -2.0, 3.5, 0.25};
+    const std::vector<double> impulse{1.0};
+    const auto out = convolve(x, impulse);
+    ASSERT_EQ(out.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(out[i], x[i]);
+    }
+}
+
+TEST(SignalConvolveTest, FftMatchesDirectAtMediumSize) {
+    constexpr size_t n = 128;
+    std::vector<double> a(n), b(n / 2);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = std::cos(2.0 * M_PI * 7.0 * static_cast<double>(i) / static_cast<double>(n));
+    }
+    for (size_t i = 0; i < b.size(); ++i) {
+        b[i] = std::exp(-0.05 * static_cast<double>(i));
+    }
+    const auto out = convolve(a, b);
+    const auto ref = reference_convolve_direct(a, b);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-10) << "FFT vs direct mismatch at i=" << i;
+    }
+}
+
+TEST(SignalConvolveTest, CorrelateReusesConvolve) {
+    const std::vector<double> a{1.0, 2.0, 3.0};
+    const std::vector<double> b{4.0, 5.0};
+    const auto r = correlate(a, b);
+    std::vector<double> rev_b(b.rbegin(), b.rend());
+    const auto c = convolve(a, rev_b);
+    ASSERT_EQ(r.size(), c.size());
+    for (size_t i = 0; i < r.size(); ++i) {
+        EXPECT_DOUBLE_EQ(r[i], c[i]);
+    }
+}
+
+TEST(SignalConvolveTest, LargeCorrelateFftPath) {
+    constexpr size_t n = 512;
+    std::vector<double> a(n), b(n);
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = std::sin(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n));
+        b[i] = std::cos(2.0 * M_PI * static_cast<double>(i) / static_cast<double>(n));
+    }
+    const auto out = correlate(a, b);
+    std::vector<double> rev_b(b.rbegin(), b.rend());
+    const auto ref = reference_convolve_direct(a, rev_b);
+    ASSERT_EQ(out.size(), ref.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_NEAR(out[i], ref[i], 1e-10) << "correlate mismatch at i=" << i;
+    }
+}

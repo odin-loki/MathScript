@@ -293,7 +293,11 @@ std::vector<double> bandpass(const std::vector<double>& x, double low, double hi
     return lowpass(hp, high, fs);
 }
 
-std::vector<double> convolve(const std::vector<double>& a, const std::vector<double>& b) {
+namespace {
+
+constexpr size_t kConvolveFftCrossover = 64;
+
+std::vector<double> convolve_direct(const std::vector<double>& a, const std::vector<double>& b) {
     std::vector<double> result(a.size() + b.size() - 1, 0.0);
     for (size_t i = 0; i < a.size(); ++i) {
         for (size_t j = 0; j < b.size(); ++j) {
@@ -301,6 +305,56 @@ std::vector<double> convolve(const std::vector<double>& a, const std::vector<dou
         }
     }
     return result;
+}
+
+bool convolve_use_fft(size_t a_len, size_t b_len) {
+    if (a_len == 0 || b_len == 0) {
+        return false;
+    }
+    const size_t out_len = a_len + b_len - 1;
+    if (out_len < kConvolveFftCrossover) {
+        return false;
+    }
+    return a_len >= kConvolveFftCrossover || b_len >= kConvolveFftCrossover;
+}
+
+std::vector<double> convolve_fft(const std::vector<double>& a, const std::vector<double>& b) {
+    const size_t out_len = a.size() + b.size() - 1;
+    const size_t n_fft = next_power_of_two(out_len);
+
+    std::vector<double> a_pad(n_fft, 0.0);
+    std::vector<double> b_pad(n_fft, 0.0);
+    std::copy(a.begin(), a.end(), a_pad.begin());
+    std::copy(b.begin(), b.end(), b_pad.begin());
+
+    const auto spec_a = fft(a_pad);
+    const auto spec_b = fft(b_pad);
+    if (!spec_a || !spec_b) {
+        return convolve_direct(a, b);
+    }
+
+    std::vector<std::complex<double>> product(n_fft);
+    for (size_t k = 0; k < n_fft; ++k) {
+        product[k] = (*spec_a)[k] * (*spec_b)[k];
+    }
+
+    const auto restored = ifft(product);
+    if (!restored) {
+        return convolve_direct(a, b);
+    }
+
+    std::vector<double> result = *restored;
+    result.resize(out_len);
+    return result;
+}
+
+} // namespace
+
+std::vector<double> convolve(const std::vector<double>& a, const std::vector<double>& b) {
+    if (convolve_use_fft(a.size(), b.size())) {
+        return convolve_fft(a, b);
+    }
+    return convolve_direct(a, b);
 }
 
 std::vector<double> correlate(const std::vector<double>& a, const std::vector<double>& b) {
