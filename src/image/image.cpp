@@ -138,36 +138,117 @@ Image imfilter(const Image& img, const std::vector<std::vector<float>>& K) {
     return out;
 }
 
+namespace {
+
+std::vector<float> make_gaussian_kernel_1d(float sigma, int& half) {
+    half = std::max(1, static_cast<int>(3 * sigma));
+    const int ksize = 2 * half + 1;
+    std::vector<float> kernel(static_cast<std::size_t>(ksize));
+    float sum = 0.f;
+    for (int i = 0; i < ksize; ++i) {
+        const float x = static_cast<float>(i - half);
+        kernel[static_cast<std::size_t>(i)] = std::exp(-x * x / (2.f * sigma * sigma));
+        sum += kernel[static_cast<std::size_t>(i)];
+    }
+    const float inv_sum = 1.f / sum;
+    for (auto& v : kernel) {
+        v *= inv_sum;
+    }
+    return kernel;
+}
+
+void conv1d_horizontal_replicate(
+    const float* src, float* dst,
+    int rows, int cols, int channels,
+    const std::vector<float>& kernel, int half) {
+    const int ksize = static_cast<int>(kernel.size());
+    if (channels == 1) {
+        for (int r = 0; r < rows; ++r) {
+            const float* src_row = src + r * cols;
+            float* dst_row = dst + r * cols;
+            for (int c = 0; c < cols; ++c) {
+                float val = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int cc = std::min(std::max(c + d - half, 0), cols - 1);
+                    val += kernel[static_cast<std::size_t>(d)] * src_row[cc];
+                }
+                dst_row[c] = val;
+            }
+        }
+        return;
+    }
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                float val = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int cc = std::min(std::max(c + d - half, 0), cols - 1);
+                    val += kernel[static_cast<std::size_t>(d)] *
+                           src[(r * cols + cc) * channels + ch];
+                }
+                dst[(r * cols + c) * channels + ch] = val;
+            }
+        }
+    }
+}
+
+void conv1d_vertical_replicate(
+    const float* src, float* dst,
+    int rows, int cols, int channels,
+    const std::vector<float>& kernel, int half) {
+    const int ksize = static_cast<int>(kernel.size());
+    if (channels == 1) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                float val = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int rr = std::min(std::max(r + d - half, 0), rows - 1);
+                    val += kernel[static_cast<std::size_t>(d)] * src[rr * cols + c];
+                }
+                dst[r * cols + c] = val;
+            }
+        }
+        return;
+    }
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                float val = 0.f;
+                for (int d = 0; d < ksize; ++d) {
+                    const int rr = std::min(std::max(r + d - half, 0), rows - 1);
+                    val += kernel[static_cast<std::size_t>(d)] *
+                           src[(rr * cols + c) * channels + ch];
+                }
+                dst[(r * cols + c) * channels + ch] = val;
+            }
+        }
+    }
+}
+
+} // namespace
+
 Image imgaussfilt(const Image& img, float sigma) {
-    int half=std::max(1,(int)(3*sigma));
-    int ksize=2*half+1;
-    std::vector<float> g1d(ksize);
-    float sum=0;
-    for (int i=0;i<ksize;++i) {
-        float x=i-half;
-        g1d[i]=std::exp(-x*x/(2*sigma*sigma));
-        sum+=g1d[i];
+    if (img.empty()) {
+        return img;
     }
-    for (auto& v:g1d) v/=sum;
-    // Separable: horizontal then vertical
-    Image tmp(img.rows, img.cols, img.channels, 0.f);
-    for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch) {
-        float val=0;
-        for (int d=0;d<ksize;++d) {
-            int cc=std::min(std::max(c+d-half,0),img.cols-1);
-            val+=g1d[d]*img.at(r,cc,ch);
-        }
-        tmp.at(r,c,ch)=val;
+
+    int half = 0;
+    const std::vector<float> kernel = make_gaussian_kernel_1d(sigma, half);
+
+    const int rows = img.rows;
+    const int cols = img.cols;
+    const int channels = img.channels;
+    const std::size_t npix = static_cast<std::size_t>(rows) * cols * channels;
+
+    thread_local std::vector<float> tmp;
+    if (tmp.size() < npix) {
+        tmp.resize(npix);
     }
-    Image out(img.rows, img.cols, img.channels, 0.f);
-    for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch) {
-        float val=0;
-        for (int d=0;d<ksize;++d) {
-            int rr=std::min(std::max(r+d-half,0),img.rows-1);
-            val+=g1d[d]*tmp.at(rr,c,ch);
-        }
-        out.at(r,c,ch)=val;
-    }
+
+    Image out(rows, cols, channels);
+    const float* src = img.data.data();
+    conv1d_horizontal_replicate(src, tmp.data(), rows, cols, channels, kernel, half);
+    conv1d_vertical_replicate(tmp.data(), out.data.data(), rows, cols, channels, kernel, half);
     return out;
 }
 
