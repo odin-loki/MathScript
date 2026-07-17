@@ -10,7 +10,11 @@ namespace ms {
 Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x);
 Result<std::vector<double>> ifft(const std::vector<std::complex<double>>& x);
 Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<double>>& data);
+Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<double>>& data,
+                                               size_t rows, size_t cols);
 Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<double>>& data);
+Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<double>>& data,
+                                                size_t rows, size_t cols);
 Result<std::vector<std::complex<double>>> dft(std::span<const double> data);
 
 Result<std::vector<std::complex<double>>> rfft(const std::vector<double>& x);

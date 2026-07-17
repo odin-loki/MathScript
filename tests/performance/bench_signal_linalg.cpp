@@ -75,6 +75,31 @@ static void BM_Conv2(benchmark::State& state) {
 }
 BENCHMARK(BM_Conv2)->Args({8, 3})->Args({16, 4})->Args({32, 5})->Args({64, 7})->Args({128, 9});
 
+static Matrix<double> make_non_separable_kernel(int k) {
+    Matrix<double> B(static_cast<size_t>(k), static_cast<size_t>(k));
+    for (int i = 0; i < k; ++i) {
+        for (int j = 0; j < k; ++j) {
+            B(static_cast<size_t>(i), static_cast<size_t>(j)) =
+                0.2 * static_cast<double>((i + 1) * (j + 1)) +
+                0.05 * static_cast<double>(i == j ? 1 : 0);
+        }
+    }
+    return B;
+}
+
+static void BM_Conv2FFT(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int k = static_cast<int>(state.range(1));
+    const auto A = make_conv2_matrix(n, n);
+    const auto B = make_non_separable_kernel(k);
+    for (auto _ : state) {
+        auto r = conv2(A, B);
+        benchmark::DoNotOptimize(r);
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n * n);
+}
+BENCHMARK(BM_Conv2FFT)->Args({64, 7})->Args({128, 9})->Args({256, 11});
+
 // ---------------------------------------------------------------------------
 // Signal: correlate
 // ---------------------------------------------------------------------------
