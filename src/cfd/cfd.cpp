@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace ms {
 namespace cfd {
@@ -69,6 +70,35 @@ double max_wave_speed(std::span<const double> v) {
     return max_speed;
 }
 
+bool upwind_fvm_advection_into(
+    std::span<const double> u,
+    std::span<const double> v,
+    double dt,
+    double dx,
+    BoundaryCondition bc,
+    std::span<double> out) {
+    if (u.empty() || v.empty() || dt <= 0.0 || dx <= 0.0 || out.size() != u.size()) {
+        return false;
+    }
+    if (v.size() != 1 && v.size() != u.size()) {
+        return false;
+    }
+
+    const std::size_t n = u.size();
+    const double max_speed = max_wave_speed(v);
+    if (max_speed * dt / dx > 1.0) {
+        return false;
+    }
+
+    const double scale = dt / dx;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double flux_right = upwind_face_flux(u, v, static_cast<int>(i) + 1, n, bc);
+        const double flux_left = upwind_face_flux(u, v, static_cast<int>(i), n, bc);
+        out[i] = u[i] - scale * (flux_right - flux_left);
+    }
+    return true;
+}
+
 } // namespace
 
 Grid1D grid1d(double x0, double x1, std::size_t n) {
@@ -126,17 +156,9 @@ std::vector<double> upwind_fvm_advection(
     }
 
     const std::size_t n = u.size();
-    const double max_speed = max_wave_speed(v);
-    if (max_speed * dt / dx > 1.0) {
-        return {};
-    }
-
     std::vector<double> next(n);
-    const double scale = dt / dx;
-    for (std::size_t i = 0; i < n; ++i) {
-        const double flux_right = upwind_face_flux(u, v, static_cast<int>(i) + 1, n, bc);
-        const double flux_left = upwind_face_flux(u, v, static_cast<int>(i), n, bc);
-        next[i] = u[i] - scale * (flux_right - flux_left);
+    if (!upwind_fvm_advection_into(u, v, dt, dx, bc, next)) {
+        return {};
     }
     return next;
 }
@@ -157,17 +179,17 @@ AdvectionResult run_advection(
     }
 
     std::vector<double> u = u0;
+    std::vector<double> next(u0.size());
     result.t.push_back(0.0);
     result.u.push_back(u);
 
     double t = 0.0;
     while (t < t_end - 1e-15) {
         const double step = std::min(dt, t_end - t);
-        std::vector<double> next = upwind_fvm_advection(u, v, step, dx, bc);
-        if (next.empty()) {
+        if (!upwind_fvm_advection_into(u, v, step, dx, bc, next)) {
             return {};
         }
-        u = std::move(next);
+        u.swap(next);
         t += step;
         result.t.push_back(t);
         result.u.push_back(u);

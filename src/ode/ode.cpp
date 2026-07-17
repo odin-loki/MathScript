@@ -250,10 +250,11 @@ OdeResultVec ode_euler_vec(OdeFuncVec f, double t0,
     const double h = (t_end - t0) / static_cast<double>(steps);
     double t = t0;
     auto y = y0;
+    std::vector<double> dy;
     result.t.push_back(t);
     result.y.push_back(y);
     for (size_t i = 0; i < steps; ++i) {
-        auto dy = f(t, y);
+        dy = f(t, y);
         for (size_t j = 0; j < y.size(); ++j) y[j] += h * dy[j];
         t += h;
         result.t.push_back(t);
@@ -270,27 +271,20 @@ OdeResultVec ode_rk4_vec(OdeFuncVec f, double t0,
     const double h = (t_end - t0) / static_cast<double>(steps);
     double t = t0;
     auto y = y0;
+    const size_t n = y.size();
+    std::vector<double> k1, k2, k3, k4;
+    std::vector<double> y2(n), y3(n), y4(n);
     result.t.push_back(t);
     result.y.push_back(y);
-    const auto vadd = [](const std::vector<double>& a, const std::vector<double>& b,
-                         double s, const std::vector<double>& base) {
-        std::vector<double> out(base.size());
-        for (size_t i = 0; i < out.size(); ++i)
-            out[i] = base[i] + s * a[i];
-        (void)b;
-        return out;
-    };
-    (void)vadd;
     for (size_t step = 0; step < steps; ++step) {
-        auto k1 = f(t, y);
-        std::vector<double> y2(y.size()), y3(y.size()), y4(y.size());
-        for (size_t j = 0; j < y.size(); ++j) y2[j] = y[j] + 0.5*h*k1[j];
-        auto k2 = f(t + 0.5*h, y2);
-        for (size_t j = 0; j < y.size(); ++j) y3[j] = y[j] + 0.5*h*k2[j];
-        auto k3 = f(t + 0.5*h, y3);
-        for (size_t j = 0; j < y.size(); ++j) y4[j] = y[j] + h*k3[j];
-        auto k4 = f(t + h, y4);
-        for (size_t j = 0; j < y.size(); ++j)
+        k1 = f(t, y);
+        for (size_t j = 0; j < n; ++j) y2[j] = y[j] + 0.5*h*k1[j];
+        k2 = f(t + 0.5*h, y2);
+        for (size_t j = 0; j < n; ++j) y3[j] = y[j] + 0.5*h*k2[j];
+        k3 = f(t + 0.5*h, y3);
+        for (size_t j = 0; j < n; ++j) y4[j] = y[j] + h*k3[j];
+        k4 = f(t + h, y4);
+        for (size_t j = 0; j < n; ++j)
             y[j] += (h/6.0)*(k1[j] + 2.0*k2[j] + 2.0*k3[j] + k4[j]);
         t += h;
         result.t.push_back(t);
@@ -331,69 +325,66 @@ OdeResultVec ode_rk45_vec(OdeFuncVec f, double t0,
     result.t.push_back(t);
     result.y.push_back(y);
 
+    std::vector<double> k1, k2, k3, k4, k5, k6, k7;
+    std::vector<double> y2(n), y3(n), y4(n), y5(n), y6(n), y_new(n);
+
     const int max_steps = 50000;
     for (int step = 0; step < max_steps && t < t_end; ++step) {
         if (t + h > t_end) {
             h = t_end - t;
         }
 
-        auto k1 = f(t, y);
+        k1 = f(t, y);
         if (k1.size() != n) {
             break;
         }
 
-        std::vector<double> y2(n);
         for (size_t j = 0; j < n; ++j) {
             y2[j] = y[j] + h * a21 * k1[j];
         }
-        auto k2 = f(t + c2 * h, y2);
+        k2 = f(t + c2 * h, y2);
         if (k2.size() != n) {
             break;
         }
 
-        std::vector<double> y3(n);
         for (size_t j = 0; j < n; ++j) {
             y3[j] = y[j] + h * (a31 * k1[j] + a32 * k2[j]);
         }
-        auto k3 = f(t + c3 * h, y3);
+        k3 = f(t + c3 * h, y3);
         if (k3.size() != n) {
             break;
         }
 
-        std::vector<double> y4(n);
         for (size_t j = 0; j < n; ++j) {
             y4[j] = y[j] + h * (a41 * k1[j] + a42 * k2[j] + a43 * k3[j]);
         }
-        auto k4 = f(t + c4 * h, y4);
+        k4 = f(t + c4 * h, y4);
         if (k4.size() != n) {
             break;
         }
 
-        std::vector<double> y5(n);
         for (size_t j = 0; j < n; ++j) {
             y5[j] = y[j] + h * (a51 * k1[j] + a52 * k2[j] + a53 * k3[j] + a54 * k4[j]);
         }
-        auto k5 = f(t + c5 * h, y5);
+        k5 = f(t + c5 * h, y5);
         if (k5.size() != n) {
             break;
         }
 
-        std::vector<double> y6(n);
         for (size_t j = 0; j < n; ++j) {
             y6[j] = y[j] + h * (a61 * k1[j] + a62 * k2[j] + a63 * k3[j]
                                + a64 * k4[j] + a65 * k5[j]);
         }
-        auto k6 = f(t + h, y6);
+        k6 = f(t + h, y6);
         if (k6.size() != n) {
             break;
         }
 
-        std::vector<double> y_new(n);
         for (size_t j = 0; j < n; ++j) {
             y_new[j] = y[j] + h * (b1 * k1[j] + b3 * k3[j] + b4 * k4[j]
                                  + b5 * k5[j] + b6 * k6[j]);
         }
-        auto k7 = f(t + h, y_new);
+        k7 = f(t + h, y_new);
         if (k7.size() != n) {
             break;
         }
@@ -409,7 +400,7 @@ OdeResultVec ode_rk45_vec(OdeFuncVec f, double t0,
 
         if (err_norm <= 1.0) {
             t += h;
-            y = std::move(y_new);
+            y.swap(y_new);
             result.t.push_back(t);
             result.y.push_back(y);
         }
@@ -464,6 +455,7 @@ OdeVerletResultVec ode_verlet_vec(OdeAccelFuncVec a, double t0,
     double t = t0;
     auto q = q0;
     auto v = v0;
+    std::vector<double> q_next(n);
     result.t.reserve(steps + 1);
     result.q.reserve(steps + 1);
     result.v.reserve(steps + 1);
@@ -476,7 +468,6 @@ OdeVerletResultVec ode_verlet_vec(OdeAccelFuncVec a, double t0,
             if (a_n.size() != n) {
                 break;
             }
-            std::vector<double> q_next(n);
             for (size_t j = 0; j < n; ++j) {
                 q_next[j] = q[j] + v[j] * h + 0.5 * a_n[j] * h * h;
             }
@@ -488,7 +479,7 @@ OdeVerletResultVec ode_verlet_vec(OdeAccelFuncVec a, double t0,
             for (size_t j = 0; j < n; ++j) {
                 v[j] = v[j] + 0.5 * (a_n[j] + a_next[j]) * h;
             }
-            q = std::move(q_next);
+            q.swap(q_next);
             t = t_next;
         }
     }
@@ -1036,23 +1027,24 @@ OdeResultVec ode_backward_euler_vec(OdeFuncVec f, double t0,
     const double h = (t_end - t0) / static_cast<double>(steps);
     double t = t0;
     auto y = y0;
+    auto y_next = y;
+    std::vector<double> y_new(y.size());
     result.t.push_back(t);
     result.y.push_back(y);
 
     for (size_t step = 0; step < steps; ++step) {
         const double t_next = t + h;
-        auto y_next = y;
+        y_next = y;
         for (int iter = 0; iter < kPicardMaxIter; ++iter) {
             const auto fy = f(t_next, y_next);
             if (fy.size() != y.size()) {
                 break;
             }
-            std::vector<double> y_new(y.size());
             for (size_t j = 0; j < y.size(); ++j) {
                 y_new[j] = y[j] + h * fy[j];
             }
             const double change = vec_max_norm(y_new, y_next);
-            y_next = std::move(y_new);
+            y_next.swap(y_new);
             if (!std::isfinite(change)) {
                 break;
             }
@@ -1088,6 +1080,9 @@ OdeResultVec ode_rosenbrock23_vec(OdeFuncVec f, double t0,
 
     double t = t0;
     auto y = y0;
+    std::vector<std::vector<double>> M(n, std::vector<double>(n, 0.0));
+    std::vector<double> y_stage(n);
+    std::vector<double> rhs2(n);
     for (size_t step = 0; step < steps; ++step) {
         const auto f0 = f(t, y);
         if (f0.size() != n) {
@@ -1095,7 +1090,6 @@ OdeResultVec ode_rosenbrock23_vec(OdeFuncVec f, double t0,
         }
         const auto J = jacobian_fd_vec(f, t, y, f0);
 
-        std::vector<std::vector<double>> M(n, std::vector<double>(n, 0.0));
         for (size_t i = 0; i < n; ++i) {
             for (size_t j = 0; j < n; ++j) {
                 M[i][j] = (i == j ? 1.0 : 0.0) - h * gamma * J[i][j];
@@ -1107,7 +1101,6 @@ OdeResultVec ode_rosenbrock23_vec(OdeFuncVec f, double t0,
             break;
         }
 
-        std::vector<double> y_stage(n);
         for (size_t i = 0; i < n; ++i) {
             y_stage[i] = y[i] + h * k1[i];
         }
@@ -1116,7 +1109,6 @@ OdeResultVec ode_rosenbrock23_vec(OdeFuncVec f, double t0,
             break;
         }
 
-        std::vector<double> rhs2(n);
         for (size_t i = 0; i < n; ++i) {
             double jk1 = 0.0;
             for (size_t j = 0; j < n; ++j) {
@@ -1241,45 +1233,43 @@ DaeResult ode_dae_index1(DaeDiffFunc f, DaeAlgFunc g, double t0,
     result.y.push_back(y);
     result.z.push_back(z);
 
+    const size_t ny = y.size();
+    std::vector<double> y2(ny), y3(ny), y4(ny), y_new(ny);
     for (size_t step = 0; step < steps; ++step) {
         const auto k1 = f(t, y, z);
-        if (k1.size() != y.size()) {
+        if (k1.size() != ny) {
             result.converged = false;
             break;
         }
 
-        std::vector<double> y2(y.size());
-        for (size_t j = 0; j < y.size(); ++j) {
+        for (size_t j = 0; j < ny; ++j) {
             y2[j] = y[j] + 0.5 * h * k1[j];
         }
         const auto k2 = f(t + 0.5 * h, y2, z);
-        if (k2.size() != y.size()) {
+        if (k2.size() != ny) {
             result.converged = false;
             break;
         }
 
-        std::vector<double> y3(y.size());
-        for (size_t j = 0; j < y.size(); ++j) {
+        for (size_t j = 0; j < ny; ++j) {
             y3[j] = y[j] + 0.5 * h * k2[j];
         }
         const auto k3 = f(t + 0.5 * h, y3, z);
-        if (k3.size() != y.size()) {
+        if (k3.size() != ny) {
             result.converged = false;
             break;
         }
 
-        std::vector<double> y4(y.size());
-        for (size_t j = 0; j < y.size(); ++j) {
+        for (size_t j = 0; j < ny; ++j) {
             y4[j] = y[j] + h * k3[j];
         }
         const auto k4 = f(t + h, y4, z);
-        if (k4.size() != y.size()) {
+        if (k4.size() != ny) {
             result.converged = false;
             break;
         }
 
-        std::vector<double> y_new(y.size());
-        for (size_t j = 0; j < y.size(); ++j) {
+        for (size_t j = 0; j < ny; ++j) {
             y_new[j] = y[j] + (h / 6.0) * (k1[j] + 2.0 * k2[j] + 2.0 * k3[j] + k4[j]);
         }
 
@@ -1288,7 +1278,7 @@ DaeResult ode_dae_index1(DaeDiffFunc f, DaeAlgFunc g, double t0,
             result.converged = false;
         }
 
-        y = std::move(y_new);
+        y.swap(y_new);
         t = t_next;
         result.t.push_back(t);
         result.y.push_back(y);
