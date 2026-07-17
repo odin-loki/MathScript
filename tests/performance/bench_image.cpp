@@ -170,4 +170,59 @@ BENCHMARK(BM_Bilateral)
     ->Args({256, 256, 1, 10, 10})
     ->Args({128, 128, 3, 10, 10});
 
+static std::vector<std::vector<float>> make_sobel_x_kernel() {
+    return {{-1.f, 0.f, 1.f}, {-2.f, 0.f, 2.f}, {-1.f, 0.f, 1.f}};
+}
+
+static std::vector<std::vector<float>> make_separable_gaussian_kernel(int ksize) {
+    const int half = ksize / 2;
+    std::vector<float> g1d(static_cast<std::size_t>(ksize));
+    float sum = 0.f;
+    for (int i = 0; i < ksize; ++i) {
+        const float x = static_cast<float>(i - half);
+        g1d[static_cast<std::size_t>(i)] = std::exp(-x * x / 8.f);
+        sum += g1d[static_cast<std::size_t>(i)];
+    }
+    const float inv_sum = 1.f / sum;
+    for (auto& v : g1d) {
+        v *= inv_sum;
+    }
+
+    std::vector<std::vector<float>> K(
+        static_cast<std::size_t>(ksize),
+        std::vector<float>(static_cast<std::size_t>(ksize)));
+    for (int r = 0; r < ksize; ++r) {
+        for (int c = 0; c < ksize; ++c) {
+            K[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)] =
+                g1d[static_cast<std::size_t>(r)] * g1d[static_cast<std::size_t>(c)];
+        }
+    }
+    return K;
+}
+
+static void BM_Imfilter(benchmark::State& state) {
+    const int rows = static_cast<int>(state.range(0));
+    const int cols = static_cast<int>(state.range(1));
+    const int channels = static_cast<int>(state.range(2));
+    const int kernel_kind = static_cast<int>(state.range(3));
+    const auto img = make_gaussian_bench_image(rows, cols, channels);
+    const auto k3 = make_sobel_x_kernel();
+    const auto k_sep = make_separable_gaussian_kernel(15);
+
+    for (auto _ : state) {
+        if (kernel_kind == 0) {
+            benchmark::DoNotOptimize(ms::image::imfilter(img, k3));
+        } else {
+            benchmark::DoNotOptimize(ms::image::imfilter(img, k_sep));
+        }
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * rows * cols * channels);
+}
+BENCHMARK(BM_Imfilter)
+    ->Args({256, 256, 1, 0})
+    ->Args({512, 512, 1, 0})
+    ->Args({256, 256, 3, 0})
+    ->Args({256, 256, 1, 1})
+    ->Args({512, 512, 1, 1});
+
 BENCHMARK_MAIN();
