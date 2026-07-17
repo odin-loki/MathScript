@@ -132,6 +132,29 @@ static void BM_MovingAverage(benchmark::State& state) {
 BENCHMARK(BM_MovingAverage)->Arg(256)->Arg(1024)->Arg(4096)->Arg(16384)->Arg(65536);
 
 // ---------------------------------------------------------------------------
+// Signal: resample (rational rate conversion)
+// ---------------------------------------------------------------------------
+
+static void BM_Resample(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int p = static_cast<int>(state.range(1));
+    const int q = static_cast<int>(state.range(2));
+    std::vector<double> x(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        x[static_cast<size_t>(i)] =
+            std::sin(2.0 * M_PI * 0.03 * static_cast<double>(i)) +
+            0.2 * std::cos(2.0 * M_PI * 0.11 * static_cast<double>(i));
+    }
+    for (auto _ : state) {
+        auto r = resample(x, p, q);
+        benchmark::DoNotOptimize(r.data());
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n);
+}
+BENCHMARK(BM_Resample)->Args({512, 2, 3})->Args({1024, 3, 2})->Args({2048, 8, 4})
+    ->Args({4096, 16, 4})->Args({8192, 4, 8});
+
+// ---------------------------------------------------------------------------
 // Signal: median_filter
 // ---------------------------------------------------------------------------
 

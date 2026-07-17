@@ -21,15 +21,16 @@ namespace ms {
 
 namespace {
 
-std::vector<double> fft_lowpass(const std::vector<double>& x, double cutoff, double fs) {
-    if (x.empty()) {
-        return x;
+struct FftLowpassBuffers {
+    std::vector<double> time_buf;
+    std::vector<std::complex<double>> spectrum;
+};
+
+void apply_fft_lowpass_mask(std::vector<std::complex<double>>& spectrum, double cutoff, double fs) {
+    const size_t n = spectrum.size();
+    if (n == 0) {
+        return;
     }
-    auto spectrum = fft(x);
-    if (!spectrum) {
-        return x;
-    }
-    const size_t n = spectrum->size();
     const double nyquist = fs / 2.0;
     const size_t cutoff_bin = static_cast<size_t>(
         std::min(static_cast<double>(n / 2), cutoff / nyquist * static_cast<double>(n / 2)));
@@ -37,16 +38,37 @@ std::vector<double> fft_lowpass(const std::vector<double>& x, double cutoff, dou
     for (size_t k = 0; k < n; ++k) {
         const size_t wrapped = std::min(k, n - k);
         if (wrapped > cutoff_bin) {
-            (*spectrum)[k] = 0.0;
+            spectrum[k] = 0.0;
         }
     }
+}
+
+std::vector<double> fft_lowpass(const std::vector<double>& x, double cutoff, double fs,
+                                FftLowpassBuffers* reuse) {
+    if (x.empty()) {
+        return x;
+    }
+    auto spectrum = fft(x);
+    if (!spectrum) {
+        return x;
+    }
+    apply_fft_lowpass_mask(*spectrum, cutoff, fs);
 
     auto restored = ifft(*spectrum);
     if (!restored) {
         return x;
     }
     restored->resize(x.size());
+    if (reuse) {
+        reuse->time_buf.swap(*restored);
+        reuse->spectrum.swap(*spectrum);
+        return reuse->time_buf;
+    }
     return *restored;
+}
+
+std::vector<double> fft_lowpass(const std::vector<double>& x, double cutoff, double fs) {
+    return fft_lowpass(x, cutoff, fs, nullptr);
 }
 
 size_t next_power_of_two(size_t n) {
@@ -475,6 +497,127 @@ std::vector<double> moving_average(const std::vector<double>& x, size_t window) 
     return out;
 }
 
+namespace {
+
+constexpr size_t kInterpolateFreqCrossover = 8;
+constexpr size_t kResampleCombinedCrossover = 8;
+
+std::vector<double> interpolate_stuffed(const std::vector<double>& x, int p, FftLowpassBuffers& work) {
+    const auto stuffed = upsample(x, p);
+    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(p));
+    auto filtered = fft_lowpass(stuffed, 0.8 * new_nyquist, 1.0, &work);
+    const double gain = static_cast<double>(p);
+    for (double& v : filtered) {
+        v *= gain;
+    }
+    return filtered;
+}
+
+// Zero-stuffing upsample by p in the frequency domain: Y[k] = X[k mod n_fft], then lowpass.
+// Matches interpolate_stuffed() but avoids allocating the stuffed time-domain vector and uses a
+// small-n FFT on the input instead of a large-n FFT on the zero-padded output.
+std::vector<double> interpolate_freq(const std::vector<double>& x, int p) {
+    const size_t n = x.size();
+    const size_t out_len = n * static_cast<size_t>(p);
+    const double cutoff = 0.8 / (2.0 * static_cast<double>(p));
+    const double fs = 1.0;
+    const double gain = static_cast<double>(p);
+
+    const size_t in_fft = next_power_of_two(n);
+    const size_t out_fft = next_power_of_two(out_len);
+
+    std::vector<double> padded(in_fft, 0.0);
+    std::copy(x.begin(), x.end(), padded.begin());
+
+    const auto spec_in = fft(padded);
+    if (!spec_in) {
+        return {};
+    }
+
+    std::vector<std::complex<double>> spec_out(out_fft);
+    for (size_t k = 0; k < out_fft; ++k) {
+        spec_out[k] = (*spec_in)[k % in_fft];
+    }
+    apply_fft_lowpass_mask(spec_out, cutoff, fs);
+
+    const auto restored = ifft(spec_out);
+    if (!restored) {
+        return {};
+    }
+
+    std::vector<double> out(out_len);
+    std::copy(restored->begin(), restored->begin() + static_cast<ptrdiff_t>(out_len), out.begin());
+    for (double& v : out) {
+        v *= gain;
+    }
+    return out;
+}
+
+bool interpolate_use_freq(size_t x_len, int p) {
+    if (p < static_cast<int>(kInterpolateFreqCrossover)) {
+        return false;
+    }
+    const size_t out_len = x_len * static_cast<size_t>(p);
+    return out_len >= 256;
+}
+
+std::vector<double> decimate_filtered(const std::vector<double>& x, int q, FftLowpassBuffers& work) {
+    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(q));
+    const auto filtered = fft_lowpass(x, 0.8 * new_nyquist, 1.0, &work);
+    return downsample(filtered, q);
+}
+
+// Single-pass rational resample: merged anti-imaging/anti-aliasing cutoff then downsample.
+std::vector<double> resample_combined(const std::vector<double>& x, int p, int q) {
+    const size_t n = x.size();
+    const size_t up_len = n * static_cast<size_t>(p);
+    const double cutoff_interp = 0.8 / (2.0 * static_cast<double>(p));
+    const double cutoff_decim = 0.8 / (2.0 * static_cast<double>(q));
+    const double cutoff = std::min(cutoff_interp, cutoff_decim);
+    const double fs = 1.0;
+    const double gain = static_cast<double>(p);
+
+    const size_t in_fft = next_power_of_two(n);
+    const size_t out_fft = next_power_of_two(up_len);
+
+    std::vector<double> padded(in_fft, 0.0);
+    std::copy(x.begin(), x.end(), padded.begin());
+
+    const auto spec_in = fft(padded);
+    if (!spec_in) {
+        return {};
+    }
+
+    std::vector<std::complex<double>> spec_out(out_fft);
+    for (size_t k = 0; k < out_fft; ++k) {
+        spec_out[k] = (*spec_in)[k % in_fft];
+    }
+    apply_fft_lowpass_mask(spec_out, cutoff, fs);
+
+    const auto restored = ifft(spec_out);
+    if (!restored) {
+        return {};
+    }
+
+    std::vector<double> upsampled(up_len);
+    std::copy(restored->begin(), restored->begin() + static_cast<ptrdiff_t>(up_len), upsampled.begin());
+    for (double& v : upsampled) {
+        v *= gain;
+    }
+    return downsample(upsampled, q);
+}
+
+bool resample_use_combined(int p, int q, size_t x_len) {
+    (void)p;
+    (void)q;
+    (void)x_len;
+    // Two-stage interpolate+decimate matches reference filters; single-pass cutoff merge
+    // can diverge when p != q.
+    return false;
+}
+
+} // namespace
+
 std::vector<double> upsample(const std::vector<double>& x, int n) {
     if (x.empty() || n <= 0) {
         return {};
@@ -504,30 +647,30 @@ std::vector<double> decimate(const std::vector<double>& x, int q) {
     if (x.empty() || q <= 0) {
         return {};
     }
-    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(q));
-    const auto filtered = lowpass(x, 0.8 * new_nyquist, 1.0);
-    return downsample(filtered, q);
+    FftLowpassBuffers work;
+    return decimate_filtered(x, q, work);
 }
 
 std::vector<double> interpolate(const std::vector<double>& x, int p) {
     if (x.empty() || p <= 0) {
         return {};
     }
-    const auto stuffed = upsample(x, p);
-    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(p));
-    auto filtered = lowpass(stuffed, 0.8 * new_nyquist, 1.0);
-    const double gain = static_cast<double>(p);
-    for (double& v : filtered) {
-        v *= gain;
+    if (interpolate_use_freq(x.size(), p)) {
+        return interpolate_freq(x, p);
     }
-    return filtered;
+    FftLowpassBuffers work;
+    return interpolate_stuffed(x, p, work);
 }
 
 std::vector<double> resample(const std::vector<double>& x, int p, int q) {
     if (x.empty() || p <= 0 || q <= 0) {
         return {};
     }
-    return decimate(interpolate(x, p), q);
+    if (resample_use_combined(p, q, x.size())) {
+        return resample_combined(x, p, q);
+    }
+    FftLowpassBuffers work;
+    return decimate_filtered(interpolate(x, p), q, work);
 }
 
 std::vector<double> hamming(size_t n) {

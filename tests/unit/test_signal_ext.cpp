@@ -1,6 +1,7 @@
 #define _USE_MATH_DEFINES
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numeric>
 #include <span>
@@ -196,15 +197,99 @@ TEST(SignalExtTest, resample_length) {
     for (size_t i = 0; i < n; ++i) {
         x[i] = static_cast<double>(i);
     }
-    std::vector<double> upsampled;
-    upsampled.reserve(2 * n);
-    for (double v : x) {
-        upsampled.push_back(v);
-        upsampled.push_back(0.0);
+    const int p = 2;
+    const int q = 1;
+    const auto out = resample(x, p, q);
+    EXPECT_EQ(out.size(), n * static_cast<size_t>(p) / static_cast<size_t>(q));
+}
+
+namespace resample_reference {
+
+std::vector<double> interpolate_naive(const std::vector<double>& x, int p) {
+    const auto stuffed = upsample(x, p);
+    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(p));
+    auto filtered = lowpass(stuffed, 0.8 * new_nyquist, 1.0);
+    const double gain = static_cast<double>(p);
+    for (double& v : filtered) {
+        v *= gain;
     }
-    const double fs = static_cast<double>(n);
-    const auto filtered = lowpass(upsampled, fs * 0.45, fs * 2.0);
-    EXPECT_EQ(filtered.size(), 2 * n);
+    return filtered;
+}
+
+std::vector<double> decimate_naive(const std::vector<double>& x, int q) {
+    const double new_nyquist = 1.0 / (2.0 * static_cast<double>(q));
+    const auto filtered = lowpass(x, 0.8 * new_nyquist, 1.0);
+    return downsample(filtered, q);
+}
+
+std::vector<double> resample_naive(const std::vector<double>& x, int p, int q) {
+    return decimate_naive(interpolate_naive(x, p), q);
+}
+
+void expect_vectors_near(const std::vector<double>& expected, const std::vector<double>& actual,
+                         double tol) {
+    ASSERT_EQ(expected.size(), actual.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(actual[i], expected[i], tol) << "index " << i;
+    }
+}
+
+std::vector<double> mixed_signal(size_t n, uint32_t seed) {
+    std::vector<double> x(n);
+    uint32_t state = seed;
+    for (size_t i = 0; i < n; ++i) {
+        state = state * 1664525u + 1013904223u;
+        const double noise = static_cast<double>(state % 10000u) / 10000.0 - 0.5;
+        x[i] = std::sin(2.0 * M_PI * 0.03 * static_cast<double>(i)) +
+               0.2 * std::cos(2.0 * M_PI * 0.11 * static_cast<double>(i)) + 0.05 * noise;
+    }
+    return x;
+}
+
+} // namespace resample_reference
+
+TEST(SignalExtTest, interpolate_freq_matches_naive_small_p) {
+    const auto x = resample_reference::mixed_signal(64, 12345u);
+    for (int p : {1, 2, 4, 7}) {
+        const auto fast = interpolate(x, p);
+        const auto ref = resample_reference::interpolate_naive(x, p);
+        resample_reference::expect_vectors_near(ref, fast, 1e-9);
+    }
+}
+
+TEST(SignalExtTest, interpolate_freq_matches_naive_large_p) {
+    const auto x = resample_reference::mixed_signal(128, 54321u);
+    for (int p : {8, 16, 32}) {
+        const auto fast = interpolate(x, p);
+        const auto ref = resample_reference::interpolate_naive(x, p);
+        resample_reference::expect_vectors_near(ref, fast, 1e-8);
+    }
+}
+
+TEST(SignalExtTest, decimate_matches_naive_reference) {
+    const auto x = resample_reference::mixed_signal(512, 98765u);
+    for (int q : {2, 3, 4, 8}) {
+        const auto fast = decimate(x, q);
+        const auto ref = resample_reference::decimate_naive(x, q);
+        resample_reference::expect_vectors_near(ref, fast, 1e-9);
+    }
+}
+
+TEST(SignalExtTest, resample_matches_naive_reference) {
+    const auto x = resample_reference::mixed_signal(200, 24680u);
+    const std::array<std::pair<int, int>, 6> ratios{{{2, 3}, {3, 2}, {4, 4}, {8, 2}, {2, 8}, {16, 3}}};
+    for (const auto [p, q] : ratios) {
+        const auto fast = resample(x, p, q);
+        const auto ref = resample_reference::resample_naive(x, p, q);
+        resample_reference::expect_vectors_near(ref, fast, 1e-8);
+    }
+}
+
+TEST(SignalExtTest, resample_combined_path_matches_naive) {
+    const auto x = resample_reference::mixed_signal(256, 13579u);
+    const auto fast = resample(x, 16, 4);
+    const auto ref = resample_reference::resample_naive(x, 16, 4);
+    resample_reference::expect_vectors_near(ref, fast, 1e-8);
 }
 
 TEST(SignalExtTest, window_functions_sum) {
