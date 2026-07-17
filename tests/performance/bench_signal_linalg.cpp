@@ -99,6 +99,25 @@ static void BM_Butterworth(benchmark::State& state) {
 BENCHMARK(BM_Butterworth)->Arg(256)->Arg(1024)->Arg(4096);
 
 // ---------------------------------------------------------------------------
+// Signal: filter (direct-form II transposed IIR/FIR)
+// ---------------------------------------------------------------------------
+
+static void BM_Filter8192(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const auto coeffs = cheby1(4, 1.0, 1000.0, 8000.0, FilterType::Lowpass);
+    std::vector<double> x(n);
+    for (int i = 0; i < n; ++i) {
+        x[i] = std::sin(2.0 * M_PI * 500.0 * static_cast<double>(i) / 8000.0);
+    }
+    for (auto _ : state) {
+        auto y = filter(coeffs.b, coeffs.a, x);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n);
+}
+BENCHMARK(BM_Filter8192)->Arg(8192);
+
+// ---------------------------------------------------------------------------
 // Linear Algebra: solve Ax=b
 // ---------------------------------------------------------------------------
 
