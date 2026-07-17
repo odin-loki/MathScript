@@ -1,5 +1,5 @@
 {
-  "_comment": "Linux GCC 13 Release regression baseline. Matmul/FFT medians captured via --write-baseline. Wave 218\u2013228 profiling targets below use median_time_ns=null as schema placeholders until regenerated on benchmark-linux CI (bash scripts/bench_regression.sh --write-baseline build-bench); regression skips null entries. Schema lists all BENCHMARK keys from 27 add_ms_bench executables.",
+  "_comment": "Linux GCC 13 Release regression baseline. Matmul/FFT medians captured via --write-baseline. Wave 218–228 profiling targets below use median_time_ns=null as schema placeholders until regenerated on benchmark-linux CI (bash scripts/bench_regression.sh --write-baseline build-bench); regression skips null entries. Schema lists all BENCHMARK keys from 28 add_ms_bench executables.",
   "_generate": "bash scripts/bench_regression.sh --write-baseline build-bench",
   "profile": {
     "os": "linux",
@@ -70,6 +70,9 @@
       "median_time_ns": null
     },
     "BM_Bilateral/256/256/1/10/10": {
+      "median_time_ns": null
+    },
+    "BM_BlackScholes": {
       "median_time_ns": null
     },
     "BM_BinomCDF_N50": {
@@ -334,6 +337,9 @@
       "median_time_ns": null
     },
     "BM_ExpPDF": {
+      "median_time_ns": null
+    },
+    "BM_Entropy": {
       "median_time_ns": null
     },
     "BM_Factorial/10": {
@@ -613,6 +619,9 @@
       "median_time_ns": null
     },
     "BM_MPIContext_Init": {
+      "median_time_ns": null
+    },
+    "BM_MCEuropean": {
       "median_time_ns": null
     },
     "BM_MatmulDM/16": {

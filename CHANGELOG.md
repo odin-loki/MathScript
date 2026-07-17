@@ -10,11 +10,13 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 8 parallel subagents — final certification audit of all remaining `src/` modules and benchmark infra gaps.
 
 ### Performance (Wave 228)
-- **Certification audit** — `numthy`, `cplx`, `optim`, `diffgeo`, `domain`, `runtime/cpu`, `cpu/blas` certified **no changes**; all 35 `src/` libraries audited Waves 218–228.
-- **`bench_finance`** — `BM_BlackScholes`, `BM_MCEuropean`, `BM_Entropy` for Wave 227 finance/info/combo opts (smoke-safe sizes).
-- **Benchmark infra** — `linux-gcc13.json` schema completed for all benchmark keys; smoke guard verified (total ≤120 s, no single bench >15 s at `min_time=0.001s`).
-- **docs/PERFORMANCE.md** — Wave 228 certification section; explicit **PROFILING ITERATION DONE** sign-off.
-- **Total Wave 228: 374 CTest suites — all passing**. **27-bench smoke OK** on merged baseline; **`bench_finance`** (28th target) on `wave228/finance-bench`. **Profiling iteration complete (Waves 218–228).** Do not start Wave 229 profiling.
+- `ms::numthy` — `isqrt_u64` reuse, factorization reserve.
+- `ms::cplx` / `ms::optim` — hoisted loop constants, reused finite-diff and line-search buffers.
+- `ms::diffgeo` — geodesic/parallel-transport buffer reuse; `BM_Geodesic_Euclidean` bench cases.
+- `ms::runtime` / `ms::cpu` — DGEMM micro-kernel opts (~31% `BM_matmul/512` on MSVC rank-1 path).
+- **`bench_finance`** — `BM_BlackScholes`, `BM_MCEuropean`, `BM_Entropy`.
+- **Benchmark infra** — full `linux-gcc13.json` schema (434 keys); smoke caps on simd/poly; per-bench timing in `build.ps1`.
+- **Total Wave 228: 374 CTest suites — all passing**. **28-bench smoke OK (~14 s)**. **Profiling iteration complete (Waves 218–228).** Do not start Wave 229 profiling.
 
 ## [1.0.0] — 2026-07-18 (Wave 227 — Performance Pass IX: profiling iteration closed)
 

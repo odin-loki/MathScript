@@ -2,21 +2,22 @@
 
 MathScript completed an eleven-wave profiling iteration (Waves **218–228**) covering hot paths across all `src/` modules. See [`CHANGELOG.md`](../CHANGELOG.md) for per-wave optimizations.
 
-## Modules covered (Waves 218–227)
+## Modules covered (Waves 218–228)
 
 | Domain | Modules |
 |--------|---------|
-| Numerical core | `signal`, `fft`, `simd`, `stats`, `linalg`, `poly` |
-| Spatial / graph | `graph`, `image`, `tensorops`, `topo`, `geo` |
+| Numerical core | `signal`, `fft`, `simd`, `stats`, `linalg`, `poly`, `numthy`, `cplx`, `optim` |
+| Spatial / graph | `graph`, `image`, `tensorops`, `topo`, `geo`, `diffgeo`, `domain` |
 | Solvers | `ode`, `pde`, `cfd`, `fem` |
 | ML / crypto | `ml`, `prob`, `control`, `crypto`, `interp`, `quantum`, `bignum`, `compress` |
 | Frameworks | `frameworks`, `distributed`, `finance`, `info`, `combo`, `symbolic` |
+| CPU runtime | `runtime/cpu`, `cpu/blas` |
 | Infra | `bench_*` targets, `build.ps1 -Benchmark`, baseline JSON |
 
 ## Benchmark smoke policy
 
-- **27** Google Benchmark executables in `tests/performance/CMakeLists.txt`.
-- **Windows:** `.\build.ps1 -Benchmark` builds `build-msvc-bench`, runs every target with `--benchmark_min_time=0.001s`.
+- **28** Google Benchmark executables in `tests/performance/CMakeLists.txt`.
+- **Windows:** `.\build.ps1 -Benchmark` builds `build-msvc-bench`, runs every target with `--benchmark_min_time=0.001s` (~15 s total; per-bench timing logged).
 - **Linux:** `scripts/bench_smoke.sh` (same targets, 0.001 s min time).
 - **Regression gate:** `scripts/bench_regression.sh` compares against stored medians; **10% tolerance** (`MS_BENCH_TOLERANCE`). Set `MS_BENCH_REGRESSION=off` to smoke-only.
 
@@ -48,20 +49,15 @@ Wave **228** is a **certification pass**, not a new optimization sweep. Eight pa
 
 | Area | Modules / files | Outcome |
 |------|-----------------|---------|
-| Number theory | `numthy` | Certified — no changes |
-| Complex / optimization | `cplx`, `optim` | Certified — no changes |
-| Differential geometry / legacy | `diffgeo`, `domain` | Certified — no changes |
-| CPU kernels | `runtime/cpu`, `cpu/blas` | Certified — no changes |
-| Finance / info / combo | `finance`, `info`, `combo` | Wave 227 opts confirmed; **`bench_finance`** added (Wave 228) |
-| Benchmark infra | `linux-gcc13.json`, smoke guard | Schema completed; smoke args verified ≤120 s total |
+| Number theory | `numthy` | `isqrt_u64` reuse, `factors.reserve(32)` |
+| Complex / optimization | `cplx`, `optim` | Hoisted constants, reused grad/line-search buffers |
+| Differential geometry / legacy | `diffgeo`, `domain` | Buffer reuse in geodesic/parallel transport; **domain certified no-change** |
+| CPU kernels | `runtime/cpu`, `cpu/blas` | DGEMM micro-kernel opts (~31% matmul/512 on MSVC rank-1 path) |
+| Finance / info / combo | `finance`, `info`, `combo` | **`bench_finance`** added (`BM_BlackScholes`, `BM_MCEuropean`, `BM_Entropy`) |
+| Benchmark infra | `linux-gcc13.json`, smoke guard | Full schema (434 keys); simd/poly args capped; per-bench smoke timing in `build.ps1` |
 
-### Modules certified no-change (Wave 228)
+### Module certified no-change (Wave 228)
 
-These modules were profiled in Wave 228 and required **no code changes** — hot loops already use appropriate reserves, hoisted invariants, or are intentionally small-input paths:
-
-- `numthy` — Pollard rho, GCD, modular exp already reserve and avoid redundant `sqrt`
-- `cplx`, `optim` — vector ops and gradient/line-search loops already optimal from Waves 218–226 benches
-- `diffgeo`, `domain` — geodesic trajectory reserved in Wave 226; domain helpers are O(n) legacy stubs
-- `runtime`, `cpu` — BLAS/dgemm micro-kernels already tuned in Waves 218–220; no safe MSVC micro-opt found
+- **`domain`** — helpers already O(n) or minimal; no opts warranted.
 
 **PROFILING ITERATION DONE.** Do not start Wave 229 profiling.
