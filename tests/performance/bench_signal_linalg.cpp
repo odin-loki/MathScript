@@ -67,7 +67,7 @@ static void BM_MovingAverage(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_MovingAverage)->Arg(256)->Arg(1024)->Arg(4096)->Arg(16384);
+BENCHMARK(BM_MovingAverage)->Arg(256)->Arg(1024)->Arg(4096)->Arg(16384)->Arg(65536);
 
 // ---------------------------------------------------------------------------
 // Signal: butterworth filter
