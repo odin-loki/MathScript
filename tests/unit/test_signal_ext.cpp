@@ -973,6 +973,156 @@ TEST(SignalExtTest, conv2_empty_matrix_returns_empty) {
     EXPECT_TRUE(conv2(B, empty).empty());
 }
 
+namespace {
+
+Matrix<double> reference_conv2_direct(const Matrix<double>& A, const Matrix<double>& B) {
+    const size_t out_rows = A.rows() + B.rows() - 1;
+    const size_t out_cols = A.cols() + B.cols() - 1;
+    Matrix<double> out(out_rows, out_cols, 0.0);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            for (size_t k = 0; k < B.rows(); ++k) {
+                for (size_t l = 0; l < B.cols(); ++l) {
+                    out(i + k, j + l) += A(i, j) * B(k, l);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+Matrix<double> make_rank_one_kernel(const std::vector<double>& row,
+                                    const std::vector<double>& col) {
+    Matrix<double> B(row.size(), col.size(), 0.0);
+    for (size_t i = 0; i < row.size(); ++i) {
+        for (size_t j = 0; j < col.size(); ++j) {
+            B(i, j) = row[i] * col[j];
+        }
+    }
+    return B;
+}
+
+void expect_conv2_matches_reference(const Matrix<double>& A,
+                                  const Matrix<double>& B,
+                                  double tol = 1e-9) {
+    const auto ref = reference_conv2_direct(A, B);
+    const auto out = conv2(A, B);
+    ASSERT_EQ(out.rows(), ref.rows());
+    ASSERT_EQ(out.cols(), ref.cols());
+    for (size_t r = 0; r < ref.rows(); ++r) {
+        for (size_t c = 0; c < ref.cols(); ++c) {
+            const double scale = 1.0 + std::abs(ref(r, c));
+            EXPECT_NEAR(out(r, c), ref(r, c), tol * scale)
+                << "mismatch at (" << r << "," << c << ")";
+        }
+    }
+}
+
+} // namespace
+
+TEST(SignalExtTest, conv2_large_random_matches_direct) {
+    constexpr size_t n = 40;
+    Matrix<double> A(n, n);
+    Matrix<double> B(7, 7);
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            A(i, j) = std::sin(0.17 * static_cast<double>(i) + 0.31 * static_cast<double>(j));
+        }
+    }
+    for (size_t i = 0; i < B.rows(); ++i) {
+        for (size_t j = 0; j < B.cols(); ++j) {
+            B(i, j) = 0.25 * static_cast<double>((i + j) % 5) - 0.5;
+        }
+    }
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, conv2_separable_rank_one_kernel) {
+    const auto B = make_rank_one_kernel({1.0, 2.0, 1.0}, {0.5, 1.0, 0.5, 1.0});
+    Matrix<double> A(35, 35);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            A(i, j) = std::cos(0.11 * static_cast<double>(i * j));
+        }
+    }
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, conv2_fft_non_separable_kernel) {
+    Matrix<double> B(5, 5);
+    for (size_t i = 0; i < B.rows(); ++i) {
+        for (size_t j = 0; j < B.cols(); ++j) {
+            // Non-separable: diagonal-dominant perturbation of a rank-1 term.
+            B(i, j) = 0.2 * static_cast<double>(i + 1) * static_cast<double>(j + 1)
+                      + 0.05 * static_cast<double>(i == j ? 1 : 0);
+        }
+    }
+    Matrix<double> A(32, 32);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            A(i, j) = std::sin(0.07 * static_cast<double>(i)) * std::cos(0.05 * static_cast<double>(j));
+        }
+    }
+    expect_conv2_matches_reference(A, B, 1e-9);
+    // Sanity: result magnitude stays O(1)–O(100) for this input scale.
+    double max_abs = 0.0;
+    const auto C = conv2(A, B);
+    for (size_t r = 0; r < C.rows(); ++r) {
+        for (size_t c = 0; c < C.cols(); ++c) {
+            max_abs = std::max(max_abs, std::abs(C(r, c)));
+        }
+    }
+    EXPECT_LT(max_abs, 1e3);
+}
+
+TEST(SignalExtTest, conv2_large_identity_preserves_signal) {
+    Matrix<double> A(48, 48);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            A(i, j) = static_cast<double>((i + 2 * j) % 17) - 8.0;
+        }
+    }
+    Matrix<double> B{{1.0}};
+    const auto out = conv2(A, B);
+    ASSERT_EQ(out.rows(), A.rows());
+    ASSERT_EQ(out.cols(), A.cols());
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            EXPECT_NEAR(out(i, j), A(i, j), 1e-12);
+        }
+    }
+}
+
+TEST(SignalExtTest, conv2_rectangular_large_matrix) {
+    Matrix<double> A(32, 48);
+    Matrix<double> B(4, 6);
+    for (size_t i = 0; i < A.rows(); ++i) {
+        for (size_t j = 0; j < A.cols(); ++j) {
+            A(i, j) = std::exp(-0.001 * static_cast<double>(i * i + j));
+        }
+    }
+    for (size_t i = 0; i < B.rows(); ++i) {
+        for (size_t j = 0; j < B.cols(); ++j) {
+            B(i, j) = (i == 1 && j == 2) ? 1.0 : 0.25;
+        }
+    }
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, conv2_small_stays_on_direct_path) {
+    Matrix<double> A{{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}};
+    Matrix<double> B{{1.0, 0.0}, {0.0, 1.0}};
+    const auto out = conv2(A, B);
+    const auto ref = reference_conv2_direct(A, B);
+    ASSERT_EQ(out.rows(), ref.rows());
+    ASSERT_EQ(out.cols(), ref.cols());
+    for (size_t r = 0; r < ref.rows(); ++r) {
+        for (size_t c = 0; c < ref.cols(); ++c) {
+            EXPECT_DOUBLE_EQ(out(r, c), ref(r, c));
+        }
+    }
+}
+
 TEST(SignalExtTest, deconv_recovers_signal_from_convolution) {
     const std::vector<double> x{1.0, 2.0, 3.0};
     const std::vector<double> b{1.0, 1.0};
