@@ -88,9 +88,9 @@ Result<Matrix<S, StorageOrder::ColMajor, Alloc>> gather(
             total += counts[static_cast<size_t>(r)];
         }
 
+        std::vector<S> recv(static_cast<size_t>(total));
+        std::vector<S> send(static_cast<size_t>(local_rows));
         for (int c = 0; c < static_cast<int>(dist.global_cols); ++c) {
-            std::vector<S> recv(static_cast<size_t>(total));
-            std::vector<S> send(static_cast<size_t>(local_rows));
             for (int i = 0; i < local_rows; ++i) {
                 send[static_cast<size_t>(i)] = dist.local(static_cast<size_t>(i), static_cast<size_t>(c));
             }
@@ -142,9 +142,9 @@ Result<Matrix<S, StorageOrder::ColMajor, Alloc>> gather(
         }
     }
 
+    std::vector<S> recv(static_cast<size_t>(total));
+    std::vector<S> send(dist.local.rows());
     for (int c = 0; c < cols; ++c) {
-        std::vector<S> recv(static_cast<size_t>(total));
-        std::vector<S> send(dist.local.rows());
         for (size_t i = 0; i < dist.local.rows(); ++i) {
             send[i] = dist.local(i, static_cast<size_t>(c));
         }

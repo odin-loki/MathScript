@@ -392,10 +392,15 @@ Result<Algorithm> Axiom::evolve(
 
 Result<Matrix<double>> Axiom::evaluate(const Algorithm& algo, const Matrix<double>& data) const {
     Matrix<double> output(data.rows(), 1);
+    std::vector<std::string> keys;
+    keys.reserve(data.cols());
+    for (size_t j = 0; j < data.cols(); ++j) {
+        keys.push_back("x" + std::to_string(j));
+    }
+    std::map<std::string, double> env;
     for (size_t i = 0; i < data.rows(); ++i) {
-        std::map<std::string, double> env;
         for (size_t j = 0; j < data.cols(); ++j) {
-            env["x" + std::to_string(j)] = data(i, j);
+            env[keys[j]] = data(i, j);
         }
         output(i, 0) = algo.representation.eval(env);
     }
@@ -432,10 +437,15 @@ double Axiom::mse_fitness(
     }
 
     double sum_squared_error = 0.0;
+    std::vector<std::string> keys;
+    keys.reserve(inputs.cols());
+    for (size_t j = 0; j < inputs.cols(); ++j) {
+        keys.push_back("x" + std::to_string(j));
+    }
+    std::map<std::string, double> env;
     for (size_t i = 0; i < n; ++i) {
-        std::map<std::string, double> env;
         for (size_t j = 0; j < inputs.cols(); ++j) {
-            env["x" + std::to_string(j)] = inputs(i, j);
+            env[keys[j]] = inputs(i, j);
         }
         const double prediction = algo.representation.eval(env);
 

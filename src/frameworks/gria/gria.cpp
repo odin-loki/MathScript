@@ -135,15 +135,24 @@ std::vector<uint64_t> generate_field(int n) {
 
 namespace ca {
 
-std::vector<uint8_t> step(std::span<const uint8_t> state, uint8_t rule) {
-    std::vector<uint8_t> next(state.size(), 0);
-    for (size_t i = 0; i < state.size(); ++i) {
-        const size_t left = i == 0 ? state.size() - 1 : i - 1;
-        const size_t right = (i + 1) % state.size();
+namespace {
+
+void step_into(std::span<const uint8_t> state, uint8_t rule, std::span<uint8_t> next) {
+    const size_t width = state.size();
+    for (size_t i = 0; i < width; ++i) {
+        const size_t left = i == 0 ? width - 1 : i - 1;
+        const size_t right = (i + 1) % width;
         const uint8_t pattern =
             static_cast<uint8_t>((state[left] << 2) | (state[i] << 1) | state[right]);
         next[i] = static_cast<uint8_t>((rule >> pattern) & 1U);
     }
+}
+
+} // namespace
+
+std::vector<uint8_t> step(std::span<const uint8_t> state, uint8_t rule) {
+    std::vector<uint8_t> next(state.size(), 0);
+    step_into(state, rule, next);
     return next;
 }
 
@@ -157,6 +166,7 @@ double langton_lambda(uint8_t rule) {
 
 double alpha_ca(uint8_t rule, size_t steps, size_t width) {
     std::vector<uint8_t> state(width, 0);
+    std::vector<uint8_t> next(width, 0);
     state[width / 2] = 1;
     std::vector<double> bits;
     bits.reserve(steps * width);
@@ -164,7 +174,8 @@ double alpha_ca(uint8_t rule, size_t steps, size_t width) {
         for (uint8_t bit : state) {
             bits.push_back(static_cast<double>(bit));
         }
-        state = step(state, rule);
+        step_into(state, rule, next);
+        state.swap(next);
     }
     return compute_alpha<double>(bits, [](std::span<const double> input) {
         std::vector<double> out;
@@ -195,9 +206,13 @@ std::vector<size_t> divergence_trajectory(std::vector<uint8_t> config_a,
     std::vector<size_t> trajectory;
     trajectory.reserve(static_cast<size_t>(n_steps > 0 ? n_steps : 0) + 1);
     trajectory.push_back(hamming_distance(config_a, config_b));
+    std::vector<uint8_t> next_a(config_a.size(), 0);
+    std::vector<uint8_t> next_b(config_b.size(), 0);
     for (int i = 0; i < n_steps; ++i) {
-        config_a = step(config_a, rule);
-        config_b = step(config_b, rule);
+        step_into(config_a, rule, next_a);
+        step_into(config_b, rule, next_b);
+        config_a.swap(next_a);
+        config_b.swap(next_b);
         trajectory.push_back(hamming_distance(config_a, config_b));
     }
     return trajectory;
@@ -210,9 +225,13 @@ std::optional<size_t> settling_time(std::vector<uint8_t> config_a,
     if (hamming_distance(config_a, config_b) == 0) {
         return 0;
     }
+    std::vector<uint8_t> next_a(config_a.size(), 0);
+    std::vector<uint8_t> next_b(config_b.size(), 0);
     for (int i = 1; i <= n_steps; ++i) {
-        config_a = step(config_a, rule);
-        config_b = step(config_b, rule);
+        step_into(config_a, rule, next_a);
+        step_into(config_b, rule, next_b);
+        config_a.swap(next_a);
+        config_b.swap(next_b);
         if (hamming_distance(config_a, config_b) == 0) {
             return static_cast<size_t>(i);
         }
