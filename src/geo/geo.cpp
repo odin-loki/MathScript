@@ -67,6 +67,7 @@ Polygon2D convex_hull_2d(std::vector<Point2D> pts) {
     if (n < 3) return pts;
     std::sort(pts.begin(), pts.end(), pt_cmp);
     Polygon2D hull;
+    hull.reserve(static_cast<size_t>(n) + 1);
     // Lower hull
     for (int i = 0; i < n; ++i) {
         while (hull.size() >= 2 &&
@@ -90,6 +91,7 @@ Polygon2D upper_hull(std::vector<Point2D> pts) {
     int n = static_cast<int>(pts.size());
     std::sort(pts.begin(), pts.end(), pt_cmp);
     Polygon2D hull;
+    hull.reserve(static_cast<size_t>(n));
     for (int i = n-1; i >= 0; --i) {
         while (hull.size() >= 2 &&
                cross2d_pts(hull[hull.size()-2], hull.back(), pts[i]) <= 0)
@@ -103,6 +105,7 @@ Polygon2D lower_hull(std::vector<Point2D> pts) {
     int n = static_cast<int>(pts.size());
     std::sort(pts.begin(), pts.end(), pt_cmp);
     Polygon2D hull;
+    hull.reserve(static_cast<size_t>(n));
     for (int i = 0; i < n; ++i) {
         while (hull.size() >= 2 &&
                cross2d_pts(hull[hull.size()-2], hull.back(), pts[i]) <= 0)
@@ -129,15 +132,18 @@ std::vector<Triangle3Di> convex_hull_3d(const std::vector<Point3D>& points) {
     for (int i = 0; i < n; ++i) {
         for (int j = i+1; j < n; ++j) {
             for (int k = j+1; k < n; ++k) {
-                Vec3D nrm = cross(vec3(points[i], points[j]), vec3(points[i], points[k]));
-                double nlen = length(nrm);
-                if (nlen < 1e-12) continue;  // collinear triple, no plane
+                const Vec3D e1 = vec3(points[i], points[j]);
+                const Vec3D e2 = vec3(points[i], points[k]);
+                Vec3D nrm = cross(e1, e2);
+                const double nlen_sq = dot(nrm, nrm);
+                if (nlen_sq < 1e-24) continue;  // collinear triple, no plane
+                const double nlen = std::sqrt(nlen_sq);
 
                 // Tolerance scaled to the plane normal's own magnitude rather than
                 // an absolute constant, since signed distances below are computed
                 // with the un-normalised normal and thus scale with |n| and the
                 // point cloud's coordinate range.
-                double eps = 1e-9 * nlen;
+                const double eps = 1e-9 * nlen;
 
                 std::vector<int> coplanar = {i, j, k};
                 bool all_neg = true, all_pos = true;
@@ -326,13 +332,11 @@ std::vector<Point2D> voronoi(const std::vector<Point2D>& pts) {
 }
 
 // ---- KD-Tree 2D ----
-;
-
 
 KDTree2D::KDTree2D(const std::vector<Point2D>& pts) : pts_(pts) {
     std::vector<int> idx(pts.size());
     for (int i=0; i<(int)pts.size(); ++i) idx[i]=i;
-    root_ = build(idx, 0);
+    root_ = build(idx, 0, static_cast<int>(idx.size()), 0);
 }
 
 KDTree2D::~KDTree2D() {
@@ -346,18 +350,17 @@ KDTree2D::~KDTree2D() {
     }
 }
 
-KDTree2D::Node* KDTree2D::build(std::vector<int>& idx, int depth) {
-    if (idx.empty()) return nullptr;
-    int axis = depth % 2;
-    std::sort(idx.begin(), idx.end(), [&](int a, int b) {
-        return axis==0 ? pts_[a].x < pts_[b].x : pts_[a].y < pts_[b].y;
-    });
-    int mid = (int)idx.size() / 2;
+KDTree2D::Node* KDTree2D::build(std::vector<int>& idx, int beg, int end, int depth) {
+    if (beg >= end) return nullptr;
+    const int axis = depth % 2;
+    const int mid = beg + (end - beg) / 2;
+    std::nth_element(idx.begin() + beg, idx.begin() + mid, idx.begin() + end,
+        [&](int a, int b) {
+            return axis == 0 ? pts_[a].x < pts_[b].x : pts_[a].y < pts_[b].y;
+        });
     auto n = new Node(idx[mid]);
-    std::vector<int> left_idx(idx.begin(), idx.begin()+mid);
-    std::vector<int> right_idx(idx.begin()+mid+1, idx.end());
-    n->left  = build(left_idx, depth+1);
-    n->right = build(right_idx, depth+1);
+    n->left  = build(idx, beg, mid, depth + 1);
+    n->right = build(idx, mid + 1, end, depth + 1);
     return n;
 }
 
@@ -402,13 +405,15 @@ std::vector<int> KDTree2D::knn(Point2D q, int k) const {
     };
     search(root_, 0);
     std::vector<int> result;
+    result.reserve(heap.size());
     for (auto& p : heap) result.push_back(p.second);
     return result;
 }
 
 std::vector<int> KDTree2D::range(Point2D q, double r) const {
     std::vector<int> result;
-    double r2 = r * r;
+    result.reserve(16);
+    const double r2 = r * r;
     std::function<void(Node*,int)> search = [&](Node* n, int depth) {
         if (!n) return;
         if (dist_sq(q, pts_[n->idx]) <= r2) result.push_back(n->idx);
@@ -422,13 +427,11 @@ std::vector<int> KDTree2D::range(Point2D q, double r) const {
 }
 
 // ---- KD-Tree 3D ----
-;
-
 
 KDTree3D::KDTree3D(const std::vector<Point3D>& pts) : pts_(pts) {
     std::vector<int> idx(pts.size());
     for (int i=0; i<(int)pts.size(); ++i) idx[i]=i;
-    root_ = build(idx, 0);
+    root_ = build(idx, 0, static_cast<int>(idx.size()), 0);
 }
 
 KDTree3D::~KDTree3D() {
@@ -442,18 +445,19 @@ KDTree3D::~KDTree3D() {
     }
 }
 
-KDTree3D::Node* KDTree3D::build(std::vector<int>& idx, int depth) {
-    if (idx.empty()) return nullptr;
-    int axis = depth % 3;
-    std::sort(idx.begin(), idx.end(), [&](int a, int b) {
-        auto& pa = pts_[a]; auto& pb = pts_[b];
-        return axis==0 ? pa.x<pb.x : axis==1 ? pa.y<pb.y : pa.z<pb.z;
-    });
-    int mid = (int)idx.size()/2;
+KDTree3D::Node* KDTree3D::build(std::vector<int>& idx, int beg, int end, int depth) {
+    if (beg >= end) return nullptr;
+    const int axis = depth % 3;
+    const int mid = beg + (end - beg) / 2;
+    std::nth_element(idx.begin() + beg, idx.begin() + mid, idx.begin() + end,
+        [&](int a, int b) {
+            const auto& pa = pts_[a];
+            const auto& pb = pts_[b];
+            return axis == 0 ? pa.x < pb.x : axis == 1 ? pa.y < pb.y : pa.z < pb.z;
+        });
     auto n = new Node(idx[mid]);
-    std::vector<int> l(idx.begin(), idx.begin()+mid);
-    std::vector<int> r(idx.begin()+mid+1, idx.end());
-    n->left = build(l, depth+1); n->right = build(r, depth+1);
+    n->left = build(idx, beg, mid, depth + 1);
+    n->right = build(idx, mid + 1, end, depth + 1);
     return n;
 }
 
@@ -499,12 +503,15 @@ std::vector<int> KDTree3D::knn(Point3D q, int k) const {
     };
     search(root_, 0);
     std::vector<int> result;
+    result.reserve(heap.size());
     for (auto& p : heap) result.push_back(p.second);
     return result;
 }
 
 std::vector<int> KDTree3D::range(Point3D q, double r) const {
-    std::vector<int> result; double r2=r*r;
+    std::vector<int> result;
+    result.reserve(16);
+    const double r2 = r * r;
     std::function<void(Node*,int)> search = [&](Node* n, int depth) {
         if (!n) return;
         if (dist_sq3(q, pts_[n->idx]) <= r2) result.push_back(n->idx);
@@ -597,14 +604,20 @@ bool overlap_circle_circle(Circle2D a, Circle2D b) {
 }
 
 bool point_in_polygon(Point2D p, const Polygon2D& poly) {
-    int n = static_cast<int>(poly.size());
+    const int n = static_cast<int>(poly.size());
     int winding = 0;
     for (int i = 0; i < n; ++i) {
-        Point2D a = poly[i], b = poly[(i+1)%n];
+        const Point2D& a = poly[i];
+        const Point2D& b = poly[(i + 1) % n];
+        const double abx = b.x - a.x;
+        const double aby = b.y - a.y;
+        const double apx = p.x - a.x;
+        const double apy = p.y - a.y;
+        const double cross = abx * apy - aby * apx;
         if (a.y <= p.y) {
-            if (b.y > p.y && cross2d(vec2(a,b), vec2(a,p)) > 0) ++winding;
-        } else {
-            if (b.y <= p.y && cross2d(vec2(a,b), vec2(a,p)) < 0) --winding;
+            if (b.y > p.y && cross > 0.0) ++winding;
+        } else if (b.y <= p.y && cross < 0.0) {
+            --winding;
         }
     }
     return winding != 0;
@@ -618,11 +631,18 @@ bool point_in_aabb(Point2D p, AABB2D box) {
 // ---- Distances ----
 
 double dist_point_segment(Point2D p, Segment2D s) {
-    Vec2D ab = vec2(s.a, s.b), ap = vec2(s.a, p);
-    double t = dot(ap, ab) / dot(ab, ab);
-    t = std::max(0.0, std::min(1.0, t));
-    Point2D proj = {s.a.x + t*ab.x, s.a.y + t*ab.y};
-    return dist(p, proj);
+    const double abx = s.b.x - s.a.x;
+    const double aby = s.b.y - s.a.y;
+    const double apx = p.x - s.a.x;
+    const double apy = p.y - s.a.y;
+    const double dab = abx * abx + aby * aby;
+    if (dab < 1e-15) return std::sqrt(apx * apx + apy * apy);
+    double t = (apx * abx + apy * aby) / dab;
+    if (t < 0.0) t = 0.0;
+    else if (t > 1.0) t = 1.0;
+    const double px = apx - t * abx;
+    const double py = apy - t * aby;
+    return std::sqrt(px * px + py * py);
 }
 
 double dist_point_line(Point2D p, Line2D l) {
@@ -634,12 +654,21 @@ double dist_point_plane(Point3D p, Plane3D pl) {
 }
 
 double dist_point_segment3(Point3D p, Segment3D s) {
-    Vec3D ab = vec3(s.a, s.b), ap = vec3(s.a, p);
-    double dab = dot(ab, ab);
-    if (dab < 1e-15) return dist(p, s.a);
-    double t = std::max(0.0, std::min(1.0, dot(ap, ab) / dab));
-    Point3D proj = {s.a.x + t*ab.x, s.a.y + t*ab.y, s.a.z + t*ab.z};
-    return dist(p, proj);
+    const double abx = s.b.x - s.a.x;
+    const double aby = s.b.y - s.a.y;
+    const double abz = s.b.z - s.a.z;
+    const double apx = p.x - s.a.x;
+    const double apy = p.y - s.a.y;
+    const double apz = p.z - s.a.z;
+    const double dab = abx * abx + aby * aby + abz * abz;
+    if (dab < 1e-15) return std::sqrt(apx * apx + apy * apy + apz * apz);
+    double t = (apx * abx + apy * aby + apz * abz) / dab;
+    if (t < 0.0) t = 0.0;
+    else if (t > 1.0) t = 1.0;
+    const double px = apx - t * abx;
+    const double py = apy - t * aby;
+    const double pz = apz - t * abz;
+    return std::sqrt(px * px + py * py + pz * pz);
 }
 
 // ---- Bezier curves ----
