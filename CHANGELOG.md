@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-17 (Wave 224 — Performance Pass VI: image filters, graph, stats, bench closure)
+
+8 parallel subagents — final profiling sweep closing remaining hot paths and benchmark infra.
+
+### Performance (Wave 224)
+- `ms::image` — O(n) `boxfilter` via separable moving average; sliding-window `medfilt2` (sorting networks w=3/5); precomputed bilinear `imresize`; optimized `bilateral` (spatial weight cache, flat buffers).
+- `ms::graph` — faster `dijkstra()` with reserved heap and sparse paths.
+- `ms::stats` — `nth_element` for remaining quantile/median paths still full-sorting.
+- **Benchmark infra** — smoke all **22** benchmark executables; `scripts/bench_write_msvc_baseline.ps1`; populated `msvc-release.json` medians.
+- **Total Wave 224: 374 CTest suites — all passing**. Profiling iteration (Waves 218–224) complete.
+
 ## [1.0.0] — 2026-07-17 (Wave 223 — Performance Pass V: conv2 FFT2D, watershed, blur, resample, welch, baseline)
 
 8 parallel subagents closing remaining hot-path gaps from Waves 218–222.
