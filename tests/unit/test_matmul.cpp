@@ -59,6 +59,24 @@ TEST(MatmulTest, row_major_uses_generic_path) {
     EXPECT_DOUBLE_EQ((*C)(1, 1), 154);
 }
 
+TEST(MatmulTest, row_and_col_major_same_result) {
+    const DMatrix A_col{{1, 2, 3}, {4, 5, 6}};
+    const DMatrix B_col{{7, 8}, {9, 10}, {11, 12}};
+    const RMatrix A_row{{1, 2, 3}, {4, 5, 6}};
+    const RMatrix B_row{{7, 8}, {9, 10}, {11, 12}};
+
+    const auto C_col = matmul(A_col, B_col, static_cast<int>(ExecPolicy::CPU)).value();
+    const auto C_row = matmul(A_row, B_row, static_cast<int>(ExecPolicy::CPU)).value();
+
+    ASSERT_EQ(C_col.rows(), C_row.rows());
+    ASSERT_EQ(C_col.cols(), C_row.cols());
+    for (size_t i = 0; i < C_col.rows(); ++i) {
+        for (size_t j = 0; j < C_col.cols(); ++j) {
+            EXPECT_NEAR(C_col(i, j), C_row(i, j), 1e-12);
+        }
+    }
+}
+
 TEST(MatmulTest, float_uses_generic_path) {
     ColMatrix<float> A{{1.f, 2.f}, {3.f, 4.f}};
     ColMatrix<float> B{{5.f, 6.f}, {7.f, 8.f}};

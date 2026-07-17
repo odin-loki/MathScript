@@ -3,29 +3,59 @@
 #include "ms/cuda/blas.hpp"
 #include "ms/runtime/dispatch.hpp"
 #include <algorithm>
+#include <utility>
 
 namespace ms {
 
 namespace {
 
-template<typename S, StorageOrder OA, StorageOrder OB, template<typename> class AllocA, template<typename> class AllocB>
-void to_col_matrix(
+template<typename S, StorageOrder OA, template<typename> class AllocA>
+ColMatrix<S> copy_to_col(const Matrix<S, OA, AllocA>& M) {
+    ColMatrix<S> out(M.rows(), M.cols());
+    for (size_t i = 0; i < M.rows(); ++i) {
+        for (size_t j = 0; j < M.cols(); ++j) {
+            out(i, j) = M(i, j);
+        }
+    }
+    return out;
+}
+
+template<typename S, StorageOrder OA, StorageOrder OB,
+         template<typename> class AllocA, template<typename> class AllocB>
+std::pair<const ColMatrix<S>&, const ColMatrix<S>&> col_major_refs(
     const Matrix<S, OA, AllocA>& A,
     const Matrix<S, OB, AllocB>& B,
-    ColMatrix<S>& A_out,
-    ColMatrix<S>& B_out) {
-    A_out = ColMatrix<S>(A.rows(), A.cols());
-    B_out = ColMatrix<S>(B.rows(), B.cols());
-    for (size_t i = 0; i < A.rows(); ++i) {
-        for (size_t j = 0; j < A.cols(); ++j) {
-            A_out(i, j) = A(i, j);
+    ColMatrix<S>& A_copy,
+    ColMatrix<S>& B_copy) {
+    if constexpr (OA == StorageOrder::ColMajor) {
+        if constexpr (OB == StorageOrder::ColMajor) {
+            return {A, B};
+        } else {
+            B_copy = copy_to_col(B);
+            return {A, B_copy};
+        }
+    } else {
+        A_copy = copy_to_col(A);
+        if constexpr (OB == StorageOrder::ColMajor) {
+            return {A_copy, B};
+        }
+        B_copy = copy_to_col(B);
+        return {A_copy, B_copy};
+    }
+}
+
+template<typename S, StorageOrder OC, template<typename> class AllocC>
+Matrix<S, OC, AllocC> from_col_major(ColMatrix<S>&& src) {
+    if constexpr (OC == StorageOrder::ColMajor) {
+        return Matrix<S, OC, AllocC>(std::move(src));
+    }
+    Matrix<S, OC, AllocC> out(src.rows(), src.cols());
+    for (size_t i = 0; i < src.rows(); ++i) {
+        for (size_t j = 0; j < src.cols(); ++j) {
+            out(i, j) = src(i, j);
         }
     }
-    for (size_t i = 0; i < B.rows(); ++i) {
-        for (size_t j = 0; j < B.cols(); ++j) {
-            B_out(i, j) = B(i, j);
-        }
-    }
+    return out;
 }
 
 } // namespace
@@ -44,17 +74,11 @@ Result<Matrix<S, OC, AllocC>> matmul(
         const size_t n = (std::max)({A.rows(), A.cols(), B.cols()});
         const auto decision = decide(n, static_cast<ExecPolicy>(policy));
         if (decision.backend == Backend::CUDA) {
-            ColMatrix<double> Ac;
-            ColMatrix<double> Bc;
-            to_col_matrix(A, B, Ac, Bc);
-            if (auto gpu = cuda::matmul(Ac, Bc, decision.cuda_device)) {
-                Matrix<S, OC, AllocC> C(gpu->rows(), gpu->cols());
-                for (size_t i = 0; i < C.rows(); ++i) {
-                    for (size_t j = 0; j < C.cols(); ++j) {
-                        C(i, j) = (*gpu)(i, j);
-                    }
-                }
-                return C;
+            ColMatrix<double> A_copy;
+            ColMatrix<double> B_copy;
+            const auto [A_col, B_col] = col_major_refs(A, B, A_copy, B_copy);
+            if (auto gpu = cuda::matmul(A_col, B_col, decision.cuda_device)) {
+                return from_col_major<S, OC, AllocC>(std::move(*gpu));
             }
         }
     }
