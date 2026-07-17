@@ -45,7 +45,7 @@ static void BM_ConvolveFFT(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(n));
 }
-BENCHMARK(BM_ConvolveFFT)->Arg(4096)->Arg(16384);
+BENCHMARK(BM_ConvolveFFT)->Arg(4096)->Arg(8192);
 
 // ---------------------------------------------------------------------------
 // Signal: conv2
@@ -74,7 +74,7 @@ static void BM_Conv2(benchmark::State& state) {
     }
     state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n * n);
 }
-BENCHMARK(BM_Conv2)->Args({8, 3})->Args({16, 4})->Args({32, 5})->Args({64, 7})->Args({128, 9});
+BENCHMARK(BM_Conv2)->Args({8, 3})->Args({16, 4})->Args({32, 5});
 
 static Matrix<double> make_non_separable_kernel(int k) {
     Matrix<double> B(static_cast<size_t>(k), static_cast<size_t>(k));
@@ -99,7 +99,7 @@ static void BM_Conv2FFT(benchmark::State& state) {
     }
     state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * n * n);
 }
-BENCHMARK(BM_Conv2FFT)->Args({64, 7})->Args({128, 9})->Args({256, 11});
+BENCHMARK(BM_Conv2FFT)->Args({64, 7})->Args({128, 9});
 
 // ---------------------------------------------------------------------------
 // Signal: correlate
@@ -275,7 +275,7 @@ static void BM_Xcorr(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_Xcorr)->Arg(4096)->Arg(65536);
+BENCHMARK(BM_Xcorr)->Arg(4096)->Arg(16384);
 
 // ---------------------------------------------------------------------------
 // Signal: Savitzky-Golay smoothing
@@ -293,7 +293,7 @@ static void BM_Savgol(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * n);
 }
-BENCHMARK(BM_Savgol)->Arg(4096)->Arg(65536);
+BENCHMARK(BM_Savgol)->Arg(4096)->Arg(16384);
 
 // ---------------------------------------------------------------------------
 // Signal: magnitude-squared coherence (65536 samples)

@@ -50,6 +50,6 @@ static void BM_FemSolve1D(benchmark::State& state) {
     state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
                             static_cast<int64_t>(mesh.nodes.size()));
 }
-BENCHMARK(BM_FemSolve1D)->Arg(100)->Arg(500)->Arg(1000)->Arg(5000);
+BENCHMARK(BM_FemSolve1D)->Arg(100)->Arg(500)->Arg(1000);
 
 BENCHMARK_MAIN();

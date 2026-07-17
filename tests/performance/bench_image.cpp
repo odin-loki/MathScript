@@ -101,7 +101,7 @@ static void BM_SLIC(benchmark::State& state) {
     }
     state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * rows * cols);
 }
-BENCHMARK(BM_SLIC)->Args({128, 128, 64})->Args({256, 256, 256});
+BENCHMARK(BM_SLIC)->Args({128, 128, 64})->Args({192, 192, 96});
 
 static void BM_Watershed(benchmark::State& state) {
     const int rows = static_cast<int>(state.range(0));

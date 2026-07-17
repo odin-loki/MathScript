@@ -100,6 +100,6 @@ static void BM_dispatch_decide_with_topology(benchmark::State& state) {
 BENCHMARK(BM_session_uniform);
 BENCHMARK(BM_session_normal);
 BENCHMARK(BM_rng_active_check);
-BENCHMARK(BM_dispatch_decide_cpu)->Arg(1024)->Arg(1000000);
-BENCHMARK(BM_dispatch_decide_auto)->Arg(1024)->Arg(1000000);
-BENCHMARK(BM_dispatch_decide_with_topology)->Arg(1024)->Arg(1000000);
+BENCHMARK(BM_dispatch_decide_cpu)->Arg(1024)->Arg(65536);
+BENCHMARK(BM_dispatch_decide_auto)->Arg(1024)->Arg(65536);
+BENCHMARK(BM_dispatch_decide_with_topology)->Arg(1024)->Arg(65536);

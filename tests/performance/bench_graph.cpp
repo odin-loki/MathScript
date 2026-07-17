@@ -46,7 +46,7 @@ static void BM_Bfs(benchmark::State& state) {
     for (auto _ : state)
         benchmark::DoNotOptimize(bfs(G, 0));
 }
-BENCHMARK(BM_Bfs)->Arg(1000)->Arg(10000)->Arg(50000);
+BENCHMARK(BM_Bfs)->Arg(1000)->Arg(5000)->Arg(10000);
 
 static void BM_Bfs_Grid(benchmark::State& state) {
     const int side = static_cast<int>(state.range(0));
@@ -70,7 +70,7 @@ static void BM_Dijkstra(benchmark::State& state) {
     for (auto _ : state)
         benchmark::DoNotOptimize(dijkstra(G, 0));
 }
-BENCHMARK(BM_Dijkstra)->Arg(1000)->Arg(10000)->Arg(50000);
+BENCHMARK(BM_Dijkstra)->Arg(1000)->Arg(5000)->Arg(10000);
 
 static void BM_Dijkstra_Grid(benchmark::State& state) {
     const int side = static_cast<int>(state.range(0));
@@ -102,5 +102,5 @@ static void BM_FloydWarshall_Grid(benchmark::State& state) {
     for (auto _ : state)
         benchmark::DoNotOptimize(floyd_warshall(G));
 }
-// Grid side^2 vertices → O(V^3); keep sides small (64² = 4096 → ~68B ops max).
-BENCHMARK(BM_FloydWarshall_Grid)->Arg(16)->Arg(32)->Arg(48);
+// Grid side^2 vertices → O(V^3); side 32 (1024 verts) ~1s smoke; avoid 48+ (~15s).
+BENCHMARK(BM_FloydWarshall_Grid)->Arg(16)->Arg(24)->Arg(32);
