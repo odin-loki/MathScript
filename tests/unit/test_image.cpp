@@ -1,8 +1,10 @@
 #define _USE_MATH_DEFINES
 #include "ms/image/image.hpp"
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <set>
+#include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -157,6 +159,56 @@ TEST(ImageFilter, MedianFiveByFive) {
     auto med=medfilt2(img,5);
     EXPECT_EQ(med.rows, 7);
     EXPECT_NEAR(med.at(3,3,0), 0.f, 0.15f);
+}
+
+namespace {
+
+Image medfilt2_reference(const Image& img, int ksize) {
+    const int half = ksize / 2;
+    Image out(img.rows, img.cols, img.channels);
+    for (int r = 0; r < img.rows; ++r) {
+        for (int c = 0; c < img.cols; ++c) {
+            for (int ch = 0; ch < img.channels; ++ch) {
+                std::vector<float> vals;
+                vals.reserve(static_cast<std::size_t>(ksize) * static_cast<std::size_t>(ksize));
+                for (int dr = -half; dr <= half; ++dr) {
+                    for (int dc = -half; dc <= half; ++dc) {
+                        const int sr = std::min(std::max(r + dr, 0), img.rows - 1);
+                        const int sc = std::min(std::max(c + dc, 0), img.cols - 1);
+                        vals.push_back(img.at(sr, sc, ch));
+                    }
+                }
+                std::nth_element(vals.begin(), vals.begin() + static_cast<std::ptrdiff_t>(vals.size() / 2),
+                                 vals.end());
+                out.at(r, c, ch) = vals[vals.size() / 2];
+            }
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST(ImageFilter, Medfilt2MatchesReferenceGolden) {
+    Image img(11, 11, 1, 0.f);
+    for (int r = 0; r < img.rows; ++r) {
+        for (int c = 0; c < img.cols; ++c) {
+            img.at(r, c, 0) = 0.05f * static_cast<float>((r * 3 + c * 7) % 20);
+        }
+    }
+    img.at(5, 5, 0) = 0.95f;
+
+    for (int ksize : {3, 5, 7}) {
+        const auto ref = medfilt2_reference(img, ksize);
+        const auto fast = medfilt2(img, ksize);
+        ASSERT_EQ(ref.rows, fast.rows);
+        ASSERT_EQ(ref.cols, fast.cols);
+        ASSERT_EQ(ref.channels, fast.channels);
+        ASSERT_EQ(ref.data.size(), fast.data.size());
+        for (size_t i = 0; i < ref.data.size(); ++i) {
+            EXPECT_FLOAT_EQ(ref.data[i], fast.data[i]) << "ksize=" << ksize << " i=" << i;
+        }
+    }
 }
 
 TEST(ImageFilter, Sharpen) {

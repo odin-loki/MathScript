@@ -116,4 +116,22 @@ static void BM_Watershed(benchmark::State& state) {
 }
 BENCHMARK(BM_Watershed)->Args({64, 64})->Args({128, 128})->Args({256, 256});
 
+static void BM_Medfilt2(benchmark::State& state) {
+    const int rows = static_cast<int>(state.range(0));
+    const int cols = static_cast<int>(state.range(1));
+    const int ksize = static_cast<int>(state.range(2));
+    const auto img = make_gaussian_bench_image(rows, cols, 1);
+
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(ms::image::medfilt2(img, ksize));
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * rows * cols);
+}
+BENCHMARK(BM_Medfilt2)
+    ->Args({256, 256, 3})
+    ->Args({512, 512, 3})
+    ->Args({256, 256, 5})
+    ->Args({512, 512, 5})
+    ->Args({256, 256, 7});
+
 BENCHMARK_MAIN();
