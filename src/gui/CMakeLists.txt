@@ -5,7 +5,8 @@ if(MS_BUILD_GUI)
         add_library(ms_gui STATIC
             MainWindow.cpp MainWindow.hpp
             PlotWidget.cpp PlotWidget.hpp
-            PlotSurfWidget.cpp PlotSurfWidget.hpp)
+            PlotSurfWidget.cpp PlotSurfWidget.hpp
+            ReplWorker.cpp ReplWorker.hpp)
         target_include_directories(ms_gui PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
         target_link_libraries(ms_gui PUBLIC Qt6::Widgets Qt6::OpenGLWidgets Qt6::OpenGL ms_interp)
         target_compile_features(ms_gui PUBLIC cxx_std_23)
@@ -18,6 +19,11 @@ if(MS_BUILD_GUI)
             WIN32_EXECUTABLE TRUE
         )
         message(STATUS "MathScript Qt6 IDE enabled")
+        # Wave 220 build verification: ms_gui (ReplWorker + background QThread REPL) compiles here.
+        if(BUILD_TESTING)
+            add_test(NAME gui_repl_worker_build COMMAND ${CMAKE_COMMAND} -E true)
+            set_tests_properties(gui_repl_worker_build PROPERTIES LABELS "gui")
+        endif()
     else()
         message(STATUS "MathScript Qt6 not found; GUI target skipped")
     endif()

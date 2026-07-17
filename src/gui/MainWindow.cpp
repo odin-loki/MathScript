@@ -1,6 +1,7 @@
 #include "gui/MainWindow.hpp"
 #include "gui/PlotSurfWidget.hpp"
 #include "gui/PlotWidget.hpp"
+#include "gui/ReplWorker.hpp"
 
 #include <QApplication>
 #include <QAction>
@@ -10,7 +11,7 @@
 #include <QFileSystemModel>
 #include <QHBoxLayout>
 #include <QMenuBar>
-#include <QPushButton>
+#include <QMetaType>
 #include <QTextCursor>
 #include <QTreeView>
 #include <QVBoxLayout>
@@ -20,6 +21,17 @@
 #include "ms/runtime/topology.hpp"
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
+    qRegisterMetaType<ms::interp::SessionState>("ms::interp::SessionState");
+    qRegisterMetaType<ms::interp::PlotSeries>("ms::interp::PlotSeries");
+
+    repl_thread_ = new QThread(this);
+    repl_worker_ = new ReplWorker();
+    repl_worker_->moveToThread(repl_thread_);
+    repl_thread_->start();
+
+    connect(repl_worker_, &ReplWorker::finished, this, &MainWindow::on_repl_finished);
+    connect(repl_worker_, &ReplWorker::error, this, &MainWindow::on_repl_error);
+
     setWindowTitle("MathScript IDE");
     resize(1200, 720);
     apply_dark_theme();
@@ -50,11 +62,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* row = new QHBoxLayout();
     input_ = new QLineEdit(center);
     input_->setPlaceholderText("REPL: help, plot([1,2,3,4]), save session.ms");
-    auto* run = new QPushButton("Run", center);
-    auto* run_script = new QPushButton("Run Script", center);
+    run_ = new QPushButton("Run", center);
+    run_script_ = new QPushButton("Run Script", center);
     row->addWidget(input_);
-    row->addWidget(run);
-    row->addWidget(run_script);
+    row->addWidget(run_);
+    row->addWidget(run_script_);
     center_layout->addLayout(row);
 
     variables_ = new QListWidget(main_splitter_);
@@ -83,19 +95,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     status_timer_->start(2000);
     refresh_status();
 
-    connect(run, &QPushButton::clicked, this, &MainWindow::on_submit);
-    connect(run_script, &QPushButton::clicked, this, [this]() {
-        const QString script = editor_->toPlainText();
-        for (const QString& line : script.split('\n', Qt::SkipEmptyParts)) {
-            input_->setText(line);
-            on_submit();
-        }
-    });
+    connect(run_, &QPushButton::clicked, this, &MainWindow::on_submit);
+    connect(run_script_, &QPushButton::clicked, this, &MainWindow::on_run_script);
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::on_submit);
     connect(file_tree_, &QTreeView::activated, this, &MainWindow::on_file_activated);
 
     append_output("MathScript IDE ready. Type 'help' and press Run.\n");
     refresh_variables();
+}
+
+MainWindow::~MainWindow() {
+    repl_thread_->quit();
+    repl_thread_->wait();
+    delete repl_worker_;
 }
 
 void MainWindow::apply_dark_theme() {
@@ -132,30 +144,44 @@ void MainWindow::setup_menus() {
         }
     });
     connect(save_session_action, &QAction::triggered, this, [this]() {
+        if (repl_busy_) {
+            append_output("error: wait for the current REPL command to finish\n");
+            return;
+        }
         const QString path = QFileDialog::getSaveFileName(this, "Save Session", {}, "MathScript (*.ms)");
         if (path.isEmpty()) {
             return;
         }
-        const auto result = interp_.save_session(path.toStdString());
-        if (result) {
+        QString err;
+        QMetaObject::invokeMethod(
+            repl_worker_, "saveSession", Qt::BlockingQueuedConnection, Q_RETURN_ARG(QString, err),
+            Q_ARG(QString, path));
+        if (err.isEmpty()) {
             append_output("saved session to " + path + "\n");
             refresh_variables();
         } else {
-            append_output("error: " + QString::fromStdString(ms::format_error(result.error())) + "\n");
+            append_output("error: " + err + "\n");
         }
     });
     connect(load_session_action, &QAction::triggered, this, [this]() {
+        if (repl_busy_) {
+            append_output("error: wait for the current REPL command to finish\n");
+            return;
+        }
         const QString path = QFileDialog::getOpenFileName(this, "Load Session", {}, "MathScript (*.ms)");
         if (path.isEmpty()) {
             return;
         }
-        const auto result = interp_.load_session(path.toStdString());
-        if (result) {
+        QString err;
+        QMetaObject::invokeMethod(
+            repl_worker_, "loadSession", Qt::BlockingQueuedConnection, Q_RETURN_ARG(QString, err),
+            Q_ARG(QString, path));
+        if (err.isEmpty()) {
             append_output("loaded session from " + path + "\n");
             refresh_variables();
             refresh_plot();
         } else {
-            append_output("error: " + QString::fromStdString(ms::format_error(result.error())) + "\n");
+            append_output("error: " + err + "\n");
         }
     });
     connect(export_plot_action, &QAction::triggered, this, &MainWindow::export_plot_png);
@@ -180,7 +206,9 @@ void MainWindow::append_output(const QString& text) {
 
 void MainWindow::refresh_variables() {
     variables_->clear();
-    const auto& state = interp_.state();
+    ms::interp::SessionState state;
+    QMetaObject::invokeMethod(repl_worker_, "sessionState", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(ms::interp::SessionState, state));
     for (const auto& [name, value] : state.scalars) {
         variables_->addItem(QString("%1 = %2").arg(QString::fromStdString(name)).arg(value));
     }
@@ -196,14 +224,19 @@ void MainWindow::refresh_variables() {
 }
 
 void MainWindow::refresh_plot() {
-    if (!interp_.has_plot()) {
+    bool has_plot = false;
+    QMetaObject::invokeMethod(repl_worker_, "hasPlot", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(bool, has_plot));
+    if (!has_plot) {
         plot_2d_->clear_plot();
         plot_3d_->clear_surface();
         plot_stack_->setCurrentWidget(plot_2d_);
         return;
     }
 
-    const auto& plot = interp_.plot();
+    ms::interp::PlotSeries plot;
+    QMetaObject::invokeMethod(repl_worker_, "plot", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(ms::interp::PlotSeries, plot));
     if (plot.kind == ms::interp::PlotSeries::Kind::Surface3D) {
         plot_3d_->set_surface(plot);
         plot_stack_->setCurrentWidget(plot_3d_);
@@ -215,7 +248,10 @@ void MainWindow::refresh_plot() {
 }
 
 void MainWindow::export_plot_png() {
-    if (!interp_.has_plot()) {
+    bool has_plot = false;
+    QMetaObject::invokeMethod(repl_worker_, "hasPlot", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(bool, has_plot));
+    if (!has_plot) {
         append_output("error: no plot to export\n");
         return;
     }
@@ -226,7 +262,10 @@ void MainWindow::export_plot_png() {
         return;
     }
 
-    const bool ok = interp_.plot().kind == ms::interp::PlotSeries::Kind::Surface3D
+    ms::interp::PlotSeries plot;
+    QMetaObject::invokeMethod(repl_worker_, "plot", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(ms::interp::PlotSeries, plot));
+    const bool ok = plot.kind == ms::interp::PlotSeries::Kind::Surface3D
                           ? plot_3d_->export_png(path)
                           : plot_2d_->export_png(path);
     if (ok) {
@@ -248,22 +287,69 @@ void MainWindow::on_file_activated(const QModelIndex& index) {
     }
 }
 
+void MainWindow::start_eval(const QString& line) {
+    repl_busy_ = true;
+    run_->setEnabled(false);
+    run_script_->setEnabled(false);
+    input_->setEnabled(false);
+    append_output("ms> " + line + "\n");
+    QMetaObject::invokeMethod(repl_worker_, "evaluate", Qt::QueuedConnection, Q_ARG(QString, line));
+}
+
+void MainWindow::finish_repl_op() {
+    refresh_variables();
+    refresh_plot();
+
+    if (!script_queue_.isEmpty()) {
+        start_eval(script_queue_.takeFirst());
+        return;
+    }
+
+    repl_busy_ = false;
+    run_->setEnabled(true);
+    run_script_->setEnabled(true);
+    input_->setEnabled(true);
+}
+
 void MainWindow::on_submit() {
+    if (repl_busy_) {
+        return;
+    }
     const QString line = input_->text().trimmed();
     if (line.isEmpty()) {
         return;
     }
-    append_output("ms> " + line + "\n");
     input_->clear();
+    script_queue_.clear();
+    start_eval(line);
+}
 
-    const auto result = interp_.execute(line.toStdString());
-    if (result) {
-        if (!result->empty()) {
-            append_output(QString::fromStdString(*result));
-        }
-    } else {
-        append_output("error: " + QString::fromStdString(ms::format_error(result.error())) + "\n");
+void MainWindow::on_run_script() {
+    if (repl_busy_) {
+        return;
     }
-    refresh_variables();
-    refresh_plot();
+    script_queue_.clear();
+    for (const QString& line : editor_->toPlainText().split('\n', Qt::SkipEmptyParts)) {
+        script_queue_.append(line.trimmed());
+    }
+    script_queue_.removeAll(QString{});
+    if (script_queue_.isEmpty()) {
+        return;
+    }
+    start_eval(script_queue_.takeFirst());
+}
+
+void MainWindow::on_repl_finished(const QString& output) {
+    if (!output.isEmpty()) {
+        append_output(output);
+        if (!output.endsWith('\n')) {
+            append_output("\n");
+        }
+    }
+    finish_repl_op();
+}
+
+void MainWindow::on_repl_error(const QString& message) {
+    append_output("error: " + message + "\n");
+    finish_repl_op();
 }
