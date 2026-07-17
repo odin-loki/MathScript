@@ -739,6 +739,29 @@ TEST(SignalExtTest, spectrogram_reuse_matches_allocating_chirp_seed_14142) {
     }
 }
 
+TEST(SignalExtTest, spectrogram_reuse_matches_allocating_zero_overlap_seed_16180) {
+    constexpr double fs = 500.0;
+    constexpr size_t segment_len = 64;
+    constexpr double overlap_frac = 0.0;
+    const auto x = lcg_noise(2048, 16180u, 2.0);
+
+    const auto optimized = spectrogram(x, fs, segment_len, overlap_frac);
+    const auto reference =
+        welch_reuse_reference::spectrogram_allocating(x, fs, segment_len, overlap_frac);
+    ASSERT_TRUE(optimized.has_value());
+    ASSERT_TRUE(reference.has_value());
+    welch_reuse_reference::expect_vectors_near(reference->frequencies, optimized->frequencies, 1e-12);
+    welch_reuse_reference::expect_vectors_near(reference->times, optimized->times, 1e-12);
+    ASSERT_EQ(reference->magnitude.rows(), optimized->magnitude.rows());
+    ASSERT_EQ(reference->magnitude.cols(), optimized->magnitude.cols());
+    for (size_t r = 0; r < reference->magnitude.rows(); ++r) {
+        for (size_t c = 0; c < reference->magnitude.cols(); ++c) {
+            EXPECT_NEAR(optimized->magnitude(r, c), reference->magnitude(r, c), 1e-12)
+                << "row " << r << " col " << c;
+        }
+    }
+}
+
 namespace {
 
 std::vector<double> cosine_signal(size_t n, double fs, double freq, double amplitude = 1.0) {
