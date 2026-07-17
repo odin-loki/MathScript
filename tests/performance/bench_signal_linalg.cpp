@@ -3,6 +3,7 @@
 #include <benchmark/benchmark.h>
 #include <vector>
 #include <cmath>
+#include <complex>
 #include <numeric>
 
 #include "ms/signal/signal.hpp"
@@ -414,6 +415,31 @@ static void BM_Autocorr(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * n);
 }
 BENCHMARK(BM_Autocorr)->Arg(4096)->Arg(65536);
+
+// ---------------------------------------------------------------------------
+// Signal: CZT (Bluestein chirp Z-transform)
+// ---------------------------------------------------------------------------
+
+static void BM_Czt(benchmark::State& state) {
+    const int n = static_cast<int>(state.range(0));
+    const int m = static_cast<int>(state.range(1));
+    std::vector<double> x(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        x[static_cast<size_t>(i)] =
+            std::sin(0.41 * static_cast<double>(i)) +
+            0.6 * std::cos(1.17 * static_cast<double>(i));
+    }
+    const double arg_w = -2.0 * M_PI * 0.01;
+    const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+    const std::complex<double> a(1.0, 0.0);
+    for (auto _ : state) {
+        auto result = czt(x, m, w, a);
+        benchmark::DoNotOptimize(result);
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(n) * static_cast<int64_t>(m));
+}
+BENCHMARK(BM_Czt)->Args({512, 512})->Args({1024, 1024})->Args({4096, 512});
 
 // ---------------------------------------------------------------------------
 // Linear Algebra: solve Ax=b
