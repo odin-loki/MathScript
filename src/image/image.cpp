@@ -269,21 +269,97 @@ Image medfilt2(const Image& img, int ksize) {
 }
 
 Image bilateral(const Image& img, float sigma_s, float sigma_r) {
-    int half=std::max(1,(int)(2*sigma_s));
-    Image out(img.rows,img.cols,img.channels);
-    for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch) {
-        float num=0,den=0;
-        float ic=img.at(r,c,ch);
-        for (int dr=-half;dr<=half;++dr) for (int dc=-half;dc<=half;++dc) {
-            int sr=std::min(std::max(r+dr,0),img.rows-1);
-            int sc_=std::min(std::max(c+dc,0),img.cols-1);
-            float sp=std::exp(-(dr*dr+dc*dc)/(2*sigma_s*sigma_s));
-            float diff=img.at(sr,sc_,ch)-ic;
-            float rp=std::exp(-diff*diff/(2*sigma_r*sigma_r));
-            float w=sp*rp;
-            num+=w*img.at(sr,sc_,ch); den+=w;
+    if (img.empty()) {
+        return img;
+    }
+
+    const int rows = img.rows;
+    const int cols = img.cols;
+    const int channels = img.channels;
+    const int half = std::max(1, static_cast<int>(2.f * sigma_s));
+    const int ksize = 2 * half + 1;
+
+    const float inv_2_sigma_s_sq = 1.f / (2.f * sigma_s * sigma_s);
+    std::vector<float> spatial_weights(static_cast<std::size_t>(ksize * ksize));
+    for (int dri = 0; dri < ksize; ++dri) {
+        const int dr = dri - half;
+        for (int dci = 0; dci < ksize; ++dci) {
+            const int dc = dci - half;
+            spatial_weights[static_cast<std::size_t>(dri * ksize + dci)] =
+                std::exp(-(dr * dr + dc * dc) * inv_2_sigma_s_sq);
         }
-        out.at(r,c,ch)=num/(den+1e-12f);
+    }
+
+    const float inv_2_sigma_r_sq = 1.f / (2.f * sigma_r * sigma_r);
+    constexpr float k_min_range_weight = 1e-6f;
+
+    Image out(rows, cols, channels);
+    const float* src = img.data.data();
+    float* dst = out.data.data();
+
+    if (channels == 1) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                const float ic = src[r * cols + c];
+                float num = 0.f;
+                float den = 0.f;
+                for (int dri = 0; dri < ksize; ++dri) {
+                    const int dr = dri - half;
+                    const int sr = std::min(std::max(r + dr, 0), rows - 1);
+                    const float* src_row = src + sr * cols;
+                    const float* sp_row =
+                        spatial_weights.data() + static_cast<std::size_t>(dri * ksize);
+                    for (int dci = 0; dci < ksize; ++dci) {
+                        const int dc = dci - half;
+                        const int sc = std::min(std::max(c + dc, 0), cols - 1);
+                        const float sp = sp_row[dci];
+                        const float neighbor = src_row[sc];
+                        const float diff = neighbor - ic;
+                        const float rp = std::exp(-diff * diff * inv_2_sigma_r_sq);
+                        if (rp < k_min_range_weight) {
+                            continue;
+                        }
+                        const float w = sp * rp;
+                        num += w * neighbor;
+                        den += w;
+                    }
+                }
+                dst[r * cols + c] = num / (den + 1e-12f);
+            }
+        }
+        return out;
+    }
+
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                const float ic = src[(r * cols + c) * channels + ch];
+                float num = 0.f;
+                float den = 0.f;
+                for (int dri = 0; dri < ksize; ++dri) {
+                    const int dr = dri - half;
+                    const int sr = std::min(std::max(r + dr, 0), rows - 1);
+                    const int s_row_base = sr * cols * channels;
+                    const float* sp_row =
+                        spatial_weights.data() + static_cast<std::size_t>(dri * ksize);
+                    for (int dci = 0; dci < ksize; ++dci) {
+                        const int dc = dci - half;
+                        const int sc = std::min(std::max(c + dc, 0), cols - 1);
+                        const float sp = sp_row[dci];
+                        const float neighbor = src[s_row_base + sc * channels + ch];
+                        const float diff = neighbor - ic;
+                        const float rp = std::exp(-diff * diff * inv_2_sigma_r_sq);
+                        if (rp < k_min_range_weight) {
+                            continue;
+                        }
+                        const float w = sp * rp;
+                        num += w * neighbor;
+                        den += w;
+                    }
+                }
+                dst[(r * cols + c) * channels + ch] = num / (den + 1e-12f);
+            }
+        }
     }
     return out;
 }
