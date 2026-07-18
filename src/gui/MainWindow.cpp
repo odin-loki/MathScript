@@ -8,6 +8,7 @@
 #include <QAction>
 #include <QCloseEvent>
 #include <QKeyEvent>
+#include <QShortcut>
 #include <QColor>
 #include <QSettings>
 #include <QDir>
@@ -199,7 +200,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     editor_ = new QPlainTextEdit(center);
     editor_->setPlaceholderText("Script editor (open a file from the browser)");
-    editor_->setMaximumHeight(160);
+    editor_->setMinimumHeight(200);
     new ScriptHighlighter(editor_->document());
     center_layout->addWidget(editor_);
 
@@ -221,6 +222,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     run_ = new QPushButton("Run", center);
     stop_ = new QPushButton("Stop", center);
     stop_->setEnabled(false);
+    stop_->setStatusTip("Cancel the running REPL command or queued script lines");
+    stop_->setToolTip("Stop (cooperative cancel)");
     run_script_ = new QPushButton("Run Script", center);
     row->addWidget(input_);
     row->addWidget(run_);
@@ -255,6 +258,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     refresh_status();
 
     connect(run_, &QPushButton::clicked, this, &MainWindow::on_submit);
+    auto* run_shortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return), this);
+    connect(run_shortcut, &QShortcut::activated, this, &MainWindow::on_submit);
     connect(stop_, &QPushButton::clicked, this, &MainWindow::on_stop);
     connect(run_script_, &QPushButton::clicked, this, &MainWindow::on_run_script);
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::on_submit);

@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 234 complete — **382 CTest suites** on `main` @ Wave 234)
+**Updated:** 2026-07-18 (Wave 235 kickoff — **382 CTest suites** on `main` @ Wave 234 baseline)
 
 ---
 
@@ -102,11 +102,23 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ---
 
-## Feature work (Wave 235+) — NEXT
+## Wave 235 — IN PROGRESS (ChaCha-Poly1305 + FEM 3D + GUI polish)
+
+| Branch | Target |
+|--------|--------|
+| `wave235/crypto-chacha-poly` | ChaCha20-Poly1305 AEAD + REPL bindings |
+| `wave235/fem-3d` | 3D P1 tetrahedral Poisson mesh/assembly/solve |
+| `wave235/gui-docs` | Script editor height, Ctrl+Enter Run, Stop status tip; Wave 235 docs kickoff |
+
+**382 CTest suites** baseline @ Wave 234 (+ Wave 235 registrations pending merge). Profiling iteration unchanged — **FULLY COMPLETE (Waves 218–230).**
+
+---
+
+## Feature work (Wave 236+) — NEXT
 
 | Wave | Focus |
 |------|--------|
-| **235–236** | Remaining GUI/REPL polish |
-| **237+** | Remaining API gaps (curve25519, ChaCha20-Poly1305, 3D FEM/CFD, scalable MPI LA, etc.) |
+| **236** | Remaining GUI/REPL polish |
+| **237+** | Remaining API gaps (curve25519, 3D CFD, scalable MPI LA, etc.) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

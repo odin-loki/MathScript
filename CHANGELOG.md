@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 235 — ChaCha-Poly1305, FEM 3D, GUI polish) [IN PROGRESS]
+
+Fifth **feature wave** after Wave 234. Parallel implementation worktrees in flight on `wave235/*` branches.
+
+### Planned (Wave 235)
+- **Crypto** — ChaCha20-Poly1305 AEAD (`chacha20_poly1305_encrypt` / `chacha20_poly1305_decrypt`; RFC 8439 vectors); REPL: `crypto_chacha20_poly1305_encrypt`, `crypto_chacha20_poly1305_decrypt`.
+- **FEM** — 3D P1 tetrahedral Poisson MVP: `mesh3d_box`, `assemble_stiffness_3d`, `assemble_load_3d`, Dirichlet BCs, `solve_fem_3d`.
+- **GUI** — Script editor default height (200 px min), **Ctrl+Enter** Run shortcut, Stop button status/tooltip for cooperative cancel.
+- Integration: `integration_repl_wave235_pipeline` (crypto AEAD + FEM 3D + GUI smoke).
+
+Builds on Wave 234 finance/graph/image/ml REPL bindings and AES-128-GCM. Full master-plan scope (curve25519, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+
+### Docs (Wave 235 kickoff)
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** — Wave 235 kickoff; ChaCha-Poly1305, FEM 3D, and GUI polish tracked.
+
+### Baseline (Wave 235 kickoff)
+- **382 CTest suites — all passing** on `main` @ Wave 234 (Wave 235 branches add coverage). **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] — 2026-07-18 (Wave 234 — Finance/graph/image/ml REPL, AES-128-GCM)
 
 Fourth **feature wave** after Wave 233. Five parallel implementation worktrees merged to `main` (AES-128-GCM restored post-merge after finance-branch conflict).
