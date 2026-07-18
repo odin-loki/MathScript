@@ -3223,6 +3223,41 @@ TEST(ReplCommandsTest, wave134_control_bode) {
     EXPECT_NEAR(interp.state().matrices.at("bode")(0, 1), -45.0, 2.0);
 }
 
+TEST(ReplCommandsTest, wave260_control_step_response) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_step_response(num,den[,t_end[,n_pts]])");
+
+    // 1/(s+1): y(t) = 1 - e^{-t}; at t=5 should be near 1
+    expect_ok(interp, "step = control_step_response([1], [1, 1], 5, 200)");
+    ASSERT_GT(interp.state().matrices.count("step"), 0u);
+    const auto& step = interp.state().matrices.at("step");
+    EXPECT_EQ(step.cols(), 2u);
+    EXPECT_EQ(step.rows(), 200u);
+    EXPECT_NEAR(step(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(step(step.rows() - 1, 0), 5.0, 1e-9);
+    EXPECT_NEAR(step(step.rows() - 1, 1), 1.0, 0.05);
+
+    expect_ok(interp, "step_def = control_step_response([1], [1, 1])");
+    ASSERT_GT(interp.state().matrices.count("step_def"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("step_def").cols(), 2u);
+    EXPECT_GT(interp.state().matrices.at("step_def").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave260_control_impulse_response) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_impulse_response(num,den[,t_end[,n_pts]])");
+
+    // 1/(s+1): impulse y(t) = e^{-t}; at t=5 should be near e^{-5}
+    expect_ok(interp, "imp = control_impulse_response([1], [1, 1], 5, 200)");
+    ASSERT_GT(interp.state().matrices.count("imp"), 0u);
+    const auto& imp = interp.state().matrices.at("imp");
+    EXPECT_EQ(imp.cols(), 2u);
+    EXPECT_EQ(imp.rows(), 200u);
+    EXPECT_NEAR(imp(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(imp(imp.rows() - 1, 0), 5.0, 1e-9);
+    EXPECT_NEAR(imp(imp.rows() - 1, 1), std::exp(-5.0), 0.05);
+}
+
 TEST(ReplCommandsTest, wave135_quantum_op_apply) {
     Interpreter interp;
     expect_contains(interp, "help", "quantum_op_apply(op,psi)");
