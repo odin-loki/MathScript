@@ -73,6 +73,8 @@ std::vector<uint8_t> aes128_encrypt_block(std::span<const uint8_t> key,
                                           std::span<const uint8_t> block);
 std::vector<uint8_t> aes256_encrypt_block(std::span<const uint8_t> key,
                                           std::span<const uint8_t> block);
+std::vector<uint8_t> aes256_decrypt_block(std::span<const uint8_t> key,
+                                          std::span<const uint8_t> block);
 std::vector<uint8_t> aes128_cbc_encrypt(std::span<const uint8_t> key,
                                         std::span<const uint8_t> iv,
                                         std::span<const uint8_t> plaintext);
