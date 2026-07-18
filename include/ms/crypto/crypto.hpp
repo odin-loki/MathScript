@@ -156,5 +156,10 @@ std::array<uint8_t, ed25519_signature_size> ed25519_sign(std::span<const uint8_t
 bool ed25519_verify(std::span<const uint8_t> public_key, std::span<const uint8_t> message,
                     std::span<const uint8_t> signature);
 
+bool constant_time_eq(std::span<const uint8_t> a, std::span<const uint8_t> b);
+
+// MVP: std::random_device per byte — not HSM-grade; prefer OS CSPRNG for production secrets.
+std::vector<uint8_t> random_bytes(std::size_t n);
+
 } // namespace crypto
 } // namespace ms

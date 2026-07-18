@@ -870,3 +870,56 @@ TEST(CryptoEd25519, InvalidKeySizeReturnsEmpty) {
     EXPECT_EQ(sig, (std::array<uint8_t, ed25519_signature_size>{}));
     EXPECT_FALSE(ed25519_verify(kp.public_key, std::span<const uint8_t>{}, sig));
 }
+
+// ---- constant_time_eq ----
+
+TEST(CryptoConstantTimeEq, EqualBytes) {
+    const auto a = from_hex("0011223344556677889900aabbccddeeff");
+    EXPECT_TRUE(constant_time_eq(a, a));
+}
+
+TEST(CryptoConstantTimeEq, EqualDistinctBuffers) {
+    const auto a = from_hex("deadbeef");
+    const auto b = from_hex("deadbeef");
+    EXPECT_TRUE(constant_time_eq(a, b));
+}
+
+TEST(CryptoConstantTimeEq, UnequalSameLength) {
+    const auto a = from_hex("0011223344556677889900aabbccddeeff");
+    const auto b = from_hex("0011223344556677889900aabbccddeefe");
+    EXPECT_FALSE(constant_time_eq(a, b));
+}
+
+TEST(CryptoConstantTimeEq, LengthMismatch) {
+    const auto a = from_hex("00112233");
+    const auto b = from_hex("0011223344556677");
+    EXPECT_FALSE(constant_time_eq(a, b));
+}
+
+TEST(CryptoConstantTimeEq, EmptyEqual) {
+    const std::vector<uint8_t> empty;
+    EXPECT_TRUE(constant_time_eq(empty, empty));
+}
+
+TEST(CryptoConstantTimeEq, SingleByteDiff) {
+    const auto a = from_hex("00");
+    const auto b = from_hex("01");
+    EXPECT_FALSE(constant_time_eq(a, b));
+}
+
+// ---- random_bytes ----
+
+TEST(CryptoRandomBytes, ZeroLength) {
+    EXPECT_TRUE(random_bytes(0).empty());
+}
+
+TEST(CryptoRandomBytes, RequestedLength) {
+    const auto bytes = random_bytes(32);
+    ASSERT_EQ(bytes.size(), 32u);
+}
+
+TEST(CryptoRandomBytes, NonDeterministicAcrossCalls) {
+    const auto a = random_bytes(16);
+    const auto b = random_bytes(16);
+    EXPECT_NE(a, b);
+}
