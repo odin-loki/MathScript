@@ -10362,7 +10362,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sinm" || fn == "inv" ||
             fn == "pinv" || fn == "null" || fn == "orth" ||
             fn == "kron" || fn == "repmat" || fn == "linspace" ||
-            fn == "rgb2gray" || fn == "rgb2hsv" || fn == "sobel" || fn == "prewitt" ||
+            fn == "rgb2gray" || fn == "gray2rgb" || fn == "rgb2hsv" || fn == "sobel" || fn == "prewitt" ||
             fn == "scharr" || fn == "roberts" ||
             fn == "imgaussfilt" || fn == "medfilt2" || fn == "boxfilter" ||
             fn == "imdilate" || fn == "imerode" || fn == "imopen" || fn == "imclose" ||
@@ -10372,7 +10372,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "laplacian" || fn == "histeq" ||
             fn == "sharpen" || fn == "threshold_otsu" || fn == "imresize" ||
             fn == "imflip" || fn == "imrotate90" || fn == "threshold_binary" ||
-            fn == "adapthisteq" ||
+            fn == "adapthisteq" || fn == "impad" || fn == "radon" || fn == "iradon" ||
             fn == "label_components" || fn == "watershed" || fn == "slic" ||
             fn == "hough_lines" || fn == "hough_circles" || fn == "harris" ||
             fn == "shi_tomasi" ||
@@ -12238,7 +12238,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "sinm" || callee == "inv" ||
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
-           callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
+           callee == "rgb2gray" || callee == "gray2rgb" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
            callee == "scharr" || callee == "roberts" ||
            callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
            callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
@@ -12248,7 +12248,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "canny" || callee == "laplacian" || callee == "histeq" ||
            callee == "sharpen" || callee == "threshold_otsu" || callee == "imresize" ||
            callee == "imflip" || callee == "imrotate90" || callee == "threshold_binary" ||
-           callee == "adapthisteq" ||
+           callee == "adapthisteq" || callee == "impad" || callee == "radon" || callee == "iradon" ||
            callee == "label_components" || callee == "watershed" || callee == "slic" ||
            callee == "hough_lines" || callee == "hough_circles" || callee == "harris" ||
            callee == "shi_tomasi" ||
@@ -12349,7 +12349,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "sqrtm" || callee == "logm" || callee == "cosm" || callee == "sinm" ||
         callee == "inv" ||
         callee == "pinv" || callee == "null" || callee == "orth" ||
-        callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
+        callee == "rgb2gray" || callee == "gray2rgb" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
         callee == "laplacian" || callee == "histeq" || callee == "sharpen" ||
         callee == "threshold_otsu" ||
         callee == "imrotate90" || callee == "adapthisteq" ||
@@ -12509,8 +12509,12 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "ml_ridge_fit") {
         return arity == 3;
     }
-    if (callee == "imflip" || callee == "threshold_binary" || callee == "watershed") {
+    if (callee == "imflip" || callee == "threshold_binary" || callee == "watershed" ||
+        callee == "radon" || callee == "iradon") {
         return arity == 2;
+    }
+    if (callee == "impad") {
+        return arity == 2 || arity == 3;
     }
     if (callee == "slic") {
         return arity == 2 || arity == 3;
@@ -15774,6 +15778,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_stats_multiple_regression(*X, *y);
     } else if (assign.callee == "sqrtm" && assign.args.size() == 1) {
+    } else if (assign.callee == "gray2rgb" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -15918,6 +15923,100 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             out(i, 0) = static_cast<double>(hist[i]);
         }
         result = out;
+        result = rgb_image_to_matrix(image::gray2rgb(*gray));
+    } else if (assign.callee == "impad" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double pad_d = 0.0;
+        if (!parse_number(assign.args[1], pad_d)) {
+            return std::unexpected(DomainError{"impad", "expected impad(M, pad[, val])"});
+        }
+        const int pad = static_cast<int>(pad_d);
+        if (pad < 0 || pad_d != pad) {
+            return std::unexpected(DomainError{"impad", "expected non-negative integer pad"});
+        }
+        double val_d = 0.0;
+        if (assign.args.size() == 3 && !parse_number(assign.args[2], val_d)) {
+            return std::unexpected(DomainError{"impad", "expected numeric pad value"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(
+            image::impad(*gray, pad, static_cast<float>(val_d)));
+    } else if (assign.callee == "radon" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto theta_m = resolve_operand(assign.args[1]);
+        if (!theta_m) {
+            return std::unexpected(theta_m.error());
+        }
+        auto theta = matrix_to_coeff_vector(*theta_m, "radon");
+        if (!theta) {
+            return std::unexpected(theta.error());
+        }
+        if (theta->empty()) {
+            return std::unexpected(DomainError{"radon", "expected non-empty theta_deg vector"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        std::vector<float> theta_f(theta->size());
+        for (size_t i = 0; i < theta->size(); ++i) {
+            theta_f[i] = static_cast<float>((*theta)[i]);
+        }
+        const auto sino = image::radon(*gray, theta_f);
+        if (sino.empty() || sino[0].empty()) {
+            result = Matrix<double>(0, 0);
+        } else {
+            // Sinogram as rows (projection bins) × angles (columns).
+            Matrix<double> out(sino[0].size(), sino.size());
+            for (size_t ti = 0; ti < sino.size(); ++ti) {
+                for (size_t ri = 0; ri < sino[ti].size(); ++ri) {
+                    out(ri, ti) = sino[ti][ri];
+                }
+            }
+            result = out;
+        }
+    } else if (assign.callee == "iradon" && assign.args.size() == 2) {
+        auto sino_m = resolve_operand(assign.args[0]);
+        if (!sino_m) {
+            return std::unexpected(sino_m.error());
+        }
+        auto theta_m = resolve_operand(assign.args[1]);
+        if (!theta_m) {
+            return std::unexpected(theta_m.error());
+        }
+        auto theta = matrix_to_coeff_vector(*theta_m, "iradon");
+        if (!theta) {
+            return std::unexpected(theta.error());
+        }
+        if (theta->empty()) {
+            return std::unexpected(DomainError{"iradon", "expected non-empty theta_deg vector"});
+        }
+        if (sino_m->cols() != theta->size()) {
+            return std::unexpected(
+                DomainError{"iradon", "sinogram column count must match theta length"});
+        }
+        std::vector<float> theta_f(theta->size());
+        for (size_t i = 0; i < theta->size(); ++i) {
+            theta_f[i] = static_cast<float>((*theta)[i]);
+        }
+        std::vector<std::vector<float>> sino(sino_m->cols(),
+                                             std::vector<float>(sino_m->rows(), 0.f));
+        for (size_t ti = 0; ti < sino_m->cols(); ++ti) {
+            for (size_t ri = 0; ri < sino_m->rows(); ++ri) {
+                sino[ti][ri] = static_cast<float>((*sino_m)(ri, ti));
+            }
+        }
+        result = gray_image_to_matrix(image::iradon(sino, theta_f));
     }
     return result;
 }
@@ -17621,6 +17720,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = repmat(A, p, q)   tile matrix p x q\n"
             "  name = linspace(a, b, n) equally spaced column vector\n"
             "  name = rgb2gray(M)       RGB rows (H*W)x3 to grayscale column vector\n"
+            "  name = gray2rgb(M)       grayscale HxW or Nx1 to RGB rows (H*W)x3\n"
             "  name = rgb2hsv(M)        RGB rows (H*W)x3 to HSV rows (H*W)x3\n"
             "  name = sobel(M)          Sobel gradient magnitude on HxW grayscale matrix\n"
             "  name = prewitt(M)        Prewitt edge magnitude on HxW grayscale matrix\n"
@@ -17645,6 +17745,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sharpen(M)        sharpen grayscale matrix\n"
             "  name = threshold_otsu(M) Otsu binary threshold on grayscale matrix\n"
             "  name = imresize(M,r,c)   resize grayscale matrix to r x c\n"
+            "  name = impad(M,pad[,val]) pad grayscale matrix by pad pixels (fill val)\n"
+            "  name = radon(M,theta)    Radon transform; sinogram rows x angles\n"
+            "  name = iradon(S,theta)   inverse Radon from sinogram matrix S\n"
             "  name = imflip(M,horizontal) flip grayscale matrix (horizontal 0/1)\n"
             "  name = imrotate90(M)     rotate grayscale matrix 90° CCW\n"
             "  name = threshold_binary(M,t) binary threshold at t on grayscale matrix\n"
@@ -18289,7 +18392,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  lu(A), qr(A), chol(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
-            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q])\n"
+            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"

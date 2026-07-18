@@ -6062,3 +6062,64 @@ TEST(ReplCommandsTest, wave258_image_morph_hist) {
     EXPECT_DOUBLE_EQ(interp.state().matrices.at("H")(2, 0), 1.0);
     EXPECT_DOUBLE_EQ(interp.state().matrices.at("H")(3, 0), 0.0);
 }
+
+TEST(ReplCommandsTest, wave258_gray2rgb_and_impad) {
+    Interpreter interp;
+    expect_contains(interp, "help", "gray2rgb(M)");
+    expect_contains(interp, "help", "impad(M,pad");
+
+    expect_ok(interp, "RGB = [1, 0, 0; 0, 1, 0]");
+    expect_ok(interp, "G = rgb2gray(RGB)");
+    expect_ok(interp, "RGB2 = gray2rgb(G)");
+    ASSERT_GT(interp.state().matrices.count("RGB2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("RGB2").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("RGB2").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("RGB2")(0, 0), 0.299, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("RGB2")(0, 1), 0.299, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("RGB2")(0, 2), 0.299, 1e-6);
+
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_ok(interp, "P = impad(M, 1, 0)");
+    ASSERT_GT(interp.state().matrices.count("P"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("P").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("P").cols(), 4u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("P")(0, 0), 0.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("P")(1, 1), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("P")(2, 2), 4.0);
+}
+
+TEST(ReplCommandsTest, wave258_radon_iradon) {
+    Interpreter interp;
+    expect_contains(interp, "help", "radon(M,theta)");
+    expect_contains(interp, "help", "iradon(S,theta)");
+
+    expect_ok(interp,
+              "Img = [0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0; "
+              "0,0,1,1,1,1,0,0; "
+              "0,0,1,1,1,1,0,0; "
+              "0,0,1,1,1,1,0,0; "
+              "0,0,1,1,1,1,0,0; "
+              "0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0]");
+    expect_ok(interp, "Th = [0, 45, 90]");
+    expect_ok(interp, "S = radon(Img, Th)");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S").cols(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("S").rows(), 8u);
+    for (size_t r = 0; r < interp.state().matrices.at("S").rows(); ++r) {
+        for (size_t c = 0; c < interp.state().matrices.at("S").cols(); ++c) {
+            EXPECT_TRUE(std::isfinite(interp.state().matrices.at("S")(r, c)));
+        }
+    }
+
+    expect_ok(interp, "R = iradon(S, Th)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 8u);
+    EXPECT_EQ(interp.state().matrices.at("R").cols(), 8u);
+    for (size_t r = 0; r < interp.state().matrices.at("R").rows(); ++r) {
+        for (size_t c = 0; c < interp.state().matrices.at("R").cols(); ++c) {
+            EXPECT_TRUE(std::isfinite(interp.state().matrices.at("R")(r, c)));
+        }
+    }
+}
