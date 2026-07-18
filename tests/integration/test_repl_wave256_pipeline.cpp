@@ -97,4 +97,3 @@ TEST(ReplWave256Pipeline, GraphSpectralSmoke) {
     expect_contains(interp, "help", "graph_katz_centrality(A)");
     expect_contains(interp, "help", "graph_algebraic_connectivity(A)");
 }
-}

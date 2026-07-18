@@ -3518,6 +3518,7 @@ std::string format_labeled_matrix(const std::string& label, const Matrix<double>
     return out.str();
 }
 
+
 Result<Matrix<double>> eval_signal_resample_pq(const Matrix<double>& x_m, double p_d,
                                               double q_d) {
     auto p = require_positive_int_arg(p_d, "signal_resample", "p");
@@ -10516,6 +10517,11 @@ std::span<const uint8_t> string_item_bytes(const std::string& item) {
 
 } // namespace
 
+// Wave 256: unary matrix display tail (MSVC C1061).
+static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
+                                                      const Matrix<double>& matrix);
+
+
 ColMatrix<double> matrix_to_col_matrix(const Matrix<double>& matrix);
 Result<std::string> format_cuda_lu_result(const ColMatrix<double>& matrix);
 Result<Matrix<double>> eval_cuda_add_matrices(const Matrix<double>& left, const Matrix<double>& right);
@@ -11358,6 +11364,328 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
     return std::nullopt;
 }
 
+
+// Wave 256: unary matrix display tail definition (MSVC C1061).
+static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
+                                               const Matrix<double>& matrix) {
+    std::ostringstream out;
+    if (fn == "graph_katz_centrality") {
+        auto kc = eval_graph_katz_centrality(matrix);
+        if (!kc) {
+            return std::unexpected(kc.error());
+        }
+        out << "katz_centrality:\n";
+        for (size_t i = 0; i < kc->rows(); ++i) {
+            out << "  [" << i << "] " << (*kc)(i, 0) << "\n";
+        }
+    } else if (fn == "graph_adjacency_spectrum") {
+        auto spec = eval_graph_adjacency_spectrum(matrix);
+        if (!spec) {
+            return std::unexpected(spec.error());
+        }
+        out << "adjacency_spectrum:\n";
+        for (size_t i = 0; i < spec->rows(); ++i) {
+            out << "  [" << i << "] " << (*spec)(i, 0) << "\n";
+        }
+    } else if (fn == "graph_laplacian") {
+        auto L = eval_graph_laplacian(matrix);
+        if (!L) {
+            return std::unexpected(L.error());
+        }
+        out << "laplacian =\n";
+        print_matrix(out, *L);
+    } else if (fn == "graph_normalised_laplacian") {
+        auto Ln = eval_graph_normalised_laplacian(matrix);
+        if (!Ln) {
+            return std::unexpected(Ln.error());
+        }
+        out << "normalised_laplacian =\n";
+        print_matrix(out, *Ln);
+    } else if (fn == "graph_eccentricity") {
+        auto ecc = eval_graph_eccentricity(matrix);
+        if (!ecc) {
+            return std::unexpected(ecc.error());
+        }
+        out << "eccentricity:\n";
+        for (size_t i = 0; i < ecc->rows(); ++i) {
+            out << "  [" << i << "] " << (*ecc)(i, 0) << "\n";
+        }
+    } else if (fn == "graph_articulation_points") {
+        auto aps = eval_graph_articulation_points(matrix);
+        if (!aps) {
+            return std::unexpected(aps.error());
+        }
+        out << "articulation_points:\n";
+        for (size_t i = 0; i < aps->rows(); ++i) {
+            out << "  [" << i << "] " << (*aps)(i, 0) << "\n";
+        }
+    } else if (fn == "graph_bridges") {
+        auto br = eval_graph_bridges(matrix);
+        if (!br) {
+            return std::unexpected(br.error());
+        }
+        out << "bridges =\n";
+        print_matrix(out, *br);
+    } else if (fn == "graph_maximum_matching") {
+        auto mm = eval_graph_maximum_matching(matrix);
+        if (!mm) {
+            return std::unexpected(mm.error());
+        }
+        out << "matching =\n";
+        print_matrix(out, *mm);
+    } else if (fn == "graph_transitive_closure") {
+        auto reach = eval_graph_transitive_closure(matrix);
+        if (!reach) {
+            return std::unexpected(reach.error());
+        }
+        out << "reach =\n";
+        print_matrix(out, *reach);
+    } else if (fn == "finance_min_variance_portfolio") {
+        auto w = eval_finance_min_variance_portfolio(matrix);
+        if (!w) {
+            return std::unexpected(w.error());
+        }
+        out << "min_variance_portfolio =\n";
+        print_matrix(out, *w);
+    } else if (fn == "geo_delaunay_2d") {
+        auto tris = eval_geo_delaunay_2d(matrix);
+        if (!tris) {
+            return std::unexpected(tris.error());
+        }
+        out << "triangles =\n";
+        print_matrix(out, *tris);
+    } else if (fn == "geo_voronoi") {
+        auto verts = eval_geo_voronoi(matrix);
+        if (!verts) {
+            return std::unexpected(verts.error());
+        }
+        out << "voronoi =\n";
+        print_matrix(out, *verts);
+    } else if (fn == "geo_convex_hull") {
+        auto hull = eval_geo_convex_hull(matrix);
+        if (!hull) {
+            return std::unexpected(hull.error());
+        }
+        out << "hull =\n";
+        print_matrix(out, *hull);
+    } else if (fn == "geo_triangulate_polygon") {
+        auto tris = eval_geo_triangulate_polygon(matrix);
+        if (!tris) {
+            return std::unexpected(tris.error());
+        }
+        out << "triangles =\n";
+        print_matrix(out, *tris);
+    } else if (fn == "geo_convex_hull_3d") {
+        auto faces = eval_geo_convex_hull_3d(matrix);
+        if (!faces) {
+            return std::unexpected(faces.error());
+        }
+        out << "faces =\n";
+        print_matrix(out, *faces);
+    } else if (fn == "geo_min_bounding_rect") {
+        auto rect = eval_geo_min_bounding_rect(matrix);
+        if (!rect) {
+            return std::unexpected(rect.error());
+        }
+        out << "rect =\n";
+        print_matrix(out, *rect);
+    } else if (fn == "topo_pairwise_distances") {
+        auto dist = eval_topo_pairwise_distances(matrix);
+        if (!dist) {
+            return std::unexpected(dist.error());
+        }
+        out << "dist =\n";
+        print_matrix(out, *dist);
+    } else if (fn == "combo_next_perm") {
+        auto perm = eval_combo_next_perm(matrix);
+        if (!perm) {
+            return std::unexpected(perm.error());
+        }
+        out << "perm =\n";
+        print_matrix(out, *perm);
+    } else if (fn == "numthy_convergents") {
+        auto conv = eval_numthy_convergents(matrix);
+        if (!conv) {
+            return std::unexpected(conv.error());
+        }
+        out << "convergents =\n";
+        print_matrix(out, *conv);
+    } else if (fn == "ml_mat_transpose") {
+        auto At = eval_ml_mat_transpose(matrix);
+        if (!At) {
+            return std::unexpected(At.error());
+        }
+        out << "At =\n";
+        print_matrix(out, *At);
+    } else if (fn == "fftshift") {
+        auto shifted = eval_fftshift(matrix);
+        if (!shifted) {
+            return std::unexpected(shifted.error());
+        }
+        out << "shifted =\n";
+        print_matrix(out, *shifted);
+    } else if (fn == "prewitt") {
+        auto edge = eval_prewitt(matrix);
+        if (!edge) {
+            return std::unexpected(edge.error());
+        }
+        out << "edge =\n";
+        print_matrix(out, *edge);
+    } else if (fn == "scharr") {
+        auto edge = eval_scharr(matrix);
+        if (!edge) {
+            return std::unexpected(edge.error());
+        }
+        out << "edge =\n";
+        print_matrix(out, *edge);
+    } else if (fn == "roberts") {
+        auto edge = eval_roberts(matrix);
+        if (!edge) {
+            return std::unexpected(edge.error());
+        }
+        out << "edge =\n";
+        print_matrix(out, *edge);
+    } else if (fn == "poly_deriv") {
+        auto deriv = eval_poly_deriv(matrix);
+        if (!deriv) {
+            return std::unexpected(deriv.error());
+        }
+        out << "deriv =\n";
+        print_matrix(out, *deriv);
+    } else if (fn == "graph_floyd_warshall") {
+        auto dist = eval_graph_floyd_warshall(matrix);
+        if (!dist) {
+            return std::unexpected(dist.error());
+        }
+        out << "dist =\n";
+        print_matrix(out, *dist);
+    } else if (fn == "graph_mst_kruskal") {
+        auto edges = eval_graph_mst_kruskal(matrix);
+        if (!edges) {
+            return std::unexpected(edges.error());
+        }
+        out << "mst =\n";
+        print_matrix(out, *edges);
+    } else if (fn == "graph_mst_prim") {
+        auto edges = eval_graph_mst_prim(matrix);
+        if (!edges) {
+            return std::unexpected(edges.error());
+        }
+        out << "mst =\n";
+        print_matrix(out, *edges);
+    } else if (fn == "fft_dct2") {
+        auto coeffs = eval_fft_dct2(matrix);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        out << "dct =\n";
+        print_matrix(out, *coeffs);
+    } else if (fn == "fft_idct2") {
+        auto signal = eval_fft_idct2(matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        out << "idct =\n";
+        print_matrix(out, *signal);
+    } else if (fn == "fft_dst2") {
+        auto coeffs = eval_fft_dst2(matrix);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        out << "dst =\n";
+        print_matrix(out, *coeffs);
+    } else if (fn == "quantum_hadamard") {
+        auto psi = matrix_to_ket2(matrix, "quantum_hadamard");
+        if (!psi) {
+            return std::unexpected(psi.error());
+        }
+        const auto applied = quantum::op_apply(quantum::hadamard(), *psi);
+        out << "state =\n";
+        out << "  [" << applied[0].real() << "]\n";
+        out << "  [" << applied[1].real() << "]\n";
+    } else if (fn == "quantum_ket_normalise") {
+        auto normalized = eval_quantum_ket_normalise_matrix(matrix);
+        if (!normalized) {
+            return std::unexpected(normalized.error());
+        }
+        out << "state =\n";
+        for (size_t i = 0; i < normalized->rows(); ++i) {
+            out << "  [" << (*normalized)(i, 0) << "]\n";
+        }
+    } else if (fn == "quantum_density_matrix") {
+        auto rho = eval_quantum_density_matrix(matrix);
+        if (!rho) {
+            return std::unexpected(rho.error());
+        }
+        out << "rho =\n";
+        print_matrix(out, *rho);
+    } else if (fn == "quantum_ket_superposition") {
+        auto state = eval_quantum_ket_superposition_matrix(matrix);
+        if (!state) {
+            return std::unexpected(state.error());
+        }
+        out << "state =\n";
+        for (size_t i = 0; i < state->rows(); ++i) {
+            out << "  [" << (*state)(i, 0) << "]\n";
+        }
+    } else if (fn == "eig_sym") {
+        auto eig_result = eig_sym(matrix);
+        if (!eig_result) {
+            return std::unexpected(eig_result.error());
+        }
+        out << "eigenvalues:\n";
+        for (size_t i = 0; i < eig_result->values.rows(); ++i) {
+            out << "  " << eig_result->values(i, 0) << "\n";
+        }
+    } else if (fn == "svd") {
+        auto s = svd(matrix);
+        if (!s) {
+            return std::unexpected(s.error());
+        }
+        out << "singular values:\n";
+        for (size_t i = 0; i < s->S.rows(); ++i) {
+            out << "  " << s->S(i, 0) << "\n";
+        }
+    } else if (fn == "lu") {
+        auto result = lu(matrix);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        const auto& [L, U, P] = *result;
+        out << "L =\n";
+        print_matrix(out, L);
+        out << "U =\n";
+        print_matrix(out, U);
+        out << "P =\n";
+        print_matrix(out, P);
+    } else if (fn == "cuda_lu") {
+        auto formatted = format_cuda_lu_result(matrix_to_col_matrix(matrix));
+        if (!formatted) {
+            return std::unexpected(formatted.error());
+        }
+        return *formatted;
+    } else if (fn == "qr") {
+        auto result = qr(matrix);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        const auto& [Q, R] = *result;
+        out << "Q =\n";
+        print_matrix(out, Q);
+        out << "R =\n";
+        print_matrix(out, R);
+    } else if (fn == "chol") {
+        auto result = chol(matrix);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        out << "L =\n";
+        print_matrix(out, *result);
+    } else {
+        return std::unexpected(DomainError{"repl", "unknown function: " + fn});
+    }
+    return out.str();
+}
 std::string Interpreter::trim(std::string s) {
     auto not_space = [](unsigned char c) { return !std::isspace(c); };
     s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
@@ -26953,320 +27281,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             for (size_t i = 0; i < ec->rows(); ++i) {
                 out << "  [" << i << "] " << (*ec)(i, 0) << "\n";
             }
-        } else if (fn == "graph_katz_centrality") {
-            auto kc = eval_graph_katz_centrality(*matrix);
-            if (!kc) {
-                return std::unexpected(kc.error());
-            }
-            out << "katz_centrality:\n";
-            for (size_t i = 0; i < kc->rows(); ++i) {
-                out << "  [" << i << "] " << (*kc)(i, 0) << "\n";
-            }
-        } else if (fn == "graph_adjacency_spectrum") {
-            auto spec = eval_graph_adjacency_spectrum(*matrix);
-            if (!spec) {
-                return std::unexpected(spec.error());
-            }
-            out << "adjacency_spectrum:\n";
-            for (size_t i = 0; i < spec->rows(); ++i) {
-                out << "  [" << i << "] " << (*spec)(i, 0) << "\n";
-            }
-        } else if (fn == "graph_laplacian") {
-            auto L = eval_graph_laplacian(*matrix);
-            if (!L) {
-                return std::unexpected(L.error());
-            }
-            out << "laplacian =\n";
-            print_matrix(out, *L);
-        } else if (fn == "graph_normalised_laplacian") {
-            auto Ln = eval_graph_normalised_laplacian(*matrix);
-            if (!Ln) {
-                return std::unexpected(Ln.error());
-            }
-            out << "normalised_laplacian =\n";
-            print_matrix(out, *Ln);
-        } else if (fn == "graph_eccentricity") {
-            auto ecc = eval_graph_eccentricity(*matrix);
-            if (!ecc) {
-                return std::unexpected(ecc.error());
-            }
-            out << "eccentricity:\n";
-            for (size_t i = 0; i < ecc->rows(); ++i) {
-                out << "  [" << i << "] " << (*ecc)(i, 0) << "\n";
-            }
-        } else if (fn == "graph_articulation_points") {
-            auto aps = eval_graph_articulation_points(*matrix);
-            if (!aps) {
-                return std::unexpected(aps.error());
-            }
-            out << "articulation_points:\n";
-            for (size_t i = 0; i < aps->rows(); ++i) {
-                out << "  [" << i << "] " << (*aps)(i, 0) << "\n";
-            }
-        } else if (fn == "graph_bridges") {
-            auto br = eval_graph_bridges(*matrix);
-            if (!br) {
-                return std::unexpected(br.error());
-            }
-            out << "bridges =\n";
-            print_matrix(out, *br);
-        } else if (fn == "graph_maximum_matching") {
-            auto mm = eval_graph_maximum_matching(*matrix);
-            if (!mm) {
-                return std::unexpected(mm.error());
-            }
-            out << "matching =\n";
-            print_matrix(out, *mm);
-        } else if (fn == "graph_transitive_closure") {
-            auto reach = eval_graph_transitive_closure(*matrix);
-            if (!reach) {
-                return std::unexpected(reach.error());
-            }
-            out << "reach =\n";
-            print_matrix(out, *reach);
-        } else if (fn == "finance_min_variance_portfolio") {
-            auto w = eval_finance_min_variance_portfolio(*matrix);
-            if (!w) {
-                return std::unexpected(w.error());
-            }
-            out << "min_variance_portfolio =\n";
-            print_matrix(out, *w);
-        } else if (fn == "geo_delaunay_2d") {
-            auto tris = eval_geo_delaunay_2d(*matrix);
-            if (!tris) {
-                return std::unexpected(tris.error());
-            }
-            out << "triangles =\n";
-            print_matrix(out, *tris);
-        } else if (fn == "geo_voronoi") {
-            auto verts = eval_geo_voronoi(*matrix);
-            if (!verts) {
-                return std::unexpected(verts.error());
-            }
-            out << "voronoi =\n";
-            print_matrix(out, *verts);
-        } else if (fn == "geo_convex_hull") {
-            auto hull = eval_geo_convex_hull(*matrix);
-            if (!hull) {
-                return std::unexpected(hull.error());
-            }
-            out << "hull =\n";
-            print_matrix(out, *hull);
-        } else if (fn == "geo_triangulate_polygon") {
-            auto tris = eval_geo_triangulate_polygon(*matrix);
-            if (!tris) {
-                return std::unexpected(tris.error());
-            }
-            out << "triangles =\n";
-            print_matrix(out, *tris);
-        } else if (fn == "geo_convex_hull_3d") {
-            auto faces = eval_geo_convex_hull_3d(*matrix);
-            if (!faces) {
-                return std::unexpected(faces.error());
-            }
-            out << "faces =\n";
-            print_matrix(out, *faces);
-        } else if (fn == "geo_min_bounding_rect") {
-            auto rect = eval_geo_min_bounding_rect(*matrix);
-            if (!rect) {
-                return std::unexpected(rect.error());
-            }
-            out << "rect =\n";
-            print_matrix(out, *rect);
-        } else if (fn == "topo_pairwise_distances") {
-            auto dist = eval_topo_pairwise_distances(*matrix);
-            if (!dist) {
-                return std::unexpected(dist.error());
-            }
-            out << "dist =\n";
-            print_matrix(out, *dist);
-        } else if (fn == "combo_next_perm") {
-            auto perm = eval_combo_next_perm(*matrix);
-            if (!perm) {
-                return std::unexpected(perm.error());
-            }
-            out << "perm =\n";
-            print_matrix(out, *perm);
-        } else if (fn == "numthy_convergents") {
-            auto conv = eval_numthy_convergents(*matrix);
-            if (!conv) {
-                return std::unexpected(conv.error());
-            }
-            out << "convergents =\n";
-            print_matrix(out, *conv);
-        } else if (fn == "ml_mat_transpose") {
-            auto At = eval_ml_mat_transpose(*matrix);
-            if (!At) {
-                return std::unexpected(At.error());
-            }
-            out << "At =\n";
-            print_matrix(out, *At);
-        } else if (fn == "fftshift") {
-            auto shifted = eval_fftshift(*matrix);
-            if (!shifted) {
-                return std::unexpected(shifted.error());
-            }
-            out << "shifted =\n";
-            print_matrix(out, *shifted);
-        } else if (fn == "prewitt") {
-            auto edge = eval_prewitt(*matrix);
-            if (!edge) {
-                return std::unexpected(edge.error());
-            }
-            out << "edge =\n";
-            print_matrix(out, *edge);
-        } else if (fn == "scharr") {
-            auto edge = eval_scharr(*matrix);
-            if (!edge) {
-                return std::unexpected(edge.error());
-            }
-            out << "edge =\n";
-            print_matrix(out, *edge);
-        } else if (fn == "roberts") {
-            auto edge = eval_roberts(*matrix);
-            if (!edge) {
-                return std::unexpected(edge.error());
-            }
-            out << "edge =\n";
-            print_matrix(out, *edge);
-        } else if (fn == "poly_deriv") {
-            auto deriv = eval_poly_deriv(*matrix);
-            if (!deriv) {
-                return std::unexpected(deriv.error());
-            }
-            out << "deriv =\n";
-            print_matrix(out, *deriv);
-        } else if (fn == "graph_floyd_warshall") {
-            auto dist = eval_graph_floyd_warshall(*matrix);
-            if (!dist) {
-                return std::unexpected(dist.error());
-            }
-            out << "dist =\n";
-            print_matrix(out, *dist);
-        } else if (fn == "graph_mst_kruskal") {
-            auto edges = eval_graph_mst_kruskal(*matrix);
-            if (!edges) {
-                return std::unexpected(edges.error());
-            }
-            out << "mst =\n";
-            print_matrix(out, *edges);
-        } else if (fn == "graph_mst_prim") {
-            auto edges = eval_graph_mst_prim(*matrix);
-            if (!edges) {
-                return std::unexpected(edges.error());
-            }
-            out << "mst =\n";
-            print_matrix(out, *edges);
-        } else if (fn == "fft_dct2") {
-            auto coeffs = eval_fft_dct2(*matrix);
-            if (!coeffs) {
-                return std::unexpected(coeffs.error());
-            }
-            out << "dct =\n";
-            print_matrix(out, *coeffs);
-        } else if (fn == "fft_idct2") {
-            auto signal = eval_fft_idct2(*matrix);
-            if (!signal) {
-                return std::unexpected(signal.error());
-            }
-            out << "idct =\n";
-            print_matrix(out, *signal);
-        } else if (fn == "fft_dst2") {
-            auto coeffs = eval_fft_dst2(*matrix);
-            if (!coeffs) {
-                return std::unexpected(coeffs.error());
-            }
-            out << "dst =\n";
-            print_matrix(out, *coeffs);
-        } else if (fn == "quantum_hadamard") {
-            auto psi = matrix_to_ket2(*matrix, "quantum_hadamard");
-            if (!psi) {
-                return std::unexpected(psi.error());
-            }
-            const auto applied = quantum::op_apply(quantum::hadamard(), *psi);
-            out << "state =\n";
-            out << "  [" << applied[0].real() << "]\n";
-            out << "  [" << applied[1].real() << "]\n";
-        } else if (fn == "quantum_ket_normalise") {
-            auto normalized = eval_quantum_ket_normalise_matrix(*matrix);
-            if (!normalized) {
-                return std::unexpected(normalized.error());
-            }
-            out << "state =\n";
-            for (size_t i = 0; i < normalized->rows(); ++i) {
-                out << "  [" << (*normalized)(i, 0) << "]\n";
-            }
-        } else if (fn == "quantum_density_matrix") {
-            auto rho = eval_quantum_density_matrix(*matrix);
-            if (!rho) {
-                return std::unexpected(rho.error());
-            }
-            out << "rho =\n";
-            print_matrix(out, *rho);
-        } else if (fn == "quantum_ket_superposition") {
-            auto state = eval_quantum_ket_superposition_matrix(*matrix);
-            if (!state) {
-                return std::unexpected(state.error());
-            }
-            out << "state =\n";
-            for (size_t i = 0; i < state->rows(); ++i) {
-                out << "  [" << (*state)(i, 0) << "]\n";
-            }
-        } else if (fn == "eig_sym") {
-            auto eig_result = eig_sym(*matrix);
-            if (!eig_result) {
-                return std::unexpected(eig_result.error());
-            }
-            out << "eigenvalues:\n";
-            for (size_t i = 0; i < eig_result->values.rows(); ++i) {
-                out << "  " << eig_result->values(i, 0) << "\n";
-            }
-        } else if (fn == "svd") {
-            auto s = svd(*matrix);
-            if (!s) {
-                return std::unexpected(s.error());
-            }
-            out << "singular values:\n";
-            for (size_t i = 0; i < s->S.rows(); ++i) {
-                out << "  " << s->S(i, 0) << "\n";
-            }
-        } else if (fn == "lu") {
-            auto result = lu(*matrix);
-            if (!result) {
-                return std::unexpected(result.error());
-            }
-            const auto& [L, U, P] = *result;
-            out << "L =\n";
-            print_matrix(out, L);
-            out << "U =\n";
-            print_matrix(out, U);
-            out << "P =\n";
-            print_matrix(out, P);
-        } else if (fn == "cuda_lu") {
-            auto formatted = format_cuda_lu_result(matrix_to_col_matrix(*matrix));
-            if (!formatted) {
-                return std::unexpected(formatted.error());
-            }
-            return *formatted;
-        } else if (fn == "qr") {
-            auto result = qr(*matrix);
-            if (!result) {
-                return std::unexpected(result.error());
-            }
-            const auto& [Q, R] = *result;
-            out << "Q =\n";
-            print_matrix(out, Q);
-            out << "R =\n";
-            print_matrix(out, R);
-        } else if (fn == "chol") {
-            auto result = chol(*matrix);
-            if (!result) {
-                return std::unexpected(result.error());
-            }
-            out << "L =\n";
-            print_matrix(out, *result);
-        } else {
-            return std::unexpected(DomainError{"repl", "unknown function: " + fn});
+        }
+        else {
+            return format_unary_matrix_fn_tail(fn, *matrix);
         }
         return out.str();
     }
