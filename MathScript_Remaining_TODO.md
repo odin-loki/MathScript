@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 232 complete — **379 CTest suites** on `main` @ Wave 232; next: Wave 233+ GUI polish)
+**Updated:** 2026-07-18 (Wave 233 complete — **381 CTest suites** on `main` @ Wave 233; next: Wave 234+ GUI/REPL + 237+ API gaps)
 
 ---
 
@@ -73,13 +73,28 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ---
 
-## Feature work (Wave 233+) — IN PROGRESS
+## Wave 233 ✅ COMPLETE (GUI polish + optim/control/quantum REPL + sym_dsolve + CUDA REPL)
 
-Wave 232 closed symbolic transforms, CUDA LU/StreamPool/device stats, MPI/distributed REPL exposure, plugin unsafe audit, and initial GUI/REPL polish. **Next up: Wave 233+ GUI polish remaining** (continued REPL bindings through Wave 236).
+| Branch | Shipped |
+|--------|---------|
+| `wave233/gui-polish` | Syntax highlighting, layout persistence, variable inspector, red errors, Stop/cancel, richer GPU status |
+| `wave233/repl-optim` | `bfgs`, `lbfgs`, `nelder_mead`, `adam`, `golden_section`, `levenberg_marquardt` |
+| `wave233/repl-control` | `control_poles`, `control_zeros`, `control_step_info`, `control_nyquist` |
+| `wave233/repl-quantum` | `quantum_purity`, `quantum_schmidt_rank`, `quantum_uncertainty`, `quantum_grover_optimal_iterations` |
+| `wave233/sym-dsolve` | `sym_dsolve` separable first-order ODE MVP |
+| `wave233/cuda-repl` | `cuda_lu`, `cuda_add` REPL bindings |
+
+**381 CTest suites** (+2 registrations: `test_symbolic_dsolve`, `integration_repl_wave233_pipeline`; 7 dsolve unit tests + optim/control/quantum pipeline coverage). Profiling iteration unchanged — **FULLY COMPLETE (Waves 218–230).**
+
+---
+
+## Feature work (Wave 234+) — IN PROGRESS
+
+Wave 233 closed GUI polish (syntax highlight, layout persistence, variable inspector, error styling, Stop/cancel, GPU status) and a major REPL binding tranche (optim, control, quantum, `sym_dsolve`, CUDA). **Next up: Wave 234–236 remaining GUI/REPL bindings**; Wave **237+** for remaining API gaps.
 
 | Wave | Focus |
 |------|--------|
-| **233–236** | GUI polish + REPL bindings (continued) |
+| **234–236** | Remaining GUI polish + REPL bindings |
 | **237+** | Remaining API gaps (curve25519, AES-GCM, 3D FEM/CFD, scalable distributed LA, etc.) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

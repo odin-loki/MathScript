@@ -53,7 +53,7 @@ Foundation types, linear algebra, BLAS/LAPACK, numerics, memory, error handling,
 | `cfd/cfd.hpp` | 1D/2D finite-volume advection: `grid1d`/`grid2d`, `square_pulse`/`square_pulse_2d`, `constant_velocity`, explicit Euler upwind `upwind_fvm_advection`/`upwind_fvm_advection_2d`, time integration `run_advection`/`run_advection_2d`, mass integrals `integrated_mass`/`integrated_mass_2d`; `BoundaryCondition` periodic or zero-flux per axis; CFL guards reject unstable steps |
 | `crypto/crypto.hpp` | Pure-C++ digests and ciphers (include individually — not in `ms/ms.hpp`): `sha256`/`sha512`/`hmac_sha256` with hex helpers; AES-128/256 single-block ECB (`aes128_encrypt_block`, `aes256_encrypt_block`); AES-128 CBC (`aes128_cbc_encrypt`, `aes128_cbc_decrypt`); ChaCha20 stream cipher (`chacha20_encrypt`, XOR self-inverse) |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point`, `illinois` (anti-stagnation regula falsi); `levenberg_marquardt` (damped Gauss-Newton nonlinear least squares via a finite-difference Jacobian and adaptive damping); `conjugate_gradient` (nonlinear Fletcher-Reeves/Polak-Ribière+ CG with Armijo backtracking line search — converges in near-N steps on exact quadratics); `rmsprop` (adaptive gradient optimizer via EMA of squared gradients); `adadelta` (adaptive gradient optimizer without manual learning-rate schedule) |
-| `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals); `sym_expand` (distributes multiplication over addition/subtraction, with bounded small-integer-power expansion); `sym_collect` (combine like terms in a variable); `sym_limit`, `sym_series`, `sym_solve_linear`; table-driven `sym_laplace`/`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_ztransform`/`sym_iztransform` (MVP: polynomials, `exp`, `sin/cos`, rationals, geometric sequences; unsupported forms return `sym_deriv` sentinel — Mellin/Hankel/`dsolve` deferred) |
+| `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals); `sym_expand` (distributes multiplication over addition/subtraction, with bounded small-integer-power expansion); `sym_collect` (combine like terms in a variable); `sym_limit`, `sym_series`, `sym_solve_linear`; table-driven `sym_laplace`/`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_ztransform`/`sym_iztransform` (MVP: polynomials, `exp`, `sin/cos`, rationals, geometric sequences; unsupported forms return `sym_deriv` sentinel); `sym_dsolve` (separable first-order ODE MVP — Mellin/Hankel and general `dsolve` deferred) |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye`; `erfinv`/`erfcinv`, `trigamma`/`polygamma`, `pochhammer`/`falling_factorial`, `rgamma`, and the public canonical `gamma_inc_reg`/`gamma_inc_reg_upper`/`gamma_inc`/`beta_inc_reg`/`beta_inc` (also used internally by `ms::prob`'s `gamma_cdf`/`beta_cdf`/`f_cdf`/`chi2_cdf`); Voigt/pseudo-Voigt spectroscopy line shapes (`voigt`, `pseudo_voigt`, `pseudo_voigt_auto`, built on a from-scratch Humlicek w4 Faddeeva-function approximation); `sph_bessel_j`/`sph_bessel_y` (spherical Bessel functions via closed-form base cases plus a stable upward recurrence); `assoc_legendre_p`/`sph_harmonic_y` (associated Legendre polynomials and complex spherical harmonics `Y_l^m(theta,phi)`, verified via sphere orthonormality); `kummer_u` (Kummer's confluent hypergeometric function of the second kind, via the standard connection formula in terms of `kummer_m`); `lambert_w` (Lambert W function, branches 0 and −1) |
 | `domain/domain.hpp` | `factorial`, `nchoosek`, `gcd`, `lcm`, `extended_gcd` (Bezout coefficients via `ExtGcdResult`), and `Graph` edge counting |
 
@@ -135,7 +135,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, and plot state.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, and plot state.
 
 ### REPL bindings
 
@@ -183,6 +183,43 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `sym_ifourier("expr", "omega", "t")` | Inverse Fourier transform (frequency → time) |
 | `sym_ztransform("expr", "n", "z")` | Z-transform (discrete n → z-domain) |
 | `sym_iztransform("expr", "z", "n")` | Inverse Z-transform (z-domain → discrete n) |
+| `sym_dsolve("rhs", "x", "y")` | Separable first-order ODE `dy/dx = rhs`; returns symbolic solution string (unsupported → `sym_deriv` sentinel) |
+
+**Optimization (scalar assignment, formula-string bridge):**
+
+| Call | Description |
+|------|-------------|
+| `bfgs("formula", x0)` | BFGS quasi-Newton minimization; env `{x0, x1, ...}` sized to `x0` |
+| `lbfgs("formula", x0)` | Limited-memory BFGS |
+| `nelder_mead("formula", x0)` | Nelder–Mead simplex |
+| `adam("formula", x0[, lr, max_iter])` | Adam adaptive gradient |
+| `golden_section("formula", a, b)` | 1-D golden-section search on `[a, b]` |
+| `levenberg_marquardt("formula", x0)` | Nonlinear least squares (returns residual norm) |
+
+**Control analysis (scalar/matrix assignment):**
+
+| Call | Description |
+|------|-------------|
+| `control_poles(num, den)` | Transfer-function pole list |
+| `control_zeros(num, den)` | Transfer-function zero list |
+| `control_step_info(num, den)` | Step-response metrics (rise/settling/overshoot) |
+| `control_nyquist(num, den)` | Nyquist curve as `N×2` real/imag matrix |
+
+**Quantum information (scalar assignment):**
+
+| Call | Description |
+|------|-------------|
+| `quantum_purity(rho)` | Density-matrix purity Tr(ρ²) |
+| `quantum_schmidt_rank(psi, dim_a, dim_b)` | Schmidt rank of bipartite state vector |
+| `quantum_uncertainty(psi, A, B)` | Uncertainty product ⟨AB⟩ − ⟨A⟩⟨B⟩ |
+| `quantum_grover_optimal_iterations(n_qubits, n_marked)` | Optimal Grover iteration count |
+
+**CUDA matrix ops (matrix assignment, stub-safe when `MS_ENABLE_CUDA=OFF`):**
+
+| Call | Description |
+|------|-------------|
+| `cuda_lu(A)` | GPU LU factorization summary (when CUDA available) |
+| `cuda_add(A, B)` | Element-wise matrix add on GPU (falls back to CPU) |
 
 **Crypto, FEM, and CFD (string/matrix assignment):**
 

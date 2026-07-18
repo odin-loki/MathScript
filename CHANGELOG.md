@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 233 — GUI polish, optim/control/quantum REPL, sym_dsolve, CUDA REPL)
+
+Third **feature wave** after Wave 232. GUI polish and REPL binding expansion merged to `main`.
+
+### Added (Wave 233)
+- **GUI** — `ScriptHighlighter` syntax highlighting in the script editor; window/splitter **layout persistence** (`restore_layout`/`save_layout`); **variable inspector** panel (scalars, matrix previews, double-click dump); **red error output** via `append_output(..., is_error)`; **Stop** button with cooperative REPL cancel (`ReplWorker::requestCancel`, `Interpreter::set_cancel_flag`); richer status-bar **GPU info** (device name, free/total MiB via `cuda::device_stats` / `device_memory_free`).
+- **REPL** — N-D optimizers: `bfgs`, `lbfgs`, `nelder_mead`, `adam`, `golden_section`, `levenberg_marquardt`; control analysis: `control_poles`, `control_zeros`, `control_step_info`, `control_nyquist`; quantum info: `quantum_purity`, `quantum_schmidt_rank`, `quantum_uncertainty`, `quantum_grover_optimal_iterations`; symbolic ODE: `sym_dsolve` (separable first-order MVP); CUDA matrix ops: `cuda_lu`, `cuda_add` (stub-safe when CUDA off).
+- `ms::symbolic` — `sym_dsolve(rhs, indep_var, dep_var)` for separable first-order ODEs; unsupported forms return `sym_deriv` sentinel.
+- Unit tests: `test_symbolic_dsolve` (7 cases); integration: `integration_repl_wave233_pipeline` (optim, control, quantum bindings).
+- **Total Wave 233: 381 CTest suites — all passing** (+2 new: `test_symbolic_dsolve`, `integration_repl_wave233_pipeline`). **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
+Builds on Wave 232 symbolic transforms and CUDA LU/StreamPool. Full master-plan scope (Mellin/Hankel, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+
+### Docs (Wave 233)
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** — Wave 233 complete; GUI polish, new REPL bindings, and `sym_dsolve` documented.
+
+### Baseline (Wave 233)
+- **381 CTest suites — all passing** on `main` @ Wave 233. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] — 2026-07-18 (Wave 232 — Symbolic transforms, CUDA LU/StreamPool, MPI REPL, plugin audit, GUI history)
 
 Second **feature wave** after Wave 231. Eight parallel implementation worktrees merged to `main`.
