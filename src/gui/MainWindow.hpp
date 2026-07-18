@@ -77,6 +77,7 @@ private:
     void replace_next_in_script();
     void replace_all_in_script();
     void go_to_line();
+    void go_to_matching_brace();
     void duplicate_line();
     void delete_line();
     void move_line_up();
