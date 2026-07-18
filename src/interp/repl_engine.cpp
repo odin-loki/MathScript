@@ -6147,6 +6147,68 @@ Result<double> eval_stats_weighted_mean(const Matrix<double>& x_m, const Matrix<
     return weighted_mean(*x, *w);
 }
 
+Result<double> eval_stats_weighted_variance(const Matrix<double>& x_m, const Matrix<double>& w_m) {
+    auto x = matrix_to_coeff_vector(x_m, "stats_weighted_variance");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    auto w = matrix_to_coeff_vector(w_m, "stats_weighted_variance");
+    if (!w) {
+        return std::unexpected(w.error());
+    }
+    if (x->size() != w->size()) {
+        return std::unexpected(
+            DomainError{"stats_weighted_variance", "vector length mismatch"});
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"stats_weighted_variance", "expected non-empty vectors"});
+    }
+    return weighted_variance(*x, *w);
+}
+
+Result<double> eval_stats_weighted_correlation(const Matrix<double>& x_m,
+                                               const Matrix<double>& y_m,
+                                               const Matrix<double>& w_m) {
+    auto x = matrix_to_coeff_vector(x_m, "stats_weighted_correlation");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    auto y = matrix_to_coeff_vector(y_m, "stats_weighted_correlation");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    auto w = matrix_to_coeff_vector(w_m, "stats_weighted_correlation");
+    if (!w) {
+        return std::unexpected(w.error());
+    }
+    if (x->size() != y->size() || x->size() != w->size()) {
+        return std::unexpected(
+            DomainError{"stats_weighted_correlation", "vector length mismatch"});
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"stats_weighted_correlation", "expected non-empty vectors"});
+    }
+    return weighted_correlation(*x, *y, *w);
+}
+
+Result<double> eval_stats_bootstrap_mean(const Matrix<double>& x_m, int n_boot, unsigned seed) {
+    auto x = matrix_to_coeff_vector(x_m, "stats_bootstrap_mean");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"stats_bootstrap_mean", "expected non-empty vector"});
+    }
+    if (n_boot < 1) {
+        return std::unexpected(
+            DomainError{"stats_bootstrap_mean", "expected positive integer n_boot"});
+    }
+    return bootstrap_mean(*x, n_boot, seed);
+}
+
 Result<double> eval_stats_trimmed_mean(const Matrix<double>& x_m, double frac) {
     auto x = matrix_to_coeff_vector(x_m, "stats_trimmed_mean");
     if (!x) {
@@ -8272,6 +8334,7 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "control_phase_margin" || callee == "control_gain_margin" ||
            callee == "stats_correlation" || callee == "stats_spearman" ||
            callee == "stats_kendall" || callee == "stats_weighted_mean" ||
+           callee == "stats_weighted_variance" ||
            callee == "stats_two_sample_ttest" ||
            callee == "stats_chi2_gof" || callee == "graph_is_isomorphic" ||
            callee == "graph_modularity";
@@ -8311,7 +8374,7 @@ bool try_parse_scalar_dual_matrix_call_assignment(const std::string& line,
 }
 
 bool is_scalar_triple_matrix_call_callee(const std::string& callee) {
-    return callee == "stats_partial_correlation";
+    return callee == "stats_partial_correlation" || callee == "stats_weighted_correlation";
 }
 
 bool try_parse_scalar_triple_matrix_call_assignment(const std::string& line,
@@ -10796,6 +10859,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "diffgeo_surface_normal_sphere" ||
             fn == "stats_correlation" || fn == "stats_spearman" ||
             fn == "stats_kendall" || fn == "stats_weighted_mean" ||
+            fn == "stats_weighted_variance" ||
             fn == "stats_two_sample_ttest" ||
             fn == "stats_chi2_gof" || fn == "graph_is_isomorphic" ||
             fn == "graph_modularity" ||
@@ -10812,7 +10876,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "stats_linear_regression" || fn == "stats_pacf" ||
             fn == "stats_arfit" || fn == "stats_multiple_regression" ||
             fn == "stats_kde" ||
-            fn == "stats_bootstrap_ci" || fn == "stats_partial_correlation" ||
+            fn == "stats_bootstrap_ci" || fn == "stats_bootstrap_mean" ||
+            fn == "stats_partial_correlation" || fn == "stats_weighted_correlation" ||
             fn == "signal_lowpass" || fn == "signal_butterworth" || fn == "signal_highpass" ||
             fn == "signal_bandpass" || fn == "signal_cheby1" || fn == "signal_cheby2" ||
             fn == "signal_firwin" || fn == "signal_firwin_highpass" ||
@@ -10912,7 +10977,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "info_conditional_entropy" || fn == "info_sample_entropy" ||
             fn == "info_permutation_entropy" || fn == "info_transfer_entropy" ||
             fn == "geo_kdtree_nearest" || fn == "geo_kdtree_3d_nearest" ||
-            fn == "stats_ztest" || fn == "stats_partial_correlation" ||
+            fn == "stats_ztest" || fn == "stats_bootstrap_mean" ||
+            fn == "stats_partial_correlation" || fn == "stats_weighted_correlation" ||
             fn == "finance_binomial_call" ||
             fn == "finance_binomial_put" || fn == "finance_geo_asian_call" ||
             fn == "finance_geo_asian_put" || fn == "finance_bs_delta" ||
@@ -18874,6 +18940,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = stats_kendall(x,y) Kendall tau rank correlation of Nx1 vectors\n"
             "  name = stats_partial_correlation(x,y,z) partial correlation of x,y controlling for z\n"
             "  name = stats_weighted_mean(x,w) weighted mean of Nx1 vectors x and weights w\n"
+            "  name = stats_weighted_variance(x,w) weighted sample variance of Nx1 vectors\n"
+            "  name = stats_weighted_correlation(x,y,w) weighted Pearson correlation of Nx1 vectors\n"
             "  name = stats_trimmed_mean(x,frac) trimmed mean of Nx1 vector (frac trimmed each end)\n"
             "  name = stats_mean(x) arithmetic mean of Nx1 vector\n"
             "  name = stats_median(x) median of Nx1 vector\n"
@@ -18899,6 +18967,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = stats_vif(X,j) variance inflation factor for column j of design matrix X (rows=obs cols=predictors); alias stats_variance_inflation_factor\n"
             "  name = stats_kde(samples,grid,h) Gaussian KDE density as len(grid)x1 column\n"
             "  name = stats_bootstrap_ci(x) bootstrap mean CI as 1x2 [lower, upper]\n"
+            "  name = stats_bootstrap_mean(x[,n_boot[,seed]]) bootstrap mean estimate scalar\n"
             "  name = stats_two_sample_ttest(a,b) two-sample t-test statistic for Nx1 vectors\n"
             "  name = stats_chi2_gof(observed,expected) chi-squared goodness-of-fit statistic\n"
             "  name = stats_shapiro_wilk(x) Shapiro-Wilk normality test; returns 1x2 [W, p_value]\n"
@@ -19339,7 +19408,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -19978,6 +20047,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 return assign_scalar(triple_call.target, *value);
             }
+            if (triple_call.callee == "stats_weighted_correlation") {
+                auto value = eval_stats_weighted_correlation(*arg_a_m, *arg_b_m, *arg_c_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(triple_call.target, *value);
+            }
             return std::unexpected(
                 DomainError{"assign", "unsupported scalar triple matrix call"});
         }
@@ -20177,6 +20253,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (dual_call.callee == "stats_weighted_mean") {
                 auto value = eval_stats_weighted_mean(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
+            if (dual_call.callee == "stats_weighted_variance") {
+                auto value = eval_stats_weighted_variance(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -22144,6 +22227,52 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "stats_ztest", "expected stats_ztest(x, mu, sigma)"});
                 }
                 auto value = eval_stats_ztest(*x_m, mu, sigma);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "stats_bootstrap_mean") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() < 1 || call_args->size() > 3 ||
+                    call_args->front().empty()) {
+                    return std::unexpected(DomainError{
+                        "stats_bootstrap_mean",
+                        "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                int n_boot = 1000;
+                unsigned seed = 42;
+                if (call_args->size() >= 2) {
+                    double n_boot_d = 0.0;
+                    if (!parse_number(trim_copy((*call_args)[1]), n_boot_d)) {
+                        return std::unexpected(DomainError{
+                            "stats_bootstrap_mean",
+                            "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
+                    }
+                    n_boot = static_cast<int>(n_boot_d);
+                    if (n_boot < 1 || n_boot_d != n_boot) {
+                        return std::unexpected(DomainError{
+                            "stats_bootstrap_mean", "expected positive integer n_boot"});
+                    }
+                }
+                if (call_args->size() >= 3) {
+                    double seed_d = 0.0;
+                    if (!parse_number(trim_copy((*call_args)[2]), seed_d)) {
+                        return std::unexpected(DomainError{
+                            "stats_bootstrap_mean",
+                            "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
+                    }
+                    if (seed_d < 0.0 || seed_d != std::floor(seed_d)) {
+                        return std::unexpected(DomainError{
+                            "stats_bootstrap_mean", "expected non-negative integer seed"});
+                    }
+                    seed = static_cast<unsigned>(seed_d);
+                }
+                auto value = eval_stats_bootstrap_mean(*x_m, n_boot, seed);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -26161,6 +26290,58 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(*value) + "\n";
         }
+        if (fn == "stats_bootstrap_mean") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 1 || call_args->size() > 3) {
+                return std::unexpected(DomainError{
+                    "stats_bootstrap_mean",
+                    "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
+            }
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto x_m = resolve_arg(trim_copy(call_args->front()));
+            if (!x_m) {
+                return std::unexpected(x_m.error());
+            }
+            int n_boot = 1000;
+            unsigned seed = 42;
+            if (call_args->size() >= 2) {
+                double n_boot_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), n_boot_d)) {
+                    return std::unexpected(DomainError{
+                        "stats_bootstrap_mean",
+                        "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
+                }
+                n_boot = static_cast<int>(n_boot_d);
+                if (n_boot < 1 || n_boot_d != n_boot) {
+                    return std::unexpected(DomainError{
+                        "stats_bootstrap_mean", "expected positive integer n_boot"});
+                }
+            }
+            if (call_args->size() >= 3) {
+                double seed_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[2]), seed_d)) {
+                    return std::unexpected(DomainError{
+                        "stats_bootstrap_mean",
+                        "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
+                }
+                if (seed_d < 0.0 || seed_d != std::floor(seed_d)) {
+                    return std::unexpected(DomainError{
+                        "stats_bootstrap_mean", "expected non-negative integer seed"});
+                }
+                seed = static_cast<unsigned>(seed_d);
+            }
+            auto value = eval_stats_bootstrap_mean(*x_m, n_boot, seed);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
     }
 
     if (const auto open = cmd.find('('); open != std::string::npos && !cmd.empty() && cmd.back() == ')') {
@@ -27295,6 +27476,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     return std::to_string(*value) + "\n";
                 }
+                if (fn == "stats_weighted_correlation") {
+                    auto value = eval_stats_weighted_correlation(*arg_a_m, *arg_b_m, *arg_c_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
             }
         }
         if (is_scalar_dual_matrix_call_callee(fn)) {
@@ -27499,6 +27687,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "stats_weighted_mean") {
                     auto value = eval_stats_weighted_mean(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
+                if (fn == "stats_weighted_variance") {
+                    auto value = eval_stats_weighted_variance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }

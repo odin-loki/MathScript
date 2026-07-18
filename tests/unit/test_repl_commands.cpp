@@ -5967,6 +5967,39 @@ TEST(ReplCommandsTest, wave258_stats_ext) {
     EXPECT_NEAR(interp.state().matrices.at("beta")(2, 0), 3.0, 0.01);
 }
 
+TEST(ReplCommandsTest, wave261_stats_weighted_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_weighted_variance(x,w)");
+    expect_contains(interp, "help", "stats_weighted_correlation(x,y,w)");
+    expect_contains(interp, "help", "stats_bootstrap_mean(x[,n_boot[,seed]])");
+
+    // Uniform weights: weighted variance matches sample variance.
+    expect_ok(interp, "sx = [2; 4; 6; 8; 10]");
+    expect_ok(interp, "sw = [1; 1; 1; 1; 1]");
+    expect_ok(interp, "wv = stats_weighted_variance(sx, sw)");
+    expect_ok(interp, "v = stats_var(sx)");
+    ASSERT_GT(interp.state().scalars.count("wv"), 0u);
+    ASSERT_GT(interp.state().scalars.count("v"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("wv"), interp.state().scalars.at("v"), 1e-12);
+
+    // Uniform weights: weighted correlation matches Pearson correlation.
+    expect_ok(interp, "cx = [1; 2; 3; 4; 5]");
+    expect_ok(interp, "cy = [2; 4; 6; 8; 10]");
+    expect_ok(interp, "wc = stats_weighted_correlation(cx, cy, sw)");
+    expect_ok(interp, "c = stats_correlation(cx, cy)");
+    ASSERT_GT(interp.state().scalars.count("wc"), 0u);
+    ASSERT_GT(interp.state().scalars.count("c"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("wc"), interp.state().scalars.at("c"), 1e-12);
+
+    // Fixed-seed bootstrap mean is deterministic.
+    expect_ok(interp, "bx = [1; 2; 3; 4; 5; 6; 7; 8; 9; 10]");
+    expect_ok(interp, "bm1 = stats_bootstrap_mean(bx, 500, 42)");
+    expect_ok(interp, "bm2 = stats_bootstrap_mean(bx, 500, 42)");
+    ASSERT_GT(interp.state().scalars.count("bm1"), 0u);
+    ASSERT_GT(interp.state().scalars.count("bm2"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("bm1"), interp.state().scalars.at("bm2"), 1e-15);
+}
+
 TEST(ReplCommandsTest, wave260_stats_vif) {
     Interpreter interp;
     expect_contains(interp, "help", "stats_vif(X,j)");

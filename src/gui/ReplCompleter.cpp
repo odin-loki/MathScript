@@ -209,9 +209,12 @@ QStringList repl_command_list() {
         QStringLiteral("stats_variance_inflation_factor"),
         QStringLiteral("stats_partial_correlation"),
         QStringLiteral("stats_weighted_mean"),
+        QStringLiteral("stats_weighted_variance"),
+        QStringLiteral("stats_weighted_correlation"),
         QStringLiteral("stats_trimmed_mean"),
         QStringLiteral("stats_kde"),
         QStringLiteral("stats_bootstrap_ci"),
+        QStringLiteral("stats_bootstrap_mean"),
         // Info theory (Wave 258)
         QStringLiteral("info_permutation_entropy"),
         QStringLiteral("info_transfer_entropy"),
