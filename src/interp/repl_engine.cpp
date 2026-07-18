@@ -607,6 +607,48 @@ Matrix<double> vector_to_column(const std::vector<double>& values) {
     return out;
 }
 
+Matrix<double> psd_result_to_matrix(const PSDResult& psd) {
+    Matrix<double> out(psd.frequencies.size(), 2);
+    for (size_t i = 0; i < psd.frequencies.size(); ++i) {
+        out(i, 0) = psd.frequencies[i];
+        out(i, 1) = psd.power[i];
+    }
+    return out;
+}
+
+Matrix<double> iir_coeffs_to_matrix(const IirCoeffs& coeffs) {
+    const size_t n = std::max(coeffs.b.size(), coeffs.a.size());
+    Matrix<double> out(2, n);
+    for (size_t j = 0; j < n; ++j) {
+        out(0, j) = j < coeffs.b.size() ? coeffs.b[j] : 0.0;
+        out(1, j) = j < coeffs.a.size() ? coeffs.a[j] : 0.0;
+    }
+    return out;
+}
+
+Result<FilterType> parse_signal_filter_type(const std::string& text) {
+    double type_d = 0.0;
+    if (parse_number(trim_copy(text), type_d)) {
+        if (type_d == 0.0) {
+            return FilterType::Lowpass;
+        }
+        if (type_d == 1.0) {
+            return FilterType::Highpass;
+        }
+        return std::unexpected(DomainError{
+            "signal_cheby2", "expected type 0 (lowpass) or 1 (highpass)"});
+    }
+    const std::string type = lower(trim_copy(text));
+    if (type == "lowpass" || type == "low") {
+        return FilterType::Lowpass;
+    }
+    if (type == "highpass" || type == "high") {
+        return FilterType::Highpass;
+    }
+    return std::unexpected(DomainError{
+        "signal_cheby2", "expected filter type 'lowpass' or 'highpass'"});
+}
+
 Matrix<double> ml_model_to_matrix(const ml::Vec& coef, double intercept) {
     Matrix<double> out(coef.size() + 1, 1);
     for (size_t i = 0; i < coef.size(); ++i) {
@@ -4844,6 +4886,52 @@ Result<Matrix<double>> eval_signal_bandpass(const Matrix<double>& x_m, double lo
     return vector_to_column(bandpass(*x, low, high, fs));
 }
 
+Result<Matrix<double>> eval_signal_cheby2(int order, double rs_db, double cutoff, double fs,
+                                          FilterType type) {
+    if (order < 1) {
+        return std::unexpected(DomainError{"signal_cheby2", "expected order >= 1"});
+    }
+    const auto coeffs = cheby2(order, rs_db, cutoff, fs, type);
+    if (coeffs.b.empty()) {
+        return std::unexpected(
+            DomainError{"signal_cheby2", "invalid filter design parameters"});
+    }
+    return iir_coeffs_to_matrix(coeffs);
+}
+
+Result<Matrix<double>> eval_signal_periodogram(const Matrix<double>& x_m, double fs) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_periodogram");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_periodogram", "expected non-empty signal vector"});
+    }
+    const auto result = periodogram(*x, fs);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return psd_result_to_matrix(*result);
+}
+
+Result<Matrix<double>> eval_signal_welch_psd(const Matrix<double>& x_m, double fs,
+                                             size_t nperseg) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_welch_psd");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_welch_psd", "expected non-empty signal vector"});
+    }
+    const auto result = welch_psd(*x, fs, nperseg, 0.5);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return psd_result_to_matrix(*result);
+}
+
 Result<Matrix<double>> eval_graph_topological_sort(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_topological_sort");
     if (!G) {
@@ -8137,7 +8225,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "stats_percentile" || fn == "graph_dfs" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "stats_acf" ||
             fn == "signal_lowpass" || fn == "signal_butterworth" || fn == "signal_highpass" ||
-            fn == "signal_bandpass" ||
+            fn == "signal_bandpass" || fn == "signal_cheby2" ||
+            fn == "signal_periodogram" || fn == "signal_welch_psd" ||
             fn == "quantum_commutator" || fn == "quantum_tensor_product" ||
             fn == "signal_hamming" || fn == "signal_hanning" || fn == "signal_blackman" ||
             fn == "signal_parzen" || fn == "signal_triangular" ||
@@ -9682,6 +9771,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "signal_lowpass" || callee == "signal_butterworth" ||
         callee == "signal_highpass" || callee == "signal_bandpass") {
         return arity == 3 || (callee == "signal_bandpass" && arity == 4);
+    }
+    if (callee == "signal_periodogram") {
+        return arity == 2;
+    }
+    if (callee == "signal_welch_psd") {
+        return arity == 3;
+    }
+    if (callee == "signal_cheby2") {
+        return arity == 4 || arity == 5;
     }
     if (callee == "signal_convolve" || callee == "poly_add" ||
         callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
@@ -13836,6 +13934,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_butterworth(x,cutoff,fs) Butterworth lowpass filter of Nx1 signal\n"
             "  name = signal_highpass(x,cutoff,fs) highpass filter of Nx1 signal\n"
             "  name = signal_bandpass(x,low,high,fs) bandpass filter of Nx1 signal\n"
+            "  name = signal_cheby2(order,rs_db,cutoff,fs[,type]) Chebyshev II IIR coeffs as 2×N [b;a]\n"
+            "  name = signal_periodogram(x,fs) single-segment PSD as N×2 [freq,power]\n"
+            "  name = signal_welch_psd(x,fs,nperseg) Welch PSD as N×2 [freq,power]\n"
             "  name = signal_convolve(a,b) discrete convolution of Nx1 vectors\n"
             "  name = signal_correlate(a,b) cross-correlation of Nx1 vectors\n"
             "  name = signal_hamming(n) Hamming window as n×1 column\n"
@@ -14161,7 +14262,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -15901,6 +16002,116 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 print_matrix(out, *filtered);
                 return out.str();
             }
+            if (callee == "signal_cheby2") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || (call_args->size() != 4 && call_args->size() != 5)) {
+                    return std::unexpected(DomainError{
+                        "signal_cheby2",
+                        "expected signal_cheby2(order, rs_db, cutoff, fs[, type])"});
+                }
+                double order_d = 0.0;
+                double rs_db = 0.0;
+                double cutoff = 0.0;
+                double fs = 0.0;
+                if (!parse_number(trim_copy((*call_args)[0]), order_d) ||
+                    !parse_number(trim_copy((*call_args)[1]), rs_db) ||
+                    !parse_number(trim_copy((*call_args)[2]), cutoff) ||
+                    !parse_number(trim_copy((*call_args)[3]), fs)) {
+                    return std::unexpected(DomainError{
+                        "signal_cheby2",
+                        "expected signal_cheby2(order, rs_db, cutoff, fs[, type])"});
+                }
+                const int order = static_cast<int>(order_d);
+                if (order < 1 || order_d != order) {
+                    return std::unexpected(
+                        DomainError{"signal_cheby2", "expected integer order >= 1"});
+                }
+                FilterType ftype = FilterType::Lowpass;
+                if (call_args->size() == 5) {
+                    auto parsed = parse_signal_filter_type((*call_args)[4]);
+                    if (!parsed) {
+                        return std::unexpected(parsed.error());
+                    }
+                    ftype = *parsed;
+                }
+                auto coeffs = eval_signal_cheby2(order, rs_db, cutoff, fs, ftype);
+                if (!coeffs) {
+                    return std::unexpected(coeffs.error());
+                }
+                state_.matrices[lhs] = *coeffs;
+                std::ostringstream out;
+                out << lhs << " =\n";
+                print_matrix(out, *coeffs);
+                return out.str();
+            }
+            if (callee == "signal_periodogram") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 2) {
+                    return std::unexpected(DomainError{
+                        "signal_periodogram", "expected signal_periodogram(x, fs)"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                double fs = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), fs)) {
+                    auto fs_expr = eval_scalar_expr(state_, trim_copy((*call_args)[1]));
+                    if (!fs_expr) {
+                        return std::unexpected(fs_expr.error());
+                    }
+                    fs = *fs_expr;
+                }
+                auto psd = eval_signal_periodogram(*x_m, fs);
+                if (!psd) {
+                    return std::unexpected(psd.error());
+                }
+                state_.matrices[lhs] = *psd;
+                std::ostringstream out;
+                out << lhs << " =\n";
+                print_matrix(out, *psd);
+                return out.str();
+            }
+            if (callee == "signal_welch_psd") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "signal_welch_psd", "expected signal_welch_psd(x, fs, nperseg)"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                double fs = 0.0;
+                double nperseg_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), fs) ||
+                    !parse_number(trim_copy((*call_args)[2]), nperseg_d)) {
+                    auto fs_expr = eval_scalar_expr(state_, trim_copy((*call_args)[1]));
+                    if (!fs_expr) {
+                        return std::unexpected(fs_expr.error());
+                    }
+                    fs = *fs_expr;
+                    auto n_expr = eval_scalar_expr(state_, trim_copy((*call_args)[2]));
+                    if (!n_expr) {
+                        return std::unexpected(n_expr.error());
+                    }
+                    nperseg_d = *n_expr;
+                }
+                const int nperseg = static_cast<int>(nperseg_d);
+                if (nperseg < 1 || nperseg_d != nperseg) {
+                    return std::unexpected(
+                        DomainError{"signal_welch_psd", "expected positive integer nperseg"});
+                }
+                auto psd = eval_signal_welch_psd(*x_m, fs, static_cast<size_t>(nperseg));
+                if (!psd) {
+                    return std::unexpected(psd.error());
+                }
+                state_.matrices[lhs] = *psd;
+                std::ostringstream out;
+                out << lhs << " =\n";
+                print_matrix(out, *psd);
+                return out.str();
+            }
             if (callee == "graph_astar") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 4) {
@@ -17220,6 +17431,37 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         R"((\w+)\(([^,]+),([^,]+),([^,]+),([^,]+),([^)]+)\))", std::regex::icase);
     if (std::regex_match(cmd, match, quinary)) {
         const std::string fn = lower(match[1].str());
+        if (fn == "signal_cheby2") {
+            double order_d = 0.0;
+            double rs_db = 0.0;
+            double cutoff = 0.0;
+            double fs = 0.0;
+            if (!parse_number(trim(match[2].str()), order_d) ||
+                !parse_number(trim(match[3].str()), rs_db) ||
+                !parse_number(trim(match[4].str()), cutoff) ||
+                !parse_number(trim(match[5].str()), fs)) {
+                return std::unexpected(DomainError{
+                    "signal_cheby2",
+                    "expected signal_cheby2(order, rs_db, cutoff, fs[, type])"});
+            }
+            const int order = static_cast<int>(order_d);
+            if (order < 1 || order_d != order) {
+                return std::unexpected(
+                    DomainError{"signal_cheby2", "expected integer order >= 1"});
+            }
+            auto parsed = parse_signal_filter_type(trim(match[6].str()));
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            auto coeffs = eval_signal_cheby2(order, rs_db, cutoff, fs, *parsed);
+            if (!coeffs) {
+                return std::unexpected(coeffs.error());
+            }
+            std::ostringstream out;
+            out << "ba =\n";
+            print_matrix(out, *coeffs);
+            return out.str();
+        }
         if (fn == "finance_bs_call") {
             double S = 0.0;
             double K = 0.0;
@@ -18224,6 +18466,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, *filtered);
             return out.str();
         }
+        if (fn == "signal_cheby2") {
+            double order_d = 0.0;
+            double rs_db = 0.0;
+            double cutoff = 0.0;
+            double fs = 0.0;
+            if (!parse_number(trim(match[2].str()), order_d) ||
+                !parse_number(trim(match[3].str()), rs_db) ||
+                !parse_number(trim(match[4].str()), cutoff) ||
+                !parse_number(trim(match[5].str()), fs)) {
+                return std::unexpected(DomainError{
+                    "signal_cheby2",
+                    "expected signal_cheby2(order, rs_db, cutoff, fs[, type])"});
+            }
+            const int order = static_cast<int>(order_d);
+            if (order < 1 || order_d != order) {
+                return std::unexpected(
+                    DomainError{"signal_cheby2", "expected integer order >= 1"});
+            }
+            auto coeffs = eval_signal_cheby2(order, rs_db, cutoff, fs, FilterType::Lowpass);
+            if (!coeffs) {
+                return std::unexpected(coeffs.error());
+            }
+            std::ostringstream out;
+            out << "ba =\n";
+            print_matrix(out, *coeffs);
+            return out.str();
+        }
         if (fn == "graph_astar") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                 auto matrix = parse_matrix(text);
@@ -18579,6 +18848,39 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             std::ostringstream out;
             out << "filtered =\n";
             print_matrix(out, *filtered);
+            return out.str();
+        }
+        if (fn == "signal_welch_psd") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto x_m = resolve_arg(trim(match[2].str()));
+            if (!x_m) {
+                return std::unexpected(x_m.error());
+            }
+            double fs = 0.0;
+            double nperseg_d = 0.0;
+            if (!parse_number(trim(match[3].str()), fs) ||
+                !parse_number(trim(match[4].str()), nperseg_d)) {
+                return std::unexpected(DomainError{
+                    "signal_welch_psd", "expected signal_welch_psd(x, fs, nperseg)"});
+            }
+            const int nperseg = static_cast<int>(nperseg_d);
+            if (nperseg < 1 || nperseg_d != nperseg) {
+                return std::unexpected(
+                    DomainError{"signal_welch_psd", "expected positive integer nperseg"});
+            }
+            auto psd = eval_signal_welch_psd(*x_m, fs, static_cast<size_t>(nperseg));
+            if (!psd) {
+                return std::unexpected(psd.error());
+            }
+            std::ostringstream out;
+            out << "psd =\n";
+            print_matrix(out, *psd);
             return out.str();
         }
         if (fn == "prob_binom_pdf") {
@@ -20432,6 +20734,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         const std::string fn = lower(match[1].str());
         const std::string arg_a = trim(match[2].str());
         const std::string arg_b = trim(match[3].str());
+
+        if (fn == "signal_periodogram") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto x_m = resolve_arg(arg_a);
+            if (!x_m) {
+                return std::unexpected(x_m.error());
+            }
+            double fs = 0.0;
+            if (!parse_number(arg_b, fs)) {
+                return std::unexpected(DomainError{
+                    "signal_periodogram", "expected signal_periodogram(x, fs)"});
+            }
+            auto psd = eval_signal_periodogram(*x_m, fs);
+            if (!psd) {
+                return std::unexpected(psd.error());
+            }
+            std::ostringstream out;
+            out << "psd =\n";
+            print_matrix(out, *psd);
+            return out.str();
+        }
 
         if (fn == "spherical_jn") {
             double n = 0.0;
