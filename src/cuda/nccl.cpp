@@ -71,4 +71,16 @@ double allreduce_prod(double value) {
 #endif
 }
 
+double allreduce_avg(double value) {
+#if defined(MS_HAS_NCCL) && MS_HAS_NCCL
+    if (!nccl_available() || nccl_comm_size() <= 1) {
+        return value;
+    }
+    const size_t size = nccl_comm_size();
+    return allreduce_sum(value) / static_cast<double>(size);
+#else
+    return value;
+#endif
+}
+
 } // namespace ms::cuda
