@@ -5632,3 +5632,57 @@ TEST(ReplCommandsTest, wave256_image_transform) {
     EXPECT_EQ(interp.state().matrices.at("A").cols(), 2u);
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("A")(0, 0)));
 }
+
+TEST(ReplCommandsTest, wave257_prob_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_lognormal_pdf(x,mu,sigma)");
+    expect_contains(interp, "help", "prob_weibull_cdf(x,lambda,k)");
+    expect_contains(interp, "help", "prob_laplace_ppf(p,mu,b)");
+    expect_contains(interp, "help", "prob_logistic_cdf(x,mu,s)");
+    expect_contains(interp, "help", "prob_gumbel_ppf(p,mu,beta)");
+    expect_contains(interp, "help", "prob_cauchy_pdf(x,x0,gamma)");
+    expect_contains(interp, "help", "prob_pareto_cdf(x,x_m,alpha)");
+    expect_contains(interp, "help", "prob_rayleigh_cdf(x,sigma)");
+    expect_contains(interp, "help", "prob_gamma_cdf(x,shape,scale)");
+    expect_contains(interp, "help", "prob_beta_cdf(x,alpha,beta)");
+    expect_contains(interp, "help", "prob_f_cdf(x,d1,d2)");
+
+    // Closed-form spot checks (assignment path).
+    expect_ok(interp, "lnq = prob_lognormal_ppf(0.5, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("lnq"), 1.0, 1e-9);  // median = exp(mu)
+
+    expect_ok(interp, "wc = prob_weibull_cdf(1, 1, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("wc"), 1.0 - std::exp(-1.0), 1e-9);
+
+    expect_ok(interp, "lp = prob_laplace_pdf(0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("lp"), 0.5, 1e-9);  // 1/(2b)
+
+    expect_ok(interp, "lc = prob_logistic_cdf(0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("lc"), 0.5, 1e-9);
+
+    expect_ok(interp, "gq = prob_gumbel_ppf(0.5, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("gq"), -std::log(std::log(2.0)), 1e-9);
+
+    expect_ok(interp, "cp = prob_cauchy_pdf(0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("cp"), 1.0 / 3.14159265358979323846, 1e-9);
+
+    expect_ok(interp, "pc = prob_pareto_cdf(2, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("pc"), 0.5, 1e-9);  // 1-(x_m/x)^alpha
+
+    expect_ok(interp, "rc = prob_rayleigh_cdf(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("rc"), 1.0 - std::exp(-0.5), 1e-9);
+
+    expect_ok(interp, "bc = prob_beta_cdf(0.5, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bc"), 0.5, 1e-9);  // Beta(1,1)=U[0,1]
+
+    expect_ok(interp, "gc = prob_gamma_cdf(0, 2, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("gc"), 0.0, 1e-9);
+
+    const double f_ref = ms::f_cdf(1.0, 5.0, 5.0);
+    expect_ok(interp, "fc = prob_f_cdf(1, 5, 5)");
+    EXPECT_NEAR(interp.state().scalars.at("fc"), f_ref, 1e-9);
+
+    // Direct-call path smoke.
+    expect_contains(interp, "prob_laplace_cdf(0, 0, 1)", "0.5");
+    expect_contains(interp, "prob_cauchy_cdf(0, 0, 1)", "0.5");
+}
