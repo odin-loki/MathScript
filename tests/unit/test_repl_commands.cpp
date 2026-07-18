@@ -7042,3 +7042,20 @@ TEST(ReplCommandsTest, wave263_finance_merton_historical) {
     EXPECT_NEAR(interp.state().scalars.at("hc"), 0.20, 1e-6);
     expect_contains(interp, "finance_historical_cvar(ret, 0.95)", "0.2");
 }
+
+TEST(ReplCommandsTest, wave264_finance_ratio_metrics) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_treynor(returns,risk_free,beta)");
+    expect_contains(interp, "help", "finance_information_ratio(returns,benchmark)");
+
+    expect_ok(interp, "ret = [0.10; 0.12; 0.08; 0.11; 0.09]");
+    expect_ok(interp, "bench = [0.05; 0.08; 0.06; 0.10; 0.07]");
+
+    expect_ok(interp, "tr = finance_treynor(ret, 0.05, 1.2)");
+    EXPECT_NEAR(interp.state().scalars.at("tr"), 0.05 / 1.2, 1e-10);
+    expect_contains(interp, "finance_treynor(ret, 0.05, 1.2)", "0.04166");
+
+    expect_ok(interp, "ir = finance_information_ratio(ret, bench)");
+    EXPECT_NEAR(interp.state().scalars.at("ir"), 1.704, 0.01);
+    expect_contains(interp, "finance_information_ratio(ret, bench)", "1.70");
+}
