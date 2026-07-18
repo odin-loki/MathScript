@@ -242,6 +242,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `finance_heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)` | Heston stochastic-volatility European call price |
 | `finance_sabr_call(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European call price (Wave 237) |
 | `finance_sabr_put(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European put price (Wave 241) |
+| `finance_bachelier_call(F, K, T, r, sigma)` | Bachelier normal-model call on forward `F` (Wave 262) |
+| `finance_bachelier_put(F, K, T, r, sigma)` | Bachelier normal-model put on forward `F` (Wave 262) |
+| `finance_vasicek_bond_price(r, a, b, sigma, tau)` | Vasicek zero-coupon bond price (Wave 262) |
+| `finance_cir_bond_price(r, a, b, sigma, tau)` | CIR zero-coupon bond price (Wave 262) |
+| `finance_trinomial_option(S, K, T, r, sigma, n_steps, is_call, is_american)` | Boyle trinomial-tree option price (Wave 262) |
 
 **Graph community/centrality (matrix assignment, Wave 234):**
 

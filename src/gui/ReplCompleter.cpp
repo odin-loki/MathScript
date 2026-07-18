@@ -250,6 +250,12 @@ QStringList repl_command_list() {
         QStringLiteral("prob_gamma_cdf"),
         QStringLiteral("prob_beta_cdf"),
         QStringLiteral("prob_f_cdf"),
+        // Finance (rates / trees)
+        QStringLiteral("finance_bachelier_call"),
+        QStringLiteral("finance_bachelier_put"),
+        QStringLiteral("finance_vasicek_bond_price"),
+        QStringLiteral("finance_cir_bond_price"),
+        QStringLiteral("finance_trinomial_option"),
         // ML / graph (common)
         QStringLiteral("ml_accuracy"),
         QStringLiteral("ml_rmse"),
