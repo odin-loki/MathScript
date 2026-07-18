@@ -80,6 +80,23 @@ static void BM_HkdfSha256(benchmark::State& state) {
 }
 BENCHMARK(BM_HkdfSha256);
 
+static void BM_HkdfSha512(benchmark::State& state) {
+    const auto ikm = make_byte_buffer(22, 11);
+    const auto salt = make_byte_buffer(13, 17);
+    const auto info = make_byte_buffer(10, 23);
+    constexpr std::size_t kOutLen = 32;
+    for (auto _ : state) {
+        auto okm = hkdf_sha512(std::span<const uint8_t>(ikm),
+                               std::span<const uint8_t>(salt),
+                               std::span<const uint8_t>(info),
+                               kOutLen);
+        benchmark::DoNotOptimize(okm.data());
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(kOutLen));
+}
+BENCHMARK(BM_HkdfSha512);
+
 static void BM_Pbkdf2HmacSha256(benchmark::State& state) {
     const auto password = make_byte_buffer(24, 29);
     const auto salt = make_byte_buffer(16, 31);
@@ -152,6 +169,21 @@ static void BM_Aes128CbcEncrypt_64KB(benchmark::State& state) {
                             static_cast<int64_t>(kPayloadBytes));
 }
 BENCHMARK(BM_Aes128CbcEncrypt_64KB)->MinTime(0.001);
+
+static void BM_Aes256CbcEncrypt_64KB(benchmark::State& state) {
+    const auto key = make_byte_buffer(aes256_key_size, 53);
+    const auto iv = make_byte_buffer(aes_block_size, 61);
+    const auto plaintext = make_byte_buffer(kPayloadBytes, 67);
+    for (auto _ : state) {
+        auto ciphertext = aes256_cbc_encrypt(std::span<const uint8_t>(key),
+                                             std::span<const uint8_t>(iv),
+                                             std::span<const uint8_t>(plaintext));
+        benchmark::DoNotOptimize(ciphertext.data());
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(kPayloadBytes));
+}
+BENCHMARK(BM_Aes256CbcEncrypt_64KB)->MinTime(0.001);
 
 static void BM_ChaCha20Encrypt_64KB(benchmark::State& state) {
     const auto key_bytes = make_byte_buffer(32, 71);
