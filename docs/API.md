@@ -280,6 +280,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `geo_intersect_seg_seg(...)` / `geo_intersect_ray_sphere(...)` / `geo_intersect_ray_aabb(...)` | Intersection tests → 1/0 (Wave 255) |
 | `graph_katz_centrality(A)` / `graph_laplacian(A)` / `graph_adjacency_spectrum(A)` | Katz / Laplacian / spectral radius (Wave 255) |
 | `graph_algebraic_connectivity(A)` | Fiedler value scalar (Wave 255) |
+| `stats_linear_regression(x,y)` / `stats_pacf` / `stats_kde` / `stats_bootstrap_ci` | Regression / PACF / KDE / bootstrap CI (Wave 256) |
+| `stats_shapiro_wilk` / `stats_mann_whitney_u` / `stats_one_way_anova` / `stats_wilcoxon_signed_rank` | Hypothesis tests (Wave 256) |
+| `graph_normalised_laplacian(A)` / `graph_modularity(A,C)` / `graph_eccentricity(A)` / `graph_is_strongly_connected(A)` | Structure metrics (Wave 256) |
+| `geo_kdtree_3d_nearest` / `geo_intersect_ray_tri` / `geo_dist_point_plane` / `geo_dist_point_seg3d` | 3D geo queries (Wave 256) |
+| `imflip` / `imrotate90` / `threshold_binary` / `adapthisteq` | Image transforms (Wave 256) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
 | `signal_deconv(y,b)` | Polynomial deconvolution of column vectors (Wave 254) |

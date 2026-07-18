@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 255 ✅ COMPLETE — **413 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 256 ✅ COMPLETE — **414 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–255 COMPLETE (summary)
+## Feature waves ✅ 231–256 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -64,6 +64,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **253** | xcorr/xcov/autocorr; median_filter; conv2; AES-128 decrypt; NCCL allgather; matching brace |
 | **254** | deconv/LMS/CZT; `mpi_bcast`; geo AABB; GUI Add Selection; wave254 pipeline |
 | **255** | geo triangulate/hull3d/kdtree/ray; graph spectral; X25519 keypair; Trim Whitespace |
+| **256** | stats TS/inference; graph structure; geo 3D; image transforms; Remove Blank Lines |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -286,9 +287,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **413 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–255** closed for this incremental batch.
 
+## Wave 256 ✅ COMPLETE (stats TS/inference, graph structure, geo 3D, image, blank lines)
+
+| Area | Deliverable |
+|------|-------------|
+| Stats REPL | linear_regression/pacf/kde/bootstrap_ci; shapiro/mann_whitney/anova/wilcoxon |
+| Graph REPL | normalised_laplacian, modularity, eccentricity, is_strongly_connected |
+| Geo REPL | kdtree_3d_nearest, ray_tri, dist_point_plane/seg3d |
+| Image REPL | imflip, imrotate90, threshold_binary, adapthisteq |
+| GUI | Remove Blank Lines |
+| Tests | `BM_StatsKde`; `integration_repl_wave256_pipeline` |
+
+**414 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–256** closed for this incremental batch.
+
 ---
 
-## Next (Wave 256+) — deferred
+## Next (Wave 257+) — deferred
 
 | Item | Notes |
 |------|--------|
