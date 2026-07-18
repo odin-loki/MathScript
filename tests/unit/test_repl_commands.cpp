@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
@@ -7041,4 +7043,61 @@ TEST(ReplCommandsTest, wave263_finance_merton_historical) {
     expect_ok(interp, "hc = finance_historical_cvar(ret, 0.95)");
     EXPECT_NEAR(interp.state().scalars.at("hc"), 0.20, 1e-6);
     expect_contains(interp, "finance_historical_cvar(ret, 0.95)", "0.2");
+}
+
+TEST(ReplCommandsTest, wave264_poly_roots_fit_gcd) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_roots(p)");
+    expect_contains(interp, "help", "poly_fit(xs,ys,degree)");
+    expect_contains(interp, "help", "poly_interp_hermite(xs,ys,dys)");
+    expect_contains(interp, "help", "poly_gcd(a,b)");
+    expect_contains(interp, "help", "poly_squarefree(p)");
+
+    // (x-2)(x-3) = x^2 - 5x + 6
+    expect_ok(interp, "p = [6; -5; 1]");
+    expect_ok(interp, "rts = poly_roots(p)");
+    ASSERT_GT(interp.state().matrices.count("rts"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("rts").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("rts").cols(), 2u);
+    {
+        std::vector<double> reals = {interp.state().matrices.at("rts")(0, 0),
+                                     interp.state().matrices.at("rts")(1, 0)};
+        std::sort(reals.begin(), reals.end());
+        EXPECT_NEAR(reals[0], 2.0, 1e-5);
+        EXPECT_NEAR(reals[1], 3.0, 1e-5);
+        EXPECT_NEAR(interp.state().matrices.at("rts")(0, 1), 0.0, 1e-5);
+        EXPECT_NEAR(interp.state().matrices.at("rts")(1, 1), 0.0, 1e-5);
+    }
+
+    expect_ok(interp, "xs = [0; 1; 2; 3]");
+    expect_ok(interp, "ys = [1; 3; 5; 7]");
+    expect_ok(interp, "c = poly_fit(xs, ys, 1)");
+    ASSERT_GT(interp.state().matrices.count("c"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("c").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("c")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("c")(1, 0), 2.0, 1e-6);
+
+    expect_ok(interp, "hxs = [2]");
+    expect_ok(interp, "hys = [5]");
+    expect_ok(interp, "hdys = [3]");
+    expect_ok(interp, "ph = poly_interp_hermite(hxs, hys, hdys)");
+    expect_ok(interp, "vh = poly_eval(ph, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("vh"), 5.0, 1e-6);
+
+    // gcd((x-2)(x-3), (x-2)(x-5)) ~ (x-2)
+    expect_ok(interp, "a = [6; -5; 1]");
+    expect_ok(interp, "b = [10; -7; 1]");
+    expect_ok(interp, "g = poly_gcd(a, b)");
+    ASSERT_GT(interp.state().matrices.count("g"), 0u);
+    ASSERT_GE(interp.state().matrices.at("g").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("g")(0, 0), -2.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("g")(1, 0), 1.0, 1e-5);
+
+    // square-free part of (x-2)^2(x-3)
+    expect_ok(interp, "mult = [-12; 16; -7; 1]");
+    expect_ok(interp, "sf = poly_squarefree(mult)");
+    expect_ok(interp, "v2 = poly_eval(sf, 2)");
+    expect_ok(interp, "v3 = poly_eval(sf, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("v2"), 0.0, 1e-4);
+    EXPECT_NEAR(interp.state().scalars.at("v3"), 0.0, 1e-4);
 }
