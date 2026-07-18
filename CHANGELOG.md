@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] – 2026-07-18 (Wave 237 – Remaining API gaps kickoff: NCCL stub, modular plugin, REPL gaps)
+
+Seventh **feature wave** after Wave 236. Product **feature waves 231–236 are largely closed** (crypto, FEM/CFD 2D/3D, GUI polish, major REPL binding tranches). Wave 237 targets remaining master-plan gaps in parallel isolated worktrees — merges pending.
+
+### In progress (Wave 237 parallel branches)
+
+| Branch | Module | Scope |
+|--------|--------|--------|
+| `wave237/nccl-stub` | `ms::distributed` / NCCL | NCCL collective stub wiring (`MS_ENABLE_NCCL`; stub-safe when NCCL off; `FindNCCL.cmake`) |
+| `wave237/plugin-modular` | `ms::plugin` | Modular plugin enforcement rules beyond Wave 232 `UnsafeRegistry` audit |
+| `wave237/repl-gaps` | REPL | Remaining library-only API REPL bindings (incremental coverage after Waves 231–236) |
+| `wave237/docs` | docs | CHANGELOG and TODO kickoff |
+
+Builds on Wave 236 X25519, 3D CFD/FEM, `dist_matmul`, and GUI polish. Full master-plan scope (scalable multi-node MPI LA, full IDE, deeper API gaps) remains deferred beyond Wave 237 — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+
+### Docs (Wave 237)
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** – Wave 237 kickoff; NCCL stub, modular plugin rules, and remaining REPL gaps documented as in progress.
+
+### Baseline (Wave 237 kickoff)
+- **385 CTest suites – all passing** on `main` @ Wave 236. **28-bench smoke OK**. Feature branches merge independently when ready. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] – 2026-07-18 (Wave 236 – X25519, CFD/FEM 3D, dist matmul, GUI polish)
 
 Sixth **feature wave** after Wave 235. Parallel work merged to `main`: X25519, 3D CFD/FEM solve bindings, distributed GEMM, and GUI/REPL polish.

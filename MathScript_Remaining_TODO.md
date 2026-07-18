@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 236 complete – **385 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 237 kickoff – **385 CTest suites** on `main` @ Wave 236; feature branches in flight)
 
 ---
 
@@ -128,14 +128,23 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 **385 CTest suites** (+3 registrations; X25519 unit tests in `test_crypto`). Profiling iteration unchanged – **FULLY COMPLETE (Waves 218–230).**
 
-Product **feature wave** scope from Waves 231–236 is largely complete; remaining work is incremental (NCCL, modular plugins, MPI scalability, API gaps).
+Product **feature wave** scope from Waves **231–236 is largely closed** (crypto through X25519/ChaCha-Poly/AES-GCM, FEM/CFD 2D/3D, GUI polish, finance/graph/image/ml REPL tranches). Remaining work is incremental master-plan closure.
 
 ---
 
-## Feature work (Wave 237+) — NEXT
+## Wave 237 🚧 IN PROGRESS (NCCL stub, modular plugin, remaining REPL gaps)
+
+| Branch | Status | Deliverable |
+|--------|--------|-------------|
+| `wave237/nccl-stub` | in progress | NCCL collective stub wiring (`MS_ENABLE_NCCL`; stub-safe when NCCL off) |
+| `wave237/plugin-modular` | in progress | Modular plugin enforcement rules beyond Wave 232 audit |
+| `wave237/repl-gaps` | in progress | Remaining library-only API REPL bindings |
+| `wave237/docs` | in progress | CHANGELOG and TODO kickoff |
+
+Wave 237 closes the post–Wave 236 master-plan tail in parallel isolated worktrees; merges land independently. Scalable multi-node MPI LA and full IDE remain deferred beyond this wave.
 
 | Wave | Focus |
 |------|--------|
-| **237+** | NCCL wiring, modular plugin rules, scalable MPI LA, remaining API gaps (see master plan) |
+| **238+** | Scalable MPI LA, full IDE, deeper API gaps (see master plan) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.
