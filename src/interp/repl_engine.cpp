@@ -5487,6 +5487,74 @@ Result<Matrix<double>> eval_signal_correlate(const Matrix<double>& a_m,
     return vector_to_column(correlate(*a, *b));
 }
 
+Result<Matrix<double>> eval_signal_xcorr(const Matrix<double>& a_m, const Matrix<double>& b_m,
+                                         int max_lag) {
+    auto a = matrix_to_coeff_vector(a_m, "signal_xcorr");
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = matrix_to_coeff_vector(b_m, "signal_xcorr");
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    if (a->empty() || b->empty()) {
+        return std::unexpected(DomainError{"signal_xcorr", "expected non-empty vectors"});
+    }
+    if (max_lag < 0) {
+        return std::unexpected(
+            DomainError{"signal_xcorr", "expected non-negative integer max_lag"});
+    }
+    auto out = xcorr(*a, *b, max_lag);
+    if (out.empty()) {
+        return std::unexpected(DomainError{"signal_xcorr", "xcorr failed"});
+    }
+    return vector_to_column(out);
+}
+
+Result<Matrix<double>> eval_signal_xcov(const Matrix<double>& a_m, const Matrix<double>& b_m,
+                                        int max_lag) {
+    auto a = matrix_to_coeff_vector(a_m, "signal_xcov");
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = matrix_to_coeff_vector(b_m, "signal_xcov");
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    if (a->empty() || b->empty()) {
+        return std::unexpected(DomainError{"signal_xcov", "expected non-empty vectors"});
+    }
+    if (max_lag < 0) {
+        return std::unexpected(
+            DomainError{"signal_xcov", "expected non-negative integer max_lag"});
+    }
+    auto out = xcov(*a, *b, max_lag);
+    if (out.empty()) {
+        return std::unexpected(DomainError{"signal_xcov", "xcov failed"});
+    }
+    return vector_to_column(out);
+}
+
+Result<Matrix<double>> eval_signal_autocorr(const Matrix<double>& x_m, int max_lag) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_autocorr");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_autocorr", "expected non-empty signal vector"});
+    }
+    if (max_lag < 0) {
+        return std::unexpected(
+            DomainError{"signal_autocorr", "expected non-negative integer max_lag"});
+    }
+    auto out = autocorr(*x, max_lag);
+    if (out.empty()) {
+        return std::unexpected(DomainError{"signal_autocorr", "autocorr failed"});
+    }
+    return vector_to_column(out);
+}
+
 Result<double> eval_stats_stddev(const Matrix<double>& x_m) {
     auto x = matrix_to_coeff_vector(x_m, "stats_stddev");
     if (!x) {
@@ -9470,6 +9538,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_mst_prim" ||
             fn == "graph_scc" ||
             fn == "signal_convolve" || fn == "signal_correlate" ||
+            fn == "signal_xcorr" || fn == "signal_xcov" || fn == "signal_autocorr" ||
             fn == "signal_sosfilt" || fn == "signal_conv2" ||
             fn == "signal_filtfilt" || fn == "signal_filter" ||
             fn == "graph_max_flow" || fn == "graph_min_cut" ||
@@ -10962,6 +11031,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" || callee == "fft_fft2" ||
            callee == "signal_envelope" || callee == "signal_hilbert" ||
            callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
+           callee == "signal_xcorr" || callee == "signal_xcov" ||
+           callee == "signal_autocorr" ||
            callee == "signal_firwin" || callee == "signal_firwin_highpass" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
            callee == "geo_convex_hull" ||
@@ -11080,6 +11151,12 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "signal_firwin" || callee == "signal_firwin_highpass") {
         return arity == 2 || arity == 3;
+    }
+    if (callee == "signal_xcorr" || callee == "signal_xcov") {
+        return arity == 3;
+    }
+    if (callee == "signal_autocorr") {
+        return arity == 2;
     }
     if (callee == "signal_convolve" || callee == "poly_add" ||
         callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
@@ -13638,6 +13715,47 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         } else {
             result = eval_signal_firwin_highpass(n_taps, cutoff, window);
         }
+    } else if ((assign.callee == "signal_xcorr" || assign.callee == "signal_xcov") &&
+               assign.args.size() == 3) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        double max_lag_d = 0.0;
+        if (!parse_number(assign.args[2], max_lag_d)) {
+            return std::unexpected(DomainError{
+                assign.callee, "expected " + assign.callee + "(a, b, max_lag)"});
+        }
+        const int max_lag = static_cast<int>(max_lag_d);
+        if (max_lag < 0 || max_lag_d != max_lag) {
+            return std::unexpected(
+                DomainError{assign.callee, "expected non-negative integer max_lag"});
+        }
+        if (assign.callee == "signal_xcorr") {
+            result = eval_signal_xcorr(*a, *b, max_lag);
+        } else {
+            result = eval_signal_xcov(*a, *b, max_lag);
+        }
+    } else if (assign.callee == "signal_autocorr" && assign.args.size() == 2) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        double max_lag_d = 0.0;
+        if (!parse_number(assign.args[1], max_lag_d)) {
+            return std::unexpected(
+                DomainError{"signal_autocorr", "expected signal_autocorr(x, max_lag)"});
+        }
+        const int max_lag = static_cast<int>(max_lag_d);
+        if (max_lag < 0 || max_lag_d != max_lag) {
+            return std::unexpected(
+                DomainError{"signal_autocorr", "expected non-negative integer max_lag"});
+        }
+        result = eval_signal_autocorr(*x, max_lag);
     }
     return result;
 }
@@ -15578,6 +15696,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_convolve(a,b) discrete convolution of Nx1 vectors\n"
             "  name = signal_conv2(A,K) 2D convolution of matrices A and K\n"
             "  name = signal_correlate(a,b) cross-correlation of Nx1 vectors\n"
+            "  name = signal_xcorr(a,b,max_lag) lag-limited cross-correlation as (2*max_lag+1)x1\n"
+            "  name = signal_xcov(a,b,max_lag) lag-limited cross-covariance as (2*max_lag+1)x1\n"
+            "  name = signal_autocorr(x,max_lag) lag-limited autocorrelation as (2*max_lag+1)x1\n"
             "  name = signal_filtfilt(b,a,x) zero-phase filtfilt of Nx1 signal with b,a coeffs\n"
             "  name = signal_filter(b,a,x) causal filter of Nx1 signal with b,a coeffs\n"
             "  name = signal_sosfilt(sos,x) SOS filter of Nx1 signal with Kx6 SOS matrix\n"
