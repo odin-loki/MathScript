@@ -1247,3 +1247,82 @@ TEST(GeoPolyIntersect, DegenerateFewerThanThreeVerticesReturnsEmpty) {
     EXPECT_TRUE(poly_intersect(sq, {{0, 0}, {1, 1}}).empty());
     EXPECT_TRUE(poly_intersect({{0, 0}}, sq).empty());
 }
+
+// ---- Polygon Difference (convex MVP) ----
+
+TEST(GeoPolyDiff, OverlappingSquaresRectangularRemnant) {
+    // [0,2]x[0,2] \ [1,3]x[0,2] => [0,1]x[0,2], area 2.
+    Polygon2D a = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    Polygon2D b = {{1, 0}, {3, 0}, {3, 2}, {1, 2}};
+    auto d = poly_diff(a, b);
+    ASSERT_GE(d.size(), 3u);
+    EXPECT_NEAR(area(d), 2.0, 1e-9);
+    EXPECT_NEAR(shoelace_area(d), 2.0, 1e-9);
+    EXPECT_TRUE(point_in_polygon({0.5, 1.0}, d));
+    EXPECT_FALSE(point_in_polygon({1.5, 1.0}, d));
+}
+
+TEST(GeoPolyDiff, DisjointSquaresReturnA) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{3, 0}, {4, 0}, {4, 1}, {3, 1}};
+    auto d = poly_diff(a, b);
+    ASSERT_GE(d.size(), 3u);
+    EXPECT_NEAR(area(d), 1.0, 1e-9);
+    expect_same_point_set(d, a);
+}
+
+TEST(GeoPolyDiff, ContainedAReturnsEmpty) {
+    Polygon2D inner = {{1, 1}, {2, 1}, {2, 2}, {1, 2}};
+    Polygon2D outer = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    EXPECT_TRUE(poly_diff(inner, outer).empty());
+}
+
+TEST(GeoPolyDiff, IdenticalSquaresReturnEmpty) {
+    Polygon2D sq = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    EXPECT_TRUE(poly_diff(sq, sq).empty());
+}
+
+TEST(GeoPolyDiff, EmptyBReturnsA) {
+    Polygon2D sq = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D empty;
+    auto d = poly_diff(sq, empty);
+    ASSERT_GE(d.size(), 3u);
+    expect_same_point_set(d, sq);
+}
+
+TEST(GeoPolyDiff, EmptyAReturnsEmpty) {
+    Polygon2D sq = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    EXPECT_TRUE(poly_diff({}, sq).empty());
+}
+
+TEST(GeoPolyDiff, TouchingSquaresShareEdgeOnly) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b = {{1, 0}, {2, 0}, {2, 1}, {1, 1}};
+    auto d = poly_diff(a, b);
+    ASSERT_GE(d.size(), 3u);
+    EXPECT_NEAR(area(d), 1.0, 1e-9);
+}
+
+TEST(GeoPolyDiff, ResultIsConvexCCW) {
+    Polygon2D a = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D b = {{2, -1}, {5, -1}, {5, 5}, {2, 5}};
+    auto d = poly_diff(a, b);
+    ASSERT_GE(d.size(), 3u);
+    EXPECT_NEAR(area(d), 8.0, 1e-9);
+    expect_convex_ccw(d);
+}
+
+TEST(GeoPolyDiff, ClockwiseBStillWorks) {
+    Polygon2D a = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    Polygon2D b_cw = {{3, 2}, {3, 0}, {1, 0}, {1, 2}};
+    ASSERT_LT(signed_area(b_cw), 0.0);
+    auto d = poly_diff(a, b_cw);
+    ASSERT_GE(d.size(), 3u);
+    EXPECT_NEAR(area(d), 2.0, 1e-9);
+}
+
+TEST(GeoPolyDiff, DegenerateAReturnsEmpty) {
+    Polygon2D b = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    EXPECT_TRUE(poly_diff({{0, 0}, {1, 1}}, b).empty());
+    EXPECT_TRUE(poly_diff({{0, 0}}, b).empty());
+}

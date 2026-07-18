@@ -327,5 +327,30 @@ Polygon2D poly_union(const Polygon2D& a, const Polygon2D& b);
 //       For concave subjects against a convex clip window, use `clip_polygon` directly.
 Polygon2D poly_intersect(const Polygon2D& a, const Polygon2D& b);
 
+// ========================== Polygon Difference ==========================
+
+// Set difference A \ B of two CONVEX polygons. Computed by clipping `a` against each
+// exterior half-plane of convex `b` (complement of the Sutherland-Hodgman interior
+// half-planes used by `clip_polygon` / `poly_intersect`) and selecting the clip whose
+// area matches area(A) − area(A ∩ B). When no single half-plane clip matches — i.e. the
+// difference is non-convex — falls back to `convex_hull_2d` over candidate boundary
+// points (documented convex over-approximation).
+//
+// Exact when A \ B is itself convex (e.g. two overlapping axis-aligned rectangles that
+// leave a rectangular remnant). When the difference region is non-convex — which can
+// occur even with convex inputs, e.g. B cutting a corner bite from A — the hull fallback
+// returns a documented convex over-approximation of A \ B.
+//
+// @param a, b convex polygons in any winding (CCW is the usual convention in this module).
+//        Fewer than 3 vertices in `a` is degenerate and returns empty. Empty or degenerate
+//        `b` leaves `a` unchanged (subtracting nothing). If `a` is contained in `b`,
+//        returns empty.
+// @return the difference polygon in CCW order (via `convex_hull_2d`), or empty when
+//         A ⊆ B / A has no area after subtraction.
+// @note Requires CONVEX inputs as a precondition — non-convex polygons are out of scope
+//       and yield undefined/over-approximated results. This is an MVP boolean-difference
+//       helper, not a general simple-polygon clipper with holes.
+Polygon2D poly_diff(const Polygon2D& a, const Polygon2D& b);
+
 } // namespace geo
 } // namespace ms
