@@ -71,6 +71,8 @@ private:
     void find_next_in_output();
     void find_in_script();
     void find_next_in_script();
+    void replace_in_script();
+    void replace_next_in_script();
     void go_to_line();
     void set_plot_panel_visible(bool visible);
     void set_dark_theme(bool dark);
@@ -107,6 +109,7 @@ private:
     int mono_font_size_ = 11;
     QString find_output_text_;
     QString find_script_text_;
+    QString replace_script_text_;
     QString last_result_;
     QAction* show_plot_panel_action_ = nullptr;
     QAction* dark_theme_action_ = nullptr;

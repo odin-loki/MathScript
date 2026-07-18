@@ -21,6 +21,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemModel>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QInputDialog>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -51,6 +54,53 @@ constexpr char kVarKindMatrix[] = "matrix";
 constexpr char kVarKindScalar[] = "scalar";
 constexpr int kMaxRecentFiles = 8;
 constexpr int kDefaultMonoFontSize = 11;
+
+bool replace_one_in_editor(QPlainTextEdit* editor, const QString& find_text, const QString& replace_text) {
+    if (editor == nullptr || find_text.isEmpty()) {
+        return false;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    if (cursor.hasSelection() && cursor.selectedText() == find_text) {
+        cursor.insertText(replace_text);
+        return true;
+    }
+
+    if (cursor.hasSelection()) {
+        cursor.setPosition(cursor.selectionEnd());
+        editor->setTextCursor(cursor);
+    }
+
+    if (editor->find(find_text)) {
+        cursor = editor->textCursor();
+        cursor.insertText(replace_text);
+        return true;
+    }
+
+    editor->moveCursor(QTextCursor::Start);
+    if (editor->find(find_text)) {
+        cursor = editor->textCursor();
+        cursor.insertText(replace_text);
+        return true;
+    }
+
+    return false;
+}
+
+int replace_all_in_editor(QPlainTextEdit* editor, const QString& find_text, const QString& replace_text) {
+    if (editor == nullptr || find_text.isEmpty()) {
+        return 0;
+    }
+
+    editor->moveCursor(QTextCursor::Start);
+    int count = 0;
+    while (editor->find(find_text)) {
+        QTextCursor cursor = editor->textCursor();
+        cursor.insertText(replace_text);
+        ++count;
+    }
+    return count;
+}
 
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
@@ -450,6 +500,9 @@ void MainWindow::restore_layout() {
 
     word_wrap_ = settings.value("gui/word_wrap", false).toBool();
     set_word_wrap(word_wrap_);
+
+    find_script_text_ = settings.value("gui/find_script_text").toString();
+    replace_script_text_ = settings.value("gui/replace_script_text").toString();
 }
 
 void MainWindow::save_layout() {
@@ -465,6 +518,8 @@ void MainWindow::save_layout() {
     }
     settings.setValue("gui/dark_theme", dark_theme_);
     settings.setValue("gui/word_wrap", word_wrap_);
+    settings.setValue("gui/find_script_text", find_script_text_);
+    settings.setValue("gui/replace_script_text", replace_script_text_);
 }
 
 void MainWindow::apply_dark_theme() {
@@ -543,6 +598,10 @@ void MainWindow::setup_menus() {
     find_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
     auto* find_next_script_action = edit_menu->addAction("Find Next in Script");
     find_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F3));
+    auto* replace_script_action = edit_menu->addAction("Replace in Script...");
+    replace_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
+    auto* replace_next_script_action = edit_menu->addAction("Replace Next in Script");
+    replace_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
     auto* go_to_line_action = edit_menu->addAction("Go to Line...");
     go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
     edit_menu->addSeparator();
@@ -584,6 +643,8 @@ void MainWindow::setup_menus() {
     });
     connect(find_script_action, &QAction::triggered, this, &MainWindow::find_in_script);
     connect(find_next_script_action, &QAction::triggered, this, &MainWindow::find_next_in_script);
+    connect(replace_script_action, &QAction::triggered, this, &MainWindow::replace_in_script);
+    connect(replace_next_script_action, &QAction::triggered, this, &MainWindow::replace_next_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
@@ -755,6 +816,75 @@ void MainWindow::find_next_in_script() {
         if (!editor_->find(find_script_text_)) {
             statusBar()->showMessage("Find in Script: no matches", 3000);
         }
+    }
+}
+
+void MainWindow::replace_in_script() {
+    editor_->setFocus();
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("Replace in Script");
+
+    auto* find_edit = new QLineEdit(find_script_text_, &dialog);
+    auto* replace_edit = new QLineEdit(replace_script_text_, &dialog);
+
+    auto* form = new QFormLayout(&dialog);
+    form->addRow("Find:", find_edit);
+    form->addRow("Replace with:", replace_edit);
+
+    auto* buttons = new QDialogButtonBox(&dialog);
+    auto* replace_button = buttons->addButton("Replace", QDialogButtonBox::ActionRole);
+    auto* replace_all_button = buttons->addButton("Replace All", QDialogButtonBox::ActionRole);
+    buttons->addButton(QDialogButtonBox::Cancel);
+    form->addRow(buttons);
+
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(replace_button, &QPushButton::clicked, &dialog, [&dialog]() { dialog.done(1); });
+    connect(replace_all_button, &QPushButton::clicked, &dialog, [&dialog]() { dialog.done(2); });
+
+    const int result = dialog.exec();
+    if (result == QDialog::Rejected) {
+        return;
+    }
+
+    const QString find_text = find_edit->text();
+    if (find_text.isEmpty()) {
+        return;
+    }
+
+    find_script_text_ = find_text;
+    replace_script_text_ = replace_edit->text();
+
+    if (result == 1) {
+        if (!replace_one_in_editor(editor_, find_script_text_, replace_script_text_)) {
+            statusBar()->showMessage("Replace in Script: no matches", 3000);
+        } else {
+            statusBar()->showMessage("Replace in Script: replaced 1 occurrence", 3000);
+        }
+        return;
+    }
+
+    const int count = replace_all_in_editor(editor_, find_script_text_, replace_script_text_);
+    if (count == 0) {
+        statusBar()->showMessage("Replace in Script: no matches", 3000);
+    } else if (count == 1) {
+        statusBar()->showMessage("Replace in Script: replaced 1 occurrence", 3000);
+    } else {
+        statusBar()->showMessage(QString("Replace in Script: replaced %1 occurrences").arg(count), 3000);
+    }
+}
+
+void MainWindow::replace_next_in_script() {
+    editor_->setFocus();
+    if (find_script_text_.isEmpty()) {
+        replace_in_script();
+        return;
+    }
+
+    if (!replace_one_in_editor(editor_, find_script_text_, replace_script_text_)) {
+        statusBar()->showMessage("Replace in Script: no matches", 3000);
+    } else {
+        statusBar()->showMessage("Replace in Script: replaced 1 occurrence", 3000);
     }
 }
 
