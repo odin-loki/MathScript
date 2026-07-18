@@ -7249,3 +7249,21 @@ TEST(ReplCommandsTest, wave264_special_bessel_lambert_kummer) {
     EXPECT_NEAR(interp.state().scalars.at("bi"), bi_ref, 1e-9);
     expect_contains(interp, "special_airy_bi(0)", std::to_string(bi_ref));
 }
+
+TEST(ReplCommandsTest, wave264_info_channel_capacity) {
+    Interpreter interp;
+    expect_contains(interp, "help", "info_blahut_arimoto(W)");
+    expect_contains(interp, "help", "info_channel_capacity(W)");
+
+    expect_ok(interp, "W = [1, 0; 0, 1]");
+    expect_ok(interp, "c = info_blahut_arimoto(W)");
+    EXPECT_NEAR(interp.state().scalars.at("c"), 1.0, 1e-6);
+    expect_contains(interp, "info_blahut_arimoto([1, 0; 0, 1])", "1");
+
+    expect_ok(interp, "Wbsc = [0.8, 0.2; 0.2, 0.8]");
+    expect_ok(interp, "cap = info_channel_capacity(Wbsc)");
+    const double p = 0.2;
+    const double h = -p * std::log2(p) - (1.0 - p) * std::log2(1.0 - p);
+    EXPECT_NEAR(interp.state().scalars.at("cap"), 1.0 - h, 1e-4);
+    expect_contains(interp, "info_channel_capacity([0.8, 0.2; 0.2, 0.8])", "0.278");
+}
