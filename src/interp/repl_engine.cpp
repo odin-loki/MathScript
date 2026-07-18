@@ -4259,6 +4259,28 @@ Result<std::string> eval_crypto_aes128_encrypt_block(const std::string& key_arg,
     return crypto::to_hex(crypto::aes128_encrypt_block(*key, *block)) + "\n";
 }
 
+Result<std::string> eval_crypto_aes256_encrypt_block(const std::string& key_arg,
+                                                     const std::string& block_arg) {
+    constexpr const char* fn = "crypto_aes256_encrypt_block";
+    auto key = parse_hex_arg(key_arg, fn, "key");
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto block = parse_hex_arg(block_arg, fn, "block");
+    if (!block) {
+        return std::unexpected(block.error());
+    }
+    if (key->size() != crypto::aes256_key_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 32-byte (64 hex char) AES-256 key"});
+    }
+    if (block->size() != crypto::aes_block_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 16-byte (32 hex char) block"});
+    }
+    return crypto::to_hex(crypto::aes256_encrypt_block(*key, *block)) + "\n";
+}
+
 Result<std::string> eval_crypto_aes128_cbc_encrypt(const std::string& key_arg,
                                                    const std::string& iv_arg,
                                                    const std::string& plain_arg) {
@@ -8428,6 +8450,13 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
                 fn, "expected crypto_aes128_encrypt_block(key_hex, block_hex)"});
         }
         return eval_crypto_aes128_encrypt_block(call_args->at(0), call_args->at(1));
+    }
+    if (fn == "crypto_aes256_encrypt_block") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_aes256_encrypt_block(key_hex, block_hex)"});
+        }
+        return eval_crypto_aes256_encrypt_block(call_args->at(0), call_args->at(1));
     }
     if (fn == "crypto_aes128_cbc_encrypt") {
         if (call_args->size() != 3) {
@@ -15203,6 +15232,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
             "  name = cfd_advection3d(nx,ny,nz,vx,vy,vz,t_end,dt) 3D FVM upwind advection final field\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
+            "  crypto_aes256_encrypt_block(key_hex,block_hex) AES-256 ECB block encrypt (hex I/O)\n"
             "  crypto_aes128_cbc_encrypt(key_hex,iv_hex,plaintext_hex) AES-128 CBC encrypt\n"
             "  crypto_aes128_cbc_decrypt(key_hex,iv_hex,ciphertext_hex) AES-128 CBC decrypt\n"
             "  crypto_aes256_cbc_encrypt(key_hex,iv_hex,plaintext_hex) AES-256 CBC encrypt\n"
