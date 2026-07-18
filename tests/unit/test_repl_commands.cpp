@@ -3585,6 +3585,27 @@ TEST(ReplCommandsTest, wave251_signal_cheby1) {
     EXPECT_EQ(interp.state().matrices.at("bah").rows(), 2u);
 }
 
+TEST(ReplCommandsTest, wave252_signal_firwin) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_firwin(n_taps,cutoff[,window])");
+
+    expect_ok(interp, "b = signal_firwin(11, 0.3)");
+    ASSERT_GT(interp.state().matrices.count("b"), 0u);
+    const auto& b = interp.state().matrices.at("b");
+    EXPECT_EQ(b.rows(), 11u);
+    EXPECT_EQ(b.cols(), 1u);
+    double sum = 0.0;
+    for (size_t i = 0; i < b.rows(); ++i) {
+        sum += b(i, 0);
+    }
+    EXPECT_NEAR(sum, 1.0, 1e-9);
+
+    expect_ok(interp, "bh = signal_firwin_highpass(11, 0.3, 1)");
+    ASSERT_GT(interp.state().matrices.count("bh"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("bh").rows(), 11u);
+    EXPECT_EQ(interp.state().matrices.at("bh").cols(), 1u);
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");
