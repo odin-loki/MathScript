@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 234 — Feature work kickoff: finance/graph/image/ml REPL, AES-GCM MVP)
+
+Fourth **feature wave** after Wave 233. Five parallel implementation worktrees plus this docs branch — merges pending.
+
+### In progress (Wave 234 parallel branches)
+
+| Branch | Module | Scope |
+|--------|--------|--------|
+| `wave234/repl-finance` | REPL / `ms::finance` | Finance REPL bindings batch (scalar and vector signatures for remaining library-only pricers and risk metrics) |
+| `wave234/repl-graph` | REPL / `ms::graph` | Graph algorithm REPL bindings (community detection, centrality, matching, etc.) |
+| `wave234/repl-image` | REPL / `ms::image` | Image processing REPL bindings (filters, transforms, segmentation helpers) |
+| `wave234/repl-ml` | REPL / `ms::ml` | Machine learning REPL bindings (classifiers, clustering, dimensionality reduction) |
+| `wave234/crypto-aes-gcm` | `ms::crypto` | AES-GCM authenticated encryption MVP (`aes128_gcm_encrypt` / `aes128_gcm_decrypt`; NIST SP 800-38D test vectors) |
+| `wave234/docs` | docs | CHANGELOG and TODO kickoff |
+
+Builds on Wave 233 GUI polish and optim/control/quantum REPL bindings. Full master-plan scope (curve25519, 3D FEM/CFD, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+
+### Docs (Wave 234)
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** — Wave 234 kickoff; finance/graph/image/ml REPL bindings and AES-GCM MVP documented as in progress.
+
+### Baseline (Wave 234 kickoff)
+- **381 CTest suites — all passing** on `main` @ Wave 233. **28-bench smoke OK**. Feature branches merge independently when ready. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] — 2026-07-18 (Wave 233 — GUI polish, optim/control/quantum REPL, sym_dsolve, CUDA REPL)
 
 Third **feature wave** after Wave 232. GUI polish and REPL binding expansion merged to `main`.

@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 233 complete — **381 CTest suites** on `main` @ Wave 233; next: Wave 234+ GUI/REPL + 237+ API gaps)
+**Updated:** 2026-07-18 (Wave 234 kickoff — **381 CTest suites** on `main` @ Wave 233; feature branches in flight)
 
 ---
 
@@ -90,11 +90,22 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ## Feature work (Wave 234+) — IN PROGRESS
 
-Wave 233 closed GUI polish (syntax highlight, layout persistence, variable inspector, error styling, Stop/cancel, GPU status) and a major REPL binding tranche (optim, control, quantum, `sym_dsolve`, CUDA). **Next up: Wave 234–236 remaining GUI/REPL bindings**; Wave **237+** for remaining API gaps.
+### Wave 234 (kickoff — parallel branches)
+
+| Branch | Status | Deliverable |
+|--------|--------|-------------|
+| `wave234/repl-finance` | in progress | Finance REPL bindings batch (`ms::finance` pricers, risk metrics, portfolio helpers) |
+| `wave234/repl-graph` | in progress | Graph algorithm REPL bindings (`ms::graph` community detection, centrality, matching) |
+| `wave234/repl-image` | in progress | Image processing REPL bindings (`ms::image` filters, transforms, segmentation) |
+| `wave234/repl-ml` | in progress | Machine learning REPL bindings (`ms::ml` classifiers, clustering, dimensionality reduction) |
+| `wave234/crypto-aes-gcm` | in progress | AES-GCM authenticated encryption MVP in `ms::crypto` |
+| `wave234/docs` | in progress | CHANGELOG and TODO kickoff |
+
+Wave 233 closed GUI polish and optim/control/quantum REPL bindings. Wave 234 extends REPL coverage for finance, graph, image, and ML modules plus AES-GCM crypto in parallel isolated worktrees; merges land independently.
 
 | Wave | Focus |
 |------|--------|
-| **234–236** | Remaining GUI polish + REPL bindings |
-| **237+** | Remaining API gaps (curve25519, AES-GCM, 3D FEM/CFD, scalable distributed LA, etc.) |
+| **235–236** | Remaining GUI polish + REPL bindings |
+| **237+** | Remaining API gaps (curve25519, 3D FEM/CFD, scalable distributed LA, etc.) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.
