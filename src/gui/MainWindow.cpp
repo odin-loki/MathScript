@@ -508,6 +508,59 @@ int remove_blank_lines_in_editor(QPlainTextEdit* editor) {
     return removed_count;
 }
 
+struct SortLinesResult {
+    int line_count = 0;
+    bool changed = false;
+};
+
+SortLinesResult sort_lines_in_editor(QPlainTextEdit* editor) {
+    SortLinesResult result;
+    if (editor == nullptr) {
+        return result;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = editor->document()->blockCount() - 1;
+    if (cursor.hasSelection()) {
+        get_selected_block_range(editor, start_block, end_block);
+    }
+
+    QStringList lines;
+    for (int block = start_block; block <= end_block; ++block) {
+        lines.append(editor->document()->findBlockByNumber(block).text());
+    }
+    result.line_count = lines.size();
+    if (result.line_count <= 1) {
+        cursor.endEditBlock();
+        return result;
+    }
+
+    const QStringList original = lines;
+    std::sort(lines.begin(), lines.end(), [](const QString& a, const QString& b) {
+        return QString::localeAwareCompare(a, b) < 0;
+    });
+    if (lines == original) {
+        cursor.endEditBlock();
+        return result;
+    }
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = start_block + 1; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(lines.join('\n'));
+
+    restore_block_cursor(editor, start_block, end_block);
+    cursor.endEditBlock();
+    result.changed = true;
+    return result;
+}
+
 void indent_lines_in_editor(QPlainTextEdit* editor) {
     if (editor == nullptr) {
         return;
@@ -1274,6 +1327,8 @@ void MainWindow::setup_menus() {
     trim_trailing_whitespace_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W));
     auto* remove_blank_lines_action = edit_menu->addAction("Remove Blank Lines");
     remove_blank_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backspace));
+    auto* sort_lines_action = edit_menu->addAction("Sort Lines");
+    sort_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
     auto* delete_line_action = edit_menu->addAction("Delete Line");
     delete_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
     auto* move_line_up_action = edit_menu->addAction("Move Line Up");
@@ -1341,6 +1396,7 @@ void MainWindow::setup_menus() {
     connect(trim_trailing_whitespace_action, &QAction::triggered, this,
             &MainWindow::trim_trailing_whitespace);
     connect(remove_blank_lines_action, &QAction::triggered, this, &MainWindow::remove_blank_lines);
+    connect(sort_lines_action, &QAction::triggered, this, &MainWindow::sort_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
     connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
@@ -1706,6 +1762,18 @@ void MainWindow::remove_blank_lines() {
         statusBar()->showMessage("Removed 1 blank line", 3000);
     } else {
         statusBar()->showMessage(QString("Removed %1 blank lines").arg(count), 3000);
+    }
+}
+
+void MainWindow::sort_lines() {
+    editor_->setFocus();
+    const SortLinesResult result = sort_lines_in_editor(editor_);
+    if (result.line_count <= 1) {
+        statusBar()->showMessage("Nothing to sort", 3000);
+    } else if (!result.changed) {
+        statusBar()->showMessage("Lines already sorted", 3000);
+    } else {
+        statusBar()->showMessage(QString("Sorted %1 lines").arg(result.line_count), 3000);
     }
 }
 

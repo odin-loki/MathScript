@@ -84,6 +84,7 @@ private:
     void duplicate_line();
     void trim_trailing_whitespace();
     void remove_blank_lines();
+    void sort_lines();
     void delete_line();
     void move_line_up();
     void move_line_down();
