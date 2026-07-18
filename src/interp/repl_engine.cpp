@@ -878,6 +878,50 @@ Result<double> eval_finance_portfolio_variance(const Matrix<double>& w_m,
     return finance::portfolio_variance(*w, *cov);
 }
 
+Result<Matrix<double>> eval_finance_min_variance_portfolio(const Matrix<double>& cov_m) {
+    auto cov = matrix_to_row_major_flat(cov_m, "finance_min_variance_portfolio");
+    if (!cov) {
+        return std::unexpected(cov.error());
+    }
+    const int n = static_cast<int>(cov_m.rows());
+    if (cov_m.rows() != cov_m.cols()) {
+        return std::unexpected(
+            DomainError{"finance_min_variance_portfolio", "expected square covariance matrix"});
+    }
+    auto w = finance::min_variance_portfolio(*cov, n);
+    if (!w) {
+        return std::unexpected(w.error());
+    }
+    return vector_to_column(*w);
+}
+
+Result<Matrix<double>> eval_finance_max_sharpe_portfolio(const Matrix<double>& cov_m,
+                                                         const Matrix<double>& mu_m,
+                                                         double risk_free) {
+    auto cov = matrix_to_row_major_flat(cov_m, "finance_max_sharpe_portfolio");
+    if (!cov) {
+        return std::unexpected(cov.error());
+    }
+    const int n = static_cast<int>(cov_m.rows());
+    if (cov_m.rows() != cov_m.cols()) {
+        return std::unexpected(
+            DomainError{"finance_max_sharpe_portfolio", "expected square covariance matrix"});
+    }
+    auto mu = matrix_to_coeff_vector(mu_m, "finance_max_sharpe_portfolio");
+    if (!mu) {
+        return std::unexpected(mu.error());
+    }
+    if (mu->size() != static_cast<size_t>(n)) {
+        return std::unexpected(
+            DomainError{"finance_max_sharpe_portfolio", "expected mu length to match covariance size"});
+    }
+    auto w = finance::max_sharpe_portfolio(*cov, *mu, risk_free, n);
+    if (!w) {
+        return std::unexpected(w.error());
+    }
+    return vector_to_column(*w);
+}
+
 Result<double> eval_info_entropy(const Matrix<double>& prob_m) {
     auto probs = matrix_to_coeff_vector(prob_m, "info_entropy");
     if (!probs) {
@@ -3073,6 +3117,44 @@ Result<Matrix<double>> eval_graph_scc(const Matrix<double>& adj_m) {
         }
     }
     return out;
+}
+
+Result<Matrix<double>> eval_graph_louvain(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_louvain");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto comms = graph::louvain(*G);
+    if (comms.empty()) {
+        return Matrix<double>(0, 1);
+    }
+    size_t max_sz = 0;
+    for (const auto& comp : comms) {
+        max_sz = std::max(max_sz, comp.size());
+    }
+    Matrix<double> out(comms.size(), max_sz);
+    for (size_t r = 0; r < comms.size(); ++r) {
+        for (size_t c = 0; c < max_sz; ++c) {
+            out(r, c) = c < comms[r].size() ? static_cast<double>(comms[r][c]) : -1.0;
+        }
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_graph_eigenvector_centrality(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency(adj_m, "graph_eigenvector_centrality");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return vector_to_column(graph::eigenvector_centrality(*G));
+}
+
+Result<Matrix<double>> eval_graph_articulation_points(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_articulation_points");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return int_vector_to_column(graph::articulation_points(*G));
 }
 
 Result<double> eval_geo_hermite_x(double p0x, double p0y, double m0x, double m0y, double p1x,
@@ -7122,6 +7204,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_betweenness" ||
             fn == "graph_closeness" ||
             fn == "graph_degree_centrality" ||
+            fn == "graph_louvain" || fn == "graph_eigenvector_centrality" ||
+            fn == "graph_articulation_points" ||
+            fn == "finance_min_variance_portfolio" ||
             fn == "graph_is_bipartite" ||
             fn == "graph_is_dag" || fn == "graph_is_connected" ||
             fn == "graph_is_tree" || fn == "graph_topological_sort" ||
@@ -7240,6 +7325,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "finance_binomial_put" || fn == "finance_bs_delta" ||
             fn == "finance_bs_theta" || fn == "finance_bs_rho" ||
             fn == "finance_portfolio_return" || fn == "finance_portfolio_variance" ||
+            fn == "finance_min_variance_portfolio" || fn == "finance_max_sharpe_portfolio" ||
+            fn == "finance_heston_call" ||
             fn == "cmaes" || fn == "bfgs" || fn == "nelder_mead" || fn == "lbfgs" ||
             fn == "adam" || fn == "golden_section" || fn == "levenberg_marquardt" ||
             fn == "tensorops_matmul" || fn == "tensorops_einsum") {
@@ -8601,6 +8688,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_betweenness" ||
            callee == "graph_closeness" ||
            callee == "graph_degree_centrality" ||
+           callee == "graph_louvain" || callee == "graph_eigenvector_centrality" ||
+           callee == "graph_articulation_points" ||
+           callee == "finance_min_variance_portfolio" ||
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" || callee == "fft_fft2" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
@@ -8650,7 +8740,10 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 1;
     }
     if (callee == "graph_betweenness" || callee == "graph_closeness" ||
-        callee == "graph_degree_centrality" || callee == "fft_rfft" || callee == "fft_dft" ||
+        callee == "graph_degree_centrality" || callee == "graph_louvain" ||
+        callee == "graph_eigenvector_centrality" || callee == "graph_articulation_points" ||
+        callee == "finance_min_variance_portfolio" ||
+        callee == "fft_rfft" || callee == "fft_dft" ||
         callee == "fft_ifft" || callee == "fft_fft2" ||
         callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
@@ -9421,6 +9514,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(value.error());
         }
         return *value;
+    }
+    if (args.size() == 9 && fn == "finance_heston_call") {
+        return finance::heston_call(args[0], args[1], args[2], args[3], args[4], args[5], args[6],
+                                    args[7], args[8]);
     }
     if (args.size() == 6 && fn == "cplx_mobius_re") {
         auto value = eval_cplx_mobius_re(args[0], args[1], args[2], args[3], args[4], args[5]);
@@ -10950,6 +11047,46 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(scc.error());
         }
         result = *scc;
+    } else if (assign.callee == "graph_louvain" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto comms = eval_graph_louvain(*matrix);
+        if (!comms) {
+            return std::unexpected(comms.error());
+        }
+        result = *comms;
+    } else if (assign.callee == "graph_eigenvector_centrality" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto ec = eval_graph_eigenvector_centrality(*matrix);
+        if (!ec) {
+            return std::unexpected(ec.error());
+        }
+        result = *ec;
+    } else if (assign.callee == "graph_articulation_points" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto aps = eval_graph_articulation_points(*matrix);
+        if (!aps) {
+            return std::unexpected(aps.error());
+        }
+        result = *aps;
+    } else if (assign.callee == "finance_min_variance_portfolio" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto w = eval_finance_min_variance_portfolio(*matrix);
+        if (!w) {
+            return std::unexpected(w.error());
+        }
+        result = *w;
     } else if (assign.callee == "prewitt" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -12202,6 +12339,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_betweenness(A) betweenness centrality column from adjacency\n"
             "  name = graph_closeness(A) closeness centrality column from adjacency\n"
             "  name = graph_degree_centrality(A) degree centrality column from adjacency\n"
+            "  name = graph_louvain(A) Louvain communities as KxM vertex index matrix\n"
+            "  name = graph_eigenvector_centrality(A) eigenvector centrality column from adjacency\n"
+            "  name = graph_articulation_points(A) articulation points of undirected graph as Nx1 column\n"
             "  name = graph_max_flow(A,source,sink) max flow from source to sink\n"
             "  name = graph_is_bipartite(A) 1 if undirected graph is bipartite else 0\n"
             "  name = graph_is_connected(A) 1 if undirected graph is connected else 0\n"
@@ -12535,6 +12675,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = finance_kelly_fraction(p,b) Kelly criterion optimal bet fraction\n"
             "  name = finance_portfolio_return(weights,returns) portfolio return from Nx1 weights and returns\n"
             "  name = finance_portfolio_variance(weights,cov) portfolio variance from Nx1 weights and NxN covariance\n"
+            "  name = finance_min_variance_portfolio(cov) global minimum-variance portfolio weights from NxN covariance\n"
+            "  name = finance_max_sharpe_portfolio(cov,mu,risk_free) maximum Sharpe portfolio weights\n"
+            "  name = finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho) Heston stochastic-volatility call price\n"
             "  name = info_shannon_hartley(bandwidth_hz,snr_linear) Shannon-Hartley channel capacity in bps\n"
             "  name = quantum_von_neumann_entropy(rho) von Neumann entropy of NxN density matrix\n"
             "  name = quantum_purity(rho) purity Tr(rho^2) of NxN density matrix\n"
@@ -12624,14 +12767,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
-            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
+            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
-            "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
+            "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
             "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
@@ -14038,6 +14181,39 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 return assign_scalar(lhs, *value);
             }
+            if (callee == "finance_max_sharpe_portfolio") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "finance_max_sharpe_portfolio",
+                        "expected finance_max_sharpe_portfolio(cov, mu, risk_free)"});
+                }
+                auto cov_m = eval_matrix_operand(trim_copy((*call_args)[0]));
+                if (!cov_m) {
+                    return std::unexpected(cov_m.error());
+                }
+                auto mu_m = eval_matrix_operand(trim_copy((*call_args)[1]));
+                if (!mu_m) {
+                    return std::unexpected(mu_m.error());
+                }
+                double risk_free = 0.0;
+                if (!parse_number(trim_copy((*call_args)[2]), risk_free)) {
+                    auto rf_expr = eval_scalar_expr(state_, trim_copy((*call_args)[2]));
+                    if (!rf_expr) {
+                        return std::unexpected(rf_expr.error());
+                    }
+                    risk_free = *rf_expr;
+                }
+                auto w = eval_finance_max_sharpe_portfolio(*cov_m, *mu_m, risk_free);
+                if (!w) {
+                    return std::unexpected(w.error());
+                }
+                state_.matrices[lhs] = *w;
+                std::ostringstream out;
+                out << lhs << " =\n";
+                print_matrix(out, *w);
+                return out.str();
+            }
             if (callee == "signal_lowpass") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 3) {
@@ -14584,6 +14760,37 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(value.error());
             }
             return *value;
+        }
+        if (fn == "finance_max_sharpe_portfolio") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 3) {
+                return std::unexpected(DomainError{
+                    fn, "expected finance_max_sharpe_portfolio(cov, mu, risk_free)"});
+            }
+            auto cov_m = eval_matrix_operand(trim_copy(call_args->at(0)));
+            if (!cov_m) {
+                return std::unexpected(cov_m.error());
+            }
+            auto mu_m = eval_matrix_operand(trim_copy(call_args->at(1)));
+            if (!mu_m) {
+                return std::unexpected(mu_m.error());
+            }
+            double risk_free = 0.0;
+            if (!parse_number(trim_copy(call_args->at(2)), risk_free)) {
+                auto rf_expr = eval_scalar_expr(state_, trim_copy(call_args->at(2)));
+                if (!rf_expr) {
+                    return std::unexpected(rf_expr.error());
+                }
+                risk_free = *rf_expr;
+            }
+            auto w = eval_finance_max_sharpe_portfolio(*cov_m, *mu_m, risk_free);
+            if (!w) {
+                return std::unexpected(w.error());
+            }
+            std::ostringstream out;
+            out << "max_sharpe_portfolio =\n";
+            print_matrix(out, *w);
+            return out.str();
         }
         if (fn == "lbfgs") {
             const auto call_args = split_call_args(cmd);
@@ -15182,6 +15389,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         std::regex::icase);
     if (std::regex_match(cmd, match, nonary)) {
         const std::string fn = lower(match[1].str());
+        if (fn == "finance_heston_call") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double v0 = 0.0;
+            double kappa = 0.0;
+            double theta = 0.0;
+            double sigma_v = 0.0;
+            double rho = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), v0) || !parse_number(trim(match[7].str()), kappa) ||
+                !parse_number(trim(match[8].str()), theta) ||
+                !parse_number(trim(match[9].str()), sigma_v) ||
+                !parse_number(trim(match[10].str()), rho)) {
+                return std::unexpected(DomainError{
+                    "finance_heston_call",
+                    "expected finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho)"});
+            }
+            return std::to_string(finance::heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
+                   "\n";
+        }
         if (fn == "finance_barrier_option") {
             double S = 0.0;
             double K = 0.0;
@@ -20384,6 +20614,38 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "scc =\n";
             print_matrix(out, *scc);
+        } else if (fn == "graph_louvain") {
+            auto comms = eval_graph_louvain(*matrix);
+            if (!comms) {
+                return std::unexpected(comms.error());
+            }
+            out << "louvain =\n";
+            print_matrix(out, *comms);
+        } else if (fn == "graph_eigenvector_centrality") {
+            auto ec = eval_graph_eigenvector_centrality(*matrix);
+            if (!ec) {
+                return std::unexpected(ec.error());
+            }
+            out << "eigenvector_centrality:\n";
+            for (size_t i = 0; i < ec->rows(); ++i) {
+                out << "  [" << i << "] " << (*ec)(i, 0) << "\n";
+            }
+        } else if (fn == "graph_articulation_points") {
+            auto aps = eval_graph_articulation_points(*matrix);
+            if (!aps) {
+                return std::unexpected(aps.error());
+            }
+            out << "articulation_points:\n";
+            for (size_t i = 0; i < aps->rows(); ++i) {
+                out << "  [" << i << "] " << (*aps)(i, 0) << "\n";
+            }
+        } else if (fn == "finance_min_variance_portfolio") {
+            auto w = eval_finance_min_variance_portfolio(*matrix);
+            if (!w) {
+                return std::unexpected(w.error());
+            }
+            out << "min_variance_portfolio =\n";
+            print_matrix(out, *w);
         } else if (fn == "geo_delaunay_2d") {
             auto tris = eval_geo_delaunay_2d(*matrix);
             if (!tris) {
