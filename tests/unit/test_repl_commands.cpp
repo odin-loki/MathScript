@@ -4419,6 +4419,21 @@ TEST(ReplCommandsTest, wave160_fft_dft) {
     expect_ok(interp, "fft_dft([1; 0; 0; 0])");
 }
 
+TEST(ReplCommandsTest, wave260_fft_goertzel) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fft_goertzel(x,f,fs)");
+
+    // DC bin of a constant length-4 signal: sum of samples = 4.
+    expect_ok(interp, "G = fft_goertzel([1; 1; 1; 1], 0, 4)");
+    ASSERT_GT(interp.state().matrices.count("G"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("G").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("G").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("G")(0, 0), 4.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("G")(0, 1), 0.0, 1e-9);
+
+    expect_ok(interp, "fft_goertzel([1; 1; 1; 1], 0, 4)");
+}
+
 TEST(ReplCommandsTest, wave160_graph_greedy_colour) {
     Interpreter interp;
     expect_contains(interp, "help", "graph_greedy_colour(A)");
