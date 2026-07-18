@@ -27,11 +27,19 @@ public:
     std::vector<UnsafeSite> get_sites() const;
     
     int count() const;
-    
+
+    // Merge the given sites into ${output_dir}/ms-unsafe-audit.json (and .jsonl).
+    // Returns false when output_dir is empty or the write fails.
+    static bool emit_audit_report(const std::string& output_dir,
+                                  const std::vector<UnsafeSite>& sites);
+
 private:
     UnsafeRegistry() = default;
     std::map<std::string, std::vector<UnsafeSite>> sites_;
 };
+
+// Called by UNSAFE_SITE() macro at compile time (non-plugin builds).
+void record_unsafe_annotation(const char* file, int line, const char* reason);
 
 } // namespace ms::plugin
 
