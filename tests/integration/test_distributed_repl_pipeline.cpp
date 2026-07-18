@@ -59,6 +59,13 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
     expect_ok(interp, "z3 = mpi_allreduce_min(0)");
     EXPECT_NEAR(interp.state().scalars.at("z3"), 0.0, 1e-9);
 
+    // mpi_bcast identity on single-rank stub
+    expect_ok(interp, "bx = mpi_bcast(3.5)");
+    EXPECT_NEAR(interp.state().scalars.at("bx"), 3.5, 1e-9);
+    expect_ok(interp, "bz = mpi_bcast(0)");
+    EXPECT_NEAR(interp.state().scalars.at("bz"), 0.0, 1e-9);
+    expect_contains(interp, "help", "mpi_bcast(x)");
+
     // dist_solve wraps ms::distributed::solve (stub path: local gather + solve)
     // 4x + y = 1, x + 3y = 2  => x=1/11, y=7/11
     expect_ok(interp, "A = [4, 1; 1, 3]");

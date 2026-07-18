@@ -196,6 +196,7 @@ QStringList repl_command_list() {
         QStringLiteral("mpi_allreduce_sum"),
         QStringLiteral("mpi_allreduce_max"),
         QStringLiteral("mpi_allreduce_min"),
+        QStringLiteral("mpi_bcast"),
         QStringLiteral("mpi_barrier"),
         QStringLiteral("cuda_allreduce_sum"),
         QStringLiteral("cuda_allreduce_max"),

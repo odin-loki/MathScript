@@ -106,6 +106,14 @@ TEST(DistributedAdv, AllreduceMaxMin_MultipleContexts) {
     }
 }
 
+TEST(DistributedAdv, Bcast_Identity) {
+    // In a 1-process context, bcast(ctx, x) = x
+    MPIContext ctx;
+    EXPECT_NEAR(bcast(ctx, 3.14), 3.14, 1e-10);
+    EXPECT_NEAR(bcast(ctx, 0.0), 0.0, 1e-10);
+    EXPECT_NEAR(bcast(ctx, -1.5), -1.5, 1e-10);
+}
+
 TEST(DistributedAdv, Barrier_DoesNotCrash) {
     MPIContext ctx;
     EXPECT_NO_THROW(barrier(ctx));

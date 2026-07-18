@@ -82,6 +82,17 @@ double allreduce_min(const MPIContext& ctx, double value) {
 #endif
 }
 
+double bcast(const MPIContext& ctx, double value) {
+#if defined(MS_HAS_MPI) && MS_HAS_MPI
+    double out = value;
+    MPI_Bcast(&out, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    return out;
+#else
+    (void)ctx;
+    return value;
+#endif
+}
+
 void barrier(const MPIContext& ctx) {
 #if defined(MS_HAS_MPI) && MS_HAS_MPI
     if (ctx.active) {
