@@ -88,6 +88,7 @@ private:
     void unique_lines();
     void reverse_lines();
     void join_lines();
+    void split_lines();
     void delete_line();
     void move_line_up();
     void move_line_down();

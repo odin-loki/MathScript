@@ -734,6 +734,81 @@ JoinLinesResult join_lines_in_editor(QPlainTextEdit* editor) {
     return result;
 }
 
+struct SplitLinesResult {
+    int line_count = 0;
+    bool changed = false;
+};
+
+QStringList split_text_on_whitespace(const QString& text) {
+    QStringList pieces;
+    QString current;
+    for (const QChar ch : text) {
+        if (ch.isSpace()) {
+            if (!current.isEmpty()) {
+                pieces.append(current);
+                current.clear();
+            }
+        } else {
+            current.append(ch);
+        }
+    }
+    if (!current.isEmpty()) {
+        pieces.append(current);
+    }
+    return pieces;
+}
+
+SplitLinesResult split_lines_in_editor(QPlainTextEdit* editor) {
+    SplitLinesResult result;
+    if (editor == nullptr) {
+        return result;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    if (cursor.hasSelection()) {
+        QString selected = cursor.selectedText();
+        selected.replace(QChar(0x2029), QLatin1Char('\n'));
+
+        const QStringList pieces = split_text_on_whitespace(selected);
+        if (pieces.size() <= 1) {
+            const int start = cursor.selectionStart();
+            cursor.clearSelection();
+            cursor.setPosition(start);
+            const QTextBlock block = cursor.block();
+            const int pos_in_block = cursor.positionInBlock();
+            if (pos_in_block <= 0 || pos_in_block >= block.length() - 1) {
+                cursor.endEditBlock();
+                return result;
+            }
+            cursor.insertText(QLatin1Char('\n'));
+            result.line_count = 2;
+        } else {
+            cursor.insertText(pieces.join(QLatin1Char('\n')));
+            result.line_count = pieces.size();
+        }
+        editor->setTextCursor(cursor);
+        cursor.endEditBlock();
+        result.changed = true;
+        return result;
+    }
+
+    const QTextBlock block = cursor.block();
+    const int pos_in_block = cursor.positionInBlock();
+    if (pos_in_block <= 0 || pos_in_block >= block.length() - 1) {
+        cursor.endEditBlock();
+        return result;
+    }
+
+    cursor.insertText(QLatin1Char('\n'));
+    editor->setTextCursor(cursor);
+    cursor.endEditBlock();
+    result.line_count = 2;
+    result.changed = true;
+    return result;
+}
+
 void indent_lines_in_editor(QPlainTextEdit* editor) {
     if (editor == nullptr) {
         return;
@@ -1581,6 +1656,8 @@ void MainWindow::setup_menus() {
     title_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_T));
     auto* join_lines_action = edit_menu->addAction("Join Lines");
     join_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
+    auto* split_lines_action = edit_menu->addAction("Split Lines");
+    split_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_J));
     auto* delete_line_action = edit_menu->addAction("Delete Line");
     delete_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
     auto* move_line_up_action = edit_menu->addAction("Move Line Up");
@@ -1655,6 +1732,7 @@ void MainWindow::setup_menus() {
     connect(lower_case_selection_action, &QAction::triggered, this, &MainWindow::lower_case_selection);
     connect(title_case_selection_action, &QAction::triggered, this, &MainWindow::title_case_selection);
     connect(join_lines_action, &QAction::triggered, this, &MainWindow::join_lines);
+    connect(split_lines_action, &QAction::triggered, this, &MainWindow::split_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
     connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
@@ -2070,6 +2148,18 @@ void MainWindow::join_lines() {
         statusBar()->showMessage("Joined 2 lines", 3000);
     } else {
         statusBar()->showMessage(QString("Joined %1 lines").arg(result.line_count), 3000);
+    }
+}
+
+void MainWindow::split_lines() {
+    editor_->setFocus();
+    const SplitLinesResult result = split_lines_in_editor(editor_);
+    if (!result.changed) {
+        statusBar()->showMessage("Nothing to split", 3000);
+    } else if (result.line_count == 2) {
+        statusBar()->showMessage("Split into 2 lines", 3000);
+    } else {
+        statusBar()->showMessage(QString("Split into %1 lines").arg(result.line_count), 3000);
     }
 }
 
