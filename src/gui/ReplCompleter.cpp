@@ -186,6 +186,9 @@ QStringList repl_command_list() {
         QStringLiteral("stats_pacf"),
         QStringLiteral("stats_kde"),
         QStringLiteral("stats_bootstrap_ci"),
+        // Info theory (Wave 258)
+        QStringLiteral("info_permutation_entropy"),
+        QStringLiteral("info_transfer_entropy"),
         // Probability (extended Wave 257)
         QStringLiteral("prob_lognormal_pdf"),
         QStringLiteral("prob_lognormal_cdf"),

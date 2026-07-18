@@ -1431,6 +1431,38 @@ Result<double> eval_info_sample_entropy(const Matrix<double>& x_m, int m, double
     return info::sample_entropy(*x, m, r);
 }
 
+Result<double> eval_info_permutation_entropy(const Matrix<double>& x_m, int order, int delay) {
+    auto x = matrix_to_coeff_vector(x_m, "info_permutation_entropy");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(DomainError{
+            "info_permutation_entropy", "expected non-empty time series vector"});
+    }
+    return info::permutation_entropy(*x, order, delay, true);
+}
+
+Result<double> eval_info_transfer_entropy(const Matrix<double>& x_m, const Matrix<double>& y_m,
+                                          int bins, int lag) {
+    auto x = matrix_to_coeff_vector(x_m, "info_transfer_entropy");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    auto y = matrix_to_coeff_vector(y_m, "info_transfer_entropy");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (x->empty() || y->empty()) {
+        return std::unexpected(DomainError{
+            "info_transfer_entropy", "expected non-empty time series vectors"});
+    }
+    if (x->size() != y->size()) {
+        return std::unexpected(DomainError{"info_transfer_entropy", "vector length mismatch"});
+    }
+    return info::transfer_entropy(*x, *y, bins, lag);
+}
+
 Result<double> eval_info_kl_divergence(const Matrix<double>& p_m, const Matrix<double>& q_m) {
     auto p = matrix_to_coeff_vector(p_m, "info_kl_divergence");
     if (!p) {
@@ -10337,6 +10369,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
             fn == "topo_vietoris_rips_betti0" || fn == "topo_betti_curve" ||
             fn == "info_conditional_entropy" || fn == "info_sample_entropy" ||
+            fn == "info_permutation_entropy" || fn == "info_transfer_entropy" ||
             fn == "geo_kdtree_nearest" || fn == "geo_kdtree_3d_nearest" ||
             fn == "stats_ztest" ||
             fn == "finance_binomial_call" ||
@@ -17746,6 +17779,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = info_joint_entropy(joint,rows,cols) joint entropy H(X,Y) from joint PMF matrix\n"
             "  name = info_conditional_entropy(joint,rows,cols) conditional entropy H(Y|X) from joint PMF\n"
             "  name = info_sample_entropy(x,m,r) sample entropy of Nx1 time series (template m, tolerance r)\n"
+            "  name = info_permutation_entropy(x[,order[,delay]]) Bandt-Pompe permutation entropy (normalized)\n"
+            "  name = info_transfer_entropy(x,y[,bins[,lag]]) transfer entropy TE(X->Y) in bits\n"
             "  name = info_lz_complexity(seq) Lempel-Ziv complexity of Nx1 integer sequence\n"
             "  name = info_kl_divergence(p,q) KL divergence D_KL(P||Q) in bits\n"
             "  name = info_cross_entropy(p,q) cross-entropy H(P,Q) in bits\n"
@@ -17819,7 +17854,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -20460,6 +20495,101 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 return assign_scalar(lhs, *value);
             }
+            if (callee == "info_permutation_entropy") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() < 1 || call_args->size() > 3 ||
+                    call_args->front().empty()) {
+                    return std::unexpected(DomainError{
+                        "info_permutation_entropy",
+                        "expected info_permutation_entropy(x[, order[, delay]])"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                int order = 3;
+                int delay = 1;
+                if (call_args->size() >= 2) {
+                    double order_d = 0.0;
+                    if (!parse_number(trim_copy((*call_args)[1]), order_d)) {
+                        return std::unexpected(DomainError{
+                            "info_permutation_entropy",
+                            "expected info_permutation_entropy(x[, order[, delay]])"});
+                    }
+                    order = static_cast<int>(order_d);
+                    if (order < 1 || order_d != order) {
+                        return std::unexpected(DomainError{
+                            "info_permutation_entropy", "expected positive integer order"});
+                    }
+                }
+                if (call_args->size() >= 3) {
+                    double delay_d = 0.0;
+                    if (!parse_number(trim_copy((*call_args)[2]), delay_d)) {
+                        return std::unexpected(DomainError{
+                            "info_permutation_entropy",
+                            "expected info_permutation_entropy(x[, order[, delay]])"});
+                    }
+                    delay = static_cast<int>(delay_d);
+                    if (delay < 1 || delay_d != delay) {
+                        return std::unexpected(DomainError{
+                            "info_permutation_entropy", "expected positive integer delay"});
+                    }
+                }
+                auto value = eval_info_permutation_entropy(*x_m, order, delay);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "info_transfer_entropy") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                    return std::unexpected(DomainError{
+                        "info_transfer_entropy",
+                        "expected info_transfer_entropy(x, y[, bins[, lag]])"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy((*call_args)[0]));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                auto y_m = eval_matrix_operand(trim_copy((*call_args)[1]));
+                if (!y_m) {
+                    return std::unexpected(y_m.error());
+                }
+                int bins = 8;
+                int lag = 1;
+                if (call_args->size() >= 3) {
+                    double bins_d = 0.0;
+                    if (!parse_number(trim_copy((*call_args)[2]), bins_d)) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy",
+                            "expected info_transfer_entropy(x, y[, bins[, lag]])"});
+                    }
+                    bins = static_cast<int>(bins_d);
+                    if (bins < 1 || bins_d != bins) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy", "expected positive integer bins"});
+                    }
+                }
+                if (call_args->size() >= 4) {
+                    double lag_d = 0.0;
+                    if (!parse_number(trim_copy((*call_args)[3]), lag_d)) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy",
+                            "expected info_transfer_entropy(x, y[, bins[, lag]])"});
+                    }
+                    lag = static_cast<int>(lag_d);
+                    if (lag < 1 || lag_d != lag) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy", "expected positive integer lag"});
+                    }
+                }
+                auto value = eval_info_transfer_entropy(*x_m, *y_m, bins, lag);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
             if (callee == "stats_ztest") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 3) {
@@ -22596,6 +22726,119 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             out << "u =\n";
             print_matrix(out, *value);
             return out.str();
+        }
+    }
+
+    {
+        const auto open = cmd.find('(');
+        if (open != std::string::npos && !cmd.empty() && cmd.back() == ')') {
+            const std::string fn = lower(trim_copy(cmd.substr(0, open)));
+            if (fn == "info_permutation_entropy" || fn == "info_transfer_entropy") {
+                const auto call_args = split_call_args(cmd);
+                if (!call_args) {
+                    return std::unexpected(DomainError{fn, "expected call arguments"});
+                }
+                auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                    auto matrix = parse_matrix(text);
+                    if (!matrix) {
+                        matrix = resolve_matrix(text);
+                    }
+                    return matrix;
+                };
+                if (fn == "info_permutation_entropy") {
+                    if (call_args->size() < 1 || call_args->size() > 3 ||
+                        call_args->front().empty()) {
+                        return std::unexpected(DomainError{
+                            "info_permutation_entropy",
+                            "expected info_permutation_entropy(x[, order[, delay]])"});
+                    }
+                    auto x_m = resolve_arg(call_args->at(0));
+                    if (!x_m) {
+                        return std::unexpected(x_m.error());
+                    }
+                    int order = 3;
+                    int delay = 1;
+                    if (call_args->size() >= 2) {
+                        double order_d = 0.0;
+                        if (!parse_number(trim_copy(call_args->at(1)), order_d)) {
+                            return std::unexpected(DomainError{
+                                "info_permutation_entropy",
+                                "expected info_permutation_entropy(x[, order[, delay]])"});
+                        }
+                        order = static_cast<int>(order_d);
+                        if (order < 1 || order_d != order) {
+                            return std::unexpected(DomainError{
+                                "info_permutation_entropy",
+                                "expected positive integer order"});
+                        }
+                    }
+                    if (call_args->size() >= 3) {
+                        double delay_d = 0.0;
+                        if (!parse_number(trim_copy(call_args->at(2)), delay_d)) {
+                            return std::unexpected(DomainError{
+                                "info_permutation_entropy",
+                                "expected info_permutation_entropy(x[, order[, delay]])"});
+                        }
+                        delay = static_cast<int>(delay_d);
+                        if (delay < 1 || delay_d != delay) {
+                            return std::unexpected(DomainError{
+                                "info_permutation_entropy",
+                                "expected positive integer delay"});
+                        }
+                    }
+                    auto value = eval_info_permutation_entropy(*x_m, order, delay);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
+                if (call_args->size() < 2 || call_args->size() > 4) {
+                    return std::unexpected(DomainError{
+                        "info_transfer_entropy",
+                        "expected info_transfer_entropy(x, y[, bins[, lag]])"});
+                }
+                auto x_m = resolve_arg(call_args->at(0));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                auto y_m = resolve_arg(call_args->at(1));
+                if (!y_m) {
+                    return std::unexpected(y_m.error());
+                }
+                int bins = 8;
+                int lag = 1;
+                if (call_args->size() >= 3) {
+                    double bins_d = 0.0;
+                    if (!parse_number(trim_copy(call_args->at(2)), bins_d)) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy",
+                            "expected info_transfer_entropy(x, y[, bins[, lag]])"});
+                    }
+                    bins = static_cast<int>(bins_d);
+                    if (bins < 1 || bins_d != bins) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy", "expected positive integer bins"});
+                    }
+                }
+                if (call_args->size() >= 4) {
+                    double lag_d = 0.0;
+                    if (!parse_number(trim_copy(call_args->at(3)), lag_d)) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy",
+                            "expected info_transfer_entropy(x, y[, bins[, lag]])"});
+                    }
+                    lag = static_cast<int>(lag_d);
+                    if (lag < 1 || lag_d != lag) {
+                        return std::unexpected(DomainError{
+                            "info_transfer_entropy", "expected positive integer lag"});
+                    }
+                }
+                auto value = eval_info_transfer_entropy(*x_m, *y_m, bins, lag);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return std::to_string(*value) + "\n";
+            }
         }
     }
 
