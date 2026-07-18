@@ -3700,6 +3700,20 @@ Result<double> eval_geo_kdtree_nearest(const Matrix<double>& P_m, double qx, dou
     return static_cast<double>(kd.nearest({qx, qy}));
 }
 
+Result<double> eval_geo_kdtree_3d_nearest(const Matrix<double>& P_m, double qx, double qy,
+                                          double qz) {
+    auto pts = matrix_to_points3d(P_m, "geo_kdtree_3d_nearest");
+    if (!pts) {
+        return std::unexpected(pts.error());
+    }
+    if (pts->empty()) {
+        return std::unexpected(
+            DomainError{"geo_kdtree_3d_nearest", "expected non-empty Nx3 point matrix"});
+    }
+    const geo::KDTree3D kd(*pts);
+    return static_cast<double>(kd.nearest({qx, qy, qz}));
+}
+
 Result<Matrix<double>> eval_geo_kdtree_knn(const Matrix<double>& P_m, double qx, double qy,
                                            double k_d) {
     auto pts = matrix_to_points2d(P_m, "geo_kdtree_knn");
@@ -9916,7 +9930,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
             fn == "topo_vietoris_rips_betti0" || fn == "topo_betti_curve" ||
             fn == "info_conditional_entropy" || fn == "info_sample_entropy" ||
-            fn == "geo_kdtree_nearest" ||
+            fn == "geo_kdtree_nearest" || fn == "geo_kdtree_3d_nearest" ||
             fn == "stats_ztest" ||
             fn == "finance_binomial_call" ||
             fn == "finance_binomial_put" || fn == "finance_geo_asian_call" ||
@@ -12245,6 +12259,13 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         const geo::AABB3D box{{args[6], args[7], args[8]}, {args[9], args[10], args[11]}};
         return geo::intersect_ray_aabb(ray, box) ? 1.0 : 0.0;
     }
+    if (args.size() == 15 && fn == "geo_intersect_ray_tri") {
+        const geo::Ray3D ray{{args[0], args[1], args[2]}, {args[3], args[4], args[5]}};
+        const geo::Triangle3D tri{{args[6], args[7], args[8]},
+                                  {args[9], args[10], args[11]},
+                                  {args[12], args[13], args[14]}};
+        return geo::intersect_ray_tri(ray, tri) ? 1.0 : 0.0;
+    }
     if (args.size() == 10 && fn == "geo_intersect_ray_sphere") {
         const geo::Ray3D ray{{args[0], args[1], args[2]}, {args[3], args[4], args[5]}};
         const geo::Sphere3D sphere{{args[6], args[7], args[8]}, args[9]};
@@ -12254,6 +12275,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         const geo::Segment2D s1{{args[0], args[1]}, {args[2], args[3]}};
         const geo::Segment2D s2{{args[4], args[5]}, {args[6], args[7]}};
         return geo::intersect_seg_seg(s1, s2) ? 1.0 : 0.0;
+    }
+    if (args.size() == 9 && fn == "geo_dist_point_seg3d") {
+        const geo::Point3D p{args[0], args[1], args[2]};
+        const geo::Segment3D s{{args[3], args[4], args[5]}, {args[6], args[7], args[8]}};
+        return geo::dist_point_segment3(p, s);
     }
     if (args.size() == 9 && fn == "geo_hermite_x") {
         auto value = eval_geo_hermite_x(args[0], args[1], args[2], args[3], args[4], args[5],
@@ -12579,6 +12605,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 DomainError{"finance_geo_asian_put", "expected non-negative integer n_fixings"});
         }
         return finance::geo_asian_put(args[0], args[1], args[2], args[3], args[4], n_fixings);
+    }
+    if (args.size() == 7 && fn == "geo_dist_point_plane") {
+        const geo::Point3D p{args[0], args[1], args[2]};
+        const geo::Plane3D pl{{args[3], args[4], args[5]}, args[6]};
+        return geo::dist_point_plane(p, pl);
     }
     if (args.size() == 7 && fn == "finance_digital_option") {
         const int call = static_cast<int>(args[5]);
@@ -16015,6 +16046,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_clip_polygon(A,B) clip Nx2 subject against Mx2 convex window â†’ Kx2\n"
             "  name = geo_min_bounding_rect(P) min-area OBB as 5x1 [cx;cy;width;height;angle_rad]\n"
             "  name = geo_kdtree_nearest(P,x,y) nearest point index in Nx2 set to query (x,y)\n"
+            "  name = geo_kdtree_3d_nearest(P,x,y,z) nearest point index in Nx3 set to query (x,y,z)\n"
             "  name = geo_kdtree_knn(P,x,y,k) k nearest point indices as kx1 column from Nx2 set\n"
             "  name = geo_kdtree_range(P,x,y,r) indices within radius r as mx1 column from Nx2 set\n"
             "  name = topo_pairwise_distances(P) NxN pairwise distance matrix from Nx2 points\n"
@@ -16024,6 +16056,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4) 1 if 2D segments intersect else 0\n"
             "  name = geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r) 1 if ray hits sphere else 0\n"
             "  name = geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz) 1 if ray hits AABB else 0\n"
+            "  name = geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz) 1 if ray hits triangle else 0\n"
+            "  name = geo_dist_point_plane(px,py,pz,nx,ny,nz,d) point-to-plane distance (n·p+d=0)\n"
+            "  name = geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2) point-to-segment distance in 3D\n"
             "  name = combo_nchoosek(n,k) binomial coefficient C(n,k)\n"
             "  name = combo_stirling1(n,k) unsigned Stirling number of first kind |s(n,k)|\n"
             "  name = combo_stirling2(n,k) Stirling number of second kind S(n,k)\n"
@@ -16478,7 +16513,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
-            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r)\n"
+            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
@@ -19032,6 +19067,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 return assign_scalar(lhs, *value);
             }
+            if (callee == "geo_kdtree_3d_nearest") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 4) {
+                    return std::unexpected(DomainError{
+                        "geo_kdtree_3d_nearest",
+                        "expected geo_kdtree_3d_nearest(P, x, y, z)"});
+                }
+                auto P_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!P_m) {
+                    return std::unexpected(P_m.error());
+                }
+                double qx = 0.0;
+                double qy = 0.0;
+                double qz = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), qx) ||
+                    !parse_number(trim_copy((*call_args)[2]), qy) ||
+                    !parse_number(trim_copy((*call_args)[3]), qz)) {
+                    return std::unexpected(DomainError{
+                        "geo_kdtree_3d_nearest",
+                        "expected geo_kdtree_3d_nearest(P, x, y, z)"});
+                }
+                auto value = eval_geo_kdtree_3d_nearest(*P_m, qx, qy, qz);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
             if (callee == "info_conditional_entropy") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 3) {
@@ -19220,6 +19282,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             std::vector<double> args;
             args.reserve(12);
+            for (const auto& arg_text : *call_args) {
+                double v = 0.0;
+                if (!parse_number(trim_copy(arg_text), v)) {
+                    return std::unexpected(DomainError{fn, "expected numeric arguments"});
+                }
+                args.push_back(v);
+            }
+            auto value = eval_scalar_call(fn, args);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
+        if (fn == "geo_intersect_ray_tri") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 15) {
+                return std::unexpected(DomainError{
+                    fn,
+                    "expected geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz)"});
+            }
+            std::vector<double> args;
+            args.reserve(15);
             for (const auto& arg_text : *call_args) {
                 double v = 0.0;
                 if (!parse_number(trim_copy(arg_text), v)) {
@@ -19984,6 +20068,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         std::regex::icase);
     if (std::regex_match(cmd, match, nonary)) {
         const std::string fn = lower(match[1].str());
+        if (fn == "geo_dist_point_seg3d") {
+            double px = 0.0;
+            double py = 0.0;
+            double pz = 0.0;
+            double x1 = 0.0;
+            double y1 = 0.0;
+            double z1 = 0.0;
+            double x2 = 0.0;
+            double y2 = 0.0;
+            double z2 = 0.0;
+            if (!parse_number(trim(match[2].str()), px) || !parse_number(trim(match[3].str()), py) ||
+                !parse_number(trim(match[4].str()), pz) || !parse_number(trim(match[5].str()), x1) ||
+                !parse_number(trim(match[6].str()), y1) || !parse_number(trim(match[7].str()), z1) ||
+                !parse_number(trim(match[8].str()), x2) || !parse_number(trim(match[9].str()), y2) ||
+                !parse_number(trim(match[10].str()), z2)) {
+                return std::unexpected(DomainError{
+                    "geo_dist_point_seg3d",
+                    "expected geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2)"});
+            }
+            const geo::Point3D p{px, py, pz};
+            const geo::Segment3D s{{x1, y1, z1}, {x2, y2, z2}};
+            return std::to_string(geo::dist_point_segment3(p, s)) + "\n";
+        }
         if (fn == "finance_heston_call") {
             double S = 0.0;
             double K = 0.0;
@@ -20077,6 +20184,26 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         std::regex::icase);
     if (std::regex_match(cmd, match, heptary)) {
         const std::string fn = lower(match[1].str());
+        if (fn == "geo_dist_point_plane") {
+            double px = 0.0;
+            double py = 0.0;
+            double pz = 0.0;
+            double nx = 0.0;
+            double ny = 0.0;
+            double nz = 0.0;
+            double d = 0.0;
+            if (!parse_number(trim(match[2].str()), px) || !parse_number(trim(match[3].str()), py) ||
+                !parse_number(trim(match[4].str()), pz) || !parse_number(trim(match[5].str()), nx) ||
+                !parse_number(trim(match[6].str()), ny) || !parse_number(trim(match[7].str()), nz) ||
+                !parse_number(trim(match[8].str()), d)) {
+                return std::unexpected(DomainError{
+                    "geo_dist_point_plane",
+                    "expected geo_dist_point_plane(px,py,pz,nx,ny,nz,d)"});
+            }
+            const geo::Point3D p{px, py, pz};
+            const geo::Plane3D pl{{nx, ny, nz}, d};
+            return std::to_string(geo::dist_point_plane(p, pl)) + "\n";
+        }
         if (fn == "heun_g") {
             double a = 0.0;
             double q = 0.0;
@@ -22833,6 +22960,40 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 print_matrix(out, *result);
                 return out.str();
             }
+        }
+        if (fn == "geo_kdtree_3d_nearest") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 4) {
+                return std::unexpected(DomainError{
+                    "geo_kdtree_3d_nearest",
+                    "expected geo_kdtree_3d_nearest(P, x, y, z)"});
+            }
+            double qx = 0.0;
+            double qy = 0.0;
+            double qz = 0.0;
+            if (!parse_number(trim_copy(call_args->at(1)), qx) ||
+                !parse_number(trim_copy(call_args->at(2)), qy) ||
+                !parse_number(trim_copy(call_args->at(3)), qz)) {
+                return std::unexpected(DomainError{
+                    "geo_kdtree_3d_nearest",
+                    "expected geo_kdtree_3d_nearest(P, x, y, z)"});
+            }
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto P_m = resolve_arg(call_args->at(0));
+            if (!P_m) {
+                return std::unexpected(P_m.error());
+            }
+            auto value = eval_geo_kdtree_3d_nearest(*P_m, qx, qy, qz);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
         }
         if (fn == "info_joint_entropy" || fn == "info_conditional_entropy" ||
             fn == "info_sample_entropy" || fn == "geo_point_in_polygon" ||
