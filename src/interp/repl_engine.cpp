@@ -386,6 +386,29 @@ Matrix<double> gray_image_to_matrix(const image::Image& img) {
     return out;
 }
 
+Matrix<double> rgb_image_to_matrix(const image::Image& img) {
+    const size_t rows = static_cast<size_t>(img.rows * img.cols);
+    Matrix<double> out(rows, static_cast<size_t>(img.channels));
+    size_t idx = 0;
+    for (int r = 0; r < img.rows; ++r) {
+        for (int c = 0; c < img.cols; ++c) {
+            for (int ch = 0; ch < img.channels; ++ch) {
+                out(idx, static_cast<size_t>(ch)) = img.at(r, c, ch);
+            }
+            ++idx;
+        }
+    }
+    return out;
+}
+
+Result<int> parse_morph_ksize(double ksize_d, const char* fn) {
+    const int ksize = static_cast<int>(ksize_d);
+    if (ksize < 1 || ksize_d != ksize || (ksize % 2) == 0) {
+        return std::unexpected(DomainError{fn, "expected positive odd integer ksize"});
+    }
+    return ksize;
+}
+
 compress::Bytes matrix_to_bytes(const Matrix<double>& m) {
     compress::Bytes bytes;
     bytes.reserve(m.rows() * m.cols());
@@ -527,6 +550,128 @@ Matrix<double> vector_to_column(const std::vector<double>& values) {
         out(i, 0) = values[i];
     }
     return out;
+}
+
+Matrix<double> ml_model_to_matrix(const ml::Vec& coef, double intercept) {
+    Matrix<double> out(coef.size() + 1, 1);
+    for (size_t i = 0; i < coef.size(); ++i) {
+        out(i, 0) = coef[i];
+    }
+    out(coef.size(), 0) = intercept;
+    return out;
+}
+
+Result<std::pair<ml::Vec, double>> ml_model_from_matrix(const Matrix<double>& model,
+                                                         const char* fn) {
+    if (model.cols() != 1 || model.rows() < 2) {
+        return std::unexpected(
+            DomainError{fn, "expected (n_features+1) x 1 model column with intercept last"});
+    }
+    ml::Vec coef(model.rows() - 1);
+    for (size_t i = 0; i < coef.size(); ++i) {
+        coef[i] = model(i, 0);
+    }
+    return std::pair{coef, model(model.rows() - 1, 0)};
+}
+
+Result<Matrix<double>> eval_ml_linear_fit(const Matrix<double>& X_m, const Matrix<double>& y_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_linear_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_linear_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::LinearRegression lr;
+    lr.fit(*X, *y);
+    return ml_model_to_matrix(lr.coef, lr.intercept);
+}
+
+Result<Matrix<double>> eval_ml_linear_predict(const Matrix<double>& X_m,
+                                              const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_linear_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto params = ml_model_from_matrix(model_m, "ml_linear_predict");
+    if (!params) {
+        return std::unexpected(params.error());
+    }
+    ml::LinearRegression lr;
+    lr.coef = params->first;
+    lr.intercept = params->second;
+    return vector_to_column(lr.predict(*X));
+}
+
+Result<Matrix<double>> eval_ml_ridge_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
+                                         double alpha) {
+    auto X = matrix_to_ml_mat(X_m, "ml_ridge_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_ridge_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::RidgeRegression rr(alpha);
+    rr.fit(*X, *y);
+    return ml_model_to_matrix(rr.coef, rr.intercept);
+}
+
+Result<Matrix<double>> eval_ml_ridge_predict(const Matrix<double>& X_m,
+                                             const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_ridge_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto params = ml_model_from_matrix(model_m, "ml_ridge_predict");
+    if (!params) {
+        return std::unexpected(params.error());
+    }
+    ml::RidgeRegression rr(1.0);
+    rr.coef = params->first;
+    rr.intercept = params->second;
+    return vector_to_column(rr.predict(*X));
+}
+
+Result<Matrix<double>> eval_ml_logistic_fit(const Matrix<double>& X_m, const Matrix<double>& y_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_logistic_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_logistic_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::LogisticRegression lr;
+    lr.fit(*X, *y);
+    return ml_model_to_matrix(lr.coef, lr.intercept);
+}
+
+Result<Matrix<double>> eval_ml_logistic_predict(const Matrix<double>& X_m,
+                                               const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_logistic_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto params = ml_model_from_matrix(model_m, "ml_logistic_predict");
+    if (!params) {
+        return std::unexpected(params.error());
+    }
+    ml::LogisticRegression lr;
+    lr.coef = params->first;
+    lr.intercept = params->second;
+    return vector_to_column(lr.predict(*X));
 }
 
 Matrix<double> int_vector_to_column(const std::vector<int>& values) {
@@ -4893,6 +5038,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "control_nyquist" || callee == "quantum_commutator" ||
            callee == "poly_add" || callee == "quantum_tensor_product" ||
            callee == "ml_mat_mul" ||
+           callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
+           callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
+           callee == "ml_logistic_predict" ||
            callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
            callee == "signal_convolve" || callee == "signal_correlate";
 }
@@ -7094,8 +7242,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "rand" || fn == "randn" || fn == "expm" || fn == "inv" ||
             fn == "pinv" || fn == "null" || fn == "orth" ||
             fn == "kron" || fn == "repmat" || fn == "linspace" ||
-            fn == "rgb2gray" || fn == "sobel" || fn == "prewitt" ||
+            fn == "rgb2gray" || fn == "rgb2hsv" || fn == "sobel" || fn == "prewitt" ||
             fn == "imgaussfilt" || fn == "medfilt2" || fn == "boxfilter" ||
+            fn == "imdilate" || fn == "imerode" || fn == "imopen" || fn == "imclose" ||
             fn == "bilateral" || fn == "canny" ||
             fn == "laplacian" || fn == "histeq" ||
             fn == "sharpen" || fn == "threshold_otsu" || fn == "imresize" ||
@@ -7137,7 +7286,10 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "fft_rfft" || fn == "fft_dft" || fn == "geo_delaunay_2d" ||
             fn == "geo_voronoi" || fn == "topo_pairwise_distances" ||
             fn == "combo_next_perm" || fn == "numthy_convergents" ||
-            fn == "ml_mat_transpose" || fn == "ml_mat_mul" || fn == "poly_deriv" ||
+            fn == "ml_mat_transpose" || fn == "ml_mat_mul" ||
+            fn == "ml_linear_fit" || fn == "ml_linear_predict" ||
+            fn == "ml_ridge_fit" || fn == "ml_ridge_predict" ||
+            fn == "ml_logistic_fit" || fn == "ml_logistic_predict" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_integ" || fn == "poly_add" ||
             fn == "poly_mul" || fn == "poly_sub" || fn == "poly_compose" ||
             fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "fftshift" ||
@@ -8571,8 +8723,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "expm" || callee == "inv" ||
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
-           callee == "rgb2gray" || callee == "sobel" || callee == "prewitt" ||
+           callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" ||
            callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
+           callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
            callee == "bilateral" ||
            callee == "canny" || callee == "laplacian" || callee == "histeq" ||
            callee == "sharpen" || callee == "threshold_otsu" || callee == "imresize" ||
@@ -8606,6 +8759,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
            callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
            callee == "ml_mat_mul" ||
+           callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
+           callee == "ml_ridge_fit" || callee == "ml_ridge_predict" ||
+           callee == "ml_logistic_fit" || callee == "ml_logistic_predict" ||
            callee == "poly_deriv" ||
            callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
            callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
@@ -8630,7 +8786,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "transpose" || callee == "chol" || callee == "expm" || callee == "inv" ||
         callee == "pinv" || callee == "null" || callee == "orth" ||
-        callee == "rgb2gray" || callee == "sobel" || callee == "prewitt" ||
+        callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" ||
         callee == "laplacian" || callee == "histeq" || callee == "sharpen" ||
         callee == "threshold_otsu" ||
         callee == "rle_encode_vec" || callee == "rle_decode_vec" ||
@@ -8678,7 +8834,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "signal_convolve" || callee == "poly_add" ||
         callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
         callee == "quantum_tensor_product" || callee == "signal_correlate" ||
-        callee == "ml_mat_mul") {
+        callee == "ml_mat_mul" || callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
+        callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
+        callee == "ml_logistic_predict") {
         return arity == 2;
     }
     if (callee == "quantum_commutator") {
@@ -8696,8 +8854,12 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "lz77_encode_vec") {
         return arity == 1 || arity == 3;
     }
-    if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter") {
-        return arity == 2;
+    if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
+        callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose") {
+        return arity == 1 || arity == 2;
+    }
+    if (callee == "ml_ridge_fit") {
+        return arity == 3;
     }
     if (callee == "imresize" || callee == "topo_betti_curve" || callee == "bilateral" ||
         callee == "canny") {
@@ -10140,6 +10302,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(rgb.error());
         }
         result = gray_image_to_column(image::rgb2gray(*rgb));
+    } else if (assign.callee == "rgb2hsv" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto rgb = matrix_to_rgb_image(*matrix);
+        if (!rgb) {
+            return std::unexpected(rgb.error());
+        }
+        result = rgb_image_to_matrix(image::rgb2hsv(*rgb));
     } else if (assign.callee == "sobel" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -10651,6 +10823,39 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(gray.error());
         }
         result = gray_image_to_matrix(image::boxfilter(*gray, ksize));
+    } else if ((assign.callee == "imdilate" || assign.callee == "imerode" ||
+                assign.callee == "imopen" || assign.callee == "imclose") &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        int ksize = 3;
+        if (assign.args.size() == 2) {
+            double ksize_d = 0.0;
+            if (!parse_number(assign.args[1], ksize_d)) {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected morphology(M, ksize)"});
+            }
+            auto parsed = parse_morph_ksize(ksize_d, assign.callee.c_str());
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            ksize = *parsed;
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        if (assign.callee == "imdilate") {
+            result = gray_image_to_matrix(image::imdilate(*gray, ksize));
+        } else if (assign.callee == "imerode") {
+            result = gray_image_to_matrix(image::imerode(*gray, ksize));
+        } else if (assign.callee == "imopen") {
+            result = gray_image_to_matrix(image::imopen(*gray, ksize));
+        } else {
+            result = gray_image_to_matrix(image::imclose(*gray, ksize));
+        }
     } else if (assign.callee == "bilateral" && assign.args.size() == 3) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -10930,6 +11135,94 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(conv.error());
         }
         result = *conv;
+    } else if (assign.callee == "ml_linear_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto fitted = eval_ml_linear_fit(*X, *y);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_linear_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_linear_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_ridge_fit" && assign.args.size() == 3) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        double alpha = 0.0;
+        if (!parse_number(assign.args[2], alpha)) {
+            return std::unexpected(DomainError{"ml_ridge_fit", "expected ml_ridge_fit(X, y, alpha)"});
+        }
+        auto fitted = eval_ml_ridge_fit(*X, *y, alpha);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_ridge_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_ridge_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_logistic_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto fitted = eval_ml_logistic_fit(*X, *y);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_logistic_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_logistic_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
     } else if (assign.callee == "ml_mat_transpose" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -12143,12 +12436,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = repmat(A, p, q)   tile matrix p x q\n"
             "  name = linspace(a, b, n) equally spaced column vector\n"
             "  name = rgb2gray(M)       RGB rows (H*W)x3 to grayscale column vector\n"
+            "  name = rgb2hsv(M)        RGB rows (H*W)x3 to HSV rows (H*W)x3\n"
             "  name = sobel(M)          Sobel gradient magnitude on HxW grayscale matrix\n"
             "  name = prewitt(M)        Prewitt edge magnitude on HxW grayscale matrix\n"
             "  name = count_components(B) connected component count in binary image B\n"
             "  name = imgaussfilt(M,s)  Gaussian blur on grayscale matrix\n"
             "  name = medfilt2(M,k)     median filter on grayscale matrix (odd k)\n"
             "  name = boxfilter(M,k)    box filter on grayscale matrix (odd k)\n"
+            "  name = imdilate(M,k)     morphological dilation on grayscale matrix (odd k, default 3)\n"
+            "  name = imerode(M,k)      morphological erosion on grayscale matrix (odd k, default 3)\n"
+            "  name = imopen(M,k)       morphological opening on grayscale matrix (odd k, default 3)\n"
+            "  name = imclose(M,k)      morphological closing on grayscale matrix (odd k, default 3)\n"
             "  name = bilateral(M,sigma_s,sigma_r) bilateral filter on grayscale matrix\n"
             "  name = canny(M,low,high) Canny edge detection on grayscale matrix (sigma=1)\n"
             "  name = laplacian(M)      Laplacian edge filter on grayscale matrix\n"
@@ -12194,6 +12492,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_categorical_crossentropy(p,t) ML categorical cross-entropy on matrices\n"
             "  name = ml_mat_transpose(A) matrix transpose via ml::mat_T\n"
             "  name = ml_mat_mul(A,B) matrix product via ml::mat_mul\n"
+            "  name = ml_linear_fit(X,y) fit linear regression; model is (n_features+1)x1 (intercept last)\n"
+            "  name = ml_linear_predict(X,model) linear regression predictions on X\n"
+            "  name = ml_ridge_fit(X,y,alpha) fit ridge regression; model is (n_features+1)x1\n"
+            "  name = ml_ridge_predict(X,model) ridge regression predictions on X\n"
+            "  name = ml_logistic_fit(X,y) fit logistic regression; model is (n_features+1)x1\n"
+            "  name = ml_logistic_predict(X,model) logistic regression class predictions on X\n"
             "  name = ml_vec_norm(v)    Euclidean norm of Nx1 or 1xN vector\n"
             "  name = ml_vec_dot(a,b)   dot product of Nx1 or 1xN vectors\n"
             "  name = graph_pagerank(A) PageRank scores from NxN adjacency matrix\n"
@@ -12619,10 +12923,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
             "  lu(A), qr(A), chol(A), solve(A,B), dist_solve(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
-            "  rgb2gray(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
+            "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
-            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_vec_norm(v), ml_vec_dot(a,b)\n"
+            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
@@ -13558,6 +13862,61 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "ml_mat_mul") {
                 auto value = eval_ml_mat_mul(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_linear_fit") {
+                auto value = eval_ml_linear_fit(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_linear_predict") {
+                auto value = eval_ml_linear_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_ridge_predict") {
+                auto value = eval_ml_ridge_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_logistic_fit") {
+                auto value = eval_ml_logistic_fit(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_logistic_predict") {
+                auto value = eval_ml_logistic_predict(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
