@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [Unreleased] — Wave 255 (WIP)
+
+### Added (Wave 255)
+- **Tests** — `BM_MPIContext_Bcast` benchmark; `integration_repl_wave255_pipeline` (Wave 254 API smoke).
+
 ## [1.0.0] - 2026-07-18 (Wave 254 — deconv/LMS/CZT, mpi_bcast, geo AABB, Add Selection) ✅ COMPLETE
 
 Twenty-fourth feature wave after Wave 253. Parallel Composer 2.5 worktrees merged to `main`: `signal_deconv` / `signal_lms` / `signal_czt`, `mpi_bcast`, geo AABB queries, GUI Add Selection for Next Occurrence, and wave254 pipeline.

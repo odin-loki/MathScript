@@ -91,6 +91,16 @@ static void BM_MPIContext_Barrier(benchmark::State& state) {
 }
 BENCHMARK(BM_MPIContext_Barrier);
 
+static void BM_MPIContext_Bcast(benchmark::State& state) {
+    auto ctx = init(0, nullptr);
+    for (auto _ : state) {
+        double result = bcast(ctx, 42.0);
+        benchmark::DoNotOptimize(result);
+    }
+    finalize(ctx);
+}
+BENCHMARK(BM_MPIContext_Bcast);
+
 // ---------------------------------------------------------------------------
 // Distributed: scatter/gather 4x4
 // ---------------------------------------------------------------------------
