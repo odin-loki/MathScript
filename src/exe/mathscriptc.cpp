@@ -46,11 +46,11 @@ bool run_script_file(const std::string& path) {
     bool all_ok = true;
     std::string line;
     while (std::getline(in, line)) {
-        const std::string trimmed = ms::interp::Interpreter::trim(line);
-        if (trimmed.empty() || trimmed[0] == '#') {
+        if (ms::interp::Interpreter::is_script_skip_line(line)) {
             continue;
         }
 
+        const std::string trimmed = ms::interp::Interpreter::trim(line);
         auto result = interp.execute(trimmed);
         if (result) {
             if (!result->empty()) {

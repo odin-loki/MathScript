@@ -257,6 +257,79 @@ TEST(ReplCommandsTest, save_load_inline) {
     std::filesystem::remove(path);
 }
 
+TEST(ReplCommandsTest, run_file_executes_script_lines) {
+    const auto path = (std::filesystem::temp_directory_path() / "mathscript_run_file.ms").string();
+    {
+        std::ofstream out(path);
+        out << "# setup\n\n";
+        out << "y = 3\n";
+        out << "z = y + 1\n";
+    }
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("x = 1").has_value());
+    expect_contains(interp, "run_file " + path, "ran script from");
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("x"), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("y"), 3.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("z"), 4.0);
+    std::filesystem::remove(path);
+}
+
+TEST(ReplCommandsTest, source_alias_runs_script) {
+    const auto path = (std::filesystem::temp_directory_path() / "mathscript_source.ms").string();
+    {
+        std::ofstream out(path);
+        out << "k = 11\n";
+    }
+
+    Interpreter interp;
+    expect_contains(interp, "source " + path, "ran script from");
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("k"), 11.0);
+    std::filesystem::remove(path);
+}
+
+TEST(ReplCommandsTest, run_file_help_and_errors) {
+    Interpreter interp;
+    expect_contains(interp, "help", "run_file");
+    expect_contains(interp, "help", "source");
+    expect_contains(interp, "help", "unlike load");
+    expect_error_contains(interp, "run_file ", "missing path");
+    expect_error_contains(interp, "run_file /no/such/script.ms", "cannot open");
+}
+
+TEST(ReplCommandsTest, run_file_unlike_load_keeps_session) {
+    const auto script_path = (std::filesystem::temp_directory_path() / "mathscript_run_not_load.ms").string();
+    const auto session_path = (std::filesystem::temp_directory_path() / "mathscript_run_session.ms").string();
+    {
+        std::ofstream script(script_path);
+        script << "y = 2\n";
+    }
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("x = 5").has_value());
+    expect_ok(interp, "run_file " + script_path);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("x"), 5.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("y"), 2.0);
+
+    ASSERT_TRUE(interp.execute("save " + session_path).has_value());
+    ASSERT_TRUE(interp.execute("x = 99").has_value());
+    expect_ok(interp, "load " + session_path);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("x"), 5.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("y"), 2.0);
+    EXPECT_EQ(interp.state().scalars.count("x"), 1u);
+
+    std::filesystem::remove(script_path);
+    std::filesystem::remove(session_path);
+}
+
+TEST(ReplCommandsTest, is_script_skip_line) {
+    EXPECT_TRUE(Interpreter::is_script_skip_line(""));
+    EXPECT_TRUE(Interpreter::is_script_skip_line("   "));
+    EXPECT_TRUE(Interpreter::is_script_skip_line("# comment"));
+    EXPECT_TRUE(Interpreter::is_script_skip_line("  # comment"));
+    EXPECT_FALSE(Interpreter::is_script_skip_line("x = 1"));
+}
+
 TEST(ReplCommandsTest, parse_errors) {
     Interpreter interp;
     EXPECT_FALSE(interp.execute("nosuch(1)").has_value());

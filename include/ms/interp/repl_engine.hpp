@@ -90,8 +90,10 @@ public:
     }
     Result<void> save_session(const std::string& path) const;
     Result<void> load_session(const std::string& path);
+    Result<std::string> run_file(const std::string& path);
     Result<void> export_history(const std::string& path) const;
     static std::string trim(std::string s);
+    static bool is_script_skip_line(const std::string& line);
     static bool try_parse_scalar_assignment(const std::string& line, std::string& name, double& value);
     static bool try_parse_scalar_binary_assignment(const std::string& line, ScalarBinaryAssign& assign);
     static bool try_parse_scalar_expr_assignment(const std::string& line, std::string& name, std::string& expr);
