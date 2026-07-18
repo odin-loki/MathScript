@@ -5665,6 +5665,45 @@ TEST(ReplCommandsTest, wave257_stats_infer_ext) {
     EXPECT_LT(lb(0, 2), 0.01);
 }
 
+TEST(ReplCommandsTest, wave257_stats_variance) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_levene(G)");
+    expect_contains(interp, "help", "stats_bartlett(G)");
+    expect_contains(interp, "help", "stats_fligner(G)");
+
+    // Unequal-variance groups (row = group); Levene 1x4 [F, p, df_b, df_w].
+    expect_ok(interp, "G = [1, 2, 3, 4; 10, 20, 30, 40; 100, 200, 300, 400]");
+    expect_ok(interp, "lv = stats_levene(G)");
+    ASSERT_GT(interp.state().matrices.count("lv"), 0u);
+    const auto& lv = interp.state().matrices.at("lv");
+    ASSERT_EQ(lv.rows(), 1u);
+    ASSERT_EQ(lv.cols(), 4u);
+    EXPECT_GT(lv(0, 0), 0.0);
+    EXPECT_LT(lv(0, 1), 0.05);
+    EXPECT_NEAR(lv(0, 2), 2.0, 1e-12);
+    EXPECT_NEAR(lv(0, 3), 9.0, 1e-12);
+
+    // Bartlett 1x3 [chi2, df, p].
+    expect_ok(interp, "bt = stats_bartlett(G)");
+    ASSERT_GT(interp.state().matrices.count("bt"), 0u);
+    const auto& bt = interp.state().matrices.at("bt");
+    ASSERT_EQ(bt.rows(), 1u);
+    ASSERT_EQ(bt.cols(), 3u);
+    EXPECT_GT(bt(0, 0), 0.0);
+    EXPECT_NEAR(bt(0, 1), 2.0, 1e-12);
+    EXPECT_LT(bt(0, 2), 0.05);
+
+    // Fligner-Killeen 1x3 [chi2, df, p].
+    expect_ok(interp, "fk = stats_fligner(G)");
+    ASSERT_GT(interp.state().matrices.count("fk"), 0u);
+    const auto& fk = interp.state().matrices.at("fk");
+    ASSERT_EQ(fk.rows(), 1u);
+    ASSERT_EQ(fk.cols(), 3u);
+    EXPECT_GT(fk(0, 0), 0.0);
+    EXPECT_NEAR(fk(0, 1), 2.0, 1e-12);
+    EXPECT_LT(fk(0, 2), 0.05);
+}
+
 TEST(ReplCommandsTest, wave256_image_transform) {
     Interpreter interp;
     expect_contains(interp, "help", "imflip(M,horizontal)");
