@@ -239,6 +239,45 @@ void move_lines_down_in_editor(QPlainTextEdit* editor) {
     cursor.endEditBlock();
 }
 
+void delete_lines_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+
+    const int last_block = editor->document()->blockCount() - 1;
+    if (end_block >= last_block) {
+        if (start_block == 0) {
+            cursor.select(QTextCursor::Document);
+            cursor.removeSelectedText();
+            editor->setTextCursor(cursor);
+            cursor.endEditBlock();
+            return;
+        }
+        cursor.setPosition(editor->document()->findBlockByNumber(start_block - 1).position());
+        cursor.movePosition(QTextCursor::EndOfBlock);
+        cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        cursor.setPosition(editor->document()->findBlockByNumber(start_block - 1).position());
+        cursor.movePosition(QTextCursor::EndOfBlock);
+    } else {
+        cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+        const int end_pos = editor->document()->findBlockByNumber(end_block + 1).position();
+        cursor.setPosition(end_pos, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    }
+
+    editor->setTextCursor(cursor);
+    cursor.endEditBlock();
+}
+
 bool line_has_line_comment(const QString& line) {
     int i = 0;
     while (i < line.size() && line[i].isSpace()) {
@@ -950,6 +989,8 @@ void MainWindow::setup_menus() {
     toggle_comment_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Slash));
     auto* duplicate_line_action = edit_menu->addAction("Duplicate Line");
     duplicate_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
+    auto* delete_line_action = edit_menu->addAction("Delete Line");
+    delete_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
     auto* move_line_up_action = edit_menu->addAction("Move Line Up");
     move_line_up_action->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Up));
     auto* move_line_down_action = edit_menu->addAction("Move Line Down");
@@ -1003,6 +1044,7 @@ void MainWindow::setup_menus() {
     connect(unindent_action, &QAction::triggered, this, &MainWindow::unindent_lines);
     connect(toggle_comment_action, &QAction::triggered, this, &MainWindow::toggle_comment);
     connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
+    connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
     connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
@@ -1309,6 +1351,11 @@ void MainWindow::go_to_line() {
 void MainWindow::duplicate_line() {
     editor_->setFocus();
     duplicate_lines_in_editor(editor_);
+}
+
+void MainWindow::delete_line() {
+    editor_->setFocus();
+    delete_lines_in_editor(editor_);
 }
 
 void MainWindow::move_line_up() {
