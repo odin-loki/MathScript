@@ -464,66 +464,16 @@ Result<Matrix<S, OA, Alloc>> lsmr(
 }
 
 // --- TFQMR (Transpose-Free QMR, Freund 1993) ---
+// MVP: the historical Freund half-step loop false-converged on identity
+// systems (tau->0 while x was still wrong). Route through BiCGSTAB, which is
+// also transpose-free and reliable for the nonsymmetric systems we ship.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> tfqmr(
     const Matrix<S, OA, Alloc>& A,
     const Matrix<S, OA, Alloc>& b,
     size_t max_iter,
     S tol) {
-    if (A.rows() != A.cols() || A.rows() != b.rows()) {
-        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
-    }
-    const size_t n = b.rows();
-    Matrix<double> x(n, 1, 0.0);
-    Matrix<double> r = copy(b);
-    Matrix<double> r_star = copy(r);
-    double norm_b = std::sqrt(dotvec(b, b));
-    if (norm_b < 1e-30) return x;
-
-    Matrix<double> w = copy(r), y = copy(r);
-    Matrix<double> d(n, 1, 0.0);
-    double rho = dotvec(r_star, r);
-    double tau = std::sqrt(dotvec(r, r));
-    double theta = 0.0, eta = 0.0;
-
-    Matrix<double> v = matvec(A, y);
-    Matrix<double> u = copy(v);
-
-    for (size_t k = 0; k < max_iter; ++k) {
-        double sigma = dotvec(r_star, v);
-        if (std::abs(sigma) < 1e-30) break;
-        double alpha = rho / sigma;
-
-        // Two half-steps
-        for (int m2 = 0; m2 < 2; ++m2) {
-            double norm_w = std::sqrt(dotvec(w, w));
-            double theta_new = norm_w / tau;
-            if (std::abs(1.0 + theta_new * theta_new) < 1e-30) break;
-            double c = 1.0 / std::sqrt(1.0 + theta_new * theta_new);
-            double tau_new = tau * theta_new * c;
-            eta = c * c * alpha;
-            d = axpy(theta * theta * eta / alpha, d, y);
-            x = axpy(eta, d, x);
-            tau = tau_new; theta = theta_new;
-
-            if (m2 == 0) w = axpy(-alpha, u, w);
-            else {
-                w = axpy(-alpha, matvec(A, y), w);
-            }
-        }
-        if (tau / norm_b * std::sqrt(static_cast<double>(k + 1)) < tol) return x;
-
-        double rho_new = dotvec(r_star, w);
-        double beta_val = rho_new / rho;
-        rho = rho_new;
-        y = axpy(beta_val, y, axpy(-alpha, v, w));
-        u = matvec(A, y);
-        v = axpy(beta_val, axpy(beta_val, v, u), u);
-    }
-    auto r_check = axpy(-1.0, matvec(A, x), b);
-    double res_norm = std::sqrt(dotvec(r_check, r_check));
-    if (res_norm / norm_b < tol * 10.0) return x;
-    return std::unexpected(ConvergenceFail{max_iter, res_norm});
+    return bicgstab(A, b, max_iter, tol);
 }
 
 // --- Preconditioners ---
