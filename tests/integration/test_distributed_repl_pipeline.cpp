@@ -55,6 +55,20 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
     EXPECT_NEAR(x(0, 0), 1.0 / 11.0, 1e-6);
     EXPECT_NEAR(x(1, 0), 7.0 / 11.0, 1e-6);
 
+    // dist_matmul: row-block scatter + local GEMM (stub: gather + matmul)
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_ok(interp, "N = [5, 6; 7, 8]");
+    expect_ok(interp, "P = dist_matmul(M, N)");
+    ASSERT_GT(interp.state().matrices.count("P"), 0u);
+    const auto& P = interp.state().matrices.at("P");
+    EXPECT_EQ(P.rows(), 2u);
+    EXPECT_EQ(P.cols(), 2u);
+    EXPECT_NEAR(P(0, 0), 19.0, 1e-6);
+    EXPECT_NEAR(P(0, 1), 22.0, 1e-6);
+    EXPECT_NEAR(P(1, 0), 43.0, 1e-6);
+    EXPECT_NEAR(P(1, 1), 50.0, 1e-6);
+    expect_contains(interp, "dist_matmul(M, N)", "19");
+
     // identity system via direct dist_solve call
     expect_ok(interp, "I = eye(2)");
     expect_ok(interp, "rhs = [3; 5]");
