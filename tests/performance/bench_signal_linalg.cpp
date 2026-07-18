@@ -479,6 +479,20 @@ static void BM_SignalUnwrap(benchmark::State& state) {
 BENCHMARK(BM_SignalUnwrap);
 
 // ---------------------------------------------------------------------------
+// Signal: zero-stuff upsample (tiny smoke)
+// ---------------------------------------------------------------------------
+
+static void BM_SignalUpsample(benchmark::State& state) {
+    const std::vector<double> x = {1.0, 2.0};
+    constexpr int factor = 2;
+    for (auto _ : state) {
+        auto r = upsample(x, factor);
+        benchmark::DoNotOptimize(r.data());
+    }
+}
+BENCHMARK(BM_SignalUpsample);
+
+// ---------------------------------------------------------------------------
 // Linear Algebra: solve Ax=b
 // ---------------------------------------------------------------------------
 
