@@ -6433,3 +6433,50 @@ TEST(ReplCommandsTest, wave260_minres) {
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("xm")(1, 0)));
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("xm")(2, 0)));
 }
+
+TEST(ReplCommandsTest, wave261_eig) {
+    Interpreter interp;
+    expect_contains(interp, "help", "D, V = eig(A)");
+    expect_contains(interp, "help", "eig(A)");
+
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_contains(interp, "eig(A)", "eigenvalues:");
+    expect_ok(interp, "D = eig(A)");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("D").cols(), 1u);
+
+    expect_ok(interp, "De, Ve = eig(A)");
+    ASSERT_GT(interp.state().matrices.count("De"), 0u);
+    ASSERT_GT(interp.state().matrices.count("Ve"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("De").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Ve").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Ve").cols(), 3u);
+}
+
+TEST(ReplCommandsTest, wave261_ldl) {
+    Interpreter interp;
+    expect_contains(interp, "help", "L, D = ldl(A)");
+    expect_contains(interp, "help", "ldl(A)");
+
+    expect_ok(interp, "S = [4, 1; 1, 3]");
+    expect_contains(interp, "ldl(S)", "L =");
+    expect_contains(interp, "ldl(S)", "D =");
+    expect_ok(interp, "L = ldl(S)");
+    ASSERT_GT(interp.state().matrices.count("L"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("L").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("L")(0, 1), 0.0, 1e-10);
+
+    expect_ok(interp, "Ll, Dl = ldl(S)");
+    ASSERT_GT(interp.state().matrices.count("Ll"), 0u);
+    ASSERT_GT(interp.state().matrices.count("Dl"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Ll").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("Dl").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("Dl").cols(), 1u);
+
+    expect_ok(interp, "Lp, Dp, Pp = ldl(S)");
+    ASSERT_GT(interp.state().matrices.count("Pp"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Pp").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("Pp").cols(), 2u);
+}

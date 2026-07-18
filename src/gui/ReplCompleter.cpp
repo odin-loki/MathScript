@@ -111,6 +111,8 @@ QStringList repl_command_list() {
         QStringLiteral("null"),
         QStringLiteral("orth"),
         QStringLiteral("eig"),
+        QStringLiteral("eig_sym"),
+        QStringLiteral("ldl"),
         QStringLiteral("svd"),
         QStringLiteral("kron"),
         QStringLiteral("repmat"),

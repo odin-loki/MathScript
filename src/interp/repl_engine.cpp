@@ -10600,7 +10600,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
-            fn == "qr" || fn == "svd" || fn == "eig_sym" || fn == "hess" || fn == "schur" ||
+            fn == "qr" || fn == "svd" || fn == "eig_sym" || fn == "eig" || fn == "ldl" ||
+            fn == "hess" || fn == "schur" ||
             fn == "bidiag" || fn == "solve_sylvester" || fn == "minres" ||
             fn == "zeros" || fn == "eye" || fn == "ones" ||
             fn == "rand" || fn == "randn" || fn == "expm" || fn == "sqrtm" ||
@@ -12305,6 +12306,24 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         for (size_t i = 0; i < eig_result->values.rows(); ++i) {
             out << "  " << eig_result->values(i, 0) << "\n";
         }
+    } else if (fn == "eig") {
+        auto eig_result = eig(matrix);
+        if (!eig_result) {
+            return std::unexpected(eig_result.error());
+        }
+        out << "eigenvalues:\n";
+        for (size_t i = 0; i < eig_result->values.rows(); ++i) {
+            out << "  " << eig_result->values(i, 0) << "\n";
+        }
+    } else if (fn == "ldl") {
+        auto result = ldl(matrix);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        out << "L =\n";
+        print_matrix(out, result->L);
+        out << "D =\n";
+        print_matrix(out, result->D);
     } else if (fn == "svd") {
         auto s = svd(matrix);
         if (!s) {
@@ -12510,7 +12529,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "solve_sylvester" ||
            callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_lsqr" || callee == "dist_matmul" ||
            callee == "transpose" || callee == "chol" || callee == "hess" ||
-           callee == "schur" || callee == "bidiag" ||
+           callee == "schur" || callee == "bidiag" || callee == "eig" || callee == "ldl" ||
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
            callee == "expm" || callee == "sqrtm" || callee == "logm" ||
@@ -12632,7 +12651,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 2;
     }
     if (callee == "transpose" || callee == "chol" || callee == "hess" || callee == "schur" ||
-        callee == "bidiag" ||
+        callee == "bidiag" || callee == "eig" || callee == "ldl" ||
         callee == "expm" ||
         callee == "sqrtm" || callee == "logm" || callee == "cosm" || callee == "sinm" ||
         callee == "inv" ||
@@ -12957,14 +12976,16 @@ std::vector<std::string> split_comma_list(const std::string& text) {
 
 bool is_multi_matrix_call_callee(const std::string& callee) {
     return callee == "lu" || callee == "cuda_lu" || callee == "qr" || callee == "svd" ||
-           callee == "eig_sym" || callee == "schur" || callee == "bidiag";
+           callee == "eig_sym" || callee == "eig" || callee == "ldl" || callee == "schur" ||
+           callee == "bidiag";
 }
 
 bool is_valid_multi_matrix_target_count(const std::string& callee, size_t count) {
-    if (callee == "qr" || callee == "eig_sym" || callee == "schur") {
+    if (callee == "qr" || callee == "eig_sym" || callee == "eig" || callee == "schur") {
         return count == 2;
     }
-    if (callee == "lu" || callee == "cuda_lu" || callee == "svd" || callee == "bidiag") {
+    if (callee == "lu" || callee == "cuda_lu" || callee == "svd" || callee == "bidiag" ||
+        callee == "ldl") {
         return count == 2 || count == 3;
     }
     return false;
@@ -16562,6 +16583,26 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(decomp.error());
         }
         result = decomp->B;
+    } else if (assign.callee == "eig" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto decomp = eig(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        result = decomp->values;
+    } else if (assign.callee == "ldl" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto decomp = ldl(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        result = decomp->L;
     } else if (assign.callee == "solve_sylvester" && assign.args.size() == 3) {
         auto A = resolve_operand(assign.args[0]);
         if (!A) {
@@ -17682,6 +17723,39 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         print_matrix(out, decomp->values);
         out << assign.targets[1] << " =\n";
         print_matrix(out, decomp->vectors);
+        return out.str();
+    }
+
+    if (assign.callee == "eig") {
+        auto decomp = eig(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        state_.matrices[assign.targets[0]] = decomp->values;
+        state_.matrices[assign.targets[1]] = decomp->vectors;
+        out << assign.targets[0] << " =\n";
+        print_matrix(out, decomp->values);
+        out << assign.targets[1] << " =\n";
+        print_matrix(out, decomp->vectors);
+        return out.str();
+    }
+
+    if (assign.callee == "ldl") {
+        auto decomp = ldl(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        state_.matrices[assign.targets[0]] = decomp->L;
+        state_.matrices[assign.targets[1]] = decomp->D;
+        out << assign.targets[0] << " =\n";
+        print_matrix(out, decomp->L);
+        out << assign.targets[1] << " =\n";
+        print_matrix(out, decomp->D);
+        if (assign.targets.size() == 3) {
+            state_.matrices[assign.targets[2]] = decomp->P;
+            out << assign.targets[2] << " =\n";
+            print_matrix(out, decomp->P);
+        }
         return out.str();
     }
 
@@ -19006,6 +19080,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  Q, R = qr(A)             QR factors\n"
             "  U, S, V = svd(A)         SVD factors (U, S only also supported)\n"
             "  D, V = eig_sym(A)        symmetric eigenvalues and eigenvectors\n"
+            "  D, V = eig(A)            general eigenvalues and eigenvectors\n"
+            "  L, D = ldl(A)            LDL^T factorization (L only via L = ldl(A))\n"
             "  H = hess(A)              upper Hessenberg form\n"
             "  T, Q = schur(A)          Schur form (T only via T = schur(A))\n"
             "  U, B, V = bidiag(A)      bidiagonalization (B only via B = bidiag(A))\n"
@@ -19015,7 +19091,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), solve_sylvester(A,B,C), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), solve_sylvester(A,B,C), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
