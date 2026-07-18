@@ -3571,6 +3571,40 @@ Result<Matrix<double>> eval_graph_eulerian_path(const Matrix<double>& adj_m) {
     return int_vector_to_column(res.path);
 }
 
+Result<double> eval_graph_is_isomorphic(const Matrix<double>& adj_a_m,
+                                        const Matrix<double>& adj_b_m) {
+    auto Ga = graph_from_adjacency_undirected(adj_a_m, "graph_is_isomorphic");
+    if (!Ga) {
+        return std::unexpected(Ga.error());
+    }
+    auto Gb = graph_from_adjacency_undirected(adj_b_m, "graph_is_isomorphic");
+    if (!Gb) {
+        return std::unexpected(Gb.error());
+    }
+    return graph::is_isomorphic(*Ga, *Gb) ? 1.0 : 0.0;
+}
+
+Result<Matrix<double>> eval_graph_hamiltonian_path(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_hamiltonian_path");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    auto path = graph::hamiltonian_path(*G);
+    if (!path) {
+        return std::unexpected(path.error());
+    }
+    return int_vector_to_column(*path);
+}
+
+Result<Matrix<double>> eval_graph_tsp_heuristic(const Matrix<double>& dist_m) {
+    auto dist = matrix_to_square_nested(dist_m, "graph_tsp_heuristic");
+    if (!dist) {
+        return std::unexpected(dist.error());
+    }
+    const auto res = graph::tsp_heuristic(*dist);
+    return int_vector_to_column(res.tour);
+}
+
 Result<Matrix<double>> eval_graph_eigenvector_centrality(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_eigenvector_centrality");
     if (!G) {
@@ -5920,7 +5954,7 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "control_phase_margin" || callee == "control_gain_margin" ||
            callee == "stats_correlation" || callee == "stats_spearman" ||
            callee == "stats_kendall" || callee == "stats_two_sample_ttest" ||
-           callee == "stats_chi2_gof";
+           callee == "stats_chi2_gof" || callee == "graph_is_isomorphic";
 }
 
 bool is_identifier(const std::string& text);
@@ -8221,6 +8255,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_louvain" || fn == "graph_eigenvector_centrality" ||
             fn == "graph_articulation_points" ||
             fn == "graph_biconnected_components" || fn == "graph_eulerian_path" ||
+            fn == "graph_hamiltonian_path" || fn == "graph_tsp_heuristic" ||
             fn == "graph_bridges" || fn == "graph_transitive_closure" ||
             fn == "finance_min_variance_portfolio" ||
             fn == "graph_is_bipartite" ||
@@ -8253,7 +8288,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "diffgeo_surface_normal_sphere" ||
             fn == "stats_correlation" || fn == "stats_spearman" ||
             fn == "stats_kendall" || fn == "stats_two_sample_ttest" ||
-            fn == "stats_chi2_gof" ||
+            fn == "stats_chi2_gof" || fn == "graph_is_isomorphic" ||
             fn == "signal_moving_average" || fn == "graph_bfs" || fn == "graph_dfs" ||
             fn == "graph_bipartite_match" ||
             fn == "stats_percentile" || fn == "graph_dfs" ||
@@ -9720,6 +9755,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_louvain" || callee == "graph_eigenvector_centrality" ||
            callee == "graph_articulation_points" ||
            callee == "graph_biconnected_components" || callee == "graph_eulerian_path" ||
+           callee == "graph_hamiltonian_path" || callee == "graph_tsp_heuristic" ||
            callee == "graph_bridges" || callee == "graph_transitive_closure" ||
            callee == "finance_min_variance_portfolio" ||
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" || callee == "fft_fft2" ||
@@ -9734,7 +9770,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
            callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
            callee == "graph_greedy_colour" || callee == "graph_euler_circuit" ||
-           callee == "graph_eulerian_path" || callee == "graph_biconnected_components" ||
+           callee == "graph_eulerian_path" || callee == "graph_hamiltonian_path" ||
+           callee == "graph_tsp_heuristic" || callee == "graph_biconnected_components" ||
            callee == "graph_scc" ||
            callee == "fft_dct2" || callee == "fft_idct2" || callee == "fft_dst2" ||
            callee == "ifft2" || callee == "idst2" || callee == "kruskal_wallis" ||
@@ -9789,7 +9826,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
         callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
            callee == "graph_greedy_colour" || callee == "graph_euler_circuit" ||
-           callee == "graph_eulerian_path" || callee == "graph_biconnected_components" ||
+           callee == "graph_eulerian_path" || callee == "graph_hamiltonian_path" ||
+           callee == "graph_tsp_heuristic" || callee == "graph_biconnected_components" ||
            callee == "graph_scc" ||
         callee == "fft_dct2" || callee == "fft_idct2" || callee == "fft_dst2" ||
         callee == "ifft2" || callee == "idst2" || callee == "kruskal_wallis" ||
@@ -12836,6 +12874,26 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(path.error());
         }
         result = *path;
+    } else if (assign.callee == "graph_hamiltonian_path" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto path = eval_graph_hamiltonian_path(*matrix);
+        if (!path) {
+            return std::unexpected(path.error());
+        }
+        result = *path;
+    } else if (assign.callee == "graph_tsp_heuristic" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto tour = eval_graph_tsp_heuristic(*matrix);
+        if (!tour) {
+            return std::unexpected(tour.error());
+        }
+        result = *tour;
     } else if (assign.callee == "graph_eigenvector_centrality" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -13885,6 +13943,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_greedy_colour(A) greedy vertex colours of undirected graph as Nx1 column\n"
             "  name = graph_euler_circuit(A) Euler circuit vertex order of undirected graph as Nx1 column\n"
             "  name = graph_eulerian_path(A) Euler path vertex order of undirected graph as Nx1 column\n"
+            "  name = graph_is_isomorphic(A,B) 1 if undirected graphs A and B are isomorphic else 0\n"
+            "  name = graph_hamiltonian_path(A) Hamiltonian path vertex order as Nx1 column\n"
+            "  name = graph_tsp_heuristic(D) TSP tour vertex order from n×n distance matrix as Nx1 column\n"
             "  name = graph_floyd_warshall(A) all-pairs shortest-path distance matrix\n"
             "  name = graph_bfs(A,source) BFS visit order from source as Nx1 column\n"
             "  name = graph_dfs(A,source) DFS visit order from source as Nx1 column\n"
@@ -14325,7 +14386,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
-            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
+            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
@@ -15063,6 +15124,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (dual_call.callee == "stats_correlation") {
                 auto value = eval_stats_correlation(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
+            if (dual_call.callee == "graph_is_isomorphic") {
+                auto value = eval_graph_is_isomorphic(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -20749,6 +20817,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     return std::to_string(*value) + "\n";
                 }
+                if (fn == "graph_is_isomorphic") {
+                    auto value = eval_graph_is_isomorphic(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
                 if (fn == "stats_spearman") {
                     auto value = eval_stats_spearman(*arg_a_m, *arg_b_m);
                     if (!value) {
@@ -22929,6 +23004,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "path =\n";
             print_matrix(out, *path);
+        } else if (fn == "graph_hamiltonian_path") {
+            auto path = eval_graph_hamiltonian_path(*matrix);
+            if (!path) {
+                return std::unexpected(path.error());
+            }
+            out << "path =\n";
+            print_matrix(out, *path);
+        } else if (fn == "graph_tsp_heuristic") {
+            auto tour = eval_graph_tsp_heuristic(*matrix);
+            if (!tour) {
+                return std::unexpected(tour.error());
+            }
+            out << "tour =\n";
+            print_matrix(out, *tour);
         } else if (fn == "graph_biconnected_components") {
             auto bcc = eval_graph_biconnected_components(*matrix);
             if (!bcc) {
