@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QLineEdit>
+#include <QList>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QPlainTextEdit>
@@ -8,6 +9,7 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
+#include <QTextEdit>
 #include <QThread>
 #include <QTimer>
 
@@ -78,6 +80,7 @@ private:
     void replace_all_in_script();
     void go_to_line();
     void go_to_matching_brace();
+    void add_selection_for_next_occurrence();
     void duplicate_line();
     void delete_line();
     void move_line_up();
@@ -125,6 +128,8 @@ private:
     QString find_script_text_;
     QString replace_script_text_;
     QString last_result_;
+    QString add_selection_needle_;
+    QList<QTextEdit::ExtraSelection> add_selection_extras_;
     QAction* show_plot_panel_action_ = nullptr;
     QAction* dark_theme_action_ = nullptr;
     QAction* word_wrap_action_ = nullptr;
