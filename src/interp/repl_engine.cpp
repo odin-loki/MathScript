@@ -17557,6 +17557,34 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(binom_pdf(k, n, p)) + "\n";
         }
+        if (fn == "fem_poisson3d") {
+            double nx_d = 0.0;
+            double ny_d = 0.0;
+            double nz_d = 0.0;
+            if (!parse_number(trim(match[2].str()), nx_d) ||
+                !parse_number(trim(match[3].str()), ny_d) ||
+                !parse_number(trim(match[4].str()), nz_d)) {
+                return std::unexpected(
+                    DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
+            }
+            const int nx_i = static_cast<int>(nx_d);
+            const int ny_i = static_cast<int>(ny_d);
+            const int nz_i = static_cast<int>(nz_d);
+            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+                return std::unexpected(
+                    DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+            }
+            auto value = eval_fem_poisson3d(static_cast<std::size_t>(nx_i),
+                                            static_cast<std::size_t>(ny_i),
+                                            static_cast<std::size_t>(nz_i));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
         if (fn == "prob_binom_cdf") {
             double k_d = 0.0;
             double n_d = 0.0;

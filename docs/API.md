@@ -254,7 +254,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_aes128_gcm_decrypt(key_hex, iv_hex, aad_hex, ciphertext_hex, tag_hex)` | AES-128-GCM open; returns hex plaintext (Wave 234) |
 | `crypto_chacha20(key_hex, nonce_hex, counter, data_hex)` | ChaCha20 stream cipher (XOR self-inverse); returns hex output |
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
+| `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column (Wave 236) |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |
+
+**Wave 236 note:** `cfd_advection3d` and `crypto_x25519` are not wired — 3D CFD and X25519 APIs are not yet on main.
 
 **MPI / distributed (scalar/matrix assignment):**
 
