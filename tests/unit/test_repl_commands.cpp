@@ -3700,6 +3700,30 @@ TEST(ReplCommandsTest, wave253_signal_xcorr_xcov_autocorr) {
     EXPECT_TRUE(std::isfinite(cv(2, 0)));
 }
 
+TEST(ReplCommandsTest, wave254_signal_lms) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_lms(x,d,filter_length,mu)");
+    expect_contains(interp, "help", "signal_lms_weights(x,d,filter_length,mu)");
+
+    // mu=0 keeps zero weights; y[n]=0 and e[n]=d[n].
+    expect_ok(interp, "ye = signal_lms([1; 0; -1; 2], [0.5; -0.25; 1; 0], 2, 0)");
+    ASSERT_GT(interp.state().matrices.count("ye"), 0u);
+    const auto& ye = interp.state().matrices.at("ye");
+    EXPECT_EQ(ye.rows(), 4u);
+    EXPECT_EQ(ye.cols(), 2u);
+    EXPECT_NEAR(ye(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(ye(0, 1), 0.5, 1e-12);
+    EXPECT_NEAR(ye(2, 1), 1.0, 1e-12);
+
+    expect_ok(interp, "w = signal_lms_weights([1; 0; -1; 2], [0.5; -0.25; 1; 0], 2, 0)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    const auto& w = interp.state().matrices.at("w");
+    EXPECT_EQ(w.rows(), 2u);
+    EXPECT_EQ(w.cols(), 1u);
+    EXPECT_NEAR(w(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(w(1, 0), 0.0, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");

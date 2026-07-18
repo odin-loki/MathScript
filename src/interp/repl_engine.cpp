@@ -3589,6 +3589,63 @@ Result<Matrix<double>> eval_signal_median_filter_w(const Matrix<double>& x_m, do
     return eval_signal_median_filter(x_m, window_length);
 }
 
+// Wave 254: extracted helpers keep assignment paths shallow (MSVC C1061).
+Result<LMSResult> run_signal_lms(const Matrix<double>& x_m, const Matrix<double>& d_m,
+                                 double filter_length_d, double mu, const char* fn) {
+    auto x = matrix_to_coeff_vector(x_m, fn);
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    auto d = matrix_to_coeff_vector(d_m, fn);
+    if (!d) {
+        return std::unexpected(d.error());
+    }
+    if (x->empty() || d->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty signal vectors"});
+    }
+    if (x->size() != d->size()) {
+        return std::unexpected(DomainError{fn, "expected x and d of equal length"});
+    }
+    const int filter_length = static_cast<int>(filter_length_d);
+    if (filter_length < 1 || filter_length_d != filter_length) {
+        return std::unexpected(DomainError{fn, "expected positive integer filter_length"});
+    }
+    if (x->size() < static_cast<size_t>(filter_length)) {
+        return std::unexpected(
+            DomainError{fn, "expected signal length >= filter_length"});
+    }
+    auto result = lms_adaptive_filter(*x, *d, filter_length, mu);
+    if (result.output.empty() || result.error.size() != result.output.size() ||
+        result.weights.size() != static_cast<size_t>(filter_length)) {
+        return std::unexpected(DomainError{fn, "lms_adaptive_filter failed"});
+    }
+    return result;
+}
+
+Result<Matrix<double>> eval_signal_lms(const Matrix<double>& x_m, const Matrix<double>& d_m,
+                                       double filter_length_d, double mu) {
+    auto result = run_signal_lms(x_m, d_m, filter_length_d, mu, "signal_lms");
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    Matrix<double> out(result->output.size(), 2);
+    for (size_t i = 0; i < result->output.size(); ++i) {
+        out(i, 0) = result->output[i];
+        out(i, 1) = result->error[i];
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_signal_lms_weights(const Matrix<double>& x_m,
+                                               const Matrix<double>& d_m,
+                                               double filter_length_d, double mu) {
+    auto result = run_signal_lms(x_m, d_m, filter_length_d, mu, "signal_lms_weights");
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return vector_to_column(result->weights);
+}
+
 Result<Matrix<double>> eval_geo_delaunay_2d(const Matrix<double>& P_m) {
     auto pts = matrix_to_points2d(P_m, "geo_delaunay_2d");
     if (!pts) {
@@ -9555,6 +9612,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_scc" ||
             fn == "signal_convolve" || fn == "signal_correlate" ||
             fn == "signal_xcorr" || fn == "signal_xcov" || fn == "signal_autocorr" ||
+            fn == "signal_lms" || fn == "signal_lms_weights" ||
             fn == "signal_sosfilt" || fn == "signal_conv2" ||
             fn == "signal_deconv" ||
             fn == "signal_filtfilt" || fn == "signal_filter" ||
@@ -11051,6 +11109,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "signal_xcorr" || callee == "signal_xcov" ||
            callee == "signal_autocorr" ||
            callee == "signal_deconv" ||
+           callee == "signal_lms" || callee == "signal_lms_weights" ||
            callee == "signal_firwin" || callee == "signal_firwin_highpass" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
            callee == "geo_convex_hull" ||
@@ -11161,7 +11220,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "signal_savgol") {
         return arity == 3;
     }
-    if (callee == "signal_coherence") {
+    if (callee == "signal_coherence" || callee == "signal_lms" ||
+        callee == "signal_lms_weights") {
         return arity == 4;
     }
     if (callee == "signal_cheby1" || callee == "signal_cheby2") {
@@ -13798,6 +13858,29 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
                 DomainError{"signal_autocorr", "expected non-negative integer max_lag"});
         }
         result = eval_signal_autocorr(*x, max_lag);
+    } else if ((assign.callee == "signal_lms" || assign.callee == "signal_lms_weights") &&
+               assign.args.size() == 4) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto d = resolve_operand(assign.args[1]);
+        if (!d) {
+            return std::unexpected(d.error());
+        }
+        double filter_length_d = 0.0;
+        double mu = 0.0;
+        if (!parse_number(assign.args[2], filter_length_d) ||
+            !parse_number(assign.args[3], mu)) {
+            return std::unexpected(DomainError{
+                assign.callee,
+                "expected " + assign.callee + "(x, d, filter_length, mu)"});
+        }
+        if (assign.callee == "signal_lms") {
+            result = eval_signal_lms(*x, *d, filter_length_d, mu);
+        } else {
+            result = eval_signal_lms_weights(*x, *d, filter_length_d, mu);
+        }
     }
     return result;
 }
@@ -15731,6 +15814,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_periodogram(x,fs) single-segment PSD as N×2 [freq,power]\n"
             "  name = signal_welch_psd(x,fs,nperseg) Welch PSD as N×2 [freq,power]\n"
             "  name = signal_coherence(x,y,fs,nperseg) magnitude-squared coherence as N×2 [freq,coherence]\n"
+            "  name = signal_lms(x,d,filter_length,mu) LMS adaptive filter as N×2 [output,error]\n"
+            "  name = signal_lms_weights(x,d,filter_length,mu) final LMS FIR weights as L×1\n"
             "  name = signal_spectrogram(x,fs) STFT magnitude (rows=time, cols=freq; seg=min(256,N))\n"
             "  name = signal_envelope(x) amplitude envelope |hilbert(x)| as N×1 column\n"
             "  name = signal_hilbert(x) analytic signal as N×2 [re,im] matrix\n"
@@ -16090,6 +16175,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
             "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -18153,6 +18239,47 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 out << lhs << " =\n";
                 print_matrix(out, *coh);
                 return out.str();
+            }
+            if (callee == "signal_lms" || callee == "signal_lms_weights") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 4) {
+                    return std::unexpected(DomainError{
+                        callee, "expected " + callee + "(x, d, filter_length, mu)"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                auto d_m = eval_matrix_operand(trim_copy((*call_args)[1]));
+                if (!d_m) {
+                    return std::unexpected(d_m.error());
+                }
+                double filter_length_d = 0.0;
+                double mu = 0.0;
+                if (!parse_number(trim_copy((*call_args)[2]), filter_length_d) ||
+                    !parse_number(trim_copy((*call_args)[3]), mu)) {
+                    auto len_expr = eval_scalar_expr(state_, trim_copy((*call_args)[2]));
+                    if (!len_expr) {
+                        return std::unexpected(len_expr.error());
+                    }
+                    filter_length_d = *len_expr;
+                    auto mu_expr = eval_scalar_expr(state_, trim_copy((*call_args)[3]));
+                    if (!mu_expr) {
+                        return std::unexpected(mu_expr.error());
+                    }
+                    mu = *mu_expr;
+                }
+                Result<Matrix<double>> value;
+                if (callee == "signal_lms") {
+                    value = eval_signal_lms(*x_m, *d_m, filter_length_d, mu);
+                } else {
+                    value = eval_signal_lms_weights(*x_m, *d_m, filter_length_d, mu);
+                }
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[lhs] = *value;
+                return format_labeled_matrix(lhs, *value);
             }
             if (callee == "signal_resample") {
                 const auto call_args = split_call_args(rhs);
@@ -20791,6 +20918,40 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             out << "coherence =\n";
             print_matrix(out, *coh);
             return out.str();
+        }
+        if (fn == "signal_lms" || fn == "signal_lms_weights") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto x_m = resolve_arg(trim(match[2].str()));
+            if (!x_m) {
+                return std::unexpected(x_m.error());
+            }
+            auto d_m = resolve_arg(trim(match[3].str()));
+            if (!d_m) {
+                return std::unexpected(d_m.error());
+            }
+            double filter_length_d = 0.0;
+            double mu = 0.0;
+            if (!parse_number(trim(match[4].str()), filter_length_d) ||
+                !parse_number(trim(match[5].str()), mu)) {
+                return std::unexpected(DomainError{
+                    fn, "expected " + fn + "(x, d, filter_length, mu)"});
+            }
+            Result<Matrix<double>> value;
+            if (fn == "signal_lms") {
+                value = eval_signal_lms(*x_m, *d_m, filter_length_d, mu);
+            } else {
+                value = eval_signal_lms_weights(*x_m, *d_m, filter_length_d, mu);
+            }
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return format_labeled_matrix(fn == "signal_lms" ? "lms" : "lms_weights", *value);
         }
         if (fn == "signal_cheby1") {
             double order_d = 0.0;
