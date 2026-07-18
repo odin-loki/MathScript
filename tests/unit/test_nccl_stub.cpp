@@ -76,6 +76,19 @@ TEST(NcclStubTest, allreduce_avg_idempotent) {
     EXPECT_DOUBLE_EQ(once, twice);
 }
 
+TEST(NcclStubTest, broadcast_identity) {
+    EXPECT_DOUBLE_EQ(broadcast(3.5), 3.5);
+    EXPECT_DOUBLE_EQ(broadcast(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(broadcast(-2.25), -2.25);
+    EXPECT_DOUBLE_EQ(broadcast(7.0, 0), 7.0);
+}
+
+TEST(NcclStubTest, broadcast_idempotent) {
+    const double once = broadcast(42.0);
+    const double twice = broadcast(once);
+    EXPECT_DOUBLE_EQ(once, twice);
+}
+
 TEST(NcclStubTest, comm_size_at_least_one) {
     EXPECT_GE(nccl_comm_size(), 1u);
 }

@@ -10936,6 +10936,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "cuda_allreduce_avg") {
             return ms::cuda::allreduce_avg(arg);
         }
+        if (fn == "cuda_broadcast") {
+            return ms::cuda::broadcast(arg);
+        }
     }
     if (args.size() == 2) {
         if (fn == "pow") {
@@ -14572,6 +14575,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cuda_allreduce_min(x)  NCCL all-reduce min (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_allreduce_prod(x)  NCCL all-reduce product (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_allreduce_avg(x)  NCCL all-reduce average (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
+            "  cuda_broadcast(x)  NCCL broadcast scalar from root 0 (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  name = transpose(A)      transpose assignment\n"
             "  name = chol(A)           Cholesky factor assignment\n"
             "  name = pinv(A) null(A) orth(A)  pseudo-inverse / null space / orthonormal basis\n"

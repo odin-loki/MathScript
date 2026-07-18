@@ -50,4 +50,8 @@ double allreduce_prod(double value);
 /// Multi-GPU path: `allreduce_sum(value) / nccl_comm_size()`.
 double allreduce_avg(double value);
 
+/// Broadcast a scalar from `root` across the NCCL communicator.
+/// Stub / single-rank path: returns `value` unchanged.
+double broadcast(double value, int root = 0);
+
 } // namespace ms::cuda
