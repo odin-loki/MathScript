@@ -20,6 +20,10 @@ constexpr std::size_t aes_gcm_iv_size = 12;
 constexpr std::size_t chacha20_poly1305_tag_size = 16;
 constexpr std::size_t chacha20_poly1305_nonce_size = 12;
 constexpr std::size_t x25519_key_size = 32;
+constexpr std::size_t ed25519_seed_size = 32;
+constexpr std::size_t ed25519_public_key_size = 32;
+constexpr std::size_t ed25519_secret_key_size = 64;
+constexpr std::size_t ed25519_signature_size = 64;
 
 using Digest256 = std::array<uint8_t, sha256_digest_size>;
 using Digest512 = std::array<uint8_t, sha512_digest_size>;
@@ -105,6 +109,17 @@ struct X25519Keypair {
 X25519Keypair x25519_keypair(std::span<const uint8_t> private_key);
 std::array<uint8_t, x25519_key_size> x25519_shared_secret(std::span<const uint8_t> private_key,
                                                           std::span<const uint8_t> peer_public_key);
+
+struct Ed25519Keypair {
+    std::array<uint8_t, ed25519_secret_key_size> secret_key{};
+    std::array<uint8_t, ed25519_public_key_size> public_key{};
+};
+
+Ed25519Keypair ed25519_keypair(std::span<const uint8_t> seed32);
+std::array<uint8_t, ed25519_signature_size> ed25519_sign(std::span<const uint8_t> secret_or_seed,
+                                                         std::span<const uint8_t> message);
+bool ed25519_verify(std::span<const uint8_t> public_key, std::span<const uint8_t> message,
+                    std::span<const uint8_t> signature);
 
 } // namespace crypto
 } // namespace ms
