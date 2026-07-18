@@ -77,6 +77,7 @@ TEST(ReplSessionTest, export_history_writes_commands) {
     ASSERT_TRUE(static_cast<bool>(std::getline(in, line2)));
     EXPECT_EQ(line1, "a = 1");
     EXPECT_EQ(line2, "b = 2");
+    in.close();
 
     std::filesystem::remove(path);
 }
@@ -94,6 +95,7 @@ TEST(ReplSessionTest, export_history_meta_command) {
     std::string line;
     ASSERT_TRUE(static_cast<bool>(std::getline(in, line)));
     EXPECT_EQ(line, "z = 9");
+    in.close();
 
     std::filesystem::remove(path);
 }
@@ -111,6 +113,7 @@ TEST(ReplSessionTest, save_history_meta_command_alias) {
     std::string line;
     ASSERT_TRUE(static_cast<bool>(std::getline(in, line)));
     EXPECT_EQ(line, "k = 4");
+    in.close();
 
     std::filesystem::remove(path);
 }
