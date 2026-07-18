@@ -308,6 +308,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization (Wave 259) |
 | `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` (Wave 260) |
 | `fft_goertzel(x,f,fs)` | Single-bin Goertzel DFT as 1×2 `[re,im]` (Wave 260) |
+| `fftfreq(n[,d])` / `rfftfreq(n[,d])` | NumPy-compatible FFT/rFFT frequency axes as `N×1` columns (Wave 261) |
+| `ifftshift(S)` | Inverse cyclic shift of `N×2` complex spectrum (Wave 261) |
 | `bidiag(A)` / `U, B, V = bidiag(A)` | Bidiagonalization (Wave 260) |
 | `solve_sylvester(A,B,C)` | Sylvester equation `A*X + X*B = C` (Wave 260) |
 | `minres(A,b)` | MINRES iterative solve (Wave 260) |

@@ -4673,6 +4673,28 @@ Result<Matrix<double>> eval_fftshift(const Matrix<double>& S_m) {
     return out;
 }
 
+Result<Matrix<double>> eval_ifftshift(const Matrix<double>& S_m) {
+    auto spec = matrix_to_complex_spectrum(S_m, "ifftshift");
+    if (!spec) {
+        return std::unexpected(spec.error());
+    }
+    const auto shifted = ifftshift(*spec);
+    Matrix<double> out(shifted.size(), 2);
+    for (size_t i = 0; i < shifted.size(); ++i) {
+        out(i, 0) = shifted[i].real();
+        out(i, 1) = shifted[i].imag();
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_fftfreq(size_t n, double d) {
+    return vector_to_column(fftfreq(n, d));
+}
+
+Result<Matrix<double>> eval_rfftfreq(size_t n, double d) {
+    return vector_to_column(rfftfreq(n, d));
+}
+
 Result<Matrix<double>> eval_fft_rfft(const Matrix<double>& x_m) {
     auto x = matrix_to_coeff_vector(x_m, "fft_rfft");
     if (!x) {
@@ -10689,8 +10711,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "poly_mul" || fn == "poly_sub" || fn == "poly_compose" ||
             fn == "geo_poly_union" || fn == "geo_poly_intersect" || fn == "geo_poly_diff" ||
             fn == "geo_minkowski_sum" || fn == "geo_clip_polygon" ||
-            fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "stats_friedman" || fn == "stats_ks_2sample" || fn == "stats_jarque_bera" || fn == "stats_ljung_box" || fn == "fftshift" ||
-            fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_levene" || fn == "stats_bartlett" || fn == "stats_fligner" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "fftshift" ||
+            fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "stats_friedman" || fn == "stats_ks_2sample" || fn == "stats_jarque_bera" || fn == "stats_ljung_box" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
+            fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_levene" || fn == "stats_bartlett" || fn == "stats_fligner" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
             fn == "graph_floyd_warshall" || fn == "graph_mst_kruskal" ||
             fn == "graph_mst_prim" ||
             fn == "graph_scc" ||
@@ -12192,6 +12214,13 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "shifted =\n";
         print_matrix(out, *shifted);
+    } else if (fn == "ifftshift") {
+        auto shifted = eval_ifftshift(matrix);
+        if (!shifted) {
+            return std::unexpected(shifted.error());
+        }
+        out << "shifted =\n";
+        print_matrix(out, *shifted);
     } else if (fn == "prewitt") {
         auto edge = eval_prewitt(matrix);
         if (!edge) {
@@ -12572,6 +12601,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "finance_min_variance_portfolio" ||
            callee == "finance_efficient_frontier" || callee == "finance_max_sharpe" ||
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_goertzel" ||
+           callee == "fftfreq" || callee == "rfftfreq" ||
            callee == "fft_ifft" || callee == "fft_fft2" ||
            callee == "signal_envelope" || callee == "signal_hilbert" ||
            callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
@@ -12610,7 +12640,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "stats_mann_whitney_u" || callee == "stats_wilcoxon_signed_rank" ||
            callee == "stats_friedman" || callee == "stats_ks_2sample" ||
            callee == "stats_jarque_bera" || callee == "stats_ljung_box" ||
-           callee == "fftshift" ||
+           callee == "fftshift" || callee == "ifftshift" ||
            callee == "diffgeo_surface_normal_sphere" ||
            callee == "imcrop" ||
            callee == "diffgeo_geodesic_euclidean" ||
@@ -12690,8 +12720,11 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "stats_shapiro_wilk" || callee == "stats_one_way_anova" ||
         callee == "stats_friedman" || callee == "stats_jarque_bera" ||
         callee == "stats_levene" || callee == "stats_bartlett" || callee == "stats_fligner" ||
-        callee == "fftshift" || callee == "count_components") {
+        callee == "fftshift" || callee == "ifftshift" || callee == "count_components") {
         return arity == 1;
+    }
+    if (callee == "fftfreq" || callee == "rfftfreq") {
+        return arity == 1 || arity == 2;
     }
     if (callee == "finance_efficient_frontier" || callee == "finance_max_sharpe" ||
         callee == "solve_sylvester") {
@@ -15390,6 +15423,76 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(shifted.error());
         }
         result = *shifted;
+    } else if (assign.callee == "ifftshift" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto shifted = eval_ifftshift(*matrix);
+        if (!shifted) {
+            return std::unexpected(shifted.error());
+        }
+        result = *shifted;
+    } else if (assign.callee == "fftfreq" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(DomainError{"fftfreq", "expected fftfreq(n[, d])"});
+            }
+            n_d = *n_expr;
+        }
+        const int n_i = static_cast<int>(n_d);
+        if (n_i < 0 || n_d != n_i) {
+            return std::unexpected(
+                DomainError{"fftfreq", "expected non-negative integer n"});
+        }
+        double d = 1.0;
+        if (assign.args.size() == 2) {
+            if (!parse_number(assign.args[1], d)) {
+                auto d_expr = eval_scalar_expr(state_, assign.args[1]);
+                if (!d_expr) {
+                    return std::unexpected(DomainError{"fftfreq", "expected fftfreq(n[, d])"});
+                }
+                d = *d_expr;
+            }
+        }
+        auto freqs = eval_fftfreq(static_cast<size_t>(n_i), d);
+        if (!freqs) {
+            return std::unexpected(freqs.error());
+        }
+        result = *freqs;
+    } else if (assign.callee == "rfftfreq" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(DomainError{"rfftfreq", "expected rfftfreq(n[, d])"});
+            }
+            n_d = *n_expr;
+        }
+        const int n_i = static_cast<int>(n_d);
+        if (n_i < 0 || n_d != n_i) {
+            return std::unexpected(
+                DomainError{"rfftfreq", "expected non-negative integer n"});
+        }
+        double d = 1.0;
+        if (assign.args.size() == 2) {
+            if (!parse_number(assign.args[1], d)) {
+                auto d_expr = eval_scalar_expr(state_, assign.args[1]);
+                if (!d_expr) {
+                    return std::unexpected(DomainError{"rfftfreq", "expected rfftfreq(n[, d])"});
+                }
+                d = *d_expr;
+            }
+        }
+        auto freqs = eval_rfftfreq(static_cast<size_t>(n_i), d);
+        if (!freqs) {
+            return std::unexpected(freqs.error());
+        }
+        result = *freqs;
     } else if (assign.callee == "poly_deriv" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -18732,6 +18835,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ode_event_detect(\"f\",\"event\",t0,y0,t_end,steps) IVP with root events [t,y] plus event_times/values (env {t,y})\n"
             "  name = fft_rfft(x) real FFT spectrum as Nx2 [re,im] matrix\n"
             "  name = fftshift(S) cyclic shift of Nx2 complex spectrum\n"
+            "  name = ifftshift(S) inverse cyclic shift of Nx2 complex spectrum\n"
+            "  name = fftfreq(n[,d]) FFT frequency bins as n×1 column (d=1 default)\n"
+            "  name = rfftfreq(n[,d]) rFFT frequency bins as column (d=1 default)\n"
             "  name = fft_dft(x) discrete Fourier transform as Nx2 [re,im] matrix\n"
             "  name = fft_goertzel(x,f,fs) single-bin Goertzel DFT as 1x2 [re,im]\n"
             "  name = fft_irfft(spectrum,n) inverse real FFT from Nx2 spectrum to n×1 column\n"

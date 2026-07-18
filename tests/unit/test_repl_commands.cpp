@@ -4972,6 +4972,64 @@ TEST(ReplCommandsTest, wave175_fftshift) {
     EXPECT_NEAR(interp.state().matrices.at("Sh")(2, 0), 0.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave261_fftfreq) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fftfreq(n[,d])");
+
+    expect_ok(interp, "f = fftfreq(8)");
+    ASSERT_GT(interp.state().matrices.count("f"), 0u);
+    const auto& freqs = interp.state().matrices.at("f");
+    ASSERT_EQ(freqs.rows(), 8u);
+    ASSERT_EQ(freqs.cols(), 1u);
+    const std::vector<double> expected{0.0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(freqs(i, 0), expected[i], 1e-12);
+    }
+
+    expect_ok(interp, "f2 = fftfreq(8, 0.5)");
+    const auto& scaled = interp.state().matrices.at("f2");
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(scaled(i, 0), expected[i] / 0.5, 1e-12);
+    }
+}
+
+TEST(ReplCommandsTest, wave261_rfftfreq) {
+    Interpreter interp;
+    expect_contains(interp, "help", "rfftfreq(n[,d])");
+
+    expect_ok(interp, "rf = rfftfreq(8)");
+    ASSERT_GT(interp.state().matrices.count("rf"), 0u);
+    const auto& freqs = interp.state().matrices.at("rf");
+    ASSERT_EQ(freqs.rows(), 5u);
+    ASSERT_EQ(freqs.cols(), 1u);
+    const std::vector<double> expected{0.0, 0.125, 0.25, 0.375, 0.5};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_NEAR(freqs(i, 0), expected[i], 1e-12);
+    }
+
+    expect_ok(interp, "rf2 = rfftfreq(5)");
+    const auto& odd = interp.state().matrices.at("rf2");
+    ASSERT_EQ(odd.rows(), 3u);
+    EXPECT_NEAR(odd(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(odd(1, 0), 0.2, 1e-12);
+    EXPECT_NEAR(odd(2, 0), 0.4, 1e-12);
+}
+
+TEST(ReplCommandsTest, wave261_ifftshift) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ifftshift(S)");
+
+    expect_ok(interp, "S = [0, 0; 1, 0; 2, 0; 3, 0]");
+    expect_ok(interp, "Sh = fftshift(S)");
+    expect_ok(interp, "Sr = ifftshift(Sh)");
+    ASSERT_GT(interp.state().matrices.count("Sr"), 0u);
+    const auto& restored = interp.state().matrices.at("Sr");
+    EXPECT_NEAR(restored(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(restored(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(restored(2, 0), 2.0, 1e-9);
+    EXPECT_NEAR(restored(3, 0), 3.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave109_geo_signed_area) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_signed_area(P)");
