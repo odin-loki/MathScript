@@ -5597,3 +5597,38 @@ TEST(ReplCommandsTest, wave256_stats_inference) {
     EXPECT_LT(ws(0, 2), 0.05);
     EXPECT_NEAR(ws(0, 3), 8.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, wave256_image_transform) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imflip(M,horizontal)");
+    expect_contains(interp, "help", "imrotate90(M)");
+    expect_contains(interp, "help", "threshold_binary(M,t)");
+    expect_contains(interp, "help", "adapthisteq(M)");
+
+    expect_ok(interp, "M = [0, 1; 0.25, 0.75]");
+    expect_ok(interp, "F = imflip(M, 1)");
+    ASSERT_GT(interp.state().matrices.count("F"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("F").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("F").cols(), 2u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("F")(0, 1), 0.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("F")(0, 0), 1.0);
+
+    expect_ok(interp, "R = imrotate90(M)");
+    ASSERT_GT(interp.state().matrices.count("R"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("R").cols(), 2u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("R")(1, 0), 0.0);
+
+    expect_ok(interp, "T = threshold_binary(M, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("T"), 0u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("T")(0, 0), 0.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("T")(0, 1), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("T")(1, 0), 0.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("T")(1, 1), 1.0);
+
+    expect_ok(interp, "A = adapthisteq(M)");
+    ASSERT_GT(interp.state().matrices.count("A"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("A").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("A").cols(), 2u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("A")(0, 0)));
+}

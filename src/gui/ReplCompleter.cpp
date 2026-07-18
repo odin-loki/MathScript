@@ -219,6 +219,11 @@ QStringList repl_command_list() {
         QStringLiteral("geo_intersect_ray_tri"),
         QStringLiteral("geo_dist_point_plane"),
         QStringLiteral("geo_dist_point_seg3d"),
+        // Image transforms
+        QStringLiteral("imflip"),
+        QStringLiteral("imrotate90"),
+        QStringLiteral("threshold_binary"),
+        QStringLiteral("adapthisteq"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
