@@ -154,6 +154,9 @@ QStringList repl_command_list() {
         QStringLiteral("ml_accuracy"),
         QStringLiteral("ml_rmse"),
         QStringLiteral("graph_pagerank"),
+        QStringLiteral("graph_k_core_decomposition"),
+        QStringLiteral("graph_k_core_subgraph"),
+        QStringLiteral("graph_chromatic_number"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
