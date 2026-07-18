@@ -129,6 +129,8 @@ QStringList repl_command_list() {
         QStringLiteral("crypto_aes128_encrypt_block"),
         QStringLiteral("crypto_aes128_cbc_encrypt"),
         QStringLiteral("crypto_aes128_cbc_decrypt"),
+        QStringLiteral("crypto_aes256_cbc_encrypt"),
+        QStringLiteral("crypto_aes256_cbc_decrypt"),
         QStringLiteral("crypto_aes128_gcm_encrypt"),
         QStringLiteral("crypto_aes128_gcm_decrypt"),
         QStringLiteral("crypto_chacha20"),

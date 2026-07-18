@@ -388,6 +388,60 @@ TEST(CryptoAes128, CbcDecryptInvalidCiphertextReturnsEmpty) {
     EXPECT_TRUE(aes128_cbc_decrypt(key, iv, bad).empty());
 }
 
+TEST(CryptoAes256, CbcEncryptMatchesNistBlocksBeforePadding) {
+    // NIST SP 800-38A F.2.5 CBC-AES256 (first 3 blocks; PKCS7 pad adds a 4th).
+    const auto key =
+        from_hex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+    const auto plaintext =
+        from_hex("6bc1bee22e409f96e93d7e117393172a"
+                 "ae2d8a571e03ac9c9eb76fac45af8e51"
+                 "30c81c46a35ce411e5fbc1191a0a52ef");
+    const auto expected =
+        from_hex("f58c4c04d6e5f1ba779eabfb5f7c8362"
+                 "39f23369a9d9bacfa530e26304231461"
+                 "9628d408f6e193b1a337dbf37f1e5b2f");
+
+    const auto ciphertext = aes256_cbc_encrypt(key, iv, plaintext);
+    ASSERT_EQ(ciphertext.size(), 64u);
+    EXPECT_EQ(std::vector<uint8_t>(ciphertext.begin(), ciphertext.begin() + 48), expected);
+    const auto recovered = aes256_cbc_decrypt(key, iv, ciphertext);
+    EXPECT_EQ(recovered, plaintext);
+}
+
+TEST(CryptoAes256, CbcEncryptDecryptRoundtrip) {
+    const auto key =
+        from_hex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+    const auto plaintext =
+        from_hex("6bc1bee22e409f96e93d7e117393172a"
+                 "ae2d8a571e03ac9c9eb76fac45af8e51"
+                 "30c81c46a35ce411e5fbc1191a0a52ef");
+
+    const auto ciphertext = aes256_cbc_encrypt(key, iv, plaintext);
+    const auto recovered = aes256_cbc_decrypt(key, iv, ciphertext);
+    EXPECT_EQ(recovered, plaintext);
+}
+
+TEST(CryptoAes256, CbcEncryptDecryptEmptyPlaintext) {
+    const auto key =
+        from_hex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+
+    const auto ciphertext = aes256_cbc_encrypt(key, iv, std::span<const uint8_t>{});
+    ASSERT_EQ(ciphertext.size(), 16u);
+    const auto recovered = aes256_cbc_decrypt(key, iv, ciphertext);
+    EXPECT_TRUE(recovered.empty());
+}
+
+TEST(CryptoAes256, CbcDecryptInvalidCiphertextReturnsEmpty) {
+    const auto key =
+        from_hex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+    const auto bad = from_hex("0011223344556677889900aabbccddeeff");
+    EXPECT_TRUE(aes256_cbc_decrypt(key, iv, bad).empty());
+}
+
 // ---- ChaCha20 (RFC 8439) ----
 
 namespace {
