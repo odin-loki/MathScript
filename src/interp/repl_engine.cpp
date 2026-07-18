@@ -1,4 +1,6 @@
+#include "ms/distributed/dist_matrix.hpp"
 #include "ms/distributed/mpi_context.hpp"
+#include "ms/distributed/solve.hpp"
 #include "ms/frameworks/axiom/axiom.hpp"
 #include "ms/frameworks/cellai/cellai.hpp"
 #include "ms/frameworks/cypha/cypha.hpp"
@@ -62,6 +64,24 @@
 namespace ms::interp {
 
 namespace {
+
+ms::distributed::MPIContext& repl_mpi_context() {
+    static ms::distributed::MPIContext ctx = ms::distributed::init(0, nullptr);
+    return ctx;
+}
+
+Result<Matrix<double>> eval_dist_solve(const Matrix<double>& A, const Matrix<double>& b) {
+    auto& ctx = repl_mpi_context();
+    auto dA = ms::distributed::scatter(A, ctx);
+    if (!dA) {
+        return std::unexpected(dA.error());
+    }
+    auto db = ms::distributed::scatter(b, ctx);
+    if (!db) {
+        return std::unexpected(db.error());
+    }
+    return ms::distributed::solve(*dA, *db, ctx);
+}
 
 std::string trim_copy(std::string s) {
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
@@ -4186,7 +4206,8 @@ bool is_nullary_scalar_callee(const std::string& callee) {
     return callee == "diffgeo_gaussian_sphere" || callee == "diffgeo_mean_sphere" ||
            callee == "diffgeo_principal_curvature_sphere" ||
            callee == "topo_euler_tetrahedron" || callee == "topo_euler_sphere_surface" ||
-           callee == "cplx_contour_integral_oneoverz_im" || callee == "cplx_line_integral_one";
+           callee == "cplx_contour_integral_oneoverz_im" || callee == "cplx_line_integral_one" ||
+           callee == "mpi_rank" || callee == "mpi_size";
 }
 
 Result<double> eval_nullary_scalar_call(const std::string& fn) {
@@ -4210,6 +4231,12 @@ Result<double> eval_nullary_scalar_call(const std::string& fn) {
     }
     if (fn == "cplx_line_integral_one") {
         return eval_cplx_line_integral_one();
+    }
+    if (fn == "mpi_rank") {
+        return static_cast<double>(ms::distributed::rank(repl_mpi_context()));
+    }
+    if (fn == "mpi_size") {
+        return static_cast<double>(ms::distributed::size(repl_mpi_context()));
     }
     return std::unexpected(DomainError{"eval", "unknown nullary scalar function: " + fn});
 }
@@ -6226,7 +6253,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
     if (const auto call = parse_scalar_call(text)) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
-            fn == "solve" || fn == "transpose" || fn == "chol" || fn == "det" ||
+            fn == "solve" || fn == "dist_solve" || fn == "transpose" || fn == "chol" ||
+            fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
             fn == "qr" || fn == "svd" || fn == "eig_sym" ||
             fn == "zeros" || fn == "eye" || fn == "ones" ||
@@ -7689,7 +7717,7 @@ bool Interpreter::try_parse_scalar_expr_assignment(const std::string& line, std:
 
 bool is_matrix_call_callee(const std::string& callee) {
     return callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-           callee == "solve" ||
+           callee == "solve" || callee == "dist_solve" ||
            callee == "transpose" || callee == "chol" ||
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
@@ -7747,7 +7775,7 @@ bool is_matrix_call_callee(const std::string& callee) {
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-        callee == "solve" ||
+        callee == "solve" || callee == "dist_solve" ||
         callee == "rand" || callee == "randn" ||
         callee == "kron") {
         return arity == 2;
@@ -8279,6 +8307,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
             return static_cast<double>(numthy::primitive_root(static_cast<int>(p)));
+        }
+        if (fn == "mpi_allreduce_sum") {
+            return ms::distributed::allreduce_sum(repl_mpi_context(), arg);
         }
     }
     if (args.size() == 2) {
@@ -9074,6 +9105,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(right.error());
         }
         result = solve(*left, *right);
+    } else if (assign.callee == "dist_solve" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = eval_dist_solve(*left, *right);
     } else if (assign.callee == "transpose" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -11131,6 +11172,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sin(x) pow(x,2)   scalar calls (sin, cos, sqrt, pow, min, max, ...)\n"
             "  name = matmul(A, B)      matrix multiply assignment\n"
             "  name = solve(A, B)       linear solve assignment\n"
+            "  name = dist_solve(A, B)  distributed linear solve (stub: local solve)\n"
+            "  mpi_rank(), mpi_size(), mpi_allreduce_sum(x)  MPI rank/size/allreduce (stub: rank=0, size=1)\n"
             "  name = transpose(A)      transpose assignment\n"
             "  name = chol(A)           Cholesky factor assignment\n"
             "  name = pinv(A) null(A) orth(A)  pseudo-inverse / null space / orthonormal basis\n"
@@ -11579,7 +11622,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), solve(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), solve(A,B), dist_solve(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
@@ -11805,7 +11848,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     }
 
     if (lcmd == "mpi") {
-        static ms::distributed::MPIContext mpi = ms::distributed::init(0, nullptr);
+        auto& mpi = repl_mpi_context();
         std::ostringstream out;
         out << "backend=" << ms::distributed::backend_name(mpi)
             << " rank=" << ms::distributed::rank(mpi)
@@ -17977,8 +18020,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(legendre_p(static_cast<int>(n), x)) + "\n";
         }
 
-        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "matmul" ||
-            fn == "tensorops_matmul" || fn == "tensorops_einsum") {
+        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "dist_solve" ||
+            fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum") {
             auto A = resolve_matrix(arg_a);
             if (!A) {
                 A = parse_matrix(arg_a);
@@ -17996,6 +18039,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "solve") {
                     auto x = solve(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "dist_solve") {
+                    auto x = eval_dist_solve(*A, *B);
                     if (!x) {
                         return std::unexpected(x.error());
                     }
