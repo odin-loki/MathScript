@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 236 complete – **382 CTest suites** on `wave236/gui-polish`)
+**Updated:** 2026-07-18 (Wave 236 complete – **385 CTest suites** on `main`)
 
 ---
 
@@ -115,14 +115,20 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ---
 
-## Wave 236 ✅ COMPLETE (GUI/REPL polish)
+## Wave 236 ✅ COMPLETE (X25519, CFD/FEM 3D, dist matmul, GUI polish)
 
 | Branch | Shipped |
 |--------|---------|
-| `wave236/gui-polish` | Clear Output button/menu (**Ctrl+L**); Open Recent (8 files); REPL welcome banner + version; About dialog; font zoom (**Ctrl+Plus/Minus/0**) |
+| `wave236/crypto-x25519` | X25519 keygen/shared secret (curve25519-donna); `crypto_x25519_shared` REPL |
+| `wave236/cfd-3d` | `cfd_advection3d`; `test_cfd_3d` |
+| `wave236/fem-3d-solve` | 3D load + solve; `fem_poisson3d` REPL |
+| `wave236/mpi-la` | `dist_matmul`; `test_dist_matmul` |
+| `wave236/gui-polish` | Clear/About/Recent/font zoom; plot zoom polish |
+| `wave236/repl-3d` | `integration_repl_wave236_pipeline` |
 
-**382 CTest suites** (GUI-only polish; no new CTest registration). Profiling iteration unchanged – **FULLY COMPLETE (Waves 218–230).**
+**385 CTest suites** (+3 registrations; X25519 unit tests in `test_crypto`). Profiling iteration unchanged – **FULLY COMPLETE (Waves 218–230).**
 
+Product **feature wave** scope from Waves 231–236 is largely complete; remaining work is incremental (NCCL, modular plugins, MPI scalability, API gaps).
 
 ---
 
@@ -130,6 +136,6 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 | Wave | Focus |
 |------|--------|
-| **237+** | Remaining API gaps (**curve25519**, **3D CFD**, **scalable MPI LA**, NCCL, modular plugins, etc.) |
+| **237+** | NCCL wiring, modular plugin rules, scalable MPI LA, remaining API gaps (see master plan) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

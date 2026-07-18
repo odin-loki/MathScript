@@ -5,21 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## [1.0.0] – 2026-07-18 (Wave 236 – GUI/REPL polish)
+## [1.0.0] – 2026-07-18 (Wave 236 – X25519, CFD/FEM 3D, dist matmul, GUI polish)
 
-Sixth **feature wave** after Wave 235. Remaining GUI/REPL polish in `wave236/gui-polish`.
+Sixth **feature wave** after Wave 235. Parallel work merged to `main`: X25519, 3D CFD/FEM solve bindings, distributed GEMM, and GUI/REPL polish.
 
 ### Added (Wave 236)
-- **GUI** – **Clear Output** button and View menu action (**Ctrl+L**); **Open Recent** file list (persisted, max 8); REPL **welcome banner** with version; **About MathScript** dialog (Help menu); monospace font size controls (**Ctrl+Plus/Minus/0**, default 11 pt).
-- **Total Wave 236: 382 CTest suites – all passing** (GUI-only polish; no new CTest registration). **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+- **Crypto** – X25519 (`x25519_keypair`, `x25519_shared_secret` via curve25519-donna; RFC 7748 vectors); REPL: `crypto_x25519_shared`.
+- **CFD** – 3D structured FVM upwind advection (`cfd_advection3d`); unit coverage in `test_cfd_3d`.
+- **FEM** – 3D P1 load assembly + `solve_fem_3d` completion; REPL `fem_poisson3d(nx, ny, nz)`; extended `test_fem` 3D solve/load cases.
+- **Distributed** – `dist_matmul` (stub-safe single-rank); `test_dist_matmul`.
+- **GUI** – **Clear Output** (**Ctrl+L**); **Open Recent** (8 files); REPL welcome banner; **About MathScript**; font zoom (**Ctrl+Plus/Minus/0**); plot zoom controls polish.
+- Integration: `integration_repl_wave236_pipeline` (`fem_poisson3d`, `crypto_x25519_shared`, `dist_matmul`, `cfd_advection3d`).
+- **Build** – CMake `LANGUAGES CXX C` for `curve25519_donna.c`; MSVC port `curve25519_donna_msvc.cpp`.
+- **Total Wave 236: 385 CTest suites – all passing** (+3 registrations: `test_cfd_3d`, `test_dist_matmul`, `integration_repl_wave236_pipeline`; X25519 cases in `test_crypto`). **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
-Builds on Wave 235 ChaCha-Poly1305, FEM 3D, and GUI kickoff polish. Full master-plan scope (curve25519, 3D CFD, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred – see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+Remaining master-plan scope (NCCL, modular plugin enforcement, full IDE, additional API gaps) deferred to Wave **237+** – see `mathscript-master-plan.md` §2.12/§7/§10/§11.
 
 ### Docs (Wave 236)
-- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** – Wave 236 kickoff/complete; GUI polish documented.
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** – Wave 236 complete; X25519, 3D CFD/FEM, dist matmul, GUI polish documented.
 
 ### Baseline (Wave 236)
-- **382 CTest suites – all passing** on `wave236/gui-polish`. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+- **385 CTest suites – all passing** on `main` @ Wave 236. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
 ## [1.0.0] – 2026-07-18 (Wave 235 – ChaCha-Poly1305, FEM 3D, GUI polish)
 
