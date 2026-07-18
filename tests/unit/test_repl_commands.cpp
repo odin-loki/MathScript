@@ -3258,6 +3258,32 @@ TEST(ReplCommandsTest, wave260_control_impulse_response) {
     EXPECT_NEAR(imp(imp.rows() - 1, 1), std::exp(-5.0), 0.05);
 }
 
+TEST(ReplCommandsTest, wave263_control_kalman) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_kalman_predict(x,P,A,Q)");
+    expect_contains(interp, "help", "control_kalman_update(x,P,z,H,R)");
+
+    // Scalar closed-form predict+update from test_control.cpp (q=0.05, r=0.5, z=2).
+    expect_ok(interp, "x0 = [0]");
+    expect_ok(interp, "P0 = [1]");
+    expect_ok(interp, "xp = control_kalman_predict(x0, P0, [1], [0.05])");
+    ASSERT_GT(interp.state().matrices.count("xp"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("xp")(0, 0), 0.0, 1e-12);
+
+    expect_ok(interp, "Pp = control_kalman_predict_cov(x0, P0, [1], [0.05])");
+    ASSERT_GT(interp.state().matrices.count("Pp"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Pp")(0, 0), 1.05, 1e-10);
+
+    expect_ok(interp, "xu = control_kalman_update(xp, Pp, [2], [1], [0.5])");
+    ASSERT_GT(interp.state().matrices.count("xu"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("xu")(0, 0), 2.0 * 1.05 / 1.55, 1e-6);
+
+    expect_ok(interp, "Pu = control_kalman_update_cov(xp, Pp, [2], [1], [0.5])");
+    ASSERT_GT(interp.state().matrices.count("Pu"), 0u);
+    const double K = 1.05 / 1.55;
+    EXPECT_NEAR(interp.state().matrices.at("Pu")(0, 0), (1.0 - K) * 1.05, 1e-6);
+}
+
 TEST(ReplCommandsTest, wave135_quantum_op_apply) {
     Interpreter interp;
     expect_contains(interp, "help", "quantum_op_apply(op,psi)");
