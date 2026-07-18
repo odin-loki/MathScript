@@ -3582,6 +3582,24 @@ TEST(ReplCommandsTest, wave252_signal_savgol) {
     EXPECT_NEAR(sg(2, 0), 27.0 / 35.0, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave253_signal_median_filter) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_median_filter(x,window_length)");
+
+    // Hand-computed: x={5,1,3,2,4}, w=3 -> {5,3,2,3,4} (edges unfiltered).
+    expect_ok(interp, "x = [5; 1; 3; 2; 4]");
+    expect_ok(interp, "mf = signal_median_filter(x, 3)");
+    ASSERT_GT(interp.state().matrices.count("mf"), 0u);
+    const auto& mf = interp.state().matrices.at("mf");
+    EXPECT_EQ(mf.cols(), 1u);
+    EXPECT_EQ(mf.rows(), 5u);
+    EXPECT_NEAR(mf(0, 0), 5.0, 1e-12);
+    EXPECT_NEAR(mf(1, 0), 3.0, 1e-12);
+    EXPECT_NEAR(mf(2, 0), 2.0, 1e-12);
+    EXPECT_NEAR(mf(3, 0), 3.0, 1e-12);
+    EXPECT_NEAR(mf(4, 0), 4.0, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave251_signal_cheby1) {
     Interpreter interp;
     expect_contains(interp, "help", "signal_cheby1(order,rp_db,cutoff,fs[,type])");

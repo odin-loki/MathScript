@@ -166,6 +166,7 @@ QStringList repl_command_list() {
         QStringLiteral("signal_interpolate"),
         QStringLiteral("signal_resample"),
         QStringLiteral("signal_savgol"),
+        QStringLiteral("signal_median_filter"),
         QStringLiteral("signal_coherence"),
         QStringLiteral("signal_filter"),
         QStringLiteral("signal_filtfilt"),
