@@ -5076,6 +5076,31 @@ TEST(ReplCommandsTest, wave259_geo_bezier_eval) {
     EXPECT_NEAR(interp.state().matrices.at("pt")(0, 1), 1.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave260_geo_bezier_deriv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_bezier_deriv(P,t)");
+
+    expect_ok(interp, "ctrl = [0, 0; 1, 2; 2, 0]");
+    expect_ok(interp, "d = geo_bezier_deriv(ctrl, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("d"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("d").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("d").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("d")(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("d")(0, 1), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave260_geo_hermite_curve) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t)");
+
+    expect_ok(interp, "pt = geo_hermite_curve(0, 0, 0, 1, 1, 0, 0, -1, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("pt"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pt").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("pt").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 0), 0.5, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 1), 0.25, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave259_geo_catmull_rom) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_catmull_rom(P,t)");
