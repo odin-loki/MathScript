@@ -4835,6 +4835,28 @@ TEST(ReplCommandsTest, wave254_geo_aabb) {
     expect_contains(interp, "geo_overlap_aabb(0, 0, 0, 1, 1, 1, 0.5, 0.5, 0.5, 1.5, 1.5, 1.5)", "1");
 }
 
+TEST(ReplCommandsTest, wave255_geo_ray_intersect) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4)");
+    expect_contains(interp, "help", "geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r)");
+    expect_contains(interp, "help",
+                    "geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz)");
+
+    expect_ok(interp, "hit = geo_intersect_seg_seg(0, 0, 2, 2, 0, 2, 2, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("hit"), 1.0, 1e-9);
+    expect_ok(interp, "miss = geo_intersect_seg_seg(0, 0, 1, 0, 0, 1, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("miss"), 0.0, 1e-9);
+    expect_contains(interp, "geo_intersect_seg_seg(0, 0, 2, 2, 0, 2, 2, 0)", "1");
+    expect_contains(interp, "geo_intersect_seg_seg(0, 0, 1, 0, 0, 1, 1, 1)", "0");
+
+    expect_ok(interp, "rs = geo_intersect_ray_sphere(0, 0, 0, 1, 0, 0, 2, 0, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("rs"), 1.0, 1e-9);
+
+    expect_ok(interp, "ra = geo_intersect_ray_aabb(-5, 0, 0, 1, 0, 0, -1, -1, -1, 1, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ra"), 1.0, 1e-9);
+    expect_contains(interp, "geo_intersect_ray_aabb(-5, 0, 0, 1, 0, 0, -1, -1, -1, 1, 1, 1)", "1");
+}
+
 TEST(ReplCommandsTest, wave111_geo_bezier_eval_x) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_bezier_eval_x(P,t)");

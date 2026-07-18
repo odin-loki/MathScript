@@ -194,6 +194,9 @@ QStringList repl_command_list() {
         QStringLiteral("geo_min_bounding_rect"),
         QStringLiteral("geo_point_in_aabb"),
         QStringLiteral("geo_overlap_aabb"),
+        QStringLiteral("geo_intersect_seg_seg"),
+        QStringLiteral("geo_intersect_ray_sphere"),
+        QStringLiteral("geo_intersect_ray_aabb"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
