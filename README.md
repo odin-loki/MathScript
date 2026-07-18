@@ -56,12 +56,12 @@ None of these were caught by code review; all three were caught by a test assert
 ## Status
 
 - **Version:** 1.0.0 — Phase 10 (hardening) complete; profiling iteration **fully complete** through Wave 230 — code, infra, and baseline path (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md))
-- **Tests:** **389** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
+- **Tests:** **391** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
 - **CI:** Windows MSVC + Linux GCC 13 build/test; coverage; libFuzzer smoke (7 targets); Valgrind memcheck; benchmark regression gate (`bench_matmul`, `bench_fft`, 10% tolerance); Clang plugin compliance (20 enforced rules); vendor checksum verification; optional `jit-linux` and `plugin-linux` jobs
 
-## Product closure (feature waves 231–239)
+## Product closure (feature waves 231–240)
 
-After the profiling iteration closed at Wave 230, nine parallel **feature waves** (231–239) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
+After the profiling iteration closed at Wave 230, ten parallel **feature waves** (231–240) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
 
 | Wave | Focus |
 |------|--------|
@@ -73,6 +73,8 @@ After the profiling iteration closed at Wave 230, nine parallel **feature waves*
 | **236** | X25519; CFD/FEM 3D solve; `dist_matmul`; GUI Clear/About/Recent/font zoom |
 | **237** | NCCL stub; modular plugin rules; remaining REPL gaps (SABR, graph cuts, LQE, edge filters) |
 | **238** | `dist_cg`; GUI find-in-output and plot toggle; HKDF-SHA256; 3D bench cases; history export/persist |
+| **239** | PBKDF2; `dist_gmres`; GUI script find/goto-line; `run_file`; HKDF/X25519/`dist_cg` benches |
+| **240** | Ed25519; `dist_jacobi` + GMRES MPI; Mellin; GUI line numbers/LaTeX export; graph/finance/`bicgstab` REPL; bench gaps |
 
 ## Build (quickstart)
 

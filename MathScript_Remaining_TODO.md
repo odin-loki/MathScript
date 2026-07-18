@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 239 ✅ COMPLETE — **389 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 240 ✅ COMPLETE — **391 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–239 COMPLETE (summary)
+## Feature waves ✅ 231–240 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -48,6 +48,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **237** | NCCL stub; modular plugin rules; remaining REPL gaps |
 | **238** | dist CG; GUI find/plot toggle; HKDF; 3D benches; history export/persist |
 | **239** | PBKDF2; `dist_gmres`; GUI script find/goto-line; `run_file`; HKDF/X25519/`dist_cg` benches; README matrix |
+| **240** | Ed25519; `jacobi`/`dist_jacobi` + GMRES MPI; `sym_mellin`; GUI line numbers/LaTeX export; REPL graph/finance/`bicgstab`; PBKDF2/`dist_gmres` benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -90,17 +91,32 @@ See `CHANGELOG.md` for per-wave branch tables.
 | Benchmarks | HKDF / X25519 (`bench_crypto`); `dist_cg` (`bench_distributed_cellai`) |
 | Docs | README Waves 231–239 matrix; USER_GUIDE / API sync |
 
-**389 CTest suites** — all passing on `main`. **Product feature waves 231–239 ✅ CLOSED** (incremental post–Wave 230 polish complete).
+**389 CTest suites** — all passing on `main`.
 
 ---
 
-## Next (Wave 240+) — deferred
+## Wave 240 ✅ COMPLETE (Ed25519, dist Jacobi, Mellin, GUI IDE lite, REPL bindings, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Crypto | Ed25519 keygen/sign/verify (RFC 8032); REPL hex bindings |
+| Distributed | `ms::jacobi`; `dist_jacobi`; `dist_gmres` MPI block path; `test_dist_jacobi` |
+| Symbolic | `sym_mellin` / `sym_imellin` table MVP + REPL |
+| GUI | Line-number gutter; Ln/Col status; Export Last Result as LaTeX |
+| REPL | bipartite match / biconnected / eulerian path; geo-asian; `bicgstab`; wave240 pipeline |
+| Benchmarks | PBKDF2 + `dist_gmres` smoke cases |
+
+**391 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–240** closed for this incremental batch.
+
+---
+
+## Next (Wave 241+) — deferred
 
 | Item | Notes |
 |------|--------|
-| Scalable multi-node MPI LA | Beyond stub-safe `dist_matmul` / `dist_cg` / gather-to-root solvers |
-| Full IDE | clangd/LSP, debugger, rich LaTeX output (master plan §11) |
+| Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block-CG/GMRES/Jacobi |
+| Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
 | Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
-| Deeper API gaps | Per `mathscript-master-plan.md` as needed |
+| Deeper API gaps | Hankel transform, `sabr_put`, Blossom matching, NCCL multi-GPU, etc. |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

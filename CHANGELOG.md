@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 240 — Ed25519, dist Jacobi/GMRES MPI, Mellin, GUI IDE lite, REPL bindings, benches) ✅ COMPLETE
+
+Tenth feature wave after Wave 239. Parallel Composer 2.5 worktrees merged to `main`: Ed25519, `ms::jacobi` / `dist_jacobi` (+ `dist_gmres` MPI block path), `sym_mellin`/`sym_imellin`, GUI line numbers + LaTeX export, Wave 239 bench gaps, and graph/finance/`bicgstab` REPL bindings.
+
+### Added (Wave 240)
+- **Crypto** — Ed25519 keygen/sign/verify (RFC 8032; orlp/ed25519 ref10); REPL `crypto_ed25519_{keypair,sign,verify}`.
+- **Distributed / linalg** — local `ms::jacobi`; `dist_jacobi` (stub gather + MPI block); `dist_gmres` MPI block path; `test_dist_jacobi`; REPL `dist_jacobi`.
+- **Symbolic** — table-driven `sym_mellin` / `sym_imellin`; REPL bindings.
+- **GUI** — script editor line-number gutter; permanent Ln/Col status; **Export Last Result as LaTeX…**.
+- **REPL** — `graph_bipartite_match`, `graph_biconnected_components`, `graph_eulerian_path`, `finance_geo_asian_call`/`put`, `bicgstab`; `integration_repl_wave240_pipeline`.
+- **Benchmarks** — `BM_Pbkdf2HmacSha256` (1000 iter) and `BM_DistGmres_2x2` smoke cases.
+
+### Docs (Wave 240)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/PERFORMANCE.md`** — Wave 240 sync; **391** CTest suites.
+
+**391 CTest suites — all passing** (+2: `test_dist_jacobi`, `integration_repl_wave240_pipeline`). **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).** Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline refresh (`gh auth`).
+
 ## [1.0.0] - 2026-07-18 (Wave 239 — PBKDF2, dist GMRES, run_file, GUI script search, benches, product matrix) ✅ COMPLETE
 
 Ninth wave after Wave 238. Parallel merges on `main`: PBKDF2-HMAC-SHA256, stub-safe `dist_gmres`, GUI find-in-script / goto-line, REPL `run_file` / `source`, HKDF / X25519 / `dist_cg` benchmark smoke cases, and README product matrix through Wave 239.

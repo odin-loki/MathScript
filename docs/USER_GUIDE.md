@@ -127,7 +127,7 @@ ms> rhs = [1; 2]
 ms> xcg = dist_cg(S, rhs)
 ```
 
-Related distributed helpers: `dist_solve(A, b)` (direct gather + `solve`), `dist_matmul(A, B)` (row-block GEMM), and `mpi` / `mpi_rank()` / `mpi_size()` / `mpi_allreduce_sum(x)` for backend introspection.
+Related distributed helpers: `dist_solve(A, b)` (direct gather + `solve`), `dist_gmres(A, b)`, `dist_jacobi(A, b)`, `dist_matmul(A, B)` (row-block GEMM), and `mpi` / `mpi_rank()` / `mpi_size()` / `mpi_allreduce_sum(x)` for backend introspection.
 
 ### Statistics
 
@@ -182,7 +182,7 @@ Several crypto helpers take **hex-encoded** byte strings and return hex output. 
 ms> crypto_hkdf_sha256("0b0b0b0b0b0b0b0b0b0b0b", "000102030405060708090a0b0c", "f0f1f2f3f4f5f6f7f8f9", 42)
 ```
 
-Other Wave 231+ bindings include AES-128/256 CBC, ChaCha20, AES-GCM, ChaCha20-Poly1305, and X25519 — see [`docs/API.md`](API.md).
+Other Wave 231+ bindings include AES-128/256 CBC, ChaCha20, AES-GCM, ChaCha20-Poly1305, X25519, PBKDF2, and Ed25519 (`crypto_ed25519_keypair` / `sign` / `verify`) — see [`docs/API.md`](API.md).
 
 ---
 
