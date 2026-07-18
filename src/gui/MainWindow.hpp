@@ -47,6 +47,7 @@ private:
     void refresh_variables();
     void refresh_plot();
     void export_plot_png();
+    void export_command_history();
     void setup_menus();
     void apply_dark_theme();
     void restore_layout();

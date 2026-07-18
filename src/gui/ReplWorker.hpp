@@ -23,6 +23,7 @@ public slots:
     void requestCancel();
     QString saveSession(const QString& path);
     QString loadSession(const QString& path);
+    QString exportHistory(const QString& path);
     ms::interp::SessionState sessionState() const;
     bool hasPlot() const;
     ms::interp::PlotSeries plot() const;

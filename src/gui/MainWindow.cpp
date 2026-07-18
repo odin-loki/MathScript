@@ -343,6 +343,7 @@ void MainWindow::setup_menus() {
     recent_menu_ = file_menu->addMenu("Open &Recent");
     auto* save_session_action = file_menu->addAction("Save Session...");
     auto* load_session_action = file_menu->addAction("Load Session...");
+    auto* export_history_action = file_menu->addAction("Export Command History...");
     auto* export_plot_action = file_menu->addAction("Export Plot as PNG...");
     file_menu->addSeparator();
     auto* quit_action = file_menu->addAction("Quit");
@@ -417,6 +418,7 @@ void MainWindow::setup_menus() {
         }
     });
     connect(export_plot_action, &QAction::triggered, this, &MainWindow::export_plot_png);
+    connect(export_history_action, &QAction::triggered, this, &MainWindow::export_command_history);
     connect(quit_action, &QAction::triggered, qApp, &QApplication::quit);
 }
 
@@ -660,6 +662,27 @@ void MainWindow::export_plot_png() {
         append_output("exported plot to " + path + "\n");
     } else {
         append_output("error: failed to export plot to " + path + "\n", true);
+    }
+}
+
+void MainWindow::export_command_history() {
+    if (repl_busy_) {
+        append_output("error: wait for the current REPL command to finish\n", true);
+        return;
+    }
+    const QString path =
+        QFileDialog::getSaveFileName(this, "Export Command History", {}, "Text Files (*.txt);;All Files (*)");
+    if (path.isEmpty()) {
+        return;
+    }
+    QString err;
+    QMetaObject::invokeMethod(
+        repl_worker_, "exportHistory", Qt::BlockingQueuedConnection, Q_RETURN_ARG(QString, err),
+        Q_ARG(QString, path));
+    if (err.isEmpty()) {
+        append_output("exported history to " + path + "\n");
+    } else {
+        append_output("error: " + err + "\n", true);
     }
 }
 
