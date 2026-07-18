@@ -246,6 +246,9 @@ QStringList repl_command_list() {
         // ML / graph (common)
         QStringLiteral("ml_accuracy"),
         QStringLiteral("ml_rmse"),
+        QStringLiteral("combo_eulerian"),
+        QStringLiteral("combo_gray_code"),
+        QStringLiteral("combo_dyck_paths"),
         QStringLiteral("numthy_factor"),
         QStringLiteral("graph_pagerank"),
         QStringLiteral("graph_dijkstra"),
