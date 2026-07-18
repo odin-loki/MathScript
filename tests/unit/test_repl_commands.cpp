@@ -3722,6 +3722,8 @@ TEST(ReplCommandsTest, wave254_signal_lms) {
     EXPECT_EQ(w.cols(), 1u);
     EXPECT_NEAR(w(0, 0), 0.0, 1e-12);
     EXPECT_NEAR(w(1, 0), 0.0, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave254_signal_czt_and_zoom) {
     Interpreter interp;
     // Distinct needles avoid signal_czt / signal_czt_zoom substring collisions.
