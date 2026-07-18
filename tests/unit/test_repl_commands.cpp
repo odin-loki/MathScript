@@ -6913,3 +6913,19 @@ TEST(ReplCommandsTest, wave263_special_voigt_airy) {
     EXPECT_NEAR(interp.state().scalars.at("z"), airy_ref, 1e-9);
     expect_contains(interp, "special_airy_ai(0)", std::to_string(airy_ref));
 }
+
+TEST(ReplCommandsTest, wave263_poly_lagrange_newton) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_lagrange(xs,ys)");
+    expect_contains(interp, "help", "poly_interp_newton(xs,ys)");
+
+    expect_ok(interp, "xs = [0; 1; 2]");
+    expect_ok(interp, "ys = [1; 2; 5]");
+    expect_ok(interp, "p = poly_lagrange(xs, ys)");
+    expect_ok(interp, "v = poly_eval(p, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("v"), 2.0, 1e-6);
+
+    expect_ok(interp, "pn = poly_interp_newton(xs, ys)");
+    expect_ok(interp, "vn = poly_eval(pn, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("vn"), 2.0, 1e-6);
+}
