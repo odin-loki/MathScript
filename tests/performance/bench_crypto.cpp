@@ -50,6 +50,19 @@ static void BM_HmacSha256(benchmark::State& state) {
 }
 BENCHMARK(BM_HmacSha256);
 
+static void BM_HmacSha512(benchmark::State& state) {
+    const auto key = make_byte_buffer(32, 7);
+    const auto data = make_byte_buffer(4096, 19);
+    for (auto _ : state) {
+        auto digest = hmac_sha512(std::span<const uint8_t>(key),
+                                  std::span<const uint8_t>(data));
+        benchmark::DoNotOptimize(digest.data());
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(data.size()));
+}
+BENCHMARK(BM_HmacSha512);
+
 static void BM_HkdfSha256(benchmark::State& state) {
     const auto ikm = make_byte_buffer(22, 11);
     const auto salt = make_byte_buffer(13, 17);
