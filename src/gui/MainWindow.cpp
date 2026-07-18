@@ -2,6 +2,7 @@
 #include "gui/PlotSurfWidget.hpp"
 #include "gui/PlotWidget.hpp"
 #include "gui/ReplWorker.hpp"
+#include "gui/ScriptHighlighter.hpp"
 
 #include <QApplication>
 #include <QAction>
@@ -46,6 +47,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     editor_ = new QPlainTextEdit(center);
     editor_->setPlaceholderText("Script editor (open a file from the browser)");
     editor_->setMaximumHeight(160);
+    new ScriptHighlighter(editor_->document());
     center_layout->addWidget(editor_);
 
     output_ = new QPlainTextEdit(center);

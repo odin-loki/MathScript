@@ -6,7 +6,8 @@ if(MS_BUILD_GUI)
             MainWindow.cpp MainWindow.hpp
             PlotWidget.cpp PlotWidget.hpp
             PlotSurfWidget.cpp PlotSurfWidget.hpp
-            ReplWorker.cpp ReplWorker.hpp)
+            ReplWorker.cpp ReplWorker.hpp
+            ScriptHighlighter.cpp ScriptHighlighter.hpp)
         target_include_directories(ms_gui PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
         target_link_libraries(ms_gui PUBLIC Qt6::Widgets Qt6::OpenGLWidgets Qt6::OpenGL ms_interp)
         target_compile_features(ms_gui PUBLIC cxx_std_23)
