@@ -7,6 +7,8 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+- **Tests** — `integration_repl_wave261_pipeline`.
+
 ## [1.0.0] - 2026-07-19 (Wave 260 — VIF/Goertzel/control responses, linalg ext, geo curves, Upper/Lower Case) ✅ COMPLETE
 
 Thirtieth feature wave after Wave 259. Parallel Composer 2.5 worktrees merged to `main`: stats VIF, number-theory divisors, Goertzel FFT, curve derivatives, control step/impulse responses, bidiag/Sylvester/MINRES, GUI case transforms, and wave260 pipeline.
