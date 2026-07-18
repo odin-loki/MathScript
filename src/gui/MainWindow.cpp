@@ -310,6 +310,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     QSettings startup_settings;
     dark_theme_ = startup_settings.value("gui/dark_theme", true).toBool();
+    word_wrap_ = startup_settings.value("gui/word_wrap", false).toBool();
     if (dark_theme_) {
         apply_dark_theme();
     } else {
@@ -333,6 +334,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     output_->setReadOnly(true);
     output_->setPlaceholderText("MathScript output");
     center_layout->addWidget(output_, 2);
+    set_word_wrap(word_wrap_);
 
     QSettings settings;
     mono_font_size_ = settings.value("gui/mono_font_size", kDefaultMonoFontSize).toInt();
@@ -445,6 +447,9 @@ void MainWindow::restore_layout() {
 
     dark_theme_ = settings.value("gui/dark_theme", true).toBool();
     set_dark_theme(dark_theme_);
+
+    word_wrap_ = settings.value("gui/word_wrap", false).toBool();
+    set_word_wrap(word_wrap_);
 }
 
 void MainWindow::save_layout() {
@@ -459,6 +464,7 @@ void MainWindow::save_layout() {
         settings.setValue("gui/plot_panel_visible", plot_stack_->isVisible());
     }
     settings.setValue("gui/dark_theme", dark_theme_);
+    settings.setValue("gui/word_wrap", word_wrap_);
 }
 
 void MainWindow::apply_dark_theme() {
@@ -503,6 +509,23 @@ void MainWindow::set_dark_theme(bool dark) {
     }
 }
 
+void MainWindow::set_word_wrap(bool wrap) {
+    word_wrap_ = wrap;
+    const QPlainTextEdit::LineWrapMode mode =
+        wrap ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap;
+    if (editor_ != nullptr) {
+        editor_->setLineWrapMode(mode);
+    }
+    if (output_ != nullptr) {
+        output_->setLineWrapMode(mode);
+    }
+    if (word_wrap_action_ != nullptr && word_wrap_action_->isChecked() != wrap) {
+        word_wrap_action_->blockSignals(true);
+        word_wrap_action_->setChecked(wrap);
+        word_wrap_action_->blockSignals(false);
+    }
+}
+
 void MainWindow::setup_menus() {
     auto* file_menu = menuBar()->addMenu("&File");
     auto* open_action = file_menu->addAction("Open...");
@@ -532,6 +555,9 @@ void MainWindow::setup_menus() {
     dark_theme_action_ = view_menu->addAction("Dark Theme");
     dark_theme_action_->setCheckable(true);
     dark_theme_action_->setChecked(dark_theme_);
+    word_wrap_action_ = view_menu->addAction("Word Wrap");
+    word_wrap_action_->setCheckable(true);
+    word_wrap_action_->setChecked(word_wrap_);
     view_menu->addSeparator();
     show_plot_panel_action_ = view_menu->addAction("Show Plot Panel");
     show_plot_panel_action_->setCheckable(true);
@@ -562,6 +588,7 @@ void MainWindow::setup_menus() {
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
     connect(dark_theme_action_, &QAction::toggled, this, &MainWindow::set_dark_theme);
+    connect(word_wrap_action_, &QAction::toggled, this, &MainWindow::set_word_wrap);
     connect(show_plot_panel_action_, &QAction::toggled, this, &MainWindow::set_plot_panel_visible);
     connect(clear_output_action, &QAction::triggered, this, &MainWindow::clear_output);
     connect(font_larger_action, &QAction::triggered, this, [this]() { adjust_font_size(1); });

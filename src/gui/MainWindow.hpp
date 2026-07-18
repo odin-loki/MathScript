@@ -74,6 +74,7 @@ private:
     void go_to_line();
     void set_plot_panel_visible(bool visible);
     void set_dark_theme(bool dark);
+    void set_word_wrap(bool wrap);
 
     QSplitter* main_splitter_ = nullptr;
     QPlainTextEdit* output_ = nullptr;
@@ -109,5 +110,7 @@ private:
     QString last_result_;
     QAction* show_plot_panel_action_ = nullptr;
     QAction* dark_theme_action_ = nullptr;
+    QAction* word_wrap_action_ = nullptr;
     bool dark_theme_ = true;
+    bool word_wrap_ = false;
 };
