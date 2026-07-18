@@ -138,7 +138,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, and plot state.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
 
 ### REPL bindings
 
@@ -265,6 +265,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_chacha20_poly1305_encrypt(key_hex, nonce_hex, aad_hex, plaintext_hex)` | ChaCha20-Poly1305 seal; returns hex `ciphertext:tag` (Wave 235) |
 | `crypto_chacha20_poly1305_decrypt(key_hex, nonce_hex, aad_hex, ciphertext_hex, tag_hex)` | ChaCha20-Poly1305 open; returns hex plaintext (Wave 235) |
 | `crypto_x25519_shared(priv_hex, pub_hex)` | X25519 ECDH shared secret as hex (Wave 236) |
+| `crypto_hkdf_sha256(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA256 extract/expand; returns `len` bytes as hex (Wave 238) |
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
 | `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column (Wave 236) |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |
@@ -280,6 +281,14 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `mpi_allreduce_sum(x)` | All-reduce sum of scalar `x` (stub: identity) |
 | `dist_solve(A, b)` | Distributed linear solve `A x = b` (stub: local gather + `ms::solve`) |
 | `dist_matmul(A, B)` | Distributed matrix multiply — row-block local GEMM (stub-safe single-rank; Wave 236) |
+| `dist_cg(A, b)` | Distributed conjugate-gradient linear solve (stub: gather + CG on rank 0; Wave 238) |
+
+**Session meta-commands (Wave 238):**
+
+| Command | Description |
+|---------|-------------|
+| `export history <file>` | Write REPL command history to a text file (one line per command) |
+| `save_history <file>` | Alias for `export history` |
 
 **ODE formula-string bindings (scalar IVP):**
 

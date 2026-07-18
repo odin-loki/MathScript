@@ -119,6 +119,16 @@ ms> U, S, V = svd(A)
 
 `solve(A, B)` solves the linear system \(Ax = b\). For the example above, `x` is approximately `[0.2; 0.4]`.
 
+For large sparse or distributed setups, **`dist_cg(A, b)`** runs a conjugate-gradient linear solve (stub-safe: gathers to rank 0 and solves locally when MPI is off or size is 1):
+
+```
+ms> S = [4, 1; 1, 3]
+ms> rhs = [1; 2]
+ms> xcg = dist_cg(S, rhs)
+```
+
+Related distributed helpers: `dist_solve(A, b)` (direct gather + `solve`), `dist_matmul(A, B)` (row-block GEMM), and `mpi` / `mpi_rank()` / `mpi_size()` / `mpi_allreduce_sum(x)` for backend introspection.
+
 ### Statistics
 
 Vector arguments are typically column vectors (`;`-separated):
@@ -163,6 +173,16 @@ ms> fft([1, 2, 3, 4])
 ```
 
 Returns formatted FFT magnitudes for a 1×N row vector (2-D matrices are rejected).
+
+### Cryptography (hex I/O)
+
+Several crypto helpers take **hex-encoded** byte strings and return hex output. **`crypto_hkdf_sha256(hex_ikm, hex_salt, hex_info, len)`** performs HKDF-SHA256 extract/expand (RFC 5869) and returns `len` bytes of key material as hex:
+
+```
+ms> crypto_hkdf_sha256("0b0b0b0b0b0b0b0b0b0b0b", "000102030405060708090a0b0c", "f0f1f2f3f4f5f6f7f8f9", 42)
+```
+
+Other Wave 231+ bindings include AES-128/256 CBC, ChaCha20, AES-GCM, ChaCha20-Poly1305, and X25519 — see [`docs/API.md`](API.md).
 
 ---
 
@@ -250,13 +270,24 @@ There is no native GUI window in the console REPL.
 
 When built with **`MS_BUILD_GUI=ON`**, the **`mathscript-gui`** IDE (Qt6) runs the same REPL engine but renders plots in **`PlotWidget`** (2-D) and **`PlotSurfWidget`** (3-D surfaces), with PNG export from the File menu. The REPL input bar accepts the same plot commands.
 
+**Wave 238 GUI additions:**
+
+| Feature | How to use |
+|---------|------------|
+| Find in output | **Edit → Find in Output** (**Ctrl+F**); **Find Next in Output** (**F3**) |
+| Plot panel toggle | **View → Show Plot Panel** — show/hide the plot dock |
+| Export command history | **File → Export Command History…** — save REPL input history to a text file |
+| Up/Down command history | **Up-arrow / Down-arrow** in the REPL input bar (draft recall on Down past newest entry) |
+
+Earlier GUI waves added syntax highlighting, layout persistence, variable inspector, cooperative **Stop**, status-bar GPU info, **Ctrl+Enter** Run, Clear Output (**Ctrl+L**), Open Recent, font zoom, and About dialog — all optional when `MS_BUILD_GUI=ON`.
+
 Named matrices work as arguments: `scatter(X, Y)`, `imshow(M)`, `spy(S)`.
 
 ---
 
 ## Sessions
 
-Save and restore scalars, matrices, and the current plot state to a `.ms` session file.
+Save and restore scalars, matrices, the current plot state, and **command history** to a `.ms` session file.
 
 **Inside the REPL:**
 
@@ -276,7 +307,16 @@ ms> vars
 mathscript-repl --load mysession.ms
 ```
 
-Session files are text-based (`# MathScript session` header, `scalar` / `matrix` lines, optional `plot` metadata). They round-trip scalars, matrices (including empty `[]`), and plot series.
+Session files are text-based (`# MathScript session` header, `scalar` / `matrix` lines, optional `plot` metadata, optional `history` lines). They round-trip scalars, matrices (including empty `[]`), plot series, and REPL command history.
+
+Export history without a full session save:
+
+```
+ms> export history myhistory.txt
+ms> save_history myhistory.txt
+```
+
+Both meta-commands write one REPL command per line (aliases).
 
 ---
 

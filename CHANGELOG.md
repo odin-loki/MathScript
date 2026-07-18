@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 239 — product closure & docs) 🔄 IN PROGRESS
+
+Ninth wave after Wave 238. **Docs and product-closure pass**: README feature matrix (Waves 231–238), user guide and API sync for Wave 238 deliverables, Wave 239 kickoff in TODO/CHANGELOG.
+
+### Docs (Wave 239)
+- **`README.md`** — **388+** CTest count; Waves 231–238 feature matrix; product closure note.
+- **`docs/USER_GUIDE.md`** — Wave 238 GUI (find-in-output, plot toggle, history export); `dist_cg`; HKDF-SHA256.
+- **`docs/API.md`** — Wave 238 bindings (`dist_cg`, `crypto_hkdf_sha256`, history meta-commands, GUI).
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** — Wave 239 IN PROGRESS kickoff.
+
+**388 CTest suites — all passing**. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).** **Product feature waves 231–238 ✅ CLOSED** — see README matrix.
+
 ## [1.0.0] - 2026-07-18 (Wave 238 - dist CG, GUI find/plot, HKDF, 3D benches, history export) ✅ COMPLETE
 
 Eighth **feature wave** after Wave 237. Parallel work merged to `main`: distributed CG, GUI find-in-output and plot toggle, HKDF-SHA256, FEM/CFD 3D benchmark cases, and REPL history export/persist.

@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 238 complete — **388 CTest suites** on `main` @ Wave 238)
+**Updated:** 2026-07-18 (Wave 239 IN PROGRESS — **388 CTest suites** on `main` @ Wave 238)
 
 ---
 
@@ -78,7 +78,20 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 239+) — deferred
+## Wave 239 🔄 IN PROGRESS (product closure & docs)
+
+| Area | Deliverable |
+|------|-------------|
+| README | **388+** CTest count; Waves 231–238 feature matrix; product closure note |
+| User guide | Wave 238 GUI (find-in-output, plot toggle, history export); `dist_cg`; HKDF-SHA256 |
+| API | Wave 238 bindings and meta-commands synced |
+| Changelog / TODO | Wave 239 kickoff entry |
+
+**388 CTest suites** — all passing on `main`. **Product feature waves 231–238 ✅ CLOSED.**
+
+---
+
+## Next (Wave 240+) — deferred
 
 | Item | Notes |
 |------|--------|
