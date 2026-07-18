@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 242 — dist MINRES, graph/signal REPL, GUI theme, NCCL max/min, benches) ✅ COMPLETE
+
+Twelfth feature wave after Wave 241. Parallel Composer 2.5 worktrees merged to `main`: `dist_minres`, graph isomorphic/hamiltonian/TSP REPL, hilbert/envelope REPL, GUI light/dark theme toggle, NCCL stub `allreduce_max`/`min`, and Wave 241 bench gaps.
+
+### Added (Wave 242)
+- **Distributed** — `dist_minres` stub-gather MVP; `test_dist_minres`; REPL binding.
+- **REPL / graph** — `graph_is_isomorphic`, `graph_hamiltonian_path`, `graph_tsp_heuristic`; `integration_repl_wave242_pipeline`.
+- **REPL / signal** — `signal_envelope`, `signal_hilbert`, `signal_instantaneous_freq`; `integration_repl_wave242_signal_pipeline`.
+- **GUI** — View menu dark/light theme toggle with light palette.
+- **CUDA / NCCL** — stub `allreduce_max` / `allreduce_min`; REPL `cuda_allreduce_max` / `cuda_allreduce_min`.
+- **Benchmarks** — `BM_DistBicgstab` and SABR put/call smoke cases.
+
+### Docs (Wave 242)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 242 sync; **396** CTest suites.
+
+**396 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), Blossom matching, full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 241 — Hankel, sabr_put, dist_bicgstab, signal REPL, GUI completer, benches) ✅ COMPLETE
 
 Eleventh feature wave after Wave 240. Parallel Composer 2.5 worktrees merged to `main`: Hankel transforms, SABR put, `dist_bicgstab`, signal REPL bindings, GUI command completer, and Wave 240 bench gaps.

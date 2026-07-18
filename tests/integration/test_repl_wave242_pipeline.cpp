@@ -5,9 +5,12 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <string>
+#include <vector>
 
+#include "ms/core/matrix.hpp"
 #include "ms/interp/repl_engine.hpp"
 
+using namespace ms;
 using namespace ms::interp;
 
 namespace {
@@ -35,13 +38,13 @@ double tour_cycle_length(const Matrix<double>& tour, const Matrix<double>& dist)
     }
     double total = 0.0;
     for (size_t i = 0; i + 1 < n; ++i) {
-        const int a = static_cast<int>(tour(i, 0));
-        const int b = static_cast<int>(tour(i + 1, 0));
-        total += dist(static_cast<size_t>(a), static_cast<size_t>(b));
+        const auto a = static_cast<size_t>(tour(i, 0));
+        const auto b = static_cast<size_t>(tour(i + 1, 0));
+        total += dist(a, b);
     }
-    const int last = static_cast<int>(tour(n - 1, 0));
-    const int first = static_cast<int>(tour(0, 0));
-    total += dist(static_cast<size_t>(last), static_cast<size_t>(first));
+    const auto last = static_cast<size_t>(tour(n - 1, 0));
+    const auto first = static_cast<size_t>(tour(0, 0));
+    total += dist(last, first);
     return total;
 }
 

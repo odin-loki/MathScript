@@ -56,12 +56,12 @@ None of these were caught by code review; all three were caught by a test assert
 ## Status
 
 - **Version:** 1.0.0 — Phase 10 (hardening) complete; profiling iteration **fully complete** through Wave 230 — code, infra, and baseline path (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md))
-- **Tests:** **393** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
+- **Tests:** **396** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
 - **CI:** Windows MSVC + Linux GCC 13 build/test; coverage; libFuzzer smoke (7 targets); Valgrind memcheck; benchmark regression gate (`bench_matmul`, `bench_fft`, 10% tolerance); Clang plugin compliance (20 enforced rules); vendor checksum verification; optional `jit-linux` and `plugin-linux` jobs
 
-## Product closure (feature waves 231–241)
+## Product closure (feature waves 231–242)
 
-After the profiling iteration closed at Wave 230, eleven parallel **feature waves** (231–241) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
+After the profiling iteration closed at Wave 230, twelve parallel **feature waves** (231–242) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
 
 | Wave | Focus |
 |------|--------|
@@ -76,6 +76,7 @@ After the profiling iteration closed at Wave 230, eleven parallel **feature wave
 | **239** | PBKDF2; `dist_gmres`; GUI script find/goto-line; `run_file`; HKDF/X25519/`dist_cg` benches |
 | **240** | Ed25519; `dist_jacobi` + GMRES MPI; Mellin; GUI line numbers/LaTeX export; graph/finance/`bicgstab` REPL; bench gaps |
 | **241** | Hankel; `sabr_put`; `dist_bicgstab`; signal cheby2/PSD REPL; GUI completer; Ed25519/`dist_jacobi` benches |
+| **242** | `dist_minres`; graph iso/TSP REPL; hilbert/envelope; GUI theme toggle; NCCL max/min; SABR/`dist_bicgstab` benches |
 
 ## Build (quickstart)
 

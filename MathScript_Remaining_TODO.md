@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 241 ✅ COMPLETE — **393 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 242 ✅ COMPLETE — **396 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–241 COMPLETE (summary)
+## Feature waves ✅ 231–242 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -50,6 +50,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **239** | PBKDF2; `dist_gmres`; GUI script find/goto-line; `run_file`; HKDF/X25519/`dist_cg` benches; README matrix |
 | **240** | Ed25519; `jacobi`/`dist_jacobi` + GMRES MPI; `sym_mellin`; GUI line numbers/LaTeX export; REPL graph/finance/`bicgstab`; PBKDF2/`dist_gmres` benches |
 | **241** | Hankel; `sabr_put`; `dist_bicgstab`; signal cheby2/periodogram/welch REPL; GUI completer; Ed25519/`dist_jacobi` benches |
+| **242** | `dist_minres`; graph iso/hamiltonian/TSP REPL; hilbert/envelope REPL; GUI theme toggle; NCCL max/min stubs; SABR/`dist_bicgstab` benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -118,17 +119,28 @@ See `CHANGELOG.md` for per-wave branch tables.
 | GUI | REPL command completer |
 | Benchmarks | Ed25519 + `dist_jacobi` smoke |
 
-**393 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–241** closed for this incremental batch.
+## Wave 242 ✅ COMPLETE (dist MINRES, graph/signal REPL, GUI theme, NCCL max/min, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Distributed | `dist_minres`; `test_dist_minres`; REPL |
+| Graph REPL | isomorphic / hamiltonian path / TSP heuristic; wave242 pipeline |
+| Signal REPL | envelope / hilbert / instantaneous_freq; wave242 signal pipeline |
+| GUI | Dark/light theme toggle |
+| NCCL | stub `allreduce_max` / `allreduce_min` + REPL |
+| Benchmarks | `dist_bicgstab` + SABR smoke |
+
+**396 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–242** closed for this incremental batch.
 
 ---
 
-## Next (Wave 242+) — deferred
+## Next (Wave 243+) — deferred
 
 | Item | Notes |
 |------|--------|
-| Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block-CG/GMRES/Jacobi/BiCGSTAB |
+| Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block iterative solvers |
 | Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
 | Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
-| Deeper API gaps | Blossom matching, NCCL multi-GPU, etc. |
+| Deeper API gaps | Blossom matching, full NCCL multi-GPU, etc. |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.
