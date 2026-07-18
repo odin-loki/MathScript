@@ -455,6 +455,59 @@ int trim_trailing_whitespace_in_editor(QPlainTextEdit* editor) {
     return trimmed_count;
 }
 
+int remove_blank_lines_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return 0;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = editor->document()->blockCount() - 1;
+    if (cursor.hasSelection()) {
+        get_selected_block_range(editor, start_block, end_block);
+    }
+
+    int removed_count = 0;
+    for (int block_num = end_block; block_num >= start_block; --block_num) {
+        const QTextBlock text_block = editor->document()->findBlockByNumber(block_num);
+        if (!text_block.text().trimmed().isEmpty()) {
+            continue;
+        }
+
+        const int last_block = editor->document()->blockCount() - 1;
+        if (block_num >= last_block) {
+            if (block_num == 0) {
+                cursor.select(QTextCursor::Document);
+                cursor.removeSelectedText();
+            } else {
+                cursor.setPosition(editor->document()->findBlockByNumber(block_num - 1).position());
+                cursor.movePosition(QTextCursor::EndOfBlock);
+                cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+                cursor.removeSelectedText();
+            }
+        } else {
+            cursor.setPosition(editor->document()->findBlockByNumber(block_num).position());
+            const int end_pos = editor->document()->findBlockByNumber(block_num + 1).position();
+            cursor.setPosition(end_pos, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+        }
+        ++removed_count;
+    }
+
+    if (removed_count > 0) {
+        const int new_last = editor->document()->blockCount() - 1;
+        const int target_block = std::min(start_block, new_last);
+        cursor.setPosition(editor->document()->findBlockByNumber(target_block).position());
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::MoveAnchor);
+        editor->setTextCursor(cursor);
+    }
+
+    cursor.endEditBlock();
+    return removed_count;
+}
+
 void indent_lines_in_editor(QPlainTextEdit* editor) {
     if (editor == nullptr) {
         return;
@@ -1219,6 +1272,8 @@ void MainWindow::setup_menus() {
     duplicate_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
     auto* trim_trailing_whitespace_action = edit_menu->addAction("Trim Trailing Whitespace");
     trim_trailing_whitespace_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W));
+    auto* remove_blank_lines_action = edit_menu->addAction("Remove Blank Lines");
+    remove_blank_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backspace));
     auto* delete_line_action = edit_menu->addAction("Delete Line");
     delete_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
     auto* move_line_up_action = edit_menu->addAction("Move Line Up");
@@ -1285,6 +1340,7 @@ void MainWindow::setup_menus() {
     connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
     connect(trim_trailing_whitespace_action, &QAction::triggered, this,
             &MainWindow::trim_trailing_whitespace);
+    connect(remove_blank_lines_action, &QAction::triggered, this, &MainWindow::remove_blank_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
     connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
@@ -1638,6 +1694,18 @@ void MainWindow::trim_trailing_whitespace() {
         statusBar()->showMessage("Trimmed 1 line", 3000);
     } else {
         statusBar()->showMessage(QString("Trimmed %1 lines").arg(count), 3000);
+    }
+}
+
+void MainWindow::remove_blank_lines() {
+    editor_->setFocus();
+    const int count = remove_blank_lines_in_editor(editor_);
+    if (count == 0) {
+        statusBar()->showMessage("No blank lines", 3000);
+    } else if (count == 1) {
+        statusBar()->showMessage("Removed 1 blank line", 3000);
+    } else {
+        statusBar()->showMessage(QString("Removed %1 blank lines").arg(count), 3000);
     }
 }
 
