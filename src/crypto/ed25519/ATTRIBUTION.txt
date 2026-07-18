@@ -1,0 +1,2 @@
+Ed25519 implementation vendored from orlp/ed25519 (https://github.com/orlp/ed25519)
+Based on ref10 from SUPERCOP / libsodium. See repository for license terms.

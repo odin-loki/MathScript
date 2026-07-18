@@ -589,3 +589,52 @@ TEST(CryptoX25519, InvalidKeySizeReturnsZero) {
     const auto shared = x25519_shared_secret(short_key, full_key);
     EXPECT_EQ(shared, (std::array<uint8_t, x25519_key_size>{}));
 }
+
+// ---- Ed25519 (RFC 8032) ----
+
+TEST(CryptoEd25519, Rfc8032Test1EmptyMessage) {
+    // RFC 8032 §7.1 TEST 1 (empty message)
+    const auto seed = from_hex(
+        "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+
+    const auto kp = ed25519_keypair(seed);
+    expect_hex(std::vector<uint8_t>(kp.public_key.begin(), kp.public_key.end()),
+               "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+
+    const std::vector<uint8_t> empty_msg;
+    const auto sig = ed25519_sign(seed, empty_msg);
+    expect_hex(std::vector<uint8_t>(sig.begin(), sig.end()),
+               "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+               "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+
+    EXPECT_TRUE(ed25519_verify(kp.public_key, empty_msg, sig));
+}
+
+TEST(CryptoEd25519, TamperedSignatureFailsVerify) {
+    const auto seed = from_hex(
+        "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+    const auto kp = ed25519_keypair(seed);
+    const std::vector<uint8_t> empty_msg;
+    auto sig = ed25519_sign(kp.secret_key, empty_msg);
+    sig[0] ^= 0x01;
+    EXPECT_FALSE(ed25519_verify(kp.public_key, empty_msg, sig));
+}
+
+TEST(CryptoEd25519, TamperedMessageFailsVerify) {
+    const auto seed = from_hex(
+        "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+    const auto kp = ed25519_keypair(seed);
+    const std::vector<uint8_t> empty_msg;
+    const auto sig = ed25519_sign(seed, empty_msg);
+    const std::vector<uint8_t> tampered_msg = {0x01};
+    EXPECT_FALSE(ed25519_verify(kp.public_key, tampered_msg, sig));
+}
+
+TEST(CryptoEd25519, InvalidKeySizeReturnsEmpty) {
+    const auto short_seed = from_hex("0011223344556677");
+    const auto kp = ed25519_keypair(short_seed);
+    EXPECT_EQ(kp.public_key, (std::array<uint8_t, ed25519_public_key_size>{}));
+    const auto sig = ed25519_sign(short_seed, std::span<const uint8_t>{});
+    EXPECT_EQ(sig, (std::array<uint8_t, ed25519_signature_size>{}));
+    EXPECT_FALSE(ed25519_verify(kp.public_key, std::span<const uint8_t>{}, sig));
+}

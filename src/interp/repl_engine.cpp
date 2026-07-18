@@ -4173,6 +4173,72 @@ Result<std::string> eval_crypto_x25519_shared(const std::string& priv_arg,
     return crypto::to_hex(std::span<const uint8_t>(shared.data(), shared.size())) + "\n";
 }
 
+Result<std::string> eval_crypto_ed25519_keypair(const std::string& seed_arg) {
+    constexpr const char* fn = "crypto_ed25519_keypair";
+    auto seed = parse_hex_arg(seed_arg, fn, "seed");
+    if (!seed) {
+        return std::unexpected(seed.error());
+    }
+    if (seed->size() != crypto::ed25519_seed_size) {
+        return std::unexpected(DomainError{fn, "expected 32-byte (64 hex char) seed"});
+    }
+    const auto kp = crypto::ed25519_keypair(*seed);
+    if (kp.public_key == std::array<uint8_t, crypto::ed25519_public_key_size>{}) {
+        return std::unexpected(DomainError{fn, "key generation failed"});
+    }
+    return crypto::to_hex(std::span<const uint8_t>(kp.public_key.data(), kp.public_key.size())) +
+           "\n";
+}
+
+Result<std::string> eval_crypto_ed25519_sign(const std::string& secret_arg,
+                                              const std::string& msg_arg) {
+    constexpr const char* fn = "crypto_ed25519_sign";
+    auto secret = parse_hex_arg(secret_arg, fn, "secret");
+    if (!secret) {
+        return std::unexpected(secret.error());
+    }
+    auto msg = parse_hex_arg(msg_arg, fn, "message");
+    if (!msg) {
+        return std::unexpected(msg.error());
+    }
+    if (secret->size() != crypto::ed25519_seed_size &&
+        secret->size() != crypto::ed25519_secret_key_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 32-byte seed or 64-byte expanded secret key (hex)"});
+    }
+    const auto sig = crypto::ed25519_sign(*secret, *msg);
+    if (sig == std::array<uint8_t, crypto::ed25519_signature_size>{}) {
+        return std::unexpected(DomainError{fn, "signing failed"});
+    }
+    return crypto::to_hex(std::span<const uint8_t>(sig.data(), sig.size())) + "\n";
+}
+
+Result<std::string> eval_crypto_ed25519_verify(const std::string& pub_arg,
+                                               const std::string& msg_arg,
+                                               const std::string& sig_arg) {
+    constexpr const char* fn = "crypto_ed25519_verify";
+    auto pub = parse_hex_arg(pub_arg, fn, "public_key");
+    if (!pub) {
+        return std::unexpected(pub.error());
+    }
+    auto msg = parse_hex_arg(msg_arg, fn, "message");
+    if (!msg) {
+        return std::unexpected(msg.error());
+    }
+    auto sig = parse_hex_arg(sig_arg, fn, "signature");
+    if (!sig) {
+        return std::unexpected(sig.error());
+    }
+    if (pub->size() != crypto::ed25519_public_key_size) {
+        return std::unexpected(DomainError{fn, "expected 32-byte (64 hex char) public key"});
+    }
+    if (sig->size() != crypto::ed25519_signature_size) {
+        return std::unexpected(DomainError{fn, "expected 64-byte (128 hex char) signature"});
+    }
+    const bool ok = crypto::ed25519_verify(*pub, *msg, *sig);
+    return std::string(ok ? "1" : "0") + "\n";
+}
+
 std::vector<std::size_t> fem_rectangular_boundary_nodes(std::size_t nx, std::size_t ny) {
     const std::size_t n_nodes_x = nx + 1;
     std::vector<std::size_t> boundary;
@@ -7414,6 +7480,28 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
                 fn, "expected crypto_x25519_shared(hex_priv, hex_pub)"});
         }
         return eval_crypto_x25519_shared(call_args->at(0), call_args->at(1));
+    }
+    if (fn == "crypto_ed25519_keypair") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_ed25519_keypair(hex_seed) -> hex public key"});
+        }
+        return eval_crypto_ed25519_keypair(call_args->at(0));
+    }
+    if (fn == "crypto_ed25519_sign") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_ed25519_sign(hex_seed_or_sk, hex_msg)"});
+        }
+        return eval_crypto_ed25519_sign(call_args->at(0), call_args->at(1));
+    }
+    if (fn == "crypto_ed25519_verify") {
+        if (call_args->size() != 3) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_ed25519_verify(hex_pub, hex_msg, hex_sig)"});
+        }
+        return eval_crypto_ed25519_verify(call_args->at(0), call_args->at(1),
+                                          call_args->at(2));
     }
     if (fn == "crypto_hkdf_sha256") {
         if (call_args->size() != 4) {
@@ -13623,6 +13711,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_chacha20_poly1305_decrypt(key_hex,nonce_hex,aad_hex,ciphertext_hex,tag_hex) ChaCha20-Poly1305 open\n"
             "  crypto_hkdf_sha256(hex_ikm,hex_salt,hex_info,len) HKDF-SHA256 extract/expand (hex I/O)\n"
             "  crypto_pbkdf2_sha256(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA256 (hex I/O)\n"
+            "  crypto_ed25519_keypair(hex_seed) Ed25519 public key from 32-byte seed (hex out)\n"
+            "  crypto_ed25519_sign(hex_seed_or_sk,hex_msg) Ed25519 signature (32-byte seed or 64-byte expanded secret)\n"
+            "  crypto_ed25519_verify(hex_pub,hex_msg,hex_sig) Ed25519 verify (returns 1 or 0)\n"
             "  name = sym_diff(\"expr\",\"var\") differentiate quoted expression w.r.t. variable\n"
             "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
             "  name = sym_expand(\"expr\") expand quoted symbolic expression\n"
