@@ -216,6 +216,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `control_poles(num, den)` | Transfer-function pole list |
 | `control_zeros(num, den)` | Transfer-function zero list |
 | `control_step_info(num, den)` | Step-response metrics (rise/settling/overshoot) |
+| `control_step_response(num, den[, t_end[, n_pts]])` | Step response as `N×2` `[t, y]` |
+| `control_impulse_response(num, den[, t_end[, n_pts]])` | Impulse response as `N×2` `[t, y]` |
 | `control_nyquist(num, den)` | Nyquist curve as `N×2` real/imag matrix |
 | `control_lqe(A, C, Q, R)` | Linear quadratic estimator (Kalman) gain matrix (Wave 237) |
 
