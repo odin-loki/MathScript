@@ -184,6 +184,11 @@ QStringList repl_command_list() {
         // Stats
         QStringLiteral("stats_linear_regression"),
         QStringLiteral("stats_pacf"),
+        QStringLiteral("stats_arfit"),
+        QStringLiteral("stats_multiple_regression"),
+        QStringLiteral("stats_partial_correlation"),
+        QStringLiteral("stats_weighted_mean"),
+        QStringLiteral("stats_trimmed_mean"),
         QStringLiteral("stats_kde"),
         QStringLiteral("stats_bootstrap_ci"),
         // Probability (extended Wave 257)

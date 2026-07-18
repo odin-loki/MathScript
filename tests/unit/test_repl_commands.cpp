@@ -5665,6 +5665,52 @@ TEST(ReplCommandsTest, wave257_stats_infer_ext) {
     EXPECT_LT(lb(0, 2), 0.01);
 }
 
+TEST(ReplCommandsTest, wave258_stats_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_partial_correlation(x,y,z)");
+    expect_contains(interp, "help", "stats_weighted_mean(x,w)");
+    expect_contains(interp, "help", "stats_trimmed_mean(x,frac)");
+    expect_contains(interp, "help", "stats_arfit(x,p)");
+    expect_contains(interp, "help", "stats_multiple_regression(X,y)");
+
+    // Partial correlation with z uncorrelated to x,y -> ~ Pearson corr(x,y) = 1.
+    expect_ok(interp, "px = [1; 2; 3; 4; 5; 6; 7; 8]");
+    expect_ok(interp, "py = [2; 4; 6; 8; 10; 12; 14; 16]");
+    expect_ok(interp, "pz = [1; -1; 1; -1; 1; -1; 1; -1]");
+    expect_ok(interp, "pc = stats_partial_correlation(px, py, pz)");
+    ASSERT_GT(interp.state().scalars.count("pc"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("pc"), 1.0, 0.05);
+
+    // Weighted mean: weights [1,1,1,1,1] on 1..5 => 3.
+    expect_ok(interp, "wm = stats_weighted_mean([1; 2; 3; 4; 5], [1; 1; 1; 1; 1])");
+    ASSERT_GT(interp.state().scalars.count("wm"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("wm"), 3.0, 1e-12);
+
+    // Trimmed mean: [1..10], frac=0.1 drops one each end -> mean of 2..9 = 5.5.
+    expect_ok(interp, "tm = stats_trimmed_mean([1; 2; 3; 4; 5; 6; 7; 8; 9; 10], 0.1)");
+    ASSERT_GT(interp.state().scalars.count("tm"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("tm"), 5.5, 1e-12);
+
+    // AR(1) on short series: px1 coefficient column, finite.
+    expect_ok(interp, "phi = stats_arfit([1; 1.5; 2; 1.8; 2.1; 2.5; 2.3], 2)");
+    ASSERT_GT(interp.state().matrices.count("phi"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("phi").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("phi").cols(), 1u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("phi")(0, 0)));
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("phi")(1, 0)));
+
+    // Multiple regression: y = 1 + 2*x1 + 3*x2; X includes intercept column.
+    expect_ok(interp, "X = [1, 0, 0; 1, 1, 0; 1, 0, 1; 1, 1, 1; 1, 2, 1]");
+    expect_ok(interp, "y = [1; 3; 4; 6; 8]");
+    expect_ok(interp, "beta = stats_multiple_regression(X, y)");
+    ASSERT_GT(interp.state().matrices.count("beta"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("beta").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("beta").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("beta")(0, 0), 1.0, 0.01);
+    EXPECT_NEAR(interp.state().matrices.at("beta")(1, 0), 2.0, 0.01);
+    EXPECT_NEAR(interp.state().matrices.at("beta")(2, 0), 3.0, 0.01);
+}
+
 TEST(ReplCommandsTest, wave257_stats_variance) {
     Interpreter interp;
     expect_contains(interp, "help", "stats_levene(G)");
