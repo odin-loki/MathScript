@@ -6078,14 +6078,15 @@ TEST(ReplCommandsTest, wave258_gray2rgb_and_impad) {
     EXPECT_NEAR(interp.state().matrices.at("RGB2")(0, 1), 0.299, 1e-6);
     EXPECT_NEAR(interp.state().matrices.at("RGB2")(0, 2), 0.299, 1e-6);
 
-    expect_ok(interp, "M = [1, 2; 3, 4]");
+    // Use 0..1 intensities so matrix↔Image round-trip preserves values.
+    expect_ok(interp, "M = [0.1, 0.2; 0.3, 0.4]");
     expect_ok(interp, "P = impad(M, 1, 0)");
     ASSERT_GT(interp.state().matrices.count("P"), 0u);
     EXPECT_EQ(interp.state().matrices.at("P").rows(), 4u);
     EXPECT_EQ(interp.state().matrices.at("P").cols(), 4u);
     EXPECT_DOUBLE_EQ(interp.state().matrices.at("P")(0, 0), 0.0);
-    EXPECT_DOUBLE_EQ(interp.state().matrices.at("P")(1, 1), 1.0);
-    EXPECT_DOUBLE_EQ(interp.state().matrices.at("P")(2, 2), 4.0);
+    EXPECT_NEAR(interp.state().matrices.at("P")(1, 1), 0.1, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("P")(2, 2), 0.4, 1e-6);
 }
 
 TEST(ReplCommandsTest, wave258_radon_iradon) {

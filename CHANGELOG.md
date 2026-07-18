@@ -5,10 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## Unreleased
+## [1.0.0] - 2026-07-19 (Wave 258 — image morph/radon, linalg matfun, graph SP, info/stats, Join Lines) ✅ COMPLETE
+
+Twenty-eighth feature wave after Wave 257. Parallel Composer 2.5 worktrees merged to `main`: image morphology/histogram/Radon, matrix functions, shortest-path graph REPL, info entropy extensions, stats regression helpers, GUI Join Lines, and wave258 pipeline.
 
 ### Added (Wave 258)
-- **Tests** — `integration_repl_wave258_pipeline` (WIP).
+- **Image REPL** — `imtophat` / `imbothat` / `imadjust` / `imhist`; `radon` / `iradon` / `gray2rgb` / `impad`.
+- **Linalg REPL** — `sqrtm` / `logm` / `tril` / `triu` (+ `cosm` / `sinm`).
+- **Graph REPL** — `graph_dijkstra` / `graph_bellman_ford`.
+- **Info REPL** — `info_permutation_entropy` / `info_transfer_entropy`.
+- **Stats REPL** — `stats_partial_correlation` / `stats_weighted_mean` / `stats_trimmed_mean` / `stats_arfit` / `stats_multiple_regression`.
+- **GUI** — Join Lines (Ctrl+J).
+- **Tests** — `integration_repl_wave258_pipeline`.
+
+### Docs (Wave 258)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 258 sync; **416** CTest suites.
+
+**416 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 257 — stats inference/variance, image segment/Hough, prob ext, Sort Lines) ✅ COMPLETE
 

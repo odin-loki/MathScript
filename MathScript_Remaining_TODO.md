@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 257 ✅ COMPLETE — **415 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 258 ✅ COMPLETE — **416 CTest suites** on `main`)
 
 ---
 
@@ -313,9 +313,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **415 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–257** closed for this incremental batch.
 
+## Wave 258 ✅ COMPLETE (image morph/radon, linalg matfun, graph SP, info/stats, Join Lines)
+
+| Area | Deliverable |
+|------|-------------|
+| Image REPL | imtophat/imbothat/imadjust/imhist; radon/iradon/gray2rgb/impad |
+| Linalg REPL | sqrtm/logm/tril/triu (+ cosm/sinm) |
+| Graph REPL | dijkstra / bellman_ford |
+| Info REPL | permutation_entropy / transfer_entropy |
+| Stats REPL | partial_correlation / weighted_mean / trimmed_mean / arfit / multiple_regression |
+| GUI | Join Lines |
+| Tests | `integration_repl_wave258_pipeline` |
+
+**416 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–258** closed for this incremental batch.
+
 ---
 
-## Next (Wave 258+) — deferred
+## Next (Wave 259+) — deferred
 
 | Item | Notes |
 |------|--------|

@@ -12503,6 +12503,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "tril" || callee == "triu") {
         return arity == 1 || arity == 2;
+    }
     if (callee == "imadjust") {
         return arity == 3 || arity == 5;
     }
@@ -15778,7 +15779,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_stats_multiple_regression(*X, *y);
     } else if (assign.callee == "sqrtm" && assign.args.size() == 1) {
-    } else if (assign.callee == "gray2rgb" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -15803,7 +15803,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = sinm(*matrix);
     } else if (assign.callee == "tril" &&
-    } else if ((assign.callee == "imtophat" || assign.callee == "imbothat") &&
                (assign.args.size() == 1 || assign.args.size() == 2)) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -15828,6 +15827,35 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = tril(*matrix, k);
     } else if (assign.callee == "triu" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        int k = 0;
+        if (assign.args.size() == 2) {
+            double k_d = 0.0;
+            if (!parse_number(assign.args[1], k_d)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    k_d = it->second;
+                } else {
+                    return std::unexpected(
+                        DomainError{"triu", "expected triu(A) or triu(A, k)"});
+                }
+            }
+            if (k_d != static_cast<int>(k_d)) {
+                return std::unexpected(DomainError{"triu", "expected integer k"});
+            }
+            k = static_cast<int>(k_d);
+        }
+        result = triu(*matrix, k);
+    } else if ((assign.callee == "imtophat" || assign.callee == "imbothat") &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
         int ksize = 3;
         if (assign.args.size() == 2) {
             double ksize_d = 0.0;
@@ -15883,24 +15911,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
-        int k = 0;
-        if (assign.args.size() == 2) {
-            double k_d = 0.0;
-            if (!parse_number(assign.args[1], k_d)) {
-                auto it = state_.scalars.find(assign.args[1]);
-                if (it != state_.scalars.end()) {
-                    k_d = it->second;
-                } else {
-                    return std::unexpected(
-                        DomainError{"triu", "expected triu(A) or triu(A, k)"});
-                }
-            }
-            if (k_d != static_cast<int>(k_d)) {
-                return std::unexpected(DomainError{"triu", "expected integer k"});
-            }
-            k = static_cast<int>(k_d);
-        }
-        result = triu(*matrix, k);
         int nbins = 256;
         if (assign.args.size() == 2) {
             double nbins_d = 0.0;
@@ -15923,6 +15933,15 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             out(i, 0) = static_cast<double>(hist[i]);
         }
         result = out;
+    } else if (assign.callee == "gray2rgb" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
         result = rgb_image_to_matrix(image::gray2rgb(*gray));
     } else if (assign.callee == "impad" &&
                (assign.args.size() == 2 || assign.args.size() == 3)) {
