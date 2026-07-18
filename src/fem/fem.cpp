@@ -431,10 +431,11 @@ void add_tet_stiffness(
     const Vec3 e1 = verts[1] - verts[0];
     const Vec3 e2 = verts[2] - verts[0];
     const Vec3 e3 = verts[3] - verts[0];
-    const double volume = det3(e1, e2, e3) / 6.0;
-    if (std::abs(volume) <= 0.0) {
+        const double signed_volume = det3(e1, e2, e3) / 6.0;
+    if (std::abs(signed_volume) <= 0.0) {
         throw std::invalid_argument("assemble_stiffness_3d: degenerate tetrahedron");
     }
+    const double volume = std::abs(signed_volume);
 
     double j_inv[3][3];
     if (!invert3x3(e1, e2, e3, j_inv)) {

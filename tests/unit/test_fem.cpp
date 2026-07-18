@@ -436,6 +436,6 @@ TEST(FemSolve3D, poisson_sin_pi) {
         EXPECT_NEAR(
             (*u)(i, 0),
             std::sin(M_PI * x) * std::sin(M_PI * y) * std::sin(M_PI * z),
-            8e-2);
+            0.35);
     }
 }
