@@ -186,6 +186,19 @@ Result<Matrix<double>> eval_dist_tfqmr(const Matrix<double>& A, const Matrix<dou
     return ms::distributed::dist_tfqmr(*dA, *db, ctx);
 }
 
+Result<Matrix<double>> eval_dist_lsmr(const Matrix<double>& A, const Matrix<double>& b) {
+    auto& ctx = repl_mpi_context();
+    auto dA = ms::distributed::scatter(A, ctx);
+    if (!dA) {
+        return std::unexpected(dA.error());
+    }
+    auto db = ms::distributed::scatter(b, ctx);
+    if (!db) {
+        return std::unexpected(db.error());
+    }
+    return ms::distributed::dist_lsmr(*dA, *db, ctx);
+}
+
 Result<Matrix<double>> eval_dist_matmul(const Matrix<double>& A, const Matrix<double>& B) {
     auto& ctx = repl_mpi_context();
     auto dA = ms::distributed::scatter(A, ctx);
@@ -8576,7 +8589,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "cuda_add" ||
             fn == "solve" || fn == "bicgstab" || fn == "qmr" || fn == "lsqr" ||
             fn == "tfqmr" || fn == "lsmr" ||
-            fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
+            fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
@@ -10084,7 +10097,7 @@ bool is_matrix_call_callee(const std::string& callee) {
     return callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
            callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
            callee == "tfqmr" || callee == "lsmr" ||
-           callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_matmul" ||
+           callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_matmul" ||
            callee == "transpose" || callee == "chol" ||
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
@@ -10163,7 +10176,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
         callee == "tfqmr" || callee == "lsmr" ||
         callee == "dist_solve" || callee == "dist_cg" ||
-        callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_matmul" || callee == "rand" ||
+        callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_matmul" || callee == "rand" ||
         callee == "randn" ||
         callee == "kron") {
         return arity == 2;
@@ -12181,6 +12194,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(right.error());
         }
         result = eval_dist_tfqmr(*left, *right);
+    } else if (assign.callee == "dist_lsmr" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = eval_dist_lsmr(*left, *right);
     } else if (assign.callee == "dist_matmul" && assign.args.size() == 2) {
         auto left = resolve_operand(assign.args[0]);
         if (!left) {
@@ -14338,6 +14361,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = dist_minres(A, B) distributed MINRES (gather + minres)\n"
             "  name = dist_qmr(A, B) distributed QMR (gather + qmr)\n"
             "  name = dist_tfqmr(A, B) distributed TFQMR (gather + tfqmr)\n"
+            "  name = dist_lsmr(A, B) distributed LSMR (gather + lsmr; square A)\n"
             "  name = dist_matmul(A, B)  distributed matrix multiply (row-block local GEMM)\n"
             "  mpi_rank(), mpi_size(), mpi_allreduce_sum(x)  MPI rank/size/allreduce (stub: rank=0, size=1)\n"
             "  cuda_allreduce_sum(x)  NCCL all-reduce sum (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
@@ -14892,7 +14916,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
@@ -22746,7 +22770,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "qmr" || fn == "lsqr" ||
             fn == "tfqmr" || fn == "lsmr" ||
             fn == "dist_solve" ||
-            fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_matmul" ||
+            fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_matmul" ||
             fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
             fn == "cuda_add") {
             auto A = resolve_matrix(arg_a);
@@ -22896,6 +22920,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "dist_tfqmr") {
                     auto x = eval_dist_tfqmr(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "dist_lsmr") {
+                    auto x = eval_dist_lsmr(*A, *B);
                     if (!x) {
                         return std::unexpected(x.error());
                     }
