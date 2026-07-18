@@ -31,6 +31,7 @@
 #include <QMetaType>
 #include <QTextCharFormat>
 #include <QTextCursor>
+#include <QTextDocument>
 #include <QTreeView>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -598,6 +599,8 @@ void MainWindow::setup_menus() {
     find_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
     auto* find_next_script_action = edit_menu->addAction("Find Next in Script");
     find_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F3));
+    auto* find_prev_script_action = edit_menu->addAction("Find Previous in Script");
+    find_prev_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F3));
     auto* replace_script_action = edit_menu->addAction("Replace in Script...");
     replace_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
     auto* replace_next_script_action = edit_menu->addAction("Replace Next in Script");
@@ -609,6 +612,8 @@ void MainWindow::setup_menus() {
     find_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
     auto* find_next_output_action = edit_menu->addAction("Find Next in Output");
     find_next_output_action->setShortcut(QKeySequence(Qt::Key_F3));
+    auto* find_prev_output_action = edit_menu->addAction("Find Previous in Output");
+    find_prev_output_action->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
 
     auto* view_menu = menuBar()->addMenu("&View");
     dark_theme_action_ = view_menu->addAction("Dark Theme");
@@ -643,11 +648,13 @@ void MainWindow::setup_menus() {
     });
     connect(find_script_action, &QAction::triggered, this, &MainWindow::find_in_script);
     connect(find_next_script_action, &QAction::triggered, this, &MainWindow::find_next_in_script);
+    connect(find_prev_script_action, &QAction::triggered, this, &MainWindow::find_prev_in_script);
     connect(replace_script_action, &QAction::triggered, this, &MainWindow::replace_in_script);
     connect(replace_next_script_action, &QAction::triggered, this, &MainWindow::replace_next_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
+    connect(find_prev_output_action, &QAction::triggered, this, &MainWindow::find_prev_in_output);
     connect(dark_theme_action_, &QAction::toggled, this, &MainWindow::set_dark_theme);
     connect(word_wrap_action_, &QAction::toggled, this, &MainWindow::set_word_wrap);
     connect(show_plot_panel_action_, &QAction::toggled, this, &MainWindow::set_plot_panel_visible);
@@ -783,6 +790,26 @@ void MainWindow::find_next_in_output() {
     }
 }
 
+void MainWindow::find_prev_in_output() {
+    if (find_output_text_.isEmpty()) {
+        find_in_output();
+        return;
+    }
+
+    QTextCursor cursor = output_->textCursor();
+    if (cursor.hasSelection()) {
+        cursor.setPosition(cursor.selectionStart());
+        output_->setTextCursor(cursor);
+    }
+
+    if (!output_->find(find_output_text_, QTextDocument::FindBackward)) {
+        output_->moveCursor(QTextCursor::End);
+        if (!output_->find(find_output_text_, QTextDocument::FindBackward)) {
+            statusBar()->showMessage("Find in Output: no matches", 3000);
+        }
+    }
+}
+
 void MainWindow::find_in_script() {
     editor_->setFocus();
     bool ok = false;
@@ -814,6 +841,27 @@ void MainWindow::find_next_in_script() {
     if (!editor_->find(find_script_text_)) {
         editor_->moveCursor(QTextCursor::Start);
         if (!editor_->find(find_script_text_)) {
+            statusBar()->showMessage("Find in Script: no matches", 3000);
+        }
+    }
+}
+
+void MainWindow::find_prev_in_script() {
+    editor_->setFocus();
+    if (find_script_text_.isEmpty()) {
+        find_in_script();
+        return;
+    }
+
+    QTextCursor cursor = editor_->textCursor();
+    if (cursor.hasSelection()) {
+        cursor.setPosition(cursor.selectionStart());
+        editor_->setTextCursor(cursor);
+    }
+
+    if (!editor_->find(find_script_text_, QTextDocument::FindBackward)) {
+        editor_->moveCursor(QTextCursor::End);
+        if (!editor_->find(find_script_text_, QTextDocument::FindBackward)) {
             statusBar()->showMessage("Find in Script: no matches", 3000);
         }
     }

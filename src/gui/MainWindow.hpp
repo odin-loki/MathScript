@@ -69,8 +69,10 @@ private:
     void show_welcome_banner();
     void find_in_output();
     void find_next_in_output();
+    void find_prev_in_output();
     void find_in_script();
     void find_next_in_script();
+    void find_prev_in_script();
     void replace_in_script();
     void replace_next_in_script();
     void go_to_line();

@@ -1231,5 +1231,86 @@ Polygon2D poly_intersect(const Polygon2D& a, const Polygon2D& b) {
     return clip_polygon(a, b);
 }
 
+// ---- Polygon Difference (convex MVP) ----
+
+// Clip `subject` against one directed half-plane through edge (a -> b). When `keep_left`
+// is true, retain the left side (cross >= 0); otherwise retain the right side — matching
+// the interior/exterior convention of `clip_inside` for CCW/CW windows.
+static Polygon2D clip_halfplane(const Polygon2D& subject, const Point2D& a, const Point2D& b,
+                                bool keep_left) {
+    if (subject.empty()) return {};
+    Polygon2D output;
+    const int n = static_cast<int>(subject.size());
+    for (int j = 0; j < n; ++j) {
+        const Point2D curr = subject[j];
+        const Point2D next = subject[(j + 1) % n];
+        const bool curr_in = clip_inside(a, b, curr, keep_left);
+        const bool next_in = clip_inside(a, b, next, keep_left);
+        if (curr_in) output.push_back(curr);
+        if (curr_in != next_in)
+            output.push_back(clip_line_intersection(a, b, curr, next));
+    }
+    return output;
+}
+
+Polygon2D poly_diff(const Polygon2D& a, const Polygon2D& b) {
+    if (a.empty() || a.size() < 3) return {};
+    if (b.empty() || b.size() < 3) return a;
+
+    // Use intersection area for containment / empty-overlap: winding point-in-polygon is
+    // unreliable on vertices, so vertex-subset tests mis-detect A ⊆ B (e.g. identical).
+    const Polygon2D ix = poly_intersect(a, b);
+    const double area_a = area(a);
+    const double area_ix = area(ix);
+    if (area_ix < 1e-12) return a;
+    if (area_a - area_ix < 1e-9) return {};
+
+    // A \ B = ∪_i (A ∩ exterior(edge_i of B)). When the difference is a single convex
+    // piece, one of those half-plane clips has area ≈ area(A) − area(A∩B); pick that.
+    // If no clip matches (non-convex difference / hole), fall back to a convex hull
+    // over-approximation of candidate boundary points.
+    const bool b_ccw = signed_area(b) >= 0.0;
+    const bool exterior_keep_left = !b_ccw;
+    const int m = static_cast<int>(b.size());
+    const double target = area_a - area_ix;
+
+    Polygon2D best;
+    double best_err = 1e300;
+    std::vector<Point2D> candidates;
+    candidates.reserve(a.size() + b.size() + 8);
+
+    for (int i = 0; i < m; ++i) {
+        Polygon2D piece = clip_halfplane(a, b[i], b[(i + 1) % m], exterior_keep_left);
+        if (piece.size() < 3) continue;
+        const double ar = area(piece);
+        if (ar < 1e-12) continue;
+        const double err = std::abs(ar - target);
+        if (err < best_err) {
+            best_err = err;
+            best = piece;
+        }
+        for (const auto& p : piece)
+            if (!point_strictly_inside(p, b)) candidates.push_back(p);
+    }
+
+    if (best_err < 1e-6) return best;
+
+    for (const auto& p : a)
+        if (!point_strictly_inside(p, b)) candidates.push_back(p);
+    for (const auto& p : b)
+        if (point_strictly_inside(p, a) || point_in_polygon(p, a)) candidates.push_back(p);
+
+    const int na = static_cast<int>(a.size());
+    for (int i = 0; i < na; ++i) {
+        const Point2D& s1 = a[i];
+        const Point2D& e1 = a[(i + 1) % na];
+        for (int j = 0; j < m; ++j)
+            collect_segment_intersections(candidates, s1, e1, b[j], b[(j + 1) % m]);
+    }
+
+    if (candidates.size() < 3) return {};
+    return convex_hull_2d(std::move(candidates));
+}
+
 } // namespace geo
 } // namespace ms
