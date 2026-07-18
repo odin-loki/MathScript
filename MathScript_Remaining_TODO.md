@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (reconciled against `main` @ Wave 230 — **374 CTest suites**, **28-bench smoke verified on MSVC and Linux CI**)
+**Updated:** 2026-07-18 (reconciled against `main` @ Wave 231 — **376 CTest suites**, **28-bench smoke verified on MSVC and Linux CI**)
 
 ---
 
@@ -29,11 +29,23 @@ Twelve waves optimized and **certified** all identified hot paths across every `
 
 ---
 
-## Next: Feature work (Wave 231+)
+## Wave 231 ✅ COMPLETE (crypto AES/ChaCha + FEM 2D + CFD 2D)
+
+| Branch | Shipped |
+|--------|---------|
+| `wave231/crypto-chacha` | ChaCha20 stream cipher |
+| `wave231/crypto-*` | AES-128/256 ECB + AES-128 CBC encrypt/decrypt |
+| `wave231/fem-2d` | 2D P1 triangular Poisson assembly + solve |
+| `wave231/cfd-2d` | 2D structured FVM upwind advection |
+
+**376 CTest suites** (+2 registrations: `integration_crypto_wave231`, `test_cfd_2d`; ~27 new cases in existing/new binaries). Profiling iteration unchanged — **FULLY COMPLETE (Waves 218–230).**
+
+---
+
+## Next: Feature work (Wave 232+)
 
 | Wave | Focus |
 |------|--------|
-| **231** | crypto AES/ChaCha + fem 2D + cfd 2D |
 | **231–232** | sym transforms + CUDA/MPI/plugin |
 | **232–236** | GUI polish + REPL bindings |
 | **237+** | Remaining API gaps |

@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 231 — Crypto AES/ChaCha, FEM 2D, CFD 2D)
+
+First feature wave after the profiling iteration closed (Wave 230).
+
+### Added (Wave 231)
+- `ms::crypto` — AES-128/256 single-block ECB encrypt (`aes128_encrypt_block`, `aes256_encrypt_block`), AES-128 CBC encrypt/decrypt (`aes128_cbc_encrypt`, `aes128_cbc_decrypt`), and ChaCha20 stream cipher (`chacha20_encrypt`, XOR self-inverse). NIST FIPS-197 and RFC 8439 vector coverage. 11 new unit tests in `test_crypto.cpp`; 4 integration pipeline tests in `integration_crypto_wave231` (integration crypto test fixed post-merge).
+- `ms::fem` — 2D P1 triangular Poisson FEM: `mesh2d_rectangular`, `assemble_stiffness_2d`, `assemble_load_2d`, 2D Dirichlet BCs + `solve_fem` for \(-\nabla^2 u = f\). 7 new 2D tests in existing `test_fem.cpp` (separate `fem-tests` merge skipped — 2D coverage already present).
+- `ms::cfd` — 2D structured finite-volume advection: `grid2d`, `square_pulse_2d`, `upwind_fvm_advection_2d`, `run_advection_2d`, `integrated_mass_2d`; CFL guards and periodic/zero-flux BCs per axis. 5 tests in new `test_cfd_2d.cpp`.
+- **Total Wave 231: 376 CTest suites — all passing** (+2 new: `integration_crypto_wave231`, `test_cfd_2d`; ~27 new test cases across crypto/fem/cfd). Four branches merged with zero conflicts. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] — 2026-07-18 (Wave 230 — Profiling iteration final sign-off)
 
 Wave 230 closes the **baseline refresh path** — no code profiling.
