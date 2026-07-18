@@ -2585,6 +2585,21 @@ Result<Matrix<double>> eval_numthy_pell_solve(int D) {
     return out;
 }
 
+Result<Matrix<double>> eval_numthy_cornacchia(uint64_t d, uint64_t p) {
+    if (d < 1 || d >= p) {
+        return std::unexpected(
+            DomainError{"numthy_cornacchia", "expected positive integers d,p with 0 < d < p"});
+    }
+    auto sol = numthy::cornacchia(d, p);
+    if (!sol) {
+        return std::unexpected(sol.error());
+    }
+    Matrix<double> out(1, 2);
+    out(0, 0) = static_cast<double>(sol->first);
+    out(0, 1) = static_cast<double>(sol->second);
+    return out;
+}
+
 Result<Matrix<double>> eval_numthy_quadratic_residues(int p) {
     if (p < 3) {
         return std::unexpected(
@@ -13314,6 +13329,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "combo_motzkin_paths" || callee == "combo_set_partitions" ||
            callee == "combo_restricted_partitions" ||
            callee == "numthy_continued_fraction" || callee == "numthy_primes" ||
+           callee == "numthy_cornacchia" ||
            callee == "stats_linear_regression" || callee == "stats_pacf" ||
            callee == "stats_arfit" || callee == "stats_multiple_regression" ||
            callee == "stats_kde" || callee == "stats_bootstrap_ci";
@@ -13591,7 +13607,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "quantum_ket_basis" || callee == "quantum_fock_state" ||
         callee == "combo_unrank_permutation" || callee == "numthy_continued_fraction" ||
-        callee == "numthy_primes") {
+        callee == "numthy_primes" || callee == "numthy_cornacchia") {
         return arity == 2;
     }
     if (callee == "combo_unrank_combination") {
@@ -18807,6 +18823,36 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(primes.error());
         }
         result = *primes;
+    } else if (assign.callee == "numthy_cornacchia" && assign.args.size() == 2) {
+        double d_d = 0.0;
+        double p_d = 0.0;
+        if (!parse_number(assign.args[0], d_d)) {
+            auto d_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!d_expr) {
+                return std::unexpected(
+                    DomainError{"numthy_cornacchia", "expected numthy_cornacchia(d,p)"});
+            }
+            d_d = *d_expr;
+        }
+        if (!parse_number(assign.args[1], p_d)) {
+            auto p_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!p_expr) {
+                return std::unexpected(
+                    DomainError{"numthy_cornacchia", "expected numthy_cornacchia(d,p)"});
+            }
+            p_d = *p_expr;
+        }
+        if (d_d < 1.0 || p_d < 2.0 || d_d != static_cast<int>(d_d) ||
+            p_d != static_cast<int>(p_d) || d_d >= p_d) {
+            return std::unexpected(DomainError{
+                "numthy_cornacchia", "expected positive integers d,p with 0 < d < p"});
+        }
+        auto sol = eval_numthy_cornacchia(static_cast<uint64_t>(d_d),
+                                          static_cast<uint64_t>(p_d));
+        if (!sol) {
+            return std::unexpected(sol.error());
+        }
+        result = *sol;
     } else if (assign.callee == "combo_unrank_combination" && assign.args.size() == 3) {
         double n_d = 0.0;
         double k_d = 0.0;
@@ -20080,6 +20126,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_farey(n)      Farey sequence F_n as Mx2 reduced fractions [p,q]\n"
             "  name = numthy_stern_brocot(n) Stern-Brocot tree first n nodes as Mx2 [p,q]\n"
             "  name = numthy_pell_solve(D) fundamental Pell solution x,y with x^2 - Dy^2 = 1 as 1x2\n"
+            "  name = numthy_cornacchia(d,p) Cornacchia solution x,y with x^2 + d*y^2 = p as 1x2\n"
             "  name = numthy_quadratic_residues(p) quadratic residues mod odd prime p as Nx1\n"
             "  name = numthy_lucas_sequence(k,P,Q) Lucas sequences U_k(P,Q), V_k(P,Q) as 1x2\n"
             "  name = numthy_multiplicative_order(a,n) multiplicative order of a mod n\n"
