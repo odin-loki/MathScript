@@ -5158,6 +5158,23 @@ Result<std::string> eval_crypto_pbkdf2_hmac_sha512(const std::string& pass_arg,
     return crypto::to_hex(dk) + "\n";
 }
 
+Result<std::string> eval_crypto_x25519_keypair(const std::string& priv_arg) {
+    constexpr const char* fn = "crypto_x25519_keypair";
+    auto priv = parse_hex_arg(priv_arg, fn, "private_key");
+    if (!priv) {
+        return std::unexpected(priv.error());
+    }
+    if (priv->size() != crypto::x25519_key_size) {
+        return std::unexpected(DomainError{fn, "expected 32-byte (64 hex char) private key"});
+    }
+    const auto kp = crypto::x25519_keypair(*priv);
+    if (kp.public_key == std::array<uint8_t, crypto::x25519_key_size>{}) {
+        return std::unexpected(DomainError{fn, "key generation failed"});
+    }
+    return crypto::to_hex(std::span<const uint8_t>(kp.public_key.data(), kp.public_key.size())) +
+           "\n";
+}
+
 Result<std::string> eval_crypto_x25519_shared(const std::string& priv_arg,
                                               const std::string& pub_arg) {
     constexpr const char* fn = "crypto_x25519_shared";
@@ -9022,6 +9039,13 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
         return eval_crypto_chacha20_poly1305_decrypt(call_args->at(0), call_args->at(1),
                                                      call_args->at(2), call_args->at(3),
                                                      call_args->at(4));
+    }
+    if (fn == "crypto_x25519_keypair") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_x25519_keypair(hex_priv) -> hex public key"});
+        }
+        return eval_crypto_x25519_keypair(call_args->at(0));
     }
     if (fn == "crypto_x25519_shared") {
         if (call_args->size() != 2) {
@@ -15927,6 +15951,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
             "  crypto_pbkdf2_sha256(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA256 (hex I/O)\n"
             "  crypto_pbkdf2_hmac_sha512(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA512 (hex I/O)\n"
+            "  crypto_x25519_keypair(hex_priv) X25519 public key from 32-byte private key (hex out)\n"
             "  crypto_ed25519_keypair(hex_seed) Ed25519 public key from 32-byte seed (hex out)\n"
             "  crypto_ed25519_sign(hex_seed_or_sk,hex_msg) Ed25519 signature (32-byte seed or 64-byte expanded secret)\n"
             "  crypto_ed25519_verify(hex_pub,hex_msg,hex_sig) Ed25519 verify (returns 1 or 0)\n"
