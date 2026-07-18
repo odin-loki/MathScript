@@ -25,6 +25,9 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
 
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
 private slots:
     void on_submit();
     void on_run_script();
@@ -61,4 +64,7 @@ private:
     ReplWorker* repl_worker_ = nullptr;
     bool repl_busy_ = false;
     QStringList script_queue_;
+    QStringList repl_history_;
+    int repl_history_pos_ = -1;
+    QString repl_history_draft_;
 };

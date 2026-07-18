@@ -39,6 +39,9 @@
 #include "ms/symbolic/symbolic.hpp"
 #include "ms/ode/ode.hpp"
 #include "ms/optim/optim.hpp"
+#include "ms/crypto/crypto.hpp"
+#include "ms/fem/fem.hpp"
+#include "ms/cfd/cfd.hpp"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -3187,6 +3190,223 @@ Result<Matrix<double>> eval_pde_burgers_1d(const Matrix<double>& u0_m, double nu
     return vector_to_column(value.u.back());
 }
 
+int hex_nibble(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+Result<std::vector<uint8_t>> parse_hex_arg(const std::string& text, const char* fn,
+                                           const char* arg_name) {
+    std::string hex;
+    if (!parse_quoted_string(text, hex)) {
+        hex = trim_copy(text);
+    }
+    if (hex.empty() || hex.size() % 2 != 0) {
+        return std::unexpected(
+            DomainError{fn, std::string("invalid hex for ") + arg_name});
+    }
+    std::vector<uint8_t> out;
+    out.reserve(hex.size() / 2);
+    for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
+        const int hi = hex_nibble(hex[i]);
+        const int lo = hex_nibble(hex[i + 1]);
+        if (hi < 0 || lo < 0) {
+            return std::unexpected(
+                DomainError{fn, std::string("invalid hex for ") + arg_name});
+        }
+        out.push_back(static_cast<uint8_t>((hi << 4) | lo));
+    }
+    return out;
+}
+
+Result<std::string> eval_crypto_aes128_encrypt_block(const std::string& key_arg,
+                                                     const std::string& block_arg) {
+    constexpr const char* fn = "crypto_aes128_encrypt_block";
+    auto key = parse_hex_arg(key_arg, fn, "key");
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto block = parse_hex_arg(block_arg, fn, "block");
+    if (!block) {
+        return std::unexpected(block.error());
+    }
+    if (key->size() != crypto::aes128_key_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 16-byte (32 hex char) AES-128 key"});
+    }
+    if (block->size() != crypto::aes_block_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 16-byte (32 hex char) block"});
+    }
+    return crypto::to_hex(crypto::aes128_encrypt_block(*key, *block)) + "\n";
+}
+
+Result<std::string> eval_crypto_aes128_cbc_encrypt(const std::string& key_arg,
+                                                   const std::string& iv_arg,
+                                                   const std::string& plain_arg) {
+    constexpr const char* fn = "crypto_aes128_cbc_encrypt";
+    auto key = parse_hex_arg(key_arg, fn, "key");
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto iv = parse_hex_arg(iv_arg, fn, "iv");
+    if (!iv) {
+        return std::unexpected(iv.error());
+    }
+    auto plain = parse_hex_arg(plain_arg, fn, "plaintext");
+    if (!plain) {
+        return std::unexpected(plain.error());
+    }
+    if (key->size() != crypto::aes128_key_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 16-byte (32 hex char) AES-128 key"});
+    }
+    if (iv->size() != crypto::aes_block_size) {
+        return std::unexpected(DomainError{fn, "expected 16-byte (32 hex char) iv"});
+    }
+    if (plain->empty() || plain->size() % crypto::aes_block_size != 0) {
+        return std::unexpected(
+            DomainError{fn, "expected non-empty plaintext with length multiple of 16 bytes"});
+    }
+    return crypto::to_hex(crypto::aes128_cbc_encrypt(*key, *iv, *plain)) + "\n";
+}
+
+Result<std::string> eval_crypto_aes128_cbc_decrypt(const std::string& key_arg,
+                                                   const std::string& iv_arg,
+                                                   const std::string& cipher_arg) {
+    constexpr const char* fn = "crypto_aes128_cbc_decrypt";
+    auto key = parse_hex_arg(key_arg, fn, "key");
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto iv = parse_hex_arg(iv_arg, fn, "iv");
+    if (!iv) {
+        return std::unexpected(iv.error());
+    }
+    auto cipher = parse_hex_arg(cipher_arg, fn, "ciphertext");
+    if (!cipher) {
+        return std::unexpected(cipher.error());
+    }
+    if (key->size() != crypto::aes128_key_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 16-byte (32 hex char) AES-128 key"});
+    }
+    if (iv->size() != crypto::aes_block_size) {
+        return std::unexpected(DomainError{fn, "expected 16-byte (32 hex char) iv"});
+    }
+    if (cipher->empty() || cipher->size() % crypto::aes_block_size != 0) {
+        return std::unexpected(
+            DomainError{fn, "expected non-empty ciphertext with length multiple of 16 bytes"});
+    }
+    return crypto::to_hex(crypto::aes128_cbc_decrypt(*key, *iv, *cipher)) + "\n";
+}
+
+Result<std::string> eval_crypto_chacha20(const std::string& key_arg, const std::string& nonce_arg,
+                                         const std::string& counter_arg,
+                                         const std::string& data_arg) {
+    constexpr const char* fn = "crypto_chacha20";
+    auto key_bytes = parse_hex_arg(key_arg, fn, "key");
+    if (!key_bytes) {
+        return std::unexpected(key_bytes.error());
+    }
+    auto nonce_bytes = parse_hex_arg(nonce_arg, fn, "nonce");
+    if (!nonce_bytes) {
+        return std::unexpected(nonce_bytes.error());
+    }
+    auto data = parse_hex_arg(data_arg, fn, "data");
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+    if (key_bytes->size() != 32) {
+        return std::unexpected(DomainError{fn, "expected 32-byte (64 hex char) key"});
+    }
+    if (nonce_bytes->size() != 12) {
+        return std::unexpected(DomainError{fn, "expected 12-byte (24 hex char) nonce"});
+    }
+    double counter_d = 0.0;
+    if (!parse_number(trim_copy(counter_arg), counter_d)) {
+        return std::unexpected(DomainError{fn, "expected numeric counter"});
+    }
+    const auto counter_i = static_cast<std::uint32_t>(counter_d);
+    if (counter_d < 0.0 || counter_d != static_cast<double>(counter_i)) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer counter"});
+    }
+    std::array<uint8_t, 32> key{};
+    std::array<uint8_t, 12> nonce{};
+    std::copy(key_bytes->begin(), key_bytes->end(), key.begin());
+    std::copy(nonce_bytes->begin(), nonce_bytes->end(), nonce.begin());
+    return crypto::to_hex(crypto::chacha20_encrypt(key, nonce, counter_i, *data)) + "\n";
+}
+
+std::vector<std::size_t> fem_rectangular_boundary_nodes(std::size_t nx, std::size_t ny) {
+    const std::size_t n_nodes_x = nx + 1;
+    std::vector<std::size_t> boundary;
+    for (std::size_t j = 0; j <= ny; ++j) {
+        for (std::size_t i = 0; i <= nx; ++i) {
+            if (i == 0 || i == nx || j == 0 || j == ny) {
+                boundary.push_back(i + j * n_nodes_x);
+            }
+        }
+    }
+    return boundary;
+}
+
+Result<Matrix<double>> eval_fem_poisson2d(std::size_t nx, std::size_t ny) {
+    constexpr const char* fn = "fem_poisson2d";
+    if (nx == 0 || ny == 0) {
+        return std::unexpected(DomainError{fn, "expected positive nx and ny"});
+    }
+    const fem::Mesh2D mesh = fem::mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, nx, ny);
+    ColMatrix<double> K = fem::assemble_stiffness_2d(mesh);
+    ColMatrix<double> f = fem::assemble_load_2d(mesh, [](double, double) { return 1.0; });
+    const auto boundary = fem_rectangular_boundary_nodes(nx, ny);
+    std::vector<double> boundary_values(boundary.size(), 0.0);
+    fem::apply_dirichlet(K, f, boundary, boundary_values);
+    const auto u = fem::solve_fem(K, f);
+    if (!u) {
+        return std::unexpected(DomainError{fn, "linear solve failed"});
+    }
+    Matrix<double> out(u->rows(), 1);
+    for (std::size_t i = 0; i < u->rows(); ++i) {
+        out(i, 0) = (*u)(i, 0);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_cfd_advection2d(std::size_t nx, std::size_t ny, double vx, double vy,
+                                            double t_end, double dt) {
+    constexpr const char* fn = "cfd_advection2d";
+    if (nx < 2 || ny < 2) {
+        return std::unexpected(DomainError{fn, "expected nx, ny >= 2"});
+    }
+    if (t_end <= 0.0 || dt <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    const cfd::Grid2D grid = cfd::grid2d(0.0, 1.0, 0.0, 1.0, nx, ny);
+    if (grid.nx == 0 || grid.ny == 0) {
+        return std::unexpected(DomainError{fn, "invalid grid dimensions"});
+    }
+    const auto u0 = cfd::square_pulse_2d(grid, 0.35, 0.35, 0.1, 0.1, 1.0);
+    const auto vx_field = cfd::constant_velocity(grid.nx * grid.ny, vx);
+    const auto vy_field = cfd::constant_velocity(grid.nx * grid.ny, vy);
+    const auto result = cfd::run_advection_2d(
+        u0, vx_field, vy_field, t_end, dt, grid.dx, grid.dy, cfd::BoundaryCondition::Periodic,
+        cfd::BoundaryCondition::Periodic);
+    if (result.u.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return grid_to_matrix(result.u.back());
+}
+
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall");
     if (!G) {
@@ -5775,6 +5995,50 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
     return std::nullopt;
 }
 
+std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cmd) {
+    const auto open_paren = cmd.find('(');
+    if (open_paren == std::string::npos || cmd.empty() || cmd.back() != ')') {
+        return std::nullopt;
+    }
+    const std::string fn = lower(trim_copy(cmd.substr(0, open_paren)));
+    const auto call_args = split_call_args(cmd);
+    if (!call_args) {
+        return std::nullopt;
+    }
+    if (fn == "crypto_aes128_encrypt_block") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_aes128_encrypt_block(key_hex, block_hex)"});
+        }
+        return eval_crypto_aes128_encrypt_block(call_args->at(0), call_args->at(1));
+    }
+    if (fn == "crypto_aes128_cbc_encrypt") {
+        if (call_args->size() != 3) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_aes128_cbc_encrypt(key_hex, iv_hex, plaintext_hex)"});
+        }
+        return eval_crypto_aes128_cbc_encrypt(call_args->at(0), call_args->at(1),
+                                              call_args->at(2));
+    }
+    if (fn == "crypto_aes128_cbc_decrypt") {
+        if (call_args->size() != 3) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_aes128_cbc_decrypt(key_hex, iv_hex, ciphertext_hex)"});
+        }
+        return eval_crypto_aes128_cbc_decrypt(call_args->at(0), call_args->at(1),
+                                              call_args->at(2));
+    }
+    if (fn == "crypto_chacha20") {
+        if (call_args->size() != 4) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_chacha20(key_hex, nonce_hex, counter, data_hex)"});
+        }
+        return eval_crypto_chacha20(call_args->at(0), call_args->at(1), call_args->at(2),
+                                    call_args->at(3));
+    }
+    return std::nullopt;
+}
+
 std::optional<std::vector<std::string>> split_call_args(const std::string& cmd) {
     const auto open = cmd.find('(');
     if (open == std::string::npos) {
@@ -6359,6 +6623,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_schrodinger_final" ||
             fn == "pde_heat_1d" || fn == "pde_heat_2d" || fn == "pde_wave_1d" ||
             fn == "pde_advection_1d" || fn == "pde_poisson_2d" || fn == "pde_burgers_1d" ||
+            fn == "fem_poisson2d" || fn == "cfd_advection2d" ||
             fn == "quantum_time_evolution" ||
             fn == "info_joint_entropy" ||
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
@@ -7719,6 +7984,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_heat_1d" || callee == "pde_heat_2d" || callee == "pde_wave_1d" ||
            callee == "pde_advection_1d" || callee == "pde_poisson_2d" ||
            callee == "pde_burgers_1d" ||
+           callee == "fem_poisson2d" || callee == "cfd_advection2d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
            callee == "compress_bits_to_bytes" ||
            callee == "compress_bytes_to_bits" ||
@@ -7841,6 +8107,12 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 5;
     }
     if (callee == "pde_heat_2d" || callee == "pde_wave_1d") {
+        return arity == 6;
+    }
+    if (callee == "fem_poisson2d") {
+        return arity == 2;
+    }
+    if (callee == "cfd_advection2d") {
         return arity == 6;
     }
     if (callee == "quantum_ket_basis" || callee == "quantum_fock_state" ||
@@ -10399,6 +10671,42 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
                 DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
         }
         result = eval_pde_burgers_1d(*u0_m, nu, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "fem_poisson2d" && assign.args.size() == 2) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d)) {
+            return std::unexpected(
+                DomainError{"fem_poisson2d", "expected fem_poisson2d(nx, ny)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
+            return std::unexpected(
+                DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_fem_poisson2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i));
+    } else if (assign.callee == "cfd_advection2d" && assign.args.size() == 6) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double vx = 0.0;
+        double vy = 0.0;
+        double t_end = 0.0;
+        double dt = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], vx) || !parse_number(assign.args[3], vy) ||
+            !parse_number(assign.args[4], t_end) || !parse_number(assign.args[5], dt)) {
+            return std::unexpected(DomainError{
+                "cfd_advection2d",
+                "expected cfd_advection2d(nx, ny, vx, vy, t_end, dt)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_cfd_advection2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                      vx, vy, t_end, dt);
     } else if (assign.callee == "pde_heat_2d" && assign.args.size() == 6) {
         auto u0_m = resolve_operand(assign.args[0]);
         if (!u0_m) {
@@ -11336,6 +11644,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_advection_1d(u0,v,dx,dt,steps) 1D advection final state column\n"
             "  name = pde_poisson_2d(f,dx,dy,max_iterations,tolerance) 2D Poisson solution grid\n"
             "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
+            "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
+            "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
+            "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
+            "  crypto_aes128_cbc_encrypt(key_hex,iv_hex,plaintext_hex) AES-128 CBC encrypt\n"
+            "  crypto_aes128_cbc_decrypt(key_hex,iv_hex,ciphertext_hex) AES-128 CBC decrypt\n"
+            "  crypto_chacha20(key_hex,nonce_hex,counter,data_hex) ChaCha20 stream XOR (hex I/O)\n"
             "  name = sym_diff(\"expr\",\"var\") differentiate quoted expression w.r.t. variable\n"
             "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
             "  name = sym_integrate(\"expr\",\"var\") integrate quoted expression w.r.t. variable\n"
@@ -11818,6 +12132,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::unexpected(sym->error());
         }
         return **sym;
+    }
+
+    if (const auto crypto = try_eval_crypto_command(cmd)) {
+        if (!crypto->has_value()) {
+            return std::unexpected(crypto->error());
+        }
+        return **crypto;
     }
 
     if (const auto session_cmd = try_session_object_command(cmd)) {
@@ -14461,6 +14782,39 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return *value;
         }
+        if (fn == "cfd_advection2d") {
+            double nx_d = 0.0;
+            double ny_d = 0.0;
+            double vx = 0.0;
+            double vy = 0.0;
+            double t_end = 0.0;
+            double dt = 0.0;
+            if (!parse_number(trim(match[2].str()), nx_d) ||
+                !parse_number(trim(match[3].str()), ny_d) ||
+                !parse_number(trim(match[4].str()), vx) ||
+                !parse_number(trim(match[5].str()), vy) ||
+                !parse_number(trim(match[6].str()), t_end) ||
+                !parse_number(trim(match[7].str()), dt)) {
+                return std::unexpected(DomainError{
+                    "cfd_advection2d",
+                    "expected cfd_advection2d(nx, ny, vx, vy, t_end, dt)"});
+            }
+            const int nx_i = static_cast<int>(nx_d);
+            const int ny_i = static_cast<int>(ny_d);
+            if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
+                return std::unexpected(
+                    DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
+            }
+            auto value = eval_cfd_advection2d(static_cast<std::size_t>(nx_i),
+                                              static_cast<std::size_t>(ny_i), vx, vy, t_end, dt);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
         if (fn == "geo_dist3d") {
             double x1 = 0.0;
             double y1 = 0.0;
@@ -16968,6 +17322,30 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"spherical_jn", "expected spherical_jn(n,x)"});
             }
             return std::to_string(spherical_jn(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "fem_poisson2d") {
+            double nx_d = 0.0;
+            double ny_d = 0.0;
+            if (!parse_number(arg_a, nx_d) || !parse_number(arg_b, ny_d)) {
+                return std::unexpected(
+                    DomainError{"fem_poisson2d", "expected fem_poisson2d(nx, ny)"});
+            }
+            const int nx_i = static_cast<int>(nx_d);
+            const int ny_i = static_cast<int>(ny_d);
+            if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
+                return std::unexpected(
+                    DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
+            }
+            auto value = eval_fem_poisson2d(static_cast<std::size_t>(nx_i),
+                                            static_cast<std::size_t>(ny_i));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
         }
 
         if (fn == "special_polygamma") {
