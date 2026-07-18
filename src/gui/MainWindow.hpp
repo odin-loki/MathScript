@@ -82,6 +82,7 @@ private:
     void go_to_matching_brace();
     void add_selection_for_next_occurrence();
     void duplicate_line();
+    void trim_trailing_whitespace();
     void delete_line();
     void move_line_up();
     void move_line_down();
