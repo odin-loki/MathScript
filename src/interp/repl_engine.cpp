@@ -7323,7 +7323,8 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
     if (fn != "sym_diff" && fn != "sym_simplify" && fn != "sym_integrate" && fn != "sym_eval" &&
         fn != "sym_expand" && fn != "sym_collect" && fn != "sym_substitute" && fn != "sym_limit" &&
         fn != "sym_series" && fn != "sym_solve_linear" && fn != "sym_laplace" &&
-        fn != "sym_ilaplace" && fn != "sym_fourier" && fn != "sym_ifourier" &&
+        fn != "sym_ilaplace" && fn != "sym_mellin" && fn != "sym_imellin" &&
+        fn != "sym_fourier" && fn != "sym_ifourier" &&
         fn != "sym_ztransform" && fn != "sym_iztransform" && fn != "sym_dsolve") {
         return std::nullopt;
     }
@@ -7360,7 +7361,8 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         }
         return eval_sym_solve_linear_strings(args->at(0), args->at(1));
     }
-    if (fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_fourier" || fn == "sym_ifourier" ||
+    if (fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_mellin" || fn == "sym_imellin" ||
+        fn == "sym_fourier" || fn == "sym_ifourier" ||
         fn == "sym_ztransform" || fn == "sym_iztransform" || fn == "sym_dsolve") {
         if (args->size() != 3) {
             return std::unexpected(
@@ -7371,6 +7373,12 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         }
         if (fn == "sym_ilaplace") {
             return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_ilaplace);
+        }
+        if (fn == "sym_mellin") {
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_mellin);
+        }
+        if (fn == "sym_imellin") {
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_imellin);
         }
         if (fn == "sym_fourier") {
             return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_fourier);
@@ -8096,7 +8104,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sym_diff" || fn == "sym_integrate" || fn == "sym_eval" || fn == "sym_simplify" ||
             fn == "sym_expand" || fn == "sym_collect" || fn == "sym_substitute" ||
             fn == "sym_limit" || fn == "sym_series" || fn == "sym_solve_linear" ||
-            fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_fourier" ||
+            fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_mellin" || fn == "sym_imellin" ||
+            fn == "sym_fourier" ||
             fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform" ||
             fn == "sym_dsolve" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
@@ -13750,6 +13759,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sym_eval(\"expr\",\"var=value\") numerically evaluate quoted expression\n"
             "  name = sym_laplace(\"expr\",\"t\",\"s\") Laplace transform time domain to s-domain\n"
             "  name = sym_ilaplace(\"expr\",\"s\",\"t\") inverse Laplace transform s-domain to time\n"
+            "  name = sym_mellin(\"expr\",\"t\",\"s\") Mellin transform t-domain to s-domain\n"
+            "  name = sym_imellin(\"expr\",\"s\",\"t\") inverse Mellin transform s-domain to t\n"
             "  name = sym_fourier(\"expr\",\"t\",\"omega\") Fourier transform time to frequency domain\n"
             "  name = sym_ifourier(\"expr\",\"omega\",\"t\") inverse Fourier transform frequency to time\n"
             "  name = sym_ztransform(\"expr\",\"n\",\"z\") Z-transform discrete sequence to z-domain\n"
@@ -14041,7 +14052,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  heun_g(a,q,alpha,beta,gamma,delta,z), painleve1(x,y0,yp0)\n"
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
-            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\")\n"
+            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\")\n"
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42), bfgs(\"(x0-3)*(x0-3)\", [0])\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
@@ -18054,7 +18065,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     }
     if (std::regex_match(cmd, match, ternary)) {
         const std::string fn = lower(match[1].str());
-        if (fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_fourier" ||
+        if (fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_mellin" || fn == "sym_imellin" ||
+            fn == "sym_fourier" ||
             fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform" ||
             fn == "sym_dsolve") {
             const std::string arg_a = trim(match[2].str());
@@ -18065,6 +18077,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_laplace);
             } else if (fn == "sym_ilaplace") {
                 value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_ilaplace);
+            } else if (fn == "sym_mellin") {
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_mellin);
+            } else if (fn == "sym_imellin") {
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_imellin);
             } else if (fn == "sym_fourier") {
                 value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_fourier);
             } else if (fn == "sym_ifourier") {

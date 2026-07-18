@@ -100,6 +100,11 @@ bool match_sub_var_minus_const(const SymExpr& expr, const std::string& var, doub
            try_get_const_value(*expr.right, a);
 }
 
+bool match_add_var_plus_const(const SymExpr& expr, const std::string& var, double& a) {
+    return expr.op == SymOp::Add && expr.left && expr.right && is_bare_var(*expr.left, var) &&
+           try_get_const_value(*expr.right, a);
+}
+
 bool match_s2_plus_a2(const SymExpr& expr, const std::string& s, double& a) {
     if (expr.op != SymOp::Add || !expr.left || !expr.right) {
         return false;
@@ -134,6 +139,83 @@ SymExpr sym_laplace_unsupported(const SymExpr& expr, const std::string& t) {
 
 SymExpr sym_ilaplace_unsupported(const SymExpr& expr, const std::string& s) {
     return sym_deriv(clone_expr(expr), s);
+}
+
+SymExpr sym_mellin_unsupported(const SymExpr& expr, const std::string& t) {
+    return sym_deriv(clone_expr(expr), t);
+}
+
+SymExpr sym_imellin_unsupported(const SymExpr& expr, const std::string& s) {
+    return sym_deriv(clone_expr(expr), s);
+}
+
+constexpr int kMaxMellinPower = 8;
+
+bool match_one_over_one_plus_t(const SymExpr& expr, const std::string& t_var) {
+    if (expr.op != SymOp::Div || !expr.left || !expr.right) {
+        return false;
+    }
+    double numerator = 0.0;
+    if (!try_get_const_value(*expr.left, numerator) || numerator != 1.0) {
+        return false;
+    }
+    if (expr.right->op != SymOp::Add || !expr.right->left || !expr.right->right) {
+        return false;
+    }
+    double one = 0.0;
+    const SymExpr& left = *expr.right->left;
+    const SymExpr& right = *expr.right->right;
+    if (try_get_const_value(left, one) && one == 1.0 && is_bare_var(right, t_var)) {
+        return true;
+    }
+    if (try_get_const_value(right, one) && one == 1.0 && is_bare_var(left, t_var)) {
+        return true;
+    }
+    return false;
+}
+
+bool match_exp_neg_at(const SymExpr& expr, const std::string& t_var, double& a) {
+    if (expr.op != SymOp::Exp || !expr.left) {
+        return false;
+    }
+    const SymExpr& inner = *expr.left;
+    if (inner.op == SymOp::Neg && inner.left && match_scaled_var(*inner.left, t_var, a) && a > 0.0) {
+        return true;
+    }
+    if (match_scaled_var(inner, t_var, a) && a < 0.0) {
+        a = -a;
+        return true;
+    }
+    return false;
+}
+
+std::optional<std::pair<int, double>> match_tpow_exp_neg(const SymExpr& expr, const std::string& t_var) {
+    if (expr.op != SymOp::Mul || !expr.left || !expr.right) {
+        return std::nullopt;
+    }
+    const SymExpr* pow_part = nullptr;
+    const SymExpr* exp_part = nullptr;
+    if (expr.left->op == SymOp::Pow && expr.right->op == SymOp::Exp) {
+        pow_part = expr.left.get();
+        exp_part = expr.right.get();
+    } else if (expr.right->op == SymOp::Pow && expr.left->op == SymOp::Exp) {
+        pow_part = expr.right.get();
+        exp_part = expr.left.get();
+    } else {
+        return std::nullopt;
+    }
+    if (!is_bare_var(*pow_part->left, t_var) || pow_part->right->op != SymOp::Const) {
+        return std::nullopt;
+    }
+    int n = 0;
+    if (!is_small_nonneg_int(pow_part->right->value, n)) {
+        return std::nullopt;
+    }
+    double a = 0.0;
+    if (!match_exp_neg_at(*exp_part, t_var, a)) {
+        return std::nullopt;
+    }
+    return std::make_pair(n, a);
 }
 
 } // namespace
@@ -1045,6 +1127,157 @@ SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::strin
     }
     default:
         return sym_ilaplace_unsupported(expr, s);
+    }
+}
+
+// Supported Mellin rules (table-driven MVP, M{f}(s) = integral_0^inf t^{s-1} f(t) dt):
+//   c                    -> c / s
+//   t^a                  -> 1 / (s + a)
+//   exp(-a*t)            -> n! / a^{n+s} with n = 0
+//   t^n * exp(-a*t)      -> n! / a^{n+s}  (small int n)
+//   1 / (1 + t)          -> pi / sin(pi * s)
+// Linearity: Add, Sub, Neg, Mul with Const factor.
+// Unsupported forms return sym_deriv(expr, t) as an explicit sentinel.
+SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string& s) {
+    switch (expr.op) {
+    case SymOp::Const:
+        return sym_div(clone_expr(expr), sym_var(s));
+    case SymOp::Var:
+        if (expr.name == t) {
+            return sym_div(sym_const(1.0), sym_add(sym_var(s), sym_const(1.0)));
+        }
+        return sym_mellin_unsupported(expr, t);
+    case SymOp::Add:
+        return sym_add(
+            sym_mellin(*expr.left, t, s),
+            sym_mellin(*expr.right, t, s));
+    case SymOp::Sub:
+        return sym_sub(
+            sym_mellin(*expr.left, t, s),
+            sym_mellin(*expr.right, t, s));
+    case SymOp::Neg:
+        return sym_neg(sym_mellin(*expr.left, t, s));
+    case SymOp::Mul:
+        if (expr.left->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.left), sym_mellin(*expr.right, t, s));
+        }
+        if (expr.right->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.right), sym_mellin(*expr.left, t, s));
+        }
+        if (const auto matched = match_tpow_exp_neg(expr, t)) {
+            const int n = matched->first;
+            const double a = matched->second;
+            return sym_div(
+                sym_const(factorial_int(n)),
+                sym_pow(sym_const(a), sym_add(sym_var(s), sym_const(static_cast<double>(n)))));
+        }
+        return sym_mellin_unsupported(expr, t);
+    case SymOp::Pow:
+        if (is_bare_var(*expr.left, t) && expr.right->op == SymOp::Const) {
+            return sym_div(
+                sym_const(1.0),
+                sym_add(sym_var(s), clone_expr(*expr.right)));
+        }
+        return sym_mellin_unsupported(expr, t);
+    case SymOp::Exp: {
+        double a = 0.0;
+        if (match_exp_neg_at(expr, t, a)) {
+            return sym_div(sym_const(1.0), sym_pow(sym_const(a), sym_var(s)));
+        }
+        return sym_mellin_unsupported(expr, t);
+    }
+    case SymOp::Div:
+        if (match_one_over_one_plus_t(expr, t)) {
+            return sym_div(
+                sym_const(std::numbers::pi),
+                sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var(s))));
+        }
+        return sym_mellin_unsupported(expr, t);
+    default:
+        return sym_mellin_unsupported(expr, t);
+    }
+}
+
+// Supported inverse Mellin rules (paired with forward table):
+//   c / s                  -> c
+//   1 / (s + a)            -> t^a
+//   n! / a^{n+s}           -> t^n * exp(-a*t)
+//   pi / sin(pi * s)       -> 1 / (1 + t)
+// Linearity: Add, Sub, Neg, Mul with Const factor.
+// Unsupported forms return sym_deriv(expr, s) as an explicit sentinel.
+SymExpr sym_imellin(const SymExpr& expr, const std::string& s, const std::string& t) {
+    switch (expr.op) {
+    case SymOp::Const:
+        if (expr.value == 0.0) {
+            return sym_const(0.0);
+        }
+        return sym_imellin_unsupported(expr, s);
+    case SymOp::Add:
+        return sym_add(
+            sym_imellin(*expr.left, s, t),
+            sym_imellin(*expr.right, s, t));
+    case SymOp::Sub:
+        return sym_sub(
+            sym_imellin(*expr.left, s, t),
+            sym_imellin(*expr.right, s, t));
+    case SymOp::Neg:
+        return sym_neg(sym_imellin(*expr.left, s, t));
+    case SymOp::Mul:
+        if (expr.left->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.left), sym_imellin(*expr.right, s, t));
+        }
+        if (expr.right->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.right), sym_imellin(*expr.left, s, t));
+        }
+        return sym_imellin_unsupported(expr, s);
+    case SymOp::Div: {
+        if (!expr.left || !expr.right) {
+            return sym_imellin_unsupported(expr, s);
+        }
+        double numerator = 0.0;
+        if (!try_get_const_value(*expr.left, numerator)) {
+            return sym_imellin_unsupported(expr, s);
+        }
+        if (is_bare_var(*expr.right, s)) {
+            return sym_const(numerator);
+        }
+        if (expr.right->op == SymOp::Sin && expr.right->left &&
+            numerator == std::numbers::pi) {
+            const SymExpr& sin_arg = *expr.right->left;
+            if (sin_arg.op == SymOp::Mul && sin_arg.left && sin_arg.right &&
+                sin_arg.left->op == SymOp::Const && sin_arg.left->value == std::numbers::pi &&
+                is_bare_var(*sin_arg.right, s)) {
+                return sym_div(sym_const(1.0), sym_add(sym_const(1.0), sym_var(t)));
+            }
+        }
+        double a = 0.0;
+        if (match_add_var_plus_const(*expr.right, s, a) && numerator == 1.0) {
+            return sym_pow(sym_var(t), sym_const(a));
+        }
+        if (expr.right->op == SymOp::Pow && expr.right->left && expr.right->right &&
+            expr.right->left->op == SymOp::Const) {
+            const double base = expr.right->left->value;
+            if (base > 0.0 && is_bare_var(*expr.right->right, s) && numerator == 1.0) {
+                return sym_exp(sym_neg(sym_mul(sym_const(base), sym_var(t))));
+            }
+            if (expr.right->right->op == SymOp::Add && expr.right->right->left &&
+                is_bare_var(*expr.right->right->left, s) && expr.right->right->right &&
+                expr.right->right->right->op == SymOp::Const) {
+                const int n = static_cast<int>(expr.right->right->right->value);
+                if (n >= 0 && n <= kMaxMellinPower && numerator == factorial_int(n)) {
+                    SymExpr decay = sym_exp(sym_neg(sym_mul(sym_const(base), sym_var(t))));
+                    if (n == 0) {
+                        return decay;
+                    }
+                    return sym_mul(
+                        sym_pow(sym_var(t), sym_const(static_cast<double>(n))), std::move(decay));
+                }
+            }
+        }
+        return sym_imellin_unsupported(expr, s);
+    }
+    default:
+        return sym_imellin_unsupported(expr, s);
     }
 }
 
