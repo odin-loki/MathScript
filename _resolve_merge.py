@@ -7,7 +7,7 @@ from pathlib import Path
 def apis(s: str) -> set[str]:
     return set(
         re.findall(
-            r"(?:graph|geo|crypto|signal|mpi|stats|prob|imflip|imrotate90|threshold_binary|adapthisteq|label_components|watershed|slic|hough_|harris|shi_tomasi)[a-z0-9_]*\([^)]*\)",
+            r"(?:graph_|geo_|crypto_|signal_|mpi_|stats_|prob_|info_|im|label_|watershed|slic|hough_|harris|shi_|sqrtm|logm|tril|triu|cosm|sinm|radon|iradon|gray2rgb|impad|imtophat|imbothat|imadjust|imhist)[a-z0-9_]*\([^)]*\)",
             s,
         )
     )
@@ -31,23 +31,34 @@ def resolve(path: str) -> None:
                 "info_entropy",
                 "stats_mean",
                 "stats_friedman",
-                "prob_norm",
-                "label_components",
-                "hough_lines",
+                "imtophat",
+                "sqrtm",
+                "radon",
+                "graph_dijkstra",
+                "info_permutation",
             )
         )
         if helpish:
 
             def score(s: str) -> int:
                 keys = [
-                    "stats_friedman",
-                    "stats_levene",
-                    "label_components",
-                    "hough_lines",
-                    "prob_lognormal",
-                    "prob_weibull",
-                    "watershed",
-                    "slic",
+                    "imtophat",
+                    "imbothat",
+                    "imadjust",
+                    "imhist",
+                    "radon",
+                    "iradon",
+                    "gray2rgb",
+                    "impad",
+                    "sqrtm",
+                    "logm",
+                    "tril",
+                    "triu",
+                    "stats_arfit",
+                    "stats_partial_correlation",
+                    "graph_dijkstra",
+                    "info_permutation_entropy",
+                    "info_transfer_entropy",
                 ]
                 return sum(1 for k in keys if k in s)
 
