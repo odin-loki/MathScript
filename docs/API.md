@@ -306,6 +306,9 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `geo_bezier_eval` / `geo_catmull_rom` / `geo_bspline_eval` | Curve evaluation → 1×2 (Wave 259) |
 | `geo_bezier_deriv` / `geo_hermite_curve` | Bezier derivative / Hermite point → 1×2 (Wave 260) |
 | `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization (Wave 259) |
+| `combo_eulerian(n,k)` | Eulerian number A(n,k) (Wave 261) |
+| `combo_gray_code(n)` | Binary reflected Gray codes as 2^n×n matrix, MSB-first 0/1 rows (Wave 261) |
+| `combo_dyck_paths(n)` | All Dyck paths as Catalan×2n matrix (+1 up, -1 down steps) (Wave 261) |
 | `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` (Wave 260) |
 | `fft_goertzel(x,f,fs)` | Single-bin Goertzel DFT as 1×2 `[re,im]` (Wave 260) |
 | `bidiag(A)` / `U, B, V = bidiag(A)` | Bidiagonalization (Wave 260) |

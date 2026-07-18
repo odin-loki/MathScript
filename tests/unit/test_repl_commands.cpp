@@ -6333,6 +6333,36 @@ TEST(ReplCommandsTest, wave259_combo_bell_num) {
     expect_contains(interp, "combo_bell_num(4)", "15");
 }
 
+TEST(ReplCommandsTest, wave261_combo_eulerian) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_eulerian(n,k)");
+
+    expect_ok(interp, "eul = combo_eulerian(4, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("eul"), 11.0, 1e-9);
+
+    expect_contains(interp, "combo_eulerian(4, 1)", "11");
+}
+
+TEST(ReplCommandsTest, wave261_combo_gray_code) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_gray_code(n)");
+
+    expect_ok(interp, "g2 = combo_gray_code(2)");
+    ASSERT_GT(interp.state().matrices.count("g2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("g2").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("g2").cols(), 2u);
+}
+
+TEST(ReplCommandsTest, wave261_combo_dyck_paths) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_dyck_paths(n)");
+
+    expect_ok(interp, "d3 = combo_dyck_paths(3)");
+    ASSERT_GT(interp.state().matrices.count("d3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("d3").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("d3").cols(), 6u);
+}
+
 TEST(ReplCommandsTest, wave259_imgradient_morph) {
     Interpreter interp;
     expect_contains(interp, "help", "imgradient_morph(M[,k])");
