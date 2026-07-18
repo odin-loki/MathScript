@@ -90,3 +90,7 @@ Baseline refresh is **not** part of the default PR gate (`benchmark-linux` still
 ## Wave 231 benchmark coverage (feature wave — not profiling)
 
 Wave **231** added Google Benchmark cases for new crypto/FEM/CFD 2D hot paths in existing **`bench_crypto`**, **`bench_fem`**, and **`bench_ode_pde`** executables (**28** targets unchanged). Profiling iteration status unchanged — **FULLY COMPLETE (Waves 218–230).**
+
+## Final sign-off
+
+**Product profiling and adjustment is complete.** Twelve waves (218–230) closed code profiling, benchmark infrastructure, and baseline refresh; Wave 231 (+231b) added seven benchmark cases for new crypto/FEM/CFD paths without reopening the iteration. No further profiling or product-adjustment waves are planned — Wave 232+ is feature development only.

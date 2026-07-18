@@ -50,6 +50,12 @@ Twelve waves optimized and **certified** all identified hot paths across every `
 
 ---
 
+## Product profiling & adjustment ✅ CLOSED
+
+The profiling and product-adjustment program is **closed**. Waves **218–230** certified all hot paths, benchmark infra, and baseline refresh; Wave **231** (+ **231b**) added feature work and benchmark coverage only. **No further profiling, benchmark-infra, or product-adjustment waves.** Wave **232+** is feature work only — see `mathscript-master-plan.md` and `CHANGELOG.md`.
+
+---
+
 ## Next: Feature work (Wave 232+)
 
 | Wave | Focus |
