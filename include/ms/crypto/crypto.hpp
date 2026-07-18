@@ -19,6 +19,7 @@ constexpr std::size_t aes_gcm_tag_size = 16;
 constexpr std::size_t aes_gcm_iv_size = 12;
 constexpr std::size_t chacha20_poly1305_tag_size = 16;
 constexpr std::size_t chacha20_poly1305_nonce_size = 12;
+constexpr std::size_t x25519_key_size = 32;
 
 using Digest256 = std::array<uint8_t, sha256_digest_size>;
 using Digest512 = std::array<uint8_t, sha512_digest_size>;
@@ -87,6 +88,15 @@ std::vector<uint8_t> chacha20_poly1305_decrypt(const std::array<uint8_t, 32>& ke
                                                std::span<const uint8_t> aad,
                                                std::span<const uint8_t> ciphertext,
                                                std::span<const uint8_t> tag);
+
+struct X25519Keypair {
+    std::array<uint8_t, x25519_key_size> private_key{};
+    std::array<uint8_t, x25519_key_size> public_key{};
+};
+
+X25519Keypair x25519_keypair(std::span<const uint8_t> private_key);
+std::array<uint8_t, x25519_key_size> x25519_shared_secret(std::span<const uint8_t> private_key,
+                                                          std::span<const uint8_t> peer_public_key);
 
 } // namespace crypto
 } // namespace ms
