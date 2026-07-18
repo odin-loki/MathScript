@@ -324,6 +324,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `cg(A,b)` | Conjugate gradient iterative solve (Wave 261) |
 | `gmres(A,b)` | GMRES iterative solve (Wave 261) |
 | `jacobi(A,b)` | Jacobi iterative solve (Wave 261) |
+| `lsq(A,b)` | Least-squares solve via dense `ms::lsq` (Wave 262) |
+| `diag(v)` | Diagonal matrix from column vector `v` (Wave 262) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |

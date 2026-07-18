@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 261 ✅ COMPLETE — **419 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 262 ✅ COMPLETE — **420 CTest suites** on `main`)
 
 ---
 
@@ -372,7 +372,18 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 262+) — deferred
+## Wave 262 ✅ COMPLETE (lsq/diag linalg REPL)
+
+| Area | Delivered |
+|------|-----------|
+| Linalg REPL | `lsq(A,b)`; `diag(v)` column vector → diagonal matrix |
+| Tests | `integration_repl_wave262_pipeline` |
+
+**420 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–262** closed for this incremental batch.
+
+---
+
+## Next (Wave 263+) — deferred
 
 | Item | Notes |
 |------|--------|

@@ -81,6 +81,7 @@ QStringList repl_command_list() {
         // Linear algebra
         QStringLiteral("matmul"),
         QStringLiteral("solve"),
+        QStringLiteral("lsq"),
         QStringLiteral("bicgstab"),
         QStringLiteral("cg"),
         QStringLiteral("gmres"),
@@ -103,6 +104,7 @@ QStringList repl_command_list() {
         QStringLiteral("logm"),
         QStringLiteral("tril"),
         QStringLiteral("triu"),
+        QStringLiteral("diag"),
         QStringLiteral("cosm"),
         QStringLiteral("sinm"),
         QStringLiteral("lu"),

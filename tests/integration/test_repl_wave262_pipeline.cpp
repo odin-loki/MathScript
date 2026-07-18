@@ -1,0 +1,66 @@
+// MathScript Integration Tests: REPL Interpreter – Wave 262 Pipeline
+//
+// lsq and diag REPL bindings from ms::linalg. Smoke: Wave 261 eig/ldl on main.
+
+#include <gtest/gtest.h>
+#include <cmath>
+#include <string>
+
+#include "ms/interp/repl_engine.hpp"
+
+using namespace ms::interp;
+
+namespace {
+
+void expect_ok(Interpreter& interp, const std::string& cmd) {
+    const auto result = interp.execute(cmd);
+    ASSERT_TRUE(result.has_value()) << cmd << " error";
+}
+
+void expect_contains(Interpreter& interp, const std::string& cmd, const std::string& needle) {
+    const auto result = interp.execute(cmd);
+    ASSERT_TRUE(result.has_value()) << cmd;
+    EXPECT_NE(result->find(needle), std::string::npos) << cmd << " output: " << *result;
+}
+
+} // namespace
+
+TEST(ReplWave262Pipeline, Lsq) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [0, 1; 1, 1; 2, 1; 3, 1]");
+    expect_ok(interp, "b = [1; 3; 5; 7]");
+    expect_contains(interp, "lsq(A, b)", "x =");
+    expect_ok(interp, "x = lsq(A, b)");
+    ASSERT_GT(interp.state().matrices.count("x"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("x").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("x").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("x")(0, 0), 2.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("x")(1, 0), 1.0, 1e-5);
+    expect_contains(interp, "help", "lsq(A");
+}
+
+TEST(ReplWave262Pipeline, Diag) {
+    Interpreter interp;
+
+    expect_ok(interp, "v = [2; 3; 5]");
+    expect_contains(interp, "diag(v)", "D =");
+    expect_ok(interp, "D = diag(v)");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("D").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("D")(0, 0), 2.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("D")(1, 1), 3.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("D")(2, 2), 5.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("D")(0, 1), 0.0, 1e-12);
+    expect_contains(interp, "help", "diag(v)");
+}
+
+TEST(ReplWave262Pipeline, EigSmoke) {
+    Interpreter interp;
+
+    expect_ok(interp, "Ag = [4, 1; 2, 3]");
+    expect_ok(interp, "Dg, Vg = eig(Ag)");
+    ASSERT_GT(interp.state().matrices.count("Dg"), 0u);
+    expect_contains(interp, "help", "eig(A)");
+}
