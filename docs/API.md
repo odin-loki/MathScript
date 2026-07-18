@@ -315,9 +315,13 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_random_bytes(n)` | Random bytes as hex (MVP; Wave 248) |
 | `crypto_sha256(hex_data)` / `crypto_hmac_sha256(hex_key,hex_data)` | SHA-256 / HMAC-SHA256 hex digests (Wave 249) |
 | `crypto_sha512(hex_data)` | SHA-512 hex digest (Wave 250) |
+| `crypto_aes256_encrypt_block(key_hex,block_hex)` | AES-256 ECB single block (Wave 251) |
 | `cuda_nccl_available()` / `cuda_nccl_comm_size()` / `cuda_nccl_device_count()` | NCCL stub introspection (Wave 250) |
+| `mpi_allreduce_max(x)` / `mpi_allreduce_min(x)` | MPI stub max/min (Wave 251) |
 | `signal_coherence(x,y,fs,nperseg)` | Magnitude-squared coherence Nx2 (Wave 250) |
-| `signal_filtfilt(b,a,x)` | Zero-phase filtfilt (Wave 250) |
+| `signal_filtfilt(b,a,x)` / `signal_filter(b,a,x)` | Zero-phase / causal IIR apply (Wave 250/251) |
+| `signal_cheby1(order,rp_db,cutoff,fs[,type])` | Chebyshev I coeffs 2×N (Wave 251) |
+| `geo_convex_hull(P)` | Convex hull vertices K×2 (Wave 251) |
 | `dist_lsqr(A, b)` | Distributed LSQR (stub gather; Wave 249) |
 | `signal_resample(x,p,q)` / `signal_decimate(x,q)` / `signal_interpolate(x,p)` | Rational resampling (Wave 249) |
 | `geo_clip_polygon(A,B)` | Clip Nx2 subject against Mx2 convex window → Kx2 (Wave 248) |

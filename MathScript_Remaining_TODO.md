@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 250 ✅ COMPLETE — **408 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 251 ✅ COMPLETE — **409 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–250 COMPLETE (summary)
+## Feature waves ✅ 231–251 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -59,6 +59,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **248** | NCCL `broadcast`; `constant_time_eq`/`random_bytes`; geo clip + upsample/downsample REPL; GUI Indent; Wave 247 benches |
 | **249** | NCCL `reduce`; `dist_lsqr`; SHA-256 REPL; signal resample/decimate/interpolate; GUI Move Line; Wave 248 benches |
 | **250** | `crypto_sha512`; NCCL introspect; coherence/filtfilt; GUI Delete Line; `BM_DistLsqr`; wave250 pipeline |
+| **251** | `signal_filter`/`cheby1`; MPI max/min; `geo_convex_hull`; Select All/Undo; AES-256 block; wave251 pipeline |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -226,11 +227,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 | GUI | Delete Line |
 | Benchmarks | `BM_DistLsqr_2x2` |
 
-**408 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–250** closed for this incremental batch.
+## Wave 251 ✅ COMPLETE (signal filter/cheby1, MPI max/min, geo hull, GUI select/undo, AES-256 block)
+
+| Area | Deliverable |
+|------|-------------|
+| Signal REPL | `signal_filter`, `signal_cheby1` |
+| MPI REPL | `mpi_allreduce_max` / `mpi_allreduce_min` |
+| Geo REPL | `geo_convex_hull` vertices |
+| GUI | Select All, Undo, Redo |
+| Crypto REPL | `crypto_aes256_encrypt_block` + wave251 pipeline |
+| Benchmarks | `BM_CudaNcclCommSize` |
+
+**409 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–251** closed for this incremental batch.
 
 ---
 
-## Next (Wave 251+) — deferred
+## Next (Wave 252+) — deferred
 
 | Item | Notes |
 |------|--------|

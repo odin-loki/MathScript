@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 251 — signal filter/cheby1, MPI max/min, geo hull, GUI select/undo, AES-256 block) ✅ COMPLETE
+
+Twenty-first feature wave after Wave 250. Parallel Composer 2.5 worktrees merged to `main`: `signal_filter` / `signal_cheby1`, `mpi_allreduce_max`/`min`, `geo_convex_hull`, GUI Select All/Undo/Redo, `crypto_aes256_encrypt_block`, wave251 pipeline, and NCCL comm-size bench.
+
+### Added (Wave 251)
+- **Signal REPL** — `signal_filter`, `signal_cheby1`.
+- **MPI REPL** — `mpi_allreduce_max`, `mpi_allreduce_min`.
+- **Geo REPL** — `geo_convex_hull` (Kx2 vertices).
+- **GUI** — Select All, Undo, Redo.
+- **Crypto REPL** — `crypto_aes256_encrypt_block`.
+- **Tests** — `integration_repl_wave251_pipeline`.
+- **Benchmarks** — `BM_CudaNcclCommSize`.
+
+### Docs (Wave 251)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 251 sync; **409** CTest suites.
+
+**409 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 250 — crypto SHA-512, NCCL introspect, coherence/filtfilt, GUI delete line, benches) ✅ COMPLETE
 
 Twentieth feature wave after Wave 249. Parallel Composer 2.5 worktrees merged to `main`: `crypto_sha512`, NCCL introspect REPL, `signal_coherence` / `signal_filtfilt`, GUI Delete Line, `BM_DistLsqr` / `BM_CudaReduce`, and wave250 pipeline.
