@@ -14,6 +14,9 @@ constexpr double k_inv_sqrt3 = 0.5773502691896257645091488;
 constexpr double k_gauss_xi[2] = {-k_inv_sqrt3, k_inv_sqrt3};
 constexpr double k_gauss_w[2] = {1.0, 1.0};
 
+constexpr double k_tri_quad_xi[3] = {1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0};
+constexpr double k_tri_quad_eta[3] = {1.0 / 6.0, 1.0 / 6.0, 2.0 / 3.0};
+
 void validate_dirichlet(
     const ColMatrix<double>& K,
     const ColMatrix<double>& f,
@@ -128,6 +131,50 @@ Mesh1D mesh1d(double a, double b, std::size_t n_elements) {
     return mesh;
 }
 
+Mesh2D mesh2d_rectangular(
+    double x0, double y0, double x1, double y1, std::size_t nx, std::size_t ny) {
+    if (nx == 0 || ny == 0) {
+        throw std::invalid_argument("mesh2d_rectangular: nx and ny must be positive");
+    }
+    if (!(x0 < x1) || !(y0 < y1)) {
+        throw std::invalid_argument("mesh2d_rectangular: require x0 < x1 and y0 < y1");
+    }
+
+    Mesh2D mesh;
+    const std::size_t n_nodes_x = nx + 1;
+    const std::size_t n_nodes_y = ny + 1;
+    mesh.nodes.resize(n_nodes_x * n_nodes_y);
+    mesh.triangles.resize(2 * nx * ny);
+
+    const double hx = (x1 - x0) / static_cast<double>(nx);
+    const double hy = (y1 - y0) / static_cast<double>(ny);
+
+    for (std::size_t j = 0; j < n_nodes_y; ++j) {
+        for (std::size_t i = 0; i < n_nodes_x; ++i) {
+            mesh.nodes[i + j * n_nodes_x] = {
+                x0 + static_cast<double>(i) * hx,
+                y0 + static_cast<double>(j) * hy};
+        }
+    }
+
+    auto node_index = [n_nodes_x](std::size_t i, std::size_t j) {
+        return i + j * n_nodes_x;
+    };
+
+    std::size_t tri = 0;
+    for (std::size_t j = 0; j < ny; ++j) {
+        for (std::size_t i = 0; i < nx; ++i) {
+            const std::size_t n00 = node_index(i, j);
+            const std::size_t n10 = node_index(i + 1, j);
+            const std::size_t n01 = node_index(i, j + 1);
+            const std::size_t n11 = node_index(i + 1, j + 1);
+            mesh.triangles[tri++] = {n00, n10, n01};
+            mesh.triangles[tri++] = {n10, n11, n01};
+        }
+    }
+    return mesh;
+}
+
 std::array<double, 2> LagrangeBasis::evaluate(double xi) const {
     if (degree != 1) {
         throw std::invalid_argument("LagrangeBasis::evaluate: only P1 supported");
@@ -203,6 +250,93 @@ ColMatrix<double> assemble_load_1d(
             const auto N = basis.evaluate(xi_ref);
             load(n0, 0) += weight * f(x) * N[0];
             load(n1, 0) += weight * f(x) * N[1];
+        }
+    }
+    return load;
+}
+
+ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh) {
+    const std::size_t n_nodes = mesh.nodes.size();
+    if (n_nodes < 3 || mesh.triangles.empty()) {
+        throw std::invalid_argument("assemble_stiffness_2d: mesh is too small");
+    }
+
+    ColMatrix<double> K(n_nodes, n_nodes, 0.0);
+    for (const auto& tri : mesh.triangles) {
+        const std::size_t n0 = tri[0];
+        const std::size_t n1 = tri[1];
+        const std::size_t n2 = tri[2];
+        if (n0 >= n_nodes || n1 >= n_nodes || n2 >= n_nodes) {
+            throw std::invalid_argument("assemble_stiffness_2d: invalid connectivity");
+        }
+
+        const double x0 = mesh.nodes[n0][0];
+        const double y0 = mesh.nodes[n0][1];
+        const double x1 = mesh.nodes[n1][0];
+        const double y1 = mesh.nodes[n1][1];
+        const double x2 = mesh.nodes[n2][0];
+        const double y2 = mesh.nodes[n2][1];
+
+        const double area =
+            0.5 * ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
+        if (std::abs(area) <= 0.0) {
+            throw std::invalid_argument("assemble_stiffness_2d: degenerate triangle");
+        }
+
+        const double b[3] = {y1 - y2, y2 - y0, y0 - y1};
+        const double c[3] = {x2 - x1, x0 - x2, x1 - x0};
+        const std::size_t nodes[3] = {n0, n1, n2};
+
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                const double ke = (b[i] * b[j] + c[i] * c[j]) / (4.0 * area);
+                K(nodes[i], nodes[j]) += ke;
+            }
+        }
+    }
+    return K;
+}
+
+ColMatrix<double> assemble_load_2d(
+    const Mesh2D& mesh,
+    const std::function<double(double, double)>& f) {
+    const std::size_t n_nodes = mesh.nodes.size();
+    if (n_nodes < 3 || mesh.triangles.empty()) {
+        throw std::invalid_argument("assemble_load_2d: mesh is too small");
+    }
+
+    ColMatrix<double> load(n_nodes, 1, 0.0);
+    for (const auto& tri : mesh.triangles) {
+        const std::size_t n0 = tri[0];
+        const std::size_t n1 = tri[1];
+        const std::size_t n2 = tri[2];
+        const double x0 = mesh.nodes[n0][0];
+        const double y0 = mesh.nodes[n0][1];
+        const double x1 = mesh.nodes[n1][0];
+        const double y1 = mesh.nodes[n1][1];
+        const double x2 = mesh.nodes[n2][0];
+        const double y2 = mesh.nodes[n2][1];
+
+        const double area =
+            0.5 * ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
+        if (std::abs(area) <= 0.0) {
+            throw std::invalid_argument("assemble_load_2d: degenerate triangle");
+        }
+
+        const std::size_t nodes[3] = {n0, n1, n2};
+        const double weight = std::abs(area) / 3.0;
+
+        for (int q = 0; q < 3; ++q) {
+            const double xi = k_tri_quad_xi[q];
+            const double eta = k_tri_quad_eta[q];
+            const double zeta = 1.0 - xi - eta;
+            const double x = x0 * zeta + x1 * xi + x2 * eta;
+            const double y = y0 * zeta + y1 * xi + y2 * eta;
+            const double fq = f(x, y);
+            const double N[3] = {zeta, xi, eta};
+            for (int i = 0; i < 3; ++i) {
+                load(nodes[i], 0) += weight * fq * N[i];
+            }
         }
     }
     return load;

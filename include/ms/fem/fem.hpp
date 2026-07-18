@@ -19,6 +19,17 @@ struct Mesh1D {
 /// Uniform 1D mesh on [a, b] with @p n_elements elements (n_elements + 1 nodes).
 Mesh1D mesh1d(double a, double b, std::size_t n_elements);
 
+struct Mesh2D {
+    /// Node coordinates as (x, y).
+    std::vector<std::array<double, 2>> nodes;
+    /// Each triangle connects three node indices.
+    std::vector<std::array<std::size_t, 3>> triangles;
+};
+
+/// Structured triangular mesh on [x0, x1] x [y0, y1] with @p nx by @p ny cells.
+Mesh2D mesh2d_rectangular(
+    double x0, double y0, double x1, double y1, std::size_t nx, std::size_t ny);
+
 /// P1 Lagrange shape functions on the reference element [0, 1].
 struct LagrangeBasis {
     int degree = 1;
@@ -40,6 +51,14 @@ ColMatrix<double> assemble_stiffness_1d(const Mesh1D& mesh);
 ColMatrix<double> assemble_load_1d(
     const Mesh1D& mesh,
     const std::function<double(double)>& f);
+
+/// Assemble the global stiffness matrix for -Laplacian(u) on a 2D P1 mesh.
+ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh);
+
+/// Assemble the global load vector for integral(f * phi_i) dA (3-point quadrature).
+ColMatrix<double> assemble_load_2d(
+    const Mesh2D& mesh,
+    const std::function<double(double, double)>& f);
 
 /// Apply Dirichlet boundary conditions by modifying @p K and @p f in place.
 void apply_dirichlet(

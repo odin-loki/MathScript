@@ -152,3 +152,130 @@ TEST(FemSolve, linear_exact_on_uniform_mesh) {
         EXPECT_NEAR((*u)(i, 0), mesh.nodes[i], 1e-10);
     }
 }
+
+namespace {
+
+std::vector<std::size_t> rectangular_boundary_nodes(std::size_t nx, std::size_t ny) {
+    const std::size_t n_nodes_x = nx + 1;
+    std::vector<std::size_t> boundary;
+    for (std::size_t j = 0; j <= ny; ++j) {
+        for (std::size_t i = 0; i <= nx; ++i) {
+            if (i == 0 || i == nx || j == 0 || j == ny) {
+                boundary.push_back(i + j * n_nodes_x);
+            }
+        }
+    }
+    return boundary;
+}
+
+Mesh2D single_right_triangle() {
+    Mesh2D mesh;
+    mesh.nodes = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    mesh.triangles = {{0, 1, 2}};
+    return mesh;
+}
+
+} // namespace
+
+TEST(FemMesh2D, rectangular_nodes_and_triangles) {
+    const Mesh2D mesh = mesh2d_rectangular(0.0, 0.0, 2.0, 1.0, 2, 1);
+    ASSERT_EQ(mesh.nodes.size(), 6u);
+    ASSERT_EQ(mesh.triangles.size(), 4u);
+    EXPECT_NEAR(mesh.nodes[0][0], 0.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[0][1], 0.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[2][0], 2.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[5][0], 2.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[5][1], 1.0, 1e-14);
+    EXPECT_EQ(mesh.triangles[0][0], 0u);
+    EXPECT_EQ(mesh.triangles[0][1], 1u);
+    EXPECT_EQ(mesh.triangles[0][2], 3u);
+}
+
+TEST(FemMesh2D, rejects_invalid_domain) {
+    EXPECT_THROW(mesh2d_rectangular(1.0, 0.0, 0.0, 1.0, 2, 2), std::invalid_argument);
+    EXPECT_THROW(mesh2d_rectangular(0.0, 1.0, 1.0, 0.0, 2, 2), std::invalid_argument);
+    EXPECT_THROW(mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, 0, 2), std::invalid_argument);
+    EXPECT_THROW(mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, 2, 0), std::invalid_argument);
+}
+
+TEST(FemStiffness2D, single_triangle_pattern) {
+    const Mesh2D mesh = single_right_triangle();
+    const ColMatrix<double> K = assemble_stiffness_2d(mesh);
+    ASSERT_EQ(K.rows(), 3u);
+    EXPECT_NEAR(K(0, 0), 1.0, 1e-14);
+    EXPECT_NEAR(K(1, 1), 0.5, 1e-14);
+    EXPECT_NEAR(K(2, 2), 0.5, 1e-14);
+    EXPECT_NEAR(K(0, 1), -0.5, 1e-14);
+    EXPECT_NEAR(K(0, 2), -0.5, 1e-14);
+    EXPECT_NEAR(K(1, 2), 0.0, 1e-14);
+}
+
+TEST(FemStiffness2D, symmetry) {
+    const Mesh2D mesh = mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, 3, 3);
+    const ColMatrix<double> K = assemble_stiffness_2d(mesh);
+    for (std::size_t i = 0; i < K.rows(); ++i) {
+        for (std::size_t j = 0; j < K.cols(); ++j) {
+            EXPECT_NEAR(K(i, j), K(j, i), 1e-14);
+        }
+    }
+}
+
+TEST(FemLoad2D, integrates_constant_source) {
+    const Mesh2D mesh = mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, 2, 2);
+    const ColMatrix<double> load = assemble_load_2d(mesh, [](double, double) { return 1.0; });
+    double total = 0.0;
+    for (std::size_t i = 0; i < load.rows(); ++i) {
+        total += load(i, 0);
+    }
+    EXPECT_NEAR(total, 1.0, 1e-12);
+}
+
+TEST(FemSolve2D, poisson_sin_pi) {
+    constexpr std::size_t nx = 20;
+    constexpr std::size_t ny = 20;
+    const Mesh2D mesh = mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, nx, ny);
+    ColMatrix<double> K = assemble_stiffness_2d(mesh);
+    ColMatrix<double> f = assemble_load_2d(mesh, [](double x, double y) {
+        return 2.0 * M_PI * M_PI * std::sin(M_PI * x) * std::sin(M_PI * y);
+    });
+
+    const auto boundary = rectangular_boundary_nodes(nx, ny);
+    std::vector<double> boundary_values(boundary.size(), 0.0);
+    apply_dirichlet(K, f, boundary, boundary_values);
+
+    const auto u = solve_fem(K, f);
+    ASSERT_TRUE(u.has_value());
+
+    for (std::size_t i = 0; i < mesh.nodes.size(); ++i) {
+        const double x = mesh.nodes[i][0];
+        const double y = mesh.nodes[i][1];
+        EXPECT_NEAR((*u)(i, 0), std::sin(M_PI * x) * std::sin(M_PI * y), 5e-2);
+    }
+}
+
+TEST(FemSolve2D, linear_exact_on_uniform_mesh) {
+    constexpr std::size_t nx = 4;
+    constexpr std::size_t ny = 4;
+    const Mesh2D mesh = mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, nx, ny);
+    ColMatrix<double> K = assemble_stiffness_2d(mesh);
+    ColMatrix<double> f = assemble_load_2d(mesh, [](double, double) { return 0.0; });
+
+    const auto boundary = rectangular_boundary_nodes(nx, ny);
+    std::vector<double> boundary_values;
+    boundary_values.reserve(boundary.size());
+    for (std::size_t idx : boundary) {
+        const double x = mesh.nodes[idx][0];
+        const double y = mesh.nodes[idx][1];
+        boundary_values.push_back(x + y);
+    }
+    apply_dirichlet(K, f, boundary, boundary_values);
+
+    const auto u = solve_fem(K, f);
+    ASSERT_TRUE(u.has_value());
+
+    for (std::size_t i = 0; i < mesh.nodes.size(); ++i) {
+        const double x = mesh.nodes[i][0];
+        const double y = mesh.nodes[i][1];
+        EXPECT_NEAR((*u)(i, 0), x + y, 1e-10);
+    }
+}
