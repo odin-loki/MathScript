@@ -45,6 +45,16 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
     expect_ok(interp, "z = mpi_allreduce_sum(0)");
     EXPECT_NEAR(interp.state().scalars.at("z"), 0.0, 1e-9);
 
+    // allreduce_max/min identity on single-rank stub
+    expect_ok(interp, "mx = mpi_allreduce_max(3.5)");
+    EXPECT_NEAR(interp.state().scalars.at("mx"), 3.5, 1e-9);
+    expect_ok(interp, "mn = mpi_allreduce_min(-2.25)");
+    EXPECT_NEAR(interp.state().scalars.at("mn"), -2.25, 1e-9);
+    expect_ok(interp, "z2 = mpi_allreduce_max(0)");
+    EXPECT_NEAR(interp.state().scalars.at("z2"), 0.0, 1e-9);
+    expect_ok(interp, "z3 = mpi_allreduce_min(0)");
+    EXPECT_NEAR(interp.state().scalars.at("z3"), 0.0, 1e-9);
+
     // dist_solve wraps ms::distributed::solve (stub path: local gather + solve)
     // 4x + y = 1, x + 3y = 2  => x=1/11, y=7/11
     expect_ok(interp, "A = [4, 1; 1, 3]");

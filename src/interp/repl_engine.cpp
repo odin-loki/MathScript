@@ -11269,6 +11269,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "mpi_allreduce_sum") {
             return ms::distributed::allreduce_sum(repl_mpi_context(), arg);
         }
+        if (fn == "mpi_allreduce_max") {
+            return ms::distributed::allreduce_max(repl_mpi_context(), arg);
+        }
+        if (fn == "mpi_allreduce_min") {
+            return ms::distributed::allreduce_min(repl_mpi_context(), arg);
+        }
         if (fn == "cuda_allreduce_sum") {
             return ms::cuda::allreduce_sum(arg);
         }
@@ -14931,7 +14937,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = dist_lsmr(A, B) distributed LSMR (gather + lsmr; square A)\n"
             "  name = dist_lsqr(A, B) distributed LSQR (gather + lsqr; square A)\n"
             "  name = dist_matmul(A, B)  distributed matrix multiply (row-block local GEMM)\n"
-            "  mpi_rank(), mpi_size(), mpi_allreduce_sum(x)  MPI rank/size/allreduce (stub: rank=0, size=1)\n"
+            "  mpi_rank(), mpi_size(), mpi_allreduce_sum/max/min(x)  MPI rank/size/allreduce (stub: rank=0, size=1)\n"
             "  cuda_allreduce_sum(x)  NCCL all-reduce sum (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_allreduce_max(x)  NCCL all-reduce max (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_allreduce_min(x)  NCCL all-reduce min (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
