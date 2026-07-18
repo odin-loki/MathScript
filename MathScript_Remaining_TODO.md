@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 253 ✅ COMPLETE — **411 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 254 ✅ COMPLETE — **412 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–253 COMPLETE (summary)
+## Feature waves ✅ 231–254 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -62,6 +62,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **251** | `signal_filter`/`cheby1`; MPI max/min; `geo_convex_hull`; Select All/Undo; AES-256 block; wave251 pipeline |
 | **252** | `sosfilt`/`firwin`/`savgol`; `mpi_barrier`; AES-256 decrypt; GUI Replace All; wave252 pipeline |
 | **253** | xcorr/xcov/autocorr; median_filter; conv2; AES-128 decrypt; NCCL allgather; matching brace |
+| **254** | deconv/LMS/CZT; `mpi_bcast`; geo AABB; GUI Add Selection; wave254 pipeline |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -260,9 +261,21 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **411 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–253** closed for this incremental batch.
 
+## Wave 254 ✅ COMPLETE (deconv/LMS/CZT, mpi_bcast, geo AABB, Add Selection)
+
+| Area | Deliverable |
+|------|-------------|
+| Signal REPL | `signal_deconv`, `signal_lms`/`signal_lms_weights`, `signal_czt`/`signal_czt_zoom` |
+| MPI REPL | `mpi_bcast` |
+| Geo REPL | `geo_point_in_aabb`, `geo_overlap_aabb` |
+| GUI | Add Selection for Next Occurrence (Ctrl+D) |
+| Tests | `integration_repl_wave254_pipeline` |
+
+**412 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–254** closed for this incremental batch.
+
 ---
 
-## Next (Wave 254+) — deferred
+## Next (Wave 255+) — deferred
 
 | Item | Notes |
 |------|--------|

@@ -273,6 +273,12 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_chacha20_poly1305_encrypt(key_hex, nonce_hex, aad_hex, plaintext_hex)` | ChaCha20-Poly1305 seal; returns hex `ciphertext:tag` (Wave 235) |
 | `crypto_chacha20_poly1305_decrypt(key_hex, nonce_hex, aad_hex, ciphertext_hex, tag_hex)` | ChaCha20-Poly1305 open; returns hex plaintext (Wave 235) |
 | `crypto_x25519_shared(priv_hex, pub_hex)` | X25519 ECDH shared secret as hex (Wave 236) |
+| `mpi_bcast(x)` | MPI stub broadcast from root 0 (identity when stub; Wave 254) |
+| `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
+| `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
+| `signal_deconv(y,b)` | Polynomial deconvolution of column vectors (Wave 254) |
+| `signal_lms(x,d,filter_length,mu)` / `signal_lms_weights(...)` | LMS adaptive filter output/error or final weights (Wave 254) |
+| `signal_czt(x,m,w_re,w_im,a_re,a_im)` / `signal_czt_zoom(...)` | Chirp Z-Transform / zoom-FFT as M×2 `[re,im]` (Wave 254) |
 | `crypto_hkdf_sha256(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA256 extract/expand; returns `len` bytes as hex (Wave 238) |
 | `crypto_pbkdf2_sha256(hex_pass, hex_salt, iter, dklen)` | PBKDF2-HMAC-SHA256; returns `dklen` bytes as hex (Wave 239) |
 | `crypto_ed25519_keypair(hex_seed)` | Ed25519 public key from 32-byte seed (hex out; Wave 240) |

@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 254 — deconv/LMS/CZT, mpi_bcast, geo AABB, Add Selection) ✅ COMPLETE
+
+Twenty-fourth feature wave after Wave 253. Parallel Composer 2.5 worktrees merged to `main`: `signal_deconv` / `signal_lms` / `signal_czt`, `mpi_bcast`, geo AABB queries, GUI Add Selection for Next Occurrence, and wave254 pipeline.
+
+### Added (Wave 254)
+- **Signal REPL** — `signal_deconv`, `signal_lms` / `signal_lms_weights`, `signal_czt` / `signal_czt_zoom`.
+- **MPI REPL** — `mpi_bcast(x)` (stub identity).
+- **Geo REPL** — `geo_point_in_aabb`, `geo_overlap_aabb`.
+- **GUI** — Add Selection for Next Occurrence (Ctrl+D multi-highlight).
+- **Tests** — `integration_repl_wave254_pipeline`.
+
+### Docs (Wave 254)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 254 sync; **412** CTest suites.
+
+**412 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 253 — xcorr/median/conv2, AES-128 decrypt, NCCL allgather, matching brace) ✅ COMPLETE
 
 Twenty-third feature wave after Wave 252. Parallel Composer 2.5 worktrees merged to `main`: signal xcorr/xcov/autocorr, median_filter, conv2, AES-128 decrypt, NCCL stub allgather, GUI Go to Matching Brace, and wave253 pipeline.
