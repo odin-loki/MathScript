@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 256 ✅ COMPLETE — **414 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 257 ✅ COMPLETE — **415 CTest suites** on `main`)
 
 ---
 
@@ -300,9 +300,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **414 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–256** closed for this incremental batch.
 
+## Wave 257 ✅ COMPLETE (stats inference/variance, image segment/Hough, prob ext, Sort Lines)
+
+| Area | Deliverable |
+|------|-------------|
+| Stats REPL | friedman/ks_2sample/jarque_bera/ljung_box; levene/bartlett/fligner |
+| Image REPL | label_components/watershed/slic; hough_lines/circles; harris/shi_tomasi |
+| Prob REPL | extended PDF/CDF/PPF + beta/gamma/f CDF |
+| GUI | Sort Lines |
+| Interp | `assign_matrix_call_tail2` (MSVC C1061) |
+| Tests | `integration_repl_wave257_pipeline` |
+
+**415 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–257** closed for this incremental batch.
+
 ---
 
-## Next (Wave 257+) — deferred
+## Next (Wave 258+) — deferred
 
 | Item | Notes |
 |------|--------|

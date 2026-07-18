@@ -285,6 +285,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `graph_normalised_laplacian(A)` / `graph_modularity(A,C)` / `graph_eccentricity(A)` / `graph_is_strongly_connected(A)` | Structure metrics (Wave 256) |
 | `geo_kdtree_3d_nearest` / `geo_intersect_ray_tri` / `geo_dist_point_plane` / `geo_dist_point_seg3d` | 3D geo queries (Wave 256) |
 | `imflip` / `imrotate90` / `threshold_binary` / `adapthisteq` | Image transforms (Wave 256) |
+| `stats_friedman` / `stats_ks_2sample` / `stats_jarque_bera` / `stats_ljung_box` | Nonparametric / normality / residual tests (Wave 257) |
+| `stats_levene` / `stats_bartlett` / `stats_fligner` | Variance homogeneity tests (Wave 257) |
+| `label_components` / `watershed` / `slic` | Segmentation (Wave 257) |
+| `hough_lines` / `hough_circles` / `harris` / `shi_tomasi` | Hough + corners (Wave 257) |
+| `prob_*_pdf/cdf/ppf` extensions | Lognormal/weibull/etc. + beta/gamma/f CDF (Wave 257) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
 | `signal_deconv(y,b)` | Polynomial deconvolution of column vectors (Wave 254) |

@@ -5,9 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## [Unreleased] - Wave 257 (WIP)
+## [1.0.0] - 2026-07-19 (Wave 257 — stats inference/variance, image segment/Hough, prob ext, Sort Lines) ✅ COMPLETE
 
-- **Tests** — `integration_repl_wave257_pipeline` (smoke Wave 256 stats/graph/geo/image REPL APIs).
+Twenty-seventh feature wave after Wave 256. Parallel Composer 2.5 worktrees merged to `main`: extended stats hypothesis/variance tests, image segmentation + Hough/corners, probability PDF/CDF/PPF extensions, GUI Sort Lines, MSVC C1061 `assign_matrix_call_tail2` split, and wave257 pipeline.
+
+### Added (Wave 257)
+- **Stats REPL** — `stats_friedman` / `stats_ks_2sample` / `stats_jarque_bera` / `stats_ljung_box`; `stats_levene` / `stats_bartlett` / `stats_fligner`.
+- **Image REPL** — `label_components` / `watershed` / `slic`; `hough_lines` / `hough_circles` / `harris` / `shi_tomasi`.
+- **Prob REPL** — extended `prob_*` PDF/CDF/PPF (lognormal/weibull/etc.) + beta/gamma/f CDF.
+- **GUI** — Sort Lines (Ctrl+Shift+L).
+- **Interp** — `assign_matrix_call_tail2` (MSVC C1061 nesting split).
+- **Tests** — `integration_repl_wave257_pipeline`.
+
+### Docs (Wave 257)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 257 sync; **415** CTest suites.
+
+**415 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 256 — stats TS/inference, graph structure, geo 3D, image, blank lines) ✅ COMPLETE
 

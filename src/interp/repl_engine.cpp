@@ -12265,6 +12265,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 2;
     }
     if (callee == "slic") {
+        return arity == 2 || arity == 3;
+    }
     if (callee == "hough_lines") {
         return arity == 1 || arity == 2 || arity == 5;
     }
@@ -13928,9 +13930,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         }
         result = gray_image_to_matrix(image::adapthisteq(*gray));
     } else if (assign.callee == "label_components" && assign.args.size() == 1) {
-    } else if (assign.callee == "hough_lines" &&
-               (assign.args.size() == 1 || assign.args.size() == 2 ||
-                assign.args.size() == 5)) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -13974,6 +13973,35 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         }
         result = gray_image_to_matrix(image::watershed(*gray, markers));
     } else if (assign.callee == "slic" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double k_d = 0.0;
+        if (!parse_number(assign.args[1], k_d)) {
+            return std::unexpected(DomainError{"slic", "expected slic(M, K[, compactness])"});
+        }
+        double compactness = 10.0;
+        if (assign.args.size() == 3) {
+            if (!parse_number(assign.args[2], compactness)) {
+                return std::unexpected(
+                    DomainError{"slic", "expected slic(M, K[, compactness])"});
+            }
+        }
+        auto rgb = matrix_to_gray_image(*matrix);
+        if (!rgb) {
+            return std::unexpected(rgb.error());
+        }
+        result = gray_image_to_matrix(
+            image::slic(*rgb, static_cast<int>(k_d), compactness));
+    } else if (assign.callee == "hough_lines" &&
+               (assign.args.size() == 1 || assign.args.size() == 2 ||
+                assign.args.size() == 5)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
         double edge_threshold = 0.5;
         int n_theta = 180;
         int n_rho = 200;
@@ -14041,23 +14069,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
-        double k_d = 0.0;
-        if (!parse_number(assign.args[1], k_d)) {
-            return std::unexpected(DomainError{"slic", "expected slic(M, K[, compactness])"});
-        }
-        double compactness = 10.0;
-        if (assign.args.size() == 3) {
-            if (!parse_number(assign.args[2], compactness)) {
-                return std::unexpected(
-                    DomainError{"slic", "expected slic(M, K[, compactness])"});
-            }
-        }
-        auto rgb = matrix_to_gray_image(*matrix);
-        if (!rgb) {
-            return std::unexpected(rgb.error());
-        }
-        result = gray_image_to_matrix(
-            image::slic(*rgb, static_cast<int>(k_d), compactness));
         double n_d = 0.0;
         double quality = 0.01;
         if (!parse_number(assign.args[1], n_d)) {
@@ -14502,7 +14513,23 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(predicted.error());
         }
         result = *predicted;
-    } else if (assign.callee == "ml_logistic_fit" && assign.args.size() == 2) {
+    }
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail2(assign);
+            }
+        }
+    }
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "ml_logistic_fit" && assign.args.size() == 2) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
             return std::unexpected(X.error());
@@ -17178,7 +17205,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_accuracy(p,t)  ML accuracy on Nx1 prediction/label vectors\n"
             "  name = ml_rmse(p,t)      ML RMSE on Nx1 vectors\n"
             "  name = ml_mse(p,t)       ML MSE on Nx1 vectors\n"
-            "  name = ml_r2(p,t)        ML RÂ² on Nx1 vectors\n"
+            "  name = ml_r2(p,t)        ML R² on Nx1 vectors\n"
             "  name = ml_f1(p,t)        ML F1 on binary Nx1 vectors\n"
             "  name = ml_precision(p,t) ML precision on binary Nx1 vectors\n"
             "  name = ml_recall(p,t)    ML recall on binary Nx1 vectors\n"
@@ -17272,7 +17299,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_poly_intersect(A,B) convex polygon intersection Mx2 from Nx2 vertices\n"
             "  name = geo_poly_diff(A,B) convex polygon difference A\\B Mx2 from Nx2 vertices\n"
             "  name = geo_minkowski_sum(A,B) Minkowski sum of convex polygons Mx2 from Nx2 vertices\n"
-            "  name = geo_clip_polygon(A,B) clip Nx2 subject against Mx2 convex window â†’ Kx2\n"
+            "  name = geo_clip_polygon(A,B) clip Nx2 subject against Mx2 convex window → Kx2\n"
             "  name = geo_min_bounding_rect(P) min-area OBB as 5x1 [cx;cy;width;height;angle_rad]\n"
             "  name = geo_kdtree_nearest(P,x,y) nearest point index in Nx2 set to query (x,y)\n"
             "  name = geo_kdtree_3d_nearest(P,x,y,z) nearest point index in Nx3 set to query (x,y,z)\n"
@@ -17330,7 +17357,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_prime_nth(n) nth prime (1-indexed)\n"
             "  name = numthy_legendre_symbol(a,p) Legendre symbol (a/p), p odd prime\n"
             "  name = numthy_kronecker_symbol(a,n) Kronecker symbol (a/n)\n"
-            "  name = numthy_tonelli_shanks(n,p) modular square root x with x^2 â‰¡ n (mod p)\n"
+            "  name = numthy_tonelli_shanks(n,p) modular square root x with x^2 ≡ n (mod p)\n"
             "  name = numthy_mod_inv(a,m) modular inverse a^(-1) mod m\n"
             "  name = numthy_extended_gcd(a,b) extended GCD gcd(a,b)\n"
             "  name = numthy_crt(r,m) Chinese remainder theorem on remainder/modulus vectors\n"
@@ -17523,7 +17550,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = levenberg_marquardt(\"r0;r1;...\",x0[,max_iter[,tol]]) nonlinear least squares (env {x0,x1,...})\n"
             "  name = numthy_is_primitive_root(g,p) 1 if g is primitive root mod p else 0\n"
             "  name = numthy_primitive_root(p) smallest primitive root mod prime p\n"
-            "  name = numthy_discrete_log(g,h,p) discrete log x with g^x â‰¡ h (mod p)\n"
+            "  name = numthy_discrete_log(g,h,p) discrete log x with g^x ≡ h (mod p)\n"
             "  name = numthy_jacobi_symbol(a,n) Jacobi symbol (a/n), n positive odd\n"
             "  name = control_step_final(num,den) final step-response sample\n"
             "  name = control_impulse_final(num,den) final impulse-response sample\n"
