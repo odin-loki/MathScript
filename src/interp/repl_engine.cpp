@@ -10594,7 +10594,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
             fn == "cuda_add" ||
-            fn == "solve" || fn == "bicgstab" || fn == "qmr" || fn == "lsqr" ||
+            fn == "solve" || fn == "bicgstab" || fn == "cg" || fn == "gmres" || fn == "jacobi" ||
+            fn == "qmr" || fn == "lsqr" ||
             fn == "tfqmr" || fn == "lsmr" ||
             fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_lsqr" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
@@ -12505,7 +12506,8 @@ bool Interpreter::try_parse_scalar_expr_assignment(const std::string& line, std:
 
 bool is_matrix_call_callee(const std::string& callee) {
     return callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-           callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
+           callee == "solve" || callee == "bicgstab" || callee == "cg" || callee == "gmres" ||
+           callee == "jacobi" || callee == "qmr" || callee == "lsqr" ||
            callee == "tfqmr" || callee == "lsmr" || callee == "minres" ||
            callee == "solve_sylvester" ||
            callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_lsqr" || callee == "dist_matmul" ||
@@ -12623,7 +12625,8 @@ bool is_matrix_call_callee(const std::string& callee) {
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-        callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
+        callee == "solve" || callee == "bicgstab" || callee == "cg" || callee == "gmres" ||
+        callee == "jacobi" || callee == "qmr" || callee == "lsqr" ||
         callee == "tfqmr" || callee == "lsmr" || callee == "minres" ||
         callee == "dist_solve" || callee == "dist_cg" ||
         callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_lsqr" || callee == "dist_matmul" || callee == "rand" ||
@@ -16586,6 +16589,36 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(right.error());
         }
         result = minres(*left, *right);
+    } else if (assign.callee == "cg" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = cg(*left, *right);
+    } else if (assign.callee == "gmres" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = gmres(*left, *right);
+    } else if (assign.callee == "jacobi" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = jacobi(*left, *right);
     }
 
     return result;
@@ -18286,6 +18319,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = matmul(A, B)      matrix multiply assignment\n"
             "  name = solve(A, B)       linear solve assignment\n"
             "  name = bicgstab(A, B)    BiCGSTAB iterative solve assignment\n"
+            "  name = cg(A, B)          conjugate gradient iterative solve assignment\n"
+            "  name = gmres(A, B)       GMRES iterative solve assignment\n"
+            "  name = jacobi(A, B)      Jacobi iterative solve assignment\n"
             "  name = minres(A, B)      MINRES iterative solve assignment\n"
             "  name = solve_sylvester(A, B, C) Sylvester equation A*X + X*B = C\n"
             "  name = qmr(A, B)         QMR iterative solve assignment\n"
@@ -19010,12 +19046,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  T, Q = schur(A)          Schur form (T only via T = schur(A))\n"
             "  U, B, V = bidiag(A)      bidiagonalization (B only via B = bidiag(A))\n"
             "  X = solve_sylvester(A,B,C) Sylvester equation A*X + X*B = C\n"
+            "  x = cg(A, b)             conjugate gradient iterative solve (SPD A)\n"
+            "  x = gmres(A, b)          GMRES iterative solve\n"
+            "  x = jacobi(A, b)         Jacobi iterative solve\n"
             "  x = minres(A, b)         MINRES iterative solve (symmetric A)\n"
             "  plot([y...])  plot([x...], [y...])  scatter([x...], [y...])  hist([...])\n"
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), solve_sylvester(A,B,C), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
@@ -28568,7 +28607,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(legendre_p(static_cast<int>(n), x)) + "\n";
         }
 
-        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "qmr" || fn == "lsqr" ||
+        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "cg" ||
+            fn == "gmres" || fn == "jacobi" || fn == "qmr" || fn == "lsqr" ||
             fn == "tfqmr" || fn == "lsmr" || fn == "minres" ||
             fn == "dist_solve" ||
             fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_lsqr" || fn == "dist_matmul" ||
@@ -28611,6 +28651,36 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "minres") {
                     auto x = minres(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "cg") {
+                    auto x = cg(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "gmres") {
+                    auto x = gmres(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "jacobi") {
+                    auto x = jacobi(*A, *B);
                     if (!x) {
                         return std::unexpected(x.error());
                     }

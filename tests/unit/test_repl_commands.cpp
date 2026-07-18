@@ -6433,3 +6433,48 @@ TEST(ReplCommandsTest, wave260_minres) {
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("xm")(1, 0)));
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("xm")(2, 0)));
 }
+
+TEST(ReplCommandsTest, wave261_cg) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cg(A");
+
+    expect_ok(interp, "Ai = eye(3)");
+    expect_ok(interp, "bi = [2; 3; 4]");
+    expect_ok(interp, "xc = cg(Ai, bi)");
+    ASSERT_GT(interp.state().matrices.count("xc"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("xc").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("xc").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("xc")(0, 0), 2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("xc")(1, 0), 3.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("xc")(2, 0), 4.0, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave261_gmres) {
+    Interpreter interp;
+    expect_contains(interp, "help", "gmres(A");
+
+    expect_ok(interp, "Ai = eye(3)");
+    expect_ok(interp, "bi = [2; 3; 4]");
+    expect_ok(interp, "xg = gmres(Ai, bi)");
+    ASSERT_GT(interp.state().matrices.count("xg"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("xg").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("xg").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("xg")(0, 0), 2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("xg")(1, 0), 3.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("xg")(2, 0), 4.0, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave261_jacobi) {
+    Interpreter interp;
+    expect_contains(interp, "help", "jacobi(A");
+
+    expect_ok(interp, "Ai = eye(3)");
+    expect_ok(interp, "bi = [2; 3; 4]");
+    expect_ok(interp, "xj = jacobi(Ai, bi)");
+    ASSERT_GT(interp.state().matrices.count("xj"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("xj").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("xj").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("xj")(0, 0), 2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("xj")(1, 0), 3.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("xj")(2, 0), 4.0, 1e-6);
+}
