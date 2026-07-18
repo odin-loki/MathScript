@@ -234,6 +234,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 |------|-------------|
 | `finance_min_variance_portfolio(cov)` | Global minimum-variance portfolio weights from `N×N` covariance |
 | `finance_max_sharpe_portfolio(cov, mu, risk_free)` | Maximum Sharpe-ratio portfolio weights |
+| `finance_efficient_frontier(cov, mu, target_return)` | Efficient-frontier portfolio weights for a target return |
+| `finance_max_sharpe(cov, mu, risk_free)` | Maximum Sharpe (tangency) portfolio weights |
 | `finance_portfolio_return(weights, returns)` | Portfolio expected return from `N×1` weights and returns |
 | `finance_heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)` | Heston stochastic-volatility European call price |
 | `finance_sabr_call(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European call price (Wave 237) |
