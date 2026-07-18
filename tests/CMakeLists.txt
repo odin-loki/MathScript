@@ -199,6 +199,7 @@ add_ms_test(test_units unit/test_units.cpp)
 add_ms_test(test_fem unit/test_fem.cpp)
 add_ms_test(test_cfd unit/test_cfd.cpp)
 add_ms_test(test_cfd_2d unit/test_cfd_2d.cpp)
+add_ms_test(test_cfd_3d unit/test_cfd_3d.cpp)
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
