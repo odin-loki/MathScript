@@ -7,6 +7,7 @@ if(MS_BUILD_GUI)
             MainWindow.cpp MainWindow.hpp
             PlotWidget.cpp PlotWidget.hpp
             PlotSurfWidget.cpp PlotSurfWidget.hpp
+            ReplCompleter.cpp ReplCompleter.hpp
             ReplWorker.cpp ReplWorker.hpp
             ScriptHighlighter.cpp ScriptHighlighter.hpp)
         target_include_directories(ms_gui PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)

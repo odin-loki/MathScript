@@ -2,6 +2,7 @@
 #include "gui/LineNumberArea.hpp"
 #include "gui/PlotSurfWidget.hpp"
 #include "gui/PlotWidget.hpp"
+#include "gui/ReplCompleter.hpp"
 #include "gui/ReplWorker.hpp"
 #include "gui/ScriptHighlighter.hpp"
 
@@ -340,7 +341,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* row = new QHBoxLayout();
     input_ = new QLineEdit(center);
-    input_->setPlaceholderText("REPL: help, plot([1,2,3,4]), save session.ms");
+    input_->setPlaceholderText("REPL: help, plot([1,2,3,4]), save session.ms (Ctrl+Space to complete)");
+    setup_repl_completer(input_);
     run_ = new QPushButton("Run", center);
     stop_ = new QPushButton("Stop", center);
     stop_->setEnabled(false);
