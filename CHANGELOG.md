@@ -7,6 +7,9 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+### Added (Wave 262)
+- **Numthy REPL** — `numthy_stern_brocot` / `numthy_lucas_sequence` / `numthy_multiplicative_order` / `numthy_carmichael_lambda`.
+
 ## [1.0.0] - 2026-07-19 (Wave 261 — eig/ldl, iterative solvers, FFT freq, combo/numthy/stats, Title Case) ✅ COMPLETE
 
 Thirty-first feature wave after Wave 260. Parallel Composer 2.5 worktrees merged to `main`: general eig/LDL, local iterative solvers, FFT frequency helpers, combinatorial enumeration, number-theory extensions, weighted stats, GUI Title Case, and wave261 pipeline.

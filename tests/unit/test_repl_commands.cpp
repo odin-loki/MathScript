@@ -6398,6 +6398,40 @@ TEST(ReplCommandsTest, wave261_numthy_factor_exp_farey_carmichael) {
     expect_contains(interp, "numthy_is_carmichael(97)", "0");
 }
 
+TEST(ReplCommandsTest, wave262_numthy_stern_lucas_order_lambda) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_stern_brocot(n)");
+    expect_contains(interp, "help", "numthy_lucas_sequence(k,P,Q)");
+    expect_contains(interp, "help", "numthy_multiplicative_order(a,n)");
+    expect_contains(interp, "help", "numthy_carmichael_lambda(n)");
+
+    expect_ok(interp, "sb = numthy_stern_brocot(7)");
+    ASSERT_GT(interp.state().matrices.count("sb"), 0u);
+    const auto& stern = interp.state().matrices.at("sb");
+    EXPECT_EQ(stern.rows(), 7u);
+    EXPECT_EQ(stern.cols(), 2u);
+    EXPECT_NEAR(stern(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(stern(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(stern(6, 0), 3.0, 1e-9);
+    EXPECT_NEAR(stern(6, 1), 1.0, 1e-9);
+
+    expect_ok(interp, "lu = numthy_lucas_sequence(5, 1, -1)");
+    ASSERT_GT(interp.state().matrices.count("lu"), 0u);
+    const auto& lucas = interp.state().matrices.at("lu");
+    EXPECT_EQ(lucas.rows(), 1u);
+    EXPECT_EQ(lucas.cols(), 2u);
+    EXPECT_NEAR(lucas(0, 0), 5.0, 1e-9);
+    EXPECT_NEAR(lucas(0, 1), 11.0, 1e-9);
+
+    expect_ok(interp, "ord = numthy_multiplicative_order(3, 7)");
+    EXPECT_NEAR(interp.state().scalars.at("ord"), 6.0, 1e-9);
+    expect_contains(interp, "numthy_multiplicative_order(3, 7)", "6");
+
+    expect_ok(interp, "lam = numthy_carmichael_lambda(15)");
+    EXPECT_NEAR(interp.state().scalars.at("lam"), 4.0, 1e-9);
+    expect_contains(interp, "numthy_carmichael_lambda(15)", "4");
+}
+
 TEST(ReplCommandsTest, wave258_radon_iradon) {
     Interpreter interp;
     expect_contains(interp, "help", "radon(M,theta)");
