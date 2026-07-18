@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 249 ✅ COMPLETE — **407 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 250 ✅ COMPLETE — **408 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–249 COMPLETE (summary)
+## Feature waves ✅ 231–250 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -58,6 +58,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **247** | `unwrap`; geo minkowski/OBB REPL; NCCL `allreduce_avg`; Toggle Comment; wave247 pipeline; Wave 246 benches |
 | **248** | NCCL `broadcast`; `constant_time_eq`/`random_bytes`; geo clip + upsample/downsample REPL; GUI Indent; Wave 247 benches |
 | **249** | NCCL `reduce`; `dist_lsqr`; SHA-256 REPL; signal resample/decimate/interpolate; GUI Move Line; Wave 248 benches |
+| **250** | `crypto_sha512`; NCCL introspect; coherence/filtfilt; GUI Delete Line; `BM_DistLsqr`; wave250 pipeline |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -215,11 +216,21 @@ See `CHANGELOG.md` for per-wave branch tables.
 | Benchmarks | broadcast / constant_time_eq / upsample smoke |
 | Fix | MSVC C1061 — assign_matrix_call arms → tail |
 
-**407 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–249** closed for this incremental batch.
+## Wave 250 ✅ COMPLETE (crypto SHA-512, NCCL introspect, coherence/filtfilt, GUI delete line, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Crypto REPL | `crypto_sha512` + `BM_Sha512_1MB` |
+| NCCL | introspect queries + `BM_CudaReduce` |
+| Signal REPL | `signal_coherence`, `signal_filtfilt` + wave250 pipeline |
+| GUI | Delete Line |
+| Benchmarks | `BM_DistLsqr_2x2` |
+
+**408 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–250** closed for this incremental batch.
 
 ---
 
-## Next (Wave 250+) — deferred
+## Next (Wave 251+) — deferred
 
 | Item | Notes |
 |------|--------|
