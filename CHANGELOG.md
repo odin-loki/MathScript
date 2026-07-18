@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [Unreleased]
+
+### Added
+- **Tests** — `integration_repl_wave260_pipeline`.
+
 ## [1.0.0] - 2026-07-19 (Wave 259 — hess/schur, finance frontier, geo curves, combo/numthy, Unique Lines) ✅ COMPLETE
 
 Twenty-ninth feature wave after Wave 258. Parallel Composer 2.5 worktrees merged to `main`: Hessenberg/Schur, portfolio optimizers, curve evaluation, combinatorial/number-theory scalars, morphological gradient, GUI Unique Lines, and wave259 pipeline.
