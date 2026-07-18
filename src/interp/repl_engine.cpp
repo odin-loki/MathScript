@@ -5034,6 +5034,18 @@ Result<Matrix<double>> eval_signal_instantaneous_freq(const Matrix<double>& x_m,
     return vector_to_column(instantaneous_freq(*x, fs));
 }
 
+Result<Matrix<double>> eval_signal_instantaneous_phase(const Matrix<double>& x_m) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_instantaneous_phase");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_instantaneous_phase", "expected non-empty signal vector"});
+    }
+    return vector_to_column(instantaneous_phase(*x));
+}
+
 Result<Matrix<double>> eval_graph_topological_sort(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_topological_sort");
     if (!G) {
@@ -8254,7 +8266,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
             fn == "cuda_add" ||
-            fn == "solve" || fn == "bicgstab" || fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
+            fn == "solve" || fn == "bicgstab" || fn == "qmr" || fn == "lsqr" ||
+            fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
@@ -8339,7 +8352,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "signal_bandpass" || fn == "signal_cheby2" ||
             fn == "signal_periodogram" || fn == "signal_welch_psd" ||
             fn == "signal_envelope" || fn == "signal_hilbert" ||
-            fn == "signal_instantaneous_freq" ||
+            fn == "signal_instantaneous_phase" || fn == "signal_instantaneous_freq" ||
             fn == "quantum_commutator" || fn == "quantum_tensor_product" ||
             fn == "signal_hamming" || fn == "signal_hanning" || fn == "signal_blackman" ||
             fn == "signal_parzen" || fn == "signal_triangular" ||
@@ -9756,7 +9769,8 @@ bool Interpreter::try_parse_scalar_expr_assignment(const std::string& line, std:
 
 bool is_matrix_call_callee(const std::string& callee) {
     return callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-           callee == "solve" || callee == "bicgstab" || callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_matmul" ||
+           callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
+           callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_matmul" ||
            callee == "transpose" || callee == "chol" ||
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
@@ -9804,6 +9818,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "finance_min_variance_portfolio" ||
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" || callee == "fft_fft2" ||
            callee == "signal_envelope" || callee == "signal_hilbert" ||
+           callee == "signal_instantaneous_phase" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
            callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
@@ -9830,7 +9845,8 @@ bool is_matrix_call_callee(const std::string& callee) {
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-        callee == "solve" || callee == "bicgstab" || callee == "dist_solve" || callee == "dist_cg" ||
+        callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
+        callee == "dist_solve" || callee == "dist_cg" ||
         callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_matmul" || callee == "rand" ||
         callee == "randn" ||
         callee == "kron") {
@@ -9865,6 +9881,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "fft_rfft" || callee == "fft_dft" ||
         callee == "fft_ifft" || callee == "fft_fft2" ||
         callee == "signal_envelope" || callee == "signal_hilbert" ||
+        callee == "signal_instantaneous_phase" ||
         callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
         callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
@@ -11719,6 +11736,26 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(right.error());
         }
         result = bicgstab(*left, *right);
+    } else if (assign.callee == "qmr" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = qmr(*left, *right);
+    } else if (assign.callee == "lsqr" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = lsqr(*left, *right);
     } else if (assign.callee == "dist_solve" && assign.args.size() == 2) {
         auto left = resolve_operand(assign.args[0]);
         if (!left) {
@@ -12662,6 +12699,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(analytic.error());
         }
         result = *analytic;
+    } else if (assign.callee == "signal_instantaneous_phase" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto phase = eval_signal_instantaneous_phase(*matrix);
+        if (!phase) {
+            return std::unexpected(phase.error());
+        }
+        result = *phase;
     } else if (assign.callee == "fft_dft" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -13902,6 +13949,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = matmul(A, B)      matrix multiply assignment\n"
             "  name = solve(A, B)       linear solve assignment\n"
             "  name = bicgstab(A, B)    BiCGSTAB iterative solve assignment\n"
+            "  name = qmr(A, B)         QMR iterative solve assignment\n"
+            "  name = lsqr(A, B)        LSQR iterative solve assignment\n"
             "  name = dist_solve(A, B)  distributed linear solve (stub: local gather + solve)\n"
             "  name = dist_cg(A, B)     distributed conjugate gradient (stub: local gather + cg)\n"
             "  name = dist_gmres(A, B)  distributed GMRES (block MPI or gather + gmres)\n"
@@ -14135,6 +14184,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_welch_psd(x,fs,nperseg) Welch PSD as N×2 [freq,power]\n"
             "  name = signal_envelope(x) amplitude envelope |hilbert(x)| as N×1 column\n"
             "  name = signal_hilbert(x) analytic signal as N×2 [re,im] matrix\n"
+            "  name = signal_instantaneous_phase(x) instantaneous phase as N×1 column\n"
             "  name = signal_instantaneous_freq(x,fs) instantaneous frequency as N×1 column\n"
             "  name = signal_convolve(a,b) discrete convolution of Nx1 vectors\n"
             "  name = signal_correlate(a,b) cross-correlation of Nx1 vectors\n"
@@ -14448,7 +14498,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
@@ -22150,7 +22200,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(legendre_p(static_cast<int>(n), x)) + "\n";
         }
 
-        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "dist_solve" ||
+        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "qmr" || fn == "lsqr" ||
+            fn == "dist_solve" ||
             fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_matmul" ||
             fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
             fn == "cuda_add") {
@@ -22181,6 +22232,26 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "bicgstab") {
                     auto x = bicgstab(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "qmr") {
+                    auto x = qmr(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "lsqr") {
+                    auto x = lsqr(*A, *B);
                     if (!x) {
                         return std::unexpected(x.error());
                     }
@@ -23072,6 +23143,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "hilbert =\n";
             print_matrix(out, *analytic);
+        } else if (fn == "signal_instantaneous_phase") {
+            auto phase = eval_signal_instantaneous_phase(*matrix);
+            if (!phase) {
+                return std::unexpected(phase.error());
+            }
+            out << "phase =\n";
+            print_matrix(out, *phase);
         } else if (fn == "fft_dft") {
             auto spectrum = eval_fft_dft(*matrix);
             if (!spectrum) {

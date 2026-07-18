@@ -82,6 +82,8 @@ QStringList repl_command_list() {
         QStringLiteral("matmul"),
         QStringLiteral("solve"),
         QStringLiteral("bicgstab"),
+        QStringLiteral("qmr"),
+        QStringLiteral("lsqr"),
         QStringLiteral("dist_solve"),
         QStringLiteral("dist_cg"),
         QStringLiteral("dist_gmres"),
