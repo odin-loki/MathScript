@@ -6019,3 +6019,46 @@ TEST(ReplCommandsTest, wave257_image_hough) {
     ASSERT_GT(interp.state().matrices.at("S").rows(), 0u);
     EXPECT_LE(interp.state().matrices.at("S").rows(), 5u);
 }
+
+TEST(ReplCommandsTest, wave258_image_morph_hist) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imtophat(M[,k])");
+    expect_contains(interp, "help", "imbothat(M[,k])");
+    expect_contains(interp, "help", "imadjust(M,in_lo,in_hi[,out_lo,out_hi])");
+    expect_contains(interp, "help", "imhist(M[,nbins])");
+
+    // Bright center pixel on dark background — top-hat keeps the peak.
+    expect_ok(interp, "M = [0, 0, 0; 0, 1, 0; 0, 0, 0]");
+    expect_ok(interp, "T = imtophat(M)");
+    ASSERT_GT(interp.state().matrices.count("T"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("T").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("T").cols(), 3u);
+    EXPECT_GE(interp.state().matrices.at("T")(1, 1), 0.0);
+
+    expect_ok(interp, "B = imbothat(M, 3)");
+    ASSERT_GT(interp.state().matrices.count("B"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 3u);
+    EXPECT_GE(interp.state().matrices.at("B")(0, 0), 0.0);
+
+    // Identity stretch then brighten lower bound.
+    expect_ok(interp, "G = [0.2, 0.8; 0.4, 0.6]");
+    expect_ok(interp, "A = imadjust(G, 0, 1)");
+    ASSERT_GT(interp.state().matrices.count("A"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("A")(0, 0), 0.2, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("A")(0, 1), 0.8, 1e-5);
+
+    expect_ok(interp, "A2 = imadjust(G, 0, 1, 0.5, 1)");
+    ASSERT_GT(interp.state().matrices.count("A2"), 0u);
+    EXPECT_GT(interp.state().matrices.at("A2")(0, 0), interp.state().matrices.at("A")(0, 0));
+
+    // Four distinct levels into 4 bins → counts [2,1,1,0] (same as ImageHist.CustomBinCount).
+    expect_ok(interp, "Hsrc = [0, 0.25; 0.5, 0.75]");
+    expect_ok(interp, "H = imhist(Hsrc, 4)");
+    ASSERT_GT(interp.state().matrices.count("H"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("H").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("H").cols(), 1u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("H")(0, 0), 2.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("H")(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("H")(2, 0), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("H")(3, 0), 0.0);
+}

@@ -10366,6 +10366,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "scharr" || fn == "roberts" ||
             fn == "imgaussfilt" || fn == "medfilt2" || fn == "boxfilter" ||
             fn == "imdilate" || fn == "imerode" || fn == "imopen" || fn == "imclose" ||
+            fn == "imtophat" || fn == "imbothat" ||
+            fn == "imadjust" || fn == "imhist" ||
             fn == "bilateral" || fn == "canny" ||
             fn == "laplacian" || fn == "histeq" ||
             fn == "sharpen" || fn == "threshold_otsu" || fn == "imresize" ||
@@ -12240,6 +12242,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "scharr" || callee == "roberts" ||
            callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
            callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
+           callee == "imtophat" || callee == "imbothat" ||
+           callee == "imadjust" || callee == "imhist" ||
            callee == "bilateral" ||
            callee == "canny" || callee == "laplacian" || callee == "histeq" ||
            callee == "sharpen" || callee == "threshold_otsu" || callee == "imresize" ||
@@ -12493,11 +12497,14 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 1 || arity == 3;
     }
     if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
-        callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose") {
+        callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
+        callee == "imtophat" || callee == "imbothat" || callee == "imhist") {
         return arity == 1 || arity == 2;
     }
     if (callee == "tril" || callee == "triu") {
         return arity == 1 || arity == 2;
+    if (callee == "imadjust") {
+        return arity == 3 || arity == 5;
     }
     if (callee == "ml_ridge_fit") {
         return arity == 3;
@@ -15791,6 +15798,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = sinm(*matrix);
     } else if (assign.callee == "tril" &&
+    } else if ((assign.callee == "imtophat" || assign.callee == "imbothat") &&
                (assign.args.size() == 1 || assign.args.size() == 2)) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -15815,6 +15823,56 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = tril(*matrix, k);
     } else if (assign.callee == "triu" &&
+        int ksize = 3;
+        if (assign.args.size() == 2) {
+            double ksize_d = 0.0;
+            if (!parse_number(assign.args[1], ksize_d)) {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected morphology(M, ksize)"});
+            }
+            auto parsed = parse_morph_ksize(ksize_d, assign.callee.c_str());
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            ksize = *parsed;
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        if (assign.callee == "imtophat") {
+            result = gray_image_to_matrix(image::imtophat(*gray, ksize));
+        } else {
+            result = gray_image_to_matrix(image::imbothat(*gray, ksize));
+        }
+    } else if (assign.callee == "imadjust" &&
+               (assign.args.size() == 3 || assign.args.size() == 5)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double in_lo = 0.0;
+        double in_hi = 0.0;
+        double out_lo = 0.0;
+        double out_hi = 1.0;
+        if (!parse_number(assign.args[1], in_lo) || !parse_number(assign.args[2], in_hi)) {
+            return std::unexpected(
+                DomainError{"imadjust", "expected imadjust(M, in_lo, in_hi[, out_lo, out_hi])"});
+        }
+        if (assign.args.size() == 5) {
+            if (!parse_number(assign.args[3], out_lo) || !parse_number(assign.args[4], out_hi)) {
+                return std::unexpected(DomainError{
+                    "imadjust", "expected imadjust(M, in_lo, in_hi[, out_lo, out_hi])"});
+            }
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::imadjust(
+            *gray, static_cast<float>(in_lo), static_cast<float>(in_hi),
+            static_cast<float>(out_lo), static_cast<float>(out_hi)));
+    } else if (assign.callee == "imhist" &&
                (assign.args.size() == 1 || assign.args.size() == 2)) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -15838,6 +15896,28 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             k = static_cast<int>(k_d);
         }
         result = triu(*matrix, k);
+        int nbins = 256;
+        if (assign.args.size() == 2) {
+            double nbins_d = 0.0;
+            if (!parse_number(assign.args[1], nbins_d)) {
+                return std::unexpected(DomainError{"imhist", "expected imhist(M[, nbins])"});
+            }
+            nbins = static_cast<int>(nbins_d);
+            if (nbins < 1 || nbins_d != nbins) {
+                return std::unexpected(
+                    DomainError{"imhist", "expected positive integer nbins"});
+            }
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        const auto hist = image::imhist(*gray, nbins);
+        Matrix<double> out(hist.size(), 1);
+        for (size_t i = 0; i < hist.size(); ++i) {
+            out(i, 0) = static_cast<double>(hist[i]);
+        }
+        result = out;
     }
     return result;
 }
@@ -17554,6 +17634,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = imerode(M,k)      morphological erosion on grayscale matrix (odd k, default 3)\n"
             "  name = imopen(M,k)       morphological opening on grayscale matrix (odd k, default 3)\n"
             "  name = imclose(M,k)      morphological closing on grayscale matrix (odd k, default 3)\n"
+            "  name = imtophat(M[,k])   morphological top-hat on grayscale matrix (odd k, default 3)\n"
+            "  name = imbothat(M[,k])   morphological bottom-hat on grayscale matrix (odd k, default 3)\n"
+            "  name = imadjust(M,in_lo,in_hi[,out_lo,out_hi]) contrast stretch (out defaults 0..1)\n"
+            "  name = imhist(M[,nbins]) histogram counts as nbins x 1 column (default 256)\n"
             "  name = bilateral(M,sigma_s,sigma_r) bilateral filter on grayscale matrix\n"
             "  name = canny(M,low,high) Canny edge detection on grayscale matrix (sigma=1)\n"
             "  name = laplacian(M)      Laplacian edge filter on grayscale matrix\n"
@@ -18204,7 +18288,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
             "  lu(A), qr(A), chol(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
-            "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
+            "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q])\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
