@@ -12,4 +12,13 @@ Result<Matrix<S, StorageOrder::ColMajor, Alloc>> dist_cg(
     size_t max_iter = 1000,
     S tol = S(1e-10));
 
+template<typename S, template<typename> class Alloc = std::allocator>
+Result<Matrix<S, StorageOrder::ColMajor, Alloc>> dist_gmres(
+    const DistMatrix<S, Alloc>& A,
+    const DistMatrix<S, Alloc>& b,
+    MPIContext& ctx,
+    size_t restart = 20,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
 } // namespace ms::distributed

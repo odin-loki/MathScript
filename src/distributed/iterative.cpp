@@ -62,6 +62,28 @@ Result<ColMatrix> stub_gather_cg(
     return ms::cg(*global_A, *global_b, max_iter, tol);
 }
 
+template<typename S, template<typename> class Alloc>
+Result<ColMatrix> stub_gather_gmres(
+    const DistMatrix<S, Alloc>& A,
+    const DistMatrix<S, Alloc>& b,
+    MPIContext& ctx,
+    size_t restart,
+    size_t max_iter,
+    S tol) {
+    auto global_A = gather(A, ctx);
+    if (!global_A) {
+        return std::unexpected(global_A.error());
+    }
+    auto global_b = gather(b, ctx);
+    if (!global_b) {
+        return std::unexpected(global_b.error());
+    }
+    if (rank(ctx) != 0 && size(ctx) > 1) {
+        return *global_b;
+    }
+    return ms::gmres(*global_A, *global_b, restart, max_iter, tol);
+}
+
 #if defined(MS_HAS_MPI) && MS_HAS_MPI
 Result<ColMatrix> broadcast_vector(const ColMatrix& root, MPIContext& ctx) {
     int rows = 0;
@@ -237,6 +259,32 @@ template Result<Matrix<double>> dist_cg(
     const DistMatrix<double>&,
     const DistMatrix<double>&,
     MPIContext&,
+    size_t,
+    double);
+
+template<typename S, template<typename> class Alloc>
+Result<Matrix<S, StorageOrder::ColMajor, Alloc>> dist_gmres(
+    const DistMatrix<S, Alloc>& A,
+    const DistMatrix<S, Alloc>& b,
+    MPIContext& ctx,
+    size_t restart,
+    size_t max_iter,
+    S tol) {
+    if (A.global_rows != A.global_cols) {
+        return std::unexpected(DimensionMismatch{A.global_rows, A.global_cols});
+    }
+    if (A.global_rows != b.global_rows || b.global_cols != 1) {
+        return std::unexpected(DimensionMismatch{A.global_rows, b.global_rows});
+    }
+
+    return stub_gather_gmres(A, b, ctx, restart, max_iter, tol);
+}
+
+template Result<Matrix<double>> dist_gmres(
+    const DistMatrix<double>&,
+    const DistMatrix<double>&,
+    MPIContext&,
+    size_t,
     size_t,
     double);
 
