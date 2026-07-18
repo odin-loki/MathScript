@@ -163,6 +163,7 @@ QStringList repl_command_list() {
         QStringLiteral("signal_decimate"),
         QStringLiteral("signal_interpolate"),
         QStringLiteral("signal_resample"),
+        QStringLiteral("signal_coherence"),
         // ML / graph (common)
         QStringLiteral("ml_accuracy"),
         QStringLiteral("ml_rmse"),

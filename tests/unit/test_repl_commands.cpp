@@ -3506,6 +3506,21 @@ TEST(ReplCommandsTest, wave249_signal_resample_decimate_interpolate) {
     EXPECT_EQ(interp.state().matrices.at("rs").rows(), 4u);
 }
 
+TEST(ReplCommandsTest, wave250_signal_coherence) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_coherence(x,y,fs,nperseg)");
+
+    expect_ok(interp,
+              "x = [1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0]");
+    expect_ok(interp, "c = signal_coherence(x, x, 8.0, 8)");
+    ASSERT_GT(interp.state().matrices.count("c"), 0u);
+    const auto& c = interp.state().matrices.at("c");
+    EXPECT_EQ(c.cols(), 2u);
+    EXPECT_GT(c.rows(), 0u);
+    EXPECT_NEAR(c(0, 0), 0.0, 1e-12);
+    EXPECT_TRUE(std::isfinite(c(0, 1)));
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");
