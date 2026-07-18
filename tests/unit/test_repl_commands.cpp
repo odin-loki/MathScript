@@ -6869,3 +6869,28 @@ TEST(ReplCommandsTest, wave262_poly_discriminant) {
 
     expect_contains(interp, "poly_discriminant([1; -2; 1])", "0");
 }
+
+TEST(ReplCommandsTest, wave263_finance_bl_portfolio) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_bl_implied_returns(cov,w_mkt,delta)");
+    expect_contains(interp, "help", "finance_bl_posterior_returns(pi,cov,P,Q,tau)");
+
+    expect_ok(interp, "cov2 = [0.04, 0.01; 0.01, 0.02]");
+    expect_ok(interp, "w_mkt = [0.6; 0.4]");
+    expect_ok(interp, "pi_bl = finance_bl_implied_returns(cov2, w_mkt, 2.5)");
+    ASSERT_GT(interp.state().matrices.count("pi_bl"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pi_bl").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("pi_bl").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("pi_bl")(0, 0), 0.07, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("pi_bl")(1, 0), 0.035, 1e-6);
+
+    expect_ok(interp, "pi = [0.05; 0.07]");
+    expect_ok(interp, "P = [1, 0]");
+    expect_ok(interp, "Q = [0.10]");
+    expect_ok(interp, "post = finance_bl_posterior_returns(pi, cov2, P, Q, 0.05)");
+    ASSERT_GT(interp.state().matrices.count("post"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("post").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("post").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("post")(0, 0), 0.075, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("post")(1, 0), 0.07625, 1e-6);
+}
