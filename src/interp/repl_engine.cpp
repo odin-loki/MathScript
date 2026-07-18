@@ -7758,8 +7758,8 @@ bool is_unary_scalar_matrix_callee(const std::string& callee) {
            callee == "quantum_qft_gate" || callee == "quantum_identity_n" ||
            callee == "quantum_ghz_state" || callee == "quantum_w_state" ||
            callee == "quantum_bell_state" ||
-           callee == "numthy_divisors_vec" || callee == "numthy_factor_vec" ||
-           callee == "numthy_factor" ||
+           callee == "numthy_divisors_vec" || callee == "numthy_divisors" ||
+           callee == "numthy_factor_vec" || callee == "numthy_factor" ||
            callee == "combo_derangements" || callee == "combo_all_permutations" ||
            callee == "combo_all_subsets" || callee == "combo_all_compositions" ||
            callee == "combo_all_partitions" || callee == "signal_hamming" ||
@@ -7852,11 +7852,11 @@ Result<Matrix<double>> eval_unary_scalar_matrix_call(const std::string& fn, doub
         }
         return eval_combo_all_partitions(n);
     }
-    if (fn == "numthy_divisors_vec") {
+    if (fn == "numthy_divisors_vec" || fn == "numthy_divisors") {
         const int n = static_cast<int>(arg);
         if (n < 1 || arg != n) {
             return std::unexpected(
-                DomainError{"numthy_divisors_vec", "expected positive integer n"});
+                DomainError{fn, "expected positive integer n"});
         }
         return eval_numthy_divisors_vec(n);
     }
@@ -10619,6 +10619,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_ket_superposition" || fn == "quantum_ghz_state" ||
             fn == "quantum_w_state" || fn == "quantum_bell_state" || fn == "quantum_coherent_state" ||
             fn == "numthy_divisors_vec" ||
+            fn == "numthy_divisors" ||
             fn == "numthy_factor_vec" ||
             fn == "numthy_factor" ||
             fn == "combo_unrank_permutation" || fn == "combo_unrank_combination" ||
@@ -18256,6 +18257,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_extended_gcd(a,b) extended GCD gcd(a,b)\n"
             "  name = numthy_crt(r,m) Chinese remainder theorem on remainder/modulus vectors\n"
             "  name = numthy_divisors_vec(n) sorted divisors of n as Nx1 column\n"
+            "  name = numthy_divisors(n)      sorted divisors of n as Nx1 column\n"
             "  name = numthy_continued_fraction(x,n) continued fraction coefficients as nx1 column\n"
             "  name = numthy_primes(lo,hi) primes in inclusive range as Kx1 column\n"
             "  name = numthy_convergents(cf) convergent pairs p/q as Kx2 matrix from cf column\n"
@@ -18718,7 +18720,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
-            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n)\n"
+            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_divisors(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"

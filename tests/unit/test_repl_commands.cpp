@@ -6148,6 +6148,35 @@ TEST(ReplCommandsTest, wave259_numthy_factor) {
     EXPECT_NEAR(interp.state().matrices.at("p")(0, 0), 17.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave260_numthy_divisors) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_divisors(n)");
+    expect_contains(interp, "help", "numthy_num_divisors(n)");
+    expect_contains(interp, "help", "numthy_sum_divisors(n)");
+
+    expect_ok(interp, "d = numthy_divisors(12)");
+    ASSERT_GT(interp.state().matrices.count("d"), 0u);
+    const auto& divs = interp.state().matrices.at("d");
+    EXPECT_EQ(divs.rows(), 6u);
+    EXPECT_EQ(divs.cols(), 1u);
+    const double expected[] = {1, 2, 3, 4, 6, 12};
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(divs(i, 0), expected[i], 1e-9);
+    }
+
+    expect_ok(interp, "tau = numthy_num_divisors(12)");
+    EXPECT_NEAR(interp.state().scalars.at("tau"), 6.0, 1e-9);
+
+    expect_ok(interp, "sigma = numthy_sum_divisors(12)");
+    EXPECT_NEAR(interp.state().scalars.at("sigma"), 28.0, 1e-9);
+
+    expect_ok(interp, "p = numthy_divisors(17)");
+    ASSERT_GT(interp.state().matrices.count("p"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("p").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("p")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("p")(1, 0), 17.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave258_radon_iradon) {
     Interpreter interp;
     expect_contains(interp, "help", "radon(M,theta)");
