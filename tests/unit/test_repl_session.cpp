@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include "ms/frameworks/izaac/izaac.hpp"
 #include "ms/interp/repl_engine.hpp"
@@ -22,6 +23,94 @@ TEST(ReplSessionTest, save_and_load_roundtrip) {
     EXPECT_DOUBLE_EQ(loaded.state().scalars.at("x"), 2.5);
     EXPECT_EQ(loaded.state().matrices.at("A").rows(), 2u);
     EXPECT_DOUBLE_EQ(loaded.state().matrices.at("A")(1, 1), 4.0);
+
+    std::filesystem::remove(path);
+}
+
+TEST(ReplSessionTest, history_save_load_roundtrip) {
+    const auto path = std::filesystem::temp_directory_path() / "mathscript_history_session.ms";
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("x = 2.5").has_value());
+    ASSERT_TRUE(interp.execute("y = x + 1").has_value());
+    ASSERT_EQ(interp.state().history.size(), 2u);
+    ASSERT_TRUE(interp.save_session(path.string()).has_value());
+
+    Interpreter loaded;
+    ASSERT_TRUE(loaded.load_session(path.string()).has_value());
+    ASSERT_EQ(loaded.state().history.size(), 2u);
+    EXPECT_EQ(loaded.state().history[0], "x = 2.5");
+    EXPECT_EQ(loaded.state().history[1], "y = x + 1");
+
+    std::filesystem::remove(path);
+}
+
+TEST(ReplSessionTest, history_load_backward_compatible_without_history_lines) {
+    const auto path = std::filesystem::temp_directory_path() / "mathscript_legacy_session.ms";
+
+    {
+        std::ofstream out(path);
+        out << "# MathScript session\n";
+        out << "scalar x = 3\n";
+    }
+
+    Interpreter loaded;
+    ASSERT_TRUE(loaded.load_session(path.string()).has_value());
+    EXPECT_DOUBLE_EQ(loaded.state().scalars.at("x"), 3.0);
+    EXPECT_TRUE(loaded.state().history.empty());
+
+    std::filesystem::remove(path);
+}
+
+TEST(ReplSessionTest, export_history_writes_commands) {
+    const auto path = std::filesystem::temp_directory_path() / "mathscript_history_export.txt";
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("a = 1").has_value());
+    ASSERT_TRUE(interp.execute("b = 2").has_value());
+    ASSERT_TRUE(interp.export_history(path.string()).has_value());
+
+    std::ifstream in(path);
+    std::string line1;
+    std::string line2;
+    ASSERT_TRUE(static_cast<bool>(std::getline(in, line1)));
+    ASSERT_TRUE(static_cast<bool>(std::getline(in, line2)));
+    EXPECT_EQ(line1, "a = 1");
+    EXPECT_EQ(line2, "b = 2");
+
+    std::filesystem::remove(path);
+}
+
+TEST(ReplSessionTest, export_history_meta_command) {
+    const auto path = std::filesystem::temp_directory_path() / "mathscript_history_meta.txt";
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("z = 9").has_value());
+    const auto result = interp.execute("export history " + path.string());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->find("exported history"), std::string::npos);
+
+    std::ifstream in(path);
+    std::string line;
+    ASSERT_TRUE(static_cast<bool>(std::getline(in, line)));
+    EXPECT_EQ(line, "z = 9");
+
+    std::filesystem::remove(path);
+}
+
+TEST(ReplSessionTest, save_history_meta_command_alias) {
+    const auto path = std::filesystem::temp_directory_path() / "mathscript_save_history.txt";
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("k = 4").has_value());
+    const auto result = interp.execute("save_history " + path.string());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->find("exported history"), std::string::npos);
+
+    std::ifstream in(path);
+    std::string line;
+    ASSERT_TRUE(static_cast<bool>(std::getline(in, line)));
+    EXPECT_EQ(line, "k = 4");
 
     std::filesystem::remove(path);
 }

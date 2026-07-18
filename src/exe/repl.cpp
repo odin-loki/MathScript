@@ -83,6 +83,9 @@ std::string classify_repl_line(const std::string& line) {
     if (lcmd.rfind("load ", 0) == 0) {
         return "load_session";
     }
+    if (lcmd.rfind("export history ", 0) == 0 || lcmd.rfind("save_history ", 0) == 0) {
+        return "export_history";
+    }
     if (is_plot_command(lcmd)) {
         return "plot_command";
     }

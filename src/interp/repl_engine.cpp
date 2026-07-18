@@ -12908,6 +12908,46 @@ void write_double_list(std::ostream& out, const char* label, const std::vector<d
     out << '\n';
 }
 
+std::string escape_history_command(const std::string& cmd) {
+    std::string out;
+    out.reserve(cmd.size());
+    for (char c : cmd) {
+        if (c == '\\') {
+            out += "\\\\";
+        } else if (c == '\n') {
+            out += "\\n";
+        } else if (c == '\r') {
+            out += "\\r";
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
+std::string unescape_history_command(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\\' && i + 1 < text.size()) {
+            const char next = text[++i];
+            if (next == 'n') {
+                out += '\n';
+            } else if (next == 'r') {
+                out += '\r';
+            } else if (next == '\\') {
+                out += '\\';
+            } else {
+                out += '\\';
+                out += next;
+            }
+        } else {
+            out += text[i];
+        }
+    }
+    return out;
+}
+
 Result<std::string> Interpreter::set_plot(const Matrix<double>& xs, const Matrix<double>& ys,
                                           PlotSeries::Kind kind) {
     const size_t n = ys.rows() * ys.cols();
@@ -13067,6 +13107,9 @@ Result<void> Interpreter::save_session(const std::string& path) const {
     for (const auto& [name, matrix] : state_.matrices) {
         out << "matrix " << name << " = " << matrix_to_line(matrix) << "\n";
     }
+    for (const auto& cmd : state_.history) {
+        out << "history " << escape_history_command(cmd) << "\n";
+    }
     if (state_.plot.valid) {
         out << "plot meta valid=1 kind=" << plot_kind_name(state_.plot.kind)
             << " rows=" << state_.plot.matrix_rows << " cols=" << state_.plot.matrix_cols
@@ -13134,6 +13177,10 @@ Result<void> Interpreter::load_session(const std::string& path) {
             pending_plot.grid = *grid;
             continue;
         }
+        if (line.rfind("history ", 0) == 0) {
+            state_.history.push_back(unescape_history_command(trim(line.substr(8))));
+            continue;
+        }
         const auto eq = line.find('=');
         if (eq == std::string::npos) {
             continue;
@@ -13167,6 +13214,17 @@ Result<void> Interpreter::load_session(const std::string& path) {
     return {};
 }
 
+Result<void> Interpreter::export_history(const std::string& path) const {
+    std::ofstream out(path);
+    if (!out) {
+        return std::unexpected(DomainError{"export", "cannot open: " + path});
+    }
+    for (const auto& cmd : state_.history) {
+        out << cmd << '\n';
+    }
+    return {};
+}
+
 Result<std::string> Interpreter::execute(const std::string& line) {
     if (cancel_requested()) {
         return std::string{};
@@ -13184,6 +13242,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  help, vars, version, show, saveplot, clear, topology, simd, dispatch, balance, gpu, mpi, frameworks, exit\n"
             "  izaac seed <n>   gria(M)   axiom evolve\n"
             "  save <file.ms>  load <file.ms>\n"
+            "  export history <file>  save_history <file>\n"
             "  name = [1, 2; 3, 4]     matrix assignment\n"
             "  name = 3.14              scalar assignment\n"
             "  name = x + 2             scalar expression (+, -, *, /; () precedence)\n"
@@ -13891,6 +13950,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::unexpected(loaded.error());
         }
         return "loaded session from " + path + "\n";
+    }
+    if (lcmd.rfind("export history ", 0) == 0) {
+        const std::string path = trim(cmd.substr(15));
+        if (path.empty()) {
+            return std::unexpected(DomainError{"export", "missing path"});
+        }
+        auto exported = export_history(path);
+        if (!exported) {
+            return std::unexpected(exported.error());
+        }
+        return "exported history to " + path + "\n";
+    }
+    if (lcmd.rfind("save_history ", 0) == 0) {
+        const std::string path = trim(cmd.substr(13));
+        if (path.empty()) {
+            return std::unexpected(DomainError{"export", "missing path"});
+        }
+        auto exported = export_history(path);
+        if (!exported) {
+            return std::unexpected(exported.error());
+        }
+        return "exported history to " + path + "\n";
     }
 
     if (lcmd == "frameworks") {

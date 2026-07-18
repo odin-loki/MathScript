@@ -41,6 +41,14 @@ QString ReplWorker::loadSession(const QString& path) {
     return QString::fromStdString(ms::format_error(result.error()));
 }
 
+QString ReplWorker::exportHistory(const QString& path) {
+    const auto result = interp_.export_history(path.toStdString());
+    if (result) {
+        return {};
+    }
+    return QString::fromStdString(ms::format_error(result.error()));
+}
+
 ms::interp::SessionState ReplWorker::sessionState() const {
     return interp_.state();
 }
