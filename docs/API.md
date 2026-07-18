@@ -321,6 +321,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `signal_sosfilt(sos,x)` | Second-order sections filter (Wave 252) |
 | `signal_firwin` / `signal_firwin_highpass` | Windowed-sinc FIR design (Wave 252) |
 | `signal_savgol(x,window_length,polyorder)` | Savitzky–Golay smooth (Wave 252) |
+| `signal_median_filter(x,window_length)` | Sliding-window median filter (Wave 253) |
 | `cuda_nccl_available()` / `cuda_nccl_comm_size()` / `cuda_nccl_device_count()` | NCCL stub introspection (Wave 250) |
 | `mpi_allreduce_max(x)` / `mpi_allreduce_min(x)` | MPI stub max/min (Wave 251) |
 | `signal_coherence(x,y,fs,nperseg)` | Magnitude-squared coherence Nx2 (Wave 250) |
