@@ -476,6 +476,98 @@ void unindent_lines_in_editor(QPlainTextEdit* editor) {
     cursor.endEditBlock();
 }
 
+bool is_open_brace(QChar ch) {
+    return ch == QLatin1Char('(') || ch == QLatin1Char('[') || ch == QLatin1Char('{');
+}
+
+bool is_close_brace(QChar ch) {
+    return ch == QLatin1Char(')') || ch == QLatin1Char(']') || ch == QLatin1Char('}');
+}
+
+QChar matching_brace_pair(QChar ch) {
+    switch (ch.unicode()) {
+    case '(':
+        return QLatin1Char(')');
+    case ')':
+        return QLatin1Char('(');
+    case '[':
+        return QLatin1Char(']');
+    case ']':
+        return QLatin1Char('[');
+    case '{':
+        return QLatin1Char('}');
+    case '}':
+        return QLatin1Char('{');
+    default:
+        return QChar();
+    }
+}
+
+bool go_to_matching_brace_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return false;
+    }
+
+    const QString text = editor->toPlainText();
+    if (text.isEmpty()) {
+        return false;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    int pos = cursor.position();
+
+    // Prefer brace under cursor; otherwise try the character immediately before.
+    QChar brace;
+    if (pos < text.size() && (is_open_brace(text[pos]) || is_close_brace(text[pos]))) {
+        brace = text[pos];
+    } else if (pos > 0 && (is_open_brace(text[pos - 1]) || is_close_brace(text[pos - 1]))) {
+        --pos;
+        brace = text[pos];
+    } else {
+        return false;
+    }
+
+    const QChar match = matching_brace_pair(brace);
+    if (match.isNull()) {
+        return false;
+    }
+
+    int depth = 0;
+    if (is_open_brace(brace)) {
+        for (int i = pos; i < text.size(); ++i) {
+            const QChar ch = text[i];
+            if (ch == brace) {
+                ++depth;
+            } else if (ch == match) {
+                --depth;
+                if (depth == 0) {
+                    cursor.setPosition(i);
+                    editor->setTextCursor(cursor);
+                    editor->centerCursor();
+                    return true;
+                }
+            }
+        }
+    } else {
+        for (int i = pos; i >= 0; --i) {
+            const QChar ch = text[i];
+            if (ch == brace) {
+                ++depth;
+            } else if (ch == match) {
+                --depth;
+                if (depth == 0) {
+                    cursor.setPosition(i);
+                    editor->setTextCursor(cursor);
+                    editor->centerCursor();
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
 constexpr size_t kTooltipMaxRows = 6;
@@ -983,6 +1075,8 @@ void MainWindow::setup_menus() {
     replace_all_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_H));
     auto* go_to_line_action = edit_menu->addAction("Go to Line...");
     go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    auto* go_to_matching_brace_action = edit_menu->addAction("Go to Matching Brace");
+    go_to_matching_brace_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_BracketRight));
     auto* indent_action = edit_menu->addAction("Indent");
     indent_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_BracketRight));
     auto* unindent_action = edit_menu->addAction("Unindent");
@@ -1049,6 +1143,7 @@ void MainWindow::setup_menus() {
     connect(replace_next_script_action, &QAction::triggered, this, &MainWindow::replace_next_in_script);
     connect(replace_all_script_action, &QAction::triggered, this, &MainWindow::replace_all_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
+    connect(go_to_matching_brace_action, &QAction::triggered, this, &MainWindow::go_to_matching_brace);
     connect(indent_action, &QAction::triggered, this, &MainWindow::indent_lines);
     connect(unindent_action, &QAction::triggered, this, &MainWindow::unindent_lines);
     connect(toggle_comment_action, &QAction::triggered, this, &MainWindow::toggle_comment);
@@ -1375,6 +1470,13 @@ void MainWindow::go_to_line() {
     cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, line - 1);
     editor_->setTextCursor(cursor);
     editor_->centerCursor();
+}
+
+void MainWindow::go_to_matching_brace() {
+    editor_->setFocus();
+    if (!go_to_matching_brace_in_editor(editor_)) {
+        statusBar()->showMessage("Go to Matching Brace: no match", 3000);
+    }
 }
 
 void MainWindow::duplicate_line() {
