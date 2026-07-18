@@ -3255,10 +3255,13 @@ TEST(ReplCommandsTest, wave255_graph_spectral) {
     EXPECT_EQ(interp.state().matrices.at("L").rows(), 3u);
     EXPECT_EQ(interp.state().matrices.at("L").cols(), 3u);
 
+    // C++ adjacency_spectrum is power-iteration spectral radius (1×1), not full eig.
     expect_ok(interp, "spec = graph_adjacency_spectrum(A)");
     ASSERT_GT(interp.state().matrices.count("spec"), 0u);
-    EXPECT_EQ(interp.state().matrices.at("spec").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("spec").rows(), 1u);
     EXPECT_EQ(interp.state().matrices.at("spec").cols(), 1u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("spec")(0, 0)));
+    EXPECT_GT(interp.state().matrices.at("spec")(0, 0), 0.0);
 }
 
 TEST(ReplCommandsTest, wave137_compress_bytes_to_bits) {

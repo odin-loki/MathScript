@@ -15951,7 +15951,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_eigenvector_centrality(A) eigenvector centrality column from adjacency\n"
             "  name = graph_katz_centrality(A) Katz centrality column from adjacency\n"
             "  name = graph_algebraic_connectivity(A) Fiedler value (algebraic connectivity)\n"
-            "  name = graph_adjacency_spectrum(A) adjacency eigenvalues as Nx1 column\n"
+            "  name = graph_adjacency_spectrum(A) adjacency spectral radius as 1x1 (power iteration)\n"
             "  name = graph_laplacian(A) graph Laplacian matrix L = D - A\n"
             "  name = graph_articulation_points(A) articulation points of undirected graph as Nx1 column\n"
             "  name = graph_bridges(A) bridge edges of undirected graph as Mx3 [from,to,weight]\n"
