@@ -3316,6 +3316,37 @@ TEST(ReplCommandsTest, wave255_graph_spectral) {
     EXPECT_GT(interp.state().matrices.at("spec")(0, 0), 0.0);
 }
 
+TEST(ReplCommandsTest, wave258_graph_dijkstra_bellman_ford) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_dijkstra(A,source)");
+    expect_contains(interp, "help", "graph_bellman_ford(A,source)");
+
+    expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
+    expect_ok(interp, "D = graph_dijkstra(A, 0)");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    const auto& D = interp.state().matrices.at("D");
+    EXPECT_EQ(D.rows(), 3u);
+    EXPECT_EQ(D.cols(), 2u);
+    EXPECT_NEAR(D(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(D(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(D(2, 0), 3.0, 1e-9);
+    EXPECT_NEAR(D(0, 1), -1.0, 1e-9);
+    EXPECT_NEAR(D(1, 1), 0.0, 1e-9);
+    EXPECT_NEAR(D(2, 1), 1.0, 1e-9);
+
+    expect_ok(interp, "B = graph_bellman_ford(A, 0)");
+    ASSERT_GT(interp.state().matrices.count("B"), 0u);
+    const auto& B = interp.state().matrices.at("B");
+    EXPECT_EQ(B.rows(), 3u);
+    EXPECT_EQ(B.cols(), 2u);
+    EXPECT_NEAR(B(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(B(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(B(2, 0), 3.0, 1e-9);
+    EXPECT_NEAR(B(0, 1), -1.0, 1e-9);
+    EXPECT_NEAR(B(1, 1), 0.0, 1e-9);
+    EXPECT_NEAR(B(2, 1), 1.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave256_graph_structure) {
     Interpreter interp;
     expect_contains(interp, "help", "graph_normalised_laplacian(A)");
