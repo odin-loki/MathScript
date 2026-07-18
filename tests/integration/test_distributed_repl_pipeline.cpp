@@ -134,4 +134,19 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
         ColMatrix<double>{{1.0}, {1.0}}).value();
     EXPECT_NEAR(xb(0, 0), expected_b(0, 0), 1e-5);
     EXPECT_NEAR(xb(1, 0), expected_b(1, 0), 1e-5);
+
+    // dist_minres: symmetric system via distributed MINRES
+    expect_ok(interp, "S = [4, 1; 1, 3]");
+    expect_ok(interp, "srhs = [1; 2]");
+    expect_ok(interp, "xm = dist_minres(S, srhs)");
+    expect_ok(interp, "xm = dist_minres(S, srhs)");
+    ASSERT_GT(interp.state().matrices.count("xm"), 0u);
+    const auto& xm = interp.state().matrices.at("xm");
+    EXPECT_EQ(xm.rows(), 2u);
+    EXPECT_EQ(xm.cols(), 1u);
+    const auto expected_m = ms::minres(
+        ColMatrix<double>{{4.0, 1.0}, {1.0, 3.0}},
+        ColMatrix<double>{{1.0}, {2.0}}).value();
+    EXPECT_NEAR(xm(0, 0), expected_m(0, 0), 1e-5);
+    EXPECT_NEAR(xm(1, 0), expected_m(1, 0), 1e-5);
 }

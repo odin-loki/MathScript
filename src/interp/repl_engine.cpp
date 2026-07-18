@@ -147,6 +147,19 @@ Result<Matrix<double>> eval_dist_bicgstab(const Matrix<double>& A, const Matrix<
     return ms::distributed::dist_bicgstab(*dA, *db, ctx);
 }
 
+Result<Matrix<double>> eval_dist_minres(const Matrix<double>& A, const Matrix<double>& b) {
+    auto& ctx = repl_mpi_context();
+    auto dA = ms::distributed::scatter(A, ctx);
+    if (!dA) {
+        return std::unexpected(dA.error());
+    }
+    auto db = ms::distributed::scatter(b, ctx);
+    if (!db) {
+        return std::unexpected(db.error());
+    }
+    return ms::distributed::dist_minres(*dA, *db, ctx);
+}
+
 Result<Matrix<double>> eval_dist_matmul(const Matrix<double>& A, const Matrix<double>& B) {
     auto& ctx = repl_mpi_context();
     auto dA = ms::distributed::scatter(A, ctx);
@@ -8165,7 +8178,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
             fn == "cuda_add" ||
-            fn == "solve" || fn == "bicgstab" || fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
+            fn == "solve" || fn == "bicgstab" || fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
@@ -9664,7 +9677,7 @@ bool Interpreter::try_parse_scalar_expr_assignment(const std::string& line, std:
 
 bool is_matrix_call_callee(const std::string& callee) {
     return callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-           callee == "solve" || callee == "bicgstab" || callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_matmul" ||
+           callee == "solve" || callee == "bicgstab" || callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_matmul" ||
            callee == "transpose" || callee == "chol" ||
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
@@ -9736,7 +9749,7 @@ bool is_matrix_call_callee(const std::string& callee) {
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
         callee == "solve" || callee == "bicgstab" || callee == "dist_solve" || callee == "dist_cg" ||
-        callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_matmul" || callee == "rand" ||
+        callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_matmul" || callee == "rand" ||
         callee == "randn" ||
         callee == "kron") {
         return arity == 2;
@@ -11672,6 +11685,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(right.error());
         }
         result = eval_dist_bicgstab(*left, *right);
+    } else if (assign.callee == "dist_minres" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = eval_dist_minres(*left, *right);
     } else if (assign.callee == "dist_matmul" && assign.args.size() == 2) {
         auto left = resolve_operand(assign.args[0]);
         if (!left) {
@@ -13760,6 +13783,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = dist_gmres(A, B)  distributed GMRES (block MPI or gather + gmres)\n"
             "  name = dist_jacobi(A, B) distributed Jacobi (block MPI or gather + jacobi)\n"
             "  name = dist_bicgstab(A, B) distributed BiCGSTAB (gather + bicgstab)\n"
+            "  name = dist_minres(A, B) distributed MINRES (gather + minres)\n"
             "  name = dist_matmul(A, B)  distributed matrix multiply (row-block local GEMM)\n"
             "  mpi_rank(), mpi_size(), mpi_allreduce_sum(x)  MPI rank/size/allreduce (stub: rank=0, size=1)\n"
             "  cuda_allreduce_sum(x)  NCCL all-reduce sum (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
@@ -14294,7 +14318,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
@@ -21926,7 +21950,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
 
         if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "dist_solve" ||
-            fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_matmul" ||
+            fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_matmul" ||
             fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
             fn == "cuda_add") {
             auto A = resolve_matrix(arg_a);
@@ -22006,6 +22030,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "dist_bicgstab") {
                     auto x = eval_dist_bicgstab(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "dist_minres") {
+                    auto x = eval_dist_minres(*A, *B);
                     if (!x) {
                         return std::unexpected(x.error());
                     }
