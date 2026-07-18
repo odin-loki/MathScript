@@ -5203,3 +5203,18 @@ TEST(ReplCommandsTest, wave252_crypto_aes256_decrypt_block) {
         R"cmd(crypto_aes256_decrypt_block("603deb1015ca71be2b73aef3ae246ee256b942bce1d3e52f2b3636849ec0be41", "a36452d23436433a516cace8bf319e9c"))cmd",
         "6bc1bee22e409f96e93d7e117393172a");
 }
+
+TEST(ReplCommandsTest, wave253_crypto_aes128_decrypt_block) {
+    Interpreter interp;
+    expect_contains(interp, "help", "crypto_aes128_decrypt_block");
+
+    // FIPS-197 AES-128 encrypt then decrypt round-trip
+    expect_contains(
+        interp,
+        R"cmd(crypto_aes128_encrypt_block("2b7e151628aed2a6abf7158809cf4f3c", "3243f6a8885a308d313198a2e0370734"))cmd",
+        "3925841d02dc09fbdc118597196a0b32");
+    expect_contains(
+        interp,
+        R"cmd(crypto_aes128_decrypt_block("2b7e151628aed2a6abf7158809cf4f3c", "3925841d02dc09fbdc118597196a0b32"))cmd",
+        "3243f6a8885a308d313198a2e0370734");
+}

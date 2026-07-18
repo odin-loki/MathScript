@@ -263,6 +263,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | Call | Description |
 |------|-------------|
 | `crypto_aes128_encrypt_block(key_hex, block_hex)` | AES-128 ECB single-block encrypt; returns hex ciphertext |
+| `crypto_aes128_decrypt_block(key_hex, block_hex)` | AES-128 ECB single-block decrypt; returns hex plaintext (Wave 253) |
 | `crypto_aes256_encrypt_block(key_hex, block_hex)` | AES-256 ECB single-block encrypt; returns hex ciphertext (Wave 251) |
 | `crypto_aes128_cbc_encrypt(key_hex, iv_hex, plain_hex)` | AES-128 CBC encrypt; returns hex ciphertext |
 | `crypto_aes128_cbc_decrypt(key_hex, iv_hex, cipher_hex)` | AES-128 CBC decrypt; returns hex plaintext |

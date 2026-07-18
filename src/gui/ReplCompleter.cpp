@@ -127,6 +127,7 @@ QStringList repl_command_list() {
         QStringLiteral("sym_dsolve"),
         // Crypto
         QStringLiteral("crypto_aes128_encrypt_block"),
+        QStringLiteral("crypto_aes128_decrypt_block"),
         QStringLiteral("crypto_aes256_encrypt_block"),
         QStringLiteral("crypto_aes256_decrypt_block"),
         QStringLiteral("crypto_aes128_cbc_encrypt"),
