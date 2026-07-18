@@ -4912,6 +4912,136 @@ Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std
     return std::to_string(sym_eval(*expr, {{var, value}})) + "\n";
 }
 
+Result<std::string> eval_sym_expand_string(const std::string& expr_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_expand");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    const auto result = sym_expand(std::move(*expr));
+    return sym_to_string(result) + "\n";
+}
+
+Result<std::string> eval_sym_collect_strings(const std::string& expr_arg, const std::string& var_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_collect");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    std::string var_text;
+    if (!parse_quoted_string(var_arg, var_text) || var_text.empty()) {
+        return std::unexpected(DomainError{"sym_collect", "expected sym_collect(\"expr\", \"var\")"});
+    }
+    const auto result = sym_collect(*expr, var_text);
+    return sym_to_string(result) + "\n";
+}
+
+Result<std::string> eval_sym_substitute_strings(const std::string& expr_arg, const std::string& var_arg,
+                                                const std::string& repl_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_substitute");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    std::string var_text;
+    if (!parse_quoted_string(var_arg, var_text) || var_text.empty()) {
+        return std::unexpected(DomainError{
+            "sym_substitute", "expected sym_substitute(\"expr\", \"var\", \"replacement\")"});
+    }
+    auto repl = parse_sym_quoted_expr(repl_arg, "sym_substitute");
+    if (!repl) {
+        return std::unexpected(repl.error());
+    }
+    const auto result = sym_substitute(*expr, var_text, *repl);
+    return sym_to_string(result) + "\n";
+}
+
+Result<std::string> eval_sym_limit_strings(const std::string& expr_arg, const std::string& var_arg,
+                                           const std::string& point_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_limit");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    std::string var_text;
+    if (!parse_quoted_string(var_arg, var_text) || var_text.empty()) {
+        return std::unexpected(DomainError{"sym_limit", "expected sym_limit(\"expr\", \"var\", point)"});
+    }
+    double point = 0.0;
+    if (!parse_number(trim_copy(point_arg), point)) {
+        return std::unexpected(DomainError{"sym_limit", "expected numeric limit point"});
+    }
+    return std::to_string(sym_limit(*expr, var_text, point)) + "\n";
+}
+
+Result<std::string> eval_sym_series_strings(const std::string& expr_arg, const std::string& var_arg,
+                                            const std::string& point_arg, const std::string& order_arg) {
+    auto expr = parse_sym_quoted_expr(expr_arg, "sym_series");
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    std::string var_text;
+    if (!parse_quoted_string(var_arg, var_text) || var_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_series", "expected sym_series(\"expr\", \"var\", point, order)"});
+    }
+    double point = 0.0;
+    double order_d = 0.0;
+    if (!parse_number(trim_copy(point_arg), point) || !parse_number(trim_copy(order_arg), order_d)) {
+        return std::unexpected(
+            DomainError{"sym_series", "expected numeric point and integer order"});
+    }
+    const int order = static_cast<int>(order_d);
+    if (order < 0 || order_d != order) {
+        return std::unexpected(DomainError{"sym_series", "expected non-negative integer order"});
+    }
+    const auto result = sym_series(*expr, var_text, point, order);
+    return sym_to_string(result) + "\n";
+}
+
+Result<std::vector<std::string>> parse_sym_semicolon_identifiers(const std::string& arg,
+                                                                 const char* fn) {
+    std::string text;
+    if (!parse_quoted_string(arg, text)) {
+        return std::unexpected(
+            DomainError{fn, "expected quoted semicolon-separated identifier string"});
+    }
+    std::vector<std::string> ids;
+    std::stringstream ss(text);
+    std::string part;
+    while (std::getline(ss, part, ';')) {
+        part = trim_copy(part);
+        if (part.empty()) {
+            continue;
+        }
+        if (!is_identifier(part)) {
+            return std::unexpected(DomainError{fn, "expected identifier in semicolon list"});
+        }
+        ids.push_back(part);
+    }
+    if (ids.empty()) {
+        return std::unexpected(DomainError{fn, "expected at least one identifier"});
+    }
+    return ids;
+}
+
+Result<std::string> eval_sym_solve_linear_strings(const std::string& eqs_arg,
+                                                  const std::string& vars_arg) {
+    auto eqs = parse_sym_semicolon_formulas(eqs_arg, "sym_solve_linear");
+    if (!eqs) {
+        return std::unexpected(eqs.error());
+    }
+    auto vars = parse_sym_semicolon_identifiers(vars_arg, "sym_solve_linear");
+    if (!vars) {
+        return std::unexpected(vars.error());
+    }
+    const auto result = sym_solve_linear(*eqs, *vars);
+    if (!result) {
+        return std::unexpected(DomainError{"sym_solve_linear", result.error().message});
+    }
+    std::ostringstream oss;
+    for (const auto& [name, expr] : *result) {
+        oss << name << " = " << sym_to_string(expr) << "\n";
+    }
+    return oss.str();
+}
+
 Result<std::string> format_ode_trajectory(const OdeResult& result) {
     if (result.t.size() != result.y.size()) {
         return std::unexpected(DomainError{"ode", "internal trajectory size mismatch"});
@@ -5748,29 +5878,65 @@ Result<std::string> eval_ode_event_detect_call(const std::string& formula_arg,
 }
 
 std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) {
-    std::smatch match;
-    static const std::regex sym_binary(R"((\w+)\(([^,]+),([^)]+)\))", std::regex::icase);
-    if (std::regex_match(cmd, match, sym_binary)) {
-        const std::string fn = lower(match[1].str());
-        const std::string arg_a = trim_copy(match[2].str());
-        const std::string arg_b = trim_copy(match[3].str());
+    const auto open = cmd.find('(');
+    if (open == std::string::npos || cmd.empty() || cmd.back() != ')') {
+        return std::nullopt;
+    }
+    const std::string fn = lower(trim_copy(cmd.substr(0, open)));
+    if (fn != "sym_diff" && fn != "sym_simplify" && fn != "sym_integrate" && fn != "sym_eval" &&
+        fn != "sym_expand" && fn != "sym_collect" && fn != "sym_substitute" && fn != "sym_limit" &&
+        fn != "sym_series" && fn != "sym_solve_linear") {
+        return std::nullopt;
+    }
+    const auto args = split_call_args(cmd);
+    if (!args) {
+        return std::unexpected(DomainError{fn, "invalid call syntax"});
+    }
+    if (fn == "sym_simplify" || fn == "sym_expand") {
+        if (args->size() != 1) {
+            return std::unexpected(DomainError{fn, std::string("expected ") + fn + "(\"expr\")"});
+        }
+        if (fn == "sym_simplify") {
+            return eval_sym_simplify_string(args->at(0));
+        }
+        return eval_sym_expand_string(args->at(0));
+    }
+    if (fn == "sym_diff" || fn == "sym_integrate" || fn == "sym_eval" || fn == "sym_collect" ||
+        fn == "sym_solve_linear") {
+        if (args->size() != 2) {
+            return std::unexpected(
+                DomainError{fn, std::string("expected ") + fn + "(\"expr\", \"arg\")"});
+        }
         if (fn == "sym_diff") {
-            return eval_sym_diff_strings(arg_a, arg_b);
+            return eval_sym_diff_strings(args->at(0), args->at(1));
         }
         if (fn == "sym_integrate") {
-            return eval_sym_integrate_strings(arg_a, arg_b);
+            return eval_sym_integrate_strings(args->at(0), args->at(1));
         }
         if (fn == "sym_eval") {
-            return eval_sym_eval_strings(arg_a, arg_b);
+            return eval_sym_eval_strings(args->at(0), args->at(1));
         }
+        if (fn == "sym_collect") {
+            return eval_sym_collect_strings(args->at(0), args->at(1));
+        }
+        return eval_sym_solve_linear_strings(args->at(0), args->at(1));
     }
-    static const std::regex sym_unary(R"((\w+)\(([^)]+)\))", std::regex::icase);
-    if (std::regex_match(cmd, match, sym_unary)) {
-        const std::string fn = lower(match[1].str());
-        const std::string arg = trim_copy(match[2].str());
-        if (fn == "sym_simplify") {
-            return eval_sym_simplify_string(arg);
+    if (fn == "sym_substitute" || fn == "sym_limit") {
+        if (args->size() != 3) {
+            return std::unexpected(
+                DomainError{fn, std::string("expected ") + fn + "(\"expr\", \"var\", arg)"});
         }
+        if (fn == "sym_substitute") {
+            return eval_sym_substitute_strings(args->at(0), args->at(1), args->at(2));
+        }
+        return eval_sym_limit_strings(args->at(0), args->at(1), args->at(2));
+    }
+    if (fn == "sym_series") {
+        if (args->size() != 4) {
+            return std::unexpected(DomainError{
+                fn, "expected sym_series(\"expr\", \"var\", point, order)"});
+        }
+        return eval_sym_series_strings(args->at(0), args->at(1), args->at(2), args->at(3));
     }
     return std::nullopt;
 }
@@ -6320,6 +6486,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "bigint" || fn == "bigint_factorial" || fn == "bigint_fib" ||
             fn == "bigint_gcd" ||
             fn == "sym_diff" || fn == "sym_integrate" || fn == "sym_eval" || fn == "sym_simplify" ||
+            fn == "sym_expand" || fn == "sym_collect" || fn == "sym_substitute" ||
+            fn == "sym_limit" || fn == "sym_series" || fn == "sym_solve_linear" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
             fn == "graph_bellman_ford_dist" || fn == "graph_max_flow" ||
             fn == "graph_astar" ||
@@ -11338,6 +11506,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
             "  name = sym_diff(\"expr\",\"var\") differentiate quoted expression w.r.t. variable\n"
             "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
+            "  name = sym_expand(\"expr\") expand quoted symbolic expression\n"
+            "  name = sym_collect(\"expr\",\"var\") collect like terms in variable\n"
+            "  name = sym_substitute(\"expr\",\"var\",\"replacement\") substitute variable in expression\n"
+            "  name = sym_limit(\"expr\",\"var\",point) evaluate symbolic limit at point\n"
+            "  name = sym_series(\"expr\",\"var\",point,order) Taylor series to order at point\n"
+            "  name = sym_solve_linear(\"eq1;eq2\",\"x;y\") solve linear system of equations\n"
             "  name = sym_integrate(\"expr\",\"var\") integrate quoted expression w.r.t. variable\n"
             "  name = sym_eval(\"expr\",\"var=value\") numerically evaluate quoted expression\n"
             "  name = ode_euler(\"formula\",t0,y0,t_end,steps) Euler IVP trajectory [t,y] columns\n"
@@ -11607,7 +11781,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  heun_g(a,q,alpha,beta,gamma,delta,z), painleve1(x,y0,yp0)\n"
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
-            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"
+            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\")\n"
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42)\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
@@ -14784,6 +14958,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         R"((\w+)\(([^,]+),([^,]+),([^,]+),([^)]+)\))", std::regex::icase);
     if (std::regex_match(cmd, match, quaternary)) {
         const std::string fn = lower(match[1].str());
+        if (fn == "sym_series") {
+            const std::string arg_a = trim(match[2].str());
+            const std::string arg_b = trim(match[3].str());
+            const std::string arg_c = trim(match[4].str());
+            const std::string arg_d = trim(match[5].str());
+            auto value = eval_sym_series_strings(arg_a, arg_b, arg_c, arg_d);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
         if (fn == "geo_dist2d") {
             double x1 = 0.0;
             double y1 = 0.0;
@@ -15071,6 +15256,26 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     }
     if (std::regex_match(cmd, match, ternary)) {
         const std::string fn = lower(match[1].str());
+        if (fn == "sym_substitute") {
+            const std::string arg_a = trim(match[2].str());
+            const std::string arg_b = trim(match[3].str());
+            const std::string arg_c = trim(match[4].str());
+            auto value = eval_sym_substitute_strings(arg_a, arg_b, arg_c);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "sym_limit") {
+            const std::string arg_a = trim(match[2].str());
+            const std::string arg_b = trim(match[3].str());
+            const std::string arg_c = trim(match[4].str());
+            auto value = eval_sym_limit_strings(arg_a, arg_b, arg_c);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
         if (fn == "graph_dijkstra_dist") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                 auto matrix = parse_matrix(text);
@@ -17968,6 +18173,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return *value;
         }
 
+        if (fn == "sym_collect") {
+            auto value = eval_sym_collect_strings(arg_a, arg_b);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
+        if (fn == "sym_solve_linear") {
+            auto value = eval_sym_solve_linear_strings(arg_a, arg_b);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
         if (fn == "legendre_p") {
             double n = 0.0;
             double x = 0.0;
@@ -18251,6 +18472,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
         if (fn == "sym_simplify") {
             auto value = eval_sym_simplify_string(arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
+        if (fn == "sym_expand") {
+            auto value = eval_sym_expand_string(arg);
             if (!value) {
                 return std::unexpected(value.error());
             }
