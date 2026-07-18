@@ -7042,3 +7042,46 @@ TEST(ReplCommandsTest, wave263_finance_merton_historical) {
     EXPECT_NEAR(interp.state().scalars.at("hc"), 0.20, 1e-6);
     expect_contains(interp, "finance_historical_cvar(ret, 0.95)", "0.2");
 }
+
+TEST(ReplCommandsTest, wave264_special_bessel_lambert_kummer) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bessel_y(nu,x)");
+    expect_contains(interp, "help", "bessel_i(nu,x)");
+    expect_contains(interp, "help", "lambert_w(branch,z)");
+    expect_contains(interp, "help", "kummer_u(a,b,z)");
+    expect_contains(interp, "help", "special_airy_bi(x)");
+
+    const double y_ref = ms::bessel_y(0, 1.0);
+    EXPECT_NEAR(y_ref, 0.088256964, 1e-7);
+    expect_ok(interp, "y = bessel_y(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), y_ref, 1e-9);
+    expect_contains(interp, "bessel_y(0, 1)", std::to_string(y_ref));
+    expect_ok(interp, "ys = special_bessel_y(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ys"), y_ref, 1e-9);
+
+    const double i_ref = ms::bessel_i(0, 1.0);
+    EXPECT_NEAR(i_ref, 1.2660658777520084, 1e-6);
+    expect_ok(interp, "i = bessel_i(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("i"), i_ref, 1e-9);
+    expect_ok(interp, "is = special_bessel_i(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("is"), i_ref, 1e-9);
+
+    const double w_ref = ms::lambert_w(0, 1.0);
+    EXPECT_NEAR(w_ref, 0.5671432904097838, 1e-10);
+    expect_ok(interp, "w = lambert_w(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("w"), w_ref, 1e-9);
+    expect_ok(interp, "ws = special_lambert_w(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ws"), w_ref, 1e-9);
+
+    const double u_ref = ms::kummer_u(1.0, 2.0, 0.5);
+    EXPECT_NEAR(u_ref, 2.0, 1e-12);
+    expect_ok(interp, "u = kummer_u(1, 2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("u"), u_ref, 1e-9);
+    expect_contains(interp, "kummer_u(1, 2, 0.5)", std::to_string(u_ref));
+
+    const double bi_ref = ms::airy_bi(0.0);
+    EXPECT_NEAR(bi_ref, 0.6149266274460007, 1e-6);
+    expect_ok(interp, "bi = special_airy_bi(0)");
+    EXPECT_NEAR(interp.state().scalars.at("bi"), bi_ref, 1e-9);
+    expect_contains(interp, "special_airy_bi(0)", std::to_string(bi_ref));
+}
