@@ -3,6 +3,7 @@
 #include <array>
 #include <algorithm>
 #include <cstring>
+#include <random>
 
 #if defined(_MSC_VER)
 #include <stdlib.h>
@@ -1942,6 +1943,26 @@ std::array<uint8_t, x25519_key_size> x25519_shared_secret(std::span<const uint8_
     }
 
     curve25519_donna(out.data(), private_key.data(), peer_public_key.data());
+    return out;
+}
+
+bool constant_time_eq(std::span<const uint8_t> a, std::span<const uint8_t> b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    std::uint8_t diff = 0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        diff |= static_cast<std::uint8_t>(a[i] ^ b[i]);
+    }
+    return diff == 0;
+}
+
+std::vector<uint8_t> random_bytes(std::size_t n) {
+    std::vector<uint8_t> out(n);
+    std::random_device rd;
+    for (std::size_t i = 0; i < n; ++i) {
+        out[i] = static_cast<std::uint8_t>(rd());
+    }
     return out;
 }
 

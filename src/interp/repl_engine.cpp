@@ -4764,6 +4764,34 @@ Result<std::string> eval_crypto_ed25519_verify(const std::string& pub_arg,
     return std::string(ok ? "1" : "0") + "\n";
 }
 
+Result<std::string> eval_crypto_constant_time_eq(const std::string& hex_a,
+                                                 const std::string& hex_b) {
+    constexpr const char* fn = "crypto_constant_time_eq";
+    auto a = parse_hex_arg(hex_a, fn, "hex_a");
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = parse_hex_arg(hex_b, fn, "hex_b");
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    const bool ok = crypto::constant_time_eq(*a, *b);
+    return std::string(ok ? "1" : "0") + "\n";
+}
+
+Result<std::string> eval_crypto_random_bytes(const std::string& n_arg) {
+    constexpr const char* fn = "crypto_random_bytes";
+    double n_d = 0.0;
+    if (!parse_number(trim_copy(n_arg), n_d)) {
+        return std::unexpected(DomainError{fn, "expected numeric byte count"});
+    }
+    const auto n = static_cast<std::size_t>(n_d);
+    if (n_d < 0.0 || n_d != static_cast<double>(n)) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer byte count"});
+    }
+    return crypto::to_hex(crypto::random_bytes(n)) + "\n";
+}
+
 std::vector<std::size_t> fem_rectangular_boundary_nodes(std::size_t nx, std::size_t ny) {
     const std::size_t n_nodes_x = nx + 1;
     std::vector<std::size_t> boundary;
@@ -8250,6 +8278,19 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
         }
         return eval_crypto_ed25519_verify(call_args->at(0), call_args->at(1),
                                           call_args->at(2));
+    }
+    if (fn == "crypto_constant_time_eq") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_constant_time_eq(hex_a, hex_b)"});
+        }
+        return eval_crypto_constant_time_eq(call_args->at(0), call_args->at(1));
+    }
+    if (fn == "crypto_random_bytes") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected crypto_random_bytes(n)"});
+        }
+        return eval_crypto_random_bytes(call_args->at(0));
     }
     if (fn == "crypto_hkdf_sha256") {
         if (call_args->size() != 4) {
@@ -14844,6 +14885,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_ed25519_keypair(hex_seed) Ed25519 public key from 32-byte seed (hex out)\n"
             "  crypto_ed25519_sign(hex_seed_or_sk,hex_msg) Ed25519 signature (32-byte seed or 64-byte expanded secret)\n"
             "  crypto_ed25519_verify(hex_pub,hex_msg,hex_sig) Ed25519 verify (returns 1 or 0)\n"
+            "  crypto_constant_time_eq(hex_a,hex_b) constant-time byte compare (returns 1 or 0)\n"
+            "  crypto_random_bytes(n) random bytes from std::random_device (hex out; MVP, not HSM)\n"
             "  name = sym_diff(\"expr\",\"var\") differentiate quoted expression w.r.t. variable\n"
             "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
             "  name = sym_expand(\"expr\") expand quoted symbolic expression\n"
