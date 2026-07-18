@@ -102,6 +102,8 @@ QStringList repl_command_list() {
         QStringLiteral("sinm"),
         QStringLiteral("lu"),
         QStringLiteral("qr"),
+        QStringLiteral("hess"),
+        QStringLiteral("schur"),
         QStringLiteral("pinv"),
         QStringLiteral("null"),
         QStringLiteral("orth"),
