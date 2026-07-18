@@ -10136,7 +10136,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "cuda_lu" ||
             fn == "qr" || fn == "svd" || fn == "eig_sym" ||
             fn == "zeros" || fn == "eye" || fn == "ones" ||
-            fn == "rand" || fn == "randn" || fn == "expm" || fn == "inv" ||
+            fn == "rand" || fn == "randn" || fn == "expm" || fn == "sqrtm" ||
+            fn == "logm" || fn == "tril" || fn == "triu" || fn == "cosm" ||
+            fn == "sinm" || fn == "inv" ||
             fn == "pinv" || fn == "null" || fn == "orth" ||
             fn == "kron" || fn == "repmat" || fn == "linspace" ||
             fn == "rgb2gray" || fn == "rgb2hsv" || fn == "sobel" || fn == "prewitt" ||
@@ -12003,7 +12005,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "transpose" || callee == "chol" ||
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
-           callee == "expm" || callee == "inv" ||
+           callee == "expm" || callee == "sqrtm" || callee == "logm" ||
+           callee == "tril" || callee == "triu" || callee == "cosm" ||
+           callee == "sinm" || callee == "inv" ||
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
            callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
@@ -12109,7 +12113,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "kron") {
         return arity == 2;
     }
-    if (callee == "transpose" || callee == "chol" || callee == "expm" || callee == "inv" ||
+    if (callee == "transpose" || callee == "chol" || callee == "expm" ||
+        callee == "sqrtm" || callee == "logm" || callee == "cosm" || callee == "sinm" ||
+        callee == "inv" ||
         callee == "pinv" || callee == "null" || callee == "orth" ||
         callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
         callee == "laplacian" || callee == "histeq" || callee == "sharpen" ||
@@ -12256,6 +12262,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
         callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose") {
+        return arity == 1 || arity == 2;
+    }
+    if (callee == "tril" || callee == "triu") {
         return arity == 1 || arity == 2;
     }
     if (callee == "ml_ridge_fit") {
@@ -15451,6 +15460,78 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(x.error());
         }
         result = eval_stats_bootstrap_ci(*x);
+    } else if (assign.callee == "sqrtm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = sqrtm(*matrix);
+    } else if (assign.callee == "logm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = logm(*matrix);
+    } else if (assign.callee == "cosm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = cosm(*matrix);
+    } else if (assign.callee == "sinm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = sinm(*matrix);
+    } else if (assign.callee == "tril" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        int k = 0;
+        if (assign.args.size() == 2) {
+            double k_d = 0.0;
+            if (!parse_number(assign.args[1], k_d)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    k_d = it->second;
+                } else {
+                    return std::unexpected(
+                        DomainError{"tril", "expected tril(A) or tril(A, k)"});
+                }
+            }
+            if (k_d != static_cast<int>(k_d)) {
+                return std::unexpected(DomainError{"tril", "expected integer k"});
+            }
+            k = static_cast<int>(k_d);
+        }
+        result = tril(*matrix, k);
+    } else if (assign.callee == "triu" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        int k = 0;
+        if (assign.args.size() == 2) {
+            double k_d = 0.0;
+            if (!parse_number(assign.args[1], k_d)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    k_d = it->second;
+                } else {
+                    return std::unexpected(
+                        DomainError{"triu", "expected triu(A) or triu(A, k)"});
+                }
+            }
+            if (k_d != static_cast<int>(k_d)) {
+                return std::unexpected(DomainError{"triu", "expected integer k"});
+            }
+            k = static_cast<int>(k_d);
+        }
+        result = triu(*matrix, k);
     }
     return result;
 }
@@ -17146,6 +17227,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cuda_nccl_device_count()  NCCL-visible GPU count (stub: 0)\n"
             "  name = transpose(A)      transpose assignment\n"
             "  name = chol(A)           Cholesky factor assignment\n"
+            "  name = expm(A) sqrtm(A) logm(A)  matrix exponential / square root / logarithm\n"
+            "  name = tril(A[, k]) triu(A[, k])  lower/upper triangular extraction\n"
+            "  name = cosm(A) sinm(A)   matrix cosine / sine\n"
             "  name = pinv(A) null(A) orth(A)  pseudo-inverse / null space / orthonormal basis\n"
             "  name = kron(A, B)        Kronecker product\n"
             "  name = repmat(A, p, q)   tile matrix p x q\n"
@@ -17803,7 +17887,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q])\n"
