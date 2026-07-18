@@ -12933,6 +12933,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "geo_min_bounding_rect" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
         callee == "combo_gray_code" || callee == "combo_dyck_paths" ||
+        callee == "combo_motzkin_paths" || callee == "combo_set_partitions" ||
         callee == "numthy_convergents" || callee == "numthy_factor_exp" ||
         callee == "numthy_farey" || callee == "ml_mat_transpose" ||
         callee == "poly_deriv" ||
