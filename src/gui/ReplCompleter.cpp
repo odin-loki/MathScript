@@ -139,6 +139,7 @@ QStringList repl_command_list() {
         QStringLiteral("crypto_hkdf_sha256"),
         QStringLiteral("crypto_hmac_sha512"),
         QStringLiteral("crypto_pbkdf2_sha256"),
+        QStringLiteral("crypto_pbkdf2_hmac_sha512"),
         // FFT / signal
         QStringLiteral("fft"),
         QStringLiteral("ifft"),

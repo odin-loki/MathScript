@@ -4372,6 +4372,48 @@ Result<std::string> eval_crypto_pbkdf2_sha256(const std::string& pass_arg,
     return crypto::to_hex(dk) + "\n";
 }
 
+Result<std::string> eval_crypto_pbkdf2_hmac_sha512(const std::string& pass_arg,
+                                                     const std::string& salt_arg,
+                                                     const std::string& iter_arg,
+                                                     const std::string& dklen_arg) {
+    constexpr const char* fn = "crypto_pbkdf2_hmac_sha512";
+    auto password = parse_hex_arg(pass_arg, fn, "password");
+    if (!password) {
+        return std::unexpected(password.error());
+    }
+    auto salt = parse_hex_arg(salt_arg, fn, "salt");
+    if (!salt) {
+        return std::unexpected(salt.error());
+    }
+    double iter_d = 0.0;
+    if (!parse_number(trim_copy(iter_arg), iter_d)) {
+        return std::unexpected(DomainError{fn, "expected numeric iteration count"});
+    }
+    const auto iter_i = static_cast<std::uint32_t>(iter_d);
+    if (iter_d < 0.0 || iter_d != static_cast<double>(iter_i) || iter_i == 0) {
+        return std::unexpected(DomainError{fn, "expected positive integer iteration count"});
+    }
+    double dklen_d = 0.0;
+    if (!parse_number(trim_copy(dklen_arg), dklen_d)) {
+        return std::unexpected(DomainError{fn, "expected numeric derived key length"});
+    }
+    const auto dklen_i = static_cast<std::size_t>(dklen_d);
+    if (dklen_d < 0.0 || dklen_d != static_cast<double>(dklen_i)) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer derived key length"});
+    }
+    if (password->empty()) {
+        return std::unexpected(DomainError{fn, "password must not be empty"});
+    }
+    if (salt->empty()) {
+        return std::unexpected(DomainError{fn, "salt must not be empty"});
+    }
+    const auto dk = crypto::pbkdf2_hmac_sha512(*password, *salt, iter_i, dklen_i);
+    if (dk.size() != dklen_i) {
+        return std::unexpected(DomainError{fn, "PBKDF2 derivation failed"});
+    }
+    return crypto::to_hex(dk) + "\n";
+}
+
 Result<std::string> eval_crypto_x25519_shared(const std::string& priv_arg,
                                               const std::string& pub_arg) {
     constexpr const char* fn = "crypto_x25519_shared";
@@ -7862,6 +7904,14 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
         }
         return eval_crypto_pbkdf2_sha256(call_args->at(0), call_args->at(1),
                                          call_args->at(2), call_args->at(3));
+    }
+    if (fn == "crypto_pbkdf2_hmac_sha512") {
+        if (call_args->size() != 4) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_pbkdf2_hmac_sha512(hex_pass, hex_salt, iter, dklen)"});
+        }
+        return eval_crypto_pbkdf2_hmac_sha512(call_args->at(0), call_args->at(1),
+                                              call_args->at(2), call_args->at(3));
     }
     return std::nullopt;
 }
@@ -14292,6 +14342,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_hkdf_sha256(hex_ikm,hex_salt,hex_info,len) HKDF-SHA256 extract/expand (hex I/O)\n"
             "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
             "  crypto_pbkdf2_sha256(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA256 (hex I/O)\n"
+            "  crypto_pbkdf2_hmac_sha512(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA512 (hex I/O)\n"
             "  crypto_ed25519_keypair(hex_seed) Ed25519 public key from 32-byte seed (hex out)\n"
             "  crypto_ed25519_sign(hex_seed_or_sk,hex_msg) Ed25519 signature (32-byte seed or 64-byte expanded secret)\n"
             "  crypto_ed25519_verify(hex_pub,hex_msg,hex_sig) Ed25519 verify (returns 1 or 0)\n"

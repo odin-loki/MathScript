@@ -42,6 +42,10 @@ std::vector<uint8_t> pbkdf2_hmac_sha256(std::span<const uint8_t> password,
                                         std::span<const uint8_t> salt,
                                         std::uint32_t iterations,
                                         std::size_t dklen);
+std::vector<uint8_t> pbkdf2_hmac_sha512(std::span<const uint8_t> password,
+                                        std::span<const uint8_t> salt,
+                                        std::uint32_t iterations,
+                                        std::size_t dklen);
 
 std::vector<uint8_t> sha256(std::string_view data);
 std::vector<uint8_t> sha512(std::string_view data);
