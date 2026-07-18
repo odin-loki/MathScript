@@ -82,6 +82,11 @@ ColMatrix<double> assemble_load_2d(
     const Mesh2D& mesh,
     const std::function<double(double, double)>& f);
 
+/// Assemble the global load vector for integral(f * phi_i) dV (4-point quadrature).
+ColMatrix<double> assemble_load_3d(
+    const Mesh3D& mesh,
+    const std::function<double(double, double, double)>& f);
+
 /// Apply Dirichlet boundary conditions by modifying @p K and @p f in place.
 void apply_dirichlet(
     ColMatrix<double>& K,
@@ -91,6 +96,11 @@ void apply_dirichlet(
 
 /// Solve the FEM linear system K u = f using ms::linalg::solve.
 Result<ColMatrix<double>> solve_fem(
+    const ColMatrix<double>& K,
+    const ColMatrix<double>& f);
+
+/// Solve the 3D FEM linear system K u = f using ms::linalg::solve.
+Result<ColMatrix<double>> solve_fem_3d(
     const ColMatrix<double>& K,
     const ColMatrix<double>& f);
 
