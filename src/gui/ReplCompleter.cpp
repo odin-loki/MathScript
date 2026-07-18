@@ -248,6 +248,10 @@ QStringList repl_command_list() {
         QStringLiteral("geo_dist_point_plane"),
         QStringLiteral("geo_dist_point_seg3d"),
         // Image transforms
+        QStringLiteral("gray2rgb"),
+        QStringLiteral("impad"),
+        QStringLiteral("radon"),
+        QStringLiteral("iradon"),
         QStringLiteral("imflip"),
         QStringLiteral("imrotate90"),
         QStringLiteral("threshold_binary"),
