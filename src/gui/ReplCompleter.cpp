@@ -171,6 +171,7 @@ QStringList repl_command_list() {
         QStringLiteral("cuda_allreduce_max"),
         QStringLiteral("cuda_allreduce_min"),
         QStringLiteral("cuda_allreduce_prod"),
+        QStringLiteral("cuda_allreduce_avg"),
     };
 }
 

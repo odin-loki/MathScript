@@ -8,7 +8,8 @@
 /// an installed NCCL library):
 ///   - `MS_HAS_NCCL=0` (default stub build): `nccl_available()` is false,
 ///     `nccl_comm_size()` is 1, and `allreduce_sum` / `allreduce_max` /
-///     `allreduce_min` / `allreduce_prod` return `x` unchanged (single-rank /
+///     `allreduce_min` / `allreduce_prod` / `allreduce_avg` return `x`
+///     unchanged (single-rank /
 ///     host-safe identity,
 ///     same as a 1-process MPI allreduce).
 ///   - `MS_HAS_NCCL=1`: NCCL is linked; availability follows CUDA runtime
@@ -43,5 +44,10 @@ double allreduce_min(double value);
 /// All-reduce product of a scalar across the NCCL communicator.
 /// Stub / single-rank path: returns `value` unchanged.
 double allreduce_prod(double value);
+
+/// All-reduce average of a scalar across the NCCL communicator.
+/// Stub / single-rank path: returns `value` unchanged.
+/// Multi-GPU path: `allreduce_sum(value) / nccl_comm_size()`.
+double allreduce_avg(double value);
 
 } // namespace ms::cuda
