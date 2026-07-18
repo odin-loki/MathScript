@@ -89,6 +89,19 @@ TEST(NcclStubTest, broadcast_idempotent) {
     EXPECT_DOUBLE_EQ(once, twice);
 }
 
+TEST(NcclStubTest, reduce_identity) {
+    EXPECT_DOUBLE_EQ(reduce(3.5), 3.5);
+    EXPECT_DOUBLE_EQ(reduce(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(reduce(-2.25), -2.25);
+    EXPECT_DOUBLE_EQ(reduce(7.0, 0), 7.0);
+}
+
+TEST(NcclStubTest, reduce_idempotent) {
+    const double once = reduce(42.0);
+    const double twice = reduce(once);
+    EXPECT_DOUBLE_EQ(once, twice);
+}
+
 TEST(NcclStubTest, comm_size_at_least_one) {
     EXPECT_GE(nccl_comm_size(), 1u);
 }

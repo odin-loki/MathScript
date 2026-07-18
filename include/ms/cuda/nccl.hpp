@@ -54,4 +54,9 @@ double allreduce_avg(double value);
 /// Stub / single-rank path: returns `value` unchanged.
 double broadcast(double value, int root = 0);
 
+/// Reduce (sum-to-root) a scalar to `root` across the NCCL communicator.
+/// Stub / single-rank path: returns `value` unchanged; multi-GPU path would
+/// sum to root (MVP stub = identity).
+double reduce(double value, int root = 0);
+
 } // namespace ms::cuda
