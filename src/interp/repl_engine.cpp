@@ -5413,6 +5413,18 @@ Result<Matrix<double>> eval_signal_instantaneous_phase(const Matrix<double>& x_m
     return vector_to_column(instantaneous_phase(*x));
 }
 
+Result<Matrix<double>> eval_signal_unwrap(const Matrix<double>& x_m) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_unwrap");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_unwrap", "expected non-empty phase vector"});
+    }
+    return vector_to_column(unwrap(*x));
+}
+
 Result<Matrix<double>> eval_graph_topological_sort(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_topological_sort");
     if (!G) {
@@ -8827,6 +8839,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "signal_spectrogram" ||
             fn == "signal_envelope" || fn == "signal_hilbert" ||
             fn == "signal_instantaneous_phase" || fn == "signal_instantaneous_freq" ||
+            fn == "signal_unwrap" ||
             fn == "quantum_commutator" || fn == "quantum_tensor_product" ||
             fn == "signal_hamming" || fn == "signal_hanning" || fn == "signal_blackman" ||
             fn == "signal_parzen" || fn == "signal_triangular" ||
@@ -10294,7 +10307,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "finance_min_variance_portfolio" ||
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" || callee == "fft_fft2" ||
            callee == "signal_envelope" || callee == "signal_hilbert" ||
-           callee == "signal_instantaneous_phase" ||
+           callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
            callee == "geo_min_bounding_rect" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
@@ -10361,7 +10374,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "fft_rfft" || callee == "fft_dft" ||
         callee == "fft_ifft" || callee == "fft_fft2" ||
         callee == "signal_envelope" || callee == "signal_hilbert" ||
-        callee == "signal_instantaneous_phase" ||
+        callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
         callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
         callee == "geo_min_bounding_rect" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
@@ -13256,6 +13269,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(phase.error());
         }
         result = *phase;
+    } else if (assign.callee == "signal_unwrap" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto unwrapped = eval_signal_unwrap(*matrix);
+        if (!unwrapped) {
+            return std::unexpected(unwrapped.error());
+        }
+        result = *unwrapped;
     } else if (assign.callee == "fft_dft" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -14781,6 +14804,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_envelope(x) amplitude envelope |hilbert(x)| as N×1 column\n"
             "  name = signal_hilbert(x) analytic signal as N×2 [re,im] matrix\n"
             "  name = signal_instantaneous_phase(x) instantaneous phase as N×1 column\n"
+            "  name = signal_unwrap(x) NumPy-style phase unwrap as N×1 column\n"
             "  name = signal_instantaneous_freq(x,fs) instantaneous frequency as N×1 column\n"
             "  name = signal_convolve(a,b) discrete convolution of Nx1 vectors\n"
             "  name = signal_correlate(a,b) cross-correlation of Nx1 vectors\n"
@@ -23981,6 +24005,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "phase =\n";
             print_matrix(out, *phase);
+        } else if (fn == "signal_unwrap") {
+            auto unwrapped = eval_signal_unwrap(*matrix);
+            if (!unwrapped) {
+                return std::unexpected(unwrapped.error());
+            }
+            out << "unwrap =\n";
+            print_matrix(out, *unwrapped);
         } else if (fn == "fft_dft") {
             auto spectrum = eval_fft_dft(*matrix);
             if (!spectrum) {

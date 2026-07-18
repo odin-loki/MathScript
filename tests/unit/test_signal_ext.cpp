@@ -1172,6 +1172,20 @@ TEST(SignalExtTest, instantaneous_phase_matches_hilbert_arg) {
     }
 }
 
+TEST(SignalExtTest, unwrap_simple_sawtooth) {
+    constexpr double pi = 3.14159265358979323846;
+    // Wrapped ramp: 0, pi/2, pi, -pi/2, 0  (sawtooth jump of ~1.5*pi after pi)
+    const std::vector<double> wrapped{0.0, pi / 2.0, pi, -pi / 2.0, 0.0};
+    const auto out = unwrap(wrapped);
+    ASSERT_EQ(out.size(), wrapped.size());
+    EXPECT_NEAR(out[0], 0.0, 1e-12);
+    EXPECT_NEAR(out[1], pi / 2.0, 1e-12);
+    EXPECT_NEAR(out[2], pi, 1e-12);
+    EXPECT_NEAR(out[3], 3.0 * pi / 2.0, 1e-12);
+    EXPECT_NEAR(out[4], 2.0 * pi, 1e-12);
+    EXPECT_TRUE(unwrap(std::vector<double>{}).empty());
+}
+
 TEST(SignalExtTest, instantaneous_freq_output_length_matches_input) {
     const auto x = cosine_signal(64, 1000.0, 40.0);
     const auto freq = instantaneous_freq(x, 1000.0);
