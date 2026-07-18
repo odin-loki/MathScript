@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 235 complete – **382 CTest suites** on `main` @ Wave 235)
+**Updated:** 2026-07-18 (Wave 236 complete – **382 CTest suites** on `wave236/gui-polish`)
 
 ---
 
@@ -115,11 +115,21 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ---
 
-## Feature work (Wave 236+) — NEXT
+## Wave 236 ✅ COMPLETE (GUI/REPL polish)
+
+| Branch | Shipped |
+|--------|---------|
+| `wave236/gui-polish` | Clear Output button/menu (**Ctrl+L**); Open Recent (8 files); REPL welcome banner + version; About dialog; font zoom (**Ctrl+Plus/Minus/0**) |
+
+**382 CTest suites** (GUI-only polish; no new CTest registration). Profiling iteration unchanged – **FULLY COMPLETE (Waves 218–230).**
+
+
+---
+
+## Feature work (Wave 237+) — NEXT
 
 | Wave | Focus |
 |------|--------|
-| **236** | Remaining GUI/REPL polish |
 | **237+** | Remaining API gaps (**curve25519**, **3D CFD**, **scalable MPI LA**, NCCL, modular plugins, etc.) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

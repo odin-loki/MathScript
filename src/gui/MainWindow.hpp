@@ -15,6 +15,7 @@ class PlotWidget;
 class PlotSurfWidget;
 class QCloseEvent;
 class QDockWidget;
+class QMenu;
 class QTreeView;
 class QFileSystemModel;
 class ReplWorker;
@@ -52,6 +53,13 @@ private:
     void save_layout();
     void start_eval(const QString& line);
     void finish_repl_op();
+    void clear_output();
+    void show_about();
+    void open_script_file(const QString& path);
+    void add_recent_file(const QString& path);
+    void refresh_recent_menu();
+    void adjust_font_size(int delta);
+    void show_welcome_banner();
 
     QSplitter* main_splitter_ = nullptr;
     QPlainTextEdit* output_ = nullptr;
@@ -60,6 +68,8 @@ private:
     QPushButton* run_ = nullptr;
     QPushButton* stop_ = nullptr;
     QPushButton* run_script_ = nullptr;
+    QPushButton* clear_output_ = nullptr;
+    QMenu* recent_menu_ = nullptr;
     QListWidget* variables_ = nullptr;
     QStackedWidget* plot_stack_ = nullptr;
     PlotWidget* plot_2d_ = nullptr;
@@ -75,4 +85,6 @@ private:
     QStringList repl_history_;
     int repl_history_pos_ = -1;
     QString repl_history_draft_;
+    QStringList recent_files_;
+    int mono_font_size_ = 11;
 };

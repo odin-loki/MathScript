@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] – 2026-07-18 (Wave 236 – GUI/REPL polish)
+
+Sixth **feature wave** after Wave 235. Remaining GUI/REPL polish in `wave236/gui-polish`.
+
+### Added (Wave 236)
+- **GUI** – **Clear Output** button and View menu action (**Ctrl+L**); **Open Recent** file list (persisted, max 8); REPL **welcome banner** with version; **About MathScript** dialog (Help menu); monospace font size controls (**Ctrl+Plus/Minus/0**, default 11 pt).
+- **Total Wave 236: 382 CTest suites – all passing** (GUI-only polish; no new CTest registration). **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
+Builds on Wave 235 ChaCha-Poly1305, FEM 3D, and GUI kickoff polish. Full master-plan scope (curve25519, 3D CFD, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred – see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+
+### Docs (Wave 236)
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** – Wave 236 kickoff/complete; GUI polish documented.
+
+### Baseline (Wave 236)
+- **382 CTest suites – all passing** on `wave236/gui-polish`. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] – 2026-07-18 (Wave 235 – ChaCha-Poly1305, FEM 3D, GUI polish)
 
 Fifth **feature wave** after Wave 234. Three parallel implementation worktrees merged to `main` (`wave235/crypto-chacha-poly`, `wave235/fem-3d`, GUI polish from Wave 235 kickoff).

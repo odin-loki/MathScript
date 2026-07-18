@@ -7,13 +7,17 @@
 #include <QApplication>
 #include <QAction>
 #include <QCloseEvent>
+#include <QCoreApplication>
+#include <QFont>
 #include <QKeyEvent>
+#include <QMessageBox>
 #include <QShortcut>
 #include <QColor>
 #include <QSettings>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFileSystemModel>
 #include <QHBoxLayout>
 #include <QMenuBar>
@@ -32,6 +36,7 @@
 
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
 
 namespace {
 
@@ -39,6 +44,8 @@ constexpr int kVarNameRole = Qt::UserRole;
 constexpr int kVarKindRole = Qt::UserRole + 1;
 constexpr char kVarKindMatrix[] = "matrix";
 constexpr char kVarKindScalar[] = "scalar";
+constexpr int kMaxRecentFiles = 8;
+constexpr int kDefaultMonoFontSize = 11;
 
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
@@ -209,6 +216,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     output_->setPlaceholderText("MathScript output");
     center_layout->addWidget(output_, 2);
 
+    QSettings settings;
+    mono_font_size_ = settings.value("gui/mono_font_size", kDefaultMonoFontSize).toInt();
+    adjust_font_size(0);
+    recent_files_ = settings.value("gui/recent_files").toStringList();
+
     plot_stack_ = new QStackedWidget(center);
     plot_2d_ = new PlotWidget(plot_stack_);
     plot_3d_ = new PlotSurfWidget(plot_stack_);
@@ -225,10 +237,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     stop_->setStatusTip("Cancel the running REPL command or queued script lines");
     stop_->setToolTip("Stop (cooperative cancel)");
     run_script_ = new QPushButton("Run Script", center);
+    clear_output_ = new QPushButton("Clear Output", center);
+    clear_output_->setStatusTip("Clear the REPL output pane");
     row->addWidget(input_);
     row->addWidget(run_);
     row->addWidget(stop_);
     row->addWidget(run_script_);
+    row->addWidget(clear_output_);
     center_layout->addLayout(row);
 
     variables_ = new QListWidget(main_splitter_);
@@ -262,14 +277,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(run_shortcut, &QShortcut::activated, this, &MainWindow::on_submit);
     connect(stop_, &QPushButton::clicked, this, &MainWindow::on_stop);
     connect(run_script_, &QPushButton::clicked, this, &MainWindow::on_run_script);
+    connect(clear_output_, &QPushButton::clicked, this, &MainWindow::clear_output);
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::on_submit);
     input_->installEventFilter(this);
     connect(file_tree_, &QTreeView::activated, this, &MainWindow::on_file_activated);
     connect(variables_, &QListWidget::itemDoubleClicked, this, &MainWindow::on_variable_double_clicked);
 
     restore_layout();
-
-    append_output("MathScript IDE ready. Type 'help' and press Run.\n");
+    refresh_recent_menu();
+    show_welcome_banner();
     refresh_variables();
 }
 
@@ -303,6 +319,8 @@ void MainWindow::save_layout() {
     if (main_splitter_ != nullptr) {
         settings.setValue("mainwindow/splitter", main_splitter_->saveState());
     }
+    settings.setValue("gui/mono_font_size", mono_font_size_);
+    settings.setValue("gui/recent_files", recent_files_);
 }
 
 void MainWindow::apply_dark_theme() {
@@ -322,22 +340,41 @@ void MainWindow::apply_dark_theme() {
 void MainWindow::setup_menus() {
     auto* file_menu = menuBar()->addMenu("&File");
     auto* open_action = file_menu->addAction("Open...");
+    recent_menu_ = file_menu->addMenu("Open &Recent");
     auto* save_session_action = file_menu->addAction("Save Session...");
     auto* load_session_action = file_menu->addAction("Load Session...");
     auto* export_plot_action = file_menu->addAction("Export Plot as PNG...");
     file_menu->addSeparator();
     auto* quit_action = file_menu->addAction("Quit");
 
+    auto* view_menu = menuBar()->addMenu("&View");
+    auto* clear_output_action = view_menu->addAction("Clear Output");
+    clear_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
+    auto* font_larger_action = view_menu->addAction("Increase Font Size");
+    font_larger_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus));
+    auto* font_smaller_action = view_menu->addAction("Decrease Font Size");
+    font_smaller_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus));
+    auto* font_reset_action = view_menu->addAction("Reset Font Size");
+    font_reset_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+
+    auto* help_menu = menuBar()->addMenu("&Help");
+    auto* about_action = help_menu->addAction("About MathScript...");
+
     connect(open_action, &QAction::triggered, this, [this]() {
         const QString path = QFileDialog::getOpenFileName(this, "Open Script");
         if (path.isEmpty()) {
             return;
         }
-        QFile file(path);
-        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            editor_->setPlainText(QString::fromUtf8(file.readAll()));
-        }
+        open_script_file(path);
     });
+    connect(clear_output_action, &QAction::triggered, this, &MainWindow::clear_output);
+    connect(font_larger_action, &QAction::triggered, this, [this]() { adjust_font_size(1); });
+    connect(font_smaller_action, &QAction::triggered, this, [this]() { adjust_font_size(-1); });
+    connect(font_reset_action, &QAction::triggered, this, [this]() {
+        mono_font_size_ = kDefaultMonoFontSize;
+        adjust_font_size(0);
+    });
+    connect(about_action, &QAction::triggered, this, &MainWindow::show_about);
     connect(save_session_action, &QAction::triggered, this, [this]() {
         if (repl_busy_) {
             append_output("error: wait for the current REPL command to finish\n", true);
@@ -411,6 +448,90 @@ void MainWindow::refresh_status() {
                                  .arg(gpu_part)
                                  .arg(ms::distributed::rank(mpi))
                                  .arg(ms::distributed::size(mpi)));
+}
+
+void MainWindow::clear_output() {
+    output_->clear();
+}
+
+void MainWindow::show_about() {
+    const QString version = QCoreApplication::applicationVersion();
+    QMessageBox::about(
+        this, "About MathScript",
+        QString("<h3>MathScript IDE</h3>"
+                "<p>Version %1</p>"
+                "<p>Interactive numerical computing with a REPL, script editor, "
+                "variable inspector, and plotting.</p>"
+                "<p>Run commands with <b>Run</b> or <b>Ctrl+Enter</b>. "
+                "Type <code>help</code> in the REPL for built-in commands.</p>")
+            .arg(version.isEmpty() ? QStringLiteral("1.0.0") : version));
+}
+
+void MainWindow::open_script_file(const QString& path) {
+    if (path.isEmpty()) {
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        append_output("error: failed to open " + path + "\n", true);
+        return;
+    }
+    editor_->setPlainText(QString::fromUtf8(file.readAll()));
+    add_recent_file(path);
+    append_output("opened " + path + "\n");
+}
+
+void MainWindow::add_recent_file(const QString& path) {
+    const QString canonical = QFileInfo(path).canonicalFilePath();
+    if (canonical.isEmpty()) {
+        return;
+    }
+    recent_files_.removeAll(canonical);
+    recent_files_.prepend(canonical);
+    while (recent_files_.size() > kMaxRecentFiles) {
+        recent_files_.removeLast();
+    }
+    refresh_recent_menu();
+}
+
+void MainWindow::refresh_recent_menu() {
+    if (recent_menu_ == nullptr) {
+        return;
+    }
+    recent_menu_->clear();
+    if (recent_files_.isEmpty()) {
+        auto* empty_action = recent_menu_->addAction("(none)");
+        empty_action->setEnabled(false);
+        return;
+    }
+    for (const QString& path : recent_files_) {
+        auto* action = recent_menu_->addAction(QFileInfo(path).fileName());
+        action->setStatusTip(path);
+        action->setToolTip(path);
+        connect(action, &QAction::triggered, this, [this, path]() { open_script_file(path); });
+    }
+}
+
+void MainWindow::adjust_font_size(int delta) {
+    if (delta != 0) {
+        mono_font_size_ = std::clamp(mono_font_size_ + delta, 8, 24);
+    }
+    QFont font = editor_->font();
+    font.setFamily(QStringLiteral("Consolas"));
+    font.setStyleHint(QFont::Monospace);
+    font.setPointSize(mono_font_size_);
+    editor_->setFont(font);
+    output_->setFont(font);
+    input_->setFont(font);
+}
+
+void MainWindow::show_welcome_banner() {
+    const QString version = QCoreApplication::applicationVersion();
+    const QString version_text = version.isEmpty() ? QStringLiteral("1.0.0") : version;
+    append_output(QString("MathScript IDE v%1\n").arg(version_text));
+    append_output("────────────────────────────────────────\n");
+    append_output("Type 'help' and press Run (Ctrl+Enter).\n");
+    append_output("Stop cancels long REPL work; Clear Output resets this pane.\n\n");
 }
 
 void MainWindow::append_output(const QString& text, bool is_error) {
@@ -547,11 +668,7 @@ void MainWindow::on_file_activated(const QModelIndex& index) {
     if (file_model_->isDir(index)) {
         return;
     }
-    QFile file(path);
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        editor_->setPlainText(QString::fromUtf8(file.readAll()));
-        append_output("opened " + path + "\n");
-    }
+    open_script_file(path);
 }
 
 void MainWindow::start_eval(const QString& line) {
