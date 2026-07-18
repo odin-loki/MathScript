@@ -1227,6 +1227,42 @@ std::vector<uint8_t> pbkdf2_hmac_sha256(std::span<const uint8_t> password,
     return dk;
 }
 
+std::vector<uint8_t> pbkdf2_hmac_sha512(std::span<const uint8_t> password,
+                                        std::span<const uint8_t> salt,
+                                        std::uint32_t iterations,
+                                        std::size_t dklen) {
+    if (dklen == 0 || iterations == 0) {
+        return {};
+    }
+
+    const std::size_t blocks = (dklen + sha512_digest_size - 1) / sha512_digest_size;
+    std::vector<uint8_t> dk;
+    dk.reserve(dklen);
+
+    for (std::size_t block = 1; block <= blocks; ++block) {
+        std::vector<uint8_t> salt_block;
+        salt_block.reserve(salt.size() + 4);
+        salt_block.insert(salt_block.end(), salt.begin(), salt.end());
+        salt_block.push_back(static_cast<uint8_t>((block >> 24) & 0xffu));
+        salt_block.push_back(static_cast<uint8_t>((block >> 16) & 0xffu));
+        salt_block.push_back(static_cast<uint8_t>((block >> 8) & 0xffu));
+        salt_block.push_back(static_cast<uint8_t>(block & 0xffu));
+
+        auto u = hmac_sha512(password, salt_block);
+        std::vector<uint8_t> t = u;
+        for (std::uint32_t iter = 1; iter < iterations; ++iter) {
+            u = hmac_sha512(password, u);
+            for (std::size_t j = 0; j < sha512_digest_size; ++j) {
+                t[j] ^= u[j];
+            }
+        }
+
+        const std::size_t take = std::min(sha512_digest_size, dklen - dk.size());
+        dk.insert(dk.end(), t.begin(), t.begin() + static_cast<std::ptrdiff_t>(take));
+    }
+    return dk;
+}
+
 std::string to_hex(std::span<const uint8_t> bytes) {
     std::string out;
     out.resize(bytes.size() * 2);

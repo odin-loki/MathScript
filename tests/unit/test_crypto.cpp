@@ -283,6 +283,30 @@ TEST(CryptoPbkdf2HmacSha256, ZeroLengthOutput) {
     EXPECT_TRUE(pbkdf2_hmac_sha256(password, salt, 1, 0).empty());
 }
 
+// ---- PBKDF2-HMAC-SHA512 (RFC 8018 / PKCS#5 v2.1 test vectors) ----
+
+TEST(CryptoPbkdf2HmacSha512, Rfc8018TestCase1) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    expect_hex(pbkdf2_hmac_sha512(password, salt, 1, 64),
+               "867f70cf1ade02cff3752599a3a53dc4af34c7a669815ae5d513554e1c8cf252"
+               "c02d470a285a0501bad999bfe943c08f050235d7d68b1da55e63f73b60a57fce");
+}
+
+TEST(CryptoPbkdf2HmacSha512, Rfc8018TestCase2) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    expect_hex(pbkdf2_hmac_sha512(password, salt, 4096, 64),
+               "d197b1b33db0143e018b12f3d1d1479e6cdebdcc97c5c0f87f6902e072f457b5"
+               "143f30602641b3d55cd335988cb36b84376060ecd532e039b742a239434af2d5");
+}
+
+TEST(CryptoPbkdf2HmacSha512, ZeroLengthOutput) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    EXPECT_TRUE(pbkdf2_hmac_sha512(password, salt, 1, 0).empty());
+}
+
 TEST(CryptoToHex, Empty) {
     EXPECT_EQ(to_hex(std::vector<uint8_t>{}), "");
 }
