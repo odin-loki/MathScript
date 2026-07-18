@@ -150,6 +150,19 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
     EXPECT_NEAR(xm(0, 0), expected_m(0, 0), 1e-5);
     EXPECT_NEAR(xm(1, 0), expected_m(1, 0), 1e-5);
 
+    // dist_lsqr: square system via distributed LSQR (stub: gather + lsqr)
+    expect_ok(interp, "xc = dist_lsqr(S, rhs)");
+    expect_ok(interp, "xc = dist_lsqr(S, rhs)");
+    ASSERT_GT(interp.state().matrices.count("xc"), 0u);
+    const auto& xc = interp.state().matrices.at("xc");
+    EXPECT_EQ(xc.rows(), 2u);
+    EXPECT_EQ(xc.cols(), 1u);
+    const auto expected_lsqr = ms::lsqr(
+        ColMatrix<double>{{4.0, 1.0}, {1.0, 3.0}},
+        ColMatrix<double>{{1.0}, {2.0}}).value();
+    EXPECT_NEAR(xc(0, 0), expected_lsqr(0, 0), 1e-5);
+    EXPECT_NEAR(xc(1, 0), expected_lsqr(1, 0), 1e-5);
+
     // dist_qmr: nonsymmetric system via distributed QMR
     expect_ok(interp, "Q = [3, 1; 1, 2]");
     expect_ok(interp, "qrhs = [1; 1]");
