@@ -153,3 +153,28 @@ TEST(CryptoToHex, Empty) {
 TEST(CryptoToHex, LeadingZeroNibble) {
     EXPECT_EQ(to_hex(std::vector<uint8_t>{0x0a, 0x0b}), "0a0b");
 }
+
+// ---- AES-128 (NIST SP 800-38A Appendix F) — pending wave231/crypto-aes merge ----
+
+TEST(CryptoAes128, DISABLED_EcbAppendixF) {
+    // Key (FIPS 197 Appendix B): 2b7e151628aed2a6abf7158809cf4f3c
+    // PT:  3243f6a8885a308d313198a2e0370734
+    // CT:  3925841d02dc09fbdc118597196a0b32
+    // expect_hex(aes128_ecb(from_hex("2b7e151628aed2a6abf7158809cf4f3c"),
+    //                       from_hex("3243f6a8885a308d313198a2e0370734")),
+    //            "3925841d02dc09fbdc118597196a0b32");
+}
+
+TEST(CryptoAes128, DISABLED_CbcRoundTrip) {
+    // Branch dependency: wave231/crypto-aes (aes128_cbc encrypt/decrypt).
+}
+
+// ---- ChaCha20 (RFC 8439) — pending wave231/crypto-chacha merge ----
+
+TEST(CryptoChaCha20, DISABLED_Rfc8439Section232) {
+    // Branch dependency: wave231/crypto-chacha (chacha20 key/nonce/counter API).
+}
+
+TEST(CryptoChaCha20, DISABLED_RoundTripXorStream) {
+    // chacha20(k,n,c, chacha20(k,n,c,plain)) == plain once API lands.
+}

@@ -143,6 +143,7 @@ add_ms_test(integration_repl_wave110_pipeline test_repl_wave110_pipeline.cpp)
 add_ms_test(integration_repl_wave111_pipeline test_repl_wave111_pipeline.cpp)
 add_ms_test(integration_repl_wave89_pipeline test_repl_wave89_pipeline.cpp)
 add_ms_test(integration_repl_wave90_pipeline test_repl_wave90_pipeline.cpp)
+add_ms_test(integration_crypto_wave231 test_crypto_wave231.cpp)
 
 add_executable(integration_mathscriptc_pipeline test_mathscriptc_pipeline.cpp)
 target_link_libraries(integration_mathscriptc_pipeline PRIVATE mathscript GTest::gtest_main)
