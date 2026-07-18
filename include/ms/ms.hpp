@@ -38,6 +38,7 @@
 #include "ms/distributed/dist_matrix.hpp"
 #include "ms/distributed/linalg.hpp"
 #include "ms/distributed/solve.hpp"
+#include "ms/distributed/matmul.hpp"
 #include "ms/ode/ode.hpp"
 #include "ms/pde/pde.hpp"
 #include "ms/poly/poly.hpp"
