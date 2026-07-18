@@ -5350,6 +5350,44 @@ Result<Matrix<double>> eval_graph_greedy_colour(const Matrix<double>& adj_m) {
     return int_vector_to_column(graph::greedy_colour(*G));
 }
 
+Matrix<double> graph_to_adjacency_matrix(const graph::Graph& G) {
+    const int n = G.n_vertices();
+    Matrix<double> out(static_cast<size_t>(n), static_cast<size_t>(n));
+    for (int u = 0; u < n; ++u) {
+        for (const auto& [v, w] : G.neighbors(u)) {
+            out(static_cast<size_t>(u), static_cast<size_t>(v)) = w;
+        }
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_graph_k_core_decomposition(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_k_core_decomposition");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return int_vector_to_column(graph::k_core_decomposition(*G));
+}
+
+Result<Matrix<double>> eval_graph_k_core_subgraph(const Matrix<double>& adj_m, int k) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_k_core_subgraph");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return graph_to_adjacency_matrix(graph::k_core_subgraph(*G, k));
+}
+
+Result<double> eval_graph_chromatic_number(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_chromatic_number");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    if (G->n_vertices() == 0) {
+        return 0.0;
+    }
+    return static_cast<double>(graph::chromatic_number_approx(*G));
+}
+
 Result<Matrix<double>> eval_graph_euler_circuit(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency_undirected(adj_m, "graph_euler_circuit");
     if (!G) {
@@ -6061,7 +6099,8 @@ bool is_matrix_scalar_mixed_call_callee(const std::string& callee) {
            callee == "combo_next_comb" ||
            callee == "quantum_time_evolution" || callee == "signal_moving_average" ||
            callee == "graph_bfs" || callee == "graph_dfs" ||
-           callee == "graph_bipartite_match" || callee == "stats_percentile" ||
+           callee == "graph_bipartite_match" || callee == "graph_k_core_subgraph" ||
+           callee == "stats_percentile" ||
            callee == "stats_ttest" || callee == "stats_acf" ||
            callee == "poly_eval" || callee == "fft_irfft" || callee == "poly_integ";
 }
@@ -8437,7 +8476,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_is_bipartite" ||
             fn == "graph_is_dag" || fn == "graph_is_connected" ||
             fn == "graph_is_tree" || fn == "graph_topological_sort" ||
-            fn == "graph_greedy_colour" || fn == "graph_euler_circuit" ||
+            fn == "graph_greedy_colour" || fn == "graph_k_core_decomposition" ||
+            fn == "graph_euler_circuit" ||
+            fn == "graph_chromatic_number" ||
             fn == "graph_scc" || fn == "count_components" ||
             fn == "stats_mean" || fn == "stats_median" ||
             fn == "stats_stddev" || fn == "stats_skewness" ||
@@ -8466,7 +8507,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "stats_kendall" || fn == "stats_two_sample_ttest" ||
             fn == "stats_chi2_gof" || fn == "graph_is_isomorphic" ||
             fn == "signal_moving_average" || fn == "graph_bfs" || fn == "graph_dfs" ||
-            fn == "graph_bipartite_match" ||
+            fn == "graph_bipartite_match" || fn == "graph_k_core_subgraph" ||
             fn == "stats_percentile" || fn == "graph_dfs" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "stats_acf" ||
             fn == "signal_lowpass" || fn == "signal_butterworth" || fn == "signal_highpass" ||
@@ -9952,7 +9993,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "poly_deriv" ||
            callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
            callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
-           callee == "graph_greedy_colour" || callee == "graph_euler_circuit" ||
+           callee == "graph_greedy_colour" || callee == "graph_k_core_decomposition" ||
+           callee == "graph_euler_circuit" ||
            callee == "graph_eulerian_path" || callee == "graph_hamiltonian_path" ||
            callee == "graph_tsp_heuristic" || callee == "graph_biconnected_components" ||
            callee == "graph_scc" ||
@@ -10012,7 +10054,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "poly_deriv" ||
         callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
         callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
-           callee == "graph_greedy_colour" || callee == "graph_euler_circuit" ||
+           callee == "graph_greedy_colour" || callee == "graph_k_core_decomposition" ||
+           callee == "graph_euler_circuit" ||
            callee == "graph_eulerian_path" || callee == "graph_hamiltonian_path" ||
            callee == "graph_tsp_heuristic" || callee == "graph_biconnected_components" ||
            callee == "graph_scc" ||
@@ -10023,6 +10066,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "signal_moving_average" || callee == "poly_eval" ||
         callee == "graph_bfs" || callee == "graph_dfs" || callee == "graph_bipartite_match" ||
+        callee == "graph_k_core_subgraph" ||
         callee == "stats_percentile" ||
         callee == "stats_ttest" || callee == "stats_acf" ||
         callee == "fft_irfft" || callee == "poly_integ" || callee == "combo_next_comb") {
@@ -10146,6 +10190,7 @@ bool is_scalar_matrix_call_callee(const std::string& callee) {
            callee == "quantum_purity" ||
            callee == "tensorops_norm" || callee == "graph_diameter" ||
            callee == "graph_radius" ||            callee == "graph_is_bipartite" ||
+           callee == "graph_chromatic_number" ||
            callee == "graph_is_dag" || callee == "graph_is_connected" ||
            callee == "graph_is_tree" ||
            callee == "stats_mean" || callee == "stats_median" ||
@@ -12958,6 +13003,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(colors.error());
         }
         result = *colors;
+    } else if (assign.callee == "graph_k_core_decomposition" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto cores = eval_graph_k_core_decomposition(*matrix);
+        if (!cores) {
+            return std::unexpected(cores.error());
+        }
+        result = *cores;
     } else if (assign.callee == "graph_euler_circuit" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -13411,6 +13466,8 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
         value = eval_graph_radius(*matrix);
     } else if (assign.callee == "graph_is_bipartite") {
         value = eval_graph_is_bipartite(*matrix);
+    } else if (assign.callee == "graph_chromatic_number") {
+        value = eval_graph_chromatic_number(*matrix);
     } else if (assign.callee == "graph_is_dag") {
         value = eval_graph_is_dag(*matrix);
     } else if (assign.callee == "stats_mean") {
@@ -14229,6 +14286,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_is_dag(A) 1 if directed graph is a DAG else 0\n"
             "  name = graph_topological_sort(A) topological order of DAG as Nx1 column\n"
             "  name = graph_greedy_colour(A) greedy vertex colours of undirected graph as Nx1 column\n"
+            "  name = graph_k_core_decomposition(A) core number per vertex as Nx1 column\n"
+            "  name = graph_k_core_subgraph(A,k) adjacency of k-core subgraph\n"
+            "  name = graph_chromatic_number(A) greedy chromatic-number upper bound\n"
             "  name = graph_euler_circuit(A) Euler circuit vertex order of undirected graph as Nx1 column\n"
             "  name = graph_eulerian_path(A) Euler path vertex order of undirected graph as Nx1 column\n"
             "  name = graph_is_isomorphic(A,B) 1 if undirected graphs A and B are isomorphic else 0\n"
@@ -14682,7 +14742,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
-            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
+            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
@@ -15188,6 +15248,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
                 print_matrix(out, *order);
+                return out.str();
+            }
+            if (matrix_scalar_call.callee == "graph_k_core_subgraph") {
+                const int k = static_cast<int>(scalar_arg);
+                if (scalar_arg != k) {
+                    return std::unexpected(DomainError{
+                        "graph_k_core_subgraph", "expected integer k"});
+                }
+                auto sub = eval_graph_k_core_subgraph(*matrix, k);
+                if (!sub) {
+                    return std::unexpected(sub.error());
+                }
+                state_.matrices[matrix_scalar_call.target] = *sub;
+                std::ostringstream out;
+                out << matrix_scalar_call.target << " =\n";
+                print_matrix(out, *sub);
                 return out.str();
             }
             if (matrix_scalar_call.callee == "graph_bipartite_match") {
@@ -20476,7 +20552,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "combo_rank_combination" || fn == "combo_next_comb" ||
             fn == "quantum_time_evolution" ||
             fn == "signal_moving_average" || fn == "graph_bfs" || fn == "graph_dfs" ||
-            fn == "graph_bipartite_match" ||
+            fn == "graph_bipartite_match" || fn == "graph_k_core_subgraph" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "stats_acf" || fn == "graph_dfs" ||
             fn == "stats_percentile" ||
             fn == "poly_eval" || fn == "fft_irfft" || fn == "poly_integ" ||
@@ -20617,6 +20693,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     std::ostringstream out;
                     out << "order =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "graph_k_core_subgraph") {
+                    const int k = static_cast<int>(t);
+                    if (t != k) {
+                        return std::unexpected(DomainError{
+                            "graph_k_core_subgraph", "expected integer k"});
+                    }
+                    auto value = eval_graph_k_core_subgraph(*ctrl, k);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "subgraph =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
@@ -22222,7 +22313,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "combo_rank_combination" || fn == "combo_next_comb" ||
             fn == "quantum_time_evolution" ||
             fn == "signal_moving_average" || fn == "graph_bfs" || fn == "graph_dfs" ||
-            fn == "graph_bipartite_match" ||
+            fn == "graph_bipartite_match" || fn == "graph_k_core_subgraph" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "poly_eval" ||
             fn == "fft_irfft" || fn == "poly_integ") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -22318,6 +22409,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 std::ostringstream out;
                 out << "order =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (fn == "graph_k_core_subgraph") {
+                const int k = static_cast<int>(t);
+                if (t != k) {
+                    return std::unexpected(DomainError{
+                        "graph_k_core_subgraph", "expected integer k"});
+                }
+                auto value = eval_graph_k_core_subgraph(*ctrl, k);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "subgraph =\n";
                 print_matrix(out, *value);
                 return out.str();
             }
@@ -23279,6 +23385,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(value.error());
             }
             out << *value << "\n";
+        } else if (fn == "graph_chromatic_number") {
+            auto value = eval_graph_chromatic_number(*matrix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            out << *value << "\n";
         } else if (fn == "graph_is_dag") {
             auto value = eval_graph_is_dag(*matrix);
             if (!value) {
@@ -23504,6 +23616,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "colors =\n";
             print_matrix(out, *colors);
+        } else if (fn == "graph_k_core_decomposition") {
+            auto cores = eval_graph_k_core_decomposition(*matrix);
+            if (!cores) {
+                return std::unexpected(cores.error());
+            }
+            out << "cores =\n";
+            print_matrix(out, *cores);
         } else if (fn == "graph_euler_circuit") {
             auto circuit = eval_graph_euler_circuit(*matrix);
             if (!circuit) {
