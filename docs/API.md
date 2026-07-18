@@ -273,7 +273,13 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_chacha20_poly1305_encrypt(key_hex, nonce_hex, aad_hex, plaintext_hex)` | ChaCha20-Poly1305 seal; returns hex `ciphertext:tag` (Wave 235) |
 | `crypto_chacha20_poly1305_decrypt(key_hex, nonce_hex, aad_hex, ciphertext_hex, tag_hex)` | ChaCha20-Poly1305 open; returns hex plaintext (Wave 235) |
 | `crypto_x25519_shared(priv_hex, pub_hex)` | X25519 ECDH shared secret as hex (Wave 236) |
+| `crypto_x25519_keypair(hex_priv32)` | X25519 public key from 32-byte private key hex (Wave 255) |
 | `mpi_bcast(x)` | MPI stub broadcast from root 0 (identity when stub; Wave 254) |
+| `geo_triangulate_polygon(P)` / `geo_convex_hull_3d(P)` | Polygon triangulation / 3D hull face indices (Wave 255) |
+| `geo_kdtree_knn(P,x,y,k)` / `geo_kdtree_range(P,x,y,r)` | 2D KD-tree kNN / range query index columns (Wave 255) |
+| `geo_intersect_seg_seg(...)` / `geo_intersect_ray_sphere(...)` / `geo_intersect_ray_aabb(...)` | Intersection tests → 1/0 (Wave 255) |
+| `graph_katz_centrality(A)` / `graph_laplacian(A)` / `graph_adjacency_spectrum(A)` | Katz / Laplacian / spectral radius (Wave 255) |
+| `graph_algebraic_connectivity(A)` | Fiedler value scalar (Wave 255) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
 | `signal_deconv(y,b)` | Polynomial deconvolution of column vectors (Wave 254) |

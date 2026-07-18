@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 254 ✅ COMPLETE — **412 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 255 ✅ COMPLETE — **413 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–254 COMPLETE (summary)
+## Feature waves ✅ 231–255 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -63,6 +63,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **252** | `sosfilt`/`firwin`/`savgol`; `mpi_barrier`; AES-256 decrypt; GUI Replace All; wave252 pipeline |
 | **253** | xcorr/xcov/autocorr; median_filter; conv2; AES-128 decrypt; NCCL allgather; matching brace |
 | **254** | deconv/LMS/CZT; `mpi_bcast`; geo AABB; GUI Add Selection; wave254 pipeline |
+| **255** | geo triangulate/hull3d/kdtree/ray; graph spectral; X25519 keypair; Trim Whitespace |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -273,9 +274,21 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **412 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–254** closed for this incremental batch.
 
+## Wave 255 ✅ COMPLETE (geo queries, graph spectral, X25519 keypair, trim whitespace)
+
+| Area | Deliverable |
+|------|-------------|
+| Geo REPL | triangulate, hull3d, kdtree knn/range, seg/ray intersect |
+| Graph REPL | katz, algebraic_connectivity, adjacency_spectrum, laplacian |
+| Crypto REPL | `crypto_x25519_keypair` |
+| GUI | Trim Trailing Whitespace |
+| Tests | `BM_MPIContext_Bcast`; `integration_repl_wave255_pipeline` |
+
+**413 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–255** closed for this incremental batch.
+
 ---
 
-## Next (Wave 255+) — deferred
+## Next (Wave 256+) — deferred
 
 | Item | Notes |
 |------|--------|

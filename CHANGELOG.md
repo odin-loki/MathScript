@@ -5,10 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## [Unreleased] — Wave 255 (WIP)
+## [1.0.0] - 2026-07-18 (Wave 255 — geo queries, graph spectral, X25519 keypair, trim whitespace) ✅ COMPLETE
+
+Twenty-fifth feature wave after Wave 254. Parallel Composer 2.5 worktrees merged to `main`: geo triangulate/hull3d/kdtree/ray-intersect, graph spectral REPL, `crypto_x25519_keypair`, GUI Trim Trailing Whitespace, `BM_MPIContext_Bcast`, and wave255 pipeline.
 
 ### Added (Wave 255)
-- **Tests** — `BM_MPIContext_Bcast` benchmark; `integration_repl_wave255_pipeline` (Wave 254 API smoke).
+- **Geo REPL** — `geo_triangulate_polygon`, `geo_convex_hull_3d`, `geo_kdtree_knn` / `geo_kdtree_range`, `geo_intersect_seg_seg` / `geo_intersect_ray_sphere` / `geo_intersect_ray_aabb`.
+- **Graph REPL** — `graph_katz_centrality`, `graph_algebraic_connectivity`, `graph_adjacency_spectrum` (spectral radius), `graph_laplacian`.
+- **Crypto REPL** — `crypto_x25519_keypair`.
+- **GUI** — Trim Trailing Whitespace (Ctrl+Shift+W).
+- **Tests** — `BM_MPIContext_Bcast`; `integration_repl_wave255_pipeline`.
+
+### Docs (Wave 255)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 255 sync; **413** CTest suites.
+
+**413 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-18 (Wave 254 — deconv/LMS/CZT, mpi_bcast, geo AABB, Add Selection) ✅ COMPLETE
 
