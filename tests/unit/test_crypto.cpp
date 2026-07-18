@@ -413,10 +413,11 @@ TEST(CryptoAes256, CbcEncryptMatchesNistBlocksBeforePadding) {
         from_hex("6bc1bee22e409f96e93d7e117393172a"
                  "ae2d8a571e03ac9c9eb76fac45af8e51"
                  "30c81c46a35ce411e5fbc1191a0a52ef");
+    // NIST SP 800-38A F.2.5 ciphertext blocks 1–3 (implementation adds PKCS7 pad block).
     const auto expected =
-        from_hex("f58c4c04d6e5f1ba779eabfb5f7c8362"
-                 "39f23369a9d9bacfa530e26304231461"
-                 "9628d408f6e193b1a337dbf37f1e5b2f");
+        from_hex("f58c4c04d6e5f1ba779eabfb5f7bfbd6"
+                 "9cfc4e967edb808d679f777bc6702c7d"
+                 "39f23369a9d9bacfa530e26304231461");
 
     const auto ciphertext = aes256_cbc_encrypt(key, iv, plaintext);
     ASSERT_EQ(ciphertext.size(), 64u);
