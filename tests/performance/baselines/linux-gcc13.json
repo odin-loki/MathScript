@@ -1,5 +1,5 @@
 {
-  "_comment": "Linux GCC 13 Release regression baseline. Matmul/FFT medians captured via --write-baseline. Wave 218–228 profiling targets below use median_time_ns=null as schema placeholders until regenerated on benchmark-linux CI (bash scripts/bench_regression.sh --write-baseline build-bench); regression skips null entries. Schema lists all BENCHMARK keys from 28 add_ms_bench executables.",
+  "_comment": "Linux GCC 13 Release regression baseline. Matmul/FFT medians captured via --write-baseline. Wave 218–228 profiling targets and Wave 231 benchmark keys below use median_time_ns=null as schema placeholders until regenerated on benchmark-linux CI (bash scripts/bench_regression.sh --write-baseline build-bench); regression skips null entries. Schema lists all BENCHMARK keys from 28 add_ms_bench executables.",
   "_generate": "bash scripts/bench_regression.sh --write-baseline build-bench",
   "profile": {
     "os": "linux",
@@ -10,6 +10,12 @@
   },
   "benchmarks": {
     "BM_AlignedAlloc": {
+      "median_time_ns": null
+    },
+    "BM_Aes128CbcEncrypt_64KB": {
+      "median_time_ns": null
+    },
+    "BM_Aes128EncryptBlock": {
       "median_time_ns": null
     },
     "BM_Autocorr/4096": {
@@ -129,6 +135,12 @@
     "BM_CFD_Advection/500": {
       "median_time_ns": null
     },
+    "BM_CfdAdvection2D": {
+      "median_time_ns": null
+    },
+    "BM_CfdUpwindStep2D": {
+      "median_time_ns": null
+    },
     "BM_CMAES": {
       "median_time_ns": null
     },
@@ -142,6 +154,9 @@
       "median_time_ns": null
     },
     "BM_CellToCyphaFeatures": {
+      "median_time_ns": null
+    },
+    "BM_ChaCha20Encrypt_64KB": {
       "median_time_ns": null
     },
     "BM_Cheby1Design": {
@@ -360,6 +375,9 @@
     "BM_FemAssemble1D": {
       "median_time_ns": null
     },
+    "BM_FemAssemble2D": {
+      "median_time_ns": null
+    },
     "BM_FemSolve1D/100": {
       "median_time_ns": null
     },
@@ -367,6 +385,12 @@
       "median_time_ns": null
     },
     "BM_FemSolve1D/500": {
+      "median_time_ns": null
+    },
+    "BM_FemSolve2D/16": {
+      "median_time_ns": null
+    },
+    "BM_FemSolve2D/32": {
       "median_time_ns": null
     },
     "BM_Filter8192/8192": {
