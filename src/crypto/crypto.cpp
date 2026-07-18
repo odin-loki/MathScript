@@ -1,4 +1,4 @@
-#include "ms/crypto/crypto.hpp"
+﻿#include "ms/crypto/crypto.hpp"
 
 #include <array>
 #include <algorithm>
@@ -1666,6 +1666,35 @@ std::vector<uint8_t> chacha20_poly1305_decrypt(const std::array<uint8_t, 32>& ke
         return {};
     }
     return plaintext;
+}
+
+extern "C" int curve25519_donna(std::uint8_t* mypublic, const std::uint8_t* secret,
+                                const std::uint8_t* basepoint);
+
+X25519Keypair x25519_keypair(std::span<const uint8_t> private_key) {
+    X25519Keypair out{};
+    if (private_key.size() != x25519_key_size) {
+        return out;
+    }
+    std::memcpy(out.private_key.data(), private_key.data(), x25519_key_size);
+    out.private_key[0] &= 248;
+    out.private_key[31] &= 127;
+    out.private_key[31] |= 64;
+
+    static const std::uint8_t kBasepoint[x25519_key_size] = {9};
+    curve25519_donna(out.public_key.data(), out.private_key.data(), kBasepoint);
+    return out;
+}
+
+std::array<uint8_t, x25519_key_size> x25519_shared_secret(std::span<const uint8_t> private_key,
+                                                          std::span<const uint8_t> peer_public_key) {
+    std::array<uint8_t, x25519_key_size> out{};
+    if (private_key.size() != x25519_key_size || peer_public_key.size() != x25519_key_size) {
+        return out;
+    }
+
+    curve25519_donna(out.data(), private_key.data(), peer_public_key.data());
+    return out;
 }
 
 } // namespace crypto

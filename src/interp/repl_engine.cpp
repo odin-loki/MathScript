@@ -3899,6 +3899,27 @@ Result<std::string> eval_crypto_chacha20_poly1305_decrypt(const std::string& key
     return crypto::to_hex(plain) + "\n";
 }
 
+Result<std::string> eval_crypto_x25519_shared(const std::string& priv_arg,
+                                              const std::string& pub_arg) {
+    constexpr const char* fn = "crypto_x25519_shared";
+    auto priv = parse_hex_arg(priv_arg, fn, "private_key");
+    if (!priv) {
+        return std::unexpected(priv.error());
+    }
+    auto pub = parse_hex_arg(pub_arg, fn, "public_key");
+    if (!pub) {
+        return std::unexpected(pub.error());
+    }
+    if (priv->size() != crypto::x25519_key_size) {
+        return std::unexpected(DomainError{fn, "expected 32-byte (64 hex char) private key"});
+    }
+    if (pub->size() != crypto::x25519_key_size) {
+        return std::unexpected(DomainError{fn, "expected 32-byte (64 hex char) public key"});
+    }
+    const auto shared = crypto::x25519_shared_secret(*priv, *pub);
+    return crypto::to_hex(std::span<const uint8_t>(shared.data(), shared.size())) + "\n";
+}
+
 std::vector<std::size_t> fem_rectangular_boundary_nodes(std::size_t nx, std::size_t ny) {
     const std::size_t n_nodes_x = nx + 1;
     std::vector<std::size_t> boundary;
@@ -7061,6 +7082,13 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
         return eval_crypto_chacha20_poly1305_decrypt(call_args->at(0), call_args->at(1),
                                                      call_args->at(2), call_args->at(3),
                                                      call_args->at(4));
+    }
+    if (fn == "crypto_x25519_shared") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_x25519_shared(hex_priv, hex_pub)"});
+        }
+        return eval_crypto_x25519_shared(call_args->at(0), call_args->at(1));
     }
     return std::nullopt;
 }

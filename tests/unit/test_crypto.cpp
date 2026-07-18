@@ -446,3 +446,52 @@ TEST(CryptoAes128Gcm, InvalidKeyReturnsEmpty) {
     EXPECT_TRUE(seal.ciphertext.empty());
     EXPECT_EQ(seal.tag, (std::array<uint8_t, aes_gcm_tag_size>{}));
 }
+
+// ---- X25519 (RFC 7748) ----
+
+TEST(CryptoX25519, Rfc7748ScalarMultVector) {
+    const auto scalar =
+        from_hex("a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4");
+    const auto u =
+        from_hex("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c");
+    const auto shared = x25519_shared_secret(scalar, u);
+    expect_hex(std::vector<uint8_t>(shared.begin(), shared.end()),
+               "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552");
+}
+
+TEST(CryptoX25519, Rfc7748AliceBobKeyExchange) {
+    const auto alice_priv =
+        from_hex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
+    const auto bob_pub =
+        from_hex("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f");
+    const auto alice = x25519_keypair(alice_priv);
+    expect_hex(std::vector<uint8_t>(alice.public_key.begin(), alice.public_key.end()),
+               "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a");
+    const auto shared = x25519_shared_secret(alice.private_key, bob_pub);
+    expect_hex(std::vector<uint8_t>(shared.begin(), shared.end()),
+               "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742");
+}
+
+TEST(CryptoX25519, SharedSecretSymmetric) {
+    const auto alice_priv =
+        from_hex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
+    const auto bob_priv =
+        from_hex("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb");
+    const auto alice = x25519_keypair(alice_priv);
+    const auto bob = x25519_keypair(bob_priv);
+    const auto s1 = x25519_shared_secret(alice.private_key, bob.public_key);
+    const auto s2 = x25519_shared_secret(bob.private_key, alice.public_key);
+    EXPECT_EQ(s1, s2);
+    expect_hex(std::vector<uint8_t>(s1.begin(), s1.end()),
+               "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742");
+}
+
+TEST(CryptoX25519, InvalidKeySizeReturnsZero) {
+    const auto short_key = from_hex("0011223344556677");
+    const auto full_key = from_hex(
+        "a546e36bf0547c953af1d8530c0d2f06082e2160d2dc15ea8ca034e46ed776e");
+    const auto kp = x25519_keypair(short_key);
+    EXPECT_EQ(kp.public_key, (std::array<uint8_t, x25519_key_size>{}));
+    const auto shared = x25519_shared_secret(short_key, full_key);
+    EXPECT_EQ(shared, (std::array<uint8_t, x25519_key_size>{}));
+}

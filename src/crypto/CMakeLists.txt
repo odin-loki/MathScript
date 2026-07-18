@@ -1,4 +1,4 @@
-add_library(ms_crypto STATIC crypto.cpp)
+add_library(ms_crypto STATIC crypto.cpp curve25519_donna.c)
 target_include_directories(ms_crypto PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}/include)
