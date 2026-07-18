@@ -249,6 +249,110 @@ void toggle_comments_in_editor(QPlainTextEdit* editor) {
     cursor.endEditBlock();
 }
 
+constexpr char kIndentText[] = "    ";
+
+void get_selected_block_range(QPlainTextEdit* editor, int& start_block, int& end_block) {
+    start_block = 0;
+    end_block = 0;
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    if (cursor.hasSelection()) {
+        const int anchor = cursor.anchor();
+        const int position = cursor.position();
+        const int anchor_block = editor->document()->findBlock(anchor).blockNumber();
+        const int position_block = editor->document()->findBlock(position).blockNumber();
+        start_block = std::min(anchor_block, position_block);
+        end_block = std::max(anchor_block, position_block);
+
+        const int end_pos = std::max(anchor, position);
+        QTextCursor end_cursor = cursor;
+        end_cursor.setPosition(end_pos, QTextCursor::MoveAnchor);
+        if (end_cursor.positionInBlock() == 0 && end_block > start_block) {
+            end_block--;
+        }
+    } else {
+        start_block = end_block = cursor.blockNumber();
+    }
+}
+
+void restore_block_cursor(QPlainTextEdit* editor, int start_block, int end_block) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::MoveAnchor);
+    for (int block = start_block + 1; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::MoveAnchor);
+    }
+    editor->setTextCursor(cursor);
+}
+
+void indent_lines_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+
+    for (int block = start_block; block <= end_block; ++block) {
+        const QTextBlock text_block = editor->document()->findBlockByNumber(block);
+        QTextCursor block_cursor(text_block);
+        block_cursor.movePosition(QTextCursor::StartOfBlock);
+        block_cursor.insertText(QString::fromLatin1(kIndentText));
+    }
+
+    restore_block_cursor(editor, start_block, end_block);
+    cursor.endEditBlock();
+}
+
+void unindent_lines_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+
+    for (int block = start_block; block <= end_block; ++block) {
+        const QTextBlock text_block = editor->document()->findBlockByNumber(block);
+        const QString line = text_block.text();
+        int remove = 0;
+        if (!line.isEmpty() && line[0] == QLatin1Char('\t')) {
+            remove = 1;
+        } else {
+            while (remove < 4 && remove < line.size() && line[remove] == QLatin1Char(' ')) {
+                ++remove;
+            }
+        }
+        if (remove == 0) {
+            continue;
+        }
+
+        QTextCursor block_cursor(text_block);
+        block_cursor.movePosition(QTextCursor::StartOfBlock);
+        block_cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, remove);
+        block_cursor.removeSelectedText();
+    }
+
+    restore_block_cursor(editor, start_block, end_block);
+    cursor.endEditBlock();
+}
+
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
 constexpr size_t kTooltipMaxRows = 6;
@@ -605,6 +709,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(clear_output_, &QPushButton::clicked, this, &MainWindow::clear_output);
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::on_submit);
     input_->installEventFilter(this);
+    editor_->installEventFilter(this);
     connect(file_tree_, &QTreeView::activated, this, &MainWindow::on_file_activated);
     connect(variables_, &QListWidget::itemDoubleClicked, this, &MainWindow::on_variable_double_clicked);
 
@@ -753,6 +858,10 @@ void MainWindow::setup_menus() {
     replace_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
     auto* go_to_line_action = edit_menu->addAction("Go to Line...");
     go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    auto* indent_action = edit_menu->addAction("Indent");
+    indent_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_BracketRight));
+    auto* unindent_action = edit_menu->addAction("Unindent");
+    unindent_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_BracketLeft));
     auto* toggle_comment_action = edit_menu->addAction("Toggle Comment");
     toggle_comment_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Slash));
     auto* duplicate_line_action = edit_menu->addAction("Duplicate Line");
@@ -802,6 +911,8 @@ void MainWindow::setup_menus() {
     connect(replace_script_action, &QAction::triggered, this, &MainWindow::replace_in_script);
     connect(replace_next_script_action, &QAction::triggered, this, &MainWindow::replace_next_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
+    connect(indent_action, &QAction::triggered, this, &MainWindow::indent_lines);
+    connect(unindent_action, &QAction::triggered, this, &MainWindow::unindent_lines);
     connect(toggle_comment_action, &QAction::triggered, this, &MainWindow::toggle_comment);
     connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
@@ -1115,6 +1226,16 @@ void MainWindow::toggle_comment() {
     toggle_comments_in_editor(editor_);
 }
 
+void MainWindow::indent_lines() {
+    editor_->setFocus();
+    indent_lines_in_editor(editor_);
+}
+
+void MainWindow::unindent_lines() {
+    editor_->setFocus();
+    unindent_lines_in_editor(editor_);
+}
+
 void MainWindow::set_plot_panel_visible(bool visible) {
     if (plot_stack_ == nullptr) {
         return;
@@ -1417,10 +1538,26 @@ void MainWindow::finish_repl_op() {
 }
 
 bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
-    if (obj != input_ || event->type() != QEvent::KeyPress) {
+    if (event->type() != QEvent::KeyPress) {
         return QMainWindow::eventFilter(obj, event);
     }
+
     auto* key = static_cast<QKeyEvent*>(event);
+    if (obj == editor_) {
+        if (key->key() == Qt::Key_Tab && !(key->modifiers() & Qt::ControlModifier)) {
+            if (key->modifiers() & Qt::ShiftModifier) {
+                unindent_lines();
+            } else {
+                indent_lines();
+            }
+            return true;
+        }
+        return QMainWindow::eventFilter(obj, event);
+    }
+
+    if (obj != input_) {
+        return QMainWindow::eventFilter(obj, event);
+    }
     if (key->key() == Qt::Key_Up) {
         if (repl_history_.isEmpty()) {
             return true;

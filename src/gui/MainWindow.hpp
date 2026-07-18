@@ -78,6 +78,8 @@ private:
     void go_to_line();
     void duplicate_line();
     void toggle_comment();
+    void indent_lines();
+    void unindent_lines();
     void set_plot_panel_visible(bool visible);
     void set_dark_theme(bool dark);
     void set_word_wrap(bool wrap);
