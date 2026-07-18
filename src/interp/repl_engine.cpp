@@ -68,6 +68,8 @@ namespace ms::interp {
 
 namespace {
 
+thread_local std::atomic<bool>* g_repl_cancel_flag = nullptr;
+
 ms::distributed::MPIContext& repl_mpi_context() {
     static ms::distributed::MPIContext ctx = ms::distributed::init(0, nullptr);
     return ctx;
@@ -5524,7 +5526,9 @@ Result<std::string> eval_cmaes_call(const std::string& formula_arg, const std::s
     FuncND f = [expr_ptr, dim](const std::vector<double>& x) {
         return sym_eval(*expr_ptr, build_optim_env(x));
     };
-    return format_optim_result(cmaes(f, *x0, sigma, max_iter, seed));
+    return format_optim_result(cmaes(f, *x0, sigma, max_iter, seed, [] {
+        return ms::interp::repl_cancel_requested();
+    }));
 }
 
 Result<std::vector<SymExpr>> parse_sym_semicolon_formulas(const std::string& formula_arg,
@@ -11683,6 +11687,9 @@ Result<void> Interpreter::load_session(const std::string& path) {
 }
 
 Result<std::string> Interpreter::execute(const std::string& line) {
+    if (cancel_requested()) {
+        return std::string{};
+    }
     std::string cmd = trim(line);
     if (cmd.empty()) {
         return std::string{};
@@ -19788,6 +19795,19 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     }
 
     return std::unexpected(DomainError{"repl", "could not parse: " + cmd});
+}
+
+void Interpreter::set_cancel_flag(std::atomic<bool>* flag) {
+    cancel_flag_ = flag;
+    g_repl_cancel_flag = flag;
+}
+
+bool Interpreter::cancel_requested() const {
+    return cancel_flag_ && cancel_flag_->load(std::memory_order_relaxed);
+}
+
+bool repl_cancel_requested() {
+    return g_repl_cancel_flag && g_repl_cancel_flag->load(std::memory_order_relaxed);
 }
 
 } // namespace ms::interp

@@ -4,8 +4,20 @@
 
 ReplWorker::ReplWorker(QObject* parent) : QObject(parent) {}
 
+void ReplWorker::requestCancel() {
+    cancel_requested_.store(true, std::memory_order_relaxed);
+}
+
 void ReplWorker::evaluate(const QString& line) {
+    cancel_requested_.store(false, std::memory_order_relaxed);
+    interp_.set_cancel_flag(&cancel_requested_);
     const auto result = interp_.execute(line.toStdString());
+    interp_.set_cancel_flag(nullptr);
+
+    if (cancel_requested_.load(std::memory_order_relaxed)) {
+        emit cancelled();
+        return;
+    }
     if (result) {
         emit finished(result->empty() ? QString{} : QString::fromStdString(*result));
     } else {

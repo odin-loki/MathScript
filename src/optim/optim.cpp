@@ -1294,7 +1294,7 @@ std::vector<double> outer_apply(
 } // namespace
 
 OptimResult cmaes(FuncND f, std::vector<double> x0, double sigma0,
-                  int max_iter, unsigned seed) {
+                  int max_iter, unsigned seed, CancelCheck should_cancel) {
     constexpr double tol = 1e-8;
 
     const int n = static_cast<int>(x0.size());
@@ -1368,6 +1368,9 @@ OptimResult cmaes(FuncND f, std::vector<double> x0, double sigma0,
     int generations = 0;
 
     for (int gen = 0; gen < max_iter; ++gen) {
+        if (should_cancel && should_cancel()) {
+            break;
+        }
         generations = gen + 1;
 
         std::vector<double> evals;

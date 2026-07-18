@@ -8,6 +8,7 @@
 #include <QAction>
 #include <QCloseEvent>
 #include <QKeyEvent>
+#include <QColor>
 #include <QSettings>
 #include <QDir>
 #include <QFile>
@@ -16,6 +17,7 @@
 #include <QHBoxLayout>
 #include <QMenuBar>
 #include <QMetaType>
+#include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTreeView>
 #include <QVBoxLayout>
@@ -181,6 +183,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     connect(repl_worker_, &ReplWorker::finished, this, &MainWindow::on_repl_finished);
     connect(repl_worker_, &ReplWorker::error, this, &MainWindow::on_repl_error);
+    connect(repl_worker_, &ReplWorker::cancelled, this, &MainWindow::on_repl_cancelled);
 
     setWindowTitle("MathScript IDE");
     resize(1200, 720);
@@ -214,9 +217,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     input_ = new QLineEdit(center);
     input_->setPlaceholderText("REPL: help, plot([1,2,3,4]), save session.ms");
     run_ = new QPushButton("Run", center);
+    stop_ = new QPushButton("Stop", center);
+    stop_->setEnabled(false);
     run_script_ = new QPushButton("Run Script", center);
     row->addWidget(input_);
     row->addWidget(run_);
+    row->addWidget(stop_);
     row->addWidget(run_script_);
     center_layout->addLayout(row);
 
@@ -247,6 +253,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     refresh_status();
 
     connect(run_, &QPushButton::clicked, this, &MainWindow::on_submit);
+    connect(stop_, &QPushButton::clicked, this, &MainWindow::on_stop);
     connect(run_script_, &QPushButton::clicked, this, &MainWindow::on_run_script);
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::on_submit);
     input_->installEventFilter(this);
@@ -326,7 +333,7 @@ void MainWindow::setup_menus() {
     });
     connect(save_session_action, &QAction::triggered, this, [this]() {
         if (repl_busy_) {
-            append_output("error: wait for the current REPL command to finish\n");
+            append_output("error: wait for the current REPL command to finish\n", true);
             return;
         }
         const QString path = QFileDialog::getSaveFileName(this, "Save Session", {}, "MathScript (*.ms)");
@@ -341,12 +348,12 @@ void MainWindow::setup_menus() {
             append_output("saved session to " + path + "\n");
             refresh_variables();
         } else {
-            append_output("error: " + err + "\n");
+            append_output("error: " + err + "\n", true);
         }
     });
     connect(load_session_action, &QAction::triggered, this, [this]() {
         if (repl_busy_) {
-            append_output("error: wait for the current REPL command to finish\n");
+            append_output("error: wait for the current REPL command to finish\n", true);
             return;
         }
         const QString path = QFileDialog::getOpenFileName(this, "Load Session", {}, "MathScript (*.ms)");
@@ -362,7 +369,7 @@ void MainWindow::setup_menus() {
             refresh_variables();
             refresh_plot();
         } else {
-            append_output("error: " + err + "\n");
+            append_output("error: " + err + "\n", true);
         }
     });
     connect(export_plot_action, &QAction::triggered, this, &MainWindow::export_plot_png);
@@ -379,8 +386,15 @@ void MainWindow::refresh_status() {
                                  .arg(ms::distributed::size(mpi)));
 }
 
-void MainWindow::append_output(const QString& text) {
+void MainWindow::append_output(const QString& text, bool is_error) {
     output_->moveCursor(QTextCursor::End);
+    QTextCharFormat fmt;
+    if (is_error) {
+        fmt.setForeground(QColor(255, 100, 100));
+    } else {
+        fmt.setForeground(output_->palette().color(QPalette::Text));
+    }
+    output_->setCurrentCharFormat(fmt);
     output_->insertPlainText(text);
     output_->moveCursor(QTextCursor::End);
 }
@@ -478,7 +492,7 @@ void MainWindow::export_plot_png() {
     QMetaObject::invokeMethod(repl_worker_, "hasPlot", Qt::BlockingQueuedConnection,
                               Q_RETURN_ARG(bool, has_plot));
     if (!has_plot) {
-        append_output("error: no plot to export\n");
+        append_output("error: no plot to export\n", true);
         return;
     }
 
@@ -497,7 +511,7 @@ void MainWindow::export_plot_png() {
     if (ok) {
         append_output("exported plot to " + path + "\n");
     } else {
-        append_output("error: failed to export plot to " + path + "\n");
+        append_output("error: failed to export plot to " + path + "\n", true);
     }
 }
 
@@ -517,6 +531,7 @@ void MainWindow::start_eval(const QString& line) {
     repl_busy_ = true;
     run_->setEnabled(false);
     run_script_->setEnabled(false);
+    stop_->setEnabled(true);
     input_->setEnabled(false);
     append_output("ms> " + line + "\n");
     QMetaObject::invokeMethod(repl_worker_, "evaluate", Qt::QueuedConnection, Q_ARG(QString, line));
@@ -534,6 +549,7 @@ void MainWindow::finish_repl_op() {
     repl_busy_ = false;
     run_->setEnabled(true);
     run_script_->setEnabled(true);
+    stop_->setEnabled(false);
     input_->setEnabled(true);
 }
 
@@ -615,6 +631,20 @@ void MainWindow::on_repl_finished(const QString& output) {
 }
 
 void MainWindow::on_repl_error(const QString& message) {
-    append_output("error: " + message + "\n");
+    append_output("error: " + message + "\n", true);
     finish_repl_op();
+}
+
+void MainWindow::on_repl_cancelled() {
+    script_queue_.clear();
+    append_output("cancelled\n");
+    finish_repl_op();
+}
+
+void MainWindow::on_stop() {
+    if (!repl_busy_) {
+        return;
+    }
+    stop_->setEnabled(false);
+    QMetaObject::invokeMethod(repl_worker_, "requestCancel", Qt::QueuedConnection);
 }

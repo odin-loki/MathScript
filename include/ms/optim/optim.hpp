@@ -10,6 +10,7 @@ using Func1D = std::function<double(double)>;
 using Func2D = std::function<double(double, double)>;
 using FuncND = std::function<double(const std::vector<double>&)>;
 using GradND = std::function<std::vector<double>(const std::vector<double>&)>;
+using CancelCheck = std::function<bool()>;
 
 // Residual function type: maps parameters to a vector of residuals r(x) (e.g.
 // r_i = model(x, t_i) - y_i for a curve-fitting problem with data points
@@ -173,7 +174,8 @@ OptimResult particle_swarm(FuncND f,
                            int n_particles = 30, int max_iter = 500,
                            unsigned seed = 42);
 OptimResult cmaes(FuncND f, std::vector<double> x0, double sigma0 = 0.5,
-                  int max_iter = 1000, unsigned seed = 42);
+                  int max_iter = 1000, unsigned seed = 42,
+                  CancelCheck should_cancel = {});
 
 // --- nonlinear equation solvers ---
 double bisection(Func1D f, double a, double b, double tol = 1e-10,
