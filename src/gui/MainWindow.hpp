@@ -16,6 +16,7 @@ class PlotSurfWidget;
 class QCloseEvent;
 class QDockWidget;
 class QMenu;
+class QAction;
 class QTreeView;
 class QFileSystemModel;
 class ReplWorker;
@@ -60,6 +61,9 @@ private:
     void refresh_recent_menu();
     void adjust_font_size(int delta);
     void show_welcome_banner();
+    void find_in_output();
+    void find_next_in_output();
+    void set_plot_panel_visible(bool visible);
 
     QSplitter* main_splitter_ = nullptr;
     QPlainTextEdit* output_ = nullptr;
@@ -87,4 +91,6 @@ private:
     QString repl_history_draft_;
     QStringList recent_files_;
     int mono_font_size_ = 11;
+    QString find_output_text_;
+    QAction* show_plot_panel_action_ = nullptr;
 };
