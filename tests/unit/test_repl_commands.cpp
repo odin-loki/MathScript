@@ -3567,6 +3567,24 @@ TEST(ReplCommandsTest, wave252_signal_sosfilt) {
     EXPECT_NEAR(y(4, 0), 1.9375, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave253_signal_conv2) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_conv2(A,K)");
+
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "K = [1, 0; 0, 1]");
+    expect_ok(interp, "C = signal_conv2(A, K)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+    const auto& C = interp.state().matrices.at("C");
+    EXPECT_EQ(C.rows(), 3u);
+    EXPECT_EQ(C.cols(), 3u);
+    EXPECT_NEAR(C(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(C(0, 1), 2.0, 1e-12);
+    EXPECT_NEAR(C(1, 0), 3.0, 1e-12);
+    EXPECT_NEAR(C(1, 1), 5.0, 1e-12);
+    EXPECT_NEAR(C(2, 2), 4.0, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave252_signal_savgol) {
     Interpreter interp;
     expect_contains(interp, "help", "signal_savgol(x,window_length,polyorder)");
