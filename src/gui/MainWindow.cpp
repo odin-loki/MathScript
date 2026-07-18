@@ -979,6 +979,8 @@ void MainWindow::setup_menus() {
     replace_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
     auto* replace_next_script_action = edit_menu->addAction("Replace Next in Script");
     replace_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
+    auto* replace_all_script_action = edit_menu->addAction("Replace All in Script");
+    replace_all_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_H));
     auto* go_to_line_action = edit_menu->addAction("Go to Line...");
     go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
     auto* indent_action = edit_menu->addAction("Indent");
@@ -1045,6 +1047,7 @@ void MainWindow::setup_menus() {
     connect(find_prev_script_action, &QAction::triggered, this, &MainWindow::find_prev_in_script);
     connect(replace_script_action, &QAction::triggered, this, &MainWindow::replace_in_script);
     connect(replace_next_script_action, &QAction::triggered, this, &MainWindow::replace_next_in_script);
+    connect(replace_all_script_action, &QAction::triggered, this, &MainWindow::replace_all_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
     connect(indent_action, &QAction::triggered, this, &MainWindow::indent_lines);
     connect(unindent_action, &QAction::triggered, this, &MainWindow::unindent_lines);
@@ -1337,6 +1340,23 @@ void MainWindow::replace_next_in_script() {
         statusBar()->showMessage("Replace in Script: no matches", 3000);
     } else {
         statusBar()->showMessage("Replace in Script: replaced 1 occurrence", 3000);
+    }
+}
+
+void MainWindow::replace_all_in_script() {
+    editor_->setFocus();
+    if (find_script_text_.isEmpty()) {
+        replace_in_script();
+        return;
+    }
+
+    const int count = replace_all_in_editor(editor_, find_script_text_, replace_script_text_);
+    if (count == 0) {
+        statusBar()->showMessage("Replace All in Script: no matches", 3000);
+    } else if (count == 1) {
+        statusBar()->showMessage("Replace All in Script: replaced 1 occurrence", 3000);
+    } else {
+        statusBar()->showMessage(QString("Replace All in Script: replaced %1 occurrences").arg(count), 3000);
     }
 }
 
