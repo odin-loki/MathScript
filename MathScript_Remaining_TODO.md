@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 240 ✅ COMPLETE — **391 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 241 ✅ COMPLETE — **393 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–240 COMPLETE (summary)
+## Feature waves ✅ 231–241 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -49,6 +49,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **238** | dist CG; GUI find/plot toggle; HKDF; 3D benches; history export/persist |
 | **239** | PBKDF2; `dist_gmres`; GUI script find/goto-line; `run_file`; HKDF/X25519/`dist_cg` benches; README matrix |
 | **240** | Ed25519; `jacobi`/`dist_jacobi` + GMRES MPI; `sym_mellin`; GUI line numbers/LaTeX export; REPL graph/finance/`bicgstab`; PBKDF2/`dist_gmres` benches |
+| **241** | Hankel; `sabr_put`; `dist_bicgstab`; signal cheby2/periodogram/welch REPL; GUI completer; Ed25519/`dist_jacobi` benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -106,17 +107,28 @@ See `CHANGELOG.md` for per-wave branch tables.
 | REPL | bipartite match / biconnected / eulerian path; geo-asian; `bicgstab`; wave240 pipeline |
 | Benchmarks | PBKDF2 + `dist_gmres` smoke cases |
 
-**391 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–240** closed for this incremental batch.
+## Wave 241 ✅ COMPLETE (Hankel, sabr_put, dist_bicgstab, signal REPL, GUI completer, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Symbolic | `sym_hankel` / `sym_ihankel` table MVP + REPL |
+| Finance | `sabr_put` + REPL |
+| Distributed | `dist_bicgstab` stub-gather; `test_dist_bicgstab` |
+| Signal REPL | `signal_cheby2`, `signal_periodogram`, `signal_welch_psd`; wave241 pipeline |
+| GUI | REPL command completer |
+| Benchmarks | Ed25519 + `dist_jacobi` smoke |
+
+**393 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–241** closed for this incremental batch.
 
 ---
 
-## Next (Wave 241+) — deferred
+## Next (Wave 242+) — deferred
 
 | Item | Notes |
 |------|--------|
-| Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block-CG/GMRES/Jacobi |
+| Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block-CG/GMRES/Jacobi/BiCGSTAB |
 | Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
 | Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
-| Deeper API gaps | Hankel transform, `sabr_put`, Blossom matching, NCCL multi-GPU, etc. |
+| Deeper API gaps | Blossom matching, NCCL multi-GPU, etc. |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

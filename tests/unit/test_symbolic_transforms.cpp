@@ -334,15 +334,22 @@ TEST(SymbolicTransformsTest, hankel_exponential_decay) {
 }
 
 TEST(SymbolicTransformsTest, hankel_power_exponential) {
+    // n=1: r*exp(-a*r) -> scale*a / (a^2+k^2)^((n+3)/2) with (n+3)/2 = 2.
     const auto r_expr = sym_mul(
-        sym_pow(sym_var("r"), sym_const(1.0)),
+        sym_var("r"),
         sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))));
+    const double numer = std::pow(2.0, 2) * std::tgamma(2.0) / std::sqrt(std::numbers::pi) * 3.0;
     const auto expected = sym_div(
-        sym_const(4.0 / std::sqrt(std::numbers::pi) * 3.0),
+        sym_const(numer),
         sym_pow(
             sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))),
-            sym_const(2.5)));
+            sym_const(2.0)));
     expect_hankel_pair(r_expr, expected, {{"k", 2.0}});
+
+    const auto r_pow_expr = sym_mul(
+        sym_pow(sym_var("r"), sym_const(1.0)),
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))));
+    expect_hankel_pair(r_pow_expr, expected, {{"k", 2.0}});
 }
 
 TEST(SymbolicTransformsTest, hankel_one_over_sqrt_r2_plus_a2) {

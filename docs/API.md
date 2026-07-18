@@ -188,6 +188,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `sym_laplace("expr", "t", "s")` | Laplace transform (time → s-domain) |
 | `sym_ilaplace("expr", "s", "t")` | Inverse Laplace transform (s-domain → time) |
 | `sym_mellin("expr", "t", "s")` | Mellin transform (t-domain → s-domain; table: `c`, `t^a`, `exp(-a*t)`, `t^n*exp(-a*t)`, `1/(1+t)`) |
+| `sym_hankel("expr", "r", "k")` / `sym_ihankel(...)` | Hankel transform MVP (Wave 241) |
 | `sym_imellin("expr", "s", "t")` | Inverse Mellin transform (s-domain → t); unsupported → `sym_deriv` sentinel |
 | `sym_hankel("expr", "r", "k")` | Hankel transform (r-domain → k-domain; table: `exp(-a*r)`, `r^n*exp(-a*r)`, `1/sqrt(r^2+a^2)`) |
 | `sym_ihankel("expr", "k", "r")` | Inverse Hankel transform (k-domain → r); unsupported → `sym_deriv` sentinel |

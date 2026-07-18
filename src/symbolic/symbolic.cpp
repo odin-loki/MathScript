@@ -161,8 +161,18 @@ constexpr int kMaxMellinPower = 8;
 constexpr int kMaxHankelPower = 8;
 
 double hankel_rpow_exp_scale(int n) {
+    // Keep n=0 exact so inverse matching of a/(a^2+k^2)^{3/2} succeeds with == on doubles.
+    if (n == 0) {
+        return 1.0;
+    }
     const double exponent = (static_cast<double>(n) + 3.0) / 2.0;
     return std::pow(2.0, n + 1) * std::tgamma(exponent) / std::sqrt(std::numbers::pi);
+}
+
+bool hankel_scale_matches(double numerator, int n, double a) {
+    const double expected = hankel_rpow_exp_scale(n) * a;
+    const double tol = 1e-9 * std::max(1.0, std::abs(expected));
+    return std::abs(numerator - expected) <= tol;
 }
 
 SymExpr build_k2_plus_a2(const std::string& k, double a) {
@@ -218,7 +228,7 @@ std::optional<std::pair<int, double>> match_hankel_k_domain_rpow_exp(
     }
     double numerator = 0.0;
     if (try_get_const_value(*expr.left, numerator)) {
-        if (numerator == hankel_rpow_exp_scale(n) * a) {
+        if (hankel_scale_matches(numerator, n, a)) {
             return std::make_pair(n, a);
         }
         return std::nullopt;
@@ -237,14 +247,15 @@ std::optional<std::pair<int, double>> match_hankel_k_domain_rpow_exp(
     } else {
         return std::nullopt;
     }
-    if (scale == hankel_rpow_exp_scale(n) && a_factor == a) {
+    if (std::abs(a_factor - a) <= 1e-12 && hankel_scale_matches(scale * a_factor, n, a)) {
         return std::make_pair(n, a);
     }
     return std::nullopt;
 }
 
 SymExpr hankel_forward_rpow_exp_neg(int n, double a, const std::string& k) {
-    const double exp_power = (static_cast<double>(n) + 3.0) / 2.0;
+    // Exponent (n+3)/2 for the Fourier–Bessel table entry.
+    const double exp_power = 0.5 * (static_cast<double>(n) + 3.0);
     return sym_div(
         sym_const(hankel_rpow_exp_scale(n) * a),
         sym_pow(build_k2_plus_a2(k, a), sym_const(exp_power)));
@@ -299,6 +310,19 @@ bool match_exp_neg_at(const SymExpr& expr, const std::string& t_var, double& a) 
 std::optional<std::pair<int, double>> match_tpow_exp_neg(const SymExpr& expr, const std::string& t_var) {
     if (expr.op != SymOp::Mul || !expr.left || !expr.right) {
         return std::nullopt;
+    }
+    // Bare t * exp(-a*t) is the n=1 case (common AST shape instead of t^1 * exp).
+    if (is_bare_var(*expr.left, t_var) && expr.right->op == SymOp::Exp) {
+        double a = 0.0;
+        if (match_exp_neg_at(*expr.right, t_var, a)) {
+            return std::make_pair(1, a);
+        }
+    }
+    if (is_bare_var(*expr.right, t_var) && expr.left->op == SymOp::Exp) {
+        double a = 0.0;
+        if (match_exp_neg_at(*expr.left, t_var, a)) {
+            return std::make_pair(1, a);
+        }
     }
     const SymExpr* pow_part = nullptr;
     const SymExpr* exp_part = nullptr;

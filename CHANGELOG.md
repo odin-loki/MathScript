@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 241 — Hankel, sabr_put, dist_bicgstab, signal REPL, GUI completer, benches) ✅ COMPLETE
+
+Eleventh feature wave after Wave 240. Parallel Composer 2.5 worktrees merged to `main`: Hankel transforms, SABR put, `dist_bicgstab`, signal REPL bindings, GUI command completer, and Wave 240 bench gaps.
+
+### Added (Wave 241)
+- **Symbolic** — table-driven `sym_hankel` / `sym_ihankel`; REPL bindings.
+- **Finance** — `sabr_put` (Hagan black vol + BS put); REPL `finance_sabr_put`.
+- **Distributed** — `dist_bicgstab` stub-gather MVP; `test_dist_bicgstab`; REPL binding.
+- **REPL / signal** — `signal_cheby2`, `signal_periodogram`, `signal_welch_psd`; `integration_repl_wave241_pipeline`.
+- **GUI** — REPL input `QCompleter` (`ReplCompleter`) for common commands.
+- **Benchmarks** — Ed25519 sign/verify and `BM_DistJacobi_2x2` smoke cases.
+
+### Docs (Wave 241)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/USER_GUIDE.md`** — Wave 241 sync; **393** CTest suites.
+
+**393 CTest suites — all passing** (+2: `test_dist_bicgstab`, `integration_repl_wave241_pipeline`). **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), Blossom matching, NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 240 — Ed25519, dist Jacobi/GMRES MPI, Mellin, GUI IDE lite, REPL bindings, benches) ✅ COMPLETE
 
 Tenth feature wave after Wave 239. Parallel Composer 2.5 worktrees merged to `main`: Ed25519, `ms::jacobi` / `dist_jacobi` (+ `dist_gmres` MPI block path), `sym_mellin`/`sym_imellin`, GUI line numbers + LaTeX export, Wave 239 bench gaps, and graph/finance/`bicgstab` REPL bindings.
