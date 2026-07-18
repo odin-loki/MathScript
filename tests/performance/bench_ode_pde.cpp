@@ -115,4 +115,63 @@ static void BM_CFD_Advection(benchmark::State& state) {
 }
 BENCHMARK(BM_CFD_Advection)->Arg(100)->Arg(500)->Arg(2000);
 
+// ---------------------------------------------------------------------------
+// CFD: 2-D upwind advection time integration
+// ---------------------------------------------------------------------------
+
+static void BM_CfdAdvection2D(benchmark::State& state) {
+    const auto grid = ms::cfd::grid2d(0.0, 1.0, 0.0, 1.0, 64, 64);
+    const auto u0 = ms::cfd::square_pulse_2d(grid, 0.5, 0.5, 0.25, 0.25, 1.0);
+    const auto vx = ms::cfd::constant_velocity(grid.nx * grid.ny, 1.0);
+    const auto vy = ms::cfd::constant_velocity(grid.nx * grid.ny, 0.0);
+    const double t_end = 0.4;
+    const double dt = 0.4 * grid.dx;
+    for (auto _ : state) {
+        auto result = ms::cfd::run_advection_2d(
+            u0,
+            vx,
+            vy,
+            t_end,
+            dt,
+            grid.dx,
+            grid.dy,
+            ms::cfd::BoundaryCondition::Periodic,
+            ms::cfd::BoundaryCondition::Periodic);
+        benchmark::DoNotOptimize(result);
+    }
+    const int64_t steps = static_cast<int64_t>(std::ceil(t_end / dt));
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(grid.nx) *
+                            static_cast<int64_t>(grid.ny) * steps);
+}
+BENCHMARK(BM_CfdAdvection2D);
+
+// ---------------------------------------------------------------------------
+// CFD: 2-D single upwind FVM advection step
+// ---------------------------------------------------------------------------
+
+static void BM_CfdUpwindStep2D(benchmark::State& state) {
+    const auto grid = ms::cfd::grid2d(0.0, 1.0, 0.0, 1.0, 64, 64);
+    const auto u0 = ms::cfd::square_pulse_2d(grid, 0.5, 0.5, 0.25, 0.25, 1.0);
+    const auto vx = ms::cfd::constant_velocity(grid.nx * grid.ny, 1.0);
+    const auto vy = ms::cfd::constant_velocity(grid.nx * grid.ny, 0.0);
+    const double dt = 0.4 * grid.dx;
+    for (auto _ : state) {
+        auto result = ms::cfd::upwind_fvm_advection_2d(
+            u0,
+            vx,
+            vy,
+            dt,
+            grid.dx,
+            grid.dy,
+            ms::cfd::BoundaryCondition::Periodic,
+            ms::cfd::BoundaryCondition::Periodic);
+        benchmark::DoNotOptimize(result);
+    }
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(grid.nx) *
+                            static_cast<int64_t>(grid.ny));
+}
+BENCHMARK(BM_CfdUpwindStep2D);
+
 BENCHMARK_MAIN();
