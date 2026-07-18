@@ -63,6 +63,8 @@ SymExpr sym_fourier(const SymExpr& expr, const std::string& t_var, const std::st
 SymExpr sym_ifourier(const SymExpr& expr, const std::string& omega_var, const std::string& t_var);
 SymExpr sym_ztransform(const SymExpr& expr, const std::string& n_var, const std::string& z_var);
 SymExpr sym_iztransform(const SymExpr& expr, const std::string& z_var, const std::string& n_var);
+// First-order ODE dy/d(indep)=rhs. Table-driven separable MVP; unsupported -> sym_deriv(rhs, indep).
+SymExpr sym_dsolve(const SymExpr& rhs, const std::string& indep_var, const std::string& dep_var);
 SymExpr sym_substitute(const SymExpr& expr, const std::string& var, const SymExpr& replacement);
 double sym_eval(const SymExpr& expr, const std::map<std::string, double>& env);
 std::string sym_to_string(const SymExpr& expr);

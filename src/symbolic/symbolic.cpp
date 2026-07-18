@@ -32,6 +32,8 @@ bool is_bare_var(const SymExpr& expr, const std::string& var) {
     return expr.op == SymOp::Var && expr.name == var;
 }
 
+bool contains_var_name(const SymExpr& expr, const std::string& name);
+
 bool is_const_zero(const SymExpr& expr) {
     return expr.op == SymOp::Const && expr.value == 0.0;
 }
@@ -749,6 +751,145 @@ SymExpr sym_integrate(const SymExpr& expr, const std::string& var) {
     default:
         return sym_integrate_unsupported(expr, var);
     }
+}
+
+SymExpr sym_dsolve_unsupported(const SymExpr& rhs, const std::string& indep_var) {
+    return sym_deriv(clone_expr(rhs), indep_var);
+}
+
+bool sym_is_deriv_sentinel(const SymExpr& result, const std::string& var) {
+    return result.op == SymOp::Deriv && result.name == var;
+}
+
+std::optional<SymExpr> sym_extract_y_multiplier(const SymExpr& expr, const std::string& dep_var) {
+    if (is_bare_var(expr, dep_var)) {
+        return sym_const(1.0);
+    }
+    if (expr.op == SymOp::Neg && expr.left && is_bare_var(*expr.left, dep_var)) {
+        return sym_const(-1.0);
+    }
+    if (expr.op == SymOp::Mul && expr.left && expr.right) {
+        if (is_bare_var(*expr.right, dep_var) && !contains_var_name(*expr.left, dep_var)) {
+            return clone_expr(*expr.left);
+        }
+        if (is_bare_var(*expr.left, dep_var) && !contains_var_name(*expr.right, dep_var)) {
+            return clone_expr(*expr.right);
+        }
+    }
+    return std::nullopt;
+}
+
+struct SymAffineInDepVar {
+    SymExpr coef;
+    SymExpr intercept;
+};
+
+std::optional<SymAffineInDepVar> sym_extract_affine_in_dep_var(
+    const SymExpr& expr, const std::string& dep_var) {
+    if (is_bare_var(expr, dep_var)) {
+        return SymAffineInDepVar{sym_const(1.0), sym_const(0.0)};
+    }
+    if (expr.op == SymOp::Neg && expr.left && is_bare_var(*expr.left, dep_var)) {
+        return SymAffineInDepVar{sym_const(-1.0), sym_const(0.0)};
+    }
+    if (expr.op == SymOp::Mul && expr.left && expr.right) {
+        if (is_bare_var(*expr.right, dep_var) && !contains_var_name(*expr.left, dep_var)) {
+            return SymAffineInDepVar{clone_expr(*expr.left), sym_const(0.0)};
+        }
+        if (is_bare_var(*expr.left, dep_var) && !contains_var_name(*expr.right, dep_var)) {
+            return SymAffineInDepVar{clone_expr(*expr.right), sym_const(0.0)};
+        }
+    }
+    if ((expr.op == SymOp::Add || expr.op == SymOp::Sub) && expr.left && expr.right) {
+        const auto left = sym_extract_affine_in_dep_var(*expr.left, dep_var);
+        const auto right = sym_extract_affine_in_dep_var(*expr.right, dep_var);
+        if (!left && contains_var_name(*expr.left, dep_var)) {
+            return std::nullopt;
+        }
+        if (!right && contains_var_name(*expr.right, dep_var)) {
+            return std::nullopt;
+        }
+        const SymExpr ca = left ? clone_expr(left->coef) : sym_const(0.0);
+        const SymExpr cb = left ? clone_expr(left->intercept) : clone_expr(*expr.left);
+        const SymExpr da = right ? clone_expr(right->coef) : sym_const(0.0);
+        const SymExpr db = right ? clone_expr(right->intercept) : clone_expr(*expr.right);
+        if (expr.op == SymOp::Add) {
+            return SymAffineInDepVar{
+                sym_add(clone_expr(ca), clone_expr(da)),
+                sym_add(clone_expr(cb), clone_expr(db)),
+            };
+        }
+        return SymAffineInDepVar{
+            sym_sub(clone_expr(ca), clone_expr(da)),
+            sym_sub(clone_expr(cb), clone_expr(db)),
+        };
+    }
+    if (!contains_var_name(expr, dep_var)) {
+        return SymAffineInDepVar{sym_const(0.0), clone_expr(expr)};
+    }
+    return std::nullopt;
+}
+
+SymExpr sym_add_integration_constant(SymExpr expr) {
+    return sym_add(std::move(expr), sym_var("C"));
+}
+
+// Supported separable first-order ODE rules (table-driven MVP):
+//   f(x)                     -> integrate(f, x) + C
+//   y^n (n != 1)             -> ((1-n)*(x+C))^(1/(1-n))
+//   a*y + b (const a,b)      -> -b/a + C*exp(a*x)  (a != 0); b*x + C (a == 0)
+//   k(x)*y                   -> C*exp(integrate(k, x))
+// Unsupported rhs forms return sym_deriv(rhs, indep_var) as an explicit sentinel.
+SymExpr sym_dsolve(const SymExpr& rhs, const std::string& indep_var, const std::string& dep_var) {
+    if (!contains_var_name(rhs, dep_var)) {
+        SymExpr integrated = sym_integrate(rhs, indep_var);
+        if (sym_is_deriv_sentinel(integrated, indep_var)) {
+            return sym_dsolve_unsupported(rhs, indep_var);
+        }
+        return sym_add_integration_constant(std::move(integrated));
+    }
+
+    if (rhs.op == SymOp::Pow && rhs.left && rhs.right && is_bare_var(*rhs.left, dep_var) &&
+        rhs.right->op == SymOp::Const) {
+        const double n = rhs.right->value;
+        if (n != 1.0) {
+            const double one_minus_n = 1.0 - n;
+            if (one_minus_n != 0.0) {
+                SymExpr x_plus_c = sym_add(sym_var(indep_var), sym_var("C"));
+                SymExpr inner = sym_mul(sym_const(one_minus_n), std::move(x_plus_c));
+                return sym_pow(std::move(inner), sym_const(1.0 / one_minus_n));
+            }
+        }
+    }
+
+    if (const auto affine = sym_extract_affine_in_dep_var(rhs, dep_var)) {
+        const SymExpr a_expr = sym_simplify(clone_expr(affine->coef));
+        const SymExpr b_expr = sym_simplify(clone_expr(affine->intercept));
+        double a = 0.0;
+        double b = 0.0;
+        if (try_get_const_value(a_expr, a) && try_get_const_value(b_expr, b) &&
+            !contains_var_name(a_expr, indep_var) && !contains_var_name(b_expr, indep_var)) {
+            if (a == 0.0) {
+                return sym_add(sym_mul(sym_const(b), sym_var(indep_var)), sym_var("C"));
+            }
+            return sym_add(
+                sym_neg(sym_div(sym_const(b), sym_const(a))),
+                sym_mul(sym_var("C"), sym_exp(sym_mul(sym_const(a), sym_var(indep_var)))));
+        }
+    }
+
+    if (auto multiplier = sym_extract_y_multiplier(rhs, dep_var)) {
+        if (!contains_var_name(*multiplier, dep_var)) {
+            SymExpr factor = std::move(*multiplier);
+            SymExpr integrated = sym_integrate(factor, indep_var);
+            if (sym_is_deriv_sentinel(integrated, indep_var)) {
+                return sym_dsolve_unsupported(rhs, indep_var);
+            }
+            return sym_mul(sym_var("C"), sym_exp(std::move(integrated)));
+        }
+    }
+
+    return sym_dsolve_unsupported(rhs, indep_var);
 }
 
 // Supported forward Laplace rules (table-driven MVP):
