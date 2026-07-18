@@ -49,5 +49,10 @@ std::vector<uint8_t> aes128_cbc_decrypt(std::span<const uint8_t> key,
                                         std::span<const uint8_t> iv,
                                         std::span<const uint8_t> ciphertext);
 
+std::vector<uint8_t> chacha20_encrypt(const std::array<uint8_t, 32>& key,
+                                      const std::array<uint8_t, 12>& nonce,
+                                      std::uint32_t counter,
+                                      std::span<const uint8_t> data);
+
 } // namespace crypto
 } // namespace ms

@@ -154,6 +154,7 @@ TEST(CryptoToHex, LeadingZeroNibble) {
     EXPECT_EQ(to_hex(std::vector<uint8_t>{0x0a, 0x0b}), "0a0b");
 }
 
+
 // ---- AES-128/256 (FIPS 197 / NIST SP 800-38A test vectors) ----
 
 TEST(CryptoAes128, EncryptBlockFips197) {
@@ -224,4 +225,81 @@ TEST(CryptoAes128, CbcDecryptInvalidCiphertextReturnsEmpty) {
     const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
     const auto bad = from_hex("0011223344556677889900aabbccddeeff");
     EXPECT_TRUE(aes128_cbc_decrypt(key, iv, bad).empty());
+}
+
+// ---- ChaCha20 (RFC 8439) ----
+
+namespace {
+
+std::array<uint8_t, 32> rfc8439_chacha_key() {
+    std::array<uint8_t, 32> key{};
+    for (std::size_t i = 0; i < key.size(); ++i) {
+        key[i] = static_cast<uint8_t>(i);
+    }
+    return key;
+}
+
+std::array<uint8_t, 12> rfc8439_chacha_block_nonce() {
+    return {0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x4a,
+            0x00, 0x00, 0x00, 0x00};
+}
+
+std::array<uint8_t, 12> rfc8439_chacha_encrypt_nonce() {
+    return {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a,
+            0x00, 0x00, 0x00, 0x00};
+}
+
+} // namespace
+
+TEST(CryptoChaCha20, Rfc8439BlockFunction) {
+    const auto key = rfc8439_chacha_key();
+    const auto nonce = rfc8439_chacha_block_nonce();
+    const std::vector<uint8_t> zeros(64, 0x00);
+    const auto keystream = chacha20_encrypt(key, nonce, 1, zeros);
+    expect_hex(keystream,
+               "10f1e7e4d13b5915500fdd1fa32071c4"
+               "c7d1f4c733c068030422aa9ac3d46c4e"
+               "d2826446079faa0914c2d705d98b02a2"
+               "b5129cd1de164eb9cbd083e8a2503c4e");
+}
+
+TEST(CryptoChaCha20, Rfc8439EncryptionVector) {
+    const auto key = rfc8439_chacha_key();
+    const auto nonce = rfc8439_chacha_encrypt_nonce();
+    const std::string plaintext =
+        "Ladies and Gentlemen of the class of '99: "
+        "If I could offer you only one tip for the future, "
+        "sunscreen would be it.";
+    const auto ciphertext = chacha20_encrypt(
+        key, nonce, 1,
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(plaintext.data()),
+                                 plaintext.size()));
+    expect_hex(ciphertext,
+               "6e2e359a2568f98041ba0728dd0d6981"
+               "e97e7aec1d4360c20a27afccfd9fae0b"
+               "f91b65c5524733ab8f593dabcd62b357"
+               "1639d624e65152ab8f530c359f0861d8"
+               "07ca0dbf500d6a6156a38e088a22b65e"
+               "52bc514d16ccf806818ce91ab7793736"
+               "5af90bbf74a35be6b40b8eedf2785e42"
+               "874d");
+}
+
+TEST(CryptoChaCha20, EmptyInput) {
+    const auto key = rfc8439_chacha_key();
+    const auto nonce = rfc8439_chacha_encrypt_nonce();
+    const auto out = chacha20_encrypt(key, nonce, 1, std::span<const uint8_t>{});
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(CryptoChaCha20, DecryptRoundTrip) {
+    const auto key = rfc8439_chacha_key();
+    const auto nonce = rfc8439_chacha_encrypt_nonce();
+    const std::string plaintext = "MathScript ChaCha20 wave 231";
+    const auto ciphertext = chacha20_encrypt(
+        key, nonce, 1,
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(plaintext.data()),
+                                 plaintext.size()));
+    const auto recovered = chacha20_encrypt(key, nonce, 1, std::span<const uint8_t>(ciphertext));
+    EXPECT_EQ(std::string(recovered.begin(), recovered.end()), plaintext);
 }
