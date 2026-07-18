@@ -6762,3 +6762,34 @@ TEST(ReplCommandsTest, wave262_combo_set_partitions) {
     EXPECT_EQ(interp.state().matrices.at("sp3").rows(), 5u);
     EXPECT_EQ(interp.state().matrices.at("sp3").cols(), 3u);
 }
+
+TEST(ReplCommandsTest, wave262_lsq) {
+    Interpreter interp;
+    expect_contains(interp, "help", "lsq(A");
+
+    expect_ok(interp, "A = [0, 1; 1, 1; 2, 1; 3, 1]");
+    expect_ok(interp, "b = [1; 3; 5; 7]");
+    expect_contains(interp, "lsq(A, b)", "x =");
+    expect_ok(interp, "x = lsq(A, b)");
+    ASSERT_GT(interp.state().matrices.count("x"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("x").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("x").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("x")(0, 0), 2.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("x")(1, 0), 1.0, 1e-5);
+}
+
+TEST(ReplCommandsTest, wave262_diag) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diag(v)");
+
+    expect_ok(interp, "v = [2; 3; 5]");
+    expect_contains(interp, "diag(v)", "D =");
+    expect_ok(interp, "D = diag(v)");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("D").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("D")(0, 0), 2.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("D")(1, 1), 3.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("D")(2, 2), 5.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("D")(1, 0), 0.0, 1e-12);
+}

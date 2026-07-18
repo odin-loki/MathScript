@@ -10831,7 +10831,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
             fn == "cuda_add" ||
-            fn == "solve" || fn == "bicgstab" || fn == "cg" || fn == "gmres" || fn == "jacobi" ||
+            fn == "solve" || fn == "lsq" || fn == "bicgstab" || fn == "cg" || fn == "gmres" ||
+            fn == "jacobi" ||
             fn == "qmr" || fn == "lsqr" ||
             fn == "tfqmr" || fn == "lsmr" ||
             fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_lsqr" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
@@ -10843,7 +10844,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "bidiag" || fn == "solve_sylvester" || fn == "minres" ||
             fn == "zeros" || fn == "eye" || fn == "ones" ||
             fn == "rand" || fn == "randn" || fn == "expm" || fn == "sqrtm" ||
-            fn == "logm" || fn == "tril" || fn == "triu" || fn == "cosm" ||
+            fn == "logm" || fn == "tril" || fn == "triu" || fn == "diag" || fn == "cosm" ||
             fn == "sinm" || fn == "inv" ||
             fn == "pinv" || fn == "null" || fn == "orth" ||
             fn == "kron" || fn == "repmat" || fn == "linspace" ||
@@ -12648,6 +12649,17 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         print_matrix(out, result->B);
         out << "V =\n";
         print_matrix(out, result->V);
+    } else if (fn == "diag") {
+        auto v = matrix_to_coeff_vector(matrix, "diag");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        if (v->empty()) {
+            return std::unexpected(DomainError{"diag", "expected non-empty vector"});
+        }
+        auto D = diag(*v);
+        out << "D =\n";
+        print_matrix(out, D);
     } else {
         return std::unexpected(DomainError{"repl", "unknown function: " + fn});
     }
@@ -12777,8 +12789,8 @@ bool Interpreter::try_parse_scalar_expr_assignment(const std::string& line, std:
 
 bool is_matrix_call_callee(const std::string& callee) {
     return callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-           callee == "solve" || callee == "bicgstab" || callee == "cg" || callee == "gmres" ||
-           callee == "jacobi" || callee == "qmr" || callee == "lsqr" ||
+           callee == "solve" || callee == "lsq" || callee == "bicgstab" || callee == "cg" ||
+           callee == "gmres" || callee == "jacobi" || callee == "qmr" || callee == "lsqr" ||
            callee == "tfqmr" || callee == "lsmr" || callee == "minres" ||
            callee == "solve_sylvester" ||
            callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_lsqr" || callee == "dist_matmul" ||
@@ -12787,7 +12799,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
            callee == "expm" || callee == "sqrtm" || callee == "logm" ||
-           callee == "tril" || callee == "triu" || callee == "cosm" ||
+           callee == "tril" || callee == "triu" || callee == "diag" || callee == "cosm" ||
            callee == "sinm" || callee == "inv" ||
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
@@ -12900,8 +12912,8 @@ bool is_matrix_call_callee(const std::string& callee) {
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
-        callee == "solve" || callee == "bicgstab" || callee == "cg" || callee == "gmres" ||
-        callee == "jacobi" || callee == "qmr" || callee == "lsqr" ||
+        callee == "solve" || callee == "lsq" || callee == "bicgstab" || callee == "cg" ||
+        callee == "gmres" || callee == "jacobi" || callee == "qmr" || callee == "lsqr" ||
         callee == "tfqmr" || callee == "lsmr" || callee == "minres" ||
         callee == "dist_solve" || callee == "dist_cg" ||
         callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_lsqr" || callee == "dist_matmul" || callee == "rand" ||
@@ -13091,6 +13103,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "tril" || callee == "triu") {
         return arity == 1 || arity == 2;
+    }
+    if (callee == "diag") {
+        return arity == 1;
     }
     if (callee == "imadjust") {
         return arity == 3 || arity == 5;
@@ -16561,6 +16576,19 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(matrix.error());
         }
         result = sinm(*matrix);
+    } else if (assign.callee == "diag" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto v = matrix_to_coeff_vector(*matrix, "diag");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        if (v->empty()) {
+            return std::unexpected(DomainError{"diag", "expected non-empty vector"});
+        }
+        result = diag(*v);
     } else if (assign.callee == "tril" &&
                (assign.args.size() == 1 || assign.args.size() == 2)) {
         auto matrix = resolve_operand(assign.args[0]);
@@ -17322,6 +17350,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(right.error());
         }
         result = lsqr(*left, *right);
+    } else if (assign.callee == "lsq" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = lsq(*left, *right);
     } else if (assign.callee == "tfqmr" && assign.args.size() == 2) {
         auto left = resolve_operand(assign.args[0]);
         if (!left) {
@@ -18974,6 +19012,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sin(x) pow(x,2)   scalar calls (sin, cos, sqrt, pow, min, max, ...)\n"
             "  name = matmul(A, B)      matrix multiply assignment\n"
             "  name = solve(A, B)       linear solve assignment\n"
+            "  name = lsq(A, B)         least-squares solve assignment\n"
             "  name = bicgstab(A, B)    BiCGSTAB iterative solve assignment\n"
             "  name = cg(A, B)          conjugate gradient iterative solve assignment\n"
             "  name = gmres(A, B)       GMRES iterative solve assignment\n"
@@ -19011,6 +19050,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = chol(A)           Cholesky factor assignment\n"
             "  name = expm(A) sqrtm(A) logm(A)  matrix exponential / square root / logarithm\n"
             "  name = tril(A[, k]) triu(A[, k])  lower/upper triangular extraction\n"
+            "  name = diag(v)           diagonal matrix from column vector v\n"
             "  name = cosm(A) sinm(A)   matrix cosine / sine\n"
             "  name = pinv(A) null(A) orth(A)  pseudo-inverse / null space / orthonormal basis\n"
             "  name = kron(A, B)        Kronecker product\n"
@@ -19728,11 +19768,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  x = gmres(A, b)          GMRES iterative solve\n"
             "  x = jacobi(A, b)         Jacobi iterative solve\n"
             "  x = minres(A, b)         MINRES iterative solve (symmetric A)\n"
+            "  x = lsq(A, b)            least-squares solve\n"
             "  plot([y...])  plot([x...], [y...])  scatter([x...], [y...])  hist([...])\n"
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), diag(v), cosm(A), sinm(A), solve(A,B), lsq(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
@@ -29427,7 +29468,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(legendre_p(static_cast<int>(n), x)) + "\n";
         }
 
-        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "cg" ||
+        if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "lsq" || fn == "bicgstab" ||
+            fn == "cg" ||
             fn == "gmres" || fn == "jacobi" || fn == "qmr" || fn == "lsqr" ||
             fn == "tfqmr" || fn == "lsmr" || fn == "minres" ||
             fn == "dist_solve" ||
@@ -29451,6 +29493,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "solve") {
                     auto x = solve(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "lsq") {
+                    auto x = lsq(*A, *B);
                     if (!x) {
                         return std::unexpected(x.error());
                     }
