@@ -7,14 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
-### Added (Wave 264 — WIP)
-- **Poly REPL** — `poly_roots` / `poly_fit` / `poly_interp_hermite` / `poly_gcd` / `poly_squarefree` (intended; sibling landings).
-- **Numthy REPL** — `numthy_cornacchia` (intended; sibling landings).
-- **Finance REPL** — `finance_treynor` / `finance_information_ratio` (intended; sibling landings).
-- **Control REPL** — `control_ctrb` / `control_obsv` / `control_tf2ss` / `control_c2d` (intended; sibling landings).
-- **Special REPL** — `special_airy_bi` / `bessel_y` / `lambert_w` / `kummer_u` (intended; sibling landings).
-- **Info REPL** — `info_channel_capacity` / `info_blahut_arimoto` (intended; sibling landings).
-- **Tests** — `integration_repl_wave264_pipeline` (smoke + Wave 263 regressions).
+## [1.0.0] - 2026-07-19 (Wave 264 — poly algebra, cornacchia, ratios, ctrb/tf2ss, specials, capacity, Split Lines) ✅ COMPLETE
+
+Thirty-fourth feature wave after Wave 263. Parallel Composer 2.5 worktrees merged to `main`: polynomial roots/fit/Hermite/GCD/square-free, Cornacchia, Treynor/information ratio, controllability/observability/tf2ss/c2d, Bessel Y/I / Lambert W / Kummer U / Airy Bi, Blahut–Arimoto channel capacity, GUI Split Lines, and wave264 pipeline.
+
+### Added (Wave 264)
+- **Poly REPL** — `poly_roots` / `poly_fit` / `poly_interp_hermite` / `poly_gcd` / `poly_squarefree`.
+- **Numthy REPL** — `numthy_cornacchia`.
+- **Finance REPL** — `finance_treynor` / `finance_information_ratio`.
+- **Control REPL** — `control_ctrb` / `control_obsv` / `control_ctrb_gram` / `control_obsv_gram` / `control_tf2ss` / `control_c2d` / `control_c2d_b`.
+- **Special REPL** — `bessel_y` / `bessel_i` / `lambert_w` / `kummer_u` / `special_airy_bi` (plus `special_*` aliases where wired).
+- **Info REPL** — `info_blahut_arimoto` / `info_channel_capacity`.
+- **GUI** — Split Lines (Ctrl+Shift+J).
+- **Tests** — `integration_repl_wave264_pipeline` (+ special bessel/lambert/kummer smoke suite).
+
+### Docs (Wave 264)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 264 sync; **423** CTest suites.
+
+**423 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 263 — combo enum, pell/QR, poly interp, BL/Merton, Kalman, voigt/airy) ✅ COMPLETE
 

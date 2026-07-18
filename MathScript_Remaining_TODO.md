@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 263 ✅ COMPLETE — **421 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 264 ✅ COMPLETE — **423 CTest suites** on `main`)
 
 ---
 
@@ -404,7 +404,24 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 264+) — deferred
+## Wave 264 — poly algebra, cornacchia, ratios, ctrb/tf2ss, specials, capacity, Split Lines ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| Poly REPL | roots / fit / interp_hermite / gcd / squarefree |
+| Numthy REPL | cornacchia |
+| Finance REPL | treynor / information_ratio |
+| Control REPL | ctrb / obsv / ctrb_gram / obsv_gram / tf2ss / c2d / c2d_b |
+| Special REPL | bessel_y / bessel_i / lambert_w / kummer_u / special_airy_bi |
+| Info REPL | blahut_arimoto / channel_capacity |
+| GUI | Split Lines (Ctrl+Shift+J) |
+| Tests | `integration_repl_wave264_pipeline` |
+
+**423 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–264** closed for this incremental batch.
+
+---
+
+## Next (Wave 265+) — deferred
 
 | Item | Notes |
 |------|--------|

@@ -347,6 +347,12 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `finance_merton_distance_to_default` / `finance_historical_var` / `finance_historical_cvar` | Merton DD / historical VaR-CVaR (Wave 263) |
 | `control_kalman_predict` / `control_kalman_update` (+ `_cov`) | Kalman predict/update mean or covariance (Wave 263) |
 | `special_voigt` / `special_pseudo_voigt_auto` / `special_airy_ai` | Voigt / pseudo-Voigt / Airy Ai scalars (Wave 263) |
+| `poly_roots(p)` / `poly_fit` / `poly_interp_hermite` / `poly_gcd` / `poly_squarefree` | Roots (Nx2), fit/Hermite coeffs, GCD, square-free part (Wave 264) |
+| `numthy_cornacchia(d,p)` | Cornacchia solution as `1×2` (Wave 264) |
+| `finance_treynor` / `finance_information_ratio` | Treynor ratio / information ratio (Wave 264) |
+| `control_ctrb` / `control_obsv` (+ `_gram`) / `control_tf2ss` / `control_c2d` / `control_c2d_b` | Controllability/observability, packed SS, ZOH Ad/Bd (Wave 264) |
+| `bessel_y` / `bessel_i` / `lambert_w` / `kummer_u` / `special_airy_bi` | Special-function scalars (Wave 264) |
+| `info_blahut_arimoto(W)` / `info_channel_capacity(W)` | Discrete channel capacity (bits) (Wave 264) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
