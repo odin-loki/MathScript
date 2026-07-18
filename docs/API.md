@@ -339,6 +339,14 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `diag(v)` | Diagonal matrix from column vector `v` (Wave 262) |
 | `poly_resultant(p,q)` | Sylvester resultant of coefficient columns (low-to-high) (Wave 262) |
 | `poly_discriminant(p)` | Discriminant of coefficient column (low-to-high) (Wave 262) |
+| `poly_lagrange(xs,ys)` / `poly_interp_newton(xs,ys)` | Lagrange / Newton interpolation coefficient columns (Wave 263) |
+| `combo_bracelets(n,k)` / `combo_lyndon_words(n,k)` | Bracelets / Lyndon words as enumeration matrices (Wave 263) |
+| `combo_restricted_partitions(n,k)` / `combo_involutions(n)` | Restricted partitions matrix / involution count (Wave 263) |
+| `numthy_pell_solve(D)` / `numthy_quadratic_residues(p)` | Pell fundamental solution `1×2` / QR column (Wave 263) |
+| `finance_bl_implied_returns` / `finance_bl_posterior_returns` | Black–Litterman implied / posterior returns (Wave 263) |
+| `finance_merton_distance_to_default` / `finance_historical_var` / `finance_historical_cvar` | Merton DD / historical VaR-CVaR (Wave 263) |
+| `control_kalman_predict` / `control_kalman_update` (+ `_cov`) | Kalman predict/update mean or covariance (Wave 263) |
+| `special_voigt` / `special_pseudo_voigt_auto` / `special_airy_ai` | Voigt / pseudo-Voigt / Airy Ai scalars (Wave 263) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |

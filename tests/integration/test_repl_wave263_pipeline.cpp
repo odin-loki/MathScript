@@ -136,7 +136,7 @@ TEST(ReplWave263Pipeline, FinanceBlImpliedReturns) {
     EXPECT_EQ(interp.state().matrices.at("pi").rows(), 2u);
     EXPECT_NEAR(interp.state().matrices.at("pi")(0, 0), 0.07, 1e-9);
     EXPECT_NEAR(interp.state().matrices.at("pi")(1, 0), 0.035, 1e-9);
-    expect_contains(interp, "help", "finance_bl_implied_returns(cov,w,delta)");
+    expect_contains(interp, "help", "finance_bl_implied_returns(cov,w_mkt,delta)");
 }
 
 TEST(ReplWave263Pipeline, FinanceMertonDistanceToDefault) {
@@ -146,7 +146,7 @@ TEST(ReplWave263Pipeline, FinanceMertonDistanceToDefault) {
     ASSERT_GT(interp.state().scalars.count("dd"), 0u);
     EXPECT_GT(interp.state().scalars.at("dd"), 1.0);
     expect_contains(interp, "help",
-                    "finance_merton_distance_to_default(V,sigma_V,D,r,T)");
+                    "finance_merton_distance_to_default(V,sigma_v,D,r,T)");
 }
 
 TEST(ReplWave263Pipeline, FinanceHistoricalVar) {
@@ -156,18 +156,20 @@ TEST(ReplWave263Pipeline, FinanceHistoricalVar) {
     expect_ok(interp, "hvar = finance_historical_var(ret, 0.95)");
     ASSERT_GT(interp.state().scalars.count("hvar"), 0u);
     EXPECT_NEAR(interp.state().scalars.at("hvar"), 0.20, 1e-10);
-    expect_contains(interp, "help", "finance_historical_var(r[,confidence])");
+    expect_contains(interp, "help", "finance_historical_var(returns,confidence)");
 }
 
 TEST(ReplWave263Pipeline, ControlKalmanPredict) {
     Interpreter interp;
 
     // 1D smoke: x=0, P=1, A=1, Q=0.05 -> x_pred=0, P_pred=1.05
+    // Mean and covariance are separate callees (no multi-assign yet).
     expect_ok(interp, "x0 = [0]");
     expect_ok(interp, "P0 = [1]");
     expect_ok(interp, "A = [1]");
     expect_ok(interp, "Q = [0.05]");
-    expect_ok(interp, "xp, Pp = control_kalman_predict(x0, P0, A, Q)");
+    expect_ok(interp, "xp = control_kalman_predict(x0, P0, A, Q)");
+    expect_ok(interp, "Pp = control_kalman_predict_cov(x0, P0, A, Q)");
     ASSERT_GT(interp.state().matrices.count("xp"), 0u);
     ASSERT_GT(interp.state().matrices.count("Pp"), 0u);
     EXPECT_NEAR(interp.state().matrices.at("xp")(0, 0), 0.0, 1e-12);
@@ -183,7 +185,8 @@ TEST(ReplWave263Pipeline, ControlKalmanUpdate) {
     expect_ok(interp, "Pp = [1.05]");
     expect_ok(interp, "H = [1]");
     expect_ok(interp, "R = [0.5]");
-    expect_ok(interp, "xu, Pu = control_kalman_update(xp, Pp, 2, H, R)");
+    expect_ok(interp, "xu = control_kalman_update(xp, Pp, [2], H, R)");
+    expect_ok(interp, "Pu = control_kalman_update_cov(xp, Pp, [2], H, R)");
     ASSERT_GT(interp.state().matrices.count("xu"), 0u);
     ASSERT_GT(interp.state().matrices.count("Pu"), 0u);
     const double S = 1.05 + 0.5;

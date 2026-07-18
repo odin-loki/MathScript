@@ -1454,15 +1454,20 @@ Result<Matrix<double>> eval_finance_bl_posterior_returns(
         return std::unexpected(DomainError{
             "finance_bl_posterior_returns", "expected pi length to match covariance size"});
     }
-    auto P = matrix_to_row_major_flat(P_m, "finance_bl_posterior_returns");
-    if (!P) {
-        return std::unexpected(P.error());
-    }
     const int k = static_cast<int>(P_m.rows());
     if (P_m.cols() != static_cast<size_t>(n)) {
         return std::unexpected(DomainError{
             "finance_bl_posterior_returns",
             "expected P to have n columns matching covariance size"});
+    }
+    // P is k×n (views × assets), not square — flatten row-major without the
+    // square-matrix helper used for covariance.
+    std::vector<double> P(static_cast<size_t>(k) * static_cast<size_t>(n));
+    for (int i = 0; i < k; ++i) {
+        for (int j = 0; j < n; ++j) {
+            P[static_cast<size_t>(i) * static_cast<size_t>(n) + static_cast<size_t>(j)] =
+                P_m(static_cast<size_t>(i), static_cast<size_t>(j));
+        }
     }
     auto Q = matrix_to_coeff_vector(Q_m, "finance_bl_posterior_returns");
     if (!Q) {
@@ -1473,7 +1478,7 @@ Result<Matrix<double>> eval_finance_bl_posterior_returns(
             "finance_bl_posterior_returns",
             "expected Q length to match number of views (P rows)"});
     }
-    auto post = finance::bl_posterior_returns_default_omega(*pi, *cov, tau, *P, *Q, n, k);
+    auto post = finance::bl_posterior_returns_default_omega(*pi, *cov, tau, P, *Q, n, k);
     if (!post) {
         return std::unexpected(post.error());
     }

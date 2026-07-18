@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 262 ✅ COMPLETE — **420 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 263 ✅ COMPLETE — **421 CTest suites** on `main`)
 
 ---
 
@@ -388,7 +388,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 263+) — deferred
+## Wave 263 — combo enum, pell/QR, poly interp, BL/Merton, Kalman, voigt/airy ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| Combo REPL | bracelets / lyndon_words / restricted_partitions / involutions |
+| Numthy REPL | pell_solve / quadratic_residues |
+| Poly REPL | poly_lagrange / poly_interp_newton |
+| Finance REPL | bl_implied/posterior returns; merton DD; historical VaR/CVaR |
+| Control REPL | kalman_predict/_cov / kalman_update/_cov |
+| Special REPL | voigt / pseudo_voigt_auto / airy_ai |
+| Tests | `integration_repl_wave263_pipeline` |
+
+**421 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–263** closed for this incremental batch.
+
+---
+
+## Next (Wave 264+) — deferred
 
 | Item | Notes |
 |------|--------|

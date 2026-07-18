@@ -7,14 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
-### Added (Wave 263 — WIP)
-- **Combo REPL** — `combo_bracelets` / `combo_lyndon_words` / `combo_restricted_partitions` / `combo_involutions` (intended; sibling landings).
-- **Numthy REPL** — `numthy_pell_solve` / `numthy_quadratic_residues` (intended; sibling landings).
-- **Poly REPL** — `poly_lagrange` / `poly_interp_newton` (intended; sibling landings).
-- **Finance REPL** — `finance_bl_implied_returns` / `finance_merton_distance_to_default` / `finance_historical_var` (intended; sibling landings).
-- **Control REPL** — `control_kalman_predict` / `control_kalman_update` (intended; sibling landings).
-- **Special REPL** — `special_voigt` / `special_airy_ai` (intended; sibling landings).
-- **Tests** — `integration_repl_wave263_pipeline` (smoke + Wave 262 regressions).
+## [1.0.0] - 2026-07-19 (Wave 263 — combo enum, pell/QR, poly interp, BL/Merton, Kalman, voigt/airy) ✅ COMPLETE
+
+Thirty-third feature wave after Wave 262. Parallel Composer 2.5 worktrees merged to `main`: bracelet/Lyndon and partition/involution combo enumerations, Pell/quadratic residues, Lagrange/Newton interpolation, Black–Litterman and Merton/historical risk, Kalman filter steps, Voigt/Airy specials, and wave263 pipeline.
+
+### Added (Wave 263)
+- **Combo REPL** — `combo_bracelets` / `combo_lyndon_words` / `combo_restricted_partitions` / `combo_involutions`.
+- **Numthy REPL** — `numthy_pell_solve` / `numthy_quadratic_residues`.
+- **Poly REPL** — `poly_lagrange` / `poly_interp_newton`.
+- **Finance REPL** — `finance_bl_implied_returns` / `finance_bl_posterior_returns`; `finance_merton_distance_to_default` / `finance_historical_var` / `finance_historical_cvar`.
+- **Control REPL** — `control_kalman_predict` / `control_kalman_predict_cov` / `control_kalman_update` / `control_kalman_update_cov`.
+- **Special REPL** — `special_voigt` / `special_pseudo_voigt_auto` / `special_airy_ai`.
+- **Tests** — `integration_repl_wave263_pipeline`.
+
+### Docs (Wave 263)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 263 sync; **421** CTest suites.
+
+**421 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 262 — combo enum, numthy, lsq/diag, finance rates, poly, Reverse Lines) ✅ COMPLETE
 

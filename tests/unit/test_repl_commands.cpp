@@ -7042,4 +7042,3 @@ TEST(ReplCommandsTest, wave263_finance_merton_historical) {
     EXPECT_NEAR(interp.state().scalars.at("hc"), 0.20, 1e-6);
     expect_contains(interp, "finance_historical_cvar(ret, 0.95)", "0.2");
 }
-}
