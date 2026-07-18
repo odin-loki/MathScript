@@ -460,6 +460,43 @@ void add_tet_stiffness(
     }
 }
 
+constexpr double k_tet_quad_lambda[4][4] = {
+    {0.58541020, 0.13819660, 0.13819660, 0.13819660},
+    {0.13819660, 0.58541020, 0.13819660, 0.13819660},
+    {0.13819660, 0.13819660, 0.58541020, 0.13819660},
+    {0.13819660, 0.13819660, 0.13819660, 0.58541020},
+};
+
+void add_tet_load(
+    ColMatrix<double>& load,
+    const std::array<Vec3, 4>& verts,
+    const std::array<std::size_t, 4>& nodes,
+    const std::function<double(double, double, double)>& f) {
+    const Vec3 e1 = verts[1] - verts[0];
+    const Vec3 e2 = verts[2] - verts[0];
+    const Vec3 e3 = verts[3] - verts[0];
+    const double volume = std::abs(det3(e1, e2, e3)) / 6.0;
+    if (volume <= 0.0) {
+        throw std::invalid_argument("assemble_load_3d: degenerate tetrahedron");
+    }
+
+    const double weight = volume / 4.0;
+    for (int q = 0; q < 4; ++q) {
+        const double l0 = k_tet_quad_lambda[q][0];
+        const double l1 = k_tet_quad_lambda[q][1];
+        const double l2 = k_tet_quad_lambda[q][2];
+        const double l3 = k_tet_quad_lambda[q][3];
+        const double x = l0 * verts[0].x + l1 * verts[1].x + l2 * verts[2].x + l3 * verts[3].x;
+        const double y = l0 * verts[0].y + l1 * verts[1].y + l2 * verts[2].y + l3 * verts[3].y;
+        const double z = l0 * verts[0].z + l1 * verts[1].z + l2 * verts[2].z + l3 * verts[3].z;
+        const double fq = f(x, y, z);
+        const double N[4] = {l0, l1, l2, l3};
+        for (int i = 0; i < 4; ++i) {
+            load(nodes[i], 0) += weight * fq * N[i];
+        }
+    }
+}
+
 } // namespace
 
 ColMatrix<double> assemble_stiffness_3d(const Mesh3D& mesh) {
@@ -533,6 +570,34 @@ ColMatrix<double> assemble_load_2d(
     return load;
 }
 
+ColMatrix<double> assemble_load_3d(
+    const Mesh3D& mesh,
+    const std::function<double(double, double, double)>& f) {
+    const std::size_t n_nodes = mesh.nodes.size();
+    if (n_nodes < 4 || mesh.tetrahedra.empty()) {
+        throw std::invalid_argument("assemble_load_3d: mesh is too small");
+    }
+
+    ColMatrix<double> load(n_nodes, 1, 0.0);
+    for (const auto& tet : mesh.tetrahedra) {
+        const std::size_t n0 = tet[0];
+        const std::size_t n1 = tet[1];
+        const std::size_t n2 = tet[2];
+        const std::size_t n3 = tet[3];
+        if (n0 >= n_nodes || n1 >= n_nodes || n2 >= n_nodes || n3 >= n_nodes) {
+            throw std::invalid_argument("assemble_load_3d: invalid connectivity");
+        }
+
+        const std::array<Vec3, 4> verts = {
+            Vec3{mesh.nodes[n0][0], mesh.nodes[n0][1], mesh.nodes[n0][2]},
+            Vec3{mesh.nodes[n1][0], mesh.nodes[n1][1], mesh.nodes[n1][2]},
+            Vec3{mesh.nodes[n2][0], mesh.nodes[n2][1], mesh.nodes[n2][2]},
+            Vec3{mesh.nodes[n3][0], mesh.nodes[n3][1], mesh.nodes[n3][2]}};
+        add_tet_load(load, verts, tet, f);
+    }
+    return load;
+}
+
 void apply_dirichlet(
     ColMatrix<double>& K,
     ColMatrix<double>& f,
@@ -572,6 +637,12 @@ Result<ColMatrix<double>> solve_fem(
         return solve_fem_tridiag(K, f);
     }
     return solve(K, f);
+}
+
+Result<ColMatrix<double>> solve_fem_3d(
+    const ColMatrix<double>& K,
+    const ColMatrix<double>& f) {
+    return solve_fem(K, f);
 }
 
 } // namespace fem

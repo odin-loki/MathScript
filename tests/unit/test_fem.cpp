@@ -378,7 +378,7 @@ TEST(FemSolve3D, linear_exact_on_uniform_mesh) {
     constexpr std::size_t nz = 3;
     const Mesh3D mesh = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, nx, ny, nz);
     ColMatrix<double> K = assemble_stiffness_3d(mesh);
-    ColMatrix<double> f(mesh.nodes.size(), 1, 0.0);
+    ColMatrix<double> f = assemble_load_3d(mesh, [](double, double, double) { return 0.0; });
 
     const auto boundary = box_boundary_nodes(nx, ny, nz);
     std::vector<double> boundary_values;
@@ -391,7 +391,7 @@ TEST(FemSolve3D, linear_exact_on_uniform_mesh) {
     }
     apply_dirichlet(K, f, boundary, boundary_values);
 
-    const auto u = solve_fem(K, f);
+    const auto u = solve_fem_3d(K, f);
     ASSERT_TRUE(u.has_value());
 
     for (std::size_t i = 0; i < mesh.nodes.size(); ++i) {
@@ -399,5 +399,43 @@ TEST(FemSolve3D, linear_exact_on_uniform_mesh) {
         const double y = mesh.nodes[i][1];
         const double z = mesh.nodes[i][2];
         EXPECT_NEAR((*u)(i, 0), x + y + z, 1e-9);
+    }
+}
+
+TEST(FemLoad3D, integrates_constant_source) {
+    const Mesh3D mesh = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2, 2, 2);
+    const ColMatrix<double> load = assemble_load_3d(mesh, [](double, double, double) { return 1.0; });
+    double total = 0.0;
+    for (std::size_t i = 0; i < load.rows(); ++i) {
+        total += load(i, 0);
+    }
+    EXPECT_NEAR(total, 1.0, 1e-12);
+}
+
+TEST(FemSolve3D, poisson_sin_pi) {
+    constexpr std::size_t nx = 8;
+    constexpr std::size_t ny = 8;
+    constexpr std::size_t nz = 8;
+    const Mesh3D mesh = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, nx, ny, nz);
+    ColMatrix<double> K = assemble_stiffness_3d(mesh);
+    ColMatrix<double> f = assemble_load_3d(mesh, [](double x, double y, double z) {
+        return 3.0 * M_PI * M_PI * std::sin(M_PI * x) * std::sin(M_PI * y) * std::sin(M_PI * z);
+    });
+
+    const auto boundary = box_boundary_nodes(nx, ny, nz);
+    std::vector<double> boundary_values(boundary.size(), 0.0);
+    apply_dirichlet(K, f, boundary, boundary_values);
+
+    const auto u = solve_fem_3d(K, f);
+    ASSERT_TRUE(u.has_value());
+
+    for (std::size_t i = 0; i < mesh.nodes.size(); ++i) {
+        const double x = mesh.nodes[i][0];
+        const double y = mesh.nodes[i][1];
+        const double z = mesh.nodes[i][2];
+        EXPECT_NEAR(
+            (*u)(i, 0),
+            std::sin(M_PI * x) * std::sin(M_PI * y) * std::sin(M_PI * z),
+            8e-2);
     }
 }
