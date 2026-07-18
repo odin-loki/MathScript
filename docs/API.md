@@ -302,6 +302,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `hess(A)` / `schur(A)` / `T, Q = schur(A)` | Hessenberg / Schur (Wave 259) |
 | `finance_efficient_frontier` / `finance_max_sharpe` | Mean-variance portfolios (Wave 259) |
 | `geo_bezier_eval` / `geo_catmull_rom` / `geo_bspline_eval` | Curve evaluation → 1×2 (Wave 259) |
+| `geo_bezier_deriv` / `geo_hermite_curve` | Bezier derivative / Hermite point → 1×2 (Wave 260) |
 | `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization (Wave 259) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
