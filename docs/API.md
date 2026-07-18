@@ -307,7 +307,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_aes256_gcm_encrypt` / `crypto_aes256_gcm_decrypt` | AES-256-GCM AEAD hex I/O (Wave 246) |
 | `dist_lsmr(A, b)` | Distributed LSMR (stub gather; Wave 246) |
 | `cuda_allreduce_prod(x)` | NCCL stub product (identity when stub; Wave 246) |
+| `cuda_allreduce_avg(x)` | NCCL stub average (identity when stub; Wave 247) |
 | `graph_maximum_matching(A)` | Edmonds blossom matching → Mx2 edges (Wave 246) |
+| `signal_unwrap(x)` | NumPy-style phase unwrap (Wave 247) |
+| `geo_minkowski_sum(A,B)` | Convex Minkowski sum → Mx2 (Wave 247) |
+| `geo_min_bounding_rect(P)` | Oriented bounding rect `[cx;cy;w;h;angle_rad]` (Wave 247) |
 | `signal_instantaneous_phase(x)` | Analytic-signal phase column (Wave 243) |
 | `signal_spectrogram(x, fs)` | STFT magnitude matrix (Wave 244) |
 | `finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)` | Heston put via put-call parity (Wave 244) |

@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 246 ✅ COMPLETE — **403 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 247 ✅ COMPLETE — **404 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–246 COMPLETE (summary)
+## Feature waves ✅ 231–247 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -55,6 +55,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **244** | `dist_tfqmr`; PBKDF2-SHA512; `heston_put`; `tfqmr`/`lsmr`/spectrogram REPL; GUI replace; Wave 243 benches |
 | **245** | AES-256-CBC; HKDF-SHA512; `poly_diff` + geo boolean REPL; graph k-core/chromatic; GUI find-prev; Wave 244 benches |
 | **246** | AES-256-GCM; `dist_lsmr`; blossom matching; NCCL `allreduce_prod`; GUI Duplicate Line; Wave 245 benches |
+| **247** | `unwrap`; geo minkowski/OBB REPL; NCCL `allreduce_avg`; Toggle Comment; wave247 pipeline; Wave 246 benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -178,11 +179,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 | GUI | Duplicate Line |
 | Benchmarks | AES-256-CBC + HKDF-SHA512 smoke |
 
-**403 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–246** closed for this incremental batch.
+## Wave 247 ✅ COMPLETE (unwrap, geo minkowski, NCCL avg, Toggle Comment, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Signal | `unwrap` + REPL `signal_unwrap` |
+| Geo REPL | minkowski sum + min bounding rect |
+| NCCL | stub `allreduce_avg` + REPL |
+| GUI | Toggle Comment |
+| Tests | wave247 pipeline (geo/signal + Wave 246 APIs) |
+| Benchmarks | AES-256-GCM + `dist_lsmr` smoke |
+
+**404 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–247** closed for this incremental batch.
 
 ---
 
-## Next (Wave 247+) — deferred
+## Next (Wave 248+) — deferred
 
 | Item | Notes |
 |------|--------|

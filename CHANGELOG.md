@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 247 — unwrap, geo minkowski, NCCL avg, Toggle Comment, benches) ✅ COMPLETE
+
+Seventeenth feature wave after Wave 246. Parallel Composer 2.5 worktrees merged to `main`: phase `unwrap` + REPL, geo minkowski/min-bounding-rect REPL, NCCL stub `allreduce_avg`, GUI Toggle Comment, Wave 246 API integration pipeline, and Wave 246 bench gaps.
+
+### Added (Wave 247)
+- **Signal** — public `unwrap` (NumPy-style); REPL `signal_unwrap`.
+- **Geo REPL** — `geo_minkowski_sum`, `geo_min_bounding_rect` (5×1 `[cx;cy;w;h;angle_rad]`).
+- **CUDA / NCCL** — stub `allreduce_avg`; REPL `cuda_allreduce_avg`.
+- **GUI** — Edit → Toggle Comment (Ctrl+/).
+- **Tests** — `integration_repl_wave247_pipeline` (geo/signal + Wave 246 API smoke).
+- **Benchmarks** — `BM_Aes256GcmEncrypt_1KB`, `BM_DistLsmr_2x2`.
+- **Fix** — REPL hex parser accepts empty AAD for AES-GCM.
+
+### Docs (Wave 247)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 247 sync; **404** CTest suites.
+
+**404 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 246 — AES-256-GCM, dist LSMR, blossom matching, NCCL prod, GUI, benches) ✅ COMPLETE
 
 Sixteenth feature wave after Wave 245. Parallel Composer 2.5 worktrees merged to `main`: AES-256-GCM, `dist_lsmr`, Edmonds blossom maximum matching, NCCL stub `allreduce_prod`, GUI Duplicate Line, and Wave 245 bench gaps.
