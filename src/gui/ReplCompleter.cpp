@@ -147,6 +147,7 @@ QStringList repl_command_list() {
         QStringLiteral("crypto_hkdf_sha256"),
         QStringLiteral("crypto_hkdf_sha512"),
         QStringLiteral("crypto_sha256"),
+        QStringLiteral("crypto_sha512"),
         QStringLiteral("crypto_hmac_sha256"),
         QStringLiteral("crypto_hmac_sha512"),
         QStringLiteral("crypto_pbkdf2_sha256"),
