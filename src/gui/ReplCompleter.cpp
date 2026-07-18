@@ -224,6 +224,10 @@ QStringList repl_command_list() {
         QStringLiteral("imrotate90"),
         QStringLiteral("threshold_binary"),
         QStringLiteral("adapthisteq"),
+        QStringLiteral("hough_lines"),
+        QStringLiteral("hough_circles"),
+        QStringLiteral("harris"),
+        QStringLiteral("shi_tomasi"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),

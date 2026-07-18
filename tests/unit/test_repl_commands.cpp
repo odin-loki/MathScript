@@ -5632,3 +5632,63 @@ TEST(ReplCommandsTest, wave256_image_transform) {
     EXPECT_EQ(interp.state().matrices.at("A").cols(), 2u);
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("A")(0, 0)));
 }
+
+TEST(ReplCommandsTest, wave257_image_hough) {
+    Interpreter interp;
+    expect_contains(interp, "help", "hough_lines(M[,edge])");
+    expect_contains(interp, "help", "hough_circles(M[,r_min,r_max])");
+    expect_contains(interp, "help", "harris(M[,k[,thr]])");
+    expect_contains(interp, "help", "shi_tomasi(M,n[,q])");
+
+    // 10x10 horizontal edge at row 5; vote_threshold=5 so short lines still peak.
+    expect_ok(interp,
+              "E = [0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0; "
+              "1,1,1,1,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0]");
+    expect_ok(interp, "L = hough_lines(E, 0.5, 180, 200, 5)");
+    ASSERT_GT(interp.state().matrices.count("L"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("L").cols(), 3u);
+    ASSERT_GT(interp.state().matrices.at("L").rows(), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("L")(0, 1), 1.5707963267948966, 0.05);  // ~pi/2
+    EXPECT_NEAR(interp.state().matrices.at("L")(0, 0), 5.0, 1.5);
+
+    // Blank image: no circles.
+    expect_ok(interp, "B = zeros(30, 30)");
+    expect_ok(interp, "C = hough_circles(B, 5, 15)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("C").cols(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("C").rows(), 0u);
+
+    // Bright quadrant corner -> Harris / Shi-Tomasi keypoints.
+    expect_ok(interp,
+              "Q = [0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1]");
+    expect_ok(interp, "H = harris(Q, 0.04, 0.001)");
+    ASSERT_GT(interp.state().matrices.count("H"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("H").cols(), 3u);
+    ASSERT_GT(interp.state().matrices.at("H").rows(), 0u);
+    EXPECT_GT(interp.state().matrices.at("H")(0, 2), 0.0);
+
+    expect_ok(interp, "S = shi_tomasi(Q, 5, 0.01)");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S").cols(), 3u);
+    ASSERT_GT(interp.state().matrices.at("S").rows(), 0u);
+    EXPECT_LE(interp.state().matrices.at("S").rows(), 5u);
+}
