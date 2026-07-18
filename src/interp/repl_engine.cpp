@@ -10079,6 +10079,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sharpen" || fn == "threshold_otsu" || fn == "imresize" ||
             fn == "imflip" || fn == "imrotate90" || fn == "threshold_binary" ||
             fn == "adapthisteq" ||
+            fn == "label_components" || fn == "watershed" || fn == "slic" ||
             fn == "rle_encode_vec" || fn == "rle_decode_vec" ||
             fn == "mtf_encode_vec" || fn == "mtf_decode_vec" ||
             fn == "lzw_encode_vec" || fn == "lzw_decode_vec" ||
@@ -11943,6 +11944,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "sharpen" || callee == "threshold_otsu" || callee == "imresize" ||
            callee == "imflip" || callee == "imrotate90" || callee == "threshold_binary" ||
            callee == "adapthisteq" ||
+           callee == "label_components" || callee == "watershed" || callee == "slic" ||
            callee == "rle_encode_vec" || callee == "rle_decode_vec" ||
            callee == "mtf_encode_vec" || callee == "mtf_decode_vec" ||
            callee == "lzw_encode_vec" || callee == "lzw_decode_vec" ||
@@ -12040,6 +12042,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "laplacian" || callee == "histeq" || callee == "sharpen" ||
         callee == "threshold_otsu" ||
         callee == "imrotate90" || callee == "adapthisteq" ||
+        callee == "label_components" ||
         callee == "rle_encode_vec" || callee == "rle_decode_vec" ||
         callee == "mtf_encode_vec" || callee == "mtf_decode_vec" ||
         callee == "lzw_encode_vec" || callee == "lzw_decode_vec" ||
@@ -12185,8 +12188,11 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "ml_ridge_fit") {
         return arity == 3;
     }
-    if (callee == "imflip" || callee == "threshold_binary") {
+    if (callee == "imflip" || callee == "threshold_binary" || callee == "watershed") {
         return arity == 2;
+    }
+    if (callee == "slic") {
+        return arity == 2 || arity == 3;
     }
     if (callee == "imresize" || callee == "topo_betti_curve" || callee == "bilateral" ||
         callee == "canny") {
@@ -13838,6 +13844,72 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(gray.error());
         }
         result = gray_image_to_matrix(image::adapthisteq(*gray));
+    } else if (assign.callee == "label_components" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        const auto labels = image::label_components(*gray);
+        Matrix<double> out(labels.size(), labels.empty() ? 0u : labels[0].size());
+        for (size_t r = 0; r < labels.size(); ++r) {
+            for (size_t c = 0; c < labels[r].size(); ++c) {
+                out(r, c) = static_cast<double>(labels[r][c]);
+            }
+        }
+        result = out;
+    } else if (assign.callee == "watershed" && assign.args.size() == 2) {
+        auto gray_m = resolve_operand(assign.args[0]);
+        if (!gray_m) {
+            return std::unexpected(gray_m.error());
+        }
+        auto markers_m = resolve_operand(assign.args[1]);
+        if (!markers_m) {
+            return std::unexpected(markers_m.error());
+        }
+        auto gray = matrix_to_gray_image(*gray_m);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        // Marker labels are integer IDs, not intensities — do not apply 0..255 scaling.
+        if (markers_m->rows() == 0 || markers_m->cols() == 0) {
+            return std::unexpected(DomainError{"watershed", "empty markers matrix"});
+        }
+        image::Image markers(static_cast<int>(markers_m->rows()),
+                             static_cast<int>(markers_m->cols()), 1);
+        for (size_t r = 0; r < markers_m->rows(); ++r) {
+            for (size_t c = 0; c < markers_m->cols(); ++c) {
+                markers.at(static_cast<int>(r), static_cast<int>(c), 0) =
+                    static_cast<float>((*markers_m)(r, c));
+            }
+        }
+        result = gray_image_to_matrix(image::watershed(*gray, markers));
+    } else if (assign.callee == "slic" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double k_d = 0.0;
+        if (!parse_number(assign.args[1], k_d)) {
+            return std::unexpected(DomainError{"slic", "expected slic(M, K[, compactness])"});
+        }
+        double compactness = 10.0;
+        if (assign.args.size() == 3) {
+            if (!parse_number(assign.args[2], compactness)) {
+                return std::unexpected(
+                    DomainError{"slic", "expected slic(M, K[, compactness])"});
+            }
+        }
+        auto rgb = matrix_to_gray_image(*matrix);
+        if (!rgb) {
+            return std::unexpected(rgb.error());
+        }
+        result = gray_image_to_matrix(
+            image::slic(*rgb, static_cast<int>(k_d), compactness));
     } else if (assign.callee == "graph_pagerank" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -16913,6 +16985,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = imrotate90(M)     rotate grayscale matrix 90° CCW\n"
             "  name = threshold_binary(M,t) binary threshold at t on grayscale matrix\n"
             "  name = adapthisteq(M)    CLAHE on grayscale matrix (tile=8, clip=0.01)\n"
+            "  name = label_components(B) connected-component labels on binary matrix (-1 bg)\n"
+            "  name = watershed(G,M)    marker-controlled watershed on grayscale matrices\n"
+            "  name = slic(M,K[,c])     SLIC superpixels on grayscale/RGB matrix (compactness c)\n"
             "  name = rle_encode_vec(M) run-length encode flattened matrix bytes\n"
             "  name = rle_decode_vec(M) decode RLE byte vector to column vector\n"
             "  name = mtf_encode_vec(M) move-to-front encode flattened matrix bytes\n"
@@ -17541,7 +17616,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  lu(A), qr(A), chol(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
-            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
+            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"

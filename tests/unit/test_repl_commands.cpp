@@ -5792,3 +5792,41 @@ TEST(ReplCommandsTest, wave257_prob_ext) {
     expect_contains(interp, "prob_laplace_cdf(0, 0, 1)", "0.5");
     expect_contains(interp, "prob_cauchy_cdf(0, 0, 1)", "0.5");
 }
+
+TEST(ReplCommandsTest, wave257_image_segment) {
+    Interpreter interp;
+    expect_contains(interp, "help", "label_components(B)");
+    expect_contains(interp, "help", "watershed(G,M)");
+    expect_contains(interp, "help", "slic(M,K");
+
+    expect_ok(interp, "B = [0, 1, 1, 0; 0, 1, 1, 0; 0, 0, 0, 0; 1, 1, 0, 0]");
+    expect_ok(interp, "L = label_components(B)");
+    ASSERT_GT(interp.state().matrices.count("L"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("L").cols(), 4u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("L")(0, 0), -1.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("L")(0, 1), interp.state().matrices.at("L")(1, 2));
+    EXPECT_NE(interp.state().matrices.at("L")(0, 1), interp.state().matrices.at("L")(3, 0));
+
+    expect_ok(interp, "G = [0.2, 0.3, 0.4, 0.5; 0.25, 0.35, 0.45, 0.55; "
+                      "0.3, 0.4, 0.5, 0.6; 0.35, 0.45, 0.55, 0.65]");
+    expect_ok(interp, "Mk = [0, 0, 0, 0; 0, 1, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0]");
+    expect_ok(interp, "W = watershed(G, Mk)");
+    ASSERT_GT(interp.state().matrices.count("W"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("W").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("W").cols(), 4u);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("W")(1, 1), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().matrices.at("W")(0, 0), 1.0);
+
+    expect_ok(interp, "RGB = [0, 0, 0, 1; 0, 0, 0, 1; 1, 1, 0, 0; 1, 1, 0, 0]");
+    expect_ok(interp, "S = slic(RGB, 4)");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("S").cols(), 4u);
+    EXPECT_GE(interp.state().matrices.at("S")(0, 0), 1.0);
+
+    expect_ok(interp, "S2 = slic(RGB, 4, 10)");
+    ASSERT_GT(interp.state().matrices.count("S2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S2").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("S2").cols(), 4u);
+}

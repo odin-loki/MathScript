@@ -252,6 +252,9 @@ QStringList repl_command_list() {
         QStringLiteral("imrotate90"),
         QStringLiteral("threshold_binary"),
         QStringLiteral("adapthisteq"),
+        QStringLiteral("label_components"),
+        QStringLiteral("watershed"),
+        QStringLiteral("slic"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
