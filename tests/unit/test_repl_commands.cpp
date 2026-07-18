@@ -5063,6 +5063,46 @@ TEST(ReplCommandsTest, wave111_geo_bezier_eval_y) {
     expect_contains(interp, "geo_bezier_eval_y([0, 0; 1, 2; 2, 0], 0.5)", "1");
 }
 
+TEST(ReplCommandsTest, wave259_geo_bezier_eval) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_bezier_eval(P,t)");
+
+    expect_ok(interp, "ctrl = [0, 0; 1, 2; 2, 0]");
+    expect_ok(interp, "pt = geo_bezier_eval(ctrl, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("pt"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pt").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("pt").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 1), 1.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave259_geo_catmull_rom) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_catmull_rom(P,t)");
+
+    expect_ok(interp, "ctrl = [0, 0; 1, 0; 2, 0; 3, 0]");
+    expect_ok(interp, "pt = geo_catmull_rom(ctrl, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("pt"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pt").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("pt").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 0), 1.5, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 1), 0.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave259_geo_bspline_eval) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_bspline_eval(P,knots,degree,t)");
+
+    expect_ok(interp, "ctrl = [0, 0; 2, 0]");
+    expect_ok(interp, "knots = [0, 0, 1, 1]");
+    expect_ok(interp, "pt = geo_bspline_eval(ctrl, knots, 1, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("pt"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pt").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("pt").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pt")(0, 1), 0.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave105_ml_binary_crossentropy) {
     Interpreter interp;
     expect_contains(interp, "help", "ml_binary_crossentropy(p,t)");
