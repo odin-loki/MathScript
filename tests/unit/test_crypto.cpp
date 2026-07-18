@@ -233,6 +233,22 @@ TEST(CryptoHkdfSha256, ZeroLengthOutput) {
     EXPECT_TRUE(hkdf_sha256(ikm, std::vector<uint8_t>{}, std::vector<uint8_t>{}, 0).empty());
 }
 
+// ---- HKDF-SHA512 (RFC 5869 A.1 inputs with SHA-512; well-known OKM) ----
+
+TEST(CryptoHkdfSha512, Rfc5869Case1Sha512) {
+    const auto ikm = from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    const auto salt = from_hex("000102030405060708090a0b0c");
+    const auto info = from_hex("f0f1f2f3f4f5f6f7f8f9");
+    expect_hex(hkdf_sha512(ikm, salt, info, 42),
+               "832390086cda71fb47625bb5ceb168e4c8e26a1a16ed34d9fc7fe92c14815793"
+               "38da362cb8d9f925d7cb");
+}
+
+TEST(CryptoHkdfSha512, ZeroLengthOutput) {
+    const auto ikm = from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    EXPECT_TRUE(hkdf_sha512(ikm, std::vector<uint8_t>{}, std::vector<uint8_t>{}, 0).empty());
+}
+
 // ---- PBKDF2-HMAC-SHA256 (RFC 6070 test vectors) ----
 
 TEST(CryptoPbkdf2HmacSha256, Rfc6070TestCase1) {
