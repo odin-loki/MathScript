@@ -1327,5 +1327,346 @@ std::vector<uint8_t> chacha20_encrypt(const std::array<uint8_t, 32>& key,
     return out;
 }
 
+inline void store_le64(std::uint8_t* out, std::uint64_t v) {
+    for (int i = 0; i < 8; ++i) {
+        out[i] = static_cast<std::uint8_t>(v >> (8 * i));
+    }
+}
+
+struct Poly1305State {
+    std::uint32_t r[5]{};
+    std::uint32_t h[5]{};
+    std::uint32_t pad[4]{};
+    std::uint8_t leftover[16]{};
+    std::size_t leftover_len = 0;
+    bool final = false;
+};
+
+void poly1305_init(Poly1305State* st, const std::uint8_t key[32]) {
+    const std::uint32_t t0 = load_le32(key + 0);
+    const std::uint32_t t1 = load_le32(key + 4);
+    const std::uint32_t t2 = load_le32(key + 8);
+    const std::uint32_t t3 = load_le32(key + 12);
+
+    st->r[0] = (t0) &0x3ffffff;
+    st->r[1] = ((t0 >> 26) | (t1 << 6)) & 0x3ffff03;
+    st->r[2] = ((t1 >> 20) | (t2 << 12)) & 0x3ffc0ff;
+    st->r[3] = ((t2 >> 14) | (t3 << 18)) & 0x3f03fff;
+    st->r[4] = ((t3 >> 8)) & 0x00fffff;
+
+    st->h[0] = 0;
+    st->h[1] = 0;
+    st->h[2] = 0;
+    st->h[3] = 0;
+    st->h[4] = 0;
+
+    st->pad[0] = load_le32(key + 16);
+    st->pad[1] = load_le32(key + 20);
+    st->pad[2] = load_le32(key + 24);
+    st->pad[3] = load_le32(key + 28);
+
+    st->leftover_len = 0;
+    st->final = false;
+}
+
+void poly1305_blocks(Poly1305State* st, const std::uint8_t* m, std::size_t bytes, int hibit) {
+    const std::uint32_t hibit_val = static_cast<std::uint32_t>(hibit) << 24;
+
+    while (bytes >= 16) {
+        std::uint32_t t0 = load_le32(m + 0);
+        std::uint32_t t1 = load_le32(m + 4);
+        std::uint32_t t2 = load_le32(m + 8);
+        std::uint32_t t3 = load_le32(m + 12);
+
+        st->h[0] += (t0) &0x3ffffff;
+        st->h[1] += ((t0 >> 26) | (t1 << 6)) & 0x3ffffff;
+        st->h[2] += ((t1 >> 20) | (t2 << 12)) & 0x3ffffff;
+        st->h[3] += ((t2 >> 14) | (t3 << 18)) & 0x3ffffff;
+        st->h[4] += ((t3 >> 8) | hibit_val) & 0x3ffffff;
+
+        std::uint64_t d0 = static_cast<std::uint64_t>(st->h[0]) * st->r[0] +
+                           static_cast<std::uint64_t>(st->h[1]) * st->r[4] * 5 +
+                           static_cast<std::uint64_t>(st->h[2]) * st->r[3] * 5 +
+                           static_cast<std::uint64_t>(st->h[3]) * st->r[2] * 5 +
+                           static_cast<std::uint64_t>(st->h[4]) * st->r[1] * 5;
+        std::uint64_t d1 = static_cast<std::uint64_t>(st->h[0]) * st->r[1] +
+                           static_cast<std::uint64_t>(st->h[1]) * st->r[0] +
+                           static_cast<std::uint64_t>(st->h[2]) * st->r[4] * 5 +
+                           static_cast<std::uint64_t>(st->h[3]) * st->r[3] * 5 +
+                           static_cast<std::uint64_t>(st->h[4]) * st->r[2] * 5;
+        std::uint64_t d2 = static_cast<std::uint64_t>(st->h[0]) * st->r[2] +
+                           static_cast<std::uint64_t>(st->h[1]) * st->r[1] +
+                           static_cast<std::uint64_t>(st->h[2]) * st->r[0] +
+                           static_cast<std::uint64_t>(st->h[3]) * st->r[4] * 5 +
+                           static_cast<std::uint64_t>(st->h[4]) * st->r[3] * 5;
+        std::uint64_t d3 = static_cast<std::uint64_t>(st->h[0]) * st->r[3] +
+                           static_cast<std::uint64_t>(st->h[1]) * st->r[2] +
+                           static_cast<std::uint64_t>(st->h[2]) * st->r[1] +
+                           static_cast<std::uint64_t>(st->h[3]) * st->r[0] +
+                           static_cast<std::uint64_t>(st->h[4]) * st->r[4] * 5;
+        std::uint64_t d4 = static_cast<std::uint64_t>(st->h[0]) * st->r[4] +
+                           static_cast<std::uint64_t>(st->h[1]) * st->r[3] +
+                           static_cast<std::uint64_t>(st->h[2]) * st->r[2] +
+                           static_cast<std::uint64_t>(st->h[3]) * st->r[1] +
+                           static_cast<std::uint64_t>(st->h[4]) * st->r[0];
+
+        std::uint32_t c;
+        c = static_cast<std::uint32_t>(d0 >> 26);
+        st->h[0] = static_cast<std::uint32_t>(d0) & 0x3ffffff;
+        d1 += c;
+        c = static_cast<std::uint32_t>(d1 >> 26);
+        st->h[1] = static_cast<std::uint32_t>(d1) & 0x3ffffff;
+        d2 += c;
+        c = static_cast<std::uint32_t>(d2 >> 26);
+        st->h[2] = static_cast<std::uint32_t>(d2) & 0x3ffffff;
+        d3 += c;
+        c = static_cast<std::uint32_t>(d3 >> 26);
+        st->h[3] = static_cast<std::uint32_t>(d3) & 0x3ffffff;
+        d4 += c;
+        c = static_cast<std::uint32_t>(d4 >> 26);
+        st->h[4] = static_cast<std::uint32_t>(d4) & 0x3ffffff;
+        st->h[0] += c * 5;
+        c = st->h[0] >> 26;
+        st->h[0] &= 0x3ffffff;
+        st->h[1] += c;
+
+        m += 16;
+        bytes -= 16;
+    }
+}
+
+void poly1305_update(Poly1305State* st, const std::uint8_t* m, std::size_t bytes) {
+    if (st->leftover_len != 0) {
+        std::size_t want = 16 - st->leftover_len;
+        if (want > bytes) {
+            want = bytes;
+        }
+        for (std::size_t i = 0; i < want; ++i) {
+            st->leftover[st->leftover_len + i] = m[i];
+        }
+        bytes -= want;
+        m += want;
+        st->leftover_len += want;
+        if (st->leftover_len < 16) {
+            return;
+        }
+        poly1305_blocks(st, st->leftover, 16, 1);
+        st->leftover_len = 0;
+    }
+
+    if (bytes >= 16) {
+        const std::size_t want = bytes & ~static_cast<std::size_t>(15);
+        poly1305_blocks(st, m, want, 1);
+        m += want;
+        bytes -= want;
+    }
+
+    if (bytes != 0) {
+        for (std::size_t i = 0; i < bytes; ++i) {
+            st->leftover[st->leftover_len + i] = m[i];
+        }
+        st->leftover_len += bytes;
+    }
+}
+
+void poly1305_finish(Poly1305State* st, std::uint8_t mac[16]) {
+    if (st->leftover_len != 0) {
+        std::size_t i = st->leftover_len;
+        st->leftover[i++] = 1;
+        for (; i < 16; ++i) {
+            st->leftover[i] = 0;
+        }
+        poly1305_blocks(st, st->leftover, 16, 0);
+    }
+
+    std::uint32_t h0 = st->h[0];
+    std::uint32_t h1 = st->h[1];
+    std::uint32_t h2 = st->h[2];
+    std::uint32_t h3 = st->h[3];
+    std::uint32_t h4 = st->h[4];
+
+    std::uint32_t c;
+    c = h1 >> 26;
+    h1 &= 0x3ffffff;
+    h2 += c;
+    c = h2 >> 26;
+    h2 &= 0x3ffffff;
+    h3 += c;
+    c = h3 >> 26;
+    h3 &= 0x3ffffff;
+    h4 += c;
+    c = h4 >> 26;
+    h4 &= 0x3ffffff;
+    h0 += c * 5;
+    c = h0 >> 26;
+    h0 &= 0x3ffffff;
+    h1 += c;
+
+    std::uint32_t g0 = h0 + 5;
+    c = g0 >> 26;
+    g0 &= 0x3ffffff;
+    std::uint32_t g1 = h1 + c;
+    c = g1 >> 26;
+    g1 &= 0x3ffffff;
+    std::uint32_t g2 = h2 + c;
+    c = g2 >> 26;
+    g2 &= 0x3ffffff;
+    std::uint32_t g3 = h3 + c;
+    c = g3 >> 26;
+    g3 &= 0x3ffffff;
+    std::uint32_t g4 = h4 + c - (1u << 26);
+
+    const std::uint32_t nb = (g4 >> 31) - 1;
+    g0 &= nb;
+    g1 &= nb;
+    g2 &= nb;
+    g3 &= nb;
+    g4 &= nb;
+    const std::uint32_t b = ~nb;
+    h0 = (h0 & b) | g0;
+    h1 = (h1 & b) | g1;
+    h2 = (h2 & b) | g2;
+    h3 = (h3 & b) | g3;
+    h4 = (h4 & b) | g4;
+
+    h0 = (h0 | (h1 << 26)) & 0xffffffffu;
+    h1 = ((h1 >> 6) | (h2 << 20)) & 0xffffffffu;
+    h2 = ((h2 >> 12) | (h3 << 14)) & 0xffffffffu;
+    h3 = ((h3 >> 18) | (h4 << 8)) & 0xffffffffu;
+
+    std::uint64_t f = static_cast<std::uint64_t>(h0) + st->pad[0];
+    h0 = static_cast<std::uint32_t>(f);
+    f = static_cast<std::uint64_t>(h1) + st->pad[1] + (f >> 32);
+    h1 = static_cast<std::uint32_t>(f);
+    f = static_cast<std::uint64_t>(h2) + st->pad[2] + (f >> 32);
+    h2 = static_cast<std::uint32_t>(f);
+    f = static_cast<std::uint64_t>(h3) + st->pad[3] + (f >> 32);
+    h3 = static_cast<std::uint32_t>(f);
+
+    store_le32(mac + 0, h0);
+    store_le32(mac + 4, h1);
+    store_le32(mac + 8, h2);
+    store_le32(mac + 12, h3);
+
+    st->final = true;
+}
+
+void poly1305_mac(std::span<const std::uint8_t> msg, const std::uint8_t key[32],
+                  std::uint8_t out[16]) {
+    Poly1305State st;
+    poly1305_init(&st, key);
+    if (!msg.empty()) {
+        poly1305_update(&st, msg.data(), msg.size());
+    }
+    poly1305_finish(&st, out);
+}
+
+void append_padded16(std::vector<std::uint8_t>& out, std::span<const std::uint8_t> data) {
+    out.insert(out.end(), data.begin(), data.end());
+    const std::size_t rem = data.size() % 16;
+    if (rem != 0) {
+        out.insert(out.end(), 16 - rem, 0);
+    }
+}
+
+std::array<std::uint8_t, 32> chacha20_poly1305_derive_key(
+    const std::array<uint8_t, 32>& key, const std::array<uint8_t, 12>& nonce) {
+    std::array<std::uint8_t, 32> poly_key{};
+    std::uint8_t block[64];
+    chacha20_block(key, nonce, 0, block);
+    std::memcpy(poly_key.data(), block, poly_key.size());
+    return poly_key;
+}
+
+void chacha20_poly1305_mac_data(std::span<const std::uint8_t> aad,
+                                std::span<const std::uint8_t> ciphertext,
+                                std::vector<std::uint8_t>& out) {
+    out.clear();
+    append_padded16(out, aad);
+    append_padded16(out, ciphertext);
+    std::array<std::uint8_t, 16> lens{};
+    store_le64(lens.data(), static_cast<std::uint64_t>(aad.size()));
+    store_le64(lens.data() + 8, static_cast<std::uint64_t>(ciphertext.size()));
+    out.insert(out.end(), lens.begin(), lens.end());
+}
+
+bool chacha20_poly1305_seal_impl(const std::array<uint8_t, 32>& key,
+                                 const std::array<uint8_t, 12>& nonce,
+                                 std::span<const std::uint8_t> aad,
+                                 std::span<const std::uint8_t> plaintext,
+                                 std::uint8_t* ciphertext_out, std::uint8_t tag_out[16]) {
+    const auto poly_key = chacha20_poly1305_derive_key(key, nonce);
+    const auto ciphertext = chacha20_encrypt(key, nonce, 1, plaintext);
+    if (!ciphertext.empty()) {
+        std::memcpy(ciphertext_out, ciphertext.data(), ciphertext.size());
+    }
+
+    std::vector<std::uint8_t> mac_data;
+    chacha20_poly1305_mac_data(aad, ciphertext, mac_data);
+    poly1305_mac(mac_data, poly_key.data(), tag_out);
+    return true;
+}
+
+bool chacha20_poly1305_open_impl(const std::array<uint8_t, 32>& key,
+                                 const std::array<uint8_t, 12>& nonce,
+                                 std::span<const std::uint8_t> aad,
+                                 std::span<const std::uint8_t> ciphertext,
+                                 std::span<const std::uint8_t> tag, std::uint8_t* plaintext_out) {
+    if (tag.size() != chacha20_poly1305_tag_size) {
+        return false;
+    }
+
+    const auto poly_key = chacha20_poly1305_derive_key(key, nonce);
+    std::vector<std::uint8_t> mac_data;
+    chacha20_poly1305_mac_data(aad, ciphertext, mac_data);
+
+    std::array<std::uint8_t, 16> expected_tag{};
+    poly1305_mac(mac_data, poly_key.data(), expected_tag.data());
+
+    std::uint8_t diff = 0;
+    for (std::size_t i = 0; i < expected_tag.size(); ++i) {
+        diff |= static_cast<std::uint8_t>(expected_tag[i] ^ tag[i]);
+    }
+    if (diff != 0) {
+        return false;
+    }
+
+    const auto plaintext = chacha20_encrypt(key, nonce, 1, ciphertext);
+    if (!plaintext.empty()) {
+        std::memcpy(plaintext_out, plaintext.data(), plaintext.size());
+    }
+    return true;
+}
+
+ChaCha20Poly1305Seal chacha20_poly1305_encrypt(const std::array<uint8_t, 32>& key,
+                                                const std::array<uint8_t, 12>& nonce,
+                                                std::span<const uint8_t> aad,
+                                                std::span<const uint8_t> plaintext) {
+    ChaCha20Poly1305Seal out;
+    out.ciphertext.resize(plaintext.size());
+    if (!chacha20_poly1305_seal_impl(key, nonce, aad, plaintext, out.ciphertext.data(),
+                                     out.tag.data())) {
+        out.ciphertext.clear();
+        out.tag.fill(0);
+    }
+    return out;
+}
+
+std::vector<uint8_t> chacha20_poly1305_decrypt(const std::array<uint8_t, 32>& key,
+                                               const std::array<uint8_t, 12>& nonce,
+                                               std::span<const uint8_t> aad,
+                                               std::span<const uint8_t> ciphertext,
+                                               std::span<const uint8_t> tag) {
+    if (tag.size() != chacha20_poly1305_tag_size) {
+        return {};
+    }
+
+    std::vector<uint8_t> plaintext(ciphertext.size());
+    if (!chacha20_poly1305_open_impl(key, nonce, aad, ciphertext, tag, plaintext.data())) {
+        return {};
+    }
+    return plaintext;
+}
+
 } // namespace crypto
 } // namespace ms

@@ -17,6 +17,8 @@ constexpr std::size_t aes128_key_size = 16;
 constexpr std::size_t aes256_key_size = 32;
 constexpr std::size_t aes_gcm_tag_size = 16;
 constexpr std::size_t aes_gcm_iv_size = 12;
+constexpr std::size_t chacha20_poly1305_tag_size = 16;
+constexpr std::size_t chacha20_poly1305_nonce_size = 12;
 
 using Digest256 = std::array<uint8_t, sha256_digest_size>;
 using Digest512 = std::array<uint8_t, sha512_digest_size>;
@@ -70,6 +72,21 @@ std::vector<uint8_t> chacha20_encrypt(const std::array<uint8_t, 32>& key,
                                       const std::array<uint8_t, 12>& nonce,
                                       std::uint32_t counter,
                                       std::span<const uint8_t> data);
+
+struct ChaCha20Poly1305Seal {
+    std::vector<uint8_t> ciphertext;
+    std::array<uint8_t, chacha20_poly1305_tag_size> tag{};
+};
+
+ChaCha20Poly1305Seal chacha20_poly1305_encrypt(const std::array<uint8_t, 32>& key,
+                                               const std::array<uint8_t, 12>& nonce,
+                                               std::span<const uint8_t> aad,
+                                               std::span<const uint8_t> plaintext);
+std::vector<uint8_t> chacha20_poly1305_decrypt(const std::array<uint8_t, 32>& key,
+                                               const std::array<uint8_t, 12>& nonce,
+                                               std::span<const uint8_t> aad,
+                                               std::span<const uint8_t> ciphertext,
+                                               std::span<const uint8_t> tag);
 
 } // namespace crypto
 } // namespace ms

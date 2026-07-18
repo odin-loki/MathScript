@@ -304,6 +304,81 @@ TEST(CryptoChaCha20, DecryptRoundTrip) {
     EXPECT_EQ(std::string(recovered.begin(), recovered.end()), plaintext);
 }
 
+// ---- ChaCha20-Poly1305 AEAD (RFC 8439 §2.8.2) ----
+
+TEST(CryptoChaCha20Poly1305, Rfc8439AeadVector) {
+    const auto key = from_hex(
+        "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f");
+    const auto nonce = from_hex("070000004041424344454647");
+    const auto aad = from_hex("50515253c0c1c2c3c4c5c6c7");
+    const std::string plaintext =
+        "Ladies and Gentlemen of the class of '99: "
+        "If I could offer you only one tip for the future, "
+        "sunscreen would be it.";
+    std::array<uint8_t, 32> key_arr{};
+    std::array<uint8_t, 12> nonce_arr{};
+    std::copy(key.begin(), key.end(), key_arr.begin());
+    std::copy(nonce.begin(), nonce.end(), nonce_arr.begin());
+
+    const auto seal = chacha20_poly1305_encrypt(
+        key_arr, nonce_arr, aad,
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(plaintext.data()),
+                                 plaintext.size()));
+    expect_hex(seal.ciphertext,
+               "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6"
+               "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36"
+               "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc"
+               "3ff4def08e4b7a9de576d26586cec64b6116");
+    expect_hex(std::vector<uint8_t>(seal.tag.begin(), seal.tag.end()),
+               "1ae10b594f09e26a7e902ecbd0600691");
+
+    const auto opened = chacha20_poly1305_decrypt(
+        key_arr, nonce_arr, aad, seal.ciphertext,
+        std::span<const uint8_t>(seal.tag.data(), seal.tag.size()));
+    EXPECT_EQ(std::string(opened.begin(), opened.end()), plaintext);
+}
+
+TEST(CryptoChaCha20Poly1305, TamperedTagFailsOpen) {
+    const auto key = from_hex(
+        "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f");
+    const auto nonce = from_hex("070000004041424344454647");
+    const auto aad = from_hex("50515253c0c1c2c3c4c5c6c7");
+    const auto plain = from_hex("0011223344556677889900aabbccddeeff");
+    std::array<uint8_t, 32> key_arr{};
+    std::array<uint8_t, 12> nonce_arr{};
+    std::copy(key.begin(), key.end(), key_arr.begin());
+    std::copy(nonce.begin(), nonce.end(), nonce_arr.begin());
+
+    const auto seal = chacha20_poly1305_encrypt(key_arr, nonce_arr, aad, plain);
+    auto bad_tag = seal.tag;
+    bad_tag[0] ^= 0x01;
+    const auto opened = chacha20_poly1305_decrypt(
+        key_arr, nonce_arr, aad, seal.ciphertext,
+        std::span<const uint8_t>(bad_tag.data(), bad_tag.size()));
+    EXPECT_TRUE(opened.empty());
+}
+
+TEST(CryptoChaCha20Poly1305, EmptyPlaintextWithAad) {
+    const auto key = from_hex(
+        "80ba3192c803ce965ea371d5ff073cf0f43b6a2ab576b208426e11409c09b9b0");
+    const auto nonce = from_hex("4da5bf8dfd5852c1ea12379d");
+    std::array<uint8_t, 32> key_arr{};
+    std::array<uint8_t, 12> nonce_arr{};
+    std::copy(key.begin(), key.end(), key_arr.begin());
+    std::copy(nonce.begin(), nonce.end(), nonce_arr.begin());
+
+    const auto seal =
+        chacha20_poly1305_encrypt(key_arr, nonce_arr, std::span<const uint8_t>{},
+                                  std::span<const uint8_t>{});
+    EXPECT_TRUE(seal.ciphertext.empty());
+    expect_hex(std::vector<uint8_t>(seal.tag.begin(), seal.tag.end()),
+               "76acb342cf3166a5b63c0c0ea1383c8d");
+    const auto opened = chacha20_poly1305_decrypt(
+        key_arr, nonce_arr, std::span<const uint8_t>{}, seal.ciphertext,
+        std::span<const uint8_t>(seal.tag.data(), seal.tag.size()));
+    EXPECT_TRUE(opened.empty());
+}
+
 // ---- AES-128-GCM (NIST SP 800-38D test vectors) ----
 
 TEST(CryptoAes128Gcm, NistTestCase1_EmptyPlaintext) {
