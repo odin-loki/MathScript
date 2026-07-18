@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 245 — AES-256-CBC, HKDF-SHA512, poly_diff, graph k-core, GUI find-prev, benches) ✅ COMPLETE
+
+Fifteenth feature wave after Wave 244. Parallel Composer 2.5 worktrees merged to `main`: AES-256-CBC, HKDF-SHA512, convex `poly_diff` + geo boolean REPL, graph k-core/chromatic REPL, GUI Find Previous, and Wave 244 bench gaps.
+
+### Added (Wave 245)
+- **Crypto** — `aes256_cbc_encrypt`/`decrypt`; `hkdf_sha512`; REPL hex bindings.
+- **Geo** — convex `poly_diff`; REPL `geo_poly_union` / `geo_poly_intersect` / `geo_poly_diff`.
+- **REPL / graph** — `graph_k_core_decomposition`, `graph_k_core_subgraph`, `graph_chromatic_number`; `integration_repl_wave245_pipeline`.
+- **GUI** — Find Previous in Script / Output.
+- **Benchmarks** — `BM_DistTfqmr_2x2`, `BM_Pbkdf2HmacSha512` smoke cases.
+- **Fix** — AES-256-CBC NIST F.2.5 expected ciphertext corrected in unit test.
+
+### Docs (Wave 245)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 245 sync; **402** CTest suites.
+
+**402 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), Blossom matching, full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 244 — dist TFQMR, PBKDF2-SHA512, heston_put, REPL/GUI, benches) ✅ COMPLETE
 
 Fourteenth feature wave after Wave 243. Parallel Composer 2.5 worktrees merged to `main`: `dist_tfqmr`, PBKDF2-HMAC-SHA512, `heston_put`, local `tfqmr`/`lsmr` + spectrogram REPL, GUI Replace in Script, and Wave 243 bench gaps. Local `tfqmr` MVP routes through BiCGSTAB for reliable transpose-free solves.

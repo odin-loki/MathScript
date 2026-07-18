@@ -302,9 +302,13 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `cuda_allreduce_max(x)` / `cuda_allreduce_min(x)` | NCCL stub max/min (identity when stub; Wave 242) |
 | `crypto_hmac_sha512(hex_key, hex_data)` | HMAC-SHA512 digest as hex (Wave 243) |
 | `crypto_pbkdf2_hmac_sha512(hex_pass, hex_salt, iter, dklen)` | PBKDF2-HMAC-SHA512 (Wave 244) |
+| `crypto_hkdf_sha512(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA512 (Wave 245) |
+| `crypto_aes256_cbc_encrypt` / `crypto_aes256_cbc_decrypt` | AES-256-CBC hex I/O (Wave 245) |
 | `signal_instantaneous_phase(x)` | Analytic-signal phase column (Wave 243) |
 | `signal_spectrogram(x, fs)` | STFT magnitude matrix (Wave 244) |
 | `finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)` | Heston put via put-call parity (Wave 244) |
+| `geo_poly_union` / `geo_poly_intersect` / `geo_poly_diff` | Convex polygon boolean ops (Wave 245) |
+| `graph_k_core_decomposition(A)` / `graph_k_core_subgraph(A,k)` / `graph_chromatic_number(A)` | Graph core / coloring (Wave 245) |
 | `signal_cheby2(order, rs_db, cutoff, fs)` | Chebyshev Type II IIR design; returns `[b; a]` rows (Wave 241) |
 | `signal_periodogram(x, fs)` / `signal_welch_psd(x, fs, nperseg)` | PSD helpers; freq/power columns (Wave 241) |
 | `signal_envelope(x)` / `signal_hilbert(x)` / `signal_instantaneous_freq(x, fs)` | Analytic-signal helpers; envelope column, Hilbert N×2 [re,im], inst. freq column (Wave 242) |
