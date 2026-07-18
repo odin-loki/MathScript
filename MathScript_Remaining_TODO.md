@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 237 complete — **387 CTest suites** on `main`; major feature waves 231–237 largely closed)
+**Updated:** 2026-07-18 (Wave 238 kickoff — **387 CTest suites** on `main` @ Wave 237; feature branches in flight)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–237 COMPLETE (summary)
+## Feature waves ✅ 231–237 COMPLETE; Wave 238 🚧 IN PROGRESS (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -46,6 +46,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **235** | ChaCha20-Poly1305; FEM 3D mesh/stiffness; GUI Ctrl+Enter |
 | **236** | X25519; CFD 3D; FEM 3D solve; `dist_matmul`; GUI Clear/About/Recent/zoom |
 | **237** | NCCL stub; modular plugin rules; remaining REPL gaps |
+| **238** | dist CG; GUI find/plot toggle; HKDF; 3D benches; history export *(in progress)* |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -63,11 +64,26 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 238+) — incremental / deferred
+## Wave 238 🚧 IN PROGRESS (dist CG, GUI find/plot, HKDF, 3D benches, history export)
+
+| Branch | Status | Deliverable |
+|--------|--------|-------------|
+| `wave238/dist-cg` | in progress | Distributed conjugate-gradient solver (`dist_cg`) |
+| `wave238/gui-find` | in progress | Find-in-script panel; plot panel show/hide toggle |
+| `wave238/hkdf` | in progress | HKDF key derivation (RFC 5869) + REPL binding |
+| `wave238/bench-3d` | in progress | 3D CFD/FEM benchmark targets |
+| `wave238/history` | in progress | REPL command history export |
+| `wave238/docs` | in progress | CHANGELOG, TODO, and API.md sync kickoff |
+
+Wave 238 closes incremental post–Wave 237 polish in parallel isolated worktrees; merges land independently.
+
+---
+
+## Next (Wave 239+) — deferred
 
 | Item | Notes |
 |------|--------|
-| Scalable multi-node MPI LA | Beyond stub-safe `dist_matmul` / gather-to-root solvers |
+| Scalable multi-node MPI LA | Beyond stub-safe `dist_matmul` / `dist_cg` / gather-to-root solvers |
 | Full IDE | clangd/LSP, debugger, rich LaTeX output (master plan §11) |
 | Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
 | Deeper API gaps | Per `mathscript-master-plan.md` as needed |
