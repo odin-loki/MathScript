@@ -255,6 +255,10 @@ QStringList repl_command_list() {
         QStringLiteral("label_components"),
         QStringLiteral("watershed"),
         QStringLiteral("slic"),
+        QStringLiteral("hough_lines"),
+        QStringLiteral("hough_circles"),
+        QStringLiteral("harris"),
+        QStringLiteral("shi_tomasi"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
