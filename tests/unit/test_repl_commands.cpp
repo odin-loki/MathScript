@@ -3585,6 +3585,22 @@ TEST(ReplCommandsTest, wave253_signal_conv2) {
     EXPECT_NEAR(C(2, 2), 4.0, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave254_signal_deconv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_deconv(y,b)");
+
+    expect_ok(interp, "y = [1; 3; 5; 3]");
+    expect_ok(interp, "b = [1; 1]");
+    expect_ok(interp, "x = signal_deconv(y, b)");
+    ASSERT_GT(interp.state().matrices.count("x"), 0u);
+    const auto& x = interp.state().matrices.at("x");
+    ASSERT_EQ(x.rows(), 3u);
+    ASSERT_EQ(x.cols(), 1u);
+    EXPECT_NEAR(x(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(x(1, 0), 2.0, 1e-12);
+    EXPECT_NEAR(x(2, 0), 3.0, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave252_signal_savgol) {
     Interpreter interp;
     expect_contains(interp, "help", "signal_savgol(x,window_length,polyorder)");
