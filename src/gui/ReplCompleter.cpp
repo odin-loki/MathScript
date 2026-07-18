@@ -141,6 +141,7 @@ QStringList repl_command_list() {
         QStringLiteral("crypto_chacha20"),
         QStringLiteral("crypto_chacha20_poly1305_encrypt"),
         QStringLiteral("crypto_chacha20_poly1305_decrypt"),
+        QStringLiteral("crypto_x25519_keypair"),
         QStringLiteral("crypto_x25519_shared"),
         QStringLiteral("crypto_ed25519_keypair"),
         QStringLiteral("crypto_ed25519_sign"),

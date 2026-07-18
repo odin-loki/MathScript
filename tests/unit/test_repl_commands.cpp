@@ -5365,3 +5365,14 @@ TEST(ReplCommandsTest, wave253_crypto_aes128_decrypt_block) {
         R"cmd(crypto_aes128_decrypt_block("2b7e151628aed2a6abf7158809cf4f3c", "3925841d02dc09fbdc118597196a0b32"))cmd",
         "3243f6a8885a308d313198a2e0370734");
 }
+
+TEST(ReplCommandsTest, wave255_crypto_x25519_keypair) {
+    Interpreter interp;
+    expect_contains(interp, "help", "crypto_x25519_keypair");
+
+    // RFC 7748 Alice public key (same vector as tests/unit/test_crypto.cpp)
+    expect_contains(
+        interp,
+        R"cmd(crypto_x25519_keypair("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"))cmd",
+        "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a");
+}
