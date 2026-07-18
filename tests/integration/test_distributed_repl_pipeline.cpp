@@ -74,4 +74,17 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
     expect_ok(interp, "rhs = [3; 5]");
     expect_contains(interp, "dist_solve(I, rhs)", "3");
     expect_contains(interp, "dist_solve(I, rhs)", "5");
+
+    // dist_cg: SPD system via distributed conjugate gradient (stub: gather + cg)
+    expect_ok(interp, "S = [4, 1; 1, 3]");
+    expect_ok(interp, "rhs = [1; 2]");
+    expect_ok(interp, "xcg = dist_cg(S, rhs)");
+    expect_contains(interp, "dist_cg(S, rhs)", "0.090909");
+    expect_ok(interp, "xcg = dist_cg(S, rhs)");
+    ASSERT_GT(interp.state().matrices.count("xcg"), 0u);
+    const auto& xcg = interp.state().matrices.at("xcg");
+    EXPECT_EQ(xcg.rows(), 2u);
+    EXPECT_EQ(xcg.cols(), 1u);
+    EXPECT_NEAR(xcg(0, 0), 1.0 / 11.0, 1e-6);
+    EXPECT_NEAR(xcg(1, 0), 7.0 / 11.0, 1e-6);
 }

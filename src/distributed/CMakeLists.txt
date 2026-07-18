@@ -1,4 +1,4 @@
-add_library(ms_distributed STATIC mpi_context.cpp dist_matrix.cpp solve.cpp matmul.cpp)
+add_library(ms_distributed STATIC mpi_context.cpp dist_matrix.cpp solve.cpp matmul.cpp iterative.cpp)
 target_include_directories(ms_distributed PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
 target_compile_definitions(ms_distributed PUBLIC MS_HAS_MPI=0)
 target_link_libraries(ms_distributed PUBLIC ms_core ms_linalg)
