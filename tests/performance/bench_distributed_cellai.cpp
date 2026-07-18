@@ -13,6 +13,7 @@
 #include "ms/frameworks/cellai/cellai.hpp"
 #include "ms/frameworks/cypha/cypha.hpp"
 #include "ms/core/matrix.hpp"
+#include "ms/cuda/nccl.hpp"
 
 using namespace ms;
 using namespace ms::distributed;
@@ -40,6 +41,14 @@ static void BM_MPIContext_AllreduceSum(benchmark::State& state) {
     finalize(ctx);
 }
 BENCHMARK(BM_MPIContext_AllreduceSum);
+
+static void BM_CudaAllreduceAvg(benchmark::State& state) {
+    for (auto _ : state) {
+        const double result = ms::cuda::allreduce_avg(2.0);
+        benchmark::DoNotOptimize(result);
+    }
+}
+BENCHMARK(BM_CudaAllreduceAvg);
 
 static void BM_MPIContext_Barrier(benchmark::State& state) {
     auto ctx = init(0, nullptr);

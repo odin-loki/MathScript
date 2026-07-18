@@ -460,6 +460,25 @@ static void BM_Hilbert(benchmark::State& state) {
 BENCHMARK(BM_Hilbert)->Arg(256)->Arg(1024)->Arg(4096)->Arg(16384);
 
 // ---------------------------------------------------------------------------
+// Signal: phase unwrap (~4k wrapped phase samples)
+// ---------------------------------------------------------------------------
+
+static void BM_SignalUnwrap(benchmark::State& state) {
+    constexpr int n = 4096;
+    std::vector<double> wrapped(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        const double phase = 0.02 * static_cast<double>(i);
+        wrapped[static_cast<size_t>(i)] = std::atan2(std::sin(phase), std::cos(phase));
+    }
+    for (auto _ : state) {
+        auto r = unwrap(wrapped);
+        benchmark::DoNotOptimize(r.data());
+    }
+    state.SetItemsProcessed(state.iterations() * n);
+}
+BENCHMARK(BM_SignalUnwrap);
+
+// ---------------------------------------------------------------------------
 // Linear Algebra: solve Ax=b
 // ---------------------------------------------------------------------------
 
