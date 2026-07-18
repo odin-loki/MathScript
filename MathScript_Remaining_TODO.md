@@ -40,6 +40,14 @@ Twelve waves optimized and **certified** all identified hot paths across every `
 
 **376 CTest suites** (+2 registrations: `integration_crypto_wave231`, `test_cfd_2d`; ~27 new cases in existing/new binaries). Profiling iteration unchanged — **FULLY COMPLETE (Waves 218–230).**
 
+| Branch | Shipped |
+|--------|---------|
+| `wave231b/bench-crypto` | AES/ChaCha benchmarks in `bench_crypto` |
+| `wave231b/bench-fem` | 2D P1 assemble/solve benchmarks in `bench_fem` |
+| `wave231b/bench-cfd` | 2D FVM advection benchmarks in `bench_ode_pde` |
+
+**Wave 231 benchmark coverage complete** (`bench_crypto`, `bench_fem`, `bench_ode_pde`; **28-bench smoke unchanged**). Profiling iteration still **FULLY COMPLETE (Waves 218–230)** — no further profiling waves.
+
 ---
 
 ## Next: Feature work (Wave 232+)

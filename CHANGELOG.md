@@ -15,6 +15,12 @@ First feature wave after the profiling iteration closed (Wave 230).
 - `ms::cfd` — 2D structured finite-volume advection: `grid2d`, `square_pulse_2d`, `upwind_fvm_advection_2d`, `run_advection_2d`, `integrated_mass_2d`; CFL guards and periodic/zero-flux BCs per axis. 5 tests in new `test_cfd_2d.cpp`.
 - **Total Wave 231: 376 CTest suites — all passing** (+2 new: `integration_crypto_wave231`, `test_cfd_2d`; ~27 new test cases across crypto/fem/cfd). Four branches merged with zero conflicts. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
+### Benchmark (Wave 231 — coverage closure)
+- `bench_crypto` — `BM_Aes128CbcEncrypt_64KB`, `BM_ChaCha20Encrypt_64KB` (Wave 231 AES/ChaCha hot paths).
+- `bench_fem` — `BM_FemAssemble2D`, `BM_FemSolve2D` (2D P1 Poisson assembly + solve).
+- `bench_ode_pde` — `BM_CfdAdvection2D`, `BM_CfdUpwindStep2D` (2D structured FVM upwind advection).
+- **28-bench smoke unchanged** (new cases in existing executables). **Wave 231 benchmark coverage complete.** Profiling iteration remains **FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] — 2026-07-18 (Wave 230 — Profiling iteration final sign-off)
 
 Wave 230 closes the **baseline refresh path** — no code profiling.

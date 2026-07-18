@@ -86,3 +86,7 @@ Wave **230** completes the **baseline path** for the profiling iteration — not
 Baseline refresh is **not** part of the default PR gate (`benchmark-linux` still runs regression compare only).
 
 **PROFILING ITERATION FULLY COMPLETE (Waves 218–230).** Code profiling (218–228), benchmark infra (229), baseline refresh path (230). No further profiling waves.
+
+## Wave 231 benchmark coverage (feature wave — not profiling)
+
+Wave **231** added Google Benchmark cases for new crypto/FEM/CFD 2D hot paths in existing **`bench_crypto`**, **`bench_fem`**, and **`bench_ode_pde`** executables (**28** targets unchanged). Profiling iteration status unchanged — **FULLY COMPLETE (Waves 218–230).**
