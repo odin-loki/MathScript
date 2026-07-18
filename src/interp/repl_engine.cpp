@@ -8150,7 +8150,8 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
 }
 
 bool is_matrix_triple_matrix_call_callee(const std::string& callee) {
-    return callee == "control_place" || callee == "signal_filtfilt" || callee == "signal_filter";
+    return callee == "control_place" || callee == "signal_filtfilt" || callee == "signal_filter" ||
+           callee == "solve_sylvester";
 }
 
 bool is_matrix_quad_matrix_call_callee(const std::string& callee) {
@@ -10600,6 +10601,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
             fn == "qr" || fn == "svd" || fn == "eig_sym" || fn == "hess" || fn == "schur" ||
+            fn == "bidiag" || fn == "solve_sylvester" || fn == "minres" ||
             fn == "zeros" || fn == "eye" || fn == "ones" ||
             fn == "rand" || fn == "randn" || fn == "expm" || fn == "sqrtm" ||
             fn == "logm" || fn == "tril" || fn == "triu" || fn == "cosm" ||
@@ -12362,6 +12364,17 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         print_matrix(out, result->T);
         out << "Q =\n";
         print_matrix(out, result->Q);
+    } else if (fn == "bidiag") {
+        auto result = bidiag(matrix);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        out << "U =\n";
+        print_matrix(out, result->U);
+        out << "B =\n";
+        print_matrix(out, result->B);
+        out << "V =\n";
+        print_matrix(out, result->V);
     } else {
         return std::unexpected(DomainError{"repl", "unknown function: " + fn});
     }
@@ -12492,10 +12505,11 @@ bool Interpreter::try_parse_scalar_expr_assignment(const std::string& line, std:
 bool is_matrix_call_callee(const std::string& callee) {
     return callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
            callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
-           callee == "tfqmr" || callee == "lsmr" ||
+           callee == "tfqmr" || callee == "lsmr" || callee == "minres" ||
+           callee == "solve_sylvester" ||
            callee == "dist_solve" || callee == "dist_cg" || callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_lsqr" || callee == "dist_matmul" ||
            callee == "transpose" || callee == "chol" || callee == "hess" ||
-           callee == "schur" ||
+           callee == "schur" || callee == "bidiag" ||
            callee == "zeros" || callee == "eye" || callee == "ones" ||
            callee == "rand" || callee == "randn" ||
            callee == "expm" || callee == "sqrtm" || callee == "logm" ||
@@ -12608,7 +12622,7 @@ bool is_matrix_call_callee(const std::string& callee) {
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "matmul" || callee == "tensorops_matmul" || callee == "tensorops_einsum" ||
         callee == "solve" || callee == "bicgstab" || callee == "qmr" || callee == "lsqr" ||
-        callee == "tfqmr" || callee == "lsmr" ||
+        callee == "tfqmr" || callee == "lsmr" || callee == "minres" ||
         callee == "dist_solve" || callee == "dist_cg" ||
         callee == "dist_gmres" || callee == "dist_jacobi" || callee == "dist_bicgstab" || callee == "dist_minres" || callee == "dist_qmr" || callee == "dist_tfqmr" || callee == "dist_lsmr" || callee == "dist_lsqr" || callee == "dist_matmul" || callee == "rand" ||
         callee == "randn" ||
@@ -12616,6 +12630,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 2;
     }
     if (callee == "transpose" || callee == "chol" || callee == "hess" || callee == "schur" ||
+        callee == "bidiag" ||
         callee == "expm" ||
         callee == "sqrtm" || callee == "logm" || callee == "cosm" || callee == "sinm" ||
         callee == "inv" ||
@@ -12676,7 +12691,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "fftshift" || callee == "count_components") {
         return arity == 1;
     }
-    if (callee == "finance_efficient_frontier" || callee == "finance_max_sharpe") {
+    if (callee == "finance_efficient_frontier" || callee == "finance_max_sharpe" ||
+        callee == "solve_sylvester") {
         return arity == 3;
     }
     if (callee == "stats_mann_whitney_u" || callee == "stats_wilcoxon_signed_rank" ||
@@ -12936,14 +12952,14 @@ std::vector<std::string> split_comma_list(const std::string& text) {
 
 bool is_multi_matrix_call_callee(const std::string& callee) {
     return callee == "lu" || callee == "cuda_lu" || callee == "qr" || callee == "svd" ||
-           callee == "eig_sym" || callee == "schur";
+           callee == "eig_sym" || callee == "schur" || callee == "bidiag";
 }
 
 bool is_valid_multi_matrix_target_count(const std::string& callee, size_t count) {
     if (callee == "qr" || callee == "eig_sym" || callee == "schur") {
         return count == 2;
     }
-    if (callee == "lu" || callee == "cuda_lu" || callee == "svd") {
+    if (callee == "lu" || callee == "cuda_lu" || callee == "svd" || callee == "bidiag") {
         return count == 2 || count == 3;
     }
     return false;
@@ -16466,6 +16482,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
     } else if (assign.callee == "fft_goertzel" && assign.args.size() == 3) {
+    } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -16531,6 +16548,35 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         } else {
             result = eval_control_impulse_response(*num_m, *den_m, t_end, n_pts);
         }
+        auto decomp = bidiag(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        result = decomp->B;
+    } else if (assign.callee == "solve_sylvester" && assign.args.size() == 3) {
+        auto A = resolve_operand(assign.args[0]);
+        if (!A) {
+            return std::unexpected(A.error());
+        }
+        auto B = resolve_operand(assign.args[1]);
+        if (!B) {
+            return std::unexpected(B.error());
+        }
+        auto C = resolve_operand(assign.args[2]);
+        if (!C) {
+            return std::unexpected(C.error());
+        }
+        result = solve_sylvester(*A, *B, *C);
+    } else if (assign.callee == "minres" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = minres(*left, *right);
     }
 
     return result;
@@ -17644,6 +17690,25 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         return out.str();
     }
 
+    if (assign.callee == "bidiag") {
+        auto decomp = bidiag(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        state_.matrices[assign.targets[0]] = decomp->U;
+        state_.matrices[assign.targets[1]] = decomp->B;
+        out << assign.targets[0] << " =\n";
+        print_matrix(out, decomp->U);
+        out << assign.targets[1] << " =\n";
+        print_matrix(out, decomp->B);
+        if (assign.targets.size() == 3) {
+            state_.matrices[assign.targets[2]] = decomp->V;
+            out << assign.targets[2] << " =\n";
+            print_matrix(out, decomp->V);
+        }
+        return out.str();
+    }
+
     return std::unexpected(DomainError{"assign", "unsupported multi matrix call"});
 }
 
@@ -18212,6 +18277,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = matmul(A, B)      matrix multiply assignment\n"
             "  name = solve(A, B)       linear solve assignment\n"
             "  name = bicgstab(A, B)    BiCGSTAB iterative solve assignment\n"
+            "  name = minres(A, B)      MINRES iterative solve assignment\n"
+            "  name = solve_sylvester(A, B, C) Sylvester equation A*X + X*B = C\n"
             "  name = qmr(A, B)         QMR iterative solve assignment\n"
             "  name = lsqr(A, B)        LSQR iterative solve assignment\n"
             "  name = tfqmr(A, B)       TFQMR iterative solve assignment\n"
@@ -18932,11 +18999,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  D, V = eig_sym(A)        symmetric eigenvalues and eigenvectors\n"
             "  H = hess(A)              upper Hessenberg form\n"
             "  T, Q = schur(A)          Schur form (T only via T = schur(A))\n"
+            "  U, B, V = bidiag(A)      bidiagonalization (B only via B = bidiag(A))\n"
+            "  X = solve_sylvester(A,B,C) Sylvester equation A*X + X*B = C\n"
+            "  x = minres(A, b)         MINRES iterative solve (symmetric A)\n"
             "  plot([y...])  plot([x...], [y...])  scatter([x...], [y...])  hist([...])\n"
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), hess(A), schur(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), solve_sylvester(A,B,C), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
@@ -26788,6 +26858,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     print_matrix(out, *value);
                     return out.str();
                 }
+                if (fn == "solve_sylvester") {
+                    auto value = solve_sylvester(*arg_a_m, *arg_b_m, *arg_c_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "X =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
             }
         }
         if (is_matrix_quad_matrix_call_callee(fn)) {
@@ -28469,7 +28549,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
 
         if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "bicgstab" || fn == "qmr" || fn == "lsqr" ||
-            fn == "tfqmr" || fn == "lsmr" ||
+            fn == "tfqmr" || fn == "lsmr" || fn == "minres" ||
             fn == "dist_solve" ||
             fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_lsqr" || fn == "dist_matmul" ||
             fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
@@ -28501,6 +28581,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "bicgstab") {
                     auto x = bicgstab(*A, *B);
+                    if (!x) {
+                        return std::unexpected(x.error());
+                    }
+                    std::ostringstream out;
+                    out << "x =\n";
+                    print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "minres") {
+                    auto x = minres(*A, *B);
                     if (!x) {
                         return std::unexpected(x.error());
                     }
