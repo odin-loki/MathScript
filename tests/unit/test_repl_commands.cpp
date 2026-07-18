@@ -3548,6 +3548,25 @@ TEST(ReplCommandsTest, wave251_signal_filter) {
     EXPECT_NEAR(y(4, 0), 1.9375, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave252_signal_sosfilt) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_sosfilt(sos,x)");
+
+    // Same DF1 section as SignalSosfiltTest.normalizes_a0_per_section (scaled a0=2).
+    expect_ok(interp, "sos = [2, -2, 0, 2, -1, 0]");
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_ok(interp, "y = signal_sosfilt(sos, x)");
+    ASSERT_GT(interp.state().matrices.count("y"), 0u);
+    const auto& y = interp.state().matrices.at("y");
+    EXPECT_EQ(y.cols(), 1u);
+    EXPECT_EQ(y.rows(), 5u);
+    EXPECT_NEAR(y(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(y(1, 0), 1.5, 1e-12);
+    EXPECT_NEAR(y(2, 0), 1.75, 1e-12);
+    EXPECT_NEAR(y(3, 0), 1.875, 1e-12);
+    EXPECT_NEAR(y(4, 0), 1.9375, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave251_signal_cheby1) {
     Interpreter interp;
     expect_contains(interp, "help", "signal_cheby1(order,rp_db,cutoff,fs[,type])");
