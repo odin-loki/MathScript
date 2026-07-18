@@ -16,6 +16,7 @@
 #include <QShortcut>
 #include <QColor>
 #include <QSettings>
+#include <QSet>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -556,6 +557,68 @@ SortLinesResult sort_lines_in_editor(QPlainTextEdit* editor) {
     cursor.insertText(lines.join('\n'));
 
     restore_block_cursor(editor, start_block, end_block);
+    cursor.endEditBlock();
+    result.changed = true;
+    return result;
+}
+
+struct UniqueLinesResult {
+    int line_count = 0;
+    int removed_count = 0;
+    bool changed = false;
+};
+
+UniqueLinesResult unique_lines_in_editor(QPlainTextEdit* editor) {
+    UniqueLinesResult result;
+    if (editor == nullptr) {
+        return result;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = editor->document()->blockCount() - 1;
+    if (cursor.hasSelection()) {
+        get_selected_block_range(editor, start_block, end_block);
+    }
+
+    QStringList lines;
+    for (int block = start_block; block <= end_block; ++block) {
+        lines.append(editor->document()->findBlockByNumber(block).text());
+    }
+    result.line_count = lines.size();
+    if (result.line_count <= 1) {
+        cursor.endEditBlock();
+        return result;
+    }
+
+    QStringList unique_lines;
+    QSet<QString> seen;
+    for (const QString& line : lines) {
+        if (seen.contains(line)) {
+            continue;
+        }
+        seen.insert(line);
+        unique_lines.append(line);
+    }
+    if (unique_lines.size() == lines.size()) {
+        cursor.endEditBlock();
+        return result;
+    }
+
+    result.removed_count = lines.size() - unique_lines.size();
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = start_block + 1; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(unique_lines.join('\n'));
+
+    const int new_end_block = start_block + unique_lines.size() - 1;
+    restore_block_cursor(editor, start_block, new_end_block);
     cursor.endEditBlock();
     result.changed = true;
     return result;
@@ -1388,6 +1451,8 @@ void MainWindow::setup_menus() {
     remove_blank_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backspace));
     auto* sort_lines_action = edit_menu->addAction("Sort Lines");
     sort_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
+    auto* unique_lines_action = edit_menu->addAction("Unique Lines");
+    unique_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_U));
     auto* join_lines_action = edit_menu->addAction("Join Lines");
     join_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
     auto* delete_line_action = edit_menu->addAction("Delete Line");
@@ -1458,6 +1523,7 @@ void MainWindow::setup_menus() {
             &MainWindow::trim_trailing_whitespace);
     connect(remove_blank_lines_action, &QAction::triggered, this, &MainWindow::remove_blank_lines);
     connect(sort_lines_action, &QAction::triggered, this, &MainWindow::sort_lines);
+    connect(unique_lines_action, &QAction::triggered, this, &MainWindow::unique_lines);
     connect(join_lines_action, &QAction::triggered, this, &MainWindow::join_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
@@ -1836,6 +1902,20 @@ void MainWindow::sort_lines() {
         statusBar()->showMessage("Lines already sorted", 3000);
     } else {
         statusBar()->showMessage(QString("Sorted %1 lines").arg(result.line_count), 3000);
+    }
+}
+
+void MainWindow::unique_lines() {
+    editor_->setFocus();
+    const UniqueLinesResult result = unique_lines_in_editor(editor_);
+    if (result.line_count <= 1) {
+        statusBar()->showMessage("Nothing to deduplicate", 3000);
+    } else if (!result.changed) {
+        statusBar()->showMessage("No duplicate lines", 3000);
+    } else if (result.removed_count == 1) {
+        statusBar()->showMessage("Removed 1 duplicate line", 3000);
+    } else {
+        statusBar()->showMessage(QString("Removed %1 duplicate lines").arg(result.removed_count), 3000);
     }
 }
 
