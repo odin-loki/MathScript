@@ -13,10 +13,12 @@
 
 class PlotWidget;
 class PlotSurfWidget;
+class LineNumberArea;
 class QCloseEvent;
 class QDockWidget;
 class QMenu;
 class QAction;
+class QLabel;
 class QTreeView;
 class QFileSystemModel;
 class ReplWorker;
@@ -42,6 +44,7 @@ private slots:
     void on_file_activated(const QModelIndex& index);
     void on_variable_double_clicked(QListWidgetItem* item);
     void refresh_status();
+    void update_cursor_status();
 
 private:
     void append_output(const QString& text, bool is_error = false);
@@ -49,6 +52,7 @@ private:
     void refresh_plot();
     void export_plot_png();
     void export_command_history();
+    void export_last_result_latex();
     void setup_menus();
     void apply_dark_theme();
     void restore_layout();
@@ -72,6 +76,7 @@ private:
     QSplitter* main_splitter_ = nullptr;
     QPlainTextEdit* output_ = nullptr;
     QPlainTextEdit* editor_ = nullptr;
+    LineNumberArea* line_number_area_ = nullptr;
     QLineEdit* input_ = nullptr;
     QPushButton* run_ = nullptr;
     QPushButton* stop_ = nullptr;
@@ -86,6 +91,8 @@ private:
     QTreeView* file_tree_ = nullptr;
     QFileSystemModel* file_model_ = nullptr;
     QTimer* status_timer_ = nullptr;
+    QLabel* status_runtime_label_ = nullptr;
+    QLabel* status_cursor_label_ = nullptr;
     QThread* repl_thread_ = nullptr;
     ReplWorker* repl_worker_ = nullptr;
     bool repl_busy_ = false;
@@ -97,5 +104,6 @@ private:
     int mono_font_size_ = 11;
     QString find_output_text_;
     QString find_script_text_;
+    QString last_result_;
     QAction* show_plot_panel_action_ = nullptr;
 };

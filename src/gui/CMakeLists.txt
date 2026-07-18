@@ -3,6 +3,7 @@ if(MS_BUILD_GUI)
     if(Qt6_FOUND)
         set(CMAKE_AUTOMOC ON)
         add_library(ms_gui STATIC
+            LineNumberArea.cpp LineNumberArea.hpp
             MainWindow.cpp MainWindow.hpp
             PlotWidget.cpp PlotWidget.hpp
             PlotSurfWidget.cpp PlotSurfWidget.hpp
