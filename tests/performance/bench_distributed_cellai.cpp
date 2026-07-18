@@ -66,6 +66,14 @@ static void BM_CudaReduce(benchmark::State& state) {
 }
 BENCHMARK(BM_CudaReduce);
 
+static void BM_CudaNcclCommSize(benchmark::State& state) {
+    for (auto _ : state) {
+        const size_t result = ms::cuda::nccl_comm_size();
+        benchmark::DoNotOptimize(result);
+    }
+}
+BENCHMARK(BM_CudaNcclCommSize);
+
 static void BM_MPIContext_Barrier(benchmark::State& state) {
     auto ctx = init(0, nullptr);
     for (auto _ : state) {

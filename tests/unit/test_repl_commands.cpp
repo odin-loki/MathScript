@@ -5127,3 +5127,14 @@ TEST(ReplCommandsTest, wave250_crypto_sha512) {
         interp, "crypto_sha512(\"\")",
         "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e");
 }
+
+TEST(ReplCommandsTest, wave251_crypto_aes256_encrypt_block) {
+    Interpreter interp;
+    expect_contains(interp, "help", "crypto_aes256_encrypt_block");
+
+    // NIST FIPS-197 AES-256 block (same vector as tests/unit/test_crypto.cpp)
+    expect_contains(
+        interp,
+        R"cmd(crypto_aes256_encrypt_block("603deb1015ca71be2b73aef3ae246ee256b942bce1d3e52f2b3636849ec0be41", "6bc1bee22e409f96e93d7e117393172a"))cmd",
+        "a36452d23436433a516cace8bf319e9c");
+}
