@@ -19,7 +19,153 @@
 #include <QWidget>
 
 #include "ms/distributed/mpi_context.hpp"
+#include "ms/interp/repl_engine.hpp"
 #include "ms/runtime/topology.hpp"
+
+#include <iomanip>
+#include <sstream>
+
+namespace {
+
+constexpr int kVarNameRole = Qt::UserRole;
+constexpr int kVarKindRole = Qt::UserRole + 1;
+constexpr char kVarKindMatrix[] = "matrix";
+constexpr char kVarKindScalar[] = "scalar";
+
+constexpr size_t kListPreviewMaxRows = 3;
+constexpr size_t kListPreviewMaxCols = 4;
+constexpr size_t kTooltipMaxRows = 6;
+constexpr size_t kTooltipMaxCols = 6;
+constexpr size_t kDumpMaxRows = 8;
+constexpr size_t kDumpMaxCols = 8;
+
+std::string format_matrix_cell(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(4);
+    out << value;
+    std::string text = out.str();
+    while (!text.empty() && text.back() == '0') {
+        text.pop_back();
+    }
+    if (!text.empty() && text.back() == '.') {
+        text.pop_back();
+    }
+    return text.empty() ? "0" : text;
+}
+
+void append_matrix_cells(std::ostringstream& out, const ms::Matrix<double>& matrix, size_t max_rows,
+                         size_t max_cols) {
+    const size_t rows = std::min(matrix.rows(), max_rows);
+    const size_t cols = std::min(matrix.cols(), max_cols);
+    for (size_t i = 0; i < rows; ++i) {
+        if (i > 0) {
+            out << "; ";
+        }
+        for (size_t j = 0; j < cols; ++j) {
+            if (j > 0) {
+                out << ", ";
+            }
+            out << format_matrix_cell(matrix(i, j));
+        }
+        if (matrix.cols() > cols) {
+            out << ", ...";
+        }
+    }
+    if (matrix.rows() > rows) {
+        out << "; ...";
+    }
+}
+
+QString matrix_inline_preview(const ms::Matrix<double>& matrix, size_t max_rows, size_t max_cols) {
+    if (matrix.rows() == 0 || matrix.cols() == 0) {
+        return QStringLiteral("[]");
+    }
+    std::ostringstream out;
+    out << "[";
+    append_matrix_cells(out, matrix, max_rows, max_cols);
+    out << "]";
+    return QString::fromStdString(out.str());
+}
+
+QString matrix_tooltip_text(const std::string& name, const ms::Matrix<double>& matrix) {
+    QString text = QString("%1 (%2x%3)\n")
+                       .arg(QString::fromStdString(name))
+                       .arg(static_cast<int>(matrix.rows()))
+                       .arg(static_cast<int>(matrix.cols()));
+    if (matrix.rows() == 0 || matrix.cols() == 0) {
+        return text.trimmed();
+    }
+
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(4);
+    const size_t rows = std::min(matrix.rows(), kTooltipMaxRows);
+    const size_t cols = std::min(matrix.cols(), kTooltipMaxCols);
+    for (size_t i = 0; i < rows; ++i) {
+        out << "  [";
+        for (size_t j = 0; j < cols; ++j) {
+            if (j > 0) {
+                out << ", ";
+            }
+            out << format_matrix_cell(matrix(i, j));
+        }
+        if (matrix.cols() > cols) {
+            out << ", ...";
+        }
+        out << "]\n";
+    }
+    if (matrix.rows() > rows) {
+        out << "  ...\n";
+    }
+    text += QString::fromStdString(out.str()).trimmed();
+    return text;
+}
+
+QString matrix_dump_text(const std::string& name, const ms::Matrix<double>& matrix) {
+    const bool truncated = matrix.rows() > kDumpMaxRows || matrix.cols() > kDumpMaxCols;
+    QString header =
+        truncated ? QString("%1 (%2x%3, showing %4x%5):\n")
+                        .arg(QString::fromStdString(name))
+                        .arg(static_cast<int>(matrix.rows()))
+                        .arg(static_cast<int>(matrix.cols()))
+                        .arg(static_cast<int>(std::min(matrix.rows(), kDumpMaxRows)))
+                        .arg(static_cast<int>(std::min(matrix.cols(), kDumpMaxCols)))
+                  : QString("%1 (%2x%3):\n")
+                        .arg(QString::fromStdString(name))
+                        .arg(static_cast<int>(matrix.rows()))
+                        .arg(static_cast<int>(matrix.cols()));
+
+    std::ostringstream out;
+    if (truncated) {
+        const size_t rows = std::min(matrix.rows(), kDumpMaxRows);
+        const size_t cols = std::min(matrix.cols(), kDumpMaxCols);
+        out << std::fixed << std::setprecision(6);
+        for (size_t i = 0; i < rows; ++i) {
+            out << "  [";
+            for (size_t j = 0; j < cols; ++j) {
+                if (j > 0) {
+                    out << ", ";
+                }
+                out << matrix(i, j);
+            }
+            if (matrix.cols() > cols) {
+                out << ", ...";
+            }
+            out << "]\n";
+        }
+        if (matrix.rows() > rows) {
+            out << "  ...\n";
+        }
+    } else {
+        ms::interp::print_matrix(out, matrix);
+    }
+    return header + QString::fromStdString(out.str());
+}
+
+bool is_small_matrix(const ms::Matrix<double>& matrix) {
+    return matrix.rows() <= kListPreviewMaxRows && matrix.cols() <= kListPreviewMaxCols;
+}
+
+}  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     qRegisterMetaType<ms::interp::SessionState>("ms::interp::SessionState");
@@ -101,6 +247,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::on_submit);
     input_->installEventFilter(this);
     connect(file_tree_, &QTreeView::activated, this, &MainWindow::on_file_activated);
+    connect(variables_, &QListWidget::itemDoubleClicked, this, &MainWindow::on_variable_double_clicked);
 
     append_output("MathScript IDE ready. Type 'help' and press Run.\n");
     refresh_variables();
@@ -212,17 +359,62 @@ void MainWindow::refresh_variables() {
     QMetaObject::invokeMethod(repl_worker_, "sessionState", Qt::BlockingQueuedConnection,
                               Q_RETURN_ARG(ms::interp::SessionState, state));
     for (const auto& [name, value] : state.scalars) {
-        variables_->addItem(QString("%1 = %2").arg(QString::fromStdString(name)).arg(value));
+        auto* item = new QListWidgetItem(QString("%1 = %2").arg(QString::fromStdString(name)).arg(value));
+        item->setData(kVarNameRole, QString::fromStdString(name));
+        item->setData(kVarKindRole, QString::fromLatin1(kVarKindScalar));
+        item->setToolTip(QString("%1 = %2").arg(QString::fromStdString(name)).arg(value));
+        variables_->addItem(item);
     }
     for (const auto& [name, matrix] : state.matrices) {
-        variables_->addItem(QString("%1 (%2x%3)")
-                                 .arg(QString::fromStdString(name))
-                                 .arg(static_cast<int>(matrix.rows()))
-                                 .arg(static_cast<int>(matrix.cols())));
+        QString label = QString("%1 (%2x%3)")
+                            .arg(QString::fromStdString(name))
+                            .arg(static_cast<int>(matrix.rows()))
+                            .arg(static_cast<int>(matrix.cols()));
+        if (is_small_matrix(matrix)) {
+            label += " " + matrix_inline_preview(matrix, kListPreviewMaxRows, kListPreviewMaxCols);
+        }
+        auto* item = new QListWidgetItem(label);
+        item->setData(kVarNameRole, QString::fromStdString(name));
+        item->setData(kVarKindRole, QString::fromLatin1(kVarKindMatrix));
+        item->setToolTip(matrix_tooltip_text(name, matrix));
+        variables_->addItem(item);
     }
     if (variables_->count() == 0) {
         variables_->addItem("(no variables)");
     }
+}
+
+void MainWindow::on_variable_double_clicked(QListWidgetItem* item) {
+    if (item == nullptr) {
+        return;
+    }
+    const QString kind = item->data(kVarKindRole).toString();
+    const QString name = item->data(kVarNameRole).toString();
+    if (name.isEmpty() || kind.isEmpty()) {
+        return;
+    }
+
+    ms::interp::SessionState state;
+    QMetaObject::invokeMethod(repl_worker_, "sessionState", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(ms::interp::SessionState, state));
+
+    if (kind == QLatin1String(kVarKindScalar)) {
+        const auto it = state.scalars.find(name.toStdString());
+        if (it != state.scalars.end()) {
+            append_output(QString("%1 = %2\n").arg(name).arg(it->second));
+        }
+        return;
+    }
+
+    if (kind != QLatin1String(kVarKindMatrix)) {
+        return;
+    }
+
+    const auto it = state.matrices.find(name.toStdString());
+    if (it == state.matrices.end()) {
+        return;
+    }
+    append_output(matrix_dump_text(it->first, it->second));
 }
 
 void MainWindow::refresh_plot() {

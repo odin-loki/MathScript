@@ -34,6 +34,7 @@ private slots:
     void on_repl_finished(const QString& output);
     void on_repl_error(const QString& message);
     void on_file_activated(const QModelIndex& index);
+    void on_variable_double_clicked(QListWidgetItem* item);
     void refresh_status();
 
 private:
