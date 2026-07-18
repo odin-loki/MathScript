@@ -60,13 +60,16 @@ with open(merged_path, "w", encoding="utf-8", newline="\n") as f:
 '@
 
 $WriteScript = @'
-import json, statistics, sys
+import json, re, statistics, sys
 
 results_path, baseline_path, min_time, repetitions = sys.argv[1:5]
 repetitions = int(repetitions)
 
 with open(results_path, encoding="utf-8-sig") as f:
     data = json.load(f)
+
+def canonical_name(name):
+    return re.sub(r"/min_time:[^/]+$", "", name)
 
 def to_ns(entry):
     unit = entry.get("time_unit", "s")
@@ -86,7 +89,7 @@ for entry in data.get("benchmarks", []):
     name = entry.get("name") or entry.get("run_name")
     if not name:
         continue
-    by_name.setdefault(name, []).append(to_ns(entry))
+    by_name.setdefault(canonical_name(name), []).append(to_ns(entry))
 
 medians = {
     name: int(statistics.median(samples))
@@ -110,20 +113,31 @@ baseline["profile"] = {
     "benchmark_repetitions": repetitions,
 }
 
+benchmarks = baseline.setdefault("benchmarks", {})
+
 filled = 0
-for name, spec in baseline.get("benchmarks", {}).items():
+for name, spec in benchmarks.items():
     if name in medians:
         spec["median_time_ns"] = medians[name]
         filled += 1
+
+added = 0
+for name, median in medians.items():
+    if name not in benchmarks:
+        benchmarks[name] = {"median_time_ns": median}
+        added += 1
 
 with open(baseline_path, "w", encoding="utf-8", newline="\n") as f:
     json.dump(baseline, f, indent=2)
     f.write("\n")
 
 print(f"Wrote baseline: {baseline_path}")
-print(f"Filled {filled} median(s) from {len(medians)} captured benchmark name(s)")
-for name in sorted(baseline["benchmarks"]):
-    spec = baseline["benchmarks"][name]
+print(
+    f"Filled {filled} median(s), added {added} new benchmark(s) "
+    f"from {len(medians)} captured benchmark name(s)"
+)
+for name in sorted(benchmarks):
+    spec = benchmarks[name]
     median = spec.get("median_time_ns")
     if median is not None:
         print(f"  {name}: {median} ns")
