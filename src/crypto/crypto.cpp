@@ -1388,6 +1388,24 @@ std::vector<uint8_t> aes128_cbc_decrypt(std::span<const uint8_t> key,
     return aes_cbc_decrypt(key, iv, ciphertext);
 }
 
+std::vector<uint8_t> aes256_cbc_encrypt(std::span<const uint8_t> key,
+                                        std::span<const uint8_t> iv,
+                                        std::span<const uint8_t> plaintext) {
+    if (key.size() != aes256_key_size) {
+        return {};
+    }
+    return aes_cbc_encrypt(key, iv, plaintext);
+}
+
+std::vector<uint8_t> aes256_cbc_decrypt(std::span<const uint8_t> key,
+                                        std::span<const uint8_t> iv,
+                                        std::span<const uint8_t> ciphertext) {
+    if (key.size() != aes256_key_size) {
+        return {};
+    }
+    return aes_cbc_decrypt(key, iv, ciphertext);
+}
+
 Aes128GcmSeal aes128_gcm_encrypt(std::span<const uint8_t> key, std::span<const uint8_t> iv,
                                  std::span<const uint8_t> aad,
                                  std::span<const uint8_t> plaintext) {

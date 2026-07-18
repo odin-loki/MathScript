@@ -79,6 +79,12 @@ std::vector<uint8_t> aes128_cbc_encrypt(std::span<const uint8_t> key,
 std::vector<uint8_t> aes128_cbc_decrypt(std::span<const uint8_t> key,
                                         std::span<const uint8_t> iv,
                                         std::span<const uint8_t> ciphertext);
+std::vector<uint8_t> aes256_cbc_encrypt(std::span<const uint8_t> key,
+                                        std::span<const uint8_t> iv,
+                                        std::span<const uint8_t> plaintext);
+std::vector<uint8_t> aes256_cbc_decrypt(std::span<const uint8_t> key,
+                                        std::span<const uint8_t> iv,
+                                        std::span<const uint8_t> ciphertext);
 
 struct Aes128GcmSeal {
     std::vector<uint8_t> ciphertext;
