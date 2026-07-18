@@ -358,6 +358,13 @@ void MainWindow::setup_menus() {
     auto* quit_action = file_menu->addAction("Quit");
 
     auto* edit_menu = menuBar()->addMenu("&Edit");
+    auto* find_script_action = edit_menu->addAction("Find in Script");
+    find_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    auto* find_next_script_action = edit_menu->addAction("Find Next in Script");
+    find_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F3));
+    auto* go_to_line_action = edit_menu->addAction("Go to Line...");
+    go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    edit_menu->addSeparator();
     auto* find_output_action = edit_menu->addAction("Find in Output");
     find_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
     auto* find_next_output_action = edit_menu->addAction("Find Next in Output");
@@ -387,6 +394,9 @@ void MainWindow::setup_menus() {
         }
         open_script_file(path);
     });
+    connect(find_script_action, &QAction::triggered, this, &MainWindow::find_in_script);
+    connect(find_next_script_action, &QAction::triggered, this, &MainWindow::find_next_in_script);
+    connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
     connect(show_plot_panel_action_, &QAction::toggled, this, &MainWindow::set_plot_panel_visible);
@@ -510,6 +520,59 @@ void MainWindow::find_next_in_output() {
             statusBar()->showMessage("Find in Output: no matches", 3000);
         }
     }
+}
+
+void MainWindow::find_in_script() {
+    editor_->setFocus();
+    bool ok = false;
+    const QString text =
+        QInputDialog::getText(this, "Find in Script", "Find:", QLineEdit::Normal, find_script_text_, &ok);
+    if (!ok || text.isEmpty()) {
+        return;
+    }
+    find_script_text_ = text;
+    editor_->moveCursor(QTextCursor::Start);
+    if (!editor_->find(find_script_text_)) {
+        statusBar()->showMessage("Find in Script: no matches", 3000);
+    }
+}
+
+void MainWindow::find_next_in_script() {
+    editor_->setFocus();
+    if (find_script_text_.isEmpty()) {
+        find_in_script();
+        return;
+    }
+
+    QTextCursor cursor = editor_->textCursor();
+    if (cursor.hasSelection()) {
+        cursor.setPosition(cursor.selectionEnd());
+        editor_->setTextCursor(cursor);
+    }
+
+    if (!editor_->find(find_script_text_)) {
+        editor_->moveCursor(QTextCursor::Start);
+        if (!editor_->find(find_script_text_)) {
+            statusBar()->showMessage("Find in Script: no matches", 3000);
+        }
+    }
+}
+
+void MainWindow::go_to_line() {
+    editor_->setFocus();
+    const int max_line = std::max(1, editor_->blockCount());
+    bool ok = false;
+    const int line =
+        QInputDialog::getInt(this, "Go to Line", "Line number:", editor_->textCursor().blockNumber() + 1, 1,
+                             max_line, 1, &ok);
+    if (!ok) {
+        return;
+    }
+    QTextCursor cursor = editor_->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, line - 1);
+    editor_->setTextCursor(cursor);
+    editor_->centerCursor();
 }
 
 void MainWindow::set_plot_panel_visible(bool visible) {

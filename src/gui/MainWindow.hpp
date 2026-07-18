@@ -64,6 +64,9 @@ private:
     void show_welcome_banner();
     void find_in_output();
     void find_next_in_output();
+    void find_in_script();
+    void find_next_in_script();
+    void go_to_line();
     void set_plot_panel_visible(bool visible);
 
     QSplitter* main_splitter_ = nullptr;
@@ -93,5 +96,6 @@ private:
     QStringList recent_files_;
     int mono_font_size_ = 11;
     QString find_output_text_;
+    QString find_script_text_;
     QAction* show_plot_panel_action_ = nullptr;
 };
