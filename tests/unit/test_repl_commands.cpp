@@ -6432,6 +6432,32 @@ TEST(ReplCommandsTest, wave262_numthy_stern_lucas_order_lambda) {
     expect_contains(interp, "numthy_carmichael_lambda(15)", "4");
 }
 
+TEST(ReplCommandsTest, wave263_numthy_pell_quadratic) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_pell_solve(D)");
+    expect_contains(interp, "help", "numthy_quadratic_residues(p)");
+
+    expect_ok(interp, "sol = numthy_pell_solve(61)");
+    ASSERT_GT(interp.state().matrices.count("sol"), 0u);
+    const auto& pell = interp.state().matrices.at("sol");
+    EXPECT_EQ(pell.rows(), 1u);
+    EXPECT_EQ(pell.cols(), 2u);
+    const double x = pell(0, 0);
+    const double y = pell(0, 1);
+    EXPECT_NEAR(x, 1766319049.0, 1e-3);
+    EXPECT_NEAR(y, 226153980.0, 1e-3);
+    EXPECT_NEAR(x * x - 61.0 * y * y, 1.0, 1e6);
+
+    expect_ok(interp, "qr = numthy_quadratic_residues(7)");
+    ASSERT_GT(interp.state().matrices.count("qr"), 0u);
+    const auto& residues = interp.state().matrices.at("qr");
+    EXPECT_EQ(residues.rows(), 3u);
+    EXPECT_EQ(residues.cols(), 1u);
+    EXPECT_NEAR(residues(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(residues(1, 0), 2.0, 1e-9);
+    EXPECT_NEAR(residues(2, 0), 4.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave258_radon_iradon) {
     Interpreter interp;
     expect_contains(interp, "help", "radon(M,theta)");

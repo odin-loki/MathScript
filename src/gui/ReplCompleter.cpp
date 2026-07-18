@@ -270,6 +270,8 @@ QStringList repl_command_list() {
         QStringLiteral("numthy_factor_exp"),
         QStringLiteral("numthy_farey"),
         QStringLiteral("numthy_stern_brocot"),
+        QStringLiteral("numthy_pell_solve"),
+        QStringLiteral("numthy_quadratic_residues"),
         QStringLiteral("numthy_lucas_sequence"),
         QStringLiteral("numthy_multiplicative_order"),
         QStringLiteral("numthy_carmichael_lambda"),
