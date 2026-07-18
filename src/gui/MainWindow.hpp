@@ -77,6 +77,8 @@ private:
     void replace_next_in_script();
     void go_to_line();
     void duplicate_line();
+    void move_line_up();
+    void move_line_down();
     void toggle_comment();
     void indent_lines();
     void unindent_lines();
