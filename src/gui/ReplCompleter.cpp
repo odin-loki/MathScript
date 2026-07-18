@@ -173,6 +173,7 @@ QStringList repl_command_list() {
         QStringLiteral("graph_chromatic_number"),
         QStringLiteral("geo_minkowski_sum"),
         QStringLiteral("geo_clip_polygon"),
+        QStringLiteral("geo_convex_hull"),
         QStringLiteral("geo_min_bounding_rect"),
         // Framework hooks
         QStringLiteral("izaac"),

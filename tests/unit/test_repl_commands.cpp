@@ -841,6 +841,14 @@ TEST(ReplCommandsTest, wave57_59_graph_geo_combo_numthy) {
     expect_ok(interp, "area = geo_convex_hull_area(sq)");
     EXPECT_NEAR(interp.state().scalars.at("area"), 1.0, 1e-9);
     expect_contains(interp, "geo_convex_hull_area(sq)", "1");
+
+    expect_contains(interp, "help", "geo_convex_hull(P)");
+    expect_ok(interp, "hull = geo_convex_hull(sq)");
+    ASSERT_TRUE(interp.state().matrices.count("hull") > 0);
+    EXPECT_EQ(interp.state().matrices.at("hull").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("hull").cols(), 2u);
+    expect_ok(interp, "hull_area = geo_convex_hull_area(hull)");
+    EXPECT_NEAR(interp.state().scalars.at("hull_area"), 1.0, 1e-9);
 }
 
 TEST(ReplCommandsTest, wave57_59_control_quantum) {
