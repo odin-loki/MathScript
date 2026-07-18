@@ -6089,6 +6089,25 @@ TEST(ReplCommandsTest, wave258_gray2rgb_and_impad) {
     EXPECT_NEAR(interp.state().matrices.at("P")(2, 2), 0.4, 1e-6);
 }
 
+TEST(ReplCommandsTest, wave259_numthy_factor) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_factor(n)");
+
+    expect_ok(interp, "f = numthy_factor(12)");
+    ASSERT_GT(interp.state().matrices.count("f"), 0u);
+    const auto& factors = interp.state().matrices.at("f");
+    EXPECT_EQ(factors.rows(), 3u);
+    EXPECT_EQ(factors.cols(), 1u);
+    EXPECT_NEAR(factors(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(factors(1, 0), 2.0, 1e-9);
+    EXPECT_NEAR(factors(2, 0), 3.0, 1e-9);
+
+    expect_ok(interp, "p = numthy_factor(17)");
+    ASSERT_GT(interp.state().matrices.count("p"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("p").rows(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("p")(0, 0), 17.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave258_radon_iradon) {
     Interpreter interp;
     expect_contains(interp, "help", "radon(M,theta)");
