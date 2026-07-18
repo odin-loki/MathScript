@@ -372,7 +372,18 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 262+) — deferred
+## Wave 262 — combo motzkin_paths set_partitions ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| Combo REPL | `combo_motzkin_paths` / `combo_set_partitions` |
+| Tests | `integration_repl_wave262_pipeline` |
+
+**420 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–262** closed for this incremental batch.
+
+---
+
+## Next (Wave 263+) — deferred
 
 | Item | Notes |
 |------|--------|

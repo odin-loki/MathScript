@@ -310,6 +310,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `combo_eulerian(n,k)` | Eulerian number A(n,k) (Wave 261) |
 | `combo_gray_code(n)` | Binary reflected Gray codes as 2^n×n matrix, MSB-first 0/1 rows (Wave 261) |
 | `combo_dyck_paths(n)` | All Dyck paths as Catalan×2n matrix (+1 up, -1 down steps) (Wave 261) |
+| `combo_motzkin_paths(n)` | All Motzkin paths as M×n matrix (+1 U, -1 D, 0 F steps) (Wave 262) |
+| `combo_set_partitions(n)` | All set partitions of {0..n-1} as B×n block-label matrix (Wave 262) |
 | `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` (Wave 260) |
 | `numthy_factor_exp(n)` / `numthy_farey(n)` | Prime exponents / Farey fractions as `K×2` (Wave 261) |
 | `numthy_is_carmichael(n)` | Carmichael test → `1`/`0` (Wave 261) |
