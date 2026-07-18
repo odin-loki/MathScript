@@ -169,6 +169,8 @@ QStringList repl_command_list() {
         QStringLiteral("signal_savgol"),
         QStringLiteral("signal_median_filter"),
         QStringLiteral("signal_coherence"),
+        QStringLiteral("signal_lms"),
+        QStringLiteral("signal_lms_weights"),
         QStringLiteral("signal_filter"),
         QStringLiteral("signal_filtfilt"),
         QStringLiteral("signal_sosfilt"),
