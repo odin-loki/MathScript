@@ -7,8 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
-### Added
+## [1.0.0] - 2026-07-19 (Wave 260 — VIF/Goertzel/control responses, linalg ext, geo curves, Upper/Lower Case) ✅ COMPLETE
+
+Thirtieth feature wave after Wave 259. Parallel Composer 2.5 worktrees merged to `main`: stats VIF, number-theory divisors, Goertzel FFT, curve derivatives, control step/impulse responses, bidiag/Sylvester/MINRES, GUI case transforms, and wave260 pipeline.
+
+### Added (Wave 260)
+- **Stats REPL** — `stats_vif` / `stats_variance_inflation_factor`.
+- **Numthy REPL** — `numthy_divisors` (+ `numthy_divisors_vec`).
+- **FFT REPL** — `fft_goertzel` → 1×2 `[re,im]`.
+- **Geo REPL** — `geo_bezier_deriv` / `geo_hermite_curve`.
+- **Control REPL** — `control_step_response` / `control_impulse_response`.
+- **Linalg REPL** — `bidiag` / `U,B,V = bidiag(A)`; `solve_sylvester`; `minres`.
+- **GUI** — Upper/Lower Case Selection (Ctrl+Alt+U / Ctrl+Alt+L).
 - **Tests** — `integration_repl_wave260_pipeline`.
+
+### Docs (Wave 260)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 260 sync; **418** CTest suites.
+
+**418 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 259 — hess/schur, finance frontier, geo curves, combo/numthy, Unique Lines) ✅ COMPLETE
 

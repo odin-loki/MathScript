@@ -306,6 +306,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `geo_bezier_eval` / `geo_catmull_rom` / `geo_bspline_eval` | Curve evaluation → 1×2 (Wave 259) |
 | `geo_bezier_deriv` / `geo_hermite_curve` | Bezier derivative / Hermite point → 1×2 (Wave 260) |
 | `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization (Wave 259) |
+| `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` (Wave 260) |
+| `fft_goertzel(x,f,fs)` | Single-bin Goertzel DFT as 1×2 `[re,im]` (Wave 260) |
+| `bidiag(A)` / `U, B, V = bidiag(A)` | Bidiagonalization (Wave 260) |
+| `solve_sylvester(A,B,C)` | Sylvester equation `A*X + X*B = C` (Wave 260) |
+| `minres(A,b)` | MINRES iterative solve (Wave 260) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |

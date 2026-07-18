@@ -10637,6 +10637,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "control_bode_mag_db" || fn == "control_bode_phase" ||
             fn == "control_bode" || fn == "control_poles" || fn == "control_zeros" ||
             fn == "control_step_info" || fn == "control_nyquist" ||
+            fn == "control_step_response" || fn == "control_impulse_response" ||
             fn == "topo_bottleneck_distance" ||
             fn == "topo_wasserstein_distance" ||
             fn == "topo_persistence_diagram" ||
@@ -12552,6 +12553,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "fem_poisson2d" || callee == "fem_poisson3d" || callee == "cfd_advection2d" ||
            callee == "cfd_advection3d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
+           callee == "control_step_response" || callee == "control_impulse_response" ||
            callee == "compress_bits_to_bytes" ||
            callee == "compress_bytes_to_bits" ||
            callee == "graph_betweenness" ||
@@ -12787,6 +12789,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "control_bode") {
         return arity == 3;
+    }
+    if (callee == "control_step_response" || callee == "control_impulse_response") {
+        return arity == 2 || arity == 3 || arity == 4;
     }
     if (callee == "diffgeo_geodesic_euclidean") {
         return arity == 5;
@@ -16482,7 +16487,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
     } else if (assign.callee == "fft_goertzel" && assign.args.size() == 3) {
-    } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -16547,6 +16551,11 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             result = eval_control_step_response(*num_m, *den_m, t_end, n_pts);
         } else {
             result = eval_control_impulse_response(*num_m, *den_m, t_end, n_pts);
+        }
+    } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
         }
         auto decomp = bidiag(*matrix);
         if (!decomp) {
@@ -20305,6 +20314,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_triple_call.callee == "signal_filter") {
                 auto value = eval_signal_filter(*arg_a_m, *arg_b_m, *arg_c_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_triple_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_triple_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_triple_call.callee == "solve_sylvester") {
+                auto value = solve_sylvester(*arg_a_m, *arg_b_m, *arg_c_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }

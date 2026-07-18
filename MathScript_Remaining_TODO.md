@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 259 ✅ COMPLETE — **417 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 260 ✅ COMPLETE — **418 CTest suites** on `main`)
 
 ---
 
@@ -341,9 +341,24 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **417 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–259** closed for this incremental batch.
 
+## Wave 260 ✅ COMPLETE (VIF/Goertzel/control responses, linalg ext, geo curves, Upper/Lower Case)
+
+| Area | Deliverable |
+|------|-------------|
+| Stats REPL | stats_vif / stats_variance_inflation_factor |
+| Numthy REPL | numthy_divisors (+ divisors_vec) |
+| FFT REPL | fft_goertzel → 1×2 [re,im] |
+| Geo REPL | geo_bezier_deriv / geo_hermite_curve |
+| Control REPL | control_step_response / control_impulse_response |
+| Linalg REPL | bidiag (+ multi); solve_sylvester; minres |
+| GUI | Upper/Lower Case Selection |
+| Tests | `integration_repl_wave260_pipeline` |
+
+**418 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–260** closed for this incremental batch.
+
 ---
 
-## Next (Wave 260+) — deferred
+## Next (Wave 261+) — deferred
 
 | Item | Notes |
 |------|--------|

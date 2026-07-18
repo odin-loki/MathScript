@@ -5914,8 +5914,8 @@ TEST(ReplCommandsTest, wave260_stats_vif) {
     expect_contains(interp, "help", "stats_vif(X,j)");
     expect_contains(interp, "help", "stats_variance_inflation_factor");
 
-    // Orthogonal-ish columns: VIF near 1.
-    expect_ok(interp, "Xo = [1, 0; 0, 1; 1, 0; 0, 1; 1, 0; 0, 1]");
+    // Orthogonal columns (constant vs ±1): auxiliary R^2 ~ 0 => VIF near 1.
+    expect_ok(interp, "Xo = [1, 1; 1, -1; 1, 1; 1, -1; 1, 1; 1, -1]");
     expect_ok(interp, "v0 = stats_vif(Xo, 0)");
     ASSERT_GT(interp.state().scalars.count("v0"), 0u);
     EXPECT_NEAR(interp.state().scalars.at("v0"), 1.0, 0.2);
