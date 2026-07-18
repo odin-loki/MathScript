@@ -104,4 +104,19 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
         ColMatrix<double>{{5.0}, {5.0}}).value();
     EXPECT_NEAR(xgm(0, 0), expected_gm(0, 0), 1e-6);
     EXPECT_NEAR(xgm(1, 0), expected_gm(1, 0), 1e-6);
+
+    // dist_jacobi: diagonally-dominant SPD system via distributed Jacobi
+    expect_ok(interp, "J = [4, 1; 1, 3]");
+    expect_ok(interp, "jrhs = [1; 2]");
+    expect_ok(interp, "xj = dist_jacobi(J, jrhs)");
+    expect_ok(interp, "xj = dist_jacobi(J, jrhs)");
+    ASSERT_GT(interp.state().matrices.count("xj"), 0u);
+    const auto& xj = interp.state().matrices.at("xj");
+    EXPECT_EQ(xj.rows(), 2u);
+    EXPECT_EQ(xj.cols(), 1u);
+    const auto expected_j = ms::jacobi(
+        ColMatrix<double>{{4.0, 1.0}, {1.0, 3.0}},
+        ColMatrix<double>{{1.0}, {2.0}}).value();
+    EXPECT_NEAR(xj(0, 0), expected_j(0, 0), 1e-6);
+    EXPECT_NEAR(xj(1, 0), expected_j(1, 0), 1e-6);
 }

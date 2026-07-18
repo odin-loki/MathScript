@@ -133,6 +133,13 @@ Result<Matrix<S, OA, Alloc>> cg(
     S tol = S(1e-10));
 
 template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> jacobi(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> bicgstab(
     const Matrix<S, OA, Alloc>& A,
     const Matrix<S, OA, Alloc>& b,
