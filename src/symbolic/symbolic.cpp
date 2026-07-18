@@ -149,7 +149,114 @@ SymExpr sym_imellin_unsupported(const SymExpr& expr, const std::string& s) {
     return sym_deriv(clone_expr(expr), s);
 }
 
+SymExpr sym_hankel_unsupported(const SymExpr& expr, const std::string& r) {
+    return sym_deriv(clone_expr(expr), r);
+}
+
+SymExpr sym_ihankel_unsupported(const SymExpr& expr, const std::string& k) {
+    return sym_deriv(clone_expr(expr), k);
+}
+
 constexpr int kMaxMellinPower = 8;
+constexpr int kMaxHankelPower = 8;
+
+double hankel_rpow_exp_scale(int n) {
+    const double exponent = (static_cast<double>(n) + 3.0) / 2.0;
+    return std::pow(2.0, n + 1) * std::tgamma(exponent) / std::sqrt(std::numbers::pi);
+}
+
+SymExpr build_k2_plus_a2(const std::string& k, double a) {
+    return build_s2_plus_a2(k, a);
+}
+
+bool match_one_over_sqrt_r2_plus_a2(const SymExpr& expr, const std::string& r_var, double& a) {
+    if (expr.op != SymOp::Div || !expr.left || !expr.right) {
+        return false;
+    }
+    double numerator = 0.0;
+    if (!try_get_const_value(*expr.left, numerator) || numerator != 1.0) {
+        return false;
+    }
+    if (expr.right->op != SymOp::Sqrt || !expr.right->left) {
+        return false;
+    }
+    return match_s2_plus_a2(*expr.right->left, r_var, a);
+}
+
+bool match_exp_neg_ak_over_k(const SymExpr& expr, const std::string& k_var, double& a) {
+    if (expr.op != SymOp::Div || !expr.left || !expr.right || !is_bare_var(*expr.right, k_var)) {
+        return false;
+    }
+    if (expr.left->op != SymOp::Exp || !expr.left->left) {
+        return false;
+    }
+    const SymExpr& inner = *expr.left->left;
+    if (inner.op != SymOp::Neg || !inner.left) {
+        return false;
+    }
+    return match_scaled_var(*inner.left, k_var, a) && a > 0.0;
+}
+
+std::optional<std::pair<int, double>> match_hankel_k_domain_rpow_exp(
+    const SymExpr& expr, const std::string& k_var) {
+    if (expr.op != SymOp::Div || !expr.left || !expr.right) {
+        return std::nullopt;
+    }
+    if (expr.right->op != SymOp::Pow || !expr.right->left || !expr.right->right ||
+        expr.right->right->op != SymOp::Const) {
+        return std::nullopt;
+    }
+    double a = 0.0;
+    if (!match_s2_plus_a2(*expr.right->left, k_var, a) || a <= 0.0) {
+        return std::nullopt;
+    }
+    const double exp_power = expr.right->right->value;
+    const int n = static_cast<int>(std::lround(2.0 * exp_power - 3.0));
+    if (n < 0 || n > kMaxHankelPower ||
+        exp_power != (static_cast<double>(n) + 3.0) / 2.0) {
+        return std::nullopt;
+    }
+    double numerator = 0.0;
+    if (try_get_const_value(*expr.left, numerator)) {
+        if (numerator == hankel_rpow_exp_scale(n) * a) {
+            return std::make_pair(n, a);
+        }
+        return std::nullopt;
+    }
+    if (expr.left->op != SymOp::Mul || !expr.left->left || !expr.left->right) {
+        return std::nullopt;
+    }
+    double scale = 0.0;
+    double a_factor = 0.0;
+    if (expr.left->left->op == SymOp::Const && expr.left->right->op == SymOp::Const) {
+        scale = expr.left->left->value;
+        a_factor = expr.left->right->value;
+    } else if (expr.left->right->op == SymOp::Const && expr.left->left->op == SymOp::Const) {
+        scale = expr.left->right->value;
+        a_factor = expr.left->left->value;
+    } else {
+        return std::nullopt;
+    }
+    if (scale == hankel_rpow_exp_scale(n) && a_factor == a) {
+        return std::make_pair(n, a);
+    }
+    return std::nullopt;
+}
+
+SymExpr hankel_forward_rpow_exp_neg(int n, double a, const std::string& k) {
+    const double exp_power = (static_cast<double>(n) + 3.0) / 2.0;
+    return sym_div(
+        sym_const(hankel_rpow_exp_scale(n) * a),
+        sym_pow(build_k2_plus_a2(k, a), sym_const(exp_power)));
+}
+
+SymExpr ihankel_inverse_rpow_exp_neg(int n, double a, const std::string& r) {
+    SymExpr decay = sym_exp(sym_neg(sym_mul(sym_const(a), sym_var(r))));
+    if (n == 0) {
+        return decay;
+    }
+    return sym_mul(sym_pow(sym_var(r), sym_const(static_cast<double>(n))), std::move(decay));
+}
 
 bool match_one_over_one_plus_t(const SymExpr& expr, const std::string& t_var) {
     if (expr.op != SymOp::Div || !expr.left || !expr.right) {
@@ -1278,6 +1385,110 @@ SymExpr sym_imellin(const SymExpr& expr, const std::string& s, const std::string
     }
     default:
         return sym_imellin_unsupported(expr, s);
+    }
+}
+
+// Supported Hankel rules (order 0, r-domain -> k-domain):
+//   exp(-a*r)            -> a / (a^2 + k^2)^(3/2)
+//   r^n * exp(-a*r)      -> 2^{n+1} Gamma((n+3)/2) a / (sqrt(pi) (a^2 + k^2)^{(n+3)/2})
+//   1 / sqrt(r^2 + a^2)  -> exp(-a*k) / k
+// Linearity: Add, Sub, Neg, Mul with Const factor.
+// Unsupported forms return sym_deriv(expr, r) as an explicit sentinel.
+SymExpr sym_hankel(const SymExpr& expr, const std::string& r, const std::string& k) {
+    switch (expr.op) {
+    case SymOp::Const:
+        return sym_hankel_unsupported(expr, r);
+    case SymOp::Var:
+        return sym_hankel_unsupported(expr, r);
+    case SymOp::Add:
+        return sym_add(
+            sym_hankel(*expr.left, r, k),
+            sym_hankel(*expr.right, r, k));
+    case SymOp::Sub:
+        return sym_sub(
+            sym_hankel(*expr.left, r, k),
+            sym_hankel(*expr.right, r, k));
+    case SymOp::Neg:
+        return sym_neg(sym_hankel(*expr.left, r, k));
+    case SymOp::Mul:
+        if (expr.left->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.left), sym_hankel(*expr.right, r, k));
+        }
+        if (expr.right->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.right), sym_hankel(*expr.left, r, k));
+        }
+        if (const auto matched = match_tpow_exp_neg(expr, r)) {
+            return hankel_forward_rpow_exp_neg(matched->first, matched->second, k);
+        }
+        return sym_hankel_unsupported(expr, r);
+    case SymOp::Exp: {
+        double a = 0.0;
+        if (match_exp_neg_at(expr, r, a)) {
+            return hankel_forward_rpow_exp_neg(0, a, k);
+        }
+        return sym_hankel_unsupported(expr, r);
+    }
+    case SymOp::Div: {
+        double a = 0.0;
+        if (match_one_over_sqrt_r2_plus_a2(expr, r, a)) {
+            return sym_div(
+                sym_exp(sym_neg(sym_mul(sym_const(a), sym_var(k)))),
+                sym_var(k));
+        }
+        return sym_hankel_unsupported(expr, r);
+    }
+    default:
+        return sym_hankel_unsupported(expr, r);
+    }
+}
+
+// Supported inverse Hankel rules (paired with forward table):
+//   a / (a^2 + k^2)^{(n+3)/2} scaled form -> r^n * exp(-a*r)
+//   exp(-a*k) / k                        -> 1 / sqrt(r^2 + a^2)
+// Linearity: Add, Sub, Neg, Mul with Const factor.
+// Unsupported forms return sym_deriv(expr, k) as an explicit sentinel.
+SymExpr sym_ihankel(const SymExpr& expr, const std::string& k, const std::string& r) {
+    switch (expr.op) {
+    case SymOp::Const:
+        if (expr.value == 0.0) {
+            return sym_const(0.0);
+        }
+        return sym_ihankel_unsupported(expr, k);
+    case SymOp::Add:
+        return sym_add(
+            sym_ihankel(*expr.left, k, r),
+            sym_ihankel(*expr.right, k, r));
+    case SymOp::Sub:
+        return sym_sub(
+            sym_ihankel(*expr.left, k, r),
+            sym_ihankel(*expr.right, k, r));
+    case SymOp::Neg:
+        return sym_neg(sym_ihankel(*expr.left, k, r));
+    case SymOp::Mul:
+        if (expr.left->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.left), sym_ihankel(*expr.right, k, r));
+        }
+        if (expr.right->op == SymOp::Const) {
+            return sym_mul(clone_expr(*expr.right), sym_ihankel(*expr.left, k, r));
+        }
+        return sym_ihankel_unsupported(expr, k);
+    case SymOp::Div: {
+        if (!expr.left || !expr.right) {
+            return sym_ihankel_unsupported(expr, k);
+        }
+        double a = 0.0;
+        if (match_exp_neg_ak_over_k(expr, k, a)) {
+            return sym_div(
+                sym_const(1.0),
+                sym_sqrt(build_k2_plus_a2(r, a)));
+        }
+        if (const auto matched = match_hankel_k_domain_rpow_exp(expr, k)) {
+            return ihankel_inverse_rpow_exp_neg(matched->first, matched->second, r);
+        }
+        return sym_ihankel_unsupported(expr, k);
+    }
+    default:
+        return sym_ihankel_unsupported(expr, k);
     }
 }
 

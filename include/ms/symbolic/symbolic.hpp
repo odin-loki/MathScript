@@ -61,6 +61,8 @@ SymExpr sym_laplace(const SymExpr& expr, const std::string& t, const std::string
 SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::string& t);
 SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string& s);
 SymExpr sym_imellin(const SymExpr& expr, const std::string& s, const std::string& t);
+SymExpr sym_hankel(const SymExpr& expr, const std::string& r, const std::string& k);
+SymExpr sym_ihankel(const SymExpr& expr, const std::string& k, const std::string& r);
 SymExpr sym_fourier(const SymExpr& expr, const std::string& t_var, const std::string& omega_var);
 SymExpr sym_ifourier(const SymExpr& expr, const std::string& omega_var, const std::string& t_var);
 SymExpr sym_ztransform(const SymExpr& expr, const std::string& n_var, const std::string& z_var);

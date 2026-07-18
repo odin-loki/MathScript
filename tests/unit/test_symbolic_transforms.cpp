@@ -41,6 +41,18 @@ void expect_imellin_pair(
     expect_eval_equivalent(inverse, time_expr, t_env);
 }
 
+void expect_hankel_pair(
+    const SymExpr& r_expr, const SymExpr& k_expr, const std::map<std::string, double>& k_env) {
+    const auto forward = sym_simplify(sym_hankel(r_expr, "r", "k"));
+    expect_eval_equivalent(forward, k_expr, k_env);
+}
+
+void expect_ihankel_pair(
+    const SymExpr& k_expr, const SymExpr& r_expr, const std::map<std::string, double>& r_env) {
+    const auto inverse = sym_simplify(sym_ihankel(k_expr, "k", "r"));
+    expect_eval_equivalent(inverse, r_expr, r_env);
+}
+
 SymExpr clone_expr(const SymExpr& expr) {
     SymExpr copy;
     copy.op = expr.op;
@@ -309,4 +321,95 @@ TEST(SymbolicTransformsTest, unsupported_mellin_returns_deriv_sentinel) {
     const auto unsupported_imellin = sym_imellin(sym_log(sym_var("s")), "s", "t");
     EXPECT_EQ(unsupported_imellin.op, SymOp::Deriv);
     EXPECT_EQ(unsupported_imellin.name, "s");
+}
+
+TEST(SymbolicTransformsTest, hankel_exponential_decay) {
+    const auto r_expr = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))));
+    const auto expected = sym_div(
+        sym_const(2.0),
+        sym_pow(
+            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+            sym_const(1.5)));
+    expect_hankel_pair(r_expr, expected, {{"k", 1.5}});
+}
+
+TEST(SymbolicTransformsTest, hankel_power_exponential) {
+    const auto r_expr = sym_mul(
+        sym_pow(sym_var("r"), sym_const(1.0)),
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))));
+    const auto expected = sym_div(
+        sym_const(4.0 / std::sqrt(std::numbers::pi) * 3.0),
+        sym_pow(
+            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))),
+            sym_const(2.5)));
+    expect_hankel_pair(r_expr, expected, {{"k", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, hankel_one_over_sqrt_r2_plus_a2) {
+    const auto r_expr = sym_div(
+        sym_const(1.0),
+        sym_sqrt(sym_add(sym_pow(sym_var("r"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0)))));
+    const auto expected = sym_div(
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("k")))),
+        sym_var("k"));
+    expect_hankel_pair(r_expr, expected, {{"k", 2.5}});
+}
+
+TEST(SymbolicTransformsTest, ihankel_exponential_form) {
+    const auto k_expr = sym_div(
+        sym_const(2.0),
+        sym_pow(
+            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+            sym_const(1.5)));
+    const auto expected = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))));
+    expect_ihankel_pair(k_expr, expected, {{"r", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, ihankel_sqrt_kernel_form) {
+    const auto k_expr = sym_div(
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("k")))),
+        sym_var("k"));
+    const auto expected = sym_div(
+        sym_const(1.0),
+        sym_sqrt(sym_add(sym_pow(sym_var("r"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0)))));
+    expect_ihankel_pair(k_expr, expected, {{"r", 3.0}});
+}
+
+TEST(SymbolicTransformsTest, hankel_linearity_with_constant_factor) {
+    const auto r_expr = sym_mul(
+        sym_const(3.0),
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r")))));
+    const auto expected = sym_mul(
+        sym_const(3.0),
+        sym_div(
+            sym_const(2.0),
+            sym_pow(
+                sym_add(
+                    sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+                sym_const(1.5))));
+    expect_hankel_pair(r_expr, expected, {{"k", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, hankel_ihankel_roundtrip) {
+    const auto original = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))));
+    const auto in_k = sym_simplify(sym_hankel(original, "r", "k"));
+    const auto recovered = sym_simplify(sym_ihankel(in_k, "k", "r"));
+    expect_eval_equivalent(original, recovered, {{"r", 0.75}});
+
+    const auto sqrt_form = sym_div(
+        sym_const(1.0),
+        sym_sqrt(sym_add(sym_pow(sym_var("r"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0)))));
+    const auto sqrt_k = sym_simplify(sym_hankel(sqrt_form, "r", "k"));
+    const auto sqrt_back = sym_simplify(sym_ihankel(sqrt_k, "k", "r"));
+    expect_eval_equivalent(sqrt_form, sqrt_back, {{"r", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, unsupported_hankel_returns_deriv_sentinel) {
+    const auto unsupported_hankel = sym_hankel(sym_log(sym_var("r")), "r", "k");
+    EXPECT_EQ(unsupported_hankel.op, SymOp::Deriv);
+    EXPECT_EQ(unsupported_hankel.name, "r");
+
+    const auto unsupported_ihankel = sym_ihankel(sym_log(sym_var("k")), "k", "r");
+    EXPECT_EQ(unsupported_ihankel.op, SymOp::Deriv);
+    EXPECT_EQ(unsupported_ihankel.name, "k");
 }
