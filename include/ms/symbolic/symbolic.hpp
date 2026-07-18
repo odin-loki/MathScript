@@ -55,10 +55,14 @@ SymExpr sym_simplify(SymExpr expr);
 SymExpr sym_expand(SymExpr expr);
 SymExpr sym_collect(const SymExpr& expr, const std::string& var);
 SymExpr sym_integrate(const SymExpr& expr, const std::string& var);
-// Forward/inverse Laplace transforms. Unsupported forms return sym_deriv(expr, t_or_s)
+// Forward/inverse transforms. Unsupported forms return sym_deriv(expr, var)
 // as an explicit sentinel (same convention as sym_integrate).
 SymExpr sym_laplace(const SymExpr& expr, const std::string& t, const std::string& s);
 SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::string& t);
+SymExpr sym_fourier(const SymExpr& expr, const std::string& t_var, const std::string& omega_var);
+SymExpr sym_ifourier(const SymExpr& expr, const std::string& omega_var, const std::string& t_var);
+SymExpr sym_ztransform(const SymExpr& expr, const std::string& n_var, const std::string& z_var);
+SymExpr sym_iztransform(const SymExpr& expr, const std::string& z_var, const std::string& n_var);
 SymExpr sym_substitute(const SymExpr& expr, const std::string& var, const SymExpr& replacement);
 double sym_eval(const SymExpr& expr, const std::map<std::string, double>& env);
 std::string sym_to_string(const SymExpr& expr);
