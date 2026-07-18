@@ -174,4 +174,41 @@ static void BM_CfdUpwindStep2D(benchmark::State& state) {
 }
 BENCHMARK(BM_CfdUpwindStep2D);
 
+// ---------------------------------------------------------------------------
+// CFD: 3-D upwind advection time integration
+// ---------------------------------------------------------------------------
+
+static void BM_CfdAdvection3D(benchmark::State& state) {
+    const auto grid = ms::cfd::grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 16, 16, 16);
+    const auto u0 = ms::cfd::square_pulse_3d(
+        grid, 0.5, 0.5, 0.5, 0.25, 0.25, 0.25, 1.0);
+    const auto vx = ms::cfd::constant_velocity(grid.nx * grid.ny * grid.nz, 1.0);
+    const auto vy = ms::cfd::constant_velocity(grid.nx * grid.ny * grid.nz, 0.0);
+    const auto vz = ms::cfd::constant_velocity(grid.nx * grid.ny * grid.nz, 0.0);
+    const double t_end = 0.2;
+    const double dt = 0.4 * grid.dx;
+    for (auto _ : state) {
+        auto result = ms::cfd::run_advection_3d(
+            u0,
+            vx,
+            vy,
+            vz,
+            t_end,
+            dt,
+            grid.dx,
+            grid.dy,
+            grid.dz,
+            ms::cfd::BoundaryCondition::Periodic,
+            ms::cfd::BoundaryCondition::Periodic,
+            ms::cfd::BoundaryCondition::Periodic);
+        benchmark::DoNotOptimize(result);
+    }
+    const int64_t steps = static_cast<int64_t>(std::ceil(t_end / dt));
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(grid.nx) *
+                            static_cast<int64_t>(grid.ny) *
+                            static_cast<int64_t>(grid.nz) * steps);
+}
+BENCHMARK(BM_CfdAdvection3D);
+
 BENCHMARK_MAIN();
