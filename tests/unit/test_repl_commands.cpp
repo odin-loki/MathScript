@@ -5834,6 +5834,31 @@ TEST(ReplCommandsTest, wave258_stats_ext) {
     EXPECT_NEAR(interp.state().matrices.at("beta")(2, 0), 3.0, 0.01);
 }
 
+TEST(ReplCommandsTest, wave260_stats_vif) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_vif(X,j)");
+    expect_contains(interp, "help", "stats_variance_inflation_factor");
+
+    // Orthogonal-ish columns: VIF near 1.
+    expect_ok(interp, "Xo = [1, 0; 0, 1; 1, 0; 0, 1; 1, 0; 0, 1]");
+    expect_ok(interp, "v0 = stats_vif(Xo, 0)");
+    ASSERT_GT(interp.state().scalars.count("v0"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("v0"), 1.0, 0.2);
+
+    expect_ok(interp, "v1 = stats_variance_inflation_factor(Xo, 1)");
+    ASSERT_GT(interp.state().scalars.count("v1"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("v1"), 1.0, 0.2);
+    EXPECT_NEAR(interp.state().scalars.at("v0"), interp.state().scalars.at("v1"), 1e-12);
+
+    // Near-collinear third column -> large VIF.
+    expect_ok(interp,
+              "Xc = [1, 2, 3.00000001; 2, 3, 5.00000002; 3, 4, 7.00000003; "
+              "4, 5, 9.00000004; 5, 6, 11.00000005]");
+    expect_ok(interp, "vc = stats_vif(Xc, 2)");
+    ASSERT_GT(interp.state().scalars.count("vc"), 0u);
+    EXPECT_GT(interp.state().scalars.at("vc"), 100.0);
+}
+
 TEST(ReplCommandsTest, wave257_stats_variance) {
     Interpreter interp;
     expect_contains(interp, "help", "stats_levene(G)");
