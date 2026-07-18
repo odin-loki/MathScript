@@ -6251,3 +6251,56 @@ TEST(ReplCommandsTest, wave259_hess_schur) {
     EXPECT_EQ(interp.state().matrices.at("Qs").rows(), 3u);
     EXPECT_EQ(interp.state().matrices.at("Qs").cols(), 3u);
 }
+
+TEST(ReplCommandsTest, wave260_bidiag) {
+    Interpreter interp;
+    expect_contains(interp, "help", "U, B, V = bidiag(A)");
+    expect_contains(interp, "help", "bidiag(A)");
+
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_contains(interp, "bidiag(A)", "B =");
+    expect_ok(interp, "B = bidiag(A)");
+    ASSERT_GT(interp.state().matrices.count("B"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("B").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("B")(2, 0), 0.0, 1e-8);
+
+    expect_ok(interp, "U, Bd, V = bidiag(A)");
+    ASSERT_GT(interp.state().matrices.count("U"), 0u);
+    ASSERT_GT(interp.state().matrices.count("Bd"), 0u);
+    ASSERT_GT(interp.state().matrices.count("V"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("U").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Bd").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("V").rows(), 3u);
+}
+
+TEST(ReplCommandsTest, wave260_solve_sylvester) {
+    Interpreter interp;
+    expect_contains(interp, "help", "solve_sylvester(A,B,C)");
+
+    expect_ok(interp, "As = [1, 0; 0, 2]");
+    expect_ok(interp, "Bs = [3, 0; 0, 4]");
+    // A*X + X*B with X=[1,2;3,4] => C=[4,10;15,24]
+    expect_ok(interp, "Cs = [4, 10; 15, 24]");
+    expect_ok(interp, "X = solve_sylvester(As, Bs, Cs)");
+    ASSERT_GT(interp.state().matrices.count("X"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("X")(0, 0), 1.0, 1e-8);
+    EXPECT_NEAR(interp.state().matrices.at("X")(0, 1), 2.0, 1e-8);
+    EXPECT_NEAR(interp.state().matrices.at("X")(1, 0), 3.0, 1e-8);
+    EXPECT_NEAR(interp.state().matrices.at("X")(1, 1), 4.0, 1e-8);
+}
+
+TEST(ReplCommandsTest, wave260_minres) {
+    Interpreter interp;
+    expect_contains(interp, "help", "minres(A");
+
+    expect_ok(interp, "Am = [4, 1, 0; 1, 3, 1; 0, 1, 2]");
+    expect_ok(interp, "bm = [1; 1; 1]");
+    expect_ok(interp, "xm = minres(Am, bm)");
+    ASSERT_GT(interp.state().matrices.count("xm"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("xm").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("xm").cols(), 1u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("xm")(0, 0)));
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("xm")(1, 0)));
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("xm")(2, 0)));
+}
