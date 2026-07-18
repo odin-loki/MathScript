@@ -782,6 +782,16 @@ std::vector<std::uint8_t> aes_encrypt_block(std::span<const std::uint8_t> key,
     return out;
 }
 
+std::vector<std::uint8_t> aes_decrypt_block(std::span<const std::uint8_t> key,
+                                            std::span<const std::uint8_t> block) {
+    if (block.size() != 16 || (key.size() != 16 && key.size() != 32)) {
+        return {};
+    }
+    std::vector<std::uint8_t> out(16);
+    aes_decrypt_block_impl(key, block.data(), out.data());
+    return out;
+}
+
 std::vector<std::uint8_t> aes_cbc_encrypt(std::span<const std::uint8_t> key,
                                           std::span<const std::uint8_t> iv,
                                           std::span<const std::uint8_t> plaintext) {
@@ -1369,6 +1379,14 @@ std::vector<uint8_t> aes256_encrypt_block(std::span<const uint8_t> key,
         return {};
     }
     return aes_encrypt_block(key, block);
+}
+
+std::vector<uint8_t> aes256_decrypt_block(std::span<const uint8_t> key,
+                                          std::span<const uint8_t> block) {
+    if (key.size() != aes256_key_size) {
+        return {};
+    }
+    return aes_decrypt_block(key, block);
 }
 
 std::vector<uint8_t> aes128_cbc_encrypt(std::span<const uint8_t> key,
