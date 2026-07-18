@@ -28,6 +28,30 @@ TEST(NcclStubTest, allreduce_sum_idempotent) {
     EXPECT_DOUBLE_EQ(once, twice);
 }
 
+TEST(NcclStubTest, allreduce_max_identity) {
+    EXPECT_DOUBLE_EQ(allreduce_max(3.5), 3.5);
+    EXPECT_DOUBLE_EQ(allreduce_max(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(allreduce_max(-2.25), -2.25);
+}
+
+TEST(NcclStubTest, allreduce_min_identity) {
+    EXPECT_DOUBLE_EQ(allreduce_min(3.5), 3.5);
+    EXPECT_DOUBLE_EQ(allreduce_min(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(allreduce_min(-2.25), -2.25);
+}
+
+TEST(NcclStubTest, allreduce_max_idempotent) {
+    const double once = allreduce_max(42.0);
+    const double twice = allreduce_max(once);
+    EXPECT_DOUBLE_EQ(once, twice);
+}
+
+TEST(NcclStubTest, allreduce_min_idempotent) {
+    const double once = allreduce_min(42.0);
+    const double twice = allreduce_min(once);
+    EXPECT_DOUBLE_EQ(once, twice);
+}
+
 TEST(NcclStubTest, comm_size_at_least_one) {
     EXPECT_GE(nccl_comm_size(), 1u);
 }

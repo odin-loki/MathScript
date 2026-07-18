@@ -7,11 +7,12 @@
 /// Build-time macro `MS_HAS_NCCL` (CMake: `-DMS_ENABLE_NCCL=ON` with CUDA and
 /// an installed NCCL library):
 ///   - `MS_HAS_NCCL=0` (default stub build): `nccl_available()` is false,
-///     `nccl_comm_size()` is 1, and `allreduce_sum(x)` returns `x` unchanged
-///     (single-rank / host-safe identity, same as a 1-process MPI allreduce).
+///     `nccl_comm_size()` is 1, and `allreduce_sum` / `allreduce_max` /
+///     `allreduce_min` return `x` unchanged (single-rank / host-safe identity,
+///     same as a 1-process MPI allreduce).
 ///   - `MS_HAS_NCCL=1`: NCCL is linked; availability follows CUDA runtime
 ///     visibility and `nccl_comm_size()` reflects the local GPU count.
-///     When the communicator size is 1, `allreduce_sum` remains an identity.
+///     When the communicator size is 1, collectives remain identity.
 ///
 /// Use `nccl_available()` before assuming multi-GPU collectives are active.
 
@@ -29,5 +30,13 @@ size_t nccl_comm_size();
 /// All-reduce sum of a scalar across the NCCL communicator.
 /// Stub / single-rank path: returns `value` unchanged.
 double allreduce_sum(double value);
+
+/// All-reduce max of a scalar across the NCCL communicator.
+/// Stub / single-rank path: returns `value` unchanged.
+double allreduce_max(double value);
+
+/// All-reduce min of a scalar across the NCCL communicator.
+/// Stub / single-rank path: returns `value` unchanged.
+double allreduce_min(double value);
 
 } // namespace ms::cuda

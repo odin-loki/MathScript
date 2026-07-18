@@ -10309,6 +10309,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "cuda_allreduce_sum") {
             return ms::cuda::allreduce_sum(arg);
         }
+        if (fn == "cuda_allreduce_max") {
+            return ms::cuda::allreduce_max(arg);
+        }
+        if (fn == "cuda_allreduce_min") {
+            return ms::cuda::allreduce_min(arg);
+        }
     }
     if (args.size() == 2) {
         if (fn == "pow") {
@@ -13757,6 +13763,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = dist_matmul(A, B)  distributed matrix multiply (row-block local GEMM)\n"
             "  mpi_rank(), mpi_size(), mpi_allreduce_sum(x)  MPI rank/size/allreduce (stub: rank=0, size=1)\n"
             "  cuda_allreduce_sum(x)  NCCL all-reduce sum (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
+            "  cuda_allreduce_max(x)  NCCL all-reduce max (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
+            "  cuda_allreduce_min(x)  NCCL all-reduce min (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  name = transpose(A)      transpose assignment\n"
             "  name = chol(A)           Cholesky factor assignment\n"
             "  name = pinv(A) null(A) orth(A)  pseudo-inverse / null space / orthonormal basis\n"
