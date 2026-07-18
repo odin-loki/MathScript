@@ -3364,6 +3364,116 @@ Result<Matrix<double>> eval_signal_downsample(const Matrix<double>& x_m, int n) 
     return vector_to_column(downsample(*x, n));
 }
 
+Result<int> require_positive_int_arg(double v, const char* fn, const char* arg_name) {
+    const int n = static_cast<int>(v);
+    if (n < 1 || v != n) {
+        return std::unexpected(DomainError{
+            fn, std::string("expected positive integer ") + arg_name});
+    }
+    return n;
+}
+
+Result<Matrix<double>> eval_signal_decimate(const Matrix<double>& x_m, int q) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_decimate");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_decimate", "expected non-empty signal vector"});
+    }
+    if (q < 1) {
+        return std::unexpected(
+            DomainError{"signal_decimate", "expected q >= 1"});
+    }
+    return vector_to_column(decimate(*x, q));
+}
+
+Result<Matrix<double>> eval_signal_interpolate(const Matrix<double>& x_m, int p) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_interpolate");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_interpolate", "expected non-empty signal vector"});
+    }
+    if (p < 1) {
+        return std::unexpected(
+            DomainError{"signal_interpolate", "expected p >= 1"});
+    }
+    return vector_to_column(interpolate(*x, p));
+}
+
+Result<Matrix<double>> eval_signal_resample(const Matrix<double>& x_m, int p, int q) {
+    auto x = matrix_to_coeff_vector(x_m, "signal_resample");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(
+            DomainError{"signal_resample", "expected non-empty signal vector"});
+    }
+    if (p < 1) {
+        return std::unexpected(
+            DomainError{"signal_resample", "expected p >= 1"});
+    }
+    if (q < 1) {
+        return std::unexpected(
+            DomainError{"signal_resample", "expected q >= 1"});
+    }
+    return vector_to_column(resample(*x, p, q));
+}
+
+// Wave 249: shared matrix+integer-factor dispatcher (avoids deep nesting / MSVC C1061).
+Result<Matrix<double>> eval_signal_integer_factor(const std::string& fn,
+                                                 const Matrix<double>& x_m,
+                                                 double factor) {
+    const char* arg_name = "n";
+    if (fn == "signal_decimate") {
+        arg_name = "q";
+    } else if (fn == "signal_interpolate") {
+        arg_name = "p";
+    }
+    auto n = require_positive_int_arg(factor, fn.c_str(), arg_name);
+    if (!n) {
+        return std::unexpected(n.error());
+    }
+    if (fn == "signal_upsample") {
+        return eval_signal_upsample(x_m, *n);
+    }
+    if (fn == "signal_downsample") {
+        return eval_signal_downsample(x_m, *n);
+    }
+    if (fn == "signal_decimate") {
+        return eval_signal_decimate(x_m, *n);
+    }
+    if (fn == "signal_interpolate") {
+        return eval_signal_interpolate(x_m, *n);
+    }
+    return std::unexpected(DomainError{fn, "unsupported signal integer-factor call"});
+}
+
+std::string format_labeled_matrix(const std::string& label, const Matrix<double>& m) {
+    std::ostringstream out;
+    out << label << " =\n";
+    print_matrix(out, m);
+    return out.str();
+}
+
+Result<Matrix<double>> eval_signal_resample_pq(const Matrix<double>& x_m, double p_d,
+                                              double q_d) {
+    auto p = require_positive_int_arg(p_d, "signal_resample", "p");
+    if (!p) {
+        return std::unexpected(p.error());
+    }
+    auto q = require_positive_int_arg(q_d, "signal_resample", "q");
+    if (!q) {
+        return std::unexpected(q.error());
+    }
+    return eval_signal_resample(x_m, *p, *q);
+}
+
 Result<Matrix<double>> eval_geo_delaunay_2d(const Matrix<double>& P_m) {
     auto pts = matrix_to_points2d(P_m, "geo_delaunay_2d");
     if (!pts) {
@@ -6488,6 +6598,7 @@ bool is_matrix_scalar_mixed_call_callee(const std::string& callee) {
            callee == "combo_next_comb" ||
            callee == "quantum_time_evolution" || callee == "signal_moving_average" ||
            callee == "signal_upsample" || callee == "signal_downsample" ||
+           callee == "signal_decimate" || callee == "signal_interpolate" ||
            callee == "graph_bfs" || callee == "graph_dfs" ||
            callee == "graph_bipartite_match" || callee == "graph_k_core_subgraph" ||
            callee == "stats_percentile" ||
@@ -8973,7 +9084,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "stats_kendall" || fn == "stats_two_sample_ttest" ||
             fn == "stats_chi2_gof" || fn == "graph_is_isomorphic" ||
             fn == "signal_moving_average" || fn == "signal_upsample" ||
-            fn == "signal_downsample" || fn == "graph_bfs" || fn == "graph_dfs" ||
+            fn == "signal_downsample" || fn == "signal_decimate" ||
+            fn == "signal_interpolate" || fn == "signal_resample" ||
+            fn == "graph_bfs" || fn == "graph_dfs" ||
             fn == "graph_bipartite_match" || fn == "graph_k_core_subgraph" ||
             fn == "stats_percentile" || fn == "graph_dfs" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "stats_acf" ||
@@ -10537,7 +10650,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 1;
     }
     if (callee == "signal_moving_average" || callee == "signal_upsample" ||
-        callee == "signal_downsample" || callee == "poly_eval" ||
+        callee == "signal_downsample" || callee == "signal_decimate" ||
+        callee == "signal_interpolate" || callee == "poly_eval" ||
         callee == "graph_bfs" || callee == "graph_dfs" || callee == "graph_bipartite_match" ||
         callee == "graph_k_core_subgraph" ||
         callee == "stats_percentile" ||
@@ -10553,7 +10667,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "signal_spectrogram") {
         return arity == 2;
     }
-    if (callee == "signal_welch_psd") {
+    if (callee == "signal_welch_psd" || callee == "signal_resample") {
         return arity == 3;
     }
     if (callee == "signal_cheby2") {
@@ -14960,6 +15074,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_moving_average(x,window) moving average of Nx1 signal\n"
             "  name = signal_upsample(x,n) zero-stuff upsample Nx1 signal by integer n\n"
             "  name = signal_downsample(x,n) keep every n-th sample of Nx1 signal\n"
+            "  name = signal_decimate(x,q) anti-aliased downsample Nx1 signal by integer q\n"
+            "  name = signal_interpolate(x,p) band-limited upsample Nx1 signal by integer p\n"
+            "  name = signal_resample(x,p,q) rational resample Nx1 signal by factor p/q\n"
             "  name = signal_lowpass(x,cutoff,fs) lowpass filter of Nx1 signal\n"
             "  name = signal_butterworth(x,cutoff,fs) Butterworth lowpass filter of Nx1 signal\n"
             "  name = signal_highpass(x,cutoff,fs) highpass filter of Nx1 signal\n"
@@ -15313,7 +15430,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_correlate(a,b), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -15780,37 +15897,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 print_matrix(out, *smoothed);
                 return out.str();
             }
-            if (matrix_scalar_call.callee == "signal_upsample") {
-                const int n = static_cast<int>(scalar_arg);
-                if (n < 1 || scalar_arg != n) {
-                    return std::unexpected(DomainError{
-                        "signal_upsample", "expected positive integer n"});
+            if (matrix_scalar_call.callee == "signal_upsample" ||
+                matrix_scalar_call.callee == "signal_downsample" ||
+                matrix_scalar_call.callee == "signal_decimate" ||
+                matrix_scalar_call.callee == "signal_interpolate") {
+                auto value = eval_signal_integer_factor(
+                    matrix_scalar_call.callee, *matrix, scalar_arg);
+                if (!value) {
+                    return std::unexpected(value.error());
                 }
-                auto up = eval_signal_upsample(*matrix, n);
-                if (!up) {
-                    return std::unexpected(up.error());
-                }
-                state_.matrices[matrix_scalar_call.target] = *up;
-                std::ostringstream out;
-                out << matrix_scalar_call.target << " =\n";
-                print_matrix(out, *up);
-                return out.str();
-            }
-            if (matrix_scalar_call.callee == "signal_downsample") {
-                const int n = static_cast<int>(scalar_arg);
-                if (n < 1 || scalar_arg != n) {
-                    return std::unexpected(DomainError{
-                        "signal_downsample", "expected positive integer n"});
-                }
-                auto down = eval_signal_downsample(*matrix, n);
-                if (!down) {
-                    return std::unexpected(down.error());
-                }
-                state_.matrices[matrix_scalar_call.target] = *down;
-                std::ostringstream out;
-                out << matrix_scalar_call.target << " =\n";
-                print_matrix(out, *down);
-                return out.str();
+                state_.matrices[matrix_scalar_call.target] = *value;
+                return format_labeled_matrix(matrix_scalar_call.target, *value);
             }
             if (matrix_scalar_call.callee == "graph_bfs") {
                 const int source = static_cast<int>(scalar_arg);
@@ -17253,6 +17350,38 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 out << lhs << " =\n";
                 print_matrix(out, *psd);
                 return out.str();
+            }
+            if (callee == "signal_resample") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "signal_resample", "expected signal_resample(x, p, q)"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                double p_d = 0.0;
+                double q_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), p_d) ||
+                    !parse_number(trim_copy((*call_args)[2]), q_d)) {
+                    auto p_expr = eval_scalar_expr(state_, trim_copy((*call_args)[1]));
+                    if (!p_expr) {
+                        return std::unexpected(p_expr.error());
+                    }
+                    p_d = *p_expr;
+                    auto q_expr = eval_scalar_expr(state_, trim_copy((*call_args)[2]));
+                    if (!q_expr) {
+                        return std::unexpected(q_expr.error());
+                    }
+                    q_d = *q_expr;
+                }
+                auto resampled = eval_signal_resample_pq(*x_m, p_d, q_d);
+                if (!resampled) {
+                    return std::unexpected(resampled.error());
+                }
+                state_.matrices[lhs] = *resampled;
+                return format_labeled_matrix(lhs, *resampled);
             }
             if (callee == "signal_spectrogram") {
                 const auto call_args = split_call_args(rhs);
@@ -20133,6 +20262,31 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, *psd);
             return out.str();
         }
+        if (fn == "signal_resample") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto x_m = resolve_arg(trim(match[2].str()));
+            if (!x_m) {
+                return std::unexpected(x_m.error());
+            }
+            double p_d = 0.0;
+            double q_d = 0.0;
+            if (!parse_number(trim(match[3].str()), p_d) ||
+                !parse_number(trim(match[4].str()), q_d)) {
+                return std::unexpected(DomainError{
+                    "signal_resample", "expected signal_resample(x, p, q)"});
+            }
+            auto resampled = eval_signal_resample_pq(*x_m, p_d, q_d);
+            if (!resampled) {
+                return std::unexpected(resampled.error());
+            }
+            return format_labeled_matrix("resampled", *resampled);
+        }
         if (fn == "prob_binom_pdf") {
             double k_d = 0.0;
             double n_d = 0.0;
@@ -21182,7 +21336,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "combo_rank_combination" || fn == "combo_next_comb" ||
             fn == "quantum_time_evolution" ||
             fn == "signal_moving_average" || fn == "signal_upsample" ||
-            fn == "signal_downsample" || fn == "graph_bfs" || fn == "graph_dfs" ||
+            fn == "signal_downsample" || fn == "signal_decimate" ||
+            fn == "signal_interpolate" || fn == "graph_bfs" || fn == "graph_dfs" ||
             fn == "graph_bipartite_match" || fn == "graph_k_core_subgraph" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "stats_acf" || fn == "graph_dfs" ||
             fn == "stats_percentile" ||
@@ -21297,35 +21452,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     print_matrix(out, *value);
                     return out.str();
                 }
-                if (fn == "signal_upsample") {
-                    const int n = static_cast<int>(t);
-                    if (n < 1 || t != n) {
-                        return std::unexpected(DomainError{
-                            "signal_upsample", "expected positive integer n"});
-                    }
-                    auto value = eval_signal_upsample(*ctrl, n);
+                if (fn == "signal_upsample" || fn == "signal_downsample" ||
+                    fn == "signal_decimate" || fn == "signal_interpolate") {
+                    auto value = eval_signal_integer_factor(fn, *ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    std::ostringstream out;
-                    out << "upsampled =\n";
-                    print_matrix(out, *value);
-                    return out.str();
-                }
-                if (fn == "signal_downsample") {
-                    const int n = static_cast<int>(t);
-                    if (n < 1 || t != n) {
-                        return std::unexpected(DomainError{
-                            "signal_downsample", "expected positive integer n"});
+                    const char* label = "result";
+                    if (fn == "signal_upsample") {
+                        label = "upsampled";
+                    } else if (fn == "signal_downsample") {
+                        label = "downsampled";
+                    } else if (fn == "signal_decimate") {
+                        label = "decimated";
+                    } else if (fn == "signal_interpolate") {
+                        label = "interpolated";
                     }
-                    auto value = eval_signal_downsample(*ctrl, n);
-                    if (!value) {
-                        return std::unexpected(value.error());
-                    }
-                    std::ostringstream out;
-                    out << "downsampled =\n";
-                    print_matrix(out, *value);
-                    return out.str();
+                    return format_labeled_matrix(label, *value);
                 }
                 if (fn == "graph_bfs") {
                     const int source = static_cast<int>(t);
@@ -23005,7 +23148,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "combo_rank_combination" || fn == "combo_next_comb" ||
             fn == "quantum_time_evolution" ||
             fn == "signal_moving_average" || fn == "signal_upsample" ||
-            fn == "signal_downsample" || fn == "graph_bfs" || fn == "graph_dfs" ||
+            fn == "signal_downsample" || fn == "signal_decimate" ||
+            fn == "signal_interpolate" || fn == "graph_bfs" || fn == "graph_dfs" ||
             fn == "graph_bipartite_match" || fn == "graph_k_core_subgraph" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "poly_eval" ||
             fn == "fft_irfft" || fn == "poly_integ") {
@@ -23075,35 +23219,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 print_matrix(out, *value);
                 return out.str();
             }
-            if (fn == "signal_upsample") {
-                const int n = static_cast<int>(t);
-                if (n < 1 || t != n) {
-                    return std::unexpected(DomainError{
-                        "signal_upsample", "expected positive integer n"});
-                }
-                auto value = eval_signal_upsample(*ctrl, n);
+            if (fn == "signal_upsample" || fn == "signal_downsample" ||
+                fn == "signal_decimate" || fn == "signal_interpolate") {
+                auto value = eval_signal_integer_factor(fn, *ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                std::ostringstream out;
-                out << "upsampled =\n";
-                print_matrix(out, *value);
-                return out.str();
-            }
-            if (fn == "signal_downsample") {
-                const int n = static_cast<int>(t);
-                if (n < 1 || t != n) {
-                    return std::unexpected(DomainError{
-                        "signal_downsample", "expected positive integer n"});
+                const char* label = "result";
+                if (fn == "signal_upsample") {
+                    label = "upsampled";
+                } else if (fn == "signal_downsample") {
+                    label = "downsampled";
+                } else if (fn == "signal_decimate") {
+                    label = "decimated";
+                } else if (fn == "signal_interpolate") {
+                    label = "interpolated";
                 }
-                auto value = eval_signal_downsample(*ctrl, n);
-                if (!value) {
-                    return std::unexpected(value.error());
-                }
-                std::ostringstream out;
-                out << "downsampled =\n";
-                print_matrix(out, *value);
-                return out.str();
+                return format_labeled_matrix(label, *value);
             }
             if (fn == "graph_bfs") {
                 const int source = static_cast<int>(t);
