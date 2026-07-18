@@ -1,6 +1,6 @@
 // MathScript Integration Tests: REPL Interpreter – Wave 236 Bindings Pipeline
 //
-// Wired: fem_poisson3d, crypto_x25519_shared, dist_matmul.
+// Wired: fem_poisson3d, crypto_x25519_shared, dist_matmul, cfd_advection3d.
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -67,4 +67,26 @@ TEST(ReplWave236Pipeline, DistMatmulBinding) {
     EXPECT_NEAR(P(0, 1), 22.0, 1e-6);
     EXPECT_NEAR(P(1, 0), 43.0, 1e-6);
     EXPECT_NEAR(P(1, 1), 50.0, 1e-6);
+}
+
+TEST(ReplWave236Pipeline, CfdAdvection3dBinding) {
+    Interpreter interp;
+
+    expect_ok(interp, "uf3 = cfd_advection3d(20, 15, 10, 1, 0, 0, 0.4, 0.01)");
+    ASSERT_GT(interp.state().matrices.count("uf3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("uf3").rows(), 150u);
+    EXPECT_EQ(interp.state().matrices.at("uf3").cols(), 20u);
+    const double dx = 1.0 / 20.0;
+    const double dy = 1.0 / 15.0;
+    const double dz = 1.0 / 10.0;
+    double mass = 0.0;
+    for (std::size_t i = 0; i < 150; ++i) {
+        for (std::size_t j = 0; j < 20; ++j) {
+            mass += interp.state().matrices.at("uf3")(i, j) * dx * dy * dz;
+        }
+    }
+    EXPECT_NEAR(mass, 0.1 * 0.1 * 0.1, 0.05);
+
+    expect_error(interp, "cfd_advection3d(1, 2, 2, 1, 0, 0, 0.4, 0.01)");
+    expect_contains(interp, "help", "cfd_advection3d");
 }

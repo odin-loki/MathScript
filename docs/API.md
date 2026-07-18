@@ -256,8 +256,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
 | `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column (Wave 236) |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |
-
-**Wave 236 note:** `cfd_advection3d` and `crypto_x25519` are not wired — 3D CFD and X25519 APIs are not yet on main.
+| `cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)` | 3D structured FVM upwind advection final field (Wave 236) |
 
 **MPI / distributed (scalar/matrix assignment):**
 

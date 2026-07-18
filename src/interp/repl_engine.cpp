@@ -709,6 +709,24 @@ Matrix<double> grid_to_matrix(const std::vector<std::vector<double>>& grid) {
     return out;
 }
 
+Matrix<double> grid3d_to_matrix(const std::vector<std::vector<std::vector<double>>>& grid) {
+    if (grid.empty() || grid[0].empty()) {
+        return Matrix<double>(0, 0);
+    }
+    const std::size_t nz = grid.size();
+    const std::size_t ny = grid[0].size();
+    const std::size_t nx = grid[0][0].size();
+    Matrix<double> out(nz * ny, nx);
+    for (std::size_t k = 0; k < nz; ++k) {
+        for (std::size_t j = 0; j < ny; ++j) {
+            for (std::size_t i = 0; i < nx; ++i) {
+                out(k * ny + j, i) = grid[k][j][i];
+            }
+        }
+    }
+    return out;
+}
+
 Result<std::vector<std::vector<double>>> matrix_to_grid(const Matrix<double>& m, const char* fn) {
     auto grid = matrix_to_ml_mat(m, fn);
     if (!grid) {
@@ -4034,6 +4052,36 @@ Result<Matrix<double>> eval_cfd_advection2d(std::size_t nx, std::size_t ny, doub
             DomainError{fn, "CFL stability condition violated or invalid input"});
     }
     return grid_to_matrix(result.u.back());
+}
+
+Result<Matrix<double>> eval_cfd_advection3d(std::size_t nx, std::size_t ny, std::size_t nz,
+                                            double vx, double vy, double vz, double t_end,
+                                            double dt) {
+    constexpr const char* fn = "cfd_advection3d";
+    if (nx < 2 || ny < 2 || nz < 2) {
+        return std::unexpected(DomainError{fn, "expected nx, ny, nz >= 2"});
+    }
+    if (t_end <= 0.0 || dt <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    const cfd::Grid3D grid = cfd::grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, nx, ny, nz);
+    if (grid.nx == 0 || grid.ny == 0 || grid.nz == 0) {
+        return std::unexpected(DomainError{fn, "invalid grid dimensions"});
+    }
+    const auto u0 = cfd::square_pulse_3d(grid, 0.35, 0.35, 0.35, 0.1, 0.1, 0.1, 1.0);
+    const std::size_t n_cells = grid.nx * grid.ny * grid.nz;
+    const auto vx_field = cfd::constant_velocity(n_cells, vx);
+    const auto vy_field = cfd::constant_velocity(n_cells, vy);
+    const auto vz_field = cfd::constant_velocity(n_cells, vz);
+    const auto result = cfd::run_advection_3d(
+        u0, vx_field, vy_field, vz_field, t_end, dt, grid.dx, grid.dy, grid.dz,
+        cfd::BoundaryCondition::Periodic, cfd::BoundaryCondition::Periodic,
+        cfd::BoundaryCondition::Periodic);
+    if (result.u.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return grid3d_to_matrix(result.u.back());
 }
 
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
@@ -7751,6 +7799,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "pde_heat_1d" || fn == "pde_heat_2d" || fn == "pde_wave_1d" ||
             fn == "pde_advection_1d" || fn == "pde_poisson_2d" || fn == "pde_burgers_1d" ||
             fn == "fem_poisson2d" || fn == "fem_poisson3d" || fn == "cfd_advection2d" ||
+            fn == "cfd_advection3d" ||
             fn == "quantum_time_evolution" ||
             fn == "info_joint_entropy" ||
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
@@ -9120,6 +9169,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_advection_1d" || callee == "pde_poisson_2d" ||
            callee == "pde_burgers_1d" ||
            callee == "fem_poisson2d" || callee == "fem_poisson3d" || callee == "cfd_advection2d" ||
+           callee == "cfd_advection3d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
            callee == "compress_bits_to_bytes" ||
            callee == "compress_bytes_to_bits" ||
@@ -9267,6 +9317,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "cfd_advection2d") {
         return arity == 6;
+    }
+    if (callee == "cfd_advection3d") {
+        return arity == 8;
     }
     if (callee == "quantum_ket_basis" || callee == "quantum_fock_state" ||
         callee == "combo_unrank_permutation" || callee == "numthy_continued_fraction" ||
@@ -12087,6 +12140,32 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
         }
         result = eval_cfd_advection2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                       vx, vy, t_end, dt);
+    } else if (assign.callee == "cfd_advection3d" && assign.args.size() == 8) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double nz_d = 0.0;
+        double vx = 0.0;
+        double vy = 0.0;
+        double vz = 0.0;
+        double t_end = 0.0;
+        double dt = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], nz_d) || !parse_number(assign.args[3], vx) ||
+            !parse_number(assign.args[4], vy) || !parse_number(assign.args[5], vz) ||
+            !parse_number(assign.args[6], t_end) || !parse_number(assign.args[7], dt)) {
+            return std::unexpected(DomainError{
+                "cfd_advection3d",
+                "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        const int nz_i = static_cast<int>(nz_d);
+        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
+        }
+        result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                        static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
     } else if (assign.callee == "pde_heat_2d" && assign.args.size() == 6) {
         auto u0_m = resolve_operand(assign.args[0]);
         if (!u0_m) {
@@ -13105,6 +13184,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
+            "  name = cfd_advection3d(nx,ny,nz,vx,vy,vz,t_end,dt) 3D FVM upwind advection final field\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
             "  crypto_aes128_cbc_encrypt(key_hex,iv_hex,plaintext_hex) AES-128 CBC encrypt\n"
             "  crypto_aes128_cbc_decrypt(key_hex,iv_hex,ciphertext_hex) AES-128 CBC decrypt\n"
@@ -16632,6 +16712,46 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             auto value = eval_cfd_advection2d(static_cast<std::size_t>(nx_i),
                                               static_cast<std::size_t>(ny_i), vx, vy, t_end, dt);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
+        if (fn == "cfd_advection3d") {
+            double nx_d = 0.0;
+            double ny_d = 0.0;
+            double nz_d = 0.0;
+            double vx = 0.0;
+            double vy = 0.0;
+            double vz = 0.0;
+            double t_end = 0.0;
+            double dt = 0.0;
+            if (!parse_number(trim(match[2].str()), nx_d) ||
+                !parse_number(trim(match[3].str()), ny_d) ||
+                !parse_number(trim(match[4].str()), nz_d) ||
+                !parse_number(trim(match[5].str()), vx) ||
+                !parse_number(trim(match[6].str()), vy) ||
+                !parse_number(trim(match[7].str()), vz) ||
+                !parse_number(trim(match[8].str()), t_end) ||
+                !parse_number(trim(match[9].str()), dt)) {
+                return std::unexpected(DomainError{
+                    "cfd_advection3d",
+                    "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
+            }
+            const int nx_i = static_cast<int>(nx_d);
+            const int ny_i = static_cast<int>(ny_d);
+            const int nz_i = static_cast<int>(nz_d);
+            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+                return std::unexpected(
+                    DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
+            }
+            auto value = eval_cfd_advection3d(static_cast<std::size_t>(nx_i),
+                                              static_cast<std::size_t>(ny_i),
+                                              static_cast<std::size_t>(nz_i), vx, vy, vz, t_end,
+                                              dt);
             if (!value) {
                 return std::unexpected(value.error());
             }
