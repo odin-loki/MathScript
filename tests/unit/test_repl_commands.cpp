@@ -6484,6 +6484,26 @@ TEST(ReplCommandsTest, wave261_combo_dyck_paths) {
     EXPECT_EQ(interp.state().matrices.at("d3").cols(), 6u);
 }
 
+TEST(ReplCommandsTest, wave262_combo_necklaces) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_necklaces(n,k)");
+
+    expect_ok(interp, "neck = combo_necklaces(2, 2)");
+    ASSERT_GT(interp.state().matrices.count("neck"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("neck").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("neck").cols(), 2u);
+}
+
+TEST(ReplCommandsTest, wave262_combo_de_bruijn_sequence) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_de_bruijn_sequence(k,n)");
+
+    expect_ok(interp, "db = combo_de_bruijn_sequence(2, 2)");
+    ASSERT_GT(interp.state().matrices.count("db"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("db").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("db").cols(), 1u);
+}
+
 TEST(ReplCommandsTest, wave259_imgradient_morph) {
     Interpreter interp;
     expect_contains(interp, "help", "imgradient_morph(M[,k])");

@@ -254,6 +254,8 @@ QStringList repl_command_list() {
         QStringLiteral("combo_eulerian"),
         QStringLiteral("combo_gray_code"),
         QStringLiteral("combo_dyck_paths"),
+        QStringLiteral("combo_necklaces"),
+        QStringLiteral("combo_de_bruijn_sequence"),
         QStringLiteral("numthy_factor"),
         QStringLiteral("numthy_factor_exp"),
         QStringLiteral("numthy_farey"),
