@@ -13,6 +13,7 @@
 
 class PlotWidget;
 class PlotSurfWidget;
+class QCloseEvent;
 class QDockWidget;
 class QTreeView;
 class QFileSystemModel;
@@ -26,6 +27,7 @@ public:
     ~MainWindow() override;
 
 protected:
+    void closeEvent(QCloseEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
 
 private slots:
@@ -43,6 +45,8 @@ private:
     void export_plot_png();
     void setup_menus();
     void apply_dark_theme();
+    void restore_layout();
+    void save_layout();
     void start_eval(const QString& line);
     void finish_repl_op();
 

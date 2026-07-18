@@ -6,7 +6,9 @@
 
 #include <QApplication>
 #include <QAction>
+#include <QCloseEvent>
 #include <QKeyEvent>
+#include <QSettings>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -104,6 +106,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     input_->installEventFilter(this);
     connect(file_tree_, &QTreeView::activated, this, &MainWindow::on_file_activated);
 
+    restore_layout();
+
     append_output("MathScript IDE ready. Type 'help' and press Run.\n");
     refresh_variables();
 }
@@ -112,6 +116,32 @@ MainWindow::~MainWindow() {
     repl_thread_->quit();
     repl_thread_->wait();
     delete repl_worker_;
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    save_layout();
+    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::restore_layout() {
+    QSettings settings;
+    const QByteArray window_state = settings.value("mainwindow/state").toByteArray();
+    if (!window_state.isEmpty()) {
+        restoreState(window_state);
+    }
+
+    const QByteArray splitter_state = settings.value("mainwindow/splitter").toByteArray();
+    if (!splitter_state.isEmpty() && main_splitter_ != nullptr) {
+        main_splitter_->restoreState(splitter_state);
+    }
+}
+
+void MainWindow::save_layout() {
+    QSettings settings;
+    settings.setValue("mainwindow/state", saveState());
+    if (main_splitter_ != nullptr) {
+        settings.setValue("mainwindow/splitter", main_splitter_->saveState());
+    }
 }
 
 void MainWindow::apply_dark_theme() {
