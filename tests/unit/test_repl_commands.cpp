@@ -3548,6 +3548,21 @@ TEST(ReplCommandsTest, wave251_signal_filter) {
     EXPECT_NEAR(y(4, 0), 1.9375, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave252_signal_savgol) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_savgol(x,window_length,polyorder)");
+
+    expect_ok(interp, "x = [2; -1; 3; 0.5; 4; -2; 1.5]");
+    expect_ok(interp, "sg = signal_savgol(x, 5, 2)");
+    ASSERT_GT(interp.state().matrices.count("sg"), 0u);
+    const auto& sg = interp.state().matrices.at("sg");
+    EXPECT_EQ(sg.cols(), 1u);
+    EXPECT_EQ(sg.rows(), 7u);
+    EXPECT_NEAR(sg(0, 0), 2.0, 1e-12);
+    EXPECT_NEAR(sg(1, 0), -1.0, 1e-12);
+    EXPECT_NEAR(sg(2, 0), 27.0 / 35.0, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave251_signal_cheby1) {
     Interpreter interp;
     expect_contains(interp, "help", "signal_cheby1(order,rp_db,cutoff,fs[,type])");
