@@ -23,9 +23,11 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "ms/cuda/nvml.hpp"
 #include "ms/distributed/mpi_context.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include "ms/runtime/topology.hpp"
+#include "ms/simd/simd.hpp"
 
 #include <iomanip>
 #include <sstream>
@@ -379,9 +381,29 @@ void MainWindow::setup_menus() {
 void MainWindow::refresh_status() {
     const auto topo = ms::detect_topology();
     static ms::distributed::MPIContext mpi = ms::distributed::init(0, nullptr);
-    statusBar()->showMessage(QString("CPU %1 | GPUs %2 | MPI rank %3/%4")
-                                 .arg(static_cast<int>(topo.total_threads()))
-                                 .arg(topo.total_gpus)
+
+    QString isa =
+        QString::fromStdString(ms::simd::isa_summary(ms::simd::dispatch_info().isa)).trimmed();
+    if (isa.isEmpty()) {
+        isa = QStringLiteral("scalar");
+    }
+
+    QString gpu_part = QStringLiteral("GPU n/a");
+    if (ms::has_cuda() && topo.total_gpus > 0) {
+        const auto stats = ms::cuda::device_stats(0);
+        const size_t free_bytes = ms::cuda::device_memory_free(0);
+        const auto free_mib = static_cast<qulonglong>(free_bytes / (1024 * 1024));
+        const auto total_mib =
+            static_cast<qulonglong>(stats.memory_total_bytes / (1024 * 1024));
+        const QString model =
+            stats.name.empty() ? QString::fromStdString(ms::get_gpu_model(0))
+                               : QString::fromStdString(stats.name);
+        gpu_part = QString("%1 %2/%3 MiB").arg(model).arg(free_mib).arg(total_mib);
+    }
+
+    statusBar()->showMessage(QString("SIMD %1 | %2 | MPI %3/%4")
+                                 .arg(isa)
+                                 .arg(gpu_part)
                                  .arg(ms::distributed::rank(mpi))
                                  .arg(ms::distributed::size(mpi)));
 }

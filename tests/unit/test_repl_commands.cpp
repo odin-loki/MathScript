@@ -9,6 +9,7 @@
 #include "ms/interp/repl_engine.hpp"
 #include "ms/prob/prob.hpp"
 #include "ms/special/special.hpp"
+#include "ms/runtime/topology.hpp"
 #include "ms/version.hpp"
 
 using namespace ms::interp;
@@ -51,6 +52,17 @@ TEST(ReplCommandsTest, meta_commands) {
     expect_contains(interp, "balance", "threads=");
     expect_contains(interp, "mpi", "backend=");
     expect_contains(interp, "frameworks", "GRIA");
+}
+
+TEST(ReplCommandsTest, gpu_command_device_stats) {
+    Interpreter interp;
+    const auto result = interp.execute("gpu");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->find("cuda="), std::string::npos);
+    if (ms::has_cuda()) {
+        EXPECT_NE(result->find("mem_free="), std::string::npos) << *result;
+        EXPECT_NE(result->find("mem_total="), std::string::npos) << *result;
+    }
 }
 
 TEST(ReplCommandsTest, session_lifecycle) {

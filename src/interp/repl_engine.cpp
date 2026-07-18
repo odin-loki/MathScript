@@ -12,6 +12,7 @@
 #include "ms/core/operations.hpp"
 #include "ms/fft/fft.hpp"
 #include "ms/linalg/linalg.hpp"
+#include "ms/cuda/nvml.hpp"
 #include "ms/runtime/dispatch.hpp"
 #include "ms/runtime/load_balancer.hpp"
 #include "ms/runtime/topology.hpp"
@@ -12317,6 +12318,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             << " devices=" << get_gpu_count() << "\n";
         if (get_gpu_count() > 0) {
             out << "device0=" << get_gpu_model(0) << "\n";
+        }
+        if (has_cuda()) {
+            const auto stats = cuda::device_stats(0);
+            out << "mem_free=" << cuda::device_memory_free(0)
+                << " mem_total=" << stats.memory_total_bytes << "\n";
         }
         return out.str();
     }
