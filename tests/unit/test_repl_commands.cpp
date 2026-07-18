@@ -6869,3 +6869,23 @@ TEST(ReplCommandsTest, wave262_poly_discriminant) {
 
     expect_contains(interp, "poly_discriminant([1; -2; 1])", "0");
 }
+
+TEST(ReplCommandsTest, wave263_special_voigt_airy) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_voigt(x,sigma,gamma)");
+    expect_contains(interp, "help", "special_pseudo_voigt_auto(x,sigma,gamma)");
+    expect_contains(interp, "help", "special_airy_ai(x)");
+
+    constexpr double kPi = 3.14159265358979323846;
+    const double voigt_ref = ms::voigt(0.0, 1.0, 0.0);
+    EXPECT_NEAR(voigt_ref, 1.0 / std::sqrt(2.0 * kPi), 1e-9);
+    expect_ok(interp, "y = special_voigt(0,1,0)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), voigt_ref, 1e-9);
+    expect_contains(interp, "special_voigt(0,1,0)", std::to_string(voigt_ref));
+
+    const double airy_ref = ms::airy_ai(0.0);
+    EXPECT_NEAR(airy_ref, 0.355028053887817, 1e-9);
+    expect_ok(interp, "z = special_airy_ai(0)");
+    EXPECT_NEAR(interp.state().scalars.at("z"), airy_ref, 1e-9);
+    expect_contains(interp, "special_airy_ai(0)", std::to_string(airy_ref));
+}
