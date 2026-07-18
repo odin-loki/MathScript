@@ -298,6 +298,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `bicgstab(A, b)` | BiCGSTAB iterative solve (Wave 240) |
 | `signal_cheby2(order, rs_db, cutoff, fs)` | Chebyshev Type II IIR design; returns `[b; a]` rows (Wave 241) |
 | `signal_periodogram(x, fs)` / `signal_welch_psd(x, fs, nperseg)` | PSD helpers; freq/power columns (Wave 241) |
+| `signal_envelope(x)` / `signal_hilbert(x)` / `signal_instantaneous_freq(x, fs)` | Analytic-signal helpers; envelope column, Hilbert N×2 [re,im], inst. freq column (Wave 242) |
 
 **Session meta-commands (Wave 238):**
 
