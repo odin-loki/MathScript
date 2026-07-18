@@ -50,6 +50,14 @@ static void BM_CudaAllreduceAvg(benchmark::State& state) {
 }
 BENCHMARK(BM_CudaAllreduceAvg);
 
+static void BM_CudaBroadcast(benchmark::State& state) {
+    for (auto _ : state) {
+        const double result = ms::cuda::broadcast(2.0);
+        benchmark::DoNotOptimize(result);
+    }
+}
+BENCHMARK(BM_CudaBroadcast);
+
 static void BM_MPIContext_Barrier(benchmark::State& state) {
     auto ctx = init(0, nullptr);
     for (auto _ : state) {

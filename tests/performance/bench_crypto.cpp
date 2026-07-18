@@ -247,4 +247,15 @@ static void BM_Ed25519Verify(benchmark::State& state) {
 }
 BENCHMARK(BM_Ed25519Verify)->MinTime(0.001);
 
+static void BM_ConstantTimeEq(benchmark::State& state) {
+    const std::array<uint8_t, 16> a = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    const std::array<uint8_t, 16> b = a;
+    for (auto _ : state) {
+        const bool ok = constant_time_eq(std::span<const uint8_t>(a),
+                                         std::span<const uint8_t>(b));
+        benchmark::DoNotOptimize(ok);
+    }
+}
+BENCHMARK(BM_ConstantTimeEq);
+
 BENCHMARK_MAIN();
