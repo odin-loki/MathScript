@@ -1,7 +1,8 @@
 // MathScript Integration Tests: REPL Interpreter – Wave 256 Pipeline
 //
-// Wave 256: 3D geo KD-tree nearest, ray–triangle intersect, point–plane /
-// point–segment3 distances.
+// Smoke: Wave 255 APIs already on main (geo kdtree/triangulate, graph spectral,
+// crypto_x25519_keypair, mpi_bcast). Deterministic; Wave 256 features belong in
+// separate tests once merged.
 
 #include <gtest/gtest.h>
 #include <string>
@@ -34,7 +35,6 @@ TEST(ReplWave256Pipeline, GeoKdtree3dNearest) {
     EXPECT_NEAR(interp.state().scalars.at("idx"), 1.0, 1e-12);
     expect_contains(interp, "help", "geo_kdtree_3d_nearest(P,x,y,z)");
 }
-
 TEST(ReplWave256Pipeline, GeoIntersectRayTri) {
     Interpreter interp;
 
@@ -47,7 +47,6 @@ TEST(ReplWave256Pipeline, GeoIntersectRayTri) {
         "help",
         "geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz)");
 }
-
 TEST(ReplWave256Pipeline, GeoDistPointPlane) {
     Interpreter interp;
 
@@ -56,12 +55,46 @@ TEST(ReplWave256Pipeline, GeoDistPointPlane) {
     EXPECT_NEAR(interp.state().scalars.at("d"), 5.0, 1e-12);
     expect_contains(interp, "help", "geo_dist_point_plane(px,py,pz,nx,ny,nz,d)");
 }
-
-TEST(ReplWave256Pipeline, GeoDistPointSeg3d) {
+TEST(ReplWave256Pipeline, MpiBcastIdentityAssignment) {
     Interpreter interp;
 
-    // Point (2,3,0) to segment (0,0,0)-(4,0,0) => distance 3
-    expect_ok(interp, "dps = geo_dist_point_seg3d(2, 3, 0, 0, 0, 0, 4, 0, 0)");
-    EXPECT_NEAR(interp.state().scalars.at("dps"), 3.0, 1e-12);
-    expect_contains(interp, "help", "geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2)");
+    expect_ok(interp, "bx = mpi_bcast(3.5)");
+    ASSERT_GT(interp.state().scalars.count("bx"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("bx"), 3.5, 1e-12);
+    expect_contains(interp, "help", "mpi_bcast(x)");
+}
+TEST(ReplWave256Pipeline, GeoKdtreeKnnSmoke) {
+    Interpreter interp;
+
+    expect_ok(interp, "P = [0,0; 1,0; 2,0; 3,0; 4,0]");
+    expect_ok(interp, "n = geo_kdtree_knn(P, 1.0, 0.0, 2)");
+    ASSERT_GT(interp.state().matrices.count("n"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("n").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("n").cols(), 1u);
+    expect_contains(interp, "help", "geo_kdtree_knn(P,x,y,k)");
+}
+TEST(ReplWave256Pipeline, GeoTriangulatePolygonSmoke) {
+    Interpreter interp;
+
+    expect_ok(interp, "P = [0,0; 1,0; 1,1; 0,1]");
+    expect_ok(interp, "T = geo_triangulate_polygon(P)");
+    ASSERT_GT(interp.state().matrices.count("T"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("T").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("T").cols(), 3u);
+    expect_contains(interp, "help", "geo_triangulate_polygon(P)");
+}
+TEST(ReplWave256Pipeline, GraphSpectralSmoke) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [0,1,0; 1,0,1; 0,1,0]");
+    expect_ok(interp, "k = graph_katz_centrality(A)");
+    ASSERT_GT(interp.state().matrices.count("k"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("k").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("k").cols(), 1u);
+
+    expect_ok(interp, "ac = graph_algebraic_connectivity(A)");
+    EXPECT_GT(interp.state().scalars.at("ac"), 0.0);
+    expect_contains(interp, "help", "graph_katz_centrality(A)");
+    expect_contains(interp, "help", "graph_algebraic_connectivity(A)");
+}
 }

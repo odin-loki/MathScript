@@ -128,6 +128,10 @@ static void BM_KDE(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * 1000 * 256);
 }
 
+static void BM_StatsKde(benchmark::State& state) {
+    BM_KDE(state);
+}
+
 BENCHMARK(BM_mean_stddev)->Arg(1000)->Arg(10000)->Arg(50000);
 BENCHMARK(BM_percentile)->Arg(1000)->Arg(10000);
 BENCHMARK(BM_Percentile)->Arg(50000);
@@ -140,3 +144,4 @@ BENCHMARK(BM_linear_regression)->Arg(500)->Arg(5000);
 BENCHMARK(BM_moving_average)->Arg(1000)->Arg(10000);
 BENCHMARK(BM_convolve)->Arg(1000)->Arg(5000);
 BENCHMARK(BM_KDE);
+BENCHMARK(BM_StatsKde);
