@@ -218,6 +218,28 @@ double sabr_call(double S, double K, double T, double r, double alpha, double be
     return bs_call(S, K, T, r, sigma);
 }
 
+double sabr_put(double S, double K, double T, double r, double alpha, double beta,
+                double rho, double nu) {
+    if (T <= 0.0) return std::max(K - S, 0.0);
+    if (S <= 0.0 || K <= 0.0 || alpha < 0.0 || beta < 0.0 || beta > 1.0 ||
+        rho < -1.0 || rho > 1.0 || nu < 0.0 || !std::isfinite(S) || !std::isfinite(K) ||
+        !std::isfinite(T) || !std::isfinite(r) || !std::isfinite(alpha) ||
+        !std::isfinite(beta) || !std::isfinite(rho) || !std::isfinite(nu)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    if (alpha <= 1e-14) {
+        return std::max(K * std::exp(-r * T) - S, 0.0);
+    }
+
+    const double F = S * std::exp(r * T);
+    const double sigma = sabr_hagan_black_vol(F, K, T, alpha, beta, rho, nu);
+    if (!std::isfinite(sigma) || sigma < 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return bs_put(S, K, T, r, sigma);
+}
+
 double bs_delta(double S, double K, double T, double r, double sigma, bool call) {
     double d1, d2;
     bs_d1_d2(S, K, T, r, sigma, d1, d2);

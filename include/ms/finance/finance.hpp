@@ -26,6 +26,11 @@ double heston_call(double S, double K, double T, double r, double v0, double kap
 double sabr_call(double S, double K, double T, double r, double alpha, double beta,
                  double rho, double nu);
 
+// SABR (Hagan et al. 2002) European put via asymptotic Black implied volatility.
+// Same parameters as sabr_call; price is bs_put with the Hagan SABR implied vol.
+double sabr_put(double S, double K, double T, double r, double alpha, double beta,
+                double rho, double nu);
+
 // Greeks
 double bs_delta(double S, double K, double T, double r, double sigma, bool call);
 double bs_gamma(double S, double K, double T, double r, double sigma);
