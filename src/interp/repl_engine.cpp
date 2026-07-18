@@ -6200,21 +6200,21 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
                 DomainError{fn, std::string("expected ") + fn + "(\"expr\", \"var1\", \"var2\")"});
         }
         if (fn == "sym_laplace") {
-            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn, sym_laplace);
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_laplace);
         }
         if (fn == "sym_ilaplace") {
-            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn, sym_ilaplace);
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_ilaplace);
         }
         if (fn == "sym_fourier") {
-            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn, sym_fourier);
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_fourier);
         }
         if (fn == "sym_ifourier") {
-            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn, sym_ifourier);
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_ifourier);
         }
         if (fn == "sym_ztransform") {
-            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn, sym_ztransform);
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_ztransform);
         }
-        return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn, sym_iztransform);
+        return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_iztransform);
     }
     if (fn == "sym_substitute" || fn == "sym_limit") {
         if (args->size() != 3) {
@@ -15716,17 +15716,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const std::string arg_c = trim(match[4].str());
             Result<std::string> value = std::unexpected(DomainError{fn, "unknown transform"});
             if (fn == "sym_laplace") {
-                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn, sym_laplace);
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_laplace);
             } else if (fn == "sym_ilaplace") {
-                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn, sym_ilaplace);
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_ilaplace);
             } else if (fn == "sym_fourier") {
-                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn, sym_fourier);
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_fourier);
             } else if (fn == "sym_ifourier") {
-                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn, sym_ifourier);
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_ifourier);
             } else if (fn == "sym_ztransform") {
-                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn, sym_ztransform);
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_ztransform);
             } else {
-                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn, sym_iztransform);
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_iztransform);
             }
             if (!value) {
                 return std::unexpected(value.error());

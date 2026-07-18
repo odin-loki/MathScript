@@ -31,11 +31,11 @@ void expect_error(Interpreter& interp, const std::string& cmd) {
 TEST(ReplWave232Pipeline, SymbolicTransformBindings) {
     Interpreter interp;
 
-    expect_contains(interp, R"(sym_laplace("exp(2*t)", "t", "s"))", "s");
-    expect_contains(interp, R"(sym_ilaplace("1/(s-2)", "s", "t"))", "exp");
-    expect_contains(interp, R"(sym_fourier("exp(-2*t)", "t", "omega"))", "omega");
-    expect_contains(interp, R"(sym_ztransform("0.5^n", "n", "z"))", "z");
-    expect_error(interp, R"(sym_laplace("exp(2*t)", "t"))");
+    expect_contains(interp, R"cmd(sym_laplace("exp(2*t)", "t", "s"))cmd", "s");
+    expect_contains(interp, R"cmd(sym_ilaplace("1/(s-2)", "s", "t"))cmd", "exp");
+    expect_contains(interp, R"cmd(sym_fourier("exp(-2*t)", "t", "omega"))cmd", "omega");
+    expect_contains(interp, R"cmd(sym_ztransform("0.5^n", "n", "z"))cmd", "z");
+    expect_error(interp, R"cmd(sym_laplace("exp(2*t)", "t"))cmd");
     expect_contains(interp, "help", "sym_laplace");
     expect_contains(interp, "help", "sym_ztransform");
 }
@@ -46,22 +46,22 @@ TEST(ReplWave232Pipeline, Wave231_CryptoFemCfdBindings) {
     // crypto AES-128 ECB block (NIST FIPS-197 Appendix F)
     expect_contains(
         interp,
-        R"(crypto_aes128_encrypt_block("2b7e151628aed2a6abf7158809cf4f3c", "3243f6a8885a308d313198a2e0370734"))",
+        R"cmd(crypto_aes128_encrypt_block("2b7e151628aed2a6abf7158809cf4f3c", "3243f6a8885a308d313198a2e0370734"))cmd",
         "3925841d02dc09fbdc118597196a0b32");
 
     // crypto AES-128 CBC encrypt + decrypt round-trip via known ciphertext
     expect_ok(
         interp,
-        R"(crypto_aes128_cbc_encrypt("2b7e151628aedb2a6abf7158809cf40f", "000102030405060708090a0b0c0d0e0f", "6bc1bee22e409f96e93d7e117393172a"))");
+        R"cmd(crypto_aes128_cbc_encrypt("2b7e151628aedb2a6abf7158809cf40f", "000102030405060708090a0b0c0d0e0f", "6bc1bee22e409f96e93d7e117393172a"))cmd");
     expect_contains(
         interp,
-        R"(crypto_aes128_cbc_decrypt("2b7e151628aedb2a6abf7158809cf40f", "000102030405060708090a0b0c0d0e0f", "08f2b59c5efccc8ca069951b94f69d14074b848c41fe11f3ffa61ab5bf3532cb"))",
+        R"cmd(crypto_aes128_cbc_decrypt("2b7e151628aedb2a6abf7158809cf40f", "000102030405060708090a0b0c0d0e0f", "08f2b59c5efccc8ca069951b94f69d14074b848c41fe11f3ffa61ab5bf3532cb"))cmd",
         "6bc1bee22e409f96e93d7e117393172a");
 
     // crypto ChaCha20 stream (XOR self-inverse; output differs from plaintext)
     expect_contains(
         interp,
-        R"(crypto_chacha20("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "00000000000000000000", 1, "00000000000000000000000000000000"))",
+        R"cmd(crypto_chacha20("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "00000000000000000000", 1, "00000000000000000000000000000000"))cmd",
         "18b84231ade6a6d113615c61af434e27");
 
     // fem 2D Poisson P1 solve on unit square (f = 1, zero Dirichlet)
