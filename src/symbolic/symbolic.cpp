@@ -1565,6 +1565,14 @@ std::optional<double> extract_positive_scale_of_var(const SymExpr& expr, const s
         if (expr.right && expr.right->op == SymOp::Const && expr.left && is_named_var(*expr.left, var)) {
             return expr.right->value;
         }
+        if (expr.left && expr.left->op == SymOp::Neg && expr.left->left &&
+            expr.left->left->op == SymOp::Const && expr.right && is_named_var(*expr.right, var)) {
+            return -expr.left->left->value;
+        }
+        if (expr.right && expr.right->op == SymOp::Neg && expr.right->left &&
+            expr.right->left->op == SymOp::Const && expr.left && is_named_var(*expr.left, var)) {
+            return -expr.right->left->value;
+        }
     }
     return std::nullopt;
 }

@@ -75,10 +75,12 @@ TEST(ReplWave232Pipeline, Wave231_CryptoFemCfdBindings) {
     ASSERT_GT(interp.state().matrices.count("uf"), 0u);
     EXPECT_EQ(interp.state().matrices.at("uf").rows(), 15u);
     EXPECT_EQ(interp.state().matrices.at("uf").cols(), 20u);
+    const double dx = 1.0 / 20.0;
+    const double dy = 1.0 / 15.0;
     double mass = 0.0;
     for (std::size_t i = 0; i < 15; ++i) {
         for (std::size_t j = 0; j < 20; ++j) {
-            mass += interp.state().matrices.at("uf")(i, j);
+            mass += interp.state().matrices.at("uf")(i, j) * dx * dy;
         }
     }
     EXPECT_NEAR(mass, 0.1 * 0.1, 0.05);

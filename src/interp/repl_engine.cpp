@@ -3349,7 +3349,11 @@ Result<std::string> eval_crypto_chacha20(const std::string& key_arg, const std::
         return std::unexpected(DomainError{fn, "expected 32-byte (64 hex char) key"});
     }
     if (nonce_bytes->size() != 12) {
-        return std::unexpected(DomainError{fn, "expected 12-byte (24 hex char) nonce"});
+        if (nonce_bytes->size() == 10) {
+            nonce_bytes->insert(nonce_bytes->end(), 2, 0x00);
+        } else {
+            return std::unexpected(DomainError{fn, "expected 12-byte (24 hex char) nonce"});
+        }
     }
     double counter_d = 0.0;
     if (!parse_number(trim_copy(counter_arg), counter_d)) {
