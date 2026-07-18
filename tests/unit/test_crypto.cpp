@@ -153,3 +153,75 @@ TEST(CryptoToHex, Empty) {
 TEST(CryptoToHex, LeadingZeroNibble) {
     EXPECT_EQ(to_hex(std::vector<uint8_t>{0x0a, 0x0b}), "0a0b");
 }
+
+// ---- AES-128/256 (FIPS 197 / NIST SP 800-38A test vectors) ----
+
+TEST(CryptoAes128, EncryptBlockFips197) {
+    const auto key = from_hex("2b7e151628aed2a6abf7158809cf4f3c");
+    const auto block = from_hex("3243f6a8885a308d313198a2e0370734");
+    expect_hex(aes128_encrypt_block(key, block), "3925841d02dc09fbdc118597196a0b32");
+}
+
+TEST(CryptoAes256, EncryptBlockFips197) {
+    const auto key =
+        from_hex("603deb1015ca71be2b73aef3ae246ee256b942bce1d3e52f2b3636849ec0be41");
+    const auto block = from_hex("6bc1bee22e409f96e93d7e117393172a");
+    expect_hex(aes256_encrypt_block(key, block), "a36452d23436433a516cace8bf319e9c");
+}
+
+TEST(CryptoAes128, EncryptBlockInvalidInputsReturnEmpty) {
+    const auto key = from_hex("2b7e151628aed2a6abf7158809cf4f3c");
+    const auto block = from_hex("3243f6a8885a308d313198a2e0370734");
+    const auto short_key = from_hex("0011223344556677");
+    EXPECT_TRUE(aes128_encrypt_block(short_key, block).empty());
+    EXPECT_TRUE(aes128_encrypt_block(key, std::vector<uint8_t>{0x00}).empty());
+}
+
+TEST(CryptoAes128, CbcEncryptMatchesNistBlocksBeforePadding) {
+    const auto key = from_hex("2b7e151628aed2a6abf7158809cf4f3c");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+    const auto plaintext =
+        from_hex("6bc1bee22e409f96e93d7e117393172a"
+                 "ae2d8a571e03ac9c9eb76fac45af8e51"
+                 "30c81c46a35ce411e5fbc1191a0a16ef");
+    const auto expected =
+        from_hex("7649abac8119b246cee98e9b12e9197d"
+                 "5086cb9b507219ee95db113a917678b2"
+                 "c5555dd3736c910201ac7ac34a246406");
+
+    const auto ciphertext = aes128_cbc_encrypt(key, iv, plaintext);
+    ASSERT_EQ(ciphertext.size(), 64u);
+    EXPECT_EQ(std::vector<uint8_t>(ciphertext.begin(), ciphertext.begin() + 48), expected);
+    const auto recovered = aes128_cbc_decrypt(key, iv, ciphertext);
+    EXPECT_EQ(recovered, plaintext);
+}
+
+TEST(CryptoAes128, CbcEncryptDecryptRoundtrip) {
+    const auto key = from_hex("2b7e151628aed2a6abf7158809cf4f3c");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+    const auto plaintext =
+        from_hex("6bc1bee22e409f96e93d7e117393172a"
+                 "ae2d8a571e03ac9c9eb76fac45af8e51"
+                 "30c81c46a35ce411e5fbc1191a0a16ef");
+
+    const auto ciphertext = aes128_cbc_encrypt(key, iv, plaintext);
+    const auto recovered = aes128_cbc_decrypt(key, iv, ciphertext);
+    EXPECT_EQ(recovered, plaintext);
+}
+
+TEST(CryptoAes128, CbcEncryptDecryptEmptyPlaintext) {
+    const auto key = from_hex("2b7e151628aed2a6abf7158809cf4f3c");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+
+    const auto ciphertext = aes128_cbc_encrypt(key, iv, std::span<const uint8_t>{});
+    ASSERT_EQ(ciphertext.size(), 16u);
+    const auto recovered = aes128_cbc_decrypt(key, iv, ciphertext);
+    EXPECT_TRUE(recovered.empty());
+}
+
+TEST(CryptoAes128, CbcDecryptInvalidCiphertextReturnsEmpty) {
+    const auto key = from_hex("2b7e151628aed2a6abf7158809cf4f3c");
+    const auto iv = from_hex("000102030405060708090a0b0c0d0e0f");
+    const auto bad = from_hex("0011223344556677889900aabbccddeeff");
+    EXPECT_TRUE(aes128_cbc_decrypt(key, iv, bad).empty());
+}
