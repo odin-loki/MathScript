@@ -3548,6 +3548,24 @@ TEST(ReplCommandsTest, wave251_signal_filter) {
     EXPECT_NEAR(y(4, 0), 1.9375, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave251_signal_cheby1) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_cheby1(order,rp_db,cutoff,fs[,type])");
+
+    // scipy.signal.cheby1(2, 1.0, 0.25, fs=2.0, btype='low')
+    expect_ok(interp, "ba = signal_cheby1(2, 1.0, 0.25, 2.0)");
+    ASSERT_GT(interp.state().matrices.count("ba"), 0u);
+    const auto& ba = interp.state().matrices.at("ba");
+    EXPECT_EQ(ba.rows(), 2u);
+    EXPECT_EQ(ba.cols(), 3u);
+    EXPECT_NEAR(ba(0, 0), 0.10255744, 1e-6);
+    EXPECT_NEAR(ba(1, 0), 1.0, 1e-12);
+
+    expect_ok(interp, "bah = signal_cheby1(2, 1.0, 0.25, 2.0, 1)");
+    ASSERT_GT(interp.state().matrices.count("bah"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("bah").rows(), 2u);
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");
