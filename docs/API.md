@@ -51,7 +51,7 @@ Foundation types, linear algebra, BLAS/LAPACK, numerics, memory, error handling,
 | `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson, unconditionally stable), `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d` (first-order upwind), `pde_advection_1d_lax_wendroff` (second-order Lax-Wendroff), `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d`, `pde_reaction_diffusion_1d` (Fisher-KPP, zero-flux Neumann BC) with CFL/stability guards; `pde_helmholtz_2d` (2D Helmholtz equation `Laplacian(u)+k^2*u=f` via the same dense finite-difference approach as `pde_poisson_2d` plus a reaction term — documents the near-resonance ill-conditioning inherent to Helmholtz problems); `pde_laplace_2d` (steady 2D Laplace equation ∇²u=0 via Jacobi iteration with Dirichlet boundary values) |
 | `fem/fem.hpp` | 1D/2D P1 finite-element Poisson solvers: `mesh1d`/`mesh2d_rectangular`, `lagrange_basis`, `assemble_stiffness_1d`/`assemble_stiffness_2d`, `assemble_load_1d`/`assemble_load_2d` (Gauss quadrature), `apply_dirichlet`, `solve_fem` (via `ms::linalg::solve`); 2D uses structured triangular meshes on rectangles |
 | `cfd/cfd.hpp` | 1D/2D finite-volume advection: `grid1d`/`grid2d`, `square_pulse`/`square_pulse_2d`, `constant_velocity`, explicit Euler upwind `upwind_fvm_advection`/`upwind_fvm_advection_2d`, time integration `run_advection`/`run_advection_2d`, mass integrals `integrated_mass`/`integrated_mass_2d`; `BoundaryCondition` periodic or zero-flux per axis; CFL guards reject unstable steps |
-| `crypto/crypto.hpp` | Pure-C++ digests and ciphers (include individually — not in `ms/ms.hpp`): `sha256`/`sha512`/`hmac_sha256` with hex helpers; AES-128/256 single-block ECB (`aes128_encrypt_block`, `aes256_encrypt_block`); AES-128 CBC (`aes128_cbc_encrypt`, `aes128_cbc_decrypt`); AES-128-GCM authenticated encryption (`aes128_gcm_encrypt`, `aes128_gcm_decrypt`; NIST SP 800-38D test vectors); ChaCha20 stream cipher (`chacha20_encrypt`, XOR self-inverse) |
+| `crypto/crypto.hpp` | Pure-C++ digests and ciphers (include individually — not in `ms/ms.hpp`): `sha256`/`sha512`/`hmac_sha256` with hex helpers; AES-128/256 single-block ECB (`aes128_encrypt_block`, `aes256_encrypt_block`); AES-128 CBC (`aes128_cbc_encrypt`, `aes128_cbc_decrypt`); AES-128-GCM authenticated encryption (`aes128_gcm_encrypt`, `aes128_gcm_decrypt`; NIST SP 800-38D test vectors); ChaCha20 stream cipher (`chacha20_encrypt`, XOR self-inverse); ChaCha20-Poly1305 AEAD (`chacha20_poly1305_encrypt`/`chacha20_poly1305_decrypt`; RFC 8439); X25519 ECDH (`x25519_keypair`, `x25519_shared_secret`; RFC 7748 via curve25519-donna) |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point`, `illinois` (anti-stagnation regula falsi); `levenberg_marquardt` (damped Gauss-Newton nonlinear least squares via a finite-difference Jacobian and adaptive damping); `conjugate_gradient` (nonlinear Fletcher-Reeves/Polak-Ribière+ CG with Armijo backtracking line search — converges in near-N steps on exact quadratics); `rmsprop` (adaptive gradient optimizer via EMA of squared gradients); `adadelta` (adaptive gradient optimizer without manual learning-rate schedule) |
 | `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals); `sym_expand` (distributes multiplication over addition/subtraction, with bounded small-integer-power expansion); `sym_collect` (combine like terms in a variable); `sym_limit`, `sym_series`, `sym_solve_linear`; table-driven `sym_laplace`/`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_ztransform`/`sym_iztransform` (MVP: polynomials, `exp`, `sin/cos`, rationals, geometric sequences; unsupported forms return `sym_deriv` sentinel); `sym_dsolve` (separable first-order ODE MVP — Mellin/Hankel and general `dsolve` deferred) |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye`; `erfinv`/`erfcinv`, `trigamma`/`polygamma`, `pochhammer`/`falling_factorial`, `rgamma`, and the public canonical `gamma_inc_reg`/`gamma_inc_reg_upper`/`gamma_inc`/`beta_inc_reg`/`beta_inc` (also used internally by `ms::prob`'s `gamma_cdf`/`beta_cdf`/`f_cdf`/`chi2_cdf`); Voigt/pseudo-Voigt spectroscopy line shapes (`voigt`, `pseudo_voigt`, `pseudo_voigt_auto`, built on a from-scratch Humlicek w4 Faddeeva-function approximation); `sph_bessel_j`/`sph_bessel_y` (spherical Bessel functions via closed-form base cases plus a stable upward recurrence); `assoc_legendre_p`/`sph_harmonic_y` (associated Legendre polynomials and complex spherical harmonics `Y_l^m(theta,phi)`, verified via sphere orthonormality); `kummer_u` (Kummer's confluent hypergeometric function of the second kind, via the standard connection formula in terms of `kummer_m`); `lambert_w` (Lambert W function, branches 0 and −1) |
@@ -104,14 +104,17 @@ CUDA GPU kernels (when `MS_ENABLE_CUDA=ON`) and MPI distributed linear algebra (
 | `cuda/elementwise.hpp` | In-place `add_inplace` and `fill` on device spans |
 | `cuda/sparse.hpp` | COO sparse matrix-vector multiply on GPU |
 | `cuda/nvml.hpp` | NVML `DeviceStats` and utilization queries; `device_stats()` populates `memory_total_bytes`/`memory_used_bytes` from `cudaMemGetInfo` (NVML optional for utilization/name); `device_memory_free` (derived `total - used` with underflow guard) |
-| `cuda/nccl.hpp` | NCCL availability and communicator size helpers |
+| `cuda/nccl.hpp` | NCCL availability and communicator size helpers; `allreduce_sum(x)` stub-safe identity when `MS_HAS_NCCL=0` or comm size 1 |
 | `distributed/mpi_context.hpp` | `MPIContext` init/finalize, rank/size, `allreduce_sum`/`allreduce_max`/`allreduce_min`, `barrier` |
 | `distributed/dist_matrix.hpp` | `DistMatrix` local shards; `scatter`, `gather`, `combine_gather` |
 | `distributed/block.hpp` | Block and block-cyclic row partitioning helpers |
+| `distributed/matmul.hpp` | Distributed GEMM `matmul(A, B, ctx)` — row-block scatter + local GEMM (stub-safe single-rank) |
 | `distributed/linalg.hpp` | Distributed wrappers for `eig_sym`, `svd`, `lu` via gather-on-root |
 | `distributed/solve.hpp` | Distributed linear solve `A x = b` (gather-on-root → CPU `ms::solve` today) |
 
-**REPL bindings (MPI / distributed):** `mpi` (status dump), `mpi_rank()`, `mpi_size()`, `mpi_allreduce_sum(x)`, `dist_solve(A,b)` — stub-safe when `MS_ENABLE_MPI=OFF` (rank 0, size 1, local solve).
+**REPL bindings (MPI / distributed):** `mpi` (status dump), `mpi_rank()`, `mpi_size()`, `mpi_allreduce_sum(x)`, `dist_solve(A,b)`, `dist_matmul(A,B)` — stub-safe when `MS_ENABLE_MPI=OFF` (rank 0, size 1, local solve/matmul).
+
+**REPL bindings (CUDA / NCCL):** `cuda_allreduce_sum(x)` — NCCL all-reduce sum (stub: identity when `MS_HAS_NCCL=0` or comm size 1).
 
 ## Interpreter & tooling
 
@@ -158,7 +161,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 |------|-------------|
 | `rgb2gray(M)` | `(H·W)×3` RGB rows → grayscale column vector |
 | `rgb2hsv(M)` | `(H·W)×3` RGB rows → `H×3` HSV matrix (Wave 234) |
-| `sobel(M)`, `imgaussfilt(M, σ)`, `laplacian(M)`, `histeq(M)`, `sharpen(M)`, `threshold_otsu(M)`, `imresize(M, r, c)` | Grayscale image ops on `H×W` matrices |
+| `sobel(M)`, `prewitt(M)`, `scharr(M)`, `roberts(M)`, `imgaussfilt(M, σ)`, `laplacian(M)`, `histeq(M)`, `sharpen(M)`, `threshold_otsu(M)`, `imresize(M, r, c)` | Grayscale image ops on `H×W` matrices |
 | `imdilate(M, k)`, `imerode(M, k)`, `imopen(M, k)`, `imclose(M, k)` | Binary/grayscale morphology on `H×W` matrices (Wave 234) |
 | `rle_encode_vec(M)`, `rle_decode_vec(M)` | RLE on flattened matrix bytes |
 | `delta_encode_vec(M)`, `delta_decode_vec(M)` | Delta coding on flattened bytes |
@@ -209,6 +212,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `control_zeros(num, den)` | Transfer-function zero list |
 | `control_step_info(num, den)` | Step-response metrics (rise/settling/overshoot) |
 | `control_nyquist(num, den)` | Nyquist curve as `N×2` real/imag matrix |
+| `control_lqe(A, C, Q, R)` | Linear quadratic estimator (Kalman) gain matrix (Wave 237) |
 
 **Quantum information (scalar assignment):**
 
@@ -227,6 +231,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `finance_max_sharpe_portfolio(cov, mu, risk_free)` | Maximum Sharpe-ratio portfolio weights |
 | `finance_portfolio_return(weights, returns)` | Portfolio expected return from `N×1` weights and returns |
 | `finance_heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)` | Heston stochastic-volatility European call price |
+| `finance_sabr_call(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European call price (Wave 237) |
 
 **Graph community/centrality (matrix assignment, Wave 234):**
 
@@ -235,6 +240,9 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `graph_louvain(A)` | Louvain community partition as `K×M` vertex-index matrix |
 | `graph_eigenvector_centrality(A)` | Power-iteration eigenvector centrality column |
 | `graph_articulation_points(A)` | Articulation points of undirected adjacency `A` as `N×1` column |
+| `graph_bridges(A)` | Bridge edges of undirected graph as `E×2` endpoint matrix (Wave 237) |
+| `graph_min_cut(A, source, sink)` | Minimum s–t cut value on directed capacity matrix (Wave 237) |
+| `graph_transitive_closure(A)` | Boolean reachability closure as `N×N` matrix (Wave 237) |
 
 **CUDA matrix ops (matrix assignment, stub-safe when `MS_ENABLE_CUDA=OFF`):**
 
@@ -242,6 +250,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 |------|-------------|
 | `cuda_lu(A)` | GPU LU factorization summary (when CUDA available) |
 | `cuda_add(A, B)` | Element-wise matrix add on GPU (falls back to CPU) |
+| `cuda_allreduce_sum(x)` | NCCL all-reduce sum of scalar `x` (stub: identity when NCCL off or size 1; Wave 237) |
 
 **Crypto, FEM, and CFD (string/matrix assignment):**
 
@@ -253,6 +262,9 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_aes128_gcm_encrypt(key_hex, iv_hex, aad_hex, plaintext_hex)` | AES-128-GCM seal; returns hex `ciphertext:tag` (Wave 234) |
 | `crypto_aes128_gcm_decrypt(key_hex, iv_hex, aad_hex, ciphertext_hex, tag_hex)` | AES-128-GCM open; returns hex plaintext (Wave 234) |
 | `crypto_chacha20(key_hex, nonce_hex, counter, data_hex)` | ChaCha20 stream cipher (XOR self-inverse); returns hex output |
+| `crypto_chacha20_poly1305_encrypt(key_hex, nonce_hex, aad_hex, plaintext_hex)` | ChaCha20-Poly1305 seal; returns hex `ciphertext:tag` (Wave 235) |
+| `crypto_chacha20_poly1305_decrypt(key_hex, nonce_hex, aad_hex, ciphertext_hex, tag_hex)` | ChaCha20-Poly1305 open; returns hex plaintext (Wave 235) |
+| `crypto_x25519_shared(priv_hex, pub_hex)` | X25519 ECDH shared secret as hex (Wave 236) |
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
 | `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column (Wave 236) |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |
@@ -267,6 +279,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `mpi_size()` | MPI world size (stub: 1) |
 | `mpi_allreduce_sum(x)` | All-reduce sum of scalar `x` (stub: identity) |
 | `dist_solve(A, b)` | Distributed linear solve `A x = b` (stub: local gather + `ms::solve`) |
+| `dist_matmul(A, B)` | Distributed matrix multiply — row-block local GEMM (stub-safe single-rank; Wave 236) |
 
 **ODE formula-string bindings (scalar IVP):**
 
