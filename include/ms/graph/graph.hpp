@@ -178,6 +178,15 @@ Result<MinCutResult> min_cut(const Graph& G, int source, int sink);
 // G must be bipartite with left vertices [0, left_size) and right [left_size, n)
 Result<int> bipartite_match(const Graph& G, int left_size);
 
+// Maximum cardinality matching in a general undirected graph (Edmonds blossom).
+// Directed edges are treated as undirected (same convention as bridges /
+// biconnected_components). Self-loops are ignored. Returns matching edges as
+// (u,v) pairs with u < v. Empty when n == 0 or the graph has no matchable edges.
+// @param G input graph
+// @return list of matched undirected edges (cardinality-maximal)
+// @note O(V^3) time via BFS blossom shrinking; intended for moderate n
+std::vector<std::pair<int, int>> maximum_matching(const Graph& G);
+
 // --- Coloring (greedy) ---
 std::vector<int> greedy_colour(const Graph& G);
 int chromatic_number_approx(const Graph& G);  // greedy upper bound

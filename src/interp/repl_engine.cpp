@@ -3221,6 +3221,20 @@ Result<Matrix<double>> eval_graph_bridges(const Matrix<double>& adj_m) {
     return out;
 }
 
+Result<Matrix<double>> eval_graph_maximum_matching(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_maximum_matching");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto edges = graph::maximum_matching(*G);
+    Matrix<double> out(edges.size(), 2);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        out(i, 0) = static_cast<double>(edges[i].first);
+        out(i, 1) = static_cast<double>(edges[i].second);
+    }
+    return out;
+}
+
 Result<Matrix<double>> eval_graph_transitive_closure(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_transitive_closure");
     if (!G) {
@@ -8718,7 +8732,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_articulation_points" ||
             fn == "graph_biconnected_components" || fn == "graph_eulerian_path" ||
             fn == "graph_hamiltonian_path" || fn == "graph_tsp_heuristic" ||
-            fn == "graph_bridges" || fn == "graph_transitive_closure" ||
+            fn == "graph_bridges" || fn == "graph_maximum_matching" ||
+            fn == "graph_transitive_closure" ||
             fn == "finance_min_variance_portfolio" ||
             fn == "graph_is_bipartite" ||
             fn == "graph_is_dag" || fn == "graph_is_connected" ||
@@ -10226,7 +10241,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_articulation_points" ||
            callee == "graph_biconnected_components" || callee == "graph_eulerian_path" ||
            callee == "graph_hamiltonian_path" || callee == "graph_tsp_heuristic" ||
-           callee == "graph_bridges" || callee == "graph_transitive_closure" ||
+           callee == "graph_bridges" || callee == "graph_maximum_matching" ||
+           callee == "graph_transitive_closure" ||
            callee == "finance_min_variance_portfolio" ||
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" || callee == "fft_fft2" ||
            callee == "signal_envelope" || callee == "signal_hilbert" ||
@@ -10290,7 +10306,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "graph_betweenness" || callee == "graph_closeness" ||
         callee == "graph_degree_centrality" || callee == "graph_louvain" ||
         callee == "graph_eigenvector_centrality" || callee == "graph_articulation_points" ||
-        callee == "graph_bridges" || callee == "graph_transitive_closure" ||
+        callee == "graph_bridges" || callee == "graph_maximum_matching" ||
+        callee == "graph_transitive_closure" ||
         callee == "finance_min_variance_portfolio" ||
         callee == "fft_rfft" || callee == "fft_dft" ||
         callee == "fft_ifft" || callee == "fft_fft2" ||
@@ -13513,6 +13530,16 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(br.error());
         }
         result = *br;
+    } else if (assign.callee == "graph_maximum_matching" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto mm = eval_graph_maximum_matching(*matrix);
+        if (!mm) {
+            return std::unexpected(mm.error());
+        }
+        result = *mm;
     } else if (assign.callee == "graph_transitive_closure" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -14528,6 +14555,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_eigenvector_centrality(A) eigenvector centrality column from adjacency\n"
             "  name = graph_articulation_points(A) articulation points of undirected graph as Nx1 column\n"
             "  name = graph_bridges(A) bridge edges of undirected graph as Mx3 [from,to,weight]\n"
+            "  name = graph_maximum_matching(A) maximum cardinality matching as Mx2 [u,v] edge list\n"
             "  name = graph_biconnected_components(A) biconnected components as Kx(3*M) edge triples\n"
             "  name = graph_bipartite_match(A,left_size) maximum bipartite matching size\n"
             "  name = graph_transitive_closure(A) boolean reachability matrix of directed graph\n"
@@ -15003,7 +15031,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
-            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
+            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
@@ -23983,6 +24011,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "bridges =\n";
             print_matrix(out, *br);
+        } else if (fn == "graph_maximum_matching") {
+            auto mm = eval_graph_maximum_matching(*matrix);
+            if (!mm) {
+                return std::unexpected(mm.error());
+            }
+            out << "matching =\n";
+            print_matrix(out, *mm);
         } else if (fn == "graph_transitive_closure") {
             auto reach = eval_graph_transitive_closure(*matrix);
             if (!reach) {

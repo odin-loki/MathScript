@@ -1236,6 +1236,118 @@ Result<int> bipartite_match(const Graph& G, int left_size) {
     return total;
 }
 
+// ---- General maximum cardinality matching (Edmonds blossom) ----
+
+std::vector<std::pair<int, int>> maximum_matching(const Graph& G) {
+    const int n = G.n_vertices();
+    if (n == 0) return {};
+
+    std::vector<std::vector<int>> adj(static_cast<size_t>(n));
+    for (int u = 0; u < n; ++u) {
+        for (const auto& [v, w] : G.neighbors(u)) {
+            if (v < 0 || v >= n || v == u) continue;
+            adj[static_cast<size_t>(u)].push_back(v);
+        }
+    }
+    for (auto& row : adj) {
+        std::sort(row.begin(), row.end());
+        row.erase(std::unique(row.begin(), row.end()), row.end());
+    }
+
+    std::vector<int> mate(static_cast<size_t>(n), -1);
+    std::vector<int> parent(static_cast<size_t>(n), -1);
+    std::vector<int> base(static_cast<size_t>(n));
+    std::vector<int> q(static_cast<size_t>(n));
+    std::vector<char> used(static_cast<size_t>(n), 0);
+    std::vector<char> blossom(static_cast<size_t>(n), 0);
+
+    auto lca = [&](int a, int b) {
+        std::vector<char> marked(static_cast<size_t>(n), 0);
+        while (true) {
+            a = base[static_cast<size_t>(a)];
+            marked[static_cast<size_t>(a)] = 1;
+            if (mate[static_cast<size_t>(a)] == -1) break;
+            a = parent[static_cast<size_t>(mate[static_cast<size_t>(a)])];
+        }
+        while (true) {
+            b = base[static_cast<size_t>(b)];
+            if (marked[static_cast<size_t>(b)]) return b;
+            b = parent[static_cast<size_t>(mate[static_cast<size_t>(b)])];
+        }
+    };
+
+    auto mark_path = [&](int v, int b, int children) {
+        while (base[static_cast<size_t>(v)] != b) {
+            blossom[static_cast<size_t>(base[static_cast<size_t>(v)])] = 1;
+            blossom[static_cast<size_t>(base[static_cast<size_t>(mate[static_cast<size_t>(v)])])] = 1;
+            parent[static_cast<size_t>(v)] = children;
+            children = mate[static_cast<size_t>(v)];
+            v = parent[static_cast<size_t>(mate[static_cast<size_t>(v)])];
+        }
+    };
+
+    auto find_path = [&](int root) -> int {
+        used.assign(static_cast<size_t>(n), 0);
+        parent.assign(static_cast<size_t>(n), -1);
+        for (int i = 0; i < n; ++i) base[static_cast<size_t>(i)] = i;
+        used[static_cast<size_t>(root)] = 1;
+        int qh = 0, qt = 0;
+        q[static_cast<size_t>(qt++)] = root;
+        while (qh < qt) {
+            const int v = q[static_cast<size_t>(qh++)];
+            for (int to : adj[static_cast<size_t>(v)]) {
+                if (base[static_cast<size_t>(v)] == base[static_cast<size_t>(to)] ||
+                    mate[static_cast<size_t>(v)] == to)
+                    continue;
+                if (to == root ||
+                    (mate[static_cast<size_t>(to)] != -1 &&
+                     parent[static_cast<size_t>(mate[static_cast<size_t>(to)])] != -1)) {
+                    const int cur = lca(v, to);
+                    blossom.assign(static_cast<size_t>(n), 0);
+                    mark_path(v, cur, to);
+                    mark_path(to, cur, v);
+                    for (int i = 0; i < n; ++i) {
+                        if (blossom[static_cast<size_t>(base[static_cast<size_t>(i)])]) {
+                            base[static_cast<size_t>(i)] = cur;
+                            if (!used[static_cast<size_t>(i)]) {
+                                used[static_cast<size_t>(i)] = 1;
+                                q[static_cast<size_t>(qt++)] = i;
+                            }
+                        }
+                    }
+                } else if (parent[static_cast<size_t>(to)] == -1) {
+                    parent[static_cast<size_t>(to)] = v;
+                    if (mate[static_cast<size_t>(to)] == -1) return to;
+                    to = mate[static_cast<size_t>(to)];
+                    used[static_cast<size_t>(to)] = 1;
+                    q[static_cast<size_t>(qt++)] = to;
+                }
+            }
+        }
+        return -1;
+    };
+
+    for (int i = 0; i < n; ++i) {
+        if (mate[static_cast<size_t>(i)] == -1) {
+            int v = find_path(i);
+            while (v != -1) {
+                const int pv = parent[static_cast<size_t>(v)];
+                const int ppv = mate[static_cast<size_t>(pv)];
+                mate[static_cast<size_t>(v)] = pv;
+                mate[static_cast<size_t>(pv)] = v;
+                v = ppv;
+            }
+        }
+    }
+
+    std::vector<std::pair<int, int>> edges;
+    for (int i = 0; i < n; ++i) {
+        if (mate[static_cast<size_t>(i)] > i)
+            edges.emplace_back(i, mate[static_cast<size_t>(i)]);
+    }
+    return edges;
+}
+
 // ---- Coloring ----
 
 std::vector<int> greedy_colour(const Graph& G) {
