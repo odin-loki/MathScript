@@ -1116,6 +1116,42 @@ std::vector<uint8_t> hmac_sha256(std::string_view key, std::string_view data) {
                                  data.size()));
 }
 
+std::vector<uint8_t> hkdf_sha256(std::span<const uint8_t> ikm,
+                                 std::span<const uint8_t> salt,
+                                 std::span<const uint8_t> info,
+                                 std::size_t out_len) {
+    if (out_len == 0) {
+        return {};
+    }
+    if (out_len > 255 * sha256_digest_size) {
+        return {};
+    }
+
+    std::vector<uint8_t> extract_salt(salt.begin(), salt.end());
+    if (extract_salt.empty()) {
+        extract_salt.assign(sha256_digest_size, 0);
+    }
+    const std::vector<uint8_t> prk = hmac_sha256(extract_salt, ikm);
+
+    const std::size_t blocks = (out_len + sha256_digest_size - 1) / sha256_digest_size;
+    std::vector<uint8_t> okm;
+    okm.reserve(out_len);
+
+    std::vector<uint8_t> t_prev;
+    for (std::size_t i = 1; i <= blocks; ++i) {
+        std::vector<uint8_t> hmac_input;
+        hmac_input.reserve(t_prev.size() + info.size() + 1);
+        hmac_input.insert(hmac_input.end(), t_prev.begin(), t_prev.end());
+        hmac_input.insert(hmac_input.end(), info.begin(), info.end());
+        hmac_input.push_back(static_cast<uint8_t>(i));
+
+        t_prev = hmac_sha256(prk, hmac_input);
+        const std::size_t take = std::min(sha256_digest_size, out_len - okm.size());
+        okm.insert(okm.end(), t_prev.begin(), t_prev.begin() + static_cast<std::ptrdiff_t>(take));
+    }
+    return okm;
+}
+
 std::string to_hex(std::span<const uint8_t> bytes) {
     std::string out;
     out.resize(bytes.size() * 2);
