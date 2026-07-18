@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 258 ✅ COMPLETE — **416 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 259 ✅ COMPLETE — **417 CTest suites** on `main`)
 
 ---
 
@@ -327,9 +327,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **416 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–258** closed for this incremental batch.
 
+## Wave 259 ✅ COMPLETE (hess/schur, finance frontier, geo curves, combo/numthy, Unique Lines)
+
+| Area | Deliverable |
+|------|-------------|
+| Linalg REPL | hess; schur (+ multi T,Q) |
+| Finance REPL | efficient_frontier / max_sharpe |
+| Geo REPL | bezier_eval / catmull_rom / bspline_eval |
+| Combo/Numthy | binomial / bell_num; factor |
+| Image REPL | imgradient_morph |
+| GUI | Unique Lines |
+| Tests | `integration_repl_wave259_pipeline` |
+
+**417 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–259** closed for this incremental batch.
+
 ---
 
-## Next (Wave 259+) — deferred
+## Next (Wave 260+) — deferred
 
 | Item | Notes |
 |------|--------|

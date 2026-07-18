@@ -10,6 +10,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 ### Added
 - **Tests** — `integration_repl_wave259_pipeline`.
 
+## [1.0.0] - 2026-07-19 (Wave 259 — hess/schur, finance frontier, geo curves, combo/numthy, Unique Lines) ✅ COMPLETE
+
+Twenty-ninth feature wave after Wave 258. Parallel Composer 2.5 worktrees merged to `main`: Hessenberg/Schur, portfolio optimizers, curve evaluation, combinatorial/number-theory scalars, morphological gradient, GUI Unique Lines, and wave259 pipeline.
+
+### Added (Wave 259)
+- **Linalg REPL** — `hess(A)`; `schur(A)` / `T, Q = schur(A)`.
+- **Finance REPL** — `finance_efficient_frontier` / `finance_max_sharpe`.
+- **Geo REPL** — `geo_bezier_eval` / `geo_catmull_rom` / `geo_bspline_eval`.
+- **Combo/Numthy REPL** — `combo_binomial` / `combo_bell_num`; `numthy_factor`.
+- **Image REPL** — `imgradient_morph`.
+- **GUI** — Unique Lines (Ctrl+Shift+U).
+- **Tests** — `integration_repl_wave259_pipeline`.
+
+### Docs (Wave 259)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 259 sync; **417** CTest suites.
+
+**417 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-19 (Wave 258 — image morph/radon, linalg matfun, graph SP, info/stats, Join Lines) ✅ COMPLETE
 
 Twenty-eighth feature wave after Wave 257. Parallel Composer 2.5 worktrees merged to `main`: image morphology/histogram/Radon, matrix functions, shortest-path graph REPL, info entropy extensions, stats regression helpers, GUI Join Lines, and wave258 pipeline.

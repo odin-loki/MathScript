@@ -298,6 +298,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `graph_dijkstra` / `graph_bellman_ford` | Shortest paths → Nx2 [dist,parent] (Wave 258) |
 | `info_permutation_entropy` / `info_transfer_entropy` | Time-series information measures (Wave 258) |
 | `stats_partial_correlation` / `stats_weighted_mean` / `stats_trimmed_mean` / `stats_arfit` / `stats_multiple_regression` | Correlation / means / regression (Wave 258) |
+| `hess(A)` / `schur(A)` / `T, Q = schur(A)` | Hessenberg / Schur (Wave 259) |
+| `finance_efficient_frontier` / `finance_max_sharpe` | Mean-variance portfolios (Wave 259) |
+| `geo_bezier_eval` / `geo_catmull_rom` / `geo_bspline_eval` | Curve evaluation → 1×2 (Wave 259) |
+| `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization (Wave 259) |
+| `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
 | `signal_deconv(y,b)` | Polynomial deconvolution of column vectors (Wave 254) |

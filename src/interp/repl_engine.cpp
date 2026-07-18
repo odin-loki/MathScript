@@ -16245,8 +16245,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = gray_image_to_matrix(image::iradon(sino, theta_f));
     } else if (assign.callee == "hess" && assign.args.size() == 1) {
-    } else if ((assign.callee == "geo_bezier_eval" || assign.callee == "geo_catmull_rom") &&
-               assign.args.size() == 2) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -16262,6 +16260,12 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(decomp.error());
         }
         result = decomp->T;
+    } else if ((assign.callee == "geo_bezier_eval" || assign.callee == "geo_catmull_rom") &&
+               assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
         double t = 0.0;
         if (!parse_number(assign.args[1], t)) {
             auto t_expr = eval_scalar_expr(state_, assign.args[1]);
@@ -16308,6 +16312,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
     }
+
     return result;
 }
 

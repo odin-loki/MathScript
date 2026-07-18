@@ -74,8 +74,6 @@ TEST(ReplWave259Pipeline, FinanceMaxSharpe) {
     expect_contains(interp, "help", "finance_max_sharpe(cov,mu,risk_free)");
 }
 
-} // namespace
-
 TEST(ReplWave259Pipeline, SqrtmDiagonal) {
     Interpreter interp;
 
@@ -160,3 +158,4 @@ TEST(ReplWave259Pipeline, InfoPermutationEntropy) {
     EXPECT_NEAR(interp.state().scalars.at("pe2"), 1.0 / std::log2(6.0), 1e-10);
     expect_contains(interp, "help", "info_permutation_entropy");
 }
+
