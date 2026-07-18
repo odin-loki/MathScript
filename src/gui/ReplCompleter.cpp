@@ -181,6 +181,11 @@ QStringList repl_command_list() {
         QStringLiteral("signal_czt_zoom"),
         QStringLiteral("signal_firwin"),
         QStringLiteral("signal_firwin_highpass"),
+        // Stats
+        QStringLiteral("stats_linear_regression"),
+        QStringLiteral("stats_pacf"),
+        QStringLiteral("stats_kde"),
+        QStringLiteral("stats_bootstrap_ci"),
         // ML / graph (common)
         QStringLiteral("ml_accuracy"),
         QStringLiteral("ml_rmse"),

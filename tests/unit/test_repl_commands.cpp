@@ -5464,3 +5464,42 @@ TEST(ReplCommandsTest, wave255_crypto_x25519_keypair) {
         R"cmd(crypto_x25519_keypair("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"))cmd",
         "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a");
 }
+
+TEST(ReplCommandsTest, wave256_stats_ts) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_linear_regression(x,y)");
+    expect_contains(interp, "help", "stats_pacf(x,max_lag)");
+    expect_contains(interp, "help", "stats_kde(samples,grid,h)");
+    expect_contains(interp, "help", "stats_bootstrap_ci(x)");
+
+    // y = 2x + 1
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_ok(interp, "y = [3; 5; 7; 9; 11]");
+    expect_ok(interp, "lr = stats_linear_regression(x, y)");
+    ASSERT_GT(interp.state().matrices.count("lr"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("lr").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("lr").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("lr")(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("lr")(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("lr")(0, 2), 1.0, 1e-9);
+
+    expect_ok(interp, "p = stats_pacf([1; 2; 3; 4; 5], 2)");
+    ASSERT_GT(interp.state().matrices.count("p"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("p").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("p").cols(), 1u);
+
+    expect_ok(interp, "k = stats_kde([0; 1; 2; 3; 4], [-1; 0; 1; 2; 3; 4; 5], 1)");
+    ASSERT_GT(interp.state().matrices.count("k"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("k").rows(), 7u);
+    EXPECT_EQ(interp.state().matrices.at("k").cols(), 1u);
+    for (size_t i = 0; i < 7; ++i) {
+        EXPECT_TRUE(std::isfinite(interp.state().matrices.at("k")(i, 0)));
+    }
+
+    expect_ok(interp, "ci = stats_bootstrap_ci([1; 2; 3; 4; 5; 6; 7; 8; 9; 10])");
+    ASSERT_GT(interp.state().matrices.count("ci"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ci").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("ci").cols(), 2u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 0)));
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 1)));
+}
