@@ -7,6 +7,15 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+### Added (Wave 263 — WIP)
+- **Combo REPL** — `combo_bracelets` / `combo_lyndon_words` / `combo_restricted_partitions` / `combo_involutions` (intended; sibling landings).
+- **Numthy REPL** — `numthy_pell_solve` / `numthy_quadratic_residues` (intended; sibling landings).
+- **Poly REPL** — `poly_lagrange` / `poly_interp_newton` (intended; sibling landings).
+- **Finance REPL** — `finance_bl_implied_returns` / `finance_merton_distance_to_default` / `finance_historical_var` (intended; sibling landings).
+- **Control REPL** — `control_kalman_predict` / `control_kalman_update` (intended; sibling landings).
+- **Special REPL** — `special_voigt` / `special_airy_ai` (intended; sibling landings).
+- **Tests** — `integration_repl_wave263_pipeline` (smoke + Wave 262 regressions).
+
 ## [1.0.0] - 2026-07-19 (Wave 262 — combo enum, numthy, lsq/diag, finance rates, poly, Reverse Lines) ✅ COMPLETE
 
 Thirty-second feature wave after Wave 261. Parallel Composer 2.5 worktrees merged to `main`: combinatorial enumerations, number-theory helpers, dense least-squares/diag, Bachelier and short-rate models, polynomial resultant/discriminant, GUI Reverse Lines, and wave262 pipeline.
