@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 245 ✅ COMPLETE — **402 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 246 ✅ COMPLETE — **403 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–245 COMPLETE (summary)
+## Feature waves ✅ 231–246 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -54,6 +54,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **243** | `dist_qmr`; HMAC-SHA512; `qmr`/`lsqr`/phase REPL; GUI word wrap; graph articulation tests; `dist_minres` bench |
 | **244** | `dist_tfqmr`; PBKDF2-SHA512; `heston_put`; `tfqmr`/`lsmr`/spectrogram REPL; GUI replace; Wave 243 benches |
 | **245** | AES-256-CBC; HKDF-SHA512; `poly_diff` + geo boolean REPL; graph k-core/chromatic; GUI find-prev; Wave 244 benches |
+| **246** | AES-256-GCM; `dist_lsmr`; blossom matching; NCCL `allreduce_prod`; GUI Duplicate Line; Wave 245 benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -166,17 +167,28 @@ See `CHANGELOG.md` for per-wave branch tables.
 | GUI | Find Previous in Script/Output |
 | Benchmarks | `dist_tfqmr` + PBKDF2-SHA512 smoke |
 
-**402 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–245** closed for this incremental batch.
+## Wave 246 ✅ COMPLETE (AES-256-GCM, dist LSMR, blossom matching, NCCL prod, GUI, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Crypto | AES-256-GCM + REPL |
+| Distributed | `dist_lsmr`; `test_dist_lsmr`; REPL |
+| Graph | Edmonds blossom `maximum_matching` + REPL |
+| NCCL | stub `allreduce_prod` + REPL |
+| GUI | Duplicate Line |
+| Benchmarks | AES-256-CBC + HKDF-SHA512 smoke |
+
+**403 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–246** closed for this incremental batch.
 
 ---
 
-## Next (Wave 246+) — deferred
+## Next (Wave 247+) — deferred
 
 | Item | Notes |
 |------|--------|
 | Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block iterative solvers |
 | Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
 | Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
-| Deeper API gaps | Blossom matching, full NCCL multi-GPU, Freund TFQMR loop, etc. |
+| Deeper API gaps | Full NCCL multi-GPU, Freund TFQMR loop, weighted blossom, etc. |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

@@ -304,6 +304,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_pbkdf2_hmac_sha512(hex_pass, hex_salt, iter, dklen)` | PBKDF2-HMAC-SHA512 (Wave 244) |
 | `crypto_hkdf_sha512(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA512 (Wave 245) |
 | `crypto_aes256_cbc_encrypt` / `crypto_aes256_cbc_decrypt` | AES-256-CBC hex I/O (Wave 245) |
+| `crypto_aes256_gcm_encrypt` / `crypto_aes256_gcm_decrypt` | AES-256-GCM AEAD hex I/O (Wave 246) |
+| `dist_lsmr(A, b)` | Distributed LSMR (stub gather; Wave 246) |
+| `cuda_allreduce_prod(x)` | NCCL stub product (identity when stub; Wave 246) |
+| `graph_maximum_matching(A)` | Edmonds blossom matching → Mx2 edges (Wave 246) |
 | `signal_instantaneous_phase(x)` | Analytic-signal phase column (Wave 243) |
 | `signal_spectrogram(x, fs)` | STFT magnitude matrix (Wave 244) |
 | `finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)` | Heston put via put-call parity (Wave 244) |

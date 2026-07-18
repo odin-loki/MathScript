@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 246 — AES-256-GCM, dist LSMR, blossom matching, NCCL prod, GUI, benches) ✅ COMPLETE
+
+Sixteenth feature wave after Wave 245. Parallel Composer 2.5 worktrees merged to `main`: AES-256-GCM, `dist_lsmr`, Edmonds blossom maximum matching, NCCL stub `allreduce_prod`, GUI Duplicate Line, and Wave 245 bench gaps.
+
+### Added (Wave 246)
+- **Crypto** — AES-256-GCM seal/open; REPL hex bindings.
+- **Distributed** — `dist_lsmr` stub-gather MVP; `test_dist_lsmr`; REPL.
+- **Graph** — `maximum_matching` (Edmonds blossom); REPL `graph_maximum_matching`.
+- **CUDA / NCCL** — stub `allreduce_prod`; REPL `cuda_allreduce_prod`.
+- **GUI** — Edit → Duplicate Line (Ctrl+Shift+D).
+- **Benchmarks** — `BM_Aes256CbcEncrypt_64KB`, `BM_HkdfSha512` smoke cases.
+
+### Docs (Wave 246)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 246 sync; **403** CTest suites.
+
+**403 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 245 — AES-256-CBC, HKDF-SHA512, poly_diff, graph k-core, GUI find-prev, benches) ✅ COMPLETE
 
 Fifteenth feature wave after Wave 244. Parallel Composer 2.5 worktrees merged to `main`: AES-256-CBC, HKDF-SHA512, convex `poly_diff` + geo boolean REPL, graph k-core/chromatic REPL, GUI Find Previous, and Wave 244 bench gaps.
