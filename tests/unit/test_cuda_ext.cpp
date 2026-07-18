@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "ms/cuda/buffer.hpp"
 #include "ms/cuda/elementwise.hpp"
 #include "ms/cuda/fft.hpp"
 #include <cmath>
@@ -54,4 +55,38 @@ TEST(CudaFftTest, ifft_roundtrip) {
     for (size_t i = 0; i < signal.size(); ++i) {
         EXPECT_NEAR((*restored)[i], signal[i], 1e-9);
     }
+}
+
+TEST(CudaStreamPoolTest, acquire_returns_null_when_unavailable) {
+#if !(defined(MS_HAS_CUDA) && MS_HAS_CUDA)
+    cuda::StreamPool pool;
+    EXPECT_EQ(pool.acquire(), nullptr);
+#else
+    if (!cuda::available()) {
+        cuda::StreamPool pool;
+        EXPECT_EQ(pool.acquire(), nullptr);
+    }
+#endif
+}
+
+TEST(CudaStreamPoolTest, acquire_release_reuses_streams) {
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (!cuda::available()) {
+        GTEST_SKIP() << "CUDA device not available";
+    }
+
+    cuda::StreamPool pool;
+    void* first = pool.acquire();
+    ASSERT_NE(first, nullptr);
+    void* second = pool.acquire();
+    ASSERT_NE(second, nullptr);
+    EXPECT_NE(first, second);
+
+    pool.release(first);
+    pool.release(second);
+
+    void* reused = pool.acquire();
+    ASSERT_NE(reused, nullptr);
+    pool.release(reused);
+#endif
 }

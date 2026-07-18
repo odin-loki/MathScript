@@ -2,6 +2,7 @@
 #include <cstring>
 #include <new>
 #include <utility>
+#include <vector>
 
 #if defined(MS_HAS_CUDA) && MS_HAS_CUDA
 #include <cuda_runtime.h>
@@ -157,12 +158,74 @@ PinnedBuffer::~PinnedBuffer() {
 #endif
 }
 
-struct StreamPool::Impl {};
+struct StreamPool::Impl {
+    static constexpr size_t kDefaultStreams = 8;
+    std::vector<void*> owned;
+    std::vector<void*> available;
 
-StreamPool::StreamPool() : impl_(new Impl) {}
-StreamPool::~StreamPool() { delete impl_; }
-void* StreamPool::acquire() { return nullptr; }
-void StreamPool::release(void*) {}
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    ~Impl() {
+        for (void* stream : owned) {
+            if (stream != nullptr) {
+                cudaStreamDestroy(static_cast<cudaStream_t>(stream));
+            }
+        }
+    }
+#endif
+};
+
+StreamPool::StreamPool() : impl_(new Impl) {
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (!available()) {
+        return;
+    }
+    impl_->owned.reserve(Impl::kDefaultStreams);
+    impl_->available.reserve(Impl::kDefaultStreams);
+    for (size_t i = 0; i < Impl::kDefaultStreams; ++i) {
+        cudaStream_t stream = nullptr;
+        if (cudaStreamCreate(&stream) != cudaSuccess) {
+            continue;
+        }
+        impl_->owned.push_back(stream);
+        impl_->available.push_back(stream);
+    }
+#endif
+}
+
+StreamPool::~StreamPool() {
+    delete impl_;
+}
+
+void* StreamPool::acquire() {
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (impl_ != nullptr && !impl_->available.empty()) {
+        void* stream = impl_->available.back();
+        impl_->available.pop_back();
+        return stream;
+    }
+    if (available() && impl_ != nullptr) {
+        cudaStream_t stream = nullptr;
+        if (cudaStreamCreate(&stream) == cudaSuccess) {
+            impl_->owned.push_back(stream);
+            return stream;
+        }
+    }
+#else
+    (void)impl_;
+#endif
+    return nullptr;
+}
+
+void StreamPool::release(void* stream) {
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (stream != nullptr && impl_ != nullptr) {
+        impl_->available.push_back(stream);
+    }
+#else
+    (void)stream;
+    (void)impl_;
+#endif
+}
 
 DeviceBuffer make_device_buffer(size_t bytes, int device) {
     const MemoryKind kind =
