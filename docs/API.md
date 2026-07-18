@@ -51,7 +51,7 @@ Foundation types, linear algebra, BLAS/LAPACK, numerics, memory, error handling,
 | `pde/pde.hpp` | `pde_heat_1d`, `pde_heat_1d_cn`, `pde_heat_2d`, `pde_heat_2d_cn_adi` (Peaceman-Rachford ADI Crank-Nicolson, unconditionally stable), `pde_wave_1d`, `pde_wave_2d`, `pde_advection_1d` (first-order upwind), `pde_advection_1d_lax_wendroff` (second-order Lax-Wendroff), `pde_poisson_1d`, `pde_poisson_2d`, `pde_burgers_1d`, `pde_reaction_diffusion_1d` (Fisher-KPP, zero-flux Neumann BC) with CFL/stability guards; `pde_helmholtz_2d` (2D Helmholtz equation `Laplacian(u)+k^2*u=f` via the same dense finite-difference approach as `pde_poisson_2d` plus a reaction term — documents the near-resonance ill-conditioning inherent to Helmholtz problems); `pde_laplace_2d` (steady 2D Laplace equation ∇²u=0 via Jacobi iteration with Dirichlet boundary values) |
 | `fem/fem.hpp` | 1D/2D P1 finite-element Poisson solvers: `mesh1d`/`mesh2d_rectangular`, `lagrange_basis`, `assemble_stiffness_1d`/`assemble_stiffness_2d`, `assemble_load_1d`/`assemble_load_2d` (Gauss quadrature), `apply_dirichlet`, `solve_fem` (via `ms::linalg::solve`); 2D uses structured triangular meshes on rectangles |
 | `cfd/cfd.hpp` | 1D/2D finite-volume advection: `grid1d`/`grid2d`, `square_pulse`/`square_pulse_2d`, `constant_velocity`, explicit Euler upwind `upwind_fvm_advection`/`upwind_fvm_advection_2d`, time integration `run_advection`/`run_advection_2d`, mass integrals `integrated_mass`/`integrated_mass_2d`; `BoundaryCondition` periodic or zero-flux per axis; CFL guards reject unstable steps |
-| `crypto/crypto.hpp` | Pure-C++ digests and ciphers (include individually — not in `ms/ms.hpp`): `sha256`/`sha512`/`hmac_sha256` with hex helpers; AES-128/256 single-block ECB (`aes128_encrypt_block`, `aes256_encrypt_block`); AES-128 CBC (`aes128_cbc_encrypt`, `aes128_cbc_decrypt`); ChaCha20 stream cipher (`chacha20_encrypt`, XOR self-inverse) |
+| `crypto/crypto.hpp` | Pure-C++ digests and ciphers (include individually — not in `ms/ms.hpp`): `sha256`/`sha512`/`hmac_sha256` with hex helpers; AES-128/256 single-block ECB (`aes128_encrypt_block`, `aes256_encrypt_block`); AES-128 CBC (`aes128_cbc_encrypt`, `aes128_cbc_decrypt`); AES-128-GCM authenticated encryption (`aes128_gcm_encrypt`, `aes128_gcm_decrypt`; NIST SP 800-38D test vectors); ChaCha20 stream cipher (`chacha20_encrypt`, XOR self-inverse) |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point`, `illinois` (anti-stagnation regula falsi); `levenberg_marquardt` (damped Gauss-Newton nonlinear least squares via a finite-difference Jacobian and adaptive damping); `conjugate_gradient` (nonlinear Fletcher-Reeves/Polak-Ribière+ CG with Armijo backtracking line search — converges in near-N steps on exact quadratics); `rmsprop` (adaptive gradient optimizer via EMA of squared gradients); `adadelta` (adaptive gradient optimizer without manual learning-rate schedule) |
 | `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals); `sym_expand` (distributes multiplication over addition/subtraction, with bounded small-integer-power expansion); `sym_collect` (combine like terms in a variable); `sym_limit`, `sym_series`, `sym_solve_linear`; table-driven `sym_laplace`/`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_ztransform`/`sym_iztransform` (MVP: polynomials, `exp`, `sin/cos`, rationals, geometric sequences; unsupported forms return `sym_deriv` sentinel); `sym_dsolve` (separable first-order ODE MVP — Mellin/Hankel and general `dsolve` deferred) |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye`; `erfinv`/`erfcinv`, `trigamma`/`polygamma`, `pochhammer`/`falling_factorial`, `rgamma`, and the public canonical `gamma_inc_reg`/`gamma_inc_reg_upper`/`gamma_inc`/`beta_inc_reg`/`beta_inc` (also used internally by `ms::prob`'s `gamma_cdf`/`beta_cdf`/`f_cdf`/`chi2_cdf`); Voigt/pseudo-Voigt spectroscopy line shapes (`voigt`, `pseudo_voigt`, `pseudo_voigt_auto`, built on a from-scratch Humlicek w4 Faddeeva-function approximation); `sph_bessel_j`/`sph_bessel_y` (spherical Bessel functions via closed-form base cases plus a stable upward recurrence); `assoc_legendre_p`/`sph_harmonic_y` (associated Legendre polynomials and complex spherical harmonics `Y_l^m(theta,phi)`, verified via sphere orthonormality); `kummer_u` (Kummer's confluent hypergeometric function of the second kind, via the standard connection formula in terms of `kummer_m`); `lambert_w` (Lambert W function, branches 0 and −1) |
@@ -157,9 +157,14 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | Call | Description |
 |------|-------------|
 | `rgb2gray(M)` | `(H·W)×3` RGB rows → grayscale column vector |
+| `rgb2hsv(M)` | `(H·W)×3` RGB rows → `H×3` HSV matrix (Wave 234) |
 | `sobel(M)`, `imgaussfilt(M, σ)`, `laplacian(M)`, `histeq(M)`, `sharpen(M)`, `threshold_otsu(M)`, `imresize(M, r, c)` | Grayscale image ops on `H×W` matrices |
+| `imdilate(M, k)`, `imerode(M, k)`, `imopen(M, k)`, `imclose(M, k)` | Binary/grayscale morphology on `H×W` matrices (Wave 234) |
 | `rle_encode_vec(M)`, `rle_decode_vec(M)` | RLE on flattened matrix bytes |
 | `delta_encode_vec(M)`, `delta_decode_vec(M)` | Delta coding on flattened bytes |
+| `ml_linear_fit(X, y)`, `ml_linear_predict(X, model)` | Ordinary least-squares regression fit/predict (Wave 234) |
+| `ml_ridge_fit(X, y, alpha)`, `ml_ridge_predict(X, model)` | Ridge regression fit/predict (Wave 234) |
+| `ml_logistic_fit(X, y)`, `ml_logistic_predict(X, model)` | Binary logistic regression fit/predict (Wave 234) |
 | `ml_accuracy(p, t)`, `ml_rmse(p, t)`, `ml_mse(p, t)`, `ml_r2(p, t)`, `ml_f1(p, t)`, `ml_precision(p, t)`, `ml_recall(p, t)`, `ml_mae(p, t)` | ML metrics on matching `N×1` vectors |
 | `bigint("495")`, `bigint_factorial(n)`, `bigint_fib(n)`, `bigint_gcd("a", "b")` | Bignum parse/ops; results as scalars when representable in `double` |
 
@@ -214,6 +219,23 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `quantum_uncertainty(psi, A, B)` | Uncertainty product ⟨AB⟩ − ⟨A⟩⟨B⟩ |
 | `quantum_grover_optimal_iterations(n_qubits, n_marked)` | Optimal Grover iteration count |
 
+**Finance portfolio/pricing (scalar/matrix assignment, Wave 234):**
+
+| Call | Description |
+|------|-------------|
+| `finance_min_variance_portfolio(cov)` | Global minimum-variance portfolio weights from `N×N` covariance |
+| `finance_max_sharpe_portfolio(cov, mu, risk_free)` | Maximum Sharpe-ratio portfolio weights |
+| `finance_portfolio_return(weights, returns)` | Portfolio expected return from `N×1` weights and returns |
+| `finance_heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)` | Heston stochastic-volatility European call price |
+
+**Graph community/centrality (matrix assignment, Wave 234):**
+
+| Call | Description |
+|------|-------------|
+| `graph_louvain(A)` | Louvain community partition as `K×M` vertex-index matrix |
+| `graph_eigenvector_centrality(A)` | Power-iteration eigenvector centrality column |
+| `graph_articulation_points(A)` | Articulation points of undirected adjacency `A` as `N×1` column |
+
 **CUDA matrix ops (matrix assignment, stub-safe when `MS_ENABLE_CUDA=OFF`):**
 
 | Call | Description |
@@ -228,6 +250,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_aes128_encrypt_block(key_hex, block_hex)` | AES-128 ECB single-block encrypt; returns hex ciphertext |
 | `crypto_aes128_cbc_encrypt(key_hex, iv_hex, plain_hex)` | AES-128 CBC encrypt; returns hex ciphertext |
 | `crypto_aes128_cbc_decrypt(key_hex, iv_hex, cipher_hex)` | AES-128 CBC decrypt; returns hex plaintext |
+| `crypto_aes128_gcm_encrypt(key_hex, iv_hex, aad_hex, plaintext_hex)` | AES-128-GCM seal; returns hex `ciphertext:tag` (Wave 234) |
+| `crypto_aes128_gcm_decrypt(key_hex, iv_hex, aad_hex, ciphertext_hex, tag_hex)` | AES-128-GCM open; returns hex plaintext (Wave 234) |
 | `crypto_chacha20(key_hex, nonce_hex, counter, data_hex)` | ChaCha20 stream cipher (XOR self-inverse); returns hex output |
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |

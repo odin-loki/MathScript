@@ -5,28 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## [1.0.0] — 2026-07-18 (Wave 234 — Feature work kickoff: finance/graph/image/ml REPL, AES-GCM MVP)
+## [1.0.0] — 2026-07-18 (Wave 234 — Finance/graph/image/ml REPL, AES-128-GCM)
 
-Fourth **feature wave** after Wave 233. Five parallel implementation worktrees plus this docs branch — merges pending.
+Fourth **feature wave** after Wave 233. Five parallel implementation worktrees merged to `main` (AES-128-GCM restored post-merge after finance-branch conflict).
 
-### In progress (Wave 234 parallel branches)
+### Added (Wave 234)
+- **REPL** — Finance portfolio/heston: `finance_min_variance_portfolio`, `finance_max_sharpe_portfolio`, `finance_portfolio_return`, `finance_heston_call`; Graph louvain/centrality/articulation: `graph_louvain`, `graph_eigenvector_centrality`, `graph_articulation_points`; Image morphology+rgb2hsv: `imdilate`, `imerode`, `imopen`, `imclose`, `rgb2hsv`; ML linear/ridge/logistic fit/predict: `ml_linear_fit`/`ml_linear_predict`, `ml_ridge_fit`/`ml_ridge_predict`, `ml_logistic_fit`/`ml_logistic_predict`.
+- `ms::crypto` — AES-128-GCM authenticated encryption (`aes128_gcm_encrypt` / `aes128_gcm_decrypt`; NIST SP 800-38D test vectors); REPL: `crypto_aes128_gcm_encrypt`, `crypto_aes128_gcm_decrypt`.
+- Integration: `integration_repl_wave234_pipeline` (finance, graph, image, ML bindings).
+- **Total Wave 234: 382 CTest suites — all passing** (+1 new: `integration_repl_wave234_pipeline`; AES-GCM unit tests in existing `test_crypto`). **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
-| Branch | Module | Scope |
-|--------|--------|--------|
-| `wave234/repl-finance` | REPL / `ms::finance` | Finance REPL bindings batch (scalar and vector signatures for remaining library-only pricers and risk metrics) |
-| `wave234/repl-graph` | REPL / `ms::graph` | Graph algorithm REPL bindings (community detection, centrality, matching, etc.) |
-| `wave234/repl-image` | REPL / `ms::image` | Image processing REPL bindings (filters, transforms, segmentation helpers) |
-| `wave234/repl-ml` | REPL / `ms::ml` | Machine learning REPL bindings (classifiers, clustering, dimensionality reduction) |
-| `wave234/crypto-aes-gcm` | `ms::crypto` | AES-GCM authenticated encryption MVP (`aes128_gcm_encrypt` / `aes128_gcm_decrypt`; NIST SP 800-38D test vectors) |
-| `wave234/docs` | docs | CHANGELOG and TODO kickoff |
-
-Builds on Wave 233 GUI polish and optim/control/quantum REPL bindings. Full master-plan scope (curve25519, 3D FEM/CFD, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+Builds on Wave 233 GUI polish and optim/control/quantum REPL bindings. Full master-plan scope (curve25519, ChaCha20-Poly1305, 3D FEM/CFD, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
 
 ### Docs (Wave 234)
-- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** — Wave 234 kickoff; finance/graph/image/ml REPL bindings and AES-GCM MVP documented as in progress.
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** — Wave 234 complete; finance/graph/image/ml REPL bindings and AES-GCM documented.
 
-### Baseline (Wave 234 kickoff)
-- **381 CTest suites — all passing** on `main` @ Wave 233. **28-bench smoke OK**. Feature branches merge independently when ready. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+### Baseline (Wave 234)
+- **382 CTest suites — all passing** on `main` @ Wave 234. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
 ## [1.0.0] — 2026-07-18 (Wave 233 — GUI polish, optim/control/quantum REPL, sym_dsolve, CUDA REPL)
 
