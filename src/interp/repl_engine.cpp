@@ -15038,7 +15038,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = dist_lsmr(A, B) distributed LSMR (gather + lsmr; square A)\n"
             "  name = dist_lsqr(A, B) distributed LSQR (gather + lsqr; square A)\n"
             "  name = dist_matmul(A, B)  distributed matrix multiply (row-block local GEMM)\n"
-            "  mpi_rank(), mpi_size(), mpi_allreduce_sum/max/min(x)  MPI rank/size/allreduce (stub: rank=0, size=1)\n"
+            "  mpi_rank(), mpi_size(), mpi_allreduce_sum/max/min(x), mpi_barrier()  MPI rank/size/allreduce/barrier (stub: rank=0, size=1)\n"
             "  cuda_allreduce_sum(x)  NCCL all-reduce sum (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_allreduce_max(x)  NCCL all-reduce max (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_allreduce_min(x)  NCCL all-reduce min (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
@@ -15893,6 +15893,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             << " rank=" << ms::distributed::rank(mpi)
             << " size=" << ms::distributed::size(mpi) << "\n";
         return out.str();
+    }
+
+    if (lcmd == "mpi_barrier()") {
+        ms::distributed::barrier(repl_mpi_context());
+        return "ok\n";
     }
 
     if (const auto sym = try_eval_sym_command(cmd)) {

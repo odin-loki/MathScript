@@ -39,6 +39,10 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
     EXPECT_NEAR(interp.state().scalars.at("r"), 0.0, 1e-9);
     EXPECT_NEAR(interp.state().scalars.at("sz"), 1.0, 1e-9);
 
+    // mpi_barrier status (stub-safe no-op)
+    expect_contains(interp, "mpi_barrier()", "ok");
+    expect_contains(interp, "help", "mpi_barrier()");
+
     // allreduce_sum identity on single-rank stub
     expect_ok(interp, "s = mpi_allreduce_sum(3.5)");
     EXPECT_NEAR(interp.state().scalars.at("s"), 3.5, 1e-9);
