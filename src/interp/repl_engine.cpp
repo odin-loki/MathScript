@@ -18440,7 +18440,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(updated.error());
         }
         result = *updated;
-<<<<<<< HEAD
     } else if (assign.callee == "poly_roots" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
