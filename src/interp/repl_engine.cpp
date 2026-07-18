@@ -4246,6 +4246,25 @@ Result<std::vector<uint8_t>> parse_hex_arg_allow_empty(const std::string& text, 
     return parse_hex_arg(text, fn, arg_name);
 }
 
+Result<std::string> eval_crypto_hmac_sha512(const std::string& key_arg,
+                                            const std::string& data_arg) {
+    constexpr const char* fn = "crypto_hmac_sha512";
+    auto key = parse_hex_arg(key_arg, fn, "key");
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto data = parse_hex_arg(data_arg, fn, "data");
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+    if (key->empty()) {
+        return std::unexpected(DomainError{fn, "key must not be empty"});
+    }
+    return crypto::hmac_sha512_hex(std::span<const uint8_t>(*key),
+                                   std::span<const uint8_t>(*data)) +
+           "\n";
+}
+
 Result<std::string> eval_crypto_hkdf_sha256(const std::string& ikm_arg,
                                             const std::string& salt_arg,
                                             const std::string& info_arg,
@@ -7790,6 +7809,13 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
         }
         return eval_crypto_hkdf_sha256(call_args->at(0), call_args->at(1),
                                        call_args->at(2), call_args->at(3));
+    }
+    if (fn == "crypto_hmac_sha512") {
+        if (call_args->size() != 2) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_hmac_sha512(hex_key, hex_data)"});
+        }
+        return eval_crypto_hmac_sha512(call_args->at(0), call_args->at(1));
     }
     if (fn == "crypto_pbkdf2_sha256") {
         if (call_args->size() != 4) {
@@ -14162,6 +14188,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_chacha20_poly1305_encrypt(key_hex,nonce_hex,aad_hex,plaintext_hex) ChaCha20-Poly1305 seal\n"
             "  crypto_chacha20_poly1305_decrypt(key_hex,nonce_hex,aad_hex,ciphertext_hex,tag_hex) ChaCha20-Poly1305 open\n"
             "  crypto_hkdf_sha256(hex_ikm,hex_salt,hex_info,len) HKDF-SHA256 extract/expand (hex I/O)\n"
+            "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
             "  crypto_pbkdf2_sha256(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA256 (hex I/O)\n"
             "  crypto_ed25519_keypair(hex_seed) Ed25519 public key from 32-byte seed (hex out)\n"
             "  crypto_ed25519_sign(hex_seed_or_sk,hex_msg) Ed25519 signature (32-byte seed or 64-byte expanded secret)\n"

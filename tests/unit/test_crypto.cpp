@@ -146,6 +146,49 @@ TEST(CryptoHmacSha256, HexHelperMatchesRaw) {
     EXPECT_EQ(hmac_sha256_hex(key, data), to_hex(hmac_sha256(key, data)));
 }
 
+// ---- HMAC-SHA512 (RFC 4231 test vectors) ----
+
+TEST(CryptoHmacSha512, TestCase1) {
+    const std::vector<uint8_t> key(20, 0x0b);
+    const std::string data = "Hi There";
+    expect_hex(hmac_sha512(std::span<const uint8_t>(key),
+                           std::span<const uint8_t>(
+                               reinterpret_cast<const uint8_t*>(data.data()),
+                               data.size())),
+               "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cd"
+               "edaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854");
+}
+
+TEST(CryptoHmacSha512, TestCase2) {
+    const std::string key = "Jefe";
+    const std::string data = "what do ya want for nothing?";
+    expect_hex(hmac_sha512(key, data),
+               "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea250554"
+               "9758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737");
+}
+
+TEST(CryptoHmacSha512, TestCase3) {
+    const auto key = from_hex(std::string(40, 'a'));
+    const auto data = from_hex(std::string(100, 'd'));
+    expect_hex(hmac_sha512(std::span<const uint8_t>(key), std::span<const uint8_t>(data)),
+               "fa73b0089d56a284efb0f0756c890be9b1b5dbdd8ee81a3655f83e33b2279d39"
+               "bf3e848279a722c806b485a47e67c807b946a337bee8942674278859e13292fb");
+}
+
+TEST(CryptoHmacSha512, TestCase4_TruncatedKey) {
+    const auto key = from_hex(std::string(50, 'a'));
+    const auto data = from_hex(std::string(100, 'd'));
+    expect_hex(hmac_sha512(std::span<const uint8_t>(key), std::span<const uint8_t>(data)),
+               "e078576669ee552f3b7f68a82873186e013c48afc1a0faf435dd9ac8fb93d649"
+               "026f551c03ee21063338afde5972f04e6e162cc98bf7eb777efd90ba3304bf7f");
+}
+
+TEST(CryptoHmacSha512, HexHelperMatchesRaw) {
+    const std::string key = "secret";
+    const std::string data = "payload";
+    EXPECT_EQ(hmac_sha512_hex(key, data), to_hex(hmac_sha512(key, data)));
+}
+
 // ---- HKDF-SHA256 (RFC 5869 SHA-256 test vectors) ----
 
 TEST(CryptoHkdfSha256, Rfc5869TestCase1) {
