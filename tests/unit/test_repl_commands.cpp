@@ -6869,3 +6869,23 @@ TEST(ReplCommandsTest, wave262_poly_discriminant) {
 
     expect_contains(interp, "poly_discriminant([1; -2; 1])", "0");
 }
+
+TEST(ReplCommandsTest, wave263_finance_merton_historical) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_merton_distance_to_default(V,sigma_v,D,r,T)");
+    expect_contains(interp, "help", "finance_historical_var(returns,confidence)");
+    expect_contains(interp, "help", "finance_historical_cvar(returns,confidence)");
+
+    expect_ok(interp, "dd = finance_merton_distance_to_default(150, 0.20, 100, 0.05, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("dd"), 2.177325543255, 1e-6);
+    expect_contains(interp, "finance_merton_distance_to_default(150, 0.20, 100, 0.05, 1)", "2.177");
+
+    expect_ok(interp, "ret = [-0.20; -0.15; -0.10; -0.05; 0.0; 0.05; 0.10; 0.15; 0.20; 0.25]");
+    expect_ok(interp, "hv = finance_historical_var(ret, 0.95)");
+    EXPECT_NEAR(interp.state().scalars.at("hv"), 0.20, 1e-6);
+    expect_contains(interp, "finance_historical_var(ret, 0.95)", "0.2");
+
+    expect_ok(interp, "hc = finance_historical_cvar(ret, 0.95)");
+    EXPECT_NEAR(interp.state().scalars.at("hc"), 0.20, 1e-6);
+    expect_contains(interp, "finance_historical_cvar(ret, 0.95)", "0.2");
+}
