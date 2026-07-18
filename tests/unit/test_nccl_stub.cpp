@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include "ms/cuda/nccl.hpp"
+#include "ms/interp/repl_engine.hpp"
 
 using namespace ms::cuda;
+using namespace ms::interp;
 
 TEST(NcclStubTest, unavailable_by_default) {
 #if defined(MS_HAS_NCCL) && MS_HAS_NCCL
@@ -104,4 +106,24 @@ TEST(NcclStubTest, reduce_idempotent) {
 
 TEST(NcclStubTest, comm_size_at_least_one) {
     EXPECT_GE(nccl_comm_size(), 1u);
+}
+
+TEST(NcclStubTest, repl_nccl_introspect_queries) {
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("a = cuda_nccl_available()").has_value());
+    ASSERT_TRUE(interp.execute("s = cuda_nccl_comm_size()").has_value());
+    ASSERT_TRUE(interp.execute("d = cuda_nccl_device_count()").has_value());
+#if !defined(MS_HAS_NCCL) || !MS_HAS_NCCL
+    ASSERT_GT(interp.state().scalars.count("a"), 0u);
+    ASSERT_GT(interp.state().scalars.count("s"), 0u);
+    ASSERT_GT(interp.state().scalars.count("d"), 0u);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("a"), 0.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("s"), 1.0);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("d"), 0.0);
+#endif
+    const auto help = interp.execute("help");
+    ASSERT_TRUE(help.has_value());
+    EXPECT_NE(help->find("cuda_nccl_available()"), std::string::npos) << *help;
+    EXPECT_NE(help->find("cuda_nccl_comm_size()"), std::string::npos) << *help;
+    EXPECT_NE(help->find("cuda_nccl_device_count()"), std::string::npos) << *help;
 }

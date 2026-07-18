@@ -6297,7 +6297,9 @@ bool is_nullary_scalar_callee(const std::string& callee) {
            callee == "diffgeo_principal_curvature_sphere" ||
            callee == "topo_euler_tetrahedron" || callee == "topo_euler_sphere_surface" ||
            callee == "cplx_contour_integral_oneoverz_im" || callee == "cplx_line_integral_one" ||
-           callee == "mpi_rank" || callee == "mpi_size";
+           callee == "mpi_rank" || callee == "mpi_size" ||
+           callee == "cuda_nccl_available" || callee == "cuda_nccl_comm_size" ||
+           callee == "cuda_nccl_device_count";
 }
 
 Result<double> eval_nullary_scalar_call(const std::string& fn) {
@@ -6327,6 +6329,15 @@ Result<double> eval_nullary_scalar_call(const std::string& fn) {
     }
     if (fn == "mpi_size") {
         return static_cast<double>(ms::distributed::size(repl_mpi_context()));
+    }
+    if (fn == "cuda_nccl_available") {
+        return ms::cuda::nccl_available() ? 1.0 : 0.0;
+    }
+    if (fn == "cuda_nccl_comm_size") {
+        return static_cast<double>(ms::cuda::nccl_comm_size());
+    }
+    if (fn == "cuda_nccl_device_count") {
+        return static_cast<double>(ms::cuda::nccl_device_count());
     }
     return std::unexpected(DomainError{"eval", "unknown nullary scalar function: " + fn});
 }
@@ -14864,6 +14875,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cuda_allreduce_avg(x)  NCCL all-reduce average (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_broadcast(x)  NCCL broadcast scalar from root 0 (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_reduce(x)  NCCL reduce sum-to-root from root 0 (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
+            "  cuda_nccl_available()  1 if NCCL usable, else 0\n"
+            "  cuda_nccl_comm_size()  NCCL communicator size (stub: 1)\n"
+            "  cuda_nccl_device_count()  NCCL-visible GPU count (stub: 0)\n"
             "  name = transpose(A)      transpose assignment\n"
             "  name = chol(A)           Cholesky factor assignment\n"
             "  name = pinv(A) null(A) orth(A)  pseudo-inverse / null space / orthonormal basis\n"

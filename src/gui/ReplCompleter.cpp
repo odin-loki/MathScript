@@ -188,6 +188,9 @@ QStringList repl_command_list() {
         QStringLiteral("cuda_allreduce_avg"),
         QStringLiteral("cuda_broadcast"),
         QStringLiteral("cuda_reduce"),
+        QStringLiteral("cuda_nccl_available"),
+        QStringLiteral("cuda_nccl_comm_size"),
+        QStringLiteral("cuda_nccl_device_count"),
     };
 }
 
