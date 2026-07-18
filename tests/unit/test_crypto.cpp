@@ -190,6 +190,56 @@ TEST(CryptoHkdfSha256, ZeroLengthOutput) {
     EXPECT_TRUE(hkdf_sha256(ikm, std::vector<uint8_t>{}, std::vector<uint8_t>{}, 0).empty());
 }
 
+// ---- PBKDF2-HMAC-SHA256 (RFC 6070 test vectors) ----
+
+TEST(CryptoPbkdf2HmacSha256, Rfc6070TestCase1) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    expect_hex(pbkdf2_hmac_sha256(password, salt, 1, 20),
+               "120fb6cffcf8b32c43e7225256c4f837a86548c9");
+}
+
+TEST(CryptoPbkdf2HmacSha256, Rfc6070TestCase2) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    expect_hex(pbkdf2_hmac_sha256(password, salt, 2, 20),
+               "ae4d0c95af6b46d32d0adff928f06dd02a303f8e");
+}
+
+TEST(CryptoPbkdf2HmacSha256, Rfc6070TestCase3) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    expect_hex(pbkdf2_hmac_sha256(password, salt, 4096, 20),
+               "c5e478d59288c841aa530db6845c4c8d962893a0");
+}
+
+TEST(CryptoPbkdf2HmacSha256, Rfc6070TestCase4) {
+    const auto password = from_hex("70617373776f726450415353574f524470617373776f7264");
+    const auto salt = from_hex("73616c7453414c5473616c7453414c5473616c7453414c5473616c7453414c5473616c74");
+    expect_hex(pbkdf2_hmac_sha256(password, salt, 4096, 25),
+               "348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c");
+}
+
+TEST(CryptoPbkdf2HmacSha256, Rfc6070TestCase5) {
+    const auto password = from_hex("7061737300776f7264");
+    const auto salt = from_hex("7361006c74");
+    expect_hex(pbkdf2_hmac_sha256(password, salt, 4096, 16),
+               "89b69d0516f829893c696226650a8687");
+}
+
+TEST(CryptoPbkdf2HmacSha256, Rfc6070TestCase6) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    expect_hex(pbkdf2_hmac_sha256(password, salt, 16777216, 20),
+               "cf81c66fe8cfc04d1f31ecb65dab4089f7f179e8");
+}
+
+TEST(CryptoPbkdf2HmacSha256, ZeroLengthOutput) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    EXPECT_TRUE(pbkdf2_hmac_sha256(password, salt, 1, 0).empty());
+}
+
 TEST(CryptoToHex, Empty) {
     EXPECT_EQ(to_hex(std::vector<uint8_t>{}), "");
 }
