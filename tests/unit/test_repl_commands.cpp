@@ -6184,3 +6184,30 @@ TEST(ReplCommandsTest, wave259_imgradient_morph) {
                 interp.state().matrices.at("D")(1, 2) - interp.state().matrices.at("E")(1, 2),
                 1e-5);
 }
+
+TEST(ReplCommandsTest, wave259_hess_schur) {
+    Interpreter interp;
+    expect_contains(interp, "help", "hess(A)");
+    expect_contains(interp, "help", "T, Q = schur(A)");
+
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_contains(interp, "hess(A)", "H =");
+    expect_ok(interp, "H = hess(A)");
+    ASSERT_GT(interp.state().matrices.count("H"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("H").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("H").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("H")(2, 0), 0.0, 1e-10);
+
+    expect_contains(interp, "schur(A)", "T =");
+    expect_ok(interp, "T = schur(A)");
+    ASSERT_GT(interp.state().matrices.count("T"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("T").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("T").cols(), 3u);
+
+    expect_ok(interp, "Ts, Qs = schur(A)");
+    ASSERT_GT(interp.state().matrices.count("Ts"), 0u);
+    ASSERT_GT(interp.state().matrices.count("Qs"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Ts").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Qs").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Qs").cols(), 3u);
+}
