@@ -154,3 +154,24 @@ TEST(ReplWave262Pipeline, TrinomialOption) {
     expect_contains(interp, "help",
                     "finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american)");
 }
+
+TEST(ReplWave262Pipeline, PolyResultantSharedRoot) {
+    Interpreter interp;
+
+    expect_ok(interp, "p = [6; -5; 1]");
+    expect_ok(interp, "q = [10; -7; 1]");
+    expect_ok(interp, "r = poly_resultant(p, q)");
+    ASSERT_GT(interp.state().scalars.count("r"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("r"), 0.0, 1e-6);
+    expect_contains(interp, "help", "poly_resultant(p,q)");
+}
+
+TEST(ReplWave262Pipeline, PolyDiscriminantRepeatedRoot) {
+    Interpreter interp;
+
+    expect_ok(interp, "sq = [1; -2; 1]");
+    expect_ok(interp, "d = poly_discriminant(sq)");
+    ASSERT_GT(interp.state().scalars.count("d"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("d"), 0.0, 1e-6);
+    expect_contains(interp, "help", "poly_discriminant(p)");
+}

@@ -6846,3 +6846,26 @@ TEST(ReplCommandsTest, wave262_finance_trinomial_option) {
 
     expect_contains(interp, "finance_trinomial_option(100, 100, 1, 0.05, 0.2, 200, 1, 0)", "\n");
 }
+
+TEST(ReplCommandsTest, wave262_poly_resultant) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_resultant(p,q)");
+
+    expect_ok(interp, "p = [6; -5; 1]");
+    expect_ok(interp, "q = [10; -7; 1]");
+    expect_ok(interp, "r = poly_resultant(p, q)");
+    EXPECT_NEAR(interp.state().scalars.at("r"), 0.0, 1e-6);
+
+    expect_contains(interp, "poly_resultant([6; -5; 1], [10; -7; 1])", "0");
+}
+
+TEST(ReplCommandsTest, wave262_poly_discriminant) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_discriminant(p)");
+
+    expect_ok(interp, "sq = [1; -2; 1]");
+    expect_ok(interp, "d = poly_discriminant(sq)");
+    EXPECT_NEAR(interp.state().scalars.at("d"), 0.0, 1e-6);
+
+    expect_contains(interp, "poly_discriminant([1; -2; 1])", "0");
+}
