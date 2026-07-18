@@ -185,6 +185,22 @@ static void BM_Aes256CbcEncrypt_64KB(benchmark::State& state) {
 }
 BENCHMARK(BM_Aes256CbcEncrypt_64KB)->MinTime(0.001);
 
+static void BM_Aes256GcmEncrypt_1KB(benchmark::State& state) {
+    const auto key = make_byte_buffer(aes256_key_size, 59);
+    const auto iv = make_byte_buffer(aes_gcm_iv_size, 71);
+    const auto plaintext = make_byte_buffer(1024, 73);
+    for (auto _ : state) {
+        auto seal = aes256_gcm_encrypt(std::span<const uint8_t>(key),
+                                       std::span<const uint8_t>(iv),
+                                       std::span<const uint8_t>{},
+                                       std::span<const uint8_t>(plaintext));
+        benchmark::DoNotOptimize(seal.ciphertext.data());
+        benchmark::DoNotOptimize(seal.tag.data());
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * 1024);
+}
+BENCHMARK(BM_Aes256GcmEncrypt_1KB)->MinTime(0.001);
+
 static void BM_ChaCha20Encrypt_64KB(benchmark::State& state) {
     const auto key_bytes = make_byte_buffer(32, 71);
     const auto nonce_bytes = make_byte_buffer(12, 79);
