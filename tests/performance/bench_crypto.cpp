@@ -67,6 +67,23 @@ static void BM_HkdfSha256(benchmark::State& state) {
 }
 BENCHMARK(BM_HkdfSha256);
 
+static void BM_Pbkdf2HmacSha256(benchmark::State& state) {
+    const auto password = make_byte_buffer(24, 29);
+    const auto salt = make_byte_buffer(16, 31);
+    constexpr std::uint32_t kIterations = 1000;
+    constexpr std::size_t kDkLen = 32;
+    for (auto _ : state) {
+        auto dk = pbkdf2_hmac_sha256(std::span<const uint8_t>(password),
+                                     std::span<const uint8_t>(salt),
+                                     kIterations,
+                                     kDkLen);
+        benchmark::DoNotOptimize(dk.data());
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(kDkLen));
+}
+BENCHMARK(BM_Pbkdf2HmacSha256);
+
 static void BM_X25519SharedSecret(benchmark::State& state) {
     const auto private_key = make_byte_buffer(x25519_key_size, 37);
     const auto peer_public_key = make_byte_buffer(x25519_key_size, 41);

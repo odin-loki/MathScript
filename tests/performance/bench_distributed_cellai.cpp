@@ -158,6 +158,24 @@ static void BM_DistCg_2x2(benchmark::State& state) {
 }
 BENCHMARK(BM_DistCg_2x2);
 
+static void BM_DistGmres_2x2(benchmark::State& state) {
+    auto ctx = init(0, nullptr);
+    DMatrix A({{4.0, 1.0}, {1.0, 3.0}});
+    DMatrix b({{1.0}, {2.0}});
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        auto dA = scatter(A, ctx).value();
+        auto db = scatter(b, ctx).value();
+        state.ResumeTiming();
+
+        auto result = dist_gmres(dA, db, ctx);
+        benchmark::DoNotOptimize(result);
+    }
+    finalize(ctx);
+}
+BENCHMARK(BM_DistGmres_2x2);
+
 // ---------------------------------------------------------------------------
 // CellAI: CellMemory::step
 // ---------------------------------------------------------------------------
