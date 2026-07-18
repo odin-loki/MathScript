@@ -4041,7 +4041,8 @@ Result<std::vector<uint8_t>> parse_hex_arg(const std::string& text, const char* 
     if (!parse_quoted_string(text, hex)) {
         hex = trim_copy(text);
     }
-    if (hex.empty() || hex.size() % 2 != 0) {
+    // Empty hex is valid (e.g. empty AAD for AES-GCM); odd length is not.
+    if (hex.size() % 2 != 0) {
         return std::unexpected(
             DomainError{fn, std::string("invalid hex for ") + arg_name});
     }

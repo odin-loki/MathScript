@@ -142,9 +142,12 @@ TEST(ReplWave247Pipeline, CudaAllreduceProdStub) {
     expect_ok(interp, "p = cuda_allreduce_prod(2)");
     ASSERT_GT(interp.state().scalars.count("p"), 0u);
     EXPECT_NEAR(interp.state().scalars.at("p"), 2.0, 1e-9);
-    expect_contains(interp, "cuda_allreduce_prod(2)", "2");
+    expect_ok(interp, "q = cuda_allreduce_avg(2)");
+    ASSERT_GT(interp.state().scalars.count("q"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("q"), 2.0, 1e-9);
 
     expect_contains(interp, "help", "cuda_allreduce_prod");
+    expect_contains(interp, "help", "cuda_allreduce_avg");
 }
 
 TEST(ReplWave247Pipeline, CryptoAes256GcmRoundTrip) {
