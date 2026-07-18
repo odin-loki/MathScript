@@ -317,6 +317,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `fftfreq(n[,d])` / `rfftfreq(n[,d])` | NumPy-compatible FFT/rFFT frequency axes as `N×1` columns (Wave 261) |
 | `ifftshift(S)` | Inverse cyclic shift of `N×2` complex spectrum (Wave 261) |
 | `bidiag(A)` / `U, B, V = bidiag(A)` | Bidiagonalization (Wave 260) |
+| `eig(A)` / `D, V = eig(A)` | General eigenvalues and eigenvectors (Wave 261) |
+| `ldl(A)` / `L, D = ldl(A)` | Symmetric LDL^T factorization (Wave 261) |
 | `solve_sylvester(A,B,C)` | Sylvester equation `A*X + X*B = C` (Wave 260) |
 | `minres(A,b)` | MINRES iterative solve (Wave 260) |
 | `cg(A,b)` | Conjugate gradient iterative solve (Wave 261) |
