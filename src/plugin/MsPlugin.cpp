@@ -17,6 +17,8 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
 
+#include "unsafe_registry.hpp"
+
 namespace ms::plugin {
 
 namespace {
@@ -114,6 +116,126 @@ bool stmtHasMsUnsafe(const clang::AttributedStmt* attr_stmt) {
         }
     }
     return false;
+}
+
+std::string extractQuotedReason(llvm::StringRef text) {
+    const auto open = text.find('"');
+    if (open == llvm::StringRef::npos) {
+        return {};
+    }
+    const auto close = text.find('"', open + 1);
+    if (close == llvm::StringRef::npos) {
+        return {};
+    }
+    return text.slice(open + 1, close).str();
+}
+
+std::string extractReasonFromAttr(const clang::Attr* attr) {
+    if (!attr) {
+        return {};
+    }
+    if (const auto* annotate = clang::dyn_cast<clang::AnnotateAttr>(attr)) {
+        const llvm::StringRef annotation = annotate->getAnnotation();
+        if (std::string reason = extractQuotedReason(annotation); !reason.empty()) {
+            return reason;
+        }
+        return annotation.str();
+    }
+    return extractQuotedReason(attr->getSpelling());
+}
+
+std::string extractReasonFromSourceLine(const clang::SourceManager& sm,
+                                        clang::FileID fid, unsigned line_num) {
+    const auto line_start = sm.translateLineCol(fid, line_num, 1);
+    if (line_start.isInvalid()) {
+        return {};
+    }
+    bool invalid = false;
+    const llvm::StringRef buf = sm.getBufferData(fid, &invalid);
+    if (invalid) {
+        return {};
+    }
+    const auto offset = sm.getDecomposedLoc(sm.getFileLoc(line_start)).second;
+    if (offset >= buf.size()) {
+        return {};
+    }
+    const char* cursor = buf.data() + offset;
+    const char* const end = buf.data() + buf.size();
+    while (cursor < end && *cursor != '\n' && *cursor != '\r') {
+        ++cursor;
+    }
+    const llvm::StringRef line(buf.data() + offset, cursor - (buf.data() + offset));
+    if (std::string reason = extractQuotedReason(line); !reason.empty()) {
+        return reason;
+    }
+    return "unspecified";
+}
+
+std::string extractReasonFromDecl(const clang::Decl* decl, const clang::ASTContext& ctx) {
+    if (!decl) {
+        return {};
+    }
+    for (const auto* attr : decl->attrs()) {
+        if (!attrIsMsUnsafe(attr)) {
+            continue;
+        }
+        if (std::string reason = extractReasonFromAttr(attr); !reason.empty()) {
+            return reason;
+        }
+    }
+
+    const auto& sm = ctx.getSourceManager();
+    const auto begin = sm.getExpansionLoc(decl->getBeginLoc());
+    if (begin.isInvalid()) {
+        return "unspecified";
+    }
+    const auto fid = sm.getFileID(begin);
+    const auto decl_line = sm.getSpellingLineNumber(begin);
+    for (unsigned line = decl_line; line > 0 && line + 2 >= decl_line; --line) {
+        if (!lineContainsMsUnsafe(sm, fid, line)) {
+            continue;
+        }
+        if (std::string reason = extractReasonFromSourceLine(sm, fid, line);
+            !reason.empty()) {
+            return reason;
+        }
+    }
+    return "unspecified";
+}
+
+void recordUnsafeSite(const clang::Decl* decl, const clang::ASTContext& ctx) {
+    if (!decl) {
+        return;
+    }
+    const auto& sm = ctx.getSourceManager();
+    const auto begin = sm.getExpansionLoc(decl->getBeginLoc());
+    if (begin.isInvalid()) {
+        return;
+    }
+    const auto presumed = sm.getPresumedLoc(begin);
+    if (presumed.isInvalid()) {
+        return;
+    }
+    const std::string file = presumed.getFilename();
+    const int line = static_cast<int>(presumed.getLine());
+    const std::string reason = extractReasonFromDecl(decl, ctx);
+    UnsafeRegistry::instance().record_unsafe(file, line, reason, "");
+}
+
+void recordUnsafeSite(clang::SourceLocation loc, const std::string& reason,
+                      const clang::ASTContext& ctx) {
+    (void)ctx;
+    const auto& sm = ctx.getSourceManager();
+    const auto begin = sm.getExpansionLoc(loc);
+    if (begin.isInvalid()) {
+        return;
+    }
+    const auto presumed = sm.getPresumedLoc(begin);
+    if (presumed.isInvalid()) {
+        return;
+    }
+    UnsafeRegistry::instance().record_unsafe(
+        presumed.getFilename(), static_cast<int>(presumed.getLine()), reason, "");
 }
 
 bool recordIsInStdNamespace(const clang::CXXRecordDecl* record) {
@@ -268,6 +390,7 @@ public:
     bool TraverseFunctionDecl(clang::FunctionDecl* fn) {
         const bool unsafe = declIsMsUnsafeContext(fn, Ctx_);
         if (unsafe) {
+            recordUnsafeSite(fn, Ctx_);
             ++unsafe_depth_;
         }
         const bool result = RecursiveASTVisitor::TraverseFunctionDecl(fn);
@@ -280,6 +403,17 @@ public:
     bool TraverseAttributedStmt(clang::AttributedStmt* stmt) {
         const bool unsafe = stmtHasMsUnsafe(stmt);
         if (unsafe) {
+            std::string reason = "unspecified";
+            for (const auto* attr : stmt->getAttrs()) {
+                if (!attrIsMsUnsafe(attr)) {
+                    continue;
+                }
+                if (std::string parsed = extractReasonFromAttr(attr); !parsed.empty()) {
+                    reason = std::move(parsed);
+                    break;
+                }
+            }
+            recordUnsafeSite(stmt->getBeginLoc(), reason, Ctx_);
             ++unsafe_depth_;
         }
         const bool result = RecursiveASTVisitor::TraverseAttributedStmt(stmt);
@@ -292,6 +426,7 @@ public:
     bool TraverseCXXRecordDecl(clang::CXXRecordDecl* decl) {
         const bool unsafe = declHasMsUnsafe(decl);
         if (unsafe) {
+            recordUnsafeSite(decl, Ctx_);
             ++unsafe_depth_;
         }
         const bool result = RecursiveASTVisitor::TraverseCXXRecordDecl(decl);
@@ -541,14 +676,32 @@ public:
 
 class MsASTConsumer : public clang::ASTConsumer {
     clang::CompilerInstance& CI_;
+    unsigned diag_unsafe_audit_note_ = 0;
 
 public:
     explicit MsASTConsumer(clang::CompilerInstance& CI)
-        : CI_(CI) {}
+        : CI_(CI) {
+        diag_unsafe_audit_note_ = CI_.getDiagnostics().getCustomDiagID(
+            clang::DiagnosticsEngine::Note,
+            "[ms-profile] unsafe audit: %0 site(s) recorded in this translation unit");
+    }
 
     void HandleTranslationUnit(clang::ASTContext& ctx) override {
         MsProfileVisitor visitor(CI_, ctx);
         visitor.TraverseDecl(ctx.getTranslationUnitDecl());
+
+        const auto sites = UnsafeRegistry::instance().get_sites();
+        if (sites.empty()) {
+            return;
+        }
+
+#if defined(MS_PLUGIN_AUDIT_DIR)
+        (void)UnsafeRegistry::emit_audit_report(MS_PLUGIN_AUDIT_DIR, sites);
+#endif
+
+        CI_.getDiagnostics().Report(ctx.getTranslationUnitDecl()->getBeginLoc(),
+                                    diag_unsafe_audit_note_)
+            << static_cast<int>(sites.size());
     }
 };
 

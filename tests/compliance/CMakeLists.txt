@@ -6,6 +6,10 @@ target_link_libraries(test_plugin_smoke PRIVATE GTest::gtest_main)
 
 if(MS_BUILD_PLUGIN)
     target_compile_definitions(test_plugin_smoke PRIVATE MS_BUILD_PLUGIN=1)
+    target_include_directories(test_plugin_smoke PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/plugin
+    )
+    target_link_libraries(test_plugin_smoke PRIVATE ms_plugin_registry)
     add_dependencies(test_plugin_smoke ms_plugin)
 else()
     target_compile_definitions(test_plugin_smoke PRIVATE MS_BUILD_PLUGIN=0)
