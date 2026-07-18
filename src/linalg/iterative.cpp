@@ -67,6 +67,39 @@ Result<Matrix<S, OA, Alloc>> cg(
 }
 
 template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> jacobi(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter,
+    S tol) {
+    if (A.rows() != A.cols() || A.rows() != b.rows()) {
+        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+
+    Matrix<double> x(b.rows(), b.cols(), 0.0);
+    double res_norm = std::sqrt(dotvec(b, b));
+
+    for (size_t k = 0; k < max_iter; ++k) {
+        Matrix<double> Ax = matvec(A, x);
+        Matrix<double> x_new(b.rows(), b.cols());
+        for (size_t i = 0; i < b.rows(); ++i) {
+            if (std::abs(A(i, i)) < 1e-30) {
+                return std::unexpected(DomainError{"jacobi", "zero diagonal entry"});
+            }
+            x_new(i, 0) = (b(i, 0) - Ax(i, 0) + A(i, i) * x(i, 0)) / A(i, i);
+        }
+        Matrix<double> r = axpy(-1.0, matvec(A, x_new), b);
+        res_norm = std::sqrt(dotvec(r, r));
+        if (res_norm < tol) {
+            return x_new;
+        }
+        x = std::move(x_new);
+    }
+
+    return std::unexpected(ConvergenceFail{max_iter, res_norm});
+}
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> bicgstab(
     const Matrix<S, OA, Alloc>& A,
     const Matrix<S, OA, Alloc>& b,
@@ -218,6 +251,8 @@ Result<Matrix<S, OA, Alloc>> gmres(
 }
 
 template auto cg<double>(const Matrix<double>&, const Matrix<double>&, size_t, double)
+    -> Result<Matrix<double>>;
+template auto jacobi<double>(const Matrix<double>&, const Matrix<double>&, size_t, double)
     -> Result<Matrix<double>>;
 template auto bicgstab<double>(const Matrix<double>&, const Matrix<double>&, size_t, double)
     -> Result<Matrix<double>>;
