@@ -2011,3 +2011,73 @@ TEST(FinanceSabr, StandardParametersReasonableMagnitude) {
     EXPECT_GT(c, 0.0);
     EXPECT_LT(c, kSabrATM.S);
 }
+
+// --- SABR (Hagan et al. 2002) European put ---
+TEST(FinanceSabrPut, AtTheMoneyPositive) {
+    double p = sabr_put(kSabrATM.S, kSabrATM.K, kSabrATM.T, kSabrATM.r, kSabrATM.alpha,
+                        kSabrATM.beta, kSabrATM.rho, kSabrATM.nu);
+    EXPECT_GT(p, 0.0);
+    EXPECT_LT(p, kSabrATM.K * std::exp(-kSabrATM.r * kSabrATM.T));
+}
+
+TEST(FinanceSabrPut, MonotoneIncreasingInStrike) {
+    double S = 100.0, T = 0.75, r = 0.03;
+    double alpha = 0.25, beta = 0.6, rho = -0.2, nu = 0.35;
+    double prev = sabr_put(S, 80.0, T, r, alpha, beta, rho, nu);
+    for (double K : {90.0, 100.0, 110.0, 120.0}) {
+        double cur = sabr_put(S, K, T, r, alpha, beta, rho, nu);
+        EXPECT_GT(cur, prev);
+        prev = cur;
+    }
+}
+
+TEST(FinanceSabrPut, ExpiredReturnsIntrinsic) {
+    double S = 90.0, K = 100.0, T = 0.0, r = 0.05;
+    EXPECT_NEAR(sabr_put(S, K, T, r, 0.20, 0.5, -0.3, 0.4), 10.0, 1e-12);
+    EXPECT_NEAR(sabr_put(S, 80.0, T, r, 0.20, 0.5, -0.3, 0.4), 0.0, 1e-12);
+}
+
+TEST(FinanceSabrPut, BetaOneNearLognormalWhenVolOfVolZero) {
+    double S = 100.0, K = 100.0, T = 0.25, r = 0.05;
+    double alpha = 0.22, beta = 1.0, rho = 0.0, nu = 0.0;
+    double sabr = sabr_put(S, K, T, r, alpha, beta, rho, nu);
+    double bs = bs_put(S, K, T, r, alpha);
+    EXPECT_NEAR(sabr, bs, 0.5);
+}
+
+TEST(FinanceSabrPut, ZeroVolOfVolLimit) {
+    double S = 100.0, K = 95.0, T = 1.0, r = 0.05;
+    double alpha = 0.20, beta = 0.5, rho = -0.4, nu = 0.0;
+    double p = sabr_put(S, K, T, r, alpha, beta, rho, nu);
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_GT(p, 0.0);
+    EXPECT_LT(p, K * std::exp(-r * T));
+}
+
+TEST(FinanceSabrPut, InTheMoneyExceedsOutOfTheMoney) {
+    double S = 100.0, T = 1.0, r = 0.05;
+    double alpha = 0.22, beta = 0.7, rho = -0.5, nu = 0.45;
+    double itm = sabr_put(S, 110.0, T, r, alpha, beta, rho, nu);
+    double otm = sabr_put(S, 80.0, T, r, alpha, beta, rho, nu);
+    EXPECT_GT(itm, otm);
+    EXPECT_GT(itm, 110.0 * std::exp(-r * T) - S);
+}
+
+TEST(FinanceSabrPut, PutCallParity) {
+    double S = 100.0, K = 105.0, T = 1.0, r = 0.05;
+    double alpha = 0.20, beta = 0.5, rho = -0.3, nu = 0.40;
+    double c = sabr_call(S, K, T, r, alpha, beta, rho, nu);
+    double p = sabr_put(S, K, T, r, alpha, beta, rho, nu);
+    EXPECT_NEAR(c - p, S - K * std::exp(-r * T), 1e-10);
+}
+
+TEST(FinanceSabrPut, StandardParametersReasonableMagnitude) {
+    double p = sabr_put(kSabrATM.S, kSabrATM.K, kSabrATM.T, kSabrATM.r, kSabrATM.alpha,
+                        kSabrATM.beta, kSabrATM.rho, kSabrATM.nu);
+    const double intrinsic =
+        std::max(kSabrATM.K * std::exp(-kSabrATM.r * kSabrATM.T) - kSabrATM.S, 0.0);
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_GE(p, intrinsic);
+    EXPECT_GT(p, 0.0);
+    EXPECT_LT(p, kSabrATM.K * std::exp(-kSabrATM.r * kSabrATM.T));
+}

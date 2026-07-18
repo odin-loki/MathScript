@@ -10917,6 +10917,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::sabr_call(args[0], args[1], args[2], args[3], args[4], args[5], args[6],
                                   args[7]);
     }
+    if (args.size() == 8 && fn == "finance_sabr_put") {
+        return finance::sabr_put(args[0], args[1], args[2], args[3], args[4], args[5], args[6],
+                                 args[7]);
+    }
     if (args.size() == 8 && fn == "cplx_cross_ratio") {
         const cplx::C z1{args[0], args[1]};
         const cplx::C z2{args[2], args[3]};
@@ -14063,6 +14067,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = finance_max_sharpe_portfolio(cov,mu,risk_free) maximum Sharpe portfolio weights\n"
             "  name = finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho) Heston stochastic-volatility call price\n"
             "  name = finance_sabr_call(S,K,T,r,alpha,beta,rho,nu) SABR stochastic-volatility call price\n"
+            "  name = finance_sabr_put(S,K,T,r,alpha,beta,rho,nu) SABR stochastic-volatility put price\n"
             "  name = info_shannon_hartley(bandwidth_hz,snr_linear) Shannon-Hartley channel capacity in bps\n"
             "  name = quantum_von_neumann_entropy(rho) von Neumann entropy of NxN density matrix\n"
             "  name = quantum_purity(rho) purity Tr(rho^2) of NxN density matrix\n"
@@ -16905,6 +16910,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(
                        finance::sabr_call(S, K, T, r, alpha, beta, rho, nu)) +
+                   "\n";
+        }
+        if (fn == "finance_sabr_put") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double alpha = 0.0;
+            double beta = 0.0;
+            double rho = 0.0;
+            double nu = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), alpha) ||
+                !parse_number(trim(match[7].str()), beta) ||
+                !parse_number(trim(match[8].str()), rho) ||
+                !parse_number(trim(match[9].str()), nu)) {
+                return std::unexpected(DomainError{
+                    "finance_sabr_put",
+                    "expected finance_sabr_put(S,K,T,r,alpha,beta,rho,nu)"});
+            }
+            return std::to_string(
+                       finance::sabr_put(S, K, T, r, alpha, beta, rho, nu)) +
                    "\n";
         }
         if (fn == "finance_mc_asian_call" || fn == "finance_mc_asian_put") {
