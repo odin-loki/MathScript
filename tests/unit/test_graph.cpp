@@ -1959,3 +1959,121 @@ TEST(GraphKCore, SubgraphEmptyWhenKExceedsDegeneracy) {
     EXPECT_EQ(sub.n_vertices(), 0);
     EXPECT_EQ(sub.n_edges(), 0);
 }
+
+// ---- Maximum cardinality matching (Edmonds blossom) ----
+
+namespace {
+
+bool is_valid_matching(const Graph& G, const std::vector<std::pair<int, int>>& matching) {
+    std::set<int> used;
+    std::set<std::pair<int, int>> edge_set;
+    for (const auto& e : G.edges()) {
+        int a = std::min(e.from, e.to), b = std::max(e.from, e.to);
+        if (a != b) edge_set.insert({a, b});
+    }
+    for (const auto& [u, v] : matching) {
+        if (u >= v) return false;
+        if (used.count(u) || used.count(v)) return false;
+        if (!edge_set.count({u, v})) return false;
+        used.insert(u);
+        used.insert(v);
+    }
+    return true;
+}
+
+} // namespace
+
+TEST(GraphMatching, EmptyGraph) {
+    Graph G(0, false);
+    EXPECT_TRUE(maximum_matching(G).empty());
+}
+
+TEST(GraphMatching, IsolatedVertices) {
+    Graph G(3, false);
+    EXPECT_TRUE(maximum_matching(G).empty());
+}
+
+TEST(GraphMatching, SingleEdge) {
+    Graph G(2, false);
+    G.add_edge(0, 1);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 1u);
+    EXPECT_EQ(m[0], (std::pair<int, int>{0, 1}));
+}
+
+TEST(GraphMatching, PathOfThree) {
+    // Path 0-1-2: maximum matching size 1
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 1u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, TriangleBlossom) {
+    // Odd cycle K3: maximum matching size 1
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 0);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 1u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, CompleteGraphEven) {
+    // K4: perfect matching of size 2
+    Graph G(4, false);
+    add_clique(G, 0, 4);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 2u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, BipartiteMatchesHopcroftCardinality) {
+    // Complete bipartite K_{2,3}: left [0,2), right [2,5)
+    Graph G(5, false);
+    for (int L = 0; L < 2; ++L)
+        for (int R = 2; R < 5; ++R)
+            G.add_edge(L, R);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 2u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+    auto hk = bipartite_match(G, 2);
+    ASSERT_TRUE(hk.has_value());
+    EXPECT_EQ(static_cast<int>(m.size()), *hk);
+}
+
+TEST(GraphMatching, NeedsBlossomShrink) {
+    // Classic blossom graph: triangle 0-1-2 with pendant edges 0-3 and 1-4.
+    // Maximum matching size is 2 (e.g. {3-0, 1-4} or {3-0, 2-1}, etc.).
+    Graph G(5, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 0);
+    G.add_edge(0, 3);
+    G.add_edge(1, 4);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 2u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, DisjointEdges) {
+    Graph G(6, false);
+    G.add_edge(0, 1);
+    G.add_edge(2, 3);
+    G.add_edge(4, 5);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 3u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, SelfLoopIgnored) {
+    Graph G(2, false);
+    G.add_edge(0, 0);
+    G.add_edge(0, 1);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 1u);
+    EXPECT_EQ(m[0], (std::pair<int, int>{0, 1}));
+}
