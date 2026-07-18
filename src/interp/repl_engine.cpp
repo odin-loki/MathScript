@@ -2678,6 +2678,98 @@ Result<Matrix<double>> eval_control_lyap(const Matrix<double>& A_m,
     return nested_to_matrix(*X);
 }
 
+Result<Matrix<double>> eval_control_ctrb(const Matrix<double>& A_m,
+                                         const Matrix<double>& B_m) {
+    constexpr const char* fn = "control_ctrb";
+    auto A = matrix_to_square_nested(A_m, fn);
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto B = matrix_to_nested(B_m, fn);
+    if (!B) {
+        return std::unexpected(B.error());
+    }
+    if (B->size() != A->size()) {
+        return std::unexpected(DomainError{fn, "expected B with same row count as A"});
+    }
+    return nested_to_matrix(control::ctrb(*A, *B));
+}
+
+Result<Matrix<double>> eval_control_obsv(const Matrix<double>& A_m,
+                                         const Matrix<double>& C_m) {
+    constexpr const char* fn = "control_obsv";
+    auto A = matrix_to_square_nested(A_m, fn);
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto C = matrix_to_nested(C_m, fn);
+    if (!C) {
+        return std::unexpected(C.error());
+    }
+    if (C->empty() || C->front().size() != A->size()) {
+        return std::unexpected(
+            DomainError{fn, "expected C with column count equal to A size"});
+    }
+    return nested_to_matrix(control::obsv(*A, *C));
+}
+
+Result<Matrix<double>> eval_control_ctrb_gram(const Matrix<double>& A_m,
+                                              const Matrix<double>& B_m) {
+    constexpr const char* fn = "control_ctrb_gram";
+    auto A = matrix_to_square_nested(A_m, fn);
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto B = matrix_to_nested(B_m, fn);
+    if (!B) {
+        return std::unexpected(B.error());
+    }
+    if (B->size() != A->size()) {
+        return std::unexpected(DomainError{fn, "expected B with same row count as A"});
+    }
+    const size_t n = A->size();
+    const size_t m = (*B)[0].size();
+    std::vector<std::vector<double>> C(1, std::vector<double>(n, 0.0));
+    if (!C[0].empty()) {
+        C[0][0] = 1.0;
+    }
+    std::vector<std::vector<double>> D(1, std::vector<double>(m, 0.0));
+    auto Wc = control::ctrb_gram(control::ss(*A, *B, C, D));
+    if (!Wc) {
+        return std::unexpected(Wc.error());
+    }
+    return nested_to_matrix(*Wc);
+}
+
+Result<Matrix<double>> eval_control_obsv_gram(const Matrix<double>& A_m,
+                                              const Matrix<double>& C_m) {
+    constexpr const char* fn = "control_obsv_gram";
+    auto A = matrix_to_square_nested(A_m, fn);
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto C = matrix_to_nested(C_m, fn);
+    if (!C) {
+        return std::unexpected(C.error());
+    }
+    if (C->empty() || C->front().size() != A->size()) {
+        return std::unexpected(
+            DomainError{fn, "expected C with column count equal to A size"});
+    }
+    const size_t n = A->size();
+    const size_t p = C->size();
+    std::vector<std::vector<double>> B(n, std::vector<double>(1, 0.0));
+    if (!B.empty()) {
+        B[0][0] = 1.0;
+    }
+    std::vector<std::vector<double>> D(p, std::vector<double>(1, 0.0));
+    auto Wo = control::obsv_gram(control::ss(*A, B, *C, D));
+    if (!Wo) {
+        return std::unexpected(Wo.error());
+    }
+    return nested_to_matrix(*Wo);
+}
+
 Result<control::KalmanState> kalman_state_from_matrices(const Matrix<double>& x_m,
                                                           const Matrix<double>& P_m,
                                                           const char* fn) {
@@ -8758,7 +8850,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "quantum_op_apply" || callee == "topo_persistence_diagram" ||
            callee == "control_margins" || callee == "control_poles" ||
            callee == "control_zeros" || callee == "control_step_info" ||
-           callee == "control_nyquist" || callee == "quantum_commutator" ||
+           callee == "control_nyquist" || callee == "control_ctrb" ||
+           callee == "control_obsv" || callee == "control_ctrb_gram" ||
+           callee == "control_obsv_gram" || callee == "quantum_commutator" ||
            callee == "poly_add" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "quantum_tensor_product" ||
            callee == "ml_mat_mul" ||
@@ -11263,6 +11357,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "control_lyap" || fn == "control_lqr" || fn == "control_lqe" ||
             fn == "control_place" ||
             fn == "control_dlyap" || fn == "control_riccati" || fn == "control_dare" ||
+            fn == "control_ctrb" || fn == "control_obsv" ||
+            fn == "control_ctrb_gram" || fn == "control_obsv_gram" ||
             fn == "control_bode_mag_db" || fn == "control_bode_phase" ||
             fn == "control_bode" || fn == "control_poles" || fn == "control_zeros" ||
             fn == "control_step_info" || fn == "control_nyquist" ||
@@ -13241,6 +13337,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "control_step_response" || callee == "control_impulse_response" ||
            callee == "control_kalman_predict" || callee == "control_kalman_update" ||
            callee == "control_kalman_predict_cov" || callee == "control_kalman_update_cov" ||
+           callee == "control_ctrb" || callee == "control_obsv" ||
+           callee == "control_ctrb_gram" || callee == "control_obsv_gram" ||
            callee == "compress_bits_to_bytes" ||
            callee == "compress_bytes_to_bits" ||
            callee == "graph_betweenness" ||
@@ -13554,6 +13652,10 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "imresize" || callee == "topo_betti_curve" || callee == "bilateral" ||
         callee == "canny") {
         return arity == 3;
+    }
+    if (callee == "control_ctrb" || callee == "control_obsv" ||
+        callee == "control_ctrb_gram" || callee == "control_obsv_gram") {
+        return arity == 2;
     }
     if (callee == "control_kalman_predict" || callee == "control_kalman_predict_cov") {
         return arity == 4;
@@ -18042,6 +18144,62 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(updated.error());
         }
         result = *updated;
+    } else if (assign.callee == "control_ctrb" && assign.args.size() == 2) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto B_m = resolve_operand(assign.args[1]);
+        if (!B_m) {
+            return std::unexpected(B_m.error());
+        }
+        auto value = eval_control_ctrb(*A_m, *B_m);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
+    } else if (assign.callee == "control_obsv" && assign.args.size() == 2) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto C_m = resolve_operand(assign.args[1]);
+        if (!C_m) {
+            return std::unexpected(C_m.error());
+        }
+        auto value = eval_control_obsv(*A_m, *C_m);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
+    } else if (assign.callee == "control_ctrb_gram" && assign.args.size() == 2) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto B_m = resolve_operand(assign.args[1]);
+        if (!B_m) {
+            return std::unexpected(B_m.error());
+        }
+        auto value = eval_control_ctrb_gram(*A_m, *B_m);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
+    } else if (assign.callee == "control_obsv_gram" && assign.args.size() == 2) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto C_m = resolve_operand(assign.args[1]);
+        if (!C_m) {
+            return std::unexpected(C_m.error());
+        }
+        auto value = eval_control_obsv_gram(*A_m, *C_m);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
     }
 
     return result;
@@ -20295,6 +20453,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = control_is_stable(num,den) 1 if all poles in LHP else 0\n"
             "  name = control_is_controllable(A,B) 1 if (A,B) controllable else 0\n"
             "  name = control_is_observable(A,C) 1 if (A,C) observable else 0\n"
+            "  name = control_ctrb(A,B) controllability matrix [B AB A^2B ...]\n"
+            "  name = control_obsv(A,C) observability matrix [C; CA; CA^2; ...]\n"
+            "  name = control_ctrb_gram(A,B) continuous controllability Gramian Wc\n"
+            "  name = control_obsv_gram(A,C) continuous observability Gramian Wo\n"
             "  name = control_lyap(A,Q) continuous Lyapunov equation solution matrix\n"
             "  name = control_dlyap(A,Q) discrete Lyapunov equation solution matrix\n"
             "  name = control_lqr(A,B,Q,R) LQR state-feedback gain matrix K\n"
@@ -20585,7 +20747,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x)\n"
-            "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R)\n"
+            "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
@@ -21538,6 +21700,50 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "control_lyap") {
                 auto value = eval_control_lyap(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "control_ctrb") {
+                auto value = eval_control_ctrb(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "control_obsv") {
+                auto value = eval_control_obsv(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "control_ctrb_gram") {
+                auto value = eval_control_ctrb_gram(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "control_obsv_gram") {
+                auto value = eval_control_obsv_gram(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -28456,6 +28662,46 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     std::ostringstream out;
                     out << "X =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "control_ctrb") {
+                    auto value = eval_control_ctrb(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "ctrb =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "control_obsv") {
+                    auto value = eval_control_obsv(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "obsv =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "control_ctrb_gram") {
+                    auto value = eval_control_ctrb_gram(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "Wc =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "control_obsv_gram") {
+                    auto value = eval_control_obsv_gram(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "Wo =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
