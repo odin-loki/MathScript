@@ -34,3 +34,12 @@ TEST(MpiStubTest, allreduce_identity) {
     EXPECT_DOUBLE_EQ(allreduce_sum(ctx, 3.5), 3.5);
     finalize(ctx);
 }
+
+TEST(MpiStubTest, bcast_identity) {
+    auto ctx = init(0, nullptr);
+    EXPECT_EQ(size(ctx), 1);
+    EXPECT_DOUBLE_EQ(bcast(ctx, 3.5), 3.5);
+    EXPECT_DOUBLE_EQ(bcast(ctx, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(bcast(ctx, -2.25), -2.25);
+    finalize(ctx);
+}
