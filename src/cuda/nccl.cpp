@@ -19,4 +19,17 @@ size_t nccl_comm_size() {
     return nccl_available() ? static_cast<size_t>(device_count()) : 1;
 }
 
+double allreduce_sum(double value) {
+#if defined(MS_HAS_NCCL) && MS_HAS_NCCL
+    if (!nccl_available() || nccl_comm_size() <= 1) {
+        return value;
+    }
+    // Multi-GPU NCCL reduction is wired in a later wave; single-rank identity
+    // keeps host and stub builds deterministic until comm init lands.
+    return value;
+#else
+    return value;
+#endif
+}
+
 } // namespace ms::cuda
