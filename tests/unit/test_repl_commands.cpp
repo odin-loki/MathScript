@@ -6486,6 +6486,28 @@ TEST(ReplCommandsTest, wave263_numthy_pell_quadratic) {
     EXPECT_NEAR(residues(2, 0), 4.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave264_numthy_cornacchia) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_cornacchia(d,p)");
+
+    expect_ok(interp, "xy = numthy_cornacchia(1, 5)");
+    ASSERT_GT(interp.state().matrices.count("xy"), 0u);
+    const auto& sol = interp.state().matrices.at("xy");
+    EXPECT_EQ(sol.rows(), 1u);
+    EXPECT_EQ(sol.cols(), 2u);
+    EXPECT_NEAR(sol(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(sol(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(sol(0, 0) * sol(0, 0) + 1.0 * sol(0, 1) * sol(0, 1), 5.0, 1e-9);
+
+    expect_ok(interp, "xy13 = numthy_cornacchia(1, 13)");
+    ASSERT_GT(interp.state().matrices.count("xy13"), 0u);
+    const auto& s13 = interp.state().matrices.at("xy13");
+    EXPECT_EQ(s13.rows(), 1u);
+    EXPECT_EQ(s13.cols(), 2u);
+    EXPECT_NEAR(s13(0, 0), 3.0, 1e-9);
+    EXPECT_NEAR(s13(0, 1), 2.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave258_radon_iradon) {
     Interpreter interp;
     expect_contains(interp, "help", "radon(M,theta)");
