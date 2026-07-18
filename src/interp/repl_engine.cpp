@@ -4673,6 +4673,15 @@ Result<std::string> eval_crypto_sha256(const std::string& data_arg) {
     return crypto::sha256_hex(std::span<const uint8_t>(*data)) + "\n";
 }
 
+Result<std::string> eval_crypto_sha512(const std::string& data_arg) {
+    constexpr const char* fn = "crypto_sha512";
+    auto data = parse_hex_arg(data_arg, fn, "data");
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+    return crypto::sha512_hex(std::span<const uint8_t>(*data)) + "\n";
+}
+
 Result<std::string> eval_crypto_hmac_sha256(const std::string& key_arg,
                                             const std::string& data_arg) {
     constexpr const char* fn = "crypto_hmac_sha256";
@@ -8512,6 +8521,12 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
             return std::unexpected(DomainError{fn, "expected crypto_sha256(hex_data)"});
         }
         return eval_crypto_sha256(call_args->at(0));
+    }
+    if (fn == "crypto_sha512") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected crypto_sha512(hex_data)"});
+        }
+        return eval_crypto_sha512(call_args->at(0));
     }
     if (fn == "crypto_hmac_sha256") {
         if (call_args->size() != 2) {
@@ -15122,6 +15137,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_hkdf_sha256(hex_ikm,hex_salt,hex_info,len) HKDF-SHA256 extract/expand (hex I/O)\n"
             "  crypto_hkdf_sha512(hex_ikm,hex_salt,hex_info,len) HKDF-SHA512 extract/expand (hex I/O)\n"
             "  crypto_sha256(hex_data) SHA-256 digest (hex I/O)\n"
+            "  crypto_sha512(hex_data) SHA-512 digest (hex I/O)\n"
             "  crypto_hmac_sha256(hex_key,hex_data) HMAC-SHA256 digest (hex I/O)\n"
             "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
             "  crypto_pbkdf2_sha256(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA256 (hex I/O)\n"

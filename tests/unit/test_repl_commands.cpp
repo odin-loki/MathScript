@@ -5057,3 +5057,13 @@ TEST(ReplCommandsTest, wave249_crypto_sha256_and_hmac_sha256) {
         "crypto_hmac_sha256(0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b,4869205468657265)",
         "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
 }
+
+TEST(ReplCommandsTest, wave250_crypto_sha512) {
+    Interpreter interp;
+    expect_contains(interp, "help", "crypto_sha512(hex_data)");
+
+    // NIST empty-string SHA-512
+    expect_contains(
+        interp, "crypto_sha512(\"\")",
+        "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce3ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e");
+}
