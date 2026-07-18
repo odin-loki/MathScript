@@ -3487,6 +3487,25 @@ TEST(ReplCommandsTest, wave248_signal_upsample_downsample) {
     EXPECT_NEAR(interp.state().matrices.at("dn")(2, 0), 5.0, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave249_signal_resample_decimate_interpolate) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_decimate(x,q)");
+    expect_contains(interp, "help", "signal_interpolate(x,p)");
+    expect_contains(interp, "help", "signal_resample(x,p,q)");
+
+    expect_ok(interp, "dec = signal_decimate([1; 2; 3; 4; 5; 6], 2)");
+    ASSERT_GT(interp.state().matrices.count("dec"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("dec").rows(), 3u);
+
+    expect_ok(interp, "itp = signal_interpolate([1; 2], 2)");
+    ASSERT_GT(interp.state().matrices.count("itp"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("itp").rows(), 4u);
+
+    expect_ok(interp, "rs = signal_resample([1; 2; 3; 4], 2, 2)");
+    ASSERT_GT(interp.state().matrices.count("rs"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("rs").rows(), 4u);
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");
