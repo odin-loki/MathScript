@@ -307,6 +307,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `geo_bezier_deriv` / `geo_hermite_curve` | Bezier derivative / Hermite point → 1×2 (Wave 260) |
 | `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization (Wave 259) |
 | `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` (Wave 260) |
+| `numthy_factor_exp(n)` / `numthy_farey(n)` | Prime exponents / Farey fractions as `K×2` (Wave 261) |
+| `numthy_is_carmichael(n)` | Carmichael test → `1`/`0` (Wave 261) |
 | `fft_goertzel(x,f,fs)` | Single-bin Goertzel DFT as 1×2 `[re,im]` (Wave 260) |
 | `bidiag(A)` / `U, B, V = bidiag(A)` | Bidiagonalization (Wave 260) |
 | `solve_sylvester(A,B,C)` | Sylvester equation `A*X + X*B = C` (Wave 260) |

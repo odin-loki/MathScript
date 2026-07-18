@@ -6277,6 +6277,36 @@ TEST(ReplCommandsTest, wave260_numthy_divisors) {
     EXPECT_NEAR(interp.state().matrices.at("p")(1, 0), 17.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave261_numthy_factor_exp_farey_carmichael) {
+    Interpreter interp;
+    expect_contains(interp, "help", "numthy_factor_exp(n)");
+    expect_contains(interp, "help", "numthy_farey(n)");
+    expect_contains(interp, "help", "numthy_is_carmichael(n)");
+
+    expect_ok(interp, "fe = numthy_factor_exp(12)");
+    ASSERT_GT(interp.state().matrices.count("fe"), 0u);
+    const auto& factor_exp = interp.state().matrices.at("fe");
+    EXPECT_EQ(factor_exp.rows(), 2u);
+    EXPECT_EQ(factor_exp.cols(), 2u);
+    EXPECT_NEAR(factor_exp(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(factor_exp(0, 1), 2.0, 1e-9);
+    EXPECT_NEAR(factor_exp(1, 0), 3.0, 1e-9);
+    EXPECT_NEAR(factor_exp(1, 1), 1.0, 1e-9);
+
+    expect_ok(interp, "f = numthy_farey(4)");
+    ASSERT_GT(interp.state().matrices.count("f"), 0u);
+    const auto& farey = interp.state().matrices.at("f");
+    EXPECT_EQ(farey.rows(), 7u);
+    EXPECT_EQ(farey.cols(), 2u);
+    EXPECT_NEAR(farey(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(farey(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(farey(6, 0), 1.0, 1e-9);
+    EXPECT_NEAR(farey(6, 1), 1.0, 1e-9);
+
+    expect_contains(interp, "numthy_is_carmichael(561)", "1");
+    expect_contains(interp, "numthy_is_carmichael(97)", "0");
+}
+
 TEST(ReplCommandsTest, wave258_radon_iradon) {
     Interpreter interp;
     expect_contains(interp, "help", "radon(M,theta)");

@@ -2380,6 +2380,34 @@ Result<Matrix<double>> eval_numthy_factor_vec(int n) {
     return out;
 }
 
+Result<Matrix<double>> eval_numthy_factor_exp(int n) {
+    if (n < 2) {
+        return std::unexpected(
+            DomainError{"numthy_factor_exp", "expected integer n >= 2"});
+    }
+    const auto fe = numthy::factor_exp(static_cast<uint64_t>(n));
+    Matrix<double> out(fe.size(), 2);
+    for (size_t i = 0; i < fe.size(); ++i) {
+        out(i, 0) = static_cast<double>(fe[i].first);
+        out(i, 1) = static_cast<double>(fe[i].second);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_numthy_farey(int n) {
+    if (n < 1) {
+        return std::unexpected(
+            DomainError{"numthy_farey", "expected positive integer n"});
+    }
+    const auto fr = numthy::farey(static_cast<uint32_t>(n));
+    Matrix<double> out(fr.size(), 2);
+    for (size_t i = 0; i < fr.size(); ++i) {
+        out(i, 0) = static_cast<double>(fr[i].first);
+        out(i, 1) = static_cast<double>(fr[i].second);
+    }
+    return out;
+}
+
 Matrix<double> codes_to_matrix_col(const std::vector<uint32_t>& codes) {
     Matrix<double> out(codes.size(), 1);
     for (size_t i = 0; i < codes.size(); ++i) {
@@ -10681,6 +10709,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "geo_kdtree_knn" || fn == "geo_kdtree_range" ||
             fn == "topo_pairwise_distances" ||
             fn == "combo_next_perm" || fn == "numthy_convergents" ||
+            fn == "numthy_factor_exp" || fn == "numthy_farey" ||
             fn == "ml_mat_transpose" || fn == "ml_mat_mul" ||
             fn == "ml_linear_fit" || fn == "ml_linear_predict" ||
             fn == "ml_ridge_fit" || fn == "ml_ridge_predict" ||
@@ -12589,7 +12618,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "geo_catmull_rom" || callee == "geo_hermite_curve" ||
            callee == "geo_bspline_eval" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
-           callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
+           callee == "numthy_convergents" || callee == "numthy_factor_exp" ||
+           callee == "numthy_farey" || callee == "ml_mat_transpose" ||
            callee == "ml_mat_mul" ||
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
            callee == "ml_ridge_fit" || callee == "ml_ridge_predict" ||
@@ -12676,7 +12706,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
         callee == "geo_min_bounding_rect" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
-        callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
+        callee == "numthy_convergents" || callee == "numthy_factor_exp" ||
+        callee == "numthy_farey" || callee == "ml_mat_transpose" ||
         callee == "poly_deriv" ||
         callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
         callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
@@ -13248,6 +13279,13 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                     DomainError{"numthy_isprime", "expected non-negative integer n"});
             }
             return numthy::isprime(static_cast<uint64_t>(arg)) ? 1.0 : 0.0;
+        }
+        if (fn == "numthy_is_carmichael") {
+            if (arg < 0.0 || std::floor(arg) != arg) {
+                return std::unexpected(
+                    DomainError{"numthy_is_carmichael", "expected non-negative integer n"});
+            }
+            return numthy::is_carmichael(static_cast<uint64_t>(arg)) ? 1.0 : 0.0;
         }
         if (fn == "numthy_euler_phi") {
             if (arg < 0.0 || std::floor(arg) != arg) {
@@ -16586,6 +16624,34 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(right.error());
         }
         result = minres(*left, *right);
+    } else if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey") &&
+               assign.args.size() == 1) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(DomainError{
+                    assign.callee,
+                    assign.callee == "numthy_factor_exp"
+                        ? "expected numthy_factor_exp(n)"
+                        : "expected numthy_farey(n)"});
+            }
+            n_d = *n_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        if (assign.callee == "numthy_factor_exp") {
+            if (n < 2 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_factor_exp", "expected integer n >= 2"});
+            }
+            result = eval_numthy_factor_exp(n);
+        } else {
+            if (n < 1 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_farey", "expected positive integer n"});
+            }
+            result = eval_numthy_farey(n);
+        }
     }
 
     return result;
@@ -18538,6 +18604,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_factor_count(n) prime factor count with multiplicity\n"
             "  name = numthy_sum_divisors(n) sum of divisors sigma(n)\n"
             "  name = numthy_isprime(n)   1 if n is prime else 0\n"
+            "  name = numthy_is_carmichael(n) 1 if n is a Carmichael number else 0\n"
             "  name = numthy_euler_phi(n) Euler totient phi(n)\n"
             "  name = numthy_mobius(n)    Möbius function mu(n): -1, 0, or 1\n"
             "  name = numthy_nextprime(n) smallest prime strictly greater than n\n"
@@ -18558,6 +18625,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_continued_fraction(x,n) continued fraction coefficients as nx1 column\n"
             "  name = numthy_primes(lo,hi) primes in inclusive range as Kx1 column\n"
             "  name = numthy_convergents(cf) convergent pairs p/q as Kx2 matrix from cf column\n"
+            "  name = numthy_factor_exp(n) prime/exponent pairs {p,e} as Kx2 matrix\n"
+            "  name = numthy_farey(n)      Farey sequence F_n as Mx2 reduced fractions [p,q]\n"
             "  name = numthy_factor_vec(n) prime factorization of n as kx1 column\n"
             "  name = numthy_factor(n)      prime factorization of n as kx1 column\n"
             "  name = poly_deriv(coeffs) polynomial derivative coefficient column (low-to-high)\n"
@@ -19024,7 +19093,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
-            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
+            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
@@ -28866,6 +28935,44 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(numthy::prime_nth(static_cast<uint64_t>(n_d))) + "\n";
         }
 
+        if (fn == "numthy_factor_exp" || fn == "numthy_farey") {
+            double n_d = 0.0;
+            if (!parse_number(arg, n_d)) {
+                auto n_expr = eval_scalar_expr(state_, arg);
+                if (!n_expr) {
+                    return std::unexpected(DomainError{
+                        fn,
+                        fn == "numthy_factor_exp"
+                            ? "expected numthy_factor_exp(n)"
+                            : "expected numthy_farey(n)"});
+                }
+                n_d = *n_expr;
+            }
+            const int n = static_cast<int>(n_d);
+            Result<Matrix<double>> value = std::unexpected(
+                DomainError{fn, "unsupported matrix call"});
+            if (fn == "numthy_factor_exp") {
+                if (n < 2 || n_d != n) {
+                    return std::unexpected(
+                        DomainError{"numthy_factor_exp", "expected integer n >= 2"});
+                }
+                value = eval_numthy_factor_exp(n);
+            } else {
+                if (n < 1 || n_d != n) {
+                    return std::unexpected(
+                        DomainError{"numthy_farey", "expected positive integer n"});
+                }
+                value = eval_numthy_farey(n);
+            }
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "op =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
+
         if (fn == "numthy_primitive_root") {
             double p_d = 0.0;
             if (!parse_number(arg, p_d) || p_d < 2.0 || std::floor(p_d) != p_d) {
@@ -28895,7 +29002,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "combo_double_factorial" || fn == "numthy_partition" ||
             fn == "numthy_num_divisors" || fn == "numthy_factor_count" ||
             fn == "numthy_sum_divisors" ||
-            fn == "numthy_isprime" || fn == "numthy_euler_phi" || fn == "numthy_mobius" ||
+            fn == "numthy_isprime" || fn == "numthy_is_carmichael" ||
+            fn == "numthy_euler_phi" || fn == "numthy_mobius" ||
             fn == "numthy_nextprime" || fn == "numthy_prevprime" ||
             fn == "numthy_liouville" || fn == "numthy_prime_pi") {
             double n_d = 0.0;
@@ -28940,6 +29048,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (fn == "numthy_isprime") {
                 return std::to_string(numthy::isprime(static_cast<uint64_t>(n_d)) ? 1 : 0) + "\n";
+            }
+            if (fn == "numthy_is_carmichael") {
+                return std::to_string(numthy::is_carmichael(static_cast<uint64_t>(n_d)) ? 1 : 0) +
+                       "\n";
             }
             if (fn == "numthy_euler_phi") {
                 return std::to_string(numthy::euler_phi(static_cast<uint64_t>(n_d))) + "\n";
