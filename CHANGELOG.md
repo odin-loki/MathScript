@@ -7,18 +7,11 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-07-19 (Wave 262 — combo motzkin_paths set_partitions) ✅ COMPLETE
-
-Thirty-second feature wave after Wave 261. Combinatorial enumeration REPL bindings for Motzkin paths and set partitions.
-
-### Added (Wave 262)
 - **Combo REPL** — `combo_motzkin_paths` / `combo_set_partitions`.
 - **Tests** — `integration_repl_wave262_pipeline`.
-
-### Docs (Wave 262)
 - **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 262 sync; **420** CTest suites.
+- **Numthy REPL** — `numthy_stern_brocot` / `numthy_lucas_sequence` / `numthy_multiplicative_order` / `numthy_carmichael_lambda`.
 
-**420 CTest suites — all passing**. **28-bench smoke OK**.
 
 ## [1.0.0] - 2026-07-19 (Wave 261 — eig/ldl, iterative solvers, FFT freq, combo/numthy/stats, Title Case) ✅ COMPLETE
 

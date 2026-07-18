@@ -317,6 +317,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` (Wave 260) |
 | `numthy_factor_exp(n)` / `numthy_farey(n)` | Prime exponents / Farey fractions as `K×2` (Wave 261) |
 | `numthy_is_carmichael(n)` | Carmichael test → `1`/`0` (Wave 261) |
+| `numthy_stern_brocot(n)` / `numthy_lucas_sequence(k,P,Q)` | Stern-Brocot fractions as `N×2` / Lucas `U_k,V_k` as `1×2` (Wave 262) |
+| `numthy_multiplicative_order(a,n)` / `numthy_carmichael_lambda(n)` | Multiplicative order / Carmichael λ (Wave 262) |
 | `fft_goertzel(x,f,fs)` | Single-bin Goertzel DFT as 1×2 `[re,im]` (Wave 260) |
 | `fftfreq(n[,d])` / `rfftfreq(n[,d])` | NumPy-compatible FFT/rFFT frequency axes as `N×1` columns (Wave 261) |
 | `ifftshift(S)` | Inverse cyclic shift of `N×2` complex spectrum (Wave 261) |
