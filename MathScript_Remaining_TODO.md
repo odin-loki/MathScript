@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 232 kickoff — **376 CTest suites** on `main` @ Wave 231; feature branches in flight)
+**Updated:** 2026-07-18 (Wave 232 complete — **379 CTest suites** on `main` @ Wave 232; next: Wave 233+ GUI polish)
 
 ---
 
@@ -56,27 +56,30 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ---
 
-## Feature work (Wave 232+) — IN PROGRESS
+## Wave 232 ✅ COMPLETE (symbolic transforms + CUDA + MPI REPL + plugin audit + GUI history)
 
-### Wave 232 (kickoff — parallel branches)
+| Branch | Shipped |
+|--------|---------|
+| `wave232/sym-laplace` | `sym_laplace` / `sym_ilaplace` table-driven MVP |
+| `wave232/sym-fourier` | `sym_fourier` / `sym_ifourier`, `sym_ztransform` / `sym_iztransform` MVP |
+| `wave232/sym-repl` | REPL bindings for expand/collect/series/limit/solve/substitute + transforms |
+| `wave232/cuda-lu` | `cuda::lu()` via cuSOLVER |
+| `wave232/cuda-stream` | `StreamPool::acquire()` + real `device_stats` via `cudaMemGetInfo` |
+| `wave232/mpi-repl` | Stub-safe `mpi_rank`, `mpi_size`, `mpi_allreduce_sum`, `dist_solve` |
+| `wave232/plugin-audit` | `UnsafeRegistry` + `${CMAKE_BINARY_DIR}/ms-unsafe-audit.json` |
+| `wave232/gui-repl` | GUI Up-arrow REPL history; Wave 231 crypto/fem/cfd REPL wrappers |
 
-| Branch | Status | Deliverable |
-|--------|--------|-------------|
-| `wave232/sym-laplace` | in progress | `sym_laplace` / `sym_ilaplace` table-driven MVP |
-| `wave232/sym-fourier` | in progress | `sym_fourier` / `sym_ifourier`, `sym_ztransform` / `sym_iztransform` MVP |
-| `wave232/sym-repl` | in progress | REPL bindings for existing + new symbolic commands |
-| `wave232/cuda-lu` | in progress | `cuda::lu()` via cuSOLVER |
-| `wave232/cuda-stream` | in progress | `StreamPool::acquire()` + real device memory stats |
-| `wave232/mpi-repl` | in progress | Stub-safe MPI/distributed REPL commands |
-| `wave232/plugin-audit` | in progress | Unsafe-site registry + JSON audit report |
-| `wave232/gui-repl` | in progress | GUI command history + Wave 231 crypto/fem/cfd REPL wrappers |
-| `wave232/docs` | in progress | CHANGELOG, TODO, `docs/API.md` kickoff |
+**379 CTest suites** (+3 registrations: `test_symbolic_transforms`, `integration_repl_wave232_pipeline`, `integration_distributed_repl_pipeline`; ~24 transform unit tests + pipeline coverage). Profiling iteration unchanged — **FULLY COMPLETE (Waves 218–230).**
 
-Wave 231 closed AES/ChaCha, 2D FEM, and 2D CFD. Wave 232 extends symbolic transforms, CUDA stubs, MPI REPL exposure, plugin audit, and GUI/REPL polish in parallel isolated worktrees; merges land independently.
+---
+
+## Feature work (Wave 233+) — IN PROGRESS
+
+Wave 232 closed symbolic transforms, CUDA LU/StreamPool/device stats, MPI/distributed REPL exposure, plugin unsafe audit, and initial GUI/REPL polish. **Next up: Wave 233+ GUI polish remaining** (continued REPL bindings through Wave 236).
 
 | Wave | Focus |
 |------|--------|
-| **232–236** | GUI polish + REPL bindings (continued) |
+| **233–236** | GUI polish + REPL bindings (continued) |
 | **237+** | Remaining API gaps (curve25519, AES-GCM, 3D FEM/CFD, scalable distributed LA, etc.) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

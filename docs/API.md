@@ -53,7 +53,7 @@ Foundation types, linear algebra, BLAS/LAPACK, numerics, memory, error handling,
 | `cfd/cfd.hpp` | 1D/2D finite-volume advection: `grid1d`/`grid2d`, `square_pulse`/`square_pulse_2d`, `constant_velocity`, explicit Euler upwind `upwind_fvm_advection`/`upwind_fvm_advection_2d`, time integration `run_advection`/`run_advection_2d`, mass integrals `integrated_mass`/`integrated_mass_2d`; `BoundaryCondition` periodic or zero-flux per axis; CFL guards reject unstable steps |
 | `crypto/crypto.hpp` | Pure-C++ digests and ciphers (include individually — not in `ms/ms.hpp`): `sha256`/`sha512`/`hmac_sha256` with hex helpers; AES-128/256 single-block ECB (`aes128_encrypt_block`, `aes256_encrypt_block`); AES-128 CBC (`aes128_cbc_encrypt`, `aes128_cbc_decrypt`); ChaCha20 stream cipher (`chacha20_encrypt`, XOR self-inverse) |
 | `optim/optim.hpp` | `gradient_descent`, `newton_raphson`, `broyden`, `golden_section`, `newton_1d`, `simplex_solver`, `minimize_with_constraints`; N-D unconstrained: `nelder_mead`, `bfgs`, `lbfgs`, `adam`; global/derivative-free: `simulated_annealing`, `differential_evolution`, `particle_swarm`, `cmaes` (Covariance Matrix Adaptation Evolution Strategy — rank-1/rank-mu covariance updates, best on ill-conditioned/rotated objectives); nonlinear equation solvers: `bisection`, `brentq`, `secant`, `halley`, `fixed_point`, `illinois` (anti-stagnation regula falsi); `levenberg_marquardt` (damped Gauss-Newton nonlinear least squares via a finite-difference Jacobian and adaptive damping); `conjugate_gradient` (nonlinear Fletcher-Reeves/Polak-Ribière+ CG with Armijo backtracking line search — converges in near-N steps on exact quadratics); `rmsprop` (adaptive gradient optimizer via EMA of squared gradients); `adadelta` (adaptive gradient optimizer without manual learning-rate schedule) |
-| `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals); `sym_expand` (distributes multiplication over addition/subtraction, with bounded small-integer-power expansion); `sym_collect` (combine like terms in a variable); `sym_limit`, `sym_series`, `sym_solve_linear`. **Planned (Wave 232, branches `wave232/sym-laplace`, `wave232/sym-fourier`):** table-driven `sym_laplace`/`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_ztransform`/`sym_iztransform` (Mellin/Hankel/`dsolve` deferred) |
+| `symbolic/symbolic.hpp` | AST `SymExpr` with `sym_add`/`sym_sub`/`sym_mul`/`sym_div`/`sym_neg`, `sym_sin`/`sym_cos`/`sym_tan`/`sym_exp`/`sym_log`/`sym_sqrt`/`sym_pow`, `sym_deriv`/`sym_diff`, `sym_simplify`, `sym_integrate`, `sym_substitute`, `sym_eval`, `sym_to_string`, `sym_parse` (recursive-descent text→`SymExpr` parser for `^` `*` `/` `+` `-`, unary minus, parens, functions, variables, literals); `sym_expand` (distributes multiplication over addition/subtraction, with bounded small-integer-power expansion); `sym_collect` (combine like terms in a variable); `sym_limit`, `sym_series`, `sym_solve_linear`; table-driven `sym_laplace`/`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_ztransform`/`sym_iztransform` (MVP: polynomials, `exp`, `sin/cos`, rationals, geometric sequences; unsupported forms return `sym_deriv` sentinel — Mellin/Hankel/`dsolve` deferred) |
 | `special/special.hpp` | Broad special-function catalog: gamma, Bessel, elliptic, hypergeometric, Painlevé, etc.; DLMF additions: `zeta`, `zeta_hurwitz`, `eta_dirichlet`, `beta_dirichlet`, `polylog`, `clausen`, `debye`; `erfinv`/`erfcinv`, `trigamma`/`polygamma`, `pochhammer`/`falling_factorial`, `rgamma`, and the public canonical `gamma_inc_reg`/`gamma_inc_reg_upper`/`gamma_inc`/`beta_inc_reg`/`beta_inc` (also used internally by `ms::prob`'s `gamma_cdf`/`beta_cdf`/`f_cdf`/`chi2_cdf`); Voigt/pseudo-Voigt spectroscopy line shapes (`voigt`, `pseudo_voigt`, `pseudo_voigt_auto`, built on a from-scratch Humlicek w4 Faddeeva-function approximation); `sph_bessel_j`/`sph_bessel_y` (spherical Bessel functions via closed-form base cases plus a stable upward recurrence); `assoc_legendre_p`/`sph_harmonic_y` (associated Legendre polynomials and complex spherical harmonics `Y_l^m(theta,phi)`, verified via sphere orthonormality); `kummer_u` (Kummer's confluent hypergeometric function of the second kind, via the standard connection formula in terms of `kummer_m`); `lambert_w` (Lambert W function, branches 0 and −1) |
 | `domain/domain.hpp` | `factorial`, `nchoosek`, `gcd`, `lcm`, `extended_gcd` (Bezout coefficients via `ExtGcdResult`), and `Graph` edge counting |
 
@@ -97,13 +97,13 @@ CUDA GPU kernels (when `MS_ENABLE_CUDA=ON`) and MPI distributed linear algebra (
 
 | Header | Description |
 |--------|-------------|
-| `cuda/buffer.hpp` | `DeviceBuffer`, `PinnedBuffer`, and `StreamPool` GPU memory management. **Planned (Wave 232, branch `wave232/cuda-stream`):** non-null `StreamPool::acquire()`/`release()` when `MS_HAS_CUDA=1` |
+| `cuda/buffer.hpp` | `DeviceBuffer`, `PinnedBuffer`, and `StreamPool` GPU memory management; `StreamPool::acquire()`/`release()` return non-null CUDA streams when `MS_HAS_CUDA=1` |
 | `cuda/blas.hpp` | GPU `matmul` for dense `Matrix<double>` |
 | `cuda/fft.hpp` | GPU `fft` / `ifft` |
-| `cuda/solver.hpp` | GPU `solve` via cuSOLVER GETRF/GETRS. **Planned (Wave 232, branch `wave232/cuda-lu`):** `lu()` via cuSOLVER (currently returns `"cuda lu not implemented"`) |
+| `cuda/solver.hpp` | GPU `solve` via cuSOLVER GETRF/GETRS; `lu()` via cuSOLVER GETRF (returns `(L, U, P)`) |
 | `cuda/elementwise.hpp` | In-place `add_inplace` and `fill` on device spans |
 | `cuda/sparse.hpp` | COO sparse matrix-vector multiply on GPU |
-| `cuda/nvml.hpp` | NVML `DeviceStats` and utilization queries; `device_memory_free` (derived `total - used` with underflow guard). **Planned (Wave 232, branch `wave232/cuda-stream`):** populate `memory_total_bytes`/`memory_used_bytes` from `cudaMemGetInfo` (NVML optional) |
+| `cuda/nvml.hpp` | NVML `DeviceStats` and utilization queries; `device_stats()` populates `memory_total_bytes`/`memory_used_bytes` from `cudaMemGetInfo` (NVML optional for utilization/name); `device_memory_free` (derived `total - used` with underflow guard) |
 | `cuda/nccl.hpp` | NCCL availability and communicator size helpers |
 | `distributed/mpi_context.hpp` | `MPIContext` init/finalize, rank/size, `allreduce_sum`/`allreduce_max`/`allreduce_min`, `barrier` |
 | `distributed/dist_matrix.hpp` | `DistMatrix` local shards; `scatter`, `gather`, `combine_gather` |
@@ -111,7 +111,7 @@ CUDA GPU kernels (when `MS_ENABLE_CUDA=ON`) and MPI distributed linear algebra (
 | `distributed/linalg.hpp` | Distributed wrappers for `eig_sym`, `svd`, `lu` via gather-on-root |
 | `distributed/solve.hpp` | Distributed linear solve `A x = b` (gather-on-root → CPU `ms::solve` today) |
 
-**Planned REPL bindings (Wave 232, branch `wave232/mpi-repl`):** `mpi_rank()`, `mpi_size()`, `mpi_allreduce_sum(x)`, `dist_solve(A,b)` — stub-safe when `MS_ENABLE_MPI=OFF` (rank 0, size 1).
+**REPL bindings (MPI / distributed):** `mpi` (status dump), `mpi_rank()`, `mpi_size()`, `mpi_allreduce_sum(x)`, `dist_solve(A,b)` — stub-safe when `MS_ENABLE_MPI=OFF` (rank 0, size 1, local solve).
 
 ## Interpreter & tooling
 
@@ -123,7 +123,7 @@ REPL interpreter, plotting, JIT backends, and compile-time unsafe-site profiling
 | `interp/plot_console.hpp` | ASCII plot previews for console REPL (`format_plot_preview`) |
 | `interp/jit_backend.hpp` | `JitBackend` abstraction (`Repl` / `OrcJit`); `create_backend()` factory; optional `-DMS_BUILD_JIT=ON` links LLVM ORC LLJIT |
 | `interp/jit_backend_impl.hpp` | ORC JIT factory implementations (`create_orc_jit_stub_backend`, `create_orc_jit_llvm_backend` when `MS_JIT_LLVM` is defined) and `JitDispatchStats` counters; included by JIT-enabled builds. |
-| `unsafe/unsafe.hpp` | `MS_UNSAFE(reason)` attribute macro for justified unsafe sites; full enforcement when built with `MS_BUILD_PLUGIN`. **Planned (Wave 232, branch `wave232/plugin-audit`):** compile-time `UnsafeRegistry` collection and `${CMAKE_BINARY_DIR}/ms-unsafe-audit.json` report |
+| `unsafe/unsafe.hpp` | `MS_UNSAFE(reason)` attribute macro for justified unsafe sites; full enforcement when built with `MS_BUILD_PLUGIN`. `UnsafeRegistry` collects annotated sites at compile time and emits `${CMAKE_BINARY_DIR}/ms-unsafe-audit.json` (and `.jsonl`) when `MS_BUILD_PLUGIN=ON` |
 
 ### REPL scalar expressions
 
@@ -135,7 +135,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, and plot state.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, and plot state.
 
 ### REPL bindings
 
@@ -171,10 +171,39 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `sym_simplify("expr")` | Constant-fold and algebraic simplification of parsed expression |
 | `sym_integrate("expr", "var")` | Symbolic integration (power rule, linearity, sin/cos; unsupported forms documented) |
 | `sym_eval("expr", "var=value")` | Numeric evaluation of parsed expression with one variable binding |
+| `sym_expand("expr")` | Distribute multiplication over addition/subtraction |
+| `sym_collect("expr", "var")` | Combine like terms in a variable |
+| `sym_substitute("expr", "var", "replacement")` | Replace a variable with another symbolic expression |
+| `sym_limit("expr", "var", point)` | Symbolic/numeric limit at `point` |
+| `sym_series("expr", "var", point, order)` | Taylor series expansion to given order |
+| `sym_solve_linear("eqs", "vars")` | Solve linear equation(s) for variable(s); semicolon-separated for systems |
+| `sym_laplace("expr", "t", "s")` | Laplace transform (time → s-domain) |
+| `sym_ilaplace("expr", "s", "t")` | Inverse Laplace transform (s-domain → time) |
+| `sym_fourier("expr", "t", "omega")` | Fourier transform (time → frequency) |
+| `sym_ifourier("expr", "omega", "t")` | Inverse Fourier transform (frequency → time) |
+| `sym_ztransform("expr", "n", "z")` | Z-transform (discrete n → z-domain) |
+| `sym_iztransform("expr", "z", "n")` | Inverse Z-transform (z-domain → discrete n) |
 
-**Planned symbolic REPL bindings (Wave 232, branch `wave232/sym-repl`):** `sym_expand`, `sym_collect`, `sym_series`, `sym_limit`, `sym_solve_linear`, plus transform commands from `wave232/sym-laplace` and `wave232/sym-fourier`.
+**Crypto, FEM, and CFD (string/matrix assignment):**
 
-**Planned Wave 231 library REPL bindings (Wave 232, branch `wave232/gui-repl`):** thin wrappers for `aes128_*`, `chacha20_encrypt`, 2D FEM Poisson solve, and 2D CFD advection (`ms::crypto`, `ms::fem`, `ms::cfd`).
+| Call | Description |
+|------|-------------|
+| `crypto_aes128_encrypt_block(key_hex, block_hex)` | AES-128 ECB single-block encrypt; returns hex ciphertext |
+| `crypto_aes128_cbc_encrypt(key_hex, iv_hex, plain_hex)` | AES-128 CBC encrypt; returns hex ciphertext |
+| `crypto_aes128_cbc_decrypt(key_hex, iv_hex, cipher_hex)` | AES-128 CBC decrypt; returns hex plaintext |
+| `crypto_chacha20(key_hex, nonce_hex, counter, data_hex)` | ChaCha20 stream cipher (XOR self-inverse); returns hex output |
+| `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
+| `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |
+
+**MPI / distributed (scalar/matrix assignment):**
+
+| Call | Description |
+|------|-------------|
+| `mpi` | Print MPI backend status (stub: `backend=stub rank=0 size=1`) |
+| `mpi_rank()` | Current MPI rank (stub: 0) |
+| `mpi_size()` | MPI world size (stub: 1) |
+| `mpi_allreduce_sum(x)` | All-reduce sum of scalar `x` (stub: identity) |
+| `dist_solve(A, b)` | Distributed linear solve `A x = b` (stub: local gather + `ms::solve`) |
 
 **ODE formula-string bindings (scalar IVP):**
 

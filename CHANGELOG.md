@@ -5,31 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## [1.0.0] — 2026-07-18 (Wave 232 — Feature work kickoff: sym transforms, CUDA MVP, MPI REPL, plugin audit, GUI/REPL)
+## [1.0.0] — 2026-07-18 (Wave 232 — Symbolic transforms, CUDA LU/StreamPool, MPI REPL, plugin audit, GUI history)
 
-Second **feature wave** after Wave 231. Eight parallel implementation worktrees plus this docs branch — merges pending.
+Second **feature wave** after Wave 231. Eight parallel implementation worktrees merged to `main`.
 
-### In progress (Wave 232 parallel branches)
-
-| Branch | Module | Scope |
-|--------|--------|--------|
-| `wave232/sym-laplace` | `ms::symbolic` | Table-driven `sym_laplace` / `sym_ilaplace` MVP (polynomials, `exp`, `sin/cos`, rationals) |
-| `wave232/sym-fourier` | `ms::symbolic` | `sym_fourier` / `sym_ifourier` and `sym_ztransform` / `sym_iztransform` MVP |
-| `wave232/sym-repl` | REPL | Wire existing + new symbolic commands (`sym_expand`, `sym_collect`, `sym_series`, transforms) |
-| `wave232/cuda-lu` | `ms::cuda` | `cuda::lu()` via cuSOLVER (closes `"cuda lu not implemented"` stub) |
-| `wave232/cuda-stream` | `ms::cuda` | `StreamPool::acquire()` + real `device_stats` via `cudaMemGetInfo` / optional NVML |
-| `wave232/mpi-repl` | REPL / `ms::distributed` | Stub-safe `mpi_rank`, `mpi_size`, `mpi_allreduce_sum`, `dist_solve` bindings |
-| `wave232/plugin-audit` | `ms::plugin` | `UnsafeRegistry` collection + `${CMAKE_BINARY_DIR}/ms-unsafe-audit.json` build report |
-| `wave232/gui-repl` | GUI / REPL | Up-arrow command history; Wave 231 crypto/fem/cfd REPL wrappers |
-| `wave232/docs` | docs | CHANGELOG, TODO, and `docs/API.md` kickoff |
+### Added (Wave 232)
+- `ms::symbolic` — table-driven `sym_laplace`/`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_ztransform`/`sym_iztransform` MVP (polynomials, `exp`, `sin/cos`, rationals, geometric sequences); 24 unit tests in `test_symbolic_transforms.cpp`.
+- REPL — `sym_expand`, `sym_collect`, `sym_substitute`, `sym_limit`, `sym_series`, `sym_solve_linear`, plus all six transform commands; stub-safe MPI/distributed bindings (`mpi`, `mpi_rank()`, `mpi_size()`, `mpi_allreduce_sum(x)`, `dist_solve(A,b)`); Wave 231 crypto/fem/cfd wrappers (`crypto_aes128_*`, `crypto_chacha20`, `fem_poisson2d`, `cfd_advection2d`).
+- `ms::cuda` — `lu()` via cuSOLVER GETRF; `StreamPool::acquire()`/`release()` when `MS_HAS_CUDA=1`; `device_stats()` populates `memory_total_bytes`/`memory_used_bytes` via `cudaMemGetInfo` (NVML optional for utilization).
+- `ms::plugin` — compile-time `UnsafeRegistry` collection and `${CMAKE_BINARY_DIR}/ms-unsafe-audit.json` build report when `MS_BUILD_PLUGIN=ON`.
+- GUI — Up-arrow / Down-arrow REPL command history in `MainWindow` (draft recall on Down past newest entry).
+- Integration tests: `integration_repl_wave232_pipeline`, `integration_distributed_repl_pipeline`; extended `integration_symbolic_repl_pipeline`.
+- **Total Wave 232: 379 CTest suites — all passing** (+3 new: `test_symbolic_transforms`, `integration_repl_wave232_pipeline`, `integration_distributed_repl_pipeline`; ~24 transform unit tests + pipeline coverage). Eight branches merged with zero conflicts. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
 Builds on Wave 231 shipped APIs (AES/ChaCha, 2D FEM/CFD) and existing `ms::symbolic` calculus/algebra. Full master-plan scope (Mellin/Hankel, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
 
 ### Docs (Wave 232)
-- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** — Wave 232 kickoff; symbolic transforms, CUDA, MPI REPL, plugin audit, and GUI/REPL sections document planned MVPs.
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** — Wave 232 complete; symbolic transforms, CUDA, MPI REPL, plugin audit, and GUI/REPL sections updated to shipped APIs.
 
-### Baseline (Wave 232 kickoff)
-- **376 CTest suites — all passing** on `main` @ Wave 231. **28-bench smoke OK**. Feature branches merge independently when ready. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+### Baseline (Wave 232)
+- **379 CTest suites — all passing** on `main` @ Wave 232. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
 ## [1.0.0] — 2026-07-18 (Wave 231 — Crypto AES/ChaCha, FEM 2D, CFD 2D)
 
