@@ -146,6 +146,50 @@ TEST(CryptoHmacSha256, HexHelperMatchesRaw) {
     EXPECT_EQ(hmac_sha256_hex(key, data), to_hex(hmac_sha256(key, data)));
 }
 
+// ---- HKDF-SHA256 (RFC 5869 SHA-256 test vectors) ----
+
+TEST(CryptoHkdfSha256, Rfc5869TestCase1) {
+    const auto ikm = from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    const auto salt = from_hex("000102030405060708090a0b0c");
+    const auto info = from_hex("f0f1f2f3f4f5f6f7f8f9");
+    expect_hex(hkdf_sha256(ikm, salt, info, 42),
+               "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
+               "34007208d5b887185865");
+}
+
+TEST(CryptoHkdfSha256, Rfc5869TestCase2) {
+    const auto ikm = from_hex(
+        "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+        "404142434445464748494a4b4c4d4e4f");
+    const auto salt = from_hex(
+        "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f"
+        "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"
+        "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf");
+    const auto info = from_hex(
+        "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf"
+        "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0"
+        "f1f2f3f4f5f6f7f8f9fafbfcfdfeff");
+    expect_hex(hkdf_sha256(ikm, salt, info, 82),
+               "b11e398dc80327a1c8e7f78c596a49344f012eda2d4efad8a050cc4c19afa97c"
+               "59045a99cac7827271cb41c65e590e09da3275600c2f09b8367793a9aca3db71"
+               "cc30c58179ec3e87c14c01d5c1f3434f1d87");
+}
+
+TEST(CryptoHkdfSha256, Rfc5869TestCase3_EmptySaltAndInfo) {
+    const auto ikm = from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    const std::vector<uint8_t> salt;
+    const std::vector<uint8_t> info;
+    expect_hex(hkdf_sha256(ikm, salt, info, 42),
+               "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d"
+               "9d201395faa4b61a96c8");
+}
+
+TEST(CryptoHkdfSha256, ZeroLengthOutput) {
+    const auto ikm = from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    EXPECT_TRUE(hkdf_sha256(ikm, std::vector<uint8_t>{}, std::vector<uint8_t>{}, 0).empty());
+}
+
 TEST(CryptoToHex, Empty) {
     EXPECT_EQ(to_hex(std::vector<uint8_t>{}), "");
 }
