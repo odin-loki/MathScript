@@ -55,6 +55,7 @@ private:
     void export_last_result_latex();
     void setup_menus();
     void apply_dark_theme();
+    void apply_light_theme();
     void restore_layout();
     void save_layout();
     void start_eval(const QString& line);
@@ -72,6 +73,7 @@ private:
     void find_next_in_script();
     void go_to_line();
     void set_plot_panel_visible(bool visible);
+    void set_dark_theme(bool dark);
 
     QSplitter* main_splitter_ = nullptr;
     QPlainTextEdit* output_ = nullptr;
@@ -106,4 +108,6 @@ private:
     QString find_script_text_;
     QString last_result_;
     QAction* show_plot_panel_action_ = nullptr;
+    QAction* dark_theme_action_ = nullptr;
+    bool dark_theme_ = true;
 };

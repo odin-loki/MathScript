@@ -307,7 +307,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     setWindowTitle("MathScript IDE");
     resize(1200, 720);
-    apply_dark_theme();
+
+    QSettings startup_settings;
+    dark_theme_ = startup_settings.value("gui/dark_theme", true).toBool();
+    if (dark_theme_) {
+        apply_dark_theme();
+    } else {
+        apply_light_theme();
+    }
     setup_menus();
 
     main_splitter_ = new QSplitter(Qt::Horizontal, this);
@@ -435,6 +442,9 @@ void MainWindow::restore_layout() {
         const bool plot_visible = settings.value("gui/plot_panel_visible", true).toBool();
         set_plot_panel_visible(plot_visible);
     }
+
+    dark_theme_ = settings.value("gui/dark_theme", true).toBool();
+    set_dark_theme(dark_theme_);
 }
 
 void MainWindow::save_layout() {
@@ -448,6 +458,7 @@ void MainWindow::save_layout() {
     if (plot_stack_ != nullptr) {
         settings.setValue("gui/plot_panel_visible", plot_stack_->isVisible());
     }
+    settings.setValue("gui/dark_theme", dark_theme_);
 }
 
 void MainWindow::apply_dark_theme() {
@@ -462,6 +473,34 @@ void MainWindow::apply_dark_theme() {
     palette.setColor(QPalette::Highlight, QColor(64, 156, 255));
     palette.setColor(QPalette::HighlightedText, Qt::black);
     qApp->setPalette(palette);
+}
+
+void MainWindow::apply_light_theme() {
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(243, 243, 243));
+    palette.setColor(QPalette::WindowText, QColor(30, 30, 30));
+    palette.setColor(QPalette::Base, QColor(255, 255, 255));
+    palette.setColor(QPalette::AlternateBase, QColor(240, 240, 240));
+    palette.setColor(QPalette::Text, QColor(30, 30, 30));
+    palette.setColor(QPalette::Button, QColor(225, 225, 225));
+    palette.setColor(QPalette::ButtonText, QColor(30, 30, 30));
+    palette.setColor(QPalette::Highlight, QColor(0, 102, 204));
+    palette.setColor(QPalette::HighlightedText, Qt::white);
+    qApp->setPalette(palette);
+}
+
+void MainWindow::set_dark_theme(bool dark) {
+    dark_theme_ = dark;
+    if (dark) {
+        apply_dark_theme();
+    } else {
+        apply_light_theme();
+    }
+    if (dark_theme_action_ != nullptr && dark_theme_action_->isChecked() != dark) {
+        dark_theme_action_->blockSignals(true);
+        dark_theme_action_->setChecked(dark);
+        dark_theme_action_->blockSignals(false);
+    }
 }
 
 void MainWindow::setup_menus() {
@@ -490,6 +529,10 @@ void MainWindow::setup_menus() {
     find_next_output_action->setShortcut(QKeySequence(Qt::Key_F3));
 
     auto* view_menu = menuBar()->addMenu("&View");
+    dark_theme_action_ = view_menu->addAction("Dark Theme");
+    dark_theme_action_->setCheckable(true);
+    dark_theme_action_->setChecked(dark_theme_);
+    view_menu->addSeparator();
     show_plot_panel_action_ = view_menu->addAction("Show Plot Panel");
     show_plot_panel_action_->setCheckable(true);
     show_plot_panel_action_->setChecked(true);
@@ -518,6 +561,7 @@ void MainWindow::setup_menus() {
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
+    connect(dark_theme_action_, &QAction::toggled, this, &MainWindow::set_dark_theme);
     connect(show_plot_panel_action_, &QAction::toggled, this, &MainWindow::set_plot_panel_visible);
     connect(clear_output_action, &QAction::triggered, this, &MainWindow::clear_output);
     connect(font_larger_action, &QAction::triggered, this, [this]() { adjust_font_size(1); });
