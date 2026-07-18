@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 239 IN PROGRESS — **388 CTest suites** on `main` @ Wave 238)
+**Updated:** 2026-07-18 (Wave 239 ✅ COMPLETE — **389 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–238 COMPLETE (summary)
+## Feature waves ✅ 231–239 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -47,6 +47,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **236** | X25519; CFD 3D; FEM 3D solve; `dist_matmul`; GUI Clear/About/Recent/zoom |
 | **237** | NCCL stub; modular plugin rules; remaining REPL gaps |
 | **238** | dist CG; GUI find/plot toggle; HKDF; 3D benches; history export/persist |
+| **239** | PBKDF2; `dist_gmres`; GUI script find/goto-line; `run_file`; HKDF/X25519/`dist_cg` benches; README matrix |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -78,16 +79,18 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Wave 239 🔄 IN PROGRESS (product closure & docs)
+## Wave 239 ✅ COMPLETE (PBKDF2, dist GMRES, run_file, GUI script search, benches, docs)
 
 | Area | Deliverable |
 |------|-------------|
-| README | **388+** CTest count; Waves 231–238 feature matrix; product closure note |
-| User guide | Wave 238 GUI (find-in-output, plot toggle, history export); `dist_cg`; HKDF-SHA256 |
-| API | Wave 238 bindings and meta-commands synced |
-| Changelog / TODO | Wave 239 kickoff entry |
+| Crypto | PBKDF2-HMAC-SHA256; REPL `crypto_pbkdf2_sha256`; RFC 6070 vectors |
+| Distributed | `dist_gmres` stub-safe GMRES; `test_dist_gmres`; REPL binding |
+| GUI | Find-in-script search; goto-line |
+| REPL | `run_file` / `source`; `test_repl_commands` |
+| Benchmarks | HKDF / X25519 (`bench_crypto`); `dist_cg` (`bench_distributed_cellai`) |
+| Docs | README Waves 231–239 matrix; USER_GUIDE / API sync |
 
-**388 CTest suites** — all passing on `main`. **Product feature waves 231–238 ✅ CLOSED.**
+**389 CTest suites** — all passing on `main`. **Product feature waves 231–239 ✅ CLOSED** (incremental post–Wave 230 polish complete).
 
 ---
 

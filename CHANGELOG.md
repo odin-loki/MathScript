@@ -5,17 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## [1.0.0] - 2026-07-18 (Wave 239 — product closure & docs) 🔄 IN PROGRESS
+## [1.0.0] - 2026-07-18 (Wave 239 — PBKDF2, dist GMRES, run_file, GUI script search, benches, product matrix) ✅ COMPLETE
 
-Ninth wave after Wave 238. **Docs and product-closure pass**: README feature matrix (Waves 231–238), user guide and API sync for Wave 238 deliverables, Wave 239 kickoff in TODO/CHANGELOG.
+Ninth wave after Wave 238. Parallel merges on `main`: PBKDF2-HMAC-SHA256, stub-safe `dist_gmres`, GUI find-in-script / goto-line, REPL `run_file` / `source`, HKDF / X25519 / `dist_cg` benchmark smoke cases, and README product matrix through Wave 239.
+
+### Added (Wave 239)
+- **Crypto** — PBKDF2-HMAC-SHA256 (RFC 6070 vectors incl. 16M-iter case); REPL `crypto_pbkdf2_sha256`.
+- **Distributed** — `dist_gmres` stub-safe distributed GMRES; `test_dist_gmres`; REPL binding.
+- **GUI** — Find-in-script editor search and goto-line navigation.
+- **REPL** — `run_file` / `source` meta-command (keeps session; unlike `load`); `test_repl_commands` coverage.
+- **Benchmarks** — `bench_crypto` HKDF / X25519 paths; `bench_distributed_cellai` `dist_cg` smoke case.
 
 ### Docs (Wave 239)
-- **`README.md`** — **388+** CTest count; Waves 231–238 feature matrix; product closure note.
-- **`docs/USER_GUIDE.md`** — Wave 238 GUI (find-in-output, plot toggle, history export); `dist_cg`; HKDF-SHA256.
-- **`docs/API.md`** — Wave 238 bindings (`dist_cg`, `crypto_hkdf_sha256`, history meta-commands, GUI).
-- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** — Wave 239 IN PROGRESS kickoff.
+- **`README.md`** — **389** CTest count; Waves 231–239 feature matrix; product closure note (231–239 incremental polish closed; Wave 240+ deferred).
+- **`docs/USER_GUIDE.md`**, **`docs/API.md`** — `run_file`, `dist_gmres`, PBKDF2, GUI script find/goto-line synced.
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`** — Wave 239 marked complete.
 
-**388 CTest suites — all passing**. **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).** **Product feature waves 231–238 ✅ CLOSED** — see README matrix.
+**389 CTest suites — all passing** (+1: `test_dist_gmres`). **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).** **Product feature waves 231–239 ✅ CLOSED** — see README matrix. **Wave 240+ deferred** (scalable multi-node MPI LA, full IDE).
 
 ## [1.0.0] - 2026-07-18 (Wave 238 - dist CG, GUI find/plot, HKDF, 3D benches, history export) ✅ COMPLETE
 
@@ -30,7 +36,7 @@ Eighth **feature wave** after Wave 237. Parallel work merged to `main`: distribu
 
 **388 CTest suites — all passing** (+1: `test_dist_cg`). **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
-Scalable multi-node MPI LA beyond stub-safe solvers and full IDE remain deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11. Next: **Wave 239+**.
+Scalable multi-node MPI LA beyond stub-safe solvers and full IDE remain deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11. Next: **Wave 240+** (deferred).
 
 ### Docs (Wave 238)
 - **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** — Wave 238 marked complete; dist CG, GUI find/plot toggle, HKDF, 3D benches, and history export/persist documented.
