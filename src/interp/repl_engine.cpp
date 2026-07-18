@@ -953,6 +953,18 @@ Result<std::vector<geo::Point2D>> matrix_to_points2d(const Matrix<double>& m, co
     return points;
 }
 
+Result<std::vector<geo::Point3D>> matrix_to_points3d(const Matrix<double>& m, const char* fn) {
+    if (m.cols() != 3) {
+        return std::unexpected(DomainError{fn, "expected Nx3 point matrix"});
+    }
+    std::vector<geo::Point3D> points;
+    points.reserve(m.rows());
+    for (size_t i = 0; i < m.rows(); ++i) {
+        points.push_back({m(i, 0), m(i, 1), m(i, 2)});
+    }
+    return points;
+}
+
 Result<std::vector<std::complex<double>>> matrix_to_complex_spectrum(const Matrix<double>& m,
                                                                      const char* fn) {
     if (m.cols() != 2) {
@@ -3780,6 +3792,44 @@ Result<Matrix<double>> eval_geo_convex_hull(const Matrix<double>& P_m) {
             DomainError{"geo_convex_hull", "degenerate convex hull"});
     }
     return points2d_to_matrix(hull);
+}
+
+Result<Matrix<double>> eval_geo_triangulate_polygon(const Matrix<double>& P_m) {
+    auto pts = matrix_to_points2d(P_m, "geo_triangulate_polygon");
+    if (!pts) {
+        return std::unexpected(pts.error());
+    }
+    if (pts->size() < 3) {
+        return std::unexpected(
+            DomainError{"geo_triangulate_polygon", "expected at least 3 points"});
+    }
+    const auto tris = geo::triangulate_polygon(*pts);
+    Matrix<double> out(tris.size(), 3);
+    for (size_t i = 0; i < tris.size(); ++i) {
+        out(i, 0) = static_cast<double>(tris[i].a);
+        out(i, 1) = static_cast<double>(tris[i].b);
+        out(i, 2) = static_cast<double>(tris[i].c);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_geo_convex_hull_3d(const Matrix<double>& P_m) {
+    auto pts = matrix_to_points3d(P_m, "geo_convex_hull_3d");
+    if (!pts) {
+        return std::unexpected(pts.error());
+    }
+    if (pts->size() < 4) {
+        return std::unexpected(
+            DomainError{"geo_convex_hull_3d", "expected at least 4 points"});
+    }
+    const auto faces = geo::convex_hull_3d(*pts);
+    Matrix<double> out(faces.size(), 3);
+    for (size_t i = 0; i < faces.size(); ++i) {
+        out(i, 0) = static_cast<double>(faces[i].a);
+        out(i, 1) = static_cast<double>(faces[i].b);
+        out(i, 2) = static_cast<double>(faces[i].c);
+    }
+    return out;
 }
 
 Result<Matrix<double>> eval_geo_poly_boolean(const char* fn, const Matrix<double>& a_m,
@@ -9643,6 +9693,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "count_components" ||
             fn == "fft_rfft" || fn == "fft_dft" || fn == "geo_delaunay_2d" ||
             fn == "geo_voronoi" || fn == "geo_convex_hull" ||
+            fn == "geo_triangulate_polygon" || fn == "geo_convex_hull_3d" ||
             fn == "geo_min_bounding_rect" ||
             fn == "topo_pairwise_distances" ||
             fn == "combo_next_perm" || fn == "numthy_convergents" ||
@@ -11162,6 +11213,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "signal_firwin" || callee == "signal_firwin_highpass" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
            callee == "geo_convex_hull" ||
+           callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
            callee == "geo_min_bounding_rect" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
            callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
@@ -11230,6 +11282,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
         callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
         callee == "geo_convex_hull" ||
+        callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
         callee == "geo_min_bounding_rect" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
         callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
@@ -13936,6 +13989,26 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         } else {
             result = eval_signal_lms_weights(*x, *d, filter_length_d, mu);
         }
+    } else if (assign.callee == "geo_triangulate_polygon" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto tris = eval_geo_triangulate_polygon(*matrix);
+        if (!tris) {
+            return std::unexpected(tris.error());
+        }
+        result = *tris;
+    } else if (assign.callee == "geo_convex_hull_3d" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto faces = eval_geo_convex_hull_3d(*matrix);
+        if (!faces) {
+            return std::unexpected(faces.error());
+        }
+        result = *faces;
     }
     return result;
 }
@@ -15758,6 +15831,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_hermite_x(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t) Hermite curve x at t\n"
             "  name = geo_point_in_polygon(px,py,P) 1 if point inside Nx2 polygon else 0\n"
             "  name = geo_delaunay_2d(P) Delaunay triangulation Mx3 index matrix from Nx2 points\n"
+            "  name = geo_triangulate_polygon(P) ear-clip triangulation Mx3 index matrix from Nx2 polygon\n"
+            "  name = geo_convex_hull_3d(P) 3D convex hull Mx3 face index matrix from Nx3 points\n"
             "  name = geo_voronoi(P) Voronoi vertex coordinates Mx2 from Nx2 points\n"
             "  name = geo_poly_union(A,B) convex polygon union Mx2 from Nx2 vertex matrices\n"
             "  name = geo_poly_intersect(A,B) convex polygon intersection Mx2 from Nx2 vertices\n"
@@ -16223,7 +16298,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
-            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
+            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_triangulate_polygon(P), geo_convex_hull_3d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
@@ -26110,6 +26185,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "hull =\n";
             print_matrix(out, *hull);
+        } else if (fn == "geo_triangulate_polygon") {
+            auto tris = eval_geo_triangulate_polygon(*matrix);
+            if (!tris) {
+                return std::unexpected(tris.error());
+            }
+            out << "triangles =\n";
+            print_matrix(out, *tris);
+        } else if (fn == "geo_convex_hull_3d") {
+            auto faces = eval_geo_convex_hull_3d(*matrix);
+            if (!faces) {
+                return std::unexpected(faces.error());
+            }
+            out << "faces =\n";
+            print_matrix(out, *faces);
         } else if (fn == "geo_min_bounding_rect") {
             auto rect = eval_geo_min_bounding_rect(*matrix);
             if (!rect) {

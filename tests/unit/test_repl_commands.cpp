@@ -4835,6 +4835,23 @@ TEST(ReplCommandsTest, wave254_geo_aabb) {
     expect_contains(interp, "geo_overlap_aabb(0, 0, 0, 1, 1, 1, 0.5, 0.5, 0.5, 1.5, 1.5, 1.5)", "1");
 }
 
+TEST(ReplCommandsTest, wave255_geo_triangulate_hull3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_triangulate_polygon(P)");
+    expect_contains(interp, "help", "geo_convex_hull_3d(P)");
+
+    expect_ok(interp, "P = [0,0; 1,0; 1,1; 0,1]");
+    expect_ok(interp, "T = geo_triangulate_polygon(P)");
+    ASSERT_GT(interp.state().matrices.count("T"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("T").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("T").cols(), 3u);
+
+    expect_ok(interp, "H = geo_convex_hull_3d([1,1,1; 1,-1,-1; -1,1,-1; -1,-1,1])");
+    ASSERT_GT(interp.state().matrices.count("H"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("H").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("H").cols(), 3u);
+}
+
 TEST(ReplCommandsTest, wave111_geo_bezier_eval_x) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_bezier_eval_x(P,t)");
