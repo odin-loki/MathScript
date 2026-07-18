@@ -10366,7 +10366,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "scharr" || fn == "roberts" ||
             fn == "imgaussfilt" || fn == "medfilt2" || fn == "boxfilter" ||
             fn == "imdilate" || fn == "imerode" || fn == "imopen" || fn == "imclose" ||
-            fn == "imtophat" || fn == "imbothat" ||
+            fn == "imtophat" || fn == "imbothat" || fn == "imgradient_morph" ||
             fn == "imadjust" || fn == "imhist" ||
             fn == "bilateral" || fn == "canny" ||
             fn == "laplacian" || fn == "histeq" ||
@@ -12242,7 +12242,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "scharr" || callee == "roberts" ||
            callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
            callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
-           callee == "imtophat" || callee == "imbothat" ||
+           callee == "imtophat" || callee == "imbothat" || callee == "imgradient_morph" ||
            callee == "imadjust" || callee == "imhist" ||
            callee == "bilateral" ||
            callee == "canny" || callee == "laplacian" || callee == "histeq" ||
@@ -12498,7 +12498,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
         callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
-        callee == "imtophat" || callee == "imbothat" || callee == "imhist") {
+        callee == "imtophat" || callee == "imbothat" || callee == "imgradient_morph" ||
+        callee == "imhist") {
         return arity == 1 || arity == 2;
     }
     if (callee == "tril" || callee == "triu") {
@@ -15850,7 +15851,8 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             k = static_cast<int>(k_d);
         }
         result = triu(*matrix, k);
-    } else if ((assign.callee == "imtophat" || assign.callee == "imbothat") &&
+    } else if ((assign.callee == "imtophat" || assign.callee == "imbothat" ||
+                assign.callee == "imgradient_morph") &&
                (assign.args.size() == 1 || assign.args.size() == 2)) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -15875,8 +15877,10 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         if (assign.callee == "imtophat") {
             result = gray_image_to_matrix(image::imtophat(*gray, ksize));
-        } else {
+        } else if (assign.callee == "imbothat") {
             result = gray_image_to_matrix(image::imbothat(*gray, ksize));
+        } else {
+            result = gray_image_to_matrix(image::imgradient_morph(*gray, ksize));
         }
     } else if (assign.callee == "imadjust" &&
                (assign.args.size() == 3 || assign.args.size() == 5)) {
@@ -17755,6 +17759,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = imclose(M,k)      morphological closing on grayscale matrix (odd k, default 3)\n"
             "  name = imtophat(M[,k])   morphological top-hat on grayscale matrix (odd k, default 3)\n"
             "  name = imbothat(M[,k])   morphological bottom-hat on grayscale matrix (odd k, default 3)\n"
+            "  name = imgradient_morph(M[,k]) morphological gradient (dilate-erode) on grayscale matrix (odd k, default 3)\n"
             "  name = imadjust(M,in_lo,in_hi[,out_lo,out_hi]) contrast stretch (out defaults 0..1)\n"
             "  name = imhist(M[,nbins]) histogram counts as nbins x 1 column (default 256)\n"
             "  name = bilateral(M,sigma_s,sigma_r) bilateral filter on grayscale matrix\n"
@@ -18410,7 +18415,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
             "  lu(A), qr(A), chol(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), cosm(A), sinm(A), solve(A,B), bicgstab(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
-            "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
+            "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"

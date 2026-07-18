@@ -275,6 +275,7 @@ QStringList repl_command_list() {
         QStringLiteral("adapthisteq"),
         QStringLiteral("imtophat"),
         QStringLiteral("imbothat"),
+        QStringLiteral("imgradient_morph"),
         QStringLiteral("imadjust"),
         QStringLiteral("imhist"),
         QStringLiteral("label_components"),
