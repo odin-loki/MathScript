@@ -7,7 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19 (Wave 261 — eig/ldl, iterative solvers, FFT freq, combo/numthy/stats, Title Case) ✅ COMPLETE
+
+Thirty-first feature wave after Wave 260. Parallel Composer 2.5 worktrees merged to `main`: general eig/LDL, local iterative solvers, FFT frequency helpers, combinatorial enumeration, number-theory extensions, weighted stats, GUI Title Case, and wave261 pipeline.
+
+### Added (Wave 261)
+- **Linalg REPL** — `eig` / `D, V = eig(A)`; `ldl` / `L, D[, P] = ldl(A)`; `cg` / `gmres` / `jacobi`.
+- **FFT REPL** — `fftfreq` / `rfftfreq` / `ifftshift`.
+- **Combo REPL** — `combo_eulerian` / `combo_gray_code` / `combo_dyck_paths`.
+- **Numthy REPL** — `numthy_factor_exp` / `numthy_farey` / `numthy_is_carmichael`.
+- **Stats REPL** — `stats_weighted_variance` / `stats_weighted_correlation` / `stats_bootstrap_mean`.
+- **GUI** — Title Case Selection (Ctrl+Alt+T).
 - **Tests** — `integration_repl_wave261_pipeline`.
+
+### Docs (Wave 261)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 261 sync; **419** CTest suites.
+
+**419 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 260 — VIF/Goertzel/control responses, linalg ext, geo curves, Upper/Lower Case) ✅ COMPLETE
 

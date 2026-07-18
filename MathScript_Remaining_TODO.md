@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 260 ✅ COMPLETE — **418 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 261 ✅ COMPLETE — **419 CTest suites** on `main`)
 
 ---
 
@@ -356,9 +356,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 **418 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–260** closed for this incremental batch.
 
+## Wave 261 ✅ COMPLETE (eig/ldl, iterative solvers, FFT freq, combo/numthy/stats, Title Case)
+
+| Area | Deliverable |
+|------|-------------|
+| Linalg REPL | eig (+ multi); ldl (+ multi); cg / gmres / jacobi |
+| FFT REPL | fftfreq / rfftfreq / ifftshift |
+| Combo REPL | eulerian / gray_code / dyck_paths |
+| Numthy REPL | factor_exp / farey / is_carmichael |
+| Stats REPL | weighted_variance / weighted_correlation / bootstrap_mean |
+| GUI | Title Case Selection |
+| Tests | `integration_repl_wave261_pipeline` |
+
+**419 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–261** closed for this incremental batch.
+
 ---
 
-## Next (Wave 261+) — deferred
+## Next (Wave 262+) — deferred
 
 | Item | Notes |
 |------|--------|
