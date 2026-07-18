@@ -103,6 +103,58 @@ int replace_all_in_editor(QPlainTextEdit* editor, const QString& find_text, cons
     return count;
 }
 
+void duplicate_lines_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    if (cursor.hasSelection()) {
+        const int anchor = cursor.anchor();
+        const int position = cursor.position();
+        const int anchor_block = editor->document()->findBlock(anchor).blockNumber();
+        const int position_block = editor->document()->findBlock(position).blockNumber();
+        start_block = std::min(anchor_block, position_block);
+        end_block = std::max(anchor_block, position_block);
+
+        const int end_pos = std::max(anchor, position);
+        QTextCursor end_cursor = cursor;
+        end_cursor.setPosition(end_pos, QTextCursor::MoveAnchor);
+        if (end_cursor.positionInBlock() == 0 && end_block > start_block) {
+            end_block--;
+        }
+    } else {
+        start_block = end_block = cursor.blockNumber();
+    }
+
+    QString duplicated;
+    for (int block = start_block; block <= end_block; ++block) {
+        if (block > start_block) {
+            duplicated += '\n';
+        }
+        duplicated += editor->document()->findBlockByNumber(block).text();
+    }
+
+    cursor.setPosition(editor->document()->findBlockByNumber(end_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::MoveAnchor);
+    cursor.insertText('\n' + duplicated);
+
+    const int duplicate_start_block = end_block + 1;
+    const int duplicate_end_block = end_block + (end_block - start_block + 1);
+    cursor.setPosition(editor->document()->findBlockByNumber(duplicate_start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = duplicate_start_block + 1; block <= duplicate_end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+    }
+    editor->setTextCursor(cursor);
+
+    cursor.endEditBlock();
+}
+
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
 constexpr size_t kTooltipMaxRows = 6;
@@ -607,6 +659,8 @@ void MainWindow::setup_menus() {
     replace_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
     auto* go_to_line_action = edit_menu->addAction("Go to Line...");
     go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    auto* duplicate_line_action = edit_menu->addAction("Duplicate Line");
+    duplicate_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
     edit_menu->addSeparator();
     auto* find_output_action = edit_menu->addAction("Find in Output");
     find_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
@@ -652,6 +706,7 @@ void MainWindow::setup_menus() {
     connect(replace_script_action, &QAction::triggered, this, &MainWindow::replace_in_script);
     connect(replace_next_script_action, &QAction::triggered, this, &MainWindow::replace_next_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
+    connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
     connect(find_prev_output_action, &QAction::triggered, this, &MainWindow::find_prev_in_output);
@@ -951,6 +1006,11 @@ void MainWindow::go_to_line() {
     cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, line - 1);
     editor_->setTextCursor(cursor);
     editor_->centerCursor();
+}
+
+void MainWindow::duplicate_line() {
+    editor_->setFocus();
+    duplicate_lines_in_editor(editor_);
 }
 
 void MainWindow::set_plot_panel_visible(bool visible) {

@@ -76,6 +76,7 @@ private:
     void replace_in_script();
     void replace_next_in_script();
     void go_to_line();
+    void duplicate_line();
     void set_plot_panel_visible(bool visible);
     void set_dark_theme(bool dark);
     void set_word_wrap(bool wrap);
