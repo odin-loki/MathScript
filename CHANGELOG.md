@@ -1,32 +1,27 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to MathScript are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
-## [1.0.0] – 2026-07-18 (Wave 238 – Incremental polish kickoff: dist CG, GUI find/plot, HKDF, 3D benches, history export) 🚧 IN PROGRESS
+## [1.0.0] - 2026-07-18 (Wave 238 - dist CG, GUI find/plot, HKDF, 3D benches, history export) ✅ COMPLETE
 
-Eighth **feature wave** after Wave 237. **Major planned product feature waves 231–237 are largely closed**; Wave 238 targets incremental API/IDE polish in parallel isolated worktrees — merges pending.
+Eighth **feature wave** after Wave 237. Parallel work merged to `main`: distributed CG, GUI find-in-output and plot toggle, HKDF-SHA256, FEM/CFD 3D benchmark cases, and REPL history export/persist.
 
-### In progress (Wave 238 parallel branches)
+### Added (Wave 238)
+- **Distributed** — `dist_cg` stub-safe distributed conjugate-gradient linear solver; `test_dist_cg`.
+- **GUI** — Find-in-output panel; plot panel show/hide toggle; command history export from File menu.
+- **Crypto** — HKDF-SHA256 extract/expand (RFC 5869); REPL `crypto_hkdf_sha256` binding.
+- **Benchmarks** — FEM 3D and CFD 3D cases in the 28-target smoke suite (`bench_fem` / `bench_cfd` 3D paths).
+- **REPL / session** — Command history persisted in `.ms` session files; `export history <file>` and `save_history <file>` meta-commands.
 
-| Branch | Module | Scope |
-|--------|--------|--------|
-| `wave238/dist-cg` | `ms::distributed` | Distributed conjugate-gradient linear solver (`dist_cg`) |
-| `wave238/gui-find` | GUI | Find-in-script panel; plot panel show/hide toggle |
-| `wave238/hkdf` | `ms::crypto` | HKDF key derivation (RFC 5869); REPL binding |
-| `wave238/bench-3d` | benchmarks | 3D CFD/FEM benchmark targets in smoke suite |
-| `wave238/history` | GUI | REPL command history export (save/load session log) |
-| `wave238/docs` | docs | CHANGELOG, TODO, and API.md sync kickoff |
+**388 CTest suites — all passing** (+1: `test_dist_cg`). **28-bench smoke OK**. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
 
-Builds on Wave 237 NCCL stub, modular plugin rules, and REPL gaps. Scalable multi-node MPI LA beyond stub-safe solvers and full IDE remain deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+Scalable multi-node MPI LA beyond stub-safe solvers and full IDE remain deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11. Next: **Wave 239+**.
 
 ### Docs (Wave 238)
-- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** – Wave 238 kickoff; dist CG, GUI find/plot toggle, HKDF, 3D benches, and history export documented as in progress; Wave 236–237 REPL symbols synced in API index.
-
-### Baseline (Wave 238 kickoff)
-- **387 CTest suites – all passing** on `main` @ Wave 237. **28-bench smoke OK**. Feature branches merge independently when ready. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** — Wave 238 marked complete; dist CG, GUI find/plot toggle, HKDF, 3D benches, and history export/persist documented.
 
 ## [1.0.0] – 2026-07-18 (Wave 237 – NCCL stub, modular plugin rules, REPL gaps) ✅ COMPLETE
 
