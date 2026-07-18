@@ -80,6 +80,9 @@ private:
     void delete_line();
     void move_line_up();
     void move_line_down();
+    void select_all();
+    void undo_edit();
+    void redo_edit();
     void toggle_comment();
     void indent_lines();
     void unindent_lines();

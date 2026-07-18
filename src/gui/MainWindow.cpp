@@ -995,6 +995,12 @@ void MainWindow::setup_menus() {
     move_line_up_action->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Up));
     auto* move_line_down_action = edit_menu->addAction("Move Line Down");
     move_line_down_action->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Down));
+    auto* select_all_action = edit_menu->addAction("Select All");
+    select_all_action->setShortcut(QKeySequence::SelectAll);
+    auto* undo_action = edit_menu->addAction("Undo");
+    undo_action->setShortcut(QKeySequence::Undo);
+    auto* redo_action = edit_menu->addAction("Redo");
+    redo_action->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)});
     edit_menu->addSeparator();
     auto* find_output_action = edit_menu->addAction("Find in Output");
     find_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
@@ -1047,6 +1053,9 @@ void MainWindow::setup_menus() {
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
     connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
+    connect(select_all_action, &QAction::triggered, this, &MainWindow::select_all);
+    connect(undo_action, &QAction::triggered, this, &MainWindow::undo_edit);
+    connect(redo_action, &QAction::triggered, this, &MainWindow::redo_edit);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
     connect(find_prev_output_action, &QAction::triggered, this, &MainWindow::find_prev_in_output);
@@ -1366,6 +1375,21 @@ void MainWindow::move_line_up() {
 void MainWindow::move_line_down() {
     editor_->setFocus();
     move_lines_down_in_editor(editor_);
+}
+
+void MainWindow::select_all() {
+    editor_->setFocus();
+    editor_->selectAll();
+}
+
+void MainWindow::undo_edit() {
+    editor_->setFocus();
+    editor_->undo();
+}
+
+void MainWindow::redo_edit() {
+    editor_->setFocus();
+    editor_->redo();
 }
 
 void MainWindow::toggle_comment() {
