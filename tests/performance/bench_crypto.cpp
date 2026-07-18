@@ -145,4 +145,28 @@ static void BM_ChaCha20Encrypt_64KB(benchmark::State& state) {
 }
 BENCHMARK(BM_ChaCha20Encrypt_64KB)->MinTime(0.001);
 
+static void BM_Ed25519Sign(benchmark::State& state) {
+    const auto seed = make_byte_buffer(32, 97);
+    const auto kp = ed25519_keypair(std::span<const uint8_t>(seed));
+    const auto msg = make_byte_buffer(32, 101);
+    for (auto _ : state) {
+        auto sig = ed25519_sign(kp.secret_key, std::span<const uint8_t>(msg));
+        benchmark::DoNotOptimize(sig.data());
+    }
+}
+BENCHMARK(BM_Ed25519Sign)->MinTime(0.001);
+
+static void BM_Ed25519Verify(benchmark::State& state) {
+    const auto seed = make_byte_buffer(32, 97);
+    const auto kp = ed25519_keypair(std::span<const uint8_t>(seed));
+    const auto msg = make_byte_buffer(32, 101);
+    const auto sig = ed25519_sign(kp.secret_key, std::span<const uint8_t>(msg));
+    for (auto _ : state) {
+        const bool ok =
+            ed25519_verify(kp.public_key, std::span<const uint8_t>(msg), sig);
+        benchmark::DoNotOptimize(ok);
+    }
+}
+BENCHMARK(BM_Ed25519Verify)->MinTime(0.001);
+
 BENCHMARK_MAIN();
