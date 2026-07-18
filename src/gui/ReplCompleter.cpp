@@ -173,6 +173,7 @@ QStringList repl_command_list() {
         QStringLiteral("signal_filtfilt"),
         QStringLiteral("signal_sosfilt"),
         QStringLiteral("signal_conv2"),
+        QStringLiteral("signal_deconv"),
         QStringLiteral("signal_firwin"),
         QStringLiteral("signal_firwin_highpass"),
         // ML / graph (common)
