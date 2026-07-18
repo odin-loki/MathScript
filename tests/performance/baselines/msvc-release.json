@@ -48,9 +48,6 @@
     "BM_Autocorr/65536": {
       "median_time_ns": 18005066
     },
-    "BM_Conv2/64/7": {
-      "median_time_ns": 5887981
-    },
     "BM_Sosfilt8192": {
       "median_time_ns": 68913
     },
@@ -87,9 +84,6 @@
     "BM_SLIC/128/128/64": {
       "median_time_ns": 6588479
     },
-    "BM_SLIC/256/256/256": {
-      "median_time_ns": 54966233
-    },
     "BM_GaussianBlur/256/256/1/10": {
       "median_time_ns": 1284416
     },
@@ -116,9 +110,6 @@
     },
     "BM_Dijkstra_Dense/128": {
       "median_time_ns": 29331
-    },
-    "BM_Quantile/100000": {
-      "median_time_ns": 837575
     },
     "BM_repl_simple_arith": {
       "median_time_ns": 111635900
