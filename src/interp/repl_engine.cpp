@@ -13147,6 +13147,38 @@ Result<void> Interpreter::save_session(const std::string& path) const {
     return {};
 }
 
+bool Interpreter::is_script_skip_line(const std::string& line) {
+    const std::string trimmed = trim(line);
+    return trimmed.empty() || trimmed[0] == '#';
+}
+
+Result<std::string> Interpreter::run_file(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) {
+        return std::unexpected(DomainError{"run_file", "cannot open: " + path});
+    }
+
+    std::ostringstream out;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (is_script_skip_line(line)) {
+            continue;
+        }
+
+        const std::string cmd = trim(line);
+        auto result = execute(cmd);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
+        if (!result->empty()) {
+            out << *result;
+        }
+    }
+
+    out << "ran script from " << path << "\n";
+    return out.str();
+}
+
 Result<void> Interpreter::load_session(const std::string& path) {
     std::ifstream in(path);
     if (!in) {
@@ -13266,6 +13298,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  help, vars, version, show, saveplot, clear, topology, simd, dispatch, balance, gpu, mpi, frameworks, exit\n"
             "  izaac seed <n>   gria(M)   axiom evolve\n"
             "  save <file.ms>  load <file.ms>\n"
+            "  run_file <file>  source <file>  execute script lines (keeps session; unlike load)\n"
             "  export history <file>  save_history <file>\n"
             "  name = [1, 2; 3, 4]     matrix assignment\n"
             "  name = 3.14              scalar assignment\n"
@@ -13975,6 +14008,19 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::unexpected(loaded.error());
         }
         return "loaded session from " + path + "\n";
+    }
+    if (lcmd == "run_file" || lcmd == "source" || lcmd.rfind("run_file ", 0) == 0 ||
+        lcmd.rfind("source ", 0) == 0) {
+        std::string path;
+        if (lcmd.rfind("run_file ", 0) == 0) {
+            path = trim(cmd.substr(9));
+        } else if (lcmd.rfind("source ", 0) == 0) {
+            path = trim(cmd.substr(7));
+        }
+        if (path.empty()) {
+            return std::unexpected(DomainError{"run_file", "missing path"});
+        }
+        return run_file(path);
     }
     if (lcmd.rfind("export history ", 0) == 0) {
         const std::string path = trim(cmd.substr(15));

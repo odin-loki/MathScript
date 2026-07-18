@@ -278,9 +278,23 @@ mathscript-repl --load mysession.ms
 
 Session files are text-based (`# MathScript session` header, `scalar` / `matrix` lines, optional `plot` metadata). They round-trip scalars, matrices (including empty `[]`), and plot series.
 
+**`load` replaces the entire session** with the saved state. To run a script of REPL commands without clearing variables, use **`run_file`** or its alias **`source`**:
+
+```
+ms> x = 1
+ms> run_file setup.ms
+ms> source more.ms
+```
+
+Script files use the same line format as `--eval-file`: one command per line; empty lines and `#` comments are skipped. Unlike `load`, existing scalars and matrices stay in the session unless the script assigns over them.
+
 ---
 
 ## Scripting
+
+### `run_file` / `source` (interactive REPL)
+
+Inside an interactive session, **`run_file path.ms`** (alias **`source path.ms`**) executes each non-comment line as a REPL command and keeps the current session. This matches **`mathscript-repl --eval-file`** but can be invoked mid-session. Use **`load`** when you want to restore a saved session snapshot instead.
 
 ### `mathscript-repl --eval-file`
 

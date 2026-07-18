@@ -83,6 +83,10 @@ std::string classify_repl_line(const std::string& line) {
     if (lcmd.rfind("load ", 0) == 0) {
         return "load_session";
     }
+    if (lcmd == "run_file" || lcmd == "source" || lcmd.rfind("run_file ", 0) == 0 ||
+        lcmd.rfind("source ", 0) == 0) {
+        return "run_file";
+    }
     if (lcmd.rfind("export history ", 0) == 0 || lcmd.rfind("save_history ", 0) == 0) {
         return "export_history";
     }
@@ -215,11 +219,11 @@ bool run_eval_file(ms::interp::JitBackend& backend, const std::string& path, boo
     bool ok = true;
     std::string line;
     while (std::getline(in, line)) {
-        const std::string trimmed = ms::interp::Interpreter::trim(line);
-        if (trimmed.empty() || trimmed[0] == '#') {
+        if (ms::interp::Interpreter::is_script_skip_line(line)) {
             continue;
         }
 
+        const std::string trimmed = ms::interp::Interpreter::trim(line);
         const bool line_ok = use_debug ? tracer->trace(trimmed) : run_command(backend, trimmed);
         ok = line_ok && ok;
     }
