@@ -7,6 +7,10 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+### Added (Wave 262)
+- **Finance REPL** — `finance_bachelier_call` / `finance_bachelier_put`, `finance_vasicek_bond_price`, `finance_cir_bond_price`, `finance_trinomial_option` scalar bindings (help, completer, unit + integration tests).
+- **Tests** — `integration_repl_wave262_pipeline`; five `wave262_finance_*` tests in `test_repl_commands.cpp`.
+
 ## [1.0.0] - 2026-07-19 (Wave 261 — eig/ldl, iterative solvers, FFT freq, combo/numthy/stats, Title Case) ✅ COMPLETE
 
 Thirty-first feature wave after Wave 260. Parallel Composer 2.5 worktrees merged to `main`: general eig/LDL, local iterative solvers, FFT frequency helpers, combinatorial enumeration, number-theory extensions, weighted stats, GUI Title Case, and wave261 pipeline.
