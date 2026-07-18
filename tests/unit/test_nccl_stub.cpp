@@ -52,6 +52,18 @@ TEST(NcclStubTest, allreduce_min_idempotent) {
     EXPECT_DOUBLE_EQ(once, twice);
 }
 
+TEST(NcclStubTest, allreduce_prod_identity) {
+    EXPECT_DOUBLE_EQ(allreduce_prod(3.5), 3.5);
+    EXPECT_DOUBLE_EQ(allreduce_prod(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(allreduce_prod(-2.25), -2.25);
+}
+
+TEST(NcclStubTest, allreduce_prod_idempotent) {
+    const double once = allreduce_prod(42.0);
+    const double twice = allreduce_prod(once);
+    EXPECT_DOUBLE_EQ(once, twice);
+}
+
 TEST(NcclStubTest, comm_size_at_least_one) {
     EXPECT_GE(nccl_comm_size(), 1u);
 }

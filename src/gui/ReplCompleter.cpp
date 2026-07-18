@@ -165,6 +165,10 @@ QStringList repl_command_list() {
         QStringLiteral("mpi_rank"),
         QStringLiteral("mpi_size"),
         QStringLiteral("mpi_allreduce_sum"),
+        QStringLiteral("cuda_allreduce_sum"),
+        QStringLiteral("cuda_allreduce_max"),
+        QStringLiteral("cuda_allreduce_min"),
+        QStringLiteral("cuda_allreduce_prod"),
     };
 }
 
