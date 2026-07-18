@@ -3467,6 +3467,26 @@ TEST(ReplCommandsTest, wave144_signal_moving_average) {
     }
 }
 
+TEST(ReplCommandsTest, wave248_signal_upsample_downsample) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_upsample(x,n)");
+    expect_contains(interp, "help", "signal_downsample(x,n)");
+
+    expect_ok(interp, "up = signal_upsample([1; 2], 3)");
+    ASSERT_GT(interp.state().matrices.count("up"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("up").rows(), 6u);
+    EXPECT_NEAR(interp.state().matrices.at("up")(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("up")(1, 0), 0.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("up")(3, 0), 2.0, 1e-12);
+
+    expect_ok(interp, "dn = signal_downsample([1; 2; 3; 4; 5; 6], 2)");
+    ASSERT_GT(interp.state().matrices.count("dn"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("dn").rows(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("dn")(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("dn")(1, 0), 3.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("dn")(2, 0), 5.0, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");

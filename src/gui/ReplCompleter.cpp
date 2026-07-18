@@ -155,6 +155,8 @@ QStringList repl_command_list() {
         QStringLiteral("fft2"),
         QStringLiteral("ifft2"),
         QStringLiteral("signal_unwrap"),
+        QStringLiteral("signal_upsample"),
+        QStringLiteral("signal_downsample"),
         // ML / graph (common)
         QStringLiteral("ml_accuracy"),
         QStringLiteral("ml_rmse"),
