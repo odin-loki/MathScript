@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] — 2026-07-18 (Wave 232 — Feature work kickoff: sym transforms, CUDA MVP, MPI REPL, plugin audit, GUI/REPL)
+
+Second **feature wave** after Wave 231. Eight parallel implementation worktrees plus this docs branch — merges pending.
+
+### In progress (Wave 232 parallel branches)
+
+| Branch | Module | Scope |
+|--------|--------|--------|
+| `wave232/sym-laplace` | `ms::symbolic` | Table-driven `sym_laplace` / `sym_ilaplace` MVP (polynomials, `exp`, `sin/cos`, rationals) |
+| `wave232/sym-fourier` | `ms::symbolic` | `sym_fourier` / `sym_ifourier` and `sym_ztransform` / `sym_iztransform` MVP |
+| `wave232/sym-repl` | REPL | Wire existing + new symbolic commands (`sym_expand`, `sym_collect`, `sym_series`, transforms) |
+| `wave232/cuda-lu` | `ms::cuda` | `cuda::lu()` via cuSOLVER (closes `"cuda lu not implemented"` stub) |
+| `wave232/cuda-stream` | `ms::cuda` | `StreamPool::acquire()` + real `device_stats` via `cudaMemGetInfo` / optional NVML |
+| `wave232/mpi-repl` | REPL / `ms::distributed` | Stub-safe `mpi_rank`, `mpi_size`, `mpi_allreduce_sum`, `dist_solve` bindings |
+| `wave232/plugin-audit` | `ms::plugin` | `UnsafeRegistry` collection + `${CMAKE_BINARY_DIR}/ms-unsafe-audit.json` build report |
+| `wave232/gui-repl` | GUI / REPL | Up-arrow command history; Wave 231 crypto/fem/cfd REPL wrappers |
+| `wave232/docs` | docs | CHANGELOG, TODO, and `docs/API.md` kickoff |
+
+Builds on Wave 231 shipped APIs (AES/ChaCha, 2D FEM/CFD) and existing `ms::symbolic` calculus/algebra. Full master-plan scope (Mellin/Hankel, scalable distributed LA, NCCL, modular plugin rules, full IDE) remains deferred — see `mathscript-master-plan.md` §2.12/§7/§10/§11.
+
+### Docs (Wave 232)
+- **`CHANGELOG.md`**, **`MathScript_Remaining_TODO.md`**, **`docs/API.md`** — Wave 232 kickoff; symbolic transforms, CUDA, MPI REPL, plugin audit, and GUI/REPL sections document planned MVPs.
+
+### Baseline (Wave 232 kickoff)
+- **376 CTest suites — all passing** on `main` @ Wave 231. **28-bench smoke OK**. Feature branches merge independently when ready. **Profiling iteration remains FULLY COMPLETE (Waves 218–230).**
+
 ## [1.0.0] — 2026-07-18 (Wave 231 — Crypto AES/ChaCha, FEM 2D, CFD 2D)
 
 First feature wave after the profiling iteration closed (Wave 230).

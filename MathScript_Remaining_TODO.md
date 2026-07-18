@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (reconciled against `main` @ Wave 231 — **376 CTest suites**, **28-bench smoke verified on MSVC and Linux CI**)
+**Updated:** 2026-07-18 (Wave 232 kickoff — **376 CTest suites** on `main` @ Wave 231; feature branches in flight)
 
 ---
 
@@ -56,12 +56,27 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ---
 
-## Next: Feature work (Wave 232+)
+## Feature work (Wave 232+) — IN PROGRESS
+
+### Wave 232 (kickoff — parallel branches)
+
+| Branch | Status | Deliverable |
+|--------|--------|-------------|
+| `wave232/sym-laplace` | in progress | `sym_laplace` / `sym_ilaplace` table-driven MVP |
+| `wave232/sym-fourier` | in progress | `sym_fourier` / `sym_ifourier`, `sym_ztransform` / `sym_iztransform` MVP |
+| `wave232/sym-repl` | in progress | REPL bindings for existing + new symbolic commands |
+| `wave232/cuda-lu` | in progress | `cuda::lu()` via cuSOLVER |
+| `wave232/cuda-stream` | in progress | `StreamPool::acquire()` + real device memory stats |
+| `wave232/mpi-repl` | in progress | Stub-safe MPI/distributed REPL commands |
+| `wave232/plugin-audit` | in progress | Unsafe-site registry + JSON audit report |
+| `wave232/gui-repl` | in progress | GUI command history + Wave 231 crypto/fem/cfd REPL wrappers |
+| `wave232/docs` | in progress | CHANGELOG, TODO, `docs/API.md` kickoff |
+
+Wave 231 closed AES/ChaCha, 2D FEM, and 2D CFD. Wave 232 extends symbolic transforms, CUDA stubs, MPI REPL exposure, plugin audit, and GUI/REPL polish in parallel isolated worktrees; merges land independently.
 
 | Wave | Focus |
 |------|--------|
-| **231–232** | sym transforms + CUDA/MPI/plugin |
-| **232–236** | GUI polish + REPL bindings |
-| **237+** | Remaining API gaps |
+| **232–236** | GUI polish + REPL bindings (continued) |
+| **237+** | Remaining API gaps (curve25519, AES-GCM, 3D FEM/CFD, scalable distributed LA, etc.) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.
