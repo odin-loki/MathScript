@@ -3722,6 +3722,29 @@ TEST(ReplCommandsTest, wave254_signal_lms) {
     EXPECT_EQ(w.cols(), 1u);
     EXPECT_NEAR(w(0, 0), 0.0, 1e-12);
     EXPECT_NEAR(w(1, 0), 0.0, 1e-12);
+TEST(ReplCommandsTest, wave254_signal_czt_and_zoom) {
+    Interpreter interp;
+    // Distinct needles avoid signal_czt / signal_czt_zoom substring collisions.
+    expect_contains(interp, "help", "signal_czt(x,m,w_re,w_im,a_re,a_im)");
+    expect_contains(interp, "help", "signal_czt_zoom(x,f_start,f_stop,m,fs)");
+
+    // DFT contour: m=N, w=exp(-2*pi*i/N)=(0,-1), a=1 -> matches length-4 DFT DC bin.
+    expect_ok(interp, "x = [1; 2; 3; 4]");
+    expect_ok(interp, "Z = signal_czt(x, 4, 0, -1, 1, 0)");
+    ASSERT_GT(interp.state().matrices.count("Z"), 0u);
+    const auto& Z = interp.state().matrices.at("Z");
+    EXPECT_EQ(Z.rows(), 4u);
+    EXPECT_EQ(Z.cols(), 2u);
+    EXPECT_NEAR(Z(0, 0), 10.0, 1e-9);
+    EXPECT_NEAR(Z(0, 1), 0.0, 1e-9);
+
+    expect_ok(interp, "zoom = signal_czt_zoom(x, 0.0, 0.5, 8, 4.0)");
+    ASSERT_GT(interp.state().matrices.count("zoom"), 0u);
+    const auto& zoom = interp.state().matrices.at("zoom");
+    EXPECT_EQ(zoom.rows(), 8u);
+    EXPECT_EQ(zoom.cols(), 2u);
+    EXPECT_TRUE(std::isfinite(zoom(0, 0)));
+    EXPECT_TRUE(std::isfinite(zoom(0, 1)));
 }
 
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
