@@ -15,6 +15,8 @@ constexpr std::size_t sha512_digest_size = 64;
 constexpr std::size_t aes_block_size = 16;
 constexpr std::size_t aes128_key_size = 16;
 constexpr std::size_t aes256_key_size = 32;
+constexpr std::size_t aes_gcm_tag_size = 16;
+constexpr std::size_t aes_gcm_iv_size = 12;
 
 using Digest256 = std::array<uint8_t, sha256_digest_size>;
 using Digest512 = std::array<uint8_t, sha512_digest_size>;
@@ -48,6 +50,21 @@ std::vector<uint8_t> aes128_cbc_encrypt(std::span<const uint8_t> key,
 std::vector<uint8_t> aes128_cbc_decrypt(std::span<const uint8_t> key,
                                         std::span<const uint8_t> iv,
                                         std::span<const uint8_t> ciphertext);
+
+struct Aes128GcmSeal {
+    std::vector<uint8_t> ciphertext;
+    std::array<uint8_t, aes_gcm_tag_size> tag{};
+};
+
+Aes128GcmSeal aes128_gcm_encrypt(std::span<const uint8_t> key,
+                                 std::span<const uint8_t> iv,
+                                 std::span<const uint8_t> aad,
+                                 std::span<const uint8_t> plaintext);
+std::vector<uint8_t> aes128_gcm_decrypt(std::span<const uint8_t> key,
+                                        std::span<const uint8_t> iv,
+                                        std::span<const uint8_t> aad,
+                                        std::span<const uint8_t> ciphertext,
+                                        std::span<const uint8_t> tag);
 
 std::vector<uint8_t> chacha20_encrypt(const std::array<uint8_t, 32>& key,
                                       const std::array<uint8_t, 12>& nonce,
