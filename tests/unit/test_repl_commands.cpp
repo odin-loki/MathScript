@@ -3258,6 +3258,34 @@ TEST(ReplCommandsTest, wave260_control_impulse_response) {
     EXPECT_NEAR(imp(imp.rows() - 1, 1), std::exp(-5.0), 0.05);
 }
 
+
+TEST(ReplCommandsTest, wave264_control_tf2ss_c2d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_tf2ss(num,den)");
+    expect_contains(interp, "help", "control_c2d(A,B,C,D,Ts)");
+
+    // 1/(s+1) -> A=[-1], B=[1], C=[1], D=[0] packed as [-1,1; 1,0]
+    expect_ok(interp, "SS = control_tf2ss([1], [1, 1])");
+    ASSERT_GT(interp.state().matrices.count("SS"), 0u);
+    const auto& ss = interp.state().matrices.at("SS");
+    ASSERT_EQ(ss.rows(), 2u);
+    ASSERT_EQ(ss.cols(), 2u);
+    EXPECT_NEAR(ss(0, 0), -1.0, 1e-12);
+    EXPECT_NEAR(ss(0, 1), 1.0, 1e-12);
+    EXPECT_NEAR(ss(1, 0), 1.0, 1e-12);
+    EXPECT_NEAR(ss(1, 1), 0.0, 1e-12);
+
+    // Scalar ZOH: A=[-2], B=[3], C=[1], D=[0], Ts=0.1 -> Ad=exp(-0.2)
+    expect_ok(interp, "Ad = control_c2d([-2], [3], [1], [0], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Ad"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Ad")(0, 0), std::exp(-0.2), 1e-6);
+
+    expect_ok(interp, "Bd = control_c2d_B([-2], [3], [1], [0], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Bd"), 0u);
+    const double Bd_exact = (std::exp(-0.2) - 1.0) / (-2.0) * 3.0;
+    EXPECT_NEAR(interp.state().matrices.at("Bd")(0, 0), Bd_exact, 1e-6);
+}
+
 TEST(ReplCommandsTest, wave263_control_kalman) {
     Interpreter interp;
     expect_contains(interp, "help", "control_kalman_predict(x,P,A,Q)");
