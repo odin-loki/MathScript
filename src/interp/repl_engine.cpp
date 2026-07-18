@@ -7756,6 +7756,18 @@ Result<Matrix<double>> eval_combo_set_partitions(int n) {
     return out;
 }
 
+Result<Matrix<double>> eval_combo_restricted_partitions(int n, int k) {
+    if (n < 0) {
+        return std::unexpected(
+            DomainError{"combo_restricted_partitions", "expected non-negative integer n"});
+    }
+    if (k < 0) {
+        return std::unexpected(
+            DomainError{"combo_restricted_partitions", "expected non-negative integer k"});
+    }
+    return combo_enum_rows_to_matrix(combo::restricted_partitions(n, k));
+}
+
 
 Result<double> eval_cplx_line_integral_one() {
     const auto f = [](const cplx::C&) -> cplx::C { return cplx::C(1.0); };
@@ -11038,6 +11050,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "combo_dyck_paths" ||
             fn == "combo_necklaces" || fn == "combo_de_bruijn_sequence" ||
             fn == "combo_motzkin_paths" || fn == "combo_set_partitions" ||
+            fn == "combo_restricted_partitions" ||
             fn == "numthy_crt" || fn == "geo_centroid_x" || fn == "geo_centroid_y" ||
             fn == "bwt_primary_index" ||
             fn == "quantum_ket_superposition" || fn == "quantum_ghz_state" ||
@@ -12952,6 +12965,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "combo_unrank_permutation" || callee == "combo_unrank_combination" ||
            callee == "combo_gray_code" || callee == "combo_dyck_paths" ||
            callee == "combo_necklaces" || callee == "combo_de_bruijn_sequence" || callee == "combo_motzkin_paths" || callee == "combo_set_partitions" ||
+           callee == "combo_restricted_partitions" ||
            callee == "numthy_continued_fraction" || callee == "numthy_primes" ||
            callee == "stats_linear_regression" || callee == "stats_pacf" ||
            callee == "stats_arfit" || callee == "stats_multiple_regression" ||
