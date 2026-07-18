@@ -5019,3 +5019,22 @@ TEST(ReplCommandsTest, wave195_finance_mc_lookback_fixed_put) {
     expect_contains(interp, "finance_mc_lookback_fixed_put(100, 100, 1, 0.05, 0.2, 2000, 50, 7)",
                     "\n");
 }
+
+TEST(ReplCommandsTest, wave249_crypto_sha256_and_hmac_sha256) {
+    Interpreter interp;
+    expect_contains(interp, "help", "crypto_sha256(hex_data)");
+    expect_contains(interp, "help", "crypto_hmac_sha256(hex_key,hex_data)");
+
+    // NIST empty-string SHA-256
+    expect_contains(interp, "crypto_sha256(\"\")",
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    // ASCII "abc" as hex
+    expect_contains(interp, "crypto_sha256(616263)",
+                    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+
+    // RFC 4231 HMAC-SHA256 test case 1
+    expect_contains(
+        interp,
+        "crypto_hmac_sha256(0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b,4869205468657265)",
+        "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+}
