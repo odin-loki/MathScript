@@ -279,3 +279,125 @@ TEST(FemSolve2D, linear_exact_on_uniform_mesh) {
         EXPECT_NEAR((*u)(i, 0), x + y, 1e-10);
     }
 }
+
+namespace {
+
+Mesh3D single_corner_tetrahedron() {
+    Mesh3D mesh;
+    mesh.nodes = {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    mesh.tetrahedra = {{0, 1, 2, 3}};
+    return mesh;
+}
+
+std::vector<std::size_t> box_boundary_nodes(
+    std::size_t nx, std::size_t ny, std::size_t nz) {
+    const std::size_t n_nodes_x = nx + 1;
+    const std::size_t n_nodes_y = ny + 1;
+    const std::size_t n_nodes_xy = n_nodes_x * n_nodes_y;
+    std::vector<std::size_t> boundary;
+    for (std::size_t k = 0; k <= nz; ++k) {
+        for (std::size_t j = 0; j <= ny; ++j) {
+            for (std::size_t i = 0; i <= nx; ++i) {
+                if (i == 0 || i == nx || j == 0 || j == ny || k == 0 || k == nz) {
+                    boundary.push_back(i + j * n_nodes_x + k * n_nodes_xy);
+                }
+            }
+        }
+    }
+    return boundary;
+}
+
+} // namespace
+
+TEST(FemMesh3D, box_nodes_and_tetrahedra) {
+    const Mesh3D mesh = mesh3d_box(0.0, 0.0, 0.0, 2.0, 1.0, 1.0, 2, 1, 1);
+    ASSERT_EQ(mesh.nodes.size(), 12u);
+    ASSERT_EQ(mesh.tetrahedra.size(), 12u);
+    EXPECT_NEAR(mesh.nodes[0][0], 0.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[0][1], 0.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[0][2], 0.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[11][0], 2.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[11][1], 1.0, 1e-14);
+    EXPECT_NEAR(mesh.nodes[11][2], 1.0, 1e-14);
+    EXPECT_EQ(mesh.tetrahedra[0][0], 0u);
+    EXPECT_EQ(mesh.tetrahedra[0][1], 1u);
+    EXPECT_EQ(mesh.tetrahedra[0][2], 4u);
+    EXPECT_EQ(mesh.tetrahedra[0][3], 10u);
+}
+
+TEST(FemMesh3D, rejects_invalid_domain) {
+    EXPECT_THROW(mesh3d_box(1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1, 1, 1), std::invalid_argument);
+    EXPECT_THROW(mesh3d_box(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 1, 1), std::invalid_argument);
+    EXPECT_THROW(mesh3d_box(0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1, 1, 1), std::invalid_argument);
+    EXPECT_THROW(mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0, 1, 1), std::invalid_argument);
+    EXPECT_THROW(mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1, 0, 1), std::invalid_argument);
+    EXPECT_THROW(mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1, 1, 0), std::invalid_argument);
+}
+
+TEST(FemStiffness3D, single_tetrahedron_pattern) {
+    const Mesh3D mesh = single_corner_tetrahedron();
+    const ColMatrix<double> K = assemble_stiffness_3d(mesh);
+    ASSERT_EQ(K.rows(), 4u);
+    EXPECT_NEAR(K(0, 0), 0.5, 1e-14);
+    EXPECT_NEAR(K(1, 1), 1.0 / 6.0, 1e-14);
+    EXPECT_NEAR(K(2, 2), 1.0 / 6.0, 1e-14);
+    EXPECT_NEAR(K(3, 3), 1.0 / 6.0, 1e-14);
+    EXPECT_NEAR(K(0, 1), -1.0 / 6.0, 1e-14);
+    EXPECT_NEAR(K(0, 2), -1.0 / 6.0, 1e-14);
+    EXPECT_NEAR(K(0, 3), -1.0 / 6.0, 1e-14);
+    EXPECT_NEAR(K(1, 2), 0.0, 1e-14);
+    EXPECT_NEAR(K(1, 3), 0.0, 1e-14);
+    EXPECT_NEAR(K(2, 3), 0.0, 1e-14);
+}
+
+TEST(FemStiffness3D, symmetry) {
+    const Mesh3D mesh = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2, 2, 2);
+    const ColMatrix<double> K = assemble_stiffness_3d(mesh);
+    for (std::size_t i = 0; i < K.rows(); ++i) {
+        for (std::size_t j = 0; j < K.cols(); ++j) {
+            EXPECT_NEAR(K(i, j), K(j, i), 1e-14);
+        }
+    }
+}
+
+TEST(FemStiffness3D, row_sums_vanish) {
+    const Mesh3D mesh = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1, 1, 1);
+    const ColMatrix<double> K = assemble_stiffness_3d(mesh);
+    for (std::size_t i = 0; i < K.rows(); ++i) {
+        double row_sum = 0.0;
+        for (std::size_t j = 0; j < K.cols(); ++j) {
+            row_sum += K(i, j);
+        }
+        EXPECT_NEAR(row_sum, 0.0, 1e-12);
+    }
+}
+
+TEST(FemSolve3D, linear_exact_on_uniform_mesh) {
+    constexpr std::size_t nx = 3;
+    constexpr std::size_t ny = 3;
+    constexpr std::size_t nz = 3;
+    const Mesh3D mesh = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, nx, ny, nz);
+    ColMatrix<double> K = assemble_stiffness_3d(mesh);
+    ColMatrix<double> f(mesh.nodes.size(), 1, 0.0);
+
+    const auto boundary = box_boundary_nodes(nx, ny, nz);
+    std::vector<double> boundary_values;
+    boundary_values.reserve(boundary.size());
+    for (std::size_t idx : boundary) {
+        const double x = mesh.nodes[idx][0];
+        const double y = mesh.nodes[idx][1];
+        const double z = mesh.nodes[idx][2];
+        boundary_values.push_back(x + y + z);
+    }
+    apply_dirichlet(K, f, boundary, boundary_values);
+
+    const auto u = solve_fem(K, f);
+    ASSERT_TRUE(u.has_value());
+
+    for (std::size_t i = 0; i < mesh.nodes.size(); ++i) {
+        const double x = mesh.nodes[i][0];
+        const double y = mesh.nodes[i][1];
+        const double z = mesh.nodes[i][2];
+        EXPECT_NEAR((*u)(i, 0), x + y + z, 1e-9);
+    }
+}

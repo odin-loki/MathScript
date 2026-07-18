@@ -30,6 +30,25 @@ struct Mesh2D {
 Mesh2D mesh2d_rectangular(
     double x0, double y0, double x1, double y1, std::size_t nx, std::size_t ny);
 
+struct Mesh3D {
+    /// Node coordinates as (x, y, z).
+    std::vector<std::array<double, 3>> nodes;
+    /// Each tetrahedron connects four node indices.
+    std::vector<std::array<std::size_t, 4>> tetrahedra;
+};
+
+/// Structured tetrahedral mesh on [x0, x1] x [y0, y1] x [z0, z1] with @p nx by @p ny by @p nz cells.
+Mesh3D mesh3d_box(
+    double x0,
+    double y0,
+    double z0,
+    double x1,
+    double y1,
+    double z1,
+    std::size_t nx,
+    std::size_t ny,
+    std::size_t nz);
+
 /// P1 Lagrange shape functions on the reference element [0, 1].
 struct LagrangeBasis {
     int degree = 1;
@@ -54,6 +73,9 @@ ColMatrix<double> assemble_load_1d(
 
 /// Assemble the global stiffness matrix for -Laplacian(u) on a 2D P1 mesh.
 ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh);
+
+/// Assemble the global stiffness matrix for -Laplacian(u) on a 3D P1 mesh.
+ColMatrix<double> assemble_stiffness_3d(const Mesh3D& mesh);
 
 /// Assemble the global load vector for integral(f * phi_i) dA (3-point quadrature).
 ColMatrix<double> assemble_load_2d(
