@@ -72,7 +72,8 @@ TEST(ReplWave252Pipeline, Wave251MpiAllreduceMaxSmoke) {
     expect_ok(interp, "mx = mpi_allreduce_max(3.5)");
     ASSERT_GT(interp.state().scalars.count("mx"), 0u);
     EXPECT_NEAR(interp.state().scalars.at("mx"), 3.5, 1e-9);
-    expect_contains(interp, "help", "mpi_allreduce_max");
+    // Help collapses sum/max/min into one line: mpi_allreduce_sum/max/min(x)
+    expect_contains(interp, "help", "mpi_allreduce_sum/max/min");
 }
 
 TEST(ReplWave252Pipeline, Wave251GeoConvexHullSmoke) {
