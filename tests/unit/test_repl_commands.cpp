@@ -608,6 +608,58 @@ TEST(ReplCommandsTest, expm_via_repl) {
     EXPECT_NEAR(interp.state().matrices.at("E")(0, 1), 1.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, sqrtm_logm_tril_triu_via_repl) {
+    Interpreter interp;
+
+    expect_ok(interp, "D = [4, 0; 0, 9]");
+    expect_ok(interp, "S = sqrtm(D)");
+    ASSERT_TRUE(interp.state().matrices.count("S") > 0);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 0), 2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(1, 1), 3.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("S")(1, 0), 0.0, 1e-9);
+
+    expect_ok(interp, "I = eye(2)");
+    expect_ok(interp, "L = logm(I)");
+    ASSERT_TRUE(interp.state().matrices.count("L") > 0);
+    EXPECT_NEAR(interp.state().matrices.at("L")(0, 0), 0.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("L")(1, 1), 0.0, 1e-6);
+
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "Lwr = tril(A)");
+    ASSERT_TRUE(interp.state().matrices.count("Lwr") > 0);
+    EXPECT_NEAR(interp.state().matrices.at("Lwr")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Lwr")(1, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Lwr")(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Lwr")(1, 1), 4.0, 1e-9);
+
+    expect_ok(interp, "Upr = triu(A)");
+    ASSERT_TRUE(interp.state().matrices.count("Upr") > 0);
+    EXPECT_NEAR(interp.state().matrices.at("Upr")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Upr")(0, 1), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Upr")(1, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Upr")(1, 1), 4.0, 1e-9);
+
+    expect_ok(interp, "U1 = triu(A, 1)");
+    ASSERT_TRUE(interp.state().matrices.count("U1") > 0);
+    EXPECT_NEAR(interp.state().matrices.at("U1")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("U1")(0, 1), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("U1")(1, 1), 0.0, 1e-9);
+
+    expect_ok(interp, "T = [0, 0; 0, 1.5707963267948966]");
+    expect_ok(interp, "Cs = cosm(T)");
+    expect_ok(interp, "Sn = sinm(T)");
+    ASSERT_TRUE(interp.state().matrices.count("Cs") > 0);
+    ASSERT_TRUE(interp.state().matrices.count("Sn") > 0);
+    EXPECT_NEAR(interp.state().matrices.at("Cs")(0, 0), 1.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("Cs")(1, 1), 0.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("Sn")(0, 0), 0.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("Sn")(1, 1), 1.0, 1e-5);
+
+    expect_contains(interp, "help", "sqrtm(A)");
+    expect_contains(interp, "help", "tril(A[, k])");
+}
+
 TEST(ReplCommandsTest, rand_randn_assign) {
     Interpreter interp;
     expect_ok(interp, "R = rand(3, 4)");
