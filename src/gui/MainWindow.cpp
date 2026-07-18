@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QAction>
+#include <QKeyEvent>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -98,6 +99,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(run_, &QPushButton::clicked, this, &MainWindow::on_submit);
     connect(run_script_, &QPushButton::clicked, this, &MainWindow::on_run_script);
     connect(input_, &QLineEdit::returnPressed, this, &MainWindow::on_submit);
+    input_->installEventFilter(this);
     connect(file_tree_, &QTreeView::activated, this, &MainWindow::on_file_activated);
 
     append_output("MathScript IDE ready. Type 'help' and press Run.\n");
@@ -311,6 +313,40 @@ void MainWindow::finish_repl_op() {
     input_->setEnabled(true);
 }
 
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
+    if (obj != input_ || event->type() != QEvent::KeyPress) {
+        return QMainWindow::eventFilter(obj, event);
+    }
+    auto* key = static_cast<QKeyEvent*>(event);
+    if (key->key() == Qt::Key_Up) {
+        if (repl_history_.isEmpty()) {
+            return true;
+        }
+        if (repl_history_pos_ < 0) {
+            repl_history_draft_ = input_->text();
+            repl_history_pos_ = repl_history_.size() - 1;
+        } else if (repl_history_pos_ > 0) {
+            --repl_history_pos_;
+        }
+        input_->setText(repl_history_.at(repl_history_pos_));
+        return true;
+    }
+    if (key->key() == Qt::Key_Down) {
+        if (repl_history_.isEmpty() || repl_history_pos_ < 0) {
+            return true;
+        }
+        if (repl_history_pos_ + 1 >= repl_history_.size()) {
+            repl_history_pos_ = -1;
+            input_->setText(repl_history_draft_);
+        } else {
+            ++repl_history_pos_;
+            input_->setText(repl_history_.at(repl_history_pos_));
+        }
+        return true;
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
+
 void MainWindow::on_submit() {
     if (repl_busy_) {
         return;
@@ -319,6 +355,11 @@ void MainWindow::on_submit() {
     if (line.isEmpty()) {
         return;
     }
+    if (repl_history_.isEmpty() || repl_history_.last() != line) {
+        repl_history_.append(line);
+    }
+    repl_history_pos_ = -1;
+    repl_history_draft_.clear();
     input_->clear();
     script_queue_.clear();
     start_eval(line);
