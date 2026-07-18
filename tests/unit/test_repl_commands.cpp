@@ -3529,6 +3529,25 @@ TEST(ReplCommandsTest, wave250_signal_coherence) {
     EXPECT_TRUE(std::isfinite(c(0, 1)));
 }
 
+TEST(ReplCommandsTest, wave251_signal_filter) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_filter(b,a,x)");
+
+    expect_ok(interp, "b = [1, -1]");
+    expect_ok(interp, "a = [1, -0.5]");
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_ok(interp, "y = signal_filter(b, a, x)");
+    ASSERT_GT(interp.state().matrices.count("y"), 0u);
+    const auto& y = interp.state().matrices.at("y");
+    EXPECT_EQ(y.cols(), 1u);
+    EXPECT_EQ(y.rows(), 5u);
+    EXPECT_NEAR(y(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(y(1, 0), 1.5, 1e-12);
+    EXPECT_NEAR(y(2, 0), 1.75, 1e-12);
+    EXPECT_NEAR(y(3, 0), 1.875, 1e-12);
+    EXPECT_NEAR(y(4, 0), 1.9375, 1e-12);
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");
