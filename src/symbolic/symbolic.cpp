@@ -4,6 +4,7 @@
 #include <optional>
 #include <algorithm>
 #include <vector>
+#include <numbers>
 
 namespace ms {
 
@@ -1281,6 +1282,296 @@ std::expected<std::map<std::string, SymExpr>, SymSolveError> sym_solve_linear(
     }
 
     return std::unexpected(SymSolveError{"symbolic solve supports 1 or 2 variables"});
+}
+
+namespace {
+
+SymExpr sym_transform_unsupported(const SymExpr& expr, const std::string& var) {
+    return sym_deriv(clone_expr(expr), var);
+}
+
+bool is_named_var(const SymExpr& expr, const std::string& name) {
+    return expr.op == SymOp::Var && expr.name == name;
+}
+
+std::optional<double> as_const(const SymExpr& expr) {
+    if (expr.op == SymOp::Const) {
+        return expr.value;
+    }
+    return std::nullopt;
+}
+
+std::optional<double> extract_positive_scale_of_var(const SymExpr& expr, const std::string& var) {
+    if (is_named_var(expr, var)) {
+        return 1.0;
+    }
+    if (expr.op == SymOp::Neg && expr.left && is_named_var(*expr.left, var)) {
+        return -1.0;
+    }
+    if (expr.op == SymOp::Mul) {
+        if (expr.left && expr.left->op == SymOp::Const && expr.right && is_named_var(*expr.right, var)) {
+            return expr.left->value;
+        }
+        if (expr.right && expr.right->op == SymOp::Const && expr.left && is_named_var(*expr.left, var)) {
+            return expr.right->value;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<double> match_exp_neg_linear(const SymExpr& expr, const std::string& t_var) {
+    if (expr.op != SymOp::Exp || !expr.left) {
+        return std::nullopt;
+    }
+    const SymExpr& inner = *expr.left;
+    if (inner.op == SymOp::Neg && inner.left) {
+        return extract_positive_scale_of_var(*inner.left, t_var);
+    }
+    if (inner.op == SymOp::Sub && inner.left && inner.right && is_const_zero(*inner.left)) {
+        return extract_positive_scale_of_var(*inner.right, t_var);
+    }
+    if (const auto scale = extract_positive_scale_of_var(inner, t_var)) {
+        if (*scale < 0.0) {
+            return -*scale;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<double> match_exp_neg_quadratic(const SymExpr& expr, const std::string& t_var) {
+    if (expr.op != SymOp::Exp || !expr.left) {
+        return std::nullopt;
+    }
+    const SymExpr& inner = *expr.left;
+    const SymExpr* negated = nullptr;
+    if (inner.op == SymOp::Neg && inner.left) {
+        negated = inner.left.get();
+    } else if (inner.op == SymOp::Sub && inner.left && inner.right && is_const_zero(*inner.left)) {
+        negated = inner.right.get();
+    } else {
+        return std::nullopt;
+    }
+    if (!negated || negated->op != SymOp::Mul) {
+        return std::nullopt;
+    }
+    const SymExpr* coef_expr = nullptr;
+    const SymExpr* power_expr = nullptr;
+    if (negated->left && negated->left->op == SymOp::Const && negated->right) {
+        coef_expr = negated->left.get();
+        power_expr = negated->right.get();
+    } else if (negated->right && negated->right->op == SymOp::Const && negated->left) {
+        coef_expr = negated->right.get();
+        power_expr = negated->left.get();
+    } else {
+        return std::nullopt;
+    }
+    if (!coef_expr || !power_expr || coef_expr->value <= 0.0) {
+        return std::nullopt;
+    }
+    if (power_expr->op == SymOp::Pow && power_expr->left && is_named_var(*power_expr->left, t_var) &&
+        power_expr->right && power_expr->right->op == SymOp::Const && power_expr->right->value == 2.0) {
+        return coef_expr->value;
+    }
+    return std::nullopt;
+}
+
+std::optional<double> match_rational_decay_form(const SymExpr& expr, const std::string& omega_var) {
+    if (expr.op != SymOp::Div || !expr.left || !expr.right) {
+        return std::nullopt;
+    }
+    double numerator = 0.0;
+    if (expr.left->op == SymOp::Const) {
+        numerator = expr.left->value;
+    } else if (
+        expr.left->op == SymOp::Mul && expr.left->left && expr.left->left->op == SymOp::Const &&
+        expr.left->right && expr.left->right->op == SymOp::Const) {
+        numerator = expr.left->left->value * expr.left->right->value;
+    } else {
+        return std::nullopt;
+    }
+    const SymExpr& den = *expr.right;
+    if (den.op != SymOp::Add || !den.left || !den.right) {
+        return std::nullopt;
+    }
+
+    auto match_omega_squared = [&](const SymExpr& term) {
+        return term.op == SymOp::Pow && term.left && is_named_var(*term.left, omega_var) &&
+               term.right && term.right->op == SymOp::Const && term.right->value == 2.0;
+    };
+
+    auto match_a_squared = [&](const SymExpr& term, double& a_out) {
+        if (term.op == SymOp::Pow && term.left && term.left->op == SymOp::Const && term.right &&
+            term.right->op == SymOp::Const && term.right->value == 2.0 && term.left->value > 0.0) {
+            a_out = term.left->value;
+            return true;
+        }
+        if (term.op == SymOp::Const && term.value > 0.0) {
+            a_out = std::sqrt(term.value);
+            return true;
+        }
+        return false;
+    };
+
+    double a = 0.0;
+    if (match_a_squared(*den.left, a) && match_omega_squared(*den.right)) {
+        // matched
+    } else if (match_a_squared(*den.right, a) && match_omega_squared(*den.left)) {
+        // matched
+    } else {
+        return std::nullopt;
+    }
+    if (a <= 0.0 || std::abs(numerator - 2.0 * a) > 1e-9) {
+        return std::nullopt;
+    }
+    return a;
+}
+
+std::optional<double> match_gaussian_spectrum_form(const SymExpr& expr, const std::string& omega_var) {
+    if (expr.op != SymOp::Mul || !expr.left || !expr.right) {
+        return std::nullopt;
+    }
+    const SymExpr* scale_expr = nullptr;
+    const SymExpr* gaussian = nullptr;
+    if (expr.left->op == SymOp::Const && expr.right->op == SymOp::Exp) {
+        scale_expr = expr.left.get();
+        gaussian = expr.right.get();
+    } else if (expr.right->op == SymOp::Const && expr.left->op == SymOp::Exp) {
+        scale_expr = expr.right.get();
+        gaussian = expr.left.get();
+    } else {
+        return std::nullopt;
+    }
+    if (!scale_expr || !gaussian || !gaussian->left) {
+        return std::nullopt;
+    }
+    const double scale = scale_expr->value;
+    if (scale <= 0.0) {
+        return std::nullopt;
+    }
+    const double a = std::numbers::pi / (scale * scale);
+    const double expected_scale = std::sqrt(std::numbers::pi / a);
+    if (std::abs(scale - expected_scale) > 1e-9) {
+        return std::nullopt;
+    }
+    const SymExpr& inner = *gaussian->left;
+    const SymExpr* negated = nullptr;
+    if (inner.op == SymOp::Neg && inner.left) {
+        negated = inner.left.get();
+    } else if (inner.op == SymOp::Sub && inner.left && inner.right && is_const_zero(*inner.left)) {
+        negated = inner.right.get();
+    } else {
+        return std::nullopt;
+    }
+    if (!negated || negated->op != SymOp::Div || !negated->left || !negated->right) {
+        return std::nullopt;
+    }
+    if (negated->left->op != SymOp::Pow || !negated->left->left || !is_named_var(*negated->left->left, omega_var) ||
+        !negated->left->right || negated->left->right->op != SymOp::Const ||
+        negated->left->right->value != 2.0) {
+        return std::nullopt;
+    }
+    if (negated->right->op != SymOp::Const || std::abs(negated->right->value - 4.0 * a) > 1e-9) {
+        return std::nullopt;
+    }
+    return a;
+}
+
+std::optional<SymExpr> match_geometric_sequence(const SymExpr& expr, const std::string& n_var) {
+    if (expr.op == SymOp::Pow && expr.left && expr.right && is_named_var(*expr.right, n_var)) {
+        return clone_expr(*expr.left);
+    }
+    if (expr.op == SymOp::Mul && expr.left && expr.right) {
+        if (expr.left->op == SymOp::Const && expr.right->op == SymOp::Pow && expr.right->left && expr.right->right &&
+            is_named_var(*expr.right->right, n_var)) {
+            return sym_mul(clone_expr(*expr.left), clone_expr(*expr.right->left));
+        }
+        if (expr.right->op == SymOp::Const && expr.left->op == SymOp::Pow && expr.left->left && expr.left->right &&
+            is_named_var(*expr.left->right, n_var)) {
+            return sym_mul(clone_expr(*expr.right), clone_expr(*expr.left->left));
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<SymExpr> match_z_over_z_minus_a(const SymExpr& expr, const std::string& z_var) {
+    if (expr.op != SymOp::Div || !expr.left || !expr.right) {
+        return std::nullopt;
+    }
+    if (!is_named_var(*expr.left, z_var)) {
+        return std::nullopt;
+    }
+    const SymExpr& den = *expr.right;
+    if (den.op != SymOp::Sub || !den.left || !den.right || !is_named_var(*den.left, z_var)) {
+        return std::nullopt;
+    }
+    return clone_expr(*den.right);
+}
+
+} // namespace
+
+// Canonical pairs (MVP):
+//   exp(-a|t|) ~ exp(-a*t)  <->  2a/(a^2 + omega^2)
+//   exp(-a*t^2)             <->  sqrt(pi/a)*exp(-omega^2/(4a))
+//   a^n                     <->  z/(z-a)
+SymExpr sym_fourier(const SymExpr& expr, const std::string& t_var, const std::string& omega_var) {
+    if (const auto a = match_exp_neg_linear(expr, t_var)) {
+        if (*a > 0.0) {
+            SymExpr a2 = sym_pow(sym_const(*a), sym_const(2.0));
+            SymExpr omega2 = sym_pow(sym_var(omega_var), sym_const(2.0));
+            return sym_simplify(sym_div(sym_const(2.0 * *a), sym_add(std::move(a2), std::move(omega2))));
+        }
+    }
+    if (const auto a = match_exp_neg_quadratic(expr, t_var)) {
+        SymExpr scale = sym_const(std::sqrt(std::numbers::pi / *a));
+        SymExpr omega2 = sym_pow(sym_var(omega_var), sym_const(2.0));
+        SymExpr exponent = sym_neg(sym_div(std::move(omega2), sym_const(4.0 * *a)));
+        return sym_simplify(sym_mul(std::move(scale), sym_exp(std::move(exponent))));
+    }
+    return sym_transform_unsupported(expr, t_var);
+}
+
+SymExpr sym_ifourier(const SymExpr& expr, const std::string& omega_var, const std::string& t_var) {
+    if (const auto a = match_rational_decay_form(expr, omega_var)) {
+        return sym_simplify(sym_exp(sym_neg(sym_mul(sym_const(*a), sym_var(t_var)))));
+    }
+    if (const auto a = match_gaussian_spectrum_form(expr, omega_var)) {
+        return sym_simplify(sym_exp(sym_neg(sym_mul(sym_const(*a), sym_pow(sym_var(t_var), sym_const(2.0))))));
+    }
+    return sym_transform_unsupported(expr, omega_var);
+}
+
+SymExpr sym_ztransform(const SymExpr& expr, const std::string& n_var, const std::string& z_var) {
+    if (auto base = match_geometric_sequence(expr, n_var)) {
+        return sym_simplify(sym_div(sym_var(z_var), sym_sub(sym_var(z_var), std::move(*base))));
+    }
+    if (expr.op == SymOp::Const) {
+        return sym_simplify(sym_mul(clone_expr(expr), sym_div(sym_var(z_var), sym_sub(sym_var(z_var), sym_const(1.0)))));
+    }
+    return sym_transform_unsupported(expr, n_var);
+}
+
+SymExpr sym_iztransform(const SymExpr& expr, const std::string& z_var, const std::string& n_var) {
+    if (expr.op == SymOp::Mul && expr.left && expr.right) {
+        if (expr.left->op == SymOp::Const && expr.right->op == SymOp::Div) {
+            if (auto base = match_z_over_z_minus_a(*expr.right, z_var)) {
+                return sym_simplify(sym_mul(clone_expr(*expr.left), sym_pow(std::move(*base), sym_var(n_var))));
+            }
+        }
+        if (expr.right->op == SymOp::Const && expr.left->op == SymOp::Div) {
+            if (auto base = match_z_over_z_minus_a(*expr.left, z_var)) {
+                return sym_simplify(sym_mul(clone_expr(*expr.right), sym_pow(std::move(*base), sym_var(n_var))));
+            }
+        }
+    }
+    if (auto base = match_z_over_z_minus_a(expr, z_var)) {
+        return sym_simplify(sym_pow(std::move(*base), sym_var(n_var)));
+    }
+    if (expr.op == SymOp::Div && expr.left && is_named_var(*expr.left, z_var) && expr.right &&
+        expr.right->op == SymOp::Sub && expr.right->left && is_named_var(*expr.right->left, z_var) &&
+        expr.right->right && expr.right->right->op == SymOp::Const && expr.right->right->value == 1.0) {
+        return sym_const(1.0);
+    }
+    return sym_transform_unsupported(expr, z_var);
 }
 
 } // namespace ms
