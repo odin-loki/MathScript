@@ -679,6 +679,100 @@ TEST(CryptoAes128Gcm, InvalidKeyReturnsEmpty) {
     EXPECT_EQ(seal.tag, (std::array<uint8_t, aes_gcm_tag_size>{}));
 }
 
+// ---- AES-256-GCM (NIST SP 800-38D / McGrew-Viega test vectors) ----
+
+TEST(CryptoAes256Gcm, NistTestCase13_EmptyPlaintext) {
+    const auto key = from_hex(
+        "0000000000000000000000000000000000000000000000000000000000000000");
+    const auto iv = from_hex("000000000000000000000000");
+    const auto seal = aes256_gcm_encrypt(key, iv, std::span<const uint8_t>{},
+                                         std::span<const uint8_t>{});
+    EXPECT_TRUE(seal.ciphertext.empty());
+    expect_hex(std::vector<uint8_t>(seal.tag.begin(), seal.tag.end()),
+               "530f8afbc74536b9a963b4f1c4cb738b");
+}
+
+TEST(CryptoAes256Gcm, NistTestCase14_SingleBlock) {
+    const auto key = from_hex(
+        "0000000000000000000000000000000000000000000000000000000000000000");
+    const auto iv = from_hex("000000000000000000000000");
+    const auto plain = from_hex("00000000000000000000000000000000");
+    const auto seal = aes256_gcm_encrypt(key, iv, std::span<const uint8_t>{}, plain);
+    expect_hex(seal.ciphertext, "cea7403d4d606b6e074ec5d3baf39d18");
+    expect_hex(std::vector<uint8_t>(seal.tag.begin(), seal.tag.end()),
+               "d0d1c8a799996bf0265b98b5d48ab919");
+    const auto opened =
+        aes256_gcm_decrypt(key, iv, std::span<const uint8_t>{}, seal.ciphertext,
+                           std::span<const uint8_t>(seal.tag.data(), seal.tag.size()));
+    EXPECT_EQ(opened, plain);
+}
+
+TEST(CryptoAes256Gcm, NistTestCase15_MultiBlock) {
+    const auto key = from_hex(
+        "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308");
+    const auto iv = from_hex("cafebabefacedbaddecaf888");
+    const auto plain = from_hex(
+        "d9313225f88406e5a55909c5aff5269a"
+        "86a7a9531534f7da2e4c303d8a318a72"
+        "1c3c0c95956809532fcf0e2449a6b525"
+        "b16aedf5aa0de657ba637b391aafd255");
+    const auto seal = aes256_gcm_encrypt(key, iv, std::span<const uint8_t>{}, plain);
+    expect_hex(seal.ciphertext,
+               "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa"
+               "8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662898015ad");
+    expect_hex(std::vector<uint8_t>(seal.tag.begin(), seal.tag.end()),
+               "b094dac5d93471bdec1a502270e3cc6c");
+    const auto opened =
+        aes256_gcm_decrypt(key, iv, std::span<const uint8_t>{}, seal.ciphertext,
+                           std::span<const uint8_t>(seal.tag.data(), seal.tag.size()));
+    EXPECT_EQ(opened, plain);
+}
+
+TEST(CryptoAes256Gcm, NistTestCase16_WithAad) {
+    const auto key = from_hex(
+        "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308");
+    const auto iv = from_hex("cafebabefacedbaddecaf888");
+    const auto plain = from_hex(
+        "d9313225f88406e5a55909c5aff5269a"
+        "86a7a9531534f7da2e4c303d8a318a72"
+        "1c3c0c95956809532fcf0e2449a6b525"
+        "b16aedf5aa0de657ba637b39");
+    const auto aad = from_hex("feedfacedeadbeeffeedfacedeadbeefabaddad2");
+    const auto seal = aes256_gcm_encrypt(key, iv, aad, plain);
+    expect_hex(seal.ciphertext,
+               "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa"
+               "8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662");
+    expect_hex(std::vector<uint8_t>(seal.tag.begin(), seal.tag.end()),
+               "76fc6ece0f4e1768cddf8853bb2d551b");
+    const auto opened = aes256_gcm_decrypt(key, iv, aad, seal.ciphertext,
+                                           std::span<const uint8_t>(seal.tag.data(),
+                                                                    seal.tag.size()));
+    EXPECT_EQ(opened, plain);
+}
+
+TEST(CryptoAes256Gcm, TamperedTagFailsOpen) {
+    const auto key = from_hex(
+        "0000000000000000000000000000000000000000000000000000000000000000");
+    const auto iv = from_hex("000000000000000000000000");
+    const auto plain = from_hex("00000000000000000000000000000000");
+    const auto seal = aes256_gcm_encrypt(key, iv, std::span<const uint8_t>{}, plain);
+    auto bad_tag = seal.tag;
+    bad_tag[0] ^= 0x01;
+    const auto opened =
+        aes256_gcm_decrypt(key, iv, std::span<const uint8_t>{}, seal.ciphertext,
+                           std::span<const uint8_t>(bad_tag.data(), bad_tag.size()));
+    EXPECT_TRUE(opened.empty());
+}
+
+TEST(CryptoAes256Gcm, InvalidKeyReturnsEmpty) {
+    const auto key = from_hex("00112233445566778899aabbccddeeff");
+    const auto iv = from_hex("000000000000000000000000");
+    const auto plain = from_hex("0011223344556677889900aabbccddeeff");
+    const auto seal = aes256_gcm_encrypt(key, iv, std::span<const uint8_t>{}, plain);
+    EXPECT_TRUE(seal.ciphertext.empty());
+    EXPECT_EQ(seal.tag, (std::array<uint8_t, aes_gcm_tag_size>{}));
+}
+
 // ---- X25519 (RFC 7748) ----
 
 TEST(CryptoX25519, Rfc7748ScalarMultVector) {

@@ -965,11 +965,11 @@ void gctr(std::span<const std::uint8_t> key, const std::uint8_t j0[16],
     }
 }
 
-bool aes128_gcm_seal_impl(std::span<const std::uint8_t> key, std::span<const std::uint8_t> iv,
-                          std::span<const std::uint8_t> aad,
-                          std::span<const std::uint8_t> plaintext, std::uint8_t* ciphertext_out,
-                          std::uint8_t tag_out[16]) {
-    if (key.size() != 16) {
+bool aes_gcm_seal_impl(std::span<const std::uint8_t> key, std::span<const std::uint8_t> iv,
+                       std::span<const std::uint8_t> aad,
+                       std::span<const std::uint8_t> plaintext, std::uint8_t* ciphertext_out,
+                       std::uint8_t tag_out[16]) {
+    if (key.size() != 16 && key.size() != 32) {
         return false;
     }
 
@@ -991,11 +991,11 @@ bool aes128_gcm_seal_impl(std::span<const std::uint8_t> key, std::span<const std
     return true;
 }
 
-bool aes128_gcm_open_impl(std::span<const std::uint8_t> key, std::span<const std::uint8_t> iv,
-                          std::span<const std::uint8_t> aad,
-                          std::span<const std::uint8_t> ciphertext, std::span<const std::uint8_t> tag,
-                          std::uint8_t* plaintext_out) {
-    if (key.size() != 16 || tag.size() != 16) {
+bool aes_gcm_open_impl(std::span<const std::uint8_t> key, std::span<const std::uint8_t> iv,
+                       std::span<const std::uint8_t> aad,
+                       std::span<const std::uint8_t> ciphertext, std::span<const std::uint8_t> tag,
+                       std::uint8_t* plaintext_out) {
+    if ((key.size() != 16 && key.size() != 32) || tag.size() != 16) {
         return false;
     }
 
@@ -1416,8 +1416,8 @@ Aes128GcmSeal aes128_gcm_encrypt(std::span<const uint8_t> key, std::span<const u
 
     const auto iv_norm = normalize_gcm_iv(iv);
     out.ciphertext.resize(plaintext.size());
-    if (!aes128_gcm_seal_impl(key, iv_norm, aad, plaintext, out.ciphertext.data(),
-                              out.tag.data())) {
+    if (!aes_gcm_seal_impl(key, iv_norm, aad, plaintext, out.ciphertext.data(),
+                           out.tag.data())) {
         out.ciphertext.clear();
         out.tag.fill(0);
     }
@@ -1434,7 +1434,41 @@ std::vector<uint8_t> aes128_gcm_decrypt(std::span<const uint8_t> key, std::span<
 
     const auto iv_norm = normalize_gcm_iv(iv);
     std::vector<uint8_t> plaintext(ciphertext.size());
-    if (!aes128_gcm_open_impl(key, iv_norm, aad, ciphertext, tag, plaintext.data())) {
+    if (!aes_gcm_open_impl(key, iv_norm, aad, ciphertext, tag, plaintext.data())) {
+        return {};
+    }
+    return plaintext;
+}
+
+Aes256GcmSeal aes256_gcm_encrypt(std::span<const uint8_t> key, std::span<const uint8_t> iv,
+                                 std::span<const uint8_t> aad,
+                                 std::span<const uint8_t> plaintext) {
+    Aes256GcmSeal out;
+    if (key.size() != aes256_key_size) {
+        return out;
+    }
+
+    const auto iv_norm = normalize_gcm_iv(iv);
+    out.ciphertext.resize(plaintext.size());
+    if (!aes_gcm_seal_impl(key, iv_norm, aad, plaintext, out.ciphertext.data(),
+                           out.tag.data())) {
+        out.ciphertext.clear();
+        out.tag.fill(0);
+    }
+    return out;
+}
+
+std::vector<uint8_t> aes256_gcm_decrypt(std::span<const uint8_t> key, std::span<const uint8_t> iv,
+                                        std::span<const uint8_t> aad,
+                                        std::span<const uint8_t> ciphertext,
+                                        std::span<const uint8_t> tag) {
+    if (key.size() != aes256_key_size || tag.size() != aes_gcm_tag_size) {
+        return {};
+    }
+
+    const auto iv_norm = normalize_gcm_iv(iv);
+    std::vector<uint8_t> plaintext(ciphertext.size());
+    if (!aes_gcm_open_impl(key, iv_norm, aad, ciphertext, tag, plaintext.data())) {
         return {};
     }
     return plaintext;

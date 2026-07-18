@@ -4220,6 +4220,85 @@ Result<std::string> eval_crypto_aes128_gcm_decrypt(const std::string& key_arg,
     return crypto::to_hex(plain) + "\n";
 }
 
+Result<std::string> eval_crypto_aes256_gcm_encrypt(const std::string& key_arg,
+                                                   const std::string& iv_arg,
+                                                   const std::string& aad_arg,
+                                                   const std::string& plain_arg) {
+    constexpr const char* fn = "crypto_aes256_gcm_encrypt";
+    auto key = parse_hex_arg(key_arg, fn, "key");
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto iv = parse_hex_arg(iv_arg, fn, "iv");
+    if (!iv) {
+        return std::unexpected(iv.error());
+    }
+    auto aad = parse_hex_arg(aad_arg, fn, "aad");
+    if (!aad) {
+        return std::unexpected(aad.error());
+    }
+    auto plain = parse_hex_arg(plain_arg, fn, "plaintext");
+    if (!plain) {
+        return std::unexpected(plain.error());
+    }
+    if (key->size() != crypto::aes256_key_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 32-byte (64 hex char) AES-256 key"});
+    }
+    if (iv->empty() || iv->size() > crypto::aes_gcm_iv_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 1-12 byte iv (2-24 hex chars, zero-padded on right)"});
+    }
+    const auto seal = crypto::aes256_gcm_encrypt(*key, *iv, *aad, *plain);
+    return crypto::to_hex(seal.ciphertext) + " " +
+           crypto::to_hex(std::span<const uint8_t>(seal.tag.data(), seal.tag.size())) + "\n";
+}
+
+Result<std::string> eval_crypto_aes256_gcm_decrypt(const std::string& key_arg,
+                                                   const std::string& iv_arg,
+                                                   const std::string& aad_arg,
+                                                   const std::string& cipher_arg,
+                                                   const std::string& tag_arg) {
+    constexpr const char* fn = "crypto_aes256_gcm_decrypt";
+    auto key = parse_hex_arg(key_arg, fn, "key");
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto iv = parse_hex_arg(iv_arg, fn, "iv");
+    if (!iv) {
+        return std::unexpected(iv.error());
+    }
+    auto aad = parse_hex_arg(aad_arg, fn, "aad");
+    if (!aad) {
+        return std::unexpected(aad.error());
+    }
+    auto cipher = parse_hex_arg(cipher_arg, fn, "ciphertext");
+    if (!cipher) {
+        return std::unexpected(cipher.error());
+    }
+    auto tag = parse_hex_arg(tag_arg, fn, "tag");
+    if (!tag) {
+        return std::unexpected(tag.error());
+    }
+    if (key->size() != crypto::aes256_key_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 32-byte (64 hex char) AES-256 key"});
+    }
+    if (iv->empty() || iv->size() > crypto::aes_gcm_iv_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 1-12 byte iv (2-24 hex chars, zero-padded on right)"});
+    }
+    if (tag->size() != crypto::aes_gcm_tag_size) {
+        return std::unexpected(
+            DomainError{fn, "expected 16-byte (32 hex char) authentication tag"});
+    }
+    const auto plain = crypto::aes256_gcm_decrypt(*key, *iv, *aad, *cipher, *tag);
+    if (plain.empty() && !cipher->empty()) {
+        return std::unexpected(DomainError{fn, "authentication failed or invalid inputs"});
+    }
+    return crypto::to_hex(plain) + "\n";
+}
+
 Result<std::string> eval_crypto_chacha20(const std::string& key_arg, const std::string& nonce_arg,
                                          const std::string& counter_arg,
                                          const std::string& data_arg) {
@@ -8019,6 +8098,25 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
                 "tag_hex)"});
         }
         return eval_crypto_aes128_gcm_decrypt(call_args->at(0), call_args->at(1),
+                                              call_args->at(2), call_args->at(3),
+                                              call_args->at(4));
+    }
+    if (fn == "crypto_aes256_gcm_encrypt") {
+        if (call_args->size() != 4) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_aes256_gcm_encrypt(key_hex, iv_hex, aad_hex, plaintext_hex)"});
+        }
+        return eval_crypto_aes256_gcm_encrypt(call_args->at(0), call_args->at(1),
+                                              call_args->at(2), call_args->at(3));
+    }
+    if (fn == "crypto_aes256_gcm_decrypt") {
+        if (call_args->size() != 5) {
+            return std::unexpected(DomainError{
+                fn,
+                "expected crypto_aes256_gcm_decrypt(key_hex, iv_hex, aad_hex, ciphertext_hex, "
+                "tag_hex)"});
+        }
+        return eval_crypto_aes256_gcm_decrypt(call_args->at(0), call_args->at(1),
                                               call_args->at(2), call_args->at(3),
                                               call_args->at(4));
     }
@@ -14598,6 +14696,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_aes256_cbc_decrypt(key_hex,iv_hex,ciphertext_hex) AES-256 CBC decrypt\n"
             "  crypto_aes128_gcm_encrypt(key_hex,iv_hex,aad_hex,plaintext_hex) AES-128-GCM seal\n"
             "  crypto_aes128_gcm_decrypt(key_hex,iv_hex,aad_hex,ciphertext_hex,tag_hex) AES-128-GCM open\n"
+            "  crypto_aes256_gcm_encrypt(key_hex,iv_hex,aad_hex,plaintext_hex) AES-256-GCM seal\n"
+            "  crypto_aes256_gcm_decrypt(key_hex,iv_hex,aad_hex,ciphertext_hex,tag_hex) AES-256-GCM open\n"
             "  crypto_chacha20(key_hex,nonce_hex,counter,data_hex) ChaCha20 stream XOR (hex I/O)\n"
             "  crypto_chacha20_poly1305_encrypt(key_hex,nonce_hex,aad_hex,plaintext_hex) ChaCha20-Poly1305 seal\n"
             "  crypto_chacha20_poly1305_decrypt(key_hex,nonce_hex,aad_hex,ciphertext_hex,tag_hex) ChaCha20-Poly1305 open\n"
