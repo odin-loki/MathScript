@@ -6696,3 +6696,35 @@ TEST(ReplCommandsTest, wave261_ldl) {
     EXPECT_EQ(interp.state().matrices.at("Pp").rows(), 2u);
     EXPECT_EQ(interp.state().matrices.at("Pp").cols(), 2u);
 }
+
+TEST(ReplCommandsTest, wave262_combo_motzkin_paths) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_motzkin_paths(n)");
+
+    expect_ok(interp, "mp3 = combo_motzkin_paths(3)");
+    ASSERT_GT(interp.state().matrices.count("mp3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("mp3").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("mp3").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("mp3")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("mp3")(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("mp3")(0, 2), -1.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave262_combo_set_partitions) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_set_partitions(n)");
+
+    expect_ok(interp, "sp2 = combo_set_partitions(2)");
+    ASSERT_GT(interp.state().matrices.count("sp2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("sp2").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("sp2").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("sp2")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("sp2")(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("sp2")(1, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("sp2")(1, 1), 0.0, 1e-9);
+
+    expect_ok(interp, "sp3 = combo_set_partitions(3)");
+    ASSERT_GT(interp.state().matrices.count("sp3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("sp3").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("sp3").cols(), 3u);
+}

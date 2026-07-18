@@ -255,6 +255,8 @@ QStringList repl_command_list() {
         QStringLiteral("combo_gray_code"),
         QStringLiteral("combo_dyck_paths"),
         QStringLiteral("combo_necklaces"),
+        QStringLiteral("combo_set_partitions"),
+        QStringLiteral("combo_motzkin_paths"),
         QStringLiteral("combo_de_bruijn_sequence"),
         QStringLiteral("numthy_factor"),
         QStringLiteral("numthy_factor_exp"),
