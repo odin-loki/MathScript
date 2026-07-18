@@ -19,6 +19,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemModel>
+#include <QInputDialog>
 #include <QHBoxLayout>
 #include <QMenuBar>
 #include <QMetaType>
@@ -311,6 +312,11 @@ void MainWindow::restore_layout() {
     if (!splitter_state.isEmpty() && main_splitter_ != nullptr) {
         main_splitter_->restoreState(splitter_state);
     }
+
+    if (plot_stack_ != nullptr) {
+        const bool plot_visible = settings.value("gui/plot_panel_visible", true).toBool();
+        set_plot_panel_visible(plot_visible);
+    }
 }
 
 void MainWindow::save_layout() {
@@ -321,6 +327,9 @@ void MainWindow::save_layout() {
     }
     settings.setValue("gui/mono_font_size", mono_font_size_);
     settings.setValue("gui/recent_files", recent_files_);
+    if (plot_stack_ != nullptr) {
+        settings.setValue("gui/plot_panel_visible", plot_stack_->isVisible());
+    }
 }
 
 void MainWindow::apply_dark_theme() {
@@ -347,7 +356,17 @@ void MainWindow::setup_menus() {
     file_menu->addSeparator();
     auto* quit_action = file_menu->addAction("Quit");
 
+    auto* edit_menu = menuBar()->addMenu("&Edit");
+    auto* find_output_action = edit_menu->addAction("Find in Output");
+    find_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
+    auto* find_next_output_action = edit_menu->addAction("Find Next in Output");
+    find_next_output_action->setShortcut(QKeySequence(Qt::Key_F3));
+
     auto* view_menu = menuBar()->addMenu("&View");
+    show_plot_panel_action_ = view_menu->addAction("Show Plot Panel");
+    show_plot_panel_action_->setCheckable(true);
+    show_plot_panel_action_->setChecked(true);
+    view_menu->addSeparator();
     auto* clear_output_action = view_menu->addAction("Clear Output");
     clear_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
     auto* font_larger_action = view_menu->addAction("Increase Font Size");
@@ -367,6 +386,9 @@ void MainWindow::setup_menus() {
         }
         open_script_file(path);
     });
+    connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
+    connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
+    connect(show_plot_panel_action_, &QAction::toggled, this, &MainWindow::set_plot_panel_visible);
     connect(clear_output_action, &QAction::triggered, this, &MainWindow::clear_output);
     connect(font_larger_action, &QAction::triggered, this, [this]() { adjust_font_size(1); });
     connect(font_smaller_action, &QAction::triggered, this, [this]() { adjust_font_size(-1); });
@@ -452,6 +474,52 @@ void MainWindow::refresh_status() {
 
 void MainWindow::clear_output() {
     output_->clear();
+}
+
+void MainWindow::find_in_output() {
+    bool ok = false;
+    const QString text =
+        QInputDialog::getText(this, "Find in Output", "Find:", QLineEdit::Normal, find_output_text_, &ok);
+    if (!ok || text.isEmpty()) {
+        return;
+    }
+    find_output_text_ = text;
+    output_->moveCursor(QTextCursor::Start);
+    if (!output_->find(find_output_text_)) {
+        statusBar()->showMessage("Find in Output: no matches", 3000);
+    }
+}
+
+void MainWindow::find_next_in_output() {
+    if (find_output_text_.isEmpty()) {
+        find_in_output();
+        return;
+    }
+
+    QTextCursor cursor = output_->textCursor();
+    if (cursor.hasSelection()) {
+        cursor.setPosition(cursor.selectionEnd());
+        output_->setTextCursor(cursor);
+    }
+
+    if (!output_->find(find_output_text_)) {
+        output_->moveCursor(QTextCursor::Start);
+        if (!output_->find(find_output_text_)) {
+            statusBar()->showMessage("Find in Output: no matches", 3000);
+        }
+    }
+}
+
+void MainWindow::set_plot_panel_visible(bool visible) {
+    if (plot_stack_ == nullptr) {
+        return;
+    }
+    plot_stack_->setVisible(visible);
+    if (show_plot_panel_action_ != nullptr && show_plot_panel_action_->isChecked() != visible) {
+        show_plot_panel_action_->blockSignals(true);
+        show_plot_panel_action_->setChecked(visible);
+        show_plot_panel_action_->blockSignals(false);
+    }
 }
 
 void MainWindow::show_about() {
