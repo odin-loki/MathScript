@@ -159,6 +159,8 @@ QStringList repl_command_list() {
         QStringLiteral("graph_k_core_decomposition"),
         QStringLiteral("graph_k_core_subgraph"),
         QStringLiteral("graph_chromatic_number"),
+        QStringLiteral("geo_minkowski_sum"),
+        QStringLiteral("geo_min_bounding_rect"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
