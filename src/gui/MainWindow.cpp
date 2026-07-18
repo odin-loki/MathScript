@@ -29,9 +29,11 @@
 #include <QLabel>
 #include <QMenuBar>
 #include <QMetaType>
+#include <QPalette>
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextEdit>
 #include <QTreeView>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -568,6 +570,97 @@ bool go_to_matching_brace_in_editor(QPlainTextEdit* editor) {
     return false;
 }
 
+QTextEdit::ExtraSelection make_add_selection_extra(QPlainTextEdit* editor, const QTextCursor& cursor) {
+    QTextEdit::ExtraSelection extra;
+    extra.cursor = cursor;
+    extra.format.setBackground(editor->palette().color(QPalette::Highlight));
+    extra.format.setForeground(editor->palette().color(QPalette::HighlightedText));
+    return extra;
+}
+
+bool range_overlaps_existing(const QList<QTextEdit::ExtraSelection>& extras, int start, int end) {
+    for (const auto& extra : extras) {
+        const int a = extra.cursor.selectionStart();
+        const int b = extra.cursor.selectionEnd();
+        if (start == a && end == b) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Select word under cursor, or find the next match of the current selection and keep prior
+// matches highlighted via ExtraSelection (QPlainTextEdit has a single primary cursor).
+bool add_selection_for_next_occurrence_in_editor(QPlainTextEdit* editor, QString& needle,
+                                                 QList<QTextEdit::ExtraSelection>& extras) {
+    if (editor == nullptr) {
+        return false;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    if (!cursor.hasSelection()) {
+        cursor.select(QTextCursor::WordUnderCursor);
+        if (!cursor.hasSelection()) {
+            extras.clear();
+            needle.clear();
+            editor->setExtraSelections({});
+            return false;
+        }
+        needle = cursor.selectedText();
+        extras.clear();
+        editor->setExtraSelections({});
+        editor->setTextCursor(cursor);
+        editor->centerCursor();
+        return true;
+    }
+
+    const QString selected = cursor.selectedText();
+    if (selected.isEmpty()) {
+        return false;
+    }
+
+    if (selected != needle) {
+        needle = selected;
+        extras.clear();
+    }
+
+    const int current_start = cursor.selectionStart();
+    const int current_end = cursor.selectionEnd();
+    bool demoted_current = false;
+    if (!range_overlaps_existing(extras, current_start, current_end)) {
+        QTextCursor keep = cursor;
+        keep.setPosition(current_start);
+        keep.setPosition(current_end, QTextCursor::KeepAnchor);
+        extras.append(make_add_selection_extra(editor, keep));
+        demoted_current = true;
+    }
+
+    QTextDocument* doc = editor->document();
+    int search_from = current_end;
+    for (int pass = 0; pass < 2; ++pass) {
+        QTextCursor found = doc->find(needle, search_from);
+        while (!found.isNull()) {
+            const int start = found.selectionStart();
+            const int end = found.selectionEnd();
+            if (!range_overlaps_existing(extras, start, end)) {
+                editor->setExtraSelections(extras);
+                editor->setTextCursor(found);
+                editor->centerCursor();
+                return true;
+            }
+            found = doc->find(needle, end);
+        }
+        search_from = 0;
+    }
+
+    // No new match: restore extras without demoting the current primary selection.
+    if (demoted_current) {
+        extras.removeLast();
+    }
+    editor->setExtraSelections(extras);
+    return false;
+}
+
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
 constexpr size_t kTooltipMaxRows = 6;
@@ -1077,6 +1170,8 @@ void MainWindow::setup_menus() {
     go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
     auto* go_to_matching_brace_action = edit_menu->addAction("Go to Matching Brace");
     go_to_matching_brace_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_BracketRight));
+    auto* add_selection_action = edit_menu->addAction("Add Selection for Next Occurrence");
+    add_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     auto* indent_action = edit_menu->addAction("Indent");
     indent_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_BracketRight));
     auto* unindent_action = edit_menu->addAction("Unindent");
@@ -1144,6 +1239,7 @@ void MainWindow::setup_menus() {
     connect(replace_all_script_action, &QAction::triggered, this, &MainWindow::replace_all_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
     connect(go_to_matching_brace_action, &QAction::triggered, this, &MainWindow::go_to_matching_brace);
+    connect(add_selection_action, &QAction::triggered, this, &MainWindow::add_selection_for_next_occurrence);
     connect(indent_action, &QAction::triggered, this, &MainWindow::indent_lines);
     connect(unindent_action, &QAction::triggered, this, &MainWindow::unindent_lines);
     connect(toggle_comment_action, &QAction::triggered, this, &MainWindow::toggle_comment);
@@ -1476,6 +1572,14 @@ void MainWindow::go_to_matching_brace() {
     editor_->setFocus();
     if (!go_to_matching_brace_in_editor(editor_)) {
         statusBar()->showMessage("Go to Matching Brace: no match", 3000);
+    }
+}
+
+void MainWindow::add_selection_for_next_occurrence() {
+    editor_->setFocus();
+    if (!add_selection_for_next_occurrence_in_editor(editor_, add_selection_needle_,
+                                                     add_selection_extras_)) {
+        statusBar()->showMessage("Add Selection: no more matches", 3000);
     }
 }
 
