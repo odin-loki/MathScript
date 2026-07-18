@@ -5482,6 +5482,208 @@ Result<std::string> format_optim_result(const OptimResult& result) {
     return oss.str();
 }
 
+Result<std::string> format_scalar_optim_result(double x_opt, double f_val) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(6);
+    oss << "x_opt = " << x_opt << "\n";
+    oss << "f_val = " << f_val << "\n";
+    return oss.str();
+}
+
+struct NdOptimInputs {
+    std::shared_ptr<SymExpr> expr;
+    std::vector<double> x0;
+    FuncND f;
+};
+
+Result<NdOptimInputs> parse_nd_optim_inputs(const std::string& formula_arg,
+                                            const std::string& x0_arg, const char* fn) {
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    auto x0 = parse_bracket_vector_literal(x0_arg, fn);
+    if (!x0) {
+        return std::unexpected(x0.error());
+    }
+    if (x0->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty initial point vector x0"});
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    const size_t dim = x0->size();
+    FuncND f = [expr_ptr, dim](const std::vector<double>& x) {
+        return sym_eval(*expr_ptr, build_optim_env(x));
+    };
+    return NdOptimInputs{expr_ptr, std::move(*x0), std::move(f)};
+}
+
+Result<double> parse_optional_positive_number(const std::string& text, const char* fn,
+                                              const char* label, double default_value) {
+    if (text.empty()) {
+        return default_value;
+    }
+    double value = 0.0;
+    if (!parse_number(trim_copy(text), value) || value <= 0.0) {
+        return std::unexpected(DomainError{fn, std::string("expected positive ") + label});
+    }
+    return value;
+}
+
+Result<int> parse_optional_positive_int(const std::string& text, const char* fn, const char* label,
+                                        int default_value) {
+    if (text.empty()) {
+        return default_value;
+    }
+    double value = 0.0;
+    if (!parse_number(trim_copy(text), value) || value < 1.0 || std::floor(value) != value) {
+        return std::unexpected(DomainError{fn, std::string("expected positive integer ") + label});
+    }
+    return static_cast<int>(value);
+}
+
+Result<std::string> eval_bfgs_call(const std::string& formula_arg, const std::string& x0_arg,
+                                   const std::string& tol_arg, const std::string& max_iter_arg) {
+    constexpr const char* fn = "bfgs";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-8);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 500);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    return format_optim_result(bfgs(inputs->f, inputs->x0, *tol, *max_iter));
+}
+
+Result<std::string> eval_nelder_mead_call(const std::string& formula_arg, const std::string& x0_arg,
+                                          const std::string& tol_arg,
+                                          const std::string& max_iter_arg) {
+    constexpr const char* fn = "nelder_mead";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-8);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 1000);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    return format_optim_result(nelder_mead(inputs->f, inputs->x0, *tol, *max_iter));
+}
+
+Result<std::string> eval_lbfgs_call(const std::string& formula_arg, const std::string& x0_arg,
+                                    const std::string& m_arg, const std::string& tol_arg,
+                                    const std::string& max_iter_arg) {
+    constexpr const char* fn = "lbfgs";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto m = parse_optional_positive_int(m_arg, fn, "m", 5);
+    if (!m) {
+        return std::unexpected(m.error());
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-8);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 500);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    return format_optim_result(lbfgs(inputs->f, inputs->x0, *m, *tol, *max_iter));
+}
+
+Result<std::string> eval_adam_call(const std::string& formula_arg, const std::string& x0_arg,
+                                   const std::string& alpha_arg, const std::string& max_iter_arg) {
+    constexpr const char* fn = "adam";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto alpha = parse_optional_positive_number(alpha_arg, fn, "alpha", 0.001);
+    if (!alpha) {
+        return std::unexpected(alpha.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 1000);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    return format_optim_result(adam(inputs->f, inputs->x0, *alpha, 0.9, 0.999, *max_iter));
+}
+
+Result<std::string> eval_golden_section_call(const std::string& formula_arg,
+                                             const std::string& a_arg, const std::string& b_arg,
+                                             const std::string& tol_arg) {
+    constexpr const char* fn = "golden_section";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double a = 0.0;
+    double b = 0.0;
+    if (!parse_number(trim_copy(a_arg), a) || !parse_number(trim_copy(b_arg), b)) {
+        return std::unexpected(
+            DomainError{fn, "expected golden_section(\"formula\", a, b[, tol])"});
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-8);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    Func1D f = [expr_ptr](double x) { return sym_eval(*expr_ptr, build_optim_env({x})); };
+    const double x_opt = golden_section(f, a, b, *tol);
+    return format_scalar_optim_result(x_opt, f(x_opt));
+}
+
+Result<std::string> eval_levenberg_marquardt_call(const std::string& formulas_arg,
+                                                  const std::string& x0_arg,
+                                                  const std::string& max_iter_arg,
+                                                  const std::string& tol_arg) {
+    constexpr const char* fn = "levenberg_marquardt";
+    auto exprs = parse_sym_semicolon_formulas(formulas_arg, fn);
+    if (!exprs) {
+        return std::unexpected(exprs.error());
+    }
+    auto x0 = parse_bracket_vector_literal(x0_arg, fn);
+    if (!x0) {
+        return std::unexpected(x0.error());
+    }
+    if (x0->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty initial point vector x0"});
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 200);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-10);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    std::vector<std::shared_ptr<SymExpr>> expr_ptrs;
+    expr_ptrs.reserve(exprs->size());
+    for (auto& expr : *exprs) {
+        expr_ptrs.push_back(std::make_shared<SymExpr>(std::move(expr)));
+    }
+    ResidualFunc residuals = [expr_ptrs](const std::vector<double>& x) {
+        const auto env = build_optim_env(x);
+        std::vector<double> values;
+        values.reserve(expr_ptrs.size());
+        for (const auto& expr_ptr : expr_ptrs) {
+            values.push_back(sym_eval(*expr_ptr, env));
+        }
+        return values;
+    };
+    return format_optim_result(levenberg_marquardt(residuals, *x0, *max_iter, *tol));
+}
+
 Result<std::string> eval_cmaes_call(const std::string& formula_arg, const std::string& x0_arg,
                                     const std::string& sigma_arg,
                                     const std::string& max_iter_arg,
@@ -6885,7 +7087,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "finance_binomial_put" || fn == "finance_bs_delta" ||
             fn == "finance_bs_theta" || fn == "finance_bs_rho" ||
             fn == "finance_portfolio_return" || fn == "finance_portfolio_variance" ||
-            fn == "cmaes" ||
+            fn == "cmaes" || fn == "bfgs" || fn == "nelder_mead" || fn == "lbfgs" ||
+            fn == "adam" || fn == "golden_section" || fn == "levenberg_marquardt" ||
             fn == "tensorops_matmul" || fn == "tensorops_einsum") {
             return false;
         }
@@ -11959,6 +12162,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = fft_dst2(x) type-II DST coefficients as Nx1 column\n"
             "  name = idst2(x) type-II inverse DST signal as Nx1 column\n"
             "  name = cmaes(\"formula\",x0,sigma0,max_iter[,seed]) CMA-ES minimization (env {x0,x1,...})\n"
+            "  name = bfgs(\"formula\",x0[,tol[,max_iter]]) BFGS minimization (env {x0,x1,...})\n"
+            "  name = nelder_mead(\"formula\",x0[,tol[,max_iter]]) Nelder-Mead minimization (env {x0,x1,...})\n"
+            "  name = lbfgs(\"formula\",x0[,m[,tol[,max_iter]]]) L-BFGS minimization (env {x0,x1,...})\n"
+            "  name = adam(\"formula\",x0[,alpha[,max_iter]]) Adam minimization (env {x0,x1,...})\n"
+            "  name = golden_section(\"formula\",a,b[,tol]) 1D golden-section minimization (env {x0})\n"
+            "  name = levenberg_marquardt(\"r0;r1;...\",x0[,max_iter[,tol]]) nonlinear least squares (env {x0,x1,...})\n"
             "  name = numthy_is_primitive_root(g,p) 1 if g is primitive root mod p else 0\n"
             "  name = numthy_primitive_root(p) smallest primitive root mod prime p\n"
             "  name = numthy_discrete_log(g,h,p) discrete log x with g^x ≡ h (mod p)\n"
@@ -12199,7 +12408,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
             "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\")\n"
-            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42)\n"
+            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42), bfgs(\"(x0-3)*(x0-3)\", [0])\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
             "  ode_backward_euler_vec(\"-y0\", 0, [1], 1, 200), ode_dae_index1(\"-y0\", \"z0 - 2*y0\", 0, [1], [2], 1, 200)\n"
@@ -14010,6 +14219,92 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 call_args->size() == 5 ? call_args->at(4) : std::string{};
             auto value = eval_cmaes_call(call_args->at(0), call_args->at(1), call_args->at(2),
                                          call_args->at(3), seed_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "bfgs" || fn == "nelder_mead") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                return std::unexpected(DomainError{
+                    fn, std::string("expected ") + fn + "(\"formula\", x0[, tol[, max_iter]])"});
+            }
+            const std::string tol_arg = call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = fn == "bfgs"
+                             ? eval_bfgs_call(call_args->at(0), call_args->at(1), tol_arg,
+                                              max_iter_arg)
+                             : eval_nelder_mead_call(call_args->at(0), call_args->at(1), tol_arg,
+                                                     max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "lbfgs") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 5) {
+                return std::unexpected(DomainError{
+                    fn, "expected lbfgs(\"formula\", x0[, m[, tol[, max_iter]]])"});
+            }
+            const std::string m_arg = call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string tol_arg = call_args->size() >= 4 ? call_args->at(3) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 5 ? call_args->at(4) : std::string{};
+            auto value = eval_lbfgs_call(call_args->at(0), call_args->at(1), m_arg, tol_arg,
+                                         max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "adam") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                return std::unexpected(
+                    DomainError{fn, "expected adam(\"formula\", x0[, alpha[, max_iter]])"});
+            }
+            const std::string alpha_arg =
+                call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = eval_adam_call(call_args->at(0), call_args->at(1), alpha_arg,
+                                        max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "golden_section") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 3 || call_args->size() > 4) {
+                return std::unexpected(
+                    DomainError{fn, "expected golden_section(\"formula\", a, b[, tol])"});
+            }
+            const std::string tol_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = eval_golden_section_call(call_args->at(0), call_args->at(1),
+                                                  call_args->at(2), tol_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "levenberg_marquardt") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                return std::unexpected(DomainError{
+                    fn,
+                    "expected levenberg_marquardt(\"r0;r1;...\", x0[, max_iter[, tol]])"});
+            }
+            const std::string max_iter_arg =
+                call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string tol_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = eval_levenberg_marquardt_call(call_args->at(0), call_args->at(1),
+                                                         max_iter_arg, tol_arg);
             if (!value) {
                 return std::unexpected(value.error());
             }
