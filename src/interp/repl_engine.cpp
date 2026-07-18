@@ -2114,6 +2114,41 @@ Result<Matrix<double>> eval_combo_unrank_permutation(int n, uint64_t rank) {
     return out;
 }
 
+Result<Matrix<double>> eval_control_lqe(const Matrix<double>& A_m,
+                                        const Matrix<double>& C_m,
+                                        const Matrix<double>& Q_m,
+                                        const Matrix<double>& R_m) {
+    auto A = matrix_to_square_nested(A_m, "control_lqe");
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto C = matrix_to_nested(C_m, "control_lqe");
+    if (!C) {
+        return std::unexpected(C.error());
+    }
+    auto Q = matrix_to_square_nested(Q_m, "control_lqe");
+    if (!Q) {
+        return std::unexpected(Q.error());
+    }
+    auto R = matrix_to_square_nested(R_m, "control_lqe");
+    if (!R) {
+        return std::unexpected(R.error());
+    }
+    if (C->empty() || C->size() != A->size()) {
+        return std::unexpected(
+            DomainError{"control_lqe", "expected C with row count equal to A size"});
+    }
+    if (Q->size() != A->size()) {
+        return std::unexpected(
+            DomainError{"control_lqe", "expected Q with same size as A"});
+    }
+    auto est = control::lqe(*A, *C, *Q, *R);
+    if (!est) {
+        return std::unexpected(est.error());
+    }
+    return nested_to_matrix(est->L);
+}
+
 Result<Matrix<double>> eval_control_lqr(const Matrix<double>& A_m,
                                         const Matrix<double>& B_m,
                                         const Matrix<double>& Q_m,
@@ -3021,6 +3056,55 @@ Result<double> eval_graph_max_flow(const Matrix<double>& adj_m, int source, int 
     return *flow;
 }
 
+Result<double> eval_graph_min_cut(const Matrix<double>& adj_m, int source, int sink) {
+    auto G = graph_from_adjacency(adj_m, "graph_min_cut");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    if (source < 0 || sink < 0 || source >= G->n_vertices() || sink >= G->n_vertices()) {
+        return std::unexpected(
+            DomainError{"graph_min_cut", "source/sink out of range"});
+    }
+    auto cut = graph::min_cut(*G, source, sink);
+    if (!cut) {
+        return std::unexpected(cut.error());
+    }
+    return cut->value;
+}
+
+Result<Matrix<double>> eval_graph_bridges(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_bridges");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto edges = graph::bridges(*G);
+    Matrix<double> out(edges.size(), 3);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        out(i, 0) = static_cast<double>(edges[i].from);
+        out(i, 1) = static_cast<double>(edges[i].to);
+        out(i, 2) = edges[i].weight;
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_graph_transitive_closure(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency(adj_m, "graph_transitive_closure");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto reach = graph::transitive_closure(*G);
+    if (reach.empty()) {
+        return Matrix<double>{0, 0};
+    }
+    Matrix<double> out(reach.size(), reach[0].size());
+    for (size_t i = 0; i < reach.size(); ++i) {
+        for (size_t j = 0; j < reach[i].size(); ++j) {
+            out(i, j) = reach[i][j] ? 1.0 : 0.0;
+        }
+    }
+    return out;
+}
+
 Result<Matrix<double>> eval_quantum_commutator(const Matrix<double>& A_m,
                                                const Matrix<double>& B_m) {
     auto A = matrix_to_density_matrix(A_m, "quantum_commutator");
@@ -3382,6 +3466,22 @@ Result<Matrix<double>> eval_prewitt(const Matrix<double>& m) {
         return std::unexpected(gray.error());
     }
     return gray_image_to_matrix(image::prewitt(*gray));
+}
+
+Result<Matrix<double>> eval_scharr(const Matrix<double>& m) {
+    auto gray = matrix_to_gray_image(m);
+    if (!gray) {
+        return std::unexpected(gray.error());
+    }
+    return gray_image_to_matrix(image::scharr(*gray));
+}
+
+Result<Matrix<double>> eval_roberts(const Matrix<double>& m) {
+    auto gray = matrix_to_gray_image(m);
+    if (!gray) {
+        return std::unexpected(gray.error());
+    }
+    return gray_image_to_matrix(image::roberts(*gray));
 }
 
 Result<Matrix<double>> eval_fftshift(const Matrix<double>& S_m) {
@@ -5419,7 +5519,8 @@ bool is_matrix_triple_matrix_call_callee(const std::string& callee) {
 }
 
 bool is_matrix_quad_matrix_call_callee(const std::string& callee) {
-    return callee == "control_lqr" || callee == "control_riccati" || callee == "control_dare";
+    return callee == "control_lqr" || callee == "control_lqe" || callee == "control_riccati" ||
+           callee == "control_dare";
 }
 
 bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
@@ -7659,6 +7760,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "pinv" || fn == "null" || fn == "orth" ||
             fn == "kron" || fn == "repmat" || fn == "linspace" ||
             fn == "rgb2gray" || fn == "rgb2hsv" || fn == "sobel" || fn == "prewitt" ||
+            fn == "scharr" || fn == "roberts" ||
             fn == "imgaussfilt" || fn == "medfilt2" || fn == "boxfilter" ||
             fn == "imdilate" || fn == "imerode" || fn == "imopen" || fn == "imclose" ||
             fn == "bilateral" || fn == "canny" ||
@@ -7673,7 +7775,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "bwt_encode_vec" || fn == "bwt_decode_vec" ||
             fn == "delta_encode_vec" || fn == "delta_decode_vec" ||
             fn == "control_is_controllable" || fn == "control_is_observable" ||
-            fn == "control_lyap" || fn == "control_lqr" || fn == "control_place" ||
+            fn == "control_lyap" || fn == "control_lqr" || fn == "control_lqe" ||
+            fn == "control_place" ||
             fn == "control_dlyap" || fn == "control_riccati" || fn == "control_dare" ||
             fn == "control_bode_mag_db" || fn == "control_bode_phase" ||
             fn == "control_bode" || fn == "control_poles" || fn == "control_zeros" ||
@@ -7689,6 +7792,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_degree_centrality" ||
             fn == "graph_louvain" || fn == "graph_eigenvector_centrality" ||
             fn == "graph_articulation_points" ||
+            fn == "graph_bridges" || fn == "graph_transitive_closure" ||
             fn == "finance_min_variance_portfolio" ||
             fn == "graph_is_bipartite" ||
             fn == "graph_is_dag" || fn == "graph_is_connected" ||
@@ -7716,7 +7820,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_mst_prim" ||
             fn == "graph_scc" ||
             fn == "signal_convolve" || fn == "signal_correlate" ||
-            fn == "graph_max_flow" ||
+            fn == "graph_max_flow" || fn == "graph_min_cut" ||
             fn == "diffgeo_surface_normal_sphere" ||
             fn == "stats_correlation" || fn == "stats_spearman" ||
             fn == "stats_kendall" || fn == "stats_two_sample_ttest" ||
@@ -7760,6 +7864,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sym_dsolve" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
             fn == "graph_bellman_ford_dist" || fn == "graph_max_flow" ||
+            fn == "graph_min_cut" ||
             fn == "graph_astar" ||
             fn == "geo_convex_hull_area" || fn == "geo_polygon_area" ||
             fn == "geo_polygon_perimeter" || fn == "geo_signed_area" ||
@@ -9146,6 +9251,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
            callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" ||
+           callee == "scharr" || callee == "roberts" ||
            callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
            callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
            callee == "bilateral" ||
@@ -9179,6 +9285,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_degree_centrality" ||
            callee == "graph_louvain" || callee == "graph_eigenvector_centrality" ||
            callee == "graph_articulation_points" ||
+           callee == "graph_bridges" || callee == "graph_transitive_closure" ||
            callee == "finance_min_variance_portfolio" ||
            callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" || callee == "fft_fft2" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
@@ -9234,6 +9341,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "graph_betweenness" || callee == "graph_closeness" ||
         callee == "graph_degree_centrality" || callee == "graph_louvain" ||
         callee == "graph_eigenvector_centrality" || callee == "graph_articulation_points" ||
+        callee == "graph_bridges" || callee == "graph_transitive_closure" ||
         callee == "finance_min_variance_portfolio" ||
         callee == "fft_rfft" || callee == "fft_dft" ||
         callee == "fft_ifft" || callee == "fft_fft2" ||
@@ -10473,6 +10581,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         return finance::barrier_option(args[0], args[1], args[2], args[3], args[4], args[5],
                                        call != 0, knock_in != 0, up != 0);
+    }
+    if (args.size() == 8 && fn == "finance_sabr_call") {
+        return finance::sabr_call(args[0], args[1], args[2], args[3], args[4], args[5], args[6],
+                                  args[7]);
     }
     if (args.size() == 8 && fn == "cplx_cross_ratio") {
         const cplx::C z1{args[0], args[1]};
@@ -11725,6 +11837,26 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(aps.error());
         }
         result = *aps;
+    } else if (assign.callee == "graph_bridges" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto br = eval_graph_bridges(*matrix);
+        if (!br) {
+            return std::unexpected(br.error());
+        }
+        result = *br;
+    } else if (assign.callee == "graph_transitive_closure" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto reach = eval_graph_transitive_closure(*matrix);
+        if (!reach) {
+            return std::unexpected(reach.error());
+        }
+        result = *reach;
     } else if (assign.callee == "finance_min_variance_portfolio" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -11741,6 +11873,26 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(matrix.error());
         }
         auto edge = eval_prewitt(*matrix);
+        if (!edge) {
+            return std::unexpected(edge.error());
+        }
+        result = *edge;
+    } else if (assign.callee == "scharr" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto edge = eval_scharr(*matrix);
+        if (!edge) {
+            return std::unexpected(edge.error());
+        }
+        result = *edge;
+    } else if (assign.callee == "roberts" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto edge = eval_roberts(*matrix);
         if (!edge) {
             return std::unexpected(edge.error());
         }
@@ -12977,6 +13129,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = rgb2hsv(M)        RGB rows (H*W)x3 to HSV rows (H*W)x3\n"
             "  name = sobel(M)          Sobel gradient magnitude on HxW grayscale matrix\n"
             "  name = prewitt(M)        Prewitt edge magnitude on HxW grayscale matrix\n"
+            "  name = scharr(M)         Scharr edge magnitude on HxW grayscale matrix\n"
+            "  name = roberts(M)        Roberts cross-gradient edge magnitude on HxW grayscale matrix\n"
             "  name = count_components(B) connected component count in binary image B\n"
             "  name = imgaussfilt(M,s)  Gaussian blur on grayscale matrix\n"
             "  name = medfilt2(M,k)     median filter on grayscale matrix (odd k)\n"
@@ -13047,7 +13201,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_louvain(A) Louvain communities as KxM vertex index matrix\n"
             "  name = graph_eigenvector_centrality(A) eigenvector centrality column from adjacency\n"
             "  name = graph_articulation_points(A) articulation points of undirected graph as Nx1 column\n"
+            "  name = graph_bridges(A) bridge edges of undirected graph as Mx3 [from,to,weight]\n"
+            "  name = graph_transitive_closure(A) boolean reachability matrix of directed graph\n"
             "  name = graph_max_flow(A,source,sink) max flow from source to sink\n"
+            "  name = graph_min_cut(A,source,sink) min cut value from source to sink\n"
             "  name = graph_is_bipartite(A) 1 if undirected graph is bipartite else 0\n"
             "  name = graph_is_connected(A) 1 if undirected graph is connected else 0\n"
             "  name = graph_is_tree(A) 1 if undirected graph is a tree else 0\n"
@@ -13262,6 +13419,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = control_lyap(A,Q) continuous Lyapunov equation solution matrix\n"
             "  name = control_dlyap(A,Q) discrete Lyapunov equation solution matrix\n"
             "  name = control_lqr(A,B,Q,R) LQR state-feedback gain matrix K\n"
+            "  name = control_lqe(A,C,Q,R) LQE Kalman observer gain matrix L\n"
             "  name = control_riccati(A,B,Q,R) continuous Riccati equation solution X\n"
             "  name = control_dare(A,B,Q,R) discrete Riccati equation solution X\n"
             "  name = control_bode_mag_db(num,den,w) Bode magnitude (dB) at nearest grid point\n"
@@ -13389,6 +13547,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = finance_min_variance_portfolio(cov) global minimum-variance portfolio weights from NxN covariance\n"
             "  name = finance_max_sharpe_portfolio(cov,mu,risk_free) maximum Sharpe portfolio weights\n"
             "  name = finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho) Heston stochastic-volatility call price\n"
+            "  name = finance_sabr_call(S,K,T,r,alpha,beta,rho,nu) SABR stochastic-volatility call price\n"
             "  name = info_shannon_hartley(bandwidth_hz,snr_linear) Shannon-Hartley channel capacity in bps\n"
             "  name = quantum_von_neumann_entropy(rho) von Neumann entropy of NxN density matrix\n"
             "  name = quantum_purity(rho) purity Tr(rho^2) of NxN density matrix\n"
@@ -13478,11 +13637,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
-            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
+            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_euler_circuit(A), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
-            "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
+            "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
@@ -14595,6 +14754,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 print_matrix(out, *value);
                 return out.str();
             }
+            if (matrix_quad_call.callee == "control_lqe") {
+                auto value = eval_control_lqe(*arg_a_m, *arg_b_m, *arg_c_m, *arg_d_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_quad_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_quad_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
             if (matrix_quad_call.callee == "control_riccati") {
                 auto value = eval_control_riccati(*arg_a_m, *arg_b_m, *arg_c_m, *arg_d_m);
                 if (!value) {
@@ -14942,6 +15112,35 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "graph_max_flow", "expected integer source and sink"});
                 }
                 auto value = eval_graph_max_flow(*adj_m, source, sink);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "graph_min_cut") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "graph_min_cut", "expected graph_min_cut(A, source, sink)"});
+                }
+                auto adj_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!adj_m) {
+                    return std::unexpected(adj_m.error());
+                }
+                double source_d = 0.0;
+                double sink_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), source_d) ||
+                    !parse_number(trim_copy((*call_args)[2]), sink_d)) {
+                    return std::unexpected(DomainError{
+                        "graph_min_cut", "expected graph_min_cut(A, source, sink)"});
+                }
+                const int source = static_cast<int>(source_d);
+                const int sink = static_cast<int>(sink_d);
+                if (source_d != source || sink_d != sink) {
+                    return std::unexpected(DomainError{
+                        "graph_min_cut", "expected integer source and sink"});
+                }
+                auto value = eval_graph_min_cut(*adj_m, source, sink);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -16065,6 +16264,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const cplx::C z3{z3re, z3im};
             const cplx::C z4{z4re, z4im};
             return std::to_string(cplx::cross_ratio(z1, z2, z3, z4)) + "\n";
+        }
+        if (fn == "finance_sabr_call") {
+            double S = 0.0;
+            double K = 0.0;
+            double T = 0.0;
+            double r = 0.0;
+            double alpha = 0.0;
+            double beta = 0.0;
+            double rho = 0.0;
+            double nu = 0.0;
+            if (!parse_number(trim(match[2].str()), S) || !parse_number(trim(match[3].str()), K) ||
+                !parse_number(trim(match[4].str()), T) || !parse_number(trim(match[5].str()), r) ||
+                !parse_number(trim(match[6].str()), alpha) ||
+                !parse_number(trim(match[7].str()), beta) ||
+                !parse_number(trim(match[8].str()), rho) ||
+                !parse_number(trim(match[9].str()), nu)) {
+                return std::unexpected(DomainError{
+                    "finance_sabr_call",
+                    "expected finance_sabr_call(S,K,T,r,alpha,beta,rho,nu)"});
+            }
+            return std::to_string(
+                       finance::sabr_call(S, K, T, r, alpha, beta, rho, nu)) +
+                   "\n";
         }
         if (fn == "finance_mc_asian_call" || fn == "finance_mc_asian_put") {
             double S = 0.0;
@@ -17554,6 +17776,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const int source = static_cast<int>(source_d);
             const int sink = static_cast<int>(sink_d);
             auto value = eval_graph_max_flow(*adj_m, source, sink);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
+        if (fn == "graph_min_cut") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto adj_m = resolve_arg(trim(match[2].str()));
+            if (!adj_m) {
+                return std::unexpected(adj_m.error());
+            }
+            double source_d = 0.0;
+            double sink_d = 0.0;
+            if (!parse_number(trim(match[3].str()), source_d) ||
+                !parse_number(trim(match[4].str()), sink_d)) {
+                return std::unexpected(
+                    DomainError{"graph_min_cut", "expected graph_min_cut(A, source, sink)"});
+            }
+            const int source = static_cast<int>(source_d);
+            const int sink = static_cast<int>(sink_d);
+            auto value = eval_graph_min_cut(*adj_m, source, sink);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -19210,6 +19459,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     std::ostringstream out;
                     out << "K =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "control_lqe") {
+                    auto value = eval_control_lqe(*arg_a_m, *arg_b_m, *arg_c_m, *arg_d_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "L =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
@@ -21512,6 +21771,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             for (size_t i = 0; i < aps->rows(); ++i) {
                 out << "  [" << i << "] " << (*aps)(i, 0) << "\n";
             }
+        } else if (fn == "graph_bridges") {
+            auto br = eval_graph_bridges(*matrix);
+            if (!br) {
+                return std::unexpected(br.error());
+            }
+            out << "bridges =\n";
+            print_matrix(out, *br);
+        } else if (fn == "graph_transitive_closure") {
+            auto reach = eval_graph_transitive_closure(*matrix);
+            if (!reach) {
+                return std::unexpected(reach.error());
+            }
+            out << "reach =\n";
+            print_matrix(out, *reach);
         } else if (fn == "finance_min_variance_portfolio") {
             auto w = eval_finance_min_variance_portfolio(*matrix);
             if (!w) {
@@ -21570,6 +21843,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, *shifted);
         } else if (fn == "prewitt") {
             auto edge = eval_prewitt(*matrix);
+            if (!edge) {
+                return std::unexpected(edge.error());
+            }
+            out << "edge =\n";
+            print_matrix(out, *edge);
+        } else if (fn == "scharr") {
+            auto edge = eval_scharr(*matrix);
+            if (!edge) {
+                return std::unexpected(edge.error());
+            }
+            out << "edge =\n";
+            print_matrix(out, *edge);
+        } else if (fn == "roberts") {
+            auto edge = eval_roberts(*matrix);
             if (!edge) {
                 return std::unexpected(edge.error());
             }
