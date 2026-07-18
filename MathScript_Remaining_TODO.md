@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 261 ✅ COMPLETE — **419 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 262 ✅ COMPLETE — **420 CTest suites** on `main`)
 
 ---
 
@@ -368,11 +368,20 @@ See `CHANGELOG.md` for per-wave branch tables.
 | GUI | Title Case Selection |
 | Tests | `integration_repl_wave261_pipeline` |
 
-**419 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–261** closed for this incremental batch.
+**420 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–262** closed for this incremental batch.
 
 ---
 
-## Next (Wave 262+) — deferred
+## Wave 262 ✅ COMPLETE (poly resultant/discriminant REPL)
+
+| Item | Notes |
+|------|--------|
+| Poly REPL | `poly_resultant(p,q)` / `poly_discriminant(p)` on coefficient columns (low→high) |
+| Tests | `integration_repl_wave262_pipeline`; `wave262_poly_resultant` / `wave262_poly_discriminant` in `test_repl_commands.cpp` |
+
+---
+
+## Next (Wave 263+) — deferred
 
 | Item | Notes |
 |------|--------|

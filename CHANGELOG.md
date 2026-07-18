@@ -7,6 +7,19 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19 (Wave 262 — poly resultant/discriminant REPL) ✅ COMPLETE
+
+Thirty-second feature wave after Wave 261. REPL scalar bindings for Sylvester resultant and polynomial discriminant on low-to-high coefficient columns.
+
+### Added (Wave 262)
+- **Poly REPL** — `poly_resultant(p,q)` / `poly_discriminant(p)`.
+- **Tests** — `integration_repl_wave262_pipeline`; unit tests in `test_repl_commands.cpp`.
+
+### Docs (Wave 262)
+- **`MathScript_Remaining_TODO.md`** — Wave 262 sync; **420** CTest suites.
+
+**420 CTest suites — all passing**.
+
 ## [1.0.0] - 2026-07-19 (Wave 261 — eig/ldl, iterative solvers, FFT freq, combo/numthy/stats, Title Case) ✅ COMPLETE
 
 Thirty-first feature wave after Wave 260. Parallel Composer 2.5 worktrees merged to `main`: general eig/LDL, local iterative solvers, FFT frequency helpers, combinatorial enumeration, number-theory extensions, weighted stats, GUI Title Case, and wave261 pipeline.
