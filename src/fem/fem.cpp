@@ -175,6 +175,76 @@ Mesh2D mesh2d_rectangular(
     return mesh;
 }
 
+Mesh3D mesh3d_box(
+    double x0,
+    double y0,
+    double z0,
+    double x1,
+    double y1,
+    double z1,
+    std::size_t nx,
+    std::size_t ny,
+    std::size_t nz) {
+    if (nx == 0 || ny == 0 || nz == 0) {
+        throw std::invalid_argument("mesh3d_box: nx, ny, and nz must be positive");
+    }
+    if (!(x0 < x1) || !(y0 < y1) || !(z0 < z1)) {
+        throw std::invalid_argument("mesh3d_box: require x0 < x1, y0 < y1, and z0 < z1");
+    }
+
+    Mesh3D mesh;
+    const std::size_t n_nodes_x = nx + 1;
+    const std::size_t n_nodes_y = ny + 1;
+    const std::size_t n_nodes_z = nz + 1;
+    const std::size_t n_nodes_xy = n_nodes_x * n_nodes_y;
+    mesh.nodes.resize(n_nodes_x * n_nodes_y * n_nodes_z);
+    mesh.tetrahedra.resize(6 * nx * ny * nz);
+
+    const double hx = (x1 - x0) / static_cast<double>(nx);
+    const double hy = (y1 - y0) / static_cast<double>(ny);
+    const double hz = (z1 - z0) / static_cast<double>(nz);
+
+    for (std::size_t k = 0; k < n_nodes_z; ++k) {
+        for (std::size_t j = 0; j < n_nodes_y; ++j) {
+            for (std::size_t i = 0; i < n_nodes_x; ++i) {
+                mesh.nodes[i + j * n_nodes_x + k * n_nodes_xy] = {
+                    x0 + static_cast<double>(i) * hx,
+                    y0 + static_cast<double>(j) * hy,
+                    z0 + static_cast<double>(k) * hz};
+            }
+        }
+    }
+
+    auto node_index = [n_nodes_x, n_nodes_xy](std::size_t i, std::size_t j, std::size_t k) {
+        return i + j * n_nodes_x + k * n_nodes_xy;
+    };
+
+    std::size_t tet = 0;
+    for (std::size_t k = 0; k < nz; ++k) {
+        for (std::size_t j = 0; j < ny; ++j) {
+            for (std::size_t i = 0; i < nx; ++i) {
+                const std::size_t v0 = node_index(i, j, k);
+                const std::size_t v1 = node_index(i + 1, j, k);
+                const std::size_t v2 = node_index(i + 1, j + 1, k);
+                const std::size_t v3 = node_index(i, j + 1, k);
+                const std::size_t v4 = node_index(i, j, k + 1);
+                const std::size_t v5 = node_index(i + 1, j, k + 1);
+                const std::size_t v6 = node_index(i + 1, j + 1, k + 1);
+                const std::size_t v7 = node_index(i, j + 1, k + 1);
+
+                // Split each hexahedron into six tetrahedra via the 0-6 diagonal.
+                mesh.tetrahedra[tet++] = {v0, v1, v2, v6};
+                mesh.tetrahedra[tet++] = {v0, v2, v3, v6};
+                mesh.tetrahedra[tet++] = {v0, v3, v7, v6};
+                mesh.tetrahedra[tet++] = {v0, v7, v4, v6};
+                mesh.tetrahedra[tet++] = {v0, v4, v5, v6};
+                mesh.tetrahedra[tet++] = {v0, v5, v1, v6};
+            }
+        }
+    }
+    return mesh;
+}
+
 std::array<double, 2> LagrangeBasis::evaluate(double xi) const {
     if (degree != 1) {
         throw std::invalid_argument("LagrangeBasis::evaluate: only P1 supported");
@@ -293,6 +363,127 @@ ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh) {
                 K(nodes[i], nodes[j]) += ke;
             }
         }
+    }
+    return K;
+}
+
+namespace {
+
+struct Vec3 {
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+};
+
+Vec3 operator-(const Vec3& a, const Vec3& b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+double dot(const Vec3& a, const Vec3& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+Vec3 cross(const Vec3& a, const Vec3& b) {
+    return {
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x};
+}
+
+double det3(const Vec3& a, const Vec3& b, const Vec3& c) {
+    return dot(a, cross(b, c));
+}
+
+bool invert3x3(
+    const Vec3& c0,
+    const Vec3& c1,
+    const Vec3& c2,
+    double inv[3][3]) {
+    const double det = det3(c0, c1, c2);
+    if (std::abs(det) <= 0.0) {
+        return false;
+    }
+    const double inv_det = 1.0 / det;
+
+    inv[0][0] = inv_det * (c1.y * c2.z - c1.z * c2.y);
+    inv[0][1] = inv_det * (c2.y * c0.z - c2.z * c0.y);
+    inv[0][2] = inv_det * (c0.y * c1.z - c0.z * c1.y);
+    inv[1][0] = inv_det * (c1.z * c2.x - c1.x * c2.z);
+    inv[1][1] = inv_det * (c2.z * c0.x - c2.x * c0.z);
+    inv[1][2] = inv_det * (c0.z * c1.x - c0.x * c1.z);
+    inv[2][0] = inv_det * (c1.x * c2.y - c1.y * c2.x);
+    inv[2][1] = inv_det * (c2.x * c0.y - c2.y * c0.x);
+    inv[2][2] = inv_det * (c0.x * c1.y - c0.y * c1.x);
+    return true;
+}
+
+Vec3 matvec_transpose(const double m[3][3], const Vec3& v) {
+    return {
+        m[0][0] * v.x + m[1][0] * v.y + m[2][0] * v.z,
+        m[0][1] * v.x + m[1][1] * v.y + m[2][1] * v.z,
+        m[0][2] * v.x + m[1][2] * v.y + m[2][2] * v.z};
+}
+
+void add_tet_stiffness(
+    ColMatrix<double>& K,
+    const std::array<Vec3, 4>& verts,
+    const std::array<std::size_t, 4>& nodes) {
+    const Vec3 e1 = verts[1] - verts[0];
+    const Vec3 e2 = verts[2] - verts[0];
+    const Vec3 e3 = verts[3] - verts[0];
+    const double volume = det3(e1, e2, e3) / 6.0;
+    if (std::abs(volume) <= 0.0) {
+        throw std::invalid_argument("assemble_stiffness_3d: degenerate tetrahedron");
+    }
+
+    double j_inv[3][3];
+    if (!invert3x3(e1, e2, e3, j_inv)) {
+        throw std::invalid_argument("assemble_stiffness_3d: degenerate tetrahedron");
+    }
+
+    const std::array<Vec3, 4> grad_ref = {
+        Vec3{-1.0, -1.0, -1.0},
+        Vec3{1.0, 0.0, 0.0},
+        Vec3{0.0, 1.0, 0.0},
+        Vec3{0.0, 0.0, 1.0}};
+
+    std::array<Vec3, 4> grad_phys;
+    for (int i = 0; i < 4; ++i) {
+        grad_phys[i] = matvec_transpose(j_inv, grad_ref[i]);
+    }
+
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            const double ke = volume * dot(grad_phys[i], grad_phys[j]);
+            K(nodes[i], nodes[j]) += ke;
+        }
+    }
+}
+
+} // namespace
+
+ColMatrix<double> assemble_stiffness_3d(const Mesh3D& mesh) {
+    const std::size_t n_nodes = mesh.nodes.size();
+    if (n_nodes < 4 || mesh.tetrahedra.empty()) {
+        throw std::invalid_argument("assemble_stiffness_3d: mesh is too small");
+    }
+
+    ColMatrix<double> K(n_nodes, n_nodes, 0.0);
+    for (const auto& tet : mesh.tetrahedra) {
+        const std::size_t n0 = tet[0];
+        const std::size_t n1 = tet[1];
+        const std::size_t n2 = tet[2];
+        const std::size_t n3 = tet[3];
+        if (n0 >= n_nodes || n1 >= n_nodes || n2 >= n_nodes || n3 >= n_nodes) {
+            throw std::invalid_argument("assemble_stiffness_3d: invalid connectivity");
+        }
+
+        const std::array<Vec3, 4> verts = {
+            Vec3{mesh.nodes[n0][0], mesh.nodes[n0][1], mesh.nodes[n0][2]},
+            Vec3{mesh.nodes[n1][0], mesh.nodes[n1][1], mesh.nodes[n1][2]},
+            Vec3{mesh.nodes[n2][0], mesh.nodes[n2][1], mesh.nodes[n2][2]},
+            Vec3{mesh.nodes[n3][0], mesh.nodes[n3][1], mesh.nodes[n3][2]}};
+        add_tet_stiffness(K, verts, tet);
     }
     return K;
 }
