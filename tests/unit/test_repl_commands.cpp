@@ -6528,6 +6528,22 @@ TEST(ReplCommandsTest, wave262_combo_necklaces) {
     EXPECT_EQ(interp.state().matrices.at("neck").cols(), 2u);
 }
 
+TEST(ReplCommandsTest, wave263_combo_bracelets_lyndon) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_bracelets(n,k)");
+    expect_contains(interp, "help", "combo_lyndon_words(n,k)");
+
+    expect_ok(interp, "br = combo_bracelets(3, 2)");
+    ASSERT_GT(interp.state().matrices.count("br"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("br").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("br").cols(), 3u);
+
+    expect_ok(interp, "lw = combo_lyndon_words(3, 2)");
+    ASSERT_GT(interp.state().matrices.count("lw"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("lw").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("lw").cols(), 3u);
+}
+
 TEST(ReplCommandsTest, wave262_combo_de_bruijn_sequence) {
     Interpreter interp;
     expect_contains(interp, "help", "combo_de_bruijn_sequence(k,n)");
