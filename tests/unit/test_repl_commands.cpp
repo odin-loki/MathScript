@@ -3264,6 +3264,43 @@ TEST(ReplCommandsTest, wave255_graph_spectral) {
     EXPECT_GT(interp.state().matrices.at("spec")(0, 0), 0.0);
 }
 
+TEST(ReplCommandsTest, wave256_graph_structure) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_normalised_laplacian(A)");
+    expect_contains(interp, "help", "graph_modularity(A,C)");
+    expect_contains(interp, "help", "graph_eccentricity(A)");
+    expect_contains(interp, "help", "graph_is_strongly_connected(A)");
+
+    expect_ok(interp, "A = [0,1,0; 1,0,1; 0,1,0]");
+    expect_ok(interp, "Ln = graph_normalised_laplacian(A)");
+    ASSERT_GT(interp.state().matrices.count("Ln"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Ln").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Ln").cols(), 3u);
+
+    expect_ok(interp, "C = [0, 1, -1; 2, -1, -1]");
+    expect_ok(interp, "Q = graph_modularity(A, C)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("Q")));
+
+    expect_ok(interp, "Achain = [0, 1, 0, 0; 1, 0, 1, 0; 0, 1, 0, 1; 0, 0, 1, 0]");
+    expect_ok(interp, "ecc = graph_eccentricity(Achain)");
+    ASSERT_GT(interp.state().matrices.count("ecc"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ecc").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("ecc").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("ecc")(0, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("ecc")(1, 0), 2.0, 1e-9);
+
+    expect_ok(interp, "Adisc = [0, 1, 0, 0; 1, 0, 0, 0; 0, 0, 0, 1; 0, 0, 1, 0]");
+    expect_ok(interp, "ecc2 = graph_eccentricity(Adisc)");
+    EXPECT_NEAR(interp.state().matrices.at("ecc2")(0, 0), -1.0, 1e-9);
+
+    expect_ok(interp, "Asc = [0, 1, 0; 0, 0, 1; 1, 0, 0]");
+    expect_ok(interp, "sc = graph_is_strongly_connected(Asc)");
+    EXPECT_NEAR(interp.state().scalars.at("sc"), 1.0, 1e-9);
+    expect_ok(interp, "Aweak = [0, 1, 0; 0, 0, 1; 0, 0, 0]");
+    expect_ok(interp, "nsc = graph_is_strongly_connected(Aweak)");
+    EXPECT_NEAR(interp.state().scalars.at("nsc"), 0.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave137_compress_bytes_to_bits) {
     Interpreter interp;
     expect_contains(interp, "help", "compress_bytes_to_bits(bytes_vec)");

@@ -4190,6 +4190,68 @@ Result<Matrix<double>> eval_graph_laplacian(const Matrix<double>& adj_m) {
     return nested_to_matrix(graph::laplacian(*G));
 }
 
+Result<Matrix<double>> eval_graph_normalised_laplacian(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency(adj_m, "graph_normalised_laplacian");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return nested_to_matrix(graph::normalised_laplacian(*G));
+}
+
+Result<std::vector<std::vector<int>>> community_matrix_to_partition(const Matrix<double>& C,
+                                                                     const char* fn) {
+    std::vector<std::vector<int>> communities;
+    communities.reserve(C.rows());
+    for (size_t r = 0; r < C.rows(); ++r) {
+        std::vector<int> group;
+        group.reserve(C.cols());
+        for (size_t c = 0; c < C.cols(); ++c) {
+            const double v = C(r, c);
+            if (v < 0.0) {
+                continue; // louvain/scc style padding sentinel
+            }
+            const int idx = static_cast<int>(v);
+            if (v != static_cast<double>(idx)) {
+                return std::unexpected(
+                    DomainError{fn, "expected integer vertex indices in community matrix"});
+            }
+            group.push_back(idx);
+        }
+        if (!group.empty()) {
+            communities.push_back(std::move(group));
+        }
+    }
+    return communities;
+}
+
+Result<double> eval_graph_modularity(const Matrix<double>& adj_m, const Matrix<double>& C) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_modularity");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    auto communities = community_matrix_to_partition(C, "graph_modularity");
+    if (!communities) {
+        return std::unexpected(communities.error());
+    }
+    return graph::modularity(*G, *communities);
+}
+
+Result<Matrix<double>> eval_graph_eccentricity(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency(adj_m, "graph_eccentricity");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return int_vector_to_column(graph::eccentricity(*G));
+}
+
+Result<double> eval_graph_is_strongly_connected(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency(adj_m, "graph_is_strongly_connected");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return graph::is_strongly_connected(*G) ? 1.0 : 0.0;
+}
+
 Result<double> eval_graph_algebraic_connectivity(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency_undirected(adj_m, "graph_algebraic_connectivity");
     if (!G) {
@@ -7343,7 +7405,8 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "control_phase_margin" || callee == "control_gain_margin" ||
            callee == "stats_correlation" || callee == "stats_spearman" ||
            callee == "stats_kendall" || callee == "stats_two_sample_ttest" ||
-           callee == "stats_chi2_gof" || callee == "graph_is_isomorphic";
+           callee == "stats_chi2_gof" || callee == "graph_is_isomorphic" ||
+           callee == "graph_modularity";
 }
 
 bool is_identifier(const std::string& text);
@@ -9765,6 +9828,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "graph_louvain" || fn == "graph_eigenvector_centrality" ||
             fn == "graph_katz_centrality" || fn == "graph_adjacency_spectrum" ||
             fn == "graph_laplacian" ||
+            fn == "graph_normalised_laplacian" ||
+            fn == "graph_eccentricity" ||
             fn == "graph_articulation_points" ||
             fn == "graph_biconnected_components" || fn == "graph_eulerian_path" ||
             fn == "graph_hamiltonian_path" || fn == "graph_tsp_heuristic" ||
@@ -9773,6 +9838,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "finance_min_variance_portfolio" ||
             fn == "graph_is_bipartite" ||
             fn == "graph_is_dag" || fn == "graph_is_connected" ||
+            fn == "graph_is_strongly_connected" ||
             fn == "graph_is_tree" || fn == "graph_topological_sort" ||
             fn == "graph_greedy_colour" || fn == "graph_k_core_decomposition" ||
             fn == "graph_euler_circuit" ||
@@ -9815,6 +9881,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "stats_correlation" || fn == "stats_spearman" ||
             fn == "stats_kendall" || fn == "stats_two_sample_ttest" ||
             fn == "stats_chi2_gof" || fn == "graph_is_isomorphic" ||
+            fn == "graph_modularity" ||
             fn == "signal_moving_average" || fn == "signal_upsample" ||
             fn == "signal_downsample" || fn == "signal_decimate" ||
             fn == "signal_interpolate" || fn == "signal_resample" ||
@@ -11294,6 +11361,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_louvain" || callee == "graph_eigenvector_centrality" ||
            callee == "graph_katz_centrality" || callee == "graph_adjacency_spectrum" ||
            callee == "graph_laplacian" ||
+           callee == "graph_normalised_laplacian" ||
+           callee == "graph_eccentricity" ||
            callee == "graph_articulation_points" ||
            callee == "graph_biconnected_components" || callee == "graph_eulerian_path" ||
            callee == "graph_hamiltonian_path" || callee == "graph_tsp_heuristic" ||
@@ -11372,6 +11441,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "graph_degree_centrality" || callee == "graph_louvain" ||
         callee == "graph_eigenvector_centrality" || callee == "graph_katz_centrality" ||
         callee == "graph_adjacency_spectrum" || callee == "graph_laplacian" ||
+        callee == "graph_normalised_laplacian" || callee == "graph_eccentricity" ||
         callee == "graph_articulation_points" ||
         callee == "graph_bridges" || callee == "graph_maximum_matching" ||
         callee == "graph_transitive_closure" ||
@@ -11556,6 +11626,7 @@ bool is_scalar_matrix_call_callee(const std::string& callee) {
            callee == "graph_is_bipartite" ||
            callee == "graph_chromatic_number" ||
            callee == "graph_is_dag" || callee == "graph_is_connected" ||
+           callee == "graph_is_strongly_connected" ||
            callee == "graph_is_tree" ||
            callee == "stats_mean" || callee == "stats_median" ||
            callee == "stats_stddev" || callee == "stats_skewness" ||
@@ -13460,6 +13531,26 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(L.error());
         }
         result = *L;
+    } else if (assign.callee == "graph_normalised_laplacian" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto Ln = eval_graph_normalised_laplacian(*matrix);
+        if (!Ln) {
+            return std::unexpected(Ln.error());
+        }
+        result = *Ln;
+    } else if (assign.callee == "graph_eccentricity" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto ecc = eval_graph_eccentricity(*matrix);
+        if (!ecc) {
+            return std::unexpected(ecc.error());
+        }
+        result = *ecc;
     } else if (assign.callee == "graph_articulation_points" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -15166,6 +15257,8 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
         value = eval_count_components(*matrix);
     } else if (assign.callee == "graph_is_connected") {
         value = eval_graph_is_connected(*matrix);
+    } else if (assign.callee == "graph_is_strongly_connected") {
+        value = eval_graph_is_strongly_connected(*matrix);
     } else if (assign.callee == "graph_is_tree") {
         value = eval_graph_is_tree(*matrix);
     }
@@ -15953,6 +16046,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_algebraic_connectivity(A) Fiedler value (algebraic connectivity)\n"
             "  name = graph_adjacency_spectrum(A) adjacency spectral radius as 1x1 (power iteration)\n"
             "  name = graph_laplacian(A) graph Laplacian matrix L = D - A\n"
+            "  name = graph_normalised_laplacian(A) normalised Laplacian I - D^{-1/2} A D^{-1/2}\n"
+            "  name = graph_modularity(A,C) Newman-Girvan modularity for community matrix C\n"
+            "  name = graph_eccentricity(A) per-vertex eccentricity as Nx1 (-1 unreachable)\n"
+            "  name = graph_is_strongly_connected(A) 1 if digraph is strongly connected else 0\n"
             "  name = graph_articulation_points(A) articulation points of undirected graph as Nx1 column\n"
             "  name = graph_bridges(A) bridge edges of undirected graph as Mx3 [from,to,weight]\n"
             "  name = graph_maximum_matching(A) maximum cardinality matching as Mx2 [u,v] edge list\n"
@@ -16477,7 +16574,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
-            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
+            "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_normalised_laplacian(A), graph_modularity(A,C), graph_eccentricity(A), graph_is_strongly_connected(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
@@ -17263,6 +17360,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (dual_call.callee == "graph_is_isomorphic") {
                 auto value = eval_graph_is_isomorphic(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
+            if (dual_call.callee == "graph_modularity") {
+                auto value = eval_graph_modularity(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -23882,6 +23986,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     return std::to_string(*value) + "\n";
                 }
+                if (fn == "graph_modularity") {
+                    auto value = eval_graph_modularity(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
                 if (fn == "stats_spearman") {
                     auto value = eval_stats_spearman(*arg_a_m, *arg_b_m);
                     if (!value) {
@@ -26158,6 +26269,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(value.error());
             }
             out << *value << "\n";
+        } else if (fn == "graph_is_strongly_connected") {
+            auto value = eval_graph_is_strongly_connected(*matrix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            out << *value << "\n";
         } else if (fn == "graph_is_tree") {
             auto value = eval_graph_is_tree(*matrix);
             if (!value) {
@@ -26384,6 +26501,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "laplacian =\n";
             print_matrix(out, *L);
+        } else if (fn == "graph_normalised_laplacian") {
+            auto Ln = eval_graph_normalised_laplacian(*matrix);
+            if (!Ln) {
+                return std::unexpected(Ln.error());
+            }
+            out << "normalised_laplacian =\n";
+            print_matrix(out, *Ln);
+        } else if (fn == "graph_eccentricity") {
+            auto ecc = eval_graph_eccentricity(*matrix);
+            if (!ecc) {
+                return std::unexpected(ecc.error());
+            }
+            out << "eccentricity:\n";
+            for (size_t i = 0; i < ecc->rows(); ++i) {
+                out << "  [" << i << "] " << (*ecc)(i, 0) << "\n";
+            }
         } else if (fn == "graph_articulation_points") {
             auto aps = eval_graph_articulation_points(*matrix);
             if (!aps) {
