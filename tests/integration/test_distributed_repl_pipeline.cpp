@@ -149,4 +149,19 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
         ColMatrix<double>{{1.0}, {2.0}}).value();
     EXPECT_NEAR(xm(0, 0), expected_m(0, 0), 1e-5);
     EXPECT_NEAR(xm(1, 0), expected_m(1, 0), 1e-5);
+
+    // dist_qmr: nonsymmetric system via distributed QMR
+    expect_ok(interp, "Q = [3, 1; 1, 2]");
+    expect_ok(interp, "qrhs = [1; 1]");
+    expect_ok(interp, "xq = dist_qmr(Q, qrhs)");
+    expect_ok(interp, "xq = dist_qmr(Q, qrhs)");
+    ASSERT_GT(interp.state().matrices.count("xq"), 0u);
+    const auto& xq = interp.state().matrices.at("xq");
+    EXPECT_EQ(xq.rows(), 2u);
+    EXPECT_EQ(xq.cols(), 1u);
+    const auto expected_q = ms::qmr(
+        ColMatrix<double>{{3.0, 1.0}, {1.0, 2.0}},
+        ColMatrix<double>{{1.0}, {1.0}}).value();
+    EXPECT_NEAR(xq(0, 0), expected_q(0, 0), 1e-5);
+    EXPECT_NEAR(xq(1, 0), expected_q(1, 0), 1e-5);
 }
