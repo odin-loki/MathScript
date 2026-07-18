@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 252 ✅ COMPLETE — **410 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 253 ✅ COMPLETE — **411 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–252 COMPLETE (summary)
+## Feature waves ✅ 231–253 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -61,6 +61,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **250** | `crypto_sha512`; NCCL introspect; coherence/filtfilt; GUI Delete Line; `BM_DistLsqr`; wave250 pipeline |
 | **251** | `signal_filter`/`cheby1`; MPI max/min; `geo_convex_hull`; Select All/Undo; AES-256 block; wave251 pipeline |
 | **252** | `sosfilt`/`firwin`/`savgol`; `mpi_barrier`; AES-256 decrypt; GUI Replace All; wave252 pipeline |
+| **253** | xcorr/xcov/autocorr; median_filter; conv2; AES-128 decrypt; NCCL allgather; matching brace |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -248,11 +249,20 @@ See `CHANGELOG.md` for per-wave branch tables.
 | Crypto | `aes256_decrypt_block` + REPL + wave252 pipeline |
 | GUI | Replace All in Script |
 
-**410 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–252** closed for this incremental batch.
+## Wave 253 ✅ COMPLETE (xcorr/median/conv2, AES-128 decrypt, NCCL allgather, matching brace)
+
+| Area | Deliverable |
+|------|-------------|
+| Signal REPL | xcorr/xcov/autocorr, median_filter, conv2 |
+| Crypto | `aes128_decrypt_block` + wave253 pipeline |
+| NCCL | stub `allgather` + `BM_CudaAllgather` |
+| GUI | Go to Matching Brace |
+
+**411 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–253** closed for this incremental batch.
 
 ---
 
-## Next (Wave 253+) — deferred
+## Next (Wave 254+) — deferred
 
 | Item | Notes |
 |------|--------|
