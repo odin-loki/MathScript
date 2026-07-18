@@ -3912,6 +3912,50 @@ std::vector<std::size_t> fem_rectangular_boundary_nodes(std::size_t nx, std::siz
     return boundary;
 }
 
+std::vector<std::size_t> fem_box_boundary_nodes(std::size_t nx, std::size_t ny, std::size_t nz) {
+    const std::size_t n_nodes_x = nx + 1;
+    const std::size_t n_nodes_xy = n_nodes_x * (ny + 1);
+    std::vector<std::size_t> boundary;
+    for (std::size_t k = 0; k <= nz; ++k) {
+        for (std::size_t j = 0; j <= ny; ++j) {
+            for (std::size_t i = 0; i <= nx; ++i) {
+                if (i == 0 || i == nx || j == 0 || j == ny || k == 0 || k == nz) {
+                    boundary.push_back(i + j * n_nodes_x + k * n_nodes_xy);
+                }
+            }
+        }
+    }
+    return boundary;
+}
+
+ColMatrix<double> fem_constant_load_3d(const fem::Mesh3D& mesh) {
+    ColMatrix<double> load(mesh.nodes.size(), 1, 0.0);
+    for (const auto& tet : mesh.tetrahedra) {
+        const auto& p0 = mesh.nodes[tet[0]];
+        const auto& p1 = mesh.nodes[tet[1]];
+        const auto& p2 = mesh.nodes[tet[2]];
+        const auto& p3 = mesh.nodes[tet[3]];
+        const double e1x = p1[0] - p0[0];
+        const double e1y = p1[1] - p0[1];
+        const double e1z = p1[2] - p0[2];
+        const double e2x = p2[0] - p0[0];
+        const double e2y = p2[1] - p0[1];
+        const double e2z = p2[2] - p0[2];
+        const double e3x = p3[0] - p0[0];
+        const double e3y = p3[1] - p0[1];
+        const double e3z = p3[2] - p0[2];
+        const double cx = e1y * e2z - e1z * e2y;
+        const double cy = e1z * e2x - e1x * e2z;
+        const double cz = e1x * e2y - e1y * e2x;
+        const double volume = std::abs(e3x * cx + e3y * cy + e3z * cz) / 6.0;
+        const double contrib = volume / 4.0;
+        for (std::size_t node : tet) {
+            load(node, 0) += contrib;
+        }
+    }
+    return load;
+}
+
 Result<Matrix<double>> eval_fem_poisson2d(std::size_t nx, std::size_t ny) {
     constexpr const char* fn = "fem_poisson2d";
     if (nx == 0 || ny == 0) {
@@ -3921,6 +3965,28 @@ Result<Matrix<double>> eval_fem_poisson2d(std::size_t nx, std::size_t ny) {
     ColMatrix<double> K = fem::assemble_stiffness_2d(mesh);
     ColMatrix<double> f = fem::assemble_load_2d(mesh, [](double, double) { return 1.0; });
     const auto boundary = fem_rectangular_boundary_nodes(nx, ny);
+    std::vector<double> boundary_values(boundary.size(), 0.0);
+    fem::apply_dirichlet(K, f, boundary, boundary_values);
+    const auto u = fem::solve_fem(K, f);
+    if (!u) {
+        return std::unexpected(DomainError{fn, "linear solve failed"});
+    }
+    Matrix<double> out(u->rows(), 1);
+    for (std::size_t i = 0; i < u->rows(); ++i) {
+        out(i, 0) = (*u)(i, 0);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_fem_poisson3d(std::size_t nx, std::size_t ny, std::size_t nz) {
+    constexpr const char* fn = "fem_poisson3d";
+    if (nx == 0 || ny == 0 || nz == 0) {
+        return std::unexpected(DomainError{fn, "expected positive nx, ny, and nz"});
+    }
+    const fem::Mesh3D mesh = fem::mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, nx, ny, nz);
+    ColMatrix<double> K = fem::assemble_stiffness_3d(mesh);
+    ColMatrix<double> f = fem_constant_load_3d(mesh);
+    const auto boundary = fem_box_boundary_nodes(nx, ny, nz);
     std::vector<double> boundary_values(boundary.size(), 0.0);
     fem::apply_dirichlet(K, f, boundary, boundary_values);
     const auto u = fem::solve_fem(K, f);
@@ -7667,7 +7733,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_schrodinger_final" ||
             fn == "pde_heat_1d" || fn == "pde_heat_2d" || fn == "pde_wave_1d" ||
             fn == "pde_advection_1d" || fn == "pde_poisson_2d" || fn == "pde_burgers_1d" ||
-            fn == "fem_poisson2d" || fn == "cfd_advection2d" ||
+            fn == "fem_poisson2d" || fn == "fem_poisson3d" || fn == "cfd_advection2d" ||
             fn == "quantum_time_evolution" ||
             fn == "info_joint_entropy" ||
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
@@ -9036,7 +9102,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_heat_1d" || callee == "pde_heat_2d" || callee == "pde_wave_1d" ||
            callee == "pde_advection_1d" || callee == "pde_poisson_2d" ||
            callee == "pde_burgers_1d" ||
-           callee == "fem_poisson2d" || callee == "cfd_advection2d" ||
+           callee == "fem_poisson2d" || callee == "fem_poisson3d" || callee == "cfd_advection2d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
            callee == "compress_bits_to_bytes" ||
            callee == "compress_bytes_to_bits" ||
@@ -9178,6 +9244,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "fem_poisson2d") {
         return arity == 2;
+    }
+    if (callee == "fem_poisson3d") {
+        return arity == 3;
     }
     if (callee == "cfd_advection2d") {
         return arity == 6;
@@ -11951,6 +12020,24 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
                 DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
         }
         result = eval_fem_poisson2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i));
+    } else if (assign.callee == "fem_poisson3d" && assign.args.size() == 3) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double nz_d = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], nz_d)) {
+            return std::unexpected(
+                DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        const int nz_i = static_cast<int>(nz_d);
+        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+            return std::unexpected(
+                DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+        }
+        result = eval_fem_poisson3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                    static_cast<std::size_t>(nz_i));
     } else if (assign.callee == "cfd_advection2d" && assign.args.size() == 6) {
         double nx_d = 0.0;
         double ny_d = 0.0;
@@ -12988,6 +13075,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_poisson_2d(f,dx,dy,max_iterations,tolerance) 2D Poisson solution grid\n"
             "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
+            "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
             "  crypto_aes128_cbc_encrypt(key_hex,iv_hex,plaintext_hex) AES-128 CBC encrypt\n"
@@ -17412,6 +17500,34 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"prob_binom_pdf", "expected integer k and n"});
             }
             return std::to_string(binom_pdf(k, n, p)) + "\n";
+        }
+        if (fn == "fem_poisson3d") {
+            double nx_d = 0.0;
+            double ny_d = 0.0;
+            double nz_d = 0.0;
+            if (!parse_number(trim(match[2].str()), nx_d) ||
+                !parse_number(trim(match[3].str()), ny_d) ||
+                !parse_number(trim(match[4].str()), nz_d)) {
+                return std::unexpected(
+                    DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
+            }
+            const int nx_i = static_cast<int>(nx_d);
+            const int ny_i = static_cast<int>(ny_d);
+            const int nz_i = static_cast<int>(nz_d);
+            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+                return std::unexpected(
+                    DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+            }
+            auto value = eval_fem_poisson3d(static_cast<std::size_t>(nx_i),
+                                            static_cast<std::size_t>(ny_i),
+                                            static_cast<std::size_t>(nz_i));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
         }
         if (fn == "prob_binom_cdf") {
             double k_d = 0.0;
