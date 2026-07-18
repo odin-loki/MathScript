@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 243 ✅ COMPLETE — **399 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 244 ✅ COMPLETE — **401 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–243 COMPLETE (summary)
+## Feature waves ✅ 231–244 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -52,6 +52,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **241** | Hankel; `sabr_put`; `dist_bicgstab`; signal cheby2/periodogram/welch REPL; GUI completer; Ed25519/`dist_jacobi` benches |
 | **242** | `dist_minres`; graph iso/hamiltonian/TSP REPL; hilbert/envelope REPL; GUI theme toggle; NCCL max/min stubs; SABR/`dist_bicgstab` benches |
 | **243** | `dist_qmr`; HMAC-SHA512; `qmr`/`lsqr`/phase REPL; GUI word wrap; graph articulation tests; `dist_minres` bench |
+| **244** | `dist_tfqmr`; PBKDF2-SHA512; `heston_put`; `tfqmr`/`lsmr`/spectrogram REPL; GUI replace; Wave 243 benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -142,17 +143,29 @@ See `CHANGELOG.md` for per-wave branch tables.
 | GUI | Word Wrap toggle |
 | Benchmarks | `dist_minres` smoke |
 
-**399 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–243** closed for this incremental batch.
+## Wave 244 ✅ COMPLETE (dist TFQMR, PBKDF2-SHA512, heston_put, REPL/GUI, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Distributed | `dist_tfqmr`; `test_dist_tfqmr`; REPL |
+| Crypto | PBKDF2-HMAC-SHA512 + REPL |
+| Finance | `heston_put` + REPL + bench |
+| REPL | `tfqmr`, `lsmr`, `signal_spectrogram`; wave244 pipeline |
+| GUI | Replace in Script / Replace Next |
+| Benchmarks | `dist_qmr` + `hmac_sha512` smoke |
+| Fix | `tfqmr` MVP via BiCGSTAB kernel |
+
+**401 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–244** closed for this incremental batch.
 
 ---
 
-## Next (Wave 244+) — deferred
+## Next (Wave 245+) — deferred
 
 | Item | Notes |
 |------|--------|
 | Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block iterative solvers |
 | Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
 | Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
-| Deeper API gaps | Blossom matching, full NCCL multi-GPU, etc. |
+| Deeper API gaps | Blossom matching, full NCCL multi-GPU, Freund TFQMR loop, etc. |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

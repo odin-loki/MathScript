@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 244 — dist TFQMR, PBKDF2-SHA512, heston_put, REPL/GUI, benches) ✅ COMPLETE
+
+Fourteenth feature wave after Wave 243. Parallel Composer 2.5 worktrees merged to `main`: `dist_tfqmr`, PBKDF2-HMAC-SHA512, `heston_put`, local `tfqmr`/`lsmr` + spectrogram REPL, GUI Replace in Script, and Wave 243 bench gaps. Local `tfqmr` MVP routes through BiCGSTAB for reliable transpose-free solves.
+
+### Added (Wave 244)
+- **Distributed** — `dist_tfqmr` stub-gather MVP; `test_dist_tfqmr`; REPL binding.
+- **Crypto** — `pbkdf2_hmac_sha512`; REPL `crypto_pbkdf2_hmac_sha512`.
+- **Finance** — `heston_put` (put-call parity); REPL `finance_heston_put`; bench smoke.
+- **REPL** — `tfqmr`, `lsmr`, `signal_spectrogram`; `integration_repl_wave244_pipeline`.
+- **GUI** — Edit menu Replace in Script / Replace Next (persisted find/replace strings).
+- **Benchmarks** — `BM_DistQmr_2x2`, `BM_HmacSha512` smoke cases.
+- **Fix** — `tfqmr` MVP uses BiCGSTAB kernel (Freund half-step false-converged on identity).
+
+### Docs (Wave 244)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 244 sync; **401** CTest suites.
+
+**401 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), Blossom matching, full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 243 — dist QMR, HMAC-SHA512, qmr/lsqr REPL, GUI wrap, benches) ✅ COMPLETE
 
 Thirteenth feature wave after Wave 242. Parallel Composer 2.5 worktrees merged to `main`: `dist_qmr`, HMAC-SHA512, local `qmr`/`lsqr` + instantaneous phase REPL, GUI word wrap, graph articulation/euler integration coverage, and `dist_minres` bench.
