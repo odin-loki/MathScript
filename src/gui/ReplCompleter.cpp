@@ -208,6 +208,7 @@ QStringList repl_command_list() {
         QStringLiteral("geo_convex_hull_3d"),
         QStringLiteral("geo_min_bounding_rect"),
         QStringLiteral("geo_kdtree_nearest"),
+        QStringLiteral("geo_kdtree_3d_nearest"),
         QStringLiteral("geo_kdtree_knn"),
         QStringLiteral("geo_kdtree_range"),
         QStringLiteral("geo_point_in_aabb"),
@@ -215,6 +216,9 @@ QStringList repl_command_list() {
         QStringLiteral("geo_intersect_seg_seg"),
         QStringLiteral("geo_intersect_ray_sphere"),
         QStringLiteral("geo_intersect_ray_aabb"),
+        QStringLiteral("geo_intersect_ray_tri"),
+        QStringLiteral("geo_dist_point_plane"),
+        QStringLiteral("geo_dist_point_seg3d"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
