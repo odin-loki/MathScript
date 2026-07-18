@@ -300,6 +300,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `graph_dijkstra` / `graph_bellman_ford` | Shortest paths → Nx2 [dist,parent] (Wave 258) |
 | `info_permutation_entropy` / `info_transfer_entropy` | Time-series information measures (Wave 258) |
 | `stats_partial_correlation` / `stats_weighted_mean` / `stats_trimmed_mean` / `stats_arfit` / `stats_multiple_regression` | Correlation / means / regression (Wave 258) |
+| `stats_weighted_variance` / `stats_weighted_correlation` / `stats_bootstrap_mean` | Weighted variance/correlation and bootstrap mean (Wave 261) |
 | `stats_vif` / `stats_variance_inflation_factor` | VIF for column `j` of design matrix `X` (Wave 260) |
 | `hess(A)` / `schur(A)` / `T, Q = schur(A)` | Hessenberg / Schur (Wave 259) |
 | `finance_efficient_frontier` / `finance_max_sharpe` | Mean-variance portfolios (Wave 259) |
