@@ -175,3 +175,69 @@ TEST(ReplWave262Pipeline, PolyDiscriminantRepeatedRoot) {
     EXPECT_NEAR(interp.state().scalars.at("d"), 0.0, 1e-6);
     expect_contains(interp, "help", "poly_discriminant(p)");
 }
+
+TEST(ReplWave262Pipeline, Minres) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [4, 1, 0; 1, 3, 1; 0, 1, 2]");
+    expect_ok(interp, "b = [1; 1; 1]");
+    expect_ok(interp, "x = minres(A, b)");
+    ASSERT_GT(interp.state().matrices.count("x"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("x").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("x").cols(), 1u);
+    expect_contains(interp, "help", "minres(A");
+}
+
+TEST(ReplWave262Pipeline, Fftfreq) {
+    Interpreter interp;
+
+    expect_ok(interp, "f8 = fftfreq(8, 1)");
+    ASSERT_GT(interp.state().matrices.count("f8"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("f8").rows(), 8u);
+    EXPECT_EQ(interp.state().matrices.at("f8").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("f8")(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("f8")(1, 0), 0.125, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("f8")(4, 0), -0.5, 1e-12);
+    expect_contains(interp, "help", "fftfreq(n[,d])");
+}
+
+TEST(ReplWave262Pipeline, ComboNecklaces) {
+    Interpreter interp;
+
+    expect_ok(interp, "neck = combo_necklaces(2, 2)");
+    ASSERT_GT(interp.state().matrices.count("neck"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("neck").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("neck").cols(), 2u);
+    expect_contains(interp, "help", "combo_necklaces(n,k)");
+}
+
+TEST(ReplWave262Pipeline, NumthySternBrocot) {
+    Interpreter interp;
+
+    expect_ok(interp, "sb = numthy_stern_brocot(7)");
+    ASSERT_GT(interp.state().matrices.count("sb"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("sb").rows(), 7u);
+    EXPECT_EQ(interp.state().matrices.at("sb").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("sb")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("sb")(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("sb")(6, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("sb")(6, 1), 1.0, 1e-9);
+    expect_contains(interp, "help", "numthy_stern_brocot(n)");
+}
+
+TEST(ReplWave262Pipeline, FinanceBachelierCall) {
+    Interpreter interp;
+
+    const double F = 100.0;
+    const double K = 100.0;
+    const double T = 1.5;
+    const double r = 0.04;
+    const double sigma = 0.25;
+    const double expected =
+        std::exp(-r * T) * sigma * std::sqrt(T) / std::sqrt(2.0 * M_PI);
+
+    expect_ok(interp, "bc = finance_bachelier_call(100, 100, 1.5, 0.04, 0.25)");
+    ASSERT_GT(interp.state().scalars.count("bc"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("bc"), expected, 1e-6);
+    expect_contains(interp, "help", "finance_bachelier_call(F,K,T,r,sigma)");
+}
