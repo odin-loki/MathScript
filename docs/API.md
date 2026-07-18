@@ -296,8 +296,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `dist_jacobi(A, b)` | Distributed Jacobi (stub gather or MPI block; Wave 240) |
 | `dist_bicgstab(A, b)` | Distributed BiCGSTAB (stub gather; Wave 241) |
 | `dist_minres(A, b)` | Distributed MINRES (stub gather; Wave 242) |
-| `bicgstab(A, b)` | BiCGSTAB iterative solve (Wave 240) |
+| `dist_qmr(A, b)` | Distributed QMR (stub gather; Wave 243) |
+| `bicgstab(A, b)` / `qmr(A, b)` / `lsqr(A, b)` | Local iterative solvers (Wave 240/243) |
 | `cuda_allreduce_max(x)` / `cuda_allreduce_min(x)` | NCCL stub max/min (identity when stub; Wave 242) |
+| `crypto_hmac_sha512(hex_key, hex_data)` | HMAC-SHA512 digest as hex (Wave 243) |
+| `signal_instantaneous_phase(x)` | Analytic-signal phase column (Wave 243) |
 | `signal_cheby2(order, rs_db, cutoff, fs)` | Chebyshev Type II IIR design; returns `[b; a]` rows (Wave 241) |
 | `signal_periodogram(x, fs)` / `signal_welch_psd(x, fs, nperseg)` | PSD helpers; freq/power columns (Wave 241) |
 | `signal_envelope(x)` / `signal_hilbert(x)` / `signal_instantaneous_freq(x, fs)` | Analytic-signal helpers; envelope column, Hilbert N×2 [re,im], inst. freq column (Wave 242) |

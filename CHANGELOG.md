@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 243 — dist QMR, HMAC-SHA512, qmr/lsqr REPL, GUI wrap, benches) ✅ COMPLETE
+
+Thirteenth feature wave after Wave 242. Parallel Composer 2.5 worktrees merged to `main`: `dist_qmr`, HMAC-SHA512, local `qmr`/`lsqr` + instantaneous phase REPL, GUI word wrap, graph articulation/euler integration coverage, and `dist_minres` bench.
+
+### Added (Wave 243)
+- **Distributed** — `dist_qmr` stub-gather MVP; `test_dist_qmr`; REPL binding.
+- **Crypto** — `hmac_sha512` / hex helper (RFC 4231); REPL `crypto_hmac_sha512`.
+- **REPL** — `qmr`, `lsqr`, `signal_instantaneous_phase`; `integration_repl_wave243_pipeline`.
+- **Graph tests** — `integration_repl_wave243_graph_pipeline` (articulation points / euler circuit).
+- **GUI** — View menu Word Wrap toggle for editor and output (persisted).
+- **Benchmarks** — `BM_DistMinres_2x2` smoke case.
+
+### Docs (Wave 243)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 243 sync; **399** CTest suites.
+
+**399 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), Blossom matching, full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 242 — dist MINRES, graph/signal REPL, GUI theme, NCCL max/min, benches) ✅ COMPLETE
 
 Twelfth feature wave after Wave 241. Parallel Composer 2.5 worktrees merged to `main`: `dist_minres`, graph isomorphic/hamiltonian/TSP REPL, hilbert/envelope REPL, GUI light/dark theme toggle, NCCL stub `allreduce_max`/`min`, and Wave 241 bench gaps.

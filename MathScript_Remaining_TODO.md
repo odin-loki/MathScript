@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 242 ✅ COMPLETE — **396 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 243 ✅ COMPLETE — **399 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–242 COMPLETE (summary)
+## Feature waves ✅ 231–243 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -51,6 +51,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **240** | Ed25519; `jacobi`/`dist_jacobi` + GMRES MPI; `sym_mellin`; GUI line numbers/LaTeX export; REPL graph/finance/`bicgstab`; PBKDF2/`dist_gmres` benches |
 | **241** | Hankel; `sabr_put`; `dist_bicgstab`; signal cheby2/periodogram/welch REPL; GUI completer; Ed25519/`dist_jacobi` benches |
 | **242** | `dist_minres`; graph iso/hamiltonian/TSP REPL; hilbert/envelope REPL; GUI theme toggle; NCCL max/min stubs; SABR/`dist_bicgstab` benches |
+| **243** | `dist_qmr`; HMAC-SHA512; `qmr`/`lsqr`/phase REPL; GUI word wrap; graph articulation tests; `dist_minres` bench |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -130,11 +131,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 | NCCL | stub `allreduce_max` / `allreduce_min` + REPL |
 | Benchmarks | `dist_bicgstab` + SABR smoke |
 
-**396 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–242** closed for this incremental batch.
+## Wave 243 ✅ COMPLETE (dist QMR, HMAC-SHA512, linalg/signal REPL, GUI wrap, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| Distributed | `dist_qmr`; `test_dist_qmr`; REPL |
+| Crypto | HMAC-SHA512 + REPL |
+| REPL | `qmr`, `lsqr`, `signal_instantaneous_phase`; wave243 pipeline |
+| Graph tests | articulation / euler circuit pipeline coverage |
+| GUI | Word Wrap toggle |
+| Benchmarks | `dist_minres` smoke |
+
+**399 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–243** closed for this incremental batch.
 
 ---
 
-## Next (Wave 243+) — deferred
+## Next (Wave 244+) — deferred
 
 | Item | Notes |
 |------|--------|
