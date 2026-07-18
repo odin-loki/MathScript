@@ -96,6 +96,7 @@ private:
     void toggle_comment();
     void upper_case_selection();
     void lower_case_selection();
+    void title_case_selection();
     void indent_lines();
     void unindent_lines();
     void set_plot_panel_visible(bool visible);
