@@ -195,6 +195,8 @@ QStringList repl_command_list() {
         QStringLiteral("geo_minkowski_sum"),
         QStringLiteral("geo_clip_polygon"),
         QStringLiteral("geo_convex_hull"),
+        QStringLiteral("geo_triangulate_polygon"),
+        QStringLiteral("geo_convex_hull_3d"),
         QStringLiteral("geo_min_bounding_rect"),
         QStringLiteral("geo_point_in_aabb"),
         QStringLiteral("geo_overlap_aabb"),
