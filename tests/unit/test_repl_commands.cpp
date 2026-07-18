@@ -4602,6 +4602,23 @@ TEST(ReplCommandsTest, wave170_geo_kdtree_nearest) {
     expect_contains(interp, "geo_kdtree_nearest([0, 0; 1, 0; 2, 0; 3, 0; 4, 0], 1.1, 0)", "1");
 }
 
+TEST(ReplCommandsTest, wave255_geo_kdtree_query) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_kdtree_knn(P,x,y,k)");
+    expect_contains(interp, "help", "geo_kdtree_range(P,x,y,r)");
+
+    expect_ok(interp, "P = [0,0; 1,0; 2,0; 3,0; 4,0]");
+    expect_ok(interp, "n = geo_kdtree_knn(P, 1.0, 0.0, 2)");
+    ASSERT_GT(interp.state().matrices.count("n"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("n").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("n").cols(), 1u);
+
+    expect_ok(interp, "r = geo_kdtree_range(P, 2.0, 0.0, 1.5)");
+    ASSERT_GT(interp.state().matrices.count("r"), 0u);
+    EXPECT_GE(interp.state().matrices.at("r").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("r").cols(), 1u);
+}
+
 TEST(ReplCommandsTest, wave170_topo_pairwise_distances) {
     Interpreter interp;
     expect_contains(interp, "help", "topo_pairwise_distances(P)");
