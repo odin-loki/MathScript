@@ -21,7 +21,24 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
     EXPECT_NE(result->find(needle), std::string::npos) << cmd << " output: " << *result;
 }
 
+void expect_error(Interpreter& interp, const std::string& cmd) {
+    const auto result = interp.execute(cmd);
+    EXPECT_FALSE(result.has_value()) << cmd;
+}
+
 } // namespace
+
+TEST(ReplWave232Pipeline, SymbolicTransformBindings) {
+    Interpreter interp;
+
+    expect_contains(interp, R"(sym_laplace("exp(2*t)", "t", "s"))", "s");
+    expect_contains(interp, R"(sym_ilaplace("1/(s-2)", "s", "t"))", "exp");
+    expect_contains(interp, R"(sym_fourier("exp(-2*t)", "t", "omega"))", "omega");
+    expect_contains(interp, R"(sym_ztransform("0.5^n", "n", "z"))", "z");
+    expect_error(interp, R"(sym_laplace("exp(2*t)", "t"))");
+    expect_contains(interp, "help", "sym_laplace");
+    expect_contains(interp, "help", "sym_ztransform");
+}
 
 TEST(ReplWave232Pipeline, Wave231_CryptoFemCfdBindings) {
     Interpreter interp;

@@ -100,4 +100,22 @@ TEST(SymbolicReplPipeline, SymbolicBindingsPipeline) {
     ASSERT_TRUE(solved.has_value());
     EXPECT_NE(solved->find("x"), std::string::npos);
     expect_error(interp, "sym_solve_linear(\"2*x+4\")");
+
+    // sym_laplace: exponential decay
+    const auto laplace = run(interp, "sym_laplace(\"exp(2*t)\", \"t\", \"s\")");
+    ASSERT_TRUE(laplace.has_value());
+    EXPECT_NE(laplace->find("s"), std::string::npos);
+    expect_error(interp, "sym_laplace(\"exp(2*t)\", \"t\")");
+
+    // sym_fourier: decaying exponential
+    const auto fourier = run(interp, "sym_fourier(\"exp(-2*t)\", \"t\", \"omega\")");
+    ASSERT_TRUE(fourier.has_value());
+    EXPECT_NE(fourier->find("omega"), std::string::npos);
+    expect_error(interp, "sym_fourier(\"exp(-2*t)\", \"t\")");
+
+    // sym_ztransform: geometric sequence
+    const auto ztransform = run(interp, "sym_ztransform(\"0.5^n\", \"n\", \"z\")");
+    ASSERT_TRUE(ztransform.has_value());
+    EXPECT_NE(ztransform->find("z"), std::string::npos);
+    expect_error(interp, "sym_ztransform(\"0.5^n\", \"n\")");
 }
