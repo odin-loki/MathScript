@@ -155,6 +155,90 @@ void duplicate_lines_in_editor(QPlainTextEdit* editor) {
     cursor.endEditBlock();
 }
 
+void get_selected_block_range(QPlainTextEdit* editor, int& start_block, int& end_block);
+
+void select_block_range_in_editor(QPlainTextEdit* editor, int start_block, int end_block) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = start_block + 1; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+    }
+    editor->setTextCursor(cursor);
+}
+
+void move_lines_up_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+    if (start_block == 0) {
+        cursor.endEditBlock();
+        return;
+    }
+
+    const QString above_line = editor->document()->findBlockByNumber(start_block - 1).text();
+    QStringList selected_lines;
+    for (int block = start_block; block <= end_block; ++block) {
+        selected_lines.append(editor->document()->findBlockByNumber(block).text());
+    }
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block - 1).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = start_block; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(selected_lines.join('\n') + '\n' + above_line);
+
+    select_block_range_in_editor(editor, start_block - 1, end_block - 1);
+    cursor.endEditBlock();
+}
+
+void move_lines_down_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+    if (end_block >= editor->document()->blockCount() - 1) {
+        cursor.endEditBlock();
+        return;
+    }
+
+    const QString below_line = editor->document()->findBlockByNumber(end_block + 1).text();
+    QStringList selected_lines;
+    for (int block = start_block; block <= end_block; ++block) {
+        selected_lines.append(editor->document()->findBlockByNumber(block).text());
+    }
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = start_block + 1; block <= end_block + 1; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(below_line + '\n' + selected_lines.join('\n'));
+
+    select_block_range_in_editor(editor, start_block + 1, end_block + 1);
+    cursor.endEditBlock();
+}
+
 bool line_has_line_comment(const QString& line) {
     int i = 0;
     while (i < line.size() && line[i].isSpace()) {
@@ -866,6 +950,10 @@ void MainWindow::setup_menus() {
     toggle_comment_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Slash));
     auto* duplicate_line_action = edit_menu->addAction("Duplicate Line");
     duplicate_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
+    auto* move_line_up_action = edit_menu->addAction("Move Line Up");
+    move_line_up_action->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Up));
+    auto* move_line_down_action = edit_menu->addAction("Move Line Down");
+    move_line_down_action->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Down));
     edit_menu->addSeparator();
     auto* find_output_action = edit_menu->addAction("Find in Output");
     find_output_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
@@ -915,6 +1003,8 @@ void MainWindow::setup_menus() {
     connect(unindent_action, &QAction::triggered, this, &MainWindow::unindent_lines);
     connect(toggle_comment_action, &QAction::triggered, this, &MainWindow::toggle_comment);
     connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
+    connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
+    connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
     connect(find_prev_output_action, &QAction::triggered, this, &MainWindow::find_prev_in_output);
@@ -1219,6 +1309,16 @@ void MainWindow::go_to_line() {
 void MainWindow::duplicate_line() {
     editor_->setFocus();
     duplicate_lines_in_editor(editor_);
+}
+
+void MainWindow::move_line_up() {
+    editor_->setFocus();
+    move_lines_up_in_editor(editor_);
+}
+
+void MainWindow::move_line_down() {
+    editor_->setFocus();
+    move_lines_down_in_editor(editor_);
 }
 
 void MainWindow::toggle_comment() {
