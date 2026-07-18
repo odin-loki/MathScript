@@ -29,6 +29,18 @@ void expect_ilaplace_pair(
     expect_eval_equivalent(inverse, time_expr, t_env);
 }
 
+void expect_mellin_pair(
+    const SymExpr& time_expr, const SymExpr& s_expr, const std::map<std::string, double>& s_env) {
+    const auto forward = sym_simplify(sym_mellin(time_expr, "t", "s"));
+    expect_eval_equivalent(forward, s_expr, s_env);
+}
+
+void expect_imellin_pair(
+    const SymExpr& s_expr, const SymExpr& time_expr, const std::map<std::string, double>& t_env) {
+    const auto inverse = sym_simplify(sym_imellin(s_expr, "s", "t"));
+    expect_eval_equivalent(inverse, time_expr, t_env);
+}
+
 SymExpr clone_expr(const SymExpr& expr) {
     SymExpr copy;
     copy.op = expr.op;
@@ -227,4 +239,74 @@ TEST(SymbolicTransformsTest, iztransform_constant_sequence) {
     const SymExpr zdomain = sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(1.0)));
     const SymExpr seq = sym_simplify(sym_iztransform(zdomain, "z", "n"));
     EXPECT_NEAR(sym_eval(seq, {{"n", 5.0}}), 1.0, 1e-9);
+}
+
+TEST(SymbolicTransformsTest, mellin_constant) {
+    const auto time_expr = sym_const(5.0);
+    const auto expected = sym_div(sym_const(5.0), sym_var("s"));
+    expect_mellin_pair(time_expr, expected, {{"s", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, mellin_power_of_t) {
+    const auto time_expr = sym_pow(sym_var("t"), sym_const(2.0));
+    const auto expected = sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(2.0)));
+    expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, mellin_exponential_decay) {
+    const auto time_expr = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t"))));
+    const auto expected = sym_div(sym_const(1.0), sym_pow(sym_const(2.0), sym_var("s")));
+    expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, mellin_power_exponential) {
+    const auto time_expr = sym_mul(
+        sym_pow(sym_var("t"), sym_const(2.0)),
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("t")))));
+    const auto expected = sym_div(
+        sym_const(2.0),
+        sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0))));
+    expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, mellin_one_over_one_plus_t) {
+    const auto time_expr = sym_div(sym_const(1.0), sym_add(sym_const(1.0), sym_var("t")));
+    const auto expected = sym_div(
+        sym_const(std::numbers::pi),
+        sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var("s"))));
+    expect_mellin_pair(time_expr, expected, {{"s", 0.5}});
+}
+
+TEST(SymbolicTransformsTest, imellin_constant_over_s) {
+    const auto s_expr = sym_div(sym_const(4.0), sym_var("s"));
+    const auto expected = sym_const(4.0);
+    expect_imellin_pair(s_expr, expected, {{"t", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, imellin_power_form) {
+    const auto s_expr = sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(1.5)));
+    const auto expected = sym_pow(sym_var("t"), sym_const(1.5));
+    expect_imellin_pair(s_expr, expected, {{"t", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, mellin_imellin_roundtrip) {
+    const auto original = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t"))));
+    const auto in_s = sym_simplify(sym_mellin(original, "t", "s"));
+    const auto recovered = sym_simplify(sym_imellin(in_s, "s", "t"));
+    expect_eval_equivalent(original, recovered, {{"t", 0.75}});
+
+    const auto power = sym_pow(sym_var("t"), sym_const(1.0));
+    const auto power_s = sym_simplify(sym_mellin(power, "t", "s"));
+    const auto power_back = sym_simplify(sym_imellin(power_s, "s", "t"));
+    expect_eval_equivalent(power, power_back, {{"t", 1.25}});
+}
+
+TEST(SymbolicTransformsTest, unsupported_mellin_returns_deriv_sentinel) {
+    const auto unsupported_mellin = sym_mellin(sym_log(sym_var("t")), "t", "s");
+    EXPECT_EQ(unsupported_mellin.op, SymOp::Deriv);
+    EXPECT_EQ(unsupported_mellin.name, "t");
+
+    const auto unsupported_imellin = sym_imellin(sym_log(sym_var("s")), "s", "t");
+    EXPECT_EQ(unsupported_imellin.op, SymOp::Deriv);
+    EXPECT_EQ(unsupported_imellin.name, "s");
 }
