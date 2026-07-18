@@ -5598,6 +5598,73 @@ TEST(ReplCommandsTest, wave256_stats_inference) {
     EXPECT_NEAR(ws(0, 3), 8.0, 1e-12);
 }
 
+TEST(ReplCommandsTest, wave257_stats_infer_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_friedman(data)");
+    expect_contains(interp, "help", "stats_ks_2sample(a,b)");
+    expect_contains(interp, "help", "stats_jarque_bera(x)");
+    expect_contains(interp, "help", "stats_ljung_box(x,max_lag)");
+
+    // Friedman: hand-computed 4 blocks × 3 treatments → chi2=1.5, df=2, p=exp(-0.75).
+    expect_ok(interp, "Fdata = [10, 20, 30; 15, 25, 20; 5, 8, 6; 100, 90, 95]");
+    expect_ok(interp, "fr = stats_friedman(Fdata)");
+    ASSERT_GT(interp.state().matrices.count("fr"), 0u);
+    const auto& fr = interp.state().matrices.at("fr");
+    ASSERT_EQ(fr.rows(), 1u);
+    ASSERT_EQ(fr.cols(), 3u);
+    EXPECT_NEAR(fr(0, 0), 1.5, 1e-9);
+    EXPECT_NEAR(fr(0, 1), 2.0, 1e-12);
+    EXPECT_NEAR(fr(0, 2), std::exp(-0.75), 1e-9);
+
+    // Two-sample KS: fully separated samples → large D, small p; 1x2 [D, p].
+    expect_ok(interp, "ksa = [0; 1; 2; 3; 4; 5; 6; 7]");
+    expect_ok(interp, "ksb = [10; 11; 12; 13; 14; 15; 16; 17]");
+    expect_ok(interp, "ks = stats_ks_2sample(ksa, ksb)");
+    ASSERT_GT(interp.state().matrices.count("ks"), 0u);
+    const auto& ks = interp.state().matrices.at("ks");
+    ASSERT_EQ(ks.rows(), 1u);
+    ASSERT_EQ(ks.cols(), 2u);
+    EXPECT_GT(ks(0, 0), 0.9);
+    EXPECT_LT(ks(0, 1), 0.05);
+
+    // Jarque-Bera: heavily skewed exponential-like sample; 1x3 [JB, df, p].
+    expect_ok(interp,
+              "jbx = [1; 2; 3; 4; 5; 6; 7; 8; 9; 10; 12; 14; 16; 18; 20; 25; 30; 40; 50; "
+              "60; 80; 100; 150; 200; 300; 400; 500; 700; 900; 1200]");
+    expect_ok(interp, "jb = stats_jarque_bera(jbx)");
+    ASSERT_GT(interp.state().matrices.count("jb"), 0u);
+    const auto& jb = interp.state().matrices.at("jb");
+    ASSERT_EQ(jb.rows(), 1u);
+    ASSERT_EQ(jb.cols(), 3u);
+    EXPECT_GT(jb(0, 0), 5.0);
+    EXPECT_NEAR(jb(0, 1), 2.0, 1e-12);
+    EXPECT_LT(jb(0, 2), 0.05);
+
+    // Ljung-Box: cumulative-sum random walk (same as StatsExtTest.ljung_box_cumulative_sum);
+    // returns 1x3 [Q, df, p]. Pattern repeats every 3: -0.5, -0.5, 0 (80 samples).
+    {
+        std::string lbx = "lbx = [";
+        double sum = 0.0;
+        for (int i = 0; i < 80; ++i) {
+            sum += ((i % 3) - 1) * 0.5;
+            if (i > 0) {
+                lbx += "; ";
+            }
+            lbx += std::to_string(sum);
+        }
+        lbx += "]";
+        expect_ok(interp, lbx);
+    }
+    expect_ok(interp, "lb = stats_ljung_box(lbx, 8)");
+    ASSERT_GT(interp.state().matrices.count("lb"), 0u);
+    const auto& lb = interp.state().matrices.at("lb");
+    ASSERT_EQ(lb.rows(), 1u);
+    ASSERT_EQ(lb.cols(), 3u);
+    EXPECT_GT(lb(0, 0), 30.0);
+    EXPECT_NEAR(lb(0, 1), 8.0, 1e-12);
+    EXPECT_LT(lb(0, 2), 0.01);
+}
+
 TEST(ReplCommandsTest, wave256_image_transform) {
     Interpreter interp;
     expect_contains(interp, "help", "imflip(M,horizontal)");
