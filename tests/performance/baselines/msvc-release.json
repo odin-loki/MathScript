@@ -10,166 +10,190 @@
   },
   "benchmarks": {
     "BM_matmul/64": {
-      "median_time_ns": 13049455
+      "median_time_ns": 9730060
     },
     "BM_matmul/256": {
-      "median_time_ns": 210303800
+      "median_time_ns": 158270199
     },
     "BM_matmul/512": {
-      "median_time_ns": 865308999
+      "median_time_ns": 658391000
     },
     "BM_fft/256": {
-      "median_time_ns": 10622
+      "median_time_ns": 10718
     },
     "BM_fft/1024": {
-      "median_time_ns": 23978
+      "median_time_ns": 24301
     },
     "BM_fft/8192": {
-      "median_time_ns": 200177
+      "median_time_ns": 203362
     },
     "BM_ConvolveFFT/4096": {
-      "median_time_ns": 646792
+      "median_time_ns": 710453
     },
     "BM_KDE": {
-      "median_time_ns": 72876
+      "median_time_ns": 76464
     },
     "BM_MovingAverage/65536": {
-      "median_time_ns": 157618
+      "median_time_ns": 242425
     },
     "BM_Xcorr8192": {
-      "median_time_ns": 1713400
+      "median_time_ns": 1822019
     },
     "BM_Savgol65536/65536/11/3": {
-      "median_time_ns": 17116900
+      "median_time_ns": 23828533
     },
     "BM_Coherence65536": {
-      "median_time_ns": 3174452
+      "median_time_ns": 3179933
     },
     "BM_Autocorr/65536": {
-      "median_time_ns": 17108009
+      "median_time_ns": 18005066
     },
     "BM_Conv2/64/7": {
       "median_time_ns": 5887981
     },
     "BM_Sosfilt8192": {
-      "median_time_ns": 67998
+      "median_time_ns": 68913
     },
     "BM_FemAssemble1D": {
-      "median_time_ns": 2675860
+      "median_time_ns": 2724673
     },
     "BM_FemSolve1D/1000": {
-      "median_time_ns": 3095497
+      "median_time_ns": 5282369
     },
     "BM_Sha256_1MB": {
-      "median_time_ns": 6960565
+      "median_time_ns": 7290745
     },
     "BM_HmacSha256": {
-      "median_time_ns": 29326
+      "median_time_ns": 33740
     },
     "BM_simd_norm_l2/1000000": {
       "median_time_ns": 316029
     },
     "BM_Spectrogram": {
-      "median_time_ns": 1867348
+      "median_time_ns": 1965653
     },
     "BM_Periodogram/65536": {
-      "median_time_ns": 2253548
+      "median_time_ns": 1644381
     },
     "BM_Bfs/10000": {
-      "median_time_ns": 77787
+      "median_time_ns": 79035
     },
     "BM_Bfs_Grid/100": {
-      "median_time_ns": 121068
+      "median_time_ns": 128993
     },
     "BM_Bfs_Dense/128": {
-      "median_time_ns": 15447
+      "median_time_ns": 15898
     },
     "BM_SLIC/128/128/64": {
-      "median_time_ns": 6696181
+      "median_time_ns": 6588479
     },
     "BM_SLIC/256/256/256": {
       "median_time_ns": 54966233
     },
     "BM_GaussianBlur/256/256/1/10": {
-      "median_time_ns": 1263181
+      "median_time_ns": 1284416
     },
     "BM_Watershed/128/128": {
-      "median_time_ns": 375308
+      "median_time_ns": 368493
     },
     "BM_Medfilt2/256/256/5": {
-      "median_time_ns": 4298972
+      "median_time_ns": 4461229
     },
     "BM_Boxfilter/256/256/1/15": {
-      "median_time_ns": 317772
+      "median_time_ns": 323715
     },
     "BM_Imresize/256/256/1/128/128": {
-      "median_time_ns": 74174
+      "median_time_ns": 76214
     },
     "BM_Bilateral/128/128/1/10/10": {
-      "median_time_ns": 3178191
+      "median_time_ns": 3258307
     },
     "BM_Dijkstra/10000": {
-      "median_time_ns": 168610
+      "median_time_ns": 170388
     },
     "BM_Dijkstra_Grid/100": {
-      "median_time_ns": 622611
+      "median_time_ns": 657286
     },
     "BM_Dijkstra_Dense/128": {
-      "median_time_ns": 29112
+      "median_time_ns": 29331
     },
     "BM_Quantile/100000": {
       "median_time_ns": 837575
     },
     "BM_repl_simple_arith": {
-      "median_time_ns": 115040899
+      "median_time_ns": 111635900
     },
     "BM_simd_sum_squares/1000000": {
       "median_time_ns": 318808
     },
     "BM_Bottleneck/50": {
-      "median_time_ns": 3445
+      "median_time_ns": 3489
     },
     "BM_Bottleneck/200": {
-      "median_time_ns": 47900
+      "median_time_ns": 49009
     },
     "BM_Bottleneck/500": {
-      "median_time_ns": 282071
+      "median_time_ns": 289187
     },
     "BM_Wasserstein/50": {
-      "median_time_ns": 5490
+      "median_time_ns": 5690
     },
     "BM_Wasserstein/200": {
-      "median_time_ns": 71462
+      "median_time_ns": 74333
     },
     "BM_Wasserstein/500": {
-      "median_time_ns": 431954
+      "median_time_ns": 436288
     },
     "BM_PointInPolygonBatch/64/64": {
-      "median_time_ns": 858665
+      "median_time_ns": 848204
     },
     "BM_PointInPolygonBatch/128/128": {
-      "median_time_ns": 6816881
+      "median_time_ns": 6792950
     },
     "BM_PointInPolygonBatch/256/64": {
-      "median_time_ns": 3390042
+      "median_time_ns": 3383093
     },
     "BM_ConvexHull2D/256": {
-      "median_time_ns": 13162
+      "median_time_ns": 13155
     },
     "BM_ConvexHull2D/1024": {
-      "median_time_ns": 89540
+      "median_time_ns": 94396
     },
     "BM_ConvexHull2D/4096": {
-      "median_time_ns": 456502
+      "median_time_ns": 454027
     },
     "BM_KDTreeNearestBatch/10000/1000": {
-      "median_time_ns": 365766
+      "median_time_ns": 359891
     },
     "BM_KDTreeNearestBatch/50000/1000": {
-      "median_time_ns": 574353
+      "median_time_ns": 557934
     },
     "BM_KDTreeNearestBatch/100000/500": {
-      "median_time_ns": 267919
+      "median_time_ns": 267785
+    },
+    "BM_Aes128EncryptBlock": {
+      "median_time_ns": 629
+    },
+    "BM_Aes128CbcEncrypt_64KB": {
+      "median_time_ns": 2463210
+    },
+    "BM_ChaCha20Encrypt_64KB": {
+      "median_time_ns": 225434
+    },
+    "BM_FemAssemble2D": {
+      "median_time_ns": 3253320
+    },
+    "BM_FemSolve2D/16": {
+      "median_time_ns": 6478151
+    },
+    "BM_FemSolve2D/32": {
+      "median_time_ns": 1901895300
+    },
+    "BM_CfdAdvection2D": {
+      "median_time_ns": 9075606
+    },
+    "BM_CfdUpwindStep2D": {
+      "median_time_ns": 137589
     }
   }
 }
