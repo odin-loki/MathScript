@@ -270,12 +270,15 @@ There is no native GUI window in the console REPL.
 
 When built with **`MS_BUILD_GUI=ON`**, the **`mathscript-gui`** IDE (Qt6) runs the same REPL engine but renders plots in **`PlotWidget`** (2-D) and **`PlotSurfWidget`** (3-D surfaces), with PNG export from the File menu. The REPL input bar accepts the same plot commands.
 
-**Wave 238 GUI additions:**
+**Wave 238–240 GUI additions:**
 
 | Feature | How to use |
 |---------|------------|
 | Find in output | **Edit → Find in Output** (**Ctrl+F**); **Find Next in Output** (**F3**) |
+| Find in script / goto line | **Edit → Find in Script** / **Go to Line…** (**Ctrl+G**) |
 | Plot panel toggle | **View → Show Plot Panel** — show/hide the plot dock |
+| Line numbers / cursor | Script editor gutter; status bar **Ln X, Col Y** |
+| Export last result as LaTeX | **File → Export Last Result as LaTeX…** — plain-text `.tex` |
 | Export command history | **File → Export Command History…** — save REPL input history to a text file |
 | Up/Down command history | **Up-arrow / Down-arrow** in the REPL input bar (draft recall on Down past newest entry) |
 
