@@ -3621,6 +3621,33 @@ TEST(ReplCommandsTest, wave252_signal_firwin) {
     EXPECT_EQ(interp.state().matrices.at("bh").cols(), 1u);
 }
 
+TEST(ReplCommandsTest, wave253_signal_xcorr_xcov_autocorr) {
+    Interpreter interp;
+    expect_contains(interp, "help", "signal_xcorr(a,b,max_lag)");
+    expect_contains(interp, "help", "signal_xcov(a,b,max_lag)");
+    expect_contains(interp, "help", "signal_autocorr(x,max_lag)");
+
+    expect_ok(interp, "xc = signal_xcorr([1; 2; 3], [1; 0; 0], 2)");
+    ASSERT_GT(interp.state().matrices.count("xc"), 0u);
+    const auto& xc = interp.state().matrices.at("xc");
+    EXPECT_EQ(xc.rows(), 5u);
+    EXPECT_EQ(xc.cols(), 1u);
+    EXPECT_NEAR(xc(2, 0), 1.0, 1e-12);
+
+    expect_ok(interp, "ac = signal_autocorr([1; -2; 3; 0.5], 2)");
+    ASSERT_GT(interp.state().matrices.count("ac"), 0u);
+    const auto& ac = interp.state().matrices.at("ac");
+    EXPECT_EQ(ac.rows(), 5u);
+    EXPECT_NEAR(ac(2, 0), 14.25, 1e-12);
+
+    expect_ok(interp, "cv = signal_xcov([1; 2; 3; 4], [2; 1; 4; 3], 2)");
+    ASSERT_GT(interp.state().matrices.count("cv"), 0u);
+    const auto& cv = interp.state().matrices.at("cv");
+    EXPECT_EQ(cv.rows(), 5u);
+    EXPECT_EQ(cv.cols(), 1u);
+    EXPECT_TRUE(std::isfinite(cv(2, 0)));
+}
+
 TEST(ReplCommandsTest, wave144_geo_delaunay_2d) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_delaunay_2d(P)");
