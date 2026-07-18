@@ -155,6 +155,100 @@ void duplicate_lines_in_editor(QPlainTextEdit* editor) {
     cursor.endEditBlock();
 }
 
+bool line_has_line_comment(const QString& line) {
+    int i = 0;
+    while (i < line.size() && line[i].isSpace()) {
+        ++i;
+    }
+    return line.mid(i).startsWith("//");
+}
+
+QString comment_line(const QString& line) {
+    int i = 0;
+    while (i < line.size() && line[i].isSpace()) {
+        ++i;
+    }
+    return line.left(i) + "//" + line.mid(i);
+}
+
+QString uncomment_line(const QString& line) {
+    int i = 0;
+    while (i < line.size() && line[i].isSpace()) {
+        ++i;
+    }
+    const QString prefix = line.left(i);
+    QString rest = line.mid(i);
+    if (!rest.startsWith("//")) {
+        return line;
+    }
+    rest = rest.mid(2);
+    if (!rest.isEmpty() && rest[0].isSpace()) {
+        rest = rest.mid(1);
+    }
+    return prefix + rest;
+}
+
+void toggle_comments_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    if (cursor.hasSelection()) {
+        const int anchor = cursor.anchor();
+        const int position = cursor.position();
+        const int anchor_block = editor->document()->findBlock(anchor).blockNumber();
+        const int position_block = editor->document()->findBlock(position).blockNumber();
+        start_block = std::min(anchor_block, position_block);
+        end_block = std::max(anchor_block, position_block);
+
+        const int end_pos = std::max(anchor, position);
+        QTextCursor end_cursor = cursor;
+        end_cursor.setPosition(end_pos, QTextCursor::MoveAnchor);
+        if (end_cursor.positionInBlock() == 0 && end_block > start_block) {
+            end_block--;
+        }
+    } else {
+        start_block = end_block = cursor.blockNumber();
+    }
+
+    bool all_commented = true;
+    for (int block = start_block; block <= end_block; ++block) {
+        if (!line_has_line_comment(editor->document()->findBlockByNumber(block).text())) {
+            all_commented = false;
+            break;
+        }
+    }
+
+    for (int block = start_block; block <= end_block; ++block) {
+        const QTextBlock text_block = editor->document()->findBlockByNumber(block);
+        const QString original = text_block.text();
+        const QString updated = all_commented ? uncomment_line(original) : comment_line(original);
+        if (updated == original) {
+            continue;
+        }
+
+        QTextCursor block_cursor(text_block);
+        block_cursor.movePosition(QTextCursor::StartOfBlock);
+        block_cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        block_cursor.insertText(updated);
+    }
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::MoveAnchor);
+    for (int block = start_block + 1; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::MoveAnchor);
+    }
+    editor->setTextCursor(cursor);
+
+    cursor.endEditBlock();
+}
+
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
 constexpr size_t kTooltipMaxRows = 6;
@@ -659,6 +753,8 @@ void MainWindow::setup_menus() {
     replace_next_script_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
     auto* go_to_line_action = edit_menu->addAction("Go to Line...");
     go_to_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    auto* toggle_comment_action = edit_menu->addAction("Toggle Comment");
+    toggle_comment_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Slash));
     auto* duplicate_line_action = edit_menu->addAction("Duplicate Line");
     duplicate_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
     edit_menu->addSeparator();
@@ -706,6 +802,7 @@ void MainWindow::setup_menus() {
     connect(replace_script_action, &QAction::triggered, this, &MainWindow::replace_in_script);
     connect(replace_next_script_action, &QAction::triggered, this, &MainWindow::replace_next_in_script);
     connect(go_to_line_action, &QAction::triggered, this, &MainWindow::go_to_line);
+    connect(toggle_comment_action, &QAction::triggered, this, &MainWindow::toggle_comment);
     connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
     connect(find_output_action, &QAction::triggered, this, &MainWindow::find_in_output);
     connect(find_next_output_action, &QAction::triggered, this, &MainWindow::find_next_in_output);
@@ -1011,6 +1108,11 @@ void MainWindow::go_to_line() {
 void MainWindow::duplicate_line() {
     editor_->setFocus();
     duplicate_lines_in_editor(editor_);
+}
+
+void MainWindow::toggle_comment() {
+    editor_->setFocus();
+    toggle_comments_in_editor(editor_);
 }
 
 void MainWindow::set_plot_panel_visible(bool visible) {
