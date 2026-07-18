@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ms/distributed/dist_matrix.hpp"
+#include "ms/distributed/iterative.hpp"
 #include "ms/distributed/mpi_context.hpp"
 #include "ms/distributed/solve.hpp"
 #include "ms/frameworks/cellai/cellai.hpp"
@@ -138,6 +139,24 @@ static void BM_DistributedSolve_2x2(benchmark::State& state) {
     finalize(ctx);
 }
 BENCHMARK(BM_DistributedSolve_2x2);
+
+static void BM_DistCg_2x2(benchmark::State& state) {
+    auto ctx = init(0, nullptr);
+    DMatrix A({{4.0, 1.0}, {1.0, 3.0}});
+    DMatrix b({{1.0}, {2.0}});
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        auto dA = scatter(A, ctx).value();
+        auto db = scatter(b, ctx).value();
+        state.ResumeTiming();
+
+        auto result = dist_cg(dA, db, ctx);
+        benchmark::DoNotOptimize(result);
+    }
+    finalize(ctx);
+}
+BENCHMARK(BM_DistCg_2x2);
 
 // ---------------------------------------------------------------------------
 // CellAI: CellMemory::step

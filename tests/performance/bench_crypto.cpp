@@ -50,6 +50,34 @@ static void BM_HmacSha256(benchmark::State& state) {
 }
 BENCHMARK(BM_HmacSha256);
 
+static void BM_HkdfSha256(benchmark::State& state) {
+    const auto ikm = make_byte_buffer(22, 11);
+    const auto salt = make_byte_buffer(13, 17);
+    const auto info = make_byte_buffer(10, 23);
+    constexpr std::size_t kOutLen = 32;
+    for (auto _ : state) {
+        auto okm = hkdf_sha256(std::span<const uint8_t>(ikm),
+                               std::span<const uint8_t>(salt),
+                               std::span<const uint8_t>(info),
+                               kOutLen);
+        benchmark::DoNotOptimize(okm.data());
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                            static_cast<int64_t>(kOutLen));
+}
+BENCHMARK(BM_HkdfSha256);
+
+static void BM_X25519SharedSecret(benchmark::State& state) {
+    const auto private_key = make_byte_buffer(x25519_key_size, 37);
+    const auto peer_public_key = make_byte_buffer(x25519_key_size, 41);
+    for (auto _ : state) {
+        auto shared = x25519_shared_secret(std::span<const uint8_t>(private_key),
+                                           std::span<const uint8_t>(peer_public_key));
+        benchmark::DoNotOptimize(shared.data());
+    }
+}
+BENCHMARK(BM_X25519SharedSecret);
+
 static void BM_Aes128EncryptBlock(benchmark::State& state) {
     const auto key = make_byte_buffer(aes128_key_size, 31);
     const auto block = make_byte_buffer(kAesBlockBytes, 43);
