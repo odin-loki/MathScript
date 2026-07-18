@@ -32,6 +32,8 @@ std::vector<uint8_t> sha256(std::span<const uint8_t> data);
 std::vector<uint8_t> sha512(std::span<const uint8_t> data);
 std::vector<uint8_t> hmac_sha256(std::span<const uint8_t> key,
                                    std::span<const uint8_t> data);
+std::vector<uint8_t> hmac_sha512(std::span<const uint8_t> key,
+                                   std::span<const uint8_t> data);
 std::vector<uint8_t> hkdf_sha256(std::span<const uint8_t> ikm,
                                  std::span<const uint8_t> salt,
                                  std::span<const uint8_t> info,
@@ -44,16 +46,20 @@ std::vector<uint8_t> pbkdf2_hmac_sha256(std::span<const uint8_t> password,
 std::vector<uint8_t> sha256(std::string_view data);
 std::vector<uint8_t> sha512(std::string_view data);
 std::vector<uint8_t> hmac_sha256(std::string_view key, std::string_view data);
+std::vector<uint8_t> hmac_sha512(std::string_view key, std::string_view data);
 
 std::string to_hex(std::span<const uint8_t> bytes);
 std::string sha256_hex(std::span<const uint8_t> data);
 std::string sha512_hex(std::span<const uint8_t> data);
 std::string hmac_sha256_hex(std::span<const uint8_t> key,
                             std::span<const uint8_t> data);
+std::string hmac_sha512_hex(std::span<const uint8_t> key,
+                            std::span<const uint8_t> data);
 
 std::string sha256_hex(std::string_view data);
 std::string sha512_hex(std::string_view data);
 std::string hmac_sha256_hex(std::string_view key, std::string_view data);
+std::string hmac_sha512_hex(std::string_view key, std::string_view data);
 
 std::vector<uint8_t> aes128_encrypt_block(std::span<const uint8_t> key,
                                           std::span<const uint8_t> block);

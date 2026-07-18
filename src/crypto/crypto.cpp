@@ -1098,6 +1098,37 @@ std::vector<uint8_t> hmac_sha256(std::span<const uint8_t> key,
     return sha256(outer);
 }
 
+std::vector<uint8_t> hmac_sha512(std::span<const uint8_t> key,
+                                   std::span<const uint8_t> data) {
+    constexpr std::size_t block_size = 128;
+    std::array<std::uint8_t, block_size> k{};
+    if (key.size() > block_size) {
+        auto kh = sha512(key);
+        std::memcpy(k.data(), kh.data(), kh.size());
+    } else {
+        std::memcpy(k.data(), key.data(), key.size());
+    }
+
+    std::array<std::uint8_t, block_size> ipad{};
+    std::array<std::uint8_t, block_size> opad{};
+    for (std::size_t i = 0; i < block_size; ++i) {
+        ipad[i] = k[i] ^ 0x36u;
+        opad[i] = k[i] ^ 0x5cu;
+    }
+
+    std::vector<std::uint8_t> inner;
+    inner.reserve(block_size + data.size());
+    inner.insert(inner.end(), ipad.begin(), ipad.end());
+    inner.insert(inner.end(), data.begin(), data.end());
+    auto inner_hash = sha512(inner);
+
+    std::vector<std::uint8_t> outer;
+    outer.reserve(block_size + inner_hash.size());
+    outer.insert(outer.end(), opad.begin(), opad.end());
+    outer.insert(outer.end(), inner_hash.begin(), inner_hash.end());
+    return sha512(outer);
+}
+
 std::vector<uint8_t> sha256(std::string_view data) {
     return sha256(std::span<const uint8_t>(
         reinterpret_cast<const uint8_t*>(data.data()), data.size()));
@@ -1110,6 +1141,14 @@ std::vector<uint8_t> sha512(std::string_view data) {
 
 std::vector<uint8_t> hmac_sha256(std::string_view key, std::string_view data) {
     return hmac_sha256(
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(key.data()),
+                                 key.size()),
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()),
+                                 data.size()));
+}
+
+std::vector<uint8_t> hmac_sha512(std::string_view key, std::string_view data) {
+    return hmac_sha512(
         std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(key.data()),
                                  key.size()),
         std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()),
@@ -1211,6 +1250,11 @@ std::string hmac_sha256_hex(std::span<const uint8_t> key,
     return to_hex(hmac_sha256(key, data));
 }
 
+std::string hmac_sha512_hex(std::span<const uint8_t> key,
+                            std::span<const uint8_t> data) {
+    return to_hex(hmac_sha512(key, data));
+}
+
 std::string sha256_hex(std::string_view data) {
     return sha256_hex(std::span<const uint8_t>(
         reinterpret_cast<const uint8_t*>(data.data()), data.size()));
@@ -1223,6 +1267,14 @@ std::string sha512_hex(std::string_view data) {
 
 std::string hmac_sha256_hex(std::string_view key, std::string_view data) {
     return hmac_sha256_hex(
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(key.data()),
+                                 key.size()),
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()),
+                                 data.size()));
+}
+
+std::string hmac_sha512_hex(std::string_view key, std::string_view data) {
+    return hmac_sha512_hex(
         std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(key.data()),
                                  key.size()),
         std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()),
