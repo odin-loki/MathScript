@@ -1,6 +1,7 @@
 #include "ms/crypto/crypto.hpp"
 
 #include <array>
+#include <algorithm>
 #include <cstring>
 
 #if defined(_MSC_VER)
@@ -638,6 +639,107 @@ std::string hmac_sha256_hex(std::string_view key, std::string_view data) {
                                  key.size()),
         std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()),
                                  data.size()));
+}
+
+namespace {
+
+constexpr std::uint32_t kChaCha20Sigma[4] = {
+    0x61707865u, 0x3320646eu, 0x79622d32u, 0x6b206574u,
+};
+
+inline std::uint32_t rotl32(std::uint32_t x, unsigned n) {
+    return (x << n) | (x >> (32u - n));
+}
+
+inline std::uint32_t load_le32(const std::uint8_t* in) {
+    return static_cast<std::uint32_t>(in[0]) |
+           (static_cast<std::uint32_t>(in[1]) << 8) |
+           (static_cast<std::uint32_t>(in[2]) << 16) |
+           (static_cast<std::uint32_t>(in[3]) << 24);
+}
+
+inline void store_le32(std::uint8_t* out, std::uint32_t v) {
+    out[0] = static_cast<std::uint8_t>(v);
+    out[1] = static_cast<std::uint8_t>(v >> 8);
+    out[2] = static_cast<std::uint8_t>(v >> 16);
+    out[3] = static_cast<std::uint8_t>(v >> 24);
+}
+
+inline void chacha20_quarter_round(std::uint32_t& a, std::uint32_t& b, std::uint32_t& c,
+                                   std::uint32_t& d) {
+    a += b;
+    d ^= a;
+    d = rotl32(d, 16);
+    c += d;
+    b ^= c;
+    b = rotl32(b, 12);
+    a += b;
+    d ^= a;
+    d = rotl32(d, 8);
+    c += d;
+    b ^= c;
+    b = rotl32(b, 7);
+}
+
+void chacha20_block(const std::array<uint8_t, 32>& key,
+                    const std::array<uint8_t, 12>& nonce, std::uint32_t counter,
+                    std::uint8_t* out) {
+    std::uint32_t state[16];
+    state[0] = kChaCha20Sigma[0];
+    state[1] = kChaCha20Sigma[1];
+    state[2] = kChaCha20Sigma[2];
+    state[3] = kChaCha20Sigma[3];
+    for (int i = 0; i < 8; ++i) {
+        state[4 + i] = load_le32(key.data() + i * 4);
+    }
+    state[12] = counter;
+    state[13] = load_le32(nonce.data());
+    state[14] = load_le32(nonce.data() + 4);
+    state[15] = load_le32(nonce.data() + 8);
+
+    std::uint32_t working[16];
+    std::memcpy(working, state, sizeof(working));
+
+    for (int round = 0; round < 20; round += 2) {
+        chacha20_quarter_round(working[0], working[4], working[8], working[12]);
+        chacha20_quarter_round(working[1], working[5], working[9], working[13]);
+        chacha20_quarter_round(working[2], working[6], working[10], working[14]);
+        chacha20_quarter_round(working[3], working[7], working[11], working[15]);
+        chacha20_quarter_round(working[0], working[5], working[10], working[15]);
+        chacha20_quarter_round(working[1], working[6], working[11], working[12]);
+        chacha20_quarter_round(working[2], working[7], working[8], working[13]);
+        chacha20_quarter_round(working[3], working[4], working[9], working[14]);
+    }
+
+    for (int i = 0; i < 16; ++i) {
+        store_le32(out + i * 4, working[i] + state[i]);
+    }
+}
+
+} // namespace
+
+std::vector<uint8_t> chacha20_encrypt(const std::array<uint8_t, 32>& key,
+                                      const std::array<uint8_t, 12>& nonce,
+                                      std::uint32_t counter,
+                                      std::span<const uint8_t> data) {
+    std::vector<uint8_t> out(data.size());
+    if (data.empty()) {
+        return out;
+    }
+
+    std::uint8_t block[64];
+    std::size_t offset = 0;
+    while (offset < data.size()) {
+        chacha20_block(key, nonce, counter, block);
+        ++counter;
+
+        const std::size_t chunk = std::min<std::size_t>(64, data.size() - offset);
+        for (std::size_t i = 0; i < chunk; ++i) {
+            out[offset + i] = data[offset + i] ^ block[i];
+        }
+        offset += chunk;
+    }
+    return out;
 }
 
 } // namespace crypto

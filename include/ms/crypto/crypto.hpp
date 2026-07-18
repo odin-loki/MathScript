@@ -35,5 +35,10 @@ std::string sha256_hex(std::string_view data);
 std::string sha512_hex(std::string_view data);
 std::string hmac_sha256_hex(std::string_view key, std::string_view data);
 
+std::vector<uint8_t> chacha20_encrypt(const std::array<uint8_t, 32>& key,
+                                      const std::array<uint8_t, 12>& nonce,
+                                      std::uint32_t counter,
+                                      std::span<const uint8_t> data);
+
 } // namespace crypto
 } // namespace ms
