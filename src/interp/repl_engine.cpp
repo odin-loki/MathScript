@@ -2455,6 +2455,39 @@ Result<Matrix<double>> eval_numthy_stern_brocot(int n) {
     return out;
 }
 
+Result<Matrix<double>> eval_numthy_pell_solve(int D) {
+    if (D < 1) {
+        return std::unexpected(
+            DomainError{"numthy_pell_solve", "expected positive integer D"});
+    }
+    auto sol = numthy::pell_solve(static_cast<uint64_t>(D));
+    if (!sol) {
+        return std::unexpected(sol.error());
+    }
+    Matrix<double> out(1, 2);
+    out(0, 0) = static_cast<double>(sol->first);
+    out(0, 1) = static_cast<double>(sol->second);
+    return out;
+}
+
+Result<Matrix<double>> eval_numthy_quadratic_residues(int p) {
+    if (p < 3) {
+        return std::unexpected(
+            DomainError{"numthy_quadratic_residues", "expected odd prime p >= 3"});
+    }
+    const auto p_u = static_cast<uint64_t>(p);
+    if (!numthy::isprime(p_u)) {
+        return std::unexpected(
+            DomainError{"numthy_quadratic_residues", "expected odd prime p >= 3"});
+    }
+    const auto qr = numthy::quadratic_residues(p_u);
+    Matrix<double> out(qr.size(), 1);
+    for (size_t i = 0; i < qr.size(); ++i) {
+        out(i, 0) = static_cast<double>(qr[i]);
+    }
+    return out;
+}
+
 Result<Matrix<double>> eval_lzw_encode_vec(const Matrix<double>& m) {
     return codes_to_matrix_col(compress::lzw_encode(matrix_to_bytes(m)));
 }
@@ -11164,7 +11197,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "geo_kdtree_knn" || fn == "geo_kdtree_range" ||
             fn == "topo_pairwise_distances" ||
             fn == "combo_next_perm" || fn == "numthy_convergents" ||
-            fn == "numthy_factor_exp" || fn == "numthy_farey" || fn == "numthy_lucas_sequence" || fn == "numthy_stern_brocot" ||
+            fn == "numthy_factor_exp" || fn == "numthy_farey" || fn == "numthy_lucas_sequence" ||
+            fn == "numthy_stern_brocot" || fn == "numthy_pell_solve" ||
+            fn == "numthy_quadratic_residues" ||
             fn == "ml_mat_transpose" || fn == "ml_mat_mul" ||
             fn == "ml_linear_fit" || fn == "ml_linear_predict" ||
             fn == "ml_ridge_fit" || fn == "ml_ridge_predict" ||
@@ -13125,7 +13160,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "geo_bspline_eval" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
            callee == "numthy_convergents" || callee == "numthy_factor_exp" ||
-           callee == "numthy_farey" || callee == "numthy_lucas_sequence" || callee == "numthy_stern_brocot" || callee == "ml_mat_transpose" ||
+           callee == "numthy_farey" || callee == "numthy_lucas_sequence" ||
+           callee == "numthy_stern_brocot" || callee == "numthy_pell_solve" ||
+           callee == "numthy_quadratic_residues" || callee == "ml_mat_transpose" ||
            callee == "ml_mat_mul" ||
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
            callee == "ml_ridge_fit" || callee == "ml_ridge_predict" ||
@@ -13222,7 +13259,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "combo_gray_code" || callee == "combo_dyck_paths" ||
         callee == "combo_motzkin_paths" || callee == "combo_set_partitions" ||
         callee == "numthy_convergents" || callee == "numthy_factor_exp" ||
-        callee == "numthy_farey" || callee == "numthy_stern_brocot" || callee == "ml_mat_transpose" ||
+        callee == "numthy_farey" || callee == "numthy_stern_brocot" ||
+        callee == "numthy_pell_solve" || callee == "numthy_quadratic_residues" ||
+        callee == "ml_mat_transpose" ||
         callee == "poly_deriv" ||
         callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
         callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
@@ -17569,7 +17608,9 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = *seq;
     } else if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey" ||
-                assign.callee == "numthy_stern_brocot") &&
+                assign.callee == "numthy_stern_brocot" ||
+                assign.callee == "numthy_pell_solve" ||
+                assign.callee == "numthy_quadratic_residues") &&
                assign.args.size() == 1) {
         double n_d = 0.0;
         if (!parse_number(assign.args[0], n_d)) {
@@ -17581,7 +17622,11 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                         ? "expected numthy_factor_exp(n)"
                         : assign.callee == "numthy_farey"
                               ? "expected numthy_farey(n)"
-                              : "expected numthy_stern_brocot(n)"});
+                              : assign.callee == "numthy_stern_brocot"
+                                    ? "expected numthy_stern_brocot(n)"
+                                    : assign.callee == "numthy_pell_solve"
+                                          ? "expected numthy_pell_solve(D)"
+                                          : "expected numthy_quadratic_residues(p)"});
             }
             n_d = *n_expr;
         }
@@ -17598,12 +17643,24 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                     DomainError{"numthy_farey", "expected positive integer n"});
             }
             result = eval_numthy_farey(n);
-        } else {
+        } else if (assign.callee == "numthy_stern_brocot") {
             if (n < 0 || n_d != n) {
                 return std::unexpected(
                     DomainError{"numthy_stern_brocot", "expected non-negative integer n"});
             }
             result = eval_numthy_stern_brocot(n);
+        } else if (assign.callee == "numthy_pell_solve") {
+            if (n < 1 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_pell_solve", "expected positive integer D"});
+            }
+            result = eval_numthy_pell_solve(n);
+        } else {
+            if (n < 3 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_quadratic_residues", "expected odd prime p >= 3"});
+            }
+            result = eval_numthy_quadratic_residues(n);
         }
     } else if (assign.callee == "combo_motzkin_paths" && assign.args.size() == 1) {
         double n_d = 0.0;
@@ -19847,6 +19904,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_factor_exp(n) prime/exponent pairs {p,e} as Kx2 matrix\n"
             "  name = numthy_farey(n)      Farey sequence F_n as Mx2 reduced fractions [p,q]\n"
             "  name = numthy_stern_brocot(n) Stern-Brocot tree first n nodes as Mx2 [p,q]\n"
+            "  name = numthy_pell_solve(D) fundamental Pell solution x,y with x^2 - Dy^2 = 1 as 1x2\n"
+            "  name = numthy_quadratic_residues(p) quadratic residues mod odd prime p as Nx1\n"
             "  name = numthy_lucas_sequence(k,P,Q) Lucas sequences U_k(P,Q), V_k(P,Q) as 1x2\n"
             "  name = numthy_multiplicative_order(a,n) multiplicative order of a mod n\n"
             "  name = numthy_carmichael_lambda(n) Carmichael function lambda(n)\n"
@@ -20344,7 +20403,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
-            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
+            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
@@ -30569,7 +30628,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
 
         if (fn == "numthy_factor_exp" || fn == "numthy_farey" ||
-            fn == "numthy_stern_brocot") {
+            fn == "numthy_stern_brocot" || fn == "numthy_pell_solve" ||
+            fn == "numthy_quadratic_residues") {
             double n_d = 0.0;
             if (!parse_number(arg, n_d)) {
                 auto n_expr = eval_scalar_expr(state_, arg);
@@ -30580,7 +30640,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                             ? "expected numthy_factor_exp(n)"
                             : fn == "numthy_farey"
                                   ? "expected numthy_farey(n)"
-                                  : "expected numthy_stern_brocot(n)"});
+                                  : fn == "numthy_stern_brocot"
+                                        ? "expected numthy_stern_brocot(n)"
+                                        : fn == "numthy_pell_solve"
+                                              ? "expected numthy_pell_solve(D)"
+                                              : "expected numthy_quadratic_residues(p)"});
                 }
                 n_d = *n_expr;
             }
@@ -30599,13 +30663,25 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         DomainError{"numthy_farey", "expected positive integer n"});
                 }
                 value = eval_numthy_farey(n);
-            } else {
+            } else if (fn == "numthy_stern_brocot") {
                 if (n < 0 || n_d != n) {
                     return std::unexpected(
                         DomainError{"numthy_stern_brocot",
                                     "expected non-negative integer n"});
                 }
                 value = eval_numthy_stern_brocot(n);
+            } else if (fn == "numthy_pell_solve") {
+                if (n < 1 || n_d != n) {
+                    return std::unexpected(
+                        DomainError{"numthy_pell_solve", "expected positive integer D"});
+                }
+                value = eval_numthy_pell_solve(n);
+            } else {
+                if (n < 3 || n_d != n) {
+                    return std::unexpected(
+                        DomainError{"numthy_quadratic_residues", "expected odd prime p >= 3"});
+                }
+                value = eval_numthy_quadratic_residues(n);
             }
             if (!value) {
                 return std::unexpected(value.error());
