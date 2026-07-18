@@ -4330,6 +4330,45 @@ Result<std::string> eval_crypto_hkdf_sha256(const std::string& ikm_arg,
     return crypto::to_hex(okm) + "\n";
 }
 
+Result<std::string> eval_crypto_hkdf_sha512(const std::string& ikm_arg,
+                                            const std::string& salt_arg,
+                                            const std::string& info_arg,
+                                            const std::string& len_arg) {
+    constexpr const char* fn = "crypto_hkdf_sha512";
+    auto ikm = parse_hex_arg(ikm_arg, fn, "ikm");
+    if (!ikm) {
+        return std::unexpected(ikm.error());
+    }
+    auto salt = parse_hex_arg_allow_empty(salt_arg, fn, "salt");
+    if (!salt) {
+        return std::unexpected(salt.error());
+    }
+    auto info = parse_hex_arg_allow_empty(info_arg, fn, "info");
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    double len_d = 0.0;
+    if (!parse_number(trim_copy(len_arg), len_d)) {
+        return std::unexpected(DomainError{fn, "expected numeric output length"});
+    }
+    const auto len_i = static_cast<std::size_t>(len_d);
+    if (len_d < 0.0 || len_d != static_cast<double>(len_i)) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer output length"});
+    }
+    if (len_i > 255 * crypto::sha512_digest_size) {
+        return std::unexpected(
+            DomainError{fn, "output length exceeds RFC 5869 maximum (255 * 64 bytes)"});
+    }
+    if (ikm->empty()) {
+        return std::unexpected(DomainError{fn, "ikm must not be empty"});
+    }
+    const auto okm = crypto::hkdf_sha512(*ikm, *salt, *info, len_i);
+    if (okm.size() != len_i) {
+        return std::unexpected(DomainError{fn, "HKDF expansion failed"});
+    }
+    return crypto::to_hex(okm) + "\n";
+}
+
 Result<std::string> eval_crypto_pbkdf2_sha256(const std::string& pass_arg,
                                               const std::string& salt_arg,
                                               const std::string& iter_arg,
@@ -7906,6 +7945,14 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
                 fn, "expected crypto_hkdf_sha256(hex_ikm, hex_salt, hex_info, len)"});
         }
         return eval_crypto_hkdf_sha256(call_args->at(0), call_args->at(1),
+                                       call_args->at(2), call_args->at(3));
+    }
+    if (fn == "crypto_hkdf_sha512") {
+        if (call_args->size() != 4) {
+            return std::unexpected(DomainError{
+                fn, "expected crypto_hkdf_sha512(hex_ikm, hex_salt, hex_info, len)"});
+        }
+        return eval_crypto_hkdf_sha512(call_args->at(0), call_args->at(1),
                                        call_args->at(2), call_args->at(3));
     }
     if (fn == "crypto_hmac_sha512") {
@@ -14386,6 +14433,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_chacha20_poly1305_encrypt(key_hex,nonce_hex,aad_hex,plaintext_hex) ChaCha20-Poly1305 seal\n"
             "  crypto_chacha20_poly1305_decrypt(key_hex,nonce_hex,aad_hex,ciphertext_hex,tag_hex) ChaCha20-Poly1305 open\n"
             "  crypto_hkdf_sha256(hex_ikm,hex_salt,hex_info,len) HKDF-SHA256 extract/expand (hex I/O)\n"
+            "  crypto_hkdf_sha512(hex_ikm,hex_salt,hex_info,len) HKDF-SHA512 extract/expand (hex I/O)\n"
             "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
             "  crypto_pbkdf2_sha256(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA256 (hex I/O)\n"
             "  crypto_pbkdf2_hmac_sha512(hex_pass,hex_salt,iter,dklen) PBKDF2-HMAC-SHA512 (hex I/O)\n"
