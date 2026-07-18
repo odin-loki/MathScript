@@ -3232,6 +3232,35 @@ TEST(ReplCommandsTest, wave136_graph_diameter) {
     EXPECT_NEAR(interp.state().scalars.at("diam"), 3.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave255_graph_spectral) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_katz_centrality(A)");
+    expect_contains(interp, "help", "graph_algebraic_connectivity(A)");
+
+    expect_ok(interp, "A = [0,1,0; 1,0,1; 0,1,0]");
+    expect_ok(interp, "k = graph_katz_centrality(A)");
+    ASSERT_GT(interp.state().matrices.count("k"), 0u);
+    const auto& k = interp.state().matrices.at("k");
+    EXPECT_EQ(k.rows(), 3u);
+    EXPECT_EQ(k.cols(), 1u);
+    EXPECT_TRUE(std::isfinite(k(0, 0)));
+    EXPECT_TRUE(std::isfinite(k(1, 0)));
+    EXPECT_TRUE(std::isfinite(k(2, 0)));
+
+    expect_ok(interp, "ac = graph_algebraic_connectivity(A)");
+    EXPECT_GT(interp.state().scalars.at("ac"), 0.0);
+
+    expect_ok(interp, "L = graph_laplacian(A)");
+    ASSERT_GT(interp.state().matrices.count("L"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("L").cols(), 3u);
+
+    expect_ok(interp, "spec = graph_adjacency_spectrum(A)");
+    ASSERT_GT(interp.state().matrices.count("spec"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("spec").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("spec").cols(), 1u);
+}
+
 TEST(ReplCommandsTest, wave137_compress_bytes_to_bits) {
     Interpreter interp;
     expect_contains(interp, "help", "compress_bytes_to_bits(bytes_vec)");
