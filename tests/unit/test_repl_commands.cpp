@@ -3286,6 +3286,44 @@ TEST(ReplCommandsTest, wave263_control_kalman) {
     EXPECT_NEAR(interp.state().matrices.at("Pu")(0, 0), (1.0 - K) * 1.05, 1e-6);
 }
 
+TEST(ReplCommandsTest, wave264_control_gram_ctrb_obsv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_ctrb(A,B)");
+    expect_contains(interp, "help", "control_obsv(A,C)");
+    expect_contains(interp, "help", "control_ctrb_gram(A,B)");
+    expect_contains(interp, "help", "control_obsv_gram(A,C)");
+
+    // Controllability matrix of double integrator: [B AB] = [0 1; 1 0]
+    expect_ok(interp, "Co = control_ctrb([0, 1; 0, 0], [0; 1])");
+    ASSERT_GT(interp.state().matrices.count("Co"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Co").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("Co").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("Co")(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Co")(0, 1), 1.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Co")(1, 0), 1.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Co")(1, 1), 0.0, 1e-12);
+
+    // Observability matrix: [C; CA] = I for C=[1 0]
+    expect_ok(interp, "Ob = control_obsv([0, 1; 0, 0], [1, 0])");
+    ASSERT_GT(interp.state().matrices.count("Ob"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Ob").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("Ob").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("Ob")(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ob")(0, 1), 0.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ob")(1, 0), 0.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ob")(1, 1), 1.0, 1e-12);
+
+    // Scalar closed form: A=-a, B=b => Wc = b^2/(2a)
+    expect_ok(interp, "Wc = control_ctrb_gram([-2], [3])");
+    ASSERT_GT(interp.state().matrices.count("Wc"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Wc")(0, 0), 9.0 / 4.0, 1e-9);
+
+    // Dual scalar: A=-a, C=c => Wo = c^2/(2a)
+    expect_ok(interp, "Wo = control_obsv_gram([-2], [3])");
+    ASSERT_GT(interp.state().matrices.count("Wo"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Wo")(0, 0), 9.0 / 4.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave135_quantum_op_apply) {
     Interpreter interp;
     expect_contains(interp, "help", "quantum_op_apply(op,psi)");
