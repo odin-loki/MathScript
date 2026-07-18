@@ -58,6 +58,24 @@ TEST(CudaStubTest, ifft_stub) {
 
 TEST(CudaStubTest, lu_stub) {
     ColMatrix<double> A{{4, 1}, {1, 3}};
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (cuda::available()) {
+        const auto gpu = cuda::lu(A);
+        ASSERT_TRUE(gpu.has_value());
+        const auto cpu = lu(A);
+        ASSERT_TRUE(cpu.has_value());
+        const auto& [gL, gU, gP] = *gpu;
+        const auto& [cL, cU, cP] = *cpu;
+        for (size_t i = 0; i < A.rows(); ++i) {
+            for (size_t j = 0; j < A.cols(); ++j) {
+                EXPECT_NEAR(gL(i, j), cL(i, j), 1e-9);
+                EXPECT_NEAR(gU(i, j), cU(i, j), 1e-9);
+                EXPECT_NEAR(gP(i, j), cP(i, j), 1e-9);
+            }
+        }
+        return;
+    }
+#endif
     const auto result = cuda::lu(A);
     EXPECT_FALSE(result.has_value());
 }
@@ -82,6 +100,18 @@ TEST(CudaNvmlTest, device_memory_free_matches_device_stats_composition) {
             ? stats.memory_total_bytes - stats.memory_used_bytes
             : 0;
     EXPECT_EQ(cuda::device_memory_free(0), expected);
+}
+
+TEST(CudaNvmlTest, device_stats_uses_cuda_mem_get_info) {
+#if defined(MS_HAS_CUDA) && MS_HAS_CUDA
+    if (!cuda::available()) {
+        GTEST_SKIP() << "CUDA device not available";
+    }
+    const auto stats = cuda::device_stats(0);
+    EXPECT_GT(stats.memory_total_bytes, 0u);
+    EXPECT_LE(stats.memory_used_bytes, stats.memory_total_bytes);
+    EXPECT_FALSE(stats.name.empty());
+#endif
 }
 
 TEST(CudaNvmlTest, device_memory_free_stub_is_zero) {
