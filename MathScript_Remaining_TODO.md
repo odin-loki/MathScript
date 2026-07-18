@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 235 kickoff — **382 CTest suites** on `main` @ Wave 234 baseline)
+**Updated:** 2026-07-18 (Wave 235 complete – **382 CTest suites** on `main` @ Wave 235)
 
 ---
 
@@ -102,15 +102,16 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 
 ---
 
-## Wave 235 — IN PROGRESS (ChaCha-Poly1305 + FEM 3D + GUI polish)
+## Wave 235 ✅ COMPLETE (ChaCha-Poly1305 + FEM 3D + GUI polish)
 
-| Branch | Target |
-|--------|--------|
-| `wave235/crypto-chacha-poly` | ChaCha20-Poly1305 AEAD + REPL bindings |
-| `wave235/fem-3d` | 3D P1 tetrahedral Poisson mesh/assembly/solve |
-| `wave235/gui-docs` | Script editor height, Ctrl+Enter Run, Stop status tip; Wave 235 docs kickoff |
+| Branch | Shipped |
+|--------|---------|
+| `wave235/crypto-chacha-poly` | ChaCha20-Poly1305 AEAD + REPL `crypto_chacha20_poly1305_encrypt` / `crypto_chacha20_poly1305_decrypt` |
+| `wave235/fem-3d` | 3D P1 tetrahedral mesh (`mesh3d_box`), stiffness/load assembly, Dirichlet BCs, `solve_fem_3d` |
+| `wave235/gui-docs` (kickoff) | Taller script editor (200 px min), **Ctrl+Enter** Run, Stop button status/tooltip |
 
-**382 CTest suites** baseline @ Wave 234 (+ Wave 235 registrations pending merge). Profiling iteration unchanged — **FULLY COMPLETE (Waves 218–230).**
+**382 CTest suites** (ChaCha-Poly1305 + FEM 3D unit cases in existing `test_crypto` / `test_fem`). Profiling iteration unchanged – **FULLY COMPLETE (Waves 218–230).**
+
 
 ---
 
@@ -119,6 +120,6 @@ The profiling and product-adjustment program is **closed**. Waves **218–230** 
 | Wave | Focus |
 |------|--------|
 | **236** | Remaining GUI/REPL polish |
-| **237+** | Remaining API gaps (curve25519, 3D CFD, scalable MPI LA, etc.) |
+| **237+** | Remaining API gaps (**curve25519**, **3D CFD**, **scalable MPI LA**, NCCL, modular plugins, etc.) |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.
