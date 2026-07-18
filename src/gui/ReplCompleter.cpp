@@ -218,6 +218,8 @@ QStringList repl_command_list() {
         QStringLiteral("ml_accuracy"),
         QStringLiteral("ml_rmse"),
         QStringLiteral("graph_pagerank"),
+        QStringLiteral("graph_dijkstra"),
+        QStringLiteral("graph_bellman_ford"),
         QStringLiteral("graph_katz_centrality"),
         QStringLiteral("graph_algebraic_connectivity"),
         QStringLiteral("graph_adjacency_spectrum"),
