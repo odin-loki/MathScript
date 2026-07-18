@@ -1933,6 +1933,59 @@ TEST(FinanceHeston, StandardParametersReasonableMagnitude) {
     EXPECT_NEAR(c, bs, 5.0);
 }
 
+// --- Heston (1993) stochastic-volatility European put ---
+TEST(FinanceHestonPut, AtTheMoneyPositive) {
+    double p = heston_put(kHestonATM.S, kHestonATM.K, kHestonATM.T, kHestonATM.r,
+                          kHestonATM.v0, kHestonATM.kappa, kHestonATM.theta,
+                          kHestonATM.sigma_v, kHestonATM.rho);
+    EXPECT_GT(p, 0.0);
+    EXPECT_LT(p, kHestonATM.K * std::exp(-kHestonATM.r * kHestonATM.T));
+}
+
+TEST(FinanceHestonPut, OutOfTheMoneyLessThanInTheMoney) {
+    double S = 100.0, T = 1.0, r = 0.05;
+    double v0 = 0.04, kappa = 2.0, theta = 0.04, sigma_v = 0.3, rho = -0.7;
+    double itm = heston_put(S, 110.0, T, r, v0, kappa, theta, sigma_v, rho);
+    double otm = heston_put(S, 80.0, T, r, v0, kappa, theta, sigma_v, rho);
+    EXPECT_GT(itm, otm);
+    EXPECT_GT(itm, 110.0 * std::exp(-r * T) - S);
+}
+
+TEST(FinanceHestonPut, PutCallParity) {
+    double S = 100.0, K = 105.0, T = 1.0, r = 0.05;
+    double v0 = 0.04, kappa = 1.5, theta = 0.04, sigma_v = 0.35, rho = -0.6;
+    double c = heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho);
+    double p = heston_put(S, K, T, r, v0, kappa, theta, sigma_v, rho);
+    EXPECT_NEAR(c - p, S - K * std::exp(-r * T), 1e-10);
+}
+
+TEST(FinanceHestonPut, ExpiredReturnsIntrinsic) {
+    double S = 90.0, K = 100.0, T = 0.0, r = 0.05;
+    EXPECT_NEAR(heston_put(S, K, T, r, 0.04, 2.0, 0.04, 0.3, -0.7), 10.0, 1e-12);
+    EXPECT_NEAR(heston_put(S, 80.0, T, r, 0.04, 2.0, 0.04, 0.3, -0.7), 0.0, 1e-12);
+}
+
+TEST(FinanceHestonPut, ZeroVolLimitMatchesBlackScholesPut) {
+    double sigma = 0.2;
+    double v = sigma * sigma;
+    double S = 100.0, K = 100.0, T = 1.0, r = 0.05;
+    double bs = bs_put(S, K, T, r, sigma);
+    double heston = heston_put(S, K, T, r, v, 2.0, v, 1e-14, -0.5);
+    EXPECT_NEAR(heston, bs, 0.05);
+}
+
+TEST(FinanceHestonPut, StandardParametersReasonableMagnitude) {
+    double p = heston_put(kHestonATM.S, kHestonATM.K, kHestonATM.T, kHestonATM.r,
+                          kHestonATM.v0, kHestonATM.kappa, kHestonATM.theta,
+                          kHestonATM.sigma_v, kHestonATM.rho);
+    const double intrinsic =
+        std::max(kHestonATM.K * std::exp(-kHestonATM.r * kHestonATM.T) - kHestonATM.S, 0.0);
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_GE(p, intrinsic);
+    EXPECT_GT(p, 0.0);
+    EXPECT_LT(p, kHestonATM.K * std::exp(-kHestonATM.r * kHestonATM.T));
+}
+
 // --- SABR (Hagan et al. 2002) European call ---
 namespace {
 struct SabrParams {

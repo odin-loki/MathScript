@@ -10,6 +10,8 @@
 using ms::finance::bs_call;
 using ms::finance::bs_put;
 using ms::finance::mc_european_call;
+using ms::finance::heston_call;
+using ms::finance::heston_put;
 using ms::finance::sabr_call;
 using ms::finance::sabr_put;
 using ms::info::entropy;
@@ -27,6 +29,13 @@ constexpr double kSabrAlpha = 0.20;
 constexpr double kSabrBeta = 0.5;
 constexpr double kSabrRho = -0.30;
 constexpr double kSabrNu = 0.40;
+
+// Heston ATM params (matches test_finance kHestonATM).
+constexpr double kHestonV0 = 0.04;
+constexpr double kHestonKappa = 2.0;
+constexpr double kHestonTheta = 0.04;
+constexpr double kHestonSigmaV = 0.3;
+constexpr double kHestonRho = -0.7;
 
 // Smoke-safe MC path count (unit tests use 500k; REPL uses 20k).
 constexpr int kMcPaths = 10000;
@@ -73,6 +82,24 @@ static void BM_SabrPut(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_SabrPut);
+
+static void BM_HestonCall(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(heston_call(kSpot, kStrike, kTime, kRate, kHestonV0,
+                                             kHestonKappa, kHestonTheta, kHestonSigmaV,
+                                             kHestonRho));
+    }
+}
+BENCHMARK(BM_HestonCall);
+
+static void BM_HestonPut(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(heston_put(kSpot, kStrike, kTime, kRate, kHestonV0,
+                                            kHestonKappa, kHestonTheta, kHestonSigmaV,
+                                            kHestonRho));
+    }
+}
+BENCHMARK(BM_HestonPut);
 
 static void BM_Entropy(benchmark::State& state) {
     const auto p = uniform_pmf(1024);

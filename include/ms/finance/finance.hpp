@@ -19,6 +19,11 @@ double bs_put(double S, double K, double T, double r, double sigma);
 double heston_call(double S, double K, double T, double r, double v0, double kappa,
                    double theta, double sigma_v, double rho);
 
+// Heston (1993) stochastic-volatility European put via put-call parity (q=0):
+// P = C - S + K*e^{-rT}, using the same Lewis/Fourier call as heston_call.
+double heston_put(double S, double K, double T, double r, double v0, double kappa,
+                  double theta, double sigma_v, double rho);
+
 // SABR (Hagan et al. 2002) European call via asymptotic Black implied volatility.
 // S=spot, K=strike, T=time_to_expiry(years), r=risk_free_rate, alpha=initial vol,
 // beta=CEV exponent in [0,1], rho=spot-vol correlation, nu=vol-of-vol. beta=1 gives

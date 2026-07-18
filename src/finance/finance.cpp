@@ -148,6 +148,15 @@ double heston_call(double S, double K, double T, double r, double v0, double kap
     return S * P1 - K * std::exp(-r * T) * P2;
 }
 
+double heston_put(double S, double K, double T, double r, double v0, double kappa,
+                  double theta, double sigma_v, double rho) {
+    if (T <= 0.0) return std::max(K - S, 0.0);
+    const double c = heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho);
+    if (!std::isfinite(c)) return c;
+    // Put-call parity with q=0 (no dividend yield), matching heston_call convention.
+    return c - S + K * std::exp(-r * T);
+}
+
 // Hagan et al. (2002) asymptotic Black (lognormal) implied volatility for SABR.
 static double sabr_hagan_black_vol(double F, double K, double T, double alpha,
                                    double beta, double rho, double nu) {
