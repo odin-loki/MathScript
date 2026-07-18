@@ -191,6 +191,9 @@ QStringList repl_command_list() {
         QStringLiteral("geo_clip_polygon"),
         QStringLiteral("geo_convex_hull"),
         QStringLiteral("geo_min_bounding_rect"),
+        QStringLiteral("geo_kdtree_nearest"),
+        QStringLiteral("geo_kdtree_knn"),
+        QStringLiteral("geo_kdtree_range"),
         QStringLiteral("geo_point_in_aabb"),
         QStringLiteral("geo_overlap_aabb"),
         // Framework hooks
