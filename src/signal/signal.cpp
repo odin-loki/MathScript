@@ -382,25 +382,6 @@ bool hilbert_into(const std::vector<double>& x, HilbertBuffers& work) {
     return true;
 }
 
-std::vector<double> unwrap_phase(const std::vector<double>& wrapped) {
-    if (wrapped.empty()) {
-        return wrapped;
-    }
-    std::vector<double> out(wrapped.size());
-    out[0] = wrapped[0];
-    for (size_t i = 1; i < wrapped.size(); ++i) {
-        double delta = wrapped[i] - wrapped[i - 1];
-        while (delta > M_PI) {
-            delta -= 2.0 * M_PI;
-        }
-        while (delta <= -M_PI) {
-            delta += 2.0 * M_PI;
-        }
-        out[i] = out[i - 1] + delta;
-    }
-    return out;
-}
-
 std::vector<double> demean(const std::vector<double>& x) {
     if (x.empty()) {
         return x;
@@ -1124,11 +1105,39 @@ std::vector<double> instantaneous_phase(const std::vector<double>& x) {
     return out;
 }
 
+std::vector<double> unwrap(const std::vector<double>& phase, double discont) {
+    if (phase.empty()) {
+        return phase;
+    }
+    const double period = 2.0 * M_PI;
+    const double half = period / 2.0;
+    std::vector<double> out(phase.size());
+    out[0] = phase[0];
+    for (size_t i = 1; i < phase.size(); ++i) {
+        const double dd = phase[i] - phase[i - 1];
+        // NumPy: ddmod = mod(dd + period/2, period) - period/2
+        double ddmod = std::fmod(dd + half, period);
+        if (ddmod < 0.0) {
+            ddmod += period;
+        }
+        ddmod -= half;
+        if (ddmod == -half && dd > 0.0) {
+            ddmod = half;
+        }
+        double ph_correct = ddmod - dd;
+        if (std::abs(dd) < discont) {
+            ph_correct = 0.0;
+        }
+        out[i] = out[i - 1] + dd + ph_correct;
+    }
+    return out;
+}
+
 std::vector<double> instantaneous_freq(const std::vector<double>& x, double fs) {
     if (x.empty()) {
         return {};
     }
-    const auto phase = unwrap_phase(instantaneous_phase(x));
+    const auto phase = unwrap(instantaneous_phase(x));
     std::vector<double> freq(x.size(), 0.0);
     if (phase.size() < 2) {
         return freq;

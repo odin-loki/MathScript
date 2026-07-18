@@ -114,6 +114,11 @@ std::vector<double> envelope(const std::vector<double>& x);
 // Instantaneous phase: arg(hilbert(x)) element-wise, in radians in (-pi, pi].
 std::vector<double> instantaneous_phase(const std::vector<double>& x);
 
+// NumPy-style phase unwrap: corrects jumps larger than `discont` (default pi) by
+// adding/subtracting multiples of 2*pi so consecutive samples stay continuous.
+// Empty input returns empty. Period is fixed at 2*pi (radians).
+std::vector<double> unwrap(const std::vector<double>& phase, double discont = 3.14159265358979323846);
+
 // Instantaneous frequency in Hz from the unwrapped phase derivative:
 //   f[n] = (unwrap(arg(hilbert(x)))[n+1] - unwrap(...)[n]) * fs / (2*pi)
 // for n = 0 .. N-2; f[N-1] repeats f[N-2] so the output length matches x (N samples). Edge
