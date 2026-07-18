@@ -11943,6 +11943,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         const geo::Point3D d{args[9], args[10], args[11]};
         return geo::volume_tetrahedron(a, b, c, d);
     }
+    if (args.size() == 12 && fn == "geo_overlap_aabb") {
+        const geo::AABB3D a{{args[0], args[1], args[2]}, {args[3], args[4], args[5]}};
+        const geo::AABB3D b{{args[6], args[7], args[8]}, {args[9], args[10], args[11]}};
+        return geo::overlap_aabb_aabb(a, b) ? 1.0 : 0.0;
+    }
     if (args.size() == 9 && fn == "geo_hermite_x") {
         auto value = eval_geo_hermite_x(args[0], args[1], args[2], args[3], args[4], args[5],
                                         args[6], args[7], args[8]);
@@ -11986,6 +11991,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         const geo::Circle2D a{{args[0], args[1]}, args[2]};
         const geo::Circle2D b{{args[3], args[4]}, args[5]};
         return geo::overlap_circle_circle(a, b) ? 1.0 : 0.0;
+    }
+    if (args.size() == 6 && fn == "geo_point_in_aabb") {
+        const geo::Point2D p{args[0], args[1]};
+        const geo::AABB2D box{{args[2], args[3]}, {args[4], args[5]}};
+        return geo::point_in_aabb(p, box) ? 1.0 : 0.0;
     }
     if (args.size() == 4 && fn == "cplx_hyperbolic_distance") {
         const cplx::C z1{args[0], args[1]};
@@ -15588,6 +15598,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_kdtree_nearest(P,x,y) nearest point index in Nx2 set to query (x,y)\n"
             "  name = topo_pairwise_distances(P) NxN pairwise distance matrix from Nx2 points\n"
             "  name = geo_overlap_circles(x1,y1,r1,x2,y2,r2) 1 if circles overlap else 0\n"
+            "  name = geo_point_in_aabb(px,py,minx,miny,maxx,maxy) 1 if point inside 2D AABB else 0\n"
+            "  name = geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz) 1 if 3D AABBs overlap else 0\n"
             "  name = combo_nchoosek(n,k) binomial coefficient C(n,k)\n"
             "  name = combo_stirling1(n,k) unsigned Stirling number of first kind |s(n,k)|\n"
             "  name = combo_stirling2(n,k) Stirling number of second kind S(n,k)\n"
@@ -16036,7 +16048,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
-            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
+            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
@@ -18645,12 +18657,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     if (const auto open_paren = cmd.find('('); open_paren != std::string::npos && !cmd.empty() &&
                                      cmd.back() == ')') {
         const std::string fn = lower(trim_copy(cmd.substr(0, open_paren)));
-        if (fn == "geo_volume_tetrahedron") {
+        if (fn == "geo_volume_tetrahedron" || fn == "geo_overlap_aabb") {
             const auto call_args = split_call_args(cmd);
             if (!call_args || call_args->size() != 12) {
                 return std::unexpected(DomainError{
                     fn,
-                    "expected geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4)"});
+                    fn == "geo_overlap_aabb"
+                        ? "expected geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz)"
+                        : "expected geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4)"});
             }
             std::vector<double> args;
             args.reserve(12);
@@ -20194,6 +20208,26 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const geo::Circle2D a{{x1, y1}, r1};
             const geo::Circle2D b{{x2, y2}, r2};
             return std::to_string(geo::overlap_circle_circle(a, b) ? 1.0 : 0.0) + "\n";
+        }
+        if (fn == "geo_point_in_aabb") {
+            double px = 0.0;
+            double py = 0.0;
+            double minx = 0.0;
+            double miny = 0.0;
+            double maxx = 0.0;
+            double maxy = 0.0;
+            if (!parse_number(trim(match[2].str()), px) || !parse_number(trim(match[3].str()), py) ||
+                !parse_number(trim(match[4].str()), minx) ||
+                !parse_number(trim(match[5].str()), miny) ||
+                !parse_number(trim(match[6].str()), maxx) ||
+                !parse_number(trim(match[7].str()), maxy)) {
+                return std::unexpected(DomainError{
+                    "geo_point_in_aabb",
+                    "expected geo_point_in_aabb(px,py,minx,miny,maxx,maxy)"});
+            }
+            const geo::Point2D p{px, py};
+            const geo::AABB2D box{{minx, miny}, {maxx, maxy}};
+            return std::to_string(geo::point_in_aabb(p, box) ? 1.0 : 0.0) + "\n";
         }
         if (fn == "finance_binomial_call") {
             double S = 0.0;
