@@ -95,6 +95,8 @@ Wave **240** added **`BM_Pbkdf2HmacSha256`** (1000 iterations) and **`BM_DistGmr
 
 Wave **241** added **`BM_Ed25519Sign`** / **`BM_Ed25519Verify`** and **`BM_DistJacobi_2x2`** to close Wave 240 benchmark gaps (**28** targets unchanged).
 
+Wave **242** added **`BM_SabrCall`** / **`BM_SabrPut`** and **`BM_DistBicgstab_2x2`** to close Wave 241 benchmark gaps (**28** targets unchanged).
+
 ## Final sign-off
 
 **Product profiling and adjustment is complete.** Twelve waves (218–230) closed code profiling, benchmark infrastructure, and baseline refresh; Wave 231 (+231b) added seven benchmark cases for new crypto/FEM/CFD paths without reopening the iteration. No further profiling or product-adjustment waves are planned — Wave 232+ is feature development only.

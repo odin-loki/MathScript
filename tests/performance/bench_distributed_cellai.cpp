@@ -194,6 +194,24 @@ static void BM_DistJacobi_2x2(benchmark::State& state) {
 }
 BENCHMARK(BM_DistJacobi_2x2);
 
+static void BM_DistBicgstab_2x2(benchmark::State& state) {
+    auto ctx = init(0, nullptr);
+    DMatrix A({{3.0, 1.0}, {1.0, 2.0}});
+    DMatrix b({{1.0}, {1.0}});
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        auto dA = scatter(A, ctx).value();
+        auto db = scatter(b, ctx).value();
+        state.ResumeTiming();
+
+        auto result = dist_bicgstab(dA, db, ctx);
+        benchmark::DoNotOptimize(result);
+    }
+    finalize(ctx);
+}
+BENCHMARK(BM_DistBicgstab_2x2);
+
 // ---------------------------------------------------------------------------
 // CellAI: CellMemory::step
 // ---------------------------------------------------------------------------

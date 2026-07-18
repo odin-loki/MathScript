@@ -10,6 +10,8 @@
 using ms::finance::bs_call;
 using ms::finance::bs_put;
 using ms::finance::mc_european_call;
+using ms::finance::sabr_call;
+using ms::finance::sabr_put;
 using ms::info::entropy;
 
 namespace {
@@ -19,6 +21,12 @@ constexpr double kStrike = 100.0;
 constexpr double kTime = 1.0;
 constexpr double kRate = 0.05;
 constexpr double kVol = 0.2;
+
+// SABR ATM params (matches test_finance kSabrATM).
+constexpr double kSabrAlpha = 0.20;
+constexpr double kSabrBeta = 0.5;
+constexpr double kSabrRho = -0.30;
+constexpr double kSabrNu = 0.40;
 
 // Smoke-safe MC path count (unit tests use 500k; REPL uses 20k).
 constexpr int kMcPaths = 10000;
@@ -49,6 +57,22 @@ static void BM_MCEuropean(benchmark::State& state) {
                             static_cast<int64_t>(kMcPaths));
 }
 BENCHMARK(BM_MCEuropean);
+
+static void BM_SabrCall(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(sabr_call(kSpot, kStrike, kTime, kRate, kSabrAlpha,
+                                             kSabrBeta, kSabrRho, kSabrNu));
+    }
+}
+BENCHMARK(BM_SabrCall);
+
+static void BM_SabrPut(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(sabr_put(kSpot, kStrike, kTime, kRate, kSabrAlpha,
+                                            kSabrBeta, kSabrRho, kSabrNu));
+    }
+}
+BENCHMARK(BM_SabrPut);
 
 static void BM_Entropy(benchmark::State& state) {
     const auto p = uniform_pmf(1024);
