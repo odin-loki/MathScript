@@ -4751,6 +4751,25 @@ TEST(ReplCommandsTest, wave110_geo_overlap_circles) {
     expect_contains(interp, "geo_overlap_circles(0, 0, 1, 0, 0, 1)", "1");
 }
 
+TEST(ReplCommandsTest, wave254_geo_aabb) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_point_in_aabb(px,py,minx,miny,maxx,maxy)");
+    expect_contains(interp, "help",
+                    "geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz)");
+
+    expect_ok(interp, "inside = geo_point_in_aabb(1, 1, 0, 0, 2, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("inside"), 1.0, 1e-9);
+    expect_ok(interp, "outside = geo_point_in_aabb(3, 1, 0, 0, 2, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("outside"), 0.0, 1e-9);
+    expect_contains(interp, "geo_point_in_aabb(1, 1, 0, 0, 2, 2)", "1");
+
+    expect_ok(interp, "hit = geo_overlap_aabb(0, 0, 0, 1, 1, 1, 0.5, 0.5, 0.5, 1.5, 1.5, 1.5)");
+    EXPECT_NEAR(interp.state().scalars.at("hit"), 1.0, 1e-9);
+    expect_ok(interp, "miss = geo_overlap_aabb(0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("miss"), 0.0, 1e-9);
+    expect_contains(interp, "geo_overlap_aabb(0, 0, 0, 1, 1, 1, 0.5, 0.5, 0.5, 1.5, 1.5, 1.5)", "1");
+}
+
 TEST(ReplCommandsTest, wave111_geo_bezier_eval_x) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_bezier_eval_x(P,t)");
