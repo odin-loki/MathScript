@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 MathScript is developed in **waves** — batches of 1–8 parallel AI coding subagents, each assigned an isolated git worktree and one self-contained module or feature, tested and merged independently. Each wave below is one dated changelog entry documenting what landed in that batch. For a higher-level project overview see `README.md`; for the original design spec see `mathscript-master-plan.md`; for the API reference see `docs/API.md`.
 
+## [1.0.0] - 2026-07-18 (Wave 249 — NCCL reduce, dist LSQR, crypto SHA-256 REPL, signal resample, GUI move line, benches) ✅ COMPLETE
+
+Nineteenth feature wave after Wave 248. Parallel Composer 2.5 worktrees merged to `main`: NCCL stub `reduce`, `dist_lsqr`, `crypto_sha256`/`crypto_hmac_sha256` REPL, signal resample/decimate/interpolate + pipeline, GUI Move Line Up/Down, Wave 248 bench gaps; MSVC C1061 nesting fix in REPL assign path.
+
+### Added (Wave 249)
+- **CUDA / NCCL** — stub `reduce`; REPL `cuda_reduce`.
+- **Distributed** — `dist_lsqr` stub-gather MVP; `test_dist_lsqr`; REPL.
+- **Crypto REPL** — `crypto_sha256`, `crypto_hmac_sha256` (existing digests).
+- **Signal REPL** — `signal_resample`, `signal_decimate`, `signal_interpolate`.
+- **GUI** — Edit → Move Line Up / Move Line Down (Alt+Up / Alt+Down).
+- **Tests** — `integration_repl_wave249_pipeline`.
+- **Benchmarks** — `BM_CudaBroadcast`, `BM_ConstantTimeEq`, `BM_SignalUpsample`.
+- **Fix** — extract `assign_matrix_call` arms into tail to clear MSVC C1061.
+
+### Docs (Wave 249)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 249 sync; **407** CTest suites.
+
+**407 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-18 (Wave 248 — NCCL broadcast, crypto ct-eq, geo clip, signal resample REPL, GUI indent, benches) ✅ COMPLETE
 
 Eighteenth feature wave after Wave 247. Parallel Composer 2.5 worktrees merged to `main`: NCCL stub `broadcast`, `constant_time_eq`/`random_bytes`, `geo_clip_polygon` + `signal_upsample`/`signal_downsample` REPL, GUI Indent/Unindent, Wave 247 bench gaps, and Wave 248 integration pipeline.

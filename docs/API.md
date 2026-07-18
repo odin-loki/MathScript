@@ -104,7 +104,7 @@ CUDA GPU kernels (when `MS_ENABLE_CUDA=ON`) and MPI distributed linear algebra (
 | `cuda/elementwise.hpp` | In-place `add_inplace` and `fill` on device spans |
 | `cuda/sparse.hpp` | COO sparse matrix-vector multiply on GPU |
 | `cuda/nvml.hpp` | NVML `DeviceStats` and utilization queries; `device_stats()` populates `memory_total_bytes`/`memory_used_bytes` from `cudaMemGetInfo` (NVML optional for utilization/name); `device_memory_free` (derived `total - used` with underflow guard) |
-| `cuda/nccl.hpp` | NCCL availability and communicator size helpers; `allreduce_sum`/`max`/`min`/`prod`/`avg` and `broadcast` — stub-safe identity when `MS_HAS_NCCL=0` or comm size 1 |
+| `cuda/nccl.hpp` | NCCL availability and communicator size helpers; `allreduce_sum`/`max`/`min`/`prod`/`avg`, `broadcast`, `reduce` — stub-safe identity when `MS_HAS_NCCL=0` or comm size 1 |
 | `distributed/mpi_context.hpp` | `MPIContext` init/finalize, rank/size, `allreduce_sum`/`allreduce_max`/`allreduce_min`, `barrier` |
 | `distributed/dist_matrix.hpp` | `DistMatrix` local shards; `scatter`, `gather`, `combine_gather` |
 | `distributed/block.hpp` | Block and block-cyclic row partitioning helpers |
@@ -114,7 +114,7 @@ CUDA GPU kernels (when `MS_ENABLE_CUDA=ON`) and MPI distributed linear algebra (
 
 **REPL bindings (MPI / distributed):** `mpi` (status dump), `mpi_rank()`, `mpi_size()`, `mpi_allreduce_sum(x)`, `dist_solve(A,b)`, `dist_matmul(A,B)` — stub-safe when `MS_ENABLE_MPI=OFF` (rank 0, size 1, local solve/matmul).
 
-**REPL bindings (CUDA / NCCL):** `cuda_allreduce_sum` / `max` / `min` / `prod` / `avg`, `cuda_broadcast` — stub-safe identity when `MS_HAS_NCCL=0` or comm size 1.
+**REPL bindings (CUDA / NCCL):** `cuda_allreduce_sum` / `max` / `min` / `prod` / `avg`, `cuda_broadcast`, `cuda_reduce` — stub-safe identity when `MS_HAS_NCCL=0` or comm size 1.
 
 ## Interpreter & tooling
 
@@ -309,8 +309,12 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `cuda_allreduce_prod(x)` | NCCL stub product (identity when stub; Wave 246) |
 | `cuda_allreduce_avg(x)` | NCCL stub average (identity when stub; Wave 247) |
 | `cuda_broadcast(x)` | NCCL stub broadcast from root 0 (identity when stub; Wave 248) |
+| `cuda_reduce(x)` | NCCL stub reduce-to-root (identity when stub; Wave 249) |
 | `crypto_constant_time_eq(hex_a,hex_b)` | Constant-time compare → `1`/`0` (Wave 248) |
 | `crypto_random_bytes(n)` | Random bytes as hex (MVP; Wave 248) |
+| `crypto_sha256(hex_data)` / `crypto_hmac_sha256(hex_key,hex_data)` | SHA-256 / HMAC-SHA256 hex digests (Wave 249) |
+| `dist_lsqr(A, b)` | Distributed LSQR (stub gather; Wave 249) |
+| `signal_resample(x,p,q)` / `signal_decimate(x,q)` / `signal_interpolate(x,p)` | Rational resampling (Wave 249) |
 | `geo_clip_polygon(A,B)` | Clip Nx2 subject against Mx2 convex window → Kx2 (Wave 248) |
 | `signal_upsample(x,n)` / `signal_downsample(x,n)` | Integer rate change (Wave 248) |
 | `graph_maximum_matching(A)` | Edmonds blossom matching → Mx2 edges (Wave 246) |

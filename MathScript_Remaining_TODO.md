@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 248 ✅ COMPLETE — **405 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 249 ✅ COMPLETE — **407 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–248 COMPLETE (summary)
+## Feature waves ✅ 231–249 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -57,6 +57,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **246** | AES-256-GCM; `dist_lsmr`; blossom matching; NCCL `allreduce_prod`; GUI Duplicate Line; Wave 245 benches |
 | **247** | `unwrap`; geo minkowski/OBB REPL; NCCL `allreduce_avg`; Toggle Comment; wave247 pipeline; Wave 246 benches |
 | **248** | NCCL `broadcast`; `constant_time_eq`/`random_bytes`; geo clip + upsample/downsample REPL; GUI Indent; Wave 247 benches |
+| **249** | NCCL `reduce`; `dist_lsqr`; SHA-256 REPL; signal resample/decimate/interpolate; GUI Move Line; Wave 248 benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -202,11 +203,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 | Tests | wave248 pipeline |
 | Benchmarks | `BM_SignalUnwrap`, `BM_CudaAllreduceAvg` |
 
-**405 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–248** closed for this incremental batch.
+## Wave 249 ✅ COMPLETE (NCCL reduce, dist LSQR, SHA-256 REPL, signal resample, GUI move line, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| NCCL | stub `reduce` + REPL `cuda_reduce` |
+| Distributed | `dist_lsqr` + `test_dist_lsqr` + REPL |
+| Crypto REPL | `crypto_sha256` / `crypto_hmac_sha256` |
+| Signal REPL | resample / decimate / interpolate + wave249 pipeline |
+| GUI | Move Line Up/Down |
+| Benchmarks | broadcast / constant_time_eq / upsample smoke |
+| Fix | MSVC C1061 — assign_matrix_call arms → tail |
+
+**407 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–249** closed for this incremental batch.
 
 ---
 
-## Next (Wave 249+) — deferred
+## Next (Wave 250+) — deferred
 
 | Item | Notes |
 |------|--------|
