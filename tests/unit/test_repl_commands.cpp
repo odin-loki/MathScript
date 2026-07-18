@@ -6763,6 +6763,30 @@ TEST(ReplCommandsTest, wave262_combo_set_partitions) {
     EXPECT_EQ(interp.state().matrices.at("sp3").cols(), 3u);
 }
 
+TEST(ReplCommandsTest, wave263_combo_restricted_involutions) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_restricted_partitions(n,k)");
+    expect_contains(interp, "help", "combo_involutions(n)");
+
+    expect_ok(interp, "rp = combo_restricted_partitions(5,2)");
+    ASSERT_GT(interp.state().matrices.count("rp"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("rp").rows(), 2u);
+    {
+        const auto& m = interp.state().matrices.at("rp");
+        for (size_t r = 0; r < m.rows(); ++r) {
+            double sum = 0.0;
+            for (size_t c = 0; c < m.cols(); ++c) {
+                sum += m(r, c);
+            }
+            EXPECT_NEAR(sum, 5.0, 1e-9);
+        }
+    }
+
+    expect_ok(interp, "inv = combo_involutions(4)");
+    EXPECT_NEAR(interp.state().scalars.at("inv"), 10.0, 1e-9);
+    expect_contains(interp, "combo_involutions(4)", "10");
+}
+
 TEST(ReplCommandsTest, wave262_lsq) {
     Interpreter interp;
     expect_contains(interp, "help", "lsq(A");
