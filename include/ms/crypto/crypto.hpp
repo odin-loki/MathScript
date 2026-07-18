@@ -71,6 +71,8 @@ std::string hmac_sha512_hex(std::string_view key, std::string_view data);
 
 std::vector<uint8_t> aes128_encrypt_block(std::span<const uint8_t> key,
                                           std::span<const uint8_t> block);
+std::vector<uint8_t> aes128_decrypt_block(std::span<const uint8_t> key,
+                                          std::span<const uint8_t> block);
 std::vector<uint8_t> aes256_encrypt_block(std::span<const uint8_t> key,
                                           std::span<const uint8_t> block);
 std::vector<uint8_t> aes256_decrypt_block(std::span<const uint8_t> key,

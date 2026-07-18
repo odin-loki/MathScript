@@ -1373,6 +1373,14 @@ std::vector<uint8_t> aes128_encrypt_block(std::span<const uint8_t> key,
     return aes_encrypt_block(key, block);
 }
 
+std::vector<uint8_t> aes128_decrypt_block(std::span<const uint8_t> key,
+                                          std::span<const uint8_t> block) {
+    if (key.size() != aes128_key_size) {
+        return {};
+    }
+    return aes_decrypt_block(key, block);
+}
+
 std::vector<uint8_t> aes256_encrypt_block(std::span<const uint8_t> key,
                                           std::span<const uint8_t> block) {
     if (key.size() != aes256_key_size) {

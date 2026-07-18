@@ -340,6 +340,16 @@ TEST(CryptoAes128, EncryptBlockFips197) {
     expect_hex(aes128_encrypt_block(key, block), "3925841d02dc09fbdc118597196a0b32");
 }
 
+TEST(CryptoAes128, DecryptBlockRoundTrip) {
+    const auto key = from_hex("2b7e151628aed2a6abf7158809cf4f3c");
+    const auto block = from_hex("3243f6a8885a308d313198a2e0370734");
+    const auto cipher = aes128_encrypt_block(key, block);
+    expect_hex(cipher, "3925841d02dc09fbdc118597196a0b32");
+    expect_hex(aes128_decrypt_block(key, cipher), "3243f6a8885a308d313198a2e0370734");
+    EXPECT_TRUE(aes128_decrypt_block(from_hex("00"), cipher).empty());
+    EXPECT_TRUE(aes128_decrypt_block(key, std::vector<uint8_t>{0x00}).empty());
+}
+
 TEST(CryptoAes256, EncryptBlockFips197) {
     const auto key =
         from_hex("603deb1015ca71be2b73aef3ae246ee256b942bce1d3e52f2b3636849ec0be41");
