@@ -6124,3 +6124,23 @@ TEST(ReplCommandsTest, wave258_radon_iradon) {
         }
     }
 }
+
+TEST(ReplCommandsTest, wave259_combo_binomial) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_binomial(n,k)");
+
+    expect_ok(interp, "bin = combo_binomial(5, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("bin"), 10.0, 1e-9);
+
+    expect_contains(interp, "combo_binomial(5, 2)", "10");
+}
+
+TEST(ReplCommandsTest, wave259_combo_bell_num) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_bell_num(n)");
+
+    expect_ok(interp, "bn = combo_bell_num(4)");
+    EXPECT_NEAR(interp.state().scalars.at("bn"), 15.0, 1e-9);
+
+    expect_contains(interp, "combo_bell_num(4)", "15");
+}
