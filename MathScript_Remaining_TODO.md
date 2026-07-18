@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 247 ✅ COMPLETE — **404 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 248 ✅ COMPLETE — **405 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–247 COMPLETE (summary)
+## Feature waves ✅ 231–248 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -56,6 +56,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **245** | AES-256-CBC; HKDF-SHA512; `poly_diff` + geo boolean REPL; graph k-core/chromatic; GUI find-prev; Wave 244 benches |
 | **246** | AES-256-GCM; `dist_lsmr`; blossom matching; NCCL `allreduce_prod`; GUI Duplicate Line; Wave 245 benches |
 | **247** | `unwrap`; geo minkowski/OBB REPL; NCCL `allreduce_avg`; Toggle Comment; wave247 pipeline; Wave 246 benches |
+| **248** | NCCL `broadcast`; `constant_time_eq`/`random_bytes`; geo clip + upsample/downsample REPL; GUI Indent; Wave 247 benches |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -190,11 +191,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 | Tests | wave247 pipeline (geo/signal + Wave 246 APIs) |
 | Benchmarks | AES-256-GCM + `dist_lsmr` smoke |
 
-**404 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–247** closed for this incremental batch.
+## Wave 248 ✅ COMPLETE (NCCL broadcast, crypto ct-eq, geo clip, signal resample REPL, GUI indent, benches)
+
+| Area | Deliverable |
+|------|-------------|
+| NCCL | stub `broadcast` + REPL `cuda_broadcast` |
+| Crypto | `constant_time_eq`, `random_bytes` + REPL |
+| Geo / Signal REPL | `geo_clip_polygon`; `signal_upsample` / `signal_downsample` |
+| GUI | Indent / Unindent |
+| Tests | wave248 pipeline |
+| Benchmarks | `BM_SignalUnwrap`, `BM_CudaAllreduceAvg` |
+
+**405 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–248** closed for this incremental batch.
 
 ---
 
-## Next (Wave 248+) — deferred
+## Next (Wave 249+) — deferred
 
 | Item | Notes |
 |------|--------|

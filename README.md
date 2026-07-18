@@ -56,12 +56,12 @@ None of these were caught by code review; all three were caught by a test assert
 ## Status
 
 - **Version:** 1.0.0 — Phase 10 (hardening) complete; profiling iteration **fully complete** through Wave 230 — code, infra, and baseline path (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md))
-- **Tests:** **404** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
+- **Tests:** **405** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
 - **CI:** Windows MSVC + Linux GCC 13 build/test; coverage; libFuzzer smoke (7 targets); Valgrind memcheck; benchmark regression gate (`bench_matmul`, `bench_fft`, 10% tolerance); Clang plugin compliance (20 enforced rules); vendor checksum verification; optional `jit-linux` and `plugin-linux` jobs
 
-## Product closure (feature waves 231–247)
+## Product closure (feature waves 231–248)
 
-After the profiling iteration closed at Wave 230, seventeen parallel **feature waves** (231–247) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
+After the profiling iteration closed at Wave 230, eighteen parallel **feature waves** (231–248) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
 
 | Wave | Focus |
 |------|--------|
@@ -82,6 +82,7 @@ After the profiling iteration closed at Wave 230, seventeen parallel **feature w
 | **245** | AES-256-CBC; HKDF-SHA512; `poly_diff` + geo boolean REPL; graph k-core/chromatic; GUI find-prev; Wave 244 benches |
 | **246** | AES-256-GCM; `dist_lsmr`; blossom matching; NCCL `allreduce_prod`; GUI Duplicate Line; Wave 245 benches |
 | **247** | `unwrap`; geo minkowski/OBB REPL; NCCL `allreduce_avg`; Toggle Comment; wave247 pipeline; Wave 246 benches |
+| **248** | NCCL `broadcast`; `constant_time_eq`/`random_bytes`; geo clip + upsample/downsample REPL; GUI Indent; Wave 247 benches |
 
 ## Build (quickstart)
 
