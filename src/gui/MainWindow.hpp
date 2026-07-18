@@ -86,6 +86,7 @@ private:
     void remove_blank_lines();
     void sort_lines();
     void unique_lines();
+    void reverse_lines();
     void join_lines();
     void delete_line();
     void move_line_up();

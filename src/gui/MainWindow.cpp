@@ -624,6 +624,57 @@ UniqueLinesResult unique_lines_in_editor(QPlainTextEdit* editor) {
     return result;
 }
 
+struct ReverseLinesResult {
+    int line_count = 0;
+    bool changed = false;
+};
+
+ReverseLinesResult reverse_lines_in_editor(QPlainTextEdit* editor) {
+    ReverseLinesResult result;
+    if (editor == nullptr) {
+        return result;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = editor->document()->blockCount() - 1;
+    if (cursor.hasSelection()) {
+        get_selected_block_range(editor, start_block, end_block);
+    }
+
+    QStringList lines;
+    for (int block = start_block; block <= end_block; ++block) {
+        lines.append(editor->document()->findBlockByNumber(block).text());
+    }
+    result.line_count = lines.size();
+    if (result.line_count <= 1) {
+        cursor.endEditBlock();
+        return result;
+    }
+
+    const QStringList original = lines;
+    std::reverse(lines.begin(), lines.end());
+    if (lines == original) {
+        cursor.endEditBlock();
+        return result;
+    }
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = start_block + 1; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(lines.join('\n'));
+
+    restore_block_cursor(editor, start_block, end_block);
+    cursor.endEditBlock();
+    result.changed = true;
+    return result;
+}
+
 struct JoinLinesResult {
     int line_count = 0;
     bool changed = false;
@@ -1520,6 +1571,8 @@ void MainWindow::setup_menus() {
     sort_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
     auto* unique_lines_action = edit_menu->addAction("Unique Lines");
     unique_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_U));
+    auto* reverse_lines_action = edit_menu->addAction("Reverse Lines");
+    reverse_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
     auto* upper_case_selection_action = edit_menu->addAction("Upper Case Selection");
     upper_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_U));
     auto* lower_case_selection_action = edit_menu->addAction("Lower Case Selection");
@@ -1597,6 +1650,7 @@ void MainWindow::setup_menus() {
     connect(remove_blank_lines_action, &QAction::triggered, this, &MainWindow::remove_blank_lines);
     connect(sort_lines_action, &QAction::triggered, this, &MainWindow::sort_lines);
     connect(unique_lines_action, &QAction::triggered, this, &MainWindow::unique_lines);
+    connect(reverse_lines_action, &QAction::triggered, this, &MainWindow::reverse_lines);
     connect(upper_case_selection_action, &QAction::triggered, this, &MainWindow::upper_case_selection);
     connect(lower_case_selection_action, &QAction::triggered, this, &MainWindow::lower_case_selection);
     connect(title_case_selection_action, &QAction::triggered, this, &MainWindow::title_case_selection);
@@ -1992,6 +2046,18 @@ void MainWindow::unique_lines() {
         statusBar()->showMessage("Removed 1 duplicate line", 3000);
     } else {
         statusBar()->showMessage(QString("Removed %1 duplicate lines").arg(result.removed_count), 3000);
+    }
+}
+
+void MainWindow::reverse_lines() {
+    editor_->setFocus();
+    const ReverseLinesResult result = reverse_lines_in_editor(editor_);
+    if (result.line_count <= 1) {
+        statusBar()->showMessage("Nothing to reverse", 3000);
+    } else if (!result.changed) {
+        statusBar()->showMessage("Lines already reversed", 3000);
+    } else {
+        statusBar()->showMessage(QString("Reversed %1 lines").arg(result.line_count), 3000);
     }
 }
 
