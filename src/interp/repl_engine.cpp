@@ -2416,6 +2416,31 @@ Result<Matrix<double>> eval_numthy_lucas_sequence(int64_t k, int64_t P, int64_t 
     return out;
 }
 
+Result<double> eval_numthy_multiplicative_order(double a_d, double n_d) {
+    if (std::floor(a_d) != a_d || std::floor(n_d) != n_d) {
+        return std::unexpected(
+            DomainError{"numthy_multiplicative_order", "expected integer arguments"});
+    }
+    if (a_d < 0.0 || n_d < 0.0) {
+        return std::unexpected(
+            DomainError{"numthy_multiplicative_order", "expected a >= 0 and n >= 0"});
+    }
+    auto ord = numthy::multiplicative_order(static_cast<uint64_t>(a_d),
+                                             static_cast<uint64_t>(n_d));
+    if (!ord) {
+        return std::unexpected(ord.error());
+    }
+    return static_cast<double>(*ord);
+}
+
+Matrix<double> codes_to_matrix_col(const std::vector<uint32_t>& codes) {
+    Matrix<double> out(codes.size(), 1);
+    for (size_t i = 0; i < codes.size(); ++i) {
+        out(i, 0) = static_cast<double>(codes[i]);
+    }
+    return out;
+}
+
 Result<Matrix<double>> eval_numthy_stern_brocot(int n) {
     if (n < 0) {
         return std::unexpected(
@@ -2426,14 +2451,6 @@ Result<Matrix<double>> eval_numthy_stern_brocot(int n) {
     for (size_t i = 0; i < sb.size(); ++i) {
         out(i, 0) = static_cast<double>(sb[i].first);
         out(i, 1) = static_cast<double>(sb[i].second);
-    }
-    return out;
-}
-
-Matrix<double> codes_to_matrix_col(const std::vector<uint32_t>& codes) {
-    Matrix<double> out(codes.size(), 1);
-    for (size_t i = 0; i < codes.size(); ++i) {
-        out(i, 0) = static_cast<double>(codes[i]);
     }
     return out;
 }
@@ -13611,17 +13628,6 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                     DomainError{"numthy_carmichael_lambda", "expected non-negative integer n"});
             }
             return static_cast<double>(numthy::carmichael_lambda(static_cast<uint64_t>(arg)));
-        }        if (fn == "numthy_mod_inv") {
-            return eval_numthy_mod_inv(args[0], args[1]);
-        }
-        if (fn == "numthy_multiplicative_order") {
-            return eval_numthy_multiplicative_order(args[0], args[1]);
-        }        if (fn == "numthy_euler_phi") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"numthy_euler_phi", "expected non-negative integer n"});
-            }
-            return static_cast<double>(numthy::euler_phi(static_cast<uint64_t>(arg)));
         }
         if (fn == "numthy_mobius") {
             if (arg < 0.0 || std::floor(arg) != arg) {
@@ -13852,6 +13858,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "numthy_mod_inv") {
             return eval_numthy_mod_inv(args[0], args[1]);
+        }
+        if (fn == "numthy_multiplicative_order") {
+            return eval_numthy_multiplicative_order(args[0], args[1]);
         }
         if (fn == "numthy_extended_gcd") {
             return eval_numthy_extended_gcd(args[0], args[1]);
@@ -17233,7 +17242,8 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(seq.error());
         }
         result = *seq;
-    } else if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey") &&
+    } else if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey" ||
+                assign.callee == "numthy_stern_brocot") &&
                assign.args.size() == 1) {
         double n_d = 0.0;
         if (!parse_number(assign.args[0], n_d)) {
@@ -17243,7 +17253,9 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                     assign.callee,
                     assign.callee == "numthy_factor_exp"
                         ? "expected numthy_factor_exp(n)"
-                        : "expected numthy_farey(n)"});
+                        : assign.callee == "numthy_farey"
+                              ? "expected numthy_farey(n)"
+                              : "expected numthy_stern_brocot(n)"});
             }
             n_d = *n_expr;
         }
@@ -17254,12 +17266,18 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                     DomainError{"numthy_factor_exp", "expected integer n >= 2"});
             }
             result = eval_numthy_factor_exp(n);
-        } else {
+        } else if (assign.callee == "numthy_farey") {
             if (n < 1 || n_d != n) {
                 return std::unexpected(
                     DomainError{"numthy_farey", "expected positive integer n"});
             }
             result = eval_numthy_farey(n);
+        } else {
+            if (n < 0 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_stern_brocot", "expected non-negative integer n"});
+            }
+            result = eval_numthy_stern_brocot(n);
         }
     } else if (assign.callee == "combo_motzkin_paths" && assign.args.size() == 1) {
         double n_d = 0.0;
@@ -29147,6 +29165,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(*inv) + "\n";
         }
 
+        if (fn == "numthy_multiplicative_order") {
+            double a_d = 0.0;
+            double n_d = 0.0;
+            if (!parse_number(arg_a, a_d) || !parse_number(arg_b, n_d)) {
+                return std::unexpected(DomainError{
+                    "numthy_multiplicative_order",
+                    "expected numthy_multiplicative_order(a,n)"});
+            }
+            auto ord = eval_numthy_multiplicative_order(a_d, n_d);
+            if (!ord) {
+                return std::unexpected(ord.error());
+            }
+            return std::to_string(*ord) + "\n";
+        }
+
         if (fn == "numthy_extended_gcd") {
             double a_d = 0.0;
             double b_d = 0.0;
@@ -29995,7 +30028,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(numthy::prime_nth(static_cast<uint64_t>(n_d))) + "\n";
         }
 
-        if (fn == "numthy_factor_exp" || fn == "numthy_farey") {
+        if (fn == "numthy_factor_exp" || fn == "numthy_farey" ||
+            fn == "numthy_stern_brocot") {
             double n_d = 0.0;
             if (!parse_number(arg, n_d)) {
                 auto n_expr = eval_scalar_expr(state_, arg);
@@ -30004,7 +30038,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         fn,
                         fn == "numthy_factor_exp"
                             ? "expected numthy_factor_exp(n)"
-                            : "expected numthy_farey(n)"});
+                            : fn == "numthy_farey"
+                                  ? "expected numthy_farey(n)"
+                                  : "expected numthy_stern_brocot(n)"});
                 }
                 n_d = *n_expr;
             }
@@ -30017,12 +30053,19 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         DomainError{"numthy_factor_exp", "expected integer n >= 2"});
                 }
                 value = eval_numthy_factor_exp(n);
-            } else {
+            } else if (fn == "numthy_farey") {
                 if (n < 1 || n_d != n) {
                     return std::unexpected(
                         DomainError{"numthy_farey", "expected positive integer n"});
                 }
                 value = eval_numthy_farey(n);
+            } else {
+                if (n < 0 || n_d != n) {
+                    return std::unexpected(
+                        DomainError{"numthy_stern_brocot",
+                                    "expected non-negative integer n"});
+                }
+                value = eval_numthy_stern_brocot(n);
             }
             if (!value) {
                 return std::unexpected(value.error());
@@ -30063,7 +30106,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "numthy_num_divisors" || fn == "numthy_factor_count" ||
             fn == "numthy_sum_divisors" ||
             fn == "numthy_isprime" || fn == "numthy_is_carmichael" ||
-            fn == "numthy_euler_phi" || fn == "numthy_mobius" ||
+            fn == "numthy_euler_phi" || fn == "numthy_carmichael_lambda" ||
+            fn == "numthy_mobius" ||
             fn == "numthy_nextprime" || fn == "numthy_prevprime" ||
             fn == "numthy_liouville" || fn == "numthy_prime_pi") {
             double n_d = 0.0;
@@ -30115,6 +30159,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (fn == "numthy_euler_phi") {
                 return std::to_string(numthy::euler_phi(static_cast<uint64_t>(n_d))) + "\n";
+            }
+            if (fn == "numthy_carmichael_lambda") {
+                return std::to_string(numthy::carmichael_lambda(static_cast<uint64_t>(n_d))) +
+                       "\n";
             }
             if (fn == "numthy_mobius") {
                 return std::to_string(

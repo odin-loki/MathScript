@@ -7,11 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
-- **Combo REPL** — `combo_motzkin_paths` / `combo_set_partitions`.
-- **Tests** — `integration_repl_wave262_pipeline`.
-- **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 262 sync; **420** CTest suites.
-- **Numthy REPL** — `numthy_stern_brocot` / `numthy_lucas_sequence` / `numthy_multiplicative_order` / `numthy_carmichael_lambda`.
+## [1.0.0] - 2026-07-19 (Wave 262 — combo enum, numthy, lsq/diag, finance rates, poly, Reverse Lines) ✅ COMPLETE
 
+Thirty-second feature wave after Wave 261. Parallel Composer 2.5 worktrees merged to `main`: combinatorial enumerations, number-theory helpers, dense least-squares/diag, Bachelier and short-rate models, polynomial resultant/discriminant, GUI Reverse Lines, and wave262 pipeline.
+
+### Added (Wave 262)
+- **Combo REPL** — `combo_necklaces` / `combo_de_bruijn_sequence` / `combo_motzkin_paths` / `combo_set_partitions`.
+- **Numthy REPL** — `numthy_stern_brocot` / `numthy_lucas_sequence` / `numthy_multiplicative_order` / `numthy_carmichael_lambda`.
+- **Linalg REPL** — `lsq` / `diag`.
+- **Finance REPL** — `finance_bachelier_call` / `finance_bachelier_put` / `finance_vasicek_bond_price` / `finance_cir_bond_price` / `finance_trinomial_option`.
+- **Poly REPL** — `poly_resultant` / `poly_discriminant`.
+- **GUI** — Reverse Lines (Ctrl+Shift+R).
+- **Tests** — `integration_repl_wave262_pipeline`.
+
+### Docs (Wave 262)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 262 sync; **420** CTest suites.
+
+**420 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 261 — eig/ldl, iterative solvers, FFT freq, combo/numthy/stats, Title Case) ✅ COMPLETE
 

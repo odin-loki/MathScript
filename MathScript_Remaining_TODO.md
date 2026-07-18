@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 261 ✅ COMPLETE — **419 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 262 ✅ COMPLETE — **420 CTest suites** on `main`)
 
 ---
 
@@ -372,11 +372,16 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Wave 262 — combo motzkin_paths set_partitions ✅ COMPLETE
+## Wave 262 — combo enum, numthy, lsq/diag, finance rates, poly, Reverse Lines ✅ COMPLETE
 
 | Area | Deliverable |
 |------|-------------|
-| Combo REPL | `combo_motzkin_paths` / `combo_set_partitions` |
+| Combo REPL | necklaces / de_bruijn_sequence / motzkin_paths / set_partitions |
+| Numthy REPL | stern_brocot / lucas_sequence / multiplicative_order / carmichael_lambda |
+| Linalg REPL | lsq / diag |
+| Finance REPL | bachelier_call/put / vasicek_bond_price / cir_bond_price / trinomial_option |
+| Poly REPL | poly_resultant / poly_discriminant |
+| GUI | Reverse Lines (Ctrl+Shift+R) |
 | Tests | `integration_repl_wave262_pipeline` |
 
 **420 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–262** closed for this incremental batch.

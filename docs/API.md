@@ -138,7 +138,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**; **Wave 262 GUI**: **Reverse Lines** (**Ctrl+Shift+R**)). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
 
 ### REPL bindings
 
@@ -337,6 +337,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `jacobi(A,b)` | Jacobi iterative solve (Wave 261) |
 | `lsq(A,b)` | Least-squares solve via dense `ms::lsq` (Wave 262) |
 | `diag(v)` | Diagonal matrix from column vector `v` (Wave 262) |
+| `poly_resultant(p,q)` | Sylvester resultant of coefficient columns (low-to-high) (Wave 262) |
+| `poly_discriminant(p)` | Discriminant of coefficient column (low-to-high) (Wave 262) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
