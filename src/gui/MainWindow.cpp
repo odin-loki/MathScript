@@ -561,6 +561,65 @@ SortLinesResult sort_lines_in_editor(QPlainTextEdit* editor) {
     return result;
 }
 
+struct JoinLinesResult {
+    int line_count = 0;
+    bool changed = false;
+};
+
+JoinLinesResult join_lines_in_editor(QPlainTextEdit* editor) {
+    JoinLinesResult result;
+    if (editor == nullptr) {
+        return result;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+
+    const bool multi_line_selection = cursor.hasSelection() && start_block < end_block;
+    if (!multi_line_selection) {
+        start_block = cursor.blockNumber();
+        end_block = start_block;
+        if (start_block >= editor->document()->blockCount() - 1) {
+            cursor.endEditBlock();
+            return result;
+        }
+        end_block = start_block + 1;
+    }
+
+    QStringList pieces;
+    for (int block = start_block; block <= end_block; ++block) {
+        const QString original = editor->document()->findBlockByNumber(block).text();
+        int end = original.size();
+        while (end > 0 &&
+               (original[end - 1] == QLatin1Char(' ') || original[end - 1] == QLatin1Char('\t'))) {
+            --end;
+        }
+        pieces.append(original.left(end));
+    }
+
+    result.line_count = end_block - start_block + 1;
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    for (int block = start_block + 1; block <= end_block; ++block) {
+        cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
+        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(pieces.join(QLatin1Char(' ')));
+
+    cursor.setPosition(editor->document()->findBlockByNumber(start_block).position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::MoveAnchor);
+    editor->setTextCursor(cursor);
+
+    cursor.endEditBlock();
+    result.changed = true;
+    return result;
+}
+
 void indent_lines_in_editor(QPlainTextEdit* editor) {
     if (editor == nullptr) {
         return;
@@ -1329,6 +1388,8 @@ void MainWindow::setup_menus() {
     remove_blank_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backspace));
     auto* sort_lines_action = edit_menu->addAction("Sort Lines");
     sort_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
+    auto* join_lines_action = edit_menu->addAction("Join Lines");
+    join_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
     auto* delete_line_action = edit_menu->addAction("Delete Line");
     delete_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
     auto* move_line_up_action = edit_menu->addAction("Move Line Up");
@@ -1397,6 +1458,7 @@ void MainWindow::setup_menus() {
             &MainWindow::trim_trailing_whitespace);
     connect(remove_blank_lines_action, &QAction::triggered, this, &MainWindow::remove_blank_lines);
     connect(sort_lines_action, &QAction::triggered, this, &MainWindow::sort_lines);
+    connect(join_lines_action, &QAction::triggered, this, &MainWindow::join_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
     connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
@@ -1774,6 +1836,18 @@ void MainWindow::sort_lines() {
         statusBar()->showMessage("Lines already sorted", 3000);
     } else {
         statusBar()->showMessage(QString("Sorted %1 lines").arg(result.line_count), 3000);
+    }
+}
+
+void MainWindow::join_lines() {
+    editor_->setFocus();
+    const JoinLinesResult result = join_lines_in_editor(editor_);
+    if (!result.changed) {
+        statusBar()->showMessage("Nothing to join", 3000);
+    } else if (result.line_count == 2) {
+        statusBar()->showMessage("Joined 2 lines", 3000);
+    } else {
+        statusBar()->showMessage(QString("Joined %1 lines").arg(result.line_count), 3000);
     }
 }
 
