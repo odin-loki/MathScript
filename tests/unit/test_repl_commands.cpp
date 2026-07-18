@@ -5464,3 +5464,60 @@ TEST(ReplCommandsTest, wave255_crypto_x25519_keypair) {
         R"cmd(crypto_x25519_keypair("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"))cmd",
         "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a");
 }
+
+TEST(ReplCommandsTest, wave256_stats_inference) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_shapiro_wilk(x)");
+    expect_contains(interp, "help", "stats_mann_whitney_u(a,b)");
+    expect_contains(interp, "help", "stats_one_way_anova(G)");
+    expect_contains(interp, "help", "stats_wilcoxon_signed_rank(x,y)");
+
+    // Shapiro-Wilk: nearly-linear sample is non-normal-ish; still returns 1x2 [W, p].
+    expect_ok(interp, "x = [1; 2; 3; 4; 5; 6; 7; 8; 9; 10]");
+    expect_ok(interp, "sw = stats_shapiro_wilk(x)");
+    ASSERT_GT(interp.state().matrices.count("sw"), 0u);
+    const auto& sw = interp.state().matrices.at("sw");
+    ASSERT_EQ(sw.rows(), 1u);
+    ASSERT_EQ(sw.cols(), 2u);
+    EXPECT_GT(sw(0, 0), 0.0);
+    EXPECT_LE(sw(0, 0), 1.0);
+    EXPECT_GE(sw(0, 1), 0.0);
+    EXPECT_LE(sw(0, 1), 1.0);
+
+    // Mann-Whitney U: fully separated samples -> U=0, small p; 1x3 [U, z, p].
+    expect_ok(interp, "a = [1; 2; 3; 4; 5]");
+    expect_ok(interp, "b = [11; 12; 13; 14; 15]");
+    expect_ok(interp, "mw = stats_mann_whitney_u(a, b)");
+    ASSERT_GT(interp.state().matrices.count("mw"), 0u);
+    const auto& mw = interp.state().matrices.at("mw");
+    ASSERT_EQ(mw.rows(), 1u);
+    ASSERT_EQ(mw.cols(), 3u);
+    EXPECT_NEAR(mw(0, 0), 0.0, 1e-12);
+    EXPECT_TRUE(std::isfinite(mw(0, 1)));
+    EXPECT_LT(mw(0, 2), 0.05);
+
+    // One-way ANOVA: each ROW is a group; 1x4 [F, p, df_b, df_w].
+    expect_ok(interp, "G = [1, 2, 3; 10, 11, 12; 20, 21, 22]");
+    expect_ok(interp, "an = stats_one_way_anova(G)");
+    ASSERT_GT(interp.state().matrices.count("an"), 0u);
+    const auto& an = interp.state().matrices.at("an");
+    ASSERT_EQ(an.rows(), 1u);
+    ASSERT_EQ(an.cols(), 4u);
+    EXPECT_GT(an(0, 0), 0.0);
+    EXPECT_LT(an(0, 1), 0.05);
+    EXPECT_NEAR(an(0, 2), 2.0, 1e-12);
+    EXPECT_NEAR(an(0, 3), 6.0, 1e-12);
+
+    // Wilcoxon signed-rank: clear paired shift; 1x4 [W, z, p, n_eff].
+    expect_ok(interp, "wx = [1; 2; 3; 4; 5; 6; 7; 8]");
+    expect_ok(interp, "wy = [3; 4; 5; 6; 7; 8; 9; 10]");
+    expect_ok(interp, "ws = stats_wilcoxon_signed_rank(wx, wy)");
+    ASSERT_GT(interp.state().matrices.count("ws"), 0u);
+    const auto& ws = interp.state().matrices.at("ws");
+    ASSERT_EQ(ws.rows(), 1u);
+    ASSERT_EQ(ws.cols(), 4u);
+    EXPECT_TRUE(std::isfinite(ws(0, 0)));
+    EXPECT_TRUE(std::isfinite(ws(0, 1)));
+    EXPECT_LT(ws(0, 2), 0.05);
+    EXPECT_NEAR(ws(0, 3), 8.0, 1e-12);
+}
