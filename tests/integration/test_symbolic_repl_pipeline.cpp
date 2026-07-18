@@ -64,4 +64,40 @@ TEST(SymbolicReplPipeline, SymbolicBindingsPipeline) {
     EXPECT_NEAR(parse_scalar_output(*eval), 10.0, 1e-12);
     expect_error(interp, "sym_eval(\"x^2+1\", \"x\")");
     expect_error(interp, "sym_eval(\"x^2+1\", \"x=bad\")");
+
+    // sym_expand: distribute multiplication
+    const auto expanded = run(interp, "sym_expand(\"(x+1)*(x+2)\")");
+    ASSERT_TRUE(expanded.has_value());
+    EXPECT_NE(expanded->find("x"), std::string::npos);
+    expect_error(interp, "sym_expand()");
+
+    // sym_collect: combine like terms
+    const auto collected = run(interp, "sym_collect(\"x+x+1\", \"x\")");
+    ASSERT_TRUE(collected.has_value());
+    EXPECT_NE(collected->find("x"), std::string::npos);
+    expect_error(interp, "sym_collect(\"x+x+1\")");
+
+    // sym_substitute: replace variable
+    const auto substituted = run(interp, "sym_substitute(\"x^2\", \"x\", \"t\")");
+    ASSERT_TRUE(substituted.has_value());
+    EXPECT_NE(substituted->find("t"), std::string::npos);
+    expect_error(interp, "sym_substitute(\"x^2\", \"x\")");
+
+    // sym_limit: sin(x)/x at 0
+    const auto limit = run(interp, "sym_limit(\"sin(x)/x\", \"x\", 0)");
+    ASSERT_TRUE(limit.has_value());
+    EXPECT_NEAR(parse_scalar_output(*limit), 1.0, 1e-5);
+    expect_error(interp, "sym_limit(\"sin(x)/x\", \"x\")");
+
+    // sym_series: Taylor expansion at 0
+    const auto series = run(interp, "sym_series(\"exp(x)\", \"x\", 0, 3)");
+    ASSERT_TRUE(series.has_value());
+    EXPECT_NE(series->find("x"), std::string::npos);
+    expect_error(interp, "sym_series(\"exp(x)\", \"x\", 0)");
+
+    // sym_solve_linear: 2x + 4 = 0
+    const auto solved = run(interp, "sym_solve_linear(\"2*x+4\", \"x\")");
+    ASSERT_TRUE(solved.has_value());
+    EXPECT_NE(solved->find("x"), std::string::npos);
+    expect_error(interp, "sym_solve_linear(\"2*x+4\")");
 }
