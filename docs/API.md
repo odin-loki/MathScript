@@ -237,6 +237,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `finance_portfolio_return(weights, returns)` | Portfolio expected return from `N×1` weights and returns |
 | `finance_heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)` | Heston stochastic-volatility European call price |
 | `finance_sabr_call(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European call price (Wave 237) |
+| `finance_sabr_put(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European put price (Wave 241) |
 
 **Graph community/centrality (matrix assignment, Wave 234):**
 
@@ -293,7 +294,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `dist_cg(A, b)` | Distributed conjugate-gradient linear solve (stub: gather + CG on rank 0; Wave 238) |
 | `dist_gmres(A, b)` | Distributed GMRES (stub gather or MPI block; Wave 239/240) |
 | `dist_jacobi(A, b)` | Distributed Jacobi (stub gather or MPI block; Wave 240) |
+| `dist_bicgstab(A, b)` | Distributed BiCGSTAB (stub gather; Wave 241) |
 | `bicgstab(A, b)` | BiCGSTAB iterative solve (Wave 240) |
+| `signal_cheby2(order, rs_db, cutoff, fs)` | Chebyshev Type II IIR design; returns `[b; a]` rows (Wave 241) |
+| `signal_periodogram(x, fs)` / `signal_welch_psd(x, fs, nperseg)` | PSD helpers; freq/power columns (Wave 241) |
 
 **Session meta-commands (Wave 238):**
 
