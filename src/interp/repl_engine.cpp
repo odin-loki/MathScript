@@ -45,6 +45,8 @@
 #include "ms/crypto/crypto.hpp"
 #include "ms/fem/fem.hpp"
 #include "ms/cfd/cfd.hpp"
+#include "ms/cuda/elementwise.hpp"
+#include "ms/cuda/solver.hpp"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -56,6 +58,7 @@
 #include <memory>
 #include <optional>
 #include <regex>
+#include <span>
 #include <span>
 #include <sstream>
 #include <string_view>
@@ -6166,7 +6169,7 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         fn != "sym_expand" && fn != "sym_collect" && fn != "sym_substitute" && fn != "sym_limit" &&
         fn != "sym_series" && fn != "sym_solve_linear" && fn != "sym_laplace" &&
         fn != "sym_ilaplace" && fn != "sym_fourier" && fn != "sym_ifourier" &&
-        fn != "sym_ztransform" && fn != "sym_iztransform") {
+        fn != "sym_ztransform" && fn != "sym_iztransform" && fn != "sym_dsolve") {
         return std::nullopt;
     }
     const auto args = split_call_args(cmd);
@@ -6203,7 +6206,7 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         return eval_sym_solve_linear_strings(args->at(0), args->at(1));
     }
     if (fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_fourier" || fn == "sym_ifourier" ||
-        fn == "sym_ztransform" || fn == "sym_iztransform") {
+        fn == "sym_ztransform" || fn == "sym_iztransform" || fn == "sym_dsolve") {
         if (args->size() != 3) {
             return std::unexpected(
                 DomainError{fn, std::string("expected ") + fn + "(\"expr\", \"var1\", \"var2\")"});
@@ -6223,7 +6226,10 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         if (fn == "sym_ztransform") {
             return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_ztransform);
         }
-        return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_iztransform);
+        if (fn == "sym_iztransform") {
+            return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_iztransform);
+        }
+        return eval_sym_transform_strings(args->at(0), args->at(1), args->at(2), fn.c_str(), sym_dsolve);
     }
     if (fn == "sym_substitute" || fn == "sym_limit") {
         if (args->size() != 3) {
@@ -6740,9 +6746,11 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
     if (const auto call = parse_scalar_call(text)) {
         const std::string fn = lower(call->first);
         if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
+            fn == "cuda_add" ||
             fn == "solve" || fn == "dist_solve" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
+            fn == "cuda_lu" ||
             fn == "qr" || fn == "svd" || fn == "eig_sym" ||
             fn == "zeros" || fn == "eye" || fn == "ones" ||
             fn == "rand" || fn == "randn" || fn == "expm" || fn == "inv" ||
@@ -6839,6 +6847,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sym_limit" || fn == "sym_series" || fn == "sym_solve_linear" ||
             fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_fourier" ||
             fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform" ||
+            fn == "sym_dsolve" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
             fn == "graph_bellman_ford_dist" || fn == "graph_max_flow" ||
             fn == "graph_astar" ||
@@ -7246,6 +7255,10 @@ std::span<const uint8_t> string_item_bytes(const std::string& item) {
 }
 
 } // namespace
+
+ColMatrix<double> matrix_to_col_matrix(const Matrix<double>& matrix);
+Result<std::string> format_cuda_lu_result(const ColMatrix<double>& matrix);
+Result<Matrix<double>> eval_cuda_add_matrices(const Matrix<double>& left, const Matrix<double>& right);
 
 std::optional<Result<std::string>> Interpreter::try_session_object_command(
     const std::string& cmd) {
@@ -8454,14 +8467,14 @@ std::vector<std::string> split_comma_list(const std::string& text) {
 }
 
 bool is_multi_matrix_call_callee(const std::string& callee) {
-    return callee == "lu" || callee == "qr" || callee == "svd" || callee == "eig_sym";
+    return callee == "lu" || callee == "cuda_lu" || callee == "qr" || callee == "svd" || callee == "eig_sym";
 }
 
 bool is_valid_multi_matrix_target_count(const std::string& callee, size_t count) {
     if (callee == "qr" || callee == "eig_sym") {
         return count == 2;
     }
-    if (callee == "lu" || callee == "svd") {
+    if (callee == "lu" || callee == "cuda_lu" || callee == "svd") {
         return count == 2 || count == 3;
     }
     return false;
@@ -11223,6 +11236,26 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         return out.str();
     }
 
+    if (assign.callee == "cuda_lu") {
+        auto factored = cuda::lu(matrix_to_col_matrix(*matrix));
+        if (!factored) {
+            return std::unexpected(factored.error());
+        }
+        const auto& [L, U, P] = *factored;
+        state_.matrices[assign.targets[0]] = L;
+        state_.matrices[assign.targets[1]] = U;
+        out << assign.targets[0] << " =\n";
+        print_matrix(out, L);
+        out << assign.targets[1] << " =\n";
+        print_matrix(out, U);
+        if (assign.targets.size() == 3) {
+            state_.matrices[assign.targets[2]] = P;
+            out << assign.targets[2] << " =\n";
+            print_matrix(out, P);
+        }
+        return out.str();
+    }
+
     if (assign.callee == "qr") {
         auto factored = qr(*matrix);
         if (!factored) {
@@ -11336,6 +11369,42 @@ void print_matrix(std::ostream& out, const Matrix<double>& m) {
         }
         out << "]\n";
     }
+}
+
+ColMatrix<double> matrix_to_col_matrix(const Matrix<double>& matrix) {
+    ColMatrix<double> out(matrix.rows(), matrix.cols());
+    for (size_t i = 0; i < matrix.rows(); ++i) {
+        for (size_t j = 0; j < matrix.cols(); ++j) {
+            out(i, j) = matrix(i, j);
+        }
+    }
+    return out;
+}
+
+Result<std::string> format_cuda_lu_result(const ColMatrix<double>& matrix) {
+    auto result = cuda::lu(matrix);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    const auto& [L, U, P] = *result;
+    std::ostringstream out;
+    out << "L =\n";
+    print_matrix(out, L);
+    out << "U =\n";
+    print_matrix(out, U);
+    out << "P =\n";
+    print_matrix(out, P);
+    return out.str();
+}
+
+Result<Matrix<double>> eval_cuda_add_matrices(const Matrix<double>& left, const Matrix<double>& right) {
+    if (left.rows() != right.rows() || left.cols() != right.cols()) {
+        return std::unexpected(DimensionMismatch{left.rows(), left.cols()});
+    }
+    Matrix<double> out = left;
+    cuda::add_inplace(std::span<double>(out.data(), out.size()),
+                      std::span<const double>(right.data(), right.size()));
+    return out;
 }
 
 std::string matrix_to_line(const Matrix<double>& m) {
@@ -11939,6 +12008,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sym_ifourier(\"expr\",\"omega\",\"t\") inverse Fourier transform frequency to time\n"
             "  name = sym_ztransform(\"expr\",\"n\",\"z\") Z-transform discrete sequence to z-domain\n"
             "  name = sym_iztransform(\"expr\",\"z\",\"n\") inverse Z-transform z-domain to sequence\n"
+            "  name = sym_dsolve(\"rhs\",\"x\",\"y\") solve separable first-order ODE dy/dx = rhs\n"
             "  name = ode_euler(\"formula\",t0,y0,t_end,steps) Euler IVP trajectory [t,y] columns\n"
             "  name = ode_rk4(\"formula\",t0,y0,t_end,steps) RK4 IVP trajectory [t,y] columns\n"
             "  name = ode_midpoint(\"formula\",t0,y0,t_end,steps) midpoint IVP trajectory [t,y] columns\n"
@@ -12178,7 +12248,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
             "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), solve(A,B), dist_solve(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), eig_sym(A), svd(A)\n"
+            "  lu(A), qr(A), chol(A), solve(A,B), dist_solve(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi)\n"
@@ -12206,7 +12276,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  heun_g(a,q,alpha,beta,gamma,delta,z), painleve1(x,y0,yp0)\n"
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
-            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\")\n"
+            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\")\n"
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42)\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
@@ -15727,7 +15797,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     if (std::regex_match(cmd, match, ternary)) {
         const std::string fn = lower(match[1].str());
         if (fn == "sym_laplace" || fn == "sym_ilaplace" || fn == "sym_fourier" ||
-            fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform") {
+            fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform" ||
+            fn == "sym_dsolve") {
             const std::string arg_a = trim(match[2].str());
             const std::string arg_b = trim(match[3].str());
             const std::string arg_c = trim(match[4].str());
@@ -15742,8 +15813,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_ifourier);
             } else if (fn == "sym_ztransform") {
                 value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_ztransform);
-            } else {
+            } else if (fn == "sym_iztransform") {
                 value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_iztransform);
+            } else {
+                value = eval_sym_transform_strings(arg_a, arg_b, arg_c, fn.c_str(), sym_dsolve);
             }
             if (!value) {
                 return std::unexpected(value.error());
@@ -16549,7 +16622,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
     if (const auto open = cmd.find('('); open != std::string::npos && !cmd.empty() && cmd.back() == ')') {
         const std::string fn = lower(trim_copy(cmd.substr(0, open)));
-        if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum") {
+        if (fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
+            fn == "cuda_add") {
             const auto call_args = split_call_args(cmd);
             if (call_args && call_args->size() == 2) {
                 auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16566,6 +16640,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 auto B = resolve_arg(call_args->at(1));
                 if (!B) {
                     return std::unexpected(B.error());
+                }
+                if (fn == "cuda_add") {
+                    auto sum = eval_cuda_add_matrices(*A, *B);
+                    if (!sum) {
+                        return std::unexpected(sum.error());
+                    }
+                    std::ostringstream out;
+                    out << "sum =\n";
+                    print_matrix(out, *sum);
+                    return out.str();
                 }
                 Result<Matrix<double>> C;
                 if (fn == "tensorops_matmul") {
@@ -18717,7 +18801,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
 
         if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "dist_solve" ||
-            fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum") {
+            fn == "matmul" || fn == "tensorops_matmul" || fn == "tensorops_einsum" ||
+            fn == "cuda_add") {
             auto A = resolve_matrix(arg_a);
             if (!A) {
                 A = parse_matrix(arg_a);
@@ -18751,6 +18836,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     std::ostringstream out;
                     out << "x =\n";
                     print_matrix(out, *x);
+                    return out.str();
+                }
+                if (fn == "cuda_add") {
+                    auto sum = eval_cuda_add_matrices(*A, *B);
+                    if (!sum) {
+                        return std::unexpected(sum.error());
+                    }
+                    std::ostringstream out;
+                    out << "sum =\n";
+                    print_matrix(out, *sum);
                     return out.str();
                 }
                 Result<Matrix<double>> C;
@@ -19777,6 +19872,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, U);
             out << "P =\n";
             print_matrix(out, P);
+        } else if (fn == "cuda_lu") {
+            auto formatted = format_cuda_lu_result(matrix_to_col_matrix(*matrix));
+            if (!formatted) {
+                return std::unexpected(formatted.error());
+            }
+            return *formatted;
         } else if (fn == "qr") {
             auto result = qr(*matrix);
             if (!result) {
