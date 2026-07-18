@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-18 (Wave 251 ✅ COMPLETE — **409 CTest suites** on `main`)
+**Updated:** 2026-07-18 (Wave 252 ✅ COMPLETE — **410 CTest suites** on `main`)
 
 ---
 
@@ -35,7 +35,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 
 ---
 
-## Feature waves ✅ 231–251 COMPLETE (summary)
+## Feature waves ✅ 231–252 COMPLETE (summary)
 
 | Wave | Focus |
 |------|--------|
@@ -60,6 +60,7 @@ Waves **218–230** certified hot paths, bench infra, and baseline refresh. **No
 | **249** | NCCL `reduce`; `dist_lsqr`; SHA-256 REPL; signal resample/decimate/interpolate; GUI Move Line; Wave 248 benches |
 | **250** | `crypto_sha512`; NCCL introspect; coherence/filtfilt; GUI Delete Line; `BM_DistLsqr`; wave250 pipeline |
 | **251** | `signal_filter`/`cheby1`; MPI max/min; `geo_convex_hull`; Select All/Undo; AES-256 block; wave251 pipeline |
+| **252** | `sosfilt`/`firwin`/`savgol`; `mpi_barrier`; AES-256 decrypt; GUI Replace All; wave252 pipeline |
 
 See `CHANGELOG.md` for per-wave branch tables.
 
@@ -238,11 +239,20 @@ See `CHANGELOG.md` for per-wave branch tables.
 | Crypto REPL | `crypto_aes256_encrypt_block` + wave251 pipeline |
 | Benchmarks | `BM_CudaNcclCommSize` |
 
-**409 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–251** closed for this incremental batch.
+## Wave 252 ✅ COMPLETE (sosfilt/firwin/savgol, mpi_barrier, AES-256 decrypt, GUI Replace All)
+
+| Area | Deliverable |
+|------|-------------|
+| Signal REPL | `signal_sosfilt`, `signal_firwin`/`highpass`, `signal_savgol` |
+| MPI REPL | `mpi_barrier` |
+| Crypto | `aes256_decrypt_block` + REPL + wave252 pipeline |
+| GUI | Replace All in Script |
+
+**410 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–252** closed for this incremental batch.
 
 ---
 
-## Next (Wave 252+) — deferred
+## Next (Wave 253+) — deferred
 
 | Item | Notes |
 |------|--------|

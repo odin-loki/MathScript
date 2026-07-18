@@ -315,7 +315,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_random_bytes(n)` | Random bytes as hex (MVP; Wave 248) |
 | `crypto_sha256(hex_data)` / `crypto_hmac_sha256(hex_key,hex_data)` | SHA-256 / HMAC-SHA256 hex digests (Wave 249) |
 | `crypto_sha512(hex_data)` | SHA-512 hex digest (Wave 250) |
-| `crypto_aes256_encrypt_block(key_hex,block_hex)` | AES-256 ECB single block (Wave 251) |
+| `crypto_aes256_encrypt_block(key_hex,block_hex)` / `crypto_aes256_decrypt_block(...)` | AES-256 ECB single block (Wave 251/252) |
+| `mpi_barrier()` | MPI stub barrier (Wave 252) |
+| `signal_sosfilt(sos,x)` | Second-order sections filter (Wave 252) |
+| `signal_firwin` / `signal_firwin_highpass` | Windowed-sinc FIR design (Wave 252) |
+| `signal_savgol(x,window_length,polyorder)` | Savitzky–Golay smooth (Wave 252) |
 | `cuda_nccl_available()` / `cuda_nccl_comm_size()` / `cuda_nccl_device_count()` | NCCL stub introspection (Wave 250) |
 | `mpi_allreduce_max(x)` / `mpi_allreduce_min(x)` | MPI stub max/min (Wave 251) |
 | `signal_coherence(x,y,fs,nperseg)` | Magnitude-squared coherence Nx2 (Wave 250) |

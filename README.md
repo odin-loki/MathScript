@@ -56,12 +56,12 @@ None of these were caught by code review; all three were caught by a test assert
 ## Status
 
 - **Version:** 1.0.0 — Phase 10 (hardening) complete; profiling iteration **fully complete** through Wave 230 — code, infra, and baseline path (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md))
-- **Tests:** **409** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
+- **Tests:** **410** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
 - **CI:** Windows MSVC + Linux GCC 13 build/test; coverage; libFuzzer smoke (7 targets); Valgrind memcheck; benchmark regression gate (`bench_matmul`, `bench_fft`, 10% tolerance); Clang plugin compliance (20 enforced rules); vendor checksum verification; optional `jit-linux` and `plugin-linux` jobs
 
-## Product closure (feature waves 231–251)
+## Product closure (feature waves 231–252)
 
-After the profiling iteration closed at Wave 230, twenty-one parallel **feature waves** (231–251) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
+After the profiling iteration closed at Wave 230, twenty-two parallel **feature waves** (231–252) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. **This planned post-profiling batch is complete** — see [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
 
 | Wave | Focus |
 |------|--------|
@@ -86,6 +86,7 @@ After the profiling iteration closed at Wave 230, twenty-one parallel **feature 
 | **249** | NCCL `reduce`; `dist_lsqr`; SHA-256 REPL; signal resample/decimate/interpolate; GUI Move Line; Wave 248 benches |
 | **250** | `crypto_sha512`; NCCL introspect; `signal_coherence`/`filtfilt`; GUI Delete Line; `BM_DistLsqr`; wave250 pipeline |
 | **251** | `signal_filter`/`cheby1`; MPI max/min; `geo_convex_hull`; Select All/Undo; AES-256 block; wave251 pipeline |
+| **252** | `sosfilt`/`firwin`/`savgol`; `mpi_barrier`; AES-256 decrypt; GUI Replace All; wave252 pipeline |
 
 ## Build (quickstart)
 
