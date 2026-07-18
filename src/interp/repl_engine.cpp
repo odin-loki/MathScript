@@ -5288,6 +5288,9 @@ Result<std::vector<std::string>> parse_sym_semicolon_identifiers(const std::stri
     return ids;
 }
 
+Result<std::vector<SymExpr>> parse_sym_semicolon_formulas(const std::string& formula_arg,
+                                                          const char* fn);
+
 Result<std::string> eval_sym_solve_linear_strings(const std::string& eqs_arg,
                                                   const std::string& vars_arg) {
     auto eqs = parse_sym_semicolon_formulas(eqs_arg, "sym_solve_linear");
