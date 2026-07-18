@@ -1935,6 +1935,71 @@ Result<double> eval_geo_bezier_eval_y(const Matrix<double>& ctrl_m, double t) {
     return geo::bezier_eval(*ctrl, t).y;
 }
 
+Result<Matrix<double>> eval_geo_bezier_eval(const Matrix<double>& ctrl_m, double t) {
+    auto ctrl = matrix_to_points2d(ctrl_m, "geo_bezier_eval");
+    if (!ctrl) {
+        return std::unexpected(ctrl.error());
+    }
+    if (ctrl->size() < 3) {
+        return std::unexpected(
+            DomainError{"geo_bezier_eval", "expected at least 3 control points"});
+    }
+    const geo::Point2D p = geo::bezier_eval(*ctrl, t);
+    Matrix<double> out(1, 2);
+    out(0, 0) = p.x;
+    out(0, 1) = p.y;
+    return out;
+}
+
+Result<Matrix<double>> eval_geo_catmull_rom(const Matrix<double>& ctrl_m, double t) {
+    auto ctrl = matrix_to_points2d(ctrl_m, "geo_catmull_rom");
+    if (!ctrl) {
+        return std::unexpected(ctrl.error());
+    }
+    if (ctrl->size() < 2) {
+        return std::unexpected(
+            DomainError{"geo_catmull_rom", "expected at least 2 control points"});
+    }
+    const geo::Point2D p = geo::catmull_rom(*ctrl, t);
+    Matrix<double> out(1, 2);
+    out(0, 0) = p.x;
+    out(0, 1) = p.y;
+    return out;
+}
+
+Result<Matrix<double>> eval_geo_bspline_eval(const Matrix<double>& ctrl_m,
+                                             const Matrix<double>& knots_m, double degree_d,
+                                             double t) {
+    auto ctrl = matrix_to_points2d(ctrl_m, "geo_bspline_eval");
+    if (!ctrl) {
+        return std::unexpected(ctrl.error());
+    }
+    if (ctrl->empty()) {
+        return std::unexpected(
+            DomainError{"geo_bspline_eval", "expected non-empty Nx2 control polygon"});
+    }
+    auto knots = matrix_to_coeff_vector(knots_m, "geo_bspline_eval");
+    if (!knots) {
+        return std::unexpected(knots.error());
+    }
+    const int degree = static_cast<int>(degree_d);
+    if (degree < 1 || degree_d != degree) {
+        return std::unexpected(
+            DomainError{"geo_bspline_eval", "expected positive integer degree"});
+    }
+    const int n = static_cast<int>(ctrl->size()) - 1;
+    const int expected_knots = n + degree + 2;
+    if (static_cast<int>(knots->size()) < expected_knots) {
+        return std::unexpected(DomainError{
+            "geo_bspline_eval", "expected knot vector length >= n+degree+2"});
+    }
+    const geo::Point2D p = geo::bspline_eval(*ctrl, *knots, degree, t);
+    Matrix<double> out(1, 2);
+    out(0, 0) = p.x;
+    out(0, 1) = p.y;
+    return out;
+}
+
 Result<double> eval_geo_point_in_polygon(double px, double py, const Matrix<double>& points_m) {
     auto points = matrix_to_points2d(points_m, "geo_point_in_polygon");
     if (!points) {
@@ -12376,6 +12441,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
            callee == "geo_min_bounding_rect" ||
            callee == "geo_kdtree_knn" || callee == "geo_kdtree_range" ||
+           callee == "geo_bezier_eval" || callee == "geo_catmull_rom" ||
+           callee == "geo_bspline_eval" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
            callee == "numthy_convergents" || callee == "ml_mat_transpose" ||
            callee == "ml_mat_mul" ||
@@ -12516,8 +12583,11 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "signal_coherence" || callee == "signal_lms" ||
         callee == "signal_lms_weights" || callee == "geo_kdtree_knn" ||
-        callee == "geo_kdtree_range") {
+        callee == "geo_kdtree_range" || callee == "geo_bspline_eval") {
         return arity == 4;
+    }
+    if (callee == "geo_bezier_eval" || callee == "geo_catmull_rom") {
+        return arity == 2;
     }
     if (callee == "signal_czt_zoom") {
         return arity == 5;
@@ -16175,6 +16245,8 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = gray_image_to_matrix(image::iradon(sino, theta_f));
     } else if (assign.callee == "hess" && assign.args.size() == 1) {
+    } else if ((assign.callee == "geo_bezier_eval" || assign.callee == "geo_catmull_rom") &&
+               assign.args.size() == 2) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -16190,6 +16262,51 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(decomp.error());
         }
         result = decomp->T;
+        double t = 0.0;
+        if (!parse_number(assign.args[1], t)) {
+            auto t_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!t_expr) {
+                return std::unexpected(DomainError{
+                    assign.callee,
+                    assign.callee == "geo_bezier_eval"
+                        ? "expected geo_bezier_eval(ctrl, t)"
+                        : "expected geo_catmull_rom(ctrl, t)"});
+            }
+            t = *t_expr;
+        }
+        if (assign.callee == "geo_bezier_eval") {
+            result = eval_geo_bezier_eval(*matrix, t);
+        } else {
+            result = eval_geo_catmull_rom(*matrix, t);
+        }
+    } else if (assign.callee == "geo_bspline_eval" && assign.args.size() == 4) {
+        auto ctrl = resolve_operand(assign.args[0]);
+        if (!ctrl) {
+            return std::unexpected(ctrl.error());
+        }
+        auto knots = resolve_operand(assign.args[1]);
+        if (!knots) {
+            return std::unexpected(knots.error());
+        }
+        double degree = 0.0;
+        double t = 0.0;
+        if (!parse_number(assign.args[2], degree)) {
+            auto deg_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!deg_expr) {
+                return std::unexpected(DomainError{
+                    "geo_bspline_eval", "expected geo_bspline_eval(ctrl, knots, degree, t)"});
+            }
+            degree = *deg_expr;
+        }
+        if (!parse_number(assign.args[3], t)) {
+            auto t_expr = eval_scalar_expr(state_, assign.args[3]);
+            if (!t_expr) {
+                return std::unexpected(DomainError{
+                    "geo_bspline_eval", "expected geo_bspline_eval(ctrl, knots, degree, t)"});
+            }
+            t = *t_expr;
+        }
+        result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
     }
     return result;
 }
@@ -18056,6 +18173,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4) tetrahedron volume\n"
             "  name = geo_bezier_eval_x(P,t) Bezier curve x-coordinate at parameter t\n"
             "  name = geo_bezier_eval_y(P,t) Bezier curve y-coordinate at parameter t\n"
+            "  name = geo_bezier_eval(P,t) Bezier curve point as 1x2 [x,y] at parameter t\n"
+            "  name = geo_catmull_rom(P,t) Catmull-Rom spline point as 1x2 [x,y] at parameter t\n"
+            "  name = geo_bspline_eval(P,knots,degree,t) B-spline point as 1x2 [x,y]\n"
             "  name = geo_hermite_x(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t) Hermite curve x at t\n"
             "  name = geo_point_in_polygon(px,py,P) 1 if point inside Nx2 polygon else 0\n"
             "  name = geo_delaunay_2d(P) Delaunay triangulation Mx3 index matrix from Nx2 points\n"
@@ -18592,8 +18712,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
-            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
-            "  combo_nchoosek(n,k), combo_binomial(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_bell_num(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), numthy_factor(n)\n"
+            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
+            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_vec(n), numthy_isprime(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
