@@ -206,6 +206,11 @@ QStringList repl_command_list() {
         QStringLiteral("geo_intersect_seg_seg"),
         QStringLiteral("geo_intersect_ray_sphere"),
         QStringLiteral("geo_intersect_ray_aabb"),
+        // Image transforms
+        QStringLiteral("imflip"),
+        QStringLiteral("imrotate90"),
+        QStringLiteral("threshold_binary"),
+        QStringLiteral("adapthisteq"),
         // Framework hooks
         QStringLiteral("izaac"),
         QStringLiteral("gria"),
