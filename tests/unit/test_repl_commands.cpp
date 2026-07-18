@@ -6163,3 +6163,24 @@ TEST(ReplCommandsTest, wave259_combo_bell_num) {
 
     expect_contains(interp, "combo_bell_num(4)", "15");
 }
+
+TEST(ReplCommandsTest, wave259_imgradient_morph) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imgradient_morph(M[,k])");
+
+    // Bright center on dark background — gradient responds at edges.
+    expect_ok(interp, "M = [0,0,0,0,0; 0,0,1,0,0; 0,0,1,0,0; 0,0,0,0,0; 0,0,0,0,0]");
+    expect_ok(interp, "G = imgradient_morph(M)");
+    ASSERT_GT(interp.state().matrices.count("G"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("G").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("G").cols(), 5u);
+    EXPECT_GE(interp.state().matrices.at("G")(1, 2), 0.0);
+
+    // Matches imdilate - imerode composition.
+    expect_ok(interp, "D = imdilate(M, 3)");
+    expect_ok(interp, "E = imerode(M, 3)");
+    expect_ok(interp, "G2 = imgradient_morph(M, 3)");
+    EXPECT_NEAR(interp.state().matrices.at("G2")(1, 2),
+                interp.state().matrices.at("D")(1, 2) - interp.state().matrices.at("E")(1, 2),
+                1e-5);
+}
