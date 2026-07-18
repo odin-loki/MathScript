@@ -1,4 +1,5 @@
 #include "gui/MainWindow.hpp"
+#include "gui/LineNumberArea.hpp"
 #include "gui/PlotSurfWidget.hpp"
 #include "gui/PlotWidget.hpp"
 #include "gui/ReplWorker.hpp"
@@ -21,6 +22,7 @@
 #include <QFileSystemModel>
 #include <QInputDialog>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QMenuBar>
 #include <QMetaType>
 #include <QTextCharFormat>
@@ -38,6 +40,7 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -181,6 +184,111 @@ bool is_small_matrix(const ms::Matrix<double>& matrix) {
     return matrix.rows() <= kListPreviewMaxRows && matrix.cols() <= kListPreviewMaxCols;
 }
 
+QString escape_latex_text(const QString& text) {
+    QString out;
+    out.reserve(text.size() + 8);
+    for (const QChar ch : text) {
+        switch (ch.unicode()) {
+            case '\\':
+                out += QStringLiteral("\\textbackslash{}");
+                break;
+            case '{':
+                out += QStringLiteral("\\{");
+                break;
+            case '}':
+                out += QStringLiteral("\\}");
+                break;
+            case '$':
+                out += QStringLiteral("\\$");
+                break;
+            case '%':
+                out += QStringLiteral("\\%");
+                break;
+            case '&':
+                out += QStringLiteral("\\&");
+                break;
+            case '#':
+                out += QStringLiteral("\\#");
+                break;
+            case '_':
+                out += QStringLiteral("\\_");
+                break;
+            case '^':
+                out += QStringLiteral("\\^{}");
+                break;
+            case '~':
+                out += QStringLiteral("\\~{}");
+                break;
+            default:
+                out += ch;
+                break;
+        }
+    }
+    return out;
+}
+
+bool parse_scalar_result(const QString& text) {
+    if (text.isEmpty()) {
+        return false;
+    }
+    bool ok = false;
+    const double parsed = text.toDouble(&ok);
+    return ok && std::isfinite(parsed);
+}
+
+QString matrix_row_to_latex(const QString& row_text) {
+    QStringList cells;
+    for (const QString& cell : row_text.split(',', Qt::SkipEmptyParts)) {
+        const QString trimmed = cell.trimmed();
+        if (trimmed == QStringLiteral("...")) {
+            continue;
+        }
+        cells.append(escape_latex_text(trimmed));
+    }
+    return cells.join(QStringLiteral(" & "));
+}
+
+QString result_to_latex_body(const QString& result) {
+    const QString text = result.trimmed();
+    if (text.isEmpty()) {
+        return QStringLiteral("\\[\\]");
+    }
+
+    if (parse_scalar_result(text)) {
+        return QStringLiteral("\\[%1\\]").arg(escape_latex_text(text));
+    }
+
+    if (text.startsWith('[') && text.endsWith(']')) {
+        const QString inner = text.mid(1, text.size() - 2).trimmed();
+        const QStringList rows = inner.split(';', Qt::SkipEmptyParts);
+        if (!rows.isEmpty()) {
+            QStringList latex_rows;
+            for (const QString& row : rows) {
+                const QString trimmed = row.trimmed();
+                if (trimmed == QStringLiteral("...")) {
+                    continue;
+                }
+                latex_rows.append(matrix_row_to_latex(trimmed));
+            }
+            if (!latex_rows.isEmpty()) {
+                return QStringLiteral("\\[\n\\begin{bmatrix}\n%1\n\\end{bmatrix}\n\\]")
+                    .arg(latex_rows.join(QStringLiteral(" \\\\\n")));
+            }
+        }
+    }
+
+    return QStringLiteral("\\begin{verbatim}\n%1\n\\end{verbatim}").arg(escape_latex_text(text));
+}
+
+QString wrap_latex_document(const QString& body) {
+    return QStringLiteral("\\documentclass{article}\n"
+                          "\\usepackage{amsmath}\n"
+                          "\\begin{document}\n\n"
+                          "%1\n\n"
+                          "\\end{document}\n")
+        .arg(body);
+}
+
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -210,6 +318,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     editor_->setPlaceholderText("Script editor (open a file from the browser)");
     editor_->setMinimumHeight(200);
     new ScriptHighlighter(editor_->document());
+    line_number_area_ = new LineNumberArea(editor_);
     center_layout->addWidget(editor_);
 
     output_ = new QPlainTextEdit(center);
@@ -270,8 +379,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     status_timer_ = new QTimer(this);
     connect(status_timer_, &QTimer::timeout, this, &MainWindow::refresh_status);
+    status_runtime_label_ = new QLabel(this);
+    status_runtime_label_->setMinimumWidth(320);
+    statusBar()->addWidget(status_runtime_label_, 1);
+    status_cursor_label_ = new QLabel(this);
+    statusBar()->addPermanentWidget(status_cursor_label_);
     status_timer_->start(2000);
     refresh_status();
+    update_cursor_status();
+    connect(editor_, &QPlainTextEdit::cursorPositionChanged, this, &MainWindow::update_cursor_status);
 
     connect(run_, &QPushButton::clicked, this, &MainWindow::on_submit);
     auto* run_shortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return), this);
@@ -353,6 +469,7 @@ void MainWindow::setup_menus() {
     auto* save_session_action = file_menu->addAction("Save Session...");
     auto* load_session_action = file_menu->addAction("Load Session...");
     auto* export_history_action = file_menu->addAction("Export Command History...");
+    auto* export_latex_action = file_menu->addAction("Export Last Result as LaTeX...");
     auto* export_plot_action = file_menu->addAction("Export Plot as PNG...");
     file_menu->addSeparator();
     auto* quit_action = file_menu->addAction("Quit");
@@ -451,6 +568,7 @@ void MainWindow::setup_menus() {
     });
     connect(export_plot_action, &QAction::triggered, this, &MainWindow::export_plot_png);
     connect(export_history_action, &QAction::triggered, this, &MainWindow::export_command_history);
+    connect(export_latex_action, &QAction::triggered, this, &MainWindow::export_last_result_latex);
     connect(quit_action, &QAction::triggered, qApp, &QApplication::quit);
 }
 
@@ -477,11 +595,20 @@ void MainWindow::refresh_status() {
         gpu_part = QString("%1 %2/%3 MiB").arg(model).arg(free_mib).arg(total_mib);
     }
 
-    statusBar()->showMessage(QString("SIMD %1 | %2 | MPI %3/%4")
-                                 .arg(isa)
-                                 .arg(gpu_part)
-                                 .arg(ms::distributed::rank(mpi))
-                                 .arg(ms::distributed::size(mpi)));
+    status_runtime_label_->setText(QString("SIMD %1 | %2 | MPI %3/%4")
+                                       .arg(isa)
+                                       .arg(gpu_part)
+                                       .arg(ms::distributed::rank(mpi))
+                                       .arg(ms::distributed::size(mpi)));
+}
+
+void MainWindow::update_cursor_status() {
+    if (editor_ == nullptr || status_cursor_label_ == nullptr) {
+        return;
+    }
+    const QTextCursor cursor = editor_->textCursor();
+    status_cursor_label_->setText(
+        QString("Ln %1, Col %2").arg(cursor.blockNumber() + 1).arg(cursor.columnNumber() + 1));
 }
 
 void MainWindow::clear_output() {
@@ -656,6 +783,9 @@ void MainWindow::adjust_font_size(int delta) {
     editor_->setFont(font);
     output_->setFont(font);
     input_->setFont(font);
+    if (line_number_area_ != nullptr) {
+        line_number_area_->refresh_layout();
+    }
 }
 
 void MainWindow::show_welcome_banner() {
@@ -796,6 +926,28 @@ void MainWindow::export_plot_png() {
     }
 }
 
+void MainWindow::export_last_result_latex() {
+    if (last_result_.trimmed().isEmpty()) {
+        append_output("error: no REPL result to export\n", true);
+        return;
+    }
+
+    const QString path =
+        QFileDialog::getSaveFileName(this, "Export Last Result as LaTeX", {}, "LaTeX (*.tex);;All Files (*)");
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const QString latex = wrap_latex_document(result_to_latex_body(last_result_));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        append_output("error: failed to write " + path + "\n", true);
+        return;
+    }
+    file.write(latex.toUtf8());
+    append_output("exported last result to " + path + "\n");
+}
+
 void MainWindow::export_command_history() {
     if (repl_busy_) {
         append_output("error: wait for the current REPL command to finish\n", true);
@@ -920,6 +1072,7 @@ void MainWindow::on_run_script() {
 
 void MainWindow::on_repl_finished(const QString& output) {
     if (!output.isEmpty()) {
+        last_result_ = output.trimmed();
         append_output(output);
         if (!output.endsWith('\n')) {
             append_output("\n");
