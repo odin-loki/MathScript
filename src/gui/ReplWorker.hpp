@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <QObject>
 #include <QString>
 
@@ -18,6 +20,7 @@ public:
 
 public slots:
     void evaluate(const QString& line);
+    void requestCancel();
     QString saveSession(const QString& path);
     QString loadSession(const QString& path);
     ms::interp::SessionState sessionState() const;
@@ -27,7 +30,9 @@ public slots:
 signals:
     void finished(QString output);
     void error(QString message);
+    void cancelled();
 
 private:
     ms::interp::Interpreter interp_;
+    std::atomic<bool> cancel_requested_{false};
 };

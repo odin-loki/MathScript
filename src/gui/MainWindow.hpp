@@ -33,11 +33,13 @@ private slots:
     void on_run_script();
     void on_repl_finished(const QString& output);
     void on_repl_error(const QString& message);
+    void on_repl_cancelled();
+    void on_stop();
     void on_file_activated(const QModelIndex& index);
     void refresh_status();
 
 private:
-    void append_output(const QString& text);
+    void append_output(const QString& text, bool is_error = false);
     void refresh_variables();
     void refresh_plot();
     void export_plot_png();
@@ -51,6 +53,7 @@ private:
     QPlainTextEdit* editor_ = nullptr;
     QLineEdit* input_ = nullptr;
     QPushButton* run_ = nullptr;
+    QPushButton* stop_ = nullptr;
     QPushButton* run_script_ = nullptr;
     QListWidget* variables_ = nullptr;
     QStackedWidget* plot_stack_ = nullptr;

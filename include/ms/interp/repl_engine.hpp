@@ -6,6 +6,7 @@
 #include "ms/frameworks/cypha/cypha.hpp"
 #include "ms/frameworks/izaac/izaac.hpp"
 #include "ms/tensorops/tensorops.hpp"
+#include <atomic>
 #include <map>
 #include <optional>
 #include <ostream>
@@ -78,6 +79,8 @@ using SessionObject = std::variant<
 class Interpreter {
 public:
     Result<std::string> execute(const std::string& line);
+    void set_cancel_flag(std::atomic<bool>* flag);
+    bool cancel_requested() const;
     const SessionState& state() const { return state_; }
     bool has_plot() const { return state_.plot.valid; }
     const PlotSeries& plot() const { return state_.plot; }
@@ -108,6 +111,7 @@ public:
 private:
     SessionState state_;
     std::map<std::string, SessionObject> session_objects_;
+    std::atomic<bool>* cancel_flag_ = nullptr;
     std::optional<Result<std::string>> try_session_object_command(const std::string& cmd);
     Result<Matrix<double>> parse_matrix(const std::string& text) const;
     Result<Matrix<double>> resolve_matrix(const std::string& name) const;
@@ -123,5 +127,7 @@ private:
 };
 
 void print_matrix(std::ostream& out, const Matrix<double>& m);
+
+bool repl_cancel_requested();
 
 } // namespace ms::interp
