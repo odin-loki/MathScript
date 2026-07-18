@@ -59,4 +59,8 @@ double broadcast(double value, int root = 0);
 /// sum to root (MVP stub = identity).
 double reduce(double value, int root = 0);
 
+/// All-gather a scalar across the NCCL communicator.
+/// Stub / single-rank path: returns `value` unchanged (identity like broadcast).
+double allgather(double value);
+
 } // namespace ms::cuda

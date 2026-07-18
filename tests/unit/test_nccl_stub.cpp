@@ -104,6 +104,28 @@ TEST(NcclStubTest, reduce_idempotent) {
     EXPECT_DOUBLE_EQ(once, twice);
 }
 
+TEST(NcclStubTest, allgather_identity) {
+    EXPECT_DOUBLE_EQ(allgather(3.5), 3.5);
+    EXPECT_DOUBLE_EQ(allgather(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(allgather(-2.25), -2.25);
+}
+
+TEST(NcclStubTest, allgather_idempotent) {
+    const double once = allgather(42.0);
+    const double twice = allgather(once);
+    EXPECT_DOUBLE_EQ(once, twice);
+}
+
+TEST(NcclStubTest, repl_cuda_allgather) {
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("y = cuda_allgather(3.5)").has_value());
+    ASSERT_GT(interp.state().scalars.count("y"), 0u);
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("y"), 3.5);
+    const auto help = interp.execute("help");
+    ASSERT_TRUE(help.has_value());
+    EXPECT_NE(help->find("cuda_allgather(x)"), std::string::npos) << *help;
+}
+
 TEST(NcclStubTest, comm_size_at_least_one) {
     EXPECT_GE(nccl_comm_size(), 1u);
 }

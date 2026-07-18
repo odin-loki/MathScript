@@ -109,4 +109,17 @@ double reduce(double value, int /*root*/) {
 #endif
 }
 
+double allgather(double value) {
+#if defined(MS_HAS_NCCL) && MS_HAS_NCCL
+    if (!nccl_available() || nccl_comm_size() <= 1) {
+        return value;
+    }
+    // Multi-GPU NCCL allgather is wired in a later wave; identity until
+    // MultiGPUContext and comm init land.
+    return value;
+#else
+    return value;
+#endif
+}
+
 } // namespace ms::cuda

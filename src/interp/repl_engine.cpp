@@ -11550,6 +11550,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "cuda_reduce") {
             return ms::cuda::reduce(arg);
         }
+        if (fn == "cuda_allgather") {
+            return ms::cuda::allgather(arg);
+        }
     }
     if (args.size() == 2) {
         if (fn == "pow") {
@@ -15245,6 +15248,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cuda_allreduce_avg(x)  NCCL all-reduce average (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_broadcast(x)  NCCL broadcast scalar from root 0 (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_reduce(x)  NCCL reduce sum-to-root from root 0 (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
+            "  cuda_allgather(x)  NCCL all-gather scalar (stub: identity when MS_HAS_NCCL=0 or comm_size=1)\n"
             "  cuda_nccl_available()  1 if NCCL usable, else 0\n"
             "  cuda_nccl_comm_size()  NCCL communicator size (stub: 1)\n"
             "  cuda_nccl_device_count()  NCCL-visible GPU count (stub: 0)\n"

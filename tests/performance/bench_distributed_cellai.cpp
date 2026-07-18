@@ -66,6 +66,14 @@ static void BM_CudaReduce(benchmark::State& state) {
 }
 BENCHMARK(BM_CudaReduce);
 
+static void BM_CudaAllgather(benchmark::State& state) {
+    for (auto _ : state) {
+        const double result = ms::cuda::allgather(2.0);
+        benchmark::DoNotOptimize(result);
+    }
+}
+BENCHMARK(BM_CudaAllgather);
+
 static void BM_CudaNcclCommSize(benchmark::State& state) {
     for (auto _ : state) {
         const size_t result = ms::cuda::nccl_comm_size();
