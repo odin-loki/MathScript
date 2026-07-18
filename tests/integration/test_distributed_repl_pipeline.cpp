@@ -119,4 +119,19 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
         ColMatrix<double>{{1.0}, {2.0}}).value();
     EXPECT_NEAR(xj(0, 0), expected_j(0, 0), 1e-6);
     EXPECT_NEAR(xj(1, 0), expected_j(1, 0), 1e-6);
+
+    // dist_bicgstab: nonsymmetric system via distributed BiCGSTAB
+    expect_ok(interp, "B = [3, 1; 1, 2]");
+    expect_ok(interp, "brhs = [1; 1]");
+    expect_ok(interp, "xb = dist_bicgstab(B, brhs)");
+    expect_ok(interp, "xb = dist_bicgstab(B, brhs)");
+    ASSERT_GT(interp.state().matrices.count("xb"), 0u);
+    const auto& xb = interp.state().matrices.at("xb");
+    EXPECT_EQ(xb.rows(), 2u);
+    EXPECT_EQ(xb.cols(), 1u);
+    const auto expected_b = ms::bicgstab(
+        ColMatrix<double>{{3.0, 1.0}, {1.0, 2.0}},
+        ColMatrix<double>{{1.0}, {1.0}}).value();
+    EXPECT_NEAR(xb(0, 0), expected_b(0, 0), 1e-5);
+    EXPECT_NEAR(xb(1, 0), expected_b(1, 0), 1e-5);
 }
