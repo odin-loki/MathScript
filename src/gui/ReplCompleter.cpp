@@ -195,6 +195,8 @@ QStringList repl_command_list() {
         QStringLiteral("stats_pacf"),
         QStringLiteral("stats_arfit"),
         QStringLiteral("stats_multiple_regression"),
+        QStringLiteral("stats_vif"),
+        QStringLiteral("stats_variance_inflation_factor"),
         QStringLiteral("stats_partial_correlation"),
         QStringLiteral("stats_weighted_mean"),
         QStringLiteral("stats_trimmed_mean"),
