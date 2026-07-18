@@ -104,6 +104,7 @@ public:
     Result<std::string> assign_scalar_binary(const ScalarBinaryAssign& assign);
     Result<std::string> assign_scalar_expr(const std::string& name, const std::string& expr);
     Result<std::string> assign_matrix_call(const MatrixCallAssign& assign);
+    Result<Matrix<double>> assign_matrix_call_tail(const MatrixCallAssign& assign);
     Result<std::string> assign_scalar_matrix_call(const ScalarMatrixCallAssign& assign);
     Result<std::string> assign_multi_matrix_call(const MultiMatrixCallAssign& assign);
     std::vector<std::pair<std::string, std::string>> list_session_objects() const;

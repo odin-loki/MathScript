@@ -2134,9 +2134,9 @@ Result<Matrix<double>> eval_control_lqe(const Matrix<double>& A_m,
     if (!R) {
         return std::unexpected(R.error());
     }
-    if (C->empty() || C->size() != A->size()) {
+    if (C->empty() || C->front().size() != A->size()) {
         return std::unexpected(
-            DomainError{"control_lqe", "expected C with row count equal to A size"});
+            DomainError{"control_lqe", "expected C with column count equal to A size"});
     }
     if (Q->size() != A->size()) {
         return std::unexpected(
@@ -9250,7 +9250,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "expm" || callee == "inv" ||
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
-           callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" ||
+           callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
            callee == "scharr" || callee == "roberts" ||
            callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
            callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
@@ -9319,7 +9319,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "transpose" || callee == "chol" || callee == "expm" || callee == "inv" ||
         callee == "pinv" || callee == "null" || callee == "orth" ||
-        callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" ||
+        callee == "rgb2gray" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
         callee == "laplacian" || callee == "histeq" || callee == "sharpen" ||
         callee == "threshold_otsu" ||
         callee == "rle_encode_vec" || callee == "rle_decode_vec" ||
@@ -10641,6 +10641,471 @@ Result<std::string> Interpreter::assign_scalar_expr(const std::string& name, con
     }
     return assign_scalar(name, *value);
 }
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+        if (assign.callee == "graph_mst_prim" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto edges = eval_graph_mst_prim(*matrix);
+        if (!edges) {
+            return std::unexpected(edges.error());
+        }
+        result = *edges;
+    } else if (assign.callee == "fft_dct2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto coeffs = eval_fft_dct2(*matrix);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "fft_idct2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto signal = eval_fft_idct2(*matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        result = *signal;
+    } else if (assign.callee == "fft_dst2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto coeffs = eval_fft_dst2(*matrix);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "diffgeo_surface_normal_sphere" && assign.args.size() == 2) {
+        double u = 0.0;
+        double v = 0.0;
+        if (!parse_number(assign.args[0], u)) {
+            auto u_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!u_expr) {
+                return std::unexpected(u_expr.error());
+            }
+            u = *u_expr;
+        }
+        if (!parse_number(assign.args[1], v)) {
+            auto v_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!v_expr) {
+                return std::unexpected(v_expr.error());
+            }
+            v = *v_expr;
+        }
+        auto normal = eval_diffgeo_surface_normal_sphere(u, v);
+        if (!normal) {
+            return std::unexpected(normal.error());
+        }
+        result = *normal;
+    } else if (assign.callee == "quantum_hadamard" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto psi = matrix_to_ket2(*matrix, "quantum_hadamard");
+        if (!psi) {
+            return std::unexpected(psi.error());
+        }
+        const auto out = quantum::op_apply(quantum::hadamard(), *psi);
+        Matrix<double> col(2, 1);
+        col(0, 0) = out[0].real();
+        col(1, 0) = out[1].real();
+        result = col;
+    } else if (assign.callee == "quantum_ket_normalise" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_quantum_ket_normalise_matrix(*matrix);
+    } else if (assign.callee == "quantum_density_matrix" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_quantum_density_matrix(*matrix);
+    } else if (assign.callee == "quantum_ket_superposition" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_quantum_ket_superposition_matrix(*matrix);
+    } else if (assign.callee == "quantum_ket_basis" && assign.args.size() == 2) {
+        double dim_d = 0.0;
+        double index_d = 0.0;
+        if (!parse_number(assign.args[0], dim_d)) {
+            auto it = state_.scalars.find(assign.args[0]);
+            if (it != state_.scalars.end()) {
+                dim_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric dim argument"});
+            }
+        }
+        if (!parse_number(assign.args[1], index_d)) {
+            auto it = state_.scalars.find(assign.args[1]);
+            if (it != state_.scalars.end()) {
+                index_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric index argument"});
+            }
+        }
+        const int dim = static_cast<int>(dim_d);
+        const int index = static_cast<int>(index_d);
+        if (dim < 1 || dim_d != dim || index_d != index) {
+            return std::unexpected(DomainError{
+                assign.callee, "expected positive integer dim and integer index"});
+        }
+        result = eval_quantum_ket_basis(dim, index);
+    } else if (assign.callee == "quantum_fock_state" && assign.args.size() == 2) {
+        double n_d = 0.0;
+        double n_max_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto it = state_.scalars.find(assign.args[0]);
+            if (it != state_.scalars.end()) {
+                n_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric n argument"});
+            }
+        }
+        if (!parse_number(assign.args[1], n_max_d)) {
+            auto it = state_.scalars.find(assign.args[1]);
+            if (it != state_.scalars.end()) {
+                n_max_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric n_max argument"});
+            }
+        }
+        const int n = static_cast<int>(n_d);
+        const int n_max = static_cast<int>(n_max_d);
+        if (n_max < 0 || n_d != n || n_max_d != n_max) {
+            return std::unexpected(DomainError{
+                assign.callee, "expected non-negative integer n and n_max"});
+        }
+        result = eval_quantum_fock_state(n, n_max);
+    } else if (assign.callee == "quantum_partial_trace" && assign.args.size() == 4) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double d1_d = 0.0;
+        double d2_d = 0.0;
+        double sub_d = 0.0;
+        if (!parse_number(assign.args[1], d1_d) || !parse_number(assign.args[2], d2_d) ||
+            !parse_number(assign.args[3], sub_d)) {
+            return std::unexpected(DomainError{
+                "quantum_partial_trace",
+                "expected quantum_partial_trace(rho, d1, d2, subsystem)"});
+        }
+        const int d1 = static_cast<int>(d1_d);
+        const int d2 = static_cast<int>(d2_d);
+        const int subsystem = static_cast<int>(sub_d);
+        if (d1 < 1 || d2 < 1 || d1_d != d1 || d2_d != d2 || (subsystem != 0 && subsystem != 1) ||
+            sub_d != subsystem) {
+            return std::unexpected(DomainError{
+                "quantum_partial_trace",
+                "expected positive integer d1, d2 and subsystem 0 or 1"});
+        }
+        result = eval_quantum_partial_trace_matrix(*matrix, d1, d2, subsystem);
+    } else if (assign.callee == "quantum_schrodinger" && assign.args.size() == 5) {
+        auto H_m = resolve_operand(assign.args[0]);
+        if (!H_m) {
+            return std::unexpected(H_m.error());
+        }
+        auto psi0_m = resolve_operand(assign.args[1]);
+        if (!psi0_m) {
+            return std::unexpected(psi0_m.error());
+        }
+        double t0 = 0.0;
+        double t1 = 0.0;
+        double n_steps_d = 0.0;
+        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
+            !parse_number(assign.args[4], n_steps_d)) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger",
+                "expected quantum_schrodinger(H, psi0, t0, t1, n_steps)"});
+        }
+        const int n_steps = static_cast<int>(n_steps_d);
+        if (n_steps < 0 || n_steps_d != n_steps) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger", "expected non-negative integer n_steps"});
+        }
+        result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
+    } else if (assign.callee == "quantum_schrodinger_final" && assign.args.size() == 5) {
+        auto H_m = resolve_operand(assign.args[0]);
+        if (!H_m) {
+            return std::unexpected(H_m.error());
+        }
+        auto psi0_m = resolve_operand(assign.args[1]);
+        if (!psi0_m) {
+            return std::unexpected(psi0_m.error());
+        }
+        double t0 = 0.0;
+        double t1 = 0.0;
+        double n_steps_d = 0.0;
+        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
+            !parse_number(assign.args[4], n_steps_d)) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger_final",
+                "expected quantum_schrodinger_final(H, psi0, t0, t1, n_steps)"});
+        }
+        const int n_steps = static_cast<int>(n_steps_d);
+        if (n_steps < 0 || n_steps_d != n_steps) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger_final", "expected non-negative integer n_steps"});
+        }
+        result = eval_quantum_schrodinger_final(*H_m, *psi0_m, t0, t1, n_steps);
+    } else if (assign.callee == "pde_heat_1d" && assign.args.size() == 5) {
+        auto x0_m = resolve_operand(assign.args[0]);
+        if (!x0_m) {
+            return std::unexpected(x0_m.error());
+        }
+        double alpha = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_heat_1d", "expected pde_heat_1d(x0, alpha, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_heat_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_heat_1d(*x0_m, alpha, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_advection_1d" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double v = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], v) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_advection_1d", "expected pde_advection_1d(u0, v, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_advection_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_advection_1d(*u0_m, v, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_poisson_2d" && assign.args.size() == 5) {
+        auto f_m = resolve_operand(assign.args[0]);
+        if (!f_m) {
+            return std::unexpected(f_m.error());
+        }
+        double dx = 0.0;
+        double dy = 0.0;
+        double max_iter_d = 0.0;
+        double tolerance = 0.0;
+        if (!parse_number(assign.args[1], dx) || !parse_number(assign.args[2], dy) ||
+            !parse_number(assign.args[3], max_iter_d) ||
+            !parse_number(assign.args[4], tolerance)) {
+            return std::unexpected(DomainError{
+                "pde_poisson_2d",
+                "expected pde_poisson_2d(f, dx, dy, max_iterations, tolerance)"});
+        }
+        const int max_iter_i = static_cast<int>(max_iter_d);
+        if (max_iter_i < 0 || max_iter_d != max_iter_i) {
+            return std::unexpected(DomainError{
+                "pde_poisson_2d", "expected non-negative integer max_iterations"});
+        }
+        result = eval_pde_poisson_2d(*f_m, dx, dy, static_cast<std::size_t>(max_iter_i),
+                                     tolerance);
+    } else if (assign.callee == "pde_burgers_1d" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double nu = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], nu) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_burgers_1d", "expected pde_burgers_1d(u0, nu, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_burgers_1d(*u0_m, nu, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "fem_poisson2d" && assign.args.size() == 2) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d)) {
+            return std::unexpected(
+                DomainError{"fem_poisson2d", "expected fem_poisson2d(nx, ny)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
+            return std::unexpected(
+                DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_fem_poisson2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i));
+    } else if (assign.callee == "fem_poisson3d" && assign.args.size() == 3) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double nz_d = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], nz_d)) {
+            return std::unexpected(
+                DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        const int nz_i = static_cast<int>(nz_d);
+        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+            return std::unexpected(
+                DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+        }
+        result = eval_fem_poisson3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                    static_cast<std::size_t>(nz_i));
+    } else if (assign.callee == "cfd_advection2d" && assign.args.size() == 6) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double vx = 0.0;
+        double vy = 0.0;
+        double t_end = 0.0;
+        double dt = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], vx) || !parse_number(assign.args[3], vy) ||
+            !parse_number(assign.args[4], t_end) || !parse_number(assign.args[5], dt)) {
+            return std::unexpected(DomainError{
+                "cfd_advection2d",
+                "expected cfd_advection2d(nx, ny, vx, vy, t_end, dt)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_cfd_advection2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                      vx, vy, t_end, dt);
+    } else if (assign.callee == "cfd_advection3d" && assign.args.size() == 8) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double nz_d = 0.0;
+        double vx = 0.0;
+        double vy = 0.0;
+        double vz = 0.0;
+        double t_end = 0.0;
+        double dt = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], nz_d) || !parse_number(assign.args[3], vx) ||
+            !parse_number(assign.args[4], vy) || !parse_number(assign.args[5], vz) ||
+            !parse_number(assign.args[6], t_end) || !parse_number(assign.args[7], dt)) {
+            return std::unexpected(DomainError{
+                "cfd_advection3d",
+                "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        const int nz_i = static_cast<int>(nz_d);
+        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
+        }
+        result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                        static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
+    } else if (assign.callee == "pde_heat_2d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double alpha = 0.0;
+        double dx = 0.0;
+        double dy = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dy) || !parse_number(assign.args[4], dt) ||
+            !parse_number(assign.args[5], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_heat_2d", "expected pde_heat_2d(u0, alpha, dx, dy, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_heat_2d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_heat_2d(*u0_m, alpha, dx, dy, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_wave_1d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto v0_m = resolve_operand(assign.args[1]);
+        if (!v0_m) {
+            return std::unexpected(v0_m.error());
+        }
+        double c = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[2], c) || !parse_number(assign.args[3], dx) ||
+            !parse_number(assign.args[4], dt) || !parse_number(assign.args[5], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_wave_1d", "expected pde_wave_1d(u0, v0, c, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_wave_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_wave_1d(*u0_m, *v0_m, c, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "imcrop" && assign.args.size() == 5) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double r0_d = 0.0;
+        double c0_d = 0.0;
+        double r1_d = 0.0;
+        double c1_d = 0.0;
+        if (!parse_number(assign.args[1], r0_d) || !parse_number(assign.args[2], c0_d) ||
+            !parse_number(assign.args[3], r1_d) || !parse_number(assign.args[4], c1_d)) {
+            return std::unexpected(
+                DomainError{"imcrop", "expected imcrop(M, r0, c0, r1, c1)"});
+        }
+        const int r0 = static_cast<int>(r0_d);
+        const int c0 = static_cast<int>(c0_d);
+        const int r1 = static_cast<int>(r1_d);
+        const int c1 = static_cast<int>(c1_d);
+        if (r0_d != r0 || c0_d != c0 || r1_d != r1 || c1_d != c1) {
+            return std::unexpected(DomainError{"imcrop", "expected integer crop bounds"});
+        }
+        auto cropped = eval_imcrop(*matrix, r0, c0, r1, c1);
+        if (!cropped) {
+            return std::unexpected(cropped.error());
+        }
+        result = *cropped;
+    }
+    return result;
+}
+
 
 Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assign) {
     auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
@@ -11937,463 +12402,14 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(edges.error());
         }
         result = *edges;
-    } else if (assign.callee == "graph_mst_prim" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto edges = eval_graph_mst_prim(*matrix);
-        if (!edges) {
-            return std::unexpected(edges.error());
-        }
-        result = *edges;
-    } else if (assign.callee == "fft_dct2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto coeffs = eval_fft_dct2(*matrix);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
-    } else if (assign.callee == "fft_idct2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto signal = eval_fft_idct2(*matrix);
-        if (!signal) {
-            return std::unexpected(signal.error());
-        }
-        result = *signal;
-    } else if (assign.callee == "fft_dst2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto coeffs = eval_fft_dst2(*matrix);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
-    } else if (assign.callee == "diffgeo_surface_normal_sphere" && assign.args.size() == 2) {
-        double u = 0.0;
-        double v = 0.0;
-        if (!parse_number(assign.args[0], u)) {
-            auto u_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!u_expr) {
-                return std::unexpected(u_expr.error());
-            }
-            u = *u_expr;
-        }
-        if (!parse_number(assign.args[1], v)) {
-            auto v_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!v_expr) {
-                return std::unexpected(v_expr.error());
-            }
-            v = *v_expr;
-        }
-        auto normal = eval_diffgeo_surface_normal_sphere(u, v);
-        if (!normal) {
-            return std::unexpected(normal.error());
-        }
-        result = *normal;
-    } else if (assign.callee == "quantum_hadamard" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto psi = matrix_to_ket2(*matrix, "quantum_hadamard");
-        if (!psi) {
-            return std::unexpected(psi.error());
-        }
-        const auto out = quantum::op_apply(quantum::hadamard(), *psi);
-        Matrix<double> col(2, 1);
-        col(0, 0) = out[0].real();
-        col(1, 0) = out[1].real();
-        result = col;
-    } else if (assign.callee == "quantum_ket_normalise" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_quantum_ket_normalise_matrix(*matrix);
-    } else if (assign.callee == "quantum_density_matrix" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_quantum_density_matrix(*matrix);
-    } else if (assign.callee == "quantum_ket_superposition" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_quantum_ket_superposition_matrix(*matrix);
-    } else if (assign.callee == "quantum_ket_basis" && assign.args.size() == 2) {
-        double dim_d = 0.0;
-        double index_d = 0.0;
-        if (!parse_number(assign.args[0], dim_d)) {
-            auto it = state_.scalars.find(assign.args[0]);
-            if (it != state_.scalars.end()) {
-                dim_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric dim argument"});
+    }
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                result = assign_matrix_call_tail(assign);
             }
         }
-        if (!parse_number(assign.args[1], index_d)) {
-            auto it = state_.scalars.find(assign.args[1]);
-            if (it != state_.scalars.end()) {
-                index_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric index argument"});
-            }
-        }
-        const int dim = static_cast<int>(dim_d);
-        const int index = static_cast<int>(index_d);
-        if (dim < 1 || dim_d != dim || index_d != index) {
-            return std::unexpected(DomainError{
-                assign.callee, "expected positive integer dim and integer index"});
-        }
-        result = eval_quantum_ket_basis(dim, index);
-    } else if (assign.callee == "quantum_fock_state" && assign.args.size() == 2) {
-        double n_d = 0.0;
-        double n_max_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto it = state_.scalars.find(assign.args[0]);
-            if (it != state_.scalars.end()) {
-                n_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric n argument"});
-            }
-        }
-        if (!parse_number(assign.args[1], n_max_d)) {
-            auto it = state_.scalars.find(assign.args[1]);
-            if (it != state_.scalars.end()) {
-                n_max_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric n_max argument"});
-            }
-        }
-        const int n = static_cast<int>(n_d);
-        const int n_max = static_cast<int>(n_max_d);
-        if (n_max < 0 || n_d != n || n_max_d != n_max) {
-            return std::unexpected(DomainError{
-                assign.callee, "expected non-negative integer n and n_max"});
-        }
-        result = eval_quantum_fock_state(n, n_max);
-    } else if (assign.callee == "quantum_partial_trace" && assign.args.size() == 4) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double d1_d = 0.0;
-        double d2_d = 0.0;
-        double sub_d = 0.0;
-        if (!parse_number(assign.args[1], d1_d) || !parse_number(assign.args[2], d2_d) ||
-            !parse_number(assign.args[3], sub_d)) {
-            return std::unexpected(DomainError{
-                "quantum_partial_trace",
-                "expected quantum_partial_trace(rho, d1, d2, subsystem)"});
-        }
-        const int d1 = static_cast<int>(d1_d);
-        const int d2 = static_cast<int>(d2_d);
-        const int subsystem = static_cast<int>(sub_d);
-        if (d1 < 1 || d2 < 1 || d1_d != d1 || d2_d != d2 || (subsystem != 0 && subsystem != 1) ||
-            sub_d != subsystem) {
-            return std::unexpected(DomainError{
-                "quantum_partial_trace",
-                "expected positive integer d1, d2 and subsystem 0 or 1"});
-        }
-        result = eval_quantum_partial_trace_matrix(*matrix, d1, d2, subsystem);
-    } else if (assign.callee == "quantum_schrodinger" && assign.args.size() == 5) {
-        auto H_m = resolve_operand(assign.args[0]);
-        if (!H_m) {
-            return std::unexpected(H_m.error());
-        }
-        auto psi0_m = resolve_operand(assign.args[1]);
-        if (!psi0_m) {
-            return std::unexpected(psi0_m.error());
-        }
-        double t0 = 0.0;
-        double t1 = 0.0;
-        double n_steps_d = 0.0;
-        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
-            !parse_number(assign.args[4], n_steps_d)) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger",
-                "expected quantum_schrodinger(H, psi0, t0, t1, n_steps)"});
-        }
-        const int n_steps = static_cast<int>(n_steps_d);
-        if (n_steps < 0 || n_steps_d != n_steps) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger", "expected non-negative integer n_steps"});
-        }
-        result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
-    } else if (assign.callee == "quantum_schrodinger_final" && assign.args.size() == 5) {
-        auto H_m = resolve_operand(assign.args[0]);
-        if (!H_m) {
-            return std::unexpected(H_m.error());
-        }
-        auto psi0_m = resolve_operand(assign.args[1]);
-        if (!psi0_m) {
-            return std::unexpected(psi0_m.error());
-        }
-        double t0 = 0.0;
-        double t1 = 0.0;
-        double n_steps_d = 0.0;
-        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
-            !parse_number(assign.args[4], n_steps_d)) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger_final",
-                "expected quantum_schrodinger_final(H, psi0, t0, t1, n_steps)"});
-        }
-        const int n_steps = static_cast<int>(n_steps_d);
-        if (n_steps < 0 || n_steps_d != n_steps) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger_final", "expected non-negative integer n_steps"});
-        }
-        result = eval_quantum_schrodinger_final(*H_m, *psi0_m, t0, t1, n_steps);
-    } else if (assign.callee == "pde_heat_1d" && assign.args.size() == 5) {
-        auto x0_m = resolve_operand(assign.args[0]);
-        if (!x0_m) {
-            return std::unexpected(x0_m.error());
-        }
-        double alpha = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_heat_1d", "expected pde_heat_1d(x0, alpha, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_heat_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_heat_1d(*x0_m, alpha, dx, dt, static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "pde_advection_1d" && assign.args.size() == 5) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double v = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], v) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_advection_1d", "expected pde_advection_1d(u0, v, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_advection_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_advection_1d(*u0_m, v, dx, dt, static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "pde_poisson_2d" && assign.args.size() == 5) {
-        auto f_m = resolve_operand(assign.args[0]);
-        if (!f_m) {
-            return std::unexpected(f_m.error());
-        }
-        double dx = 0.0;
-        double dy = 0.0;
-        double max_iter_d = 0.0;
-        double tolerance = 0.0;
-        if (!parse_number(assign.args[1], dx) || !parse_number(assign.args[2], dy) ||
-            !parse_number(assign.args[3], max_iter_d) ||
-            !parse_number(assign.args[4], tolerance)) {
-            return std::unexpected(DomainError{
-                "pde_poisson_2d",
-                "expected pde_poisson_2d(f, dx, dy, max_iterations, tolerance)"});
-        }
-        const int max_iter_i = static_cast<int>(max_iter_d);
-        if (max_iter_i < 0 || max_iter_d != max_iter_i) {
-            return std::unexpected(DomainError{
-                "pde_poisson_2d", "expected non-negative integer max_iterations"});
-        }
-        result = eval_pde_poisson_2d(*f_m, dx, dy, static_cast<std::size_t>(max_iter_i),
-                                     tolerance);
-    } else if (assign.callee == "pde_burgers_1d" && assign.args.size() == 5) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double nu = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], nu) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_burgers_1d", "expected pde_burgers_1d(u0, nu, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_burgers_1d(*u0_m, nu, dx, dt, static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "fem_poisson2d" && assign.args.size() == 2) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d)) {
-            return std::unexpected(
-                DomainError{"fem_poisson2d", "expected fem_poisson2d(nx, ny)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-            return std::unexpected(
-                DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
-        }
-        result = eval_fem_poisson2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i));
-    } else if (assign.callee == "fem_poisson3d" && assign.args.size() == 3) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        double nz_d = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
-            !parse_number(assign.args[2], nz_d)) {
-            return std::unexpected(
-                DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        const int nz_i = static_cast<int>(nz_d);
-        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-            return std::unexpected(
-                DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
-        }
-        result = eval_fem_poisson3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                    static_cast<std::size_t>(nz_i));
-    } else if (assign.callee == "cfd_advection2d" && assign.args.size() == 6) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        double vx = 0.0;
-        double vy = 0.0;
-        double t_end = 0.0;
-        double dt = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
-            !parse_number(assign.args[2], vx) || !parse_number(assign.args[3], vy) ||
-            !parse_number(assign.args[4], t_end) || !parse_number(assign.args[5], dt)) {
-            return std::unexpected(DomainError{
-                "cfd_advection2d",
-                "expected cfd_advection2d(nx, ny, vx, vy, t_end, dt)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
-        }
-        result = eval_cfd_advection2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                      vx, vy, t_end, dt);
-    } else if (assign.callee == "cfd_advection3d" && assign.args.size() == 8) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        double nz_d = 0.0;
-        double vx = 0.0;
-        double vy = 0.0;
-        double vz = 0.0;
-        double t_end = 0.0;
-        double dt = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
-            !parse_number(assign.args[2], nz_d) || !parse_number(assign.args[3], vx) ||
-            !parse_number(assign.args[4], vy) || !parse_number(assign.args[5], vz) ||
-            !parse_number(assign.args[6], t_end) || !parse_number(assign.args[7], dt)) {
-            return std::unexpected(DomainError{
-                "cfd_advection3d",
-                "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        const int nz_i = static_cast<int>(nz_d);
-        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
-        }
-        result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                        static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if (assign.callee == "pde_heat_2d" && assign.args.size() == 6) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double alpha = 0.0;
-        double dx = 0.0;
-        double dy = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dy) || !parse_number(assign.args[4], dt) ||
-            !parse_number(assign.args[5], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_heat_2d", "expected pde_heat_2d(u0, alpha, dx, dy, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_heat_2d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_heat_2d(*u0_m, alpha, dx, dy, dt, static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "pde_wave_1d" && assign.args.size() == 6) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        auto v0_m = resolve_operand(assign.args[1]);
-        if (!v0_m) {
-            return std::unexpected(v0_m.error());
-        }
-        double c = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[2], c) || !parse_number(assign.args[3], dx) ||
-            !parse_number(assign.args[4], dt) || !parse_number(assign.args[5], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_wave_1d", "expected pde_wave_1d(u0, v0, c, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_wave_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_wave_1d(*u0_m, *v0_m, c, dx, dt, static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "imcrop" && assign.args.size() == 5) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double r0_d = 0.0;
-        double c0_d = 0.0;
-        double r1_d = 0.0;
-        double c1_d = 0.0;
-        if (!parse_number(assign.args[1], r0_d) || !parse_number(assign.args[2], c0_d) ||
-            !parse_number(assign.args[3], r1_d) || !parse_number(assign.args[4], c1_d)) {
-            return std::unexpected(
-                DomainError{"imcrop", "expected imcrop(M, r0, c0, r1, c1)"});
-        }
-        const int r0 = static_cast<int>(r0_d);
-        const int c0 = static_cast<int>(c0_d);
-        const int r1 = static_cast<int>(r1_d);
-        const int c1 = static_cast<int>(c1_d);
-        if (r0_d != r0 || c0_d != c0 || r1_d != r1 || c1_d != c1) {
-            return std::unexpected(DomainError{"imcrop", "expected integer crop bounds"});
-        }
-        auto cropped = eval_imcrop(*matrix, r0, c0, r1, c1);
-        if (!cropped) {
-            return std::unexpected(cropped.error());
-        }
-        result = *cropped;
     }
     if (!result) {
         return std::unexpected(result.error());
