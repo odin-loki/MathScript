@@ -5,8 +5,10 @@
 #include <string>
 
 #include "ms/interp/repl_engine.hpp"
+#include "ms/linalg/linalg.hpp"
 
 using namespace ms::interp;
+using ms::ColMatrix;
 
 namespace {
 
@@ -87,4 +89,19 @@ TEST(DistributedReplPipeline, MpiAndDistSolveBindings) {
     EXPECT_EQ(xcg.cols(), 1u);
     EXPECT_NEAR(xcg(0, 0), 1.0 / 11.0, 1e-6);
     EXPECT_NEAR(xcg(1, 0), 7.0 / 11.0, 1e-6);
+
+    // dist_gmres: general system via distributed GMRES (stub: gather + gmres)
+    expect_ok(interp, "G = [3, 1; 1, 2]");
+    expect_ok(interp, "brhs = [5; 5]");
+    expect_ok(interp, "xgm = dist_gmres(G, brhs)");
+    expect_ok(interp, "xgm = dist_gmres(G, brhs)");
+    ASSERT_GT(interp.state().matrices.count("xgm"), 0u);
+    const auto& xgm = interp.state().matrices.at("xgm");
+    EXPECT_EQ(xgm.rows(), 2u);
+    EXPECT_EQ(xgm.cols(), 1u);
+    const auto expected_gm = ms::gmres(
+        ColMatrix<double>{{3.0, 1.0}, {1.0, 2.0}},
+        ColMatrix<double>{{5.0}, {5.0}}).value();
+    EXPECT_NEAR(xgm(0, 0), expected_gm(0, 0), 1e-6);
+    EXPECT_NEAR(xgm(1, 0), expected_gm(1, 0), 1e-6);
 }
