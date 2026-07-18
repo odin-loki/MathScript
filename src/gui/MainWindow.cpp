@@ -418,6 +418,43 @@ void restore_block_cursor(QPlainTextEdit* editor, int start_block, int end_block
     editor->setTextCursor(cursor);
 }
 
+int trim_trailing_whitespace_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return 0;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+
+    int trimmed_count = 0;
+    for (int block_num = start_block; block_num <= end_block; ++block_num) {
+        const QTextBlock text_block = editor->document()->findBlockByNumber(block_num);
+        const QString original = text_block.text();
+        int end = original.size();
+        while (end > 0 && (original[end - 1] == QLatin1Char(' ') || original[end - 1] == QLatin1Char('\t'))) {
+            --end;
+        }
+        if (end == original.size()) {
+            continue;
+        }
+
+        const QString updated = original.left(end);
+        QTextCursor block_cursor(text_block);
+        block_cursor.movePosition(QTextCursor::StartOfBlock);
+        block_cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        block_cursor.insertText(updated);
+        ++trimmed_count;
+    }
+
+    restore_block_cursor(editor, start_block, end_block);
+    cursor.endEditBlock();
+    return trimmed_count;
+}
+
 void indent_lines_in_editor(QPlainTextEdit* editor) {
     if (editor == nullptr) {
         return;
@@ -1180,6 +1217,8 @@ void MainWindow::setup_menus() {
     toggle_comment_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Slash));
     auto* duplicate_line_action = edit_menu->addAction("Duplicate Line");
     duplicate_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
+    auto* trim_trailing_whitespace_action = edit_menu->addAction("Trim Trailing Whitespace");
+    trim_trailing_whitespace_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W));
     auto* delete_line_action = edit_menu->addAction("Delete Line");
     delete_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
     auto* move_line_up_action = edit_menu->addAction("Move Line Up");
@@ -1244,6 +1283,8 @@ void MainWindow::setup_menus() {
     connect(unindent_action, &QAction::triggered, this, &MainWindow::unindent_lines);
     connect(toggle_comment_action, &QAction::triggered, this, &MainWindow::toggle_comment);
     connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
+    connect(trim_trailing_whitespace_action, &QAction::triggered, this,
+            &MainWindow::trim_trailing_whitespace);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
     connect(move_line_up_action, &QAction::triggered, this, &MainWindow::move_line_up);
     connect(move_line_down_action, &QAction::triggered, this, &MainWindow::move_line_down);
@@ -1586,6 +1627,18 @@ void MainWindow::add_selection_for_next_occurrence() {
 void MainWindow::duplicate_line() {
     editor_->setFocus();
     duplicate_lines_in_editor(editor_);
+}
+
+void MainWindow::trim_trailing_whitespace() {
+    editor_->setFocus();
+    const int count = trim_trailing_whitespace_in_editor(editor_);
+    if (count == 0) {
+        statusBar()->showMessage("No trailing whitespace", 3000);
+    } else if (count == 1) {
+        statusBar()->showMessage("Trimmed 1 line", 3000);
+    } else {
+        statusBar()->showMessage(QString("Trimmed %1 lines").arg(count), 3000);
+    }
 }
 
 void MainWindow::delete_line() {
