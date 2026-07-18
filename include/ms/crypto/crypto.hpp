@@ -101,6 +101,21 @@ std::vector<uint8_t> aes128_gcm_decrypt(std::span<const uint8_t> key,
                                         std::span<const uint8_t> ciphertext,
                                         std::span<const uint8_t> tag);
 
+struct Aes256GcmSeal {
+    std::vector<uint8_t> ciphertext;
+    std::array<uint8_t, aes_gcm_tag_size> tag{};
+};
+
+Aes256GcmSeal aes256_gcm_encrypt(std::span<const uint8_t> key,
+                                 std::span<const uint8_t> iv,
+                                 std::span<const uint8_t> aad,
+                                 std::span<const uint8_t> plaintext);
+std::vector<uint8_t> aes256_gcm_decrypt(std::span<const uint8_t> key,
+                                        std::span<const uint8_t> iv,
+                                        std::span<const uint8_t> aad,
+                                        std::span<const uint8_t> ciphertext,
+                                        std::span<const uint8_t> tag);
+
 std::vector<uint8_t> chacha20_encrypt(const std::array<uint8_t, 32>& key,
                                       const std::array<uint8_t, 12>& nonce,
                                       std::uint32_t counter,
