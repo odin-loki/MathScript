@@ -138,7 +138,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**; **Wave 262 GUI**: **Reverse Lines** (**Ctrl+Shift+R**)). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**; **Wave 262 GUI**: **Reverse Lines** (**Ctrl+Shift+R**); **Wave 268 GUI**: **Kebab Case Selection** (**Ctrl+Alt+K**)). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
 
 ### REPL bindings
 
@@ -165,6 +165,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `imdilate(M, k)`, `imerode(M, k)`, `imopen(M, k)`, `imclose(M, k)` | Binary/grayscale morphology on `H×W` matrices (Wave 234) |
 | `rle_encode_vec(M)`, `rle_decode_vec(M)` | RLE on flattened matrix bytes |
 | `delta_encode_vec(M)`, `delta_decode_vec(M)` | Delta coding on flattened bytes |
+| `arithmetic_encode_vec(M)`, `arithmetic_decode_vec(orig_M, E)` | Arithmetic range coding on flattened bytes (Wave 268) |
+| `ans_encode_vec(M)`, `ans_decode_vec(orig_M, E)` | ANS entropy coding on flattened bytes (Wave 268) |
 | `ml_linear_fit(X, y)`, `ml_linear_predict(X, model)` | Ordinary least-squares regression fit/predict (Wave 234) |
 | `ml_ridge_fit(X, y, alpha)`, `ml_ridge_predict(X, model)` | Ridge regression fit/predict (Wave 234) |
 | `ml_lasso_fit(X, y, alpha)`, `ml_lasso_predict(X, model)` | Lasso regression fit/predict (Wave 267) |
@@ -174,6 +176,16 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `ml_lda_fit(X, y[, n_components])`, `ml_lda_predict(X, model)`, `ml_lda_transform(X, model)` | Linear Discriminant Analysis fit/predict/transform (Wave 267) |
 | `ml_qda_fit(X, y)`, `ml_qda_predict(X, model)` | Quadratic Discriminant Analysis fit/predict (Wave 268) |
 | `ml_svm_fit(X, y[, C[, gamma]])`, `ml_svm_predict(X, model)` | Support Vector Machine fit/predict (Wave 268) |
+| `ml_decision_tree_fit(X, y[, max_depth])`, `ml_decision_tree_predict(X, model)` | Decision tree classifier fit/predict (Wave 268) |
+| `ml_random_forest_fit(X, y[, n_trees[, max_features]])`, `ml_random_forest_predict(X, model)` | Random forest classifier fit/predict (Wave 268) |
+| `ml_adaboost_fit(X, y[, n_estimators[, max_depth]])`, `ml_adaboost_predict(X, model)` | AdaBoost classifier fit/predict (Wave 268) |
+| `ml_gmm_fit(X[, n_components])`, `ml_gmm_predict(X, model)`, `ml_gmm_predict_proba(X, model)` | Gaussian mixture model fit/labels/probabilities (Wave 268) |
+| `ml_dbscan_fit(X, eps, min_samples)` | DBSCAN cluster labels column (Wave 268) |
+| `ml_spectral_clustering(X, k[, sigma])` | Spectral clustering labels column (Wave 268) |
+| `ml_standard_scaler_fit(X)`, `ml_standard_scaler_transform(X, model)` | Standard scaler fit/transform (Wave 268) |
+| `ml_minmax_scaler_fit(X)`, `ml_minmax_scaler_transform(X, model)` | Min–max scaler fit/transform (Wave 268) |
+| `Xtr, ytr, Xte, yte = ml_train_test_split(X, y[, test_size[, seed]])` | Stratified train/test split (Wave 268) |
+| `ml_roc_auc(p, t)`, `ml_average_precision(p, t)` | Binary ROC-AUC / average precision on matching `N×1` vectors (Wave 268) |
 | `ml_logistic_fit(X, y)`, `ml_logistic_predict(X, model)` | Binary logistic regression fit/predict (Wave 234) |
 | `ml_accuracy(p, t)`, `ml_rmse(p, t)`, `ml_mse(p, t)`, `ml_r2(p, t)`, `ml_f1(p, t)`, `ml_precision(p, t)`, `ml_recall(p, t)`, `ml_mae(p, t)` | ML metrics on matching `N×1` vectors |
 | `bigint("495")`, `bigint_factorial(n)`, `bigint_fib(n)`, `bigint_gcd("a", "b")` | Bignum parse/ops; results as scalars when representable in `double` |
@@ -213,7 +225,19 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `lbfgs("formula", x0)` | Limited-memory BFGS |
 | `nelder_mead("formula", x0)` | Nelder–Mead simplex |
 | `adam("formula", x0[, lr, max_iter])` | Adam adaptive gradient |
+| `conjugate_gradient("formula", x0[, lr, max_iter])` | Nonlinear conjugate-gradient minimization (Wave 268) |
+| `rmsprop("formula", x0[, lr, max_iter])` | RMSprop adaptive gradient (Wave 268) |
+| `adadelta("formula", x0[, lr, max_iter])` | Adadelta adaptive gradient (Wave 268) |
 | `golden_section("formula", a, b)` | 1-D golden-section search on `[a, b]` |
+| `bisection("formula", a, b[, tol[, max_iter]])` | Bracketed root finding (Wave 268) |
+| `brentq("formula", a, b[, tol[, max_iter]])` | Brent's method root finding (Wave 268) |
+| `secant("formula", x0, x1[, tol[, max_iter]])` | Secant root finding (Wave 268) |
+| `halley("f", "df", "d2f", x0[, tol[, max_iter]])` | Halley's method root finding (Wave 268) |
+| `fixed_point("formula", x0[, tol[, max_iter]])` | Fixed-point iteration (Wave 268) |
+| `illinois("formula", a, b[, tol[, max_iter]])` | Illinois regula falsi root finding (Wave 268) |
+| `simulated_annealing("formula", x0[, T0[, cooling[, max_iter[, seed]]]])` | Simulated annealing global search (Wave 268) |
+| `differential_evolution("formula", bounds[, pop[, F[, CR[, max_iter[, seed]]]]])` | Differential evolution global search (Wave 268) |
+| `particle_swarm("formula", bounds[, n_particles[, max_iter[, seed]]])` | Particle swarm global search (Wave 268) |
 | `levenberg_marquardt("formula", x0)` | Nonlinear least squares (returns residual norm) |
 
 **Control analysis (scalar/matrix assignment):**
@@ -382,6 +406,14 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `ode_trapezoidal` / `ode_cashkarp` / `ode_rk23` / `ode_exponential_euler` / `ode_rosenbrock23` | Adaptive/stiff ODE solvers (Wave 267) |
 | `ml_lasso_*` / `ml_elastic_net_*` / `ml_knn_*` / `ml_naive_bayes_*` / `ml_lda_*` / `ml_pca_*` / `ml_kmeans_*` | Supervised + unsupervised ML (Wave 267) |
 | `ml_qda_*` / `ml_svm_*` | QDA + SVM classifiers (Wave 268) |
+| `ml_decision_tree_*` / `ml_random_forest_*` / `ml_adaboost_*` | Tree ensembles (Wave 268) |
+| `ml_gmm_*` / `ml_dbscan_fit` / `ml_spectral_clustering` | GMM + density/spectral clustering (Wave 268) |
+| `ml_standard_scaler_*` / `ml_minmax_scaler_*` / `ml_train_test_split` / `ml_roc_auc` / `ml_average_precision` | Scalers, split, ROC/PR metrics (Wave 268) |
+| `pde_heat_1d_cn` / `pde_heat_2d_cn_adi` | Crank–Nicolson heat (1D / 2D ADI) (Wave 268) |
+| `pde_poisson_1d` / `pde_laplace_2d` / `pde_helmholtz_2d` | Elliptic PDE solvers (Wave 268) |
+| `pde_wave_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` | Hyperbolic/advection/reaction–diffusion (Wave 268) |
+| `conjugate_gradient` / `rmsprop` / `adadelta` / root finders / global search | Extended optim REPL (Wave 268) |
+| `arithmetic_encode_vec` / `ans_encode_vec` (+ decode) | Vector compress codecs (Wave 268) |
 | `geo_upper_hull` / `geo_lower_hull` / `geo_bezier_subdivide` / `geo_kdtree_3d_knn` / `geo_kdtree_3d_range` | Hull / bezier / 3D kdtree (Wave 267) |
 | `stats_max_value(x)` | Maximum of sample vector (Wave 267) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
@@ -395,7 +427,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_ed25519_keypair(hex_seed)` | Ed25519 public key from 32-byte seed (hex out; Wave 240) |
 | `crypto_ed25519_sign(hex_seed_or_sk, hex_msg)` | Ed25519 signature (hex; Wave 240) |
 | `crypto_ed25519_verify(hex_pub, hex_msg, hex_sig)` | Ed25519 verify → `1`/`0` (Wave 240) |
-| `fem_poisson1d(n)` | 1D P1 Poisson solve on unit interval (`f=1`, zero Dirichlet); returns solution column |
+| `fem_poisson1d(n)` | 1D P1 Poisson solve on unit interval (`f=1`, zero Dirichlet); returns solution column (Wave 268 REPL) |
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
 | `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column (Wave 236) |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |

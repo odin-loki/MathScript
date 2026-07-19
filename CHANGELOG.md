@@ -7,6 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19 (Wave 268 — ML QDA/SVM/trees/GMM/scalers-ROC, PDE CN/elliptic/hyperbolic, optim, compress, FEM1d, Kebab Case) ✅ COMPLETE
+
+Thirty-eighth feature wave after Wave 267. Parallel Composer 2.5 worktrees merged to `main`: extended ML (QDA/SVM, tree ensembles, GMM/DBSCAN/spectral clustering, scalers, train/test split, ROC/PR metrics), PDE Crank–Nicolson/ADI heat, elliptic Poisson/Laplace/Helmholtz, hyperbolic wave/advection/reaction–diffusion, optim CG/RMSprop/Adadelta plus root finders and global search, compress arithmetic/ANS vec codecs, FEM 1D Poisson REPL, GUI Kebab Case, and wave268 pipeline.
+
+### Added (Wave 268)
+- **ML REPL** — `ml_qda_*` / `ml_svm_*`; `ml_decision_tree_*` / `ml_random_forest_*` / `ml_adaboost_*`; `ml_gmm_*` / `ml_dbscan_fit` / `ml_spectral_clustering`; `ml_standard_scaler_*` / `ml_minmax_scaler_*`; `ml_train_test_split`; `ml_roc_auc` / `ml_average_precision`; `assign_matrix_call_tail7`.
+- **PDE REPL** — `pde_heat_1d_cn` / `pde_heat_2d_cn_adi`; `pde_poisson_1d` / `pde_laplace_2d` / `pde_helmholtz_2d`; `pde_wave_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d`.
+- **Optim REPL** — `conjugate_gradient` / `rmsprop` / `adadelta`; `bisection` / `brentq` / `secant` / `halley` / `fixed_point` / `illinois`; `simulated_annealing` / `differential_evolution` / `particle_swarm`.
+- **Compress REPL** — `arithmetic_encode_vec` / `arithmetic_decode_vec`; `ans_encode_vec` / `ans_decode_vec`.
+- **FEM / GUI** — `fem_poisson1d`; Kebab Case Selection (Ctrl+Alt+K).
+- **Tests** — `integration_repl_wave268_pipeline`.
+
+### Docs (Wave 268)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 268 sync; **427** CTest suites.
+
+**427 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-19 (Wave 267 — specials ext, ODE solvers, ML, geo hull, stats_max, Snake Case) ✅ COMPLETE
 
 Thirty-seventh feature wave after Wave 266. Parallel Composer 2.5 worktrees merged to `main`: extended specials (Painlevé III–VI, elliptic/Jacobi/theta, hypergeo/Meijer, Bessel/Struve/Kelvin, Mathieu/spheroidal/PCF, zeta/Airy/orthog), adaptive/stiff ODE solvers, supervised+unsupervised ML, geo hull/bezier/3D kdtree, `stats_max_value`, GUI Snake Case, and wave267 pipeline.

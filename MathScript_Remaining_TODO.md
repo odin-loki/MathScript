@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 267 ✅ COMPLETE — **426 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 268 ✅ COMPLETE — **427 CTest suites** on `main`)
 
 ---
 
@@ -470,7 +470,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 268+) — deferred
+## Wave 268 — ML QDA/SVM/trees/GMM/scalers-ROC, PDE CN/elliptic/hyperbolic, optim, compress, FEM1d, Kebab Case ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| ML REPL | qda/svm; decision_tree/random_forest/adaboost; gmm/dbscan/spectral_clustering; standard/minmax scaler; train_test_split; roc_auc/average_precision; assign_matrix_call_tail7 |
+| PDE REPL | heat_1d_cn / heat_2d_cn_adi; poisson_1d / laplace_2d / helmholtz_2d; wave_2d / advection_1d_lax_wendroff / reaction_diffusion_1d |
+| Optim REPL | conjugate_gradient / rmsprop / adadelta; bisection/brentq/secant/halley/fixed_point/illinois; simulated_annealing / differential_evolution / particle_swarm |
+| Compress REPL | arithmetic_encode_vec / ans_encode_vec (+ decode) |
+| FEM / GUI | fem_poisson1d; Kebab Case Selection (Ctrl+Alt+K) |
+| Tests | `integration_repl_wave268_pipeline` |
+
+**427 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–268** closed for this incremental batch.
+
+---
+
+## Next (Wave 269+) — deferred
 
 | Item | Notes |
 |------|--------|
