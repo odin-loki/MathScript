@@ -120,6 +120,7 @@ public:
     Result<Matrix<double>> assign_matrix_call_tail6(const MatrixCallAssign& assign);
     Result<Matrix<double>> assign_matrix_call_tail7(const MatrixCallAssign& assign);
     Result<Matrix<double>> assign_matrix_call_tail8(const MatrixCallAssign& assign);
+    Result<Matrix<double>> assign_matrix_call_tail9(const MatrixCallAssign& assign);
     Result<std::string> assign_scalar_matrix_call(const ScalarMatrixCallAssign& assign);
     Result<std::string> assign_multi_matrix_call(const MultiMatrixCallAssign& assign);
     std::vector<std::pair<std::string, std::string>> list_session_objects() const;

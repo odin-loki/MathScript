@@ -4465,6 +4465,88 @@ Result<Matrix<double>> eval_golomb_rice_decode_vec(const Matrix<double>& encoded
     return codes_to_matrix_col(compress::golomb_rice_decode(*bytes, m_bits, count));
 }
 
+Result<Matrix<double>> eval_gria_ca_step(const Matrix<double>& state_m, int rule) {
+    if (rule < 0 || rule > 255) {
+        return std::unexpected(DomainError{"gria_ca_step", "expected rule in [0,255]"});
+    }
+    auto state = matrix_col_to_bytes(state_m, "gria_ca_step");
+    if (!state) {
+        return std::unexpected(state.error());
+    }
+    return bytes_to_matrix_col(gria::ca::step(*state, static_cast<uint8_t>(rule)));
+}
+
+Result<double> eval_gria_langton_lambda(int rule) {
+    if (rule < 0 || rule > 255) {
+        return std::unexpected(DomainError{"gria_langton_lambda", "expected rule in [0,255]"});
+    }
+    return gria::ca::langton_lambda(static_cast<uint8_t>(rule));
+}
+
+Result<double> eval_gria_alpha_ca(int rule, size_t steps, size_t width) {
+    if (rule < 0 || rule > 255) {
+        return std::unexpected(DomainError{"gria_alpha_ca", "expected rule in [0,255]"});
+    }
+    return gria::ca::alpha_ca(static_cast<uint8_t>(rule), steps, width);
+}
+
+Result<double> eval_gria_hamming_distance(const Matrix<double>& a_m, const Matrix<double>& b_m) {
+    auto a = matrix_col_to_bytes(a_m, "gria_hamming_distance");
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = matrix_col_to_bytes(b_m, "gria_hamming_distance");
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    return static_cast<double>(gria::ca::hamming_distance(*a, *b));
+}
+
+Result<Matrix<double>> eval_gria_divergence_trajectory(const Matrix<double>& a_m,
+                                                         const Matrix<double>& b_m, int rule,
+                                                         int n_steps) {
+    if (rule < 0 || rule > 255) {
+        return std::unexpected(
+            DomainError{"gria_divergence_trajectory", "expected rule in [0,255]"});
+    }
+    auto a = matrix_col_to_bytes(a_m, "gria_divergence_trajectory");
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = matrix_col_to_bytes(b_m, "gria_divergence_trajectory");
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    const auto trajectory =
+        gria::ca::divergence_trajectory(*a, *b, static_cast<uint8_t>(rule), n_steps);
+    Matrix<double> out(trajectory.size(), 1);
+    for (size_t i = 0; i < trajectory.size(); ++i) {
+        out(i, 0) = static_cast<double>(trajectory[i]);
+    }
+    return out;
+}
+
+Result<double> eval_gria_settling_time(const Matrix<double>& a_m, const Matrix<double>& b_m,
+                                         int rule, int n_steps) {
+    if (rule < 0 || rule > 255) {
+        return std::unexpected(DomainError{"gria_settling_time", "expected rule in [0,255]"});
+    }
+    auto a = matrix_col_to_bytes(a_m, "gria_settling_time");
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = matrix_col_to_bytes(b_m, "gria_settling_time");
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    const auto settled =
+        gria::ca::settling_time(*a, *b, static_cast<uint8_t>(rule), n_steps);
+    if (!settled) {
+        return -1.0;
+    }
+    return static_cast<double>(*settled);
+}
+
 Result<Matrix<double>> eval_wavelet_compress_vec(const Matrix<double>& m,
                                                  double threshold = 0.0) {
     return bytes_to_matrix_col(compress::wavelet_compress(matrix_to_bytes(m), threshold));
@@ -12238,7 +12320,7 @@ bool is_matrix_scalar_mixed_call_callee(const std::string& callee) {
            callee == "poly_eval" || callee == "poly_cheb_eval" ||
            callee == "fft_irfft" || callee == "poly_integ" ||
            callee == "poly_shift" || callee == "poly_scale" || callee == "poly_pow" ||
-           callee == "poly_cheb_expand";
+           callee == "poly_cheb_expand" || callee == "gria_ca_step";
 }
 
 bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
@@ -12310,7 +12392,7 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "stats_weighted_variance" ||
            callee == "stats_two_sample_ttest" ||
            callee == "stats_chi2_gof" || callee == "graph_is_isomorphic" ||
-           callee == "graph_modularity";
+           callee == "graph_modularity" || callee == "gria_hamming_distance";
 }
 
 bool is_identifier(const std::string& text);
@@ -17792,7 +17874,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "numthy_cornacchia" ||
            callee == "stats_linear_regression" || callee == "stats_pacf" ||
            callee == "stats_arfit" || callee == "stats_multiple_regression" ||
-           callee == "stats_kde" || callee == "stats_bootstrap_ci";
+           callee == "stats_kde" || callee == "stats_bootstrap_ci" ||
+           callee == "gria_divergence_trajectory";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -18033,6 +18116,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "wavelet_compress_vec") {
         return arity == 1 || arity == 2;
+    }
+    if (callee == "gria_divergence_trajectory") {
+        return arity == 4;
     }
     if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
         callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
@@ -20050,6 +20136,31 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 7 && fn == "heun_g") {
         return heun_g(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+    }
+    if (fn == "gria_langton_lambda" && args.size() == 1) {
+        const int rule = static_cast<int>(args[0]);
+        if (rule < 0 || rule > 255 || args[0] != rule) {
+            return std::unexpected(
+                DomainError{"gria_langton_lambda", "expected integer rule in [0,255]"});
+        }
+        return eval_gria_langton_lambda(rule);
+    }
+    if (fn == "gria_alpha_ca" && args.size() == 3) {
+        const int rule = static_cast<int>(args[0]);
+        if (rule < 0 || rule > 255 || args[0] != rule) {
+            return std::unexpected(DomainError{"gria_alpha_ca", "expected integer rule in [0,255]"});
+        }
+        const int steps = static_cast<int>(args[1]);
+        if (steps < 0 || args[1] != steps) {
+            return std::unexpected(
+                DomainError{"gria_alpha_ca", "expected non-negative integer steps"});
+        }
+        const int width = static_cast<int>(args[2]);
+        if (width < 1 || args[2] != width) {
+            return std::unexpected(
+                DomainError{"gria_alpha_ca", "expected positive integer width"});
+        }
+        return eval_gria_alpha_ca(rule, static_cast<size_t>(steps), static_cast<size_t>(width));
     }
     if (fn == "diffgeo_helix_torsion") {
         if (args.size() < 1 || args.size() > 3) {
@@ -25488,6 +25599,65 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
                                       *dt_val);
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail9(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "gria_divergence_trajectory" && assign.args.size() == 4) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto rule_val = parse_scalar_arg(assign.args[2], "gria_divergence_trajectory");
+        if (!rule_val) {
+            return std::unexpected(rule_val.error());
+        }
+        auto n_steps_val = parse_scalar_arg(assign.args[3], "gria_divergence_trajectory");
+        if (!n_steps_val) {
+            return std::unexpected(n_steps_val.error());
+        }
+        const int rule = static_cast<int>(*rule_val);
+        if (*rule_val != rule || rule < 0 || rule > 255) {
+            return std::unexpected(
+                DomainError{"gria_divergence_trajectory", "expected integer rule in [0,255]"});
+        }
+        const int n_steps = static_cast<int>(*n_steps_val);
+        if (*n_steps_val != n_steps) {
+            return std::unexpected(DomainError{
+                "gria_divergence_trajectory", "expected integer n_steps"});
+        }
+        result = eval_gria_divergence_trajectory(*a, *b, rule, n_steps);
+    }
+
     return result;
 }
 
@@ -27850,6 +28020,22 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 print_matrix(out, *cheb);
                 return out.str();
             }
+            if (matrix_scalar_call.callee == "gria_ca_step") {
+                const int rule = static_cast<int>(scalar_arg);
+                if (rule < 0 || rule > 255 || scalar_arg != rule) {
+                    return std::unexpected(
+                        DomainError{"gria_ca_step", "expected integer rule in [0,255]"});
+                }
+                auto next = eval_gria_ca_step(*matrix, rule);
+                if (!next) {
+                    return std::unexpected(next.error());
+                }
+                state_.matrices[matrix_scalar_call.target] = *next;
+                std::ostringstream out;
+                out << matrix_scalar_call.target << " =\n";
+                print_matrix(out, *next);
+                return out.str();
+            }
             if (matrix_scalar_call.callee == "poly_eval") {
                 value = eval_poly_eval(*matrix, scalar_arg);
             } else if (matrix_scalar_call.callee == "poly_cheb_eval") {
@@ -28086,6 +28272,13 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             }
             if (dual_call.callee == "graph_modularity") {
                 auto value = eval_graph_modularity(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
+            if (dual_call.callee == "gria_hamming_distance") {
+                auto value = eval_gria_hamming_distance(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -30043,6 +30236,53 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 print_matrix(out, *path);
                 return out.str();
             }
+            if (callee == "gria_settling_time") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 4) {
+                    return std::unexpected(DomainError{
+                        "gria_settling_time",
+                        "expected gria_settling_time(a, b, rule, n_steps)"});
+                }
+                auto a_m = eval_matrix_operand(trim_copy(call_args->at(0)));
+                if (!a_m) {
+                    return std::unexpected(a_m.error());
+                }
+                auto b_m = eval_matrix_operand(trim_copy(call_args->at(1)));
+                if (!b_m) {
+                    return std::unexpected(b_m.error());
+                }
+                double rule_d = 0.0;
+                double n_steps_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[2]), rule_d)) {
+                    auto rule_expr = eval_scalar_expr(state_, trim_copy((*call_args)[2]));
+                    if (!rule_expr) {
+                        return std::unexpected(rule_expr.error());
+                    }
+                    rule_d = *rule_expr;
+                }
+                if (!parse_number(trim_copy((*call_args)[3]), n_steps_d)) {
+                    auto steps_expr = eval_scalar_expr(state_, trim_copy((*call_args)[3]));
+                    if (!steps_expr) {
+                        return std::unexpected(steps_expr.error());
+                    }
+                    n_steps_d = *steps_expr;
+                }
+                const int rule = static_cast<int>(rule_d);
+                if (rule_d != rule || rule < 0 || rule > 255) {
+                    return std::unexpected(
+                        DomainError{"gria_settling_time", "expected integer rule in [0,255]"});
+                }
+                const int n_steps = static_cast<int>(n_steps_d);
+                if (n_steps_d != n_steps) {
+                    return std::unexpected(
+                        DomainError{"gria_settling_time", "expected integer n_steps"});
+                }
+                auto value = eval_gria_settling_time(*a_m, *b_m, rule, n_steps);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
             if (callee == "info_joint_entropy") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 3) {
@@ -31680,6 +31920,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  gria_matrix_alpha([1,2;3,4], [2,4;6,8]) matrix information-alpha between input and output\n"
             "  gria_is_critical(0.5, 0.05) test whether alpha is near critical (default tolerance=0.05)\n"
             "  gria_classify(0.5) classify alpha as reversible/critical/irreversible\n"
+            "  name = gria_ca_step(state,rule) one elementary CA step on Nx1 byte column\n"
+            "  gria_langton_lambda(rule) Langton lambda order parameter for Wolfram rule\n"
+            "  gria_alpha_ca(rule,steps,width) CA information-alpha over steps x width lattice\n"
+            "  gria_hamming_distance(a,b) Hamming distance between two CA configurations\n"
+            "  name = gria_divergence_trajectory(a,b,rule,n_steps) Hamming divergence trace over n_steps\n"
+            "  gria_settling_time(a,b,rule,n_steps) first step where distance reaches 0 (-1 if none)\n"
             "  cypha_nig_fit([1,2,3,4]) fit Normal-Inverse-Gaussian parameters to data vector\n"
             "  cypha_nig_pdf(2.5, 0, 1, 0, 1) NIG probability density at x\n"
             "  cypha_nig_cdf(2.5, 0, 1, 0, 1) NIG cumulative distribution at x\n"
@@ -31871,6 +32117,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         return std::string{
             "frameworks: GRIA, Cypha, CellAI, Izaac pure REPL functions\n"
             "  gria_entropy([data],bins)  gria_matrix_alpha(X,FX)  gria_is_critical(a,tol)  gria_classify(a)\n"
+            "  gria_ca_step(state,rule)  gria_langton_lambda(rule)  gria_alpha_ca(rule,steps,width)\n"
+            "  gria_hamming_distance(a,b)  gria_divergence_trajectory(a,b,rule,n_steps)  gria_settling_time(a,b,rule,n_steps)\n"
             "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
             "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
@@ -38575,6 +38823,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "graph_modularity") {
                     auto value = eval_graph_modularity(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
+                if (fn == "gria_hamming_distance") {
+                    auto value = eval_gria_hamming_distance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
