@@ -1371,6 +1371,50 @@ Vec IsolationForest::anomaly_scores(const Mat& X) const {
     return scores;
 }
 
+IsolationForestState IsolationForest::export_state() const {
+    IsolationForestState state;
+    state.n_trees = n_trees;
+    state.sample_size = sample_size;
+    state.seed = seed;
+    state.subsample_size = subsample_size_;
+    state.n_features = n_features_;
+    state.trees.reserve(trees_.size());
+    for (const auto& tree : trees_) {
+        IsolationForestState::TreeState tree_state;
+        tree_state.height_limit = tree.height_limit;
+        tree_state.nodes.reserve(tree.nodes.size());
+        for (const auto& node : tree.nodes) {
+            tree_state.nodes.push_back(
+                {node.feature, node.threshold, node.left, node.right, node.size});
+        }
+        state.trees.push_back(std::move(tree_state));
+    }
+    return state;
+}
+
+IsolationForest IsolationForest::from_state(const IsolationForestState& state) {
+    IsolationForest iso(state.n_trees, state.sample_size, state.seed);
+    iso.subsample_size_ = state.subsample_size;
+    iso.n_features_ = state.n_features;
+    iso.trees_.reserve(state.trees.size());
+    for (const auto& tree_state : state.trees) {
+        Tree tree;
+        tree.height_limit = tree_state.height_limit;
+        tree.nodes.reserve(tree_state.nodes.size());
+        for (const auto& node_state : tree_state.nodes) {
+            Node node;
+            node.feature = node_state.feature;
+            node.threshold = node_state.threshold;
+            node.left = node_state.left;
+            node.right = node_state.right;
+            node.size = node_state.size;
+            tree.nodes.push_back(node);
+        }
+        iso.trees_.push_back(std::move(tree));
+    }
+    return iso;
+}
+
 // ========================== DBSCAN ==========================
 
 void DBSCAN::fit(const Mat& X) {
@@ -1793,7 +1837,7 @@ Mat TSNE::fit_transform(const Mat& X) const {
         P[i][j]=(P[i][j]+P[j][i])/(2*n);
     }
     // Initialise Y randomly
-    std::mt19937 rng(42); std::normal_distribution<double> nd(0,0.0001);
+    std::mt19937 rng(seed); std::normal_distribution<double> nd(0,0.0001);
     Mat Y(n, Vec(n_components));
     for (auto& row:Y) for (auto& v:row) v=nd(rng);
     Mat Y_prev=Y, gains(n, Vec(n_components,1.0));
