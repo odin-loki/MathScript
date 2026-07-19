@@ -15286,6 +15286,29 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "special_airy_bi") {
             return airy_bi(arg);
         }
+        if (fn == "special_airy_aip" || fn == "airy_aip") {
+            return airy_aip(arg);
+        }
+        if (fn == "special_airy_bip" || fn == "airy_bip") {
+            return airy_bip(arg);
+        }
+        if (fn == "beta_dirichlet") {
+            return beta_dirichlet(arg);
+        }
+        if (fn == "bernoulli_number") {
+            if (arg < 0.0 || std::floor(arg) != arg) {
+                return std::unexpected(
+                    DomainError{"bernoulli_number", "expected non-negative integer n"});
+            }
+            return bernoulli_number(static_cast<int>(arg));
+        }
+        if (fn == "euler_number") {
+            if (arg < 0.0 || std::floor(arg) != arg) {
+                return std::unexpected(
+                    DomainError{"euler_number", "expected non-negative integer n"});
+            }
+            return euler_number(static_cast<int>(arg));
+        }
         if (fn == "numthy_partition") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
@@ -15763,6 +15786,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "prob_rayleigh_ppf") {
             return rayleigh_ppf(args[0], args[1]);
         }
+        if (fn == "zeta_hurwitz") {
+            return zeta_hurwitz(args[0], args[1]);
+        }
+        if (fn == "hermite_hf") {
+            return hermite_hf(static_cast<int>(args[0]), args[1]);
+        }
     }
     if (args.size() == 4 && fn == "geo_dist2d") {
         const geo::Point2D p0{args[0], args[1]};
@@ -16040,6 +16069,21 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 3 && fn == "assoc_legendre_p") {
         return assoc_legendre_p(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+    }
+    if (args.size() == 3 && fn == "legendre_pn") {
+        return legendre_pn(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+    }
+    if (args.size() == 3 && fn == "lerch_phi") {
+        return lerch_phi(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "laguerre_ln") {
+        return laguerre_ln(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+    }
+    if (args.size() == 3 && fn == "chebyshev_tn") {
+        return chebyshev_tn(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+    }
+    if (args.size() == 3 && fn == "chebyshev_un") {
+        return chebyshev_un(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
     }
     if (args.size() == 3 && fn == "gegenbauer_c") {
         return gegenbauer_c(static_cast<int>(args[0]), args[1], args[2]);
@@ -22896,14 +22940,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = special_pseudo_voigt_auto(x,sigma,gamma) pseudo-Voigt with auto eta\n"
             "  name = special_airy_ai(x) Airy function Ai(x)\n"
             "  name = special_airy_bi(x) Airy function Bi(x)\n"
+            "  name = special_airy_aip(x) Airy function derivative Ai'(x)\n"
+            "  name = special_airy_bip(x) Airy function derivative Bi'(x)\n"
+            "  name = airy_aip(x) Airy function derivative Ai'(x)\n"
+            "  name = airy_bip(x) Airy function derivative Bi'(x)\n"
+            "  name = bernoulli_number(n) Bernoulli number B_n\n"
+            "  name = euler_number(n) Euler number E_n\n"
+            "  name = beta_dirichlet(s) Dirichlet beta function beta(s)\n"
+            "  name = zeta_hurwitz(s,a) Hurwitz zeta function zeta(s,a)\n"
+            "  name = lerch_phi(z,s,a) Lerch transcendent phi(z,s,a)\n"
             "  name = bessel_y(nu,x) Bessel function of the second kind Y_nu(x)\n"
             "  name = bessel_i(nu,x) modified Bessel function of the first kind I_nu(x)\n"
             "  name = bessel_k(nu,x) modified Bessel function of the second kind K_nu(x)\n"
             "  name = chebyshev_t(n,x) Chebyshev polynomial of the first kind T_n(x)\n"
             "  name = chebyshev_u(n,x) Chebyshev polynomial of the second kind U_n(x)\n"
+            "  name = chebyshev_tn(n,k,x) Chebyshev T_n(x) variant with parameter k\n"
+            "  name = chebyshev_un(n,k,x) Chebyshev U_n(x) variant with parameter k\n"
             "  name = hermite_h(n,x) physicist's Hermite polynomial H_n(x)\n"
+            "  name = hermite_hf(n,x) physicist's Hermite polynomial with Gaussian weight\n"
             "  name = laguerre_l(n,x) Laguerre polynomial L_n(x)\n"
+            "  name = laguerre_ln(n,k,x) Laguerre polynomial variant L_n^k(x)\n"
             "  name = legendre_q(n,x) Legendre function of the second kind Q_n(x)\n"
+            "  name = legendre_pn(n,m,x) associated Legendre polynomial P_n^m(x)\n"
             "  name = hermite_he(n,x) probabilist's Hermite polynomial He_n(x)\n"
             "  name = laguerre_la(n,a,x) generalized Laguerre polynomial L_n^a(x)\n"
             "  name = chebyshev_v(n,x) Chebyshev polynomial of the third kind V_n(x)\n"
@@ -23112,7 +23170,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
-            "  erfi(x), erfcx(x), dawson(x), special_erfinv(x), special_erfcinv(x), special_rgamma(x), special_pochhammer(a,n), special_falling_factorial(a,n), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc(a,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc(x,a,b), special_beta_inc_reg(x,a,b), beta(a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), hermite_h(n,x), laguerre_l(n,x), legendre_q(n,x), hermite_he(n,x), laguerre_la(n,a,x), chebyshev_v(n,x), chebyshev_w(n,x), sph_harm(l,m,theta,phi), sph_bessel_j(n,x), sph_bessel_y(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"
+            "  erfi(x), erfcx(x), dawson(x), special_erfinv(x), special_erfcinv(x), special_rgamma(x), special_pochhammer(a,n), special_falling_factorial(a,n), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc(a,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc(x,a,b), special_beta_inc_reg(x,a,b), beta(a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), special_airy_aip(x), special_airy_bip(x), airy_aip(x), airy_bip(x), bernoulli_number(n), euler_number(n), beta_dirichlet(s), zeta_hurwitz(s,a), lerch_phi(z,s,a), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), chebyshev_tn(n,k,x), chebyshev_un(n,k,x), hermite_h(n,x), hermite_hf(n,x), laguerre_l(n,x), laguerre_ln(n,k,x), legendre_q(n,x), legendre_pn(n,m,x), hermite_he(n,x), laguerre_la(n,a,x), chebyshev_v(n,x), chebyshev_w(n,x), sph_harm(l,m,theta,phi), sph_bessel_j(n,x), sph_bessel_y(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts), control_c2d_tustin(A,B,C,D,Ts), control_c2d_euler(A,B,C,D,Ts), control_series(num1,den1,num2,den2), control_parallel(num1,den1,num2,den2), control_feedback(numG,denG,numH,denH[,sign]), control_ss2tf(SS), control_d2c(A,B,C,D,Ts), control_c2d_tf(num,den,Ts), control_c2d_tf_tustin(num,den,Ts), control_d2c_tf(num,den,Ts)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
@@ -23132,7 +23190,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  heun_b(q,alpha,beta,delta,z), heun_d(q,alpha,gamma,delta,z), heun_t(q,alpha,beta,gamma,z)\n"
             "  painleve1(x,y0,yp0), painleve2(x,y0,yp0,alpha)\n"
             "  legendre_p(n,x), beta(a,b)\n"
-            "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
+            "  clausen(theta), eta_dirichlet(s), beta_dirichlet(s), zeta_hurwitz(s,a), lerch_phi(z,s,a), debye(n,x)\n"
             "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_hankel(\"expr\",\"r\",\"k\"), sym_ihankel(\"expr\",\"k\",\"r\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\")\n"
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42), bfgs(\"(x0-3)*(x0-3)\", [0])\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
@@ -29727,6 +29785,64 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                        assoc_legendre_p(static_cast<int>(l), static_cast<int>(m), x)) +
                    "\n";
         }
+        if (fn == "legendre_pn") {
+            double n = 0.0;
+            double m = 0.0;
+            double x = 0.0;
+            if (!parse_number(trim(match[2].str()), n) || !parse_number(trim(match[3].str()), m) ||
+                !parse_number(trim(match[4].str()), x)) {
+                return std::unexpected(DomainError{fn, "expected legendre_pn(n,m,x)"});
+            }
+            return std::to_string(
+                       legendre_pn(static_cast<int>(n), static_cast<int>(m), x)) +
+                   "\n";
+        }
+        if (fn == "lerch_phi") {
+            double z = 0.0;
+            double s = 0.0;
+            double a = 0.0;
+            if (!parse_number(trim(match[2].str()), z) || !parse_number(trim(match[3].str()), s) ||
+                !parse_number(trim(match[4].str()), a)) {
+                return std::unexpected(DomainError{fn, "expected lerch_phi(z,s,a)"});
+            }
+            return std::to_string(lerch_phi(z, s, a)) + "\n";
+        }
+        if (fn == "laguerre_ln") {
+            double n = 0.0;
+            double k = 0.0;
+            double x = 0.0;
+            if (!parse_number(trim(match[2].str()), n) || !parse_number(trim(match[3].str()), k) ||
+                !parse_number(trim(match[4].str()), x)) {
+                return std::unexpected(DomainError{fn, "expected laguerre_ln(n,k,x)"});
+            }
+            return std::to_string(
+                       laguerre_ln(static_cast<int>(n), static_cast<int>(k), x)) +
+                   "\n";
+        }
+        if (fn == "chebyshev_tn") {
+            double n = 0.0;
+            double k = 0.0;
+            double x = 0.0;
+            if (!parse_number(trim(match[2].str()), n) || !parse_number(trim(match[3].str()), k) ||
+                !parse_number(trim(match[4].str()), x)) {
+                return std::unexpected(DomainError{fn, "expected chebyshev_tn(n,k,x)"});
+            }
+            return std::to_string(
+                       chebyshev_tn(static_cast<int>(n), static_cast<int>(k), x)) +
+                   "\n";
+        }
+        if (fn == "chebyshev_un") {
+            double n = 0.0;
+            double k = 0.0;
+            double x = 0.0;
+            if (!parse_number(trim(match[2].str()), n) || !parse_number(trim(match[3].str()), k) ||
+                !parse_number(trim(match[4].str()), x)) {
+                return std::unexpected(DomainError{fn, "expected chebyshev_un(n,k,x)"});
+            }
+            return std::to_string(
+                       chebyshev_un(static_cast<int>(n), static_cast<int>(k), x)) +
+                   "\n";
+        }
         if (fn == "gegenbauer_c") {
             double n = 0.0;
             double lambda = 0.0;
@@ -32437,6 +32553,24 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(hermite_h(static_cast<int>(n), x)) + "\n";
         }
 
+        if (fn == "hermite_hf") {
+            double n = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{fn, "expected hermite_hf(n,x)"});
+            }
+            return std::to_string(hermite_hf(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "zeta_hurwitz") {
+            double s = 0.0;
+            double a = 0.0;
+            if (!parse_number(arg_a, s) || !parse_number(arg_b, a)) {
+                return std::unexpected(DomainError{fn, "expected zeta_hurwitz(s,a)"});
+            }
+            return std::to_string(zeta_hurwitz(s, a)) + "\n";
+        }
+
         if (fn == "laguerre_l") {
             double n = 0.0;
             double x = 0.0;
@@ -34189,7 +34323,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
         if (fn == "special_erfinv" || fn == "special_erfcinv" || fn == "special_log_gamma" ||
             fn == "special_digamma" || fn == "special_trigamma" || fn == "special_airy_ai" ||
-            fn == "special_airy_bi" || fn == "special_rgamma") {
+            fn == "special_airy_bi" || fn == "special_airy_aip" || fn == "special_airy_bip" ||
+            fn == "airy_aip" || fn == "airy_bip" || fn == "special_rgamma") {
             double value = 0.0;
             if (!parse_number(arg, value)) {
                 return std::unexpected(DomainError{fn, "expected numeric argument"});
@@ -34212,10 +34347,42 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (fn == "special_airy_bi") {
                 return std::to_string(airy_bi(value)) + "\n";
             }
+            if (fn == "special_airy_aip" || fn == "airy_aip") {
+                return std::to_string(airy_aip(value)) + "\n";
+            }
+            if (fn == "special_airy_bip" || fn == "airy_bip") {
+                return std::to_string(airy_bip(value)) + "\n";
+            }
             if (fn == "special_rgamma") {
                 return std::to_string(rgamma(value)) + "\n";
             }
             return std::to_string(trigamma(value)) + "\n";
+        }
+
+        if (fn == "beta_dirichlet") {
+            double s = 0.0;
+            if (!parse_number(arg, s)) {
+                return std::unexpected(DomainError{"beta_dirichlet", "expected numeric s"});
+            }
+            return std::to_string(beta_dirichlet(s)) + "\n";
+        }
+
+        if (fn == "bernoulli_number") {
+            double n = 0.0;
+            if (!parse_number(arg, n) || n < 0.0 || std::floor(n) != n) {
+                return std::unexpected(
+                    DomainError{"bernoulli_number", "expected non-negative integer n"});
+            }
+            return std::to_string(bernoulli_number(static_cast<int>(n))) + "\n";
+        }
+
+        if (fn == "euler_number") {
+            double n = 0.0;
+            if (!parse_number(arg, n) || n < 0.0 || std::floor(n) != n) {
+                return std::unexpected(
+                    DomainError{"euler_number", "expected non-negative integer n"});
+            }
+            return std::to_string(euler_number(static_cast<int>(n))) + "\n";
         }
 
         if (fn == "plot") {
