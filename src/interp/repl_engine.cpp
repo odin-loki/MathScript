@@ -16834,8 +16834,23 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         const cplx::C z4{args[6], args[7]};
         return cplx::cross_ratio(z1, z2, z3, z4);
     }
+    if (args.size() == 2 && fn == "mathieu_a") {
+        return mathieu_a(static_cast<int>(args[0]), args[1]);
+    }
     if (args.size() == 2 && fn == "mathieu_b") {
         return mathieu_b(static_cast<int>(args[0]), args[1]);
+    }
+    if (args.size() == 2 && fn == "pcf_u") {
+        return pcf_u(args[0], args[1]);
+    }
+    if (args.size() == 2 && fn == "pcf_v") {
+        return pcf_v(args[0], args[1]);
+    }
+    if (args.size() == 2 && fn == "pcf_w") {
+        return pcf_w(args[0], args[1]);
+    }
+    if (args.size() == 3 && fn == "spheroidal_lambda") {
+        return spheroidal_lambda(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
     }
     if (args.size() == 3 && fn == "mathieu_ce") {
         return mathieu_ce(static_cast<int>(args[0]), args[1], args[2]);
@@ -16851,6 +16866,14 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 3 && fn == "painleve1") {
         return painleve1(args[0], args[1], args[2]);
+    }
+    if (args.size() == 4 && fn == "spheroidal_s1") {
+        return spheroidal_s1(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2],
+                           args[3]);
+    }
+    if (args.size() == 4 && fn == "spheroidal_s2") {
+        return spheroidal_s2(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2],
+                           args[3]);
     }
     if (args.size() == 4 && fn == "painleve2") {
         return painleve2(args[0], args[1], args[2], args[3]);
@@ -23416,7 +23439,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = hypergeo_0f1n(n,a,z) confluent hypergeometric limit 0F1(;a+n;z)\n"
             "  name = hypergeo_1f1n(n,a,z) confluent hypergeometric limit 1F1(a+n;1;z)\n"
             "  name = mathieu_se(n,q,x) odd Mathieu function se_n(q,x)\n"
+            "  name = mathieu_a(n,q) Mathieu characteristic value a_n(q)\n"
             "  name = mathieu_b(n,q) Mathieu characteristic value b_n(q)\n"
+            "  name = spheroidal_lambda(n,m,c) prolate spheroidal eigenvalue\n"
+            "  name = spheroidal_s1(n,m,c,x) prolate spheroidal radial function S1\n"
+            "  name = spheroidal_s2(n,m,c,x) prolate spheroidal radial function S2\n"
+            "  name = pcf_u(a,x) parabolic cylinder function U(a,x)\n"
+            "  name = pcf_v(a,x) parabolic cylinder function V(a,x)\n"
+            "  name = pcf_w(a,x) parabolic cylinder function W(a,x)\n"
             "  name = mathieu_mc(n,q,x) modified Mathieu function Mc_n(q,x)\n"
             "  name = mathieu_ms(n,q,x) modified Mathieu function Ms_n(q,x)\n"
             "  name = heun_c(q,alpha,beta,gamma,delta,z) confluent Heun function\n"
@@ -23625,7 +23655,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
             "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k)\n"
-            "  theta1(z,q), theta2(z,q), theta3(z,q), theta4(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x, tricomi_u(a,b,z, meijer_g(a,b,z, fox_h(a,b,z, hypergeo_0f1n(n,a,z, hypergeo_1f1n(n,a,z)\n"
+            "  theta1(z,q), theta2(z,q), theta3(z,q), theta4(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_a(n,q), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
+            "  spheroidal_lambda(n,m,c), spheroidal_s1(n,m,c,x), spheroidal_s2(n,m,c,x), pcf_u(a,x), pcf_v(a,x), pcf_w(a,x)\n"
             "  heun_g(a,q,alpha,beta,gamma,delta,z), heun_c(q,alpha,beta,gamma,delta,z)\n"
             "  heun_b(q,alpha,beta,delta,z), heun_d(q,alpha,gamma,delta,z), heun_t(q,alpha,beta,gamma,z)\n"
             "  painleve1(x,y0,yp0), painleve2(x,y0,yp0,alpha), painleve3(x,y0,yp0,alpha,beta), painleve4(x,y0,yp0,alpha,beta), painleve5(x,y0,yp0,alpha,beta,gamma,delta), painleve6(x,y0,yp0,alpha,beta,gamma,delta)\n"
@@ -29649,6 +29680,36 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, *path);
             return out.str();
         }
+        if (fn == "spheroidal_s1") {
+            double n = 0.0;
+            double m = 0.0;
+            double c = 0.0;
+            double x = 0.0;
+            if (!parse_number(trim(match[2].str()), n) || !parse_number(trim(match[3].str()), m) ||
+                !parse_number(trim(match[4].str()), c) ||
+                !parse_number(trim(match[5].str()), x)) {
+                return std::unexpected(
+                    DomainError{fn, "expected spheroidal_s1(n,m,c,x)"});
+            }
+            return std::to_string(
+                       spheroidal_s1(static_cast<int>(n), static_cast<int>(m), c, x)) +
+                   "\n";
+        }
+        if (fn == "spheroidal_s2") {
+            double n = 0.0;
+            double m = 0.0;
+            double c = 0.0;
+            double x = 0.0;
+            if (!parse_number(trim(match[2].str()), n) || !parse_number(trim(match[3].str()), m) ||
+                !parse_number(trim(match[4].str()), c) ||
+                !parse_number(trim(match[5].str()), x)) {
+                return std::unexpected(
+                    DomainError{fn, "expected spheroidal_s2(n,m,c,x)"});
+            }
+            return std::to_string(
+                       spheroidal_s2(static_cast<int>(n), static_cast<int>(m), c, x)) +
+                   "\n";
+        }
         if (fn == "painleve2") {
             double x = 0.0;
             double y0 = 0.0;
@@ -30352,6 +30413,19 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
         if (fn == "bessel_zero_ynu") {
             return bessel_zero_ynu(static_cast<int>(args[0]), static_cast<int>(args[1]));
+        }
+        if (fn == "spheroidal_lambda") {
+            double n = 0.0;
+            double m = 0.0;
+            double c = 0.0;
+            if (!parse_number(trim(match[2].str()), n) || !parse_number(trim(match[3].str()), m) ||
+                !parse_number(trim(match[4].str()), c)) {
+                return std::unexpected(
+                    DomainError{fn, "expected spheroidal_lambda(n,m,c)"});
+            }
+            return std::to_string(
+                       spheroidal_lambda(static_cast<int>(n), static_cast<int>(m), c)) +
+                   "\n";
         }
         if (fn == "assoc_legendre_p") {
             double l = 0.0;
@@ -33121,6 +33195,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(chebyshev_w(static_cast<int>(n), x)) + "\n";
         }
 
+        if (fn == "mathieu_a") {
+            double n = 0.0;
+            double q = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, q)) {
+                return std::unexpected(DomainError{fn, "expected mathieu_a(n,q)"});
+            }
+            return std::to_string(mathieu_a(static_cast<int>(n), q)) + "\n";
+        }
+
         if (fn == "mathieu_b") {
             double n = 0.0;
             double q = 0.0;
@@ -33128,6 +33211,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected mathieu_b(n,q)"});
             }
             return std::to_string(mathieu_b(static_cast<int>(n), q)) + "\n";
+        }
+
+        if (fn == "pcf_u") {
+            double a = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{fn, "expected pcf_u(a,x)"});
+            }
+            return std::to_string(pcf_u(a, x)) + "\n";
+        }
+
+        if (fn == "pcf_v") {
+            double a = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{fn, "expected pcf_v(a,x)"});
+            }
+            return std::to_string(pcf_v(a, x)) + "\n";
+        }
+
+        if (fn == "pcf_w") {
+            double a = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{fn, "expected pcf_w(a,x)"});
+            }
+            return std::to_string(pcf_w(a, x)) + "\n";
         }
 
         if (fn == "sph_bessel_j") {
