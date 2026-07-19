@@ -9584,3 +9584,53 @@ TEST(ReplCommandsTest, wave270_special_voigt_weierstrass) {
     EXPECT_NEAR(interp.state().scalars.at("wpp"), wpp_ref, 1e-2);
     expect_contains(interp, "weierstrass_pprime(0.5, 1, 0)", "\n");
 }
+
+TEST(ReplCommandsTest, wave270_special_jacobi_struve) {
+    Interpreter interp;
+    expect_contains(interp, "help", "jacobi_sc(u,k)");
+    expect_contains(interp, "help", "jacobi_sd(u,k)");
+    expect_contains(interp, "help", "jacobi_nc(u,k)");
+    expect_contains(interp, "help", "jacobi_dc(u,k)");
+    expect_contains(interp, "help", "struve_hn(nu,x)");
+    expect_contains(interp, "help", "struve_yn(nu,x)");
+
+    const double u = 0.5;
+    const double k = 0.5;
+    const double sn_ref = ms::jacobi_sn(u, k);
+    const double cn_ref = ms::jacobi_cn(u, k);
+    const double dn_ref = ms::jacobi_dn(u, k);
+
+    const double sc_ref = ms::jacobi_sc(u, k);
+    EXPECT_NEAR(sc_ref, sn_ref / cn_ref, 1e-6);
+    expect_ok(interp, "sc = jacobi_sc(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("sc"), sc_ref, 1e-3);
+    expect_contains(interp, "jacobi_sc(0.5, 0.5)", "\n");
+
+    const double sd_ref = ms::jacobi_sd(u, k);
+    EXPECT_NEAR(sd_ref, sn_ref / dn_ref, 1e-6);
+    expect_ok(interp, "sd = jacobi_sd(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("sd"), sd_ref, 1e-3);
+
+    const double nc_ref = ms::jacobi_nc(u, k);
+    EXPECT_NEAR(nc_ref, cn_ref / sn_ref, 1e-6);
+    expect_ok(interp, "nc = jacobi_nc(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("nc"), nc_ref, 1e-3);
+    expect_contains(interp, "jacobi_nc(0.5, 0.5)", "\n");
+
+    const double dc_ref = ms::jacobi_dc(u, k);
+    EXPECT_NEAR(dc_ref, dn_ref / cn_ref, 1e-6);
+    expect_ok(interp, "dc = jacobi_dc(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("dc"), dc_ref, 1e-3);
+
+    const double hn_ref = ms::struve_hn(1, 1.0);
+    EXPECT_TRUE(std::isfinite(hn_ref));
+    expect_ok(interp, "hn = struve_hn(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("hn"), hn_ref, 1e-6);
+    expect_contains(interp, "struve_hn(1, 1)", std::to_string(hn_ref));
+
+    const double yn_ref = ms::struve_yn(1, 1.0);
+    EXPECT_TRUE(std::isfinite(yn_ref));
+    expect_ok(interp, "yn = struve_yn(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("yn"), yn_ref, 1e-6);
+    expect_contains(interp, "struve_yn(1, 1)", std::to_string(yn_ref));
+}

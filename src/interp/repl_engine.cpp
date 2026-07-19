@@ -19304,6 +19304,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "struve_k") {
             return struve_k(static_cast<int>(args[0]), args[1]);
         }
+        if (fn == "struve_hn") {
+            return struve_hn(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "struve_yn") {
+            return struve_yn(static_cast<int>(args[0]), args[1]);
+        }
         if (fn == "anger_j") {
             return anger_j(static_cast<int>(args[0]), args[1]);
         }
@@ -19348,6 +19354,18 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "jacobi_am") {
             return jacobi_am(args[0], args[1]);
+        }
+        if (fn == "jacobi_sc") {
+            return jacobi_sc(args[0], args[1]);
+        }
+        if (fn == "jacobi_sd") {
+            return jacobi_sd(args[0], args[1]);
+        }
+        if (fn == "jacobi_nc") {
+            return jacobi_nc(args[0], args[1]);
+        }
+        if (fn == "jacobi_dc") {
+            return jacobi_dc(args[0], args[1]);
         }
         if (fn == "theta1") {
             return theta1(args[0], args[1]);
@@ -32012,9 +32030,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_helix_torsion(t[,a[,b]]), diffgeo_sphere_gauss_bonnet([n]), diffgeo_sphere_gauss_bonnet_residual([n]), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
             "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_in(n,x), spherical_kn(n,x)\n"
-            "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
+            "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), struve_hn(nu,x), struve_yn(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
-            "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k)\n"
+            "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k)\n"
             "  theta1(z,q), theta2(z,q), theta3(z,q), theta4(z,q), weierstrass_p(z,g2,g3), weierstrass_pprime(z,g2,g3), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_a(n,q), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
             "  spheroidal_lambda(n,m,c), spheroidal_s1(n,m,c,x), spheroidal_s2(n,m,c,x), pcf_u(a,x), pcf_v(a,x), pcf_w(a,x)\n"
             "  heun_g(a,q,alpha,beta,gamma,delta,z), heun_c(q,alpha,beta,gamma,delta,z)\n"
@@ -39628,6 +39646,24 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(struve_k(static_cast<int>(nu), x)) + "\n";
         }
 
+        if (fn == "struve_hn") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"struve_hn", "expected struve_hn(nu,x)"});
+            }
+            return std::to_string(struve_hn(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "struve_yn") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"struve_yn", "expected struve_yn(nu,x)"});
+            }
+            return std::to_string(struve_yn(static_cast<int>(nu), x)) + "\n";
+        }
+
         if (fn == "anger_j") {
             double nu = 0.0;
             double x = 0.0;
@@ -39716,6 +39752,42 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"jacobi_am", "expected jacobi_am(u,k)"});
             }
             return std::to_string(jacobi_am(u, k)) + "\n";
+        }
+
+        if (fn == "jacobi_sc") {
+            double u = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"jacobi_sc", "expected jacobi_sc(u,k)"});
+            }
+            return std::to_string(jacobi_sc(u, k)) + "\n";
+        }
+
+        if (fn == "jacobi_sd") {
+            double u = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"jacobi_sd", "expected jacobi_sd(u,k)"});
+            }
+            return std::to_string(jacobi_sd(u, k)) + "\n";
+        }
+
+        if (fn == "jacobi_nc") {
+            double u = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"jacobi_nc", "expected jacobi_nc(u,k)"});
+            }
+            return std::to_string(jacobi_nc(u, k)) + "\n";
+        }
+
+        if (fn == "jacobi_dc") {
+            double u = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"jacobi_dc", "expected jacobi_dc(u,k)"});
+            }
+            return std::to_string(jacobi_dc(u, k)) + "\n";
         }
 
         if (fn == "ellip_pi") {
