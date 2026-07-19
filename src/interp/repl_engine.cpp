@@ -16288,6 +16288,42 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         const cplx::C z4{args[6], args[7]};
         return cplx::cross_ratio(z1, z2, z3, z4);
     }
+    if (args.size() == 2 && fn == "mathieu_b") {
+        return mathieu_b(static_cast<int>(args[0]), args[1]);
+    }
+    if (args.size() == 3 && fn == "mathieu_ce") {
+        return mathieu_ce(static_cast<int>(args[0]), args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "mathieu_se") {
+        return mathieu_se(static_cast<int>(args[0]), args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "mathieu_mc") {
+        return mathieu_mc(static_cast<int>(args[0]), args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "mathieu_ms") {
+        return mathieu_ms(static_cast<int>(args[0]), args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "painleve1") {
+        return painleve1(args[0], args[1], args[2]);
+    }
+    if (args.size() == 4 && fn == "painleve2") {
+        return painleve2(args[0], args[1], args[2], args[3]);
+    }
+    if (args.size() == 5 && fn == "heun_d") {
+        return heun_d(args[0], args[1], args[2], args[3], args[4]);
+    }
+    if (args.size() == 5 && fn == "heun_b") {
+        return heun_b(args[0], args[1], args[2], args[3], args[4]);
+    }
+    if (args.size() == 5 && fn == "heun_t") {
+        return heun_t(args[0], args[1], args[2], args[3], args[4]);
+    }
+    if (args.size() == 6 && fn == "heun_c") {
+        return heun_c(args[0], args[1], args[2], args[3], args[4], args[5]);
+    }
+    if (args.size() == 7 && fn == "heun_g") {
+        return heun_g(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+    }
     return std::unexpected(DomainError{"eval", "unknown scalar function: " + name});
 }
 
@@ -22422,6 +22458,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = gegenbauer_c(n,lambda,x) Gegenbauer polynomial C_n^lambda(x)\n"
             "  name = lambert_w(branch,z) Lambert W function W_branch(z)\n"
             "  name = kummer_u(a,b,z) Kummer confluent hypergeometric U(a,b,z)\n"
+            "  name = mathieu_se(n,q,x) odd Mathieu function se_n(q,x)\n"
+            "  name = mathieu_b(n,q) Mathieu characteristic value b_n(q)\n"
+            "  name = mathieu_mc(n,q,x) modified Mathieu function Mc_n(q,x)\n"
+            "  name = mathieu_ms(n,q,x) modified Mathieu function Ms_n(q,x)\n"
+            "  name = heun_c(q,alpha,beta,gamma,delta,z) confluent Heun function\n"
+            "  name = heun_d(q,alpha,gamma,delta,z) doubly confluent Heun function\n"
+            "  name = heun_b(q,alpha,beta,delta,z) biconfluent Heun function\n"
+            "  name = heun_t(q,alpha,beta,gamma,z) triconfluent Heun function\n"
+            "  name = painleve2(x,y0,yp0,alpha) Painleve P-II transcendent at x\n"
             "  name = prob_gamma_pdf(x,shape,scale) gamma PDF at x with shape and scale\n"
             "  name = gamma_cdf(x,shape,scale) gamma CDF at x with shape and scale\n"
             "  name = beta_pdf(x,alpha,beta) beta PDF at x with parameters alpha and beta\n"
@@ -22619,8 +22664,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  kelvin_ber(0,x), struve_h(n,x), bessel_zero_jnu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,x), kummer_u(a,b,z), hypergeo_2f1(a,b,c,x), whittaker_m(k,mu,x)\n"
             "  jacobi_p(n,a,b,x), ellip_k(k), jacobi_sn(u,k)\n"
-            "  theta3(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x)\n"
-            "  heun_g(a,q,alpha,beta,gamma,delta,z), painleve1(x,y0,yp0)\n"
+            "  theta3(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
+            "  heun_g(a,q,alpha,beta,gamma,delta,z), heun_c(q,alpha,beta,gamma,delta,z)\n"
+            "  heun_b(q,alpha,beta,delta,z), heun_d(q,alpha,gamma,delta,z), heun_t(q,alpha,beta,gamma,z)\n"
+            "  painleve1(x,y0,yp0), painleve2(x,y0,yp0,alpha)\n"
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
             "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_hankel(\"expr\",\"r\",\"k\"), sym_ihankel(\"expr\",\"k\",\"r\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\")\n"
@@ -27362,6 +27409,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return *value;
         }
+        if (fn == "heun_b" || fn == "heun_d" || fn == "heun_t") {
+            double q = 0.0;
+            double alpha = 0.0;
+            double beta = 0.0;
+            double gamma = 0.0;
+            double z = 0.0;
+            if (!parse_number(trim(match[2].str()), q) ||
+                !parse_number(trim(match[3].str()), alpha) ||
+                !parse_number(trim(match[4].str()), beta) ||
+                !parse_number(trim(match[5].str()), gamma) ||
+                !parse_number(trim(match[6].str()), z)) {
+                return std::unexpected(DomainError{fn, "expected numeric arguments"});
+            }
+            if (fn == "heun_b") {
+                return std::to_string(heun_b(q, alpha, beta, gamma, z)) + "\n";
+            }
+            if (fn == "heun_d") {
+                return std::to_string(heun_d(q, alpha, beta, gamma, z)) + "\n";
+            }
+            return std::to_string(heun_t(q, alpha, beta, gamma, z)) + "\n";
+        }
     }
 
     static const std::regex senary(
@@ -27934,6 +28002,24 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, *value);
             return out.str();
         }
+        if (fn == "heun_c") {
+            double q = 0.0;
+            double alpha = 0.0;
+            double beta = 0.0;
+            double gamma = 0.0;
+            double delta = 0.0;
+            double z = 0.0;
+            if (!parse_number(trim(match[2].str()), q) ||
+                !parse_number(trim(match[3].str()), alpha) ||
+                !parse_number(trim(match[4].str()), beta) ||
+                !parse_number(trim(match[5].str()), gamma) ||
+                !parse_number(trim(match[6].str()), delta) ||
+                !parse_number(trim(match[7].str()), z)) {
+                return std::unexpected(
+                    DomainError{"heun_c", "expected heun_c(q,alpha,beta,gamma,delta,z)"});
+            }
+            return std::to_string(heun_c(q, alpha, beta, gamma, delta, z)) + "\n";
+        }
     }
 
     {
@@ -28438,6 +28524,19 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             out << "path =\n";
             print_matrix(out, *path);
             return out.str();
+        }
+        if (fn == "painleve2") {
+            double x = 0.0;
+            double y0 = 0.0;
+            double yp0 = 0.0;
+            double alpha = 0.0;
+            if (!parse_number(trim(match[2].str()), x) || !parse_number(trim(match[3].str()), y0) ||
+                !parse_number(trim(match[4].str()), yp0) ||
+                !parse_number(trim(match[5].str()), alpha)) {
+                return std::unexpected(
+                    DomainError{"painleve2", "expected painleve2(x,y0,yp0,alpha)"});
+            }
+            return std::to_string(painleve2(x, y0, yp0, alpha)) + "\n";
         }
     }
 
@@ -29052,7 +29151,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(f_cdf(x, d1, d2)) + "\n";
         }
         if (fn == "kummer_m" || fn == "kummer_u" || fn == "whittaker_m" || fn == "mathieu_ce" ||
-            fn == "painleve1") {
+            fn == "mathieu_se" || fn == "mathieu_mc" || fn == "mathieu_ms" || fn == "painleve1") {
             double a = 0.0;
             double b = 0.0;
             double c = 0.0;
@@ -29071,6 +29170,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (fn == "mathieu_ce") {
                 return std::to_string(mathieu_ce(static_cast<int>(a), b, c)) + "\n";
+            }
+            if (fn == "mathieu_se") {
+                return std::to_string(mathieu_se(static_cast<int>(a), b, c)) + "\n";
+            }
+            if (fn == "mathieu_mc") {
+                return std::to_string(mathieu_mc(static_cast<int>(a), b, c)) + "\n";
+            }
+            if (fn == "mathieu_ms") {
+                return std::to_string(mathieu_ms(static_cast<int>(a), b, c)) + "\n";
             }
             return std::to_string(painleve1(a, b, c)) + "\n";
         }
@@ -31741,6 +31849,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected laguerre_l(n,x)"});
             }
             return std::to_string(laguerre_l(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "mathieu_b") {
+            double n = 0.0;
+            double q = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, q)) {
+                return std::unexpected(DomainError{fn, "expected mathieu_b(n,q)"});
+            }
+            return std::to_string(mathieu_b(static_cast<int>(n), q)) + "\n";
         }
 
         if (fn == "sph_bessel_j") {

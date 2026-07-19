@@ -7693,3 +7693,55 @@ TEST(ReplCommandsTest, wave265_linalg_funm_precond) {
     EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 3.0 / 1.2, 1e-12);
     EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
+    Interpreter interp;
+    expect_contains(interp, "help", "mathieu_se(n,q,x)");
+    expect_contains(interp, "help", "mathieu_b(n,q)");
+    expect_contains(interp, "help", "mathieu_mc(n,q,x)");
+    expect_contains(interp, "help", "mathieu_ms(n,q,x)");
+    expect_contains(interp, "help", "heun_c(q,alpha,beta,gamma,delta,z)");
+    expect_contains(interp, "help", "heun_d(q,alpha,gamma,delta,z)");
+    expect_contains(interp, "help", "heun_b(q,alpha,beta,delta,z)");
+    expect_contains(interp, "help", "heun_t(q,alpha,beta,gamma,z)");
+    expect_contains(interp, "help", "painleve2(x,y0,yp0,alpha)");
+
+    EXPECT_NEAR(ms::mathieu_b(1, 0.0), 1.0, 1e-8);
+    expect_ok(interp, "b = mathieu_b(1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("b"), 1.0, 1e-6);
+
+    const double se_ref = ms::mathieu_se(1, 0.1, 0.5);
+    EXPECT_TRUE(std::isfinite(se_ref));
+    expect_ok(interp, "se = mathieu_se(1, 0.1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("se"), se_ref, 1e-3);
+
+    const double mc_ref = ms::mathieu_mc(1, 0.2, 0.3);
+    const double ms_ref = ms::mathieu_ms(1, 0.2, 0.3);
+    expect_ok(interp, "mc = mathieu_mc(1, 0.2, 0.3)");
+    expect_ok(interp, "msv = mathieu_ms(1, 0.2, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("mc"), mc_ref, 1e-3);
+    EXPECT_NEAR(interp.state().scalars.at("msv"), ms_ref, 1e-3);
+
+    const double hc_ref = ms::heun_c(0.1, 0.2, 0.3, 0.4, 0.5, 0.2);
+    EXPECT_NEAR(hc_ref, 0.9472246160936063, 5e-3);
+    expect_ok(interp, "hc = heun_c(0.1, 0.2, 0.3, 0.4, 0.5, 0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("hc"), hc_ref, 5e-3);
+
+    const double hb_ref = ms::heun_b(0.1, 0.2, 0.3, 0.4, 0.2);
+    EXPECT_NEAR(hb_ref, 1.0738133528291396, 5e-3);
+    expect_ok(interp, "hb = heun_b(0.1, 0.2, 0.3, 0.4, 0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("hb"), hb_ref, 5e-3);
+
+    const double hd_ref = ms::heun_d(0.1, 0.2, 0.3, 0.4, 0.2);
+    expect_ok(interp, "hd = heun_d(0.1, 0.2, 0.3, 0.4, 0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("hd"), hd_ref, 5e-3);
+
+    const double ht_ref = ms::heun_t(0.1, 0.2, 0.3, 0.4, 0.25);
+    expect_ok(interp, "ht = heun_t(0.1, 0.2, 0.3, 0.4, 0.25)");
+    EXPECT_NEAR(interp.state().scalars.at("ht"), ht_ref, 5e-3);
+
+    const double p2_ref = ms::painleve2(0.5, 0.0, -0.5, 0.0);
+    EXPECT_NEAR(p2_ref, -0.2530083397481052, 1e-3);
+    expect_ok(interp, "p2 = painleve2(0.5, 0.0, -0.5, 0.0)");
+    EXPECT_NEAR(interp.state().scalars.at("p2"), p2_ref, 1e-3);
+}
