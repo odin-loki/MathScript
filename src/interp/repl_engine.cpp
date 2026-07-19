@@ -7870,6 +7870,28 @@ Result<Matrix<double>> eval_graph_mst_prim(const Matrix<double>& adj_m) {
     return out;
 }
 
+Result<Matrix<double>> eval_graph_min_arborescence(const Matrix<double>& adj_m, int root) {
+    auto G = graph_from_adjacency(adj_m, "graph_min_arborescence");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    if (root < 0 || root >= G->n_vertices()) {
+        return std::unexpected(DomainError{"graph_min_arborescence", "root out of range"});
+    }
+    const auto res = graph::min_arborescence(*G, root);
+    const auto& edges = res.edges;
+    Matrix<double> out(1 + edges.size(), 3);
+    out(0, 0) = res.total_weight;
+    out(0, 1) = 0.0;
+    out(0, 2) = 0.0;
+    for (size_t i = 0; i < edges.size(); ++i) {
+        out(1 + i, 0) = static_cast<double>(edges[i].from);
+        out(1 + i, 1) = static_cast<double>(edges[i].to);
+        out(1 + i, 2) = edges[i].weight;
+    }
+    return out;
+}
+
 Result<double> eval_stats_skewness(const Matrix<double>& x_m) {
     auto x = matrix_to_coeff_vector(x_m, "stats_skewness");
     if (!x) {
@@ -12476,7 +12498,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "stats_friedman" || fn == "stats_ks_2sample" || fn == "stats_jarque_bera" || fn == "stats_ljung_box" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
             fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_levene" || fn == "stats_bartlett" || fn == "stats_fligner" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
             fn == "graph_floyd_warshall" || fn == "graph_mst_kruskal" ||
-            fn == "graph_mst_prim" ||
+            fn == "graph_mst_prim" || fn == "graph_min_arborescence" ||
             fn == "graph_scc" || fn == "graph_connected_components" ||
             fn == "info_channel_capacity_input" ||
             fn == "signal_convolve" || fn == "signal_correlate" ||
@@ -14473,7 +14495,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "poly_eval_at" || callee == "poly_sylvester" ||
            callee == "graph_floyd_warshall" || callee == "graph_dijkstra" ||
            callee == "graph_bellman_ford" || callee == "graph_mst_kruskal" ||
-           callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
+           callee == "graph_mst_prim" || callee == "graph_min_arborescence" ||
+           callee == "graph_topological_sort" ||
            callee == "graph_greedy_colour" || callee == "graph_k_core_decomposition" ||
            callee == "graph_euler_circuit" ||
            callee == "graph_eulerian_path" || callee == "graph_hamiltonian_path" ||
@@ -14603,7 +14626,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "stats_ks_2sample" || callee == "stats_ljung_box") {
         return arity == 2;
     }
-    if (callee == "graph_dijkstra" || callee == "graph_bellman_ford") {
+    if (callee == "graph_dijkstra" || callee == "graph_bellman_ford" ||
+        callee == "graph_min_arborescence") {
         return arity == 2;
     }
     if (callee == "signal_moving_average" || callee == "signal_median_filter" ||
@@ -20057,6 +20081,30 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
             }
         }
         result = precond_ssor(*matrix, omega);
+    } else if (assign.callee == "graph_min_arborescence" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double root_d = 0.0;
+        if (!parse_number(assign.args[1], root_d)) {
+            auto root_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!root_expr) {
+                return std::unexpected(DomainError{
+                    "graph_min_arborescence", "expected graph_min_arborescence(A, root)"});
+            }
+            root_d = *root_expr;
+        }
+        const int root = static_cast<int>(root_d);
+        if (root < 0 || root_d != root) {
+            return std::unexpected(
+                DomainError{"graph_min_arborescence", "expected non-negative integer root"});
+        }
+        auto arb = eval_graph_min_arborescence(*matrix, root);
+        if (!arb) {
+            return std::unexpected(arb.error());
+        }
+        result = *arb;
     }
 
     return result;
@@ -22095,6 +22143,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_astar(A,source,target,h) A* path from source to target as Nx1 column\n"
             "  name = graph_mst_kruskal(A) minimum spanning tree as Mx3 [from,to,weight]\n"
             "  name = graph_mst_prim(A) minimum spanning tree (Prim) as Mx3 [from,to,weight]\n"
+            "  name = graph_min_arborescence(A,root) min spanning arborescence as (M+1)x3: "
+            "row0 [total_weight;0;0], rows1..M [from,to,weight]\n"
             "  name = graph_scc(A) strongly connected components as KxM vertex index matrix\n"
             "  name = graph_connected_components(A) connected components as KxM vertex index matrix (-1 pad)\n"
             "  name = imcrop(M,r0,c0,r1,c1) crop grayscale matrix to [r0:r1,c0:c1)\n"
@@ -22795,7 +22845,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
-            "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_scc(A), graph_connected_components(A)\n"
+            "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), hermite_h(n,x), laguerre_l(n,x), sph_bessel_j(n,x), sph_bessel_y(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"

@@ -7856,3 +7856,20 @@ TEST(ReplCommandsTest, wave266_stats_ks_norm) {
 
     expect_ok(interp, "stats_ks_norm([0; 1; 2; 3; 4; 5; 6; 7], 0, 1)");
 }
+
+TEST(ReplCommandsTest, wave266_graph_min_arborescence) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_min_arborescence(A,root)");
+
+    expect_ok(interp, "arb = graph_min_arborescence([0, 1, 10; 0, 0, 2; 0, 0, 0], 0)");
+    ASSERT_GT(interp.state().matrices.count("arb"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("arb").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("arb").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(0, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(1, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(1, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(1, 2), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(2, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(2, 1), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(2, 2), 2.0, 1e-9);
+}
