@@ -12,6 +12,7 @@
 #include "ms/version.hpp"
 #include "ms/interp/plot_console.hpp"
 #include "ms/core/operations.hpp"
+#include "ms/core/sparse.hpp"
 #include "ms/fft/fft.hpp"
 #include "ms/linalg/linalg.hpp"
 #include "ms/cuda/nccl.hpp"
@@ -2548,6 +2549,10 @@ Result<std::vector<double>> matrix_to_coeff_vector(const Matrix<double>& m, cons
     }
     return std::unexpected(DomainError{fn, "expected 1xN or Nx1 coefficient vector"});
 }
+
+Result<std::vector<int>> matrix_to_int_coeff_vector(const Matrix<double>& m, const char* fn);
+
+Result<SymExpr> parse_sym_quoted_expr(const std::string& quoted_arg, const char* fn);
 
 Result<quantum::Ket> matrix_to_ket(const Matrix<double>& m, const char* fn) {
     auto coeffs = matrix_to_coeff_vector(m, fn);
@@ -8865,6 +8870,189 @@ Result<std::string> eval_cplx_cauchy_principal_value_call(const std::string& for
     return std::to_string(
                cplx::cauchy_principal_value(f, a, c, b, n_pts_i)) +
            "\n";
+}
+
+Matrix<double> sparse_to_packed_matrix(const Sparse<double>& S) {
+    const auto dense = S.to_dense();
+    size_t nnz = 0;
+    for (size_t i = 0; i < S.rows(); ++i) {
+        for (size_t j = 0; j < S.cols(); ++j) {
+            if (dense(i, j) != 0.0) {
+                ++nnz;
+            }
+        }
+    }
+    Matrix<double> out(nnz + 1, 3);
+    out(0, 0) = static_cast<double>(S.rows());
+    out(0, 1) = static_cast<double>(S.cols());
+    out(0, 2) = static_cast<double>(nnz);
+    size_t k = 0;
+    for (size_t i = 0; i < S.rows(); ++i) {
+        for (size_t j = 0; j < S.cols(); ++j) {
+            const double value = dense(i, j);
+            if (value != 0.0) {
+                out(k + 1, 0) = static_cast<double>(i);
+                out(k + 1, 1) = static_cast<double>(j);
+                out(k + 1, 2) = value;
+                ++k;
+            }
+        }
+    }
+    return out;
+}
+
+Result<Sparse<double>> sparse_from_packed_matrix(const Matrix<double>& m, const char* fn) {
+    if (m.rows() < 1 || m.cols() < 3) {
+        return std::unexpected(DomainError{
+            fn, "expected packed sparse matrix (nnz+1)x3 with header row [rows,cols,nnz]"});
+    }
+    const double rows_d = m(0, 0);
+    const double cols_d = m(0, 1);
+    const double nnz_d = m(0, 2);
+    const int rows_i = static_cast<int>(rows_d);
+    const int cols_i = static_cast<int>(cols_d);
+    const int nnz_i = static_cast<int>(nnz_d);
+    if (rows_i < 0 || cols_i < 0 || nnz_i < 0 || rows_d != rows_i || cols_d != cols_i ||
+        nnz_d != nnz_i) {
+        return std::unexpected(DomainError{fn, "invalid sparse header row [rows,cols,nnz]"});
+    }
+    if (m.rows() != static_cast<size_t>(nnz_i + 1)) {
+        return std::unexpected(DomainError{fn, "packed sparse row count must be nnz+1"});
+    }
+    std::vector<size_t> rowidx(static_cast<size_t>(nnz_i));
+    std::vector<size_t> colidx(static_cast<size_t>(nnz_i));
+    std::vector<double> values(static_cast<size_t>(nnz_i));
+    for (int k = 0; k < nnz_i; ++k) {
+        const double row = m(static_cast<size_t>(k + 1), 0);
+        const double col = m(static_cast<size_t>(k + 1), 1);
+        const int row_i = static_cast<int>(row);
+        const int col_i = static_cast<int>(col);
+        if (row_i < 0 || col_i < 0 || row != row_i || col != col_i ||
+            static_cast<size_t>(row_i) >= static_cast<size_t>(rows_i) ||
+            static_cast<size_t>(col_i) >= static_cast<size_t>(cols_i)) {
+            return std::unexpected(DomainError{fn, "invalid COO index in packed sparse matrix"});
+        }
+        rowidx[static_cast<size_t>(k)] = static_cast<size_t>(row_i);
+        colidx[static_cast<size_t>(k)] = static_cast<size_t>(col_i);
+        values[static_cast<size_t>(k)] = m(static_cast<size_t>(k + 1), 2);
+    }
+    return Sparse<double>(static_cast<size_t>(rows_i), static_cast<size_t>(cols_i),
+                          std::move(rowidx), std::move(colidx), std::move(values));
+}
+
+Result<ColMatrix<double>> sparse_vector_to_col_column(const Matrix<double>& m, size_t expected_len,
+                                                      const char* fn) {
+    if (m.rows() == expected_len && m.cols() == 1) {
+        ColMatrix<double> column(expected_len, 1);
+        for (size_t i = 0; i < expected_len; ++i) {
+            column(i, 0) = m(i, 0);
+        }
+        return column;
+    }
+    if (m.rows() == 1 && m.cols() == expected_len) {
+        ColMatrix<double> column(expected_len, 1);
+        for (size_t j = 0; j < expected_len; ++j) {
+            column(j, 0) = m(0, j);
+        }
+        return column;
+    }
+    return std::unexpected(
+        DomainError{fn, "expected vector length matching sparse column count"});
+}
+
+Matrix<double> col_matrix_to_matrix(const ColMatrix<double>& m) {
+    Matrix<double> out(m.rows(), m.cols());
+    for (size_t i = 0; i < m.rows(); ++i) {
+        for (size_t j = 0; j < m.cols(); ++j) {
+            out(i, j) = m(i, j);
+        }
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_sparse_from_coo(std::size_t rows, std::size_t cols,
+                                            const Matrix<double>& row_idx_m,
+                                            const Matrix<double>& col_idx_m,
+                                            const Matrix<double>& values_m) {
+    constexpr const char* fn = "sparse_from_coo";
+    auto row_idx = matrix_to_ml_vec(row_idx_m, fn);
+    if (!row_idx) {
+        return std::unexpected(row_idx.error());
+    }
+    auto col_idx = matrix_to_ml_vec(col_idx_m, fn);
+    if (!col_idx) {
+        return std::unexpected(col_idx.error());
+    }
+    auto values = matrix_to_ml_vec(values_m, fn);
+    if (!values) {
+        return std::unexpected(values.error());
+    }
+    if (row_idx->size() != col_idx->size() || row_idx->size() != values->size()) {
+        return std::unexpected(
+            DomainError{fn, "row_idx, col_idx, and values must have equal length"});
+    }
+    std::vector<size_t> rows_vec;
+    std::vector<size_t> cols_vec;
+    std::vector<double> vals;
+    rows_vec.reserve(row_idx->size());
+    cols_vec.reserve(col_idx->size());
+    vals.reserve(values->size());
+    for (size_t k = 0; k < row_idx->size(); ++k) {
+        const double row = (*row_idx)[k];
+        const double col = (*col_idx)[k];
+        const int row_i = static_cast<int>(row);
+        const int col_i = static_cast<int>(col);
+        if (row_i < 0 || col_i < 0 || row != row_i || col != col_i) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative integer COO indices"});
+        }
+        if (static_cast<size_t>(row_i) >= rows || static_cast<size_t>(col_i) >= cols) {
+            return std::unexpected(
+                DomainError{fn, "COO index out of bounds for given rows/cols"});
+        }
+        rows_vec.push_back(static_cast<size_t>(row_i));
+        cols_vec.push_back(static_cast<size_t>(col_i));
+        vals.push_back((*values)[k]);
+    }
+    const Sparse<double> sparse(rows, cols, std::move(rows_vec), std::move(cols_vec),
+                                std::move(vals));
+    return sparse_to_packed_matrix(sparse);
+}
+
+Result<Matrix<double>> eval_sparse_spmv(const Matrix<double>& packed_m,
+                                       const Matrix<double>& x_m) {
+    constexpr const char* fn = "sparse_spmv";
+    auto sparse = sparse_from_packed_matrix(packed_m, fn);
+    if (!sparse) {
+        return std::unexpected(sparse.error());
+    }
+    auto x = sparse_vector_to_col_column(x_m, sparse->cols(), fn);
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    return col_matrix_to_matrix(sparse->spmv(*x));
+}
+
+Result<Matrix<double>> eval_sparse_to_dense(const Matrix<double>& packed_m) {
+    constexpr const char* fn = "sparse_to_dense";
+    auto sparse = sparse_from_packed_matrix(packed_m, fn);
+    if (!sparse) {
+        return std::unexpected(sparse.error());
+    }
+    return col_matrix_to_matrix(sparse->to_dense());
+}
+
+Result<Matrix<double>> eval_sparse_add(const Matrix<double>& a_m, const Matrix<double>& b_m) {
+    constexpr const char* fn = "sparse_add";
+    auto a = sparse_from_packed_matrix(a_m, fn);
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = sparse_from_packed_matrix(b_m, fn);
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    return sparse_to_packed_matrix(sparse_add(*a, *b));
 }
 
 Result<Matrix<double>> eval_cfd_advection1d(std::size_t nx, double vx, double t_end, double dt) {
