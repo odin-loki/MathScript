@@ -8013,6 +8013,51 @@ TEST(ReplCommandsTest, wave266_image_imfilter_sobel) {
     EXPECT_EQ(interp.state().matrices.at("D").cols(), 3u);
 }
 
+TEST(ReplCommandsTest, wave267_special_mathieu_spheroidal_pcf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "mathieu_a(n,q)");
+    expect_contains(interp, "help", "spheroidal_lambda(n,m,c)");
+    expect_contains(interp, "help", "spheroidal_s1(n,m,c,x)");
+    expect_contains(interp, "help", "spheroidal_s2(n,m,c,x)");
+    expect_contains(interp, "help", "pcf_u(a,x)");
+    expect_contains(interp, "help", "pcf_v(a,x)");
+    expect_contains(interp, "help", "pcf_w(a,x)");
+
+    const double q = 0.1;
+    const double a_ref = ms::mathieu_a(1, q);
+    EXPECT_NEAR(a_ref, 1.0987343129634084, 1e-3);
+    expect_ok(interp, "a = mathieu_a(1, 0.1)");
+    EXPECT_NEAR(interp.state().scalars.at("a"), a_ref, 1e-3);
+
+    const double lam_ref = ms::spheroidal_lambda(1, 1, 5.0);
+    EXPECT_NEAR(lam_ref, -7.493388284110646, 3e-2);
+    expect_ok(interp, "lam = spheroidal_lambda(1, 1, 5.0)");
+    EXPECT_NEAR(interp.state().scalars.at("lam"), lam_ref, 3e-2);
+
+    const double s1_ref = ms::spheroidal_s1(1, 1, 5.0, 0.5);
+    EXPECT_NEAR(s1_ref, 0.03747174337125646, 5e-2);
+    expect_ok(interp, "s1 = spheroidal_s1(1, 1, 5.0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("s1"), s1_ref, 5e-2);
+
+    const double s2_ref = ms::spheroidal_s2(1, 1, 5.0, 0.5);
+    EXPECT_TRUE(std::isfinite(s2_ref));
+    expect_ok(interp, "s2 = spheroidal_s2(1, 1, 5.0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("s2"), s2_ref, 5e-2);
+
+    const double u_ref = ms::pcf_u(0.5, 1.0);
+    const double v_ref = ms::pcf_v(0.5, 1.0);
+    const double w_ref = ms::pcf_w(0.5, 1.0);
+    EXPECT_TRUE(std::isfinite(u_ref));
+    EXPECT_TRUE(std::isfinite(v_ref));
+    EXPECT_TRUE(std::isfinite(w_ref));
+    expect_ok(interp, "u = pcf_u(0.5, 1.0)");
+    expect_ok(interp, "v = pcf_v(0.5, 1.0)");
+    expect_ok(interp, "w = pcf_w(0.5, 1.0)");
+    EXPECT_NEAR(interp.state().scalars.at("u"), u_ref, 1e-3);
+    EXPECT_NEAR(interp.state().scalars.at("v"), v_ref, 1e-3);
+    EXPECT_NEAR(interp.state().scalars.at("w"), w_ref, 1e-3);
+}
+
 TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
     Interpreter interp;
     expect_contains(interp, "help", "mathieu_se(n,q,x)");
