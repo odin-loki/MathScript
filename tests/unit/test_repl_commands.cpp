@@ -8064,3 +8064,69 @@ TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
     expect_ok(interp, "p2 = painleve2(0.5, 0.0, -0.5, 0.0)");
     EXPECT_NEAR(interp.state().scalars.at("p2"), p2_ref, 1e-3);
 }
+
+TEST(ReplCommandsTest, wave267_special_bessel_struve_kelvin_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "spherical_in(n,x)");
+    expect_contains(interp, "help", "spherical_kn(n,x)");
+    expect_contains(interp, "help", "struve_l(nu,x)");
+    expect_contains(interp, "help", "struve_k(nu,x)");
+    expect_contains(interp, "help", "anger_j(nu,x)");
+    expect_contains(interp, "help", "weber_e(nu,x)");
+    expect_contains(interp, "help", "kelvin_bei(nu,x)");
+    expect_contains(interp, "help", "kelvin_ker(nu,x)");
+    expect_contains(interp, "help", "kelvin_kei(nu,x)");
+    expect_contains(interp, "help", "bessel_zero_ynu(nu,n)");
+
+    const double in_ref = ms::spherical_in(0, 1.0);
+    EXPECT_NEAR(in_ref, 1.1752011936438014, 1e-6);
+    expect_ok(interp, "in0 = spherical_in(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("in0"), in_ref, 1e-9);
+    expect_contains(interp, "spherical_in(0, 1)", std::to_string(in_ref));
+
+    const double kn_ref = ms::spherical_kn(0, 1.0);
+    EXPECT_NEAR(kn_ref, 0.5778636748954609, 1e-3);
+    expect_ok(interp, "kn0 = spherical_kn(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("kn0"), kn_ref, 1e-3);
+
+    const double sl_ref = ms::struve_l(0, 1.0);
+    EXPECT_NEAR(sl_ref, 0.5686566270482879, 1e-6);
+    expect_ok(interp, "sl = struve_l(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sl"), sl_ref, 1e-9);
+
+    const double sk_ref = ms::struve_k(0, 1.0);
+    expect_ok(interp, "sk = struve_k(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sk"), sk_ref, 1e-9);
+
+    const double aj_ref = ms::anger_j(1, 1.0);
+    EXPECT_NEAR(aj_ref, 0.440050585744933, 1e-6);
+    expect_ok(interp, "aj = anger_j(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("aj"), aj_ref, 1e-9);
+
+    const double we_ref = ms::weber_e(0, 1.0);
+    EXPECT_NEAR(we_ref, -0.5686566270482879, 1e-6);
+    expect_ok(interp, "we = weber_e(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("we"), we_ref, 1e-9);
+
+    const double bei_ref = ms::kelvin_bei(0, 1.0);
+    EXPECT_NEAR(bei_ref, 0.24956604003665972, 1e-6);
+    expect_ok(interp, "bei = kelvin_bei(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bei"), bei_ref, 1e-9);
+    expect_contains(interp, "kelvin_bei(0, 1)", std::to_string(bei_ref));
+
+    const double ker_ref = ms::kelvin_ker(0, 1.0);
+    EXPECT_NEAR(ker_ref, 0.28670620872831604, 1e-6);
+    expect_ok(interp, "ker = kelvin_ker(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ker"), ker_ref, 1e-9);
+
+    const double kei_ref = ms::kelvin_kei(0, 1.0);
+    EXPECT_NEAR(kei_ref, -0.49499463651872, 1e-6);
+    expect_ok(interp, "kei = kelvin_kei(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("kei"), kei_ref, 1e-9);
+
+    const double yz_ref = ms::bessel_zero_ynu(0, 1);
+    EXPECT_NEAR(yz_ref, 0.893576974377206, 1e-3);
+    expect_ok(interp, "yz = bessel_zero_ynu(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("yz"), yz_ref, 1e-3);
+    expect_contains(interp, "bessel_zero_ynu(0, 1)", std::to_string(yz_ref));
+}

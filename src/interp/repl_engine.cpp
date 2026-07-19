@@ -15667,6 +15667,36 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "sph_bessel_y") {
             return sph_bessel_y(static_cast<int>(args[0]), args[1]);
         }
+        if (fn == "spherical_in") {
+            return spherical_in(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "spherical_kn") {
+            return spherical_kn(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "struve_l") {
+            return struve_l(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "struve_k") {
+            return struve_k(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "anger_j") {
+            return anger_j(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "weber_e") {
+            return weber_e(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "kelvin_bei") {
+            return kelvin_bei(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "kelvin_ker") {
+            return kelvin_ker(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "kelvin_kei") {
+            return kelvin_kei(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "bessel_zero_ynu") {
+            return bessel_zero_ynu(static_cast<int>(args[0]), static_cast<int>(args[1]));
+        }
         if (fn == "lambert_w" || fn == "special_lambert_w") {
             return lambert_w(static_cast<int>(args[0]), args[1]);
         }
@@ -22911,6 +22941,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sph_harm(l,m,theta,phi) complex spherical harmonic Y_l^m as 1x2 [re,im]\n"
             "  name = sph_bessel_j(n,x) spherical Bessel function of the first kind j_n(x)\n"
             "  name = sph_bessel_y(n,x) spherical Bessel function of the second kind y_n(x)\n"
+            "  name = spherical_in(n,x) spherical modified Bessel function of the first kind i_n(x)\n"
+            "  name = spherical_kn(n,x) spherical modified Bessel function of the second kind k_n(x)\n"
+            "  name = struve_l(nu,x) modified Struve function L_nu(x)\n"
+            "  name = struve_k(nu,x) Struve function K_nu(x)\n"
+            "  name = anger_j(nu,x) Anger function J_nu(x)\n"
+            "  name = weber_e(nu,x) Weber function E_nu(x)\n"
+            "  name = kelvin_bei(nu,x) Kelvin function bei_nu(x)\n"
+            "  name = kelvin_ker(nu,x) Kelvin function ker_nu(x)\n"
+            "  name = kelvin_kei(nu,x) Kelvin function kei_nu(x)\n"
+            "  name = bessel_zero_ynu(nu,n) nth zero of Bessel function Y_nu(x)\n"
             "  name = assoc_legendre_p(l,m,x) associated Legendre polynomial P_l^m(x)\n"
             "  name = gegenbauer_c(n,lambda,x) Gegenbauer polynomial C_n^lambda(x)\n"
             "  name = lambert_w(branch,z) Lambert W function W_branch(z)\n"
@@ -23112,7 +23152,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
-            "  erfi(x), erfcx(x), dawson(x), special_erfinv(x), special_erfcinv(x), special_rgamma(x), special_pochhammer(a,n), special_falling_factorial(a,n), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc(a,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc(x,a,b), special_beta_inc_reg(x,a,b), beta(a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), hermite_h(n,x), laguerre_l(n,x), legendre_q(n,x), hermite_he(n,x), laguerre_la(n,a,x), chebyshev_v(n,x), chebyshev_w(n,x), sph_harm(l,m,theta,phi), sph_bessel_j(n,x), sph_bessel_y(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"
+            "  erfi(x), erfcx(x), dawson(x), special_erfinv(x), special_erfcinv(x), special_rgamma(x), special_pochhammer(a,n), special_falling_factorial(a,n), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc(a,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc(x,a,b), special_beta_inc_reg(x,a,b), beta(a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), hermite_h(n,x), laguerre_l(n,x), legendre_q(n,x), hermite_he(n,x), laguerre_la(n,a,x), chebyshev_v(n,x), chebyshev_w(n,x), sph_harm(l,m,theta,phi), sph_bessel_j(n,x), sph_bessel_y(n,x), spherical_in(n,x), spherical_kn(n,x), struve_l(nu,x), struve_k(nu,x), anger_j(nu,x), weber_e(nu,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), bessel_zero_ynu(nu,n), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts), control_c2d_tustin(A,B,C,D,Ts), control_c2d_euler(A,B,C,D,Ts), control_series(num1,den1,num2,den2), control_parallel(num1,den1,num2,den2), control_feedback(numG,denG,numH,denH[,sign]), control_ss2tf(SS), control_d2c(A,B,C,D,Ts), control_c2d_tf(num,den,Ts), control_c2d_tf_tustin(num,den,Ts), control_d2c_tf(num,den,Ts)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
@@ -23123,8 +23163,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
-            "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x)\n"
-            "  kelvin_ber(0,x), struve_h(n,x), bessel_zero_jnu(nu,n), lambert_w(branch,z)\n"
+            "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_in(n,x), spherical_kn(n,x)\n"
+            "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"
             "  jacobi_p(n,a,b,x), ellip_k(k), jacobi_sn(u,k)\n"
             "  theta3(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
@@ -32712,6 +32752,96 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"bessel_zero_jnu", "expected bessel_zero_jnu(nu,n)"});
             }
             return std::to_string(bessel_zero_jnu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
+        }
+
+        if (fn == "spherical_in") {
+            double n = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"spherical_in", "expected spherical_in(n,x)"});
+            }
+            return std::to_string(spherical_in(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "spherical_kn") {
+            double n = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"spherical_kn", "expected spherical_kn(n,x)"});
+            }
+            return std::to_string(spherical_kn(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "struve_l") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"struve_l", "expected struve_l(nu,x)"});
+            }
+            return std::to_string(struve_l(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "struve_k") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"struve_k", "expected struve_k(nu,x)"});
+            }
+            return std::to_string(struve_k(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "anger_j") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"anger_j", "expected anger_j(nu,x)"});
+            }
+            return std::to_string(anger_j(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "weber_e") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"weber_e", "expected weber_e(nu,x)"});
+            }
+            return std::to_string(weber_e(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "kelvin_bei") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"kelvin_bei", "expected kelvin_bei(nu,x)"});
+            }
+            return std::to_string(kelvin_bei(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "kelvin_ker") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"kelvin_ker", "expected kelvin_ker(nu,x)"});
+            }
+            return std::to_string(kelvin_ker(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "kelvin_kei") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"kelvin_kei", "expected kelvin_kei(nu,x)"});
+            }
+            return std::to_string(kelvin_kei(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "bessel_zero_ynu") {
+            double nu = 0.0;
+            double n = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, n)) {
+                return std::unexpected(DomainError{"bessel_zero_ynu", "expected bessel_zero_ynu(nu,n)"});
+            }
+            return std::to_string(bessel_zero_ynu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
         }
 
         if (fn == "jacobi_sn") {
