@@ -1058,6 +1058,16 @@ Matrix<double> ml_gmm_to_matrix(const ml::GaussianMixture& gmm) {
     return out;
 }
 
+Matrix<double> ml_standard_scaler_to_matrix(const ml::StandardScaler& sc) {
+    const size_t nf = sc.mean_.size();
+    Matrix<double> out(2, nf);
+    for (size_t j = 0; j < nf; ++j) {
+        out(0, j) = sc.mean_[j];
+        out(1, j) = sc.std_[j];
+    }
+    return out;
+}
+
 Result<ml::GaussianMixture> ml_gmm_from_matrix(const Matrix<double>& model, const char* fn) {
     if (model.rows() < 3 || model.cols() < 1) {
         return std::unexpected(DomainError{fn, "expected GMM model matrix"});
@@ -1164,6 +1174,94 @@ Result<Matrix<double>> eval_ml_spectral_clustering(const Matrix<double>& X_m, in
     }
     auto labels = ml::spectral_clustering(*X, k, sigma, n_neighbors);
     return int_vector_to_column(labels);
+}
+
+Result<ml::StandardScaler> ml_standard_scaler_from_matrix(const Matrix<double>& model,
+                                                          const char* fn) {
+    if (model.rows() != 2 || model.cols() < 1) {
+        return std::unexpected(
+            DomainError{fn, "expected StandardScaler model (2 x n_features)"});
+    }
+    ml::StandardScaler sc;
+    sc.mean_.resize(model.cols());
+    sc.std_.resize(model.cols());
+    for (size_t j = 0; j < model.cols(); ++j) {
+        sc.mean_[j] = model(0, j);
+        sc.std_[j] = model(1, j);
+    }
+    return sc;
+}
+
+Matrix<double> ml_minmax_scaler_to_matrix(const ml::MinMaxScaler& sc) {
+    const size_t nf = sc.min_.size();
+    Matrix<double> out(2, nf);
+    for (size_t j = 0; j < nf; ++j) {
+        out(0, j) = sc.min_[j];
+        out(1, j) = sc.max_[j];
+    }
+    return out;
+}
+
+Result<ml::MinMaxScaler> ml_minmax_scaler_from_matrix(const Matrix<double>& model,
+                                                      const char* fn) {
+    if (model.rows() != 2 || model.cols() < 1) {
+        return std::unexpected(
+            DomainError{fn, "expected MinMaxScaler model (2 x n_features)"});
+    }
+    ml::MinMaxScaler sc;
+    sc.min_.resize(model.cols());
+    sc.max_.resize(model.cols());
+    for (size_t j = 0; j < model.cols(); ++j) {
+        sc.min_[j] = model(0, j);
+        sc.max_[j] = model(1, j);
+    }
+    return sc;
+}
+
+Result<Matrix<double>> eval_ml_standard_scaler_fit(const Matrix<double>& X_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_standard_scaler_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    ml::StandardScaler sc;
+    sc.fit(*X);
+    return ml_standard_scaler_to_matrix(sc);
+}
+
+Result<Matrix<double>> eval_ml_standard_scaler_transform(const Matrix<double>& X_m,
+                                                         const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_standard_scaler_transform");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto sc = ml_standard_scaler_from_matrix(model_m, "ml_standard_scaler_transform");
+    if (!sc) {
+        return std::unexpected(sc.error());
+    }
+    return grid_to_matrix(sc->transform(*X));
+}
+
+Result<Matrix<double>> eval_ml_minmax_scaler_fit(const Matrix<double>& X_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_minmax_scaler_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    ml::MinMaxScaler sc;
+    sc.fit(*X);
+    return ml_minmax_scaler_to_matrix(sc);
+}
+
+Result<Matrix<double>> eval_ml_minmax_scaler_transform(const Matrix<double>& X_m,
+                                                       const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_minmax_scaler_transform");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto sc = ml_minmax_scaler_from_matrix(model_m, "ml_minmax_scaler_transform");
+    if (!sc) {
+        return std::unexpected(sc.error());
+    }
+    return grid_to_matrix(sc->transform(*X));
 }
 
 
@@ -11121,7 +11219,8 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "ml_recall" || callee == "ml_mae" || callee == "ml_huber" ||
            callee == "ml_hinge" || callee == "ml_binary_crossentropy" ||
            callee == "ml_categorical_crossentropy" || callee == "ml_vec_dot" ||
-           callee == "ml_kmeans_inertia" ||
+           callee == "ml_kmeans_inertia" || callee == "ml_roc_auc" ||
+           callee == "ml_average_precision" ||
            callee == "control_step_final" ||
            callee == "control_impulse_final" ||
            callee == "control_dcgain" || callee == "control_is_stable" ||
@@ -11476,6 +11575,12 @@ Result<double> eval_ml_metric(const std::string& callee, const ml::Vec& y_pred, 
     }
     if (callee == "ml_vec_dot") {
         return ml::vec_dot(y_pred, y_true);
+    }
+    if (callee == "ml_roc_auc") {
+        return ml::roc_auc(y_pred, y_true);
+    }
+    if (callee == "ml_average_precision") {
+        return ml::average_precision(y_pred, y_true);
     }
     return std::unexpected(DomainError{callee.c_str(), "unsupported ml metric"});
 }
@@ -13897,7 +14002,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_svm_fit" || fn == "ml_svm_predict" ||
             fn == "ml_pca_fit" || fn == "ml_pca_transform" || fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" || fn == "ml_kmeans_predict" ||
             fn == "ml_decision_tree_fit" || fn == "ml_decision_tree_predict" || fn == "ml_random_forest_fit" || fn == "ml_random_forest_predict" || fn == "ml_adaboost_fit" || fn == "ml_adaboost_predict" ||
-            fn == "ml_gmm_fit" || fn == "ml_gmm_predict" || fn == "ml_gmm_predict_proba" || fn == "ml_dbscan_fit" || fn == "ml_spectral_clustering" || fn == "poly_deriv" ||
+            fn == "ml_gmm_fit" || fn == "ml_gmm_predict" || fn == "ml_gmm_predict_proba" || fn == "ml_dbscan_fit" || fn == "ml_spectral_clustering" ||
+            fn == "ml_standard_scaler_fit" || fn == "ml_standard_scaler_transform" || fn == "ml_minmax_scaler_fit" || fn == "ml_minmax_scaler_transform" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_cheb_eval" || fn == "poly_cheb_expand" ||
             fn == "poly_integ" || fn == "poly_add" ||
             fn == "poly_lagrange" || fn == "poly_interp_newton" ||
@@ -15909,6 +16015,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "ml_pca_fit" || callee == "ml_pca_transform" ||
            callee == "ml_pca_fit_transform" || callee == "ml_kmeans_fit" ||
            callee == "ml_kmeans_predict" ||
+           callee == "ml_standard_scaler_fit" || callee == "ml_standard_scaler_transform" ||
+           callee == "ml_minmax_scaler_fit" || callee == "ml_minmax_scaler_transform" ||
            callee == "ml_lasso_fit" || callee == "ml_lasso_predict" ||
            callee == "ml_elastic_net_fit" || callee == "ml_elastic_net_predict" ||
            callee == "ml_knn_fit" || callee == "ml_knn_predict" ||
@@ -16239,6 +16347,12 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "ml_spectral_clustering") {
         return arity >= 2 && arity <= 4;
     }
+    if (callee == "ml_standard_scaler_fit" || callee == "ml_minmax_scaler_fit") {
+        return arity == 1;
+    }
+    if (callee == "ml_standard_scaler_transform" || callee == "ml_minmax_scaler_transform") {
+        return arity == 2;
+    }
     if (callee == "imflip" || callee == "threshold_binary" || callee == "watershed" ||
         callee == "radon" || callee == "iradon") {
         return arity == 2;
@@ -16445,7 +16559,7 @@ std::vector<std::string> split_comma_list(const std::string& text) {
 bool is_multi_matrix_call_callee(const std::string& callee) {
     return callee == "lu" || callee == "cuda_lu" || callee == "qr" || callee == "svd" ||
            callee == "eig_sym" || callee == "eig" || callee == "ldl" || callee == "schur" ||
-           callee == "bidiag";
+           callee == "bidiag" || callee == "ml_train_test_split";
 }
 
 bool is_valid_multi_matrix_target_count(const std::string& callee, size_t count) {
@@ -16455,6 +16569,9 @@ bool is_valid_multi_matrix_target_count(const std::string& callee, size_t count)
     if (callee == "lu" || callee == "cuda_lu" || callee == "svd" || callee == "bidiag" ||
         callee == "ldl") {
         return count == 2 || count == 3;
+    }
+    if (callee == "ml_train_test_split") {
+        return count == 4;
     }
     return false;
 }
@@ -16492,10 +16609,25 @@ bool Interpreter::try_parse_multi_matrix_call_assignment(const std::string& line
     }
 
     const auto call_args = split_call_args(rhs);
-    if (!call_args || call_args->size() != 1) {
+    if (!call_args) {
         return false;
     }
-    assign.arg = trim_copy(call_args->front());
+    if (assign.callee == "ml_train_test_split") {
+        if (call_args->size() < 2 || call_args->size() > 4) {
+            return false;
+        }
+        assign.args.clear();
+        for (const auto& arg : *call_args) {
+            assign.args.push_back(trim_copy(arg));
+        }
+        assign.arg = assign.args[0];
+    } else {
+        if (call_args->size() != 1) {
+            return false;
+        }
+        assign.arg = trim_copy(call_args->front());
+        assign.args.clear();
+    }
     if (assign.arg.empty()) {
         return false;
     }
@@ -22669,6 +22801,54 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             return std::unexpected(labels.error());
         }
         result = *labels;
+    } else if (assign.callee == "ml_standard_scaler_fit" && assign.args.size() == 1) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto fitted = eval_ml_standard_scaler_fit(*X);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_standard_scaler_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto transformed = eval_ml_standard_scaler_transform(*X, *model);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
+    } else if (assign.callee == "ml_minmax_scaler_fit" && assign.args.size() == 1) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto fitted = eval_ml_minmax_scaler_fit(*X);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_minmax_scaler_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto transformed = eval_ml_minmax_scaler_transform(*X, *model);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
     }
 
     return result;
@@ -23800,6 +23980,91 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
 }
 
 Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallAssign& assign) {
+    std::ostringstream out;
+
+    if (assign.callee == "ml_train_test_split") {
+        if (assign.args.size() < 2 || assign.args.size() > 4) {
+            return std::unexpected(
+                DomainError{"ml_train_test_split", "expected 2 to 4 arguments"});
+        }
+        if (assign.targets.size() != 4) {
+            return std::unexpected(
+                DomainError{"ml_train_test_split", "expected 4 assignment targets"});
+        }
+        auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+            auto m = resolve_matrix(text);
+            if (!m) {
+                m = parse_matrix(text);
+            }
+            return m;
+        };
+        auto X_m = resolve_arg(assign.args[0]);
+        if (!X_m) {
+            return std::unexpected(X_m.error());
+        }
+        auto y_m = resolve_arg(assign.args[1]);
+        if (!y_m) {
+            return std::unexpected(y_m.error());
+        }
+        auto X = matrix_to_ml_mat(*X_m, "ml_train_test_split");
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = matrix_to_ml_vec(*y_m, "ml_train_test_split");
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        double test_size = 0.2;
+        int seed = 42;
+        if (assign.args.size() >= 3) {
+            double ts = 0.0;
+            if (!parse_number(assign.args[2], ts)) {
+                auto ts_expr = eval_scalar_expr(state_, assign.args[2]);
+                if (!ts_expr) {
+                    return std::unexpected(
+                        DomainError{"ml_train_test_split", "expected numeric test_size"});
+                }
+                ts = *ts_expr;
+            }
+            test_size = ts;
+        }
+        if (assign.args.size() >= 4) {
+            double sd = 0.0;
+            if (!parse_number(assign.args[3], sd)) {
+                auto sd_expr = eval_scalar_expr(state_, assign.args[3]);
+                if (!sd_expr) {
+                    return std::unexpected(
+                        DomainError{"ml_train_test_split", "expected integer seed"});
+                }
+                sd = *sd_expr;
+            }
+            seed = static_cast<int>(sd);
+            if (sd != seed) {
+                return std::unexpected(
+                    DomainError{"ml_train_test_split", "expected integer seed"});
+            }
+        }
+        auto split = ml::train_test_split(*X, *y, test_size, seed);
+        const Matrix<double> Xtr = grid_to_matrix(split.first.first);
+        const Matrix<double> ytr = vector_to_column(split.first.second);
+        const Matrix<double> Xte = grid_to_matrix(split.second.first);
+        const Matrix<double> yte = vector_to_column(split.second.second);
+        state_.matrices[assign.targets[0]] = Xtr;
+        state_.matrices[assign.targets[1]] = ytr;
+        state_.matrices[assign.targets[2]] = Xte;
+        state_.matrices[assign.targets[3]] = yte;
+        out << assign.targets[0] << " =\n";
+        print_matrix(out, Xtr);
+        out << assign.targets[1] << " =\n";
+        print_matrix(out, ytr);
+        out << assign.targets[2] << " =\n";
+        print_matrix(out, Xte);
+        out << assign.targets[3] << " =\n";
+        print_matrix(out, yte);
+        return out.str();
+    }
+
+
     auto matrix = resolve_matrix(assign.arg);
     if (!matrix) {
         matrix = parse_matrix(assign.arg);
@@ -23808,7 +24073,6 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         return std::unexpected(matrix.error());
     }
 
-    std::ostringstream out;
     if (assign.callee == "lu") {
         auto factored = lu(*matrix);
         if (!factored) {
@@ -25508,7 +25772,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
-            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_gmm_fit(X[,n_components]), ml_gmm_predict(X,model), ml_gmm_predict_proba(X,model), ml_dbscan_fit(X,eps,min_samples), ml_spectral_clustering(X,k[,sigma[,n_neighbors]])\n"
+            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_gmm_fit(X[,n_components]), ml_gmm_predict(X,model), ml_gmm_predict_proba(X,model), ml_dbscan_fit(X,eps,min_samples), ml_spectral_clustering(X,k[,sigma[,n_neighbors]]), ml_average_precision(p,t), ml_minmax_scaler_fit(X), ml_minmax_scaler_transform(X,model), ml_roc_auc(p,t), ml_standard_scaler_fit(X), ml_standard_scaler_transform(X,model), ml_train_test_split(X,y[,test_size,seed])\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"

@@ -12,6 +12,7 @@
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
 #include "ms/interp/repl_engine.hpp"
+#include <ms/ml/ml.hpp>
 #include "ms/ml/ml.hpp"
 #include "ms/prob/prob.hpp"
 #include "ms/special/special.hpp"
@@ -8806,5 +8807,62 @@ TEST(ReplCommandsTest, wave268_ml_gmm_dbscan) {
         sp_labels.insert(static_cast<int>(interp.state().matrices.at("sp_l")(i, 0)));
     }
     EXPECT_GE(sp_labels.size(), 2u);
+}
+
+TEST(ReplCommandsTest, wave268_ml_scaler_roc) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_standard_scaler_fit(X)");
+    expect_contains(interp, "help", "ml_standard_scaler_transform(X,model)");
+    expect_contains(interp, "help", "ml_minmax_scaler_fit(X)");
+    expect_contains(interp, "help", "ml_minmax_scaler_transform(X,model)");
+    expect_contains(interp, "help", "ml_train_test_split(X,y");
+    expect_contains(interp, "help", "ml_roc_auc(p,t)");
+    expect_contains(interp, "help", "ml_average_precision(p,t)");
+
+    expect_ok(interp, "X = [1, 2; 3, 4; 5, 6]");
+    expect_ok(interp, "ss_m = ml_standard_scaler_fit(X)");
+    ASSERT_GT(interp.state().matrices.count("ss_m"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ss_m").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("ss_m").cols(), 2u);
+
+    expect_ok(interp, "Z = ml_standard_scaler_transform(X, ss_m)");
+    ASSERT_GT(interp.state().matrices.count("Z"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Z").rows(), 3u);
+    double col0_mean = 0.0;
+    for (size_t i = 0; i < 3; ++i) {
+        col0_mean += interp.state().matrices.at("Z")(i, 0);
+    }
+    col0_mean /= 3.0;
+    EXPECT_NEAR(col0_mean, 0.0, 1e-9);
+
+    ms::ml::Mat X_cpp = {{1, 2}, {3, 4}, {5, 6}};
+    ms::ml::StandardScaler sc_cpp;
+    sc_cpp.fit(X_cpp);
+    EXPECT_NEAR(interp.state().matrices.at("ss_m")(0, 0), sc_cpp.mean_[0], 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("ss_m")(1, 0), sc_cpp.std_[0], 1e-9);
+
+    expect_ok(interp, "Xmm = [0, 10; 5, 20; 10, 30]");
+    expect_ok(interp, "mm_m = ml_minmax_scaler_fit(Xmm)");
+    expect_ok(interp, "Zmm = ml_minmax_scaler_transform(Xmm, mm_m)");
+    EXPECT_NEAR(interp.state().matrices.at("Zmm")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Zmm")(2, 0), 1.0, 1e-9);
+
+    expect_ok(interp, "y = [0; 1; 0; 1; 0; 1; 0; 1; 0; 1]");
+    expect_ok(interp, "X10 = [0,0;1,1;2,2;3,3;4,4;5,5;6,6;7,7;8,8;9,9]");
+    expect_ok(interp, "Xtr, ytr, Xte, yte = ml_train_test_split(X10, y, 0.2, 42)");
+    ASSERT_GT(interp.state().matrices.count("Xtr"), 0u);
+    ASSERT_GT(interp.state().matrices.count("Xte"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Xtr").rows() +
+                  interp.state().matrices.at("Xte").rows(),
+              10u);
+
+    expect_ok(interp, "pred = [0.9; 0.8; 0.2; 0.1]");
+    expect_ok(interp, "true_l = [1; 1; 0; 0]");
+    expect_ok(interp, "auc = ml_roc_auc(pred, true_l)");
+    expect_ok(interp, "ap = ml_average_precision(pred, true_l)");
+    ASSERT_GT(interp.state().scalars.count("auc"), 0u);
+    ASSERT_GT(interp.state().scalars.count("ap"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("auc"), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().scalars.at("ap"), 1.0, 1e-9);
 }
 

@@ -66,6 +66,7 @@ struct MultiMatrixCallAssign {
     std::vector<std::string> targets;
     std::string callee;
     std::string arg;
+    std::vector<std::string> args;
 };
 
 using SessionObject = std::variant<
