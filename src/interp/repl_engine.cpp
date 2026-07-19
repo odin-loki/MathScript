@@ -12614,6 +12614,283 @@ Result<std::string> eval_cmaes_call(const std::string& formula_arg, const std::s
     }));
 }
 
+Result<std::vector<std::pair<double, double>>> parse_bounds_pairs_literal(const std::string& text,
+                                                                          const char* fn) {
+    auto matrix = parse_bracket_matrix_literal(text, fn);
+    if (!matrix) {
+        return std::unexpected(matrix.error());
+    }
+    if (matrix->cols() != 2) {
+        return std::unexpected(
+            DomainError{fn, "expected Nx2 bounds matrix [[lo, hi], ...]"});
+    }
+    if (matrix->rows() == 0) {
+        return std::unexpected(DomainError{fn, "expected non-empty bounds matrix"});
+    }
+    std::vector<std::pair<double, double>> bounds;
+    bounds.reserve(matrix->rows());
+    for (size_t i = 0; i < matrix->rows(); ++i) {
+        const double lo = (*matrix)(i, 0);
+        const double hi = (*matrix)(i, 1);
+        if (lo >= hi) {
+            return std::unexpected(DomainError{fn, "expected lo < hi for each bounds row"});
+        }
+        bounds.emplace_back(lo, hi);
+    }
+    return bounds;
+}
+
+Result<unsigned> parse_optional_seed(const std::string& seed_arg, const char* fn) {
+    unsigned seed = 42;
+    if (seed_arg.empty()) {
+        return seed;
+    }
+    double seed_d = 0.0;
+    if (!parse_number(trim_copy(seed_arg), seed_d) || seed_d < 0.0 ||
+        std::floor(seed_d) != seed_d) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+    }
+    return static_cast<unsigned>(seed_d);
+}
+
+Func1D make_scalar_formula_func(SymExpr expr) {
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(expr));
+    return [expr_ptr](double x) { return sym_eval(*expr_ptr, build_optim_env({x})); };
+}
+
+using BracketRootSolver = double (*)(Func1D, double, double, double, int);
+
+Result<std::string> eval_bracket_root_call(const char* fn, BracketRootSolver solver,
+                                           const std::string& formula_arg,
+                                           const std::string& a_arg, const std::string& b_arg,
+                                           const std::string& tol_arg,
+                                           const std::string& max_iter_arg) {
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double a = 0.0;
+    double b = 0.0;
+    if (!parse_number(trim_copy(a_arg), a) || !parse_number(trim_copy(b_arg), b)) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected ") + fn + "(\"formula\", a, b[, tol[, max_iter]])"});
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-10);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 200);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto f = make_scalar_formula_func(std::move(*expr));
+    const double x_opt = solver(f, a, b, *tol, *max_iter);
+    return format_scalar_optim_result(x_opt, f(x_opt));
+}
+
+Result<std::string> eval_secant_call(const std::string& formula_arg, const std::string& x0_arg,
+                                     const std::string& x1_arg, const std::string& tol_arg,
+                                     const std::string& max_iter_arg) {
+    constexpr const char* fn = "secant";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double x0 = 0.0;
+    double x1 = 0.0;
+    if (!parse_number(trim_copy(x0_arg), x0) || !parse_number(trim_copy(x1_arg), x1)) {
+        return std::unexpected(
+            DomainError{fn, "expected secant(\"formula\", x0, x1[, tol[, max_iter]])"});
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-10);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 100);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto f = make_scalar_formula_func(std::move(*expr));
+    const double x_opt = secant(f, x0, x1, *tol, *max_iter);
+    return format_scalar_optim_result(x_opt, f(x_opt));
+}
+
+Result<std::string> eval_halley_call(const std::string& f_arg, const std::string& df_arg,
+                                     const std::string& d2f_arg, const std::string& x0_arg,
+                                     const std::string& tol_arg, const std::string& max_iter_arg) {
+    constexpr const char* fn = "halley";
+    auto f_expr = parse_sym_quoted_expr(f_arg, fn);
+    if (!f_expr) {
+        return std::unexpected(f_expr.error());
+    }
+    auto df_expr = parse_sym_quoted_expr(df_arg, fn);
+    if (!df_expr) {
+        return std::unexpected(df_expr.error());
+    }
+    auto d2f_expr = parse_sym_quoted_expr(d2f_arg, fn);
+    if (!d2f_expr) {
+        return std::unexpected(d2f_expr.error());
+    }
+    double x0 = 0.0;
+    if (!parse_number(trim_copy(x0_arg), x0)) {
+        return std::unexpected(
+            DomainError{fn, "expected halley(\"f\", \"df\", \"d2f\", x0[, tol[, max_iter]])"});
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-12);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 50);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto f = make_scalar_formula_func(std::move(*f_expr));
+    auto df = make_scalar_formula_func(std::move(*df_expr));
+    auto d2f = make_scalar_formula_func(std::move(*d2f_expr));
+    const double x_opt = halley(f, df, d2f, x0, *tol, *max_iter);
+    return format_scalar_optim_result(x_opt, f(x_opt));
+}
+
+Result<std::string> eval_fixed_point_call(const std::string& formula_arg, const std::string& x0_arg,
+                                          const std::string& tol_arg,
+                                          const std::string& max_iter_arg) {
+    constexpr const char* fn = "fixed_point";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double x0 = 0.0;
+    if (!parse_number(trim_copy(x0_arg), x0)) {
+        return std::unexpected(
+            DomainError{fn, "expected fixed_point(\"formula\", x0[, tol[, max_iter]])"});
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-10);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 200);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto g = make_scalar_formula_func(std::move(*expr));
+    const double x_opt = fixed_point(g, x0, *tol, *max_iter);
+    return format_scalar_optim_result(x_opt, g(x_opt));
+}
+
+Result<std::string> eval_simulated_annealing_call(const std::string& formula_arg,
+                                                  const std::string& x0_arg,
+                                                  const std::string& t0_arg,
+                                                  const std::string& cooling_arg,
+                                                  const std::string& max_iter_arg,
+                                                  const std::string& seed_arg) {
+    constexpr const char* fn = "simulated_annealing";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto t0 = parse_optional_positive_number(t0_arg, fn, "T0", 1.0);
+    if (!t0) {
+        return std::unexpected(t0.error());
+    }
+    auto cooling = parse_optional_positive_number(cooling_arg, fn, "cooling", 0.995);
+    if (!cooling) {
+        return std::unexpected(cooling.error());
+    }
+    if (*cooling >= 1.0) {
+        return std::unexpected(DomainError{fn, "expected cooling in (0, 1)"});
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 10000);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto seed = parse_optional_seed(seed_arg, fn);
+    if (!seed) {
+        return std::unexpected(seed.error());
+    }
+    return format_optim_result(simulated_annealing(inputs->f, inputs->x0, *t0, *cooling, *max_iter,
+                                                   *seed));
+}
+
+Result<std::string> eval_differential_evolution_call(
+    const std::string& formula_arg, const std::string& bounds_arg, const std::string& pop_arg,
+    const std::string& f_arg, const std::string& cr_arg, const std::string& max_iter_arg,
+    const std::string& seed_arg) {
+    constexpr const char* fn = "differential_evolution";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    auto bounds = parse_bounds_pairs_literal(bounds_arg, fn);
+    if (!bounds) {
+        return std::unexpected(bounds.error());
+    }
+    auto pop = parse_optional_positive_int(pop_arg, fn, "pop", 15);
+    if (!pop) {
+        return std::unexpected(pop.error());
+    }
+    auto f_scale = parse_optional_positive_number(f_arg, fn, "F", 0.8);
+    if (!f_scale) {
+        return std::unexpected(f_scale.error());
+    }
+    auto cr = parse_optional_positive_number(cr_arg, fn, "CR", 0.9);
+    if (!cr) {
+        return std::unexpected(cr.error());
+    }
+    if (*cr > 1.0) {
+        return std::unexpected(DomainError{fn, "expected CR in (0, 1]"});
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 1000);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto seed = parse_optional_seed(seed_arg, fn);
+    if (!seed) {
+        return std::unexpected(seed.error());
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    const size_t dim = bounds->size();
+    FuncND objective = [expr_ptr, dim](const std::vector<double>& x) {
+        return sym_eval(*expr_ptr, build_optim_env(x));
+    };
+    return format_optim_result(
+        differential_evolution(objective, *bounds, *pop, *f_scale, *cr, *max_iter, *seed));
+}
+
+Result<std::string> eval_particle_swarm_call(const std::string& formula_arg,
+                                             const std::string& bounds_arg,
+                                             const std::string& n_particles_arg,
+                                             const std::string& max_iter_arg,
+                                             const std::string& seed_arg) {
+    constexpr const char* fn = "particle_swarm";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    auto bounds = parse_bounds_pairs_literal(bounds_arg, fn);
+    if (!bounds) {
+        return std::unexpected(bounds.error());
+    }
+    auto n_particles = parse_optional_positive_int(n_particles_arg, fn, "n_particles", 30);
+    if (!n_particles) {
+        return std::unexpected(n_particles.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 500);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    auto seed = parse_optional_seed(seed_arg, fn);
+    if (!seed) {
+        return std::unexpected(seed.error());
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    const size_t dim = bounds->size();
+    FuncND objective = [expr_ptr, dim](const std::vector<double>& x) {
+        return sym_eval(*expr_ptr, build_optim_env(x));
+    };
+    return format_optim_result(
+        particle_swarm(objective, *bounds, *n_particles, *max_iter, *seed));
+}
+
 Result<std::vector<SymExpr>> parse_sym_semicolon_formulas(const std::string& formula_arg,
                                                           const char* fn) {
     std::string formulas_text;
@@ -14396,6 +14673,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "cmaes" || fn == "bfgs" || fn == "nelder_mead" || fn == "lbfgs" ||
             fn == "adam" || fn == "conjugate_gradient" || fn == "rmsprop" ||
             fn == "adadelta" || fn == "golden_section" || fn == "levenberg_marquardt" ||
+            fn == "bisection" || fn == "brentq" || fn == "secant" || fn == "halley" ||
+            fn == "fixed_point" || fn == "illinois" || fn == "simulated_annealing" ||
+            fn == "differential_evolution" || fn == "particle_swarm" ||
             fn == "tensorops_matmul" || fn == "tensorops_einsum") {
             return false;
         }
@@ -25799,6 +26079,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = rmsprop(\"formula\",x0[,alpha[,max_iter]]) RMSprop minimization (env {x0,x1,...})\n"
             "  name = adadelta(\"formula\",x0[,lr[,max_iter]]) Adadelta minimization (env {x0,x1,...})\n"
             "  name = golden_section(\"formula\",a,b[,tol]) 1D golden-section minimization (env {x0})\n"
+            "  name = bisection(\"formula\",a,b[,tol[,max_iter]]) bracketed scalar root (env {x0})\n"
+            "  name = brentq(\"formula\",a,b[,tol[,max_iter]]) Brent root-finding (env {x0})\n"
+            "  name = illinois(\"formula\",a,b[,tol[,max_iter]]) Illinois regula falsi root (env {x0})\n"
+            "  name = secant(\"formula\",x0,x1[,tol[,max_iter]]) secant root-finding (env {x0})\n"
+            "  name = halley(\"f\",\"df\",\"d2f\",x0[,tol[,max_iter]]) Halley root (env {x0})\n"
+            "  name = fixed_point(\"formula\",x0[,tol[,max_iter]]) fixed-point iteration (env {x0})\n"
+            "  name = simulated_annealing(\"formula\",x0[,T0[,cooling[,max_iter[,seed]]]]) global SA (env {x0,x1,...})\n"
+            "  name = differential_evolution(\"formula\",bounds[,pop[,F[,CR[,max_iter[,seed]]]]]) global DE (env {x0,x1,...})\n"
+            "  name = particle_swarm(\"formula\",bounds[,n_particles[,max_iter[,seed]]]) global PSO (env {x0,x1,...})\n"
             "  name = levenberg_marquardt(\"r0;r1;...\",x0[,max_iter[,tol]]) nonlinear least squares (env {x0,x1,...})\n"
             "  name = numthy_is_primitive_root(g,p) 1 if g is primitive root mod p else 0\n"
             "  name = numthy_primitive_root(p) smallest primitive root mod prime p\n"
@@ -29834,6 +30123,139 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 call_args->size() == 4 ? call_args->at(3) : std::string{};
             auto value = eval_golden_section_call(call_args->at(0), call_args->at(1),
                                                   call_args->at(2), tol_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "bisection" || fn == "brentq" || fn == "illinois") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 3 || call_args->size() > 5) {
+                return std::unexpected(DomainError{
+                    fn, std::string("expected ") + fn + "(\"formula\", a, b[, tol[, max_iter]])"});
+            }
+            const std::string tol_arg = call_args->size() >= 4 ? call_args->at(3) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 5 ? call_args->at(4) : std::string{};
+            BracketRootSolver solver = fn == "bisection"   ? bisection
+                                       : fn == "brentq"    ? brentq
+                                                           : illinois;
+            auto value = eval_bracket_root_call(fn.c_str(), solver, call_args->at(0),
+                                                call_args->at(1), call_args->at(2), tol_arg,
+                                                max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "secant") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 3 || call_args->size() > 5) {
+                return std::unexpected(DomainError{
+                    fn, "expected secant(\"formula\", x0, x1[, tol[, max_iter]])"});
+            }
+            const std::string tol_arg = call_args->size() >= 4 ? call_args->at(3) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 5 ? call_args->at(4) : std::string{};
+            auto value = eval_secant_call(call_args->at(0), call_args->at(1), call_args->at(2),
+                                          tol_arg, max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "halley") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 4 || call_args->size() > 6) {
+                return std::unexpected(DomainError{
+                    fn, "expected halley(\"f\", \"df\", \"d2f\", x0[, tol[, max_iter]])"});
+            }
+            const std::string tol_arg = call_args->size() >= 5 ? call_args->at(4) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 6 ? call_args->at(5) : std::string{};
+            auto value = eval_halley_call(call_args->at(0), call_args->at(1), call_args->at(2),
+                                          call_args->at(3), tol_arg, max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "fixed_point") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                return std::unexpected(DomainError{
+                    fn, "expected fixed_point(\"formula\", x0[, tol[, max_iter]])"});
+            }
+            const std::string tol_arg = call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = eval_fixed_point_call(call_args->at(0), call_args->at(1), tol_arg,
+                                               max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "simulated_annealing") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 6) {
+                return std::unexpected(DomainError{
+                    fn,
+                    "expected simulated_annealing(\"formula\", x0[, T0[, cooling[, max_iter[, "
+                    "seed]]]])"});
+            }
+            const std::string t0_arg = call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string cooling_arg =
+                call_args->size() >= 4 ? call_args->at(3) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() >= 5 ? call_args->at(4) : std::string{};
+            const std::string seed_arg =
+                call_args->size() == 6 ? call_args->at(5) : std::string{};
+            auto value = eval_simulated_annealing_call(call_args->at(0), call_args->at(1), t0_arg,
+                                                       cooling_arg, max_iter_arg, seed_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "differential_evolution") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 7) {
+                return std::unexpected(DomainError{
+                    fn,
+                    "expected differential_evolution(\"formula\", bounds[, pop[, F[, CR[, "
+                    "max_iter[, seed]]]]])"});
+            }
+            const std::string pop_arg = call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string f_arg = call_args->size() >= 4 ? call_args->at(3) : std::string{};
+            const std::string cr_arg = call_args->size() >= 5 ? call_args->at(4) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() >= 6 ? call_args->at(5) : std::string{};
+            const std::string seed_arg =
+                call_args->size() == 7 ? call_args->at(6) : std::string{};
+            auto value = eval_differential_evolution_call(
+                call_args->at(0), call_args->at(1), pop_arg, f_arg, cr_arg, max_iter_arg, seed_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "particle_swarm") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 5) {
+                return std::unexpected(DomainError{
+                    fn,
+                    "expected particle_swarm(\"formula\", bounds[, n_particles[, max_iter[, "
+                    "seed]]])"});
+            }
+            const std::string n_particles_arg =
+                call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() >= 4 ? call_args->at(3) : std::string{};
+            const std::string seed_arg =
+                call_args->size() == 5 ? call_args->at(4) : std::string{};
+            auto value = eval_particle_swarm_call(call_args->at(0), call_args->at(1),
+                                                  n_particles_arg, max_iter_arg, seed_arg);
             if (!value) {
                 return std::unexpected(value.error());
             }
