@@ -66,6 +66,7 @@ struct MultiMatrixCallAssign {
     std::vector<std::string> targets;
     std::string callee;
     std::string arg;
+    std::vector<std::string> args;
 };
 
 using SessionObject = std::variant<
@@ -114,6 +115,7 @@ public:
     Result<Matrix<double>> assign_matrix_call_tail4(const MatrixCallAssign& assign);
     Result<Matrix<double>> assign_matrix_call_tail5(const MatrixCallAssign& assign);
     Result<Matrix<double>> assign_matrix_call_tail6(const MatrixCallAssign& assign);
+    Result<Matrix<double>> assign_matrix_call_tail7(const MatrixCallAssign& assign);
     Result<std::string> assign_scalar_matrix_call(const ScalarMatrixCallAssign& assign);
     Result<std::string> assign_multi_matrix_call(const MultiMatrixCallAssign& assign);
     std::vector<std::pair<std::string, std::string>> list_session_objects() const;
