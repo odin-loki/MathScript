@@ -11,6 +11,7 @@
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
 #include "ms/interp/repl_engine.hpp"
+#include "ms/ml/ml.hpp"
 #include "ms/prob/prob.hpp"
 #include "ms/special/special.hpp"
 #include "ms/runtime/topology.hpp"
@@ -8063,4 +8064,58 @@ TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
     EXPECT_NEAR(p2_ref, -0.2530083397481052, 1e-3);
     expect_ok(interp, "p2 = painleve2(0.5, 0.0, -0.5, 0.0)");
     EXPECT_NEAR(interp.state().scalars.at("p2"), p2_ref, 1e-3);
+}
+
+TEST(ReplCommandsTest, wave267_ml_supervised_regularized) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_lasso_fit(X,y,alpha)");
+    expect_contains(interp, "help", "ml_lasso_predict(X,model)");
+    expect_contains(interp, "help", "ml_elastic_net_fit(X,y,alpha,l1_ratio)");
+    expect_contains(interp, "help", "ml_elastic_net_predict(X,model)");
+    expect_contains(interp, "help", "ml_knn_fit(X,y,k)");
+    expect_contains(interp, "help", "ml_knn_predict(X,model)");
+    expect_contains(interp, "help", "ml_naive_bayes_fit(X,y)");
+    expect_contains(interp, "help", "ml_naive_bayes_predict(X,model)");
+    expect_contains(interp, "help", "ml_lda_fit(X,y");
+    expect_contains(interp, "help", "ml_lda_predict(X,model)");
+    expect_contains(interp, "help", "ml_lda_transform(X,model)");
+
+    expect_ok(interp, "X = [0;1;2;3;4]");
+    expect_ok(interp, "y = [1;3;5;7;9]");
+    expect_ok(interp, "lasso_m = ml_lasso_fit(X, y, 0.001)");
+    expect_ok(interp, "lasso_p = ml_lasso_predict([5], lasso_m)");
+    EXPECT_NEAR(interp.state().matrices.at("lasso_p")(0, 0), 11.0, 0.5);
+
+    expect_ok(interp, "enet_m = ml_elastic_net_fit(X, y, 0.001, 0.5)");
+    expect_ok(interp, "enet_p = ml_elastic_net_predict([5], enet_m)");
+    EXPECT_NEAR(interp.state().matrices.at("enet_p")(0, 0), 11.0, 0.5);
+
+    expect_ok(interp, "Kx = [0,0; 1,0; 0,1; 3,3; 4,3; 3,4]");
+    expect_ok(interp, "Ky = [0; 0; 0; 1; 1; 1]");
+    expect_ok(interp, "knn_m = ml_knn_fit(Kx, Ky, 3)");
+    expect_ok(interp, "knn_p = ml_knn_predict([0.5,0.5; 3.5,3.5], knn_m)");
+    EXPECT_NEAR(interp.state().matrices.at("knn_p")(0, 0), 0.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("knn_p")(1, 0), 1.0, 1e-6);
+
+    expect_ok(interp, "Nbx = [1,1; 2,2; 1.5,1.5; -1,-1; -2,-2]");
+    expect_ok(interp, "Nby = [0; 0; 0; 1; 1]");
+    expect_ok(interp, "nb_m = ml_naive_bayes_fit(Nbx, Nby)");
+    expect_ok(interp, "nb_p = ml_naive_bayes_predict([1,1], nb_m)");
+    EXPECT_NEAR(interp.state().matrices.at("nb_p")(0, 0), 0.0, 1e-6);
+
+    expect_ok(interp, "Lx = [-2,-1; -1,-0.5; 2,1; 3,1.5]");
+    expect_ok(interp, "Ly = [0; 0; 1; 1]");
+    expect_ok(interp, "lda_m = ml_lda_fit(Lx, Ly)");
+    expect_ok(interp, "lda_p = ml_lda_predict([0,0; 3,1], lda_m)");
+    EXPECT_LT(interp.state().matrices.at("lda_p")(0, 0), 0.5);
+    EXPECT_GT(interp.state().matrices.at("lda_p")(1, 0), 0.5);
+    expect_ok(interp, "lda_z = ml_lda_transform(Lx, lda_m)");
+    EXPECT_EQ(interp.state().matrices.at("lda_z").rows(), 4u);
+    EXPECT_GE(interp.state().matrices.at("lda_z").cols(), 1u);
+
+    ms::ml::Mat X_ref = {{0}, {1}, {2}, {3}, {4}};
+    ms::ml::Vec y_ref = {1, 3, 5, 7, 9};
+    ms::ml::LassoRegression lasso_ref(0.001);
+    lasso_ref.fit(X_ref, y_ref);
+    EXPECT_NEAR(lasso_ref.predict({{5}})[0], interp.state().matrices.at("lasso_p")(0, 0), 0.5);
 }

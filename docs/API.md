@@ -167,6 +167,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `delta_encode_vec(M)`, `delta_decode_vec(M)` | Delta coding on flattened bytes |
 | `ml_linear_fit(X, y)`, `ml_linear_predict(X, model)` | Ordinary least-squares regression fit/predict (Wave 234) |
 | `ml_ridge_fit(X, y, alpha)`, `ml_ridge_predict(X, model)` | Ridge regression fit/predict (Wave 234) |
+| `ml_lasso_fit(X, y, alpha)`, `ml_lasso_predict(X, model)` | Lasso regression fit/predict (Wave 267) |
+| `ml_elastic_net_fit(X, y, alpha, l1_ratio)`, `ml_elastic_net_predict(X, model)` | Elastic Net fit/predict (Wave 267) |
+| `ml_knn_fit(X, y, k)`, `ml_knn_predict(X, model)` | k-nearest neighbours classifier fit/predict (Wave 267) |
+| `ml_naive_bayes_fit(X, y)`, `ml_naive_bayes_predict(X, model)` | Gaussian Naive Bayes fit/predict (Wave 267) |
+| `ml_lda_fit(X, y[, n_components])`, `ml_lda_predict(X, model)`, `ml_lda_transform(X, model)` | Linear Discriminant Analysis fit/predict/transform (Wave 267) |
 | `ml_logistic_fit(X, y)`, `ml_logistic_predict(X, model)` | Binary logistic regression fit/predict (Wave 234) |
 | `ml_accuracy(p, t)`, `ml_rmse(p, t)`, `ml_mse(p, t)`, `ml_r2(p, t)`, `ml_f1(p, t)`, `ml_precision(p, t)`, `ml_recall(p, t)`, `ml_mae(p, t)` | ML metrics on matching `N×1` vectors |
 | `bigint("495")`, `bigint_factorial(n)`, `bigint_fib(n)`, `bigint_gcd("a", "b")` | Bignum parse/ops; results as scalars when representable in `double` |
