@@ -8657,3 +8657,34 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
 }
+
+TEST(ReplCommandsTest, wave268_optim_cg_rmsprop) {
+    Interpreter interp;
+
+    expect_contains(interp, "help", "conjugate_gradient(\"formula\",x0");
+    expect_contains(interp, "help", "rmsprop(\"formula\",x0");
+    expect_contains(interp, "help", "adadelta(\"formula\",x0");
+
+    const auto cg = interp.execute(R"cmd(conjugate_gradient("(x0-3)*(x0-3)", [0]))cmd");
+    ASSERT_TRUE(cg.has_value());
+    {
+        const std::size_t start = cg->find('[');
+        ASSERT_NE(start, std::string::npos);
+        const std::size_t end = cg->find(']', start);
+        ASSERT_NE(end, std::string::npos);
+        EXPECT_NEAR(std::stod(cg->substr(start + 1, end - start - 1)), 3.0, 1e-3);
+    }
+
+    const auto rp = interp.execute(R"cmd(rmsprop("(x0-3)*(x0-3)", [0], 0.05, 500))cmd");
+    ASSERT_TRUE(rp.has_value());
+    {
+        const std::size_t start = rp->find('[');
+        ASSERT_NE(start, std::string::npos);
+        const std::size_t end = rp->find(']', start);
+        ASSERT_NE(end, std::string::npos);
+        EXPECT_NEAR(std::stod(rp->substr(start + 1, end - start - 1)), 3.0, 1e-2);
+    }
+
+    expect_ok(interp, R"cmd(adadelta("(x0-3)*(x0-3)", [0], 1.0, 8000))cmd");
+    expect_contains(interp, R"cmd(adadelta("(x0-3)*(x0-3)", [0], 1.0, 8000))cmd", "f_val =");
+}
