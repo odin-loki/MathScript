@@ -4723,6 +4723,28 @@ Result<Matrix<double>> eval_combo_next_perm(const Matrix<double>& v_m) {
     return int_vector_to_column(v);
 }
 
+Result<Matrix<double>> eval_combo_prev_perm(const Matrix<double>& v_m) {
+    auto v_vec = matrix_to_coeff_vector(v_m, "combo_prev_perm");
+    if (!v_vec) {
+        return std::unexpected(v_vec.error());
+    }
+    if (v_vec->empty()) {
+        return std::unexpected(
+            DomainError{"combo_prev_perm", "expected non-empty permutation vector"});
+    }
+    std::vector<int> v;
+    v.reserve(v_vec->size());
+    for (const double entry : *v_vec) {
+        if (entry < 0.0 || std::floor(entry) != entry) {
+            return std::unexpected(
+                DomainError{"combo_prev_perm", "expected non-negative integer entries"});
+        }
+        v.push_back(static_cast<int>(entry));
+    }
+    combo::prev_perm(v);
+    return int_vector_to_column(v);
+}
+
 Result<double> eval_cplx_mobius_re(double a, double b, double c, double d, double z_re,
                                    double z_im) {
     const cplx::Mobius m{cplx::C(a, 0.0), cplx::C(b, 0.0), cplx::C(c, 0.0), cplx::C(d, 0.0)};
@@ -4933,6 +4955,32 @@ Result<Matrix<double>> eval_combo_next_comb(const Matrix<double>& v_m, int n) {
         v.push_back(static_cast<int>(entry));
     }
     combo::next_comb(v, n);
+    return int_vector_to_column(v);
+}
+
+Result<Matrix<double>> eval_combo_prev_comb(const Matrix<double>& v_m, int n) {
+    auto v_vec = matrix_to_coeff_vector(v_m, "combo_prev_comb");
+    if (!v_vec) {
+        return std::unexpected(v_vec.error());
+    }
+    if (v_vec->empty()) {
+        return std::unexpected(
+            DomainError{"combo_prev_comb", "expected non-empty combination vector"});
+    }
+    if (n < 0) {
+        return std::unexpected(
+            DomainError{"combo_prev_comb", "expected non-negative integer n"});
+    }
+    std::vector<int> v;
+    v.reserve(v_vec->size());
+    for (const double entry : *v_vec) {
+        if (entry < 0.0 || std::floor(entry) != entry) {
+            return std::unexpected(
+                DomainError{"combo_prev_comb", "expected non-negative integer entries"});
+        }
+        v.push_back(static_cast<int>(entry));
+    }
+    combo::prev_comb(v, n);
     return int_vector_to_column(v);
 }
 
@@ -9135,7 +9183,7 @@ bool is_matrix_scalar_mixed_call_callee(const std::string& callee) {
     return callee == "finance_historical_var" || callee == "finance_historical_cvar" ||
            callee == "geo_bezier_eval_x" || callee == "geo_bezier_eval_y" ||
            callee == "bwt_decode_vec" || callee == "combo_rank_combination" ||
-           callee == "combo_next_comb" ||
+           callee == "combo_next_comb" || callee == "combo_prev_comb" ||
            callee == "quantum_time_evolution" || callee == "signal_moving_average" ||
            callee == "signal_median_filter" ||
            callee == "signal_upsample" || callee == "signal_downsample" ||
@@ -11714,7 +11762,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "geo_min_bounding_rect" ||
             fn == "geo_kdtree_knn" || fn == "geo_kdtree_range" ||
             fn == "topo_pairwise_distances" ||
-            fn == "combo_next_perm" || fn == "numthy_convergents" ||
+            fn == "combo_next_perm" || fn == "combo_prev_perm" || fn == "numthy_convergents" ||
             fn == "numthy_factor_exp" || fn == "numthy_farey" || fn == "numthy_lucas_sequence" ||
             fn == "numthy_stern_brocot" || fn == "numthy_pell_solve" ||
             fn == "numthy_quadratic_residues" ||
@@ -13226,6 +13274,13 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "perm =\n";
         print_matrix(out, *perm);
+    } else if (fn == "combo_prev_perm") {
+        auto perm = eval_combo_prev_perm(matrix);
+        if (!perm) {
+            return std::unexpected(perm.error());
+        }
+        out << "perm =\n";
+        print_matrix(out, *perm);
     } else if (fn == "numthy_convergents") {
         auto conv = eval_numthy_convergents(matrix);
         if (!conv) {
@@ -13688,6 +13743,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "geo_catmull_rom" || callee == "geo_hermite_curve" ||
            callee == "geo_bspline_eval" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
+           callee == "combo_prev_perm" ||
            callee == "numthy_convergents" || callee == "numthy_factor_exp" ||
            callee == "numthy_farey" || callee == "numthy_lucas_sequence" ||
            callee == "numthy_stern_brocot" || callee == "numthy_pell_solve" ||
@@ -13788,6 +13844,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
         callee == "geo_min_bounding_rect" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
+        callee == "combo_prev_perm" ||
         callee == "combo_gray_code" || callee == "combo_dyck_paths" ||
         callee == "combo_motzkin_paths" || callee == "combo_set_partitions" ||
         callee == "numthy_convergents" || callee == "numthy_factor_exp" ||
@@ -13838,7 +13895,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "stats_ttest" || callee == "stats_trimmed_mean" ||
         callee == "stats_vif" || callee == "stats_variance_inflation_factor" ||
         callee == "stats_acf" ||
-        callee == "fft_irfft" || callee == "poly_integ" || callee == "combo_next_comb") {
+        callee == "fft_irfft" || callee == "poly_integ" || callee == "combo_next_comb" ||
+        callee == "combo_prev_comb") {
         return arity == 2;
     }
     if (callee == "signal_lowpass" || callee == "signal_butterworth" ||
@@ -18684,6 +18742,16 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
         } else {
             result = eval_control_c2d_B(*A_m, *B_m, *C_m, *D_m, Ts);
         }
+    } else if (assign.callee == "combo_prev_perm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto perm = eval_combo_prev_perm(*matrix);
+        if (!perm) {
+            return std::unexpected(perm.error());
+        }
+        result = *perm;
     }
 
     return result;
@@ -20705,7 +20773,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = combo_multinomial(n,ks) multinomial coefficient n!/(k1! k2! ...)\n"
             "  name = combo_rank_permutation(v) rank of permutation vector v\n"
             "  name = combo_next_perm(v) lexicographic next permutation as Nx1 column\n"
+            "  name = combo_prev_perm(v) lexicographic previous permutation as Nx1 column\n"
             "  name = combo_next_comb(v,n) lexicographic next k-combination in n\n"
+            "  name = combo_prev_comb(v,n) lexicographic previous k-combination in n\n"
             "  name = combo_rank_combination(v,n) rank of k-combination vector v in n\n"
             "  name = combo_derangements(n) all derangements of 0..n-1 as k×n int matrix\n"
             "  name = combo_all_permutations(n) all permutations of 0..n-1 as n!×n int matrix\n"
@@ -21281,7 +21351,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
-            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_rank_combination(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
+            "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), bessel_y(nu,x), bessel_i(nu,x), lambert_w(branch,z), kummer_u(a,b,z)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
@@ -21743,6 +21813,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
                 print_matrix(out, *next);
+                return out.str();
+            }
+            if (matrix_scalar_call.callee == "combo_prev_comb") {
+                const int n = static_cast<int>(scalar_arg);
+                if (n < 0 || scalar_arg != n) {
+                    return std::unexpected(DomainError{
+                        "combo_prev_comb", "expected non-negative integer n"});
+                }
+                auto prev = eval_combo_prev_comb(*matrix, n);
+                if (!prev) {
+                    return std::unexpected(prev.error());
+                }
+                state_.matrices[matrix_scalar_call.target] = *prev;
+                std::ostringstream out;
+                out << matrix_scalar_call.target << " =\n";
+                print_matrix(out, *prev);
                 return out.str();
             }
             if (matrix_scalar_call.callee == "signal_moving_average") {
@@ -28958,6 +29044,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
         if (fn == "geo_bezier_eval_x" || fn == "geo_bezier_eval_y" || fn == "bwt_decode_vec" ||
             fn == "combo_rank_combination" || fn == "combo_next_comb" ||
+            fn == "combo_prev_comb" ||
             fn == "quantum_time_evolution" ||
             fn == "signal_moving_average" || fn == "signal_median_filter" ||
             fn == "signal_upsample" ||
@@ -29057,6 +29144,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                             "combo_next_comb", "expected non-negative integer n"});
                     }
                     auto value = eval_combo_next_comb(*ctrl, n);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "comb =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "combo_prev_comb") {
+                    const int n = static_cast<int>(t);
+                    if (n < 0 || t != n) {
+                        return std::unexpected(DomainError{
+                            "combo_prev_comb", "expected non-negative integer n"});
+                    }
+                    auto value = eval_combo_prev_comb(*ctrl, n);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
@@ -31122,6 +31224,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
         if (fn == "geo_bezier_eval_x" || fn == "geo_bezier_eval_y" || fn == "bwt_decode_vec" ||
             fn == "combo_rank_combination" || fn == "combo_next_comb" ||
+            fn == "combo_prev_comb" ||
             fn == "quantum_time_evolution" ||
             fn == "signal_moving_average" || fn == "signal_median_filter" ||
             fn == "signal_upsample" ||
@@ -31183,6 +31286,36 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(value.error());
                 }
                 return std::to_string(*value) + "\n";
+            }
+            if (fn == "combo_next_comb") {
+                const int n = static_cast<int>(t);
+                if (n < 0 || t != n) {
+                    return std::unexpected(DomainError{
+                        "combo_next_comb", "expected non-negative integer n"});
+                }
+                auto value = eval_combo_next_comb(*ctrl, n);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "comb =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (fn == "combo_prev_comb") {
+                const int n = static_cast<int>(t);
+                if (n < 0 || t != n) {
+                    return std::unexpected(DomainError{
+                        "combo_prev_comb", "expected non-negative integer n"});
+                }
+                auto value = eval_combo_prev_comb(*ctrl, n);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "comb =\n";
+                print_matrix(out, *value);
+                return out.str();
             }
             if (fn == "signal_moving_average") {
                 const int window = static_cast<int>(t);

@@ -86,6 +86,26 @@ bool next_comb(std::vector<int>& v, int n) {
     return true;
 }
 
+bool prev_comb(std::vector<int>& v, int n) {
+    int k = static_cast<int>(v.size());
+    int i = k - 1;
+    while (i >= 0) {
+        const int min_val = (i == 0) ? 0 : v[i - 1] + 1;
+        if (v[i] > min_val) {
+            break;
+        }
+        --i;
+    }
+    if (i < 0) {
+        return false;
+    }
+    --v[i];
+    for (int j = i + 1; j < k; ++j) {
+        v[j] = n - k + j;
+    }
+    return true;
+}
+
 uint64_t rank_permutation(const std::vector<int>& v) {
     int n = static_cast<int>(v.size());
     uint64_t rank = 0;
