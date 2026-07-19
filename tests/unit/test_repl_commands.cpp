@@ -9698,6 +9698,47 @@ TEST(ReplCommandsTest, wave270_gria_gf2n_lfsr) {
     EXPECT_LE(interp.state().scalars.at("alpha"), 1.0);
 }
 
+TEST(ReplCommandsTest, wave270_gria_ca) {
+    Interpreter interp;
+    expect_contains(interp, "help", "gria_ca_step(state,rule)");
+    expect_contains(interp, "help", "gria_langton_lambda(rule)");
+    expect_contains(interp, "help", "gria_alpha_ca(rule,steps,width)");
+    expect_contains(interp, "help", "gria_hamming_distance(a,b)");
+    expect_contains(interp, "help", "gria_divergence_trajectory(a,b,rule,n_steps)");
+    expect_contains(interp, "help", "gria_settling_time(a,b,rule,n_steps)");
+
+    expect_ok(interp, "s0 = [0; 0; 1; 0; 0]");
+    expect_ok(interp, "s1 = gria_ca_step(s0, 90)");
+    ASSERT_GT(interp.state().matrices.count("s1"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("s1").rows(), 5u);
+    EXPECT_NEAR(interp.state().matrices.at("s1")(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("s1")(3, 0), 1.0, 1e-9);
+
+    expect_ok(interp, "lam = gria_langton_lambda(110)");
+    EXPECT_GE(interp.state().scalars.at("lam"), 0.0);
+    EXPECT_LE(interp.state().scalars.at("lam"), 1.0);
+
+    expect_ok(interp, "ac = gria_alpha_ca(110, 10, 20)");
+    EXPECT_GE(interp.state().scalars.at("ac"), 0.0);
+    EXPECT_LE(interp.state().scalars.at("ac"), 1.0);
+
+    expect_ok(interp, "a = [0; 0; 1; 1; 0; 1; 0; 1]");
+    expect_ok(interp, "b = [0; 1; 1; 1; 1; 1; 1; 1]");
+    expect_ok(interp, "hd = gria_hamming_distance(a, b)");
+    EXPECT_NEAR(interp.state().scalars.at("hd"), 3.0, 1e-9);
+
+    expect_ok(interp, "dt = gria_divergence_trajectory(a, b, 110, 4)");
+    ASSERT_GT(interp.state().matrices.count("dt"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("dt").rows(), 5u);
+    EXPECT_NEAR(interp.state().matrices.at("dt")(0, 0), 3.0, 1e-9);
+
+    expect_ok(interp, "st = gria_settling_time(a, a, 110, 10)");
+    EXPECT_NEAR(interp.state().scalars.at("st"), 0.0, 1e-9);
+
+    expect_ok(interp, "st_none = gria_settling_time(a, b, 110, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("st_none"), -1.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave270_cellai_ext) {
     Interpreter interp;
     expect_contains(interp, "help", "cellai_boltzmann_weights");
