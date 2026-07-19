@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 268 ✅ COMPLETE — **427 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 269 ✅ COMPLETE — **428 CTest suites** on `main`)
 
 ---
 
@@ -485,7 +485,26 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 269+) — deferred
+## Wave 269 — ML metrics/gboost/isolation/tsne, compress golomb/wavelet, sparse COO, tensorops NMF/TT, topo, quantum, cplx/ODE/CFD1d, diffgeo, GUI case/trim, run_file stack fix ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| ML REPL | confusion_matrix/roc_curve/precision_recall_curve; gradient_boosting fit/predict; isolation_forest fit/score; agglomerative_fit; tsne_fit; assign_matrix_call_tail8 |
+| Compress REPL | golomb_rice_encode_vec/decode_vec; wavelet_compress_vec/decompress_vec |
+| Sparse REPL | sparse_from_coo / sparse_spmv / sparse_to_dense |
+| Tensorops REPL | tensorops_decompose_nmf/reconstruct_nmf; tensorops_decompose_tt/reconstruct_tt |
+| Topo REPL | topo_alpha_complex / topo_witness_complex / topo_persistence_landscape |
+| Quantum REPL | quantum_wigner / quantum_husimi / quantum_grover_search |
+| Cplx / ODE / CFD REPL | cplx_green_function_disk; ode_adams_bashforth2; cfd_advection1d |
+| Diffgeo REPL | diffgeo_helix_torsion; diffgeo_sphere_gauss_bonnet (+ residual) |
+| GUI / Fix | Camel Case (Ctrl+Alt+C); Screaming Snake (Ctrl+Alt+Shift+S); Trim Leading Whitespace (Ctrl+Shift+B); run_file stack-overflow fix (`b543e26`) |
+| Tests | `integration_repl_wave269_pipeline` |
+
+**428 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–269** closed for this incremental batch.
+
+---
+
+## Next (Wave 270+) — deferred
 
 | Item | Notes |
 |------|--------|

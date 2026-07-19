@@ -138,7 +138,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**; **Wave 262 GUI**: **Reverse Lines** (**Ctrl+Shift+R**); **Wave 268 GUI**: **Kebab Case Selection** (**Ctrl+Alt+K**)). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**; **Wave 262 GUI**: **Reverse Lines** (**Ctrl+Shift+R**); **Wave 268 GUI**: **Kebab Case Selection** (**Ctrl+Alt+K**); **Wave 269 GUI**: **Camel Case Selection** (**Ctrl+Alt+C**), **Screaming Snake Case Selection** (**Ctrl+Alt+Shift+S**), **Trim Leading Whitespace** (**Ctrl+Shift+B**)). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
 
 ### REPL bindings
 
@@ -167,6 +167,8 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `delta_encode_vec(M)`, `delta_decode_vec(M)` | Delta coding on flattened bytes |
 | `arithmetic_encode_vec(M)`, `arithmetic_decode_vec(orig_M, E)` | Arithmetic range coding on flattened bytes (Wave 268) |
 | `ans_encode_vec(M)`, `ans_decode_vec(orig_M, E)` | ANS entropy coding on flattened bytes (Wave 268) |
+| `golomb_rice_encode_vec(M, m_bits)`, `golomb_rice_decode_vec(E, m_bits, count)` | Golomb–Rice coding on flattened u32 column (Wave 269) |
+| `wavelet_compress_vec(M[, threshold])`, `wavelet_decompress_vec(E)` | Haar wavelet compress/decompress on flattened bytes (Wave 269) |
 | `ml_linear_fit(X, y)`, `ml_linear_predict(X, model)` | Ordinary least-squares regression fit/predict (Wave 234) |
 | `ml_ridge_fit(X, y, alpha)`, `ml_ridge_predict(X, model)` | Ridge regression fit/predict (Wave 234) |
 | `ml_lasso_fit(X, y, alpha)`, `ml_lasso_predict(X, model)` | Lasso regression fit/predict (Wave 267) |
@@ -186,6 +188,13 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `ml_minmax_scaler_fit(X)`, `ml_minmax_scaler_transform(X, model)` | Min–max scaler fit/transform (Wave 268) |
 | `Xtr, ytr, Xte, yte = ml_train_test_split(X, y[, test_size[, seed]])` | Stratified train/test split (Wave 268) |
 | `ml_roc_auc(p, t)`, `ml_average_precision(p, t)` | Binary ROC-AUC / average precision on matching `N×1` vectors (Wave 268) |
+| `ml_confusion_matrix(p, t[, threshold])` | Confusion matrix as `2×2` (Wave 269) |
+| `ml_roc_curve(p, t)` | ROC curve as `N×3` [threshold, TPR, FPR] (Wave 269) |
+| `ml_precision_recall_curve(p, t)` | PR curve as `N×3` [threshold, precision, recall] (Wave 269) |
+| `ml_gradient_boosting_fit(X, y[, n_estimators[, lr[, max_depth]]])`, `ml_gradient_boosting_predict(X, model)` | Gradient boosting regressor fit/predict (Wave 269) |
+| `ml_isolation_forest_fit(X[, n_trees[, sample_size[, seed]]])`, `ml_isolation_forest_score(X, model)` | Isolation Forest anomaly fit/scores (Wave 269) |
+| `ml_agglomerative_fit(X[, n_clusters[, linkage]])` | Agglomerative cluster labels column (Wave 269) |
+| `ml_tsne_fit(X[, perplexity[, n_iter[, seed]]])` | t-SNE 2D embedding (Wave 269) |
 | `ml_logistic_fit(X, y)`, `ml_logistic_predict(X, model)` | Binary logistic regression fit/predict (Wave 234) |
 | `ml_accuracy(p, t)`, `ml_rmse(p, t)`, `ml_mse(p, t)`, `ml_r2(p, t)`, `ml_f1(p, t)`, `ml_precision(p, t)`, `ml_recall(p, t)`, `ml_mae(p, t)` | ML metrics on matching `N×1` vectors |
 | `bigint("495")`, `bigint_factorial(n)`, `bigint_fib(n)`, `bigint_gcd("a", "b")` | Bignum parse/ops; results as scalars when representable in `double` |
@@ -414,6 +423,14 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `pde_wave_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` | Hyperbolic/advection/reaction–diffusion (Wave 268) |
 | `conjugate_gradient` / `rmsprop` / `adadelta` / root finders / global search | Extended optim REPL (Wave 268) |
 | `arithmetic_encode_vec` / `ans_encode_vec` (+ decode) | Vector compress codecs (Wave 268) |
+| `golomb_rice_encode_vec` / `wavelet_compress_vec` (+ decode) | Golomb–Rice + wavelet compress (Wave 269) |
+| `sparse_from_coo(rows, cols, I, J, V)` / `sparse_spmv(S, x)` / `sparse_to_dense(S)` | COO sparse matrix pack, SpMV, densify (Wave 269) |
+| `tensorops_decompose_nmf(h, V, rank)` / `tensorops_reconstruct_nmf(h)` | Session NMF decompose/reconstruct (Wave 269) |
+| `tensorops_decompose_tt(h, T, shape, eps)` / `tensorops_reconstruct_tt(h)` | Session TT decompose/reconstruct (Wave 269) |
+| `topo_alpha_complex(P, alpha[, max_dim])` / `topo_witness_complex(P, landmarks[, max_epsilon[, max_dim]])` / `topo_persistence_landscape(dgm, n_layers, n_samples)` | Alpha/witness complexes + persistence landscape (Wave 269) |
+| `quantum_wigner(rho, x, p)` / `quantum_husimi(rho, alpha_re, alpha_im)` / `quantum_grover_search(n_qubits, marked[, n_iterations])` | Wigner/Husimi quasi-probability + Grover search state (Wave 269) |
+| `cplx_green_function_disk(zre, zim, z0re, z0im[, radius])` / `ode_adams_bashforth2("formula", t0, y0, t_end, steps)` / `cfd_advection1d(nx, vx, t_end, dt)` | Complex Green's function, AB2 IVP, 1D upwind advection (Wave 269) |
+| `diffgeo_helix_torsion(t[, a[, b]])` / `diffgeo_sphere_gauss_bonnet(n)` / `diffgeo_sphere_gauss_bonnet_residual(n)` | Helix torsion + sphere Gauss–Bonnet presets (Wave 269) |
 | `geo_upper_hull` / `geo_lower_hull` / `geo_bezier_subdivide` / `geo_kdtree_3d_knn` / `geo_kdtree_3d_range` | Hull / bezier / 3D kdtree (Wave 267) |
 | `stats_max_value(x)` | Maximum of sample vector (Wave 267) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |

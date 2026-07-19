@@ -7,6 +7,30 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19 (Wave 269 — ML metrics/gboost/isolation/tsne, compress golomb/wavelet, sparse COO, tensorops NMF/TT, topo, quantum, cplx/ODE/CFD1d, diffgeo, GUI case/trim, run_file stack fix) ✅ COMPLETE
+
+Thirty-ninth feature wave after Wave 268. Parallel Composer 2.5 worktrees merged to `main` through `b543e26`: ML metrics curves, gradient boosting, isolation forest, agglomerative clustering, t-SNE; Golomb–Rice and wavelet compress codecs; sparse COO from_coo/spmv/to_dense; tensorops NMF and TT decompose/reconstruct; topological alpha/witness/landscape; quantum Wigner/Husimi/Grover; complex Green's function, Adams–Bashforth 2, 1D CFD advection; diffgeo helix/sphere presets; GUI Camel Case / Screaming Snake / Trim Leading Whitespace; `assign_matrix_call_tail8`; wave269 pipeline; **`run_file` stack-overflow fix** (extract `execute_assignment`, route ODE IVP through `assign_matrix_call`).
+
+### Added (Wave 269)
+- **ML REPL** — `ml_confusion_matrix` / `ml_roc_curve` / `ml_precision_recall_curve`; `ml_gradient_boosting_fit` / `ml_gradient_boosting_predict`; `ml_isolation_forest_fit` / `ml_isolation_forest_score`; `ml_agglomerative_fit`; `ml_tsne_fit`; `assign_matrix_call_tail8`.
+- **Compress REPL** — `golomb_rice_encode_vec` / `golomb_rice_decode_vec`; `wavelet_compress_vec` / `wavelet_decompress_vec`.
+- **Sparse REPL** — `sparse_from_coo` / `sparse_spmv` / `sparse_to_dense`.
+- **Tensorops REPL** — `tensorops_decompose_nmf` / `tensorops_reconstruct_nmf`; `tensorops_decompose_tt` / `tensorops_reconstruct_tt`.
+- **Topo REPL** — `topo_alpha_complex` / `topo_witness_complex` / `topo_persistence_landscape`.
+- **Quantum REPL** — `quantum_wigner` / `quantum_husimi` / `quantum_grover_search`.
+- **Cplx / ODE / CFD REPL** — `cplx_green_function_disk` (alias `green_function_disk`); `ode_adams_bashforth2`; `cfd_advection1d`.
+- **Diffgeo REPL** — `diffgeo_helix_torsion`; `diffgeo_sphere_gauss_bonnet` / `diffgeo_sphere_gauss_bonnet_residual`.
+- **GUI** — Camel Case Selection (Ctrl+Alt+C); Screaming Snake Case Selection (Ctrl+Alt+Shift+S); Trim Leading Whitespace (Ctrl+Shift+B).
+- **Tests** — `integration_repl_wave269_pipeline`.
+
+### Fixed (Wave 269)
+- **`run_file` stack overflow** — stop scalar-assign recursion from ODE bridge; extract `execute_assignment` out of monolithic `execute()` (`b543e26`).
+
+### Docs (Wave 269)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 269 sync; **428** CTest suites.
+
+**428 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-19 (Wave 268 — ML QDA/SVM/trees/GMM/scalers-ROC, PDE CN/elliptic/hyperbolic, optim, compress, FEM1d, Kebab Case) ✅ COMPLETE
 
 Thirty-eighth feature wave after Wave 267. Parallel Composer 2.5 worktrees merged to `main`: extended ML (QDA/SVM, tree ensembles, GMM/DBSCAN/spectral clustering, scalers, train/test split, ROC/PR metrics), PDE Crank–Nicolson/ADI heat, elliptic Poisson/Laplace/Helmholtz, hyperbolic wave/advection/reaction–diffusion, optim CG/RMSprop/Adadelta plus root finders and global search, compress arithmetic/ANS vec codecs, FEM 1D Poisson REPL, GUI Kebab Case, and wave268 pipeline.
