@@ -3,6 +3,7 @@
 #include <fstream>
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -8656,4 +8657,86 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     ASSERT_GT(interp.state().scalars.count("inert"), 0u);
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
+}
+
+double parse_scalar_x_opt(const std::string& text) {
+    const auto pos = text.find("x_opt = ");
+    if (pos == std::string::npos) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return std::stod(text.substr(pos + 8));
+}
+
+double parse_optim_f_val(const std::string& text) {
+    const auto pos = text.find("f_val = ");
+    if (pos == std::string::npos) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return std::stod(text.substr(pos + 8));
+}
+
+TEST(ReplCommandsTest, wave268_optim_roots_global) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bisection(\"formula\",a,b[,tol[,max_iter]])");
+    expect_contains(interp, "help", "brentq(\"formula\",a,b[,tol[,max_iter]])");
+    expect_contains(interp, "help", "illinois(\"formula\",a,b[,tol[,max_iter]])");
+    expect_contains(interp, "help", "secant(\"formula\",x0,x1[,tol[,max_iter]])");
+    expect_contains(interp, "help", "halley(\"f\",\"df\",\"d2f\",x0[,tol[,max_iter]])");
+    expect_contains(interp, "help", "fixed_point(\"formula\",x0[,tol[,max_iter]])");
+    expect_contains(interp, "help",
+                    "simulated_annealing(\"formula\",x0[,T0[,cooling[,max_iter[,seed]]]])");
+    expect_contains(interp, "help",
+                    "differential_evolution(\"formula\",bounds[,pop[,F[,CR[,max_iter[,seed]]]]])");
+    expect_contains(interp, "help",
+                    "particle_swarm(\"formula\",bounds[,n_particles[,max_iter[,seed]]])");
+
+    const auto bis = interp.execute("bisection(\"x0 - 3\", 0, 10)");
+    ASSERT_TRUE(bis.has_value());
+    EXPECT_NEAR(parse_scalar_x_opt(*bis), 3.0, 1e-6);
+    expect_error_contains(interp, "bisection(\"sin(\", 0, 10)", "bisection");
+
+    const auto brent = interp.execute("brentq(\"x0*x0*x0 - 2*x0 - 5\", 1, 3)");
+    ASSERT_TRUE(brent.has_value());
+    EXPECT_NEAR(parse_scalar_x_opt(*brent), 2.094551, 1e-4);
+    expect_error_contains(interp, "brentq(\"bad(@)\", 1, 3)", "brentq");
+
+    const auto ill = interp.execute("illinois(\"x0*x0 - 2\", 0, 2)");
+    ASSERT_TRUE(ill.has_value());
+    EXPECT_NEAR(parse_scalar_x_opt(*ill), std::sqrt(2.0), 1e-6);
+    expect_error_contains(interp, "illinois(\"x0 +\", 0, 2)", "illinois");
+
+    const auto sec = interp.execute("secant(\"x0*x0 - 4\", 1, 3)");
+    ASSERT_TRUE(sec.has_value());
+    EXPECT_NEAR(std::abs(parse_scalar_x_opt(*sec)), 2.0, 1e-4);
+    expect_error_contains(interp, "secant(\"x0*\", 1, 3)", "secant");
+
+    const auto hal =
+        interp.execute("halley(\"x0*x0*x0 - x0 - 1\", \"3*x0*x0 - 1\", \"6*x0\", 1.5)");
+    ASSERT_TRUE(hal.has_value());
+    EXPECT_NEAR(parse_scalar_x_opt(*hal), 1.324717957, 1e-4);
+    expect_error_contains(interp, "halley(\"x0\", \"1\", \"0\", bad)", "halley");
+
+    const auto fp = interp.execute("fixed_point(\"(x0 + 2/x0)/2\", 1.5)");
+    ASSERT_TRUE(fp.has_value());
+    EXPECT_NEAR(parse_scalar_x_opt(*fp), std::sqrt(2.0), 1e-6);
+    expect_error_contains(interp, "fixed_point(\"x0/\", 1.5)", "fixed_point");
+
+    const auto sa = interp.execute(
+        "simulated_annealing(\"x0*x0 + x1*x1\", [2, 2], 1, 0.99, 5000, 42)");
+    ASSERT_TRUE(sa.has_value());
+    EXPECT_LT(parse_optim_f_val(*sa), 2.0);
+    expect_error_contains(interp, "simulated_annealing(\"x0*\", [1, 1])", "simulated_annealing");
+
+    const auto de = interp.execute(
+        "differential_evolution(\"x0*x0 + x1*x1\", [[-5, 5], [-5, 5]], 20, 0.8, 0.9, 500, 42)");
+    ASSERT_TRUE(de.has_value());
+    EXPECT_LT(parse_optim_f_val(*de), 0.5);
+    expect_error_contains(interp, "differential_evolution(\"x0*\", [[0, 1]])",
+                          "differential_evolution");
+
+    const auto pso = interp.execute(
+        "particle_swarm(\"x0*x0 + x1*x1\", [[-5, 5], [-5, 5]], 20, 200, 42)");
+    ASSERT_TRUE(pso.has_value());
+    EXPECT_LT(parse_optim_f_val(*pso), 1.0);
+    expect_error_contains(interp, "particle_swarm(\"x0*\", [[0, 1], [2, 3]])", "particle_swarm");
 }
