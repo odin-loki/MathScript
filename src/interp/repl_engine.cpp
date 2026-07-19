@@ -9367,6 +9367,152 @@ Result<Matrix<double>> eval_cfd_advection3d(std::size_t nx, std::size_t ny, std:
     return grid3d_to_matrix(result.u.back());
 }
 
+Matrix<double> pack_cfd_grid2d(const cfd::Grid2D& grid) {
+    const size_t ncols = std::max({grid.nx, grid.ny, size_t{8}});
+    Matrix<double> out(3, ncols, 0.0);
+    out(0, 0) = grid.x0;
+    out(0, 1) = grid.x1;
+    out(0, 2) = grid.y0;
+    out(0, 3) = grid.y1;
+    out(0, 4) = grid.dx;
+    out(0, 5) = grid.dy;
+    out(0, 6) = static_cast<double>(grid.nx);
+    out(0, 7) = static_cast<double>(grid.ny);
+    for (size_t j = 0; j < grid.nx; ++j) {
+        out(1, j) = grid.x[j];
+    }
+    for (size_t j = 0; j < grid.ny; ++j) {
+        out(2, j) = grid.y[j];
+    }
+    return out;
+}
+
+Result<cfd::Grid2D> cfd_grid2d_from_packed_matrix(const Matrix<double>& m, const char* fn) {
+    if (m.rows() != 3 || m.cols() < 8) {
+        return std::unexpected(DomainError{
+            fn, "expected packed CFD grid2d matrix (3 rows, header [x0,x1,y0,y1,dx,dy,nx,ny])"});
+    }
+    const double nx_d = m(0, 6);
+    const double ny_d = m(0, 7);
+    const int nx_i = static_cast<int>(nx_d);
+    const int ny_i = static_cast<int>(ny_d);
+    if (nx_i < 2 || ny_i < 2 || nx_d != nx_i || ny_d != ny_i) {
+        return std::unexpected(DomainError{fn, "invalid packed grid nx/ny (expected integers >= 2)"});
+    }
+    const size_t nx = static_cast<size_t>(nx_i);
+    const size_t ny = static_cast<size_t>(ny_i);
+    if (m.cols() < std::max(nx, ny)) {
+        return std::unexpected(DomainError{fn, "packed grid coordinate rows shorter than nx/ny"});
+    }
+    cfd::Grid2D grid;
+    grid.x0 = m(0, 0);
+    grid.x1 = m(0, 1);
+    grid.y0 = m(0, 2);
+    grid.y1 = m(0, 3);
+    grid.dx = m(0, 4);
+    grid.dy = m(0, 5);
+    grid.nx = nx;
+    grid.ny = ny;
+    grid.x.assign(nx, 0.0);
+    grid.y.assign(ny, 0.0);
+    for (size_t j = 0; j < nx; ++j) {
+        grid.x[j] = m(1, j);
+    }
+    for (size_t j = 0; j < ny; ++j) {
+        grid.y[j] = m(2, j);
+    }
+    return grid;
+}
+
+Result<cfd::BoundaryCondition> parse_cfd_bc(double value, const char* fn) {
+    if (value == 0.0) {
+        return cfd::BoundaryCondition::Periodic;
+    }
+    if (value == 1.0) {
+        return cfd::BoundaryCondition::ZeroFlux;
+    }
+    return std::unexpected(DomainError{fn, "expected bc 0 (periodic) or 1 (zero_flux)"});
+}
+
+Result<Matrix<double>> eval_cfd_grid2d(
+    double x0, double x1, double y0, double y1, std::size_t nx, std::size_t ny) {
+    constexpr const char* fn = "cfd_grid2d";
+    if (x1 <= x0 || y1 <= y0) {
+        return std::unexpected(DomainError{fn, "expected x1 > x0 and y1 > y0"});
+    }
+    if (nx < 2 || ny < 2) {
+        return std::unexpected(DomainError{fn, "expected nx, ny >= 2"});
+    }
+    const cfd::Grid2D grid = cfd::grid2d(x0, x1, y0, y1, nx, ny);
+    if (grid.nx == 0 || grid.ny == 0) {
+        return std::unexpected(DomainError{fn, "invalid grid dimensions"});
+    }
+    return pack_cfd_grid2d(grid);
+}
+
+Result<Matrix<double>> eval_cfd_square_pulse_2d(
+    const Matrix<double>& grid_m,
+    double xc,
+    double yc,
+    double width_x,
+    double width_y,
+    double amplitude) {
+    constexpr const char* fn = "cfd_square_pulse_2d";
+    auto grid = cfd_grid2d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    const auto pulse = cfd::square_pulse_2d(*grid, xc, yc, width_x, width_y, amplitude);
+    if (pulse.empty() || pulse.front().empty()) {
+        return std::unexpected(DomainError{fn, "failed to build square pulse"});
+    }
+    return grid_to_matrix(pulse);
+}
+
+Result<Matrix<double>> eval_cfd_upwind_step_2d(
+    const Matrix<double>& u_m,
+    double vx,
+    double vy,
+    double dt,
+    double dx,
+    double dy,
+    cfd::BoundaryCondition bc_x,
+    cfd::BoundaryCondition bc_y) {
+    constexpr const char* fn = "cfd_upwind_step_2d";
+    auto u = matrix_to_grid(u_m, fn);
+    if (!u) {
+        return std::unexpected(u.error());
+    }
+    if (u->empty() || u->front().empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty 2D field matrix"});
+    }
+    if (dt <= 0.0 || dx <= 0.0 || dy <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive dt, dx, and dy"});
+    }
+    const std::vector<double> vx_field = {vx};
+    const std::vector<double> vy_field = {vy};
+    const auto u1 = cfd::upwind_fvm_advection_2d(
+        *u, vx_field, vy_field, dt, dx, dy, bc_x, bc_y);
+    if (u1.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return grid_to_matrix(u1);
+}
+
+Result<double> eval_cfd_integrated_mass_2d(
+    const Matrix<double>& u_m, double dx, double dy) {
+    constexpr const char* fn = "cfd_integrated_mass_2d";
+    auto u = matrix_to_grid(u_m, fn);
+    if (!u) {
+        return std::unexpected(u.error());
+    }
+    if (dx <= 0.0 || dy <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive dx and dy"});
+    }
+    return cfd::integrated_mass_2d(*u, dx, dy);
+}
+
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall");
     if (!G) {
@@ -12857,7 +13003,7 @@ struct MatrixTwoScalarMixedCallAssign {
 
 bool is_matrix_two_scalar_mixed_call_callee(const std::string& callee) {
     return callee == "poly_root_count" || callee == "quantum_wigner" ||
-           callee == "quantum_husimi";
+           callee == "quantum_husimi" || callee == "cfd_integrated_mass_2d";
 }
 
 bool try_parse_matrix_two_scalar_mixed_call_assignment(
@@ -16044,6 +16190,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "cfd_advection1d" ||
             fn == "cfd_advection2d" ||
             fn == "cfd_advection3d" ||
+            fn == "cfd_grid2d" ||
+            fn == "cfd_square_pulse_2d" ||
+            fn == "cfd_upwind_step_2d" ||
             fn == "ode_euler" || fn == "ode_rk4" || fn == "ode_midpoint" ||
             fn == "ode_rk45" || fn == "ode_rk23" || fn == "ode_cashkarp" ||
             fn == "ode_backward_euler" || fn == "ode_trapezoidal" ||
@@ -18047,6 +18196,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "cfd_advection1d" ||
            callee == "cfd_advection2d" ||
            callee == "cfd_advection3d" ||
+           callee == "cfd_grid2d" ||
+           callee == "cfd_square_pulse_2d" ||
+           callee == "cfd_upwind_step_2d" ||
            callee == "ode_euler" || callee == "ode_rk4" || callee == "ode_midpoint" ||
            callee == "ode_backward_euler" || callee == "ode_adams_bashforth2" ||
            callee == "ode_bdf2" ||
@@ -18616,6 +18768,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "cfd_advection1d") {
         return arity == 4;
+    }
+    if (callee == "cfd_grid2d") {
+        return arity == 6;
+    }
+    if (callee == "cfd_square_pulse_2d") {
+        return arity == 5 || arity == 6;
+    }
+    if (callee == "cfd_upwind_step_2d") {
+        return arity == 6 || arity == 7 || arity == 8;
     }
     if (callee == "ode_euler" || callee == "ode_rk4" || callee == "ode_midpoint" ||
         callee == "ode_backward_euler" || callee == "ode_adams_bashforth2" ||
@@ -26097,6 +26258,121 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
             time_scales = std::move(*parsed_scales);
         }
         result = eval_cellai_cell_to_cypha_features(memory, time_scales);
+    } else if (assign.callee == "cfd_grid2d" && assign.args.size() == 6) {
+        auto x0 = parse_scalar_arg(assign.args[0], "cfd_grid2d");
+        if (!x0) {
+            return std::unexpected(x0.error());
+        }
+        auto x1 = parse_scalar_arg(assign.args[1], "cfd_grid2d");
+        if (!x1) {
+            return std::unexpected(x1.error());
+        }
+        auto y0 = parse_scalar_arg(assign.args[2], "cfd_grid2d");
+        if (!y0) {
+            return std::unexpected(y0.error());
+        }
+        auto y1 = parse_scalar_arg(assign.args[3], "cfd_grid2d");
+        if (!y1) {
+            return std::unexpected(y1.error());
+        }
+        auto nx_val = parse_scalar_arg(assign.args[4], "cfd_grid2d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto ny_val = parse_scalar_arg(assign.args[5], "cfd_grid2d");
+        if (!ny_val) {
+            return std::unexpected(ny_val.error());
+        }
+        const int nx_i = static_cast<int>(*nx_val);
+        const int ny_i = static_cast<int>(*ny_val);
+        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
+            return std::unexpected(
+                DomainError{"cfd_grid2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_cfd_grid2d(*x0, *x1, *y0, *y1, static_cast<std::size_t>(nx_i),
+                                 static_cast<std::size_t>(ny_i));
+    } else if (assign.callee == "cfd_square_pulse_2d" &&
+               (assign.args.size() == 5 || assign.args.size() == 6)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse_2d");
+        if (!xc) {
+            return std::unexpected(xc.error());
+        }
+        auto yc = parse_scalar_arg(assign.args[2], "cfd_square_pulse_2d");
+        if (!yc) {
+            return std::unexpected(yc.error());
+        }
+        auto width_x = parse_scalar_arg(assign.args[3], "cfd_square_pulse_2d");
+        if (!width_x) {
+            return std::unexpected(width_x.error());
+        }
+        auto width_y = parse_scalar_arg(assign.args[4], "cfd_square_pulse_2d");
+        if (!width_y) {
+            return std::unexpected(width_y.error());
+        }
+        double amplitude = 1.0;
+        if (assign.args.size() == 6) {
+            auto amp = parse_scalar_arg(assign.args[5], "cfd_square_pulse_2d");
+            if (!amp) {
+                return std::unexpected(amp.error());
+            }
+            amplitude = *amp;
+        }
+        result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
+    } else if (assign.callee == "cfd_upwind_step_2d" &&
+               (assign.args.size() >= 6 && assign.args.size() <= 8)) {
+        auto u = resolve_operand(assign.args[0]);
+        if (!u) {
+            return std::unexpected(u.error());
+        }
+        auto vx = parse_scalar_arg(assign.args[1], "cfd_upwind_step_2d");
+        if (!vx) {
+            return std::unexpected(vx.error());
+        }
+        auto vy = parse_scalar_arg(assign.args[2], "cfd_upwind_step_2d");
+        if (!vy) {
+            return std::unexpected(vy.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[3], "cfd_upwind_step_2d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[4], "cfd_upwind_step_2d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dy = parse_scalar_arg(assign.args[5], "cfd_upwind_step_2d");
+        if (!dy) {
+            return std::unexpected(dy.error());
+        }
+        cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
+        cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
+        if (assign.args.size() >= 7) {
+            auto bcx = parse_scalar_arg(assign.args[6], "cfd_upwind_step_2d");
+            if (!bcx) {
+                return std::unexpected(bcx.error());
+            }
+            auto parsed = parse_cfd_bc(*bcx, "cfd_upwind_step_2d");
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            bc_x = *parsed;
+        }
+        if (assign.args.size() == 8) {
+            auto bcy = parse_scalar_arg(assign.args[7], "cfd_upwind_step_2d");
+            if (!bcy) {
+                return std::unexpected(bcy.error());
+            }
+            auto parsed = parse_cfd_bc(*bcy, "cfd_upwind_step_2d");
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            bc_y = *parsed;
+        }
+        result = eval_cfd_upwind_step_2d(*u, *vx, *vy, *dt, *dx, *dy, bc_x, bc_y);
     }
 
     return result;
@@ -28220,6 +28496,8 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 value = eval_quantum_wigner(*matrix, scalar_a, scalar_b);
             } else if (matrix_two_scalar_call.callee == "quantum_husimi") {
                 value = eval_quantum_husimi(*matrix, scalar_a, scalar_b);
+            } else if (matrix_two_scalar_call.callee == "cfd_integrated_mass_2d") {
+                value = eval_cfd_integrated_mass_2d(*matrix, scalar_a, scalar_b);
             }
             if (!value) {
                 return std::unexpected(value.error());
@@ -31799,6 +32077,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = cfd_advection1d(nx,vx,t_end,dt) 1D FVM upwind advection final field column\n"
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
             "  name = cfd_advection3d(nx,ny,nz,vx,vy,vz,t_end,dt) 3D FVM upwind advection final field\n"
+            "  name = cfd_grid2d(x0,x1,y0,y1,nx,ny) 2D FVM grid metadata (3-row packed matrix)\n"
+            "  name = cfd_square_pulse_2d(grid,xc,yc,width_x,width_y[,amp]) axis-aligned square pulse\n"
+            "  name = cfd_upwind_step_2d(u,vx,vy,dt,dx,dy[,bc_x,bc_y]) one 2D FVM upwind advection step\n"
+            "  name = cfd_integrated_mass_2d(u,dx,dy) discrete mass integral sum(u)*dx*dy\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
             "  crypto_aes128_decrypt_block(key_hex,block_hex) AES-128 ECB block decrypt (hex I/O)\n"
             "  crypto_aes256_encrypt_block(key_hex,block_hex) AES-256 ECB block encrypt (hex I/O)\n"

@@ -9540,6 +9540,33 @@ TEST(ReplCommandsTest, wave269_cplx_ode_cfd1d) {
     EXPECT_GE(interp.state().matrices.at("ab").rows(), 2u);
 }
 
+TEST(ReplCommandsTest, wave270_cfd2d_primitives) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cfd_grid2d(x0,x1,y0,y1,nx,ny)");
+    expect_contains(interp, "help", "cfd_square_pulse_2d(grid,xc,yc,width_x,width_y");
+    expect_contains(interp, "help", "cfd_upwind_step_2d(u,vx,vy,dt,dx,dy");
+    expect_contains(interp, "help", "cfd_integrated_mass_2d(u,dx,dy)");
+
+    expect_ok(interp, "g = cfd_grid2d(0, 1, 0, 1, 50, 40)");
+    ASSERT_GT(interp.state().matrices.count("g"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("g").rows(), 3u);
+
+    expect_ok(interp, "u0 = cfd_square_pulse_2d(g, 0.5, 0.5, 0.2, 0.2, 2.0)");
+    ASSERT_GT(interp.state().matrices.count("u0"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u0").rows(), 40u);
+    EXPECT_EQ(interp.state().matrices.at("u0").cols(), 50u);
+
+    expect_ok(interp, "m = cfd_integrated_mass_2d(u0, 0.02, 0.025)");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 0.2 * 0.2 * 2.0, 1e-6);
+
+    expect_ok(interp, "u1 = cfd_upwind_step_2d(u0, 1.0, 0.0, 0.005, 0.02, 0.025)");
+    ASSERT_GT(interp.state().matrices.count("u1"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u1").rows(), 40u);
+
+    expect_ok(interp, "m1 = cfd_integrated_mass_2d(u1, 0.02, 0.025)");
+    EXPECT_NEAR(interp.state().scalars.at("m1"), interp.state().scalars.at("m"), 1e-6);
+}
+
 TEST(ReplCommandsTest, wave269_diffgeo_presets) {
     Interpreter interp;
     expect_contains(interp, "help", "diffgeo_helix_torsion(t[,a[,b]])");
