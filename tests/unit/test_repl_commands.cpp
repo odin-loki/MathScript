@@ -9515,3 +9515,30 @@ TEST(ReplCommandsTest, wave269_diffgeo_presets) {
     expect_ok(interp, "gb_def = diffgeo_sphere_gauss_bonnet()");
     EXPECT_NEAR(interp.state().scalars.at("gb_def"), 4.0 * M_PI, 0.05 * 4.0 * M_PI);
 }
+
+TEST(ReplCommandsTest, wave270_axiom_matrix) {
+    Interpreter interp;
+    expect_contains(interp, "help", "axiom_evaluate");
+    expect_contains(interp, "help", "axiom_mse_fitness");
+    expect_contains(interp, "help", "axiom_rmse_fitness");
+
+    expect_ok(interp, "Y = axiom_evaluate(\"x0\", [1;2;3])");
+    ASSERT_GT(interp.state().matrices.count("Y"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Y")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Y")(1, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("Y")(2, 0), 3.0, 1e-9);
+
+    expect_ok(interp, "mse = axiom_mse_fitness(\"x0\", [1;2;3], [1,2,3])");
+    EXPECT_NEAR(interp.state().scalars.at("mse"), 0.0, 1e-9);
+
+    expect_ok(interp, "rmse = axiom_rmse_fitness(\"x0\", [1;2;3], [1,2,3])");
+    EXPECT_NEAR(interp.state().scalars.at("rmse"), 0.0, 1e-9);
+
+    expect_ok(interp, "mse2 = axiom_mse_fitness(\"x0\", [1;2;3;4], [4,5,6,7])");
+    EXPECT_NEAR(interp.state().scalars.at("mse2"), 9.0, 1e-6);
+
+    expect_ok(interp, "rmse2 = axiom_rmse_fitness(\"x0\", [1;2;3;4], [4,5,6,7])");
+    EXPECT_NEAR(interp.state().scalars.at("rmse2"), 3.0, 1e-6);
+
+    expect_contains(interp, "axiom_mse_fitness(\"x0\", [1;2], [1,2])", "0");
+}

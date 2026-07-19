@@ -1,4 +1,5 @@
 #include "ms/distributed/dist_matrix.hpp"
+#include <functional>
 #include "ms/distributed/iterative.hpp"
 #include "ms/distributed/matmul.hpp"
 #include "ms/distributed/mpi_context.hpp"
@@ -12211,6 +12212,80 @@ struct TwoScalarMatrixMixedCallAssign {
     std::string arg_matrix;
 };
 
+struct AxiomExprMatrixCallAssign {
+    std::string target;
+    std::string callee;
+    std::string expr_arg;
+    std::string inputs_arg;
+};
+
+struct AxiomExprFitnessCallAssign {
+    std::string target;
+    std::string callee;
+    std::string expr_arg;
+    std::string inputs_arg;
+    std::string targets_arg;
+};
+
+bool try_parse_axiom_expr_matrix_call_assignment(const std::string& line,
+                                                 AxiomExprMatrixCallAssign& assign) {
+    const std::string cmd = trim_copy(line);
+    const auto eq = cmd.find('=');
+    if (eq == std::string::npos) {
+        return false;
+    }
+    assign.target = trim_copy(cmd.substr(0, eq));
+    if (assign.target.empty() || !is_identifier(assign.target)) {
+        return false;
+    }
+    const std::string rhs = trim_copy(cmd.substr(eq + 1));
+    const auto open = rhs.find('(');
+    if (open == std::string::npos) {
+        return false;
+    }
+    assign.callee = lower(trim_copy(rhs.substr(0, open)));
+    if (assign.callee != "axiom_evaluate") {
+        return false;
+    }
+    const auto call_args = split_call_args(rhs);
+    if (!call_args || call_args->size() != 2) {
+        return false;
+    }
+    assign.expr_arg = trim_copy(call_args->at(0));
+    assign.inputs_arg = trim_copy(call_args->at(1));
+    return !assign.expr_arg.empty() && !assign.inputs_arg.empty();
+}
+
+bool try_parse_axiom_expr_fitness_call_assignment(const std::string& line,
+                                                  AxiomExprFitnessCallAssign& assign) {
+    const std::string cmd = trim_copy(line);
+    const auto eq = cmd.find('=');
+    if (eq == std::string::npos) {
+        return false;
+    }
+    assign.target = trim_copy(cmd.substr(0, eq));
+    if (assign.target.empty() || !is_identifier(assign.target)) {
+        return false;
+    }
+    const std::string rhs = trim_copy(cmd.substr(eq + 1));
+    const auto open = rhs.find('(');
+    if (open == std::string::npos) {
+        return false;
+    }
+    assign.callee = lower(trim_copy(rhs.substr(0, open)));
+    if (assign.callee != "axiom_mse_fitness" && assign.callee != "axiom_rmse_fitness") {
+        return false;
+    }
+    const auto call_args = split_call_args(rhs);
+    if (!call_args || call_args->size() != 3) {
+        return false;
+    }
+    assign.expr_arg = trim_copy(call_args->at(0));
+    assign.inputs_arg = trim_copy(call_args->at(1));
+    assign.targets_arg = trim_copy(call_args->at(2));
+    return !assign.expr_arg.empty() && !assign.inputs_arg.empty() && !assign.targets_arg.empty();
+}
+
 bool is_scalar_matrix_mixed_call_callee(const std::string& callee) {
     return callee == "finance_npv" || callee == "info_renyi_entropy" ||
            callee == "info_tsallis_entropy" || callee == "combo_multinomial";
@@ -13648,6 +13723,65 @@ Result<std::string> eval_cmaes_call(const std::string& formula_arg, const std::s
     return format_optim_result(cmaes(f, *x0, sigma, max_iter, seed, [] {
         return ms::interp::repl_cancel_requested();
     }));
+}
+
+axiom::Axiom make_axiom_repl_engine() {
+    return axiom::Axiom(
+        axiom::EvolutionConfig{.population_size = 2},
+        axiom::PrimitiveRegistry::build_from_ms_namespace());
+}
+
+Result<axiom::Algorithm> make_axiom_algorithm(const std::string& expr_arg, const char* fn) {
+    std::string expr_text;
+    if (!parse_quoted_string(expr_arg, expr_text)) {
+        return std::unexpected(DomainError{fn, "expected quoted expression string"});
+    }
+    axiom::Algorithm algo{};
+    algo.representation = ms::Sym(expr_text.c_str());
+    return algo;
+}
+
+Result<Matrix<double>> eval_axiom_evaluate_call(const std::string& expr_arg,
+                                                const Matrix<double>& inputs, const char* fn) {
+    auto algo = make_axiom_algorithm(expr_arg, fn);
+    if (!algo) {
+        return std::unexpected(algo.error());
+    }
+    return make_axiom_repl_engine().evaluate(*algo, inputs);
+}
+
+Result<double> eval_axiom_mse_fitness_call(const std::string& expr_arg,
+                                           const Matrix<double>& inputs,
+                                           const std::vector<double>& targets, const char* fn) {
+    auto algo = make_axiom_algorithm(expr_arg, fn);
+    if (!algo) {
+        return std::unexpected(algo.error());
+    }
+    return make_axiom_repl_engine().mse_fitness(*algo, inputs, targets);
+}
+
+Result<double> eval_axiom_rmse_fitness_call(const std::string& expr_arg,
+                                            const Matrix<double>& inputs,
+                                            const std::vector<double>& targets, const char* fn) {
+    auto algo = make_axiom_algorithm(expr_arg, fn);
+    if (!algo) {
+        return std::unexpected(algo.error());
+    }
+    return make_axiom_repl_engine().rmse_fitness(*algo, inputs, targets);
+}
+
+Result<std::vector<double>> resolve_axiom_targets(const std::string& text, const char* fn,
+                                                    const std::function<Result<Matrix<double>>(const std::string&)>&
+                                                        resolve_matrix_arg) {
+    auto bracket = parse_bracket_vector_literal(text, fn);
+    if (bracket) {
+        return *bracket;
+    }
+    auto matrix = resolve_matrix_arg(text);
+    if (!matrix) {
+        return std::unexpected(matrix.error());
+    }
+    return matrix_to_coeff_vector(*matrix, fn);
 }
 
 Result<std::vector<std::pair<double, double>>> parse_bounds_pairs_literal(const std::string& text,
@@ -27459,6 +27593,62 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             return assign_scalar(bigint_gcd_name, *value);
         }
 
+        AxiomExprMatrixCallAssign axiom_matrix_call{};
+        if (try_parse_axiom_expr_matrix_call_assignment(cmd, axiom_matrix_call)) {
+            auto inputs = eval_matrix_operand(axiom_matrix_call.inputs_arg);
+            if (!inputs) {
+                inputs = parse_matrix(axiom_matrix_call.inputs_arg);
+            }
+            if (!inputs) {
+                return std::unexpected(inputs.error());
+            }
+            auto value = eval_axiom_evaluate_call(
+                axiom_matrix_call.expr_arg, *inputs, axiom_matrix_call.callee.c_str());
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            state_.matrices[axiom_matrix_call.target] = *value;
+            std::ostringstream out;
+            out << axiom_matrix_call.target << " =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
+
+        AxiomExprFitnessCallAssign axiom_fitness_call{};
+        if (try_parse_axiom_expr_fitness_call_assignment(cmd, axiom_fitness_call)) {
+            auto resolve_matrix_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = eval_matrix_operand(text);
+                if (!matrix) {
+                    matrix = parse_matrix(text);
+                }
+                return matrix;
+            };
+            auto inputs = resolve_matrix_arg(axiom_fitness_call.inputs_arg);
+            if (!inputs) {
+                return std::unexpected(inputs.error());
+            }
+            auto targets = resolve_axiom_targets(
+                axiom_fitness_call.targets_arg, axiom_fitness_call.callee.c_str(), resolve_matrix_arg);
+            if (!targets) {
+                return std::unexpected(targets.error());
+            }
+            Result<double> value = std::unexpected(
+                DomainError{"assign", "unsupported axiom fitness call"});
+            if (axiom_fitness_call.callee == "axiom_mse_fitness") {
+                value = eval_axiom_mse_fitness_call(
+                    axiom_fitness_call.expr_arg, *inputs, *targets,
+                    axiom_fitness_call.callee.c_str());
+            } else if (axiom_fitness_call.callee == "axiom_rmse_fitness") {
+                value = eval_axiom_rmse_fitness_call(
+                    axiom_fitness_call.expr_arg, *inputs, *targets,
+                    axiom_fitness_call.callee.c_str());
+            }
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return assign_scalar(axiom_fitness_call.target, *value);
+        }
+
         ScalarMatrixMixedCallAssign mixed_call{};
         if (try_parse_scalar_matrix_mixed_call_assignment(cmd, mixed_call)) {
             double scalar_arg = 0.0;
@@ -30737,6 +30927,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_accuracy(p,t)  ML accuracy on Nx1 prediction/label vectors\n"
             "  name = ml_rmse(p,t)      ML RMSE on Nx1 vectors\n"
             "  name = ml_mse(p,t)       ML MSE on Nx1 vectors\n"
+            "  name = axiom_evaluate(\"x0\", inputs) row-wise evaluate GP expression (x0, x1, ...)\n"
+            "  name = axiom_mse_fitness(\"x0\", inputs, targets) supervised MSE fitness for expression\n"
+            "  name = axiom_rmse_fitness(\"x0\", inputs, targets) supervised RMSE fitness for expression\n"
             "  name = ml_r2(p,t)        ML RÃ‚Â² on Nx1 vectors\n"
             "  name = ml_f1(p,t)        ML F1 on binary Nx1 vectors\n"
             "  name = ml_precision(p,t) ML precision on binary Nx1 vectors\n"
@@ -31680,6 +31873,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  gria_matrix_alpha([1,2;3,4], [2,4;6,8]) matrix information-alpha between input and output\n"
             "  gria_is_critical(0.5, 0.05) test whether alpha is near critical (default tolerance=0.05)\n"
             "  gria_classify(0.5) classify alpha as reversible/critical/irreversible\n"
+            "  axiom_evaluate(\"x0\", inputs) row-wise evaluate GP expression on input matrix (x0, x1, ...)\n"
+            "  axiom_mse_fitness(\"x0\", inputs, targets) supervised MSE fitness for expression\n"
+            "  axiom_rmse_fitness(\"x0\", inputs, targets) supervised RMSE fitness for expression\n"
             "  cypha_nig_fit([1,2,3,4]) fit Normal-Inverse-Gaussian parameters to data vector\n"
             "  cypha_nig_pdf(2.5, 0, 1, 0, 1) NIG probability density at x\n"
             "  cypha_nig_cdf(2.5, 0, 1, 0, 1) NIG cumulative distribution at x\n"
@@ -31884,7 +32080,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tensorops_decompose_nmf(h,V,rank)  tensorops_decompose_tt(h,T,[n1,n2,n3],eps)\n"
             "  tensorops_reconstruct_cp(h)  tensorops_reconstruct_tucker(h)  tensorops_reconstruct_nmf(h)  tensorops_reconstruct_tt(h)\n"
             "  session_objects()  session_object_clear(h)\n"
-            "  gria(M)  axiom evolve\n"};
+            "  gria(M)  axiom evolve  axiom_evaluate(\"x0\",M)  axiom_mse_fitness(\"x0\",X,t)  axiom_rmse_fitness(\"x0\",X,t)\n"};
     }
     if (lcmd.rfind("izaac seed ", 0) == 0) {
         const std::string arg = trim(cmd.substr(11));
@@ -32089,6 +32285,64 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(value.error());
             }
             return *value;
+        }
+        if (fn == "axiom_evaluate") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 2) {
+                return std::unexpected(
+                    DomainError{fn, "expected axiom_evaluate(\"expr\", inputs)"});
+            }
+            auto resolve_matrix_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = eval_matrix_operand(text);
+                if (!matrix) {
+                    matrix = parse_matrix(text);
+                }
+                return matrix;
+            };
+            auto inputs = resolve_matrix_arg(trim_copy(call_args->at(1)));
+            if (!inputs) {
+                return std::unexpected(inputs.error());
+            }
+            auto value = eval_axiom_evaluate_call(call_args->at(0), *inputs, fn.c_str());
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "Y =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
+        if (fn == "axiom_mse_fitness" || fn == "axiom_rmse_fitness") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() != 3) {
+                return std::unexpected(DomainError{
+                    fn, std::string("expected ") + fn + "(\"expr\", inputs, targets)"});
+            }
+            auto resolve_matrix_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = eval_matrix_operand(text);
+                if (!matrix) {
+                    matrix = parse_matrix(text);
+                }
+                return matrix;
+            };
+            auto inputs = resolve_matrix_arg(trim_copy(call_args->at(1)));
+            if (!inputs) {
+                return std::unexpected(inputs.error());
+            }
+            auto targets = resolve_axiom_targets(trim_copy(call_args->at(2)), fn.c_str(), resolve_matrix_arg);
+            if (!targets) {
+                return std::unexpected(targets.error());
+            }
+            Result<double> value = std::unexpected(DomainError{fn.c_str(), "unsupported axiom fitness call"});
+            if (fn == "axiom_mse_fitness") {
+                value = eval_axiom_mse_fitness_call(call_args->at(0), *inputs, *targets, fn.c_str());
+            } else {
+                value = eval_axiom_rmse_fitness_call(call_args->at(0), *inputs, *targets, fn.c_str());
+            }
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
         }
         if (fn == "finance_max_sharpe_portfolio") {
             const auto call_args = split_call_args(cmd);
