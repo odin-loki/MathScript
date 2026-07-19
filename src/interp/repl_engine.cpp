@@ -8372,6 +8372,72 @@ Result<Matrix<double>> eval_fem_poisson3d(
     return out;
 }
 
+Result<double> eval_cplx_green_function_disk(double zre, double zim, double z0re, double z0im,
+                                              double radius) {
+    return cplx::green_function_disk(cplx::C(zre, zim), cplx::C(z0re, z0im), radius);
+}
+
+Result<std::string> eval_cplx_cauchy_principal_value_call(const std::string& formula_arg,
+                                                          const std::string& a_arg,
+                                                          const std::string& c_arg,
+                                                          const std::string& b_arg,
+                                                          const std::string& n_pts_arg) {
+    constexpr const char* fn = "cplx_cauchy_principal_value";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double a = 0.0;
+    double c = 0.0;
+    double b = 0.0;
+    double n_pts_d = 200.0;
+    if (!parse_number(trim_copy(a_arg), a) || !parse_number(trim_copy(c_arg), c) ||
+        !parse_number(trim_copy(b_arg), b)) {
+        return std::unexpected(DomainError{
+            fn, "expected cplx_cauchy_principal_value(\"formula\", a, c, b[, n_pts])"});
+    }
+    if (!n_pts_arg.empty() &&
+        !parse_number(trim_copy(n_pts_arg), n_pts_d)) {
+        return std::unexpected(DomainError{
+            fn, "expected cplx_cauchy_principal_value(\"formula\", a, c, b[, n_pts])"});
+    }
+    const int n_pts_i = static_cast<int>(n_pts_d);
+    if (n_pts_i < 0 || n_pts_d != n_pts_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer n_pts"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    cplx::RealFunc f = [expr_ptr](double x) {
+        return sym_eval(*expr_ptr, {{"x", x}});
+    };
+    return std::to_string(
+               cplx::cauchy_principal_value(f, a, c, b, n_pts_i)) +
+           "\n";
+}
+
+Result<Matrix<double>> eval_cfd_advection1d(std::size_t nx, double vx, double t_end, double dt) {
+    constexpr const char* fn = "cfd_advection1d";
+    if (nx < 2) {
+        return std::unexpected(DomainError{fn, "expected nx >= 2"});
+    }
+    if (t_end <= 0.0 || dt <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    const cfd::Grid1D grid = cfd::grid1d(0.0, 1.0, nx);
+    if (grid.n == 0) {
+        return std::unexpected(DomainError{fn, "invalid grid dimensions"});
+    }
+    const auto u0 = cfd::square_pulse(grid, 0.35, 0.1, 1.0);
+    const auto v_field = cfd::constant_velocity(grid.n, vx);
+    const auto result = cfd::run_advection(
+        u0, v_field, t_end, dt, grid.dx, cfd::BoundaryCondition::Periodic);
+    if (result.u.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return vector_to_column(result.u.back());
+}
+
 Result<Matrix<double>> eval_cfd_advection2d(std::size_t nx, std::size_t ny, double vx, double vy,
                                             double t_end, double dt) {
     constexpr const char* fn = "cfd_advection2d";
@@ -14751,6 +14817,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "pde_poisson_1d" || fn == "pde_laplace_2d" || fn == "pde_helmholtz_2d" ||
             fn == "pde_burgers_1d" ||
             fn == "fem_poisson1d" || fn == "fem_poisson2d" || fn == "fem_poisson3d" ||
+            fn == "cfd_advection1d" ||
             fn == "cfd_advection2d" ||
             fn == "cfd_advection3d" ||
             fn == "quantum_time_evolution" ||
@@ -16553,6 +16620,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_poisson_1d" || callee == "pde_laplace_2d" ||
            callee == "pde_helmholtz_2d" || callee == "pde_burgers_1d" ||
            callee == "fem_poisson1d" || callee == "fem_poisson2d" || callee == "fem_poisson3d" ||
+           callee == "cfd_advection1d" ||
            callee == "cfd_advection2d" ||
            callee == "cfd_advection3d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
@@ -17060,6 +17128,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "fem_poisson3d") {
         return arity == 3;
+    }
+    if (callee == "cfd_advection1d") {
+        return arity == 4;
     }
     if (callee == "cfd_advection2d") {
         return arity == 6;
@@ -18193,6 +18264,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 3 && fn == "cplx_poisson_kernel") {
         return cplx::poisson_kernel(args[0], args[1], args[2]);
+    }
+    if ((args.size() == 4 || args.size() == 5) &&
+        (fn == "cplx_green_function_disk" || fn == "green_function_disk")) {
+        const double radius = args.size() == 5 ? args[4] : 1.0;
+        return eval_cplx_green_function_disk(args[0], args[1], args[2], args[3], radius);
     }
     if (args.size() == 3 && fn == "finance_bond_duration") {
         const int n = static_cast<int>(args[2]);
@@ -23690,6 +23766,60 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
         result = *encoded;
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail8(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAssign& assign) {
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "cfd_advection1d" && assign.args.size() == 4) {
+        auto nx_val = parse_scalar_arg(assign.args[0], "cfd_advection1d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto vx_val = parse_scalar_arg(assign.args[1], "cfd_advection1d");
+        if (!vx_val) {
+            return std::unexpected(vx_val.error());
+        }
+        auto t_end_val = parse_scalar_arg(assign.args[2], "cfd_advection1d");
+        if (!t_end_val) {
+            return std::unexpected(t_end_val.error());
+        }
+        auto dt_val = parse_scalar_arg(assign.args[3], "cfd_advection1d");
+        if (!dt_val) {
+            return std::unexpected(dt_val.error());
+        }
+        const int nx_i = static_cast<int>(*nx_val);
+        if (nx_i < 0 || *nx_val != nx_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection1d", "expected non-negative integer nx"});
+        }
+        result = eval_cfd_advection1d(static_cast<std::size_t>(nx_i), *vx_val, *t_end_val,
+                                      *dt_val);
+    }
+
     return result;
 }
 
@@ -26128,6 +26258,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = fem_poisson1d(n) 1D P1 Poisson -u''=1 on unit interval (zero BC)\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
+            "  name = cfd_advection1d(nx,vx,t_end,dt) 1D FVM upwind advection final field column\n"
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
             "  name = cfd_advection3d(nx,ny,nz,vx,vy,vz,t_end,dt) 3D FVM upwind advection final field\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
@@ -26190,6 +26321,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ode_trapezoidal(\"formula\",t0,y0,t_end,steps) implicit trapezoidal stiff IVP trajectory [t,y] columns\n"
             "  name = ode_exponential_euler(\"g\",lambda,t0,y0,t_end,steps) ETD1 semi-linear stiff IVP (g=remainder in dy/dt=lambda*y+g) [t,y] columns\n"
             "  name = ode_rosenbrock23(\"formula\",t0,y0,t_end,steps) Rosenbrock23 stiff IVP trajectory [t,y] columns\n"
+            "  name = ode_adams_bashforth2(\"formula\",t0,y0,t_end,steps) Adams-Bashforth 2-step IVP trajectory [t,y] columns\n"
             "  name = ode_bdf2(\"formula\",t0,y0,t_end,steps) BDF2 stiff IVP trajectory [t,y] columns\n"
             "  name = ode_verlet(\"formula\",t0,q0,v0,t_end,steps) Verlet second-order trajectory [t,q,v] columns\n"
             "  name = ode_euler_vec(\"f0;f1;...\",t0,y0,t_end,steps) Euler vector IVP trajectory [t,y0,y1,...] columns\n"
@@ -26198,6 +26330,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ode_verlet_vec(\"a0;a1;...\",t0,q0,v0,t_end,steps) vector Verlet trajectory [t,q0,q1,...,v0,v1,...] columns\n"
             "  name = ode_backward_euler_vec(\"f0;f1;...\",t0,y0,t_end,steps) backward Euler vector IVP trajectory [t,y0,y1,...] columns (env {t,y0..yN-1})\n"
             "  name = ode_rosenbrock23_vec(\"f0;f1;...\",t0,y0,t_end,steps) Rosenbrock23 vector stiff IVP trajectory [t,y0,y1,...] columns (env {t,y0..yN-1})\n"
+            "  name = ode_adams_bashforth2_vec(\"f0;f1;...\",t0,y0,t_end,steps) Adams-Bashforth 2-step vector IVP trajectory [t,y0,y1,...] columns (env {t,y0..yN-1})\n"
             "  name = ode_dae_index1(\"f0;f1;...\",\"g0;g1;...\",t0,y0,z0,t_end,steps) index-1 DAE y/z trajectories (env {t,y0..yN-1,z0..zM-1})\n"
             "  name = ode_bvp_shooting(\"formula\",t0,y_a,t_end,y_b,steps) BVP shooting trajectory [t,y,yp] (env {t,y,yp})\n"
             "  name = ode_dde_fixed_step(\"f\",\"history\",t0,t_end,tau,steps) DDE trajectory [t,y] (f env {t,y,ydelay}, history env {t})\n"
@@ -26582,6 +26715,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = cplx_hyperbolic_distance(z1re,z1im,z2re,z2im) PoincarÃƒÂ© disk hyperbolic distance\n"
             "  name = cplx_mobius_re(a,b,c,d,zre,zim) real part of MÃƒÂ¶bius transform (az+b)/(cz+d)\n"
             "  name = cplx_poisson_kernel(theta,phi,r) Poisson kernel on unit disk\n"
+            "  name = cplx_green_function_disk(zre,zim,z0re,z0im[,radius]) Green's function on disk (alias: green_function_disk)\n"
+            "  name = cplx_cauchy_principal_value(\"f(x)\",a,c,b[,n_pts]) Cauchy principal value PV integral f(x)/(x-c) dx\n"
             "  name = cplx_cross_ratio(z1re,z1im,z2re,z2im,z3re,z3im,z4re,z4im) cross ratio\n"
             "  name = cplx_power_series_eval(coeffs,zre,zim) Taylor series at z0=0\n"
             "  name = cplx_winding_number(G,z0re,z0im) winding number of closed polygon G\n"
@@ -30449,7 +30584,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return *value;
         }
         if (fn == "ode_euler_vec" || fn == "ode_rk4_vec" || fn == "ode_backward_euler_vec" ||
-            fn == "ode_rosenbrock23_vec") {
+            fn == "ode_rosenbrock23_vec" || fn == "ode_adams_bashforth2_vec") {
             const auto call_args = split_call_args(cmd);
             if (!call_args || call_args->size() != 5) {
                 return std::unexpected(DomainError{
@@ -30459,6 +30594,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 auto value = eval_ode_rosenbrock23_vec_call(call_args->at(0), call_args->at(1),
                                                             call_args->at(2), call_args->at(3),
                                                             call_args->at(4));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return *value;
+            }
+            if (fn == "ode_adams_bashforth2_vec") {
+                auto value = eval_ode_vec_fixed_step_call(fn, call_args->at(0), call_args->at(1),
+                                                          call_args->at(2), call_args->at(3),
+                                                          call_args->at(4), ode_adams_bashforth2_vec);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -31975,6 +32119,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return *value;
         }
+        if (fn == "ode_adams_bashforth2") {
+            auto value = eval_ode_fixed_step_call(fn, trim(match[2].str()), trim(match[3].str()),
+                                                  trim(match[4].str()), trim(match[5].str()),
+                                                  trim(match[6].str()), ode_adams_bashforth2);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
         if (fn == "heun_b" || fn == "heun_d" || fn == "heun_t") {
             double q = 0.0;
             double alpha = 0.0;
@@ -32132,6 +32285,32 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(value.error());
             }
             return *value;
+        }
+        if (fn == "cfd_advection1d") {
+            double nx_d = 0.0;
+            double vx = 0.0;
+            double t_end = 0.0;
+            double dt = 0.0;
+            if (!parse_number(trim(match[2].str()), nx_d) ||
+                !parse_number(trim(match[3].str()), vx) ||
+                !parse_number(trim(match[4].str()), t_end) ||
+                !parse_number(trim(match[5].str()), dt)) {
+                return std::unexpected(DomainError{
+                    "cfd_advection1d", "expected cfd_advection1d(nx, vx, t_end, dt)"});
+            }
+            const int nx_i = static_cast<int>(nx_d);
+            if (nx_i < 0 || nx_d != nx_i) {
+                return std::unexpected(
+                    DomainError{"cfd_advection1d", "expected non-negative integer nx"});
+            }
+            auto value = eval_cfd_advection1d(static_cast<std::size_t>(nx_i), vx, t_end, dt);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
         }
         if (fn == "cfd_advection2d") {
             double nx_d = 0.0;
@@ -34066,6 +34245,38 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "cplx_poisson_kernel", "expected cplx_poisson_kernel(theta,phi,r)"});
             }
             return std::to_string(cplx::poisson_kernel(theta, phi, r)) + "\n";
+        }
+        if (fn == "cplx_green_function_disk" || fn == "green_function_disk") {
+            double zre = 0.0;
+            double zim = 0.0;
+            double z0re = 0.0;
+            double z0im = 0.0;
+            double radius = 1.0;
+            if (!parse_number(trim(match[2].str()), zre) ||
+                !parse_number(trim(match[3].str()), zim) ||
+                !parse_number(trim(match[4].str()), z0re) ||
+                !parse_number(trim(match[5].str()), z0im)) {
+                return std::unexpected(DomainError{
+                    fn, "expected cplx_green_function_disk(zre,zim,z0re,z0im[,radius])"});
+            }
+            if (!match[6].str().empty() && !parse_number(trim(match[6].str()), radius)) {
+                return std::unexpected(DomainError{
+                    fn, "expected cplx_green_function_disk(zre,zim,z0re,z0im[,radius])"});
+            }
+            auto value = eval_cplx_green_function_disk(zre, zim, z0re, z0im, radius);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
+        if (fn == "cplx_cauchy_principal_value") {
+            auto value = eval_cplx_cauchy_principal_value_call(
+                trim(match[2].str()), trim(match[3].str()), trim(match[4].str()),
+                trim(match[5].str()), trim(match[6].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
         }
         if (fn == "numthy_mod_pow") {
             double base_d = 0.0;

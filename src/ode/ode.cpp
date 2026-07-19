@@ -515,6 +515,44 @@ OdeResult ode_adams_bashforth2(OdeFunc f, double t0, double y0,
     return result;
 }
 
+OdeResultVec ode_adams_bashforth2_vec(OdeFuncVec f, double t0,
+                                       const std::vector<double>& y0,
+                                       double t_end, size_t steps) {
+    OdeResultVec result;
+    if (steps == 0 || y0.empty()) {
+        return result;
+    }
+    const size_t n = y0.size();
+    const double h = (t_end - t0) / static_cast<double>(steps);
+    double t = t0;
+    auto y = y0;
+    std::vector<double> f_prev = f(t, y);
+    result.t.push_back(t);
+    result.y.push_back(y);
+    if (steps >= 1) {
+        for (size_t j = 0; j < n; ++j) {
+            y[j] += h * f_prev[j];
+        }
+        t += h;
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+    std::vector<double> f_curr = f(t, y);
+    for (size_t i = 2; i <= steps; ++i) {
+        std::vector<double> y_new(n);
+        for (size_t j = 0; j < n; ++j) {
+            y_new[j] = y[j] + h * (1.5 * f_curr[j] - 0.5 * f_prev[j]);
+        }
+        t += h;
+        f_prev = f_curr;
+        y = y_new;
+        f_curr = f(t, y);
+        result.t.push_back(t);
+        result.y.push_back(y);
+    }
+    return result;
+}
+
 namespace {
 
 constexpr double kNewtonTol = 1e-10;

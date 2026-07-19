@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "ms/cplx/cplx.hpp"
 #include "ms/control/control.hpp"
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"

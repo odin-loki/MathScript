@@ -106,6 +106,9 @@ OdeVerletResultVec ode_verlet_vec(OdeAccelFuncVec a, double t0,
 // Adams-Bashforth 2-step
 OdeResult ode_adams_bashforth2(OdeFunc f, double t0, double y0,
                                 double t_end, size_t steps);
+OdeResultVec ode_adams_bashforth2_vec(OdeFuncVec f, double t0,
+                                       const std::vector<double>& y0,
+                                       double t_end, size_t steps);
 
 // Implicit backward Euler (scalar stiff IVP)
 OdeResult ode_backward_euler(OdeFunc f, double t0, double y0,
