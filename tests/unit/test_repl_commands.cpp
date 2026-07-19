@@ -3,6 +3,7 @@
 #include <fstream>
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -7372,6 +7373,53 @@ TEST(ReplCommandsTest, wave264_finance_ratio_metrics) {
     expect_ok(interp, "ir = finance_information_ratio(ret, bench)");
     EXPECT_NEAR(interp.state().scalars.at("ir"), 1.704, 0.01);
     expect_contains(interp, "finance_information_ratio(ret, bench)", "1.70");
+}
+
+TEST(ReplCommandsTest, wave265_finance_merton_bl) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_merton_implied_asset_params(E,sigma_E,D,r,T)");
+    expect_contains(interp, "help", "finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau)");
+
+    const double V_true = 180.0;
+    const double sigma_V_true = 0.22;
+    const double D = 100.0;
+    const double r = 0.05;
+    const double T = 1.0;
+    const double E = ms::finance::bs_call(V_true, D, T, r, sigma_V_true);
+    const double d1 = (std::log(V_true / D) + (r + 0.5 * sigma_V_true * sigma_V_true) * T) /
+                      (sigma_V_true * std::sqrt(T));
+    const double nd1 = 0.5 * std::erfc(-d1 / std::sqrt(2.0));
+    const double sigma_E = nd1 * sigma_V_true * V_true / E;
+    const ms::finance::MertonResult merton_ref =
+        ms::finance::merton_implied_asset_params(E, sigma_E, D, r, T);
+    ASSERT_TRUE(merton_ref.converged);
+
+    std::ostringstream merton_cmd;
+    merton_cmd << "merton = finance_merton_implied_asset_params(" << E << ", " << sigma_E << ", "
+               << D << ", " << r << ", " << T << ")";
+    expect_ok(interp, merton_cmd.str());
+    ASSERT_GT(interp.state().matrices.count("merton"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("merton").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("merton").cols(), 6u);
+    EXPECT_NEAR(interp.state().matrices.at("merton")(0, 0), merton_ref.distance_to_default, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("merton")(0, 1), merton_ref.probability_of_default,
+                1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("merton")(0, 2), merton_ref.implied_asset_value, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("merton")(0, 3), merton_ref.implied_asset_volatility,
+                1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("merton")(0, 4), 1.0, 1e-12);
+    EXPECT_GT(interp.state().matrices.at("merton")(0, 5), 0.0);
+
+    expect_ok(interp, "cov2 = [0.04, 0.01; 0.01, 0.02]");
+    expect_ok(interp, "pi = [0.05; 0.07]");
+    expect_ok(interp, "P = [1, 0]");
+    expect_ok(interp, "Q = [0.10]");
+    expect_ok(interp, "post = finance_bl_posterior_returns_default_omega(pi, cov2, P, Q, 0.05)");
+    ASSERT_GT(interp.state().matrices.count("post"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("post").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("post").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("post")(0, 0), 0.075, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("post")(1, 0), 0.07625, 1e-6);
 }
 
 TEST(ReplCommandsTest, wave264_special_bessel_lambert_kummer) {
