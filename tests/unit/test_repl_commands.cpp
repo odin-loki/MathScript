@@ -8765,6 +8765,40 @@ TEST(ReplCommandsTest, wave268_ml_trees_ensemble) {
     }
 }
 
+TEST(ReplCommandsTest, wave269_ml_gradient_boosting) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_gradient_boosting_fit(X,y");
+    expect_contains(interp, "help", "ml_gradient_boosting_predict(X,model)");
+
+    expect_ok(interp, "X = [0; 1; 2; 3; 4]");
+    expect_ok(interp, "y = [0; 1; 2; 3; 4]");
+    expect_ok(interp, "gb_m = ml_gradient_boosting_fit(X, y, 20, 0.1, 3)");
+    expect_ok(interp, "gb_p = ml_gradient_boosting_predict(X, gb_m)");
+    ASSERT_GT(interp.state().matrices.count("gb_p"), 0u);
+    const auto& gb_p = interp.state().matrices.at("gb_p");
+    EXPECT_EQ(gb_p.rows(), 5u);
+
+    ms::ml::Mat X_ref = {{0}, {1}, {2}, {3}, {4}};
+    ms::ml::Vec y_ref = {0, 1, 2, 3, 4};
+    ms::ml::GradientBoosting gb_ref;
+    gb_ref.config.n_trees = 20;
+    gb_ref.config.learning_rate = 0.1;
+    gb_ref.config.max_depth = 3;
+    gb_ref.fit(X_ref, y_ref);
+    const auto gb_ref_pred = gb_ref.predict(X_ref);
+    for (size_t i = 0; i < 5; ++i) {
+        EXPECT_NEAR(gb_p(i, 0), gb_ref_pred[i], 1e-6);
+    }
+
+    double mse = 0.0;
+    for (size_t i = 0; i < 5; ++i) {
+        const double err = gb_p(i, 0) - y_ref[i];
+        mse += err * err;
+    }
+    mse /= 5.0;
+    EXPECT_LT(mse, 0.5);
+}
+
 TEST(ReplCommandsTest, wave268_ml_gmm_dbscan) {
     Interpreter interp;
     expect_contains(interp, "help", "ml_gmm_fit(X[,n_components])");
