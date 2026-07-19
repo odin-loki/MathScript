@@ -7693,3 +7693,15 @@ TEST(ReplCommandsTest, wave265_linalg_funm_precond) {
     EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 3.0 / 1.2, 1e-12);
     EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, wave266_stats_ks_norm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_ks_norm(x,mu,sigma)");
+
+    // Uniform [0..7] vs N(0,1): empirical CDF jumps at 0 while Φ(0)=0.5 → large D.
+    expect_ok(interp, "ksn = stats_ks_norm([0; 1; 2; 3; 4; 5; 6; 7], 0, 1)");
+    EXPECT_GT(interp.state().scalars.at("ksn"), 0.3);
+    EXPECT_LT(interp.state().scalars.at("ksn"), 1.0);
+
+    expect_ok(interp, "stats_ks_norm([0; 1; 2; 3; 4; 5; 6; 7], 0, 1)");
+}
