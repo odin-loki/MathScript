@@ -11301,6 +11301,19 @@ Result<double> eval_diffgeo_christoffel_sphere(double k_d, double i_d, double j_
     return Chr[static_cast<size_t>(k)][static_cast<size_t>(i)][static_cast<size_t>(j)];
 }
 
+diffgeo::CurveFn circular_helix_curve(double a, double b) {
+    return [a, b](double t) -> std::array<double, 3> {
+        return {a * std::cos(t), a * std::sin(t), b * t};
+    };
+}
+
+Result<double> eval_diffgeo_helix_torsion(double t, double a, double b) {
+    if (a <= 0.0) {
+        return std::unexpected(DomainError{"diffgeo_helix_torsion", "expected a > 0"});
+    }
+    return diffgeo::torsion(circular_helix_curve(a, b), t);
+}
+
 Result<double> eval_diffgeo_ricci_scalar_sphere(double u, double v) {
     return diffgeo::ricci_scalar(unit_sphere_metric_fn(), {u, v});
 }
@@ -11566,6 +11579,32 @@ diffgeo::SurfaceFn unit_sphere_surface() {
     };
 }
 
+Result<double> eval_diffgeo_sphere_gauss_bonnet(int n) {
+    if (n < 1) {
+        return std::unexpected(
+            DomainError{"diffgeo_sphere_gauss_bonnet", "expected positive integer n"});
+    }
+    const auto sphere = unit_sphere_surface();
+    constexpr double u0 = -M_PI / 2.0;
+    constexpr double u1 = M_PI / 2.0;
+    constexpr double v0 = 0.0;
+    constexpr double v1 = 2.0 * M_PI;
+    return diffgeo::gauss_bonnet_integral(sphere, u0, u1, v0, v1, n, n);
+}
+
+Result<double> eval_diffgeo_sphere_gauss_bonnet_residual(int n) {
+    if (n < 1) {
+        return std::unexpected(DomainError{
+            "diffgeo_sphere_gauss_bonnet_residual", "expected positive integer n"});
+    }
+    const auto sphere = unit_sphere_surface();
+    constexpr double u0 = -M_PI / 2.0;
+    constexpr double u1 = M_PI / 2.0;
+    constexpr double v0 = 0.0;
+    constexpr double v1 = 2.0 * M_PI;
+    return diffgeo::gauss_bonnet_residual(sphere, u0, u1, v0, v1, n, n, 2);
+}
+
 Result<Matrix<double>> eval_diffgeo_surface_normal_sphere(double u, double v) {
     const auto N = diffgeo::surface_normal(unit_sphere_surface(), u, v);
     Matrix<double> out(3, 1);
@@ -11622,6 +11661,8 @@ Result<double> eval_topo_euler_sphere_surface() {
 bool is_nullary_scalar_callee(const std::string& callee) {
     return callee == "diffgeo_gaussian_sphere" || callee == "diffgeo_mean_sphere" ||
            callee == "diffgeo_principal_curvature_sphere" ||
+           callee == "diffgeo_sphere_gauss_bonnet" ||
+           callee == "diffgeo_sphere_gauss_bonnet_residual" ||
            callee == "topo_euler_tetrahedron" || callee == "topo_euler_sphere_surface" ||
            callee == "cplx_contour_integral_oneoverz_im" || callee == "cplx_line_integral_one" ||
            callee == "mpi_rank" || callee == "mpi_size" ||
@@ -11641,6 +11682,12 @@ Result<double> eval_nullary_scalar_call(const std::string& fn) {
     }
     if (fn == "diffgeo_principal_curvature_sphere") {
         return eval_diffgeo_principal_curvature_sphere();
+    }
+    if (fn == "diffgeo_sphere_gauss_bonnet") {
+        return eval_diffgeo_sphere_gauss_bonnet(200);
+    }
+    if (fn == "diffgeo_sphere_gauss_bonnet_residual") {
+        return eval_diffgeo_sphere_gauss_bonnet_residual(200);
     }
     if (fn == "topo_euler_sphere_surface") {
         return eval_topo_euler_sphere_surface();
@@ -19726,6 +19773,32 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 7 && fn == "heun_g") {
         return heun_g(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+    }
+    if (fn == "diffgeo_helix_torsion") {
+        if (args.size() < 1 || args.size() > 3) {
+            return std::unexpected(DomainError{
+                "diffgeo_helix_torsion", "expected diffgeo_helix_torsion(t[,a[,b]])"});
+        }
+        const double t = args[0];
+        const double a = args.size() >= 2 ? args[1] : 1.0;
+        const double b = args.size() >= 3 ? args[2] : 1.0;
+        return eval_diffgeo_helix_torsion(t, a, b);
+    }
+    if (fn == "diffgeo_sphere_gauss_bonnet" && args.size() == 1) {
+        const int n = static_cast<int>(args[0]);
+        if (n < 1 || args[0] != n) {
+            return std::unexpected(
+                DomainError{"diffgeo_sphere_gauss_bonnet", "expected positive integer n"});
+        }
+        return eval_diffgeo_sphere_gauss_bonnet(n);
+    }
+    if (fn == "diffgeo_sphere_gauss_bonnet_residual" && args.size() == 1) {
+        const int n = static_cast<int>(args[0]);
+        if (n < 1 || args[0] != n) {
+            return std::unexpected(DomainError{
+                "diffgeo_sphere_gauss_bonnet_residual", "expected positive integer n"});
+        }
+        return eval_diffgeo_sphere_gauss_bonnet_residual(n);
     }
     return std::unexpected(DomainError{"eval", "unknown scalar function: " + name});
 }
@@ -28060,6 +28133,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max]) persistence landscape layers\n"
             "  name = diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end) flat-space geodesic trajectory\n"
             "  name = diffgeo_christoffel_sphere(k,i,j,u,v) unit-sphere Christoffel symbol\n"
+            "  name = diffgeo_helix_torsion(t[,a[,b]]) circular-helix Frenet-Serret torsion\n"
+            "  name = diffgeo_sphere_gauss_bonnet([n]) unit-sphere Gauss-Bonnet integral (default n=200)\n"
+            "  name = diffgeo_sphere_gauss_bonnet_residual([n]) Gauss-Bonnet residual chi=2 (default n=200)\n"
             "  name = topo_euler_tetrahedron()  Euler characteristic of solid tetrahedron (=1)\n"
             "  name = det(A)            scalar matrix call (det, trace, norm, rank, cond)\n"
             "  L, U, P = lu(A)          LU factors (L, U only also supported)\n"
@@ -28100,7 +28176,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_wigner(rho,x,p), quantum_husimi(rho,alpha_re,alpha_im), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
             "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_ks_norm(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_1d_cn(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_heat_2d_cn_adi(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_wave_2d(u0,v0,c,dx,dy,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_advection_1d_lax_wendroff(u0,v,dx,dt,steps), pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_cheb_expand(p,n[,a,b]), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
-            "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
+            "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_helix_torsion(t[,a[,b]]), diffgeo_sphere_gauss_bonnet([n]), diffgeo_sphere_gauss_bonnet_residual([n]), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
             "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_in(n,x), spherical_kn(n,x)\n"
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"

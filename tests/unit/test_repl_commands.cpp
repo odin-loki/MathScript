@@ -9489,3 +9489,25 @@ TEST(ReplCommandsTest, wave269_cplx_ode_cfd1d) {
     ASSERT_GT(interp.state().matrices.count("ab"), 0u);
     EXPECT_GE(interp.state().matrices.at("ab").rows(), 2u);
 }
+
+TEST(ReplCommandsTest, wave269_diffgeo_presets) {
+    Interpreter interp;
+    expect_contains(interp, "help", "diffgeo_helix_torsion(t[,a[,b]])");
+    expect_contains(interp, "help", "diffgeo_sphere_gauss_bonnet([n])");
+    expect_contains(interp, "help", "diffgeo_sphere_gauss_bonnet_residual([n])");
+
+    expect_ok(interp, "tau = diffgeo_helix_torsion(0)");
+    EXPECT_NEAR(interp.state().scalars.at("tau"), 0.5, 0.05);
+
+    expect_ok(interp, "tau2 = diffgeo_helix_torsion(0, 2, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("tau2"), 3.0 / 13.0, 0.05);
+
+    expect_ok(interp, "gb = diffgeo_sphere_gauss_bonnet(200)");
+    EXPECT_NEAR(interp.state().scalars.at("gb"), 4.0 * M_PI, 0.05 * 4.0 * M_PI);
+
+    expect_ok(interp, "gbr = diffgeo_sphere_gauss_bonnet_residual(200)");
+    EXPECT_NEAR(interp.state().scalars.at("gbr"), 0.0, 0.05 * 4.0 * M_PI);
+
+    expect_ok(interp, "gb_def = diffgeo_sphere_gauss_bonnet()");
+    EXPECT_NEAR(interp.state().scalars.at("gb_def"), 4.0 * M_PI, 0.05 * 4.0 * M_PI);
+}
