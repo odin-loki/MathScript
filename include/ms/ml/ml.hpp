@@ -302,6 +302,26 @@ struct DBSCAN {
 /// length across trees and c(n) is the average path length of an unsuccessful
 /// BST search (c(n)=2*H(n-1)-2*(n-1)/n, with c(2)=1 and c(<=1)=0). Scores
 /// near 1 indicate anomalies; near 0.5 or below indicate normal points.
+struct IsolationForestState {
+    struct NodeState {
+        int feature = -1;
+        double threshold = 0.0;
+        int left = -1;
+        int right = -1;
+        size_t size = 0;
+    };
+    struct TreeState {
+        size_t height_limit = 0;
+        std::vector<NodeState> nodes;
+    };
+    size_t n_trees = 0;
+    size_t sample_size = 0;
+    unsigned seed = 42;
+    size_t subsample_size = 0;
+    int n_features = 0;
+    std::vector<TreeState> trees;
+};
+
 struct IsolationForest {
     size_t n_trees = 100;
     size_t sample_size = 256;
@@ -313,6 +333,8 @@ struct IsolationForest {
     void fit(const Mat& X);
     double anomaly_score(const Vec& x) const;
     Vec anomaly_scores(const Mat& X) const;
+    IsolationForestState export_state() const;
+    static IsolationForest from_state(const IsolationForestState& state);
 
 private:
     struct Node {
@@ -383,9 +405,10 @@ struct PCA {
 };
 
 struct TSNE {
-    int n_components, max_iter; double perplexity, lr;
-    explicit TSNE(int n = 2, double p = 30.0, double l = 200.0, int mi = 250)
-        : n_components(n), max_iter(mi), perplexity(p), lr(l) {}
+    int n_components, max_iter; double perplexity, lr; unsigned seed;
+    explicit TSNE(int n = 2, double p = 30.0, double l = 200.0, int mi = 250,
+                  unsigned s = 42)
+        : n_components(n), max_iter(mi), perplexity(p), lr(l), seed(s) {}
     Mat fit_transform(const Mat& X) const;
 };
 

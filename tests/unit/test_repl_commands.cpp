@@ -8827,6 +8827,75 @@ TEST(ReplCommandsTest, wave268_ml_gmm_dbscan) {
     EXPECT_GE(sp_labels.size(), 2u);
 }
 
+TEST(ReplCommandsTest, wave269_ml_unsupervised_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_isolation_forest_fit(X[,n_trees[,sample_size[,seed]]])");
+    expect_contains(interp, "help", "ml_isolation_forest_score(X,model)");
+    expect_contains(interp, "help", "ml_agglomerative_fit(X[,n_clusters[,linkage]])");
+    expect_contains(interp, "help", "ml_tsne_fit(X[,perplexity[,n_iter[,seed]]])");
+
+    expect_ok(interp, "X = [0, 0; 0.1, 0; 0.2, 0; 0.3, 0; 0.4, 0; 10, 10]");
+    expect_ok(interp, "iso_m = ml_isolation_forest_fit(X, 50, 32, 42)");
+    ASSERT_GT(interp.state().matrices.count("iso_m"), 0u);
+    EXPECT_GE(interp.state().matrices.at("iso_m").rows(), 2u);
+
+    expect_ok(interp, "iso_s = ml_isolation_forest_score(X, iso_m)");
+    ASSERT_GT(interp.state().matrices.count("iso_s"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("iso_s").rows(), 6u);
+    double cluster_max = 0.0;
+    for (size_t i = 0; i < 5; ++i) {
+        cluster_max = std::max(cluster_max, interp.state().matrices.at("iso_s")(i, 0));
+    }
+    EXPECT_GT(interp.state().matrices.at("iso_s")(5, 0), cluster_max);
+
+    ms::ml::Mat X_ref;
+    for (int i = 0; i < 5; ++i) {
+        X_ref.push_back({0.1 * static_cast<double>(i), 0.0});
+    }
+    X_ref.push_back({10.0, 10.0});
+    ms::ml::IsolationForest iso_ref(50, 32, 42);
+    iso_ref.fit(X_ref);
+    const auto ref_scores = iso_ref.anomaly_scores(X_ref);
+    for (size_t i = 0; i < 6; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("iso_s")(i, 0), ref_scores[i], 1e-9);
+    }
+
+    expect_ok(interp, "A = [0, 0; 1, 0; 2, 0; 3, 0; 4, 0; 100, 0; 101, 0; 102, 0; 103, 0; 104, 0]");
+    expect_ok(interp, "ac_l = ml_agglomerative_fit(A, 2, \"single\")");
+    ASSERT_GT(interp.state().matrices.count("ac_l"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ac_l").rows(), 10u);
+    const double ac0 = interp.state().matrices.at("ac_l")(0, 0);
+    for (size_t i = 0; i < 5; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("ac_l")(i, 0), ac0, 1e-9);
+    }
+    const double ac1 = interp.state().matrices.at("ac_l")(5, 0);
+    for (size_t i = 5; i < 10; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("ac_l")(i, 0), ac1, 1e-9);
+    }
+    EXPECT_NE(ac0, ac1);
+
+    expect_ok(interp, "T = [0, 0; 0.1, 0; 0.2, 0; 10, 10; 10.1, 10; 10.2, 10]");
+    expect_ok(interp, "Y = ml_tsne_fit(T, 5, 10, 42)");
+    ASSERT_GT(interp.state().matrices.count("Y"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Y").rows(), 6u);
+    EXPECT_EQ(interp.state().matrices.at("Y").cols(), 2u);
+
+    ms::ml::Mat T_ref;
+    T_ref.push_back({0, 0});
+    T_ref.push_back({0.1, 0});
+    T_ref.push_back({0.2, 0});
+    T_ref.push_back({10, 10});
+    T_ref.push_back({10.1, 10});
+    T_ref.push_back({10.2, 10});
+    ms::ml::TSNE tsne_ref(2, 5.0, 200.0, 10, 42);
+    const auto Y_ref = tsne_ref.fit_transform(T_ref);
+    for (size_t i = 0; i < 6; ++i) {
+        for (size_t j = 0; j < 2; ++j) {
+            EXPECT_NEAR(interp.state().matrices.at("Y")(i, j), Y_ref[i][j], 1e-9);
+        }
+    }
+}
+
 TEST(ReplCommandsTest, wave268_ml_scaler_roc) {
     Interpreter interp;
     expect_contains(interp, "help", "ml_standard_scaler_fit(X)");

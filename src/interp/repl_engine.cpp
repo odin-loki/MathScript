@@ -1176,6 +1176,156 @@ Result<Matrix<double>> eval_ml_spectral_clustering(const Matrix<double>& X_m, in
     return int_vector_to_column(labels);
 }
 
+Matrix<double> ml_isolation_forest_to_matrix(const ml::IsolationForestState& state) {
+    size_t rows = 1;
+    for (const auto& tree : state.trees) {
+        rows += 1 + tree.nodes.size();
+    }
+    Matrix<double> out(rows, 5);
+    out(0, 0) = static_cast<double>(state.n_trees);
+    out(0, 1) = static_cast<double>(state.sample_size);
+    out(0, 2) = static_cast<double>(state.seed);
+    out(0, 3) = static_cast<double>(state.subsample_size);
+    out(0, 4) = static_cast<double>(state.n_features);
+    size_t row = 1;
+    for (const auto& tree : state.trees) {
+        out(row, 0) = static_cast<double>(tree.nodes.size());
+        out(row, 1) = static_cast<double>(tree.height_limit);
+        ++row;
+        for (const auto& node : tree.nodes) {
+            out(row, 0) = node.feature;
+            out(row, 1) = node.threshold;
+            out(row, 2) = node.left;
+            out(row, 3) = node.right;
+            out(row, 4) = static_cast<double>(node.size);
+            ++row;
+        }
+    }
+    return out;
+}
+
+Result<ml::IsolationForest> ml_isolation_forest_from_matrix(const Matrix<double>& model,
+                                                            const char* fn) {
+    if (model.rows() < 1 || model.cols() < 5) {
+        return std::unexpected(DomainError{fn, "expected IsolationForest model matrix"});
+    }
+    ml::IsolationForestState state;
+    state.n_trees = static_cast<size_t>(model(0, 0));
+    state.sample_size = static_cast<size_t>(model(0, 1));
+    state.seed = static_cast<unsigned>(model(0, 2));
+    state.subsample_size = static_cast<size_t>(model(0, 3));
+    state.n_features = static_cast<int>(model(0, 4));
+    size_t row = 1;
+    while (row < model.rows()) {
+        const size_t n_nodes = static_cast<size_t>(model(row, 0));
+        const size_t height_limit = static_cast<size_t>(model(row, 1));
+        if (row + 1 + n_nodes > model.rows()) {
+            return std::unexpected(DomainError{fn, "invalid IsolationForest model layout"});
+        }
+        ml::IsolationForestState::TreeState tree;
+        tree.height_limit = height_limit;
+        tree.nodes.reserve(n_nodes);
+        ++row;
+        for (size_t i = 0; i < n_nodes; ++i) {
+            ml::IsolationForestState::NodeState node;
+            node.feature = static_cast<int>(model(row, 0));
+            node.threshold = model(row, 1);
+            node.left = static_cast<int>(model(row, 2));
+            node.right = static_cast<int>(model(row, 3));
+            node.size = static_cast<size_t>(model(row, 4));
+            tree.nodes.push_back(node);
+            ++row;
+        }
+        state.trees.push_back(std::move(tree));
+    }
+    return ml::IsolationForest::from_state(state);
+}
+
+Result<std::string> parse_ml_linkage(const std::string& text, const char* fn) {
+    std::string linkage;
+    if (parse_quoted_string(text, linkage)) {
+        linkage = lower(trim_copy(linkage));
+    } else {
+        linkage = lower(trim_copy(text));
+    }
+    if (linkage == "ward" || linkage == "single" || linkage == "average" ||
+        linkage == "complete") {
+        return linkage;
+    }
+    return std::unexpected(
+        DomainError{fn, "expected linkage ward|single|average|complete"});
+}
+
+Result<Matrix<double>> eval_ml_isolation_forest_fit(const Matrix<double>& X_m, size_t n_trees,
+                                                     size_t sample_size, unsigned seed) {
+    auto X = matrix_to_ml_mat(X_m, "ml_isolation_forest_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (X->empty()) {
+        return std::unexpected(DomainError{"ml_isolation_forest_fit", "expected non-empty X"});
+    }
+    if (n_trees < 1) {
+        return std::unexpected(DomainError{"ml_isolation_forest_fit", "expected n_trees >= 1"});
+    }
+    if (sample_size < 1) {
+        return std::unexpected(
+            DomainError{"ml_isolation_forest_fit", "expected sample_size >= 1"});
+    }
+    ml::IsolationForest iso(n_trees, sample_size, seed);
+    iso.fit(*X);
+    return ml_isolation_forest_to_matrix(iso.export_state());
+}
+
+Result<Matrix<double>> eval_ml_isolation_forest_score(const Matrix<double>& X_m,
+                                                      const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_isolation_forest_score");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto iso = ml_isolation_forest_from_matrix(model_m, "ml_isolation_forest_score");
+    if (!iso) {
+        return std::unexpected(iso.error());
+    }
+    return vector_to_column(iso->anomaly_scores(*X));
+}
+
+Result<Matrix<double>> eval_ml_agglomerative_fit(const Matrix<double>& X_m, int n_clusters,
+                                                 const std::string& linkage) {
+    auto X = matrix_to_ml_mat(X_m, "ml_agglomerative_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (X->empty()) {
+        return std::unexpected(DomainError{"ml_agglomerative_fit", "expected non-empty X"});
+    }
+    if (n_clusters < 1) {
+        return std::unexpected(DomainError{"ml_agglomerative_fit", "expected n_clusters >= 1"});
+    }
+    ml::AgglomerativeClustering ac(n_clusters, linkage);
+    ac.fit(*X);
+    return vector_to_column(ac.labels_);
+}
+
+Result<Matrix<double>> eval_ml_tsne_fit(const Matrix<double>& X_m, double perplexity, int n_iter,
+                                        unsigned seed) {
+    auto X = matrix_to_ml_mat(X_m, "ml_tsne_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (X->empty()) {
+        return std::unexpected(DomainError{"ml_tsne_fit", "expected non-empty X"});
+    }
+    if (perplexity <= 0.0) {
+        return std::unexpected(DomainError{"ml_tsne_fit", "expected perplexity > 0"});
+    }
+    if (n_iter < 1) {
+        return std::unexpected(DomainError{"ml_tsne_fit", "expected n_iter >= 1"});
+    }
+    ml::TSNE tsne(2, perplexity, 200.0, n_iter, seed);
+    return grid_to_matrix(tsne.fit_transform(*X));
+}
+
 Result<ml::StandardScaler> ml_standard_scaler_from_matrix(const Matrix<double>& model,
                                                           const char* fn) {
     if (model.rows() != 2 || model.cols() < 1) {
@@ -14597,6 +14747,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_pca_fit" || fn == "ml_pca_transform" || fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" || fn == "ml_kmeans_predict" ||
             fn == "ml_decision_tree_fit" || fn == "ml_decision_tree_predict" || fn == "ml_random_forest_fit" || fn == "ml_random_forest_predict" || fn == "ml_adaboost_fit" || fn == "ml_adaboost_predict" ||
             fn == "ml_gmm_fit" || fn == "ml_gmm_predict" || fn == "ml_gmm_predict_proba" || fn == "ml_dbscan_fit" || fn == "ml_spectral_clustering" ||
+            fn == "ml_isolation_forest_fit" || fn == "ml_isolation_forest_score" || fn == "ml_agglomerative_fit" || fn == "ml_tsne_fit" ||
             fn == "ml_standard_scaler_fit" || fn == "ml_standard_scaler_transform" || fn == "ml_minmax_scaler_fit" || fn == "ml_minmax_scaler_transform" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_cheb_eval" || fn == "poly_cheb_expand" ||
             fn == "poly_integ" || fn == "poly_add" ||
@@ -16637,6 +16788,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "ml_adaboost_fit" || callee == "ml_adaboost_predict" ||
            callee == "ml_gmm_fit" || callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" ||
            callee == "ml_dbscan_fit" || callee == "ml_spectral_clustering" ||
+           callee == "ml_isolation_forest_fit" || callee == "ml_isolation_forest_score" ||
+           callee == "ml_agglomerative_fit" || callee == "ml_tsne_fit" ||
            callee == "poly_deriv" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "poly_roots" ||
            callee == "poly_fit" || callee == "poly_interp_hermite" ||
@@ -16872,7 +17025,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "ml_svm_predict" || callee == "ml_pca_transform" || callee == "ml_kmeans_predict" ||
         callee == "ml_decision_tree_predict" || callee == "ml_random_forest_predict" ||
         callee == "ml_adaboost_predict" ||
-        callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" || callee == "geo_poly_union" ||
+        callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" ||
+        callee == "ml_isolation_forest_score" || callee == "geo_poly_union" ||
         callee == "geo_poly_intersect" || callee == "geo_poly_diff" ||
         callee == "geo_minkowski_sum" || callee == "geo_clip_polygon" ||
         callee == "stats_linear_regression" || callee == "stats_multiple_regression") {
@@ -16955,6 +17109,18 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "ml_spectral_clustering") {
         return arity >= 2 && arity <= 4;
+    }
+    if (callee == "ml_isolation_forest_fit") {
+        return arity >= 1 && arity <= 4;
+    }
+    if (callee == "ml_isolation_forest_score") {
+        return arity == 2;
+    }
+    if (callee == "ml_agglomerative_fit") {
+        return arity >= 1 && arity <= 3;
+    }
+    if (callee == "ml_tsne_fit") {
+        return arity >= 1 && arity <= 4;
     }
     if (callee == "ml_standard_scaler_fit" || callee == "ml_minmax_scaler_fit") {
         return arity == 1;
@@ -23690,6 +23856,164 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
         result = *encoded;
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail8(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "ml_isolation_forest_fit" &&
+        (assign.args.size() >= 1 && assign.args.size() <= 4)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        size_t n_trees = 100;
+        size_t sample_size = 256;
+        unsigned seed = 42;
+        if (assign.args.size() >= 2) {
+            auto trees = parse_scalar_arg(assign.args[1], "ml_isolation_forest_fit");
+            if (!trees) {
+                return std::unexpected(trees.error());
+            }
+            n_trees = static_cast<size_t>(*trees);
+            if (*trees != static_cast<double>(n_trees) || n_trees < 1) {
+                return std::unexpected(
+                    DomainError{"ml_isolation_forest_fit", "expected positive integer n_trees"});
+            }
+        }
+        if (assign.args.size() >= 3) {
+            auto ss = parse_scalar_arg(assign.args[2], "ml_isolation_forest_fit");
+            if (!ss) {
+                return std::unexpected(ss.error());
+            }
+            sample_size = static_cast<size_t>(*ss);
+            if (*ss != static_cast<double>(sample_size) || sample_size < 1) {
+                return std::unexpected(DomainError{
+                    "ml_isolation_forest_fit", "expected positive integer sample_size"});
+            }
+        }
+        if (assign.args.size() >= 4) {
+            auto seed_val = parse_optional_seed(assign.args[3], "ml_isolation_forest_fit");
+            if (!seed_val) {
+                return std::unexpected(seed_val.error());
+            }
+            seed = *seed_val;
+        }
+        auto fitted = eval_ml_isolation_forest_fit(*X, n_trees, sample_size, seed);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_isolation_forest_score" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto scores = eval_ml_isolation_forest_score(*X, *model);
+        if (!scores) {
+            return std::unexpected(scores.error());
+        }
+        result = *scores;
+    } else if (assign.callee == "ml_agglomerative_fit" &&
+               (assign.args.size() >= 1 && assign.args.size() <= 3)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        int n_clusters = 2;
+        std::string linkage = "ward";
+        if (assign.args.size() >= 2) {
+            auto k_arg = parse_scalar_arg(assign.args[1], "ml_agglomerative_fit");
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            n_clusters = static_cast<int>(*k_arg);
+            if (n_clusters < 1 || *k_arg != n_clusters) {
+                return std::unexpected(
+                    DomainError{"ml_agglomerative_fit", "expected integer n_clusters >= 1"});
+            }
+        }
+        if (assign.args.size() >= 3) {
+            auto linkage_arg = parse_ml_linkage(assign.args[2], "ml_agglomerative_fit");
+            if (!linkage_arg) {
+                return std::unexpected(linkage_arg.error());
+            }
+            linkage = *linkage_arg;
+        }
+        auto labels = eval_ml_agglomerative_fit(*X, n_clusters, linkage);
+        if (!labels) {
+            return std::unexpected(labels.error());
+        }
+        result = *labels;
+    } else if (assign.callee == "ml_tsne_fit" &&
+               (assign.args.size() >= 1 && assign.args.size() <= 4)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        double perplexity = 30.0;
+        int n_iter = 250;
+        unsigned seed = 42;
+        if (assign.args.size() >= 2) {
+            auto p_arg = parse_scalar_arg(assign.args[1], "ml_tsne_fit");
+            if (!p_arg) {
+                return std::unexpected(p_arg.error());
+            }
+            perplexity = *p_arg;
+        }
+        if (assign.args.size() >= 3) {
+            auto iter_arg = parse_scalar_arg(assign.args[2], "ml_tsne_fit");
+            if (!iter_arg) {
+                return std::unexpected(iter_arg.error());
+            }
+            n_iter = static_cast<int>(*iter_arg);
+            if (n_iter < 1 || *iter_arg != n_iter) {
+                return std::unexpected(
+                    DomainError{"ml_tsne_fit", "expected positive integer n_iter"});
+            }
+        }
+        if (assign.args.size() >= 4) {
+            auto seed_val = parse_optional_seed(assign.args[3], "ml_tsne_fit");
+            if (!seed_val) {
+                return std::unexpected(seed_val.error());
+            }
+            seed = *seed_val;
+        }
+        auto embedding = eval_ml_tsne_fit(*X, perplexity, n_iter, seed);
+        if (!embedding) {
+            return std::unexpected(embedding.error());
+        }
+        result = *embedding;
+    }
+
     return result;
 }
 
@@ -25798,6 +26122,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_gmm_predict_proba(X,model) GMM component responsibilities on X\n"
             "  name = ml_dbscan_fit(X,eps,min_samples) DBSCAN cluster labels (-1 noise)\n"
             "  name = ml_spectral_clustering(X,k[,sigma[,n_neighbors]]) spectral clustering labels\n"
+            "  name = ml_isolation_forest_fit(X[,n_trees[,sample_size[,seed]]]) fit Isolation Forest anomaly model\n"
+            "  name = ml_isolation_forest_score(X,model) Isolation Forest anomaly scores on X\n"
+            "  name = ml_agglomerative_fit(X[,n_clusters[,linkage]]) agglomerative cluster labels\n"
+            "  name = ml_tsne_fit(X[,perplexity[,n_iter[,seed]]]) t-SNE 2D embedding of X\n"
             "  name = ml_vec_norm(v)    Euclidean norm of Nx1 or 1xN vector\n"
             "  name = ml_vec_dot(a,b)   dot product of Nx1 or 1xN vectors\n"
             "  name = graph_pagerank(A) PageRank scores from NxN adjacency matrix\n"
@@ -26636,7 +26964,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), arithmetic_encode_vec(M), arithmetic_decode_vec(orig_M,E), ans_encode_vec(M), ans_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
-            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_gmm_fit(X[,n_components]), ml_gmm_predict(X,model), ml_gmm_predict_proba(X,model), ml_dbscan_fit(X,eps,min_samples), ml_spectral_clustering(X,k[,sigma[,n_neighbors]]), ml_average_precision(p,t), ml_minmax_scaler_fit(X), ml_minmax_scaler_transform(X,model), ml_roc_auc(p,t), ml_standard_scaler_fit(X), ml_standard_scaler_transform(X,model), ml_train_test_split(X,y[,test_size,seed])\n"
+            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_gmm_fit(X[,n_components]), ml_gmm_predict(X,model), ml_gmm_predict_proba(X,model), ml_dbscan_fit(X,eps,min_samples), ml_spectral_clustering(X,k[,sigma[,n_neighbors]]), ml_isolation_forest_fit(X[,n_trees[,sample_size[,seed]]]), ml_isolation_forest_score(X,model), ml_agglomerative_fit(X[,n_clusters[,linkage]]), ml_tsne_fit(X[,perplexity[,n_iter[,seed]]]), ml_average_precision(p,t), ml_minmax_scaler_fit(X), ml_minmax_scaler_transform(X,model), ml_roc_auc(p,t), ml_standard_scaler_fit(X), ml_standard_scaler_transform(X,model), ml_train_test_split(X,y[,test_size,seed])\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
@@ -28135,6 +28463,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "ml_gmm_predict") {
                 auto value = eval_ml_gmm_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_isolation_forest_score") {
+                auto value = eval_ml_isolation_forest_score(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
