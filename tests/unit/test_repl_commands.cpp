@@ -1,4 +1,4 @@
-#include <algorithm>
+﻿#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -3584,7 +3584,7 @@ TEST(ReplCommandsTest, wave255_graph_spectral) {
     EXPECT_EQ(interp.state().matrices.at("L").rows(), 3u);
     EXPECT_EQ(interp.state().matrices.at("L").cols(), 3u);
 
-    // C++ adjacency_spectrum is power-iteration spectral radius (1×1), not full eig.
+    // C++ adjacency_spectrum is power-iteration spectral radius (1Ã—1), not full eig.
     expect_ok(interp, "spec = graph_adjacency_spectrum(A)");
     ASSERT_GT(interp.state().matrices.count("spec"), 0u);
     EXPECT_EQ(interp.state().matrices.at("spec").rows(), 1u);
@@ -6120,7 +6120,7 @@ TEST(ReplCommandsTest, wave257_stats_infer_ext) {
     expect_contains(interp, "help", "stats_jarque_bera(x)");
     expect_contains(interp, "help", "stats_ljung_box(x,max_lag)");
 
-    // Friedman: hand-computed 4 blocks × 3 treatments → chi2=1.5, df=2, p=exp(-0.75).
+    // Friedman: hand-computed 4 blocks Ã— 3 treatments â†’ chi2=1.5, df=2, p=exp(-0.75).
     expect_ok(interp, "Fdata = [10, 20, 30; 15, 25, 20; 5, 8, 6; 100, 90, 95]");
     expect_ok(interp, "fr = stats_friedman(Fdata)");
     ASSERT_GT(interp.state().matrices.count("fr"), 0u);
@@ -6131,7 +6131,7 @@ TEST(ReplCommandsTest, wave257_stats_infer_ext) {
     EXPECT_NEAR(fr(0, 1), 2.0, 1e-12);
     EXPECT_NEAR(fr(0, 2), std::exp(-0.75), 1e-9);
 
-    // Two-sample KS: fully separated samples → large D, small p; 1x2 [D, p].
+    // Two-sample KS: fully separated samples â†’ large D, small p; 1x2 [D, p].
     expect_ok(interp, "ksa = [0; 1; 2; 3; 4; 5; 6; 7]");
     expect_ok(interp, "ksb = [10; 11; 12; 13; 14; 15; 16; 17]");
     expect_ok(interp, "ks = stats_ks_2sample(ksa, ksb)");
@@ -6264,7 +6264,7 @@ TEST(ReplCommandsTest, wave260_stats_vif) {
     expect_contains(interp, "help", "stats_vif(X,j)");
     expect_contains(interp, "help", "stats_variance_inflation_factor");
 
-    // Orthogonal columns (constant vs ±1): auxiliary R^2 ~ 0 => VIF near 1.
+    // Orthogonal columns (constant vs Â±1): auxiliary R^2 ~ 0 => VIF near 1.
     expect_ok(interp, "Xo = [1, 1; 1, -1; 1, 1; 1, -1; 1, 1; 1, -1]");
     expect_ok(interp, "v0 = stats_vif(Xo, 0)");
     ASSERT_GT(interp.state().scalars.count("v0"), 0u);
@@ -6517,7 +6517,7 @@ TEST(ReplCommandsTest, wave258_image_morph_hist) {
     expect_contains(interp, "help", "imadjust(M,in_lo,in_hi[,out_lo,out_hi])");
     expect_contains(interp, "help", "imhist(M[,nbins])");
 
-    // Bright center pixel on dark background — top-hat keeps the peak.
+    // Bright center pixel on dark background â€” top-hat keeps the peak.
     expect_ok(interp, "M = [0, 0, 0; 0, 1, 0; 0, 0, 0]");
     expect_ok(interp, "T = imtophat(M)");
     ASSERT_GT(interp.state().matrices.count("T"), 0u);
@@ -6541,7 +6541,7 @@ TEST(ReplCommandsTest, wave258_image_morph_hist) {
     ASSERT_GT(interp.state().matrices.count("A2"), 0u);
     EXPECT_GT(interp.state().matrices.at("A2")(0, 0), interp.state().matrices.at("A")(0, 0));
 
-    // Four distinct levels into 4 bins → counts [2,1,1,0] (same as ImageHist.CustomBinCount).
+    // Four distinct levels into 4 bins â†’ counts [2,1,1,0] (same as ImageHist.CustomBinCount).
     expect_ok(interp, "Hsrc = [0, 0.25; 0.5, 0.75]");
     expect_ok(interp, "H = imhist(Hsrc, 4)");
     ASSERT_GT(interp.state().matrices.count("H"), 0u);
@@ -6568,7 +6568,7 @@ TEST(ReplCommandsTest, wave258_gray2rgb_and_impad) {
     EXPECT_NEAR(interp.state().matrices.at("RGB2")(0, 1), 0.299, 1e-6);
     EXPECT_NEAR(interp.state().matrices.at("RGB2")(0, 2), 0.299, 1e-6);
 
-    // Use 0..1 intensities so matrix↔Image round-trip preserves values.
+    // Use 0..1 intensities so matrixâ†”Image round-trip preserves values.
     expect_ok(interp, "M = [0.1, 0.2; 0.3, 0.4]");
     expect_ok(interp, "P = impad(M, 1, 0)");
     ASSERT_GT(interp.state().matrices.count("P"), 0u);
@@ -6865,7 +6865,7 @@ TEST(ReplCommandsTest, wave259_imgradient_morph) {
     Interpreter interp;
     expect_contains(interp, "help", "imgradient_morph(M[,k])");
 
-    // Bright center on dark background — gradient responds at edges.
+    // Bright center on dark background â€” gradient responds at edges.
     expect_ok(interp, "M = [0,0,0,0,0; 0,0,1,0,0; 0,0,1,0,0; 0,0,0,0,0; 0,0,0,0,0]");
     expect_ok(interp, "G = imgradient_morph(M)");
     ASSERT_GT(interp.state().matrices.count("G"), 0u);
@@ -7862,6 +7862,7 @@ TEST(ReplCommandsTest, wave265_linalg_funm_precond) {
     EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
 }
 
+
 TEST(ReplCommandsTest, wave266_prob_chi2_exp_ppf) {
     Interpreter interp;
     expect_contains(interp, "help", "prob_exp_ppf(p,lambda)");
@@ -7919,4 +7920,33 @@ TEST(ReplCommandsTest, wave266_graph_min_arborescence) {
     EXPECT_NEAR(interp.state().matrices.at("arb")(2, 0), 1.0, 1e-9);
     EXPECT_NEAR(interp.state().matrices.at("arb")(2, 1), 2.0, 1e-9);
     EXPECT_NEAR(interp.state().matrices.at("arb")(2, 2), 2.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave266_image_imfilter_sobel) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imfilter(M,K)");
+    expect_contains(interp, "help", "sobel_x(M)");
+    expect_contains(interp, "help", "laplacian_of_gaussian(M,sigma)");
+
+    expect_ok(interp, "G = [0, 0, 0; 0, 1, 0; 0, 0, 0]");
+    expect_ok(interp, "K = [0, 0, 0; 0, 1, 0; 0, 0, 0]");
+    expect_ok(interp, "F = imfilter(G, K)");
+    ASSERT_GT(interp.state().matrices.count("F"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("F")(1, 1), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("F")(0, 0), 0.0, 1e-6);
+
+    expect_ok(interp, "Sx = sobel_x(G)");
+    expect_ok(interp, "Sy = sobel_y(G)");
+    EXPECT_EQ(interp.state().matrices.at("Sx").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Sx").cols(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Sy").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Sy").cols(), 3u);
+
+    expect_ok(interp, "L = laplacian_of_gaussian(G, 1)");
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("L").cols(), 3u);
+
+    expect_ok(interp, "D = dft_magnitude(G)");
+    EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("D").cols(), 3u);
 }
