@@ -59,6 +59,7 @@ struct ScalarMatrixCallAssign {
     std::string target;
     std::string callee;
     std::string arg;
+    std::string arg2;
 };
 
 struct MultiMatrixCallAssign {
