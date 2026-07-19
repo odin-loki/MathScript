@@ -15286,6 +15286,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "special_airy_bi") {
             return airy_bi(arg);
         }
+        if (fn == "ellip_e") {
+            return ellip_e(arg);
+        }
         if (fn == "numthy_partition") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
@@ -15675,6 +15678,36 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "hypergeo_1f1") {
             return hypergeo_1f1(args[0], args[1]);
+        }
+        if (fn == "ellip_pi") {
+            return ellip_pi(args[0], args[1]);
+        }
+        if (fn == "ellip_f") {
+            return ellip_f(args[0], args[1]);
+        }
+        if (fn == "ellip_e_inc") {
+            return ellip_e_inc(args[0], args[1]);
+        }
+        if (fn == "jacobi_cn") {
+            return jacobi_cn(args[0], args[1]);
+        }
+        if (fn == "jacobi_dn") {
+            return jacobi_dn(args[0], args[1]);
+        }
+        if (fn == "jacobi_am") {
+            return jacobi_am(args[0], args[1]);
+        }
+        if (fn == "theta1") {
+            return theta1(args[0], args[1]);
+        }
+        if (fn == "theta2") {
+            return theta2(args[0], args[1]);
+        }
+        if (fn == "theta3") {
+            return theta3(args[0], args[1]);
+        }
+        if (fn == "theta4") {
+            return theta4(args[0], args[1]);
         }
         if (fn == "prob_t_pdf") {
             return t_pdf(args[0], args[1]);
@@ -23126,8 +23159,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x)\n"
             "  kelvin_ber(0,x), struve_h(n,x), bessel_zero_jnu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"
-            "  jacobi_p(n,a,b,x), ellip_k(k), jacobi_sn(u,k)\n"
-            "  theta3(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
+            "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k)\n"
+            "  theta1(z,q), theta2(z,q), theta3(z,q), theta4(z,q), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
             "  heun_g(a,q,alpha,beta,gamma,delta,z), heun_c(q,alpha,beta,gamma,delta,z)\n"
             "  heun_b(q,alpha,beta,delta,z), heun_d(q,alpha,gamma,delta,z), heun_t(q,alpha,beta,gamma,z)\n"
             "  painleve1(x,y0,yp0), painleve2(x,y0,yp0,alpha)\n"
@@ -32723,13 +32756,76 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(jacobi_sn(u, k)) + "\n";
         }
 
-        if (fn == "theta3") {
+        if (fn == "jacobi_cn") {
+            double u = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"jacobi_cn", "expected jacobi_cn(u,k)"});
+            }
+            return std::to_string(jacobi_cn(u, k)) + "\n";
+        }
+
+        if (fn == "jacobi_dn") {
+            double u = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"jacobi_dn", "expected jacobi_dn(u,k)"});
+            }
+            return std::to_string(jacobi_dn(u, k)) + "\n";
+        }
+
+        if (fn == "jacobi_am") {
+            double u = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"jacobi_am", "expected jacobi_am(u,k)"});
+            }
+            return std::to_string(jacobi_am(u, k)) + "\n";
+        }
+
+        if (fn == "ellip_pi") {
+            double n = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"ellip_pi", "expected ellip_pi(n,k)"});
+            }
+            return std::to_string(ellip_pi(n, k)) + "\n";
+        }
+
+        if (fn == "ellip_f") {
+            double phi = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, phi) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"ellip_f", "expected ellip_f(phi,k)"});
+            }
+            return std::to_string(ellip_f(phi, k)) + "\n";
+        }
+
+        if (fn == "ellip_e_inc") {
+            double phi = 0.0;
+            double k = 0.0;
+            if (!parse_number(arg_a, phi) || !parse_number(arg_b, k)) {
+                return std::unexpected(DomainError{"ellip_e_inc", "expected ellip_e_inc(phi,k)"});
+            }
+            return std::to_string(ellip_e_inc(phi, k)) + "\n";
+        }
+
+        if (fn == "theta1" || fn == "theta2" || fn == "theta3" || fn == "theta4") {
             double z = 0.0;
             double q = 0.0;
             if (!parse_number(arg_a, z) || !parse_number(arg_b, q)) {
-                return std::unexpected(DomainError{"theta3", "expected theta3(z,q)"});
+                return std::unexpected(DomainError{fn, "expected " + fn + "(z,q)"});
             }
-            return std::to_string(theta3(z, q)) + "\n";
+            if (fn == "theta1") {
+                return std::to_string(theta1(z, q)) + "\n";
+            }
+            if (fn == "theta2") {
+                return std::to_string(theta2(z, q)) + "\n";
+            }
+            if (fn == "theta3") {
+                return std::to_string(theta3(z, q)) + "\n";
+            }
+            return std::to_string(theta4(z, q)) + "\n";
         }
 
         if (fn == "polylog") {
@@ -34517,7 +34613,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
         if (fn == "erf" || fn == "erfc" || fn == "erfi" || fn == "erfcx" || fn == "dawson" ||
             fn == "gamma" || fn == "bessel_j0" || fn == "fresnel_c" ||
-            fn == "fresnel_s" || fn == "ellip_k" || fn == "zeta") {
+            fn == "fresnel_s" || fn == "ellip_k" || fn == "ellip_e" || fn == "zeta") {
             double value = 0.0;
             if (!parse_number(arg, value)) {
                 return std::unexpected(DomainError{"special", "expected numeric argument"});
@@ -34543,6 +34639,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 out << fresnel_s(value);
             } else if (fn == "ellip_k") {
                 out << ellip_k(value);
+            } else if (fn == "ellip_e") {
+                out << ellip_e(value);
             } else {
                 out << zeta(value);
             }
