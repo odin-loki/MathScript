@@ -7207,6 +7207,64 @@ TEST(ReplCommandsTest, wave264_poly_roots_fit_gcd) {
     EXPECT_NEAR(interp.state().scalars.at("v3"), 0.0, 1e-4);
 }
 
+TEST(ReplCommandsTest, wave265_poly_factor) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_factor(p)");
+    expect_contains(interp, "help", "poly_rational_roots(p)");
+    expect_contains(interp, "help", "poly_factor_rational(p)");
+    expect_contains(interp, "help", "poly_partial_fractions(num,den)");
+    expect_contains(interp, "help", "poly_root_count(p,a,b)");
+    expect_contains(interp, "help", "poly_cheb_eval(cheb_coeffs,x)");
+
+    // (x-2)(x-3) = x^2 - 5x + 6
+    expect_ok(interp, "p = [6; -5; 1]");
+    expect_ok(interp, "fac = poly_factor(p)");
+    ASSERT_GT(interp.state().matrices.count("fac"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("fac").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("fac").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("fac")(0, 2), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("fac")(1, 2), 1.0, 1e-6);
+
+    expect_ok(interp, "rr = poly_rational_roots(p)");
+    ASSERT_GT(interp.state().matrices.count("rr"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("rr").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("rr").cols(), 2u);
+    {
+        std::vector<double> nums = {interp.state().matrices.at("rr")(0, 0),
+                                    interp.state().matrices.at("rr")(1, 0)};
+        std::vector<double> dens = {interp.state().matrices.at("rr")(0, 1),
+                                    interp.state().matrices.at("rr")(1, 1)};
+        std::sort(nums.begin(), nums.end());
+        EXPECT_NEAR(nums[0], 2.0, 1e-6);
+        EXPECT_NEAR(nums[1], 3.0, 1e-6);
+        EXPECT_NEAR(dens[0], 1.0, 1e-6);
+        EXPECT_NEAR(dens[1], 1.0, 1e-6);
+    }
+
+    expect_ok(interp, "fr = poly_factor_rational(p)");
+    ASSERT_GT(interp.state().matrices.count("fr"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("fr").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("fr").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("fr")(2, 0), 1.0, 1e-6);
+
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [2; -3; 1]");
+    expect_ok(interp, "pf = poly_partial_fractions(num, den)");
+    ASSERT_GT(interp.state().matrices.count("pf"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pf").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("pf").cols(), 9u);
+    EXPECT_NEAR(interp.state().matrices.at("pf")(0, 8), 0.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("pf")(1, 8), 0.0, 1e-6);
+
+    expect_ok(interp, "rc = poly_root_count(p, 1, 4)");
+    EXPECT_NEAR(interp.state().scalars.at("rc"), 2.0, 1e-6);
+
+    expect_ok(interp, "cheb = [0; 1]");
+    expect_ok(interp, "cv = poly_cheb_eval(cheb, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("cv"), 0.5, 1e-6);
+    expect_contains(interp, "poly_cheb_eval([0; 1], 0.5)", "0.5");
+}
+
 TEST(ReplCommandsTest, wave264_finance_ratio_metrics) {
     Interpreter interp;
     expect_contains(interp, "help", "finance_treynor(returns,risk_free,beta)");
