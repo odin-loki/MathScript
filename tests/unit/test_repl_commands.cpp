@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "ms/cplx/cplx.hpp"
 #include "ms/control/control.hpp"
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
@@ -9469,4 +9470,22 @@ TEST(ReplCommandsTest, wave269_quantum_phase) {
     expect_ok(interp, "g2 = quantum_grover_search(2, [1])");
     ASSERT_GT(interp.state().matrices.count("g2"), 0u);
     EXPECT_EQ(interp.state().matrices.at("g2").rows(), 4u);
+}
+
+TEST(ReplCommandsTest, wave269_cplx_ode_cfd1d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cfd_advection1d(nx,vx,t_end,dt)");
+    expect_contains(interp, "help", "cplx_green_function_disk(zre,zim,z0re,z0im");
+    expect_contains(interp, "help", "ode_adams_bashforth2(");
+
+    expect_ok(interp, "U = cfd_advection1d(20, 1.0, 0.5, 0.01)");
+    ASSERT_GT(interp.state().matrices.count("U"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("U").rows(), 20u);
+
+    expect_ok(interp, "g = cplx_green_function_disk(0.5, 0, 0, 0)");
+    EXPECT_GT(interp.state().scalars.at("g"), 0.0);
+
+    expect_ok(interp, "ab = ode_adams_bashforth2(\"-y\", 0, 1, 1, 10)");
+    ASSERT_GT(interp.state().matrices.count("ab"), 0u);
+    EXPECT_GE(interp.state().matrices.at("ab").rows(), 2u);
 }
