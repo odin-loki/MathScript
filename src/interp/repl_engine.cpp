@@ -1,4 +1,5 @@
-#include "ms/distributed/dist_matrix.hpp"
+﻿            "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_ks_norm(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
+include "ms/distributed/dist_matrix.hpp"
 #include "ms/distributed/iterative.hpp"
 #include "ms/distributed/matmul.hpp"
 #include "ms/distributed/mpi_context.hpp"
@@ -1511,7 +1512,7 @@ Result<Matrix<double>> eval_finance_bl_posterior_returns(
             "finance_bl_posterior_returns",
             "expected P to have n columns matching covariance size"});
     }
-    // P is k×n (views × assets), not square — flatten row-major without the
+    // P is kÃ—n (views Ã— assets), not square â€” flatten row-major without the
     // square-matrix helper used for covariance.
     std::vector<double> P(static_cast<size_t>(k) * static_cast<size_t>(n));
     for (int i = 0; i < k; ++i) {
@@ -4306,7 +4307,7 @@ Result<Matrix<double>> eval_quantum_schrodinger_final(const Matrix<double>& H_m,
     const auto traj = quantum::schrodinger(*H, *psi0, t0, t1, n_steps);
     if (traj.empty()) {
         return std::unexpected(
-            DomainError{"quantum_schrodinger_final", "empty Schrödinger trajectory"});
+            DomainError{"quantum_schrodinger_final", "empty SchrÃ¶dinger trajectory"});
     }
     Matrix<double> out(psi0->size(), 1);
     for (size_t i = 0; i < psi0->size(); ++i) {
@@ -8502,6 +8503,21 @@ Result<double> eval_stats_ztest(const Matrix<double>& x_m, double mu, double sig
     return ztest(*x, mu, sigma);
 }
 
+Result<double> eval_stats_ks_norm(const Matrix<double>& x_m, double mu, double sigma) {
+    auto x = matrix_to_coeff_vector(x_m, "stats_ks_norm");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    if (x->empty()) {
+        return std::unexpected(DomainError{"stats_ks_norm", "expected non-empty vector"});
+    }
+    const double mu_copy = mu;
+    const double sigma_copy = sigma;
+    return ks_test(*x, [mu_copy, sigma_copy](double t) {
+        return norm_cdf(t, mu_copy, sigma_copy);
+    });
+}
+
 Result<Matrix<double>> eval_stats_acf(const Matrix<double>& x_m, int max_lag) {
     auto x = matrix_to_coeff_vector(x_m, "stats_acf");
     if (!x) {
@@ -8932,10 +8948,10 @@ Result<Matrix<double>> eval_stats_wilcoxon_signed_rank(const Matrix<double>& x_m
 }
 
 Result<Matrix<double>> eval_stats_friedman(const Matrix<double>& data_m) {
-    // Blocks × treatments: each ROW is one block (same layout as friedman(data)).
+    // Blocks Ã— treatments: each ROW is one block (same layout as friedman(data)).
     if (data_m.rows() < 2 || data_m.cols() < 2) {
         return std::unexpected(
-            DomainError{"stats_friedman", "expected blocks×treatments matrix (>=2 rows, >=2 cols)"});
+            DomainError{"stats_friedman", "expected blocksÃ—treatments matrix (>=2 rows, >=2 cols)"});
     }
     std::vector<std::vector<double>> data;
     data.reserve(data_m.rows());
@@ -12574,7 +12590,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "info_conditional_entropy" || fn == "info_sample_entropy" ||
             fn == "info_permutation_entropy" || fn == "info_transfer_entropy" ||
             fn == "geo_kdtree_nearest" || fn == "geo_kdtree_3d_nearest" ||
-            fn == "stats_ztest" || fn == "stats_bootstrap_mean" ||
+            fn == "stats_ztest" || fn == "stats_ks_norm" || fn == "stats_bootstrap_mean" ||
             fn == "stats_partial_correlation" || fn == "stats_weighted_correlation" ||
             fn == "finance_binomial_call" ||
             fn == "finance_binomial_put" || fn == "finance_geo_asian_call" ||
@@ -16599,7 +16615,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         if (!gray) {
             return std::unexpected(gray.error());
         }
-        // Marker labels are integer IDs, not intensities — do not apply 0..255 scaling.
+        // Marker labels are integer IDs, not intensities â€” do not apply 0..255 scaling.
         if (markers_m->rows() == 0 || markers_m->cols() == 0) {
             return std::unexpected(DomainError{"watershed", "empty markers matrix"});
         }
@@ -18583,7 +18599,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         if (sino.empty() || sino[0].empty()) {
             result = Matrix<double>(0, 0);
         } else {
-            // Sinogram as rows (projection bins) × angles (columns).
+            // Sinogram as rows (projection bins) Ã— angles (columns).
             Matrix<double> out(sino[0].size(), sino.size());
             for (size_t ti = 0; ti < sino.size(); ++ti) {
                 for (size_t ri = 0; ri < sino[ti].size(); ++ri) {
@@ -21825,7 +21841,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = radon(M,theta)    Radon transform; sinogram rows x angles\n"
             "  name = iradon(S,theta)   inverse Radon from sinogram matrix S\n"
             "  name = imflip(M,horizontal) flip grayscale matrix (horizontal 0/1)\n"
-            "  name = imrotate90(M)     rotate grayscale matrix 90° CCW\n"
+            "  name = imrotate90(M)     rotate grayscale matrix 90Â° CCW\n"
             "  name = threshold_binary(M,t) binary threshold at t on grayscale matrix\n"
             "  name = adapthisteq(M)    CLAHE on grayscale matrix (tile=8, clip=0.01)\n"
             "  name = label_components(B) connected-component labels on binary matrix (-1 bg)\n"
@@ -21858,7 +21874,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_accuracy(p,t)  ML accuracy on Nx1 prediction/label vectors\n"
             "  name = ml_rmse(p,t)      ML RMSE on Nx1 vectors\n"
             "  name = ml_mse(p,t)       ML MSE on Nx1 vectors\n"
-            "  name = ml_r2(p,t)        ML R² on Nx1 vectors\n"
+            "  name = ml_r2(p,t)        ML RÂ² on Nx1 vectors\n"
             "  name = ml_f1(p,t)        ML F1 on binary Nx1 vectors\n"
             "  name = ml_precision(p,t) ML precision on binary Nx1 vectors\n"
             "  name = ml_recall(p,t)    ML recall on binary Nx1 vectors\n"
@@ -21915,7 +21931,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_eulerian_path(A) Euler path vertex order of undirected graph as Nx1 column\n"
             "  name = graph_is_isomorphic(A,B) 1 if undirected graphs A and B are isomorphic else 0\n"
             "  name = graph_hamiltonian_path(A) Hamiltonian path vertex order as Nx1 column\n"
-            "  name = graph_tsp_heuristic(D) TSP tour vertex order from n×n distance matrix as Nx1 column\n"
+            "  name = graph_tsp_heuristic(D) TSP tour vertex order from nÃ—n distance matrix as Nx1 column\n"
             "  name = graph_floyd_warshall(A) all-pairs shortest-path distance matrix\n"
             "  name = graph_dijkstra(A,source) single-source shortest paths as Nx2 [dist, parent]\n"
             "  name = graph_bellman_ford(A,source) single-source shortest paths as Nx2 [dist, parent]\n"
@@ -21961,7 +21977,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_poly_intersect(A,B) convex polygon intersection Mx2 from Nx2 vertices\n"
             "  name = geo_poly_diff(A,B) convex polygon difference A\\B Mx2 from Nx2 vertices\n"
             "  name = geo_minkowski_sum(A,B) Minkowski sum of convex polygons Mx2 from Nx2 vertices\n"
-            "  name = geo_clip_polygon(A,B) clip Nx2 subject against Mx2 convex window → Kx2\n"
+            "  name = geo_clip_polygon(A,B) clip Nx2 subject against Mx2 convex window â†’ Kx2\n"
             "  name = geo_min_bounding_rect(P) min-area OBB as 5x1 [cx;cy;width;height;angle_rad]\n"
             "  name = geo_kdtree_nearest(P,x,y) nearest point index in Nx2 set to query (x,y)\n"
             "  name = geo_kdtree_3d_nearest(P,x,y,z) nearest point index in Nx3 set to query (x,y,z)\n"
@@ -21975,7 +21991,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r) 1 if ray hits sphere else 0\n"
             "  name = geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz) 1 if ray hits AABB else 0\n"
             "  name = geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz) 1 if ray hits triangle else 0\n"
-            "  name = geo_dist_point_plane(px,py,pz,nx,ny,nz,d) point-to-plane distance (n·p+d=0)\n"
+            "  name = geo_dist_point_plane(px,py,pz,nx,ny,nz,d) point-to-plane distance (nÂ·p+d=0)\n"
             "  name = geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2) point-to-segment distance in 3D\n"
             "  name = combo_nchoosek(n,k) binomial coefficient C(n,k)\n"
             "  name = combo_binomial(n,k) binomial coefficient C(n,k)\n"
@@ -21999,17 +22015,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = combo_next_comb(v,n) lexicographic next k-combination in n\n"
             "  name = combo_prev_comb(v,n) lexicographic previous k-combination in n\n"
             "  name = combo_rank_combination(v,n) rank of k-combination vector v in n\n"
-            "  name = combo_derangements(n) all derangements of 0..n-1 as k×n int matrix\n"
-            "  name = combo_all_permutations(n) all permutations of 0..n-1 as n!×n int matrix\n"
-            "  name = combo_all_subsets(n) all subsets of {0..n-1} as 2^n×n int matrix\n"
-            "  name = combo_all_compositions(n) all compositions of n as r×k int matrix (zero-padded)\n"
-            "  name = combo_all_partitions(n) all partitions of n as r×k int matrix (zero-padded)\n"
-            "  name = combo_gray_code(n) binary reflected Gray codes as 2^n×n matrix (MSB-first 0/1 rows)\n"
-            "  name = combo_dyck_paths(n) all Dyck paths as Catalan×2n matrix (+1 up, -1 down steps)\n"
-            "  name = combo_necklaces(n,k) distinct necklaces of length n over k colors as K×n 0/1 matrix\n"
-            "  name = combo_bracelets(n,k) distinct bracelets of length n over k colors as K×n 0/1 matrix\n"
-            "  name = combo_lyndon_words(n,k) Lyndon words of length n over k colors as L×n 0/1 matrix\n"
-            "  name = combo_de_bruijn_sequence(k,n) De Bruijn sequence B(k,n) as k^n×1 column\n"
+            "  name = combo_derangements(n) all derangements of 0..n-1 as kÃ—n int matrix\n"
+            "  name = combo_all_permutations(n) all permutations of 0..n-1 as n!Ã—n int matrix\n"
+            "  name = combo_all_subsets(n) all subsets of {0..n-1} as 2^nÃ—n int matrix\n"
+            "  name = combo_all_compositions(n) all compositions of n as rÃ—k int matrix (zero-padded)\n"
+            "  name = combo_all_partitions(n) all partitions of n as rÃ—k int matrix (zero-padded)\n"
+            "  name = combo_gray_code(n) binary reflected Gray codes as 2^nÃ—n matrix (MSB-first 0/1 rows)\n"
+            "  name = combo_dyck_paths(n) all Dyck paths as CatalanÃ—2n matrix (+1 up, -1 down steps)\n"
+            "  name = combo_necklaces(n,k) distinct necklaces of length n over k colors as KÃ—n 0/1 matrix\n"
+            "  name = combo_bracelets(n,k) distinct bracelets of length n over k colors as KÃ—n 0/1 matrix\n"
+            "  name = combo_lyndon_words(n,k) Lyndon words of length n over k colors as LÃ—n 0/1 matrix\n"
+            "  name = combo_de_bruijn_sequence(k,n) De Bruijn sequence B(k,n) as k^nÃ—1 column\n"
             "  name = combo_motzkin_paths(n) all Motzkin paths as Mxn matrix (+1 U, -1 D, 0 F steps)\n"
             "  name = combo_set_partitions(n) all set partitions of {0..n-1} as Bxn block-label matrix\n"
             "  name = combo_restricted_partitions(n,k) partitions of n into exactly k parts as rows (zero-padded)\n"
@@ -22025,7 +22041,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_isprime(n)   1 if n is prime else 0\n"
             "  name = numthy_is_carmichael(n) 1 if n is a Carmichael number else 0\n"
             "  name = numthy_euler_phi(n) Euler totient phi(n)\n"
-            "  name = numthy_mobius(n)    Möbius function mu(n): -1, 0, or 1\n"
+            "  name = numthy_mobius(n)    MÃ¶bius function mu(n): -1, 0, or 1\n"
             "  name = numthy_nextprime(n) smallest prime strictly greater than n\n"
             "  name = numthy_prevprime(n) largest prime strictly less than n (0 if none)\n"
             "  name = numthy_liouville(n) Liouville function lambda(n): -1 or 1\n"
@@ -22035,7 +22051,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = numthy_prime_nth(n) nth prime (1-indexed)\n"
             "  name = numthy_legendre_symbol(a,p) Legendre symbol (a/p), p odd prime\n"
             "  name = numthy_kronecker_symbol(a,n) Kronecker symbol (a/n)\n"
-            "  name = numthy_tonelli_shanks(n,p) modular square root x with x^2 ≡ n (mod p)\n"
+            "  name = numthy_tonelli_shanks(n,p) modular square root x with x^2 â‰¡ n (mod p)\n"
             "  name = numthy_mod_inv(a,m) modular inverse a^(-1) mod m\n"
             "  name = numthy_extended_gcd(a,b) extended GCD gcd(a,b)\n"
             "  name = numthy_crt(r,m) Chinese remainder theorem on remainder/modulus vectors\n"
@@ -22111,6 +22127,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = stats_min_value(x) minimum of Nx1 vector\n"
             "  name = stats_ttest(x,mu) one-sample t-test statistic vs hypothesized mean mu\n"
             "  name = stats_ztest(x,mu,sigma) one-sample z-test statistic vs mean mu with known sigma\n"
+            "  name = stats_ks_norm(x,mu,sigma) one-sample KS test vs N(mu,sigma); returns D statistic\n"
             "  name = stats_acf(x,max_lag) autocorrelation function as (max_lag+1)x1 column\n"
             "  name = stats_linear_regression(x,y) OLS fit as 1x3 [slope, intercept, r_squared]\n"
             "  name = stats_pacf(x,max_lag) partial autocorrelation as (max_lag+1)x1 column\n"
@@ -22145,23 +22162,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_butterworth(x,cutoff,fs) Butterworth lowpass filter of Nx1 signal\n"
             "  name = signal_highpass(x,cutoff,fs) highpass filter of Nx1 signal\n"
             "  name = signal_bandpass(x,low,high,fs) bandpass filter of Nx1 signal\n"
-            "  name = signal_cheby1(order,rp_db,cutoff,fs[,type]) Chebyshev I IIR coeffs as 2×N [b;a]\n"
-            "  name = signal_cheby2(order,rs_db,cutoff,fs[,type]) Chebyshev II IIR coeffs as 2×N [b;a]\n"
-            "  name = signal_firwin(n_taps,cutoff[,window]) windowed-sinc FIR lowpass taps as N×1\n"
-            "  name = signal_firwin_highpass(n_taps,cutoff[,window]) FIR highpass taps as N×1 (odd N)\n"
-            "  name = signal_periodogram(x,fs) single-segment PSD as N×2 [freq,power]\n"
-            "  name = signal_welch_psd(x,fs,nperseg) Welch PSD as N×2 [freq,power]\n"
-            "  name = signal_coherence(x,y,fs,nperseg) magnitude-squared coherence as N×2 [freq,coherence]\n"
-            "  name = signal_lms(x,d,filter_length,mu) LMS adaptive filter as N×2 [output,error]\n"
-            "  name = signal_lms_weights(x,d,filter_length,mu) final LMS FIR weights as L×1\n"
+            "  name = signal_cheby1(order,rp_db,cutoff,fs[,type]) Chebyshev I IIR coeffs as 2Ã—N [b;a]\n"
+            "  name = signal_cheby2(order,rs_db,cutoff,fs[,type]) Chebyshev II IIR coeffs as 2Ã—N [b;a]\n"
+            "  name = signal_firwin(n_taps,cutoff[,window]) windowed-sinc FIR lowpass taps as NÃ—1\n"
+            "  name = signal_firwin_highpass(n_taps,cutoff[,window]) FIR highpass taps as NÃ—1 (odd N)\n"
+            "  name = signal_periodogram(x,fs) single-segment PSD as NÃ—2 [freq,power]\n"
+            "  name = signal_welch_psd(x,fs,nperseg) Welch PSD as NÃ—2 [freq,power]\n"
+            "  name = signal_coherence(x,y,fs,nperseg) magnitude-squared coherence as NÃ—2 [freq,coherence]\n"
+            "  name = signal_lms(x,d,filter_length,mu) LMS adaptive filter as NÃ—2 [output,error]\n"
+            "  name = signal_lms_weights(x,d,filter_length,mu) final LMS FIR weights as LÃ—1\n"
             "  name = signal_spectrogram(x,fs) STFT magnitude (rows=time, cols=freq; seg=min(256,N))\n"
-            "  name = signal_envelope(x) amplitude envelope |hilbert(x)| as N×1 column\n"
-            "  name = signal_hilbert(x) analytic signal as N×2 [re,im] matrix\n"
-            "  name = signal_czt(x,m,w_re,w_im,a_re,a_im) Chirp Z-Transform as M×2 [re,im]\n"
-            "  name = signal_czt_zoom(x,f_start,f_stop,m,fs) zoom-FFT via CZT as M×2 [re,im]\n"
-            "  name = signal_instantaneous_phase(x) instantaneous phase as N×1 column\n"
-            "  name = signal_unwrap(x) NumPy-style phase unwrap as N×1 column\n"
-            "  name = signal_instantaneous_freq(x,fs) instantaneous frequency as N×1 column\n"
+            "  name = signal_envelope(x) amplitude envelope |hilbert(x)| as NÃ—1 column\n"
+            "  name = signal_hilbert(x) analytic signal as NÃ—2 [re,im] matrix\n"
+            "  name = signal_czt(x,m,w_re,w_im,a_re,a_im) Chirp Z-Transform as MÃ—2 [re,im]\n"
+            "  name = signal_czt_zoom(x,f_start,f_stop,m,fs) zoom-FFT via CZT as MÃ—2 [re,im]\n"
+            "  name = signal_instantaneous_phase(x) instantaneous phase as NÃ—1 column\n"
+            "  name = signal_unwrap(x) NumPy-style phase unwrap as NÃ—1 column\n"
+            "  name = signal_instantaneous_freq(x,fs) instantaneous frequency as NÃ—1 column\n"
             "  name = signal_convolve(a,b) discrete convolution of Nx1 vectors\n"
             "  name = signal_conv2(A,K) 2D convolution of matrices A and K\n"
             "  name = signal_deconv(y,b) polynomial deconvolution of Nx1 vectors\n"
@@ -22172,13 +22189,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = signal_filtfilt(b,a,x) zero-phase filtfilt of Nx1 signal with b,a coeffs\n"
             "  name = signal_filter(b,a,x) causal filter of Nx1 signal with b,a coeffs\n"
             "  name = signal_sosfilt(sos,x) SOS filter of Nx1 signal with Kx6 SOS matrix\n"
-            "  name = signal_hamming(n) Hamming window as n×1 column\n"
-            "  name = signal_hanning(n) Hanning window as n×1 column\n"
-            "  name = signal_blackman(n) Blackman window as n×1 column\n"
-            "  name = signal_parzen(n) Parzen window as n×1 column\n"
-            "  name = signal_triangular(n) triangular window as n×1 column\n"
+            "  name = signal_hamming(n) Hamming window as nÃ—1 column\n"
+            "  name = signal_hanning(n) Hanning window as nÃ—1 column\n"
+            "  name = signal_blackman(n) Blackman window as nÃ—1 column\n"
+            "  name = signal_parzen(n) Parzen window as nÃ—1 column\n"
+            "  name = signal_triangular(n) triangular window as nÃ—1 column\n"
             "  name = pde_heat_1d(x0,alpha,dx,dt,steps) 1D heat equation final state column\n"
-            "  name = pde_heat_2d(u0,alpha,dx,dy,dt,steps) 2D heat equation final grid (rows×cols)\n"
+            "  name = pde_heat_2d(u0,alpha,dx,dy,dt,steps) 2D heat equation final grid (rowsÃ—cols)\n"
             "  name = pde_wave_1d(u0,v0,c,dx,dt,steps) 1D wave equation final state column\n"
             "  name = pde_advection_1d(u0,v,dx,dt,steps) 1D advection final state column\n"
             "  name = pde_poisson_2d(f,dx,dy,max_iterations,tolerance) 2D Poisson solution grid\n"
@@ -22256,11 +22273,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = fft_rfft(x) real FFT spectrum as Nx2 [re,im] matrix\n"
             "  name = fftshift(S) cyclic shift of Nx2 complex spectrum\n"
             "  name = ifftshift(S) inverse cyclic shift of Nx2 complex spectrum\n"
-            "  name = fftfreq(n[,d]) FFT frequency bins as n×1 column (d=1 default)\n"
+            "  name = fftfreq(n[,d]) FFT frequency bins as nÃ—1 column (d=1 default)\n"
             "  name = rfftfreq(n[,d]) rFFT frequency bins as column (d=1 default)\n"
             "  name = fft_dft(x) discrete Fourier transform as Nx2 [re,im] matrix\n"
             "  name = fft_goertzel(x,f,fs) single-bin Goertzel DFT as 1x2 [re,im]\n"
-            "  name = fft_irfft(spectrum,n) inverse real FFT from Nx2 spectrum to n×1 column\n"
+            "  name = fft_irfft(spectrum,n) inverse real FFT from Nx2 spectrum to nÃ—1 column\n"
             "  name = fft_ifft(spectrum) inverse FFT from Nx2 spectrum to Nx1 column\n"
             "  name = fft_fft2(S) 2D FFT from Nx2 complex spectrum to Nx2 spectrum\n"
             "  name = ifft2(S) 2D inverse FFT from Nx2 complex spectrum to Nx2 spectrum\n"
@@ -22277,7 +22294,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = levenberg_marquardt(\"r0;r1;...\",x0[,max_iter[,tol]]) nonlinear least squares (env {x0,x1,...})\n"
             "  name = numthy_is_primitive_root(g,p) 1 if g is primitive root mod p else 0\n"
             "  name = numthy_primitive_root(p) smallest primitive root mod prime p\n"
-            "  name = numthy_discrete_log(g,h,p) discrete log x with g^x ≡ h (mod p)\n"
+            "  name = numthy_discrete_log(g,h,p) discrete log x with g^x â‰¡ h (mod p)\n"
             "  name = numthy_jacobi_symbol(a,n) Jacobi symbol (a/n), n positive odd\n"
             "  name = control_step_final(num,den) final step-response sample\n"
             "  name = control_impulse_final(num,den) final impulse-response sample\n"
@@ -22517,8 +22534,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_uncertainty(psi,A,B) uncertainty product Delta(A)*Delta(B)\n"
             "  name = quantum_grover_optimal_iterations(n_qubits,n_marked) optimal Grover iterations\n"
             "  name = quantum_partial_trace(rho,d1,d2,subsystem) partial trace of NxN density matrix\n"
-            "  name = quantum_schrodinger(H,psi0,t0,t1,n_steps) Schrödinger trajectory (real parts)\n"
-            "  name = quantum_schrodinger_final(H,psi0,t0,t1,n_steps) final Schrödinger state column\n"
+            "  name = quantum_schrodinger(H,psi0,t0,t1,n_steps) SchrÃ¶dinger trajectory (real parts)\n"
+            "  name = quantum_schrodinger_final(H,psi0,t0,t1,n_steps) final SchrÃ¶dinger state column\n"
             "  name = quantum_time_evolution(H,t) time-evolution operator U(t) (real parts)\n"
             "  name = quantum_commutator(A,B) commutator [A,B] of NxN operators\n"
             "  name = info_entropy(p) Shannon entropy (bits) of Nx1 probability vector\n"
@@ -22550,8 +22567,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = info_rate_distortion_gaussian(variance,distortion) Gaussian rate-distortion R(D) in bits\n"
             "  name = cplx_joukowski(re,im) Joukowski transform magnitude\n"
             "  name = cplx_joukowski_inv(re,im) |z| of Joukowski inverse matching forward point\n"
-            "  name = cplx_hyperbolic_distance(z1re,z1im,z2re,z2im) Poincaré disk hyperbolic distance\n"
-            "  name = cplx_mobius_re(a,b,c,d,zre,zim) real part of Möbius transform (az+b)/(cz+d)\n"
+            "  name = cplx_hyperbolic_distance(z1re,z1im,z2re,z2im) PoincarÃ© disk hyperbolic distance\n"
+            "  name = cplx_mobius_re(a,b,c,d,zre,zim) real part of MÃ¶bius transform (az+b)/(cz+d)\n"
             "  name = cplx_poisson_kernel(theta,phi,r) Poisson kernel on unit disk\n"
             "  name = cplx_cross_ratio(z1re,z1im,z2re,z2im,z3re,z3im,z4re,z4im) cross ratio\n"
             "  name = cplx_power_series_eval(coeffs,zre,zim) Taylor series at z0=0\n"
@@ -22619,7 +22636,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_historical_var(returns,confidence), finance_historical_cvar(returns,confidence), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_merton_distance_to_default(V,sigma_v,D,r,T), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_ks_norm(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -25657,6 +25674,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "stats_ztest", "expected stats_ztest(x, mu, sigma)"});
                 }
                 auto value = eval_stats_ztest(*x_m, mu, sigma);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "stats_ks_norm") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "stats_ks_norm", "expected stats_ks_norm(x, mu, sigma)"});
+                }
+                auto x_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!x_m) {
+                    return std::unexpected(x_m.error());
+                }
+                double mu = 0.0;
+                double sigma = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), mu) ||
+                    !parse_number(trim_copy((*call_args)[2]), sigma)) {
+                    return std::unexpected(DomainError{
+                        "stats_ks_norm", "expected stats_ks_norm(x, mu, sigma)"});
+                }
+                auto value = eval_stats_ks_norm(*x_m, mu, sigma);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -29913,6 +29953,31 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "stats_ztest", "expected stats_ztest(x, mu, sigma)"});
             }
             auto value = eval_stats_ztest(*x_m, mu, sigma);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
+        if (fn == "stats_ks_norm") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto x_m = resolve_arg(trim(match[2].str()));
+            if (!x_m) {
+                return std::unexpected(x_m.error());
+            }
+            double mu = 0.0;
+            double sigma = 0.0;
+            if (!parse_number(trim(match[3].str()), mu) ||
+                !parse_number(trim(match[4].str()), sigma)) {
+                return std::unexpected(DomainError{
+                    "stats_ks_norm", "expected stats_ks_norm(x, mu, sigma)"});
+            }
+            auto value = eval_stats_ks_norm(*x_m, mu, sigma);
             if (!value) {
                 return std::unexpected(value.error());
             }

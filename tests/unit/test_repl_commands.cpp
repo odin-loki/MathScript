@@ -7724,3 +7724,14 @@ TEST(ReplCommandsTest, wave266_prob_chi2_exp_ppf) {
     EXPECT_NEAR(interp.state().scalars.at("cc"), 0.5, 1e-6);
     EXPECT_NEAR(ms::chi2_cdf(x_chi2, df), p_chi2, 1e-6);
 }
+
+TEST(ReplCommandsTest, wave266_stats_ks_norm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_ks_norm(x,mu,sigma)");
+
+    expect_ok(interp, "ksn = stats_ks_norm([0; 1; 2; 3; 4; 5; 6; 7], 0, 1)");
+    EXPECT_GT(interp.state().scalars.at("ksn"), 0.3);
+    EXPECT_LT(interp.state().scalars.at("ksn"), 1.0);
+
+    expect_ok(interp, "stats_ks_norm([0; 1; 2; 3; 4; 5; 6; 7], 0, 1)");
+}
