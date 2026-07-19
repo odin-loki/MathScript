@@ -7267,3 +7267,37 @@ TEST(ReplCommandsTest, wave264_info_channel_capacity) {
     EXPECT_NEAR(interp.state().scalars.at("cap"), 1.0 - h, 1e-4);
     expect_contains(interp, "info_channel_capacity([0.8, 0.2; 0.2, 0.8])", "0.278");
 }
+
+TEST(ReplCommandsTest, wave265_linalg_funm_precond) {
+    Interpreter interp;
+    expect_contains(interp, "help", "matrix_rank(A[, tol])");
+    expect_contains(interp, "help", "funm(A, \"sin\"|\"cos\"|\"exp\"|\"sqrt\")");
+    expect_contains(interp, "help", "precond_diag(A)");
+    expect_contains(interp, "help", "precond_ssor(A[, omega])");
+
+    expect_ok(interp, "A = [1, 2; 2, 4]");
+    expect_ok(interp, "r = matrix_rank(A)");
+    EXPECT_NEAR(interp.state().scalars.at("r"), 1.0, 1e-12);
+    expect_contains(interp, "matrix_rank([1, 2; 2, 4])", "1");
+
+    expect_ok(interp, "I2 = eye(2)");
+    expect_ok(interp, "S = funm(I2, \"sin\")");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 0), std::sin(1.0), 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(1, 1), std::sin(1.0), 1e-6);
+
+    expect_ok(interp, "A2 = [4, 0; 0, 2]");
+    expect_ok(interp, "Pd = precond_diag(A2)");
+    ASSERT_EQ(interp.state().matrices.at("Pd").rows(), 2u);
+    ASSERT_EQ(interp.state().matrices.at("Pd").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("Pd")(0, 0), 0.25, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Pd")(1, 0), 0.5, 1e-12);
+
+    expect_ok(interp, "M = [4, 1; 1, 3]");
+    expect_ok(interp, "Ps = precond_ssor(M, 1.2)");
+    ASSERT_EQ(interp.state().matrices.at("Ps").rows(), 2u);
+    ASSERT_EQ(interp.state().matrices.at("Ps").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 0), 4.0 / 1.2, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 3.0 / 1.2, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
+}

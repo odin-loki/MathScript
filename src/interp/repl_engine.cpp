@@ -11625,7 +11625,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "tfqmr" || fn == "lsmr" ||
             fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_lsqr" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
-            fn == "trace" || fn == "norm" || fn == "rank" || fn == "cond" || fn == "lu" ||
+            fn == "trace" || fn == "norm" || fn == "rank" || fn == "matrix_rank" ||
+            fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
             fn == "qr" || fn == "svd" || fn == "eig_sym" || fn == "eig" || fn == "ldl" ||
             fn == "hess" || fn == "schur" ||
@@ -11633,7 +11634,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "zeros" || fn == "eye" || fn == "ones" ||
             fn == "rand" || fn == "randn" || fn == "expm" || fn == "sqrtm" ||
             fn == "logm" || fn == "tril" || fn == "triu" || fn == "diag" || fn == "cosm" ||
-            fn == "sinm" || fn == "inv" ||
+            fn == "sinm" || fn == "funm" || fn == "precond_diag" || fn == "precond_ssor" ||
+            fn == "inv" ||
             fn == "pinv" || fn == "null" || fn == "orth" ||
             fn == "kron" || fn == "repmat" || fn == "linspace" ||
             fn == "rgb2gray" || fn == "gray2rgb" || fn == "rgb2hsv" || fn == "sobel" || fn == "prewitt" ||
@@ -13607,7 +13609,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "rand" || callee == "randn" ||
            callee == "expm" || callee == "sqrtm" || callee == "logm" ||
            callee == "tril" || callee == "triu" || callee == "diag" || callee == "cosm" ||
-           callee == "sinm" || callee == "inv" ||
+           callee == "sinm" || callee == "funm" || callee == "precond_diag" ||
+           callee == "precond_ssor" || callee == "inv" ||
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
            callee == "rgb2gray" || callee == "gray2rgb" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
@@ -14041,6 +14044,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "zeros" || callee == "eye" || callee == "ones") {
         return arity == 1 || arity == 2;
     }
+    if (callee == "funm") {
+        return arity == 2;
+    }
+    if (callee == "precond_diag") {
+        return arity == 1;
+    }
+    if (callee == "precond_ssor") {
+        return arity == 1 || arity == 2;
+    }
     if (callee == "linspace") {
         return arity == 3;
     }
@@ -14052,6 +14064,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
 
 bool is_scalar_matrix_call_callee(const std::string& callee) {
     return callee == "det" || callee == "trace" || callee == "norm" || callee == "rank" ||
+           callee == "matrix_rank" ||
            callee == "cond" || callee == "geo_convex_hull_area" || callee == "geo_polygon_area" ||
            callee == "geo_polygon_perimeter" || callee == "geo_signed_area" ||
            callee == "geo_moment_of_inertia" || callee == "geo_centroid_x" ||
@@ -14198,7 +14211,20 @@ bool Interpreter::try_parse_scalar_matrix_call_assignment(const std::string& lin
         return false;
     }
     const auto call_args = split_call_args(rhs);
-    if (!call_args || call_args->size() != 1) {
+    if (!call_args) {
+        return false;
+    }
+    if (assign.callee == "matrix_rank") {
+        if (call_args->size() != 1 && call_args->size() != 2) {
+            return false;
+        }
+        assign.arg = trim_copy(call_args->at(0));
+        if (call_args->size() == 2) {
+            assign.arg2 = trim_copy(call_args->at(1));
+        }
+        return !assign.arg.empty();
+    }
+    if (call_args->size() != 1) {
         return false;
     }
     assign.arg = trim_copy(call_args->front());
@@ -18686,6 +18712,72 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
         }
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail4(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "funm" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        std::string fn_name;
+        if (!parse_quoted_string(assign.args[1], fn_name)) {
+            return std::unexpected(
+                DomainError{"funm", "expected funm(A, \"sin\"|\"cos\"|\"exp\"|\"sqrt\")"});
+        }
+        fn_name = lower(trim_copy(fn_name));
+        if (fn_name == "sin") {
+            result = sinm(*matrix);
+        } else if (fn_name == "cos") {
+            result = cosm(*matrix);
+        } else if (fn_name == "exp") {
+            result = expm(*matrix);
+        } else if (fn_name == "sqrt") {
+            result = sqrtm(*matrix);
+        } else {
+            return std::unexpected(
+                DomainError{"funm", "expected \"sin\", \"cos\", \"exp\", or \"sqrt\""});
+        }
+    } else if (assign.callee == "precond_diag" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = vector_to_column(precond_diag(*matrix));
+    } else if (assign.callee == "precond_ssor" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double omega = 1.0;
+        if (assign.args.size() == 2) {
+            if (!parse_number(assign.args[1], omega)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    omega = it->second;
+                } else {
+                    return std::unexpected(
+                        DomainError{"precond_ssor", "expected precond_ssor(A[, omega])"});
+                }
+            }
+        }
+        result = precond_ssor(*matrix, omega);
+    }
     return result;
 }
 
@@ -19605,6 +19697,19 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
             return std::unexpected(ranked.error());
         }
         value = static_cast<double>(*ranked);
+    } else if (assign.callee == "matrix_rank") {
+        double tol = 1e-10;
+        if (!assign.arg2.empty()) {
+            if (!parse_number(assign.arg2, tol)) {
+                auto tol_expr = eval_scalar_expr(state_, assign.arg2);
+                if (!tol_expr) {
+                    return std::unexpected(
+                        DomainError{"matrix_rank", "expected matrix_rank(A[, tol])"});
+                }
+                tol = *tol_expr;
+            }
+        }
+        value = static_cast<double>(matrix_rank(*matrix, tol));
     } else if (assign.callee == "cond") {
         value = cond(*matrix);
     } else if (assign.callee == "geo_convex_hull_area") {
@@ -20502,6 +20607,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = tril(A[, k]) triu(A[, k])  lower/upper triangular extraction\n"
             "  name = diag(v)           diagonal matrix from column vector v\n"
             "  name = cosm(A) sinm(A)   matrix cosine / sine\n"
+            "  name = funm(A, \"sin\"|\"cos\"|\"exp\"|\"sqrt\")  matrix function via sinm/cosm/expm/sqrtm\n"
+            "  name = precond_diag(A)   Jacobi diagonal preconditioner column (1/diag(A))\n"
+            "  name = precond_ssor(A[, omega])  SSOR preconditioner matrix (default omega=1)\n"
+            "  matrix_rank(A[, tol])    numerical rank via SVD threshold (distinct from rank(A))\n"
             "  name = pinv(A) null(A) orth(A)  pseudo-inverse / null space / orthonormal basis\n"
             "  name = kron(A, B)        Kronecker product\n"
             "  name = repmat(A, p, q)   tile matrix p x q\n"
@@ -21271,8 +21380,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  plot([y...])  plot([x...], [y...])  scatter([x...], [y...])  hist([...])\n"
             "  imshow(matrix)  spy(matrix)  surf(matrix)\n"
             "  surf([x...], [y...], [z...])  show  saveplot <file.txt>\n"
-            "  det(A), trace(A), norm(A), rank(A), cond(A)\n"
-            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), diag(v), cosm(A), sinm(A), solve(A,B), lsq(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
+            "  det(A), trace(A), norm(A), rank(A), matrix_rank(A[, tol]), cond(A)\n"
+            "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), diag(v), cosm(A), sinm(A), funm(A,\"sin\"|\"cos\"|\"exp\"|\"sqrt\"), precond_diag(A), precond_ssor(A[,omega]), solve(A,B), lsq(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
@@ -32226,6 +32335,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(result.error());
             }
             out << *result << "\n";
+        } else if (fn == "matrix_rank") {
+            out << matrix_rank(*matrix) << "\n";
         } else if (fn == "cond") {
             auto result = cond(*matrix);
             if (!result) {
