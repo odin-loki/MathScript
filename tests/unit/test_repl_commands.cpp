@@ -9515,3 +9515,27 @@ TEST(ReplCommandsTest, wave269_diffgeo_presets) {
     expect_ok(interp, "gb_def = diffgeo_sphere_gauss_bonnet()");
     EXPECT_NEAR(interp.state().scalars.at("gb_def"), 4.0 * M_PI, 0.05 * 4.0 * M_PI);
 }
+
+TEST(ReplCommandsTest, wave270_special_voigt_weierstrass) {
+    Interpreter interp;
+    expect_contains(interp, "help", "special_pseudo_voigt(x,sigma,gamma,eta)");
+    expect_contains(interp, "help", "weierstrass_p(z,g2,g3)");
+    expect_contains(interp, "help", "weierstrass_pprime(z,g2,g3)");
+
+    const double pv_ref = ms::pseudo_voigt(0.0, 1.0, 0.5, 0.4);
+    expect_ok(interp, "pv = special_pseudo_voigt(0, 1, 0.5, 0.4)");
+    EXPECT_NEAR(interp.state().scalars.at("pv"), pv_ref, 1e-9);
+    expect_contains(interp, "special_pseudo_voigt(0, 1, 0.5, 0.4)", std::to_string(pv_ref));
+
+    const double wp_ref = ms::weierstrass_p(0.5, 1.0, 0.0);
+    EXPECT_NEAR(wp_ref, 4.012516276465522, 1e-3);
+    expect_ok(interp, "wp = weierstrass_p(0.5, 1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("wp"), wp_ref, 1e-3);
+    expect_contains(interp, "weierstrass_p(0.5, 1, 0)", "\n");
+
+    const double wpp_ref = ms::weierstrass_pprime(0.5, 1.0, 0.0);
+    EXPECT_NEAR(wpp_ref, -15.9498046875, 1e-2);
+    expect_ok(interp, "wpp = weierstrass_pprime(0.5, 1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("wpp"), wpp_ref, 1e-2);
+    expect_contains(interp, "weierstrass_pprime(0.5, 1, 0)", "\n");
+}
