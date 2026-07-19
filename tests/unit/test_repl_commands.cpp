@@ -7526,6 +7526,53 @@ TEST(ReplCommandsTest, wave265_special_orthog_bessel) {
     EXPECT_NEAR(interp.state().scalars.at("c"), c_ref, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave266_special_legendre_q_sph_harm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "legendre_q(n,x)");
+    expect_contains(interp, "help", "hermite_he(n,x)");
+    expect_contains(interp, "help", "laguerre_la(n,a,x)");
+    expect_contains(interp, "help", "chebyshev_v(n,x)");
+    expect_contains(interp, "help", "chebyshev_w(n,x)");
+    expect_contains(interp, "help", "sph_harm(l,m,theta,phi)");
+
+    const double q_ref = ms::legendre_q(2, 0.3);
+    EXPECT_TRUE(std::isfinite(q_ref));
+    expect_ok(interp, "q = legendre_q(2, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("q"), q_ref, 1e-9);
+    expect_contains(interp, "legendre_q(2, 0.3)", std::to_string(q_ref));
+
+    const double he_ref = ms::hermite_he(2, 0.5);
+    EXPECT_NEAR(he_ref, -0.75, 1e-12);
+    expect_ok(interp, "he = hermite_he(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("he"), he_ref, 1e-9);
+
+    const double la_ref = ms::laguerre_la(2, 1.0, 0.5);
+    EXPECT_NEAR(la_ref, 1.625, 1e-6);
+    expect_ok(interp, "la = laguerre_la(2, 1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("la"), la_ref, 1e-9);
+    expect_contains(interp, "laguerre_la(2, 1, 0.5)", std::to_string(la_ref));
+
+    const double v_ref = ms::chebyshev_v(2, 0.5);
+    EXPECT_NEAR(v_ref, 1.0, 1e-6);
+    expect_ok(interp, "v = chebyshev_v(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("v"), v_ref, 1e-9);
+
+    const double w_ref = ms::chebyshev_w(2, 0.5);
+    EXPECT_NEAR(w_ref, 0.5773502691896257, 1e-6);
+    expect_ok(interp, "w = chebyshev_w(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("w"), w_ref, 1e-9);
+
+    const std::complex<double> y_ref = ms::sph_harm_y(1, 1, 0.5, 1.0);
+    expect_ok(interp, "Y = sph_harm(1, 1, 0.5, 1)");
+    ASSERT_GT(interp.state().matrices.count("Y"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Y").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("Y").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("Y")(0, 0), y_ref.real(), 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("Y")(0, 1), y_ref.imag(), 1e-6);
+
+    expect_ok(interp, "sph_harm(1, 1, 0.5, 1)");
+}
+
 TEST(ReplCommandsTest, wave264_info_channel_capacity) {
     Interpreter interp;
     expect_contains(interp, "help", "info_blahut_arimoto(W)");
