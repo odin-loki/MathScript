@@ -958,6 +958,7 @@ Result<ml::KMeans> ml_kmeans_from_matrix(const Matrix<double>& model, const char
 }
 
 Matrix<double> grid_to_matrix(const std::vector<std::vector<double>>& grid);
+Matrix<double> int_vector_to_column(const std::vector<int>& values);
 
 Result<Matrix<double>> eval_ml_pca_fit(const Matrix<double>& X_m, int n_components) {
     auto X = matrix_to_ml_mat(X_m, "ml_pca_fit");
@@ -1036,6 +1037,135 @@ Result<double> eval_ml_kmeans_inertia(const Matrix<double>& X_m,
     km->labels_ = km->predict(*X);
     return km->inertia(*X);
 }
+
+Matrix<double> ml_gmm_to_matrix(const ml::GaussianMixture& gmm) {
+    const int K = static_cast<int>(gmm.means.size());
+    const int p = K > 0 ? static_cast<int>(gmm.means[0].size()) : 0;
+    Matrix<double> out(static_cast<size_t>(2 * K + 2), static_cast<size_t>(std::max(p, 1)));
+    out(0, 0) = static_cast<double>(K);
+    out(0, 1) = static_cast<double>(p);
+    out(0, 2) = gmm.log_likelihood;
+    for (int k = 0; k < K; ++k) {
+        for (int j = 0; j < p; ++j) {
+            out(static_cast<size_t>(1 + k), static_cast<size_t>(j)) =
+                gmm.means[static_cast<size_t>(k)][static_cast<size_t>(j)];
+            out(static_cast<size_t>(1 + K + k), static_cast<size_t>(j)) =
+                gmm.variances[static_cast<size_t>(k)][static_cast<size_t>(j)];
+        }
+        out(static_cast<size_t>(2 * K + 1), static_cast<size_t>(k)) =
+            gmm.weights[static_cast<size_t>(k)];
+    }
+    return out;
+}
+
+Result<ml::GaussianMixture> ml_gmm_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 3 || model.cols() < 1) {
+        return std::unexpected(DomainError{fn, "expected GMM model matrix"});
+    }
+    const int K = static_cast<int>(model(0, 0));
+    const int p = static_cast<int>(model(0, 1));
+    if (K < 1 || p < 1 || model.rows() != static_cast<size_t>(2 * K + 2) ||
+        model.cols() != static_cast<size_t>(p)) {
+        return std::unexpected(DomainError{fn, "invalid GMM model layout"});
+    }
+    ml::GaussianMixture gmm;
+    gmm.config.n_components = static_cast<size_t>(K);
+    gmm.log_likelihood = model(0, 2);
+    gmm.means.resize(static_cast<size_t>(K));
+    gmm.variances.resize(static_cast<size_t>(K));
+    gmm.weights.resize(static_cast<size_t>(K));
+    for (int k = 0; k < K; ++k) {
+        gmm.means[static_cast<size_t>(k)].resize(static_cast<size_t>(p));
+        gmm.variances[static_cast<size_t>(k)].resize(static_cast<size_t>(p));
+        for (int j = 0; j < p; ++j) {
+            gmm.means[static_cast<size_t>(k)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + k), static_cast<size_t>(j));
+            gmm.variances[static_cast<size_t>(k)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + K + k), static_cast<size_t>(j));
+        }
+        gmm.weights[static_cast<size_t>(k)] =
+            model(static_cast<size_t>(2 * K + 1), static_cast<size_t>(k));
+    }
+    return gmm;
+}
+
+Result<Matrix<double>> eval_ml_gmm_fit(const Matrix<double>& X_m, int n_components) {
+    auto X = matrix_to_ml_mat(X_m, "ml_gmm_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (X->empty()) {
+        return std::unexpected(DomainError{"ml_gmm_fit", "expected non-empty X"});
+    }
+    if (n_components < 1) {
+        return std::unexpected(DomainError{"ml_gmm_fit", "expected n_components >= 1"});
+    }
+    ml::GaussianMixture gmm;
+    gmm.config.n_components = static_cast<size_t>(n_components);
+    gmm.fit(*X);
+    return ml_gmm_to_matrix(gmm);
+}
+
+Result<Matrix<double>> eval_ml_gmm_predict(const Matrix<double>& X_m,
+                                         const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_gmm_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto gmm = ml_gmm_from_matrix(model_m, "ml_gmm_predict");
+    if (!gmm) {
+        return std::unexpected(gmm.error());
+    }
+    return vector_to_column(gmm->predict(*X));
+}
+
+Result<Matrix<double>> eval_ml_gmm_predict_proba(const Matrix<double>& X_m,
+                                               const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_gmm_predict_proba");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto gmm = ml_gmm_from_matrix(model_m, "ml_gmm_predict_proba");
+    if (!gmm) {
+        return std::unexpected(gmm.error());
+    }
+    return grid_to_matrix(gmm->predict_proba(*X));
+}
+
+Result<Matrix<double>> eval_ml_dbscan_fit(const Matrix<double>& X_m, double eps,
+                                          int min_samples) {
+    auto X = matrix_to_ml_mat(X_m, "ml_dbscan_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (X->empty()) {
+        return std::unexpected(DomainError{"ml_dbscan_fit", "expected non-empty X"});
+    }
+    if (min_samples < 1) {
+        return std::unexpected(DomainError{"ml_dbscan_fit", "expected min_samples >= 1"});
+    }
+    ml::DBSCAN db(eps, min_samples);
+    db.fit(*X);
+    return vector_to_column(db.labels_);
+}
+
+Result<Matrix<double>> eval_ml_spectral_clustering(const Matrix<double>& X_m, int k,
+                                                  double sigma, int n_neighbors) {
+    auto X = matrix_to_ml_mat(X_m, "ml_spectral_clustering");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (X->empty()) {
+        return std::unexpected(
+            DomainError{"ml_spectral_clustering", "expected non-empty X"});
+    }
+    if (k < 1) {
+        return std::unexpected(DomainError{"ml_spectral_clustering", "expected k >= 1"});
+    }
+    auto labels = ml::spectral_clustering(*X, k, sigma, n_neighbors);
+    return int_vector_to_column(labels);
+}
+
 
 Result<Matrix<double>> eval_ml_lasso_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
                                         double alpha) {
@@ -13765,8 +13895,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_lda_fit" || fn == "ml_lda_predict" || fn == "ml_lda_transform" ||
             fn == "ml_qda_fit" || fn == "ml_qda_predict" ||
             fn == "ml_svm_fit" || fn == "ml_svm_predict" ||
-            fn == "ml_pca_fit" || fn == "ml_pca_transform" || fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" || fn == "ml_kmeans_predict" || fn == "poly_deriv" ||
-            fn == "ml_lda_fit" || fn == "ml_lda_predict" || fn == "ml_lda_transform" || fn == "ml_pca_fit" || fn == "ml_pca_transform" || fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" || fn == "ml_kmeans_predict" || fn == "ml_decision_tree_fit" || fn == "ml_decision_tree_predict" || fn == "ml_random_forest_fit" || fn == "ml_random_forest_predict" || fn == "ml_adaboost_fit" || fn == "ml_adaboost_predict" || fn == "poly_deriv" ||
+            fn == "ml_pca_fit" || fn == "ml_pca_transform" || fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" || fn == "ml_kmeans_predict" ||
+            fn == "ml_decision_tree_fit" || fn == "ml_decision_tree_predict" || fn == "ml_random_forest_fit" || fn == "ml_random_forest_predict" || fn == "ml_adaboost_fit" || fn == "ml_adaboost_predict" ||
+            fn == "ml_gmm_fit" || fn == "ml_gmm_predict" || fn == "ml_gmm_predict_proba" || fn == "ml_dbscan_fit" || fn == "ml_spectral_clustering" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_cheb_eval" || fn == "poly_cheb_expand" ||
             fn == "poly_integ" || fn == "poly_add" ||
             fn == "poly_lagrange" || fn == "poly_interp_newton" ||
@@ -15788,6 +15919,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "ml_decision_tree_fit" || callee == "ml_decision_tree_predict" ||
            callee == "ml_random_forest_fit" || callee == "ml_random_forest_predict" ||
            callee == "ml_adaboost_fit" || callee == "ml_adaboost_predict" ||
+           callee == "ml_gmm_fit" || callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" ||
+           callee == "ml_dbscan_fit" || callee == "ml_spectral_clustering" ||
            callee == "poly_deriv" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "poly_roots" ||
            callee == "poly_fit" || callee == "poly_interp_hermite" ||
@@ -16019,10 +16152,10 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "ml_naive_bayes_fit" || callee == "ml_naive_bayes_predict" ||
         callee == "ml_lda_predict" ||
         callee == "ml_lda_transform" || callee == "ml_qda_predict" ||
-        callee == "ml_svm_predict" || callee == "ml_pca_transform" || callee == "ml_kmeans_predict" || callee == "geo_poly_union" ||
-        callee == "ml_lda_transform" || callee == "ml_pca_transform" || callee == "ml_kmeans_predict" ||
+        callee == "ml_svm_predict" || callee == "ml_pca_transform" || callee == "ml_kmeans_predict" ||
         callee == "ml_decision_tree_predict" || callee == "ml_random_forest_predict" ||
-        callee == "ml_adaboost_predict" || callee == "geo_poly_union" ||
+        callee == "ml_adaboost_predict" ||
+        callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" || callee == "geo_poly_union" ||
         callee == "geo_poly_intersect" || callee == "geo_poly_diff" ||
         callee == "geo_minkowski_sum" || callee == "geo_clip_polygon" ||
         callee == "stats_linear_regression" || callee == "stats_multiple_regression") {
@@ -16096,6 +16229,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "ml_random_forest_fit" || callee == "ml_adaboost_fit") {
         return arity == 2 || arity == 3 || arity == 4;
+    }
+    if (callee == "ml_gmm_fit") {
+        return arity == 1 || arity == 2;
+    }
+    if (callee == "ml_dbscan_fit") {
+        return arity == 3;
+    }
+    if (callee == "ml_spectral_clustering") {
+        return arity >= 2 && arity <= 4;
     }
     if (callee == "imflip" || callee == "threshold_binary" || callee == "watershed" ||
         callee == "radon" || callee == "iradon") {
@@ -22413,11 +22555,124 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             return std::unexpected(predicted.error());
         }
         result = *predicted;
+    } else if (assign.callee == "ml_gmm_fit" &&
+        (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        int n_components = 2;
+        if (assign.args.size() == 2) {
+            auto n_comp = parse_scalar_arg(assign.args[1], "ml_gmm_fit");
+            if (!n_comp) {
+                return std::unexpected(n_comp.error());
+            }
+            n_components = static_cast<int>(*n_comp);
+            if (n_components < 1 || *n_comp != n_components) {
+                return std::unexpected(
+                    DomainError{"ml_gmm_fit", "expected integer n_components >= 1"});
+            }
+        }
+        auto fitted = eval_ml_gmm_fit(*X, n_components);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_gmm_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_gmm_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_gmm_predict_proba" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto proba = eval_ml_gmm_predict_proba(*X, *model);
+        if (!proba) {
+            return std::unexpected(proba.error());
+        }
+        result = *proba;
+    } else if (assign.callee == "ml_dbscan_fit" && assign.args.size() == 3) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto eps = parse_scalar_arg(assign.args[1], "ml_dbscan_fit");
+        if (!eps) {
+            return std::unexpected(eps.error());
+        }
+        auto ms = parse_scalar_arg(assign.args[2], "ml_dbscan_fit");
+        if (!ms) {
+            return std::unexpected(ms.error());
+        }
+        const int min_samples = static_cast<int>(*ms);
+        if (min_samples < 1 || *ms != min_samples) {
+            return std::unexpected(
+                DomainError{"ml_dbscan_fit", "expected integer min_samples >= 1"});
+        }
+        auto labels = eval_ml_dbscan_fit(*X, *eps, min_samples);
+        if (!labels) {
+            return std::unexpected(labels.error());
+        }
+        result = *labels;
+    } else if (assign.callee == "ml_spectral_clustering" &&
+               (assign.args.size() >= 2 && assign.args.size() <= 4)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto k_arg = parse_scalar_arg(assign.args[1], "ml_spectral_clustering");
+        if (!k_arg) {
+            return std::unexpected(k_arg.error());
+        }
+        const int k = static_cast<int>(*k_arg);
+        if (k < 1 || *k_arg != k) {
+            return std::unexpected(
+                DomainError{"ml_spectral_clustering", "expected integer k >= 1"});
+        }
+        double sigma = 1.0;
+        int n_neighbors = 0;
+        if (assign.args.size() >= 3) {
+            auto sigma_arg = parse_scalar_arg(assign.args[2], "ml_spectral_clustering");
+            if (!sigma_arg) {
+                return std::unexpected(sigma_arg.error());
+            }
+            sigma = *sigma_arg;
+        }
+        if (assign.args.size() >= 4) {
+            auto nn_arg = parse_scalar_arg(assign.args[3], "ml_spectral_clustering");
+            if (!nn_arg) {
+                return std::unexpected(nn_arg.error());
+            }
+            n_neighbors = static_cast<int>(*nn_arg);
+            if (*nn_arg != n_neighbors) {
+                return std::unexpected(
+                    DomainError{"ml_spectral_clustering", "expected integer n_neighbors"});
+            }
+        }
+        auto labels = eval_ml_spectral_clustering(*X, k, sigma, n_neighbors);
+        if (!labels) {
+            return std::unexpected(labels.error());
+        }
+        result = *labels;
     }
 
     return result;
 }
-
 
 
 Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assign) {
@@ -24431,6 +24686,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_qda_predict(X,model) QDA class predictions on X\n"
             "  name = ml_svm_fit(X,y[,C[,gamma]]) fit Support Vector Machine (linear or RBF)\n"
             "  name = ml_svm_predict(X,model) SVM class predictions on X (+1/-1)\n"
+            "  name = ml_gmm_fit(X[,n_components]) fit Gaussian Mixture Model via EM\n"
+            "  name = ml_gmm_predict(X,model) GMM hard cluster labels on X\n"
+            "  name = ml_gmm_predict_proba(X,model) GMM component responsibilities on X\n"
+            "  name = ml_dbscan_fit(X,eps,min_samples) DBSCAN cluster labels (-1 noise)\n"
+            "  name = ml_spectral_clustering(X,k[,sigma[,n_neighbors]]) spectral clustering labels\n"
             "  name = ml_vec_norm(v)    Euclidean norm of Nx1 or 1xN vector\n"
             "  name = ml_vec_dot(a,b)   dot product of Nx1 or 1xN vectors\n"
             "  name = graph_pagerank(A) PageRank scores from NxN adjacency matrix\n"
@@ -25248,7 +25508,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
-            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model)\n"
+            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_gmm_fit(X[,n_components]), ml_gmm_predict(X,model), ml_gmm_predict_proba(X,model), ml_dbscan_fit(X,eps,min_samples), ml_spectral_clustering(X,k[,sigma[,n_neighbors]])\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
@@ -26723,6 +26983,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 print_matrix(out, *value);
                 return out.str();
             }
+            if (matrix_dual_call.callee == "ml_gmm_predict") {
+                auto value = eval_ml_gmm_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
             if (matrix_dual_call.callee == "ml_random_forest_predict") {
                 auto value = eval_ml_random_forest_predict(*arg_a_m, *arg_b_m);
                 if (!value) {
@@ -26736,6 +27007,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "ml_adaboost_predict") {
                 auto value = eval_ml_adaboost_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_gmm_predict_proba") {
+                auto value = eval_ml_gmm_predict_proba(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
