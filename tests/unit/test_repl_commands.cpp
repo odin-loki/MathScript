@@ -7328,3 +7328,32 @@ TEST(ReplCommandsTest, wave264_info_channel_capacity) {
     EXPECT_NEAR(interp.state().scalars.at("cap"), 1.0 - h, 1e-4);
     expect_contains(interp, "info_channel_capacity([0.8, 0.2; 0.2, 0.8])", "0.278");
 }
+
+TEST(ReplCommandsTest, wave265_graph_info) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_connected_components(A)");
+    expect_contains(interp, "help", "graph_is_planar(A)");
+    expect_contains(interp, "help", "info_normalized_entropy(p)");
+    expect_contains(interp, "help", "info_channel_capacity_input(W)");
+
+    expect_ok(interp, "A = [0,1,0,0; 1,0,0,0; 0,0,0,1; 0,0,1,0]");
+    expect_ok(interp, "cc = graph_connected_components(A)");
+    ASSERT_GT(interp.state().matrices.count("cc"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cc").rows(), 2u);
+
+    expect_ok(interp, "P = [0,1,0; 1,0,1; 0,1,0]");
+    expect_ok(interp, "pl = graph_is_planar(P)");
+    EXPECT_NEAR(interp.state().scalars.at("pl"), 1.0, 1e-9);
+    expect_contains(interp, "graph_is_planar([0,1,0; 1,0,1; 0,1,0])", "1");
+
+    expect_ok(interp, "h = info_normalized_entropy([0.25; 0.25; 0.25; 0.25])");
+    EXPECT_NEAR(interp.state().scalars.at("h"), 1.0, 1e-6);
+    expect_contains(interp, "info_normalized_entropy([0.25; 0.25; 0.25; 0.25])", "1");
+
+    expect_ok(interp, "W = [0.8, 0.2; 0.2, 0.8]");
+    expect_ok(interp, "pin = info_channel_capacity_input(W)");
+    ASSERT_GT(interp.state().matrices.count("pin"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pin").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pin")(0, 0), 0.5, 1e-3);
+    EXPECT_NEAR(interp.state().matrices.at("pin")(1, 0), 0.5, 1e-3);
+}
