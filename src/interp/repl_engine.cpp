@@ -2294,6 +2294,33 @@ Result<tensorops::Tensor> matrix_to_tensor(const Matrix<double>& m, const char* 
                              std::move(data));
 }
 
+Result<tensorops::Tensor> matrix_to_tensor_shaped(const Matrix<double>& m,
+                                                  const std::vector<int>& shape,
+                                                  const char* fn) {
+    if (shape.empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty tensor shape"});
+    }
+    long numel = 1;
+    for (int dim : shape) {
+        if (dim < 1) {
+            return std::unexpected(DomainError{fn, "expected positive tensor shape dimensions"});
+        }
+        numel *= dim;
+    }
+    if (static_cast<size_t>(numel) != m.rows() * m.cols()) {
+        return std::unexpected(
+            DomainError{fn, "matrix element count must match tensor shape product"});
+    }
+    std::vector<double> data;
+    data.reserve(static_cast<size_t>(numel));
+    for (size_t i = 0; i < m.rows(); ++i) {
+        for (size_t j = 0; j < m.cols(); ++j) {
+            data.push_back(m(i, j));
+        }
+    }
+    return tensorops::Tensor(shape, std::move(data));
+}
+
 Result<double> eval_finance_npv(double rate, const Matrix<double>& cashflows_m) {
     auto cashflows = matrix_to_coeff_vector(cashflows_m, "finance_npv");
     if (!cashflows) {
@@ -15042,6 +15069,12 @@ const char* session_object_kind_name(const SessionObject& object) {
     if (std::holds_alternative<tensorops::CPDecomposition>(object)) {
         return "cp";
     }
+    if (std::holds_alternative<tensorops::NMFDecomposition>(object)) {
+        return "nmf";
+    }
+    if (std::holds_alternative<tensorops::TTDecomposition>(object)) {
+        return "tt";
+    }
     return "tucker";
 }
 
@@ -15067,6 +15100,12 @@ const char* session_object_type_label() {
     }
     if constexpr (std::is_same_v<T, tensorops::TuckerDecomposition>) {
         return "TuckerDecomposition";
+    }
+    if constexpr (std::is_same_v<T, tensorops::NMFDecomposition>) {
+        return "NMFDecomposition";
+    }
+    if constexpr (std::is_same_v<T, tensorops::TTDecomposition>) {
+        return "TTDecomposition";
     }
     return "session object";
 }
@@ -15163,8 +15202,10 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         fn != "cluster_run_election" && fn != "cluster_replicate" &&
         fn != "cluster_current_leader" && fn != "cluster_status" &&
         fn != "tensorops_decompose_cp" && fn != "tensorops_decompose_tucker" &&
-        fn != "tensorops_decompose_hosvd" && fn != "tensorops_reconstruct_cp" &&
-        fn != "tensorops_reconstruct_tucker" &&
+        fn != "tensorops_decompose_hosvd" && fn != "tensorops_decompose_nmf" &&
+        fn != "tensorops_decompose_tt" && fn != "tensorops_reconstruct_cp" &&
+        fn != "tensorops_reconstruct_tucker" && fn != "tensorops_reconstruct_nmf" &&
+        fn != "tensorops_reconstruct_tt" &&
         fn != "session_objects" && fn != "session_object_clear") {
         return std::nullopt;
     }
@@ -15975,6 +16016,143 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(tucker_check.error());
         }
         const tensorops::Tensor reconstructed = tensorops::reconstruct_tucker(*tucker);
+        std::ostringstream out;
+        print_matrix(out, tensor_to_matrix(reconstructed));
+        return out.str();
+    }
+
+    if (fn == "tensorops_decompose_nmf") {
+        if (call_args->size() != 3 && call_args->size() != 5) {
+            return std::unexpected(DomainError{
+                fn,
+                "expected tensorops_decompose_nmf(handle, V, rank) or "
+                "tensorops_decompose_nmf(handle, V, rank, max_iter, tol)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        auto matrix_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!matrix_m) {
+            return std::unexpected(matrix_m.error());
+        }
+        auto nested = matrix_to_nested(*matrix_m, fn.c_str());
+        if (!nested) {
+            return std::unexpected(nested.error());
+        }
+        double rank_d = 0.0;
+        if (!parse_number(trim_copy(call_args->at(2)), rank_d) || rank_d < 1.0 ||
+            std::floor(rank_d) != rank_d) {
+            return std::unexpected(DomainError{fn, "expected positive integer rank"});
+        }
+        int max_iter = 500;
+        double tol = 1e-6;
+        if (call_args->size() == 5) {
+            double max_iter_d = 0.0;
+            if (!parse_number(trim_copy(call_args->at(3)), max_iter_d) ||
+                !parse_number(trim_copy(call_args->at(4)), tol) || max_iter_d < 1.0 ||
+                std::floor(max_iter_d) != max_iter_d || tol <= 0.0) {
+                return std::unexpected(
+                    DomainError{fn, "expected positive integer max_iter and positive tol"});
+            }
+            max_iter = static_cast<int>(max_iter_d);
+        }
+        const auto nmf = tensorops::decompose_nmf(
+            *nested, static_cast<int>(rank_d), max_iter, tol);
+        if (!nmf) {
+            return std::unexpected(nmf.error());
+        }
+        session_objects_.emplace(handle, *nmf);
+        std::ostringstream out;
+        out << "created NMFDecomposition '" << handle << "' final_error=" << nmf->final_error
+            << "\n";
+        return out.str();
+    }
+
+    if (fn == "tensorops_decompose_tt") {
+        if (call_args->size() != 4) {
+            return std::unexpected(DomainError{
+                fn, "expected tensorops_decompose_tt(handle, T, shape, eps)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        if (session_objects_.contains(handle)) {
+            return std::unexpected(DomainError{fn, "session object already exists: " + handle});
+        }
+        auto matrix_m = resolve_matrix_arg(trim_copy(call_args->at(1)));
+        if (!matrix_m) {
+            return std::unexpected(matrix_m.error());
+        }
+        auto shape = parse_bracket_int_vector_literal(trim_copy(call_args->at(2)), fn.c_str());
+        if (!shape) {
+            return std::unexpected(shape.error());
+        }
+        if (static_cast<int>(shape->size()) < 3) {
+            return std::unexpected(
+                DomainError{fn, "expected tensor shape with order >= 3"});
+        }
+        auto tensor = matrix_to_tensor_shaped(*matrix_m, *shape, fn.c_str());
+        if (!tensor) {
+            return std::unexpected(tensor.error());
+        }
+        double eps = 0.0;
+        if (!parse_number(trim_copy(call_args->at(3)), eps) || eps < 0.0) {
+            return std::unexpected(DomainError{fn, "expected non-negative eps"});
+        }
+        const auto tt = tensorops::decompose_tt(*tensor, eps);
+        if (!tt) {
+            return std::unexpected(tt.error());
+        }
+        session_objects_.emplace(handle, *tt);
+        std::ostringstream out;
+        out << "created TTDecomposition '" << handle << "' epsilon=" << tt->epsilon << "\n";
+        return out.str();
+    }
+
+    if (fn == "tensorops_reconstruct_nmf") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected tensorops_reconstruct_nmf(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        tensorops::NMFDecomposition* nmf = nullptr;
+        auto nmf_check = require_session_object_type<tensorops::NMFDecomposition>(
+            session_objects_, handle, fn.c_str(), nmf);
+        if (!nmf_check) {
+            return std::unexpected(nmf_check.error());
+        }
+        const std::vector<std::vector<double>> reconstructed = tensorops::reconstruct_nmf(*nmf);
+        std::ostringstream out;
+        print_matrix(out, nested_to_matrix(reconstructed));
+        return out.str();
+    }
+
+    if (fn == "tensorops_reconstruct_tt") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected tensorops_reconstruct_tt(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        tensorops::TTDecomposition* tt = nullptr;
+        auto tt_check = require_session_object_type<tensorops::TTDecomposition>(
+            session_objects_, handle, fn.c_str(), tt);
+        if (!tt_check) {
+            return std::unexpected(tt_check.error());
+        }
+        const tensorops::Tensor reconstructed = tensorops::reconstruct_tt(*tt);
         std::ostringstream out;
         print_matrix(out, tensor_to_matrix(reconstructed));
         return out.str();
@@ -26707,8 +26885,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tensorops_decompose_cp(cp, T, rank) CP decomposition of 2D tensor (handle persists)\n"
             "  tensorops_decompose_tucker(tk, T, [r1,r2]) Tucker decomposition of 2D tensor (handle persists)\n"
             "  tensorops_decompose_hosvd(tk, T, [r1,r2]) HOSVD Tucker decomposition of 2D tensor (handle persists)\n"
+            "  tensorops_decompose_nmf(nmf, V, rank) NMF of non-negative 2D matrix (handle persists)\n"
+            "  tensorops_decompose_tt(tt, T, [n1,n2,n3], eps) TT decomposition of order>=3 tensor (handle persists)\n"
             "  tensorops_reconstruct_cp(cp) reconstruct matrix from session CPDecomposition handle\n"
             "  tensorops_reconstruct_tucker(tk) reconstruct matrix from session TuckerDecomposition handle\n"
+            "  tensorops_reconstruct_nmf(nmf) reconstruct matrix from session NMFDecomposition handle\n"
+            "  tensorops_reconstruct_tt(tt) reconstruct matrix from session TTDecomposition handle\n"
             "  session_objects() list session object handles and types\n"
             "  session_object_clear(handle) remove a session object (handles persist until cleared)\n"};
     }
@@ -26871,7 +27053,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  difmodel_ood_score(h,X)  difmodel_gh_gate(h,X)\n"
             "  cluster_new(h,n,seed)  cluster_run_election(h)  cluster_replicate(h,leader,\"cmd\")  cluster_current_leader(h)  cluster_status(h)\n"
             "  tensorops_decompose_cp(h,T,rank)  tensorops_decompose_tucker(h,T,[r1,r2])  tensorops_decompose_hosvd(h,T,[r1,r2])\n"
-            "  tensorops_reconstruct_cp(h)  tensorops_reconstruct_tucker(h)\n"
+            "  tensorops_decompose_nmf(h,V,rank)  tensorops_decompose_tt(h,T,[n1,n2,n3],eps)\n"
+            "  tensorops_reconstruct_cp(h)  tensorops_reconstruct_tucker(h)  tensorops_reconstruct_nmf(h)  tensorops_reconstruct_tt(h)\n"
             "  session_objects()  session_object_clear(h)\n"
             "  gria(M)  axiom evolve\n"};
     }

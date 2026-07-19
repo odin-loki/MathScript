@@ -9127,3 +9127,42 @@ TEST(ReplCommandsTest, wave268_compress_arith_ans) {
         EXPECT_NEAR(interp.state().matrices.at("NR")(i, 0), expected[i], 1e-9);
     }
 }
+
+TEST(ReplCommandsTest, wave269_tensorops_nmf_tt) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_decompose_nmf(nmf, V, rank)");
+    expect_contains(interp, "help", "tensorops_decompose_tt(tt, T, [n1,n2,n3], eps)");
+    expect_contains(interp, "help", "tensorops_reconstruct_nmf(nmf)");
+    expect_contains(interp, "help", "tensorops_reconstruct_tt(tt)");
+
+    const auto nmf_created = interp.execute(
+        "tensorops_decompose_nmf(nmf1, [4, 7, 7; 7, 6, 11; 7, 11, 12], 2)");
+    ASSERT_TRUE(nmf_created.has_value());
+    EXPECT_NE(nmf_created->find("NMFDecomposition"), std::string::npos);
+    EXPECT_NE(nmf_created->find("final_error="), std::string::npos);
+
+    const auto nmf_reconstructed = interp.execute("tensorops_reconstruct_nmf(nmf1)");
+    ASSERT_TRUE(nmf_reconstructed.has_value());
+    EXPECT_NE(nmf_reconstructed->find("4.000000"), std::string::npos);
+    EXPECT_NE(nmf_reconstructed->find("7.000000"), std::string::npos);
+
+    const auto tt_created = interp.execute(
+        "tensorops_decompose_tt(tt1, [15, 18, 20, 24; 30, 36, 40, 48], [2, 2, 2], 1e-8)");
+    ASSERT_TRUE(tt_created.has_value());
+    EXPECT_NE(tt_created->find("TTDecomposition"), std::string::npos);
+
+    const auto tt_reconstructed = interp.execute("tensorops_reconstruct_tt(tt1)");
+    ASSERT_TRUE(tt_reconstructed.has_value());
+    EXPECT_NE(tt_reconstructed->find("15.000000"), std::string::npos);
+    EXPECT_NE(tt_reconstructed->find("48.000000"), std::string::npos);
+
+    const auto listed = interp.execute("session_objects()");
+    ASSERT_TRUE(listed.has_value());
+    EXPECT_NE(listed->find("nmf1 nmf"), std::string::npos);
+    EXPECT_NE(listed->find("tt1 tt"), std::string::npos);
+
+    expect_error_contains(
+        interp, "tensorops_decompose_tt(tt_bad, [1, 2; 3, 4], [2, 2], 1e-6)", "tensorops_decompose_tt");
+    expect_error_contains(
+        interp, "tensorops_reconstruct_nmf(cp1)", "tensorops_reconstruct_nmf");
+}

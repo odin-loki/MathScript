@@ -76,7 +76,9 @@ using SessionObject = std::variant<
     cypha::DifModel,
     izaac::consensus::Cluster,
     tensorops::CPDecomposition,
-    tensorops::TuckerDecomposition>;
+    tensorops::TuckerDecomposition,
+    tensorops::NMFDecomposition,
+    tensorops::TTDecomposition>;
 
 class Interpreter {
 public:
