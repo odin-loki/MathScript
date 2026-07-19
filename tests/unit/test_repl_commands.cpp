@@ -8073,3 +8073,37 @@ TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
     expect_ok(interp, "p2 = painleve2(0.5, 0.0, -0.5, 0.0)");
     EXPECT_NEAR(interp.state().scalars.at("p2"), p2_ref, 1e-3);
 }
+
+TEST(ReplCommandsTest, wave267_special_painleve_dawsonx) {
+    Interpreter interp;
+    expect_contains(interp, "help", "dawsonx(x)");
+    expect_contains(interp, "help", "painleve3(x,y0,yp0,alpha,beta)");
+    expect_contains(interp, "help", "painleve4(x,y0,yp0,alpha,beta)");
+    expect_contains(interp, "help", "painleve5(x,y0,yp0,alpha,beta,gamma,delta)");
+    expect_contains(interp, "help", "painleve6(x,y0,yp0,alpha,beta,gamma,delta)");
+
+    const double dx_ref = ms::dawsonx(0.5);
+    EXPECT_TRUE(std::isfinite(dx_ref));
+    expect_ok(interp, "dx = dawsonx(0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("dx"), dx_ref, 5e-3);
+
+    const double p3_ref = ms::painleve3(0.5, 0.5, -0.1, 0.5, 0.3);
+    EXPECT_NEAR(p3_ref, 1.398748842793728, 5e-3);
+    expect_ok(interp, "p3 = painleve3(0.5, 0.5, -0.1, 0.5, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("p3"), p3_ref, 5e-3);
+
+    const double p4_ref = ms::painleve4(0.5, 0.8, -0.05, 0.2, 0.4);
+    EXPECT_NEAR(p4_ref, 0.786121344510419, 5e-3);
+    expect_ok(interp, "p4 = painleve4(0.5, 0.8, -0.05, 0.2, 0.4)");
+    EXPECT_NEAR(interp.state().scalars.at("p4"), p4_ref, 5e-3);
+
+    const double p5_ref = ms::painleve5(0.5, 0.5, -0.05, 0.01, 0.02, 0.03, 0.04);
+    EXPECT_NEAR(p5_ref, 0.5558194327648597, 5e-3);
+    expect_ok(interp, "p5 = painleve5(0.5, 0.5, -0.05, 0.01, 0.02, 0.03, 0.04)");
+    EXPECT_NEAR(interp.state().scalars.at("p5"), p5_ref, 5e-3);
+
+    const double p6_ref = ms::painleve6(2.5, 0.5, -0.05, 0.1, 0.2, 0.3, 0.4);
+    EXPECT_NEAR(p6_ref, 0.5003268969869713, 5e-3);
+    expect_ok(interp, "p6 = painleve6(2.5, 0.5, -0.05, 0.1, 0.2, 0.3, 0.4)");
+    EXPECT_NEAR(interp.state().scalars.at("p6"), p6_ref, 5e-3);
+}
