@@ -22,8 +22,9 @@ uint64_t combinations_with_rep(uint32_t n, uint32_t k);  // C(n+k-1, k)
 // next/prev permutation: modifies in-place, returns false at end/start
 bool next_perm(std::vector<int>& v);
 bool prev_perm(std::vector<int>& v);
-// next combination: v is a k-subset of {0..n-1}, modifies in-place
+// next/prev combination: v is a k-subset of {0..n-1}, modifies in-place
 bool next_comb(std::vector<int>& v, int n);
+bool prev_comb(std::vector<int>& v, int n);
 
 // Ranking / unranking
 uint64_t rank_permutation(const std::vector<int>& v);

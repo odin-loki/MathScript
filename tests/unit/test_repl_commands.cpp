@@ -4987,6 +4987,23 @@ TEST(ReplCommandsTest, wave173_combo_next_comb) {
     EXPECT_NEAR(interp.state().matrices.at("v2")(1, 0), 2.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave265_combo_prev) {
+    Interpreter interp;
+    expect_contains(interp, "help", "combo_prev_perm(v)");
+    expect_contains(interp, "help", "combo_prev_comb(v,n)");
+
+    expect_ok(interp, "pp = combo_prev_perm([1; 3; 2])");
+    ASSERT_GT(interp.state().matrices.count("pp"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("pp")(1, 0), 2.0, 1e-9);
+
+    expect_ok(interp, "combo_prev_perm([1; 3; 2])");
+
+    expect_ok(interp, "vp = combo_prev_comb([0; 2], 4)");
+    ASSERT_GT(interp.state().matrices.count("vp"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("vp")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("vp")(1, 0), 1.0, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave173_numthy_primes) {
     Interpreter interp;
     expect_contains(interp, "help", "numthy_primes(lo,hi)");
