@@ -3642,12 +3642,32 @@ Result<double> eval_tensorops_norm(const Matrix<double>& tensor_m) {
 }
 
 Matrix<double> tensor_to_matrix(const tensorops::Tensor& t) {
-    const size_t rows = t.ndim() >= 1 ? static_cast<size_t>(t.shape[0]) : 1;
-    const size_t cols = t.ndim() >= 2 ? static_cast<size_t>(t.shape[1]) : 1;
+    if (t.ndim() == 2) {
+        const size_t rows = static_cast<size_t>(t.shape[0]);
+        const size_t cols = static_cast<size_t>(t.shape[1]);
+        Matrix<double> out(rows, cols);
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                out(i, j) = t.at({static_cast<int>(i), static_cast<int>(j)});
+            }
+        }
+        return out;
+    }
+    const size_t rows = t.ndim() >= 1 ? static_cast<size_t>(t.shape[0]) : 1u;
+    const size_t cols =
+        rows == 0 ? 0u : static_cast<size_t>(t.numel() / static_cast<long>(rows));
     Matrix<double> out(rows, cols);
     for (size_t i = 0; i < rows; ++i) {
         for (size_t j = 0; j < cols; ++j) {
-            out(i, j) = t.at({static_cast<int>(i), static_cast<int>(j)});
+            const long flat_idx =
+                static_cast<long>(i) * static_cast<long>(cols) + static_cast<long>(j);
+            std::vector<int> idx(static_cast<size_t>(t.ndim()), 0);
+            long tmp = flat_idx;
+            for (int d = t.ndim() - 1; d >= 0; --d) {
+                idx[static_cast<size_t>(d)] = static_cast<int>(tmp % t.shape[d]);
+                tmp /= t.shape[d];
+            }
+            out(i, j) = t.at(idx);
         }
     }
     return out;
@@ -12929,6 +12949,50 @@ Result<std::string> format_ode_trajectory(const OdeResult& result) {
     return oss.str();
 }
 
+Result<Matrix<double>> eval_ode_fixed_step_matrix(const std::string& fn,
+                                                  const std::string& formula_arg,
+                                                  const std::string& t0_arg,
+                                                  const std::string& y0_arg,
+                                                  const std::string& t_end_arg,
+                                                  const std::string& steps_arg,
+                                                  OdeResult (*solver)(OdeFunc, double, double,
+                                                                      double, size_t)) {
+    auto expr = parse_sym_quoted_expr(formula_arg, fn.c_str());
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y0_arg), y0) ||
+        !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn, std::string("expected ") + fn + "(\"formula\", t0, y0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeFunc f = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    const OdeResult result =
+        solver(f, t0, y0, t_end, static_cast<size_t>(steps_i));
+    if (result.t.size() != result.y.size()) {
+        return std::unexpected(DomainError{"ode", "internal trajectory size mismatch"});
+    }
+    Matrix<double> out(result.t.size(), 2);
+    for (size_t i = 0; i < result.t.size(); ++i) {
+        out(i, 0) = result.t[i];
+        out(i, 1) = result.y[i];
+    }
+    return out;
+}
+
 Result<std::string> eval_ode_fixed_step_call(const std::string& fn, const std::string& formula_arg,
                                              const std::string& t0_arg,
                                              const std::string& y0_arg,
@@ -15631,6 +15695,11 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "cfd_advection1d" ||
             fn == "cfd_advection2d" ||
             fn == "cfd_advection3d" ||
+            fn == "ode_euler" || fn == "ode_rk4" || fn == "ode_midpoint" ||
+            fn == "ode_rk45" || fn == "ode_rk23" || fn == "ode_cashkarp" ||
+            fn == "ode_backward_euler" || fn == "ode_trapezoidal" ||
+            fn == "ode_rosenbrock23" || fn == "ode_adams_bashforth2" ||
+            fn == "ode_bdf2" || fn == "ode_exponential_euler" || fn == "ode_verlet" ||
             fn == "quantum_time_evolution" ||
             fn == "info_joint_entropy" ||
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
@@ -17568,6 +17637,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "arithmetic_encode_vec" || callee == "ans_encode_vec" ||
            callee == "golomb_rice_encode_vec" || callee == "golomb_rice_decode_vec" ||
            callee == "wavelet_compress_vec" || callee == "wavelet_decompress_vec" ||
+           callee == "sparse_from_coo" || callee == "sparse_spmv" ||
+           callee == "sparse_to_dense" || callee == "sparse_add" ||
            callee == "bwt_encode_vec" ||
            callee == "delta_encode_vec" || callee == "delta_decode_vec" ||
            callee == "graph_pagerank" || callee == "quantum_hadamard" ||
@@ -17753,7 +17824,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "bzip2_compress_vec" || callee == "bzip2_decompress_vec" ||
         callee == "huffman_encode_vec" ||
         callee == "arithmetic_encode_vec" || callee == "ans_encode_vec" ||
-        callee == "wavelet_compress_vec" || callee == "wavelet_decompress_vec" ||
+        callee == "wavelet_decompress_vec" ||
+        callee == "sparse_to_dense" ||
         callee == "bwt_encode_vec" ||
         callee == "delta_encode_vec" || callee == "delta_decode_vec" ||
         callee == "graph_pagerank" || callee == "quantum_hadamard" ||
@@ -18196,6 +18268,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "topo_persistence_landscape") {
         return arity == 3 || arity == 5;
+    }
+    if (callee == "sparse_from_coo") {
+        return arity == 5;
+    }
+    if (callee == "sparse_spmv" || callee == "sparse_add") {
+        return arity == 2;
+    }
+    if (callee == "sparse_to_dense") {
+        return arity == 1;
     }
     return false;
 }
@@ -27426,6 +27507,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = golomb_rice_decode_vec(E,m_bits,count) Golomb-Rice decode byte column to Nx1 integer column\n"
             "  name = wavelet_compress_vec(M[,threshold]) Haar wavelet compress flattened matrix bytes\n"
             "  name = wavelet_decompress_vec(C) Haar wavelet decompress byte column to byte column\n"
+            "  name = sparse_from_coo(rows,cols,row_idx,col_idx,values) COO sparse to packed (nnz+1)x3 [rows,cols,nnz; ri,cj,v]\n"
+            "  name = sparse_spmv(A_packed,x) sparse matrix-vector product y = A*x\n"
+            "  name = sparse_to_dense(A_packed) expand packed sparse matrix to dense\n"
+            "  name = sparse_add(A_packed,B_packed) add two packed sparse matrices\n"
+            "  Packed layout: (nnz+1)x3 with header row [rows,cols,nnz]\n"
             "  name = bzip2_compress_vec(M) bzip2-like compress bytes to byte column\n"
             "  name = compress_bits_to_bytes(bits_vec) pack Nx1 bit column into byte column\n"
             "  name = compress_bytes_to_bits(bytes_vec) unpack Nx1 byte column into bit column\n"
@@ -31803,6 +31889,41 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 std::ostringstream out;
                 out << lhs << " =\n";
                 print_matrix(out, *result);
+                return out.str();
+            }
+            if (callee == "ode_adams_bashforth2" || callee == "ode_euler" || callee == "ode_rk4" ||
+                callee == "ode_midpoint" || callee == "ode_backward_euler" || callee == "ode_bdf2") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 5) {
+                    return std::unexpected(DomainError{
+                        callee, std::string("expected ") + callee +
+                                    "(\"formula\", t0, y0, t_end, steps)"});
+                }
+                OdeResult (*solver)(OdeFunc, double, double, double, size_t) = nullptr;
+                if (callee == "ode_adams_bashforth2") {
+                    solver = ode_adams_bashforth2;
+                } else if (callee == "ode_euler") {
+                    solver = ode_euler;
+                } else if (callee == "ode_rk4") {
+                    solver = ode_rk4;
+                } else if (callee == "ode_midpoint") {
+                    solver = ode_midpoint;
+                } else if (callee == "ode_backward_euler") {
+                    solver = ode_backward_euler;
+                } else {
+                    solver = ode_bdf2;
+                }
+                auto traj = eval_ode_fixed_step_matrix(
+                    callee, trim_copy(call_args->at(0)), trim_copy(call_args->at(1)),
+                    trim_copy(call_args->at(2)), trim_copy(call_args->at(3)),
+                    trim_copy(call_args->at(4)), solver);
+                if (!traj) {
+                    return std::unexpected(traj.error());
+                }
+                state_.matrices[lhs] = *traj;
+                std::ostringstream out;
+                out << lhs << " =\n";
+                print_matrix(out, *traj);
                 return out.str();
             }
         }
