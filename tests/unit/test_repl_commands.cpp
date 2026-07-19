@@ -3381,6 +3381,61 @@ TEST(ReplCommandsTest, wave265_control_tf) {
     EXPECT_NEAR(c(1, 1), 1.0, 1e-2);
 }
 
+TEST(ReplCommandsTest, wave266_control_c2d_tustin) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_c2d_tustin(A,B,C,D,Ts)");
+    expect_contains(interp, "help", "control_c2d_euler(A,B,C,D,Ts)");
+    expect_contains(interp, "help", "control_d2c_tustin(A,B,C,D,Ts)");
+    expect_contains(interp, "help", "control_d2c_euler(A,B,C,D,Ts)");
+    expect_contains(interp, "help", "control_c2d_tf_tustin(num,den,Ts)");
+
+    // Stable 1st-order plant G(s)=3/(s+2): A=-2, B=3, C=1, D=0, Ts=0.1
+    const double Ts = 0.1;
+    const double tustin_denom = 1.0 + (-2.0) * Ts * 0.5;
+    const double Ad_tustin = (1.0 + (-2.0) * Ts * 0.5) / tustin_denom;
+    const double Bd_tustin = 3.0 * Ts / tustin_denom;
+
+    expect_ok(interp, "Ad = control_c2d_tustin([-2], [3], [1], [0], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Ad"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Ad")(0, 0), Ad_tustin, 1e-9);
+
+    expect_ok(interp, "Bd = [" + std::to_string(Bd_tustin) + "]");
+    expect_ok(interp, "Ac = control_d2c_tustin(Ad, Bd, [1], [0], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Ac"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Ac")(0, 0), -2.0, 1e-6);
+
+    const double Ad_euler = 1.0 + (-2.0) * Ts;
+    const double Bd_euler = 3.0 * Ts;
+    expect_ok(interp, "Ad_e = control_c2d_euler([-2], [3], [1], [0], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Ad_e"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Ad_e")(0, 0), Ad_euler, 1e-12);
+    expect_ok(interp, "Bd_e = [" + std::to_string(Bd_euler) + "]");
+    expect_ok(interp, "Ac_e = control_d2c_euler(Ad_e, Bd_e, [1], [0], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Ac_e"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Ac_e")(0, 0), -2.0, 1e-6);
+
+    // TF Tustin roundtrip on 1/(s+1) should preserve DC gain ~1
+    expect_ok(interp, "Dt = control_c2d_tf_tustin([1], [1, 1], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Dt"), 0u);
+    const auto& dt = interp.state().matrices.at("Dt");
+    ASSERT_EQ(dt.rows(), 2u);
+    std::string num_lit = "[";
+    std::string den_lit = "[";
+    for (size_t j = 0; j < dt.cols(); ++j) {
+        if (j > 0) {
+            num_lit += ", ";
+            den_lit += ", ";
+        }
+        num_lit += std::to_string(dt(0, j));
+        den_lit += std::to_string(dt(1, j));
+    }
+    num_lit += "]";
+    den_lit += "]";
+    expect_ok(interp, "Ct = control_d2c_tf_tustin(" + num_lit + ", " + den_lit + ", 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Ct"), 0u);
+    EXPECT_NEAR(packed_tf_dcgain(interp.state().matrices.at("Ct")), 1.0, 1e-2);
+}
+
 TEST(ReplCommandsTest, wave263_control_kalman) {
     Interpreter interp;
     expect_contains(interp, "help", "control_kalman_predict(x,P,A,Q)");
