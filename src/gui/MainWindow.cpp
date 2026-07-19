@@ -1069,6 +1069,23 @@ QString title_case_text(const QString& text) {
     return result;
 }
 
+QString capitalize_words_text(const QString& text) {
+    QString result = text;
+    bool at_word_start = true;
+    for (int i = 0; i < result.size(); ++i) {
+        const QChar ch = result.at(i);
+        if (ch.isSpace()) {
+            at_word_start = true;
+            continue;
+        }
+        if (at_word_start) {
+            result[i] = ch.toUpper();
+        }
+        at_word_start = false;
+    }
+    return result;
+}
+
 QString transform_selection_text(const QString& text, SelectionCaseMode mode) {
     switch (mode) {
     case SelectionCaseMode::Upper:
@@ -1109,6 +1126,39 @@ void transform_selection_case_in_editor(QPlainTextEdit* editor, SelectionCaseMod
 
     const QString original = cursor.selectedText();
     const QString transformed = transform_selection_text(original, mode);
+    const int sel_start = cursor.selectionStart();
+    cursor.insertText(transformed);
+
+    cursor.setPosition(sel_start);
+    cursor.setPosition(sel_start + transformed.size(), QTextCursor::KeepAnchor);
+    editor->setTextCursor(cursor);
+
+    cursor.endEditBlock();
+}
+
+void capitalize_words_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    if (!cursor.hasSelection()) {
+        int start_block = 0;
+        int end_block = 0;
+        get_selected_block_range(editor, start_block, end_block);
+        select_block_range_in_editor(editor, start_block, end_block);
+        cursor = editor->textCursor();
+    }
+
+    if (!cursor.hasSelection()) {
+        cursor.endEditBlock();
+        return;
+    }
+
+    const QString original = cursor.selectedText();
+    const QString transformed = capitalize_words_text(original);
     const int sel_start = cursor.selectionStart();
     cursor.insertText(transformed);
 
@@ -1654,6 +1704,8 @@ void MainWindow::setup_menus() {
     lower_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_L));
     auto* title_case_selection_action = edit_menu->addAction("Title Case Selection");
     title_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_T));
+    auto* capitalize_words_action = edit_menu->addAction("Capitalize Words");
+    capitalize_words_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_W));
     auto* join_lines_action = edit_menu->addAction("Join Lines");
     join_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
     auto* split_lines_action = edit_menu->addAction("Split Lines");
@@ -1731,6 +1783,7 @@ void MainWindow::setup_menus() {
     connect(upper_case_selection_action, &QAction::triggered, this, &MainWindow::upper_case_selection);
     connect(lower_case_selection_action, &QAction::triggered, this, &MainWindow::lower_case_selection);
     connect(title_case_selection_action, &QAction::triggered, this, &MainWindow::title_case_selection);
+    connect(capitalize_words_action, &QAction::triggered, this, &MainWindow::capitalize_words);
     connect(join_lines_action, &QAction::triggered, this, &MainWindow::join_lines);
     connect(split_lines_action, &QAction::triggered, this, &MainWindow::split_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
@@ -2211,6 +2264,11 @@ void MainWindow::lower_case_selection() {
 void MainWindow::title_case_selection() {
     editor_->setFocus();
     transform_selection_case_in_editor(editor_, SelectionCaseMode::Title);
+}
+
+void MainWindow::capitalize_words() {
+    editor_->setFocus();
+    capitalize_words_in_editor(editor_);
 }
 
 void MainWindow::indent_lines() {
