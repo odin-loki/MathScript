@@ -9634,3 +9634,37 @@ TEST(ReplCommandsTest, wave270_special_jacobi_struve) {
     EXPECT_NEAR(interp.state().scalars.at("yn"), yn_ref, 1e-6);
     expect_contains(interp, "struve_yn(1, 1)", std::to_string(yn_ref));
 }
+
+TEST(ReplCommandsTest, wave270_gria_gf2n_lfsr) {
+    Interpreter interp;
+    expect_contains(interp, "help", "gria_gf2n_mul(a, b, poly)");
+    expect_contains(interp, "help", "gria_gf2n_pow(a, exp, poly)");
+    expect_contains(interp, "help", "gria_gf2n_inv(a, poly)");
+    expect_contains(interp, "help", "gria_lfsr_step(state, poly)");
+    expect_contains(interp, "help", "gria_alpha_lfsr(poly, steps)");
+    expect_contains(interp, "help", "gria_lfsr_is_maximal(poly, n)");
+
+    expect_ok(interp, "sq = gria_gf2n_pow(3, 2, 283)");
+    expect_ok(interp, "m = gria_gf2n_mul(3, 3, 283)");
+    EXPECT_EQ(interp.state().scalars.at("sq"), interp.state().scalars.at("m"));
+
+    expect_ok(interp, "p = gria_gf2n_mul(3, 5, 283)");
+    EXPECT_GT(interp.state().scalars.at("p"), 0.0);
+
+    expect_ok(interp, "inv3 = gria_gf2n_inv(3, 283)");
+    expect_ok(interp, "one = gria_gf2n_mul(3, inv3, 283)");
+    EXPECT_EQ(interp.state().scalars.at("one"), 1.0);
+
+    expect_ok(interp, "hx = gria_gf2n_mul(0x53, 0xCA, 0x11B)");
+    EXPECT_GT(interp.state().scalars.at("hx"), 0.0);
+
+    expect_ok(interp, "next = gria_lfsr_step(5, 11)");
+    EXPECT_EQ(interp.state().scalars.at("next"), 9.0);
+
+    expect_contains(interp, "gria_lfsr_is_maximal(6, 3)", "true");
+    expect_contains(interp, "gria_lfsr_is_maximal(3, 4)", "false");
+
+    expect_ok(interp, "alpha = gria_alpha_lfsr(184, 100)");
+    EXPECT_GE(interp.state().scalars.at("alpha"), 0.0);
+    EXPECT_LE(interp.state().scalars.at("alpha"), 1.0);
+}
