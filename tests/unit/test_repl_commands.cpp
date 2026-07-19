@@ -8184,4 +8184,41 @@ TEST(ReplCommandsTest, wave267_special_elliptic_jacobi_theta) {
     EXPECT_NEAR(t4_ref, 0.6691160041441827, 1e-3);
     expect_ok(interp, "t4 = theta4(0.5, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("t4"), t4_ref, 1e-3);
+TEST(ReplCommandsTest, wave267_special_hypergeo_meijer) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tricomi_u(a,b,z)");
+    expect_contains(interp, "help", "meijer_g(a,b,z)");
+    expect_contains(interp, "help", "fox_h(a,b,z)");
+    expect_contains(interp, "help", "hypergeo_0f1n(n,a,z)");
+    expect_contains(interp, "help", "hypergeo_1f1n(n,a,z)");
+
+    const double tu_ref = ms::tricomi_u(1.0, 2.0, 0.5);
+    EXPECT_NEAR(tu_ref, 2.0, 1e-3);
+    expect_ok(interp, "tu = tricomi_u(1, 2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("tu"), tu_ref, 1e-3);
+    expect_contains(interp, "tricomi_u(1, 2, 0.5)", std::to_string(tu_ref));
+
+    const double mg_ref = ms::meijer_g(1.0, 2.0, 0.5);
+    EXPECT_NEAR(mg_ref, 0.39346934028736663, 1e-3);
+    expect_ok(interp, "mg = meijer_g(1, 2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("mg"), mg_ref, 1e-3);
+    expect_contains(interp, "meijer_g(1, 2, 0.5)", std::to_string(mg_ref));
+
+    const double fh_ref = ms::fox_h(1.0, 2.0, 0.5);
+    EXPECT_NEAR(fh_ref, mg_ref, 1e-12);
+    expect_ok(interp, "fh = fox_h(1, 2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("fh"), fh_ref, 1e-3);
+    expect_contains(interp, "fox_h(1, 2, 0.5)", std::to_string(fh_ref));
+
+    const double h0n_ref = ms::hypergeo_0f1n(2, 1.5, 0.2);
+    EXPECT_TRUE(std::isfinite(h0n_ref));
+    expect_ok(interp, "h0n = hypergeo_0f1n(2, 1.5, 0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("h0n"), h0n_ref, 1e-3);
+    expect_contains(interp, "hypergeo_0f1n(2, 1.5, 0.2)", std::to_string(h0n_ref));
+
+    const double h1n_ref = ms::hypergeo_1f1n(1, 1.0, 0.3);
+    EXPECT_TRUE(std::isfinite(h1n_ref));
+    expect_ok(interp, "h1n = hypergeo_1f1n(1, 1, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("h1n"), h1n_ref, 1e-3);
+    expect_contains(interp, "hypergeo_1f1n(1, 1, 0.3)", std::to_string(h1n_ref));
 }
