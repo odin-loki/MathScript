@@ -83,6 +83,7 @@ using SessionObject = std::variant<
 class Interpreter {
 public:
     Result<std::string> execute(const std::string& line);
+    Result<std::string> execute_assignment(const std::string& cmd);
     void set_cancel_flag(std::atomic<bool>* flag);
     bool cancel_requested() const;
     const SessionState& state() const { return state_; }
