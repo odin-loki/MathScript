@@ -7,6 +7,18 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19 (Wave 267 — ML Lasso/ElasticNet/KNN/NaiveBayes/LDA) ✅ COMPLETE
+
+Thirty-seventh feature wave after Wave 266. Parallel Composer 2.5 worktree: Lasso/Elastic Net/KNN/Naive Bayes/LDA REPL bindings from `ms::ml`, MSVC C1061 `assign_matrix_call_tail6` split, and unit test coverage.
+
+### Added (Wave 267)
+- **ML REPL** — `ml_lasso_fit`/`ml_lasso_predict`, `ml_elastic_net_fit`/`ml_elastic_net_predict`, `ml_knn_fit`/`ml_knn_predict`, `ml_naive_bayes_fit`/`ml_naive_bayes_predict`, `ml_lda_fit`/`ml_lda_predict`/`ml_lda_transform`.
+- **Interp** — `assign_matrix_call_tail6` (MSVC C1061 nesting split).
+- **Tests** — `ReplCommandsTest.wave267_ml_supervised_regularized`.
+
+### Docs (Wave 267)
+- **`docs/API.md`** — Wave 267 ML supervised bindings.
+
 ## [1.0.0] - 2026-07-19 (Wave 266 — cheb expand, Tustin/Euler, specials, PPFs, arborescence, image filters, KS, Invert Case) ✅ COMPLETE
 
 Thirty-sixth feature wave after Wave 265. Parallel Composer 2.5 worktrees merged to `main`: Chebyshev poly expand, control Tustin/Euler discretizations, incomplete-gamma/error/Mathieu/Heun/hypergeo specials, chi²/exp PPFs, min arborescence, image filters, one-sample KS vs normal, GUI Invert Case, and wave266 pipeline.

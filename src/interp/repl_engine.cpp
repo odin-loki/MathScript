@@ -908,6 +908,326 @@ Result<Matrix<double>> eval_ml_logistic_predict(const Matrix<double>& X_m,
     return vector_to_column(lr.predict(*X));
 }
 
+Result<Matrix<double>> eval_ml_lasso_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
+                                        double alpha) {
+    auto X = matrix_to_ml_mat(X_m, "ml_lasso_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_lasso_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::LassoRegression lr(alpha);
+    lr.fit(*X, *y);
+    return ml_model_to_matrix(lr.coef, lr.intercept);
+}
+
+Result<Matrix<double>> eval_ml_lasso_predict(const Matrix<double>& X_m,
+                                            const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_lasso_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto params = ml_model_from_matrix(model_m, "ml_lasso_predict");
+    if (!params) {
+        return std::unexpected(params.error());
+    }
+    ml::LassoRegression lr(1.0);
+    lr.coef = params->first;
+    lr.intercept = params->second;
+    return vector_to_column(lr.predict(*X));
+}
+
+Result<Matrix<double>> eval_ml_elastic_net_fit(const Matrix<double>& X_m,
+                                               const Matrix<double>& y_m, double alpha,
+                                               double l1_ratio) {
+    auto X = matrix_to_ml_mat(X_m, "ml_elastic_net_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_elastic_net_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::ElasticNet en(alpha, l1_ratio);
+    en.fit(*X, *y);
+    return ml_model_to_matrix(en.coef, en.intercept);
+}
+
+Result<Matrix<double>> eval_ml_elastic_net_predict(const Matrix<double>& X_m,
+                                                  const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_elastic_net_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto params = ml_model_from_matrix(model_m, "ml_elastic_net_predict");
+    if (!params) {
+        return std::unexpected(params.error());
+    }
+    ml::ElasticNet en(1.0, 0.5);
+    en.coef = params->first;
+    en.intercept = params->second;
+    return vector_to_column(en.predict(*X));
+}
+
+Matrix<double> ml_knn_to_matrix(const ml::KNN& knn) {
+    const size_t n = knn.X_train.size();
+    const size_t p = n > 0 ? knn.X_train[0].size() : 0;
+    Matrix<double> out(n + 1, p + 1);
+    out(0, 0) = static_cast<double>(knn.k);
+    out(0, 1) = static_cast<double>(p);
+    out(0, 2) = static_cast<double>(n);
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < p; ++j) {
+            out(i + 1, j) = knn.X_train[i][j];
+        }
+        out(i + 1, p) = knn.y_train[i];
+    }
+    return out;
+}
+
+Result<ml::KNN> ml_knn_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 2 || model.cols() < 2) {
+        return std::unexpected(
+            DomainError{fn, "expected KNN model with header row and training data"});
+    }
+    const int k = static_cast<int>(model(0, 0));
+    const int p = static_cast<int>(model(0, 1));
+    const int n = static_cast<int>(model(0, 2));
+    if (k < 1 || p < 1 || n < 1 || model.rows() != static_cast<size_t>(n + 1) ||
+        model.cols() != static_cast<size_t>(p + 1)) {
+        return std::unexpected(DomainError{fn, "invalid KNN model layout"});
+    }
+    ml::KNN knn(k);
+    knn.X_train.resize(static_cast<size_t>(n));
+    knn.y_train.resize(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        knn.X_train[static_cast<size_t>(i)].resize(static_cast<size_t>(p));
+        for (int j = 0; j < p; ++j) {
+            knn.X_train[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(i + 1), static_cast<size_t>(j));
+        }
+        knn.y_train[static_cast<size_t>(i)] = model(static_cast<size_t>(i + 1), static_cast<size_t>(p));
+    }
+    return knn;
+}
+
+Result<Matrix<double>> eval_ml_knn_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
+                                       int k) {
+    auto X = matrix_to_ml_mat(X_m, "ml_knn_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_knn_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::KNN knn(k);
+    knn.fit(*X, *y);
+    return ml_knn_to_matrix(knn);
+}
+
+Result<Matrix<double>> eval_ml_knn_predict(const Matrix<double>& X_m,
+                                          const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_knn_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto knn = ml_knn_from_matrix(model_m, "ml_knn_predict");
+    if (!knn) {
+        return std::unexpected(knn.error());
+    }
+    return vector_to_column(knn->predict(*X));
+}
+
+Matrix<double> ml_naive_bayes_to_matrix(const ml::NaiveBayes& nb) {
+    const size_t C = nb.classes.size();
+    const size_t p = C > 0 && !nb.mean.empty() ? nb.mean[0].size() : 0;
+    Matrix<double> out(1 + 4 * C, std::max(p, size_t{1}));
+    out(0, 0) = static_cast<double>(C);
+    out(0, 1) = static_cast<double>(p);
+    for (size_t c = 0; c < C; ++c) {
+        out(1 + c, 0) = nb.classes[c];
+        for (size_t j = 0; j < p; ++j) {
+            out(1 + C + c, j) = nb.mean[c][j];
+            out(1 + 2 * C + c, j) = nb.var[c][j];
+        }
+        out(1 + 3 * C + c, 0) = nb.class_prior[c];
+    }
+    return out;
+}
+
+Result<ml::NaiveBayes> ml_naive_bayes_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 5) {
+        return std::unexpected(DomainError{fn, "expected NaiveBayes model matrix"});
+    }
+    const int C = static_cast<int>(model(0, 0));
+    const int p = static_cast<int>(model(0, 1));
+    if (C < 1 || p < 1 || model.rows() != static_cast<size_t>(1 + 4 * C) ||
+        model.cols() != static_cast<size_t>(p)) {
+        return std::unexpected(DomainError{fn, "invalid NaiveBayes model layout"});
+    }
+    ml::NaiveBayes nb;
+    nb.classes.resize(static_cast<size_t>(C));
+    nb.mean.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    nb.var.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    nb.class_prior.resize(static_cast<size_t>(C));
+    for (int c = 0; c < C; ++c) {
+        nb.classes[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + c), 0);
+        for (int j = 0; j < p; ++j) {
+            nb.mean[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + C + c), static_cast<size_t>(j));
+            nb.var[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + 2 * C + c), static_cast<size_t>(j));
+        }
+        nb.class_prior[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 0);
+    }
+    return nb;
+}
+
+Result<Matrix<double>> eval_ml_naive_bayes_fit(const Matrix<double>& X_m,
+                                               const Matrix<double>& y_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_naive_bayes_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_naive_bayes_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::NaiveBayes nb;
+    nb.fit(*X, *y);
+    return ml_naive_bayes_to_matrix(nb);
+}
+
+Result<Matrix<double>> eval_ml_naive_bayes_predict(const Matrix<double>& X_m,
+                                                  const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_naive_bayes_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto nb = ml_naive_bayes_from_matrix(model_m, "ml_naive_bayes_predict");
+    if (!nb) {
+        return std::unexpected(nb.error());
+    }
+    return vector_to_column(nb->predict(*X));
+}
+
+Matrix<double> ml_lda_to_matrix(const ml::LDA& lda) {
+    const size_t C = lda.classes.size();
+    const size_t p = C > 0 && !lda.mean.empty() ? lda.mean[0].size() : 0;
+    const size_t n_comp = lda.projection.size();
+    const size_t n_cols = std::max(p, size_t{4});
+    Matrix<double> out(1 + 4 * C + n_comp + 1, n_cols);
+    out(0, 0) = static_cast<double>(C);
+    out(0, 1) = static_cast<double>(p);
+    out(0, 2) = static_cast<double>(n_comp);
+    out(0, 3) = lda.reg_epsilon;
+    for (size_t c = 0; c < C; ++c) {
+        out(1 + c, 0) = lda.classes[c];
+        for (size_t j = 0; j < p; ++j) {
+            out(1 + C + c, j) = lda.mean[c][j];
+            out(1 + 2 * C + c, j) = lda.discrim_coef[c][j];
+        }
+        out(1 + 3 * C + c, 0) = lda.discrim_const[c];
+    }
+    for (size_t r = 0; r < n_comp; ++r) {
+        for (size_t j = 0; j < p; ++j) {
+            out(1 + 4 * C + r, j) = lda.projection[r][j];
+        }
+    }
+    for (size_t j = 0; j < p; ++j) {
+        out(1 + 4 * C + n_comp, j) = lda.overall_mean[j];
+    }
+    return out;
+}
+
+Result<ml::LDA> ml_lda_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 6) {
+        return std::unexpected(DomainError{fn, "expected LDA model matrix"});
+    }
+    const int C = static_cast<int>(model(0, 0));
+    const int p = static_cast<int>(model(0, 1));
+    const int n_comp = static_cast<int>(model(0, 2));
+    const double reg_eps = model(0, 3);
+    if (C < 2 || p < 1 || n_comp < 1 || model.cols() < static_cast<size_t>(p) ||
+        model.rows() != static_cast<size_t>(1 + 4 * C + n_comp + 1)) {
+        return std::unexpected(DomainError{fn, "invalid LDA model layout"});
+    }
+    ml::LDA lda(reg_eps, n_comp);
+    lda.classes.resize(static_cast<size_t>(C));
+    lda.mean.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    lda.discrim_coef.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    lda.discrim_const.resize(static_cast<size_t>(C));
+    lda.projection.assign(static_cast<size_t>(n_comp), ml::Vec(static_cast<size_t>(p)));
+    lda.overall_mean.resize(static_cast<size_t>(p));
+    for (int c = 0; c < C; ++c) {
+        lda.classes[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + c), 0);
+        for (int j = 0; j < p; ++j) {
+            lda.mean[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + C + c), static_cast<size_t>(j));
+            lda.discrim_coef[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + 2 * C + c), static_cast<size_t>(j));
+        }
+        lda.discrim_const[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 0);
+    }
+    for (int r = 0; r < n_comp; ++r) {
+        for (int j = 0; j < p; ++j) {
+            lda.projection[static_cast<size_t>(r)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + 4 * C + r), static_cast<size_t>(j));
+        }
+    }
+    for (int j = 0; j < p; ++j) {
+        lda.overall_mean[static_cast<size_t>(j)] =
+            model(static_cast<size_t>(1 + 4 * C + n_comp), static_cast<size_t>(j));
+    }
+    return lda;
+}
+
+Result<Matrix<double>> eval_ml_lda_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
+                                       int n_components) {
+    auto X = matrix_to_ml_mat(X_m, "ml_lda_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_lda_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::LDA lda(1e-6, n_components);
+    lda.fit(*X, *y);
+    return ml_lda_to_matrix(lda);
+}
+
+Result<Matrix<double>> eval_ml_lda_predict(const Matrix<double>& X_m,
+                                          const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_lda_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto lda = ml_lda_from_matrix(model_m, "ml_lda_predict");
+    if (!lda) {
+        return std::unexpected(lda.error());
+    }
+    return vector_to_column(lda->predict(*X));
+}
+
 Matrix<double> int_vector_to_column(const std::vector<int>& values) {
     Matrix<double> out(values.size(), 1);
     for (size_t i = 0; i < values.size(); ++i) {
@@ -927,6 +1247,19 @@ Matrix<double> grid_to_matrix(const std::vector<std::vector<double>>& grid) {
         }
     }
     return out;
+}
+
+Result<Matrix<double>> eval_ml_lda_transform(const Matrix<double>& X_m,
+                                            const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_lda_transform");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto lda = ml_lda_from_matrix(model_m, "ml_lda_transform");
+    if (!lda) {
+        return std::unexpected(lda.error());
+    }
+    return grid_to_matrix(lda->transform(*X));
 }
 
 Matrix<double> grid3d_to_matrix(const std::vector<std::vector<std::vector<double>>>& grid) {
@@ -9984,6 +10317,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
            callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
            callee == "ml_logistic_predict" ||
+           callee == "ml_lasso_predict" || callee == "ml_elastic_net_predict" ||
+           callee == "ml_knn_predict" || callee == "ml_naive_bayes_predict" ||
+           callee == "ml_lda_predict" || callee == "ml_lda_transform" ||
            callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
            callee == "signal_convolve" || callee == "signal_correlate" ||
            callee == "signal_sosfilt" || callee == "signal_conv2" ||
@@ -12773,7 +13109,12 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_mat_transpose" || fn == "ml_mat_mul" ||
             fn == "ml_linear_fit" || fn == "ml_linear_predict" ||
             fn == "ml_ridge_fit" || fn == "ml_ridge_predict" ||
-            fn == "ml_logistic_fit" || fn == "ml_logistic_predict" || fn == "poly_deriv" ||
+            fn == "ml_logistic_fit" || fn == "ml_logistic_predict" ||
+            fn == "ml_lasso_fit" || fn == "ml_lasso_predict" ||
+            fn == "ml_elastic_net_fit" || fn == "ml_elastic_net_predict" ||
+            fn == "ml_knn_fit" || fn == "ml_knn_predict" ||
+            fn == "ml_naive_bayes_fit" || fn == "ml_naive_bayes_predict" ||
+            fn == "ml_lda_fit" || fn == "ml_lda_predict" || fn == "ml_lda_transform" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_cheb_eval" || fn == "poly_cheb_expand" ||
             fn == "poly_integ" || fn == "poly_add" ||
             fn == "poly_lagrange" || fn == "poly_interp_newton" ||
@@ -14782,6 +15123,11 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
            callee == "ml_ridge_fit" || callee == "ml_ridge_predict" ||
            callee == "ml_logistic_fit" || callee == "ml_logistic_predict" ||
+           callee == "ml_lasso_fit" || callee == "ml_lasso_predict" ||
+           callee == "ml_elastic_net_fit" || callee == "ml_elastic_net_predict" ||
+           callee == "ml_knn_fit" || callee == "ml_knn_predict" ||
+           callee == "ml_naive_bayes_fit" || callee == "ml_naive_bayes_predict" ||
+           callee == "ml_lda_fit" || callee == "ml_lda_predict" || callee == "ml_lda_transform" ||
            callee == "poly_deriv" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "poly_roots" ||
            callee == "poly_fit" || callee == "poly_interp_hermite" ||
@@ -15008,7 +15354,11 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "signal_deconv" || callee == "imfilter" ||
         callee == "ml_mat_mul" || callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
         callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
-        callee == "ml_logistic_predict" || callee == "geo_poly_union" ||
+        callee == "ml_logistic_predict" || callee == "ml_lasso_predict" ||
+        callee == "ml_elastic_net_predict" || callee == "ml_knn_predict" ||
+        callee == "ml_naive_bayes_fit" || callee == "ml_naive_bayes_predict" ||
+        callee == "ml_lda_predict" ||
+        callee == "ml_lda_transform" || callee == "geo_poly_union" ||
         callee == "geo_poly_intersect" || callee == "geo_poly_diff" ||
         callee == "geo_minkowski_sum" || callee == "geo_clip_polygon" ||
         callee == "stats_linear_regression" || callee == "stats_multiple_regression") {
@@ -15059,8 +15409,14 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "imadjust") {
         return arity == 3 || arity == 5;
     }
-    if (callee == "ml_ridge_fit") {
+    if (callee == "ml_ridge_fit" || callee == "ml_lasso_fit" || callee == "ml_knn_fit") {
         return arity == 3;
+    }
+    if (callee == "ml_elastic_net_fit") {
+        return arity == 4;
+    }
+    if (callee == "ml_lda_fit") {
+        return arity == 2 || arity == 3;
     }
     if (callee == "imflip" || callee == "threshold_binary" || callee == "watershed" ||
         callee == "radon" || callee == "iradon") {
@@ -20824,6 +21180,193 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAss
         } else {
             result = eval_geo_kdtree_3d_range(*matrix, *qx, *qy, *qz, *arg4);
         }
+    } else if (assign.callee == "ml_lasso_fit" && assign.args.size() == 3) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto alpha = parse_scalar_arg(assign.args[2], "ml_lasso_fit");
+        if (!alpha) {
+            return std::unexpected(alpha.error());
+        }
+        auto fitted = eval_ml_lasso_fit(*X, *y, *alpha);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_lasso_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_lasso_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_elastic_net_fit" && assign.args.size() == 4) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto alpha = parse_scalar_arg(assign.args[2], "ml_elastic_net_fit");
+        if (!alpha) {
+            return std::unexpected(alpha.error());
+        }
+        auto l1_ratio = parse_scalar_arg(assign.args[3], "ml_elastic_net_fit");
+        if (!l1_ratio) {
+            return std::unexpected(l1_ratio.error());
+        }
+        auto fitted = eval_ml_elastic_net_fit(*X, *y, *alpha, *l1_ratio);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_elastic_net_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_elastic_net_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_knn_fit" && assign.args.size() == 3) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto k_val = parse_scalar_arg(assign.args[2], "ml_knn_fit");
+        if (!k_val) {
+            return std::unexpected(k_val.error());
+        }
+        const int k = static_cast<int>(*k_val);
+        if (k < 1 || *k_val != k) {
+            return std::unexpected(DomainError{"ml_knn_fit", "expected positive integer k"});
+        }
+        auto fitted = eval_ml_knn_fit(*X, *y, k);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_knn_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_knn_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_naive_bayes_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto fitted = eval_ml_naive_bayes_fit(*X, *y);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_naive_bayes_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_naive_bayes_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_lda_fit" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        int n_components = 0;
+        if (assign.args.size() == 3) {
+            auto n_comp = parse_scalar_arg(assign.args[2], "ml_lda_fit");
+            if (!n_comp) {
+                return std::unexpected(n_comp.error());
+            }
+            n_components = static_cast<int>(*n_comp);
+            if (n_components < 0 || *n_comp != n_components) {
+                return std::unexpected(
+                    DomainError{"ml_lda_fit", "expected non-negative integer n_components"});
+            }
+        }
+        auto fitted = eval_ml_lda_fit(*X, *y, n_components);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_lda_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_lda_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_lda_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto transformed = eval_ml_lda_transform(*X, *model);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
     }
 
     return result;
@@ -22821,6 +23364,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_ridge_predict(X,model) ridge regression predictions on X\n"
             "  name = ml_logistic_fit(X,y) fit logistic regression; model is (n_features+1)x1\n"
             "  name = ml_logistic_predict(X,model) logistic regression class predictions on X\n"
+            "  name = ml_lasso_fit(X,y,alpha) fit Lasso regression; model is (n_features+1)x1\n"
+            "  name = ml_lasso_predict(X,model) Lasso regression predictions on X\n"
+            "  name = ml_elastic_net_fit(X,y,alpha,l1_ratio) fit Elastic Net; model is (n_features+1)x1\n"
+            "  name = ml_elastic_net_predict(X,model) Elastic Net predictions on X\n"
+            "  name = ml_knn_fit(X,y,k) fit k-nearest neighbours; model stores training data\n"
+            "  name = ml_knn_predict(X,model) KNN class predictions on X\n"
+            "  name = ml_naive_bayes_fit(X,y) fit Gaussian Naive Bayes classifier\n"
+            "  name = ml_naive_bayes_predict(X,model) Naive Bayes class predictions on X\n"
+            "  name = ml_lda_fit(X,y[,n_components]) fit Linear Discriminant Analysis\n"
+            "  name = ml_lda_predict(X,model) LDA class predictions on X\n"
+            "  name = ml_lda_transform(X,model) LDA supervised dimensionality reduction on X\n"
             "  name = ml_vec_norm(v)    Euclidean norm of Nx1 or 1xN vector\n"
             "  name = ml_vec_dot(a,b)   dot product of Nx1 or 1xN vectors\n"
             "  name = graph_pagerank(A) PageRank scores from NxN adjacency matrix\n"
@@ -23638,7 +24192,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
-            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
+            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
@@ -24978,6 +25532,72 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "ml_logistic_predict") {
                 auto value = eval_ml_logistic_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_lasso_predict") {
+                auto value = eval_ml_lasso_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_elastic_net_predict") {
+                auto value = eval_ml_elastic_net_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_knn_predict") {
+                auto value = eval_ml_knn_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_naive_bayes_predict") {
+                auto value = eval_ml_naive_bayes_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_lda_predict") {
+                auto value = eval_ml_lda_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_lda_transform") {
+                auto value = eval_ml_lda_transform(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
