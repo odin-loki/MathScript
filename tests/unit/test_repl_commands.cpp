@@ -5799,6 +5799,65 @@ TEST(ReplCommandsTest, wave195_special_beta_inc_reg) {
     expect_contains(interp, "special_beta_inc_reg(0.3, 1, 1)", std::to_string(ref));
 }
 
+TEST(ReplCommandsTest, wave266_special_erfi_gamma_inc) {
+    Interpreter interp;
+    expect_contains(interp, "help", "erfi(x)");
+    expect_contains(interp, "help", "erfcx(x)");
+    expect_contains(interp, "help", "dawson(x)");
+    expect_contains(interp, "help", "special_rgamma(x)");
+    expect_contains(interp, "help", "special_pochhammer(a,n)");
+    expect_contains(interp, "help", "special_falling_factorial(a,n)");
+    expect_contains(interp, "help", "special_gamma_inc(a,x)");
+    expect_contains(interp, "help", "special_beta_inc(x,a,b)");
+    expect_contains(interp, "help", "beta(a,b)");
+
+    const double erfi_ref = ms::erfi(0.5);
+    expect_ok(interp, "y = erfi(0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), erfi_ref, 1e-9);
+    expect_contains(interp, "erfi(0.5)", std::to_string(erfi_ref));
+
+    const double erfcx_ref = ms::erfcx(0.0);
+    EXPECT_NEAR(erfcx_ref, 1.0, 1e-12);
+    expect_ok(interp, "y = erfcx(0)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), erfcx_ref, 1e-9);
+
+    const double dawson_ref = ms::dawson(0.0);
+    EXPECT_NEAR(dawson_ref, 0.0, 1e-12);
+    expect_ok(interp, "y = dawson(0)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), dawson_ref, 1e-9);
+
+    const double rgamma_ref = ms::rgamma(1.0);
+    EXPECT_NEAR(rgamma_ref, 1.0, 1e-12);
+    expect_ok(interp, "y = special_rgamma(1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), rgamma_ref, 1e-9);
+
+    const double poch_ref = ms::pochhammer(2.5, 3);
+    expect_ok(interp, "y = special_pochhammer(2.5, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), poch_ref, 1e-9);
+
+    const double fall_ref = ms::falling_factorial(5.0, 2);
+    expect_ok(interp, "y = special_falling_factorial(5, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), fall_ref, 1e-9);
+
+    const std::string x_str = "0.69314718055994530942";
+    const double x = std::log(2.0);
+    const double gamma_inc_ref = ms::gamma_inc(1.0, x);
+    EXPECT_NEAR(gamma_inc_ref, 0.5, 1e-6);
+    expect_ok(interp, "y = special_gamma_inc(1, " + x_str + ")");
+    EXPECT_NEAR(interp.state().scalars.at("y"), gamma_inc_ref, 1e-9);
+    expect_contains(interp, "special_gamma_inc(1, " + x_str + ")", std::to_string(gamma_inc_ref));
+
+    const double beta_inc_ref = ms::beta_inc(0.3, 1.0, 1.0);
+    EXPECT_NEAR(beta_inc_ref, 0.3, 1e-6);
+    expect_ok(interp, "y = special_beta_inc(0.3, 1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), beta_inc_ref, 1e-9);
+
+    const double beta_ref = ms::beta_func(2.0, 3.0);
+    expect_ok(interp, "y = beta(2, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), beta_ref, 1e-9);
+    expect_contains(interp, "beta(2, 3)", std::to_string(beta_ref));
+}
+
 TEST(ReplCommandsTest, wave195_prob_uniform_pdf) {
     Interpreter interp;
     expect_contains(interp, "help", "prob_uniform_pdf(x,a,b)");
