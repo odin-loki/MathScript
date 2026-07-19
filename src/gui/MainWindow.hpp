@@ -100,6 +100,7 @@ private:
     void lower_case_selection();
     void title_case_selection();
     void capitalize_words();
+    void invert_case();
     void indent_lines();
     void unindent_lines();
     void set_plot_panel_visible(bool visible);
