@@ -55,7 +55,7 @@ None of these were caught by code review; all three were caught by a test assert
 ## Status
 
 - **Version:** 1.0.0 — Phase 10 (hardening) complete; profiling iteration **fully complete** through Wave 230 — code, infra, and baseline path (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md))
-- **Tests:** **426** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
+- **Tests:** **427** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
 - **CI:** Windows MSVC + Linux GCC 13 build/test; coverage; libFuzzer smoke (7 targets); Valgrind memcheck; benchmark regression gate (`bench_matmul`, `bench_fft`, 10% tolerance); Clang plugin compliance (20 enforced rules); vendor checksum verification; optional `jit-linux` and `plugin-linux` jobs
 
 ## Product closure (feature waves 231–267)

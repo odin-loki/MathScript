@@ -6487,6 +6487,60 @@ Result<Matrix<double>> eval_pde_burgers_1d(const Matrix<double>& u0_m, double nu
     return vector_to_column(value.u.back());
 }
 
+Result<Matrix<double>> eval_pde_wave_2d(const Matrix<double>& u0_m, const Matrix<double>& v0_m,
+                                        double c, double dx, double dy, double dt,
+                                        std::size_t steps) {
+    auto u0 = matrix_to_grid(u0_m, "pde_wave_2d");
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    auto v0 = matrix_to_grid(v0_m, "pde_wave_2d");
+    if (!v0) {
+        return std::unexpected(v0.error());
+    }
+    if (u0->size() != v0->size() ||
+        (!u0->empty() && u0->front().size() != v0->front().size())) {
+        return std::unexpected(
+            DomainError{"pde_wave_2d", "u0 and v0 grid dimension mismatch"});
+    }
+    const auto value = pde_wave_2d(*u0, *v0, c, dx, dy, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_wave_2d", "CFL stability condition violated or invalid input"});
+    }
+    return grid_to_matrix(value.u.back());
+}
+
+Result<Matrix<double>> eval_pde_advection_1d_lax_wendroff(const Matrix<double>& u0_m, double v,
+                                                          double dx, double dt,
+                                                          std::size_t steps) {
+    auto u0 = matrix_to_coeff_vector(u0_m, "pde_advection_1d_lax_wendroff");
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    const auto value = pde_advection_1d_lax_wendroff(*u0, v, dx, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_advection_1d_lax_wendroff", "CFL stability condition violated or invalid input"});
+    }
+    return vector_to_column(value.u.back());
+}
+
+Result<Matrix<double>> eval_pde_reaction_diffusion_1d(const Matrix<double>& u0_m, double D,
+                                                    double r, double dx, double dt,
+                                                    std::size_t steps) {
+    auto u0 = matrix_to_coeff_vector(u0_m, "pde_reaction_diffusion_1d");
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    const auto value = pde_reaction_diffusion_1d(*u0, D, r, dx, dt, steps);
+    if (value.u.empty() || value.t.empty()) {
+        return std::unexpected(DomainError{
+            "pde_reaction_diffusion_1d", "stability condition violated or invalid input"});
+    }
+    return vector_to_column(value.u.back());
+}
+
 int hex_nibble(char c) {
     if (c >= '0' && c <= '9') {
         return c - '0';
@@ -13392,7 +13446,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_partial_trace" || fn == "quantum_schrodinger" ||
             fn == "quantum_schrodinger_final" ||
             fn == "pde_heat_1d" || fn == "pde_heat_2d" || fn == "pde_wave_1d" ||
-            fn == "pde_advection_1d" || fn == "pde_poisson_2d" || fn == "pde_burgers_1d" ||
+            fn == "pde_wave_2d" || fn == "pde_advection_1d" ||
+            fn == "pde_advection_1d_lax_wendroff" || fn == "pde_reaction_diffusion_1d" ||
+            fn == "pde_poisson_2d" || fn == "pde_burgers_1d" ||
             fn == "fem_poisson2d" || fn == "fem_poisson3d" || fn == "cfd_advection2d" ||
             fn == "cfd_advection3d" ||
             fn == "quantum_time_evolution" ||
@@ -15184,8 +15240,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "quantum_partial_trace" || callee == "quantum_schrodinger" ||
            callee == "quantum_schrodinger_final" ||
            callee == "pde_heat_1d" || callee == "pde_heat_2d" || callee == "pde_wave_1d" ||
-           callee == "pde_advection_1d" || callee == "pde_poisson_2d" ||
-           callee == "pde_burgers_1d" ||
+           callee == "pde_wave_2d" || callee == "pde_advection_1d" ||
+           callee == "pde_advection_1d_lax_wendroff" || callee == "pde_reaction_diffusion_1d" ||
+           callee == "pde_poisson_2d" || callee == "pde_burgers_1d" ||
            callee == "fem_poisson2d" || callee == "fem_poisson3d" || callee == "cfd_advection2d" ||
            callee == "cfd_advection3d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
@@ -15624,11 +15681,16 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 5;
     }
     if (callee == "pde_heat_1d" || callee == "pde_advection_1d" ||
-        callee == "pde_poisson_2d" || callee == "pde_burgers_1d") {
+        callee == "pde_advection_1d_lax_wendroff" || callee == "pde_poisson_2d" ||
+        callee == "pde_burgers_1d") {
         return arity == 5;
     }
-    if (callee == "pde_heat_2d" || callee == "pde_wave_1d") {
+    if (callee == "pde_heat_2d" || callee == "pde_wave_1d" ||
+        callee == "pde_reaction_diffusion_1d") {
         return arity == 6;
+    }
+    if (callee == "pde_wave_2d") {
+        return arity == 7;
     }
     if (callee == "fem_poisson2d") {
         return arity == 2;
@@ -21619,6 +21681,97 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAss
         result = *predicted;
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail7(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "pde_advection_1d_lax_wendroff" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double v = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], v) || !parse_number(assign.args[2], dx) ||
+            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_advection_1d_lax_wendroff",
+                "expected pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(DomainError{
+                "pde_advection_1d_lax_wendroff", "expected non-negative integer steps"});
+        }
+        result = eval_pde_advection_1d_lax_wendroff(*u0_m, v, dx, dt,
+                                                    static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_reaction_diffusion_1d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        double D = 0.0;
+        double r = 0.0;
+        double dx = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[1], D) || !parse_number(assign.args[2], r) ||
+            !parse_number(assign.args[3], dx) || !parse_number(assign.args[4], dt) ||
+            !parse_number(assign.args[5], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_reaction_diffusion_1d",
+                "expected pde_reaction_diffusion_1d(u0, D, r, dx, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(DomainError{
+                "pde_reaction_diffusion_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_reaction_diffusion_1d(*u0_m, D, r, dx, dt,
+                                                static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_wave_2d" && assign.args.size() == 7) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto v0_m = resolve_operand(assign.args[1]);
+        if (!v0_m) {
+            return std::unexpected(v0_m.error());
+        }
+        double c = 0.0;
+        double dx = 0.0;
+        double dy = 0.0;
+        double dt = 0.0;
+        double steps_d = 0.0;
+        if (!parse_number(assign.args[2], c) || !parse_number(assign.args[3], dx) ||
+            !parse_number(assign.args[4], dy) || !parse_number(assign.args[5], dt) ||
+            !parse_number(assign.args[6], steps_d)) {
+            return std::unexpected(DomainError{
+                "pde_wave_2d", "expected pde_wave_2d(u0, v0, c, dx, dy, dt, steps)"});
+        }
+        const int steps_i = static_cast<int>(steps_d);
+        if (steps_i < 0 || steps_d != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_wave_2d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_wave_2d(*u0_m, *v0_m, c, dx, dy, dt, static_cast<std::size_t>(steps_i));
+    }
+
     return result;
 }
 
@@ -23942,8 +24095,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_heat_2d(u0,alpha,dx,dy,dt,steps) 2D heat equation final grid (rowsÃƒâ€”cols)\n"
             "  name = pde_wave_1d(u0,v0,c,dx,dt,steps) 1D wave equation final state column\n"
             "  name = pde_advection_1d(u0,v,dx,dt,steps) 1D advection final state column\n"
+            "  name = pde_advection_1d_lax_wendroff(u0,v,dx,dt,steps) 1D Lax-Wendroff advection final state column\n"
             "  name = pde_poisson_2d(f,dx,dy,max_iterations,tolerance) 2D Poisson solution grid\n"
             "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
+            "  name = pde_wave_2d(u0,v0,c,dx,dy,dt,steps) 2D wave equation final grid (rows×cols)\n"
+            "  name = pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps) Fisher-KPP reaction-diffusion final state column\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
@@ -24454,7 +24610,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_historical_var(returns,confidence), finance_historical_cvar(returns,confidence), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_merton_distance_to_default(V,sigma_v,D,r,T), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_ks_norm(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_cheb_expand(p,n[,a,b]), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_ks_norm(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), pde_wave_2d(u0,v0,c,dx,dy,dt,steps), pde_advection_1d_lax_wendroff(u0,v,dx,dt,steps), pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_cheb_expand(p,n[,a,b]), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -28396,6 +28552,57 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         return set_plot(*xs, *ys, PlotSeries::Kind::Scatter);
     }
 
+    static const std::regex heptenary(
+        R"((\w+)\(([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^)]+)\))",
+        std::regex::icase);
+    if (std::regex_match(cmd, match, heptenary)) {
+        const std::string fn = lower(match[1].str());
+        if (fn == "pde_wave_2d") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto u0_m = resolve_arg(trim(match[2].str()));
+            if (!u0_m) {
+                return std::unexpected(u0_m.error());
+            }
+            auto v0_m = resolve_arg(trim(match[3].str()));
+            if (!v0_m) {
+                return std::unexpected(v0_m.error());
+            }
+            double c = 0.0;
+            double dx = 0.0;
+            double dy = 0.0;
+            double dt = 0.0;
+            double steps_d = 0.0;
+            if (!parse_number(trim(match[4].str()), c) ||
+                !parse_number(trim(match[5].str()), dx) ||
+                !parse_number(trim(match[6].str()), dy) ||
+                !parse_number(trim(match[7].str()), dt) ||
+                !parse_number(trim(match[8].str()), steps_d)) {
+                return std::unexpected(DomainError{
+                    "pde_wave_2d", "expected pde_wave_2d(u0, v0, c, dx, dy, dt, steps)"});
+            }
+            const int steps_i = static_cast<int>(steps_d);
+            if (steps_i < 0 || steps_d != steps_i) {
+                return std::unexpected(
+                    DomainError{"pde_wave_2d", "expected non-negative integer steps"});
+            }
+            auto value = eval_pde_wave_2d(*u0_m, *v0_m, c, dx, dy, dt,
+                                          static_cast<std::size_t>(steps_i));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
+        }
+    }
+
     static const std::regex octonary(
         R"((\w+)\(([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^,]+),([^)]+)\))",
         std::regex::icase);
@@ -29206,7 +29413,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(*value) + "\n";
         }
-        if (fn == "pde_heat_1d" || fn == "pde_advection_1d" || fn == "pde_poisson_2d" ||
+        if (fn == "pde_heat_1d" || fn == "pde_advection_1d" ||
+            fn == "pde_advection_1d_lax_wendroff" || fn == "pde_poisson_2d" ||
             fn == "pde_burgers_1d") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                 auto matrix = parse_matrix(text);
@@ -29266,6 +29474,34 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 auto value = eval_pde_advection_1d(*arg0_m, v, dx, dt,
                                                    static_cast<std::size_t>(steps_i));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "u =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (fn == "pde_advection_1d_lax_wendroff") {
+                double v = 0.0;
+                double dx = 0.0;
+                double dt = 0.0;
+                double steps_d = 0.0;
+                if (!parse_number(trim(match[3].str()), v) ||
+                    !parse_number(trim(match[4].str()), dx) ||
+                    !parse_number(trim(match[5].str()), dt) ||
+                    !parse_number(trim(match[6].str()), steps_d)) {
+                    return std::unexpected(DomainError{
+                        "pde_advection_1d_lax_wendroff",
+                        "expected pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps)"});
+                }
+                const int steps_i = static_cast<int>(steps_d);
+                if (steps_i < 0 || steps_d != steps_i) {
+                    return std::unexpected(DomainError{
+                        "pde_advection_1d_lax_wendroff", "expected non-negative integer steps"});
+                }
+                auto value = eval_pde_advection_1d_lax_wendroff(*arg0_m, v, dx, dt,
+                                                                static_cast<std::size_t>(steps_i));
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -29961,7 +30197,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(finance::bs_rho(S, K, T, r, sigma, call != 0)) + "\n";
         }
-        if (fn == "pde_heat_2d" || fn == "pde_wave_1d") {
+        if (fn == "pde_heat_2d" || fn == "pde_wave_1d" || fn == "pde_reaction_diffusion_1d") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                 auto matrix = parse_matrix(text);
                 if (!matrix) {
@@ -29994,6 +30230,36 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 auto value = eval_pde_heat_2d(*arg0_m, alpha, dx, dy, dt,
                                               static_cast<std::size_t>(steps_i));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "u =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (fn == "pde_reaction_diffusion_1d") {
+                double D = 0.0;
+                double r = 0.0;
+                double dx = 0.0;
+                double dt = 0.0;
+                double steps_d = 0.0;
+                if (!parse_number(trim(match[3].str()), D) ||
+                    !parse_number(trim(match[4].str()), r) ||
+                    !parse_number(trim(match[5].str()), dx) ||
+                    !parse_number(trim(match[6].str()), dt) ||
+                    !parse_number(trim(match[7].str()), steps_d)) {
+                    return std::unexpected(DomainError{
+                        "pde_reaction_diffusion_1d",
+                        "expected pde_reaction_diffusion_1d(u0, D, r, dx, dt, steps)"});
+                }
+                const int steps_i = static_cast<int>(steps_d);
+                if (steps_i < 0 || steps_d != steps_i) {
+                    return std::unexpected(DomainError{
+                        "pde_reaction_diffusion_1d", "expected non-negative integer steps"});
+                }
+                auto value = eval_pde_reaction_diffusion_1d(*arg0_m, D, r, dx, dt,
+                                                            static_cast<std::size_t>(steps_i));
                 if (!value) {
                     return std::unexpected(value.error());
                 }

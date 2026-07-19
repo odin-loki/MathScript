@@ -8657,3 +8657,29 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
 }
+
+TEST(ReplCommandsTest, wave268_pde_hyperbolic_adv) {
+    Interpreter interp;
+    expect_contains(interp, "help", "pde_wave_2d(u0,v0,c,dx,dy,dt,steps)");
+    expect_contains(interp, "help", "pde_advection_1d_lax_wendroff(u0,v,dx,dt,steps)");
+    expect_contains(interp, "help", "pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps)");
+
+    expect_ok(interp, "u0a = [1; 0; 0; 0; 0; 0; 0; 0; 0; 0]");
+    expect_ok(interp, "lw = pde_advection_1d_lax_wendroff(u0a, 1.0, 0.1, 0.05, 4)");
+    ASSERT_GT(interp.state().matrices.count("lw"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("lw").rows(), 10u);
+
+    expect_ok(interp, "u0w = zeros(7, 7)");
+    expect_ok(interp, "v0w = zeros(7, 7)");
+    expect_ok(interp, "w2 = pde_wave_2d(u0w, v0w, 1.0, 0.1, 0.1, 0.02, 8)");
+    ASSERT_GT(interp.state().matrices.count("w2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w2").rows(), 7u);
+    EXPECT_EQ(interp.state().matrices.at("w2").cols(), 7u);
+
+    expect_ok(interp, "u0r = linspace(0.4, 0.4, 21)");
+    expect_ok(interp, "rd = pde_reaction_diffusion_1d(u0r, 0.05, 2.0, 0.1, 0.01, 30)");
+    ASSERT_GT(interp.state().matrices.count("rd"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("rd").rows(), 21u);
+    EXPECT_GT(interp.state().matrices.at("rd")(10, 0), 0.39);
+    EXPECT_LT(interp.state().matrices.at("rd")(10, 0), 0.95);
+}

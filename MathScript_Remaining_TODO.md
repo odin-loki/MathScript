@@ -470,7 +470,19 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 268+) — deferred
+## Wave 268 — hyperbolic PDE REPL: wave_2d, Lax-Wendroff, reaction-diffusion ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| PDE REPL | `pde_wave_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` |
+| Interp | `assign_matrix_call_tail7` (MSVC C1061) |
+| Tests | `integration_repl_wave268_pipeline`; `ReplCommandsTest.wave268_pde_hyperbolic_adv` |
+
+**427 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–268** closed for this incremental batch.
+
+---
+
+## Next (Wave 269+) — deferred
 
 | Item | Notes |
 |------|--------|
