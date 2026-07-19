@@ -19613,6 +19613,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
         const Error& err = result.error();
         if (const auto* de = std::get_if<DomainError>(&err)) {
             if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail4(assign);
             }
         }
     }
