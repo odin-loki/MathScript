@@ -7693,3 +7693,21 @@ TEST(ReplCommandsTest, wave265_linalg_funm_precond) {
     EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 3.0 / 1.2, 1e-12);
     EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, wave266_graph_min_arborescence) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_min_arborescence(A,root)");
+
+    // AcyclicGreedySelectionIsOptimal fixture from test_graph.cpp
+    expect_ok(interp, "arb = graph_min_arborescence([0, 1, 10; 0, 0, 2; 0, 0, 0], 0)");
+    ASSERT_GT(interp.state().matrices.count("arb"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("arb").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("arb").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(0, 0), 3.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(1, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(1, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(1, 2), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(2, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(2, 1), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("arb")(2, 2), 2.0, 1e-9);
+}
