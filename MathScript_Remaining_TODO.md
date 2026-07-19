@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 266 ✅ COMPLETE — **425 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 267 ✅ COMPLETE — **426 CTest suites** on `main`)
 
 ---
 
@@ -455,7 +455,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 267+) — deferred
+## Wave 267 — specials ext, ODE solvers, ML, geo hull, stats_max, Snake Case ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| Special REPL | painleve3–6 / dawsonx; elliptic/Jacobi/theta; hypergeo/Meijer; bessel/struve/kelvin ext; mathieu_a/spheroidal/PCF; zeta/Airy/orthog |
+| ODE REPL | trapezoidal / cashkarp / rk23 / exponential_euler / rosenbrock23 |
+| ML REPL | lasso / elastic_net / knn / naive_bayes / lda; pca / kmeans |
+| Geo REPL | upper/lower hull / bezier_subdivide / kdtree_3d knn+range |
+| Stats / GUI | stats_max_value; Snake Case Selection |
+| Tests | `integration_repl_wave267_pipeline` |
+
+**426 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–267** closed for this incremental batch.
+
+---
+
+## Next (Wave 268+) — deferred
 
 | Item | Notes |
 |------|--------|

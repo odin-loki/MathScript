@@ -7,17 +7,22 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-07-19 (Wave 267 — ML Lasso/ElasticNet/KNN/NaiveBayes/LDA) ✅ COMPLETE
+## [1.0.0] - 2026-07-19 (Wave 267 — specials ext, ODE solvers, ML, geo hull, stats_max, Snake Case) ✅ COMPLETE
 
-Thirty-seventh feature wave after Wave 266. Parallel Composer 2.5 worktree: Lasso/Elastic Net/KNN/Naive Bayes/LDA REPL bindings from `ms::ml`, MSVC C1061 `assign_matrix_call_tail6` split, and unit test coverage.
+Thirty-seventh feature wave after Wave 266. Parallel Composer 2.5 worktrees merged to `main`: extended specials (Painlevé III–VI, elliptic/Jacobi/theta, hypergeo/Meijer, Bessel/Struve/Kelvin, Mathieu/spheroidal/PCF, zeta/Airy/orthog), adaptive/stiff ODE solvers, supervised+unsupervised ML, geo hull/bezier/3D kdtree, `stats_max_value`, GUI Snake Case, and wave267 pipeline.
 
 ### Added (Wave 267)
-- **ML REPL** — `ml_lasso_fit`/`ml_lasso_predict`, `ml_elastic_net_fit`/`ml_elastic_net_predict`, `ml_knn_fit`/`ml_knn_predict`, `ml_naive_bayes_fit`/`ml_naive_bayes_predict`, `ml_lda_fit`/`ml_lda_predict`/`ml_lda_transform`.
-- **Interp** — `assign_matrix_call_tail6` (MSVC C1061 nesting split).
-- **Tests** — `ReplCommandsTest.wave267_ml_supervised_regularized`.
+- **Special REPL** — Painlevé 3–6 / `dawsonx`; elliptic/Jacobi/theta; `tricomi_u` / `meijer_g` / `fox_h` / hypergeo n-variants; spherical/struve/kelvin ext; `mathieu_a` / spheroidal / PCF; zeta/Airy/orthog ext.
+- **ODE REPL** — `ode_trapezoidal` / `ode_cashkarp` / `ode_rk23` / `ode_exponential_euler` / `ode_rosenbrock23` (+ `_vec`).
+- **ML REPL** — lasso/elastic_net/knn/naive_bayes/lda; pca/kmeans (+ inertia); `assign_matrix_call_tail6`.
+- **Geo REPL** — `geo_upper_hull` / `geo_lower_hull` / `geo_bezier_subdivide` / `geo_kdtree_3d_knn` / `geo_kdtree_3d_range`.
+- **Stats / GUI** — `stats_max_value`; Snake Case Selection (Ctrl+Alt+S).
+- **Tests** — `integration_repl_wave267_pipeline`.
 
 ### Docs (Wave 267)
-- **`docs/API.md`** — Wave 267 ML supervised bindings.
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 267 sync; **426** CTest suites.
+
+**426 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
 
 ## [1.0.0] - 2026-07-19 (Wave 266 — cheb expand, Tustin/Euler, specials, PPFs, arborescence, image filters, KS, Invert Case) ✅ COMPLETE
 

@@ -376,6 +376,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `prob_chi2_ppf` / `prob_exp_ppf` / `stats_ks_norm` | Chi²/exp PPF / one-sample KS vs normal (Wave 266) |
 | `graph_min_arborescence(A,root)` | Min spanning arborescence packed matrix (Wave 266) |
 | `imfilter` / `sobel_x` / `sobel_y` / `hsv2rgb` / `dft_magnitude` / `laplacian_of_gaussian` | Image filters / transforms (Wave 266) |
+| `painleve3`–`painleve6` / `dawsonx` / elliptic / Jacobi / theta / Meijer / Mathieu / spheroidal / PCF / zeta-Airy orthog | Extended specials (Wave 267) |
+| `ode_trapezoidal` / `ode_cashkarp` / `ode_rk23` / `ode_exponential_euler` / `ode_rosenbrock23` | Adaptive/stiff ODE solvers (Wave 267) |
+| `ml_lasso_*` / `ml_elastic_net_*` / `ml_knn_*` / `ml_naive_bayes_*` / `ml_lda_*` / `ml_pca_*` / `ml_kmeans_*` | Supervised + unsupervised ML (Wave 267) |
+| `geo_upper_hull` / `geo_lower_hull` / `geo_bezier_subdivide` / `geo_kdtree_3d_knn` / `geo_kdtree_3d_range` | Hull / bezier / 3D kdtree (Wave 267) |
+| `stats_max_value(x)` | Maximum of sample vector (Wave 267) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
