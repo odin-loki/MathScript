@@ -8429,3 +8429,80 @@ TEST(ReplCommandsTest, wave267_geo_hull_bezier_kdtree3d) {
     EXPECT_GE(interp.state().matrices.at("r").rows(), 2u);
     EXPECT_EQ(interp.state().matrices.at("r").cols(), 1u);
 }
+
+TEST(ReplCommandsTest, wave267_special_zeta_airy_orthog_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "zeta_hurwitz(s,a)");
+    expect_contains(interp, "help", "lerch_phi(z,s,a)");
+    expect_contains(interp, "help", "beta_dirichlet(s)");
+    expect_contains(interp, "help", "bernoulli_number(n)");
+    expect_contains(interp, "help", "euler_number(n)");
+    expect_contains(interp, "help", "airy_aip(x)");
+    expect_contains(interp, "help", "airy_bip(x)");
+    expect_contains(interp, "help", "legendre_pn(n,m,x)");
+    expect_contains(interp, "help", "hermite_hf(n,x)");
+    expect_contains(interp, "help", "laguerre_ln(n,k,x)");
+    expect_contains(interp, "help", "chebyshev_tn(n,k,x)");
+    expect_contains(interp, "help", "chebyshev_un(n,k,x)");
+
+    const double zeta_ref = ms::zeta_hurwitz(2.0, 0.3);
+    EXPECT_NEAR(zeta_ref, 12.245364546107732, 1e-3);
+    expect_ok(interp, "z = zeta_hurwitz(2, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("z"), zeta_ref, 1e-3);
+    expect_contains(interp, "zeta_hurwitz(2, 0.3)", std::to_string(zeta_ref));
+
+    const double lerch_ref = ms::lerch_phi(0.5, 2.0, 0.3);
+    EXPECT_NEAR(lerch_ref, 11.47083462974499, 1e-3);
+    expect_ok(interp, "lp = lerch_phi(0.5, 2, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("lp"), lerch_ref, 1e-3);
+
+    const double beta_ref = ms::beta_dirichlet(2.0);
+    EXPECT_NEAR(beta_ref, 0.915965594127219, 1e-3);
+    expect_ok(interp, "bd = beta_dirichlet(2)");
+    EXPECT_NEAR(interp.state().scalars.at("bd"), beta_ref, 1e-3);
+
+    const double bern_ref = ms::bernoulli_number(2);
+    EXPECT_NEAR(bern_ref, 1.0 / 6.0, 1e-12);
+    expect_ok(interp, "b = bernoulli_number(2)");
+    EXPECT_NEAR(interp.state().scalars.at("b"), bern_ref, 1e-9);
+
+    const double euler_ref = ms::euler_number(4);
+    EXPECT_NEAR(euler_ref, 5.0, 1e-12);
+    expect_ok(interp, "e = euler_number(4)");
+    EXPECT_NEAR(interp.state().scalars.at("e"), euler_ref, 1e-9);
+
+    const double aip_ref = ms::airy_aip(0.0);
+    EXPECT_LT(aip_ref, 0.0);
+    expect_ok(interp, "aip = airy_aip(0)");
+    EXPECT_NEAR(interp.state().scalars.at("aip"), aip_ref, 1e-3);
+
+    const double bip_ref = ms::airy_bip(0.0);
+    EXPECT_GT(bip_ref, 0.0);
+    expect_ok(interp, "bip = airy_bip(0)");
+    EXPECT_NEAR(interp.state().scalars.at("bip"), bip_ref, 1e-3);
+
+    const double pn_ref = ms::legendre_pn(2, 0, 0.5);
+    EXPECT_NEAR(pn_ref, -0.125, 1e-12);
+    expect_ok(interp, "pn = legendre_pn(2, 0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("pn"), pn_ref, 1e-9);
+
+    const double hf_ref = ms::hermite_hf(2, 0.5);
+    expect_ok(interp, "hf = hermite_hf(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("hf"), hf_ref, 1e-9);
+
+    const double ln_ref = ms::laguerre_ln(2, 0, 0.5);
+    EXPECT_NEAR(ln_ref, 0.125, 1e-12);
+    expect_ok(interp, "ln = laguerre_ln(2, 0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("ln"), ln_ref, 1e-9);
+
+    const double tn_ref = ms::chebyshev_tn(3, 0, 0.5);
+    EXPECT_NEAR(tn_ref, -1.0, 1e-12);
+    expect_ok(interp, "tn = chebyshev_tn(3, 0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("tn"), tn_ref, 1e-9);
+
+    const double un_ref = ms::chebyshev_un(2, 0, 0.5);
+    EXPECT_NEAR(un_ref, ms::chebyshev_u(2, 0.5), 1e-12);
+    expect_ok(interp, "un = chebyshev_un(2, 0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("un"), un_ref, 1e-9);
+}
+
