@@ -8064,3 +8064,43 @@ TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
     expect_ok(interp, "p2 = painleve2(0.5, 0.0, -0.5, 0.0)");
     EXPECT_NEAR(interp.state().scalars.at("p2"), p2_ref, 1e-3);
 }
+
+TEST(ReplCommandsTest, wave267_geo_hull_bezier_kdtree3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_upper_hull(P)");
+    expect_contains(interp, "help", "geo_lower_hull(P)");
+    expect_contains(interp, "help", "geo_bezier_subdivide(P,t)");
+    expect_contains(interp, "help", "geo_kdtree_3d_knn(P,x,y,z,k)");
+    expect_contains(interp, "help", "geo_kdtree_3d_range(P,x,y,z,r)");
+
+    expect_ok(interp, "sq = [0,0; 1,0; 1,1; 0,1]");
+    expect_ok(interp, "uh = geo_upper_hull(sq)");
+    ASSERT_GT(interp.state().matrices.count("uh"), 0u);
+    EXPECT_GE(interp.state().matrices.at("uh").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("uh").cols(), 2u);
+
+    expect_ok(interp, "lh = geo_lower_hull(sq)");
+    ASSERT_GT(interp.state().matrices.count("lh"), 0u);
+    EXPECT_GE(interp.state().matrices.at("lh").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("lh").cols(), 2u);
+
+    expect_ok(interp, "ctrl = [0, 0; 1, 2; 2, 0]");
+    expect_ok(interp, "sub = geo_bezier_subdivide(ctrl, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("sub"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("sub").rows(), 6u);
+    EXPECT_EQ(interp.state().matrices.at("sub").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("sub")(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("sub")(5, 0), 2.0, 1e-9);
+
+    expect_ok(interp, "P = [0,0,0; 1,0,0; 2,0,0]");
+    expect_ok(interp, "n = geo_kdtree_3d_knn(P, 0.9, 0, 0, 2)");
+    ASSERT_GT(interp.state().matrices.count("n"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("n").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("n").cols(), 1u);
+    EXPECT_NEAR(interp.state().matrices.at("n")(0, 0), 1.0, 1e-9);
+
+    expect_ok(interp, "r = geo_kdtree_3d_range(P, 1.0, 0, 0, 1.5)");
+    ASSERT_GT(interp.state().matrices.count("r"), 0u);
+    EXPECT_GE(interp.state().matrices.at("r").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("r").cols(), 1u);
+}

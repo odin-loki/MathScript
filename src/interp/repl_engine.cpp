@@ -5069,6 +5069,88 @@ Result<Matrix<double>> eval_geo_convex_hull(const Matrix<double>& P_m) {
     return points2d_to_matrix(hull);
 }
 
+Result<Matrix<double>> eval_geo_upper_hull(const Matrix<double>& P_m) {
+    auto pts = matrix_to_points2d(P_m, "geo_upper_hull");
+    if (!pts) {
+        return std::unexpected(pts.error());
+    }
+    if (pts->size() < 2) {
+        return std::unexpected(
+            DomainError{"geo_upper_hull", "expected at least 2 points"});
+    }
+    return points2d_to_matrix(geo::upper_hull(*pts));
+}
+
+Result<Matrix<double>> eval_geo_lower_hull(const Matrix<double>& P_m) {
+    auto pts = matrix_to_points2d(P_m, "geo_lower_hull");
+    if (!pts) {
+        return std::unexpected(pts.error());
+    }
+    if (pts->size() < 2) {
+        return std::unexpected(
+            DomainError{"geo_lower_hull", "expected at least 2 points"});
+    }
+    return points2d_to_matrix(geo::lower_hull(*pts));
+}
+
+Result<Matrix<double>> eval_geo_bezier_subdivide(const Matrix<double>& ctrl_m, double t) {
+    auto ctrl = matrix_to_points2d(ctrl_m, "geo_bezier_subdivide");
+    if (!ctrl) {
+        return std::unexpected(ctrl.error());
+    }
+    if (ctrl->size() < 2) {
+        return std::unexpected(
+            DomainError{"geo_bezier_subdivide", "expected at least 2 control points"});
+    }
+    const auto [left, right] = geo::bezier_subdivide(*ctrl, t);
+    Matrix<double> out(left.size() + right.size(), 2);
+    for (size_t i = 0; i < left.size(); ++i) {
+        out(i, 0) = left[i].x;
+        out(i, 1) = left[i].y;
+    }
+    for (size_t i = 0; i < right.size(); ++i) {
+        out(left.size() + i, 0) = right[i].x;
+        out(left.size() + i, 1) = right[i].y;
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_geo_kdtree_3d_knn(const Matrix<double>& P_m, double qx, double qy,
+                                               double qz, double k_d) {
+    auto pts = matrix_to_points3d(P_m, "geo_kdtree_3d_knn");
+    if (!pts) {
+        return std::unexpected(pts.error());
+    }
+    if (pts->empty()) {
+        return std::unexpected(
+            DomainError{"geo_kdtree_3d_knn", "expected non-empty Nx3 point matrix"});
+    }
+    const int k = static_cast<int>(k_d);
+    if (k < 1 || k_d != k) {
+        return std::unexpected(DomainError{"geo_kdtree_3d_knn", "expected positive integer k"});
+    }
+    const geo::KDTree3D kd(*pts);
+    return int_vector_to_column(kd.knn({qx, qy, qz}, k));
+}
+
+Result<Matrix<double>> eval_geo_kdtree_3d_range(const Matrix<double>& P_m, double qx, double qy,
+                                                double qz, double r) {
+    auto pts = matrix_to_points3d(P_m, "geo_kdtree_3d_range");
+    if (!pts) {
+        return std::unexpected(pts.error());
+    }
+    if (pts->empty()) {
+        return std::unexpected(
+            DomainError{"geo_kdtree_3d_range", "expected non-empty Nx3 point matrix"});
+    }
+    if (!(r >= 0.0)) {
+        return std::unexpected(
+            DomainError{"geo_kdtree_3d_range", "expected non-negative radius r"});
+    }
+    const geo::KDTree3D kd(*pts);
+    return int_vector_to_column(kd.range({qx, qy, qz}, r));
+}
+
 Result<Matrix<double>> eval_geo_triangulate_polygon(const Matrix<double>& P_m) {
     auto pts = matrix_to_points2d(P_m, "geo_triangulate_polygon");
     if (!pts) {
@@ -12492,9 +12574,12 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "count_components" ||
             fn == "fft_rfft" || fn == "fft_dft" || fn == "fft_goertzel" || fn == "geo_delaunay_2d" ||
             fn == "geo_voronoi" || fn == "geo_convex_hull" ||
+            fn == "geo_upper_hull" || fn == "geo_lower_hull" ||
             fn == "geo_triangulate_polygon" || fn == "geo_convex_hull_3d" ||
             fn == "geo_min_bounding_rect" ||
             fn == "geo_kdtree_knn" || fn == "geo_kdtree_range" ||
+            fn == "geo_kdtree_3d_knn" || fn == "geo_kdtree_3d_range" ||
+            fn == "geo_bezier_subdivide" ||
             fn == "topo_pairwise_distances" ||
             fn == "combo_next_perm" || fn == "combo_prev_perm" || fn == "numthy_convergents" ||
             fn == "numthy_factor_exp" || fn == "numthy_farey" || fn == "numthy_lucas_sequence" ||
@@ -14493,10 +14578,13 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "signal_firwin" || callee == "signal_firwin_highpass" ||
            callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
            callee == "geo_convex_hull" ||
+           callee == "geo_upper_hull" || callee == "geo_lower_hull" ||
            callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
            callee == "geo_min_bounding_rect" ||
            callee == "geo_kdtree_knn" || callee == "geo_kdtree_range" ||
+           callee == "geo_kdtree_3d_knn" || callee == "geo_kdtree_3d_range" ||
            callee == "geo_bezier_eval" || callee == "geo_bezier_deriv" ||
+           callee == "geo_bezier_subdivide" ||
            callee == "geo_catmull_rom" || callee == "geo_hermite_curve" ||
            callee == "geo_bspline_eval" ||
            callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
@@ -14610,6 +14698,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
         callee == "geo_delaunay_2d" || callee == "geo_voronoi" ||
         callee == "geo_convex_hull" ||
+        callee == "geo_upper_hull" || callee == "geo_lower_hull" ||
         callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
         callee == "geo_min_bounding_rect" ||
         callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
@@ -14699,13 +14788,14 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 4;
     }
     if (callee == "geo_bezier_eval" || callee == "geo_bezier_deriv" ||
-        callee == "geo_catmull_rom") {
+        callee == "geo_catmull_rom" || callee == "geo_bezier_subdivide") {
         return arity == 2;
     }
     if (callee == "geo_hermite_curve") {
         return arity == 9;
     }
-    if (callee == "signal_czt_zoom") {
+    if (callee == "signal_czt_zoom" || callee == "geo_kdtree_3d_knn" ||
+        callee == "geo_kdtree_3d_range") {
         return arity == 5;
     }
     if (callee == "signal_czt") {
@@ -20341,6 +20431,86 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail5(const MatrixCallAss
             image::laplacian_of_gaussian(*gray, static_cast<float>(*sigma)));
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail6(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "geo_upper_hull" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_geo_upper_hull(*matrix);
+    } else if (assign.callee == "geo_lower_hull" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_geo_lower_hull(*matrix);
+    } else if (assign.callee == "geo_bezier_subdivide" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto t = parse_scalar_arg(assign.args[1], "geo_bezier_subdivide");
+        if (!t) {
+            return std::unexpected(t.error());
+        }
+        result = eval_geo_bezier_subdivide(*matrix, *t);
+    } else if ((assign.callee == "geo_kdtree_3d_knn" || assign.callee == "geo_kdtree_3d_range") &&
+               assign.args.size() == 5) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto qx = parse_scalar_arg(assign.args[1], assign.callee.c_str());
+        if (!qx) {
+            return std::unexpected(qx.error());
+        }
+        auto qy = parse_scalar_arg(assign.args[2], assign.callee.c_str());
+        if (!qy) {
+            return std::unexpected(qy.error());
+        }
+        auto qz = parse_scalar_arg(assign.args[3], assign.callee.c_str());
+        if (!qz) {
+            return std::unexpected(qz.error());
+        }
+        auto arg4 = parse_scalar_arg(assign.args[4], assign.callee.c_str());
+        if (!arg4) {
+            return std::unexpected(arg4.error());
+        }
+        if (assign.callee == "geo_kdtree_3d_knn") {
+            result = eval_geo_kdtree_3d_knn(*matrix, *qx, *qy, *qz, *arg4);
+        } else {
+            result = eval_geo_kdtree_3d_range(*matrix, *qx, *qy, *qz, *arg4);
+        }
+    }
+
     return result;
 }
 
@@ -22396,6 +22566,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_triangle_area(x1,y1,x2,y2,x3,y3) triangle area from three vertices\n"
             "  name = geo_convex_hull_area(P) convex hull area of Nx2 points\n"
             "  name = geo_convex_hull(P)      Kx2 convex hull vertices of Nx2 points\n"
+            "  name = geo_upper_hull(P)      Kx2 upper hull vertices of Nx2 points\n"
+            "  name = geo_lower_hull(P)      Kx2 lower hull vertices of Nx2 points\n"
             "  name = geo_polygon_area(P)     polygon area of Nx2 vertices\n"
             "  name = geo_polygon_perimeter(P) polygon perimeter of Nx2 vertices\n"
             "  name = geo_signed_area(P)      signed polygon area of Nx2 vertices\n"
@@ -22409,6 +22581,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_bezier_eval_y(P,t) Bezier curve y-coordinate at parameter t\n"
             "  name = geo_bezier_eval(P,t) Bezier curve point as 1x2 [x,y] at parameter t\n"
             "  name = geo_bezier_deriv(P,t) Bezier curve derivative as 1x2 [dx,dy] at parameter t\n"
+            "  name = geo_bezier_subdivide(P,t) subdivided Bezier control polygons as 2Nx2 stacked matrix\n"
             "  name = geo_catmull_rom(P,t) Catmull-Rom spline point as 1x2 [x,y] at parameter t\n"
             "  name = geo_bspline_eval(P,knots,degree,t) B-spline point as 1x2 [x,y]\n"
             "  name = geo_hermite_x(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t) Hermite curve x at t\n"
@@ -22428,6 +22601,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_kdtree_3d_nearest(P,x,y,z) nearest point index in Nx3 set to query (x,y,z)\n"
             "  name = geo_kdtree_knn(P,x,y,k) k nearest point indices as kx1 column from Nx2 set\n"
             "  name = geo_kdtree_range(P,x,y,r) indices within radius r as mx1 column from Nx2 set\n"
+            "  name = geo_kdtree_3d_knn(P,x,y,z,k) k nearest point indices as kx1 column from Nx3 set\n"
+            "  name = geo_kdtree_3d_range(P,x,y,z,r) indices within radius r as mx1 column from Nx3 set\n"
             "  name = topo_pairwise_distances(P) NxN pairwise distance matrix from Nx2 points\n"
             "  name = geo_overlap_circles(x1,y1,r1,x2,y2,r2) 1 if circles overlap else 0\n"
             "  name = geo_point_in_aabb(px,py,minx,miny,maxx,maxy) 1 if point inside 2D AABB else 0\n"
@@ -23110,7 +23285,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
-            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
+            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  erfi(x), erfcx(x), dawson(x), special_erfinv(x), special_erfcinv(x), special_rgamma(x), special_pochhammer(a,n), special_falling_factorial(a,n), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc(a,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc(x,a,b), special_beta_inc_reg(x,a,b), beta(a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), hermite_h(n,x), laguerre_l(n,x), legendre_q(n,x), hermite_he(n,x), laguerre_la(n,a,x), chebyshev_v(n,x), chebyshev_w(n,x), sph_harm(l,m,theta,phi), sph_bessel_j(n,x), sph_bessel_y(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts), control_c2d_tustin(A,B,C,D,Ts), control_c2d_euler(A,B,C,D,Ts), control_series(num1,den1,num2,den2), control_parallel(num1,den1,num2,den2), control_feedback(numG,denG,numH,denH[,sign]), control_ss2tf(SS), control_d2c(A,B,C,D,Ts), control_c2d_tf(num,den,Ts), control_c2d_tf_tustin(num,den,Ts), control_d2c_tf(num,den,Ts)\n"
