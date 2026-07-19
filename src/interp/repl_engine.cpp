@@ -7243,6 +7243,56 @@ Result<Matrix<double>> eval_pde_poisson_2d(const Matrix<double>& f_m, double dx,
     return grid_to_matrix(value.u);
 }
 
+Result<Matrix<double>> eval_pde_poisson_1d(const Matrix<double>& f_m, double dx, double ua,
+                                          double ub) {
+    auto f = matrix_to_coeff_vector(f_m, "pde_poisson_1d");
+    if (!f) {
+        return std::unexpected(f.error());
+    }
+    const auto value = pde_poisson_1d(*f, dx, ua, ub);
+    if (value.u.empty()) {
+        return std::unexpected(DomainError{
+            "pde_poisson_1d", "invalid grid or input rejected by solver"});
+    }
+    return vector_to_column(value.u);
+}
+
+Result<Matrix<double>> eval_pde_laplace_2d(int nx, int ny, const Matrix<double>& boundary_m) {
+    auto boundary = matrix_to_grid(boundary_m, "pde_laplace_2d");
+    if (!boundary) {
+        return std::unexpected(boundary.error());
+    }
+    const auto value = pde_laplace_2d(nx, ny, *boundary);
+    if (value.u.empty()) {
+        return std::unexpected(DomainError{
+            "pde_laplace_2d", "invalid grid or input rejected by solver"});
+    }
+    return grid_to_matrix(value.u);
+}
+
+Result<Matrix<double>> eval_pde_helmholtz_2d(const Matrix<double>& f_m, double k, double dx,
+                                            double dy,
+                                            const Matrix<double>* g_m = nullptr) {
+    auto f = matrix_to_grid(f_m, "pde_helmholtz_2d");
+    if (!f) {
+        return std::unexpected(f.error());
+    }
+    std::vector<std::vector<double>> g;
+    if (g_m != nullptr) {
+        auto g_grid = matrix_to_grid(*g_m, "pde_helmholtz_2d");
+        if (!g_grid) {
+            return std::unexpected(g_grid.error());
+        }
+        g = std::move(*g_grid);
+    }
+    const auto value = pde_helmholtz_2d(*f, k, dx, dy, g);
+    if (value.u.empty()) {
+        return std::unexpected(DomainError{
+            "pde_helmholtz_2d", "invalid grid or input rejected by solver"});
+    }
+    return grid_to_matrix(value.u);
+}
+
 Result<Matrix<double>> eval_pde_burgers_1d(const Matrix<double>& u0_m, double nu, double dx,
                                            double dt, std::size_t steps) {
     auto u0 = matrix_to_coeff_vector(u0_m, "pde_burgers_1d");
@@ -14179,7 +14229,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_schrodinger_final" ||
             fn == "pde_heat_1d" || fn == "pde_heat_1d_cn" || fn == "pde_heat_2d" ||
             fn == "pde_heat_2d_cn_adi" || fn == "pde_wave_1d" ||
-            fn == "pde_advection_1d" || fn == "pde_poisson_2d" || fn == "pde_burgers_1d" ||
+            fn == "pde_advection_1d" || fn == "pde_poisson_2d" || fn == "pde_poisson_1d" ||
+            fn == "pde_laplace_2d" || fn == "pde_helmholtz_2d" || fn == "pde_burgers_1d" ||
             fn == "fem_poisson2d" || fn == "fem_poisson3d" || fn == "cfd_advection2d" ||
             fn == "cfd_advection3d" ||
             fn == "quantum_time_evolution" ||
@@ -15973,7 +16024,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_heat_1d" || callee == "pde_heat_1d_cn" || callee == "pde_heat_2d" ||
            callee == "pde_heat_2d_cn_adi" || callee == "pde_wave_1d" ||
            callee == "pde_advection_1d" || callee == "pde_poisson_2d" ||
-           callee == "pde_burgers_1d" ||
+           callee == "pde_poisson_1d" || callee == "pde_laplace_2d" ||
+           callee == "pde_helmholtz_2d" || callee == "pde_burgers_1d" ||
            callee == "fem_poisson2d" || callee == "fem_poisson3d" || callee == "cfd_advection2d" ||
            callee == "cfd_advection3d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
@@ -16454,6 +16506,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "pde_heat_1d" || callee == "pde_heat_1d_cn" || callee == "pde_advection_1d" ||
         callee == "pde_poisson_2d" || callee == "pde_burgers_1d") {
         return arity == 5;
+    }
+    if (callee == "pde_poisson_1d") {
+        return arity == 4;
+    }
+    if (callee == "pde_laplace_2d") {
+        return arity == 3;
+    }
+    if (callee == "pde_helmholtz_2d") {
+        return arity == 4 || arity == 5;
     }
     if (callee == "pde_heat_2d" || callee == "pde_heat_2d_cn_adi" || callee == "pde_wave_1d") {
         return arity == 6;
@@ -22922,6 +22983,71 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
         }
         result = eval_pde_heat_2d_cn_adi(*u0_m, alpha, dx, dy, dt,
                                          static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_poisson_1d" && assign.args.size() == 4) {
+        auto f_m = resolve_operand(assign.args[0]);
+        if (!f_m) {
+            return std::unexpected(f_m.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[1], "pde_poisson_1d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto ua = parse_scalar_arg(assign.args[2], "pde_poisson_1d");
+        if (!ua) {
+            return std::unexpected(ua.error());
+        }
+        auto ub = parse_scalar_arg(assign.args[3], "pde_poisson_1d");
+        if (!ub) {
+            return std::unexpected(ub.error());
+        }
+        result = eval_pde_poisson_1d(*f_m, *dx, *ua, *ub);
+    } else if (assign.callee == "pde_laplace_2d" && assign.args.size() == 3) {
+        auto nx_val = parse_scalar_arg(assign.args[0], "pde_laplace_2d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto ny_val = parse_scalar_arg(assign.args[1], "pde_laplace_2d");
+        if (!ny_val) {
+            return std::unexpected(ny_val.error());
+        }
+        const int nx = static_cast<int>(*nx_val);
+        const int ny = static_cast<int>(*ny_val);
+        if (nx < 1 || ny < 1 || *nx_val != nx || *ny_val != ny) {
+            return std::unexpected(
+                DomainError{"pde_laplace_2d", "expected positive integer nx and ny"});
+        }
+        auto boundary_m = resolve_operand(assign.args[2]);
+        if (!boundary_m) {
+            return std::unexpected(boundary_m.error());
+        }
+        result = eval_pde_laplace_2d(nx, ny, *boundary_m);
+    } else if (assign.callee == "pde_helmholtz_2d" &&
+               (assign.args.size() == 4 || assign.args.size() == 5)) {
+        auto f_m = resolve_operand(assign.args[0]);
+        if (!f_m) {
+            return std::unexpected(f_m.error());
+        }
+        auto k = parse_scalar_arg(assign.args[1], "pde_helmholtz_2d");
+        if (!k) {
+            return std::unexpected(k.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[2], "pde_helmholtz_2d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dy = parse_scalar_arg(assign.args[3], "pde_helmholtz_2d");
+        if (!dy) {
+            return std::unexpected(dy.error());
+        }
+        if (assign.args.size() == 4) {
+            result = eval_pde_helmholtz_2d(*f_m, *k, *dx, *dy);
+        } else {
+            auto g_m = resolve_operand(assign.args[4]);
+            if (!g_m) {
+                return std::unexpected(g_m.error());
+            }
+            result = eval_pde_helmholtz_2d(*f_m, *k, *dx, *dy, &(*g_m));
+        }
     }
 
     return result;
@@ -25348,6 +25474,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_wave_1d(u0,v0,c,dx,dt,steps) 1D wave equation final state column\n"
             "  name = pde_advection_1d(u0,v,dx,dt,steps) 1D advection final state column\n"
             "  name = pde_poisson_2d(f,dx,dy,max_iterations,tolerance) 2D Poisson solution grid\n"
+            "  name = pde_poisson_1d(f,dx,ua,ub) 1D Poisson solution column\n"
+            "  name = pde_laplace_2d(nx,ny,boundary) 2D Laplace solution grid\n"
+            "  name = pde_helmholtz_2d(f,k,dx,dy[,g]) 2D Helmholtz solution grid\n"
             "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
