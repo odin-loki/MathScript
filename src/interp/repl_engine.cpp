@@ -14622,7 +14622,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "signal_convolve" || callee == "poly_add" ||
         callee == "poly_lagrange" || callee == "poly_interp_newton" ||
         callee == "poly_gcd" || callee == "poly_lcm" || callee == "poly_div_quot" ||
-        callee == "poly_mod" || callee == "poly_eval_at" || callee == "poly_sylvester" ||
+        callee == "poly_mod" || callee == "poly_partial_fractions" ||
+        callee == "poly_eval_at" || callee == "poly_sylvester" ||
         callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
         callee == "quantum_tensor_product" || callee == "signal_correlate" ||
         callee == "signal_sosfilt" || callee == "signal_conv2" ||

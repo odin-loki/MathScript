@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 264 ✅ COMPLETE — **423 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 265 ✅ COMPLETE — **424 CTest suites** on `main`)
 
 ---
 
@@ -421,13 +421,31 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 265+) — deferred
+## Wave 265 — poly transforms/factor, control TF, Merton/BL, combo prev, specials, funm, graph/info, Capitalize ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| Poly REPL | shift/scale/monic/reverse/pow/lcm/div_quot/mod/eval_at/sylvester; factor/rational_roots/factor_rational/partial_fractions/root_count/cheb_eval |
+| Control REPL | series / parallel / feedback / ss2tf / d2c / c2d_tf / d2c_tf |
+| Finance REPL | merton_implied_asset_params / bl_posterior_returns_default_omega |
+| Combo REPL | prev_perm / prev_comb |
+| Special REPL | bessel_k / chebyshev_t/u / hermite_h / laguerre_l / sph_bessel_j/y / assoc_legendre_p / gegenbauer_c |
+| Linalg REPL | matrix_rank / funm / precond_diag / precond_ssor |
+| Graph / Info REPL | connected_components / is_planar; normalized_entropy / channel_capacity_input |
+| GUI | Capitalize Words (Ctrl+Alt+W) |
+| Tests | `integration_repl_wave265_pipeline` |
+
+**424 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–265** closed for this incremental batch.
+
+---
+
+## Next (Wave 266+) — deferred
 
 | Item | Notes |
 |------|--------|
 | Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block iterative solvers |
 | Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
 | Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
-| Deeper API gaps | Full NCCL multi-GPU, Freund TFQMR loop, weighted blossom, etc. |
+| Deeper API gaps | Full NCCL multi-GPU, weighted blossom, etc. |
 
 See `mathscript-master-plan.md` and `CHANGELOG.md` for full history.

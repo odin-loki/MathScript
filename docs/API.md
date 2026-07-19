@@ -353,6 +353,15 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `control_ctrb` / `control_obsv` (+ `_gram`) / `control_tf2ss` / `control_c2d` / `control_c2d_b` | Controllability/observability, packed SS, ZOH Ad/Bd (Wave 264) |
 | `bessel_y` / `bessel_i` / `lambert_w` / `kummer_u` / `special_airy_bi` | Special-function scalars (Wave 264) |
 | `info_blahut_arimoto(W)` / `info_channel_capacity(W)` | Discrete channel capacity (bits) (Wave 264) |
+| `poly_shift` / `poly_scale` / `poly_monic` / `poly_reverse` / `poly_pow` / `poly_lcm` / `poly_div_quot` / `poly_mod` / `poly_eval_at` / `poly_sylvester` | Polynomial transforms / algebra (Wave 265) |
+| `poly_factor` / `poly_rational_roots` / `poly_factor_rational` / `poly_partial_fractions` / `poly_root_count` / `poly_cheb_eval` | Factorization / Chebyshev eval (Wave 265) |
+| `control_series` / `control_parallel` / `control_feedback` / `control_ss2tf` / `control_d2c` / `control_c2d_tf` / `control_d2c_tf` | TF algebra + c2d/d2c (Wave 265) |
+| `finance_merton_implied_asset_params` / `finance_bl_posterior_returns_default_omega` | Merton implied 1×6 / BL posterior (Wave 265) |
+| `combo_prev_perm` / `combo_prev_comb` | Previous permutation / combination (Wave 265) |
+| `bessel_k` / `chebyshev_t` / `chebyshev_u` / `hermite_h` / `laguerre_l` / `sph_bessel_j` / `sph_bessel_y` / `assoc_legendre_p` / `gegenbauer_c` | Orthogonal / Bessel specials (Wave 265) |
+| `matrix_rank` / `funm` / `precond_diag` / `precond_ssor` | Rank / matrix function / preconditioners (Wave 265) |
+| `graph_connected_components` / `graph_is_planar` | Connected components / planarity (Wave 265) |
+| `info_normalized_entropy` / `info_channel_capacity_input` | Normalized entropy / capacity-achieving input (Wave 265) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |

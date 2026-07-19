@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19 (Wave 265 — poly transforms/factor, control TF, Merton/BL, combo prev, specials, funm, graph/info, Capitalize) ✅ COMPLETE
+
+Thirty-fifth feature wave after Wave 264. Parallel Composer 2.5 worktrees merged to `main`: polynomial transforms and factorization, control transfer-function algebra and discretizations, Merton implied assets / BL default-omega, combo prev permutation/combination, orthogonal/Bessel specials, matrix funm/preconditioners, graph components/planarity, info entropy/capacity input, GUI Capitalize Words, and wave265 pipeline.
+
+### Added (Wave 265)
+- **Poly REPL** — `poly_shift` / `poly_scale` / `poly_monic` / `poly_reverse` / `poly_pow` / `poly_lcm` / `poly_div_quot` / `poly_mod` / `poly_eval_at` / `poly_sylvester`; `poly_factor` / `poly_rational_roots` / `poly_factor_rational` / `poly_partial_fractions` / `poly_root_count` / `poly_cheb_eval`.
+- **Control REPL** — `control_series` / `control_parallel` / `control_feedback` / `control_ss2tf` / `control_d2c` / `control_c2d_tf` / `control_d2c_tf`.
+- **Finance REPL** — `finance_merton_implied_asset_params` / `finance_bl_posterior_returns_default_omega`.
+- **Combo REPL** — `combo_prev_perm` / `combo_prev_comb`.
+- **Special REPL** — `bessel_k` / `chebyshev_t` / `chebyshev_u` / `hermite_h` / `laguerre_l` / `sph_bessel_j` / `sph_bessel_y` / `assoc_legendre_p` / `gegenbauer_c`.
+- **Linalg REPL** — `matrix_rank` / `funm` / `precond_diag` / `precond_ssor`.
+- **Graph / Info REPL** — `graph_connected_components` / `graph_is_planar`; `info_normalized_entropy` / `info_channel_capacity_input`.
+- **GUI** — Capitalize Words (Ctrl+Alt+W).
+- **Tests** — `integration_repl_wave265_pipeline`.
+
+### Docs (Wave 265)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 265 sync; **424** CTest suites.
+
+**424 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-19 (Wave 264 — poly algebra, cornacchia, ratios, ctrb/tf2ss, specials, capacity, Split Lines) ✅ COMPLETE
 
 Thirty-fourth feature wave after Wave 263. Parallel Composer 2.5 worktrees merged to `main`: polynomial roots/fit/Hermite/GCD/square-free, Cornacchia, Treynor/information ratio, controllability/observability/tf2ss/c2d, Bessel Y/I / Lambert W / Kummer U / Airy Bi, Blahut–Arimoto channel capacity, GUI Split Lines, and wave264 pipeline.
