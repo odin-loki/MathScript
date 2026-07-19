@@ -13,6 +13,7 @@
 #include "ms/control/control.hpp"
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
+#include "ms/frameworks/cellai/cellai.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include <ms/ml/ml.hpp>
 #include "ms/ml/ml.hpp"
@@ -9514,4 +9515,57 @@ TEST(ReplCommandsTest, wave269_diffgeo_presets) {
 
     expect_ok(interp, "gb_def = diffgeo_sphere_gauss_bonnet()");
     EXPECT_NEAR(interp.state().scalars.at("gb_def"), 4.0 * M_PI, 0.05 * 4.0 * M_PI);
+}
+
+TEST(ReplCommandsTest, wave270_cellai_ext) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cellai_boltzmann_weights");
+    expect_contains(interp, "help", "cellai_cell_to_cypha_features");
+
+    expect_ok(interp, "bw = cellai_boltzmann_weights([3, 3, 3, 3, 3], 1)");
+    ASSERT_GT(interp.state().matrices.count("bw"), 0u);
+    const auto& bw = interp.state().matrices.at("bw");
+    EXPECT_EQ(bw.rows(), 5u);
+    for (size_t i = 0; i < 5; ++i) {
+        EXPECT_NEAR(bw(i, 0), 0.2, 1e-9);
+    }
+
+    expect_ok(interp, "E = [5; 1; -3; 10]");
+    expect_ok(interp, "bw2 = cellai_boltzmann_weights(E, 1)");
+    const auto ref_weights = ms::cellai::boltzmann_weights({5.0, 1.0, -3.0, 10.0}, 1.0);
+    const auto& bw2 = interp.state().matrices.at("bw2");
+    ASSERT_EQ(bw2.rows(), ref_weights.size());
+    for (size_t i = 0; i < ref_weights.size(); ++i) {
+        EXPECT_NEAR(bw2(i, 0), ref_weights[i], 1e-9);
+    }
+    EXPECT_GT(bw2(2, 0), bw2(1, 0));
+    EXPECT_GT(bw2(1, 0), bw2(0, 0));
+
+    const auto boltz_out = interp.execute("cellai_boltzmann_weights([0, 1, 2], 0.5)");
+    ASSERT_TRUE(boltz_out.has_value());
+    EXPECT_NE(boltz_out->find("weights ="), std::string::npos);
+
+    expect_ok(interp, "cellmemory_new(cm, 2, 4, [0.1, 1, 10])");
+    expect_ok(interp, "cellmemory_step(cm, [1;0])");
+    expect_ok(interp, "cf = cellai_cell_to_cypha_features(cm, [0.1, 1, 5])");
+    ASSERT_GT(interp.state().matrices.count("cf"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cf").rows(), 3u);
+
+    ms::cellai::CellMemory memory(2, 4, {0.1, 1.0, 10.0});
+    ASSERT_TRUE(memory.step(ms::Matrix<double>{{1.0}, {0.0}}).has_value());
+    const auto ref_features =
+        ms::cellai::cell_to_cypha_features(memory, {0.1, 1.0, 5.0});
+    const auto& cf = interp.state().matrices.at("cf");
+    ASSERT_EQ(cf.rows(), ref_features.rows());
+    for (size_t i = 0; i < cf.rows(); ++i) {
+        EXPECT_NEAR(cf(i, 0), ref_features(i, 0), 1e-9);
+    }
+
+    const auto cypha_out =
+        interp.execute("cellai_cell_to_cypha_features(cm, [0.1, 1, 5])");
+    ASSERT_TRUE(cypha_out.has_value());
+    EXPECT_NE(cypha_out->find("features ="), std::string::npos);
+
+    expect_error(interp, "cellai_boltzmann_weights()");
+    expect_error(interp, "cellai_cell_to_cypha_features(missing, [1])");
 }

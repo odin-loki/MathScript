@@ -701,6 +701,16 @@ Matrix<double> vector_to_column(const std::vector<double>& values) {
     return out;
 }
 
+Result<Matrix<double>> eval_cellai_boltzmann_weights(const std::vector<double>& energies,
+                                                      double temperature) {
+    return vector_to_column(cellai::boltzmann_weights(energies, temperature));
+}
+
+Result<Matrix<double>> eval_cellai_cell_to_cypha_features(
+    const cellai::CellMemory& memory, const std::vector<double>& time_scales) {
+    return cellai::cell_to_cypha_features(memory, time_scales);
+}
+
 Matrix<double> psd_result_to_matrix(const PSDResult& psd) {
     Matrix<double> out(psd.frequencies.size(), 2);
     for (size_t i = 0; i < psd.frequencies.size(); ++i) {
@@ -16115,7 +16125,8 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         fn != "tokenbucket_new" && fn != "tokenbucket_consume" &&
         fn != "tokenbucket_available" && fn != "cellmemory_new" &&
         fn != "cellmemory_step" && fn != "cellmemory_recall" &&
-        fn != "cellmemory_consolidate" && fn != "difmodel_new" &&
+        fn != "cellmemory_consolidate" && fn != "cellai_cell_to_cypha_features" &&
+        fn != "difmodel_new" &&
         fn != "difmodel_update" && fn != "difmodel_predict" &&
         fn != "difmodel_predict_interval" && fn != "difmodel_ood_score" &&
         fn != "difmodel_gh_gate" && fn != "cluster_new" &&
@@ -16447,6 +16458,41 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(result.error());
         }
         return std::string{"consolidated\n"};
+    }
+
+    if (fn == "cellai_cell_to_cypha_features") {
+        if (call_args->size() != 1 && call_args->size() != 2) {
+            return std::unexpected(DomainError{
+                fn, "expected cellai_cell_to_cypha_features(handle, [time_scales])"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        std::vector<double> time_scales;
+        if (call_args->size() == 2) {
+            auto parsed_scales =
+                parse_bracket_vector_literal(trim_copy(call_args->at(1)), fn.c_str());
+            if (!parsed_scales) {
+                return std::unexpected(parsed_scales.error());
+            }
+            time_scales = std::move(*parsed_scales);
+        }
+        auto features = eval_cellai_cell_to_cypha_features(*memory, time_scales);
+        if (!features) {
+            return std::unexpected(features.error());
+        }
+        std::ostringstream out;
+        out << "features =\n";
+        print_matrix(out, *features);
+        return out.str();
     }
 
     if (fn == "difmodel_new") {
@@ -25488,6 +25534,92 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
                                       *dt_val);
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail9(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+    auto resolve_coeff_vector = [&](const std::string& text,
+                                    const char* fn) -> Result<std::vector<double>> {
+        auto parsed = parse_bracket_vector_literal(trim_copy(text), fn);
+        if (parsed) {
+            return *parsed;
+        }
+        auto matrix = resolve_operand(text);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        return matrix_to_coeff_vector(*matrix, fn);
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "cellai_boltzmann_weights" &&
+        (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto energies = resolve_coeff_vector(assign.args[0], "cellai_boltzmann_weights");
+        if (!energies) {
+            return std::unexpected(energies.error());
+        }
+        double temperature = 1.0;
+        if (assign.args.size() == 2) {
+            auto temp = parse_scalar_arg(assign.args[1], "cellai_boltzmann_weights");
+            if (!temp) {
+                return std::unexpected(temp.error());
+            }
+            temperature = *temp;
+        }
+        result = eval_cellai_boltzmann_weights(*energies, temperature);
+    } else if (assign.callee == "cellai_cell_to_cypha_features" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        std::string handle = trim_copy(assign.args[0]);
+        if (!is_identifier(handle)) {
+            return std::unexpected(DomainError{
+                "cellai_cell_to_cypha_features", "expected CellMemory handle identifier"});
+        }
+        const auto it = session_objects_.find(handle);
+        if (it == session_objects_.end()) {
+            return std::unexpected(DomainError{
+                "cellai_cell_to_cypha_features", "session object not found: " + handle});
+        }
+        if (!std::holds_alternative<cellai::CellMemory>(it->second)) {
+            return std::unexpected(DomainError{
+                "cellai_cell_to_cypha_features",
+                std::string("session object '") + handle + "' is not a CellMemory"});
+        }
+        const cellai::CellMemory& memory = std::get<cellai::CellMemory>(it->second);
+        std::vector<double> time_scales;
+        if (assign.args.size() == 2) {
+            auto parsed_scales =
+                resolve_coeff_vector(assign.args[1], "cellai_cell_to_cypha_features");
+            if (!parsed_scales) {
+                return std::unexpected(parsed_scales.error());
+            }
+            time_scales = std::move(*parsed_scales);
+        }
+        result = eval_cellai_cell_to_cypha_features(memory, time_scales);
+    }
+
     return result;
 }
 
@@ -31686,6 +31818,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cypha_nig_sample(0, 1, 0, 1, 10) draw n NIG samples (requires izaac seed)\n"
             "  cellai_hebbian_update([0.1], [1], [0.8], 0.1) Hebbian weight update\n"
             "  cellai_energy([1,2;3,4], [1;0], [1;2]) RBM energy scalar\n"
+            "  cellai_boltzmann_weights([0,1,2], 1) Gibbs weights over energy vector (default T=1)\n"
+            "  cellai_cell_to_cypha_features(cm, [0.1,1,5]) Cypha feature vector from CellMemory\n"
             "  izaac_estimate_pi(1000) Monte Carlo pi estimate (requires izaac seed)\n"
             "  izaac_laplace_noise(5, 1, 1) Laplace differential-privacy noise (requires izaac seed)\n"
             "  izaac_gaussian_noise(5, 1, 1e-5, 1) Gaussian DP noise (requires izaac seed)\n"
@@ -31872,7 +32006,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "frameworks: GRIA, Cypha, CellAI, Izaac pure REPL functions\n"
             "  gria_entropy([data],bins)  gria_matrix_alpha(X,FX)  gria_is_critical(a,tol)  gria_classify(a)\n"
             "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
-            "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)\n"
+            "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)  cellai_boltzmann_weights(E[,T])\n"
+            "  cellai_cell_to_cypha_features(h,[scales])\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
             "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")\n"
             "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)\n"
@@ -32525,7 +32660,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (fn == "gria_entropy" || fn == "gria_matrix_alpha" || fn == "gria_is_critical" ||
             fn == "gria_classify" || fn == "cypha_nig_fit" || fn == "cypha_nig_pdf" ||
             fn == "cypha_nig_cdf" || fn == "cypha_nig_sample" || fn == "cellai_hebbian_update" ||
-            fn == "cellai_energy" || fn == "izaac_estimate_pi" || fn == "izaac_laplace_noise" ||
+            fn == "cellai_energy" || fn == "cellai_boltzmann_weights" ||
+            fn == "izaac_estimate_pi" || fn == "izaac_laplace_noise" ||
             fn == "izaac_gaussian_noise") {
             const auto call_args = split_call_args(cmd);
             auto resolve_matrix_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -32709,6 +32845,41 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(h_m.error());
                 }
                 return std::to_string(cellai::energy(*w_m, *v_m, *h_m)) + "\n";
+            }
+            if (fn == "cellai_boltzmann_weights") {
+                if (!call_args || (call_args->size() != 1 && call_args->size() != 2)) {
+                    return std::unexpected(DomainError{
+                        fn, "expected cellai_boltzmann_weights(energies[, temperature])"});
+                }
+                std::vector<double> energies;
+                auto parsed = parse_bracket_vector_literal(trim_copy(call_args->at(0)), fn.c_str());
+                if (parsed) {
+                    energies = std::move(*parsed);
+                } else {
+                    auto e_m = resolve_matrix_arg(trim_copy(call_args->at(0)));
+                    if (!e_m) {
+                        return std::unexpected(e_m.error());
+                    }
+                    auto coeffs = matrix_to_coeff_vector(*e_m, fn.c_str());
+                    if (!coeffs) {
+                        return std::unexpected(coeffs.error());
+                    }
+                    energies = std::move(*coeffs);
+                }
+                double temperature = 1.0;
+                if (call_args->size() == 2) {
+                    if (!parse_number(trim_copy(call_args->at(1)), temperature)) {
+                        return std::unexpected(DomainError{fn, "expected numeric temperature"});
+                    }
+                }
+                auto weights = eval_cellai_boltzmann_weights(energies, temperature);
+                if (!weights) {
+                    return std::unexpected(weights.error());
+                }
+                std::ostringstream out;
+                out << "weights =\n";
+                print_matrix(out, *weights);
+                return out.str();
             }
             if (fn == "izaac_estimate_pi") {
                 if (!call_args || call_args->size() != 1) {
