@@ -8008,6 +8008,8 @@ TEST(ReplCommandsTest, wave266_image_imfilter_sobel) {
     expect_ok(interp, "D = dft_magnitude(G)");
     EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
     EXPECT_EQ(interp.state().matrices.at("D").cols(), 3u);
+}
+
 TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
     Interpreter interp;
     expect_contains(interp, "help", "mathieu_se(n,q,x)");
