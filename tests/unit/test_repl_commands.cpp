@@ -39,6 +39,11 @@ void expect_error_contains(Interpreter& interp, const std::string& cmd, const st
     EXPECT_NE(message.find(needle), std::string::npos) << cmd << " error: " << message;
 }
 
+void expect_error(Interpreter& interp, const std::string& cmd) {
+    const auto result = interp.execute(cmd);
+    EXPECT_FALSE(result.has_value()) << cmd;
+}
+
 double packed_tf_dcgain(const ms::Matrix<double>& packed) {
     std::vector<double> num(packed.cols());
     std::vector<double> den(packed.cols());
@@ -8656,4 +8661,35 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     ASSERT_GT(interp.state().scalars.count("inert"), 0u);
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
+}
+
+TEST(ReplCommandsTest, wave268_pde_cn_adi) {
+    Interpreter interp;
+    expect_contains(interp, "help", "pde_heat_1d_cn(x0,alpha,dx,dt,steps)");
+    expect_contains(interp, "help", "pde_heat_2d_cn_adi(u0,alpha,dx,dy,dt,steps)");
+
+    expect_ok(interp, "x0 = [0; 0.5; 1; 0.5; 0]");
+    expect_ok(interp, "h1cn = pde_heat_1d_cn(x0, 0.1, 0.1, 0.1, 10)");
+    ASSERT_GT(interp.state().matrices.count("h1cn"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("h1cn").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("h1cn").cols(), 1u);
+    for (size_t i = 0; i < 5; ++i) {
+        EXPECT_TRUE(std::isfinite(interp.state().matrices.at("h1cn")(i, 0)));
+    }
+    expect_ok(interp, "h1cn2 = pde_heat_1d_cn(x0, 0.1, 0.1, 0.01, 10)");
+    ASSERT_GT(interp.state().matrices.count("h1cn2"), 0u);
+    expect_error(interp, "pde_heat_1d_cn([0; 1], 0.1, 0.1, 0.01, 5)");
+
+    expect_ok(interp,
+              "u0 = [0,0,0,0,0; 0,0,0,0,0; 0,0,10,0,0; 0,0,0,0,0; 0,0,0,0,0]");
+    expect_ok(interp, "h2adi = pde_heat_2d_cn_adi(u0, 0.05, 0.1, 0.1, 0.5, 10)");
+    ASSERT_GT(interp.state().matrices.count("h2adi"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("h2adi").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("h2adi").cols(), 5u);
+    for (size_t r = 0; r < 5; ++r) {
+        for (size_t c = 0; c < 5; ++c) {
+            EXPECT_TRUE(std::isfinite(interp.state().matrices.at("h2adi")(r, c)));
+        }
+    }
+    expect_error(interp, "pde_heat_2d_cn_adi(zeros(2, 2), 0.1, 0.1, 0.1, 0.01, 5)");
 }
