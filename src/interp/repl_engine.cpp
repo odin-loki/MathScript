@@ -6836,6 +6836,145 @@ Result<Matrix<double>> eval_poly_squarefree(const Matrix<double>& coeffs_m) {
     return vector_to_column(poly::poly_squarefree(*coeffs));
 }
 
+Result<Matrix<double>> eval_poly_factor(const Matrix<double>& coeffs_m) {
+    constexpr const char* fn = "poly_factor";
+    auto coeffs = matrix_to_coeff_vector(coeffs_m, fn);
+    if (!coeffs) {
+        return std::unexpected(coeffs.error());
+    }
+    if (coeffs->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty coefficient vector"});
+    }
+    const auto factors = poly::poly_factor(*coeffs);
+    if (factors.empty()) {
+        return Matrix<double>(0, 0);
+    }
+    size_t max_len = 0;
+    for (const auto& f : factors) {
+        max_len = std::max(max_len, f.coeffs.size());
+    }
+    const size_t cols = max_len + 1;
+    Matrix<double> out(factors.size(), cols, 0.0);
+    for (size_t i = 0; i < factors.size(); ++i) {
+        for (size_t j = 0; j < factors[i].coeffs.size(); ++j) {
+            out(i, j) = factors[i].coeffs[j];
+        }
+        out(i, cols - 1) = static_cast<double>(factors[i].multiplicity);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_poly_rational_roots(const Matrix<double>& coeffs_m, double tol) {
+    constexpr const char* fn = "poly_rational_roots";
+    auto coeffs = matrix_to_coeff_vector(coeffs_m, fn);
+    if (!coeffs) {
+        return std::unexpected(coeffs.error());
+    }
+    if (coeffs->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty coefficient vector"});
+    }
+    const auto roots = poly::poly_rational_roots(*coeffs, tol);
+    if (!roots) {
+        return std::unexpected(roots.error());
+    }
+    Matrix<double> out(roots->size(), 2);
+    for (size_t i = 0; i < roots->size(); ++i) {
+        out(i, 0) = static_cast<double>((*roots)[i].first);
+        out(i, 1) = static_cast<double>((*roots)[i].second);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_poly_factor_rational(const Matrix<double>& coeffs_m, double tol) {
+    constexpr const char* fn = "poly_factor_rational";
+    auto coeffs = matrix_to_coeff_vector(coeffs_m, fn);
+    if (!coeffs) {
+        return std::unexpected(coeffs.error());
+    }
+    if (coeffs->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty coefficient vector"});
+    }
+    const auto fact = poly::poly_factor_rational(*coeffs, tol);
+    if (!fact) {
+        return std::unexpected(fact.error());
+    }
+    const size_t m = fact->linear_roots.size();
+    const size_t rem_len = fact->remainder.size();
+    Matrix<double> out(m + rem_len, 2, 0.0);
+    for (size_t i = 0; i < m; ++i) {
+        out(i, 0) = static_cast<double>(fact->linear_roots[i].first);
+        out(i, 1) = static_cast<double>(fact->linear_roots[i].second);
+    }
+    for (size_t i = 0; i < rem_len; ++i) {
+        out(m + i, 0) = fact->remainder[i];
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_poly_partial_fractions(const Matrix<double>& num_m,
+                                                   const Matrix<double>& den_m) {
+    constexpr const char* fn = "poly_partial_fractions";
+    auto num = matrix_to_coeff_vector(num_m, fn);
+    if (!num) {
+        return std::unexpected(num.error());
+    }
+    auto den = matrix_to_coeff_vector(den_m, fn);
+    if (!den) {
+        return std::unexpected(den.error());
+    }
+    if (num->empty() || den->empty()) {
+        return std::unexpected(
+            DomainError{fn, "expected non-empty numerator and denominator vectors"});
+    }
+    const auto res = poly::poly_partial_fractions(*num, *den);
+    const size_t q_len = res.quotient.size();
+    const size_t t_len = res.terms.size();
+    const size_t rows = std::max(q_len, t_len);
+    if (rows == 0) {
+        return Matrix<double>(0, 9);
+    }
+    Matrix<double> out(rows, 9, 0.0);
+    for (size_t i = 0; i < q_len; ++i) {
+        out(i, 0) = res.quotient[i];
+    }
+    for (size_t i = 0; i < t_len; ++i) {
+        const auto& term = res.terms[i];
+        out(i, 1) = term.A;
+        out(i, 2) = term.B;
+        out(i, 3) = term.C;
+        out(i, 4) = term.r;
+        out(i, 5) = term.p;
+        out(i, 6) = term.q;
+        out(i, 7) = static_cast<double>(term.k);
+        out(i, 8) = term.is_quadratic ? 1.0 : 0.0;
+    }
+    return out;
+}
+
+Result<double> eval_poly_root_count(const Matrix<double>& coeffs_m, double a, double b) {
+    constexpr const char* fn = "poly_root_count";
+    auto coeffs = matrix_to_coeff_vector(coeffs_m, fn);
+    if (!coeffs) {
+        return std::unexpected(coeffs.error());
+    }
+    if (coeffs->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty coefficient vector"});
+    }
+    return static_cast<double>(poly::poly_root_count(*coeffs, a, b));
+}
+
+Result<double> eval_poly_cheb_eval(const Matrix<double>& cheb_m, double x) {
+    constexpr const char* fn = "poly_cheb_eval";
+    auto cheb = matrix_to_coeff_vector(cheb_m, fn);
+    if (!cheb) {
+        return std::unexpected(cheb.error());
+    }
+    if (cheb->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty Chebyshev coefficient vector"});
+    }
+    return poly::poly_cheb_eval(*cheb, x);
+}
+
 Result<Matrix<double>> eval_quantum_tensor_product(const Matrix<double>& A_m,
                                                    const Matrix<double>& B_m) {
     auto A = matrix_to_density_matrix(A_m, "quantum_tensor_product");
@@ -9122,6 +9261,14 @@ struct TwoScalarMatrixMixedCallAssign {
     std::string arg_matrix;
 };
 
+struct MatrixTwoScalarMixedCallAssign {
+    std::string target;
+    std::string callee;
+    std::string arg_matrix;
+    std::string arg_scalar_a;
+    std::string arg_scalar_b;
+};
+
 bool is_scalar_matrix_mixed_call_callee(const std::string& callee) {
     return callee == "finance_npv" || callee == "info_renyi_entropy" ||
            callee == "info_tsallis_entropy" || callee == "combo_multinomial";
@@ -9129,6 +9276,10 @@ bool is_scalar_matrix_mixed_call_callee(const std::string& callee) {
 
 bool is_two_scalar_matrix_mixed_call_callee(const std::string& callee) {
     return callee == "cplx_blaschke_product";
+}
+
+bool is_matrix_two_scalar_mixed_call_callee(const std::string& callee) {
+    return callee == "poly_root_count";
 }
 
 bool is_matrix_scalar_mixed_call_callee(const std::string& callee) {
@@ -9146,7 +9297,8 @@ bool is_matrix_scalar_mixed_call_callee(const std::string& callee) {
            callee == "stats_ttest" || callee == "stats_trimmed_mean" ||
            callee == "stats_vif" || callee == "stats_variance_inflation_factor" ||
            callee == "stats_acf" ||
-           callee == "poly_eval" || callee == "fft_irfft" || callee == "poly_integ";
+           callee == "poly_eval" || callee == "poly_cheb_eval" ||
+           callee == "fft_irfft" || callee == "poly_integ";
 }
 
 bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
@@ -9164,6 +9316,7 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
            callee == "ml_logistic_predict" ||
            callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
+           callee == "poly_partial_fractions" ||
            callee == "signal_convolve" || callee == "signal_correlate" ||
            callee == "signal_sosfilt" || callee == "signal_conv2" ||
            callee == "geo_poly_union" || callee == "geo_poly_intersect" ||
@@ -9455,8 +9608,39 @@ bool try_parse_two_scalar_matrix_mixed_call_assignment(const std::string& line,
     assign.arg_scalar_a = trim_copy(call_args->at(0));
     assign.arg_scalar_b = trim_copy(call_args->at(1));
     assign.arg_matrix = trim_copy(call_args->at(2));
-    return !assign.arg_scalar_a.empty() && !assign.arg_scalar_b.empty() &&
+    return            !assign.arg_scalar_a.empty() && !assign.arg_scalar_b.empty() &&
            !assign.arg_matrix.empty();
+}
+
+bool try_parse_matrix_two_scalar_mixed_call_assignment(
+    const std::string& line, MatrixTwoScalarMixedCallAssign& assign) {
+    const std::string cmd = trim_copy(line);
+    const auto eq = cmd.find('=');
+    if (eq == std::string::npos) {
+        return false;
+    }
+    assign.target = trim_copy(cmd.substr(0, eq));
+    if (assign.target.empty() || !is_identifier(assign.target)) {
+        return false;
+    }
+    const std::string rhs = trim_copy(cmd.substr(eq + 1));
+    const auto open = rhs.find('(');
+    if (open == std::string::npos) {
+        return false;
+    }
+    assign.callee = lower(trim_copy(rhs.substr(0, open)));
+    if (!is_matrix_two_scalar_mixed_call_callee(assign.callee)) {
+        return false;
+    }
+    const auto call_args = split_call_args(rhs);
+    if (!call_args || call_args->size() != 3) {
+        return false;
+    }
+    assign.arg_matrix = trim_copy(call_args->at(0));
+    assign.arg_scalar_a = trim_copy(call_args->at(1));
+    assign.arg_scalar_b = trim_copy(call_args->at(2));
+    return !assign.arg_matrix.empty() && !assign.arg_scalar_a.empty() &&
+           !assign.arg_scalar_b.empty();
 }
 
 Result<double> eval_ml_metric(const std::string& callee, const ml::Vec& y_pred, const ml::Vec& y_true) {
@@ -11726,6 +11910,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "poly_lagrange" || fn == "poly_interp_newton" ||
             fn == "poly_roots" || fn == "poly_fit" || fn == "poly_interp_hermite" ||
             fn == "poly_gcd" || fn == "poly_squarefree" ||
+            fn == "poly_factor" || fn == "poly_rational_roots" ||
+            fn == "poly_factor_rational" || fn == "poly_partial_fractions" ||
             fn == "poly_mul" || fn == "poly_sub" || fn == "poly_compose" ||
             fn == "geo_poly_union" || fn == "geo_poly_intersect" || fn == "geo_poly_diff" ||
             fn == "geo_minkowski_sum" || fn == "geo_clip_polygon" ||
@@ -13700,6 +13886,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "poly_interp_newton" || callee == "poly_roots" ||
            callee == "poly_fit" || callee == "poly_interp_hermite" ||
            callee == "poly_gcd" || callee == "poly_squarefree" ||
+           callee == "poly_factor" || callee == "poly_rational_roots" ||
+           callee == "poly_factor_rational" || callee == "poly_partial_fractions" ||
            callee == "graph_floyd_warshall" || callee == "graph_dijkstra" ||
            callee == "graph_bellman_ford" || callee == "graph_mst_kruskal" ||
            callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
@@ -13795,6 +13983,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "numthy_pell_solve" || callee == "numthy_quadratic_residues" ||
         callee == "ml_mat_transpose" ||
         callee == "poly_deriv" || callee == "poly_roots" || callee == "poly_squarefree" ||
+        callee == "poly_factor" || callee == "poly_rational_roots" ||
+        callee == "poly_factor_rational" ||
         callee == "graph_floyd_warshall" || callee == "graph_mst_kruskal" ||
         callee == "graph_mst_prim" ||            callee == "graph_topological_sort" ||
            callee == "graph_greedy_colour" || callee == "graph_k_core_decomposition" ||
@@ -13831,6 +14021,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "signal_upsample" ||
         callee == "signal_downsample" || callee == "signal_decimate" ||
         callee == "signal_interpolate" || callee == "poly_eval" ||
+        callee == "poly_cheb_eval" ||
         callee == "graph_bfs" || callee == "graph_dfs" || callee == "graph_bipartite_match" ||
         callee == "graph_k_core_subgraph" ||
         callee == "finance_historical_var" || callee == "finance_historical_cvar" ||
@@ -13885,7 +14076,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "signal_convolve" || callee == "poly_add" ||
         callee == "poly_lagrange" || callee == "poly_interp_newton" ||
-        callee == "poly_gcd" ||
+        callee == "poly_gcd" || callee == "poly_partial_fractions" ||
         callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
         callee == "quantum_tensor_product" || callee == "signal_correlate" ||
         callee == "signal_sosfilt" || callee == "signal_conv2" ||
@@ -18686,6 +18877,69 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
         }
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail4(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "poly_factor" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto factors = eval_poly_factor(*matrix);
+        if (!factors) {
+            return std::unexpected(factors.error());
+        }
+        result = *factors;
+    } else if (assign.callee == "poly_rational_roots" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto roots = eval_poly_rational_roots(*matrix, 1e-6);
+        if (!roots) {
+            return std::unexpected(roots.error());
+        }
+        result = *roots;
+    } else if (assign.callee == "poly_factor_rational" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto fact = eval_poly_factor_rational(*matrix, 1e-6);
+        if (!fact) {
+            return std::unexpected(fact.error());
+        }
+        result = *fact;
+    } else if (assign.callee == "poly_partial_fractions" && assign.args.size() == 2) {
+        auto num = resolve_operand(assign.args[0]);
+        if (!num) {
+            return std::unexpected(num.error());
+        }
+        auto den = resolve_operand(assign.args[1]);
+        if (!den) {
+            return std::unexpected(den.error());
+        }
+        auto pf = eval_poly_partial_fractions(*num, *den);
+        if (!pf) {
+            return std::unexpected(pf.error());
+        }
+        result = *pf;
+    }
+
     return result;
 }
 
@@ -20772,6 +21026,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = poly_fit(xs,ys,degree) least-squares polynomial fit coefficient column\n"
             "  name = poly_gcd(a,b) polynomial GCD coefficient column (low-to-high)\n"
             "  name = poly_squarefree(p) square-free part coefficient column (low-to-high)\n"
+            "  name = poly_factor(p) real factorization as Kx(deg+1) coeff rows (low-to-high) + multiplicity in last column\n"
+            "  name = poly_rational_roots(p) rational roots as Mx2 [num,den] rows (multiplicity = repeated rows)\n"
+            "  name = poly_factor_rational(p) rational factorization: first M rows Mx2 [num,den], then remainder coeffs in col0\n"
+            "  name = poly_partial_fractions(num,den) partial fractions as max(q,T)x9 [quotient|A,B,C,r,p,q,k,is_quad]\n"
+            "  name = poly_root_count(p,a,b) Sturm root count in open interval (a,b)\n"
+            "  name = poly_cheb_eval(cheb_coeffs,x) Chebyshev series evaluation at x in [-1,1]\n"
             "  name = poly_mul(a,b) polynomial product coefficient column (low-to-high)\n"
             "  name = poly_sub(a,b) polynomial difference coefficient column (low-to-high)\n"
             "  name = poly_compose(p,q) polynomial composition p(q(x)) coefficient column\n"
@@ -21289,7 +21549,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_historical_var(returns,confidence), finance_historical_cvar(returns,confidence), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_merton_distance_to_default(V,sigma_v,D,r,T), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
-            "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
+            "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
@@ -21679,6 +21939,39 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return assign_scalar(two_scalar_matrix_call.target, *value);
         }
 
+        MatrixTwoScalarMixedCallAssign matrix_two_scalar_call{};
+        if (try_parse_matrix_two_scalar_mixed_call_assignment(cmd, matrix_two_scalar_call)) {
+            auto matrix = eval_matrix_operand(matrix_two_scalar_call.arg_matrix);
+            if (!matrix) {
+                return std::unexpected(matrix.error());
+            }
+            double scalar_a = 0.0;
+            double scalar_b = 0.0;
+            if (!parse_number(trim_copy(matrix_two_scalar_call.arg_scalar_a), scalar_a)) {
+                auto expr_a = eval_scalar_expr(state_, matrix_two_scalar_call.arg_scalar_a);
+                if (!expr_a) {
+                    return std::unexpected(expr_a.error());
+                }
+                scalar_a = *expr_a;
+            }
+            if (!parse_number(trim_copy(matrix_two_scalar_call.arg_scalar_b), scalar_b)) {
+                auto expr_b = eval_scalar_expr(state_, matrix_two_scalar_call.arg_scalar_b);
+                if (!expr_b) {
+                    return std::unexpected(expr_b.error());
+                }
+                scalar_b = *expr_b;
+            }
+            Result<double> value = std::unexpected(
+                DomainError{"assign", "unsupported matrix-two-scalar mixed call"});
+            if (matrix_two_scalar_call.callee == "poly_root_count") {
+                value = eval_poly_root_count(*matrix, scalar_a, scalar_b);
+            }
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return assign_scalar(matrix_two_scalar_call.target, *value);
+        }
+
         MatrixScalarMixedCallAssign matrix_scalar_call{};
         if (try_parse_matrix_scalar_mixed_call_assignment(cmd, matrix_scalar_call)) {
             auto matrix = eval_matrix_operand(matrix_scalar_call.arg_matrix);
@@ -21901,6 +22194,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_scalar_call.callee == "poly_eval") {
                 value = eval_poly_eval(*matrix, scalar_arg);
+            } else if (matrix_scalar_call.callee == "poly_cheb_eval") {
+                value = eval_poly_cheb_eval(*matrix, scalar_arg);
             } else if (matrix_scalar_call.callee == "geo_bezier_eval_x") {
                 value = eval_geo_bezier_eval_x(*matrix, scalar_arg);
             } else if (matrix_scalar_call.callee == "geo_bezier_eval_y") {
@@ -22573,6 +22868,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "poly_compose") {
                 auto value = eval_poly_compose(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "poly_partial_fractions") {
+                auto value = eval_poly_partial_fractions(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -28969,7 +29275,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "stats_vif" || fn == "stats_variance_inflation_factor" ||
             fn == "stats_acf" || fn == "graph_dfs" ||
             fn == "stats_percentile" ||
-            fn == "poly_eval" || fn == "fft_irfft" || fn == "poly_integ" ||
+            fn == "poly_eval" || fn == "poly_cheb_eval" || fn == "fft_irfft" || fn == "poly_integ" ||
             fn == "cplx_blaschke_product") {
             const auto call_args = split_call_args(cmd);
             if (call_args && call_args->size() == 3 && fn == "cplx_blaschke_product") {
@@ -29246,6 +29552,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "poly_eval") {
                     auto value = eval_poly_eval(*ctrl, t);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
+                if (fn == "poly_cheb_eval") {
+                    auto value = eval_poly_cheb_eval(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
@@ -31131,7 +31444,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "finance_historical_var" || fn == "finance_historical_cvar" ||
             fn == "stats_percentile" || fn == "stats_ttest" || fn == "stats_trimmed_mean" ||
             fn == "stats_vif" || fn == "stats_variance_inflation_factor" ||
-            fn == "poly_eval" ||
+            fn == "poly_eval" || fn == "poly_cheb_eval" ||
             fn == "fft_irfft" || fn == "poly_integ") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                 auto matrix = parse_matrix(text);
@@ -31350,6 +31663,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (fn == "poly_eval") {
                 auto value = eval_poly_eval(*ctrl, t);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return std::to_string(*value) + "\n";
+            }
+            if (fn == "poly_cheb_eval") {
+                auto value = eval_poly_cheb_eval(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
