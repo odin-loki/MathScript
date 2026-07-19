@@ -10629,6 +10629,135 @@ Result<std::string> eval_ode_rk45_call(const std::string& formula_arg, const std
     return format_ode_trajectory(ode_rk45(f, t0, y0, t_end, rtol, atol));
 }
 
+Result<std::string> eval_ode_adaptive_call(
+    const char* fn, const std::string& formula_arg, const std::string& t0_arg,
+    const std::string& y0_arg, const std::string& t_end_arg, const std::string& rtol_arg,
+    const std::string& atol_arg,
+    OdeResult (*solver)(OdeFunc, double, double, double, double, double)) {
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double rtol = 0.0;
+    double atol = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y0_arg), y0) ||
+        !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(rtol_arg), rtol) || !parse_number(trim_copy(atol_arg), atol)) {
+        return std::unexpected(DomainError{
+            fn, std::string("expected ") + fn + "(\"formula\", t0, y0, t_end, rtol, atol)"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeFunc f = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    return format_ode_trajectory(solver(f, t0, y0, t_end, rtol, atol));
+}
+
+Result<std::string> eval_ode_trapezoidal_call(const std::string& formula_arg,
+                                              const std::string& t0_arg,
+                                              const std::string& y0_arg,
+                                              const std::string& t_end_arg,
+                                              const std::string& steps_arg) {
+    constexpr const char* fn = "ode_trapezoidal";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y0_arg), y0) ||
+        !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn, "expected ode_trapezoidal(\"formula\", t0, y0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeFunc f = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    return format_ode_trajectory(ode_trapezoidal(f, t0, t_end, y0, steps_i));
+}
+
+Result<std::string> eval_ode_rosenbrock23_call(const std::string& formula_arg,
+                                               const std::string& t0_arg,
+                                               const std::string& y0_arg,
+                                               const std::string& t_end_arg,
+                                               const std::string& steps_arg) {
+    constexpr const char* fn = "ode_rosenbrock23";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(y0_arg), y0) ||
+        !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn, "expected ode_rosenbrock23(\"formula\", t0, y0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeFunc f = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    return format_ode_trajectory(ode_rosenbrock23(f, t0, y0, t_end, steps_i));
+}
+
+Result<std::string> eval_ode_exponential_euler_call(const std::string& formula_arg,
+                                                  const std::string& lambda_arg,
+                                                  const std::string& t0_arg,
+                                                  const std::string& y0_arg,
+                                                  const std::string& t_end_arg,
+                                                  const std::string& steps_arg) {
+    constexpr const char* fn = "ode_exponential_euler";
+    auto expr = parse_sym_quoted_expr(formula_arg, fn);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    double lambda = 0.0;
+    double t0 = 0.0;
+    double y0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(lambda_arg), lambda) || !parse_number(trim_copy(t0_arg), t0) ||
+        !parse_number(trim_copy(y0_arg), y0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn,
+            "expected ode_exponential_euler(\"g\", lambda, t0, y0, t_end, steps) with g the "
+            "nonlinear remainder in dy/dt = lambda*y + g(t,y)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    SymExpr parsed = std::move(*expr);
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
+    OdeFunc g = [expr_ptr](double t, double y) {
+        return sym_eval(*expr_ptr, {{"t", t}, {"y", y}});
+    };
+    return format_ode_trajectory(
+        ode_exponential_euler(g, lambda, t0, y0, t_end, steps_i));
+}
+
 Result<Matrix<double>> parse_bracket_matrix_literal(const std::string& text, const char* fn) {
     std::string s = trim_copy(text);
     if (s.size() < 2 || s.front() != '[' || s.back() != ']') {
@@ -11214,6 +11343,49 @@ Result<std::string> eval_ode_rk45_vec_call(const std::string& formula_arg, const
         return out;
     };
     return format_ode_trajectory_vec(ode_rk45_vec(f, t0, *y0, t_end, rtol, atol));
+}
+
+Result<std::string> eval_ode_rosenbrock23_vec_call(const std::string& formula_arg,
+                                                   const std::string& t0_arg,
+                                                   const std::string& y0_arg,
+                                                   const std::string& t_end_arg,
+                                                   const std::string& steps_arg) {
+    constexpr const char* fn = "ode_rosenbrock23_vec";
+    auto exprs = parse_sym_semicolon_formulas(formula_arg, fn);
+    if (!exprs) {
+        return std::unexpected(exprs.error());
+    }
+    auto y0 = parse_bracket_vector_literal(y0_arg, fn);
+    if (!y0) {
+        return std::unexpected(y0.error());
+    }
+    if (exprs->size() != y0->size()) {
+        return std::unexpected(DomainError{
+            fn, "formula count must match initial-condition vector length"});
+    }
+    double t0 = 0.0;
+    double t_end = 0.0;
+    double steps_d = 0.0;
+    if (!parse_number(trim_copy(t0_arg), t0) || !parse_number(trim_copy(t_end_arg), t_end) ||
+        !parse_number(trim_copy(steps_arg), steps_d)) {
+        return std::unexpected(DomainError{
+            fn, "expected ode_rosenbrock23_vec(\"f0;f1;...\", t0, y0, t_end, steps)"});
+    }
+    const int steps_i = static_cast<int>(steps_d);
+    if (steps_i < 0 || steps_d != steps_i) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
+    OdeFuncVec f = [exprs_ptr](double t, const std::vector<double>& y) {
+        const auto env = build_vec_ode_env(t, y);
+        std::vector<double> out;
+        out.reserve(exprs_ptr->size());
+        for (const auto& expr : *exprs_ptr) {
+            out.push_back(sym_eval(expr, env));
+        }
+        return out;
+    };
+    return format_ode_trajectory_vec(ode_rosenbrock23_vec(f, t0, *y0, t_end, steps_i));
 }
 
 Result<std::string> eval_ode_verlet_vec_call(const std::string& formula_arg,
@@ -22705,7 +22877,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ode_rk4(\"formula\",t0,y0,t_end,steps) RK4 IVP trajectory [t,y] columns\n"
             "  name = ode_midpoint(\"formula\",t0,y0,t_end,steps) midpoint IVP trajectory [t,y] columns\n"
             "  name = ode_rk45(\"formula\",t0,y0,t_end,rtol,atol) adaptive RK45 IVP trajectory [t,y] columns\n"
+            "  name = ode_rk23(\"formula\",t0,y0,t_end,rtol,atol) adaptive Bogacki-Shampine RK23 IVP trajectory [t,y] columns\n"
+            "  name = ode_cashkarp(\"formula\",t0,y0,t_end,rtol,atol) adaptive Cash-Karp RK(4,5) IVP trajectory [t,y] columns\n"
             "  name = ode_backward_euler(\"formula\",t0,y0,t_end,steps) backward Euler IVP trajectory [t,y] columns\n"
+            "  name = ode_trapezoidal(\"formula\",t0,y0,t_end,steps) implicit trapezoidal stiff IVP trajectory [t,y] columns\n"
+            "  name = ode_exponential_euler(\"g\",lambda,t0,y0,t_end,steps) ETD1 semi-linear stiff IVP (g=remainder in dy/dt=lambda*y+g) [t,y] columns\n"
+            "  name = ode_rosenbrock23(\"formula\",t0,y0,t_end,steps) Rosenbrock23 stiff IVP trajectory [t,y] columns\n"
             "  name = ode_bdf2(\"formula\",t0,y0,t_end,steps) BDF2 stiff IVP trajectory [t,y] columns\n"
             "  name = ode_verlet(\"formula\",t0,q0,v0,t_end,steps) Verlet second-order trajectory [t,q,v] columns\n"
             "  name = ode_euler_vec(\"f0;f1;...\",t0,y0,t_end,steps) Euler vector IVP trajectory [t,y0,y1,...] columns\n"
@@ -22713,6 +22890,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ode_rk45_vec(\"f0;f1;...\",t0,y0,t_end,rtol,atol) adaptive RK45 vector IVP trajectory [t,y0,y1,...] columns\n"
             "  name = ode_verlet_vec(\"a0;a1;...\",t0,q0,v0,t_end,steps) vector Verlet trajectory [t,q0,q1,...,v0,v1,...] columns\n"
             "  name = ode_backward_euler_vec(\"f0;f1;...\",t0,y0,t_end,steps) backward Euler vector IVP trajectory [t,y0,y1,...] columns (env {t,y0..yN-1})\n"
+            "  name = ode_rosenbrock23_vec(\"f0;f1;...\",t0,y0,t_end,steps) Rosenbrock23 vector stiff IVP trajectory [t,y0,y1,...] columns (env {t,y0..yN-1})\n"
             "  name = ode_dae_index1(\"f0;f1;...\",\"g0;g1;...\",t0,y0,z0,t_end,steps) index-1 DAE y/z trajectories (env {t,y0..yN-1,z0..zM-1})\n"
             "  name = ode_bvp_shooting(\"formula\",t0,y_a,t_end,y_b,steps) BVP shooting trajectory [t,y,yp] (env {t,y,yp})\n"
             "  name = ode_dde_fixed_step(\"f\",\"history\",t0,t_end,tau,steps) DDE trajectory [t,y] (f env {t,y,ydelay}, history env {t})\n"
@@ -23134,10 +23312,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), debye(n,x)\n"
             "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_hankel(\"expr\",\"r\",\"k\"), sym_ihankel(\"expr\",\"k\",\"r\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\")\n"
-            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42), bfgs(\"(x0-3)*(x0-3)\", [0])\n"
-            "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
+            "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_rk23(\"y\", 0, 1, 1, 1e-4, 1e-7), ode_cashkarp(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42), bfgs(\"(x0-3)*(x0-3)\", [0])\n"
+            "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_trapezoidal(\"-y\", 0, 1, 1, 200), ode_exponential_euler(\"0\", -5, 0, 1, 1, 200), ode_rosenbrock23(\"-10*y\", 0, 1, 1, 200), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
-            "  ode_backward_euler_vec(\"-y0\", 0, [1], 1, 200), ode_dae_index1(\"-y0\", \"z0 - 2*y0\", 0, [1], [2], 1, 200)\n"
+            "  ode_backward_euler_vec(\"-y0\", 0, [1], 1, 200), ode_rosenbrock23_vec(\"-y0\", 0, [1], 1, 200), ode_dae_index1(\"-y0\", \"z0 - 2*y0\", 0, [1], [2], 1, 200)\n"
             "  ode_bvp_shooting(\"-y\", 0, 0, 1.570796, 1, 400), ode_dde_fixed_step(\"-y + ydelay\", \"3\", 0, 5, 1000, 200)\n"
             "  ode_event_detect(\"1\", \"y\", 0, -5, 10, 100)\n"
             "  gria_entropy([1,2,2,3,3,3], 4) Shannon entropy with 4 histogram bins (default bins=16)\n"
@@ -26542,11 +26720,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return *value;
         }
-        if (fn == "ode_euler_vec" || fn == "ode_rk4_vec" || fn == "ode_backward_euler_vec") {
+        if (fn == "ode_euler_vec" || fn == "ode_rk4_vec" || fn == "ode_backward_euler_vec" ||
+            fn == "ode_rosenbrock23_vec") {
             const auto call_args = split_call_args(cmd);
             if (!call_args || call_args->size() != 5) {
                 return std::unexpected(DomainError{
                     fn, std::string("expected ") + fn + "(\"f0;f1;...\", t0, y0, t_end, steps)"});
+            }
+            if (fn == "ode_rosenbrock23_vec") {
+                auto value = eval_ode_rosenbrock23_vec_call(call_args->at(0), call_args->at(1),
+                                                            call_args->at(2), call_args->at(3),
+                                                            call_args->at(4));
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return *value;
             }
             OdeResultVec (*solver)(OdeFuncVec, double, const std::vector<double>&, double,
                                    size_t) = nullptr;
@@ -27911,6 +28099,24 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return *value;
         }
+        if (fn == "ode_trapezoidal") {
+            auto value = eval_ode_trapezoidal_call(trim(match[2].str()), trim(match[3].str()),
+                                                   trim(match[4].str()), trim(match[5].str()),
+                                                   trim(match[6].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_rosenbrock23") {
+            auto value = eval_ode_rosenbrock23_call(trim(match[2].str()), trim(match[3].str()),
+                                                    trim(match[4].str()), trim(match[5].str()),
+                                                    trim(match[6].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
         if (fn == "heun_b" || fn == "heun_d" || fn == "heun_t") {
             double q = 0.0;
             double alpha = 0.0;
@@ -27981,6 +28187,35 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             auto value = eval_ode_rk45_call(trim(match[2].str()), trim(match[3].str()),
                                             trim(match[4].str()), trim(match[5].str()),
                                             trim(match[6].str()), trim(match[7].str()));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_cashkarp") {
+            auto value = eval_ode_adaptive_call("ode_cashkarp", trim(match[2].str()),
+                                                trim(match[3].str()), trim(match[4].str()),
+                                                trim(match[5].str()), trim(match[6].str()),
+                                                trim(match[7].str()), ode_cashkarp);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_rk23") {
+            auto value = eval_ode_adaptive_call("ode_rk23", trim(match[2].str()),
+                                                trim(match[3].str()), trim(match[4].str()),
+                                                trim(match[5].str()), trim(match[6].str()),
+                                                trim(match[7].str()), ode_rk23);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "ode_exponential_euler") {
+            auto value = eval_ode_exponential_euler_call(
+                trim(match[2].str()), trim(match[3].str()), trim(match[4].str()),
+                trim(match[5].str()), trim(match[6].str()), trim(match[7].str()));
             if (!value) {
                 return std::unexpected(value.error());
             }

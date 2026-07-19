@@ -8064,3 +8064,106 @@ TEST(ReplCommandsTest, wave266_special_mathieu_heun) {
     expect_ok(interp, "p2 = painleve2(0.5, 0.0, -0.5, 0.0)");
     EXPECT_NEAR(interp.state().scalars.at("p2"), p2_ref, 1e-3);
 }
+
+namespace {
+
+std::pair<double, double> parse_last_ode_traj_row(const std::string& text) {
+    std::pair<double, double> last{0.0, 0.0};
+    std::istringstream ss(text);
+    std::string line;
+    while (std::getline(ss, line)) {
+        const std::string trimmed = Interpreter::trim(line);
+        if (trimmed.size() < 5 || trimmed.front() != '[' || trimmed.back() != ']') {
+            continue;
+        }
+        const std::string inner = trimmed.substr(1, trimmed.size() - 2);
+        const auto comma = inner.find(',');
+        if (comma == std::string::npos) {
+            continue;
+        }
+        last.first = std::stod(Interpreter::trim(inner.substr(0, comma)));
+        last.second = std::stod(Interpreter::trim(inner.substr(comma + 1)));
+    }
+    return last;
+}
+
+std::vector<double> parse_last_ode_traj_row_all(const std::string& text) {
+    std::vector<double> last;
+    std::istringstream ss(text);
+    std::string line;
+    while (std::getline(ss, line)) {
+        const std::string trimmed = Interpreter::trim(line);
+        if (trimmed.size() < 5 || trimmed.front() != '[' || trimmed.back() != ']') {
+            continue;
+        }
+        const std::string inner = trimmed.substr(1, trimmed.size() - 2);
+        std::vector<double> row;
+        std::stringstream cell_stream(inner);
+        std::string cell;
+        while (std::getline(cell_stream, cell, ',')) {
+            row.push_back(std::stod(Interpreter::trim(cell)));
+        }
+        if (!row.empty()) {
+            last = std::move(row);
+        }
+    }
+    return last;
+}
+
+} // namespace
+
+TEST(ReplCommandsTest, wave267_ode_adaptive_stiff) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ode_trapezoidal(\"formula\",t0,y0,t_end,steps)");
+    expect_contains(interp, "help", "ode_cashkarp(\"formula\",t0,y0,t_end,rtol,atol)");
+    expect_contains(interp, "help", "ode_rk23(\"formula\",t0,y0,t_end,rtol,atol)");
+    expect_contains(interp, "help", "ode_exponential_euler(\"g\",lambda,t0,y0,t_end,steps)");
+    expect_contains(interp, "help", "ode_rosenbrock23(\"formula\",t0,y0,t_end,steps)");
+    expect_contains(interp, "help", "ode_rosenbrock23_vec(\"f0;f1;...\",t0,y0,t_end,steps)");
+
+    const auto trapezoidal = interp.execute("ode_trapezoidal(\"-y\", 0, 1, 1, 200)");
+    ASSERT_TRUE(trapezoidal.has_value());
+    const auto trap_last = parse_last_ode_traj_row(*trapezoidal);
+    EXPECT_NEAR(trap_last.first, 1.0, 1e-9);
+    EXPECT_NEAR(trap_last.second, std::exp(-1.0), 0.05);
+    expect_error_contains(interp, "ode_trapezoidal(\"sin(\", 0, 1, 1, 200)", "ode_trapezoidal");
+
+    const auto cashkarp = interp.execute("ode_cashkarp(\"y\", 0, 1, 1, 1e-6, 1e-9)");
+    ASSERT_TRUE(cashkarp.has_value());
+    const auto ck_last = parse_last_ode_traj_row(*cashkarp);
+    EXPECT_NEAR(ck_last.first, 1.0, 1e-9);
+    EXPECT_NEAR(ck_last.second, std::exp(1.0), 0.02);
+    expect_error_contains(interp, "ode_cashkarp(\"y +\", 0, 1, 1, 1e-6, 1e-9)", "ode_cashkarp");
+
+    const auto rk23 = interp.execute("ode_rk23(\"y\", 0, 1, 1, 1e-4, 1e-7)");
+    ASSERT_TRUE(rk23.has_value());
+    const auto rk23_last = parse_last_ode_traj_row(*rk23);
+    EXPECT_NEAR(rk23_last.first, 1.0, 1e-9);
+    EXPECT_NEAR(rk23_last.second, std::exp(1.0), 0.03);
+    expect_error_contains(interp, "ode_rk23(\"y +\", 0, 1, 1, 1e-4, 1e-7)", "ode_rk23");
+
+    const auto etd = interp.execute("ode_exponential_euler(\"0\", -5, 0, 1, 1, 200)");
+    ASSERT_TRUE(etd.has_value());
+    const auto etd_last = parse_last_ode_traj_row(*etd);
+    EXPECT_NEAR(etd_last.first, 1.0, 1e-9);
+    EXPECT_NEAR(etd_last.second, std::exp(-5.0), 0.02);
+    expect_error_contains(interp, "ode_exponential_euler(\"sin(\", -5, 0, 1, 1, 200)",
+                          "ode_exponential_euler");
+
+    const auto rosen = interp.execute("ode_rosenbrock23(\"-10*y\", 0, 1, 1, 200)");
+    ASSERT_TRUE(rosen.has_value());
+    const auto rosen_last = parse_last_ode_traj_row(*rosen);
+    EXPECT_NEAR(rosen_last.first, 1.0, 1e-9);
+    EXPECT_NEAR(rosen_last.second, std::exp(-10.0), 0.05);
+    expect_error_contains(interp, "ode_rosenbrock23(\"bad(@)\", 0, 1, 1, 100)", "ode_rosenbrock23");
+
+    const auto rosen_vec =
+        interp.execute("ode_rosenbrock23_vec(\"-y0\", 0, [1], 1, 200)");
+    ASSERT_TRUE(rosen_vec.has_value());
+    const auto rosen_vec_last = parse_last_ode_traj_row_all(*rosen_vec);
+    ASSERT_GE(rosen_vec_last.size(), 2u);
+    EXPECT_NEAR(rosen_vec_last[0], 1.0, 1e-9);
+    EXPECT_NEAR(rosen_vec_last[1], std::exp(-1.0), 0.05);
+    expect_error_contains(interp, "ode_rosenbrock23_vec(\"y1; sin(\", 0, [1], 1, 100)",
+                          "ode_rosenbrock23_vec");
+}
