@@ -5499,6 +5499,40 @@ Result<double> eval_quantum_purity(const Matrix<double>& rho_m) {
     return quantum::purity(*rho);
 }
 
+Result<double> eval_quantum_wigner(const Matrix<double>& rho_m, double x, double p) {
+    auto rho = matrix_to_density_matrix(rho_m, "quantum_wigner");
+    if (!rho) {
+        return std::unexpected(rho.error());
+    }
+    return quantum::wigner_function(*rho, x, p);
+}
+
+Result<double> eval_quantum_husimi(const Matrix<double>& rho_m, double alpha_re, double alpha_im) {
+    auto rho = matrix_to_density_matrix(rho_m, "quantum_husimi");
+    if (!rho) {
+        return std::unexpected(rho.error());
+    }
+    return quantum::husimi_Q(*rho, quantum::C(alpha_re, alpha_im));
+}
+
+Result<Matrix<double>> eval_quantum_grover_search(int n_qubits, const Matrix<double>& marked_m,
+                                                  int n_iterations) {
+    if (n_qubits < 1) {
+        return std::unexpected(
+            DomainError{"quantum_grover_search", "expected positive integer n_qubits"});
+    }
+    auto marked = matrix_to_int_coeff_vector(marked_m, "quantum_grover_search");
+    if (!marked) {
+        return std::unexpected(marked.error());
+    }
+    const auto psi = quantum::grover_search(n_qubits, *marked, n_iterations);
+    if (psi.empty()) {
+        return std::unexpected(
+            DomainError{"quantum_grover_search", "expected positive integer n_qubits"});
+    }
+    return ket_to_column_matrix(psi);
+}
+
 Result<double> eval_quantum_schmidt_rank(const Matrix<double>& psi_m, int dim_a, int dim_b) {
     auto psi = matrix_to_ket(psi_m, "quantum_schmidt_rank");
     if (!psi) {
@@ -6503,6 +6537,22 @@ Result<std::vector<int64_t>> matrix_to_int64_coeff_vector(const Matrix<double>& 
                 DomainError{fn, "expected integer continued-fraction coefficients"});
         }
         out.push_back(static_cast<int64_t>(entry));
+    }
+    return out;
+}
+
+Result<std::vector<int>> matrix_to_int_coeff_vector(const Matrix<double>& m, const char* fn) {
+    auto coeffs = matrix_to_coeff_vector(m, fn);
+    if (!coeffs) {
+        return std::unexpected(coeffs.error());
+    }
+    std::vector<int> out;
+    out.reserve(coeffs->size());
+    for (const double entry : *coeffs) {
+        if (entry < 0.0 || std::floor(entry) != entry) {
+            return std::unexpected(DomainError{fn, "expected non-negative integer entries"});
+        }
+        out.push_back(static_cast<int>(entry));
     }
     return out;
 }
@@ -11679,7 +11729,8 @@ struct MatrixTwoScalarMixedCallAssign {
 };
 
 bool is_matrix_two_scalar_mixed_call_callee(const std::string& callee) {
-    return callee == "poly_root_count";
+    return callee == "poly_root_count" || callee == "quantum_wigner" ||
+           callee == "quantum_husimi";
 }
 
 bool try_parse_matrix_two_scalar_mixed_call_assignment(
@@ -14713,6 +14764,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_ket_normalise" ||
             fn == "quantum_density_matrix" ||
             fn == "quantum_ket_basis" || fn == "quantum_fock_state" ||
+            fn == "quantum_grover_search" ||
             fn == "quantum_identity_n" ||
             fn == "control_step_final" || fn == "control_impulse_final" ||
             fn == "control_dcgain" || fn == "control_pidtune_kp" ||
@@ -14742,8 +14794,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_inner" || fn == "quantum_entanglement_entropy" ||
             fn == "quantum_schmidt_rank" || fn == "quantum_uncertainty" ||
             fn == "quantum_grover_optimal_iterations" || fn == "quantum_purity" ||
+            fn == "quantum_wigner" || fn == "quantum_husimi" ||
             fn == "quantum_partial_trace" || fn == "quantum_schrodinger" ||
-            fn == "quantum_schrodinger_final" ||
+            fn == "quantum_schrodinger_final" || fn == "quantum_grover_search" ||
             fn == "pde_heat_1d" || fn == "pde_heat_1d_cn" || fn == "pde_heat_2d" ||
             fn == "pde_heat_2d_cn_adi" || fn == "pde_wave_1d" || fn == "pde_wave_2d" ||
             fn == "pde_advection_1d" || fn == "pde_advection_1d_lax_wendroff" ||
@@ -16544,6 +16597,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "quantum_ket_basis" ||
            callee == "quantum_ket_superposition" ||
            callee == "quantum_fock_state" || callee == "quantum_coherent_state" ||
+           callee == "quantum_grover_search" ||
            callee == "quantum_partial_trace" || callee == "quantum_schrodinger" ||
            callee == "quantum_schrodinger_final" ||
            callee == "pde_heat_1d" || callee == "pde_heat_1d_cn" || callee == "pde_heat_2d" ||
@@ -17024,6 +17078,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "quantum_partial_trace") {
         return arity == 4;
+    }
+    if (callee == "quantum_grover_search") {
+        return arity == 2 || arity == 3;
     }
     if (callee == "quantum_schrodinger" || callee == "quantum_schrodinger_final") {
         return arity == 5;
@@ -23690,6 +23747,70 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
         result = *encoded;
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail8(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "quantum_grover_search" &&
+        (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto n_qubits_val = parse_scalar_arg(assign.args[0], "quantum_grover_search");
+        if (!n_qubits_val) {
+            return std::unexpected(n_qubits_val.error());
+        }
+        const int n_qubits = static_cast<int>(*n_qubits_val);
+        if (n_qubits < 1 || *n_qubits_val != n_qubits) {
+            return std::unexpected(DomainError{
+                "quantum_grover_search", "expected positive integer n_qubits"});
+        }
+        auto marked_m = resolve_operand(assign.args[1]);
+        if (!marked_m) {
+            return std::unexpected(marked_m.error());
+        }
+        auto marked_indices = matrix_to_int_coeff_vector(*marked_m, "quantum_grover_search");
+        if (!marked_indices) {
+            return std::unexpected(marked_indices.error());
+        }
+        int n_iterations = quantum::grover_optimal_iterations(
+            n_qubits, static_cast<int>(marked_indices->size()));
+        if (assign.args.size() == 3) {
+            auto iter_val = parse_scalar_arg(assign.args[2], "quantum_grover_search");
+            if (!iter_val) {
+                return std::unexpected(iter_val.error());
+            }
+            n_iterations = static_cast<int>(*iter_val);
+            if (n_iterations < 0 || *iter_val != n_iterations) {
+                return std::unexpected(DomainError{
+                    "quantum_grover_search", "expected non-negative integer n_iterations"});
+            }
+        }
+        result = eval_quantum_grover_search(n_qubits, *marked_m, n_iterations);
+    }
+
     return result;
 }
 
@@ -26545,6 +26666,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_schmidt_rank(psi,dim_a,dim_b) Schmidt rank of bipartite Nx1 state\n"
             "  name = quantum_uncertainty(psi,A,B) uncertainty product Delta(A)*Delta(B)\n"
             "  name = quantum_grover_optimal_iterations(n_qubits,n_marked) optimal Grover iterations\n"
+            "  name = quantum_wigner(rho,x,p) Wigner quasi-probability at phase-space point (x,p)\n"
+            "  name = quantum_husimi(rho,alpha_re,alpha_im) Husimi Q-function at coherent amplitude alpha\n"
+            "  name = quantum_grover_search(n_qubits,marked_indices[,n_iterations]) Grover search state ket\n"
             "  name = quantum_partial_trace(rho,d1,d2,subsystem) partial trace of NxN density matrix\n"
             "  name = quantum_schrodinger(H,psi0,t0,t1,n_steps) SchrÃƒÂ¶dinger trajectory (real parts)\n"
             "  name = quantum_schrodinger_final(H,psi0,t0,t1,n_steps) final SchrÃƒÂ¶dinger state column\n"
@@ -26643,11 +26767,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  erfi(x), erfcx(x), dawson(x), dawsonx(x), special_erfinv(x), special_erfcinv(x), special_rgamma(x), special_pochhammer(a,n), special_falling_factorial(a,n), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc(a,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc(x,a,b), special_beta_inc_reg(x,a,b), beta(a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), special_airy_aip(x), special_airy_bip(x), airy_aip(x), airy_bip(x), bernoulli_number(n), euler_number(n), beta_dirichlet(s), zeta_hurwitz(s,a), lerch_phi(z,s,a), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), chebyshev_tn(n,k,x), chebyshev_un(n,k,x), hermite_h(n,x), hermite_hf(n,x), laguerre_l(n,x), laguerre_ln(n,k,x), legendre_q(n,x), legendre_pn(n,m,x), hermite_he(n,x), laguerre_la(n,a,x), chebyshev_v(n,x), chebyshev_w(n,x), sph_harm(l,m,theta,phi), sph_bessel_j(n,x), sph_bessel_y(n,x), spherical_in(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts), control_c2d_tustin(A,B,C,D,Ts), control_c2d_euler(A,B,C,D,Ts), control_series(num1,den1,num2,den2), control_parallel(num1,den1,num2,den2), control_feedback(numG,denG,numH,denH[,sign]), control_ss2tf(SS), control_d2c(A,B,C,D,Ts), control_c2d_tf(num,den,Ts), control_c2d_tf_tustin(num,den,Ts), control_d2c_tf(num,den,Ts)\n"
-            "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
+            "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits), quantum_grover_search(n_qubits,marked_indices[,n_iterations])\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_historical_var(returns,confidence), finance_historical_cvar(returns,confidence), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_merton_distance_to_default(V,sigma_v,D,r,T), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
-            "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
+            "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_wigner(rho,x,p), quantum_husimi(rho,alpha_re,alpha_im), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
             "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_ks_norm(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_1d_cn(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_heat_2d_cn_adi(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_wave_2d(u0,v0,c,dx,dy,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_advection_1d_lax_wendroff(u0,v,dx,dt,steps), pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_cheb_expand(p,n[,a,b]), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births)\n"
@@ -27067,6 +27191,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 DomainError{"assign", "unsupported matrix-two-scalar mixed call"});
             if (matrix_two_scalar_call.callee == "poly_root_count") {
                 value = eval_poly_root_count(*matrix, scalar_a, scalar_b);
+            } else if (matrix_two_scalar_call.callee == "quantum_wigner") {
+                value = eval_quantum_wigner(*matrix, scalar_a, scalar_b);
+            } else if (matrix_two_scalar_call.callee == "quantum_husimi") {
+                value = eval_quantum_husimi(*matrix, scalar_a, scalar_b);
             }
             if (!value) {
                 return std::unexpected(value.error());
@@ -28733,6 +28861,53 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "quantum_entanglement_entropy", "expected positive integer dim_a and dim_b"});
                 }
                 auto value = eval_quantum_entanglement_entropy(*psi_m, dim_a, dim_b);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "quantum_wigner") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "quantum_wigner", "expected quantum_wigner(rho, x, p)"});
+                }
+                auto rho_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!rho_m) {
+                    return std::unexpected(rho_m.error());
+                }
+                double x = 0.0;
+                double p = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), x) ||
+                    !parse_number(trim_copy((*call_args)[2]), p)) {
+                    return std::unexpected(
+                        DomainError{"quantum_wigner", "expected quantum_wigner(rho, x, p)"});
+                }
+                auto value = eval_quantum_wigner(*rho_m, x, p);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "quantum_husimi") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "quantum_husimi", "expected quantum_husimi(rho, alpha_re, alpha_im)"});
+                }
+                auto rho_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!rho_m) {
+                    return std::unexpected(rho_m.error());
+                }
+                double alpha_re = 0.0;
+                double alpha_im = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), alpha_re) ||
+                    !parse_number(trim_copy((*call_args)[2]), alpha_im)) {
+                    return std::unexpected(DomainError{
+                        "quantum_husimi",
+                        "expected quantum_husimi(rho, alpha_re, alpha_im)"});
+                }
+                auto value = eval_quantum_husimi(*rho_m, alpha_re, alpha_im);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -34719,6 +34894,55 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(*value) + "\n";
         }
+        if (fn == "quantum_wigner") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto rho_m = resolve_arg(trim(match[2].str()));
+            if (!rho_m) {
+                return std::unexpected(rho_m.error());
+            }
+            double x = 0.0;
+            double p = 0.0;
+            if (!parse_number(trim(match[3].str()), x) || !parse_number(trim(match[4].str()), p)) {
+                return std::unexpected(
+                    DomainError{"quantum_wigner", "expected quantum_wigner(rho, x, p)"});
+            }
+            auto value = eval_quantum_wigner(*rho_m, x, p);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
+        if (fn == "quantum_husimi") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto rho_m = resolve_arg(trim(match[2].str()));
+            if (!rho_m) {
+                return std::unexpected(rho_m.error());
+            }
+            double alpha_re = 0.0;
+            double alpha_im = 0.0;
+            if (!parse_number(trim(match[3].str()), alpha_re) ||
+                !parse_number(trim(match[4].str()), alpha_im)) {
+                return std::unexpected(DomainError{
+                    "quantum_husimi", "expected quantum_husimi(rho, alpha_re, alpha_im)"});
+            }
+            auto value = eval_quantum_husimi(*rho_m, alpha_re, alpha_im);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
         if (fn == "quantum_schmidt_rank") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                 auto matrix = parse_matrix(text);
@@ -35029,6 +35253,63 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 std::ostringstream out;
                 out << "rho =\n";
                 print_matrix(out, *result);
+                return out.str();
+            }
+        }
+        if (fn == "quantum_grover_search") {
+            const auto call_args = split_call_args(cmd);
+            if (call_args && (call_args->size() == 2 || call_args->size() == 3)) {
+                double n_qubits_d = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), n_qubits_d)) {
+                    return std::unexpected(DomainError{
+                        "quantum_grover_search",
+                        "expected quantum_grover_search(n_qubits, marked_indices[, n_iterations])"});
+                }
+                const int n_qubits = static_cast<int>(n_qubits_d);
+                if (n_qubits < 1 || n_qubits_d != n_qubits) {
+                    return std::unexpected(DomainError{
+                        "quantum_grover_search", "expected positive integer n_qubits"});
+                }
+                auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                    auto matrix = parse_matrix(text);
+                    if (!matrix) {
+                        matrix = resolve_matrix(text);
+                    }
+                    return matrix;
+                };
+                auto marked_m = resolve_arg(call_args->at(1));
+                if (!marked_m) {
+                    return std::unexpected(marked_m.error());
+                }
+                auto marked_indices = matrix_to_int_coeff_vector(*marked_m, "quantum_grover_search");
+                if (!marked_indices) {
+                    return std::unexpected(marked_indices.error());
+                }
+                int n_iterations = quantum::grover_optimal_iterations(
+                    n_qubits, static_cast<int>(marked_indices->size()));
+                if (call_args->size() == 3) {
+                    double iter_d = 0.0;
+                    if (!parse_number(trim_copy(call_args->at(2)), iter_d)) {
+                        return std::unexpected(DomainError{
+                            "quantum_grover_search",
+                            "expected quantum_grover_search(n_qubits, marked_indices[, n_iterations])"});
+                    }
+                    n_iterations = static_cast<int>(iter_d);
+                    if (n_iterations < 0 || iter_d != n_iterations) {
+                        return std::unexpected(DomainError{
+                            "quantum_grover_search",
+                            "expected non-negative integer n_iterations"});
+                    }
+                }
+                auto value = eval_quantum_grover_search(n_qubits, *marked_m, n_iterations);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                std::ostringstream out;
+                out << "state =\n";
+                for (size_t i = 0; i < value->rows(); ++i) {
+                    out << "  [" << (*value)(i, 0) << "]\n";
+                }
                 return out.str();
             }
         }
