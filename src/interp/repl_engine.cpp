@@ -12317,6 +12317,23 @@ Result<NdOptimInputs> parse_nd_optim_inputs(const std::string& formula_arg,
     return NdOptimInputs{expr_ptr, std::move(*x0), std::move(f)};
 }
 
+GradND make_finite_diff_grad(FuncND f, int n) {
+    constexpr double h = 1e-7;
+    return [f, n, h](const std::vector<double>& x) {
+        std::vector<double> g(static_cast<size_t>(n));
+        std::vector<double> xp = x;
+        std::vector<double> xm = x;
+        for (int i = 0; i < n; ++i) {
+            xp[static_cast<size_t>(i)] += h;
+            xm[static_cast<size_t>(i)] -= h;
+            g[static_cast<size_t>(i)] = (f(xp) - f(xm)) / (2.0 * h);
+            xp[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
+            xm[static_cast<size_t>(i)] = x[static_cast<size_t>(i)];
+        }
+        return g;
+    };
+}
+
 Result<double> parse_optional_positive_number(const std::string& text, const char* fn,
                                               const char* label, double default_value) {
     if (text.empty()) {
@@ -12417,6 +12434,72 @@ Result<std::string> eval_adam_call(const std::string& formula_arg, const std::st
         return std::unexpected(max_iter.error());
     }
     return format_optim_result(adam(inputs->f, inputs->x0, *alpha, 0.9, 0.999, *max_iter));
+}
+
+Result<std::string> eval_conjugate_gradient_call(const std::string& formula_arg,
+                                                 const std::string& x0_arg,
+                                                 const std::string& tol_arg,
+                                                 const std::string& max_iter_arg) {
+    constexpr const char* fn = "conjugate_gradient";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto tol = parse_optional_positive_number(tol_arg, fn, "tol", 1e-8);
+    if (!tol) {
+        return std::unexpected(tol.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 500);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    const int n = static_cast<int>(inputs->x0.size());
+    auto grad = make_finite_diff_grad(inputs->f, n);
+    return format_optim_result(
+        conjugate_gradient(inputs->f, grad, inputs->x0, *tol, *max_iter));
+}
+
+Result<std::string> eval_rmsprop_call(const std::string& formula_arg, const std::string& x0_arg,
+                                      const std::string& alpha_arg,
+                                      const std::string& max_iter_arg) {
+    constexpr const char* fn = "rmsprop";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto alpha = parse_optional_positive_number(alpha_arg, fn, "alpha", 0.001);
+    if (!alpha) {
+        return std::unexpected(alpha.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 1000);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    const int n = static_cast<int>(inputs->x0.size());
+    auto grad = make_finite_diff_grad(inputs->f, n);
+    return format_optim_result(
+        rmsprop(inputs->f, grad, inputs->x0, *alpha, 0.9, 1e-8, *max_iter));
+}
+
+Result<std::string> eval_adadelta_call(const std::string& formula_arg, const std::string& x0_arg,
+                                       const std::string& lr_arg, const std::string& max_iter_arg) {
+    constexpr const char* fn = "adadelta";
+    auto inputs = parse_nd_optim_inputs(formula_arg, x0_arg, fn);
+    if (!inputs) {
+        return std::unexpected(inputs.error());
+    }
+    auto lr = parse_optional_positive_number(lr_arg, fn, "lr", 1.0);
+    if (!lr) {
+        return std::unexpected(lr.error());
+    }
+    auto max_iter = parse_optional_positive_int(max_iter_arg, fn, "max_iter", 1000);
+    if (!max_iter) {
+        return std::unexpected(max_iter.error());
+    }
+    const int n = static_cast<int>(inputs->x0.size());
+    auto grad = make_finite_diff_grad(inputs->f, n);
+    return format_optim_result(
+        adadelta(inputs->f, grad, inputs->x0, *lr, 0.95, 1e-6, *max_iter));
 }
 
 Result<std::string> eval_golden_section_call(const std::string& formula_arg,
@@ -14311,7 +14394,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "finance_merton_implied_asset_params" ||
             fn == "finance_heston_call" || fn == "finance_heston_put" ||
             fn == "cmaes" || fn == "bfgs" || fn == "nelder_mead" || fn == "lbfgs" ||
-            fn == "adam" || fn == "golden_section" || fn == "levenberg_marquardt" ||
+            fn == "adam" || fn == "conjugate_gradient" || fn == "rmsprop" ||
+            fn == "adadelta" || fn == "golden_section" || fn == "levenberg_marquardt" ||
             fn == "tensorops_matmul" || fn == "tensorops_einsum") {
             return false;
         }
@@ -25711,6 +25795,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = nelder_mead(\"formula\",x0[,tol[,max_iter]]) Nelder-Mead minimization (env {x0,x1,...})\n"
             "  name = lbfgs(\"formula\",x0[,m[,tol[,max_iter]]]) L-BFGS minimization (env {x0,x1,...})\n"
             "  name = adam(\"formula\",x0[,alpha[,max_iter]]) Adam minimization (env {x0,x1,...})\n"
+            "  name = conjugate_gradient(\"formula\",x0[,tol[,max_iter]]) nonlinear CG minimization (env {x0,x1,...})\n"
+            "  name = rmsprop(\"formula\",x0[,alpha[,max_iter]]) RMSprop minimization (env {x0,x1,...})\n"
+            "  name = adadelta(\"formula\",x0[,lr[,max_iter]]) Adadelta minimization (env {x0,x1,...})\n"
             "  name = golden_section(\"formula\",a,b[,tol]) 1D golden-section minimization (env {x0})\n"
             "  name = levenberg_marquardt(\"r0;r1;...\",x0[,max_iter[,tol]]) nonlinear least squares (env {x0,x1,...})\n"
             "  name = numthy_is_primitive_root(g,p) 1 if g is primitive root mod p else 0\n"
@@ -29683,6 +29770,55 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 call_args->size() == 4 ? call_args->at(3) : std::string{};
             auto value = eval_adam_call(call_args->at(0), call_args->at(1), alpha_arg,
                                         max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "conjugate_gradient") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                return std::unexpected(DomainError{
+                    fn, "expected conjugate_gradient(\"formula\", x0[, tol[, max_iter]])"});
+            }
+            const std::string tol_arg = call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = eval_conjugate_gradient_call(call_args->at(0), call_args->at(1), tol_arg,
+                                                      max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "rmsprop") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                return std::unexpected(
+                    DomainError{fn, "expected rmsprop(\"formula\", x0[, alpha[, max_iter]])"});
+            }
+            const std::string alpha_arg =
+                call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = eval_rmsprop_call(call_args->at(0), call_args->at(1), alpha_arg,
+                                           max_iter_arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+        if (fn == "adadelta") {
+            const auto call_args = split_call_args(cmd);
+            if (!call_args || call_args->size() < 2 || call_args->size() > 4) {
+                return std::unexpected(
+                    DomainError{fn, "expected adadelta(\"formula\", x0[, lr[, max_iter]])"});
+            }
+            const std::string lr_arg = call_args->size() >= 3 ? call_args->at(2) : std::string{};
+            const std::string max_iter_arg =
+                call_args->size() == 4 ? call_args->at(3) : std::string{};
+            auto value = eval_adadelta_call(call_args->at(0), call_args->at(1), lr_arg,
+                                            max_iter_arg);
             if (!value) {
                 return std::unexpected(value.error());
             }
