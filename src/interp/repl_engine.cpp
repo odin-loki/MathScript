@@ -1391,6 +1391,196 @@ Result<Matrix<double>> eval_ml_lda_transform(const Matrix<double>& X_m,
     return grid_to_matrix(lda->transform(*X));
 }
 
+Matrix<double> ml_qda_to_matrix(const ml::QDA& qda) {
+    const size_t C = qda.classes.size();
+    const size_t p = C > 0 && !qda.mean.empty() ? qda.mean[0].size() : 0;
+    const size_t pp = p * p;
+    const size_t n_cols = std::max({p, pp, size_t{3}});
+    Matrix<double> out(1 + 5 * C, n_cols);
+    out(0, 0) = static_cast<double>(C);
+    out(0, 1) = static_cast<double>(p);
+    out(0, 2) = qda.reg_epsilon;
+    for (size_t c = 0; c < C; ++c) {
+        out(1 + c, 0) = qda.classes[c];
+        for (size_t j = 0; j < p; ++j) {
+            out(1 + C + c, j) = qda.mean[c][j];
+            out(1 + 2 * C + c, j) = qda.linear_coef[c][j];
+        }
+        out(1 + 3 * C + c, 0) = qda.discrim_const[c];
+        out(1 + 3 * C + c, 1) = qda.class_prior[c];
+        for (size_t j = 0; j < pp; ++j) {
+            out(1 + 4 * C + c, j) = qda.quad_coef[c][j];
+        }
+    }
+    return out;
+}
+
+Result<ml::QDA> ml_qda_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 6) {
+        return std::unexpected(DomainError{fn, "expected QDA model matrix"});
+    }
+    const int C = static_cast<int>(model(0, 0));
+    const int p = static_cast<int>(model(0, 1));
+    const double reg_eps = model(0, 2);
+    const int pp = p * p;
+    if (C < 1 || p < 1 || model.rows() != static_cast<size_t>(1 + 5 * C) ||
+        model.cols() < static_cast<size_t>(std::max(p, pp))) {
+        return std::unexpected(DomainError{fn, "invalid QDA model layout"});
+    }
+    ml::QDA qda(reg_eps);
+    qda.classes.resize(static_cast<size_t>(C));
+    qda.mean.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    qda.linear_coef.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    qda.discrim_const.resize(static_cast<size_t>(C));
+    qda.class_prior.resize(static_cast<size_t>(C));
+    qda.quad_coef.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(pp)));
+    for (int c = 0; c < C; ++c) {
+        qda.classes[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + c), 0);
+        for (int j = 0; j < p; ++j) {
+            qda.mean[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + C + c), static_cast<size_t>(j));
+            qda.linear_coef[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + 2 * C + c), static_cast<size_t>(j));
+        }
+        qda.discrim_const[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 0);
+        qda.class_prior[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 1);
+        for (int j = 0; j < pp; ++j) {
+            qda.quad_coef[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + 4 * C + c), static_cast<size_t>(j));
+        }
+    }
+    return qda;
+}
+
+Result<Matrix<double>> eval_ml_qda_fit(const Matrix<double>& X_m, const Matrix<double>& y_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_qda_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_qda_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::QDA qda;
+    qda.fit(*X, *y);
+    return ml_qda_to_matrix(qda);
+}
+
+Result<Matrix<double>> eval_ml_qda_predict(const Matrix<double>& X_m,
+                                           const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_qda_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto qda = ml_qda_from_matrix(model_m, "ml_qda_predict");
+    if (!qda) {
+        return std::unexpected(qda.error());
+    }
+    return vector_to_column(qda->predict(*X));
+}
+
+Matrix<double> ml_svm_to_matrix(const ml::SVM& svm) {
+    const size_t n = svm.support_vectors.size();
+    const size_t p = n > 0 ? svm.support_vectors[0].size() : 0;
+    Matrix<double> out(n + 1, p + 2);
+    out(0, 0) = svm.config.kernel == ml::SVMKernel::Linear ? 0.0 : 1.0;
+    out(0, 1) = svm.config.C;
+    out(0, 2) = svm.config.gamma;
+    out(0, 3) = svm.b;
+    out(0, 4) = svm.config.tol;
+    out(0, 5) = static_cast<double>(svm.config.max_iter);
+    out(0, 6) = static_cast<double>(p);
+    out(0, 7) = static_cast<double>(n);
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < p; ++j) {
+            out(i + 1, j) = svm.support_vectors[i][j];
+        }
+        out(i + 1, p) = svm.alphas[i];
+        out(i + 1, p + 1) = svm.sv_labels[i];
+    }
+    return out;
+}
+
+Result<ml::SVM> ml_svm_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 2 || model.cols() < 3) {
+        return std::unexpected(
+            DomainError{fn, "expected SVM model with header row and support vectors"});
+    }
+    const int kernel_code = static_cast<int>(model(0, 0));
+    const double C = model(0, 1);
+    const double gamma = model(0, 2);
+    const double b = model(0, 3);
+    const double tol = model(0, 4);
+    const int max_iter = static_cast<int>(model(0, 5));
+    const int p = static_cast<int>(model(0, 6));
+    const int n = static_cast<int>(model(0, 7));
+    if ((kernel_code != 0 && kernel_code != 1) || p < 1 || n < 1 ||
+        model.rows() != static_cast<size_t>(n + 1) ||
+        model.cols() != static_cast<size_t>(p + 2)) {
+        return std::unexpected(DomainError{fn, "invalid SVM model layout"});
+    }
+    ml::SVM svm;
+    svm.config.kernel = kernel_code == 0 ? ml::SVMKernel::Linear : ml::SVMKernel::RBF;
+    svm.config.C = C;
+    svm.config.gamma = gamma;
+    svm.config.tol = tol;
+    svm.config.max_iter = max_iter;
+    svm.b = b;
+    svm.support_vectors.resize(static_cast<size_t>(n));
+    svm.alphas.resize(static_cast<size_t>(n));
+    svm.sv_labels.resize(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        svm.support_vectors[static_cast<size_t>(i)].resize(static_cast<size_t>(p));
+        for (int j = 0; j < p; ++j) {
+            svm.support_vectors[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(i + 1), static_cast<size_t>(j));
+        }
+        svm.alphas[static_cast<size_t>(i)] = model(static_cast<size_t>(i + 1), static_cast<size_t>(p));
+        svm.sv_labels[static_cast<size_t>(i)] =
+            model(static_cast<size_t>(i + 1), static_cast<size_t>(p + 1));
+    }
+    return svm;
+}
+
+Result<Matrix<double>> eval_ml_svm_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
+                                      double C, double gamma, bool use_rbf) {
+    auto X = matrix_to_ml_mat(X_m, "ml_svm_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_svm_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::SVM svm;
+    svm.config.C = C;
+    if (use_rbf) {
+        svm.config.kernel = ml::SVMKernel::RBF;
+        svm.config.gamma = gamma;
+    }
+    svm.fit(*X, *y);
+    return ml_svm_to_matrix(svm);
+}
+
+Result<Matrix<double>> eval_ml_svm_predict(const Matrix<double>& X_m,
+                                          const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_svm_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto svm = ml_svm_from_matrix(model_m, "ml_svm_predict");
+    if (!svm) {
+        return std::unexpected(svm.error());
+    }
+    return vector_to_column(svm->predict(*X));
+}
+
 Matrix<double> grid3d_to_matrix(const std::vector<std::vector<std::vector<double>>>& grid) {
     if (grid.empty() || grid[0].empty()) {
         return Matrix<double>(0, 0);
@@ -10449,6 +10639,7 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "ml_lasso_predict" || callee == "ml_elastic_net_predict" ||
            callee == "ml_knn_predict" || callee == "ml_naive_bayes_predict" ||
            callee == "ml_lda_predict" || callee == "ml_lda_transform" ||
+           callee == "ml_qda_predict" || callee == "ml_svm_predict" ||
            callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
            callee == "signal_convolve" || callee == "signal_correlate" ||
            callee == "signal_sosfilt" || callee == "signal_conv2" ||
@@ -13244,7 +13435,10 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_elastic_net_fit" || fn == "ml_elastic_net_predict" ||
             fn == "ml_knn_fit" || fn == "ml_knn_predict" ||
             fn == "ml_naive_bayes_fit" || fn == "ml_naive_bayes_predict" ||
-            fn == "ml_lda_fit" || fn == "ml_lda_predict" || fn == "ml_lda_transform" || fn == "ml_pca_fit" || fn == "ml_pca_transform" || fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" || fn == "ml_kmeans_predict" || fn == "poly_deriv" ||
+            fn == "ml_lda_fit" || fn == "ml_lda_predict" || fn == "ml_lda_transform" ||
+            fn == "ml_qda_fit" || fn == "ml_qda_predict" ||
+            fn == "ml_svm_fit" || fn == "ml_svm_predict" ||
+            fn == "ml_pca_fit" || fn == "ml_pca_transform" || fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" || fn == "ml_kmeans_predict" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_cheb_eval" || fn == "poly_cheb_expand" ||
             fn == "poly_integ" || fn == "poly_add" ||
             fn == "poly_lagrange" || fn == "poly_interp_newton" ||
@@ -15261,6 +15455,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "ml_knn_fit" || callee == "ml_knn_predict" ||
            callee == "ml_naive_bayes_fit" || callee == "ml_naive_bayes_predict" ||
            callee == "ml_lda_fit" || callee == "ml_lda_predict" || callee == "ml_lda_transform" ||
+           callee == "ml_qda_fit" || callee == "ml_qda_predict" ||
+           callee == "ml_svm_fit" || callee == "ml_svm_predict" ||
            callee == "poly_deriv" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "poly_roots" ||
            callee == "poly_fit" || callee == "poly_interp_hermite" ||
@@ -15491,7 +15687,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "ml_elastic_net_predict" || callee == "ml_knn_predict" ||
         callee == "ml_naive_bayes_fit" || callee == "ml_naive_bayes_predict" ||
         callee == "ml_lda_predict" ||
-        callee == "ml_lda_transform" || callee == "ml_pca_transform" || callee == "ml_kmeans_predict" || callee == "geo_poly_union" ||
+        callee == "ml_lda_transform" || callee == "ml_qda_predict" ||
+        callee == "ml_svm_predict" || callee == "ml_pca_transform" || callee == "ml_kmeans_predict" || callee == "geo_poly_union" ||
         callee == "geo_poly_intersect" || callee == "geo_poly_diff" ||
         callee == "geo_minkowski_sum" || callee == "geo_clip_polygon" ||
         callee == "stats_linear_regression" || callee == "stats_multiple_regression") {
@@ -15550,6 +15747,12 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "ml_lda_fit") {
         return arity == 2 || arity == 3;
+    }
+    if (callee == "ml_qda_fit" || callee == "ml_naive_bayes_fit") {
+        return arity == 2;
+    }
+    if (callee == "ml_svm_fit") {
+        return arity == 2 || arity == 3 || arity == 4;
     }
     if (callee == "ml_pca_fit" || callee == "ml_pca_fit_transform" || callee == "ml_kmeans_fit") {
         return arity == 2;
@@ -21619,6 +21822,112 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAss
         result = *predicted;
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail7(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "ml_qda_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto fitted = eval_ml_qda_fit(*X, *y);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_qda_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_qda_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_svm_fit" &&
+               (assign.args.size() == 2 || assign.args.size() == 3 || assign.args.size() == 4)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        double C = 1.0;
+        double gamma = 0.1;
+        bool use_rbf = false;
+        if (assign.args.size() >= 3) {
+            auto c_val = parse_scalar_arg(assign.args[2], "ml_svm_fit");
+            if (!c_val) {
+                return std::unexpected(c_val.error());
+            }
+            C = *c_val;
+        }
+        if (assign.args.size() >= 4) {
+            auto gamma_val = parse_scalar_arg(assign.args[3], "ml_svm_fit");
+            if (!gamma_val) {
+                return std::unexpected(gamma_val.error());
+            }
+            gamma = *gamma_val;
+            use_rbf = true;
+        }
+        auto fitted = eval_ml_svm_fit(*X, *y, C, gamma, use_rbf);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_svm_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_svm_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    }
+
     return result;
 }
 
@@ -23625,6 +23934,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_lda_fit(X,y[,n_components]) fit Linear Discriminant Analysis\n"
             "  name = ml_lda_predict(X,model) LDA class predictions on X\n"
             "  name = ml_lda_transform(X,model) LDA supervised dimensionality reduction on X\n"
+            "  name = ml_qda_fit(X,y) fit Quadratic Discriminant Analysis\n"
+            "  name = ml_qda_predict(X,model) QDA class predictions on X\n"
+            "  name = ml_svm_fit(X,y[,C[,gamma]]) fit Support Vector Machine (linear or RBF)\n"
+            "  name = ml_svm_predict(X,model) SVM class predictions on X (+1/-1)\n"
             "  name = ml_vec_norm(v)    Euclidean norm of Nx1 or 1xN vector\n"
             "  name = ml_vec_dot(a,b)   dot product of Nx1 or 1xN vectors\n"
             "  name = graph_pagerank(A) PageRank scores from NxN adjacency matrix\n"
@@ -24442,7 +24755,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
-            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model)\n"
+            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
@@ -25853,6 +26166,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "ml_lda_transform") {
                 auto value = eval_ml_lda_transform(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_qda_predict") {
+                auto value = eval_ml_qda_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_svm_predict") {
+                auto value = eval_ml_svm_predict(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }

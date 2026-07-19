@@ -8657,3 +8657,31 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
 }
+
+TEST(ReplCommandsTest, wave268_ml_qda_svm) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_qda_fit(X,y)");
+    expect_contains(interp, "help", "ml_qda_predict(X,model)");
+    expect_contains(interp, "help", "ml_svm_fit(X,y");
+    expect_contains(interp, "help", "ml_svm_predict(X,model)");
+
+    expect_ok(interp, "Lx = [-2,-1; -1,-0.5; 2,1; 3,1.5]");
+    expect_ok(interp, "Ly = [0; 0; 1; 1]");
+    expect_ok(interp, "qda_m = ml_qda_fit(Lx, Ly)");
+    expect_ok(interp, "qda_p = ml_qda_predict([0,0; 3,1], qda_m)");
+    EXPECT_LT(interp.state().matrices.at("qda_p")(0, 0), 0.5);
+    EXPECT_GT(interp.state().matrices.at("qda_p")(1, 0), 0.5);
+
+    expect_ok(interp, "Sx = [-2,0; -1,0; 1,0; 2,0]");
+    expect_ok(interp, "Sy = [0; 0; 1; 1]");
+    expect_ok(interp, "svm_m = ml_svm_fit(Sx, Sy)");
+    expect_ok(interp, "svm_p = ml_svm_predict([0,0; 2,0], svm_m)");
+    EXPECT_LT(interp.state().matrices.at("svm_p")(0, 0), 0.0);
+    EXPECT_GT(interp.state().matrices.at("svm_p")(1, 0), 0.0);
+
+    ms::ml::Mat X_ref = {{-2, -1}, {-1, -0.5}, {2, 1}, {3, 1.5}};
+    ms::ml::Vec y_ref = {0, 0, 1, 1};
+    ms::ml::QDA qda_ref;
+    qda_ref.fit(X_ref, y_ref);
+    EXPECT_NEAR(qda_ref.predict({{0, 0}})[0], interp.state().matrices.at("qda_p")(0, 0), 1e-6);
+}
