@@ -5248,6 +5248,17 @@ TEST(ReplCommandsTest, wave174_stats_min_value) {
     expect_contains(interp, "stats_min_value([3; 1; 4; 1; 5; 9; 2])", "1");
 }
 
+TEST(ReplCommandsTest, wave268_fem_poisson1d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fem_poisson1d(n)");
+
+    expect_ok(interp, "u = fem_poisson1d(4)");
+    ASSERT_GT(interp.state().matrices.count("u"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u").rows(), 5u);
+    EXPECT_GT(interp.state().matrices.at("u")(2, 0), 0.0);
+    EXPECT_NEAR(interp.state().matrices.at("u")(2, 0), 0.125, 0.02);
+}
+
 TEST(ReplCommandsTest, wave267_stats_max_value) {
     Interpreter interp;
     expect_contains(interp, "help", "stats_max_value(x)");

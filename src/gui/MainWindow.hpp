@@ -102,6 +102,7 @@ private:
     void capitalize_words();
     void invert_case();
     void snake_case_selection();
+    void kebab_case_selection();
     void indent_lines();
     void unindent_lines();
     void set_plot_panel_visible(bool visible);
