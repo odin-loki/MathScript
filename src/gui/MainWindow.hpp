@@ -83,6 +83,7 @@ private:
     void add_selection_for_next_occurrence();
     void duplicate_line();
     void trim_trailing_whitespace();
+    void trim_leading_whitespace();
     void remove_blank_lines();
     void sort_lines();
     void unique_lines();
@@ -103,6 +104,8 @@ private:
     void invert_case();
     void snake_case_selection();
     void kebab_case_selection();
+    void camel_case_selection();
+    void screaming_snake_case_selection();
     void indent_lines();
     void unindent_lines();
     void set_plot_panel_visible(bool visible);
