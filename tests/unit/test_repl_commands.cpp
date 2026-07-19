@@ -8884,6 +8884,61 @@ TEST(ReplCommandsTest, wave268_ml_scaler_roc) {
     EXPECT_NEAR(interp.state().scalars.at("ap"), 1.0, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave269_ml_metrics) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_confusion_matrix(p,t");
+    expect_contains(interp, "help", "ml_roc_curve(p,t)");
+    expect_contains(interp, "help", "ml_precision_recall_curve(p,t)");
+    expect_contains(interp, "help", "[[TP,FP],[FN,TN]]");
+
+    expect_ok(interp, "pred = [0.9; 0.4; 0.6; 0.3; 0.5; 0.1]");
+    expect_ok(interp, "true_l = [1; 1; 0; 0; 1; 0]");
+    expect_ok(interp, "cm = ml_confusion_matrix(pred, true_l)");
+    ASSERT_GT(interp.state().matrices.count("cm"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cm").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("cm").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(1, 1), 2.0, 1e-9);
+
+    expect_ok(interp, "cm9 = ml_confusion_matrix(pred, true_l, 0.9)");
+    EXPECT_NEAR(interp.state().matrices.at("cm9")(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm9")(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm9")(1, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm9")(1, 1), 3.0, 1e-9);
+
+    expect_ok(interp, "pred_p = [1;1;1;1;1;0;0;0;0;0]");
+    expect_ok(interp, "true_p = [1;1;1;1;1;0;0;0;0;0]");
+    expect_ok(interp, "roc = ml_roc_curve(pred_p, true_p)");
+    ASSERT_GT(interp.state().matrices.count("roc"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("roc").cols(), 3u);
+    EXPECT_GE(interp.state().matrices.at("roc").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("roc")(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("roc")(0, 2), 0.0, 1e-9);
+    const size_t roc_last = interp.state().matrices.at("roc").rows() - 1;
+    EXPECT_NEAR(interp.state().matrices.at("roc")(roc_last, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("roc")(roc_last, 2), 1.0, 1e-9);
+
+    expect_ok(interp, "pr = ml_precision_recall_curve(pred_p, true_p)");
+    ASSERT_GT(interp.state().matrices.count("pr"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pr").cols(), 3u);
+    EXPECT_GE(interp.state().matrices.at("pr").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pr")(0, 1), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pr")(0, 2), 0.0, 1e-9);
+    const size_t pr_last = interp.state().matrices.at("pr").rows() - 1;
+    EXPECT_NEAR(interp.state().matrices.at("pr")(pr_last, 2), 1.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("pr")(pr_last, 1), 1.0, 1e-9);
+
+    ms::ml::Vec pred_cpp = {0.9, 0.4, 0.6, 0.3, 0.5, 0.1};
+    ms::ml::Vec true_cpp = {1, 1, 0, 0, 1, 0};
+    const auto cm_cpp = ms::ml::confusion_matrix(pred_cpp, true_cpp, 0.5);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(0, 0), static_cast<double>(cm_cpp.tp), 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(0, 1), static_cast<double>(cm_cpp.fp), 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(1, 0), static_cast<double>(cm_cpp.fn), 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("cm")(1, 1), static_cast<double>(cm_cpp.tn), 1e-9);
+}
+
 TEST(ReplCommandsTest, wave268_pde_cn_adi) {
     Interpreter interp;
     expect_contains(interp, "help", "pde_heat_1d_cn(x0,alpha,dx,dt,steps)");
