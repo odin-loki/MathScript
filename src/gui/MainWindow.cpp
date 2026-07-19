@@ -1099,6 +1099,42 @@ QString invert_case_text(const QString& text) {
     return result;
 }
 
+QString snake_case_text(const QString& text) {
+    QString result;
+    result.reserve(text.size() + 8);
+    bool prev_was_lower_or_digit = false;
+    for (int i = 0; i < text.size(); ++i) {
+        const QChar ch = text.at(i);
+        if (ch.isSpace() || ch == '-' || ch == '_') {
+            if (!result.isEmpty() && result.back() != '_') {
+                result += '_';
+            }
+            prev_was_lower_or_digit = false;
+            continue;
+        }
+        if (ch.isUpper()) {
+            if (prev_was_lower_or_digit ||
+                (i + 1 < text.size() && text.at(i + 1).isLower())) {
+                if (!result.isEmpty() && result.back() != '_') {
+                    result += '_';
+                }
+            }
+            result += ch.toLower();
+            prev_was_lower_or_digit = true;
+        } else if (ch.isLower() || ch.isDigit()) {
+            result += ch;
+            prev_was_lower_or_digit = true;
+        } else if (!result.isEmpty() && result.back() != '_') {
+            result += '_';
+            prev_was_lower_or_digit = false;
+        }
+    }
+    while (!result.isEmpty() && result.back() == '_') {
+        result.chop(1);
+    }
+    return result;
+}
+
 QString transform_selection_text(const QString& text, SelectionCaseMode mode) {
     switch (mode) {
     case SelectionCaseMode::Upper:
@@ -1205,6 +1241,39 @@ void invert_case_in_editor(QPlainTextEdit* editor) {
 
     const QString original = cursor.selectedText();
     const QString transformed = invert_case_text(original);
+    const int sel_start = cursor.selectionStart();
+    cursor.insertText(transformed);
+
+    cursor.setPosition(sel_start);
+    cursor.setPosition(sel_start + transformed.size(), QTextCursor::KeepAnchor);
+    editor->setTextCursor(cursor);
+
+    cursor.endEditBlock();
+}
+
+void snake_case_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    if (!cursor.hasSelection()) {
+        int start_block = 0;
+        int end_block = 0;
+        get_selected_block_range(editor, start_block, end_block);
+        select_block_range_in_editor(editor, start_block, end_block);
+        cursor = editor->textCursor();
+    }
+
+    if (!cursor.hasSelection()) {
+        cursor.endEditBlock();
+        return;
+    }
+
+    const QString original = cursor.selectedText();
+    const QString transformed = snake_case_text(original);
     const int sel_start = cursor.selectionStart();
     cursor.insertText(transformed);
 
@@ -1754,6 +1823,8 @@ void MainWindow::setup_menus() {
     capitalize_words_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_W));
     auto* invert_case_action = edit_menu->addAction("Invert Case");
     invert_case_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_I));
+    auto* snake_case_selection_action = edit_menu->addAction("Snake Case Selection");
+    snake_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_S));
     auto* join_lines_action = edit_menu->addAction("Join Lines");
     join_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
     auto* split_lines_action = edit_menu->addAction("Split Lines");
@@ -1833,6 +1904,7 @@ void MainWindow::setup_menus() {
     connect(title_case_selection_action, &QAction::triggered, this, &MainWindow::title_case_selection);
     connect(capitalize_words_action, &QAction::triggered, this, &MainWindow::capitalize_words);
     connect(invert_case_action, &QAction::triggered, this, &MainWindow::invert_case);
+    connect(snake_case_selection_action, &QAction::triggered, this, &MainWindow::snake_case_selection);
     connect(join_lines_action, &QAction::triggered, this, &MainWindow::join_lines);
     connect(split_lines_action, &QAction::triggered, this, &MainWindow::split_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
@@ -2323,6 +2395,11 @@ void MainWindow::capitalize_words() {
 void MainWindow::invert_case() {
     editor_->setFocus();
     invert_case_in_editor(editor_);
+}
+
+void MainWindow::snake_case_selection() {
+    editor_->setFocus();
+    snake_case_in_editor(editor_);
 }
 
 void MainWindow::indent_lines() {

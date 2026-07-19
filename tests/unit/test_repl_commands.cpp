@@ -5204,6 +5204,15 @@ TEST(ReplCommandsTest, wave174_stats_min_value) {
     expect_contains(interp, "stats_min_value([3; 1; 4; 1; 5; 9; 2])", "1");
 }
 
+TEST(ReplCommandsTest, wave267_stats_max_value) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_max_value(x)");
+
+    expect_ok(interp, "m = stats_max_value([3; 1; 4; 1; 5; 9; 2])");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 9.0, 1e-9);
+    expect_contains(interp, "stats_max_value([3; 1; 4; 1; 5; 9; 2])", "9");
+}
+
 TEST(ReplCommandsTest, wave175_count_components) {
     Interpreter interp;
     expect_contains(interp, "help", "count_components(B)");
