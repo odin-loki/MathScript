@@ -12,6 +12,7 @@
 #include "ms/finance/finance.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include "ms/ml/ml.hpp"
+#include "ms/pde/pde.hpp"
 #include "ms/prob/prob.hpp"
 #include "ms/special/special.hpp"
 #include "ms/runtime/topology.hpp"
@@ -8656,4 +8657,42 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     ASSERT_GT(interp.state().scalars.count("inert"), 0u);
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
+}
+
+TEST(ReplCommandsTest, wave268_pde_elliptic) {
+    Interpreter interp;
+    expect_contains(interp, "help", "pde_poisson_1d(f,dx,ua,ub)");
+    expect_contains(interp, "help", "pde_laplace_2d(nx,ny,boundary)");
+    expect_contains(interp, "help", "pde_helmholtz_2d(f,k,dx,dy");
+
+    expect_ok(interp, "f = zeros(6,1)");
+    expect_ok(interp, "u1 = pde_poisson_1d(f, 0.2, 1, 3)");
+    ASSERT_GT(interp.state().matrices.count("u1"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u1").rows(), 6u);
+    EXPECT_NEAR(interp.state().matrices.at("u1")(0, 0), 1.0, 1e-10);
+    EXPECT_NEAR(interp.state().matrices.at("u1")(5, 0), 3.0, 1e-10);
+    EXPECT_NEAR(interp.state().matrices.at("u1")(3, 0), 2.0, 1e-8);
+
+    expect_ok(interp, "B = [1,1,1,1,1; 0,0,0,0,0; 0,0,0,0,0; 0,0,0,0,0; 0,0,0,0,0]");
+    expect_ok(interp, "u2 = pde_laplace_2d(5, 5, B)");
+    ASSERT_GT(interp.state().matrices.count("u2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u2").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("u2").cols(), 5u);
+    EXPECT_NEAR(interp.state().matrices.at("u2")(0, 2), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("u2")(4, 2), 0.0, 1e-6);
+    EXPECT_GT(interp.state().matrices.at("u2")(2, 2), 0.0);
+    EXPECT_LT(interp.state().matrices.at("u2")(2, 2), 1.0);
+
+    expect_ok(interp, "F = zeros(11,11)");
+    expect_ok(interp, "u3 = pde_helmholtz_2d(F, 1, 0.1, 0.1)");
+    ASSERT_GT(interp.state().matrices.count("u3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u3").rows(), 11u);
+    EXPECT_EQ(interp.state().matrices.at("u3").cols(), 11u);
+    EXPECT_NEAR(interp.state().matrices.at("u3")(0, 0), 0.0, 1e-10);
+    EXPECT_NEAR(interp.state().matrices.at("u3")(10, 10), 0.0, 1e-10);
+
+    ms::pde::Poisson1DResult ref =
+        ms::pde::pde_poisson_1d({0, 0, 0, 0, 0, 0}, 0.2, 1.0, 3.0);
+    ASSERT_EQ(ref.u.size(), 6u);
+    EXPECT_NEAR(interp.state().matrices.at("u1")(3, 0), ref.u[3], 1e-10);
 }
