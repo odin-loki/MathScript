@@ -3283,6 +3283,30 @@ Result<Matrix<double>> eval_huffman_decode_vec(const Matrix<double>& orig_m,
     return bytes_to_matrix_col(compress::huffman_decode(hr, bytes.size()));
 }
 
+Result<Matrix<double>> eval_arithmetic_encode_vec(const Matrix<double>& m) {
+    const compress::ArithmeticResult ar = compress::arithmetic_encode(matrix_to_bytes(m));
+    return bytes_to_matrix_col(ar.encoded);
+}
+
+Result<Matrix<double>> eval_arithmetic_decode_vec(const Matrix<double>& orig_m,
+                                                  const Matrix<double>& /*encoded_m*/) {
+    const compress::Bytes bytes = matrix_to_bytes(orig_m);
+    const compress::ArithmeticResult ar = compress::arithmetic_encode(bytes);
+    return bytes_to_matrix_col(compress::arithmetic_decode(ar));
+}
+
+Result<Matrix<double>> eval_ans_encode_vec(const Matrix<double>& m) {
+    const compress::AnsResult ar = compress::ans_encode(matrix_to_bytes(m));
+    return bytes_to_matrix_col(ar.encoded);
+}
+
+Result<Matrix<double>> eval_ans_decode_vec(const Matrix<double>& orig_m,
+                                           const Matrix<double>& /*encoded_m*/) {
+    const compress::Bytes bytes = matrix_to_bytes(orig_m);
+    const compress::AnsResult ar = compress::ans_encode(bytes);
+    return bytes_to_matrix_col(compress::ans_decode(ar));
+}
+
 Result<Matrix<double>> eval_quantum_coherent_state(double alpha_re, double alpha_im, int n_max) {
     if (n_max < 0) {
         return std::unexpected(
@@ -10434,6 +10458,7 @@ bool is_matrix_scalar_mixed_call_callee(const std::string& callee) {
 
 bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
     return callee == "control_lyap" || callee == "control_dlyap" || callee == "huffman_decode_vec" ||
+           callee == "arithmetic_decode_vec" || callee == "ans_decode_vec" ||
            callee == "quantum_op_apply" || callee == "topo_persistence_diagram" ||
            callee == "control_margins" || callee == "control_poles" ||
            callee == "control_zeros" || callee == "control_step_info" ||
@@ -13160,6 +13185,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "mtf_encode_vec" || fn == "mtf_decode_vec" ||
             fn == "lzw_encode_vec" || fn == "lzw_decode_vec" ||
             fn == "huffman_encode_vec" || fn == "huffman_decode_vec" ||
+            fn == "arithmetic_encode_vec" || fn == "arithmetic_decode_vec" ||
+            fn == "ans_encode_vec" || fn == "ans_decode_vec" ||
             fn == "lz77_encode_vec" || fn == "lz77_decode_vec" ||
             fn == "bzip2_compress_vec" || fn == "bzip2_decompress_vec" ||
             fn == "bwt_encode_vec" || fn == "bwt_decode_vec" ||
@@ -15174,6 +15201,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "lz77_encode_vec" || callee == "lz77_decode_vec" ||
            callee == "bzip2_compress_vec" || callee == "bzip2_decompress_vec" ||
            callee == "huffman_encode_vec" ||
+           callee == "arithmetic_encode_vec" || callee == "ans_encode_vec" ||
            callee == "bwt_encode_vec" ||
            callee == "delta_encode_vec" || callee == "delta_decode_vec" ||
            callee == "graph_pagerank" || callee == "quantum_hadamard" ||
@@ -15336,6 +15364,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "lz77_decode_vec" ||
         callee == "bzip2_compress_vec" || callee == "bzip2_decompress_vec" ||
         callee == "huffman_encode_vec" ||
+        callee == "arithmetic_encode_vec" || callee == "ans_encode_vec" ||
         callee == "bwt_encode_vec" ||
         callee == "delta_encode_vec" || callee == "delta_decode_vec" ||
         callee == "graph_pagerank" || callee == "quantum_hadamard" ||
@@ -21619,6 +21648,45 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAss
         result = *predicted;
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail7(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "arithmetic_encode_vec" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto encoded = eval_arithmetic_encode_vec(*matrix);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        result = *encoded;
+    } else if (assign.callee == "ans_encode_vec" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto encoded = eval_ans_encode_vec(*matrix);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        result = *encoded;
+    }
+
     return result;
 }
 
@@ -23580,11 +23648,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = lz77_encode_vec(M,window,lookahead) LZ77 encode with custom window/lookahead\n"
             "  name = lz77_decode_vec(T) decode Nx3 LZ77 tokens to byte column vector\n"
             "  name = huffman_encode_vec(M) Huffman encode flattened matrix bytes to byte column\n"
+            "  name = arithmetic_encode_vec(M) arithmetic encode flattened matrix bytes to byte column\n"
+            "  name = ans_encode_vec(M) ANS encode flattened matrix bytes to byte column\n"
             "  name = bzip2_compress_vec(M) bzip2-like compress bytes to byte column\n"
             "  name = compress_bits_to_bytes(bits_vec) pack Nx1 bit column into byte column\n"
             "  name = compress_bytes_to_bits(bytes_vec) unpack Nx1 byte column into bit column\n"
             "  name = bzip2_decompress_vec(C) bzip2-like decompress byte column (primary index in first 4 bytes)\n"
             "  name = huffman_decode_vec(orig_M,E) Huffman decode using orig size (re-encode internally)\n"
+            "  name = arithmetic_decode_vec(orig_M,E) arithmetic decode using orig size (re-encode internally)\n"
+            "  name = ans_decode_vec(orig_M,E) ANS decode using orig size (re-encode internally)\n"
             "  name = bwt_encode_vec(M) Burrows-Wheeler encode flattened matrix bytes\n"
             "  name = bwt_primary_index(M) BWT primary index of flattened matrix bytes\n"
             "  name = bwt_decode_vec(L,primary_index) inverse BWT on L column and primary index\n"
@@ -24440,7 +24512,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), diag(v), cosm(A), sinm(A), funm(A,\"sin\"|\"cos\"|\"exp\"|\"sqrt\"), precond_diag(A), precond_ssor(A[,omega]), solve(A,B), lsq(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
-            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
+            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), arithmetic_encode_vec(M), arithmetic_decode_vec(orig_M,E), ans_encode_vec(M), ans_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
@@ -25589,6 +25661,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "huffman_decode_vec") {
                 auto value = eval_huffman_decode_vec(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "arithmetic_decode_vec") {
+                auto value = eval_arithmetic_decode_vec(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ans_decode_vec") {
+                auto value = eval_ans_decode_vec(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -33201,6 +33295,26 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "huffman_decode_vec") {
                     auto value = eval_huffman_decode_vec(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "decoded =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "arithmetic_decode_vec") {
+                    auto value = eval_arithmetic_decode_vec(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "decoded =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ans_decode_vec") {
+                    auto value = eval_ans_decode_vec(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }

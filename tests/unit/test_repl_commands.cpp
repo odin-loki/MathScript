@@ -8657,3 +8657,35 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
 }
+
+TEST(ReplCommandsTest, wave268_compress_arith_ans) {
+    Interpreter interp;
+    expect_contains(interp, "help", "arithmetic_encode_vec(M)");
+    expect_contains(interp, "help", "arithmetic_decode_vec(orig_M,E)");
+    expect_contains(interp, "help", "ans_encode_vec(M)");
+    expect_contains(interp, "help", "ans_decode_vec(orig_M,E)");
+
+    expect_ok(interp, "M = [97; 98; 99; 97; 97; 98; 99]");
+    expect_ok(interp, "AE = arithmetic_encode_vec(M)");
+    ASSERT_GT(interp.state().matrices.count("AE"), 0u);
+    EXPECT_GE(interp.state().matrices.at("AE").rows(), 1u);
+
+    expect_ok(interp, "AR = arithmetic_decode_vec(M, AE)");
+    ASSERT_GT(interp.state().matrices.count("AR"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("AR").rows(), 7u);
+    const double expected[] = {97, 98, 99, 97, 97, 98, 99};
+    for (size_t i = 0; i < 7; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("AR")(i, 0), expected[i], 1e-9);
+    }
+
+    expect_ok(interp, "NE = ans_encode_vec(M)");
+    ASSERT_GT(interp.state().matrices.count("NE"), 0u);
+    EXPECT_GE(interp.state().matrices.at("NE").rows(), 1u);
+
+    expect_ok(interp, "NR = ans_decode_vec(M, NE)");
+    ASSERT_GT(interp.state().matrices.count("NR"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("NR").rows(), 7u);
+    for (size_t i = 0; i < 7; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("NR")(i, 0), expected[i], 1e-9);
+    }
+}
