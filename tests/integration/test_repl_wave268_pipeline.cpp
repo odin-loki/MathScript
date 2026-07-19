@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 #include <cmath>
+#include <limits>
 #include <string>
 
 #include "ms/interp/repl_engine.hpp"
@@ -25,15 +26,20 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
     EXPECT_NE(result->find(needle), std::string::npos) << cmd << " output: " << *result;
 }
 
+double parse_scalar_x_opt(const std::string& text) {
+    const auto pos = text.find("x_opt = ");
+    if (pos == std::string::npos) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return std::stod(text.substr(pos + 8));
+}
+
 void expect_near_in_output(Interpreter& interp, const std::string& cmd, double expected,
                            double tol) {
     const auto result = interp.execute(cmd);
     ASSERT_TRUE(result.has_value()) << cmd;
-    const std::size_t start = result->find('[');
-    ASSERT_NE(start, std::string::npos) << *result;
-    const std::size_t end = result->find(']', start);
-    ASSERT_NE(end, std::string::npos) << *result;
-    const double x_opt = std::stod(result->substr(start + 1, end - start - 1));
+    const double x_opt = parse_scalar_x_opt(*result);
+    ASSERT_FALSE(std::isnan(x_opt)) << cmd << " output: " << *result;
     EXPECT_NEAR(x_opt, expected, tol) << cmd << " output: " << *result;
 }
 

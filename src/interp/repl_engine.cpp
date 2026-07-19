@@ -1713,7 +1713,8 @@ Result<Matrix<double>> eval_ml_qda_predict(const Matrix<double>& X_m,
 Matrix<double> ml_svm_to_matrix(const ml::SVM& svm) {
     const size_t n = svm.support_vectors.size();
     const size_t p = n > 0 ? svm.support_vectors[0].size() : 0;
-    Matrix<double> out(n + 1, p + 2);
+    const size_t n_cols = std::max(p + 2, size_t{8});
+    Matrix<double> out(n + 1, n_cols);
     out(0, 0) = svm.config.kernel == ml::SVMKernel::Linear ? 0.0 : 1.0;
     out(0, 1) = svm.config.C;
     out(0, 2) = svm.config.gamma;
@@ -1745,9 +1746,9 @@ Result<ml::SVM> ml_svm_from_matrix(const Matrix<double>& model, const char* fn) 
     const int max_iter = static_cast<int>(model(0, 5));
     const int p = static_cast<int>(model(0, 6));
     const int n = static_cast<int>(model(0, 7));
+    const size_t min_cols = std::max(static_cast<size_t>(p + 2), size_t{8});
     if ((kernel_code != 0 && kernel_code != 1) || p < 1 || n < 1 ||
-        model.rows() != static_cast<size_t>(n + 1) ||
-        model.cols() != static_cast<size_t>(p + 2)) {
+        model.rows() != static_cast<size_t>(n + 1) || model.cols() < min_cols) {
         return std::unexpected(DomainError{fn, "invalid SVM model layout"});
     }
     ml::SVM svm;
@@ -12247,36 +12248,91 @@ Result<std::string> eval_ode_exponential_euler_call(const std::string& formula_a
         ode_exponential_euler(g, lambda, t0, y0, t_end, steps_i));
 }
 
+Result<std::vector<double>> parse_comma_separated_numbers(const std::string& row_text,
+                                                          const char* fn) {
+    std::vector<double> row;
+    std::stringstream col_stream(row_text);
+    std::string cell;
+    while (std::getline(col_stream, cell, ',')) {
+        cell = trim_copy(cell);
+        if (cell.empty()) {
+            continue;
+        }
+        double value = 0.0;
+        if (!parse_number(cell, value)) {
+            return std::unexpected(DomainError{fn, "invalid number in vector literal: " + cell});
+        }
+        row.push_back(value);
+    }
+    return row;
+}
+
 Result<Matrix<double>> parse_bracket_matrix_literal(const std::string& text, const char* fn) {
     std::string s = trim_copy(text);
     if (s.size() < 2 || s.front() != '[' || s.back() != ']') {
         return std::unexpected(DomainError{fn, "expected [ ... ] vector literal"});
     }
-    s = s.substr(1, s.size() - 2);
+    s = trim_copy(s.substr(1, s.size() - 2));
     if (s.empty()) {
         return Matrix<double>(0, 0);
     }
 
     std::vector<std::vector<double>> rows;
-    std::stringstream row_stream(s);
-    std::string row_text;
-    while (std::getline(row_stream, row_text, ';')) {
-        row_text = trim_copy(row_text);
-        if (row_text.empty()) {
-            continue;
-        }
-        std::vector<double> row;
-        std::stringstream col_stream(row_text);
-        std::string cell;
-        while (std::getline(col_stream, cell, ',')) {
-            cell = trim_copy(cell);
-            double value = 0.0;
-            if (!parse_number(cell, value)) {
-                return std::unexpected(DomainError{fn, "invalid number in vector literal: " + cell});
+    if (!s.empty() && s.front() == '[') {
+        for (size_t i = 0; i < s.size();) {
+            while (i < s.size() &&
+                   (s[i] == ',' || std::isspace(static_cast<unsigned char>(s[i])))) {
+                ++i;
             }
-            row.push_back(value);
+            if (i >= s.size()) {
+                break;
+            }
+            if (s[i] != '[') {
+                rows.clear();
+                break;
+            }
+            int depth = 0;
+            const size_t start = i;
+            for (; i < s.size(); ++i) {
+                if (s[i] == '[') {
+                    ++depth;
+                } else if (s[i] == ']') {
+                    --depth;
+                    if (depth == 0) {
+                        ++i;
+                        break;
+                    }
+                }
+            }
+            if (depth != 0) {
+                return std::unexpected(DomainError{fn, "unbalanced brackets in vector literal"});
+            }
+            const std::string row_text = trim_copy(s.substr(start + 1, i - start - 2));
+            auto row = parse_comma_separated_numbers(row_text, fn);
+            if (!row) {
+                return std::unexpected(row.error());
+            }
+            if (row->empty()) {
+                return std::unexpected(DomainError{fn, "empty row in vector literal"});
+            }
+            rows.push_back(std::move(*row));
         }
-        rows.push_back(std::move(row));
+    }
+
+    if (rows.empty()) {
+        std::stringstream row_stream(s);
+        std::string row_text;
+        while (std::getline(row_stream, row_text, ';')) {
+            row_text = trim_copy(row_text);
+            if (row_text.empty()) {
+                continue;
+            }
+            auto row = parse_comma_separated_numbers(row_text, fn);
+            if (!row) {
+                return std::unexpected(row.error());
+            }
+            rows.push_back(std::move(*row));
+        }
     }
 
     if (rows.empty()) {
