@@ -9442,3 +9442,31 @@ TEST(ReplCommandsTest, wave269_tensorops_nmf_tt) {
     expect_error_contains(
         interp, "tensorops_reconstruct_nmf(cp1)", "tensorops_reconstruct_nmf");
 }
+
+TEST(ReplCommandsTest, wave269_quantum_phase) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_wigner(rho,x,p)");
+    expect_contains(interp, "help", "quantum_husimi(rho,alpha_re,alpha_im)");
+    expect_contains(interp, "help", "quantum_grover_search(n_qubits,marked_indices[,n_iterations])");
+
+    expect_ok(interp, "psi1 = quantum_fock_state(1, 3)");
+    expect_ok(interp, "rho1 = quantum_density_matrix(psi1)");
+
+    expect_ok(interp, "w = quantum_wigner(rho1, 0, 0)");
+    EXPECT_LT(interp.state().scalars.at("w"), 0.0);
+    expect_contains(interp, "quantum_wigner(rho1, 0, 0)", "-");
+
+    expect_ok(interp, "q = quantum_husimi(rho1, 1, 0)");
+    EXPECT_GE(interp.state().scalars.at("q"), 0.0);
+    expect_contains(interp, "quantum_husimi(rho1, 1, 0)", "0.");
+
+    expect_ok(interp, "g = quantum_grover_search(2, [1], 1)");
+    ASSERT_GT(interp.state().matrices.count("g"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("g").rows(), 4u);
+    EXPECT_GT(interp.state().matrices.at("g")(1, 0), interp.state().matrices.at("g")(0, 0));
+    expect_contains(interp, "quantum_grover_search(2, [1], 1)", "state =");
+
+    expect_ok(interp, "g2 = quantum_grover_search(2, [1])");
+    ASSERT_GT(interp.state().matrices.count("g2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("g2").rows(), 4u);
+}
