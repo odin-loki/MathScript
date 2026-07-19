@@ -8560,3 +8560,54 @@ TEST(ReplCommandsTest, wave267_ml_supervised_regularized) {
     lasso_ref.fit(X_ref, y_ref);
     EXPECT_NEAR(lasso_ref.predict({{5}})[0], interp.state().matrices.at("lasso_p")(0, 0), 0.5);
 }
+
+TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_pca_fit(X,n_components)");
+    expect_contains(interp, "help", "ml_pca_transform(X,model)");
+    expect_contains(interp, "help", "ml_pca_fit_transform(X,n_components)");
+    expect_contains(interp, "help", "ml_kmeans_fit(X,k)");
+    expect_contains(interp, "help", "ml_kmeans_predict(X,model)");
+    expect_contains(interp, "help", "ml_kmeans_inertia(X,model)");
+
+    expect_ok(interp, "X = [1, 0; 2, 0; 3, 0; 4, 0; 5, 0]");
+    expect_ok(interp, "model = ml_pca_fit(X, 1)");
+    ASSERT_GT(interp.state().matrices.count("model"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("model").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("model").cols(), 2u);
+
+    expect_ok(interp, "Z = ml_pca_transform(X, model)");
+    ASSERT_GT(interp.state().matrices.count("Z"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Z").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("Z").cols(), 1u);
+
+    expect_ok(interp, "Z2 = ml_pca_fit_transform(X, 1)");
+    ASSERT_GT(interp.state().matrices.count("Z2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Z2").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("Z2").cols(), 1u);
+
+    expect_ok(interp, "X2 = [0, 0; 1, 0; 2, 0; 100, 0; 101, 0; 102, 0]");
+    expect_ok(interp, "km = ml_kmeans_fit(X2, 2)");
+    ASSERT_GT(interp.state().matrices.count("km"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("km").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("km").cols(), 2u);
+
+    expect_ok(interp, "labels = ml_kmeans_predict(X2, km)");
+    ASSERT_GT(interp.state().matrices.count("labels"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("labels").rows(), 6u);
+    const double l0 = interp.state().matrices.at("labels")(0, 0);
+    for (size_t i = 0; i < 3; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("labels")(i, 0), l0, 1e-9);
+    }
+    const double l1 = interp.state().matrices.at("labels")(3, 0);
+    for (size_t i = 3; i < 6; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("labels")(i, 0), l1, 1e-9);
+    }
+    EXPECT_NE(l0, l1);
+
+    expect_ok(interp, "inert = ml_kmeans_inertia(X2, km)");
+    ASSERT_GT(interp.state().scalars.count("inert"), 0u);
+    EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
+    EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
+}
+}
