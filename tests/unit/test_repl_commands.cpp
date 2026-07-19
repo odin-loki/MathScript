@@ -8947,8 +8947,8 @@ TEST(ReplCommandsTest, wave268_pde_elliptic) {
     EXPECT_NEAR(interp.state().matrices.at("u3")(0, 0), 0.0, 1e-10);
     EXPECT_NEAR(interp.state().matrices.at("u3")(10, 10), 0.0, 1e-10);
 
-    ms::pde::Poisson1DResult ref =
-        ms::pde::pde_poisson_1d({0, 0, 0, 0, 0, 0}, 0.2, 1.0, 3.0);
+    ms::Poisson1DResult ref =
+        ms::pde_poisson_1d({0, 0, 0, 0, 0, 0}, 0.2, 1.0, 3.0);
     ASSERT_EQ(ref.u.size(), 6u);
     EXPECT_NEAR(interp.state().matrices.at("u1")(3, 0), ref.u[3], 1e-10);
 }
