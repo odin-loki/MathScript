@@ -55,6 +55,49 @@ double packed_tf_dcgain(const ms::Matrix<double>& packed) {
     return ms::control::dcgain(ms::control::tf(std::move(num), std::move(den)));
 }
 
+std::pair<double, double> parse_last_ode_traj_row(const std::string& text) {
+    std::pair<double, double> last{0.0, 0.0};
+    std::istringstream ss(text);
+    std::string line;
+    while (std::getline(ss, line)) {
+        const std::string trimmed = Interpreter::trim(line);
+        if (trimmed.size() < 5 || trimmed.front() != '[' || trimmed.back() != ']') {
+            continue;
+        }
+        const std::string inner = trimmed.substr(1, trimmed.size() - 2);
+        const auto comma = inner.find(',');
+        if (comma == std::string::npos) {
+            continue;
+        }
+        last.first = std::stod(Interpreter::trim(inner.substr(0, comma)));
+        last.second = std::stod(Interpreter::trim(inner.substr(comma + 1)));
+    }
+    return last;
+}
+
+std::vector<double> parse_last_ode_traj_row_all(const std::string& text) {
+    std::vector<double> last;
+    std::istringstream ss(text);
+    std::string line;
+    while (std::getline(ss, line)) {
+        const std::string trimmed = Interpreter::trim(line);
+        if (trimmed.size() < 5 || trimmed.front() != '[' || trimmed.back() != ']') {
+            continue;
+        }
+        const std::string inner = trimmed.substr(1, trimmed.size() - 2);
+        std::vector<double> row;
+        std::stringstream cell_stream(inner);
+        std::string cell;
+        while (std::getline(cell_stream, cell, ',')) {
+            row.push_back(std::stod(Interpreter::trim(cell)));
+        }
+        if (!row.empty()) {
+            last = std::move(row);
+        }
+    }
+    return last;
+}
+
 } // namespace
 
 TEST(ReplCommandsTest, version_command) {
@@ -8152,6 +8195,8 @@ TEST(ReplCommandsTest, wave267_special_painleve_dawsonx) {
     EXPECT_NEAR(p6_ref, 0.5003268969869713, 5e-3);
     expect_ok(interp, "p6 = painleve6(2.5, 0.5, -0.05, 0.1, 0.2, 0.3, 0.4)");
     EXPECT_NEAR(interp.state().scalars.at("p6"), p6_ref, 5e-3);
+}
+
 TEST(ReplCommandsTest, wave267_special_elliptic_jacobi_theta) {
     Interpreter interp;
     expect_contains(interp, "help", "ellip_e(k)");
@@ -8230,6 +8275,8 @@ TEST(ReplCommandsTest, wave267_special_elliptic_jacobi_theta) {
     EXPECT_NEAR(t4_ref, 0.6691160041441827, 1e-3);
     expect_ok(interp, "t4 = theta4(0.5, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("t4"), t4_ref, 1e-3);
+}
+
 TEST(ReplCommandsTest, wave267_special_hypergeo_meijer) {
     Interpreter interp;
     expect_contains(interp, "help", "tricomi_u(a,b,z)");
@@ -8609,5 +8656,4 @@ TEST(ReplCommandsTest, wave267_ml_unsupervised_pca_kmeans) {
     ASSERT_GT(interp.state().scalars.count("inert"), 0u);
     EXPECT_GT(interp.state().scalars.at("inert"), 0.0);
     EXPECT_LT(interp.state().scalars.at("inert"), 50.0);
-}
 }

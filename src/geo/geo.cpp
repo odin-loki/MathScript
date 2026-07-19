@@ -502,6 +502,7 @@ std::vector<int> KDTree3D::knn(Point3D q, int k) const {
         if ((int)heap.size() < k || diff*diff < heap[0].first) search(fc, depth+1);
     };
     search(root_, 0);
+    std::sort(heap.begin(), heap.end());
     std::vector<int> result;
     result.reserve(heap.size());
     for (auto& p : heap) result.push_back(p.second);
