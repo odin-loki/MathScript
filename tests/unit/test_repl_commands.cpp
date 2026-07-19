@@ -7374,3 +7374,88 @@ TEST(ReplCommandsTest, wave265_graph_info) {
     EXPECT_NEAR(interp.state().matrices.at("pin")(0, 0), 0.5, 1e-3);
     EXPECT_NEAR(interp.state().matrices.at("pin")(1, 0), 0.5, 1e-3);
 }
+
+TEST(ReplCommandsTest, wave265_poly_transforms) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_shift(p,a)");
+    expect_contains(interp, "help", "poly_scale(p,a)");
+    expect_contains(interp, "help", "poly_monic(p)");
+    expect_contains(interp, "help", "poly_reverse(p)");
+    expect_contains(interp, "help", "poly_pow(p,n)");
+    expect_contains(interp, "help", "poly_lcm(a,b)");
+    expect_contains(interp, "help", "poly_div_quot(a,b)");
+    expect_contains(interp, "help", "poly_mod(a,b)");
+    expect_contains(interp, "help", "poly_eval_at(coeffs,xs)");
+    expect_contains(interp, "help", "poly_sylvester(p,q)");
+
+    // x^2 shifted by 1 -> (x-1)^2
+    expect_ok(interp, "s = poly_shift([0; 0; 1], 1)");
+    ASSERT_GT(interp.state().matrices.count("s"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("s")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("s")(1, 0), -2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("s")(2, 0), 1.0, 1e-6);
+
+    // p(x)=x^2, p(2x)=4x^2
+    expect_ok(interp, "sc = poly_scale([0; 0; 1], 2)");
+    ASSERT_GT(interp.state().matrices.count("sc"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("sc")(2, 0), 4.0, 1e-6);
+
+    // monic normalize 2x^2 - 5x + 6
+    expect_ok(interp, "m = poly_monic([6; -5; 2])");
+    ASSERT_GT(interp.state().matrices.count("m"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("m")(0, 0), 3.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("m")(1, 0), -2.5, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("m")(2, 0), 1.0, 1e-6);
+
+    expect_ok(interp, "r = poly_reverse([1; 2; 3])");
+    ASSERT_GT(interp.state().matrices.count("r"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("r")(0, 0), 3.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("r")(1, 0), 2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("r")(2, 0), 1.0, 1e-6);
+
+    // (1+x)^2
+    expect_ok(interp, "pw = poly_pow([1; 1], 2)");
+    ASSERT_GT(interp.state().matrices.count("pw"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("pw")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("pw")(1, 0), 2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("pw")(2, 0), 1.0, 1e-6);
+
+    // lcm(x-1, x+1) ~ x^2-1
+    expect_ok(interp, "l = poly_lcm([-1; 1], [1; 1])");
+    ASSERT_GT(interp.state().matrices.count("l"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("l")(0, 0), -1.0, 1e-5);
+    EXPECT_NEAR(interp.state().matrices.at("l")(2, 0), 1.0, 1e-5);
+
+    // (x^2+1) / (x+1) -> quotient x-1, remainder 2
+    expect_ok(interp, "q = poly_div_quot([1; 0; 1], [1; 1])");
+    ASSERT_GT(interp.state().matrices.count("q"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("q")(0, 0), -1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("q")(1, 0), 1.0, 1e-6);
+
+    expect_ok(interp, "rm = poly_mod([1; 0; 1], [1; 1])");
+    ASSERT_GT(interp.state().matrices.count("rm"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("rm")(0, 0), 2.0, 1e-6);
+
+    expect_ok(interp, "vals = poly_eval_at([1; 2; 3], [0; 1; 2])");
+    ASSERT_GT(interp.state().matrices.count("vals"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("vals").rows(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("vals")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("vals")(1, 0), 6.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("vals")(2, 0), 17.0, 1e-6);
+
+    // p(x)=x^2+2x+3, q(x)=x+5
+    expect_ok(interp, "p = [3; 2; 1]");
+    expect_ok(interp, "q = [5; 1]");
+    expect_ok(interp, "S = poly_sylvester(p, q)");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("S").cols(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 1), 2.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 2), 3.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(1, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(1, 1), 5.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(2, 1), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("S")(2, 2), 5.0, 1e-6);
+}
+
