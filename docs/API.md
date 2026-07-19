@@ -172,6 +172,9 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `ml_knn_fit(X, y, k)`, `ml_knn_predict(X, model)` | k-nearest neighbours classifier fit/predict (Wave 267) |
 | `ml_naive_bayes_fit(X, y)`, `ml_naive_bayes_predict(X, model)` | Gaussian Naive Bayes fit/predict (Wave 267) |
 | `ml_lda_fit(X, y[, n_components])`, `ml_lda_predict(X, model)`, `ml_lda_transform(X, model)` | Linear Discriminant Analysis fit/predict/transform (Wave 267) |
+| `ml_decision_tree_fit(X, y[, max_depth])`, `ml_decision_tree_predict(X, model)` | Decision tree classifier fit/predict (Wave 268) |
+| `ml_random_forest_fit(X, y[, n_trees[, max_depth]])`, `ml_random_forest_predict(X, model)` | Random forest classifier fit/predict (Wave 268) |
+| `ml_adaboost_fit(X, y[, n_estimators[, max_depth]])`, `ml_adaboost_predict(X, model)` | AdaBoost (SAMME) classifier fit/predict (Wave 268) |
 | `ml_logistic_fit(X, y)`, `ml_logistic_predict(X, model)` | Binary logistic regression fit/predict (Wave 234) |
 | `ml_accuracy(p, t)`, `ml_rmse(p, t)`, `ml_mse(p, t)`, `ml_r2(p, t)`, `ml_f1(p, t)`, `ml_precision(p, t)`, `ml_recall(p, t)`, `ml_mae(p, t)` | ML metrics on matching `N×1` vectors |
 | `bigint("495")`, `bigint_factorial(n)`, `bigint_fib(n)`, `bigint_gcd("a", "b")` | Bignum parse/ops; results as scalars when representable in `double` |
