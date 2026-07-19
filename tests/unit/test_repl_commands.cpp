@@ -8685,3 +8685,62 @@ TEST(ReplCommandsTest, wave268_ml_qda_svm) {
     qda_ref.fit(X_ref, y_ref);
     EXPECT_NEAR(qda_ref.predict({{0, 0}})[0], interp.state().matrices.at("qda_p")(0, 0), 1e-6);
 }
+
+TEST(ReplCommandsTest, wave268_ml_trees_ensemble) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ml_decision_tree_fit(X,y");
+    expect_contains(interp, "help", "ml_decision_tree_predict(X,model)");
+    expect_contains(interp, "help", "ml_random_forest_fit(X,y");
+    expect_contains(interp, "help", "ml_random_forest_predict(X,model)");
+    expect_contains(interp, "help", "ml_adaboost_fit(X,y");
+    expect_contains(interp, "help", "ml_adaboost_predict(X,model)");
+
+    expect_ok(interp, "X = [0,0; 0,1; 1,0; 1,1]");
+    expect_ok(interp, "y = [0; 1; 1; 0]");
+    expect_ok(interp, "dt_m = ml_decision_tree_fit(X, y, 5)");
+    expect_ok(interp, "dt_p = ml_decision_tree_predict(X, dt_m)");
+    ASSERT_GT(interp.state().matrices.count("dt_p"), 0u);
+    const auto& dt_p = interp.state().matrices.at("dt_p");
+    int dt_correct = 0;
+    for (size_t i = 0; i < 4; ++i) {
+        if (std::abs(dt_p(i, 0) - interp.state().matrices.at("y")(i, 0)) < 0.5) {
+            ++dt_correct;
+        }
+    }
+    EXPECT_GE(dt_correct, 3);
+
+    expect_ok(interp, "Rfx = [0,0; 1,0; 0,1; 3,3; 4,3; 3,4]");
+    expect_ok(interp, "Rfy = [0; 0; 0; 1; 1; 1]");
+    expect_ok(interp, "rf_m = ml_random_forest_fit(Rfx, Rfy, 25, 4)");
+    expect_ok(interp, "rf_p = ml_random_forest_predict(Rfx, rf_m)");
+    ASSERT_GT(interp.state().matrices.count("rf_p"), 0u);
+    int rf_correct = 0;
+    for (size_t i = 0; i < 6; ++i) {
+        if (std::abs(interp.state().matrices.at("rf_p")(i, 0) -
+                     interp.state().matrices.at("Rfy")(i, 0)) < 0.5) {
+            ++rf_correct;
+        }
+    }
+    EXPECT_GE(rf_correct, 5);
+
+    expect_ok(interp, "ab_m = ml_adaboost_fit(X, y, 50, 3)");
+    expect_ok(interp, "ab_p = ml_adaboost_predict(X, ab_m)");
+    ASSERT_GT(interp.state().matrices.count("ab_p"), 0u);
+    int ab_correct = 0;
+    for (size_t i = 0; i < 4; ++i) {
+        if (std::abs(interp.state().matrices.at("ab_p")(i, 0) -
+                     interp.state().matrices.at("y")(i, 0)) < 0.5) {
+            ++ab_correct;
+        }
+    }
+    EXPECT_GE(ab_correct, 3);
+
+    ms::ml::Mat X_ref = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
+    ms::ml::Vec y_ref = {0, 1, 1, 0};
+    ms::ml::DecisionTree dt_ref(5);
+    dt_ref.fit(X_ref, y_ref);
+    const auto dt_ref_pred = dt_ref.predict(X_ref);
+    for (size_t i = 0; i < 4; ++i) {
+        EXPECT_NEAR(dt_p(i, 0), dt_ref_pred[i], 1e-9);
+    }
+}
