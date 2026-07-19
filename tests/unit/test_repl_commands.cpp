@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "ms/control/control.hpp"
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
 #include "ms/interp/repl_engine.hpp"
@@ -34,6 +35,22 @@ void expect_error_contains(Interpreter& interp, const std::string& cmd, const st
     ASSERT_FALSE(result.has_value()) << cmd;
     const std::string message = ms::format_error(result.error());
     EXPECT_NE(message.find(needle), std::string::npos) << cmd << " error: " << message;
+}
+
+double packed_tf_dcgain(const ms::Matrix<double>& packed) {
+    std::vector<double> num(packed.cols());
+    std::vector<double> den(packed.cols());
+    for (size_t j = 0; j < packed.cols(); ++j) {
+        num[j] = packed(0, j);
+        den[j] = packed(1, j);
+    }
+    while (num.size() > 1 && std::abs(num.back()) < 1e-15) {
+        num.pop_back();
+    }
+    while (den.size() > 1 && std::abs(den.back()) < 1e-15) {
+        den.pop_back();
+    }
+    return ms::control::dcgain(ms::control::tf(std::move(num), std::move(den)));
 }
 
 } // namespace
@@ -3286,6 +3303,81 @@ TEST(ReplCommandsTest, wave264_control_tf2ss_c2d) {
     ASSERT_GT(interp.state().matrices.count("Bd"), 0u);
     const double Bd_exact = (std::exp(-0.2) - 1.0) / (-2.0) * 3.0;
     EXPECT_NEAR(interp.state().matrices.at("Bd")(0, 0), Bd_exact, 1e-6);
+}
+
+TEST(ReplCommandsTest, wave265_control_tf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "control_series(num1,den1,num2,den2)");
+    expect_contains(interp, "help", "control_parallel(num1,den1,num2,den2)");
+    expect_contains(interp, "help", "control_feedback(numG,denG,numH,denH");
+    expect_contains(interp, "help", "control_ss2tf(SS)");
+    expect_contains(interp, "help", "control_d2c(A,B,C,D,Ts)");
+    expect_contains(interp, "help", "control_c2d_tf(num,den,Ts)");
+    expect_contains(interp, "help", "control_d2c_tf(num,den,Ts)");
+
+    // series: (1/(s+1))*(2/(s+2)) -> 2/(s^2+3s+2)
+    expect_ok(interp, "S = control_series([1], [1, 1], [2], [1, 2])");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    const auto& s = interp.state().matrices.at("S");
+    ASSERT_EQ(s.rows(), 2u);
+    ASSERT_EQ(s.cols(), 3u);
+    EXPECT_NEAR(s(0, 0), 2.0, 1e-12);
+    EXPECT_NEAR(s(1, 0), 1.0, 1e-12);
+    EXPECT_NEAR(s(1, 1), 3.0, 1e-12);
+    EXPECT_NEAR(s(1, 2), 2.0, 1e-12);
+
+    // parallel: 1/(s+1) + 1/(s+1) -> DC gain 2
+    expect_ok(interp, "P = control_parallel([1], [1, 1], [1], [1, 1])");
+    ASSERT_GT(interp.state().matrices.count("P"), 0u);
+    const auto& p = interp.state().matrices.at("P");
+    EXPECT_EQ(p.rows(), 2u);
+    EXPECT_NEAR(packed_tf_dcgain(p), 2.0, 1e-9);
+
+    // unity feedback around integrator 1/s -> 1/(s+1)
+    expect_ok(interp, "F = control_feedback([1], [1, 0], [1], [1])");
+    ASSERT_GT(interp.state().matrices.count("F"), 0u);
+    const auto& f = interp.state().matrices.at("F");
+    EXPECT_NEAR(packed_tf_dcgain(f), 1.0, 1e-3);
+
+    // ss2tf roundtrip with control_tf2ss on 1/(s+1)
+    expect_ok(interp, "SS = control_tf2ss([1], [1, 1])");
+    expect_ok(interp, "TF = control_ss2tf(SS)");
+    ASSERT_GT(interp.state().matrices.count("TF"), 0u);
+    const auto& tf = interp.state().matrices.at("TF");
+    EXPECT_NEAR(packed_tf_dcgain(tf), 1.0, 1e-9);
+    EXPECT_NEAR(tf(1, 0), 1.0, 1e-9);
+    EXPECT_NEAR(tf(1, 1), 1.0, 1e-9);
+
+    // d2c inverse of scalar ZOH c2d: Ad=exp(-0.2) -> Ac=-2
+    expect_ok(interp, "Ad = control_c2d([-2], [3], [1], [0], 0.1)");
+    expect_ok(interp, "Bd = control_c2d_b([-2], [3], [1], [0], 0.1)");
+    expect_ok(interp, "Ac = control_d2c(Ad, Bd, [1], [0], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("Ac"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("Ac")(0, 0), -2.0, 1e-3);
+
+    // TF discretization roundtrip on 1/(s+1)
+    expect_ok(interp, "D = control_c2d_tf([1], [1, 1], 0.1)");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    const auto& d = interp.state().matrices.at("D");
+    ASSERT_EQ(d.rows(), 2u);
+    std::string num_lit = "[";
+    std::string den_lit = "[";
+    for (size_t j = 0; j < d.cols(); ++j) {
+        if (j > 0) {
+            num_lit += ", ";
+            den_lit += ", ";
+        }
+        num_lit += std::to_string(d(0, j));
+        den_lit += std::to_string(d(1, j));
+    }
+    num_lit += "]";
+    den_lit += "]";
+    expect_ok(interp, "C = control_d2c_tf(" + num_lit + ", " + den_lit + ", 0.1)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+    const auto& c = interp.state().matrices.at("C");
+    EXPECT_NEAR(packed_tf_dcgain(c), 1.0, 1e-2);
+    EXPECT_NEAR(c(1, 0), 1.0, 1e-2);
+    EXPECT_NEAR(c(1, 1), 1.0, 1e-2);
 }
 
 TEST(ReplCommandsTest, wave263_control_kalman) {

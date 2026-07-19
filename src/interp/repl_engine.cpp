@@ -3998,6 +3998,137 @@ Result<Matrix<double>> eval_control_c2d_B(const Matrix<double>& A_m, const Matri
     }
 }
 
+Result<Matrix<double>> eval_control_series(const Matrix<double>& num1_m,
+                                           const Matrix<double>& den1_m,
+                                           const Matrix<double>& num2_m,
+                                           const Matrix<double>& den2_m) {
+    constexpr const char* fn = "control_series";
+    auto g = matrices_to_transfer_function(num1_m, den1_m, fn);
+    if (!g) {
+        return std::unexpected(g.error());
+    }
+    auto h = matrices_to_transfer_function(num2_m, den2_m, fn);
+    if (!h) {
+        return std::unexpected(h.error());
+    }
+    return pack_transfer_function(control::series(*g, *h));
+}
+
+Result<Matrix<double>> eval_control_parallel(const Matrix<double>& num1_m,
+                                           const Matrix<double>& den1_m,
+                                           const Matrix<double>& num2_m,
+                                           const Matrix<double>& den2_m) {
+    constexpr const char* fn = "control_parallel";
+    auto g = matrices_to_transfer_function(num1_m, den1_m, fn);
+    if (!g) {
+        return std::unexpected(g.error());
+    }
+    auto h = matrices_to_transfer_function(num2_m, den2_m, fn);
+    if (!h) {
+        return std::unexpected(h.error());
+    }
+    return pack_transfer_function(control::parallel(*g, *h));
+}
+
+Result<Matrix<double>> eval_control_feedback(const Matrix<double>& numG_m,
+                                             const Matrix<double>& denG_m,
+                                             const Matrix<double>& numH_m,
+                                             const Matrix<double>& denH_m, int sign) {
+    constexpr const char* fn = "control_feedback";
+    auto g = matrices_to_transfer_function(numG_m, denG_m, fn);
+    if (!g) {
+        return std::unexpected(g.error());
+    }
+    auto h = matrices_to_transfer_function(numH_m, denH_m, fn);
+    if (!h) {
+        return std::unexpected(h.error());
+    }
+    return pack_transfer_function(control::feedback(*g, *h, sign));
+}
+
+Result<Matrix<double>> eval_control_ss2tf(const Matrix<double>& ss_m) {
+    constexpr const char* fn = "control_ss2tf";
+    auto sys = packed_ss_to_state_space(ss_m, fn);
+    if (!sys) {
+        return std::unexpected(sys.error());
+    }
+    return pack_transfer_function(control::ss2tf(*sys));
+}
+
+Result<Matrix<double>> eval_control_d2c(const Matrix<double>& A_m, const Matrix<double>& B_m,
+                                        const Matrix<double>& C_m, const Matrix<double>& D_m,
+                                        double Ts) {
+    constexpr const char* fn = "control_d2c";
+    if (!(Ts > 0.0)) {
+        return std::unexpected(DomainError{fn, "expected positive Ts"});
+    }
+    auto A = matrix_to_square_nested(A_m, fn);
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto B = matrix_to_nested(B_m, fn);
+    if (!B) {
+        return std::unexpected(B.error());
+    }
+    auto C = matrix_to_nested(C_m, fn);
+    if (!C) {
+        return std::unexpected(C.error());
+    }
+    auto D = matrix_to_nested(D_m, fn);
+    if (!D) {
+        return std::unexpected(D.error());
+    }
+    if (B->size() != A->size()) {
+        return std::unexpected(DomainError{fn, "expected B with same row count as A"});
+    }
+    if (C->empty() || (*C)[0].size() != A->size()) {
+        return std::unexpected(DomainError{fn, "expected C with column count equal to A size"});
+    }
+    try {
+        const control::StateSpace sys(std::move(*A), std::move(*B), std::move(*C), std::move(*D));
+        const auto cont = control::d2c(sys, Ts, control::DiscretizationMethod::ZOH);
+        return nested_to_matrix(cont.A);
+    } catch (const std::exception& ex) {
+        return std::unexpected(DomainError{fn, ex.what()});
+    }
+}
+
+Result<Matrix<double>> eval_control_c2d_tf(const Matrix<double>& num_m,
+                                          const Matrix<double>& den_m, double Ts) {
+    constexpr const char* fn = "control_c2d_tf";
+    if (!(Ts > 0.0)) {
+        return std::unexpected(DomainError{fn, "expected positive Ts"});
+    }
+    auto sys = matrices_to_transfer_function(num_m, den_m, fn);
+    if (!sys) {
+        return std::unexpected(sys.error());
+    }
+    try {
+        return pack_transfer_function(
+            control::c2d(*sys, Ts, control::DiscretizationMethod::ZOH));
+    } catch (const std::exception& ex) {
+        return std::unexpected(DomainError{fn, ex.what()});
+    }
+}
+
+Result<Matrix<double>> eval_control_d2c_tf(const Matrix<double>& num_m,
+                                          const Matrix<double>& den_m, double Ts) {
+    constexpr const char* fn = "control_d2c_tf";
+    if (!(Ts > 0.0)) {
+        return std::unexpected(DomainError{fn, "expected positive Ts"});
+    }
+    auto sys = matrices_to_transfer_function(num_m, den_m, fn);
+    if (!sys) {
+        return std::unexpected(sys.error());
+    }
+    try {
+        return pack_transfer_function(
+            control::d2c(*sys, Ts, control::DiscretizationMethod::ZOH));
+    } catch (const std::exception& ex) {
+        return std::unexpected(DomainError{fn, ex.what()});
+    }
+}
+
 Result<double> eval_quantum_purity(const Matrix<double>& rho_m) {
     auto rho = matrix_to_density_matrix(rho_m, "quantum_purity");
     if (!rho) {
@@ -12111,6 +12242,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "control_kalman_predict" || fn == "control_kalman_update" ||
             fn == "control_kalman_predict_cov" || fn == "control_kalman_update_cov" ||
             fn == "control_tf2ss" || fn == "control_c2d" || fn == "control_c2d_b" ||
+            fn == "control_ss2tf" || fn == "control_d2c" ||
+            fn == "control_series" || fn == "control_parallel" || fn == "control_feedback" ||
+            fn == "control_c2d_tf" || fn == "control_d2c_tf" ||
             fn == "topo_bottleneck_distance" ||
             fn == "topo_wasserstein_distance" ||
             fn == "topo_persistence_diagram" ||
@@ -14108,6 +14242,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "control_ctrb" || callee == "control_obsv" ||
            callee == "control_ctrb_gram" || callee == "control_obsv_gram" ||
            callee == "control_tf2ss" || callee == "control_c2d" || callee == "control_c2d_b" ||
+           callee == "control_feedback" || callee == "control_ss2tf" || callee == "control_d2c" ||
+           callee == "control_series" || callee == "control_parallel" ||
+           callee == "control_c2d_tf" || callee == "control_d2c_tf" ||
            callee == "compress_bits_to_bytes" ||
            callee == "compress_bytes_to_bits" ||
            callee == "graph_betweenness" ||
@@ -14453,6 +14590,21 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 4;
     }
     if (callee == "control_kalman_update" || callee == "control_kalman_update_cov") {
+        return arity == 5;
+    }
+    if (callee == "control_ss2tf") {
+        return arity == 1;
+    }
+    if (callee == "control_series" || callee == "control_parallel") {
+        return arity == 4;
+    }
+    if (callee == "control_feedback") {
+        return arity == 4 || arity == 5;
+    }
+    if (callee == "control_c2d_tf" || callee == "control_d2c_tf") {
+        return arity == 3;
+    }
+    if (callee == "control_d2c") {
         return arity == 5;
     }
     if (callee == "control_tf2ss") {
@@ -19369,6 +19521,148 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
         result = *pf;
     }
 
+    if (assign.callee == "control_series" && assign.args.size() == 4) {
+        auto num1 = resolve_operand(assign.args[0]);
+        if (!num1) {
+            return std::unexpected(num1.error());
+        }
+        auto den1 = resolve_operand(assign.args[1]);
+        if (!den1) {
+            return std::unexpected(den1.error());
+        }
+        auto num2 = resolve_operand(assign.args[2]);
+        if (!num2) {
+            return std::unexpected(num2.error());
+        }
+        auto den2 = resolve_operand(assign.args[3]);
+        if (!den2) {
+            return std::unexpected(den2.error());
+        }
+        result = eval_control_series(*num1, *den1, *num2, *den2);
+    } else if (assign.callee == "control_parallel" && assign.args.size() == 4) {
+        auto num1 = resolve_operand(assign.args[0]);
+        if (!num1) {
+            return std::unexpected(num1.error());
+        }
+        auto den1 = resolve_operand(assign.args[1]);
+        if (!den1) {
+            return std::unexpected(den1.error());
+        }
+        auto num2 = resolve_operand(assign.args[2]);
+        if (!num2) {
+            return std::unexpected(num2.error());
+        }
+        auto den2 = resolve_operand(assign.args[3]);
+        if (!den2) {
+            return std::unexpected(den2.error());
+        }
+        result = eval_control_parallel(*num1, *den1, *num2, *den2);
+    } else if (assign.callee == "control_feedback" &&
+               (assign.args.size() == 4 || assign.args.size() == 5)) {
+        auto numG = resolve_operand(assign.args[0]);
+        if (!numG) {
+            return std::unexpected(numG.error());
+        }
+        auto denG = resolve_operand(assign.args[1]);
+        if (!denG) {
+            return std::unexpected(denG.error());
+        }
+        auto numH = resolve_operand(assign.args[2]);
+        if (!numH) {
+            return std::unexpected(numH.error());
+        }
+        auto denH = resolve_operand(assign.args[3]);
+        if (!denH) {
+            return std::unexpected(denH.error());
+        }
+        int sign = -1;
+        if (assign.args.size() == 5) {
+            double sign_d = 0.0;
+            if (!parse_number(assign.args[4], sign_d)) {
+                auto sign_expr = eval_scalar_expr(state_, assign.args[4]);
+                if (!sign_expr) {
+                    return std::unexpected(
+                        DomainError{"control_feedback", "expected feedback sign -1 or +1"});
+                }
+                sign_d = *sign_expr;
+            }
+            if (sign_d != -1.0 && sign_d != 1.0) {
+                return std::unexpected(
+                    DomainError{"control_feedback", "expected feedback sign -1 or +1"});
+            }
+            sign = static_cast<int>(sign_d);
+        }
+        result = eval_control_feedback(*numG, *denG, *numH, *denH, sign);
+    } else if (assign.callee == "control_ss2tf" && assign.args.size() == 1) {
+        auto ss_m = resolve_operand(assign.args[0]);
+        if (!ss_m) {
+            return std::unexpected(ss_m.error());
+        }
+        result = eval_control_ss2tf(*ss_m);
+    } else if (assign.callee == "control_d2c" && assign.args.size() == 5) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto B_m = resolve_operand(assign.args[1]);
+        if (!B_m) {
+            return std::unexpected(B_m.error());
+        }
+        auto C_m = resolve_operand(assign.args[2]);
+        if (!C_m) {
+            return std::unexpected(C_m.error());
+        }
+        auto D_m = resolve_operand(assign.args[3]);
+        if (!D_m) {
+            return std::unexpected(D_m.error());
+        }
+        double Ts = 0.0;
+        if (!parse_number(assign.args[4], Ts)) {
+            auto ts_expr = eval_scalar_expr(state_, assign.args[4]);
+            if (!ts_expr) {
+                return std::unexpected(DomainError{"control_d2c", "expected positive Ts"});
+            }
+            Ts = *ts_expr;
+        }
+        result = eval_control_d2c(*A_m, *B_m, *C_m, *D_m, Ts);
+    } else if (assign.callee == "control_c2d_tf" && assign.args.size() == 3) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        double Ts = 0.0;
+        if (!parse_number(assign.args[2], Ts)) {
+            auto ts_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!ts_expr) {
+                return std::unexpected(DomainError{"control_c2d_tf", "expected positive Ts"});
+            }
+            Ts = *ts_expr;
+        }
+        result = eval_control_c2d_tf(*num_m, *den_m, Ts);
+    } else if (assign.callee == "control_d2c_tf" && assign.args.size() == 3) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        double Ts = 0.0;
+        if (!parse_number(assign.args[2], Ts)) {
+            auto ts_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!ts_expr) {
+                return std::unexpected(DomainError{"control_d2c_tf", "expected positive Ts"});
+            }
+            Ts = *ts_expr;
+        }
+        result = eval_control_d2c_tf(*num_m, *den_m, Ts);
+    }
+
     return result;
 }
 
@@ -21715,6 +22009,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = control_kalman_update(x,P,z,H,R) Kalman update step posterior mean column\n"
             "  name = control_kalman_update_cov(x,P,z,H,R) Kalman update step error covariance\n"
             "  name = control_tf2ss(num,den) TF to SS packed as [A B; C D]\n"
+            "  name = control_ss2tf(SS) SS to TF packed as 2xN [num;den]\n"
+            "  name = control_series(num1,den1,num2,den2) series TF as 2xN [num;den]\n"
+            "  name = control_parallel(num1,den1,num2,den2) parallel TF as 2xN [num;den]\n"
+            "  name = control_feedback(numG,denG,numH,denH[,sign]) feedback TF as 2xN [num;den]\n"
+            "  name = control_d2c(A,B,C,D,Ts) discrete-to-continuous SS packed as [A B; C D]\n"
+            "  name = control_c2d_tf(num,den,Ts) continuous TF to discrete TF as 2xN [num;den]\n"
+            "  name = control_d2c_tf(num,den,Ts) discrete TF to continuous TF as 2xN [num;den]\n"
             "  name = control_c2d(A,B,C,D,Ts) continuous-to-discrete Ad (ZOH)\n"
             "  name = control_c2d_b(A,B,C,D,Ts) continuous-to-discrete Bd (ZOH)\n"
             "  name = quantum_hadamard(psi) apply Hadamard gate to 2x1 state\n"
@@ -22001,7 +22302,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  special_erfinv(x), special_erfcinv(x), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc_reg(x,a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), hermite_h(n,x), laguerre_l(n,x), sph_bessel_j(n,x), sph_bessel_y(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z)\n"
-            "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts)\n"
+            "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts), control_series(num1,den1,num2,den2), control_parallel(num1,den1,num2,den2), control_feedback(numG,denG,numH,denH[,sign]), control_ss2tf(SS), control_d2c(A,B,C,D,Ts), control_c2d_tf(num,den,Ts), control_d2c_tf(num,den,Ts)\n"
             "  quantum_hadamard(psi), quantum_op_apply(op,psi), quantum_ket_normalise(psi), quantum_density_matrix(psi), quantum_ket_superposition(amps), quantum_ket_basis(dim,index), quantum_fock_state(n,n_max), quantum_coherent_state(alpha_re,alpha_im,n_max), quantum_pauli_x(), quantum_pauli_y(), quantum_pauli_z(), quantum_pauli_plus(), quantum_pauli_minus(), quantum_cnot_gate(), quantum_swap_gate(), quantum_toffoli_gate(), quantum_identity(), quantum_identity_n(dim), quantum_ghz_state(n), quantum_w_state(n), quantum_bell_state(index), quantum_hadamard_gate(), quantum_rotation_z(theta), quantum_rotation_x(theta), quantum_rotation_y(theta), quantum_phase_gate(theta), quantum_qft_gate(n_qubits)\n"
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
