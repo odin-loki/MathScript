@@ -8106,4 +8106,82 @@ TEST(ReplCommandsTest, wave267_special_painleve_dawsonx) {
     EXPECT_NEAR(p6_ref, 0.5003268969869713, 5e-3);
     expect_ok(interp, "p6 = painleve6(2.5, 0.5, -0.05, 0.1, 0.2, 0.3, 0.4)");
     EXPECT_NEAR(interp.state().scalars.at("p6"), p6_ref, 5e-3);
+TEST(ReplCommandsTest, wave267_special_elliptic_jacobi_theta) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ellip_e(k)");
+    expect_contains(interp, "help", "ellip_pi(n,k)");
+    expect_contains(interp, "help", "ellip_f(phi,k)");
+    expect_contains(interp, "help", "ellip_e_inc(phi,k)");
+    expect_contains(interp, "help", "jacobi_cn(u,k)");
+    expect_contains(interp, "help", "jacobi_dn(u,k)");
+    expect_contains(interp, "help", "jacobi_am(u,k)");
+    expect_contains(interp, "help", "theta1(z,q)");
+    expect_contains(interp, "help", "theta2(z,q)");
+    expect_contains(interp, "help", "theta3(z,q)");
+    expect_contains(interp, "help", "theta4(z,q)");
+
+    const double k = 0.5;
+    const double u = 0.5;
+    const double z = 0.5;
+    const double q = 0.3;
+
+    const double ee_ref = ms::ellip_e(k);
+    EXPECT_NEAR(ee_ref, 1.4674622093394272, 1e-6);
+    expect_ok(interp, "ee = ellip_e(0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("ee"), ee_ref, 1e-9);
+    expect_contains(interp, "ellip_e(0.5)", "\n");
+
+    const double pi_ref = ms::ellip_pi(0.5, k);
+    EXPECT_NEAR(pi_ref, 2.4136715042011945, 1e-3);
+    expect_ok(interp, "epi = ellip_pi(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("epi"), pi_ref, 1e-3);
+    expect_contains(interp, "ellip_pi(0.5, 0.5)", "\n");
+
+    const double f_ref = ms::ellip_f(0.3, k);
+    EXPECT_NEAR(f_ref, 0.30111597966406606, 1e-3);
+    expect_ok(interp, "ef = ellip_f(0.3, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("ef"), f_ref, 1e-3);
+
+    const double einc_ref = ms::ellip_e_inc(0.3, k);
+    EXPECT_NEAR(einc_ref, 0.2988914110164986, 1e-3);
+    expect_ok(interp, "einc = ellip_e_inc(0.3, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("einc"), einc_ref, 1e-3);
+
+    const double cn_ref = ms::jacobi_cn(u, k);
+    EXPECT_NEAR(cn_ref, 0.8799410229637583, 1e-3);
+    expect_ok(interp, "cn = jacobi_cn(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("cn"), cn_ref, 1e-3);
+    expect_contains(interp, "jacobi_cn(0.5, 0.5)", "\n");
+
+    const double dn_ref = ms::jacobi_dn(u, k);
+    EXPECT_NEAR(dn_ref, 0.9713773988381788, 1e-3);
+    expect_ok(interp, "dn = jacobi_dn(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("dn"), dn_ref, 1e-3);
+
+    const double am_ref = ms::jacobi_am(u, k);
+    EXPECT_NEAR(am_ref, std::atan2(ms::jacobi_sn(u, k), cn_ref), 1e-3);
+    expect_ok(interp, "am = jacobi_am(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("am"), am_ref, 1e-3);
+
+    const double t1_ref = ms::theta1(z, q);
+    EXPECT_NEAR(t1_ref, 0.5773940463248446, 1e-3);
+    expect_ok(interp, "t1 = theta1(0.5, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("t1"), t1_ref, 1e-3);
+    expect_contains(interp, "theta1(0.5, 0.3)", "\n");
+
+    const double t2_ref = ms::theta2(z, q);
+    EXPECT_NEAR(t2_ref, 1.3075255735032947, 1e-3);
+    expect_ok(interp, "t2 = theta2(0.5, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("t2"), t2_ref, 1e-3);
+
+    const double t3_ref = ms::theta3(z, q);
+    EXPECT_NEAR(t3_ref, 1.317400827096804, 1e-3);
+    expect_ok(interp, "t3 = theta3(0.5, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("t3"), t3_ref, 1e-3);
+    expect_contains(interp, "theta3(0.5, 0.3)", "\n");
+
+    const double t4_ref = ms::theta4(z, q);
+    EXPECT_NEAR(t4_ref, 0.6691160041441827, 1e-3);
+    expect_ok(interp, "t4 = theta4(0.5, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("t4"), t4_ref, 1e-3);
 }
