@@ -908,6 +908,136 @@ Result<Matrix<double>> eval_ml_logistic_predict(const Matrix<double>& X_m,
     return vector_to_column(lr.predict(*X));
 }
 
+Matrix<double> grid_to_matrix(const std::vector<std::vector<double>>& grid);
+Matrix<double> int_vector_to_column(const std::vector<int>& values);
+
+Matrix<double> ml_pca_model_to_matrix(const ml::PCA& pca) {
+    const int nc = pca.n_components;
+    const int nf = static_cast<int>(pca.mean_.size());
+    Matrix<double> out(static_cast<size_t>(nc + 1), static_cast<size_t>(nf));
+    for (int i = 0; i < nc; ++i) {
+        for (int j = 0; j < nf; ++j) {
+            out(static_cast<size_t>(i), static_cast<size_t>(j)) = pca.components[static_cast<size_t>(i)][static_cast<size_t>(j)];
+        }
+    }
+    for (int j = 0; j < nf; ++j) {
+        out(static_cast<size_t>(nc), static_cast<size_t>(j)) = pca.mean_[static_cast<size_t>(j)];
+    }
+    return out;
+}
+
+Result<ml::PCA> ml_pca_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 2 || model.cols() < 1) {
+        return std::unexpected(
+            DomainError{fn, "expected PCA model (n_components+1) x n_features with mean row last"});
+    }
+    ml::PCA pca(static_cast<int>(model.rows() - 1));
+    pca.n_components = static_cast<int>(model.rows() - 1);
+    pca.components.resize(static_cast<size_t>(pca.n_components));
+    for (int i = 0; i < pca.n_components; ++i) {
+        pca.components[static_cast<size_t>(i)].resize(model.cols());
+        for (size_t j = 0; j < model.cols(); ++j) {
+            pca.components[static_cast<size_t>(i)][j] = model(static_cast<size_t>(i), j);
+        }
+    }
+    pca.mean_.resize(model.cols());
+    for (size_t j = 0; j < model.cols(); ++j) {
+        pca.mean_[j] = model(static_cast<size_t>(pca.n_components), j);
+    }
+    return pca;
+}
+
+Result<ml::KMeans> ml_kmeans_from_matrix(const Matrix<double>& model, const char* fn) {
+    auto centers = matrix_to_ml_mat(model, fn);
+    if (!centers) {
+        return std::unexpected(centers.error());
+    }
+    if (centers->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty KMeans centers matrix"});
+    }
+    ml::KMeans km(static_cast<int>(centers->size()));
+    km.centers = std::move(*centers);
+    return km;
+}
+
+Result<Matrix<double>> eval_ml_pca_fit(const Matrix<double>& X_m, int n_components) {
+    auto X = matrix_to_ml_mat(X_m, "ml_pca_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (n_components < 1) {
+        return std::unexpected(DomainError{"ml_pca_fit", "expected n_components >= 1"});
+    }
+    ml::PCA pca(n_components);
+    pca.fit(*X);
+    return ml_pca_model_to_matrix(pca);
+}
+
+Result<Matrix<double>> eval_ml_pca_transform(const Matrix<double>& X_m,
+                                             const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_pca_transform");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto pca = ml_pca_from_matrix(model_m, "ml_pca_transform");
+    if (!pca) {
+        return std::unexpected(pca.error());
+    }
+    return grid_to_matrix(pca->transform(*X));
+}
+
+Result<Matrix<double>> eval_ml_pca_fit_transform(const Matrix<double>& X_m, int n_components) {
+    auto X = matrix_to_ml_mat(X_m, "ml_pca_fit_transform");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (n_components < 1) {
+        return std::unexpected(DomainError{"ml_pca_fit_transform", "expected n_components >= 1"});
+    }
+    ml::PCA pca(n_components);
+    return grid_to_matrix(pca.fit_transform(*X));
+}
+
+Result<Matrix<double>> eval_ml_kmeans_fit(const Matrix<double>& X_m, int k) {
+    auto X = matrix_to_ml_mat(X_m, "ml_kmeans_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    if (k < 1) {
+        return std::unexpected(DomainError{"ml_kmeans_fit", "expected k >= 1"});
+    }
+    ml::KMeans km(k);
+    km.fit(*X);
+    return grid_to_matrix(km.centers);
+}
+
+Result<Matrix<double>> eval_ml_kmeans_predict(const Matrix<double>& X_m,
+                                              const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_kmeans_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto km = ml_kmeans_from_matrix(model_m, "ml_kmeans_predict");
+    if (!km) {
+        return std::unexpected(km.error());
+    }
+    return vector_to_column(km->predict(*X));
+}
+
+Result<double> eval_ml_kmeans_inertia(const Matrix<double>& X_m,
+                                      const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_kmeans_inertia");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto km = ml_kmeans_from_matrix(model_m, "ml_kmeans_inertia");
+    if (!km) {
+        return std::unexpected(km.error());
+    }
+    km->labels_ = km->predict(*X);
+    return km->inertia(*X);
+}
+
 Matrix<double> int_vector_to_column(const std::vector<int>& values) {
     Matrix<double> out(values.size(), 1);
     for (size_t i = 0; i < values.size(); ++i) {
@@ -9890,6 +10020,7 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
            callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
            callee == "ml_logistic_predict" ||
+           callee == "ml_pca_transform" || callee == "ml_kmeans_predict" ||
            callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
            callee == "signal_convolve" || callee == "signal_correlate" ||
            callee == "signal_sosfilt" || callee == "signal_conv2" ||
@@ -9914,6 +10045,7 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "ml_recall" || callee == "ml_mae" || callee == "ml_huber" ||
            callee == "ml_hinge" || callee == "ml_binary_crossentropy" ||
            callee == "ml_categorical_crossentropy" || callee == "ml_vec_dot" ||
+           callee == "ml_kmeans_inertia" ||
            callee == "control_step_final" ||
            callee == "control_impulse_final" ||
            callee == "control_dcgain" || callee == "control_is_stable" ||
@@ -12504,7 +12636,10 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "ml_mat_transpose" || fn == "ml_mat_mul" ||
             fn == "ml_linear_fit" || fn == "ml_linear_predict" ||
             fn == "ml_ridge_fit" || fn == "ml_ridge_predict" ||
-            fn == "ml_logistic_fit" || fn == "ml_logistic_predict" || fn == "poly_deriv" ||
+            fn == "ml_logistic_fit" || fn == "ml_logistic_predict" ||
+            fn == "ml_pca_fit" || fn == "ml_pca_transform" ||
+            fn == "ml_pca_fit_transform" || fn == "ml_kmeans_fit" ||
+            fn == "ml_kmeans_predict" || fn == "poly_deriv" ||
             fn == "poly_eval" || fn == "poly_cheb_eval" || fn == "poly_cheb_expand" ||
             fn == "poly_integ" || fn == "poly_add" ||
             fn == "poly_lagrange" || fn == "poly_interp_newton" ||
@@ -14510,6 +14645,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
            callee == "ml_ridge_fit" || callee == "ml_ridge_predict" ||
            callee == "ml_logistic_fit" || callee == "ml_logistic_predict" ||
+           callee == "ml_pca_fit" || callee == "ml_pca_transform" ||
+           callee == "ml_pca_fit_transform" || callee == "ml_kmeans_fit" ||
+           callee == "ml_kmeans_predict" ||
            callee == "poly_deriv" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "poly_roots" ||
            callee == "poly_fit" || callee == "poly_interp_hermite" ||
@@ -14734,7 +14872,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "signal_deconv" || callee == "imfilter" ||
         callee == "ml_mat_mul" || callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
         callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
-        callee == "ml_logistic_predict" || callee == "geo_poly_union" ||
+        callee == "ml_logistic_predict" || callee == "ml_pca_transform" ||
+        callee == "ml_kmeans_predict" || callee == "geo_poly_union" ||
         callee == "geo_poly_intersect" || callee == "geo_poly_diff" ||
         callee == "geo_minkowski_sum" || callee == "geo_clip_polygon" ||
         callee == "stats_linear_regression" || callee == "stats_multiple_regression") {
@@ -14787,6 +14926,10 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "ml_ridge_fit") {
         return arity == 3;
+    }
+    if (callee == "ml_pca_fit" || callee == "ml_pca_fit_transform" ||
+        callee == "ml_kmeans_fit") {
+        return arity == 2;
     }
     if (callee == "imflip" || callee == "threshold_binary" || callee == "watershed" ||
         callee == "radon" || callee == "iradon") {
@@ -20341,6 +20484,121 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail5(const MatrixCallAss
             image::laplacian_of_gaussian(*gray, static_cast<float>(*sigma)));
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail6(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "ml_pca_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto n_comp = parse_scalar_arg(assign.args[1], "ml_pca_fit");
+        if (!n_comp) {
+            return std::unexpected(n_comp.error());
+        }
+        const int n_components = static_cast<int>(*n_comp);
+        if (*n_comp != n_components) {
+            return std::unexpected(
+                DomainError{"ml_pca_fit", "expected integer n_components"});
+        }
+        auto fitted = eval_ml_pca_fit(*X, n_components);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_pca_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto transformed = eval_ml_pca_transform(*X, *model);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
+    } else if (assign.callee == "ml_pca_fit_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto n_comp = parse_scalar_arg(assign.args[1], "ml_pca_fit_transform");
+        if (!n_comp) {
+            return std::unexpected(n_comp.error());
+        }
+        const int n_components = static_cast<int>(*n_comp);
+        if (*n_comp != n_components) {
+            return std::unexpected(
+                DomainError{"ml_pca_fit_transform", "expected integer n_components"});
+        }
+        auto transformed = eval_ml_pca_fit_transform(*X, n_components);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
+    } else if (assign.callee == "ml_kmeans_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto k_arg = parse_scalar_arg(assign.args[1], "ml_kmeans_fit");
+        if (!k_arg) {
+            return std::unexpected(k_arg.error());
+        }
+        const int k = static_cast<int>(*k_arg);
+        if (*k_arg != k) {
+            return std::unexpected(DomainError{"ml_kmeans_fit", "expected integer k"});
+        }
+        auto fitted = eval_ml_kmeans_fit(*X, k);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_kmeans_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_kmeans_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    }
+
     return result;
 }
 
@@ -22334,6 +22592,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_ridge_predict(X,model) ridge regression predictions on X\n"
             "  name = ml_logistic_fit(X,y) fit logistic regression; model is (n_features+1)x1\n"
             "  name = ml_logistic_predict(X,model) logistic regression class predictions on X\n"
+            "  name = ml_pca_fit(X,n_components) fit PCA; model is (n_components+1) x n_features (mean row last)\n"
+            "  name = ml_pca_transform(X,model) PCA projection of X using fitted model\n"
+            "  name = ml_pca_fit_transform(X,n_components) fit PCA and return projected X\n"
+            "  name = ml_kmeans_fit(X,k) fit KMeans; model is k x n_features centers\n"
+            "  name = ml_kmeans_predict(X,model) KMeans cluster labels for X\n"
+            "  name = ml_kmeans_inertia(X,model) KMeans within-cluster sum of squares\n"
             "  name = ml_vec_norm(v)    Euclidean norm of Nx1 or 1xN vector\n"
             "  name = ml_vec_dot(a,b)   dot product of Nx1 or 1xN vectors\n"
             "  name = graph_pagerank(A) PageRank scores from NxN adjacency matrix\n"
@@ -23107,7 +23371,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
-            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
+            "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_pca_fit(X,n), ml_pca_transform(X,model), ml_pca_fit_transform(X,n), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
             "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
@@ -24152,6 +24416,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 return assign_scalar(dual_call.target, *value);
             }
+            if (dual_call.callee == "ml_kmeans_inertia") {
+                auto value = eval_ml_kmeans_inertia(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
             auto y_pred = matrix_to_ml_vec(*arg_a_m, dual_call.callee.c_str());
             if (!y_pred) {
                 return std::unexpected(y_pred.error());
@@ -24444,6 +24715,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             if (matrix_dual_call.callee == "ml_logistic_predict") {
                 auto value = eval_ml_logistic_predict(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_pca_transform") {
+                auto value = eval_ml_pca_transform(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "ml_kmeans_predict") {
+                auto value = eval_ml_kmeans_predict(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
