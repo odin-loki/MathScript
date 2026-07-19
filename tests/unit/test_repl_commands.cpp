@@ -7526,6 +7526,51 @@ TEST(ReplCommandsTest, wave265_special_orthog_bessel) {
     EXPECT_NEAR(interp.state().scalars.at("c"), c_ref, 1e-9);
 }
 
+TEST(ReplCommandsTest, wave266_special_hypergeo_whittaker) {
+    Interpreter interp;
+    expect_contains(interp, "help", "hypergeo_0f1(b,z)");
+    expect_contains(interp, "help", "hypergeo_1f1(a,z)");
+    expect_contains(interp, "help", "hypergeo_2f1(a,b,c,z)");
+    expect_contains(interp, "help", "kummer_m(a,b,z)");
+    expect_contains(interp, "help", "whittaker_m(kappa,mu,z)");
+    expect_contains(interp, "help", "whittaker_w(kappa,mu,z)");
+
+    const double h0_ref = ms::hypergeo_0f1(2.0, 1.0);
+    EXPECT_NEAR(h0_ref, 1.590636854637329, 1e-3);
+    expect_ok(interp, "h0 = hypergeo_0f1(2, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("h0"), h0_ref, 1e-3);
+    expect_contains(interp, "hypergeo_0f1(2, 1)", std::to_string(h0_ref));
+
+    const double h1_ref = ms::hypergeo_1f1(1.0, 0.0);
+    EXPECT_NEAR(h1_ref, 1.0, 1e-12);
+    expect_ok(interp, "h1 = hypergeo_1f1(1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("h1"), h1_ref, 1e-9);
+
+    const double h2_ref = ms::hypergeo_2f1(1.0, 1.0, 2.0, 0.5);
+    EXPECT_NEAR(h2_ref, -std::log(0.5) / 0.5, 1e-3);
+    expect_ok(interp, "h2 = hypergeo_2f1(1, 1, 2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("h2"), h2_ref, 1e-3);
+    expect_contains(interp, "hypergeo_2f1(1, 1, 2, 0.5)", std::to_string(h2_ref));
+
+    const double m_ref = ms::kummer_m(1.0, 2.0, 0.5);
+    EXPECT_NEAR(m_ref, 1.2974425414002564, 1e-3);
+    expect_ok(interp, "m = kummer_m(1, 2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("m"), m_ref, 1e-3);
+    expect_contains(interp, "kummer_m(1, 2, 0.5)", std::to_string(m_ref));
+
+    const double wm_ref = ms::whittaker_m(0.0, 0.5, 1.0);
+    EXPECT_NEAR(wm_ref, 1.0421906109874948, 1e-3);
+    expect_ok(interp, "wm = whittaker_m(0, 0.5, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("wm"), wm_ref, 1e-3);
+    expect_contains(interp, "whittaker_m(0, 0.5, 1)", std::to_string(wm_ref));
+
+    const double ww_ref = ms::whittaker_w(0.0, 0.5, 1.0);
+    EXPECT_NEAR(ww_ref, 0.6065306597126334, 1e-3);
+    expect_ok(interp, "ww = whittaker_w(0, 0.5, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ww"), ww_ref, 1e-3);
+    expect_contains(interp, "whittaker_w(0, 0.5, 1)", std::to_string(ww_ref));
+}
+
 TEST(ReplCommandsTest, wave264_info_channel_capacity) {
     Interpreter interp;
     expect_contains(interp, "help", "info_blahut_arimoto(W)");
