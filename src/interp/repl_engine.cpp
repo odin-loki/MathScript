@@ -8306,6 +8306,26 @@ std::vector<std::size_t> fem_box_boundary_nodes(
     return boundary;
 }
 
+Result<Matrix<double>> eval_fem_poisson1d(std::size_t n) {
+    constexpr const char* fn = "fem_poisson1d";
+    if (n == 0) {
+        return std::unexpected(DomainError{fn, "expected positive n"});
+    }
+    const fem::Mesh1D mesh = fem::mesh1d(0.0, 1.0, n);
+    ColMatrix<double> K = fem::assemble_stiffness_1d(mesh);
+    ColMatrix<double> f = fem::assemble_load_1d(mesh, [](double) { return 1.0; });
+    fem::apply_dirichlet(K, f, {0, mesh.nodes.size() - 1}, {0.0, 0.0});
+    const auto u = fem::solve_fem(K, f);
+    if (!u) {
+        return std::unexpected(DomainError{fn, "linear solve failed"});
+    }
+    Matrix<double> out(u->rows(), 1);
+    for (std::size_t i = 0; i < u->rows(); ++i) {
+        out(i, 0) = (*u)(i, 0);
+    }
+    return out;
+}
+
 Result<Matrix<double>> eval_fem_poisson2d(std::size_t nx, std::size_t ny) {
     constexpr const char* fn = "fem_poisson2d";
     if (nx == 0 || ny == 0) {
@@ -14674,7 +14694,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "pde_reaction_diffusion_1d" || fn == "pde_poisson_2d" ||
             fn == "pde_poisson_1d" || fn == "pde_laplace_2d" || fn == "pde_helmholtz_2d" ||
             fn == "pde_burgers_1d" ||
-            fn == "fem_poisson2d" || fn == "fem_poisson3d" || fn == "cfd_advection2d" ||
+            fn == "fem_poisson1d" || fn == "fem_poisson2d" || fn == "fem_poisson3d" ||
+            fn == "cfd_advection2d" ||
             fn == "cfd_advection3d" ||
             fn == "quantum_time_evolution" ||
             fn == "info_joint_entropy" ||
@@ -16475,7 +16496,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_reaction_diffusion_1d" || callee == "pde_poisson_2d" ||
            callee == "pde_poisson_1d" || callee == "pde_laplace_2d" ||
            callee == "pde_helmholtz_2d" || callee == "pde_burgers_1d" ||
-           callee == "fem_poisson2d" || callee == "fem_poisson3d" || callee == "cfd_advection2d" ||
+           callee == "fem_poisson1d" || callee == "fem_poisson2d" || callee == "fem_poisson3d" ||
+           callee == "cfd_advection2d" ||
            callee == "cfd_advection3d" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
            callee == "control_step_response" || callee == "control_impulse_response" ||
@@ -16973,6 +16995,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "pde_wave_2d") {
         return arity == 7;
+    }
+    if (callee == "fem_poisson1d") {
+        return arity == 1;
     }
     if (callee == "fem_poisson2d") {
         return arity == 2;
@@ -20480,6 +20505,18 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                 DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
         }
         result = eval_pde_burgers_1d(*u0_m, nu, dx, dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "fem_poisson1d" && assign.args.size() == 1) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            return std::unexpected(
+                DomainError{"fem_poisson1d", "expected fem_poisson1d(n)"});
+        }
+        const int n_i = static_cast<int>(n_d);
+        if (n_i < 0 || n_d != n_i) {
+            return std::unexpected(
+                DomainError{"fem_poisson1d", "expected non-negative integer n"});
+        }
+        result = eval_fem_poisson1d(static_cast<std::size_t>(n_i));
     } else if (assign.callee == "fem_poisson2d" && assign.args.size() == 2) {
         double nx_d = 0.0;
         double ny_d = 0.0;
@@ -26032,6 +26069,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_burgers_1d(u0,nu,dx,dt,steps) viscous Burgers final state column\n"
             "  name = pde_wave_2d(u0,v0,c,dx,dy,dt,steps) 2D wave equation final grid (rows×cols)\n"
             "  name = pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps) Fisher-KPP reaction-diffusion final state column\n"
+            "  name = fem_poisson1d(n) 1D P1 Poisson -u''=1 on unit interval (zero BC)\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
@@ -36804,6 +36842,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected hypergeo_1f1(a,z)"});
             }
             return std::to_string(hypergeo_1f1(a, z)) + "\n";
+        }
+
+        if (fn == "fem_poisson1d") {
+            double n_d = 0.0;
+            if (!parse_number(arg_a, n_d)) {
+                return std::unexpected(
+                    DomainError{"fem_poisson1d", "expected fem_poisson1d(n)"});
+            }
+            const int n_i = static_cast<int>(n_d);
+            if (n_i < 0 || n_d != n_i) {
+                return std::unexpected(
+                    DomainError{"fem_poisson1d", "expected non-negative integer n"});
+            }
+            auto value = eval_fem_poisson1d(static_cast<std::size_t>(n_i));
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            std::ostringstream out;
+            out << "u =\n";
+            print_matrix(out, *value);
+            return out.str();
         }
 
         if (fn == "fem_poisson2d") {

@@ -395,6 +395,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_ed25519_keypair(hex_seed)` | Ed25519 public key from 32-byte seed (hex out; Wave 240) |
 | `crypto_ed25519_sign(hex_seed_or_sk, hex_msg)` | Ed25519 signature (hex; Wave 240) |
 | `crypto_ed25519_verify(hex_pub, hex_msg, hex_sig)` | Ed25519 verify → `1`/`0` (Wave 240) |
+| `fem_poisson1d(n)` | 1D P1 Poisson solve on unit interval (`f=1`, zero Dirichlet); returns solution column |
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
 | `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column (Wave 236) |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |
