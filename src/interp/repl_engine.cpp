@@ -4065,6 +4065,57 @@ Result<Matrix<double>> eval_control_c2d_B(const Matrix<double>& A_m, const Matri
     }
 }
 
+Matrix<double> pack_transfer_function(const control::TransferFunction& sys) {
+    const size_t n = std::max(sys.num.size(), sys.den.size());
+    Matrix<double> out(2, n, 0.0);
+    for (size_t j = 0; j < n; ++j) {
+        out(0, j) = j < sys.num.size() ? sys.num[j] : 0.0;
+        out(1, j) = j < sys.den.size() ? sys.den[j] : 0.0;
+    }
+    return out;
+}
+
+Result<control::TransferFunction> matrices_to_transfer_function(const Matrix<double>& num_m,
+                                                                const Matrix<double>& den_m,
+                                                                const char* fn) {
+    auto num = matrix_to_coeff_vector(num_m, fn);
+    if (!num) {
+        return std::unexpected(num.error());
+    }
+    auto den = matrix_to_coeff_vector(den_m, fn);
+    if (!den) {
+        return std::unexpected(den.error());
+    }
+    if (den->empty() || den->front() == 0.0) {
+        return std::unexpected(DomainError{fn, "denominator must be non-zero"});
+    }
+    return control::TransferFunction(std::move(*num), std::move(*den));
+}
+
+Result<control::StateSpace> packed_ss_to_state_space(const Matrix<double>& ss_m,
+                                                     const char* fn) {
+    if (ss_m.rows() < 2 || ss_m.cols() < 2 || ss_m.rows() != ss_m.cols()) {
+        return std::unexpected(DomainError{
+            fn, "expected square packed SS [A B; C D] from control_tf2ss"});
+    }
+    const size_t n = ss_m.rows() - 1;
+    std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
+    std::vector<std::vector<double>> B(n, std::vector<double>(1, 0.0));
+    std::vector<std::vector<double>> C(1, std::vector<double>(n, 0.0));
+    std::vector<std::vector<double>> D(1, std::vector<double>(1, 0.0));
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            A[i][j] = ss_m(i, j);
+        }
+        B[i][0] = ss_m(i, n);
+    }
+    for (size_t j = 0; j < n; ++j) {
+        C[0][j] = ss_m(n, j);
+    }
+    D[0][0] = ss_m(n, n);
+    return control::StateSpace(std::move(A), std::move(B), std::move(C), std::move(D));
+}
+
 Result<Matrix<double>> eval_control_series(const Matrix<double>& num1_m,
                                            const Matrix<double>& den1_m,
                                            const Matrix<double>& num2_m,
