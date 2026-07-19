@@ -7358,6 +7358,27 @@ TEST(ReplCommandsTest, wave265_poly_factor) {
     expect_contains(interp, "poly_cheb_eval([0; 1], 0.5)", "0.5");
 }
 
+TEST(ReplCommandsTest, wave266_poly_cheb_expand) {
+    Interpreter interp;
+    expect_contains(interp, "help", "poly_cheb_expand(p,n)");
+    expect_contains(interp, "help", "poly_cheb_expand(p,n,a,b)");
+
+    // f(x) = x^3 - 2x + 1 on [-1,1]
+    expect_ok(interp, "p = [1; -2; 0; 1]");
+    expect_ok(interp, "cheb = poly_cheb_expand(p, 3)");
+    ASSERT_GT(interp.state().matrices.count("cheb"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cheb").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("cheb").cols(), 1u);
+
+    expect_ok(interp, "cv = poly_cheb_eval(cheb, 0.5)");
+    expect_ok(interp, "pv = poly_eval(p, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("cv"), interp.state().scalars.at("pv"), 1e-6);
+
+    expect_ok(interp, "cheb2 = poly_cheb_expand(p, 3, -1, 1)");
+    expect_ok(interp, "cv2 = poly_cheb_eval(cheb2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("cv2"), interp.state().scalars.at("pv"), 1e-6);
+}
+
 TEST(ReplCommandsTest, wave264_finance_ratio_metrics) {
     Interpreter interp;
     expect_contains(interp, "help", "finance_treynor(returns,risk_free,beta)");
