@@ -4380,6 +4380,52 @@ Result<Matrix<double>> eval_ans_decode_vec(const Matrix<double>& orig_m,
     return bytes_to_matrix_col(compress::ans_decode(ar));
 }
 
+Result<std::vector<uint32_t>> matrix_col_to_u32(const Matrix<double>& m, const char* fn) {
+    if (m.cols() != 1) {
+        return std::unexpected(DomainError{fn, "expected Nx1 integer vector"});
+    }
+    std::vector<uint32_t> values;
+    values.reserve(m.rows());
+    for (size_t i = 0; i < m.rows(); ++i) {
+        const double v = m(i, 0);
+        if (v < 0.0 || std::floor(v) != v) {
+            return std::unexpected(DomainError{fn, "values must be non-negative integers"});
+        }
+        values.push_back(static_cast<uint32_t>(v));
+    }
+    return values;
+}
+
+Result<Matrix<double>> eval_golomb_rice_encode_vec(const Matrix<double>& values_m, int m_bits) {
+    auto values = matrix_col_to_u32(values_m, "golomb_rice_encode_vec");
+    if (!values) {
+        return std::unexpected(values.error());
+    }
+    return bytes_to_matrix_col(compress::golomb_rice_encode(*values, m_bits));
+}
+
+Result<Matrix<double>> eval_golomb_rice_decode_vec(const Matrix<double>& encoded_m, int m_bits,
+                                                   size_t count) {
+    auto bytes = matrix_col_to_bytes(encoded_m, "golomb_rice_decode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return codes_to_matrix_col(compress::golomb_rice_decode(*bytes, m_bits, count));
+}
+
+Result<Matrix<double>> eval_wavelet_compress_vec(const Matrix<double>& m,
+                                                 double threshold = 0.0) {
+    return bytes_to_matrix_col(compress::wavelet_compress(matrix_to_bytes(m), threshold));
+}
+
+Result<Matrix<double>> eval_wavelet_decompress_vec(const Matrix<double>& compressed_m) {
+    auto bytes = matrix_col_to_bytes(compressed_m, "wavelet_decompress_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::wavelet_decompress(*bytes));
+}
+
 Result<Matrix<double>> eval_quantum_coherent_state(double alpha_re, double alpha_im, int n_max) {
     if (n_max < 0) {
         return std::unexpected(
@@ -14836,6 +14882,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "huffman_encode_vec" || fn == "huffman_decode_vec" ||
             fn == "arithmetic_encode_vec" || fn == "arithmetic_decode_vec" ||
             fn == "ans_encode_vec" || fn == "ans_decode_vec" ||
+            fn == "golomb_rice_encode_vec" || fn == "golomb_rice_decode_vec" ||
+            fn == "wavelet_compress_vec" || fn == "wavelet_decompress_vec" ||
             fn == "lz77_encode_vec" || fn == "lz77_decode_vec" ||
             fn == "bzip2_compress_vec" || fn == "bzip2_decompress_vec" ||
             fn == "bwt_encode_vec" || fn == "bwt_decode_vec" ||
@@ -16868,6 +16916,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "bzip2_compress_vec" || callee == "bzip2_decompress_vec" ||
            callee == "huffman_encode_vec" ||
            callee == "arithmetic_encode_vec" || callee == "ans_encode_vec" ||
+           callee == "golomb_rice_encode_vec" || callee == "golomb_rice_decode_vec" ||
+           callee == "wavelet_compress_vec" || callee == "wavelet_decompress_vec" ||
            callee == "bwt_encode_vec" ||
            callee == "delta_encode_vec" || callee == "delta_decode_vec" ||
            callee == "graph_pagerank" || callee == "quantum_hadamard" ||
@@ -17049,6 +17099,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "bzip2_compress_vec" || callee == "bzip2_decompress_vec" ||
         callee == "huffman_encode_vec" ||
         callee == "arithmetic_encode_vec" || callee == "ans_encode_vec" ||
+        callee == "wavelet_compress_vec" || callee == "wavelet_decompress_vec" ||
         callee == "bwt_encode_vec" ||
         callee == "delta_encode_vec" || callee == "delta_decode_vec" ||
         callee == "graph_pagerank" || callee == "quantum_hadamard" ||
@@ -17244,6 +17295,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "lz77_encode_vec") {
         return arity == 1 || arity == 3;
+    }
+    if (callee == "golomb_rice_encode_vec") {
+        return arity == 2;
+    }
+    if (callee == "golomb_rice_decode_vec") {
+        return arity == 3;
+    }
+    if (callee == "wavelet_compress_vec") {
+        return arity == 1 || arity == 2;
     }
     if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
         callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
@@ -24309,6 +24369,82 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
             return std::unexpected(embedding.error());
         }
         result = *embedding;
+    } else if (assign.callee == "golomb_rice_encode_vec" && assign.args.size() == 2) {
+        auto values = resolve_operand(assign.args[0]);
+        if (!values) {
+            return std::unexpected(values.error());
+        }
+        auto m_bits_val = parse_scalar_arg(assign.args[1], "golomb_rice_encode_vec");
+        if (!m_bits_val) {
+            return std::unexpected(m_bits_val.error());
+        }
+        const int m_bits = static_cast<int>(*m_bits_val);
+        if (*m_bits_val != m_bits || m_bits < 0) {
+            return std::unexpected(
+                DomainError{"golomb_rice_encode_vec", "expected non-negative integer m_bits"});
+        }
+        auto encoded = eval_golomb_rice_encode_vec(*values, m_bits);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        result = *encoded;
+    } else if (assign.callee == "golomb_rice_decode_vec" && assign.args.size() == 3) {
+        auto encoded = resolve_operand(assign.args[0]);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        auto m_bits_val = parse_scalar_arg(assign.args[1], "golomb_rice_decode_vec");
+        if (!m_bits_val) {
+            return std::unexpected(m_bits_val.error());
+        }
+        auto count_val = parse_scalar_arg(assign.args[2], "golomb_rice_decode_vec");
+        if (!count_val) {
+            return std::unexpected(count_val.error());
+        }
+        const int m_bits = static_cast<int>(*m_bits_val);
+        if (*m_bits_val != m_bits || m_bits < 0) {
+            return std::unexpected(
+                DomainError{"golomb_rice_decode_vec", "expected non-negative integer m_bits"});
+        }
+        if (*count_val < 0.0 || std::floor(*count_val) != *count_val) {
+            return std::unexpected(
+                DomainError{"golomb_rice_decode_vec", "expected non-negative integer count"});
+        }
+        const size_t count = static_cast<size_t>(*count_val);
+        auto decoded = eval_golomb_rice_decode_vec(*encoded, m_bits, count);
+        if (!decoded) {
+            return std::unexpected(decoded.error());
+        }
+        result = *decoded;
+    } else if (assign.callee == "wavelet_compress_vec" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double threshold = 0.0;
+        if (assign.args.size() == 2) {
+            auto thr = parse_scalar_arg(assign.args[1], "wavelet_compress_vec");
+            if (!thr) {
+                return std::unexpected(thr.error());
+            }
+            threshold = *thr;
+        }
+        auto compressed = eval_wavelet_compress_vec(*matrix, threshold);
+        if (!compressed) {
+            return std::unexpected(compressed.error());
+        }
+        result = *compressed;
+    } else if (assign.callee == "wavelet_decompress_vec" && assign.args.size() == 1) {
+        auto compressed = resolve_operand(assign.args[0]);
+        if (!compressed) {
+            return std::unexpected(compressed.error());
+        }
+        auto decoded = eval_wavelet_decompress_vec(*compressed);
+        if (!decoded) {
+            return std::unexpected(decoded.error());
+        }
+        result = *decoded;
     }
 
     return result;
@@ -26356,6 +26492,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = huffman_encode_vec(M) Huffman encode flattened matrix bytes to byte column\n"
             "  name = arithmetic_encode_vec(M) arithmetic encode flattened matrix bytes to byte column\n"
             "  name = ans_encode_vec(M) ANS encode flattened matrix bytes to byte column\n"
+            "  name = golomb_rice_encode_vec(V,m_bits) Golomb-Rice encode Nx1 integer column to byte column\n"
+            "  name = golomb_rice_decode_vec(E,m_bits,count) Golomb-Rice decode byte column to Nx1 integer column\n"
+            "  name = wavelet_compress_vec(M[,threshold]) Haar wavelet compress flattened matrix bytes\n"
+            "  name = wavelet_decompress_vec(C) Haar wavelet decompress byte column to byte column\n"
             "  name = bzip2_compress_vec(M) bzip2-like compress bytes to byte column\n"
             "  name = compress_bits_to_bytes(bits_vec) pack Nx1 bit column into byte column\n"
             "  name = compress_bytes_to_bits(bytes_vec) unpack Nx1 byte column into bit column\n"
@@ -27263,7 +27403,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), diag(v), cosm(A), sinm(A), funm(A,\"sin\"|\"cos\"|\"exp\"|\"sqrt\"), precond_diag(A), precond_ssor(A[,omega]), solve(A,B), lsq(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
             "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
-            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), arithmetic_encode_vec(M), arithmetic_decode_vec(orig_M,E), ans_encode_vec(M), ans_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
+            "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), arithmetic_encode_vec(M), arithmetic_decode_vec(orig_M,E), ans_encode_vec(M), ans_decode_vec(orig_M,E), golomb_rice_encode_vec(V,m_bits), golomb_rice_decode_vec(E,m_bits,count), wavelet_compress_vec(M[,threshold]), wavelet_decompress_vec(C), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_gradient_boosting_fit(X,y[,n_estimators[,learning_rate[,max_depth]]]), ml_gradient_boosting_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_gmm_fit(X[,n_components]), ml_gmm_predict(X,model), ml_gmm_predict_proba(X,model), ml_dbscan_fit(X,eps,min_samples), ml_spectral_clustering(X,k[,sigma[,n_neighbors]]), ml_isolation_forest_fit(X[,n_trees[,sample_size[,seed]]]), ml_isolation_forest_score(X,model), ml_agglomerative_fit(X[,n_clusters[,linkage]]), ml_tsne_fit(X[,perplexity[,n_iter[,seed]]]), ml_confusion_matrix(p,t[,threshold]), ml_roc_curve(p,t), ml_precision_recall_curve(p,t), ml_average_precision(p,t), ml_minmax_scaler_fit(X), ml_minmax_scaler_transform(X,model), ml_roc_auc(p,t), ml_standard_scaler_fit(X), ml_standard_scaler_transform(X,model), ml_train_test_split(X,y[,test_size,seed])\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\")\n"

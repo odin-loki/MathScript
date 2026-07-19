@@ -9285,3 +9285,47 @@ TEST(ReplCommandsTest, wave268_compress_arith_ans) {
         EXPECT_NEAR(interp.state().matrices.at("NR")(i, 0), expected[i], 1e-9);
     }
 }
+
+TEST(ReplCommandsTest, wave269_compress_golomb_wavelet) {
+    Interpreter interp;
+    expect_contains(interp, "help", "golomb_rice_encode_vec(V,m_bits)");
+    expect_contains(interp, "help", "golomb_rice_decode_vec(E,m_bits,count)");
+    expect_contains(interp, "help", "wavelet_compress_vec(M[,threshold])");
+    expect_contains(interp, "help", "wavelet_decompress_vec(C)");
+
+    expect_ok(interp, "V = [0; 1; 2; 5; 10]");
+    expect_ok(interp, "GE = golomb_rice_encode_vec(V, 2)");
+    ASSERT_GT(interp.state().matrices.count("GE"), 0u);
+    EXPECT_GE(interp.state().matrices.at("GE").rows(), 1u);
+
+    expect_ok(interp, "GR = golomb_rice_decode_vec(GE, 2, 5)");
+    ASSERT_GT(interp.state().matrices.count("GR"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("GR").rows(), 5u);
+    const double golomb_expected[] = {0, 1, 2, 5, 10};
+    for (size_t i = 0; i < 5; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("GR")(i, 0), golomb_expected[i], 1e-9);
+    }
+
+    expect_ok(interp, "D = [10; 250; 128; 64; 32; 16; 8; 4]");
+    expect_ok(interp, "WC = wavelet_compress_vec(D, 0)");
+    ASSERT_GT(interp.state().matrices.count("WC"), 0u);
+    EXPECT_GE(interp.state().matrices.at("WC").rows(), 1u);
+
+    expect_ok(interp, "WR = wavelet_decompress_vec(WC)");
+    ASSERT_GT(interp.state().matrices.count("WR"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("WR").rows(), 8u);
+    for (size_t i = 0; i < 8; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("WR")(i, 0),
+                    interp.state().matrices.at("D")(i, 0), 1e-9);
+    }
+
+    expect_ok(interp, "WL = wavelet_compress_vec(D)");
+    ASSERT_GT(interp.state().matrices.count("WL"), 0u);
+    expect_ok(interp, "WLR = wavelet_decompress_vec(WL)");
+    ASSERT_GT(interp.state().matrices.count("WLR"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("WLR").rows(), 8u);
+    for (size_t i = 0; i < 8; ++i) {
+        EXPECT_NEAR(interp.state().matrices.at("WLR")(i, 0),
+                    interp.state().matrices.at("D")(i, 0), 1e-9);
+    }
+}
