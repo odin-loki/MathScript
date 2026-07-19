@@ -5268,6 +5268,34 @@ TEST(ReplCommandsTest, wave268_fem_poisson1d) {
     EXPECT_NEAR(interp.state().matrices.at("u")(2, 0), 0.125, 0.02);
 }
 
+TEST(ReplCommandsTest, wave269_topo_complex) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_alpha_complex(P,alpha[,max_dim])");
+    expect_contains(interp, "help", "topo_select_landmarks(P,n[,seed])");
+    expect_contains(interp, "help", "topo_witness_complex(P,landmarks,eps[,max_dim])");
+    expect_contains(interp, "help", "topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])");
+
+    expect_ok(interp, "P = [0, 0; 1, 0; 0, 1; 0.5, 0.5]");
+    expect_ok(interp, "ac = topo_alpha_complex(P, 1.0, 2)");
+    ASSERT_GT(interp.state().matrices.count("ac"), 0u);
+    EXPECT_GE(interp.state().matrices.at("ac").rows(), 4u);
+
+    expect_ok(interp, "lm = topo_select_landmarks(P, 2, 0)");
+    ASSERT_GT(interp.state().matrices.count("lm"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("lm").rows(), 2u);
+
+    expect_ok(interp, "wc = topo_witness_complex(P, lm, 1.5, 2)");
+    ASSERT_GT(interp.state().matrices.count("wc"), 0u);
+    EXPECT_GE(interp.state().matrices.at("wc").rows(), 2u);
+
+    expect_ok(interp, "dgm = [0, 0, 1; 1, 0.2, 0.8]");
+    expect_ok(interp, "pl = topo_persistence_landscape(dgm, 2, 8)");
+    ASSERT_GT(interp.state().matrices.count("pl"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pl").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("pl").cols(), 8u);
+    EXPECT_GE(interp.state().matrices.at("pl")(0, 4), 0.0);
+}
+
 TEST(ReplCommandsTest, wave267_stats_max_value) {
     Interpreter interp;
     expect_contains(interp, "help", "stats_max_value(x)");
