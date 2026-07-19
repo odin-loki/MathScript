@@ -8849,6 +8849,193 @@ Result<Matrix<double>> eval_fem_poisson3d(
     return out;
 }
 
+constexpr double kFemMesh2dTag = 270.0;
+
+Matrix<double> pack_fem_mesh2d(const fem::Mesh2D& mesh) {
+    const std::size_t n_nodes = mesh.nodes.size();
+    const std::size_t n_tri = mesh.triangles.size();
+    Matrix<double> out(1 + n_nodes + n_tri, 3, 0.0);
+    out(0, 0) = kFemMesh2dTag;
+    out(0, 1) = static_cast<double>(n_nodes);
+    out(0, 2) = static_cast<double>(n_tri);
+    for (std::size_t i = 0; i < n_nodes; ++i) {
+        out(1 + i, 0) = mesh.nodes[i][0];
+        out(1 + i, 1) = mesh.nodes[i][1];
+    }
+    for (std::size_t t = 0; t < n_tri; ++t) {
+        const std::size_t row = 1 + n_nodes + t;
+        out(row, 0) = static_cast<double>(mesh.triangles[t][0]);
+        out(row, 1) = static_cast<double>(mesh.triangles[t][1]);
+        out(row, 2) = static_cast<double>(mesh.triangles[t][2]);
+    }
+    return out;
+}
+
+Result<fem::Mesh2D> matrix_to_fem_mesh2d(const Matrix<double>& m, const char* fn) {
+    if (m.rows() < 1 || m.cols() < 3 || m(0, 0) != kFemMesh2dTag) {
+        return std::unexpected(DomainError{fn, "expected packed fem_mesh2d matrix"});
+    }
+    const double n_nodes_d = m(0, 1);
+    const double n_tri_d = m(0, 2);
+    if (n_nodes_d < 3.0 || n_tri_d < 1.0 || std::floor(n_nodes_d) != n_nodes_d ||
+        std::floor(n_tri_d) != n_tri_d) {
+        return std::unexpected(DomainError{fn, "invalid fem_mesh2d header"});
+    }
+    const std::size_t n_nodes = static_cast<std::size_t>(n_nodes_d);
+    const std::size_t n_tri = static_cast<std::size_t>(n_tri_d);
+    if (m.rows() != 1 + n_nodes + n_tri) {
+        return std::unexpected(DomainError{fn, "fem_mesh2d row count mismatch"});
+    }
+    fem::Mesh2D mesh;
+    mesh.nodes.resize(n_nodes);
+    mesh.triangles.resize(n_tri);
+    for (std::size_t i = 0; i < n_nodes; ++i) {
+        mesh.nodes[i] = {m(1 + i, 0), m(1 + i, 1)};
+    }
+    for (std::size_t t = 0; t < n_tri; ++t) {
+        const std::size_t row = 1 + n_nodes + t;
+        for (int k = 0; k < 3; ++k) {
+            const double idx_d = m(row, static_cast<std::size_t>(k));
+            if (idx_d < 0.0 || std::floor(idx_d) != idx_d) {
+                return std::unexpected(DomainError{fn, "expected non-negative integer triangle index"});
+            }
+            mesh.triangles[t][static_cast<std::size_t>(k)] = static_cast<std::size_t>(idx_d);
+        }
+    }
+    return mesh;
+}
+
+Result<std::vector<std::size_t>> matrix_to_fem_node_indices(const Matrix<double>& m,
+                                                            const char* fn) {
+    auto vec = matrix_to_ml_vec(m, fn);
+    if (!vec) {
+        return std::unexpected(vec.error());
+    }
+    std::vector<std::size_t> out;
+    out.reserve(vec->size());
+    for (const double entry : *vec) {
+        if (entry < 0.0 || std::floor(entry) != entry) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative integer node indices"});
+        }
+        out.push_back(static_cast<std::size_t>(entry));
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_fem_mesh2d_rectangular(
+    double x0, double y0, double x1, double y1, std::size_t nx, std::size_t ny) {
+    constexpr const char* fn = "fem_mesh2d_rectangular";
+    if (nx == 0 || ny == 0) {
+        return std::unexpected(DomainError{fn, "expected positive nx and ny"});
+    }
+    try {
+        return pack_fem_mesh2d(fem::mesh2d_rectangular(x0, y0, x1, y1, nx, ny));
+    } catch (const std::invalid_argument& ex) {
+        return std::unexpected(DomainError{fn, ex.what()});
+    }
+}
+
+Result<Matrix<double>> eval_fem_stiffness_2d(const Matrix<double>& mesh_m) {
+    constexpr const char* fn = "fem_stiffness_2d";
+    auto mesh = matrix_to_fem_mesh2d(mesh_m, fn);
+    if (!mesh) {
+        return std::unexpected(mesh.error());
+    }
+    try {
+        return col_matrix_to_matrix(fem::assemble_stiffness_2d(*mesh));
+    } catch (const std::invalid_argument& ex) {
+        return std::unexpected(DomainError{fn, ex.what()});
+    }
+}
+
+Result<Matrix<double>> eval_fem_load_2d(const Matrix<double>& mesh_m, double f_const) {
+    constexpr const char* fn = "fem_load_2d";
+    auto mesh = matrix_to_fem_mesh2d(mesh_m, fn);
+    if (!mesh) {
+        return std::unexpected(mesh.error());
+    }
+    try {
+        return col_matrix_to_matrix(
+            fem::assemble_load_2d(*mesh, [f_const](double, double) { return f_const; }));
+    } catch (const std::invalid_argument& ex) {
+        return std::unexpected(DomainError{fn, ex.what()});
+    }
+}
+
+Result<Matrix<double>> eval_fem_apply_dirichlet(const Matrix<double>& K_m,
+                                               const Matrix<double>& f_m,
+                                               const Matrix<double>& nodes_m,
+                                               const Matrix<double>& values_m) {
+    constexpr const char* fn = "fem_apply_dirichlet";
+    if (K_m.rows() != K_m.cols()) {
+        return std::unexpected(DomainError{fn, "expected square stiffness matrix K"});
+    }
+    auto f_col = sparse_vector_to_col_column(f_m, K_m.rows(), fn);
+    if (!f_col) {
+        return std::unexpected(f_col.error());
+    }
+    auto nodes = matrix_to_fem_node_indices(nodes_m, fn);
+    if (!nodes) {
+        return std::unexpected(nodes.error());
+    }
+    auto values = matrix_to_ml_vec(values_m, fn);
+    if (!values) {
+        return std::unexpected(values.error());
+    }
+    if (nodes->size() != values->size()) {
+        return std::unexpected(
+            DomainError{fn, "expected node_indices and values with the same length"});
+    }
+    ColMatrix<double> K = matrix_to_col_matrix(K_m);
+    ColMatrix<double> f = *f_col;
+    std::vector<double> bc_values(values->begin(), values->end());
+    try {
+        fem::apply_dirichlet(K, f, *nodes, bc_values);
+    } catch (const std::invalid_argument& ex) {
+        return std::unexpected(DomainError{fn, ex.what()});
+    }
+    Matrix<double> out(K.rows(), K.cols() + 1);
+    for (std::size_t i = 0; i < K.rows(); ++i) {
+        for (std::size_t j = 0; j < K.cols(); ++j) {
+            out(i, j) = K(i, j);
+        }
+        out(i, K.cols()) = f(i, 0);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_fem_solve(const Matrix<double>& K_m, const Matrix<double>& f_m) {
+    constexpr const char* fn = "fem_solve";
+    ColMatrix<double> K = matrix_to_col_matrix(K_m);
+    auto f_col = sparse_vector_to_col_column(f_m, K.rows(), fn);
+    if (!f_col) {
+        return std::unexpected(f_col.error());
+    }
+    const auto u = fem::solve_fem(K, *f_col);
+    if (!u) {
+        return std::unexpected(DomainError{fn, "linear solve failed"});
+    }
+    return col_matrix_to_matrix(*u);
+}
+
+Result<Matrix<double>> eval_fem_solve_packed(const Matrix<double>& sys_m) {
+    constexpr const char* fn = "fem_solve";
+    if (sys_m.rows() < 2 || sys_m.cols() != sys_m.rows() + 1) {
+        return std::unexpected(
+            DomainError{fn, "expected fem_solve(K,f) or n×(n+1) packed system from fem_apply_dirichlet"});
+    }
+    Matrix<double> K_m(sys_m.rows(), sys_m.rows());
+    Matrix<double> f_m(sys_m.rows(), 1);
+    for (std::size_t i = 0; i < sys_m.rows(); ++i) {
+        for (std::size_t j = 0; j < sys_m.rows(); ++j) {
+            K_m(i, j) = sys_m(i, j);
+        }
+        f_m(i, 0) = sys_m(i, sys_m.rows());
+    }
+    return eval_fem_solve(K_m, f_m);
+}
+
 Result<double> eval_cplx_green_function_disk(double zre, double zim, double z0re, double z0im,
                                               double radius) {
     return cplx::green_function_disk(cplx::C(zre, zim), cplx::C(z0re, z0im), radius);
@@ -15692,6 +15879,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "pde_poisson_1d" || fn == "pde_laplace_2d" || fn == "pde_helmholtz_2d" ||
             fn == "pde_burgers_1d" ||
             fn == "fem_poisson1d" || fn == "fem_poisson2d" || fn == "fem_poisson3d" ||
+            fn == "fem_mesh2d_rectangular" || fn == "fem_mesh2d" ||
+            fn == "fem_stiffness_2d" || fn == "assemble_stiffness_2d" ||
+            fn == "fem_load_2d" || fn == "fem_apply_dirichlet" || fn == "fem_solve" ||
             fn == "cfd_advection1d" ||
             fn == "cfd_advection2d" ||
             fn == "cfd_advection3d" ||
@@ -17656,6 +17846,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_poisson_1d" || callee == "pde_laplace_2d" ||
            callee == "pde_helmholtz_2d" || callee == "pde_burgers_1d" ||
            callee == "fem_poisson1d" || callee == "fem_poisson2d" || callee == "fem_poisson3d" ||
+           callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
+           callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
+           callee == "fem_load_2d" || callee == "fem_apply_dirichlet" || callee == "fem_solve" ||
            callee == "cfd_advection1d" ||
            callee == "cfd_advection2d" ||
            callee == "cfd_advection3d" ||
@@ -18210,6 +18403,21 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "fem_poisson3d") {
         return arity == 3;
+    }
+    if (callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d") {
+        return arity == 6;
+    }
+    if (callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d") {
+        return arity == 1;
+    }
+    if (callee == "fem_load_2d") {
+        return arity == 2;
+    }
+    if (callee == "fem_apply_dirichlet") {
+        return arity == 4;
+    }
+    if (callee == "fem_solve") {
+        return arity == 1 || arity == 2;
     }
     if (callee == "cfd_advection1d") {
         return arity == 4;
@@ -25488,6 +25696,132 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
                                       *dt_val);
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail9(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+    auto parse_positive_size_arg = [](double value, const char* fn,
+                                      const char* label) -> Result<std::size_t> {
+        const int i = static_cast<int>(value);
+        if (i < 1 || value != static_cast<double>(i)) {
+            return std::unexpected(DomainError{fn, label});
+        }
+        return static_cast<std::size_t>(i);
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if ((assign.callee == "fem_mesh2d_rectangular" || assign.callee == "fem_mesh2d") &&
+        assign.args.size() == 6) {
+        const char* fn = assign.callee.c_str();
+        auto x0 = parse_scalar_arg(assign.args[0], fn);
+        if (!x0) {
+            return std::unexpected(x0.error());
+        }
+        auto y0 = parse_scalar_arg(assign.args[1], fn);
+        if (!y0) {
+            return std::unexpected(y0.error());
+        }
+        auto x1 = parse_scalar_arg(assign.args[2], fn);
+        if (!x1) {
+            return std::unexpected(x1.error());
+        }
+        auto y1 = parse_scalar_arg(assign.args[3], fn);
+        if (!y1) {
+            return std::unexpected(y1.error());
+        }
+        auto nx = parse_scalar_arg(assign.args[4], fn);
+        if (!nx) {
+            return std::unexpected(nx.error());
+        }
+        auto ny = parse_scalar_arg(assign.args[5], fn);
+        if (!ny) {
+            return std::unexpected(ny.error());
+        }
+        auto nx_i = parse_positive_size_arg(*nx, fn, "expected positive integer nx");
+        if (!nx_i) {
+            return std::unexpected(nx_i.error());
+        }
+        auto ny_i = parse_positive_size_arg(*ny, fn, "expected positive integer ny");
+        if (!ny_i) {
+            return std::unexpected(ny_i.error());
+        }
+        result = eval_fem_mesh2d_rectangular(*x0, *y0, *x1, *y1, *nx_i, *ny_i);
+    } else if ((assign.callee == "fem_stiffness_2d" || assign.callee == "assemble_stiffness_2d") &&
+               assign.args.size() == 1) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        result = eval_fem_stiffness_2d(*mesh);
+    } else if (assign.callee == "fem_load_2d" && assign.args.size() == 2) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_2d");
+        if (!f_val) {
+            return std::unexpected(f_val.error());
+        }
+        result = eval_fem_load_2d(*mesh, *f_val);
+    } else if (assign.callee == "fem_apply_dirichlet" && assign.args.size() == 4) {
+        auto K = resolve_operand(assign.args[0]);
+        if (!K) {
+            return std::unexpected(K.error());
+        }
+        auto f = resolve_operand(assign.args[1]);
+        if (!f) {
+            return std::unexpected(f.error());
+        }
+        auto nodes = resolve_operand(assign.args[2]);
+        if (!nodes) {
+            return std::unexpected(nodes.error());
+        }
+        auto values = resolve_operand(assign.args[3]);
+        if (!values) {
+            return std::unexpected(values.error());
+        }
+        result = eval_fem_apply_dirichlet(*K, *f, *nodes, *values);
+    } else if (assign.callee == "fem_solve" && assign.args.size() == 2) {
+        auto K = resolve_operand(assign.args[0]);
+        if (!K) {
+            return std::unexpected(K.error());
+        }
+        auto f = resolve_operand(assign.args[1]);
+        if (!f) {
+            return std::unexpected(f.error());
+        }
+        result = eval_fem_solve(*K, *f);
+    } else if (assign.callee == "fem_solve" && assign.args.size() == 1) {
+        auto sys = resolve_operand(assign.args[0]);
+        if (!sys) {
+            return std::unexpected(sys.error());
+        }
+        result = eval_fem_solve_packed(*sys);
+    }
+
     return result;
 }
 
@@ -31119,6 +31453,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = fem_poisson1d(n) 1D P1 Poisson -u''=1 on unit interval (zero BC)\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
+            "  name = fem_mesh2d_rectangular(x0,y0,x1,y1,nx,ny) structured 2D P1 triangular mesh\n"
+            "  name = fem_mesh2d(x0,y0,x1,y1,nx,ny) alias for fem_mesh2d_rectangular\n"
+            "  name = fem_stiffness_2d(mesh) assemble 2D P1 Laplacian stiffness matrix K\n"
+            "  name = assemble_stiffness_2d(mesh) alias for fem_stiffness_2d\n"
+            "  name = fem_load_2d(mesh,f) assemble load vector for constant f\n"
+            "  name = fem_apply_dirichlet(K,f,node_indices,values) apply Dirichlet BC; returns n×(n+1) [K|f]\n"
+            "  name = fem_solve(K,f) solve K u = f; fem_solve(sys) accepts packed n×(n+1) system\n"
             "  name = cfd_advection1d(nx,vx,t_end,dt) 1D FVM upwind advection final field column\n"
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
             "  name = cfd_advection3d(nx,ny,nz,vx,vy,vz,t_end,dt) 3D FVM upwind advection final field\n"

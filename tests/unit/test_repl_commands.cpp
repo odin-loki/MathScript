@@ -5269,6 +5269,51 @@ TEST(ReplCommandsTest, wave268_fem_poisson1d) {
     EXPECT_NEAR(interp.state().matrices.at("u")(2, 0), 0.125, 0.02);
 }
 
+TEST(ReplCommandsTest, wave270_fem2d_assembly) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fem_mesh2d_rectangular(x0,y0,x1,y1,nx,ny)");
+    expect_contains(interp, "help", "fem_stiffness_2d(mesh)");
+    expect_contains(interp, "help", "fem_load_2d(mesh,f)");
+    expect_contains(interp, "help", "fem_apply_dirichlet(K,f,node_indices,values)");
+    expect_contains(interp, "help", "fem_solve(K,f)");
+
+    expect_ok(interp, "m = fem_mesh2d_rectangular(0, 0, 1, 1, 2, 2)");
+    ASSERT_GT(interp.state().matrices.count("m"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("m")(0, 0), 270.0);
+    EXPECT_EQ(interp.state().matrices.at("m")(0, 1), 9.0);
+
+    expect_ok(interp, "m2 = fem_mesh2d(0, 0, 1, 1, 2, 2)");
+    EXPECT_EQ(interp.state().matrices.at("m2").rows(), interp.state().matrices.at("m").rows());
+
+    expect_ok(interp, "K = fem_stiffness_2d(m)");
+    ASSERT_GT(interp.state().matrices.count("K"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("K").rows(), 9u);
+    EXPECT_EQ(interp.state().matrices.at("K").cols(), 9u);
+
+    expect_ok(interp, "K2 = assemble_stiffness_2d(m)");
+    EXPECT_EQ(interp.state().matrices.at("K2").rows(), 9u);
+
+    expect_ok(interp, "f = fem_load_2d(m, 1)");
+    ASSERT_GT(interp.state().matrices.count("f"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("f").rows(), 9u);
+
+    expect_ok(interp, "bc = [0; 1; 2; 3; 5; 6; 7; 8]");
+    expect_ok(interp, "bv = [0; 0; 0; 0; 0; 0; 0; 0]");
+    expect_ok(interp, "sys = fem_apply_dirichlet(K, f, bc, bv)");
+    ASSERT_GT(interp.state().matrices.count("sys"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("sys").rows(), 9u);
+    EXPECT_EQ(interp.state().matrices.at("sys").cols(), 10u);
+
+    expect_ok(interp, "u = fem_solve(sys)");
+    ASSERT_GT(interp.state().matrices.count("u"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u").rows(), 9u);
+    EXPECT_GT(interp.state().matrices.at("u")(4, 0), 0.0);
+
+    expect_ok(interp, "u_ref = fem_poisson2d(2, 2)");
+    EXPECT_NEAR(interp.state().matrices.at("u")(4, 0),
+                interp.state().matrices.at("u_ref")(4, 0), 0.05);
+}
+
 TEST(ReplCommandsTest, wave269_topo_complex) {
     Interpreter interp;
     expect_contains(interp, "help", "topo_alpha_complex(P,alpha[,max_dim])");
