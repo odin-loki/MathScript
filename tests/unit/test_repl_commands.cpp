@@ -7267,6 +7267,67 @@ TEST(ReplCommandsTest, wave264_special_bessel_lambert_kummer) {
     expect_contains(interp, "special_airy_bi(0)", std::to_string(bi_ref));
 }
 
+TEST(ReplCommandsTest, wave265_special_orthog_bessel) {
+    Interpreter interp;
+    expect_contains(interp, "help", "bessel_k(nu,x)");
+    expect_contains(interp, "help", "chebyshev_t(n,x)");
+    expect_contains(interp, "help", "chebyshev_u(n,x)");
+    expect_contains(interp, "help", "hermite_h(n,x)");
+    expect_contains(interp, "help", "laguerre_l(n,x)");
+    expect_contains(interp, "help", "sph_bessel_j(n,x)");
+    expect_contains(interp, "help", "sph_bessel_y(n,x)");
+    expect_contains(interp, "help", "assoc_legendre_p(l,m,x)");
+    expect_contains(interp, "help", "gegenbauer_c(n,lambda,x)");
+
+    const double k_ref = ms::bessel_k(0, 1.0);
+    EXPECT_NEAR(k_ref, 0.421024438240708, 1e-6);
+    expect_ok(interp, "k = bessel_k(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("k"), k_ref, 1e-9);
+    expect_contains(interp, "bessel_k(0, 1)", std::to_string(k_ref));
+    expect_ok(interp, "ks = special_bessel_k(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ks"), k_ref, 1e-9);
+
+    const double t_ref = ms::chebyshev_t(3, 0.5);
+    EXPECT_NEAR(t_ref, -1.0, 1e-12);
+    expect_ok(interp, "t = chebyshev_t(3, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("t"), t_ref, 1e-9);
+    expect_contains(interp, "chebyshev_t(3, 0.5)", std::to_string(t_ref));
+
+    const double u_ref = ms::chebyshev_u(2, 0.5);
+    EXPECT_NEAR(u_ref, 0.0, 1e-12);
+    expect_ok(interp, "u = chebyshev_u(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("u"), u_ref, 1e-9);
+
+    const double h_ref = ms::hermite_h(3, 1.0);
+    EXPECT_NEAR(h_ref, -4.0, 1e-12);
+    expect_ok(interp, "h = hermite_h(3, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("h"), h_ref, 1e-9);
+
+    const double l_ref = ms::laguerre_l(2, 0.5);
+    EXPECT_NEAR(l_ref, 0.125, 1e-12);
+    expect_ok(interp, "l = laguerre_l(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("l"), l_ref, 1e-9);
+
+    const double j_ref = ms::sph_bessel_j(2, 1.0);
+    EXPECT_NEAR(j_ref, 0.062035052011373916, 1e-9);
+    expect_ok(interp, "j = sph_bessel_j(2, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("j"), j_ref, 1e-9);
+
+    const double y_ref = ms::sph_bessel_y(1, 1.0);
+    expect_ok(interp, "y = sph_bessel_y(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), y_ref, 1e-9);
+
+    const double p_ref = ms::assoc_legendre_p(2, 1, 0.5);
+    expect_ok(interp, "p = assoc_legendre_p(2, 1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("p"), p_ref, 1e-9);
+    expect_contains(interp, "assoc_legendre_p(2, 1, 0.5)", std::to_string(p_ref));
+
+    const double c_ref = ms::gegenbauer_c(2, 1.0, 0.5);
+    EXPECT_NEAR(c_ref, 0.0, 1e-12);
+    expect_ok(interp, "c = gegenbauer_c(2, 1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("c"), c_ref, 1e-9);
+}
+
 TEST(ReplCommandsTest, wave264_info_channel_capacity) {
     Interpreter interp;
     expect_contains(interp, "help", "info_blahut_arimoto(W)");
@@ -7283,4 +7344,33 @@ TEST(ReplCommandsTest, wave264_info_channel_capacity) {
     const double h = -p * std::log2(p) - (1.0 - p) * std::log2(1.0 - p);
     EXPECT_NEAR(interp.state().scalars.at("cap"), 1.0 - h, 1e-4);
     expect_contains(interp, "info_channel_capacity([0.8, 0.2; 0.2, 0.8])", "0.278");
+}
+
+TEST(ReplCommandsTest, wave265_graph_info) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_connected_components(A)");
+    expect_contains(interp, "help", "graph_is_planar(A)");
+    expect_contains(interp, "help", "info_normalized_entropy(p)");
+    expect_contains(interp, "help", "info_channel_capacity_input(W)");
+
+    expect_ok(interp, "A = [0,1,0,0; 1,0,0,0; 0,0,0,1; 0,0,1,0]");
+    expect_ok(interp, "cc = graph_connected_components(A)");
+    ASSERT_GT(interp.state().matrices.count("cc"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cc").rows(), 2u);
+
+    expect_ok(interp, "P = [0,1,0; 1,0,1; 0,1,0]");
+    expect_ok(interp, "pl = graph_is_planar(P)");
+    EXPECT_NEAR(interp.state().scalars.at("pl"), 1.0, 1e-9);
+    expect_contains(interp, "graph_is_planar([0,1,0; 1,0,1; 0,1,0])", "1");
+
+    expect_ok(interp, "h = info_normalized_entropy([0.25; 0.25; 0.25; 0.25])");
+    EXPECT_NEAR(interp.state().scalars.at("h"), 1.0, 1e-6);
+    expect_contains(interp, "info_normalized_entropy([0.25; 0.25; 0.25; 0.25])", "1");
+
+    expect_ok(interp, "W = [0.8, 0.2; 0.2, 0.8]");
+    expect_ok(interp, "pin = info_channel_capacity_input(W)");
+    ASSERT_GT(interp.state().matrices.count("pin"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pin").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("pin")(0, 0), 0.5, 1e-3);
+    EXPECT_NEAR(interp.state().matrices.at("pin")(1, 0), 0.5, 1e-3);
 }
