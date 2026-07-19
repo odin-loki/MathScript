@@ -1410,6 +1410,178 @@ Matrix<double> ml_qda_to_matrix(const ml::QDA& qda) {
         out(1 + 3 * C + c, 1) = qda.class_prior[c];
         for (size_t j = 0; j < pp; ++j) {
             out(1 + 4 * C + c, j) = qda.quad_coef[c][j];
+        }
+    }
+    return out;
+}
+
+Result<ml::QDA> ml_qda_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 6) {
+        return std::unexpected(DomainError{fn, "expected QDA model matrix"});
+    }
+    const int C = static_cast<int>(model(0, 0));
+    const int p = static_cast<int>(model(0, 1));
+    const double reg_eps = model(0, 2);
+    const int pp = p * p;
+    if (C < 1 || p < 1 || model.rows() != static_cast<size_t>(1 + 5 * C) ||
+        model.cols() < static_cast<size_t>(std::max(p, pp))) {
+        return std::unexpected(DomainError{fn, "invalid QDA model layout"});
+    }
+    ml::QDA qda(reg_eps);
+    qda.classes.resize(static_cast<size_t>(C));
+    qda.mean.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    qda.linear_coef.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
+    qda.discrim_const.resize(static_cast<size_t>(C));
+    qda.class_prior.resize(static_cast<size_t>(C));
+    qda.quad_coef.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(pp)));
+    for (int c = 0; c < C; ++c) {
+        qda.classes[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + c), 0);
+        for (int j = 0; j < p; ++j) {
+            qda.mean[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + C + c), static_cast<size_t>(j));
+            qda.linear_coef[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + 2 * C + c), static_cast<size_t>(j));
+        }
+        qda.discrim_const[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 0);
+        qda.class_prior[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 1);
+        for (int j = 0; j < pp; ++j) {
+            qda.quad_coef[static_cast<size_t>(c)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(1 + 4 * C + c), static_cast<size_t>(j));
+        }
+    }
+    return qda;
+}
+
+Result<Matrix<double>> eval_ml_qda_fit(const Matrix<double>& X_m, const Matrix<double>& y_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_qda_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_qda_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::QDA qda;
+    qda.fit(*X, *y);
+    return ml_qda_to_matrix(qda);
+}
+
+Result<Matrix<double>> eval_ml_qda_predict(const Matrix<double>& X_m,
+                                           const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_qda_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto qda = ml_qda_from_matrix(model_m, "ml_qda_predict");
+    if (!qda) {
+        return std::unexpected(qda.error());
+    }
+    return vector_to_column(qda->predict(*X));
+}
+
+Matrix<double> ml_svm_to_matrix(const ml::SVM& svm) {
+    const size_t n = svm.support_vectors.size();
+    const size_t p = n > 0 ? svm.support_vectors[0].size() : 0;
+    Matrix<double> out(n + 1, p + 2);
+    out(0, 0) = svm.config.kernel == ml::SVMKernel::Linear ? 0.0 : 1.0;
+    out(0, 1) = svm.config.C;
+    out(0, 2) = svm.config.gamma;
+    out(0, 3) = svm.b;
+    out(0, 4) = svm.config.tol;
+    out(0, 5) = static_cast<double>(svm.config.max_iter);
+    out(0, 6) = static_cast<double>(p);
+    out(0, 7) = static_cast<double>(n);
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < p; ++j) {
+            out(i + 1, j) = svm.support_vectors[i][j];
+        }
+        out(i + 1, p) = svm.alphas[i];
+        out(i + 1, p + 1) = svm.sv_labels[i];
+    }
+    return out;
+}
+
+Result<ml::SVM> ml_svm_from_matrix(const Matrix<double>& model, const char* fn) {
+    if (model.rows() < 2 || model.cols() < 3) {
+        return std::unexpected(
+            DomainError{fn, "expected SVM model with header row and support vectors"});
+    }
+    const int kernel_code = static_cast<int>(model(0, 0));
+    const double C = model(0, 1);
+    const double gamma = model(0, 2);
+    const double b = model(0, 3);
+    const double tol = model(0, 4);
+    const int max_iter = static_cast<int>(model(0, 5));
+    const int p = static_cast<int>(model(0, 6));
+    const int n = static_cast<int>(model(0, 7));
+    if ((kernel_code != 0 && kernel_code != 1) || p < 1 || n < 1 ||
+        model.rows() != static_cast<size_t>(n + 1) ||
+        model.cols() != static_cast<size_t>(p + 2)) {
+        return std::unexpected(DomainError{fn, "invalid SVM model layout"});
+    }
+    ml::SVM svm;
+    svm.config.kernel = kernel_code == 0 ? ml::SVMKernel::Linear : ml::SVMKernel::RBF;
+    svm.config.C = C;
+    svm.config.gamma = gamma;
+    svm.config.tol = tol;
+    svm.config.max_iter = max_iter;
+    svm.b = b;
+    svm.support_vectors.resize(static_cast<size_t>(n));
+    svm.alphas.resize(static_cast<size_t>(n));
+    svm.sv_labels.resize(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        svm.support_vectors[static_cast<size_t>(i)].resize(static_cast<size_t>(p));
+        for (int j = 0; j < p; ++j) {
+            svm.support_vectors[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                model(static_cast<size_t>(i + 1), static_cast<size_t>(j));
+        }
+        svm.alphas[static_cast<size_t>(i)] = model(static_cast<size_t>(i + 1), static_cast<size_t>(p));
+        svm.sv_labels[static_cast<size_t>(i)] =
+            model(static_cast<size_t>(i + 1), static_cast<size_t>(p + 1));
+    }
+    return svm;
+}
+
+Result<Matrix<double>> eval_ml_svm_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
+                                      double C, double gamma, bool use_rbf) {
+    auto X = matrix_to_ml_mat(X_m, "ml_svm_fit");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto y = matrix_to_ml_vec(y_m, "ml_svm_fit");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    if (y->size() != X->size()) {
+        return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    ml::SVM svm;
+    svm.config.C = C;
+    if (use_rbf) {
+        svm.config.kernel = ml::SVMKernel::RBF;
+        svm.config.gamma = gamma;
+    }
+    svm.fit(*X, *y);
+    return ml_svm_to_matrix(svm);
+}
+
+Result<Matrix<double>> eval_ml_svm_predict(const Matrix<double>& X_m,
+                                          const Matrix<double>& model_m) {
+    auto X = matrix_to_ml_mat(X_m, "ml_svm_predict");
+    if (!X) {
+        return std::unexpected(X.error());
+    }
+    auto svm = ml_svm_from_matrix(model_m, "ml_svm_predict");
+    if (!svm) {
+        return std::unexpected(svm.error());
+    }
+    return vector_to_column(svm->predict(*X));
+}
+
+
 static double ml_tree_criterion_code(const std::string& criterion) {
     if (criterion == "entropy") {
         return 1.0;
@@ -1507,49 +1679,6 @@ Matrix<double> ml_random_forest_to_matrix(const ml::RandomForest& rf) {
     return out;
 }
 
-Result<ml::QDA> ml_qda_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 6) {
-        return std::unexpected(DomainError{fn, "expected QDA model matrix"});
-    }
-    const int C = static_cast<int>(model(0, 0));
-    const int p = static_cast<int>(model(0, 1));
-    const double reg_eps = model(0, 2);
-    const int pp = p * p;
-    if (C < 1 || p < 1 || model.rows() != static_cast<size_t>(1 + 5 * C) ||
-        model.cols() < static_cast<size_t>(std::max(p, pp))) {
-        return std::unexpected(DomainError{fn, "invalid QDA model layout"});
-    }
-    ml::QDA qda(reg_eps);
-    qda.classes.resize(static_cast<size_t>(C));
-    qda.mean.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
-    qda.linear_coef.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(p)));
-    qda.discrim_const.resize(static_cast<size_t>(C));
-    qda.class_prior.resize(static_cast<size_t>(C));
-    qda.quad_coef.assign(static_cast<size_t>(C), ml::Vec(static_cast<size_t>(pp)));
-    for (int c = 0; c < C; ++c) {
-        qda.classes[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + c), 0);
-        for (int j = 0; j < p; ++j) {
-            qda.mean[static_cast<size_t>(c)][static_cast<size_t>(j)] =
-                model(static_cast<size_t>(1 + C + c), static_cast<size_t>(j));
-            qda.linear_coef[static_cast<size_t>(c)][static_cast<size_t>(j)] =
-                model(static_cast<size_t>(1 + 2 * C + c), static_cast<size_t>(j));
-        }
-        qda.discrim_const[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 0);
-        qda.class_prior[static_cast<size_t>(c)] = model(static_cast<size_t>(1 + 3 * C + c), 1);
-        for (int j = 0; j < pp; ++j) {
-            qda.quad_coef[static_cast<size_t>(c)][static_cast<size_t>(j)] =
-                model(static_cast<size_t>(1 + 4 * C + c), static_cast<size_t>(j));
-        }
-    }
-    return qda;
-}
-
-Result<Matrix<double>> eval_ml_qda_fit(const Matrix<double>& X_m, const Matrix<double>& y_m) {
-    auto X = matrix_to_ml_mat(X_m, "ml_qda_fit");
-    if (!X) {
-        return std::unexpected(X.error());
-    }
-    auto y = matrix_to_ml_vec(y_m, "ml_qda_fit");
 Result<ml::RandomForest> ml_random_forest_from_matrix(const Matrix<double>& model, const char* fn) {
     if (model.rows() < 2 || model.cols() < 5) {
         return std::unexpected(DomainError{fn, "expected RandomForest model matrix"});
@@ -1691,94 +1820,6 @@ Result<Matrix<double>> eval_ml_decision_tree_fit(const Matrix<double>& X_m, cons
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
     }
-    ml::QDA qda;
-    qda.fit(*X, *y);
-    return ml_qda_to_matrix(qda);
-}
-
-Result<Matrix<double>> eval_ml_qda_predict(const Matrix<double>& X_m,
-                                           const Matrix<double>& model_m) {
-    auto X = matrix_to_ml_mat(X_m, "ml_qda_predict");
-    if (!X) {
-        return std::unexpected(X.error());
-    }
-    auto qda = ml_qda_from_matrix(model_m, "ml_qda_predict");
-    if (!qda) {
-        return std::unexpected(qda.error());
-    }
-    return vector_to_column(qda->predict(*X));
-}
-
-Matrix<double> ml_svm_to_matrix(const ml::SVM& svm) {
-    const size_t n = svm.support_vectors.size();
-    const size_t p = n > 0 ? svm.support_vectors[0].size() : 0;
-    Matrix<double> out(n + 1, p + 2);
-    out(0, 0) = svm.config.kernel == ml::SVMKernel::Linear ? 0.0 : 1.0;
-    out(0, 1) = svm.config.C;
-    out(0, 2) = svm.config.gamma;
-    out(0, 3) = svm.b;
-    out(0, 4) = svm.config.tol;
-    out(0, 5) = static_cast<double>(svm.config.max_iter);
-    out(0, 6) = static_cast<double>(p);
-    out(0, 7) = static_cast<double>(n);
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = 0; j < p; ++j) {
-            out(i + 1, j) = svm.support_vectors[i][j];
-        }
-        out(i + 1, p) = svm.alphas[i];
-        out(i + 1, p + 1) = svm.sv_labels[i];
-    }
-    return out;
-}
-
-Result<ml::SVM> ml_svm_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 2 || model.cols() < 3) {
-        return std::unexpected(
-            DomainError{fn, "expected SVM model with header row and support vectors"});
-    }
-    const int kernel_code = static_cast<int>(model(0, 0));
-    const double C = model(0, 1);
-    const double gamma = model(0, 2);
-    const double b = model(0, 3);
-    const double tol = model(0, 4);
-    const int max_iter = static_cast<int>(model(0, 5));
-    const int p = static_cast<int>(model(0, 6));
-    const int n = static_cast<int>(model(0, 7));
-    if ((kernel_code != 0 && kernel_code != 1) || p < 1 || n < 1 ||
-        model.rows() != static_cast<size_t>(n + 1) ||
-        model.cols() != static_cast<size_t>(p + 2)) {
-        return std::unexpected(DomainError{fn, "invalid SVM model layout"});
-    }
-    ml::SVM svm;
-    svm.config.kernel = kernel_code == 0 ? ml::SVMKernel::Linear : ml::SVMKernel::RBF;
-    svm.config.C = C;
-    svm.config.gamma = gamma;
-    svm.config.tol = tol;
-    svm.config.max_iter = max_iter;
-    svm.b = b;
-    svm.support_vectors.resize(static_cast<size_t>(n));
-    svm.alphas.resize(static_cast<size_t>(n));
-    svm.sv_labels.resize(static_cast<size_t>(n));
-    for (int i = 0; i < n; ++i) {
-        svm.support_vectors[static_cast<size_t>(i)].resize(static_cast<size_t>(p));
-        for (int j = 0; j < p; ++j) {
-            svm.support_vectors[static_cast<size_t>(i)][static_cast<size_t>(j)] =
-                model(static_cast<size_t>(i + 1), static_cast<size_t>(j));
-        }
-        svm.alphas[static_cast<size_t>(i)] = model(static_cast<size_t>(i + 1), static_cast<size_t>(p));
-        svm.sv_labels[static_cast<size_t>(i)] =
-            model(static_cast<size_t>(i + 1), static_cast<size_t>(p + 1));
-    }
-    return svm;
-}
-
-Result<Matrix<double>> eval_ml_svm_fit(const Matrix<double>& X_m, const Matrix<double>& y_m,
-                                      double C, double gamma, bool use_rbf) {
-    auto X = matrix_to_ml_mat(X_m, "ml_svm_fit");
-    if (!X) {
-        return std::unexpected(X.error());
-    }
-    auto y = matrix_to_ml_vec(y_m, "ml_svm_fit");
     ml::DecisionTree tree(max_depth);
     tree.fit(*X, *y);
     return ml_decision_tree_to_matrix(tree);
@@ -1810,27 +1851,6 @@ Result<Matrix<double>> eval_ml_random_forest_fit(const Matrix<double>& X_m, cons
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
     }
-    ml::SVM svm;
-    svm.config.C = C;
-    if (use_rbf) {
-        svm.config.kernel = ml::SVMKernel::RBF;
-        svm.config.gamma = gamma;
-    }
-    svm.fit(*X, *y);
-    return ml_svm_to_matrix(svm);
-}
-
-Result<Matrix<double>> eval_ml_svm_predict(const Matrix<double>& X_m,
-                                          const Matrix<double>& model_m) {
-    auto X = matrix_to_ml_mat(X_m, "ml_svm_predict");
-    if (!X) {
-        return std::unexpected(X.error());
-    }
-    auto svm = ml_svm_from_matrix(model_m, "ml_svm_predict");
-    if (!svm) {
-        return std::unexpected(svm.error());
-    }
-    return vector_to_column(svm->predict(*X));
     ml::RandomForest rf;
     rf.config.n_trees = n_trees;
     rf.config.max_depth = max_depth;
@@ -22172,8 +22192,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
     if (assign.callee == "ml_qda_fit" && assign.args.size() == 2) {
-    if (assign.callee == "ml_decision_tree_fit" &&
-        (assign.args.size() == 2 || assign.args.size() == 3)) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
             return std::unexpected(X.error());
@@ -22183,25 +22201,11 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             return std::unexpected(y.error());
         }
         auto fitted = eval_ml_qda_fit(*X, *y);
-        int max_depth = 5;
-        if (assign.args.size() == 3) {
-            auto depth = parse_scalar_arg(assign.args[2], "ml_decision_tree_fit");
-            if (!depth) {
-                return std::unexpected(depth.error());
-            }
-            max_depth = static_cast<int>(*depth);
-            if (*depth != max_depth || max_depth < 1) {
-                return std::unexpected(
-                    DomainError{"ml_decision_tree_fit", "expected positive integer max_depth"});
-            }
-        }
-        auto fitted = eval_ml_decision_tree_fit(*X, *y, max_depth);
         if (!fitted) {
             return std::unexpected(fitted.error());
         }
         result = *fitted;
     } else if (assign.callee == "ml_qda_predict" && assign.args.size() == 2) {
-    } else if (assign.callee == "ml_decision_tree_predict" && assign.args.size() == 2) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
             return std::unexpected(X.error());
@@ -22211,15 +22215,12 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             return std::unexpected(model.error());
         }
         auto predicted = eval_ml_qda_predict(*X, *model);
-        auto predicted = eval_ml_decision_tree_predict(*X, *model);
         if (!predicted) {
             return std::unexpected(predicted.error());
         }
         result = *predicted;
     } else if (assign.callee == "ml_svm_fit" &&
                (assign.args.size() == 2 || assign.args.size() == 3 || assign.args.size() == 4)) {
-    } else if (assign.callee == "ml_random_forest_fit" &&
-               (assign.args.size() >= 2 && assign.args.size() <= 4)) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
             return std::unexpected(X.error());
@@ -22247,6 +22248,75 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             use_rbf = true;
         }
         auto fitted = eval_ml_svm_fit(*X, *y, C, gamma, use_rbf);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_svm_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_svm_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_decision_tree_fit" &&
+        (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        int max_depth = 5;
+        if (assign.args.size() == 3) {
+            auto depth = parse_scalar_arg(assign.args[2], "ml_decision_tree_fit");
+            if (!depth) {
+                return std::unexpected(depth.error());
+            }
+            max_depth = static_cast<int>(*depth);
+            if (*depth != max_depth || max_depth < 1) {
+                return std::unexpected(
+                    DomainError{"ml_decision_tree_fit", "expected positive integer max_depth"});
+            }
+        }
+        auto fitted = eval_ml_decision_tree_fit(*X, *y, max_depth);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_decision_tree_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_decision_tree_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_random_forest_fit" &&
+               (assign.args.size() >= 2 && assign.args.size() <= 4)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
         size_t n_trees = 50;
         size_t max_depth = 5;
         if (assign.args.size() >= 3) {
@@ -22276,7 +22346,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             return std::unexpected(fitted.error());
         }
         result = *fitted;
-    } else if (assign.callee == "ml_svm_predict" && assign.args.size() == 2) {
     } else if (assign.callee == "ml_random_forest_predict" && assign.args.size() == 2) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
@@ -22286,7 +22355,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
         if (!model) {
             return std::unexpected(model.error());
         }
-        auto predicted = eval_ml_svm_predict(*X, *model);
         auto predicted = eval_ml_random_forest_predict(*X, *model);
         if (!predicted) {
             return std::unexpected(predicted.error());
@@ -24358,7 +24426,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_random_forest_fit(X,y[,n_trees[,max_depth]]) fit random forest classifier\n"
             "  name = ml_random_forest_predict(X,model) random forest class predictions on X\n"
             "  name = ml_adaboost_fit(X,y[,n_estimators[,max_depth]]) fit AdaBoost (SAMME) classifier\n"
-            "  name = ml_adaboost_predict(X,model) AdaBoost class predictions on X, ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model)\n"
+            "  name = ml_adaboost_predict(X,model) AdaBoost class predictions on X\n"
+            "  name = ml_qda_fit(X,y) fit Quadratic Discriminant Analysis\n"
+            "  name = ml_qda_predict(X,model) QDA class predictions on X\n"
+            "  name = ml_svm_fit(X,y[,C[,gamma]]) fit Support Vector Machine (linear or RBF)\n"
+            "  name = ml_svm_predict(X,model) SVM class predictions on X (+1/-1)\n"
             "  name = ml_vec_norm(v)    Euclidean norm of Nx1 or 1xN vector\n"
             "  name = ml_vec_dot(a,b)   dot product of Nx1 or 1xN vectors\n"
             "  name = graph_pagerank(A) PageRank scores from NxN adjacency matrix\n"
