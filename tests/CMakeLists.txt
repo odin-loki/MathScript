@@ -212,6 +212,18 @@ add_ms_test(test_cfd unit/test_cfd.cpp)
 add_ms_test(test_cfd_2d unit/test_cfd_2d.cpp)
 add_ms_test(test_cfd_3d unit/test_cfd_3d.cpp)
 
+if(MS_BUILD_GUI)
+    find_package(Qt6 QUIET COMPONENTS Core)
+    if(Qt6_FOUND)
+        add_executable(test_gui_text_transforms
+            unit/test_gui_text_transforms.cpp
+            ${CMAKE_SOURCE_DIR}/src/gui/TextTransforms.cpp)
+        target_link_libraries(test_gui_text_transforms PRIVATE Qt6::Core GTest::gtest_main)
+        target_include_directories(test_gui_text_transforms PRIVATE ${CMAKE_SOURCE_DIR}/src)
+        add_test(NAME test_gui_text_transforms COMMAND test_gui_text_transforms)
+    endif()
+endif()
+
 add_subdirectory(compliance)
 add_subdirectory(numerical)
 add_subdirectory(integration)

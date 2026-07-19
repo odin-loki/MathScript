@@ -4,6 +4,7 @@ if(MS_BUILD_GUI)
         set(CMAKE_AUTOMOC ON)
         add_library(ms_gui STATIC
             LineNumberArea.cpp LineNumberArea.hpp
+            TextTransforms.cpp TextTransforms.hpp
             MainWindow.cpp MainWindow.hpp
             PlotWidget.cpp PlotWidget.hpp
             PlotSurfWidget.cpp PlotSurfWidget.hpp

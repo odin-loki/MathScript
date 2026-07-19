@@ -1,4 +1,5 @@
 #include "gui/MainWindow.hpp"
+#include "gui/TextTransforms.hpp"
 #include "gui/LineNumberArea.hpp"
 #include "gui/PlotSurfWidget.hpp"
 #include "gui/PlotWidget.hpp"
@@ -444,6 +445,39 @@ int trim_trailing_whitespace_in_editor(QPlainTextEdit* editor) {
         }
 
         const QString updated = original.left(end);
+        QTextCursor block_cursor(text_block);
+        block_cursor.movePosition(QTextCursor::StartOfBlock);
+        block_cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        block_cursor.insertText(updated);
+        ++trimmed_count;
+    }
+
+    restore_block_cursor(editor, start_block, end_block);
+    cursor.endEditBlock();
+    return trimmed_count;
+}
+
+int trim_leading_whitespace_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return 0;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    int start_block = 0;
+    int end_block = 0;
+    get_selected_block_range(editor, start_block, end_block);
+
+    int trimmed_count = 0;
+    for (int block_num = start_block; block_num <= end_block; ++block_num) {
+        const QTextBlock text_block = editor->document()->findBlockByNumber(block_num);
+        const QString original = text_block.text();
+        const QString updated = ms::gui::trim_leading_whitespace_line(original);
+        if (updated.size() == original.size()) {
+            continue;
+        }
+
         QTextCursor block_cursor(text_block);
         block_cursor.movePosition(QTextCursor::StartOfBlock);
         block_cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
@@ -1353,6 +1387,72 @@ void kebab_case_in_editor(QPlainTextEdit* editor) {
     cursor.endEditBlock();
 }
 
+void camel_case_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    if (!cursor.hasSelection()) {
+        int start_block = 0;
+        int end_block = 0;
+        get_selected_block_range(editor, start_block, end_block);
+        select_block_range_in_editor(editor, start_block, end_block);
+        cursor = editor->textCursor();
+    }
+
+    if (!cursor.hasSelection()) {
+        cursor.endEditBlock();
+        return;
+    }
+
+    const QString original = cursor.selectedText();
+    const QString transformed = ms::gui::camel_case_text(original);
+    const int sel_start = cursor.selectionStart();
+    cursor.insertText(transformed);
+
+    cursor.setPosition(sel_start);
+    cursor.setPosition(sel_start + transformed.size(), QTextCursor::KeepAnchor);
+    editor->setTextCursor(cursor);
+
+    cursor.endEditBlock();
+}
+
+void screaming_snake_case_in_editor(QPlainTextEdit* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    cursor.beginEditBlock();
+
+    if (!cursor.hasSelection()) {
+        int start_block = 0;
+        int end_block = 0;
+        get_selected_block_range(editor, start_block, end_block);
+        select_block_range_in_editor(editor, start_block, end_block);
+        cursor = editor->textCursor();
+    }
+
+    if (!cursor.hasSelection()) {
+        cursor.endEditBlock();
+        return;
+    }
+
+    const QString original = cursor.selectedText();
+    const QString transformed = ms::gui::screaming_snake_case_text(original);
+    const int sel_start = cursor.selectionStart();
+    cursor.insertText(transformed);
+
+    cursor.setPosition(sel_start);
+    cursor.setPosition(sel_start + transformed.size(), QTextCursor::KeepAnchor);
+    editor->setTextCursor(cursor);
+
+    cursor.endEditBlock();
+}
+
 constexpr size_t kListPreviewMaxRows = 3;
 constexpr size_t kListPreviewMaxCols = 4;
 constexpr size_t kTooltipMaxRows = 6;
@@ -1874,6 +1974,8 @@ void MainWindow::setup_menus() {
     duplicate_line_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
     auto* trim_trailing_whitespace_action = edit_menu->addAction("Trim Trailing Whitespace");
     trim_trailing_whitespace_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W));
+    auto* trim_leading_whitespace_action = edit_menu->addAction("Trim Leading Whitespace");
+    trim_leading_whitespace_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
     auto* remove_blank_lines_action = edit_menu->addAction("Remove Blank Lines");
     remove_blank_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Backspace));
     auto* sort_lines_action = edit_menu->addAction("Sort Lines");
@@ -1896,6 +1998,10 @@ void MainWindow::setup_menus() {
     snake_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_S));
     auto* kebab_case_selection_action = edit_menu->addAction("Kebab Case Selection");
     kebab_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_K));
+    auto* camel_case_selection_action = edit_menu->addAction("Camel Case Selection");
+    camel_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_C));
+    auto* screaming_snake_case_selection_action = edit_menu->addAction("Screaming Snake Case Selection");
+    screaming_snake_case_selection_action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_S));
     auto* join_lines_action = edit_menu->addAction("Join Lines");
     join_lines_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
     auto* split_lines_action = edit_menu->addAction("Split Lines");
@@ -1966,6 +2072,8 @@ void MainWindow::setup_menus() {
     connect(duplicate_line_action, &QAction::triggered, this, &MainWindow::duplicate_line);
     connect(trim_trailing_whitespace_action, &QAction::triggered, this,
             &MainWindow::trim_trailing_whitespace);
+    connect(trim_leading_whitespace_action, &QAction::triggered, this,
+            &MainWindow::trim_leading_whitespace);
     connect(remove_blank_lines_action, &QAction::triggered, this, &MainWindow::remove_blank_lines);
     connect(sort_lines_action, &QAction::triggered, this, &MainWindow::sort_lines);
     connect(unique_lines_action, &QAction::triggered, this, &MainWindow::unique_lines);
@@ -1977,6 +2085,9 @@ void MainWindow::setup_menus() {
     connect(invert_case_action, &QAction::triggered, this, &MainWindow::invert_case);
     connect(snake_case_selection_action, &QAction::triggered, this, &MainWindow::snake_case_selection);
     connect(kebab_case_selection_action, &QAction::triggered, this, &MainWindow::kebab_case_selection);
+    connect(camel_case_selection_action, &QAction::triggered, this, &MainWindow::camel_case_selection);
+    connect(screaming_snake_case_selection_action, &QAction::triggered, this,
+            &MainWindow::screaming_snake_case_selection);
     connect(join_lines_action, &QAction::triggered, this, &MainWindow::join_lines);
     connect(split_lines_action, &QAction::triggered, this, &MainWindow::split_lines);
     connect(delete_line_action, &QAction::triggered, this, &MainWindow::delete_line);
@@ -2335,6 +2446,18 @@ void MainWindow::trim_trailing_whitespace() {
     }
 }
 
+void MainWindow::trim_leading_whitespace() {
+    editor_->setFocus();
+    const int count = trim_leading_whitespace_in_editor(editor_);
+    if (count == 0) {
+        statusBar()->showMessage("No leading whitespace", 3000);
+    } else if (count == 1) {
+        statusBar()->showMessage("Trimmed leading whitespace on 1 line", 3000);
+    } else {
+        statusBar()->showMessage(QString("Trimmed leading whitespace on %1 lines").arg(count), 3000);
+    }
+}
+
 void MainWindow::remove_blank_lines() {
     editor_->setFocus();
     const int count = remove_blank_lines_in_editor(editor_);
@@ -2477,6 +2600,16 @@ void MainWindow::snake_case_selection() {
 void MainWindow::kebab_case_selection() {
     editor_->setFocus();
     kebab_case_in_editor(editor_);
+}
+
+void MainWindow::camel_case_selection() {
+    editor_->setFocus();
+    camel_case_in_editor(editor_);
+}
+
+void MainWindow::screaming_snake_case_selection() {
+    editor_->setFocus();
+    screaming_snake_case_in_editor(editor_);
 }
 
 void MainWindow::indent_lines() {
