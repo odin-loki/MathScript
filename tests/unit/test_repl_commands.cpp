@@ -7693,3 +7693,34 @@ TEST(ReplCommandsTest, wave265_linalg_funm_precond) {
     EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 3.0 / 1.2, 1e-12);
     EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, wave266_prob_chi2_exp_ppf) {
+    Interpreter interp;
+    expect_contains(interp, "help", "prob_exp_ppf(p,lambda)");
+    expect_contains(interp, "help", "prob_chi2_ppf(p,df)");
+
+    const double p_exp = 0.6321205588289387;
+    const double lambda = 1.0;
+    const double x_exp = ms::exp_ppf(p_exp, lambda);
+    EXPECT_NEAR(x_exp, 1.0, 1e-9);
+    expect_ok(interp, "x = prob_exp_ppf(0.6321205588289387, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("x"), x_exp, 1e-9);
+    expect_contains(interp, "prob_exp_ppf(0.6321205588289387, 1)", std::to_string(x_exp));
+
+    expect_ok(interp, "q = prob_exp_ppf(0.5, 2)");
+    const double q_exp = interp.state().scalars.at("q");
+    expect_ok(interp, "c = prob_exp_cdf(q, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("c"), 0.5, 1e-6);
+    EXPECT_NEAR(ms::exp_cdf(q_exp, 2.0), 0.5, 1e-6);
+
+    const double p_chi2 = 0.5;
+    const double df = 3.0;
+    const double x_chi2 = ms::chi2_ppf(p_chi2, df);
+    expect_ok(interp, "y = prob_chi2_ppf(0.5, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), x_chi2, 1e-9);
+    expect_contains(interp, "prob_chi2_ppf(0.5, 3)", std::to_string(x_chi2));
+
+    expect_ok(interp, "cc = prob_chi2_cdf(y, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("cc"), 0.5, 1e-6);
+    EXPECT_NEAR(ms::chi2_cdf(x_chi2, df), p_chi2, 1e-6);
+}
