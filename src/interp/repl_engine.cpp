@@ -56,6 +56,7 @@
 #include <cctype>
 #include <cmath>
 #include <complex>
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -251,6 +252,20 @@ bool parse_number(const std::string& text, double& value) {
     char* end = nullptr;
     value = std::strtod(text.c_str(), &end);
     return end == text.c_str() + text.size();
+}
+
+bool parse_uint64(const std::string& text, uint64_t& value) {
+    if (text.empty()) {
+        return false;
+    }
+    char* end = nullptr;
+    errno = 0;
+    const unsigned long long parsed = std::strtoull(text.c_str(), &end, 0);
+    if (end != text.c_str() + text.size() || errno == ERANGE) {
+        return false;
+    }
+    value = static_cast<uint64_t>(parsed);
+    return true;
 }
 
 std::string_view trim_view(std::string_view s) {
@@ -31680,6 +31695,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  gria_matrix_alpha([1,2;3,4], [2,4;6,8]) matrix information-alpha between input and output\n"
             "  gria_is_critical(0.5, 0.05) test whether alpha is near critical (default tolerance=0.05)\n"
             "  gria_classify(0.5) classify alpha as reversible/critical/irreversible\n"
+            "  gria_gf2n_mul(a, b, poly) multiply in GF(2^n) with reduction polynomial poly\n"
+            "  gria_gf2n_pow(a, exp, poly) exponentiate in GF(2^n)\n"
+            "  gria_gf2n_inv(a, poly) multiplicative inverse in GF(2^n)\n"
+            "  gria_lfsr_step(state, poly) advance LFSR one clock with feedback polynomial poly\n"
+            "  gria_alpha_lfsr(poly, steps) information-alpha of LFSR bit sequence\n"
+            "  gria_lfsr_is_maximal(poly, n) test whether poly is a maximal LFSR for n bits\n"
             "  cypha_nig_fit([1,2,3,4]) fit Normal-Inverse-Gaussian parameters to data vector\n"
             "  cypha_nig_pdf(2.5, 0, 1, 0, 1) NIG probability density at x\n"
             "  cypha_nig_cdf(2.5, 0, 1, 0, 1) NIG cumulative distribution at x\n"
@@ -31871,6 +31892,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         return std::string{
             "frameworks: GRIA, Cypha, CellAI, Izaac pure REPL functions\n"
             "  gria_entropy([data],bins)  gria_matrix_alpha(X,FX)  gria_is_critical(a,tol)  gria_classify(a)\n"
+            "  gria_gf2n_mul(a,b,poly)  gria_gf2n_pow(a,exp,poly)  gria_gf2n_inv(a,poly)\n"
+            "  gria_lfsr_step(state,poly)  gria_alpha_lfsr(poly,steps)  gria_lfsr_is_maximal(poly,n)\n"
             "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
             "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
@@ -32523,7 +32546,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
         }
         if (fn == "gria_entropy" || fn == "gria_matrix_alpha" || fn == "gria_is_critical" ||
-            fn == "gria_classify" || fn == "cypha_nig_fit" || fn == "cypha_nig_pdf" ||
+            fn == "gria_classify" || fn == "gria_gf2n_mul" || fn == "gria_gf2n_pow" ||
+            fn == "gria_gf2n_inv" || fn == "gria_lfsr_step" || fn == "gria_alpha_lfsr" ||
+            fn == "gria_lfsr_is_maximal" || fn == "cypha_nig_fit" || fn == "cypha_nig_pdf" ||
             fn == "cypha_nig_cdf" || fn == "cypha_nig_sample" || fn == "cellai_hebbian_update" ||
             fn == "cellai_energy" || fn == "izaac_estimate_pi" || fn == "izaac_laplace_noise" ||
             fn == "izaac_gaussian_noise") {
@@ -32596,6 +32621,85 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{fn, "expected numeric alpha"});
                 }
                 return std::string(format_compute_class(gria::classify(alpha))) + "\n";
+            }
+            if (fn == "gria_gf2n_mul" || fn == "gria_gf2n_pow") {
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        fn, std::string("expected ") + fn + "(a, b, poly)"});
+                }
+                uint64_t a = 0;
+                uint64_t b = 0;
+                uint64_t poly = 0;
+                if (!parse_uint64(trim_copy(call_args->at(0)), a) ||
+                    !parse_uint64(trim_copy(call_args->at(1)), b) ||
+                    !parse_uint64(trim_copy(call_args->at(2)), poly)) {
+                    return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
+                }
+                if (fn == "gria_gf2n_mul") {
+                    return std::to_string(gria::gf2n::mul(a, b, poly)) + "\n";
+                }
+                return std::to_string(gria::gf2n::pow(a, b, poly)) + "\n";
+            }
+            if (fn == "gria_gf2n_inv") {
+                if (!call_args || call_args->size() != 2) {
+                    return std::unexpected(
+                        DomainError{fn, "expected gria_gf2n_inv(a, poly)"});
+                }
+                uint64_t a = 0;
+                uint64_t poly = 0;
+                if (!parse_uint64(trim_copy(call_args->at(0)), a) ||
+                    !parse_uint64(trim_copy(call_args->at(1)), poly)) {
+                    return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
+                }
+                return std::to_string(gria::gf2n::inv(a, poly)) + "\n";
+            }
+            if (fn == "gria_lfsr_step") {
+                if (!call_args || call_args->size() != 2) {
+                    return std::unexpected(
+                        DomainError{fn, "expected gria_lfsr_step(state, poly)"});
+                }
+                uint64_t state = 0;
+                uint64_t poly = 0;
+                if (!parse_uint64(trim_copy(call_args->at(0)), state) ||
+                    !parse_uint64(trim_copy(call_args->at(1)), poly)) {
+                    return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
+                }
+                return std::to_string(gria::lfsr::step(state, poly)) + "\n";
+            }
+            if (fn == "gria_alpha_lfsr") {
+                if (!call_args || call_args->size() != 2) {
+                    return std::unexpected(
+                        DomainError{fn, "expected gria_alpha_lfsr(poly, steps)"});
+                }
+                uint64_t poly = 0;
+                if (!parse_uint64(trim_copy(call_args->at(0)), poly)) {
+                    return std::unexpected(DomainError{fn, "expected unsigned integer poly"});
+                }
+                double steps_d = 0.0;
+                if (!parse_number(trim_copy(call_args->at(1)), steps_d) || steps_d < 1.0 ||
+                    std::floor(steps_d) != steps_d) {
+                    return std::unexpected(DomainError{fn, "expected positive integer steps"});
+                }
+                return std::to_string(
+                           gria::lfsr::alpha_lfsr(poly, static_cast<size_t>(steps_d))) +
+                       "\n";
+            }
+            if (fn == "gria_lfsr_is_maximal") {
+                if (!call_args || call_args->size() != 2) {
+                    return std::unexpected(
+                        DomainError{fn, "expected gria_lfsr_is_maximal(poly, n)"});
+                }
+                uint64_t poly = 0;
+                if (!parse_uint64(trim_copy(call_args->at(0)), poly)) {
+                    return std::unexpected(DomainError{fn, "expected unsigned integer poly"});
+                }
+                double n_d = 0.0;
+                if (!parse_number(trim_copy(call_args->at(1)), n_d) || n_d < 1.0 ||
+                    std::floor(n_d) != n_d) {
+                    return std::unexpected(DomainError{fn, "expected positive integer n"});
+                }
+                return std::string(
+                           gria::lfsr::is_maximal(poly, static_cast<int>(n_d)) ? "true\n" : "false\n");
             }
             if (fn == "cypha_nig_fit") {
                 if (!call_args || call_args->size() != 1) {
