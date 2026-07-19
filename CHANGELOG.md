@@ -7,6 +7,17 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+### Added (Wave 265 — WIP)
+- **Poly REPL** — `poly_shift` / `poly_factor` (and related transforms/factorization bindings).
+- **Control REPL** — `control_series` (TF interconnect; parallel/feedback/ss2tf/d2c pending sibling merges).
+- **Finance REPL** — `finance_merton_implied_asset_params`.
+- **Combo REPL** — `combo_prev_perm`.
+- **Special REPL** — `bessel_k` (orthogonal polynomial specials pending sibling merges).
+- **Linalg REPL** — `matrix_rank`.
+- **Graph REPL** — `graph_connected_components`.
+- **Info REPL** — `info_normalized_entropy`.
+- **Tests** — `integration_repl_wave265_pipeline` (smoke + Wave 264 regressions).
+
 ## [1.0.0] - 2026-07-19 (Wave 264 — poly algebra, cornacchia, ratios, ctrb/tf2ss, specials, capacity, Split Lines) ✅ COMPLETE
 
 Thirty-fourth feature wave after Wave 263. Parallel Composer 2.5 worktrees merged to `main`: polynomial roots/fit/Hermite/GCD/square-free, Cornacchia, Treynor/information ratio, controllability/observability/tf2ss/c2d, Bessel Y/I / Lambert W / Kummer U / Airy Bi, Blahut–Arimoto channel capacity, GUI Split Lines, and wave264 pipeline.
