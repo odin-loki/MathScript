@@ -7693,3 +7693,32 @@ TEST(ReplCommandsTest, wave265_linalg_funm_precond) {
     EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 3.0 / 1.2, 1e-12);
     EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, wave266_image_imfilter_sobel) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imfilter(M,K)");
+    expect_contains(interp, "help", "sobel_x(M)");
+    expect_contains(interp, "help", "laplacian_of_gaussian(M,sigma)");
+
+    expect_ok(interp, "G = [0, 0, 0; 0, 1, 0; 0, 0, 0]");
+    expect_ok(interp, "K = [0, 0, 0; 0, 1, 0; 0, 0, 0]");
+    expect_ok(interp, "F = imfilter(G, K)");
+    ASSERT_GT(interp.state().matrices.count("F"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("F")(1, 1), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("F")(0, 0), 0.0, 1e-6);
+
+    expect_ok(interp, "Sx = sobel_x(G)");
+    expect_ok(interp, "Sy = sobel_y(G)");
+    EXPECT_EQ(interp.state().matrices.at("Sx").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Sx").cols(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Sy").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("Sy").cols(), 3u);
+
+    expect_ok(interp, "L = laplacian_of_gaussian(G, 1)");
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("L").cols(), 3u);
+
+    expect_ok(interp, "D = dft_magnitude(G)");
+    EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("D").cols(), 3u);
+}

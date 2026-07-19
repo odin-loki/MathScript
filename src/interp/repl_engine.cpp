@@ -520,6 +520,20 @@ Matrix<double> gray_image_to_matrix(const image::Image& img) {
     return out;
 }
 
+Result<std::vector<std::vector<float>>> matrix_to_filter_kernel(const Matrix<double>& k,
+                                                                const char* fn) {
+    if (k.rows() == 0 || k.cols() == 0) {
+        return std::unexpected(DomainError{fn, "empty kernel matrix"});
+    }
+    std::vector<std::vector<float>> kernel(k.rows(), std::vector<float>(k.cols()));
+    for (size_t r = 0; r < k.rows(); ++r) {
+        for (size_t c = 0; c < k.cols(); ++c) {
+            kernel[r][c] = static_cast<float>(k(r, c));
+        }
+    }
+    return kernel;
+}
+
 Matrix<double> rgb_image_to_matrix(const image::Image& img) {
     const size_t rows = static_cast<size_t>(img.rows * img.cols);
     Matrix<double> out(rows, static_cast<size_t>(img.channels));
@@ -12327,8 +12341,10 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "inv" ||
             fn == "pinv" || fn == "null" || fn == "orth" ||
             fn == "kron" || fn == "repmat" || fn == "linspace" ||
-            fn == "rgb2gray" || fn == "gray2rgb" || fn == "rgb2hsv" || fn == "sobel" || fn == "prewitt" ||
+            fn == "rgb2gray" || fn == "gray2rgb" || fn == "rgb2hsv" || fn == "hsv2rgb" ||
+            fn == "sobel" || fn == "sobel_x" || fn == "sobel_y" || fn == "prewitt" ||
             fn == "scharr" || fn == "roberts" ||
+            fn == "imfilter" || fn == "dft_magnitude" || fn == "laplacian_of_gaussian" ||
             fn == "imgaussfilt" || fn == "medfilt2" || fn == "boxfilter" ||
             fn == "imdilate" || fn == "imerode" || fn == "imopen" || fn == "imclose" ||
             fn == "imtophat" || fn == "imbothat" || fn == "imgradient_morph" ||
@@ -14324,8 +14340,10 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "precond_ssor" || callee == "inv" ||
            callee == "pinv" || callee == "null" || callee == "orth" ||
            callee == "kron" || callee == "repmat" || callee == "linspace" ||
-           callee == "rgb2gray" || callee == "gray2rgb" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
+           callee == "rgb2gray" || callee == "gray2rgb" || callee == "rgb2hsv" || callee == "hsv2rgb" ||
+           callee == "sobel" || callee == "sobel_x" || callee == "sobel_y" || callee == "prewitt" ||
            callee == "scharr" || callee == "roberts" ||
+           callee == "imfilter" || callee == "dft_magnitude" || callee == "laplacian_of_gaussian" ||
            callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
            callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
            callee == "imtophat" || callee == "imbothat" || callee == "imgradient_morph" ||
@@ -14475,7 +14493,10 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "sqrtm" || callee == "logm" || callee == "cosm" || callee == "sinm" ||
         callee == "inv" ||
         callee == "pinv" || callee == "null" || callee == "orth" ||
-        callee == "rgb2gray" || callee == "gray2rgb" || callee == "rgb2hsv" || callee == "sobel" || callee == "prewitt" || callee == "scharr" || callee == "roberts" ||
+        callee == "rgb2gray" || callee == "gray2rgb" || callee == "rgb2hsv" || callee == "hsv2rgb" ||
+        callee == "sobel" || callee == "sobel_x" || callee == "sobel_y" || callee == "prewitt" ||
+        callee == "scharr" || callee == "roberts" ||
+        callee == "dft_magnitude" ||
         callee == "laplacian" || callee == "histeq" || callee == "sharpen" ||
         callee == "threshold_otsu" ||
         callee == "imrotate90" || callee == "adapthisteq" ||
@@ -14627,7 +14648,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "poly_mul" || callee == "poly_sub" || callee == "poly_compose" ||
         callee == "quantum_tensor_product" || callee == "signal_correlate" ||
         callee == "signal_sosfilt" || callee == "signal_conv2" ||
-        callee == "signal_deconv" ||
+        callee == "signal_deconv" || callee == "imfilter" ||
         callee == "ml_mat_mul" || callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
         callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
         callee == "ml_logistic_predict" || callee == "geo_poly_union" ||
@@ -14669,7 +14690,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
         callee == "imdilate" || callee == "imerode" || callee == "imopen" || callee == "imclose" ||
         callee == "imtophat" || callee == "imbothat" || callee == "imgradient_morph" ||
-        callee == "imhist") {
+        callee == "imhist" || callee == "laplacian_of_gaussian") {
         return arity == 1 || arity == 2;
     }
     if (callee == "tril" || callee == "triu") {
@@ -19946,6 +19967,110 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
         result = precond_ssor(*matrix, omega);
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail5(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail5(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "imfilter" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto kernel_m = resolve_operand(assign.args[1]);
+        if (!kernel_m) {
+            return std::unexpected(kernel_m.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        auto kernel = matrix_to_filter_kernel(*kernel_m, "imfilter");
+        if (!kernel) {
+            return std::unexpected(kernel.error());
+        }
+        result = gray_image_to_matrix(image::imfilter(*gray, *kernel));
+    } else if (assign.callee == "sobel_x" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::sobel_x(*gray));
+    } else if (assign.callee == "sobel_y" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::sobel_y(*gray));
+    } else if (assign.callee == "hsv2rgb" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto hsv = matrix_to_rgb_image(*matrix);
+        if (!hsv) {
+            return std::unexpected(hsv.error());
+        }
+        result = rgb_image_to_matrix(image::hsv2rgb(*hsv));
+    } else if (assign.callee == "dft_magnitude" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::dft_magnitude(*gray));
+    } else if (assign.callee == "laplacian_of_gaussian" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        auto sigma = parse_scalar_arg(assign.args[1], "laplacian_of_gaussian");
+        if (!sigma) {
+            return std::unexpected(sigma.error());
+        }
+        result = gray_image_to_matrix(
+            image::laplacian_of_gaussian(*gray, static_cast<float>(*sigma)));
+    }
+
     return result;
 }
 
@@ -21791,7 +21916,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = rgb2gray(M)       RGB rows (H*W)x3 to grayscale column vector\n"
             "  name = gray2rgb(M)       grayscale HxW or Nx1 to RGB rows (H*W)x3\n"
             "  name = rgb2hsv(M)        RGB rows (H*W)x3 to HSV rows (H*W)x3\n"
+            "  name = hsv2rgb(M)        HSV rows (H*W)x3 to RGB rows (H*W)x3\n"
             "  name = sobel(M)          Sobel gradient magnitude on HxW grayscale matrix\n"
+            "  name = sobel_x(M)        Sobel horizontal gradient on HxW grayscale matrix\n"
+            "  name = sobel_y(M)        Sobel vertical gradient on HxW grayscale matrix\n"
+            "  name = imfilter(M,K)     2D convolution on HxW grayscale matrix with kernel K\n"
+            "  name = dft_magnitude(M)  naive DFT magnitude spectrum (HxW grayscale)\n"
+            "  name = laplacian_of_gaussian(M,sigma) LoG edge filter on HxW grayscale matrix\n"
             "  name = prewitt(M)        Prewitt edge magnitude on HxW grayscale matrix\n"
             "  name = scharr(M)         Scharr edge magnitude on HxW grayscale matrix\n"
             "  name = roberts(M)        Roberts cross-gradient edge magnitude on HxW grayscale matrix\n"
@@ -22596,7 +22727,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  det(A), trace(A), norm(A), rank(A), matrix_rank(A[, tol]), cond(A)\n"
             "  lu(A), qr(A), chol(A), hess(A), schur(A), bidiag(A), expm(A), sqrtm(A), logm(A), tril(A[,k]), triu(A[,k]), diag(v), cosm(A), sinm(A), funm(A,\"sin\"|\"cos\"|\"exp\"|\"sqrt\"), precond_diag(A), precond_ssor(A[,omega]), solve(A,B), lsq(A,B), solve_sylvester(A,B,C), bicgstab(A,B), cg(A,B), gmres(A,B), jacobi(A,B), qmr(A,B), lsqr(A,B), tfqmr(A,B), lsmr(A,B), minres(A,B), dist_solve(A,B), dist_cg(A,B), dist_gmres(A,B), dist_jacobi(A,B), dist_bicgstab(A,B), dist_minres(A,B), dist_qmr(A,B), dist_tfqmr(A,B), dist_lsmr(A,B), dist_lsqr(A,B), dist_matmul(A,B), matmul(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B), cuda_lu(A), cuda_add(A,B), eig_sym(A), eig(A), ldl(A), svd(A)\n"
             "  pinv(A), null(A), orth(A), kron(A,B), repmat(A,p,q), linspace(a,b,n)\n"
-            "  rgb2gray(M), rgb2hsv(M), sobel(M), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
+            "  rgb2gray(M), rgb2hsv(M), hsv2rgb(M), sobel(M), sobel_x(M), sobel_y(M), imfilter(M,K), dft_magnitude(M), laplacian_of_gaussian(M,sigma), imgaussfilt(M,s), medfilt2(M,k), boxfilter(M,k), imdilate(M,k), imerode(M,k), imopen(M,k), imclose(M,k), imtophat(M[,k]), imbothat(M[,k]), imgradient_morph(M[,k]), imadjust(M,in_lo,in_hi[,out_lo,out_hi]), imhist(M[,nbins]), bilateral(M,sigma_s,sigma_r), canny(M,low,high), laplacian(M), histeq(M), sharpen(M)\n"
             "  threshold_otsu(M), imresize(M,r,c), imflip(M,horizontal), imrotate90(M), threshold_binary(M,t), adapthisteq(M), label_components(B), watershed(G,M), slic(M,K[,c]), imcrop(M,r0,c0,r1,c1), rle_encode_vec(M), rle_decode_vec(M), mtf_encode_vec(M), mtf_decode_vec(M), lzw_encode_vec(M), lzw_decode_vec(C), lz77_encode_vec(M), lz77_decode_vec(T), huffman_encode_vec(M), huffman_decode_vec(orig_M,E), bzip2_compress_vec(M), bzip2_decompress_vec(C), compress_bits_to_bytes(bits_vec), compress_bytes_to_bits(bytes_vec), bwt_encode_vec(M), bwt_decode_vec(L,pi), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q]), gray2rgb(M), impad(M,pad[,val]), iradon(S,theta), radon(M,theta)\n"
             "  delta_encode_vec(M), delta_decode_vec(M)\n"
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_vec_norm(v), ml_vec_dot(a,b)\n"
