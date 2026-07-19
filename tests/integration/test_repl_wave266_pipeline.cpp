@@ -103,10 +103,10 @@ TEST(ReplWave266Pipeline, StatsKsNorm) {
     Interpreter interp;
 
     expect_ok(interp, "x = [0; 0.1; -0.1; 0.05; -0.05]");
-    expect_ok(interp, "ks = stats_ks_norm(x)");
-    const bool has_scalar = interp.state().scalars.count("ks") > 0u;
-    const bool has_matrix = interp.state().matrices.count("ks") > 0u;
-    EXPECT_TRUE(has_scalar || has_matrix);
+    expect_ok(interp, "ks = stats_ks_norm(x, 0, 1)");
+    ASSERT_GT(interp.state().scalars.count("ks"), 0u);
+    EXPECT_GE(interp.state().scalars.at("ks"), 0.0);
+    EXPECT_LE(interp.state().scalars.at("ks"), 1.0);
     expect_contains(interp, "help", "stats_ks_norm(");
 }
 

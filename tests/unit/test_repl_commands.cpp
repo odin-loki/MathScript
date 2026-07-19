@@ -3390,10 +3390,13 @@ TEST(ReplCommandsTest, wave266_control_c2d_tustin) {
     expect_contains(interp, "help", "control_c2d_tf_tustin(num,den,Ts)");
 
     // Stable 1st-order plant G(s)=3/(s+2): A=-2, B=3, C=1, D=0, Ts=0.1
+    // Tustin: Ad = (I+A*Ts/2)/(I-A*Ts/2), Bd = A^{-1}(Ad-I)B  (scalar: Ts/(1-A*Ts/2)*B)
     const double Ts = 0.1;
-    const double tustin_denom = 1.0 + (-2.0) * Ts * 0.5;
-    const double Ad_tustin = (1.0 + (-2.0) * Ts * 0.5) / tustin_denom;
-    const double Bd_tustin = 3.0 * Ts / tustin_denom;
+    const double A = -2.0;
+    const double B = 3.0;
+    const double tustin_denom = 1.0 - A * Ts * 0.5;
+    const double Ad_tustin = (1.0 + A * Ts * 0.5) / tustin_denom;
+    const double Bd_tustin = B * Ts / tustin_denom;
 
     expect_ok(interp, "Ad = control_c2d_tustin([-2], [3], [1], [0], 0.1)");
     ASSERT_GT(interp.state().matrices.count("Ad"), 0u);

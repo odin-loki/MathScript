@@ -362,6 +362,15 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `matrix_rank` / `funm` / `precond_diag` / `precond_ssor` | Rank / matrix function / preconditioners (Wave 265) |
 | `graph_connected_components` / `graph_is_planar` | Connected components / planarity (Wave 265) |
 | `info_normalized_entropy` / `info_channel_capacity_input` | Normalized entropy / capacity-achieving input (Wave 265) |
+| `poly_cheb_expand(p,n[,a,b])` | Chebyshev expansion of polynomial (Wave 266) |
+| `control_c2d_tustin` / `control_c2d_euler` / `control_d2c_tustin` / `control_d2c_euler` (+ `_tf_tustin`) | Tustin/Euler discretizations (Wave 266) |
+| `erfi` / `erfcx` / `dawson` / `special_gamma_inc` / `special_beta_inc` / `beta` | Error / incomplete specials (Wave 266) |
+| `legendre_q` / `hermite_he` / `laguerre_la` / `chebyshev_v` / `chebyshev_w` / `sph_harm` | Orthogonal / spherical harmonics (Wave 266) |
+| `hypergeo_0f1` / `hypergeo_1f1` / `hypergeo_2f1` / `whittaker_m` / `whittaker_w` / `kummer_m` | Hypergeometric / Whittaker (Wave 266) |
+| `mathieu_se` / `mathieu_b` / `mathieu_mc` / `mathieu_ms` / `heun_c` / `heun_d` / `heun_b` / `heun_t` / `painleve2` | Mathieu / Heun / Painlevé II (Wave 266) |
+| `prob_chi2_ppf` / `prob_exp_ppf` / `stats_ks_norm` | Chi²/exp PPF / one-sample KS vs normal (Wave 266) |
+| `graph_min_arborescence(A,root)` | Min spanning arborescence packed matrix (Wave 266) |
+| `imfilter` / `sobel_x` / `sobel_y` / `hsv2rgb` / `dft_magnitude` / `laplacian_of_gaussian` | Image filters / transforms (Wave 266) |
 | `imgradient_morph` | Morphological gradient (Wave 259) |
 | `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
 | `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |

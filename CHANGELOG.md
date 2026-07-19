@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19 (Wave 266 — cheb expand, Tustin/Euler, specials, PPFs, arborescence, image filters, KS, Invert Case) ✅ COMPLETE
+
+Thirty-sixth feature wave after Wave 265. Parallel Composer 2.5 worktrees merged to `main`: Chebyshev poly expand, control Tustin/Euler discretizations, incomplete-gamma/error/Mathieu/Heun/hypergeo specials, chi²/exp PPFs, min arborescence, image filters, one-sample KS vs normal, GUI Invert Case, and wave266 pipeline.
+
+### Added (Wave 266)
+- **Poly REPL** — `poly_cheb_expand`.
+- **Control REPL** — `control_c2d_tustin` / `control_c2d_euler` / `control_d2c_tustin` / `control_d2c_euler` / `control_c2d_tf_tustin` / `control_d2c_tf_tustin`.
+- **Special REPL** — `erfi` / `erfcx` / `dawson` / `special_rgamma` / `special_pochhammer` / `special_falling_factorial` / `special_gamma_inc` / `special_beta_inc` / `beta`; `legendre_q` / `hermite_he` / `laguerre_la` / `chebyshev_v` / `chebyshev_w` / `sph_harm`; `hypergeo_0f1` / `hypergeo_1f1` / `hypergeo_2f1` / `whittaker_m` / `whittaker_w` / `kummer_m`; `mathieu_se` / `mathieu_b` / `mathieu_mc` / `mathieu_ms` / `heun_c` / `heun_d` / `heun_b` / `heun_t` / `painleve2`.
+- **Prob / Stats REPL** — `prob_chi2_ppf` / `prob_exp_ppf`; `stats_ks_norm`.
+- **Graph REPL** — `graph_min_arborescence`.
+- **Image REPL** — `imfilter` / `sobel_x` / `sobel_y` / `hsv2rgb` / `dft_magnitude` / `laplacian_of_gaussian`.
+- **GUI** — Invert Case (Ctrl+Alt+I).
+- **Tests** — `integration_repl_wave266_pipeline`.
+
+### Docs (Wave 266)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 266 sync; **425** CTest suites.
+
+**425 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-19 (Wave 265 — poly transforms/factor, control TF, Merton/BL, combo prev, specials, funm, graph/info, Capitalize) ✅ COMPLETE
 
 Thirty-fifth feature wave after Wave 264. Parallel Composer 2.5 worktrees merged to `main`: polynomial transforms and factorization, control transfer-function algebra and discretizations, Merton implied assets / BL default-omega, combo prev permutation/combination, orthogonal/Bessel specials, matrix funm/preconditioners, graph components/planarity, info entropy/capacity input, GUI Capitalize Words, and wave265 pipeline.

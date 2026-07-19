@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 265 ✅ COMPLETE — **424 CTest suites** on `main`)
+**Updated:** 2026-07-19 (Wave 266 ✅ COMPLETE — **425 CTest suites** on `main`)
 
 ---
 
@@ -439,7 +439,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 266+) — deferred
+## Wave 266 — cheb expand, Tustin/Euler, specials, PPFs, arborescence, image filters, KS, Invert Case ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| Poly REPL | poly_cheb_expand |
+| Control REPL | c2d/d2c Tustin & Euler (+ TF Tustin) |
+| Special REPL | erfi/erfcx/dawson/gamma_inc/beta; orthog/sph_harm; hypergeo/Whittaker; mathieu/heun/painleve2 |
+| Prob / Stats REPL | chi2_ppf / exp_ppf; stats_ks_norm |
+| Graph / Image REPL | min_arborescence; imfilter / sobel_x/y / hsv2rgb / dft_magnitude / laplacian_of_gaussian |
+| GUI | Invert Case (Ctrl+Alt+I) |
+| Tests | `integration_repl_wave266_pipeline` |
+
+**425 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–266** closed for this incremental batch.
+
+---
+
+## Next (Wave 267+) — deferred
 
 | Item | Notes |
 |------|--------|
