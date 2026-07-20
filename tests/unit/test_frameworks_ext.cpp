@@ -57,6 +57,8 @@ TEST(FrameworksExtTest, gria_gf2n_pow_inv_and_field) {
     EXPECT_EQ(squared, gria::gf2n::mul(3, 3, poly));
     const uint64_t inv3 = gria::gf2n::inv(3, poly);
     EXPECT_NE(inv3, 0u);
+    EXPECT_EQ(gria::gf2n::mul(3, inv3, poly), 1u);
+    EXPECT_EQ(gria::gf2n::mul(0x53, 0xCA, poly), 0x01u);
 
     const auto field = gria::gf2n::generate_field(4);
     EXPECT_EQ(field.size(), 16u);

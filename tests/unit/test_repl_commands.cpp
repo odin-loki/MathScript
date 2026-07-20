@@ -6231,7 +6231,7 @@ TEST(ReplCommandsTest, wave256_stats_ts) {
     Interpreter interp;
     expect_contains(interp, "help", "stats_linear_regression(x,y)");
     expect_contains(interp, "help", "stats_pacf(x,max_lag)");
-    expect_contains(interp, "help", "stats_kde(samples,grid,h)");
+    expect_contains(interp, "help", "stats_kde(samples,grid,h[,kernel])");
     expect_contains(interp, "help", "stats_bootstrap_ci(x)");
 
     // y = 2x + 1
@@ -6261,9 +6261,11 @@ TEST(ReplCommandsTest, wave256_stats_ts) {
     expect_ok(interp, "ci = stats_bootstrap_ci([1; 2; 3; 4; 5; 6; 7; 8; 9; 10])");
     ASSERT_GT(interp.state().matrices.count("ci"), 0u);
     EXPECT_EQ(interp.state().matrices.at("ci").rows(), 1u);
-    EXPECT_EQ(interp.state().matrices.at("ci").cols(), 2u);
-    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 0)));
+    EXPECT_EQ(interp.state().matrices.at("ci").cols(), 4u);
+    EXPECT_NEAR(interp.state().matrices.at("ci")(0, 0), 5.5, 1e-9);
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 1)));
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 2)));
+    EXPECT_GT(interp.state().matrices.at("ci")(0, 3), 0.0);
 }
 
 TEST(ReplCommandsTest, wave256_stats_inference) {
@@ -9614,6 +9616,37 @@ TEST(ReplCommandsTest, wave270_special_voigt_weierstrass) {
     expect_contains(interp, "weierstrass_pprime(0.5, 1, 0)", "\n");
 }
 
+TEST(ReplCommandsTest, wave270_stats_kde_bootstrap) {
+    Interpreter interp;
+    expect_contains(interp, "help", "stats_kde(samples,grid,h[,kernel])");
+    expect_contains(interp, "help", "stats_bootstrap_ci(x)");
+    expect_contains(interp, "help", "[point, lower, upper, std_error]");
+
+    expect_ok(interp, "k = stats_kde([0; 1; 2; 3; 4], [-1; 0; 1; 2; 3; 4; 5], 1)");
+    ASSERT_GT(interp.state().matrices.count("k"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("k").rows(), 7u);
+    EXPECT_EQ(interp.state().matrices.at("k").cols(), 1u);
+
+    expect_ok(interp,
+              "ke = stats_kde([0; 1; 2; 3; 4], [-1; 0; 1; 2; 3; 4; 5], 1, \"epanechnikov\")");
+    ASSERT_GT(interp.state().matrices.count("ke"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ke").rows(), 7u);
+    EXPECT_EQ(interp.state().matrices.at("ke").cols(), 1u);
+    for (size_t i = 0; i < 7; ++i) {
+        EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ke")(i, 0)));
+    }
+
+    expect_ok(interp, "ci = stats_bootstrap_ci([1; 2; 3; 4; 5; 6; 7; 8; 9; 10])");
+    ASSERT_GT(interp.state().matrices.count("ci"), 0u);
+    const auto& ci = interp.state().matrices.at("ci");
+    EXPECT_EQ(ci.rows(), 1u);
+    EXPECT_EQ(ci.cols(), 4u);
+    EXPECT_NEAR(ci(0, 0), 5.5, 1e-9);
+    EXPECT_LT(ci(0, 1), ci(0, 0));
+    EXPECT_GT(ci(0, 2), ci(0, 0));
+    EXPECT_GT(ci(0, 3), 0.0);
+}
+
 TEST(ReplCommandsTest, wave270_special_jacobi_struve) {
     Interpreter interp;
     expect_contains(interp, "help", "jacobi_sc(u,k)");
@@ -9754,7 +9787,8 @@ TEST(ReplCommandsTest, wave270_cellai_ext) {
 
     expect_ok(interp, "E = [5; 1; -3; 10]");
     expect_ok(interp, "bw2 = cellai_boltzmann_weights(E, 1)");
-    const auto ref_weights = ms::cellai::boltzmann_weights({5.0, 1.0, -3.0, 10.0}, 1.0);
+    const std::vector<double> energies_ref{5.0, 1.0, -3.0, 10.0};
+    const auto ref_weights = ms::cellai::boltzmann_weights(energies_ref, 1.0);
     const auto& bw2 = interp.state().matrices.at("bw2");
     ASSERT_EQ(bw2.rows(), ref_weights.size());
     for (size_t i = 0; i < ref_weights.size(); ++i) {

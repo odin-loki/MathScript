@@ -7,6 +7,29 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-20 (Wave 270 — FEM 2D assembly, CFD 2D, specials, stats KDE/bootstrap, GRIA CA/GF2ⁿ/LFSR, CellAI, Axiom, tail9) ✅ COMPLETE
+
+Fortieth feature wave after Wave 269. Parallel Composer 2.5 worktrees merged to `main`: FEM 2D mesh/stiffness/load/Dirichlet/solve; CFD 2D grid/pulse/upwind; Voigt/Weierstrass + Jacobi/Struve specials; stats KDE kernel option and bootstrap CI as 1×4; GRIA cellular automata + GF(2ⁿ)/LFSR; CellAI Boltzmann/Cypha features; Axiom matrix evaluate; `assign_matrix_call_tail9`; wave270 pipeline. Follow-up fixes: FEM helper forward-decls; GF(2ⁿ) degree-aware mul/inv; scalar GF2ⁿ/LFSR assignment via `eval_scalar_call`.
+
+### Added (Wave 270)
+- **FEM REPL** — `fem_mesh2d_rectangular` / `fem_mesh2d`; `fem_stiffness_2d` / `assemble_stiffness_2d`; `fem_load_2d`; `fem_apply_dirichlet`; `fem_solve`; `fem_poisson2d`.
+- **CFD REPL** — `cfd_grid2d`; `cfd_square_pulse_2d`; `cfd_upwind_step_2d`; `cfd_advection2d`.
+- **Special REPL** — `voigt` / `weierstrass_p` / `weierstrass_pprime`; `jacobi_sc` / `jacobi_sd` / `jacobi_nc` / …; `struve_h` / `struve_l` / `struve_yn`.
+- **Stats REPL** — `stats_kde(samples,grid,h[,kernel])` (gaussian|epanechnikov); `stats_bootstrap_ci` → 1×4 `[point, lower, upper, std_error]`.
+- **GRIA REPL** — `gria_ca_step` / `gria_langton_lambda` / `gria_alpha_ca` / `gria_hamming_distance` / `gria_divergence_trajectory` / `gria_settling_time`; `gria_gf2n_mul` / `gria_gf2n_pow` / `gria_gf2n_inv`; `gria_lfsr_step` / `gria_alpha_lfsr` / `gria_lfsr_is_maximal`.
+- **CellAI / Axiom REPL** — `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features`; Axiom matrix evaluate / fitness calls.
+- **Dispatch** — `assign_matrix_call_tail9`.
+- **Tests** — `integration_repl_wave270_pipeline`; unit coverage for wave270 FEM/CFD/specials/stats/GRIA/CellAI/Axiom.
+
+### Fixed (Wave 270)
+- **GF(2ⁿ)** — `mul`/`inv` reduce by polynomial degree (AES `0x11B`); Fermat exponent `2^n−2` instead of fixed `2^16−2`.
+- **REPL assign** — scalar `gria_gf2n_*` / `gria_lfsr_*` / `gria_alpha_lfsr` via `eval_scalar_call` (not matrix-parse fallthrough).
+
+### Docs (Wave 270)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 270 sync; **429** CTest suites.
+
+**429 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-19 (Wave 269 — ML metrics/gboost/isolation/tsne, compress golomb/wavelet, sparse COO, tensorops NMF/TT, topo, quantum, cplx/ODE/CFD1d, diffgeo, GUI case/trim, run_file stack fix) ✅ COMPLETE
 
 Thirty-ninth feature wave after Wave 268. Parallel Composer 2.5 worktrees merged to `main` through `b543e26`: ML metrics curves, gradient boosting, isolation forest, agglomerative clustering, t-SNE; Golomb–Rice and wavelet compress codecs; sparse COO from_coo/spmv/to_dense; tensorops NMF and TT decompose/reconstruct; topological alpha/witness/landscape; quantum Wigner/Husimi/Grover; complex Green's function, Adams–Bashforth 2, 1D CFD advection; diffgeo helix/sphere presets; GUI Camel Case / Screaming Snake / Trim Leading Whitespace; `assign_matrix_call_tail8`; wave269 pipeline; **`run_file` stack-overflow fix** (extract `execute_assignment`, route ODE IVP through `assign_matrix_call`).

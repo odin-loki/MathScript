@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-19 (Wave 269 ✅ COMPLETE — **428 CTest suites** on `main`)
+**Updated:** 2026-07-20 (Wave 270 ✅ COMPLETE — **429 CTest suites** on `main`)
 
 ---
 
@@ -504,7 +504,24 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 270+) — deferred
+## Wave 270 — FEM 2D, CFD 2D, specials, stats KDE/bootstrap, GRIA CA/GF2ⁿ/LFSR, CellAI, Axiom, tail9 ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| FEM REPL | mesh2d / stiffness / load / Dirichlet / solve / poisson2d; assign_matrix_call_tail9 |
+| CFD REPL | grid2d / square_pulse_2d / upwind_step_2d / advection2d |
+| Special REPL | voigt, weierstrass_p(+prime), jacobi ratios, struve |
+| Stats REPL | kde optional kernel; bootstrap_ci 1×4 [point, lower, upper, std_error] |
+| GRIA REPL | CA step/lambda/alpha/hamming/divergence/settling; gf2n mul/pow/inv; LFSR step/alpha/maximal |
+| CellAI / Axiom | boltzmann_weights; cell_to_cypha_features; axiom matrix evaluate/fitness |
+| Fix | GF(2ⁿ) degree-aware mul/inv; scalar gf2n/lfsr assignment |
+| Tests | `integration_repl_wave270_pipeline` |
+
+**429 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–270** closed for this incremental batch.
+
+---
+
+## Next (Wave 271+) — deferred
 
 | Item | Notes |
 |------|--------|

@@ -1,6 +1,7 @@
 #include "ms/frameworks/gria/gria.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <map>
 #include <string>
@@ -85,19 +86,44 @@ ComputeClass classify(double alpha) {
 
 namespace gf2n {
 
+namespace {
+
+int poly_degree(uint64_t poly) {
+    if (poly == 0) {
+        return -1;
+    }
+    return 63 - static_cast<int>(std::countl_zero(poly));
+}
+
+void reduce_mod_poly(uint64_t& value, uint64_t poly, int deg) {
+    const uint64_t deg_bit = 1ULL << deg;
+    while (value >= deg_bit) {
+        const int msb = 63 - static_cast<int>(std::countl_zero(value));
+        value ^= poly << (msb - deg);
+    }
+}
+
+} // namespace
+
 uint64_t mul(uint64_t a, uint64_t b, uint64_t poly) {
+    const int deg = poly_degree(poly);
+    if (deg <= 0 || deg >= 63) {
+        return 0;
+    }
+    const uint64_t deg_bit = 1ULL << deg;
+    reduce_mod_poly(a, poly, deg);
     uint64_t result = 0;
     while (b != 0) {
         if (b & 1ULL) {
             result ^= a;
         }
         b >>= 1ULL;
-        const bool carry = (a & (1ULL << 63)) != 0;
         a <<= 1ULL;
-        if (carry) {
+        if (a & deg_bit) {
             a ^= poly;
         }
     }
+    reduce_mod_poly(result, poly, deg);
     return result;
 }
 
@@ -115,7 +141,12 @@ uint64_t pow(uint64_t a, uint64_t exp, uint64_t poly) {
 }
 
 uint64_t inv(uint64_t a, uint64_t poly) {
-    return pow(a, (1ULL << 16) - 2ULL, poly);
+    const int deg = poly_degree(poly);
+    if (a == 0 || deg <= 0 || deg >= 63) {
+        return 0;
+    }
+    // Fermat: a^(2^n - 2) = a^{-1} in GF(2^n) for a != 0.
+    return pow(a, (1ULL << deg) - 2ULL, poly);
 }
 
 std::vector<uint64_t> generate_field(int n) {

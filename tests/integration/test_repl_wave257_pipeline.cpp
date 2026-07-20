@@ -48,9 +48,11 @@ TEST(ReplWave257Pipeline, StatsBootstrapCi) {
     expect_ok(interp, "ci = stats_bootstrap_ci([1; 2; 3; 4; 5; 6; 7; 8; 9; 10])");
     ASSERT_GT(interp.state().matrices.count("ci"), 0u);
     EXPECT_EQ(interp.state().matrices.at("ci").rows(), 1u);
-    EXPECT_EQ(interp.state().matrices.at("ci").cols(), 2u);
-    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 0)));
+    EXPECT_EQ(interp.state().matrices.at("ci").cols(), 4u);
+    EXPECT_NEAR(interp.state().matrices.at("ci")(0, 0), 5.5, 1e-9);
     EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 1)));
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("ci")(0, 2)));
+    EXPECT_GT(interp.state().matrices.at("ci")(0, 3), 0.0);
     expect_contains(interp, "help", "stats_bootstrap_ci(x)");
 }
 
