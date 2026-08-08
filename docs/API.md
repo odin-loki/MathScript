@@ -442,6 +442,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `quantum_schmidt_decomposition(psi,dim_a,dim_b)` / `quantum_anticommutator(A,B)` | Schmidt coeffs + anticommutator (Wave 272) |
 | `izaac_exponential_mechanism` / `mpc_split` / `mpc_reconstruct` / `simulate_gbm_path` / `run_backtest` / `izaac_vrf_keygen` / `izaac_fuzz_mutate` | Izaac DP/MPC/backtest/VRF/fuzz (Wave 272) |
 | `axiom_gria_fitness` / `axiom_evolve` / `gria_dispatch_hint_register` / `gria_dispatch_hint_alpha` | Axiom GRIA + dispatch hints (Wave 272) |
+| `izaac_vrf_prove` / `izaac_vrf_verify` / `izaac_encrypt` / `izaac_decrypt` / `izaac_randn_matrix` | Izaac VRF prove/verify, crypto, randn (Wave 273) |
+| `quantum_schmidt_number` / `quantum_ket_tensor_product` / `quantum_outer` | Schmidt number + ket tensor/outer (Wave 273) |
+| `cypha_nig_mean` / `cypha_nig_variance` | NIG distribution moments (Wave 273) |
+| `theta1_prime` / `jacobi_theta` | Theta function derivatives and Jacobi theta (Wave 273) |
+| `cfd_run_advection_3d(grid,u0,vx,vy,vz,t_end,dt)` | 3D upwind advection to t_end (Wave 273) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

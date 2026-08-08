@@ -7,6 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 273 — izaac VRF prove/verify/crypto, quantum Schmidt number/tensor/outer, Cypha NIG moments, theta specials, CFD advection 3D, tail11) ✅ COMPLETE
+
+Forty-third feature wave after Wave 272. Izaac VRF prove/verify, symmetric encrypt/decrypt, and session randn matrix; quantum Schmidt number, ket tensor product, and outer product; Cypha NIG mean/variance; `theta1_prime` and `jacobi_theta`; `cfd_run_advection_3d`; extended `assign_matrix_call_tail11`; `integration_repl_wave273_pipeline`.
+
+### Added (Wave 273)
+- **Izaac REPL** — `izaac_vrf_prove(key, msg)`; `izaac_vrf_verify(pub, msg, proof)`; `izaac_encrypt` / `izaac_decrypt`; `izaac_randn_matrix(rows, cols)`.
+- **Quantum REPL** — `quantum_schmidt_number(psi,dim_a,dim_b)`; `quantum_ket_tensor_product(psi1,psi2)`; `quantum_outer(ket,bra)`.
+- **Cypha REPL** — `cypha_nig_mean(mu,alpha,beta,delta)`; `cypha_nig_variance(mu,alpha,beta,delta)`.
+- **Special REPL** — `theta1_prime(z,q)`; `jacobi_theta(n,z,tau)`.
+- **CFD REPL** — `cfd_run_advection_3d(grid,u0,vx,vy,vz,t_end,dt)`.
+- **Tests** — `integration_repl_wave273_pipeline`; unit coverage for wave273 izaac/quantum/cypha/special/CFD.
+
+### Docs (Wave 273)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 273 sync; **432** CTest suites.
+
+**432 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-08-08 (Wave 272 — CFD mass 3D, izaac MPC/backtest/VRF, axiom GRIA/evolve, quantum Schmidt/anticommutator, GRIA dispatch, ellip_d, tail11) ✅ COMPLETE
 
 Forty-second feature wave after Wave 271. CFD integrated mass 3D; izaac exponential mechanism, MPC split/reconstruct, GBM/backtest, VRF keygen, fuzz mutate; axiom GRIA fitness and parameterized evolve; quantum Schmidt decomposition and anticommutator; GRIA dispatch hints; `ellip_d`; `assign_matrix_call_tail11`; `integration_repl_wave272_pipeline`.

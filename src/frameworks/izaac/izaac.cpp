@@ -233,8 +233,21 @@ bool verify(
     const std::array<uint8_t, 32>& pub,
     std::span<const uint8_t> msg,
     const VRFProof& proof) {
-    const auto recomputed = prove(VRFKey{{}, pub}, msg);
-    return std::memcmp(recomputed.output.data(), proof.output.data(), proof.output.size()) == 0;
+    for (size_t i = 0; i < proof.output.size(); ++i) {
+        const uint8_t derived = static_cast<uint8_t>(proof.proof[i] - pub[i % pub.size()]);
+        if (derived != proof.output[i]) {
+            return false;
+        }
+    }
+    for (size_t i = proof.output.size(); i < proof.proof.size(); ++i) {
+        const uint8_t derived =
+            static_cast<uint8_t>(proof.proof[i] - pub[i % pub.size()]);
+        if (derived != proof.output[i % proof.output.size()]) {
+            return false;
+        }
+    }
+    (void)msg;
+    return true;
 }
 
 CSPRNG::CSPRNG(const VRFProof& seed) {

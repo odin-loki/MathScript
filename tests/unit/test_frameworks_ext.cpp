@@ -85,7 +85,7 @@ TEST(FrameworksExtTest, izaac_vrf_and_csprng) {
     const auto proof = izaac::prove(key, msg);
     const auto reproof = izaac::prove(key, msg);
     EXPECT_EQ(std::memcmp(proof.output.data(), reproof.output.data(), proof.output.size()), 0);
-    (void)izaac::verify(key.public_key, msg, proof);
+    EXPECT_TRUE(izaac::verify(key.public_key, msg, proof));
 
     izaac::CSPRNG rng(proof);
     std::array<uint8_t, 16> buf{};

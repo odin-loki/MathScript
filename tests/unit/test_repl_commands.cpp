@@ -10051,3 +10051,96 @@ TEST(ReplCommandsTest, wave272_fem3d_pipeline) {
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
     EXPECT_EQ(interp.state().matrices.at("u3").rows(), interp.state().matrices.at("K3").rows());
 }
+
+TEST(ReplCommandsTest, wave273_special_theta) {
+    Interpreter interp;
+    expect_contains(interp, "help", "theta1_prime(z,q)");
+    expect_contains(interp, "help", "jacobi_theta(n,z,tau)");
+
+    expect_ok(interp, "tp = theta1_prime(0.2, 0.3)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("tp")));
+    expect_ok(interp, "jt = jacobi_theta(1, 0.2, 0.5)");
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("jt")));
+}
+
+TEST(ReplCommandsTest, wave273_cypha_nig_moments) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cypha_nig_mean");
+    expect_contains(interp, "help", "cypha_nig_variance");
+
+    expect_ok(interp, "cypha_nig_mean(0.5, 1.2, 0.3, 0.8)");
+    expect_ok(interp, "cypha_nig_variance(0.5, 1.2, 0.3, 0.8)");
+}
+
+TEST(ReplCommandsTest, wave273_quantum_schmidt_tensor_outer) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_schmidt_number");
+    expect_contains(interp, "help", "quantum_ket_tensor_product");
+    expect_contains(interp, "help", "quantum_outer");
+
+    expect_ok(interp, "psi = [1; 0; 0; 1]");
+    expect_ok(interp, "sn = quantum_schmidt_number(psi, 2, 2)");
+    EXPECT_GE(interp.state().scalars.at("sn"), 1.0);
+
+    expect_ok(interp, "a = [1; 0]");
+    expect_ok(interp, "b = [0; 1]");
+    expect_ok(interp, "tp = quantum_ket_tensor_product(a, b)");
+    EXPECT_EQ(interp.state().matrices.at("tp").rows(), 4u);
+    expect_ok(interp, "rho = quantum_outer(a, b)");
+    EXPECT_EQ(interp.state().matrices.at("rho").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave273_izaac_vrf_crypto_randn) {
+    Interpreter interp;
+    expect_contains(interp, "help", "izaac_vrf_prove");
+    expect_contains(interp, "help", "izaac_encrypt");
+    expect_contains(interp, "help", "izaac_randn_matrix");
+
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "vrf = izaac_vrf_keygen()");
+    expect_ok(interp, "msg = [65, 66, 67]");
+    expect_ok(interp, "proof = izaac_vrf_prove(vrf, msg)");
+
+    const auto& vrf = interp.state().matrices.at("vrf");
+    std::ostringstream pub_cmd;
+    pub_cmd << "pub = [";
+    for (size_t j = 0; j < 32; ++j) {
+        if (j > 0) {
+            pub_cmd << ", ";
+        }
+        pub_cmd << vrf(1, j);
+    }
+    pub_cmd << "]";
+    expect_ok(interp, pub_cmd.str());
+    expect_ok(interp, "vok = izaac_vrf_verify(pub, msg, proof)");
+    EXPECT_NEAR(interp.state().scalars.at("vok"), 1.0, 1e-12);
+
+    std::ostringstream key_cmd;
+    key_cmd << "key32 = [";
+    for (size_t j = 0; j < 32; ++j) {
+        if (j > 0) {
+            key_cmd << ", ";
+        }
+        key_cmd << vrf(0, j);
+    }
+    key_cmd << "]";
+    expect_ok(interp, key_cmd.str());
+    expect_ok(interp, "ct = izaac_encrypt(msg, key32)");
+    expect_ok(interp, "pt = izaac_decrypt(ct, key32)");
+    EXPECT_EQ(interp.state().matrices.at("pt").rows(), 3u);
+
+    expect_ok(interp, "rn = izaac_randn_matrix(2, 3)");
+    EXPECT_EQ(interp.state().matrices.at("rn").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("rn").cols(), 3u);
+}
+
+TEST(ReplCommandsTest, wave273_cfd_run_advection_3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cfd_run_advection_3d");
+
+    expect_ok(interp, "g3 = cfd_grid3d(0, 1, 0, 1, 0, 1, 4, 4, 4)");
+    expect_ok(interp, "u0 = cfd_square_pulse_3d(g3, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5)");
+    expect_ok(interp, "uf = cfd_run_advection_3d(g3, u0, 0.2, 0, 0, 0.01, 0.001)");
+    ASSERT_GT(interp.state().matrices.count("uf"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("uf").rows(), 16u);
+}

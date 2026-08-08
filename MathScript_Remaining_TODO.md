@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-08-08 (Wave 272 ✅ COMPLETE — **431 CTest suites** on `main`)
+**Updated:** 2026-08-08 (Wave 273 ✅ COMPLETE — **432 CTest suites** on `main`)
 
 ---
 
@@ -552,7 +552,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 273+) — deferred
+## Wave 273 — izaac VRF prove/verify/crypto, quantum Schmidt number/tensor/outer, Cypha NIG moments, theta specials, CFD advection 3D, tail11 ✅ COMPLETE
+
+| Area | REPL bindings |
+|------|----------------|
+| Izaac | `izaac_vrf_prove`, `izaac_vrf_verify`, `izaac_encrypt`, `izaac_decrypt`, `izaac_randn_matrix` |
+| Quantum | `quantum_schmidt_number`, `quantum_ket_tensor_product`, `quantum_outer` |
+| Cypha | `cypha_nig_mean`, `cypha_nig_variance` |
+| Special | `theta1_prime`, `jacobi_theta` |
+| CFD | `cfd_run_advection_3d` |
+| Dispatch | extended `assign_matrix_call_tail11` |
+| Tests | `integration_repl_wave273_pipeline`; izaac/quantum/cypha/special/CFD unit coverage |
+
+**432 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–273** closed for this incremental batch.
+
+---
+
+## Next (Wave 274+) — deferred
 
 | Item | Notes |
 |------|--------|

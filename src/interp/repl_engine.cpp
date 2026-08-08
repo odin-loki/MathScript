@@ -10088,6 +10088,251 @@ Result<Matrix<double>> eval_izaac_fuzz_mutate(const Matrix<double>& input_m, siz
     return vector_to_column(out_vals);
 }
 
+Result<izaac::VRFKey> vrf_key_from_matrix(const Matrix<double>& m, const char* fn) {
+    if (m.rows() < 2 || m.cols() < 32) {
+        return std::unexpected(DomainError{fn, "expected 2x32 VRF key matrix from izaac_vrf_keygen"});
+    }
+    izaac::VRFKey key{};
+    for (size_t i = 0; i < 32; ++i) {
+        const double priv = m(0, i);
+        const double pub = m(1, i);
+        if (priv != std::floor(priv) || pub != std::floor(pub) || priv < 0.0 || priv > 255.0 ||
+            pub < 0.0 || pub > 255.0) {
+            return std::unexpected(DomainError{fn, "expected byte values in [0,255] for key rows"});
+        }
+        key.private_key[i] = static_cast<uint8_t>(priv);
+        key.public_key[i] = static_cast<uint8_t>(pub);
+    }
+    return key;
+}
+
+Result<std::array<uint8_t, 32>> key32_from_matrix(const Matrix<double>& m, const char* fn) {
+    std::vector<double> flat;
+    flat.reserve(m.rows() * m.cols());
+    for (size_t i = 0; i < m.rows(); ++i) {
+        for (size_t j = 0; j < m.cols(); ++j) {
+            flat.push_back(m(i, j));
+        }
+    }
+    if (flat.size() != 32) {
+        return std::unexpected(DomainError{fn, "expected 32-byte key matrix"});
+    }
+    std::array<uint8_t, 32> key{};
+    for (size_t i = 0; i < 32; ++i) {
+        if (flat[i] != std::floor(flat[i]) || flat[i] < 0.0 || flat[i] > 255.0) {
+            return std::unexpected(DomainError{fn, "expected byte values in [0,255] for key"});
+        }
+        key[i] = static_cast<uint8_t>(flat[i]);
+    }
+    return key;
+}
+
+Result<std::vector<uint8_t>> byte_vector_from_matrix(const Matrix<double>& m, const char* fn) {
+    auto bytes_vec = matrix_to_coeff_vector(m, fn);
+    if (!bytes_vec) {
+        return std::unexpected(bytes_vec.error());
+    }
+    if (bytes_vec->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty byte vector"});
+    }
+    std::vector<uint8_t> out;
+    out.reserve(bytes_vec->size());
+    for (double v : *bytes_vec) {
+        if (v != std::floor(v) || v < 0.0 || v > 255.0) {
+            return std::unexpected(DomainError{fn, "expected byte values in [0,255]"});
+        }
+        out.push_back(static_cast<uint8_t>(v));
+    }
+    return out;
+}
+
+Result<Matrix<double>> pack_vrf_proof(const izaac::VRFProof& proof) {
+    std::vector<uint8_t> packed;
+    packed.reserve(proof.proof.size() + proof.output.size());
+    packed.insert(packed.end(), proof.proof.begin(), proof.proof.end());
+    packed.insert(packed.end(), proof.output.begin(), proof.output.end());
+    return bytes_to_matrix_col(packed);
+}
+
+Result<izaac::VRFProof> vrf_proof_from_matrix(const Matrix<double>& m, const char* fn) {
+    auto bytes = byte_vector_from_matrix(m, fn);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    if (bytes->size() != 144) {
+        return std::unexpected(DomainError{fn, "expected 144-byte packed VRF proof matrix"});
+    }
+    izaac::VRFProof proof{};
+    for (size_t i = 0; i < 80; ++i) {
+        proof.proof[i] = (*bytes)[i];
+    }
+    for (size_t i = 0; i < 64; ++i) {
+        proof.output[i] = (*bytes)[80 + i];
+    }
+    return proof;
+}
+
+Result<Matrix<double>> pack_izaac_ciphertext(const izaac::crypto::CipherText& ct) {
+    std::vector<uint8_t> packed = ct.data;
+    packed.insert(packed.end(), ct.tag.begin(), ct.tag.end());
+    return bytes_to_matrix_col(packed);
+}
+
+Result<izaac::crypto::CipherText> izaac_ciphertext_from_matrix(const Matrix<double>& m,
+                                                               const char* fn) {
+    auto bytes = byte_vector_from_matrix(m, fn);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    if (bytes->size() < 48) {
+        return std::unexpected(DomainError{fn, "expected ciphertext with at least 48 bytes"});
+    }
+    izaac::crypto::CipherText ct{};
+    ct.data.assign(bytes->begin(), bytes->end() - 32);
+    for (size_t i = 0; i < 32; ++i) {
+        ct.tag[i] = (*bytes)[bytes->size() - 32 + i];
+    }
+    return ct;
+}
+
+Result<Matrix<double>> eval_izaac_vrf_prove(const Matrix<double>& key_m,
+                                            const Matrix<double>& msg_m) {
+    constexpr const char* fn = "izaac_vrf_prove";
+    auto key = vrf_key_from_matrix(key_m, fn);
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto msg = byte_vector_from_matrix(msg_m, fn);
+    if (!msg) {
+        return std::unexpected(msg.error());
+    }
+    return pack_vrf_proof(izaac::prove(*key, *msg));
+}
+
+Result<double> eval_izaac_vrf_verify(const Matrix<double>& pub_m, const Matrix<double>& msg_m,
+                                     const Matrix<double>& proof_m) {
+    constexpr const char* fn = "izaac_vrf_verify";
+    auto pub_key = key32_from_matrix(pub_m, fn);
+    if (!pub_key) {
+        return std::unexpected(pub_key.error());
+    }
+    auto msg = byte_vector_from_matrix(msg_m, fn);
+    if (!msg) {
+        return std::unexpected(msg.error());
+    }
+    auto proof = vrf_proof_from_matrix(proof_m, fn);
+    if (!proof) {
+        return std::unexpected(proof.error());
+    }
+    return izaac::verify(*pub_key, *msg, *proof) ? 1.0 : 0.0;
+}
+
+Result<Matrix<double>> eval_izaac_encrypt(const Matrix<double>& plaintext_m,
+                                          const Matrix<double>& key_m) {
+    constexpr const char* fn = "izaac_encrypt";
+    auto plaintext = byte_vector_from_matrix(plaintext_m, fn);
+    if (!plaintext) {
+        return std::unexpected(plaintext.error());
+    }
+    auto key = key32_from_matrix(key_m, fn);
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    return pack_izaac_ciphertext(izaac::crypto::encrypt(*plaintext, *key));
+}
+
+Result<Matrix<double>> eval_izaac_decrypt(const Matrix<double>& ciphertext_m,
+                                          const Matrix<double>& key_m) {
+    constexpr const char* fn = "izaac_decrypt";
+    auto ct = izaac_ciphertext_from_matrix(ciphertext_m, fn);
+    if (!ct) {
+        return std::unexpected(ct.error());
+    }
+    auto key = key32_from_matrix(key_m, fn);
+    if (!key) {
+        return std::unexpected(key.error());
+    }
+    auto plain = izaac::crypto::decrypt(*ct, *key);
+    if (!plain) {
+        return std::unexpected(plain.error());
+    }
+    return bytes_to_matrix_col(*plain);
+}
+
+Result<Matrix<double>> eval_izaac_randn_matrix(size_t rows, size_t cols) {
+    constexpr const char* fn = "izaac_randn_matrix";
+    if (rows < 1 || cols < 1) {
+        return std::unexpected(DomainError{fn, "expected positive rows and cols"});
+    }
+    auto rng_check = require_session_rng(fn);
+    if (!rng_check) {
+        return std::unexpected(rng_check.error());
+    }
+    return izaac::randn_matrix(rows, cols);
+}
+
+Result<double> eval_quantum_schmidt_number(const Matrix<double>& psi_m, int dim_a, int dim_b) {
+    auto psi = matrix_to_ket(psi_m, "quantum_schmidt_number");
+    if (!psi) {
+        return std::unexpected(psi.error());
+    }
+    return static_cast<double>(quantum::schmidt_number(*psi, dim_a, dim_b));
+}
+
+Result<Matrix<double>> eval_quantum_ket_tensor_product(const Matrix<double>& psi1_m,
+                                                       const Matrix<double>& psi2_m) {
+    auto psi1 = matrix_to_ket(psi1_m, "quantum_ket_tensor_product");
+    if (!psi1) {
+        return std::unexpected(psi1.error());
+    }
+    auto psi2 = matrix_to_ket(psi2_m, "quantum_ket_tensor_product");
+    if (!psi2) {
+        return std::unexpected(psi2.error());
+    }
+    return ket_to_column_matrix(quantum::tensor_product_states(*psi1, *psi2));
+}
+
+Result<Matrix<double>> eval_quantum_outer(const Matrix<double>& ket_m,
+                                          const Matrix<double>& bra_m) {
+    auto ket = matrix_to_ket(ket_m, "quantum_outer");
+    if (!ket) {
+        return std::unexpected(ket.error());
+    }
+    auto bra = matrix_to_ket(bra_m, "quantum_outer");
+    if (!bra) {
+        return std::unexpected(bra.error());
+    }
+    return density_matrix_to_matrix(quantum::outer(*ket, *bra));
+}
+
+Result<Matrix<double>> eval_cfd_run_advection_3d(const Matrix<double>& grid_m,
+                                                 const Matrix<double>& u_m, double vx, double vy,
+                                                 double vz, double t_end, double dt) {
+    constexpr const char* fn = "cfd_run_advection_3d";
+    auto grid = cfd_grid3d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    auto u0 = matrix_to_grid3d(u_m, grid->nx, grid->ny, grid->nz, fn);
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    if (t_end <= 0.0 || dt <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    const std::size_t n_cells = grid->nx * grid->ny * grid->nz;
+    const auto vx_field = cfd::constant_velocity(n_cells, vx);
+    const auto vy_field = cfd::constant_velocity(n_cells, vy);
+    const auto vz_field = cfd::constant_velocity(n_cells, vz);
+    const auto result = cfd::run_advection_3d(
+        *u0, vx_field, vy_field, vz_field, t_end, dt, grid->dx, grid->dy, grid->dz);
+    if (result.u.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return grid3d_to_matrix(result.u.back());
+}
+
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall");
     if (!G) {
@@ -13281,8 +13526,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "control_zeros" || callee == "control_step_info" ||
            callee == "control_nyquist" || callee == "control_ctrb" ||
            callee == "control_obsv" || callee == "control_ctrb_gram" ||
-           callee == "control_obsv_gram" || callee == "quantum_commutator" ||
+           callee == "control_obsv_gram" ||            callee == "quantum_commutator" ||
            callee == "quantum_anticommutator" ||
+           callee == "quantum_ket_tensor_product" || callee == "quantum_outer" ||
            callee == "poly_add" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "quantum_tensor_product" ||
            callee == "ml_mat_mul" ||
@@ -13381,7 +13627,8 @@ bool try_parse_scalar_dual_matrix_call_assignment(const std::string& line,
 }
 
 bool is_scalar_triple_matrix_call_callee(const std::string& callee) {
-    return callee == "stats_partial_correlation" || callee == "stats_weighted_correlation";
+    return callee == "stats_partial_correlation" || callee == "stats_weighted_correlation" ||
+           callee == "izaac_vrf_verify";
 }
 
 bool try_parse_scalar_triple_matrix_call_assignment(const std::string& line,
@@ -16720,6 +16967,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "signal_instantaneous_phase" || fn == "signal_instantaneous_freq" ||
             fn == "signal_unwrap" ||
             fn == "quantum_commutator" || fn == "quantum_tensor_product" ||
+            fn == "quantum_ket_tensor_product" || fn == "quantum_outer" ||
             fn == "signal_hamming" || fn == "signal_hanning" || fn == "signal_blackman" ||
             fn == "signal_parzen" || fn == "signal_triangular" ||
             fn == "cplx_blaschke_product" ||
@@ -16802,6 +17050,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "quantum_expectation" || fn == "quantum_expectation_dm" ||
             fn == "quantum_inner" || fn == "quantum_entanglement_entropy" ||
             fn == "quantum_schmidt_rank" || fn == "quantum_uncertainty" ||
+           fn == "quantum_schmidt_number" ||
             fn == "quantum_grover_optimal_iterations" || fn == "quantum_purity" ||
             fn == "quantum_wigner" || fn == "quantum_husimi" ||
             fn == "quantum_partial_trace" || fn == "quantum_schrodinger" ||
@@ -18973,6 +19222,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "quantum_schmidt_decomposition" ||
            callee == "mpc_split" || callee == "simulate_gbm_path" || callee == "run_backtest" ||
            callee == "izaac_vrf_keygen" || callee == "izaac_fuzz_mutate" ||
+           callee == "izaac_vrf_prove" || callee == "izaac_encrypt" ||
+           callee == "izaac_decrypt" || callee == "izaac_randn_matrix" ||
+           callee == "cfd_run_advection_3d" ||
            callee == "gria_divergence_trajectory";
 }
 
@@ -19192,6 +19444,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 1 || arity == 2;
     }
     if (callee == "quantum_commutator") {
+        return arity == 2;
+    }
+    if (callee == "quantum_ket_tensor_product" || callee == "quantum_outer") {
         return arity == 2;
     }
     if (callee == "diffgeo_surface_normal_sphere") {
@@ -19466,6 +19721,15 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "izaac_fuzz_mutate") {
         return arity == 1 || arity == 2;
+    }
+    if (callee == "izaac_vrf_prove" || callee == "izaac_encrypt" || callee == "izaac_decrypt") {
+        return arity == 2;
+    }
+    if (callee == "izaac_randn_matrix") {
+        return arity == 2;
+    }
+    if (callee == "cfd_run_advection_3d") {
+        return arity == 7;
     }
     if (callee == "ode_euler" || callee == "ode_rk4" || callee == "ode_midpoint" ||
         callee == "ode_backward_euler" || callee == "ode_adams_bashforth2" ||
@@ -20394,6 +20658,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "ellip_e_inc") {
             return ellip_e_inc(args[0], args[1]);
         }
+        if (fn == "theta1_prime") {
+            return theta1_prime(args[0], args[1]);
+        }
         if (fn == "jacobi_cn") {
             return jacobi_cn(args[0], args[1]);
         }
@@ -20775,6 +21042,13 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 3 && fn == "numthy_discrete_log") {
         return eval_numthy_discrete_log(args[0], args[1], args[2]);
+    }
+    if (args.size() == 3 && fn == "jacobi_theta") {
+        const int n = static_cast<int>(args[0]);
+        if (args[0] != n) {
+            return std::unexpected(DomainError{"jacobi_theta", "expected integer n"});
+        }
+        return jacobi_theta(n, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "prob_norm_cdf") {
         return norm_cdf(args[0], args[1], args[2]);
@@ -27544,6 +27818,84 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             max_edits = static_cast<size_t>(edits_i);
         }
         result = eval_izaac_fuzz_mutate(*input, max_edits);
+    } else if (assign.callee == "izaac_vrf_prove" && assign.args.size() == 2) {
+        auto key = resolve_operand(assign.args[0]);
+        if (!key) {
+            return std::unexpected(key.error());
+        }
+        auto msg = resolve_operand(assign.args[1]);
+        if (!msg) {
+            return std::unexpected(msg.error());
+        }
+        result = eval_izaac_vrf_prove(*key, *msg);
+    } else if (assign.callee == "izaac_encrypt" && assign.args.size() == 2) {
+        auto plain = resolve_operand(assign.args[0]);
+        if (!plain) {
+            return std::unexpected(plain.error());
+        }
+        auto key = resolve_operand(assign.args[1]);
+        if (!key) {
+            return std::unexpected(key.error());
+        }
+        result = eval_izaac_encrypt(*plain, *key);
+    } else if (assign.callee == "izaac_decrypt" && assign.args.size() == 2) {
+        auto ct = resolve_operand(assign.args[0]);
+        if (!ct) {
+            return std::unexpected(ct.error());
+        }
+        auto key = resolve_operand(assign.args[1]);
+        if (!key) {
+            return std::unexpected(key.error());
+        }
+        result = eval_izaac_decrypt(*ct, *key);
+    } else if (assign.callee == "izaac_randn_matrix" && assign.args.size() == 2) {
+        auto rows_val = parse_scalar_arg(assign.args[0], "izaac_randn_matrix");
+        if (!rows_val) {
+            return std::unexpected(rows_val.error());
+        }
+        auto cols_val = parse_scalar_arg(assign.args[1], "izaac_randn_matrix");
+        if (!cols_val) {
+            return std::unexpected(cols_val.error());
+        }
+        auto rows_i = parse_positive_size_arg(*rows_val, "izaac_randn_matrix", "expected positive integer rows");
+        if (!rows_i) {
+            return std::unexpected(rows_i.error());
+        }
+        auto cols_i = parse_positive_size_arg(*cols_val, "izaac_randn_matrix", "expected positive integer cols");
+        if (!cols_i) {
+            return std::unexpected(cols_i.error());
+        }
+        result = eval_izaac_randn_matrix(*rows_i, *cols_i);
+    } else if (assign.callee == "cfd_run_advection_3d" && assign.args.size() == 7) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto u = resolve_operand(assign.args[1]);
+        if (!u) {
+            return std::unexpected(u.error());
+        }
+        auto vx = parse_scalar_arg(assign.args[2], "cfd_run_advection_3d");
+        if (!vx) {
+            return std::unexpected(vx.error());
+        }
+        auto vy = parse_scalar_arg(assign.args[3], "cfd_run_advection_3d");
+        if (!vy) {
+            return std::unexpected(vy.error());
+        }
+        auto vz = parse_scalar_arg(assign.args[4], "cfd_run_advection_3d");
+        if (!vz) {
+            return std::unexpected(vz.error());
+        }
+        auto t_end = parse_scalar_arg(assign.args[5], "cfd_run_advection_3d");
+        if (!t_end) {
+            return std::unexpected(t_end.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[6], "cfd_run_advection_3d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        result = eval_cfd_run_advection_3d(*grid, *u, *vx, *vy, *vz, *t_end, *dt);
     }
 
     return result;
@@ -30117,6 +30469,13 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 }
                 return assign_scalar(triple_call.target, *value);
             }
+            if (triple_call.callee == "izaac_vrf_verify") {
+                auto value = eval_izaac_vrf_verify(*arg_a_m, *arg_b_m, *arg_c_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(triple_call.target, *value);
+            }
             return std::unexpected(
                 DomainError{"assign", "unsupported scalar triple matrix call"});
         }
@@ -30627,6 +30986,28 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             }
             if (matrix_dual_call.callee == "quantum_anticommutator") {
                 auto value = eval_quantum_anticommutator(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "quantum_ket_tensor_product") {
+                auto value = eval_quantum_ket_tensor_product(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "quantum_outer") {
+                auto value = eval_quantum_outer(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -31567,6 +31948,37 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "quantum_schmidt_rank", "expected positive integer dim_a and dim_b"});
                 }
                 auto value = eval_quantum_schmidt_rank(*psi_m, dim_a, dim_b);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "quantum_schmidt_number") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "quantum_schmidt_number",
+                        "expected quantum_schmidt_number(psi, dim_a, dim_b)"});
+                }
+                auto psi_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!psi_m) {
+                    return std::unexpected(psi_m.error());
+                }
+                double dim_a_d = 0.0;
+                double dim_b_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), dim_a_d) ||
+                    !parse_number(trim_copy((*call_args)[2]), dim_b_d)) {
+                    return std::unexpected(DomainError{
+                        "quantum_schmidt_number",
+                        "expected quantum_schmidt_number(psi, dim_a, dim_b)"});
+                }
+                const int dim_a = static_cast<int>(dim_a_d);
+                const int dim_b = static_cast<int>(dim_b_d);
+                if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+                    return std::unexpected(DomainError{
+                        "quantum_schmidt_number", "expected positive integer dim_a and dim_b"});
+                }
+                auto value = eval_quantum_schmidt_number(*psi_m, dim_a, dim_b);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -33441,6 +33853,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = cfd_upwind_step_2d(u,vx,vy,dt,dx,dy[,bc_x,bc_y]) one 2D FVM upwind advection step\n"
             "  name = cfd_integrated_mass_2d(u,dx,dy) discrete mass integral sum(u)*dx*dy\n"
             "  name = cfd_integrated_mass_3d(grid,u) discrete 3D mass integral from packed grid\n"
+            "  name = cfd_run_advection_3d(grid,u0,vx,vy,vz,t_end,dt) 3D upwind advection to t_end\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
             "  crypto_aes128_decrypt_block(key_hex,block_hex) AES-128 ECB block decrypt (hex I/O)\n"
             "  crypto_aes256_encrypt_block(key_hex,block_hex) AES-256 ECB block encrypt (hex I/O)\n"
@@ -33635,6 +34048,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_eigenspectrum(H) Hermitian eigenvalues as Nx1 column\n"
             "  name = quantum_ground_state(H) ground-state ket from Hermitian H\n"
             "  name = quantum_schmidt_decomposition(psi,dim_a,dim_b) Schmidt coefficients column\n"
+            "  name = quantum_ket_tensor_product(psi1,psi2) tensor product of Nx1 ket vectors\n"
+            "  name = quantum_outer(ket,bra) outer product |ket><bra| as NxN density matrix\n"
             "  name = quantum_anticommutator(A,B) anticommutator {A,B} of NxN operators\n"
             "  name = finance_bs_call(S,K,T,r,sigma) Black-Scholes call price\n"
             "  name = finance_bs_put(S,K,T,r,sigma) Black-Scholes put price\n"
@@ -33865,6 +34280,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_trace_distance(rho,sigma) trace distance between NxN density matrices\n"
             "  name = quantum_entanglement_entropy(psi,dim_a,dim_b) entanglement entropy of Nx1 state\n"
             "  name = quantum_schmidt_rank(psi,dim_a,dim_b) Schmidt rank of bipartite Nx1 state\n"
+            "  name = quantum_schmidt_number(psi,dim_a,dim_b) Schmidt number of bipartite Nx1 state\n"
             "  name = quantum_uncertainty(psi,A,B) uncertainty product Delta(A)*Delta(B)\n"
             "  name = quantum_grover_optimal_iterations(n_qubits,n_marked) optimal Grover iterations\n"
             "  name = quantum_wigner(rho,x,p) Wigner quasi-probability at phase-space point (x,p)\n"
@@ -33981,7 +34397,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  control_is_controllable(A,B), control_is_observable(A,C), numthy_extended_gcd(a,b), numthy_crt(r,m)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
             "  finance_bs_call(S,K,T,r,sigma), finance_bs_put(S,K,T,r,sigma), finance_bs_gamma(S,K,T,r,sigma), finance_bs_vega(S,K,T,r,sigma), finance_bs_delta(S,K,T,r,sigma,call), finance_bs_implied_vol(price,S,K,T,r,call), finance_bs_theta(S,K,T,r,sigma,call), finance_bs_rho(S,K,T,r,sigma,call), finance_binomial_call(S,K,T,r,sigma,steps), finance_binomial_put(S,K,T,r,sigma,steps), finance_geo_asian_call(S,K,T,r,sigma,n_fixings), finance_geo_asian_put(S,K,T,r,sigma,n_fixings), finance_bond_price(c,y,n,fv), finance_bond_duration(c,y,n), finance_bond_modified_duration(c,y,n), finance_bond_convexity(c,y,n), finance_bond_ytm(price,c,n), finance_compound(principal,rate,n_periods,compounds_per_period), finance_continuous_compound(principal,rate,t), finance_pv(rate,n,pmt,fv), finance_fv_annuity(rate,n,pmt,pv0), finance_pmt_annuity(rate,n,pv0,fv), finance_npv(rate,cf), finance_irr(cf), finance_sharpe(r), finance_sortino(r), finance_var(r), finance_cvar(r), finance_historical_var(returns,confidence), finance_historical_cvar(returns,confidence), finance_treynor(returns,risk_free,beta), finance_information_ratio(returns,benchmark), finance_merton_distance_to_default(V,sigma_v,D,r,T), finance_merton_implied_asset_params(E,sigma_E,D,r,T), finance_max_drawdown(equity), finance_kelly_fraction(p,b), finance_portfolio_return(weights,returns), finance_portfolio_variance(weights,cov), finance_min_variance_portfolio(cov), finance_max_sharpe_portfolio(cov,mu,risk_free), finance_efficient_frontier(cov,mu,target_return), finance_max_sharpe(cov,mu,risk_free), finance_bl_implied_returns(cov,w_mkt,delta), finance_bl_posterior_returns(pi,cov,P,Q,tau), finance_bl_posterior_returns_default_omega(pi,cov,P,Q,tau), finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho), finance_capm(risk_free,beta,market_return), finance_forward_rate(r1,t1,r2,t2), finance_black76(F,K,T,r,sigma,call), finance_bachelier_call(F,K,T,r,sigma), finance_bachelier_put(F,K,T,r,sigma), finance_vasicek_bond_price(r,a,b,sigma,tau), finance_cir_bond_price(r,a,b,sigma,tau), finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american), finance_digital_option(S,K,T,r,sigma,call,payout), finance_american_option(S,K,T,r,sigma,call,steps), finance_mc_european_call(S,K,T,r,sigma,n_paths,seed), finance_mc_european_put(S,K,T,r,sigma,n_paths,seed), finance_mc_asian_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_asian_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_call(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_floating_put(S,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_call(S,K,T,r,sigma,n_paths,n_steps,seed), finance_mc_lookback_fixed_put(S,K,T,r,sigma,n_paths,n_steps,seed), finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up), poly_bernstein(n,i,x)\n"
-            "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_wigner(rho,x,p), quantum_husimi(rho,alpha_re,alpha_im), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
+            "  quantum_von_neumann_entropy(rho), quantum_purity(rho), quantum_concurrence(rho), quantum_fidelity(rho,sigma), quantum_commutator(A,B), quantum_tensor_product(A,B), quantum_ket_tensor_product(psi1,psi2), quantum_outer(ket,bra), quantum_expectation_dm(rho,op), quantum_expectation(psi,A), quantum_inner(bra,ket), quantum_trace_distance(rho,sigma), quantum_entanglement_entropy(psi,dim_a,dim_b), quantum_schmidt_rank(psi,dim_a,dim_b), quantum_schmidt_number(psi,dim_a,dim_b), quantum_uncertainty(psi,A,B), quantum_grover_optimal_iterations(n_qubits,n_marked), quantum_wigner(rho,x,p), quantum_husimi(rho,alpha_re,alpha_im), quantum_partial_trace(rho,d1,d2,subsystem), quantum_schrodinger(H,psi0,t0,t1,n_steps), quantum_schrodinger_final(H,psi0,t0,t1,n_steps), quantum_time_evolution(H,t)\n"
             "  info_entropy(p), info_mutual_info(joint), info_blahut_arimoto(W), info_channel_capacity(W), info_channel_capacity_input(W), info_normalized_entropy(p), info_joint_entropy(joint,rows,cols), info_conditional_entropy(joint,rows,cols), info_sample_entropy(x,m,r), info_lz_complexity(seq), info_redundancy(p), info_efficiency(p), info_source_coding_rate(p), info_kl_divergence(p,q), info_js_divergence(p,q), info_cross_entropy(p,q), info_tv_distance(p,q), info_hellinger_dist(p,q), info_renyi_entropy(alpha,p), info_tsallis_entropy(q,p), info_channel_capacity_bsc(p_error), info_channel_capacity_bec(epsilon), info_differential_entropy_gaussian(sigma), info_differential_entropy_uniform(a,b), info_rate_distortion_gaussian(variance,distortion), info_shannon_hartley(bandwidth_hz,snr_linear), stats_correlation(x,y), stats_spearman(x,y), stats_kendall(x,y), stats_partial_correlation(x,y,z), stats_weighted_mean(x,w), stats_weighted_variance(x,w), stats_weighted_correlation(x,y,w), stats_trimmed_mean(x,frac), stats_mean(x), stats_median(x), stats_stddev(x), stats_skewness(x), stats_kurtosis(x), stats_var(x), stats_percentile(x,p), stats_mode(x), stats_geometric_mean(x), stats_harmonic_mean(x), stats_rms(x), stats_mad(x), stats_iqr(x), stats_ttest(x,mu), stats_ztest(x,mu,sigma), stats_ks_norm(x,mu,sigma), stats_acf(x,max_lag), stats_two_sample_ttest(a,b), stats_chi2_gof(observed,expected), stats_shapiro_wilk(x), stats_mann_whitney_u(a,b), stats_one_way_anova(G), stats_wilcoxon_signed_rank(x,y), signal_moving_average(x,window), signal_upsample(x,n), signal_downsample(x,n), signal_decimate(x,q), signal_interpolate(x,p), signal_resample(x,p,q), signal_savgol(x,window_length,polyorder), signal_median_filter(x,window_length), signal_lowpass(x,cutoff,fs), signal_butterworth(x,cutoff,fs), signal_highpass(x,cutoff,fs), signal_bandpass(x,low,high,fs), signal_cheby1(order,rp_db,cutoff,fs[,type]), signal_cheby2(order,rs_db,cutoff,fs[,type]), signal_firwin(n_taps,cutoff[,window]), signal_firwin_highpass(n_taps,cutoff[,window]), signal_periodogram(x,fs), signal_welch_psd(x,fs,nperseg), signal_coherence(x,y,fs,nperseg), signal_lms(x,d,filter_length,mu), signal_lms_weights(x,d,filter_length,mu), signal_spectrogram(x,fs), signal_envelope(x), signal_hilbert(x), signal_czt(x,m,w_re,w_im,a_re,a_im), signal_czt_zoom(x,f_start,f_stop,m,fs), signal_instantaneous_freq(x,fs), signal_convolve(a,b), signal_conv2(A,K), signal_deconv(y,b), signal_correlate(a,b), signal_filtfilt(b,a,x), signal_filter(b,a,x), signal_sosfilt(sos,x), signal_hamming(n), signal_hanning(n), signal_blackman(n), signal_parzen(n), signal_triangular(n), pde_heat_1d(x0,alpha,dx,dt,steps), pde_heat_1d_cn(x0,alpha,dx,dt,steps), pde_heat_2d(u0,alpha,dx,dy,dt,steps), pde_heat_2d_cn_adi(u0,alpha,dx,dy,dt,steps), pde_wave_1d(u0,v0,c,dx,dt,steps), pde_wave_2d(u0,v0,c,dx,dy,dt,steps), pde_advection_1d(u0,v,dx,dt,steps), pde_advection_1d_lax_wendroff(u0,v,dx,dt,steps), pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps), pde_poisson_2d(f,dx,dy,max_iterations,tolerance), pde_burgers_1d(u0,nu,dx,dt,steps), poly_deriv(coeffs), poly_add(a,b), poly_lagrange(xs,ys), poly_interp_newton(xs,ys), poly_interp_hermite(xs,ys,dys), poly_roots(p), poly_fit(xs,ys,degree), poly_gcd(a,b), poly_squarefree(p), poly_factor(p), poly_rational_roots(p), poly_factor_rational(p), poly_partial_fractions(num,den), poly_root_count(p,a,b), poly_cheb_eval(cheb_coeffs,x), poly_cheb_expand(p,n[,a,b]), poly_monic(p), poly_reverse(p), poly_shift(p,a), poly_scale(p,a), poly_pow(p,n), poly_lcm(a,b), poly_div_quot(a,b), poly_mod(a,b), poly_eval_at(coeffs,xs), poly_sylvester(p,q), poly_mul(a,b), poly_sub(a,b), poly_compose(p,q), poly_eval(coeffs,x), poly_integ(coeffs,c), poly_resultant(p,q), poly_discriminant(p), fft_rfft(x), fft_dft(x), fft_irfft(spectrum,n), fft_ifft(spectrum), fft_fft2(S), ifft2(S), fft_dct2(x), fft_idct2(x), fft_dst2(x), idst2(x), prob_norm_cdf(x,mu,sigma), prob_norm_pdf(x,mu,sigma), prob_norm_ppf(p,mu,sigma), prob_binom_pdf(k,n,p), prob_binom_cdf(k,n,p), prob_pois_pdf(k,lambda), prob_pois_cdf(k,lambda), prob_uniform_cdf(x,a,b), prob_exp_cdf(x,lambda), prob_exp_ppf(p,lambda), prob_exp_pdf(x,lambda), prob_chi2_cdf(x,df), prob_chi2_ppf(p,df), prob_chi2_pdf(x,df), prob_t_cdf(x,df), prob_t_pdf(x,df), prob_t_ppf(p,df), prob_uniform_pdf(x,a,b), prob_gamma_ppf(p,shape,scale), prob_beta_ppf(p,alpha,beta), prob_f_pdf(x,d1,d2), prob_f_ppf(p,d1,d2), prob_lognormal_pdf(x,mu,sigma), prob_lognormal_cdf(x,mu,sigma), prob_lognormal_ppf(p,mu,sigma), prob_weibull_pdf(x,lambda,k), prob_weibull_cdf(x,lambda,k), prob_weibull_ppf(p,lambda,k), prob_laplace_pdf(x,mu,b), prob_laplace_cdf(x,mu,b), prob_laplace_ppf(p,mu,b), prob_logistic_pdf(x,mu,s), prob_logistic_cdf(x,mu,s), prob_logistic_ppf(p,mu,s), prob_gumbel_pdf(x,mu,beta), prob_gumbel_cdf(x,mu,beta), prob_gumbel_ppf(p,mu,beta), prob_cauchy_pdf(x,x0,gamma), prob_cauchy_cdf(x,x0,gamma), prob_cauchy_ppf(p,x0,gamma), prob_pareto_pdf(x,x_m,alpha), prob_pareto_cdf(x,x_m,alpha), prob_pareto_ppf(p,x_m,alpha), prob_rayleigh_pdf(x,sigma), prob_rayleigh_cdf(x,sigma), prob_rayleigh_ppf(p,sigma), prob_gamma_cdf(x,shape,scale), prob_beta_cdf(x,alpha,beta), prob_f_cdf(x,d1,d2), prob_gamma_pdf(x,shape,scale), gamma_cdf(x,shape,scale), beta_pdf(x,alpha,beta), beta_cdf(x,alpha,beta), f_pdf(x,d1,d2), f_cdf(x,d1,d2), kruskal_wallis(groups), cplx_joukowski(re,im), cplx_joukowski_inv(re,im), cplx_hyperbolic_distance(z1re,z1im,z2re,z2im), cplx_mobius_re(a,b,c,d,zre,zim), cplx_poisson_kernel(theta,phi,r), cplx_cross_ratio(z1re,z1im,...), cplx_power_series_eval(coeffs,zre,zim), cplx_winding_number(G,z0re,z0im), cplx_residue_inv(pole_re,pole_im), cplx_contour_integral_oneoverz_im(), cplx_line_integral_one(), cplx_blaschke_product(zre,zim,zeros), stats_bootstrap_ci(x), stats_bootstrap_mean(x[,n_boot[,seed]]), stats_kde(samples,grid,h[,kernel]), stats_linear_regression(x,y), stats_pacf(x,max_lag), stats_arfit(x,p), stats_multiple_regression(X,y), stats_vif(X,j), stats_variance_inflation_factor(X,j), stats_friedman(data), stats_jarque_bera(x), stats_ks_2sample(a,b), stats_ljung_box(x,max_lag), stats_bartlett(G), stats_fligner(G), stats_levene(G), info_permutation_entropy(x[,order[,delay]]), info_transfer_entropy(x,y[,bins[,lag]]), fft_goertzel(x,f,fs)\n"
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_helix_torsion(t[,a[,b]]), diffgeo_sphere_gauss_bonnet([n]), diffgeo_sphere_gauss_bonnet_residual([n]), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
@@ -33989,7 +34405,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_in(n,x), spherical_kn(n,x)\n"
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), struve_hn(nu,x), struve_yn(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
-            "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_d(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
+            "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_d(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), theta1_prime(z,q), jacobi_theta(n,z,tau), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
             "  theta1(z,q), theta2(z,q), theta3(z,q), theta4(z,q), weierstrass_p(z,g2,g3), weierstrass_pprime(z,g2,g3), weierstrass_zeta(z,g2,g3), weierstrass_sigma(z,g2,g3), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_a(n,q), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
             "  spheroidal_lambda(n,m,c), spheroidal_s1(n,m,c,x), spheroidal_s2(n,m,c,x), pcf_u(a,x), pcf_v(a,x), pcf_w(a,x)\n"
             "  heun_g(a,q,alpha,beta,gamma,delta,z), heun_c(q,alpha,beta,gamma,delta,z)\n"
@@ -34027,6 +34443,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cypha_nig_fit([1,2,3,4]) fit Normal-Inverse-Gaussian parameters to data vector\n"
             "  cypha_nig_pdf(2.5, 0, 1, 0, 1) NIG probability density at x\n"
             "  cypha_nig_cdf(2.5, 0, 1, 0, 1) NIG cumulative distribution at x\n"
+            "  cypha_nig_mean(0, 1, 0, 1) NIG distribution mean\n"
+            "  cypha_nig_variance(0, 1, 0, 1) NIG distribution variance\n"
             "  cypha_nig_sample(0, 1, 0, 1, 10) draw n NIG samples (requires izaac seed)\n"
             "  cellai_hebbian_update([0.1], [1], [0.8], 0.1) Hebbian weight update\n"
             "  cellai_energy([1,2;3,4], [1;0], [1;2]) RBM energy scalar\n"
@@ -34041,6 +34459,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  simulate_gbm_path(100, 0.05, 0.2, 0.01, 50) GBM price path column (requires izaac seed)\n"
             "  run_backtest(prices, positions, 10000) backtest metrics 1×4 row (requires matching vectors)\n"
             "  izaac_vrf_keygen() 2×32 VRF key matrix (private row, public row)\n"
+            "  izaac_vrf_prove(key, msg) VRF proof matrix from 2×32 key and byte message\n"
+            "  izaac_vrf_verify(pub, msg, proof) verify VRF (1 valid, 0 invalid)\n"
+            "  izaac_encrypt(plaintext, key32) encrypt byte vector with 32-byte key\n"
+            "  izaac_decrypt(ciphertext, key32) decrypt packed ciphertext with 32-byte key\n"
+            "  izaac_randn_matrix(rows, cols) Gaussian random matrix (requires izaac seed)\n"
             "  izaac_fuzz_mutate([65,66,67], 4) fuzz-mutate byte vector (requires izaac seed)\n"
             "  bloom_new(bf, 1000, 0.01) create session BloomFilter (requires izaac seed; handle persists)\n"
             "  bloom_insert(bf, \"item\") insert string into session BloomFilter\n"
@@ -34229,7 +34652,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  gria_hamming_distance(a,b)  gria_divergence_trajectory(a,b,rule,n_steps)  gria_settling_time(a,b,rule,n_steps)\n"
             "  gria_gf2n_mul(a,b,poly)  gria_gf2n_pow(a,exp,poly)  gria_gf2n_inv(a,poly)\n"
             "  gria_lfsr_step(state,poly)  gria_alpha_lfsr(poly,steps)  gria_lfsr_is_maximal(poly,n)\n"
-            "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
+            "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_mean(mu,a,b,d)  cypha_nig_variance(mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
             "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)  cellai_boltzmann_weights(E[,T])\n"
             "  cellai_cell_to_cypha_features(h,[scales])\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
@@ -34943,7 +35366,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             fn == "gria_classify" || fn == "gria_gf2n_mul" || fn == "gria_gf2n_pow" ||
             fn == "gria_gf2n_inv" || fn == "gria_lfsr_step" || fn == "gria_alpha_lfsr" ||
             fn == "gria_lfsr_is_maximal" || fn == "cypha_nig_fit" || fn == "cypha_nig_pdf" ||
-            fn == "cypha_nig_cdf" || fn == "cypha_nig_sample" || fn == "cellai_hebbian_update" ||
+            fn == "cypha_nig_cdf" || fn == "cypha_nig_mean" || fn == "cypha_nig_variance" ||
+            fn == "cypha_nig_sample" || fn == "cellai_hebbian_update" ||
             fn == "cellai_energy" || fn == "cellai_boltzmann_weights" ||
             fn == "izaac_estimate_pi" || fn == "izaac_laplace_noise" ||
             fn == "izaac_gaussian_noise") {
@@ -35128,6 +35552,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::to_string(cypha::nig_pdf(x, params)) + "\n";
                 }
                 return std::to_string(cypha::nig_cdf(x, params)) + "\n";
+            }
+            if (fn == "cypha_nig_mean" || fn == "cypha_nig_variance") {
+                if (!call_args || call_args->size() != 4) {
+                    return std::unexpected(DomainError{
+                        fn, std::string("expected ") + fn + "(mu, alpha, beta, delta)"});
+                }
+                double mu = 0.0;
+                double alpha = 0.0;
+                double beta = 0.0;
+                double delta = 0.0;
+                if (!parse_number(trim_copy(call_args->at(0)), mu) ||
+                    !parse_number(trim_copy(call_args->at(1)), alpha) ||
+                    !parse_number(trim_copy(call_args->at(2)), beta) ||
+                    !parse_number(trim_copy(call_args->at(3)), delta)) {
+                    return std::unexpected(DomainError{fn, "expected numeric arguments"});
+                }
+                const cypha::NIGParams params{.mu = mu, .alpha = alpha, .beta = beta, .delta = delta};
+                if (fn == "cypha_nig_mean") {
+                    return std::to_string(cypha::nig_mean(params)) + "\n";
+                }
+                return std::to_string(cypha::nig_variance(params)) + "\n";
             }
             if (fn == "cypha_nig_sample") {
                 if (!call_args || call_args->size() != 5) {
@@ -38671,6 +39116,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             return std::to_string(norm_cdf(x, mu, sigma)) + "\n";
         }
+        if (fn == "jacobi_theta") {
+            double n_d = 0.0;
+            double z = 0.0;
+            double tau = 0.0;
+            if (!parse_number(trim(match[2].str()), n_d) || !parse_number(trim(match[3].str()), z) ||
+                !parse_number(trim(match[4].str()), tau)) {
+                return std::unexpected(
+                    DomainError{"jacobi_theta", "expected jacobi_theta(n,z,tau)"});
+            }
+            const int n = static_cast<int>(n_d);
+            if (n_d != n) {
+                return std::unexpected(DomainError{"jacobi_theta", "expected integer n"});
+            }
+            return std::to_string(jacobi_theta(n, z, tau)) + "\n";
+        }
         if (fn == "prob_norm_pdf") {
             double x = 0.0;
             double mu = 0.0;
@@ -39385,6 +39845,38 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "quantum_schmidt_rank", "expected positive integer dim_a and dim_b"});
             }
             auto value = eval_quantum_schmidt_rank(*psi_m, dim_a, dim_b);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return std::to_string(*value) + "\n";
+        }
+        if (fn == "quantum_schmidt_number") {
+            auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                auto matrix = parse_matrix(text);
+                if (!matrix) {
+                    matrix = resolve_matrix(text);
+                }
+                return matrix;
+            };
+            auto psi_m = resolve_arg(trim(match[2].str()));
+            if (!psi_m) {
+                return std::unexpected(psi_m.error());
+            }
+            double dim_a_d = 0.0;
+            double dim_b_d = 0.0;
+            if (!parse_number(trim(match[3].str()), dim_a_d) ||
+                !parse_number(trim(match[4].str()), dim_b_d)) {
+                return std::unexpected(DomainError{
+                    "quantum_schmidt_number",
+                    "expected quantum_schmidt_number(psi, dim_a, dim_b)"});
+            }
+            const int dim_a = static_cast<int>(dim_a_d);
+            const int dim_b = static_cast<int>(dim_b_d);
+            if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+                return std::unexpected(DomainError{
+                    "quantum_schmidt_number", "expected positive integer dim_a and dim_b"});
+            }
+            auto value = eval_quantum_schmidt_number(*psi_m, dim_a, dim_b);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -40649,6 +41141,26 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     print_matrix(out, *value);
                     return out.str();
                 }
+                if (fn == "quantum_ket_tensor_product") {
+                    auto value = eval_quantum_ket_tensor_product(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "tp =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "quantum_outer") {
+                    auto value = eval_quantum_outer(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "outer =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
                 if (fn == "signal_convolve") {
                     auto value = eval_signal_convolve(*arg_a_m, *arg_b_m);
                     if (!value) {
@@ -40965,6 +41477,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 if (fn == "stats_weighted_correlation") {
                     auto value = eval_stats_weighted_correlation(*arg_a_m, *arg_b_m, *arg_c_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
+                if (fn == "izaac_vrf_verify") {
+                    auto value = eval_izaac_vrf_verify(*arg_a_m, *arg_b_m, *arg_c_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
@@ -42052,6 +42571,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"ellip_e_inc", "expected ellip_e_inc(phi,k)"});
             }
             return std::to_string(ellip_e_inc(phi, k)) + "\n";
+        }
+
+        if (fn == "theta1_prime") {
+            double z = 0.0;
+            double q = 0.0;
+            if (!parse_number(arg_a, z) || !parse_number(arg_b, q)) {
+                return std::unexpected(DomainError{"theta1_prime", "expected theta1_prime(z,q)"});
+            }
+            return std::to_string(theta1_prime(z, q)) + "\n";
         }
 
         if (fn == "theta1" || fn == "theta2" || fn == "theta3" || fn == "theta4") {
