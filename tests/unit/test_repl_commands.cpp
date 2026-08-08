@@ -10752,3 +10752,24 @@ TEST(ReplCommandsTest, wave291_special_scalar) {
     expect_ok(interp, "ap = assoc_legendre_p(1, 0, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("ap"), ms::assoc_legendre_p(1, 0, 0.3), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave292_image_fem_cfd_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "M = [0.1, 0.2; 0.3, 0.4]");
+    expect_ok(interp, "P = impad(M, 1, 0)");
+    EXPECT_EQ(interp.state().matrices.at("P").rows(), 4u);
+
+    expect_ok(interp, "m = fem_mesh2d_rectangular(0, 0, 1, 1, 2, 2)");
+    EXPECT_EQ(interp.state().matrices.at("m")(0, 0), 270.0);
+
+    expect_ok(interp, "g = cfd_grid2d(0, 1, 0, 1, 4, 4)");
+    EXPECT_GT(interp.state().matrices.at("g").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave292_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "gc = gegenbauer_c(3, 0.5, 0.25)");
+    EXPECT_NEAR(interp.state().scalars.at("gc"), ms::gegenbauer_c(3, 0.5, 0.25), 1e-9);
+}

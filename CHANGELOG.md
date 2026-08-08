@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 292 — image/FEM/CFD tail11, gegenbauer_c) ✅ COMPLETE
+
+Sixty-second feature wave after Wave 291. Migrated image padding/Radon, FEM 2D assembly, and CFD grid handlers to tail11/tail13; scalar `gegenbauer_c` integer validation in `eval_scalar_call`; `integration_repl_wave292_pipeline`.
+
+### Added (Wave 292)
+- **Image tail11** — `impad`, `radon`, `iradon`.
+- **FEM tail11** — `fem_mesh2d_rectangular`, `fem_mesh2d`, `fem_stiffness_2d`, `assemble_stiffness_2d`, `fem_load_2d`, `fem_solve`.
+- **CFD tail11** — `cfd_grid2d`, `cfd_square_pulse_2d`.
+- **Special** — `gegenbauer_c(n,lambda,x)` integer validation in scalar three-arg eval path.
+
+### Tests
+- **`integration_repl_wave292_pipeline`** — image/FEM/CFD/special smoke.
+- **Unit** — `wave292_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 292 sync; **451** CTest suites.
+
+**451 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 291 — image/stats tail11, legendre_pn/assoc_legendre_p) ✅ COMPLETE
 
 Sixty-first feature wave after Wave 290. Migrated image feature detection, extended stats, and color handlers to tail11/tail13; scalar `legendre_pn`/`assoc_legendre_p` integer validation in `eval_scalar_call`; `integration_repl_wave291_pipeline`.

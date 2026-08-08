@@ -20265,6 +20265,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "stats_arfit" || callee == "stats_multiple_regression" ||
            callee == "imtophat" || callee == "imbothat" || callee == "imgradient_morph" ||
            callee == "imadjust" || callee == "imhist" || callee == "gray2rgb" ||
+           callee == "impad" || callee == "radon" || callee == "iradon" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -22449,6 +22450,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return chebyshev_un(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
     }
     if (args.size() == 3 && fn == "gegenbauer_c") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+            return std::unexpected(
+                DomainError{"gegenbauer_c", "expected non-negative integer n"});
+        }
         return gegenbauer_c(static_cast<int>(args[0]), args[1], args[2]);
     }
     if (args.size() == 3 && fn == "laguerre_la") {
@@ -23495,99 +23500,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             k = static_cast<int>(k_d);
         }
         result = triu(*matrix, k);
-    } else if (assign.callee == "impad" &&
-               (assign.args.size() == 2 || assign.args.size() == 3)) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double pad_d = 0.0;
-        if (!parse_number(assign.args[1], pad_d)) {
-            return std::unexpected(DomainError{"impad", "expected impad(M, pad[, val])"});
-        }
-        const int pad = static_cast<int>(pad_d);
-        if (pad < 0 || pad_d != pad) {
-            return std::unexpected(DomainError{"impad", "expected non-negative integer pad"});
-        }
-        double val_d = 0.0;
-        if (assign.args.size() == 3 && !parse_number(assign.args[2], val_d)) {
-            return std::unexpected(DomainError{"impad", "expected numeric pad value"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(
-            image::impad(*gray, pad, static_cast<float>(val_d)));
-    } else if (assign.callee == "radon" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto theta_m = resolve_operand(assign.args[1]);
-        if (!theta_m) {
-            return std::unexpected(theta_m.error());
-        }
-        auto theta = matrix_to_coeff_vector(*theta_m, "radon");
-        if (!theta) {
-            return std::unexpected(theta.error());
-        }
-        if (theta->empty()) {
-            return std::unexpected(DomainError{"radon", "expected non-empty theta_deg vector"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        std::vector<float> theta_f(theta->size());
-        for (size_t i = 0; i < theta->size(); ++i) {
-            theta_f[i] = static_cast<float>((*theta)[i]);
-        }
-        const auto sino = image::radon(*gray, theta_f);
-        if (sino.empty() || sino[0].empty()) {
-            result = Matrix<double>(0, 0);
-        } else {
-            // Sinogram as rows (projection bins) Ãƒâ€” angles (columns).
-            Matrix<double> out(sino[0].size(), sino.size());
-            for (size_t ti = 0; ti < sino.size(); ++ti) {
-                for (size_t ri = 0; ri < sino[ti].size(); ++ri) {
-                    out(ri, ti) = sino[ti][ri];
-                }
-            }
-            result = out;
-        }
-    } else if (assign.callee == "iradon" && assign.args.size() == 2) {
-        auto sino_m = resolve_operand(assign.args[0]);
-        if (!sino_m) {
-            return std::unexpected(sino_m.error());
-        }
-        auto theta_m = resolve_operand(assign.args[1]);
-        if (!theta_m) {
-            return std::unexpected(theta_m.error());
-        }
-        auto theta = matrix_to_coeff_vector(*theta_m, "iradon");
-        if (!theta) {
-            return std::unexpected(theta.error());
-        }
-        if (theta->empty()) {
-            return std::unexpected(DomainError{"iradon", "expected non-empty theta_deg vector"});
-        }
-        if (sino_m->cols() != theta->size()) {
-            return std::unexpected(
-                DomainError{"iradon", "sinogram column count must match theta length"});
-        }
-        std::vector<float> theta_f(theta->size());
-        for (size_t i = 0; i < theta->size(); ++i) {
-            theta_f[i] = static_cast<float>((*theta)[i]);
-        }
-        std::vector<std::vector<float>> sino(sino_m->cols(),
-                                             std::vector<float>(sino_m->rows(), 0.f));
-        for (size_t ti = 0; ti < sino_m->cols(); ++ti) {
-            for (size_t ri = 0; ri < sino_m->rows(); ++ri) {
-                sino[ti][ri] = static_cast<float>((*sino_m)(ri, ti));
-            }
-        }
-        result = gray_image_to_matrix(image::iradon(sino, theta_f));
     } else if (assign.callee == "hess" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -26824,139 +26736,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
                 "quantum_schrodinger", "expected non-negative integer n_steps"});
         }
         result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
-    } else if ((assign.callee == "fem_mesh2d_rectangular" || assign.callee == "fem_mesh2d") &&
-               assign.args.size() == 6) {
-        const char* fn = assign.callee.c_str();
-        auto x0 = parse_scalar_arg(assign.args[0], fn);
-        if (!x0) {
-            return std::unexpected(x0.error());
-        }
-        auto y0 = parse_scalar_arg(assign.args[1], fn);
-        if (!y0) {
-            return std::unexpected(y0.error());
-        }
-        auto x1 = parse_scalar_arg(assign.args[2], fn);
-        if (!x1) {
-            return std::unexpected(x1.error());
-        }
-        auto y1 = parse_scalar_arg(assign.args[3], fn);
-        if (!y1) {
-            return std::unexpected(y1.error());
-        }
-        auto nx = parse_scalar_arg(assign.args[4], fn);
-        if (!nx) {
-            return std::unexpected(nx.error());
-        }
-        auto ny = parse_scalar_arg(assign.args[5], fn);
-        if (!ny) {
-            return std::unexpected(ny.error());
-        }
-        auto nx_i = parse_positive_size_arg(*nx, fn, "expected positive integer nx");
-        if (!nx_i) {
-            return std::unexpected(nx_i.error());
-        }
-        auto ny_i = parse_positive_size_arg(*ny, fn, "expected positive integer ny");
-        if (!ny_i) {
-            return std::unexpected(ny_i.error());
-        }
-        result = eval_fem_mesh2d_rectangular(*x0, *y0, *x1, *y1, *nx_i, *ny_i);
-    } else if ((assign.callee == "fem_stiffness_2d" || assign.callee == "assemble_stiffness_2d") &&
-               assign.args.size() == 1) {
-        auto mesh = resolve_operand(assign.args[0]);
-        if (!mesh) {
-            return std::unexpected(mesh.error());
-        }
-        result = eval_fem_stiffness_2d(*mesh);
-    } else if (assign.callee == "fem_load_2d" && assign.args.size() == 2) {
-        auto mesh = resolve_operand(assign.args[0]);
-        if (!mesh) {
-            return std::unexpected(mesh.error());
-        }
-        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_2d");
-        if (!f_val) {
-            return std::unexpected(f_val.error());
-        }
-        result = eval_fem_load_2d(*mesh, *f_val);
-    } else if (assign.callee == "fem_solve" && assign.args.size() == 2) {
-        auto K = resolve_operand(assign.args[0]);
-        if (!K) {
-            return std::unexpected(K.error());
-        }
-        auto f = resolve_operand(assign.args[1]);
-        if (!f) {
-            return std::unexpected(f.error());
-        }
-        result = eval_fem_solve(*K, *f);
-    } else if (assign.callee == "fem_solve" && assign.args.size() == 1) {
-        auto sys = resolve_operand(assign.args[0]);
-        if (!sys) {
-            return std::unexpected(sys.error());
-        }
-        result = eval_fem_solve_packed(*sys);
-    } else if (assign.callee == "cfd_grid2d" && assign.args.size() == 6) {
-        auto x0 = parse_scalar_arg(assign.args[0], "cfd_grid2d");
-        if (!x0) {
-            return std::unexpected(x0.error());
-        }
-        auto x1 = parse_scalar_arg(assign.args[1], "cfd_grid2d");
-        if (!x1) {
-            return std::unexpected(x1.error());
-        }
-        auto y0 = parse_scalar_arg(assign.args[2], "cfd_grid2d");
-        if (!y0) {
-            return std::unexpected(y0.error());
-        }
-        auto y1 = parse_scalar_arg(assign.args[3], "cfd_grid2d");
-        if (!y1) {
-            return std::unexpected(y1.error());
-        }
-        auto nx_val = parse_scalar_arg(assign.args[4], "cfd_grid2d");
-        if (!nx_val) {
-            return std::unexpected(nx_val.error());
-        }
-        auto ny_val = parse_scalar_arg(assign.args[5], "cfd_grid2d");
-        if (!ny_val) {
-            return std::unexpected(ny_val.error());
-        }
-        const int nx_i = static_cast<int>(*nx_val);
-        const int ny_i = static_cast<int>(*ny_val);
-        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
-            return std::unexpected(
-                DomainError{"cfd_grid2d", "expected non-negative integer nx and ny"});
-        }
-        result = eval_cfd_grid2d(*x0, *x1, *y0, *y1, static_cast<std::size_t>(nx_i),
-                                 static_cast<std::size_t>(ny_i));
-    } else if (assign.callee == "cfd_square_pulse_2d" &&
-               (assign.args.size() == 5 || assign.args.size() == 6)) {
-        auto grid = resolve_operand(assign.args[0]);
-        if (!grid) {
-            return std::unexpected(grid.error());
-        }
-        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse_2d");
-        if (!xc) {
-            return std::unexpected(xc.error());
-        }
-        auto yc = parse_scalar_arg(assign.args[2], "cfd_square_pulse_2d");
-        if (!yc) {
-            return std::unexpected(yc.error());
-        }
-        auto width_x = parse_scalar_arg(assign.args[3], "cfd_square_pulse_2d");
-        if (!width_x) {
-            return std::unexpected(width_x.error());
-        }
-        auto width_y = parse_scalar_arg(assign.args[4], "cfd_square_pulse_2d");
-        if (!width_y) {
-            return std::unexpected(width_y.error());
-        }
-        double amplitude = 1.0;
-        if (assign.args.size() == 6) {
-            auto amp = parse_scalar_arg(assign.args[5], "cfd_square_pulse_2d");
-            if (!amp) {
-                return std::unexpected(amp.error());
-            }
-            amplitude = *amp;
-        }
-        result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
     } else if (assign.callee == "cellmemory_long_term_state" && assign.args.size() == 1) {
         std::string handle = trim_copy(assign.args[0]);
         if (!is_identifier(handle)) {
@@ -29034,6 +28813,27 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail12(const MatrixCallAs
 
 Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAssign& assign) {
     auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& arg_text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(arg_text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, arg_text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+    auto parse_positive_size_arg = [](double value, const char* fn,
+                                      const char* label) -> Result<std::size_t> {
+        const int i = static_cast<int>(value);
+        if (i < 1 || value != static_cast<double>(i)) {
+            return std::unexpected(DomainError{fn, label});
+        }
+        return static_cast<std::size_t>(i);
+    };
+
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
@@ -29984,6 +29784,232 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
             return std::unexpected(gray.error());
         }
         result = rgb_image_to_matrix(image::gray2rgb(*gray));
+    } else if (assign.callee == "impad" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double pad_d = 0.0;
+        if (!parse_number(assign.args[1], pad_d)) {
+            return std::unexpected(DomainError{"impad", "expected impad(M, pad[, val])"});
+        }
+        const int pad = static_cast<int>(pad_d);
+        if (pad < 0 || pad_d != pad) {
+            return std::unexpected(DomainError{"impad", "expected non-negative integer pad"});
+        }
+        double val_d = 0.0;
+        if (assign.args.size() == 3 && !parse_number(assign.args[2], val_d)) {
+            return std::unexpected(DomainError{"impad", "expected numeric pad value"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(
+            image::impad(*gray, pad, static_cast<float>(val_d)));
+    } else if (assign.callee == "radon" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto theta_m = resolve_operand(assign.args[1]);
+        if (!theta_m) {
+            return std::unexpected(theta_m.error());
+        }
+        auto theta = matrix_to_coeff_vector(*theta_m, "radon");
+        if (!theta) {
+            return std::unexpected(theta.error());
+        }
+        if (theta->empty()) {
+            return std::unexpected(DomainError{"radon", "expected non-empty theta_deg vector"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        std::vector<float> theta_f(theta->size());
+        for (size_t i = 0; i < theta->size(); ++i) {
+            theta_f[i] = static_cast<float>((*theta)[i]);
+        }
+        const auto sino = image::radon(*gray, theta_f);
+        if (sino.empty() || sino[0].empty()) {
+            result = Matrix<double>(0, 0);
+        } else {
+            // Sinogram as rows (projection bins) Ãƒâ€” angles (columns).
+            Matrix<double> out(sino[0].size(), sino.size());
+            for (size_t ti = 0; ti < sino.size(); ++ti) {
+                for (size_t ri = 0; ri < sino[ti].size(); ++ri) {
+                    out(ri, ti) = sino[ti][ri];
+                }
+            }
+            result = out;
+        }
+    } else if (assign.callee == "iradon" && assign.args.size() == 2) {
+        auto sino_m = resolve_operand(assign.args[0]);
+        if (!sino_m) {
+            return std::unexpected(sino_m.error());
+        }
+        auto theta_m = resolve_operand(assign.args[1]);
+        if (!theta_m) {
+            return std::unexpected(theta_m.error());
+        }
+        auto theta = matrix_to_coeff_vector(*theta_m, "iradon");
+        if (!theta) {
+            return std::unexpected(theta.error());
+        }
+        if (theta->empty()) {
+            return std::unexpected(DomainError{"iradon", "expected non-empty theta_deg vector"});
+        }
+        if (sino_m->cols() != theta->size()) {
+            return std::unexpected(
+                DomainError{"iradon", "sinogram column count must match theta length"});
+        }
+        std::vector<float> theta_f(theta->size());
+        for (size_t i = 0; i < theta->size(); ++i) {
+            theta_f[i] = static_cast<float>((*theta)[i]);
+        }
+        std::vector<std::vector<float>> sino(sino_m->cols(),
+                                             std::vector<float>(sino_m->rows(), 0.f));
+        for (size_t ti = 0; ti < sino_m->cols(); ++ti) {
+            for (size_t ri = 0; ri < sino_m->rows(); ++ri) {
+                sino[ti][ri] = static_cast<float>((*sino_m)(ri, ti));
+            }
+        }
+        result = gray_image_to_matrix(image::iradon(sino, theta_f));
+    } else if ((assign.callee == "fem_mesh2d_rectangular" || assign.callee == "fem_mesh2d") &&
+               assign.args.size() == 6) {
+        const char* fn = assign.callee.c_str();
+        auto x0 = parse_scalar_arg(assign.args[0], fn);
+        if (!x0) {
+            return std::unexpected(x0.error());
+        }
+        auto y0 = parse_scalar_arg(assign.args[1], fn);
+        if (!y0) {
+            return std::unexpected(y0.error());
+        }
+        auto x1 = parse_scalar_arg(assign.args[2], fn);
+        if (!x1) {
+            return std::unexpected(x1.error());
+        }
+        auto y1 = parse_scalar_arg(assign.args[3], fn);
+        if (!y1) {
+            return std::unexpected(y1.error());
+        }
+        auto nx = parse_scalar_arg(assign.args[4], fn);
+        if (!nx) {
+            return std::unexpected(nx.error());
+        }
+        auto ny = parse_scalar_arg(assign.args[5], fn);
+        if (!ny) {
+            return std::unexpected(ny.error());
+        }
+        auto nx_i = parse_positive_size_arg(*nx, fn, "expected positive integer nx");
+        if (!nx_i) {
+            return std::unexpected(nx_i.error());
+        }
+        auto ny_i = parse_positive_size_arg(*ny, fn, "expected positive integer ny");
+        if (!ny_i) {
+            return std::unexpected(ny_i.error());
+        }
+        result = eval_fem_mesh2d_rectangular(*x0, *y0, *x1, *y1, *nx_i, *ny_i);
+    } else if ((assign.callee == "fem_stiffness_2d" || assign.callee == "assemble_stiffness_2d") &&
+               assign.args.size() == 1) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        result = eval_fem_stiffness_2d(*mesh);
+    } else if (assign.callee == "fem_load_2d" && assign.args.size() == 2) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_2d");
+        if (!f_val) {
+            return std::unexpected(f_val.error());
+        }
+        result = eval_fem_load_2d(*mesh, *f_val);
+    } else if (assign.callee == "fem_solve" && assign.args.size() == 2) {
+        auto K = resolve_operand(assign.args[0]);
+        if (!K) {
+            return std::unexpected(K.error());
+        }
+        auto f = resolve_operand(assign.args[1]);
+        if (!f) {
+            return std::unexpected(f.error());
+        }
+        result = eval_fem_solve(*K, *f);
+    } else if (assign.callee == "fem_solve" && assign.args.size() == 1) {
+        auto sys = resolve_operand(assign.args[0]);
+        if (!sys) {
+            return std::unexpected(sys.error());
+        }
+        result = eval_fem_solve_packed(*sys);
+    } else if (assign.callee == "cfd_grid2d" && assign.args.size() == 6) {
+        auto x0 = parse_scalar_arg(assign.args[0], "cfd_grid2d");
+        if (!x0) {
+            return std::unexpected(x0.error());
+        }
+        auto x1 = parse_scalar_arg(assign.args[1], "cfd_grid2d");
+        if (!x1) {
+            return std::unexpected(x1.error());
+        }
+        auto y0 = parse_scalar_arg(assign.args[2], "cfd_grid2d");
+        if (!y0) {
+            return std::unexpected(y0.error());
+        }
+        auto y1 = parse_scalar_arg(assign.args[3], "cfd_grid2d");
+        if (!y1) {
+            return std::unexpected(y1.error());
+        }
+        auto nx_val = parse_scalar_arg(assign.args[4], "cfd_grid2d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto ny_val = parse_scalar_arg(assign.args[5], "cfd_grid2d");
+        if (!ny_val) {
+            return std::unexpected(ny_val.error());
+        }
+        const int nx_i = static_cast<int>(*nx_val);
+        const int ny_i = static_cast<int>(*ny_val);
+        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
+            return std::unexpected(
+                DomainError{"cfd_grid2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_cfd_grid2d(*x0, *x1, *y0, *y1, static_cast<std::size_t>(nx_i),
+                                 static_cast<std::size_t>(ny_i));
+    } else if (assign.callee == "cfd_square_pulse_2d" &&
+               (assign.args.size() == 5 || assign.args.size() == 6)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse_2d");
+        if (!xc) {
+            return std::unexpected(xc.error());
+        }
+        auto yc = parse_scalar_arg(assign.args[2], "cfd_square_pulse_2d");
+        if (!yc) {
+            return std::unexpected(yc.error());
+        }
+        auto width_x = parse_scalar_arg(assign.args[3], "cfd_square_pulse_2d");
+        if (!width_x) {
+            return std::unexpected(width_x.error());
+        }
+        auto width_y = parse_scalar_arg(assign.args[4], "cfd_square_pulse_2d");
+        if (!width_y) {
+            return std::unexpected(width_y.error());
+        }
+        double amplitude = 1.0;
+        if (assign.args.size() == 6) {
+            auto amp = parse_scalar_arg(assign.args[5], "cfd_square_pulse_2d");
+            if (!amp) {
+                return std::unexpected(amp.error());
+            }
+            amplitude = *amp;
+        }
+        result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
     }
 
     return result;
