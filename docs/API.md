@@ -432,6 +432,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `cplx_green_function_disk(zre, zim, z0re, z0im[, radius])` / `ode_adams_bashforth2("formula", t0, y0, t_end, steps)` / `cfd_advection1d(nx, vx, t_end, dt)` | Complex Green's function, AB2 IVP, 1D upwind advection (Wave 269) |
 | `diffgeo_helix_torsion(t[, a[, b]])` / `diffgeo_sphere_gauss_bonnet(n)` / `diffgeo_sphere_gauss_bonnet_residual(n)` | Helix torsion + sphere Gauss–Bonnet presets (Wave 269) |
 | `fem_mesh2d_rectangular` / `fem_stiffness_2d` / `fem_load_2d` / `fem_apply_dirichlet` / `fem_solve` / `fem_poisson2d` | 2D FEM assembly + Poisson solve (Wave 270) |
+| `fem_mesh3d_box` / `fem_stiffness_3d` / `fem_load_3d` | 3D FEM assembly primitives (Wave 271) |
+| `cfd_grid3d` / `cfd_square_pulse_3d` / `cfd_upwind_step_3d` | 3D CFD grid/IC/step (Wave 271) |
+| `weierstrass_zeta` / `weierstrass_sigma` / `jacobi_nd|cd|cs|ns|ds` | Weierstrass ζ/σ + Jacobi ratios (Wave 271) |
+| `gria_gf2n_generate_field(n)` | GF(2ⁿ) element enumeration column (Wave 271) |
+| `quantum_eigenspectrum(H)` / `quantum_ground_state(H)` | Hermitian spectrum + ground ket (Wave 271) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

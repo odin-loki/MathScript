@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-07-20 (Wave 270 ✅ COMPLETE — **429 CTest suites** on `main`)
+**Updated:** 2026-08-08 (Wave 271 ✅ COMPLETE — **430 CTest suites** on `main`)
 
 ---
 
@@ -521,7 +521,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 271+) — deferred
+## Wave 271 — FEM/CFD 3D primitives, Weierstrass ζ/σ, Jacobi ratios, GRIA field, quantum spectrum, tail10 ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| FEM 3D REPL | mesh3d_box / stiffness_3d / load_3d packed mesh (tag 271.0) |
+| CFD 3D REPL | grid3d / square_pulse_3d / upwind_step_3d |
+| Special REPL | weierstrass_zeta / weierstrass_sigma; jacobi_nd/cd/cs/ns/ds |
+| GRIA / Quantum | gria_gf2n_generate_field; quantum_eigenspectrum / quantum_ground_state |
+| Dispatch | assign_matrix_call_tail10 |
+| Tests | `integration_repl_wave271_pipeline` |
+
+**430 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–271** closed for this incremental batch.
+
+---
+
+## Next (Wave 272+) — deferred
 
 | Item | Notes |
 |------|--------|

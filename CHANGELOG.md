@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 271 — FEM/CFD 3D primitives, Weierstrass ζ/σ, Jacobi ratios, GRIA field, quantum spectrum, tail10) ✅ COMPLETE
+
+Forty-first feature wave after Wave 270. FEM/CFD composable 3D assembly primitives; Weierstrass zeta/sigma and remaining Jacobi ratios; `gria_gf2n_generate_field`; `quantum_eigenspectrum` / `quantum_ground_state`; `assign_matrix_call_tail10`; `integration_repl_wave271_pipeline`.
+
+### Added (Wave 271)
+- **FEM 3D REPL** — `fem_mesh3d_box` / `fem_mesh3d`; `fem_stiffness_3d` / `assemble_stiffness_3d`; `fem_load_3d`.
+- **CFD 3D REPL** — `cfd_grid3d`; `cfd_square_pulse_3d`; `cfd_upwind_step_3d`.
+- **Special REPL** — `weierstrass_zeta` / `weierstrass_sigma`; `jacobi_nd` / `jacobi_cd` / `jacobi_cs` / `jacobi_ns` / `jacobi_ds`.
+- **GRIA / Quantum REPL** — `gria_gf2n_generate_field(n)`; `quantum_eigenspectrum(H)`; `quantum_ground_state(H)`.
+- **Dispatch** — `assign_matrix_call_tail10`.
+- **Tests** — `integration_repl_wave271_pipeline`; unit coverage for wave271 FEM/CFD/specials/GRIA/quantum.
+
+### Fixed (Wave 271)
+- **CFD grid3d pack** — header column count 12 so `nz` is stored (was truncated at 11 cols).
+
+### Docs (Wave 271)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 271 sync; **430** CTest suites.
+
+**430 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-07-20 (Wave 270 — FEM 2D assembly, CFD 2D, specials, stats KDE/bootstrap, GRIA CA/GF2ⁿ/LFSR, CellAI, Axiom, tail9) ✅ COMPLETE
 
 Fortieth feature wave after Wave 269. Parallel Composer 2.5 worktrees merged to `main`: FEM 2D mesh/stiffness/load/Dirichlet/solve; CFD 2D grid/pulse/upwind; Voigt/Weierstrass + Jacobi/Struve specials; stats KDE kernel option and bootstrap CI as 1×4; GRIA cellular automata + GF(2ⁿ)/LFSR; CellAI Boltzmann/Cypha features; Axiom matrix evaluate; `assign_matrix_call_tail9`; wave270 pipeline. Follow-up fixes: FEM helper forward-decls; GF(2ⁿ) degree-aware mul/inv; scalar GF2ⁿ/LFSR assignment via `eval_scalar_call`.

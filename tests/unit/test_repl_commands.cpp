@@ -20,6 +20,8 @@
 #include "ms/pde/pde.hpp"
 #include "ms/prob/prob.hpp"
 #include "ms/special/special.hpp"
+#include "ms/frameworks/gria/gria.hpp"
+#include "ms/quantum/quantum.hpp"
 #include "ms/runtime/topology.hpp"
 #include "ms/version.hpp"
 
@@ -9851,4 +9853,105 @@ TEST(ReplCommandsTest, wave270_axiom_matrix) {
     EXPECT_NEAR(interp.state().scalars.at("rmse2"), 3.0, 1e-6);
 
     expect_contains(interp, "axiom_mse_fitness(\"x0\", [1;2], [1,2])", "0");
+}
+
+TEST(ReplCommandsTest, wave271_fem3d_assembly) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fem_mesh3d_box(x0,y0,z0,x1,y1,z1,nx,ny,nz)");
+    expect_contains(interp, "help", "fem_stiffness_3d(mesh)");
+
+    expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 1, 1, 1)");
+    ASSERT_GT(interp.state().matrices.count("m3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("m3")(0, 0), 271.0);
+
+    expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
+    ASSERT_GT(interp.state().matrices.count("K3"), 0u);
+    EXPECT_GT(interp.state().matrices.at("K3").rows(), 0u);
+
+    expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
+    ASSERT_GT(interp.state().matrices.count("f3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("f3").rows(), interp.state().matrices.at("K3").rows());
+}
+
+TEST(ReplCommandsTest, wave271_cfd3d_primitives) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cfd_grid3d(x0,x1,y0,y1,z0,z1,nx,ny,nz)");
+    expect_contains(interp, "help", "cfd_square_pulse_3d(grid,xc,yc,zc,wx,wy,wz[,amp])");
+
+    expect_ok(interp, "g3 = cfd_grid3d(0, 1, 0, 1, 0, 1, 4, 4, 4)");
+    ASSERT_GT(interp.state().matrices.count("g3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("g3").rows(), 4u);
+
+    expect_ok(interp, "u0 = cfd_square_pulse_3d(g3, 0.5, 0.5, 0.5, 0.2, 0.2, 0.2)");
+    ASSERT_GT(interp.state().matrices.count("u0"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u0").rows(), 16u);
+    EXPECT_EQ(interp.state().matrices.at("u0").cols(), 4u);
+
+    expect_ok(interp, "u1 = cfd_upwind_step_3d(g3, u0, 0.2, 0, 0, 0.01)");
+    ASSERT_GT(interp.state().matrices.count("u1"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u1").rows(), 16u);
+}
+
+TEST(ReplCommandsTest, wave271_special_weierstrass_zeta_sigma) {
+    Interpreter interp;
+    expect_contains(interp, "help", "weierstrass_zeta(z,g2,g3)");
+    expect_contains(interp, "help", "weierstrass_sigma(z,g2,g3)");
+
+    const double zeta_ref = ms::weierstrass_zeta(0.5, 1.0, 0.0);
+    const double sigma_ref = ms::weierstrass_sigma(0.5, 1.0, 0.0);
+    expect_ok(interp, "wz = weierstrass_zeta(0.5, 1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("wz"), zeta_ref, 1e-9);
+    expect_ok(interp, "ws = weierstrass_sigma(0.5, 1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("ws"), sigma_ref, 1e-9);
+    expect_contains(interp, "weierstrass_zeta(0.5, 1, 0)", "\n");
+}
+
+TEST(ReplCommandsTest, wave271_special_jacobi_extra) {
+    Interpreter interp;
+    expect_contains(interp, "help", "jacobi_nd(u,k)");
+    expect_contains(interp, "help", "jacobi_ds(u,k)");
+
+    const double u = 0.5;
+    const double k = 0.5;
+    expect_ok(interp, "jnd = jacobi_nd(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("jnd"), ms::jacobi_nd(u, k), 1e-9);
+    expect_ok(interp, "jcd = jacobi_cd(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("jcd"), ms::jacobi_cd(u, k), 1e-9);
+    expect_ok(interp, "jcs = jacobi_cs(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("jcs"), ms::jacobi_cs(u, k), 1e-9);
+    expect_ok(interp, "jns = jacobi_ns(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("jns"), ms::jacobi_ns(u, k), 1e-9);
+    expect_ok(interp, "jds = jacobi_ds(0.5, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("jds"), ms::jacobi_ds(u, k), 1e-9);
+}
+
+TEST(ReplCommandsTest, wave271_gria_gf2n_field) {
+    Interpreter interp;
+    expect_contains(interp, "help", "gria_gf2n_generate_field(n)");
+
+    expect_ok(interp, "fld = gria_gf2n_generate_field(4)");
+    ASSERT_GT(interp.state().matrices.count("fld"), 0u);
+    const auto ref = ms::gria::gf2n::generate_field(4);
+    ASSERT_EQ(interp.state().matrices.at("fld").rows(), ref.size());
+    for (size_t i = 0; i < ref.size(); ++i) {
+        EXPECT_EQ(static_cast<uint64_t>(interp.state().matrices.at("fld")(i, 0)), ref[i]);
+    }
+}
+
+TEST(ReplCommandsTest, wave271_quantum_spectrum) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_eigenspectrum(H)");
+    expect_contains(interp, "help", "quantum_ground_state(H)");
+
+    expect_ok(interp, "H = [2, 0; 0, 5]");
+    expect_ok(interp, "evals = quantum_eigenspectrum(H)");
+    ASSERT_GT(interp.state().matrices.count("evals"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("evals")(0, 0), 2.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("evals")(1, 0), 5.0, 1e-9);
+
+    expect_ok(interp, "gs = quantum_ground_state(H)");
+    ASSERT_GT(interp.state().matrices.count("gs"), 0u);
+    const auto ref_gs = ms::quantum::ground_state({{{2.0, 0.0}, {0.0, 0.0}}, {{0.0, 0.0}, {5.0, 0.0}}});
+    EXPECT_NEAR(interp.state().matrices.at("gs")(0, 0), ref_gs[0].real(), 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("gs")(1, 0), ref_gs[1].real(), 1e-9);
 }
