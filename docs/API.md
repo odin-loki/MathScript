@@ -517,6 +517,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `geo_delaunay_2d` / `geo_convex_hull` (tail11) | Computational geometry assign (Wave 288) |
 | `adapthisteq` / `imflip` (tail11) | Image enhancement assign (Wave 288) |
 | `laguerre_l` / `chebyshev_t` (scalar eval) | Orthogonal polynomials in assign expr (Wave 288) |
+| `stats_one_way_anova` / `stats_levene` / `stats_bartlett` / `stats_fligner` / `stats_wilcoxon_signed_rank` / `stats_friedman` / `stats_jarque_bera` / `stats_ljung_box` (tail11) | Extended inferential stats assign (Wave 289) |
+| `geo_voronoi` / `geo_min_bounding_rect` / `geo_kdtree_knn` / `geo_kdtree_range` (tail11) | Extended computational geometry assign (Wave 289) |
+| `threshold_otsu` / `imrotate90` / `threshold_binary` / `label_components` (tail11) | Extended image processing assign (Wave 289) |
+| `chebyshev_u` / `hermite_he` (scalar eval) | Chebyshev U / probabilist Hermite in assign expr (Wave 289) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

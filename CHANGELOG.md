@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 289 — stats/geo/image tail11, chebyshev_u/hermite_he) ✅ COMPLETE
+
+Fifty-ninth feature wave after Wave 288. Migrated extended stats, geo, and image handlers to tail11/tail13; scalar `chebyshev_u`/`hermite_he` integer validation in `eval_scalar_call`; `integration_repl_wave289_pipeline`; split `assign_matrix_call_tail13` from tail12 (MSVC C1061).
+
+### Added (Wave 289)
+- **Stats tail11** — `stats_one_way_anova`, `stats_levene`, `stats_bartlett`, `stats_fligner`, `stats_wilcoxon_signed_rank`, `stats_friedman`, `stats_jarque_bera`, `stats_ljung_box`.
+- **Geo tail11** — `geo_voronoi`, `geo_min_bounding_rect`, `geo_kdtree_knn`, `geo_kdtree_range`.
+- **Image tail11** — `threshold_otsu`, `imrotate90`, `threshold_binary`, `label_components`.
+- **Special** — `chebyshev_u(n,x)` and `hermite_he(n,x)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave289_pipeline`** — stats/geo/image/special smoke.
+- **Unit** — `wave289_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 289 sync; **448** CTest suites.
+
+**448 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 288 — graph/stats/geo/image tail11, laguerre_l/chebyshev_t) ✅ COMPLETE
 
 Fifty-eighth feature wave after Wave 287. Migrated graph paths/analytics, stats, geo, and image handlers to tail11/tail12; scalar `laguerre_l`/`chebyshev_t` integer validation in `eval_scalar_call`; `integration_repl_wave288_pipeline`.

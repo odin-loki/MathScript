@@ -20243,6 +20243,14 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "kruskal_wallis" || callee == "stats_shapiro_wilk" ||
            callee == "stats_mann_whitney_u" || callee == "stats_ks_2sample" ||
            callee == "geo_delaunay_2d" || callee == "geo_convex_hull" ||
+           callee == "geo_voronoi" || callee == "geo_min_bounding_rect" ||
+           callee == "geo_kdtree_knn" || callee == "geo_kdtree_range" ||
+           callee == "stats_one_way_anova" || callee == "stats_levene" ||
+           callee == "stats_bartlett" || callee == "stats_fligner" ||
+           callee == "stats_wilcoxon_signed_rank" || callee == "stats_friedman" ||
+           callee == "stats_jarque_bera" || callee == "stats_ljung_box" ||
+           callee == "threshold_otsu" || callee == "imrotate90" ||
+           callee == "threshold_binary" || callee == "label_components" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -21749,6 +21757,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return chebyshev_t(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "chebyshev_u") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"chebyshev_u", "expected non-negative integer n"});
+            }
             return chebyshev_u(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "hermite_h") {
@@ -21773,6 +21785,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return legendre_q(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "hermite_he") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"hermite_he", "expected non-negative integer n"});
+            }
             return hermite_he(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "chebyshev_v") {
@@ -23113,16 +23129,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         }
         result = gray_image_to_matrix(
             image::canny(*gray, static_cast<float>(low), static_cast<float>(high)));
-    } else if (assign.callee == "threshold_otsu" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::threshold_otsu(*gray));
     } else if (assign.callee == "imresize" && assign.args.size() == 3) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23139,48 +23145,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         }
         result = gray_image_to_matrix(
             image::imresize(*gray, static_cast<int>(rows_d), static_cast<int>(cols_d)));
-    } else if (assign.callee == "imrotate90" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::imrotate90(*gray));
-    } else if (assign.callee == "threshold_binary" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double t = 0.0;
-        if (!parse_number(assign.args[1], t)) {
-            return std::unexpected(
-                DomainError{"threshold_binary", "expected threshold_binary(M, t)"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::threshold_binary(*gray, static_cast<float>(t)));
-    } else if (assign.callee == "label_components" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        const auto labels = image::label_components(*gray);
-        Matrix<double> out(labels.size(), labels.empty() ? 0u : labels[0].size());
-        for (size_t r = 0; r < labels.size(); ++r) {
-            for (size_t c = 0; c < labels[r].size(); ++c) {
-                out(r, c) = static_cast<double>(labels[r][c]);
-            }
-        }
-        result = out;
     } else if (assign.callee == "watershed" && assign.args.size() == 2) {
         auto gray_m = resolve_operand(assign.args[0]);
         if (!gray_m) {
@@ -23319,109 +23283,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(DomainError{"shi_tomasi", "expected positive integer n"});
         }
         result = eval_shi_tomasi(*matrix, n, static_cast<float>(quality));
-    } else if (assign.callee == "stats_one_way_anova" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_stats_one_way_anova(*matrix);
-    } else if (assign.callee == "stats_levene" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_stats_levene(*matrix);
-    } else if (assign.callee == "stats_bartlett" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_stats_bartlett(*matrix);
-    } else if (assign.callee == "stats_fligner" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_stats_fligner(*matrix);
-    } else if (assign.callee == "stats_wilcoxon_signed_rank" && assign.args.size() == 2) {
-        auto x = resolve_operand(assign.args[0]);
-        if (!x) {
-            return std::unexpected(x.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        result = eval_stats_wilcoxon_signed_rank(*x, *y);
-    } else if (assign.callee == "stats_friedman" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_stats_friedman(*matrix);
-    } else if (assign.callee == "stats_jarque_bera" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_stats_jarque_bera(*matrix);
-    } else if (assign.callee == "stats_ljung_box" && assign.args.size() == 2) {
-        auto x = resolve_operand(assign.args[0]);
-        if (!x) {
-            return std::unexpected(x.error());
-        }
-        double max_lag_d = 0.0;
-        if (!parse_number(assign.args[1], max_lag_d)) {
-            return std::unexpected(
-                DomainError{"stats_ljung_box", "expected stats_ljung_box(x, max_lag)"});
-        }
-        const int max_lag = static_cast<int>(max_lag_d);
-        if (max_lag < 1 || max_lag_d != max_lag) {
-            return std::unexpected(
-                DomainError{"stats_ljung_box", "expected positive integer max_lag"});
-        }
-        result = eval_stats_ljung_box(*x, max_lag);
-    } else if (assign.callee == "geo_voronoi" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto verts = eval_geo_voronoi(*matrix);
-        if (!verts) {
-            return std::unexpected(verts.error());
-        }
-        result = *verts;
-    } else if (assign.callee == "geo_min_bounding_rect" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto rect = eval_geo_min_bounding_rect(*matrix);
-        if (!rect) {
-            return std::unexpected(rect.error());
-        }
-        result = *rect;
-    } else if ((assign.callee == "geo_kdtree_knn" || assign.callee == "geo_kdtree_range") &&
-               assign.args.size() == 4) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double qx = 0.0;
-        double qy = 0.0;
-        double arg3 = 0.0;
-        if (!parse_number(assign.args[1], qx) || !parse_number(assign.args[2], qy) ||
-            !parse_number(assign.args[3], arg3)) {
-            return std::unexpected(DomainError{
-                assign.callee,
-                assign.callee == "geo_kdtree_knn" ? "expected geo_kdtree_knn(P, x, y, k)"
-                                                  : "expected geo_kdtree_range(P, x, y, r)"});
-        }
-        if (assign.callee == "geo_kdtree_knn") {
-            result = eval_geo_kdtree_knn(*matrix, qx, qy, arg3);
-        } else {
-            result = eval_geo_kdtree_range(*matrix, qx, qy, arg3);
-        }
     } else if (assign.callee == "topo_pairwise_distances" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -29653,7 +29514,26 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail12(const MatrixCallAs
             return std::unexpected(gray.error());
         }
         result = gray_image_to_matrix(image::sharpen(*gray));
-    } else if (assign.callee == "graph_biconnected_components" && assign.args.size() == 1) {
+    }
+
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail13(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "graph_biconnected_components" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -29917,6 +29797,161 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail12(const MatrixCallAs
             return std::unexpected(hull.error());
         }
         result = *hull;
+    } else if (assign.callee == "threshold_otsu" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::threshold_otsu(*gray));
+    } else if (assign.callee == "imrotate90" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::imrotate90(*gray));
+    } else if (assign.callee == "threshold_binary" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double t = 0.0;
+        if (!parse_number(assign.args[1], t)) {
+            return std::unexpected(
+                DomainError{"threshold_binary", "expected threshold_binary(M, t)"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::threshold_binary(*gray, static_cast<float>(t)));
+    } else if (assign.callee == "label_components" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        const auto labels = image::label_components(*gray);
+        Matrix<double> out(labels.size(), labels.empty() ? 0u : labels[0].size());
+        for (size_t r = 0; r < labels.size(); ++r) {
+            for (size_t c = 0; c < labels[r].size(); ++c) {
+                out(r, c) = static_cast<double>(labels[r][c]);
+            }
+        }
+        result = out;
+    } else if (assign.callee == "stats_one_way_anova" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_stats_one_way_anova(*matrix);
+    } else if (assign.callee == "stats_levene" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_stats_levene(*matrix);
+    } else if (assign.callee == "stats_bartlett" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_stats_bartlett(*matrix);
+    } else if (assign.callee == "stats_fligner" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_stats_fligner(*matrix);
+    } else if (assign.callee == "stats_wilcoxon_signed_rank" && assign.args.size() == 2) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        result = eval_stats_wilcoxon_signed_rank(*x, *y);
+    } else if (assign.callee == "stats_friedman" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_stats_friedman(*matrix);
+    } else if (assign.callee == "stats_jarque_bera" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_stats_jarque_bera(*matrix);
+    } else if (assign.callee == "stats_ljung_box" && assign.args.size() == 2) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        double max_lag_d = 0.0;
+        if (!parse_number(assign.args[1], max_lag_d)) {
+            return std::unexpected(
+                DomainError{"stats_ljung_box", "expected stats_ljung_box(x, max_lag)"});
+        }
+        const int max_lag = static_cast<int>(max_lag_d);
+        if (max_lag < 1 || max_lag_d != max_lag) {
+            return std::unexpected(
+                DomainError{"stats_ljung_box", "expected positive integer max_lag"});
+        }
+        result = eval_stats_ljung_box(*x, max_lag);
+    } else if (assign.callee == "geo_voronoi" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto verts = eval_geo_voronoi(*matrix);
+        if (!verts) {
+            return std::unexpected(verts.error());
+        }
+        result = *verts;
+    } else if (assign.callee == "geo_min_bounding_rect" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto rect = eval_geo_min_bounding_rect(*matrix);
+        if (!rect) {
+            return std::unexpected(rect.error());
+        }
+        result = *rect;
+    } else if ((assign.callee == "geo_kdtree_knn" || assign.callee == "geo_kdtree_range") &&
+               assign.args.size() == 4) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double qx = 0.0;
+        double qy = 0.0;
+        double arg3 = 0.0;
+        if (!parse_number(assign.args[1], qx) || !parse_number(assign.args[2], qy) ||
+            !parse_number(assign.args[3], arg3)) {
+            return std::unexpected(DomainError{
+                assign.callee,
+                assign.callee == "geo_kdtree_knn" ? "expected geo_kdtree_knn(P, x, y, k)"
+                                                  : "expected geo_kdtree_range(P, x, y, r)"});
+        }
+        if (assign.callee == "geo_kdtree_knn") {
+            result = eval_geo_kdtree_knn(*matrix, qx, qy, arg3);
+        } else {
+            result = eval_geo_kdtree_range(*matrix, qx, qy, arg3);
+        }
     }
 
     return result;

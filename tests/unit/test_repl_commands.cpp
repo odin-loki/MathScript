@@ -10662,3 +10662,28 @@ TEST(ReplCommandsTest, wave288_special_scalar) {
     expect_ok(interp, "ct = chebyshev_t(2, 0.4)");
     EXPECT_NEAR(interp.state().scalars.at("ct"), ms::chebyshev_t(2, 0.4), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave289_stats_geo_image_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "G = [1, 2, 3; 10, 11, 12; 20, 21, 22]");
+    expect_ok(interp, "an = stats_one_way_anova(G)");
+    EXPECT_EQ(interp.state().matrices.at("an").rows(), 1u);
+
+    expect_ok(interp, "R = geo_min_bounding_rect([0, 0; 1, 0; 0.5, 1])");
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 5u);
+
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_ok(interp, "L = label_components(M)");
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave289_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "cu = chebyshev_u(1, 0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("cu"), ms::chebyshev_u(1, 0.2), 1e-9);
+
+    expect_ok(interp, "he = hermite_he(2, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("he"), ms::hermite_he(2, 0.3), 1e-9);
+}
