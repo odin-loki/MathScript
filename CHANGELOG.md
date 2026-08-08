@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 285 — control/signal/ODE tail11, legendre_p) ✅ COMPLETE
+
+Fifty-fifth feature wave after Wave 284. Migrated control/signal/ODE handlers to tail11/tail12; scalar `legendre_p` in `eval_scalar_call`; `integration_repl_wave285_pipeline`.
+
+### Added (Wave 285)
+- **Control tail11** — `control_obsv_gram`, `control_c2d`/`control_c2d_b`, `control_parallel`, `control_feedback`, `control_ss2tf`, `control_d2c`, `control_c2d_tf`, `control_d2c_tf`.
+- **Signal tail11** — `signal_autocorr`, `signal_lms`/`signal_lms_weights`, `signal_envelope`, `signal_hilbert`, `signal_instantaneous_phase`, `signal_unwrap`.
+- **ODE tail11** — `ode_adams_bashforth2`, `ode_backward_euler`, `ode_bdf2`.
+- **Special** — `legendre_p(n,x)` in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave285_pipeline`** — control/signal/ODE/special smoke.
+- **Unit** — `wave285_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 285 sync; **444** CTest suites.
+
+**444 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 284 — PDE/control/signal tail11, ODE midpoint, ellip_k) ✅ COMPLETE
 
 Fifty-fourth feature wave after Wave 283. Migrated PDE/control/signal/ODE handlers to tail11; scalar `ellip_k` in `eval_scalar_call`; `integration_repl_wave284_pipeline`.

@@ -499,6 +499,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `signal_deconv` / `signal_firwin` / `signal_xcorr` / `signal_xcov` (tail11) | Signal processing chain (Wave 284) |
 | `ode_midpoint` (tail11) | ODE family beside W283 euler (Wave 284) |
 | `ellip_k` (scalar eval) | Complete elliptic K in assign expr (Wave 284) |
+| `control_obsv_gram` / `control_parallel` / `control_feedback` / `control_ss2tf` / `control_d2c` / `control_c2d` / `control_c2d_tf` / `control_d2c_tf` (tail11) | Control TF/SS conversions (Wave 285) |
+| `signal_autocorr` / `signal_lms` / `signal_envelope` / `signal_hilbert` / `signal_instantaneous_phase` / `signal_unwrap` (tail11) | Signal analytics chain (Wave 285) |
+| `ode_adams_bashforth2` / `ode_backward_euler` / `ode_bdf2` (tail11) | Additional fixed-step ODE solvers (Wave 285) |
+| `legendre_p` (scalar eval) | Legendre polynomial in assign expr (Wave 285) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

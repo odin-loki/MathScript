@@ -10556,3 +10556,27 @@ TEST(ReplCommandsTest, wave284_signal_ode_special) {
     expect_ok(interp, "ek = ellip_k(0.5)");
     EXPECT_TRUE(interp.state().scalars.count("ek") > 0);
 }
+
+TEST(ReplCommandsTest, wave285_control_signal_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "P = control_parallel([1], [1, 1], [2], [1, 2])");
+    EXPECT_EQ(interp.state().matrices.at("P").rows(), 2u);
+
+    expect_ok(interp, "Wo = control_obsv_gram([-2], [3])");
+    EXPECT_GT(interp.state().matrices.at("Wo").rows(), 0u);
+
+    expect_ok(interp, "x = [1; 2; 3]");
+    expect_ok(interp, "env = signal_envelope(x)");
+    EXPECT_EQ(interp.state().matrices.at("env").rows(), 3u);
+}
+
+TEST(ReplCommandsTest, wave285_ode_special) {
+    Interpreter interp;
+
+    expect_ok(interp, "tr = ode_backward_euler(\"y\", 0, 1, 1, 5)");
+    EXPECT_GT(interp.state().matrices.at("tr").rows(), 0u);
+
+    expect_ok(interp, "lp = legendre_p(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("lp"), ms::legendre_p(2, 0.5), 1e-9);
+}

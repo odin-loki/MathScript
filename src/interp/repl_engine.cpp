@@ -20199,6 +20199,13 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "pde_advection_1d_lax_wendroff" || callee == "pde_reaction_diffusion_1d" ||
            callee == "signal_deconv" || callee == "signal_firwin" || callee == "signal_firwin_highpass" ||
            callee == "signal_xcorr" || callee == "signal_xcov" || callee == "ode_midpoint" ||
+           callee == "control_obsv_gram" || callee == "control_c2d" || callee == "control_c2d_b" ||
+           callee == "control_parallel" || callee == "control_feedback" || callee == "control_ss2tf" ||
+           callee == "control_d2c" || callee == "control_c2d_tf" || callee == "control_d2c_tf" ||
+           callee == "ode_adams_bashforth2" || callee == "ode_backward_euler" || callee == "ode_bdf2" ||
+           callee == "signal_autocorr" || callee == "signal_lms" || callee == "signal_lms_weights" ||
+           callee == "signal_envelope" || callee == "signal_hilbert" ||
+           callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -21823,6 +21830,13 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "jacobi_sn") {
             return jacobi_sn(args[0], args[1]);
         }
+        if (fn == "legendre_p") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"legendre_p", "expected non-negative integer n"});
+            }
+            return legendre_p(static_cast<int>(args[0]), args[1]);
+        }
         if (fn == "jacobi_dn") {
             return jacobi_dn(args[0], args[1]);
         }
@@ -23352,46 +23366,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(spectrum.error());
         }
         result = *spectrum;
-    } else if (assign.callee == "signal_envelope" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto env = eval_signal_envelope(*matrix);
-        if (!env) {
-            return std::unexpected(env.error());
-        }
-        result = *env;
-    } else if (assign.callee == "signal_hilbert" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto analytic = eval_signal_hilbert(*matrix);
-        if (!analytic) {
-            return std::unexpected(analytic.error());
-        }
-        result = *analytic;
-    } else if (assign.callee == "signal_instantaneous_phase" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto phase = eval_signal_instantaneous_phase(*matrix);
-        if (!phase) {
-            return std::unexpected(phase.error());
-        }
-        result = *phase;
-    } else if (assign.callee == "signal_unwrap" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto unwrapped = eval_signal_unwrap(*matrix);
-        if (!unwrapped) {
-            return std::unexpected(unwrapped.error());
-        }
-        result = *unwrapped;
     } else if (assign.callee == "fft_dft" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -24452,45 +24426,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(cropped.error());
         }
         result = *cropped;
-    } else if (assign.callee == "signal_autocorr" && assign.args.size() == 2) {
-        auto x = resolve_operand(assign.args[0]);
-        if (!x) {
-            return std::unexpected(x.error());
-        }
-        double max_lag_d = 0.0;
-        if (!parse_number(assign.args[1], max_lag_d)) {
-            return std::unexpected(
-                DomainError{"signal_autocorr", "expected signal_autocorr(x, max_lag)"});
-        }
-        const int max_lag = static_cast<int>(max_lag_d);
-        if (max_lag < 0 || max_lag_d != max_lag) {
-            return std::unexpected(
-                DomainError{"signal_autocorr", "expected non-negative integer max_lag"});
-        }
-        result = eval_signal_autocorr(*x, max_lag);
-    } else if ((assign.callee == "signal_lms" || assign.callee == "signal_lms_weights") &&
-               assign.args.size() == 4) {
-        auto x = resolve_operand(assign.args[0]);
-        if (!x) {
-            return std::unexpected(x.error());
-        }
-        auto d = resolve_operand(assign.args[1]);
-        if (!d) {
-            return std::unexpected(d.error());
-        }
-        double filter_length_d = 0.0;
-        double mu = 0.0;
-        if (!parse_number(assign.args[2], filter_length_d) ||
-            !parse_number(assign.args[3], mu)) {
-            return std::unexpected(DomainError{
-                assign.callee,
-                "expected " + assign.callee + "(x, d, filter_length, mu)"});
-        }
-        if (assign.callee == "signal_lms") {
-            result = eval_signal_lms(*x, *d, filter_length_d, mu);
-        } else {
-            result = eval_signal_lms_weights(*x, *d, filter_length_d, mu);
-        }
     } else if (assign.callee == "geo_triangulate_polygon" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -25590,52 +25525,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(coeffs.error());
         }
         result = *coeffs;
-    } else if (assign.callee == "control_obsv_gram" && assign.args.size() == 2) {
-        auto A_m = resolve_operand(assign.args[0]);
-        if (!A_m) {
-            return std::unexpected(A_m.error());
-        }
-        auto C_m = resolve_operand(assign.args[1]);
-        if (!C_m) {
-            return std::unexpected(C_m.error());
-        }
-        auto value = eval_control_obsv_gram(*A_m, *C_m);
-        if (!value) {
-            return std::unexpected(value.error());
-        }
-        result = *value;
-    } else if ((assign.callee == "control_c2d" || assign.callee == "control_c2d_b") &&
-               assign.args.size() == 5) {
-        auto A_m = resolve_operand(assign.args[0]);
-        if (!A_m) {
-            return std::unexpected(A_m.error());
-        }
-        auto B_m = resolve_operand(assign.args[1]);
-        if (!B_m) {
-            return std::unexpected(B_m.error());
-        }
-        auto C_m = resolve_operand(assign.args[2]);
-        if (!C_m) {
-            return std::unexpected(C_m.error());
-        }
-        auto D_m = resolve_operand(assign.args[3]);
-        if (!D_m) {
-            return std::unexpected(D_m.error());
-        }
-        double Ts = 0.0;
-        if (!parse_number(assign.args[4], Ts)) {
-            auto ts_expr = eval_scalar_expr(state_, assign.args[4]);
-            if (!ts_expr) {
-                return std::unexpected(DomainError{assign.callee, "expected positive Ts"});
-            }
-            Ts = *ts_expr;
-        }
-        if (assign.callee == "control_c2d") {
-            result = eval_control_c2d(*A_m, *B_m, *C_m, *D_m, Ts,
-                                      control::DiscretizationMethod::ZOH, "control_c2d");
-        } else {
-            result = eval_control_c2d_B(*A_m, *B_m, *C_m, *D_m, Ts);
-        }
     } else if (assign.callee == "combo_prev_perm" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -25773,133 +25662,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
             return std::unexpected(cheb.error());
         }
         result = *cheb;
-    } else if (assign.callee == "control_parallel" && assign.args.size() == 4) {
-        auto num1 = resolve_operand(assign.args[0]);
-        if (!num1) {
-            return std::unexpected(num1.error());
-        }
-        auto den1 = resolve_operand(assign.args[1]);
-        if (!den1) {
-            return std::unexpected(den1.error());
-        }
-        auto num2 = resolve_operand(assign.args[2]);
-        if (!num2) {
-            return std::unexpected(num2.error());
-        }
-        auto den2 = resolve_operand(assign.args[3]);
-        if (!den2) {
-            return std::unexpected(den2.error());
-        }
-        result = eval_control_parallel(*num1, *den1, *num2, *den2);
-    } else if (assign.callee == "control_feedback" &&
-               (assign.args.size() == 4 || assign.args.size() == 5)) {
-        auto numG = resolve_operand(assign.args[0]);
-        if (!numG) {
-            return std::unexpected(numG.error());
-        }
-        auto denG = resolve_operand(assign.args[1]);
-        if (!denG) {
-            return std::unexpected(denG.error());
-        }
-        auto numH = resolve_operand(assign.args[2]);
-        if (!numH) {
-            return std::unexpected(numH.error());
-        }
-        auto denH = resolve_operand(assign.args[3]);
-        if (!denH) {
-            return std::unexpected(denH.error());
-        }
-        int sign = -1;
-        if (assign.args.size() == 5) {
-            double sign_d = 0.0;
-            if (!parse_number(assign.args[4], sign_d)) {
-                auto sign_expr = eval_scalar_expr(state_, assign.args[4]);
-                if (!sign_expr) {
-                    return std::unexpected(
-                        DomainError{"control_feedback", "expected feedback sign -1 or +1"});
-                }
-                sign_d = *sign_expr;
-            }
-            if (sign_d != -1.0 && sign_d != 1.0) {
-                return std::unexpected(
-                    DomainError{"control_feedback", "expected feedback sign -1 or +1"});
-            }
-            sign = static_cast<int>(sign_d);
-        }
-        result = eval_control_feedback(*numG, *denG, *numH, *denH, sign);
-    } else if (assign.callee == "control_ss2tf" && assign.args.size() == 1) {
-        auto ss_m = resolve_operand(assign.args[0]);
-        if (!ss_m) {
-            return std::unexpected(ss_m.error());
-        }
-        result = eval_control_ss2tf(*ss_m);
-    } else if (assign.callee == "control_d2c" && assign.args.size() == 5) {
-        auto A_m = resolve_operand(assign.args[0]);
-        if (!A_m) {
-            return std::unexpected(A_m.error());
-        }
-        auto B_m = resolve_operand(assign.args[1]);
-        if (!B_m) {
-            return std::unexpected(B_m.error());
-        }
-        auto C_m = resolve_operand(assign.args[2]);
-        if (!C_m) {
-            return std::unexpected(C_m.error());
-        }
-        auto D_m = resolve_operand(assign.args[3]);
-        if (!D_m) {
-            return std::unexpected(D_m.error());
-        }
-        double Ts = 0.0;
-        if (!parse_number(assign.args[4], Ts)) {
-            auto ts_expr = eval_scalar_expr(state_, assign.args[4]);
-            if (!ts_expr) {
-                return std::unexpected(DomainError{"control_d2c", "expected positive Ts"});
-            }
-            Ts = *ts_expr;
-        }
-        result = eval_control_d2c(*A_m, *B_m, *C_m, *D_m, Ts,
-                                  control::DiscretizationMethod::ZOH, "control_d2c");
-    } else if (assign.callee == "control_c2d_tf" && assign.args.size() == 3) {
-        auto num_m = resolve_operand(assign.args[0]);
-        if (!num_m) {
-            return std::unexpected(num_m.error());
-        }
-        auto den_m = resolve_operand(assign.args[1]);
-        if (!den_m) {
-            return std::unexpected(den_m.error());
-        }
-        double Ts = 0.0;
-        if (!parse_number(assign.args[2], Ts)) {
-            auto ts_expr = eval_scalar_expr(state_, assign.args[2]);
-            if (!ts_expr) {
-                return std::unexpected(DomainError{"control_c2d_tf", "expected positive Ts"});
-            }
-            Ts = *ts_expr;
-        }
-        result = eval_control_c2d_tf(*num_m, *den_m, Ts, control::DiscretizationMethod::ZOH,
-                                     "control_c2d_tf");
-    } else if (assign.callee == "control_d2c_tf" && assign.args.size() == 3) {
-        auto num_m = resolve_operand(assign.args[0]);
-        if (!num_m) {
-            return std::unexpected(num_m.error());
-        }
-        auto den_m = resolve_operand(assign.args[1]);
-        if (!den_m) {
-            return std::unexpected(den_m.error());
-        }
-        double Ts = 0.0;
-        if (!parse_number(assign.args[2], Ts)) {
-            auto ts_expr = eval_scalar_expr(state_, assign.args[2]);
-            if (!ts_expr) {
-                return std::unexpected(DomainError{"control_d2c_tf", "expected positive Ts"});
-            }
-            Ts = *ts_expr;
-        }
-        result = eval_control_d2c_tf(*num_m, *den_m, Ts, control::DiscretizationMethod::ZOH,
-                                     "control_d2c_tf");
-    }
-    else if (assign.callee == "finance_merton_implied_asset_params" && assign.args.size() == 5) {
+    } else if (assign.callee == "finance_merton_implied_asset_params" && assign.args.size() == 5) {
         double E = 0.0;
         double sigma_E = 0.0;
         double D = 0.0;
@@ -27260,21 +27023,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
             return std::unexpected(decoded.error());
         }
         result = *decoded;
-    } else if ((assign.callee == "ode_adams_bashforth2" ||
-                assign.callee == "ode_backward_euler" || assign.callee == "ode_bdf2") &&
-               assign.args.size() == 5) {
-        OdeResult (*solver)(OdeFunc, double, double, double, size_t) = nullptr;
-        if (assign.callee == "ode_adams_bashforth2") {
-            solver = ode_adams_bashforth2;
-        } else if (assign.callee == "ode_backward_euler") {
-            solver = ode_backward_euler;
-        } else {
-            solver = ode_bdf2;
-        }
-        result = eval_ode_fixed_step_matrix(
-            assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
-            trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
-            solver);
     }
 
     if (!result) {
@@ -29820,6 +29568,270 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail12(const MatrixCallAs
             assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
             trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
             ode_midpoint);
+    } else if (assign.callee == "control_obsv_gram" && assign.args.size() == 2) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto C_m = resolve_operand(assign.args[1]);
+        if (!C_m) {
+            return std::unexpected(C_m.error());
+        }
+        auto value = eval_control_obsv_gram(*A_m, *C_m);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
+    } else if ((assign.callee == "control_c2d" || assign.callee == "control_c2d_b") &&
+               assign.args.size() == 5) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto B_m = resolve_operand(assign.args[1]);
+        if (!B_m) {
+            return std::unexpected(B_m.error());
+        }
+        auto C_m = resolve_operand(assign.args[2]);
+        if (!C_m) {
+            return std::unexpected(C_m.error());
+        }
+        auto D_m = resolve_operand(assign.args[3]);
+        if (!D_m) {
+            return std::unexpected(D_m.error());
+        }
+        double Ts = 0.0;
+        if (!parse_number(assign.args[4], Ts)) {
+            auto ts_expr = eval_scalar_expr(state_, assign.args[4]);
+            if (!ts_expr) {
+                return std::unexpected(DomainError{assign.callee, "expected positive Ts"});
+            }
+            Ts = *ts_expr;
+        }
+        if (assign.callee == "control_c2d") {
+            result = eval_control_c2d(*A_m, *B_m, *C_m, *D_m, Ts,
+                                      control::DiscretizationMethod::ZOH, "control_c2d");
+        } else {
+            result = eval_control_c2d_B(*A_m, *B_m, *C_m, *D_m, Ts);
+        }
+    } else if (assign.callee == "control_parallel" && assign.args.size() == 4) {
+        auto num1 = resolve_operand(assign.args[0]);
+        if (!num1) {
+            return std::unexpected(num1.error());
+        }
+        auto den1 = resolve_operand(assign.args[1]);
+        if (!den1) {
+            return std::unexpected(den1.error());
+        }
+        auto num2 = resolve_operand(assign.args[2]);
+        if (!num2) {
+            return std::unexpected(num2.error());
+        }
+        auto den2 = resolve_operand(assign.args[3]);
+        if (!den2) {
+            return std::unexpected(den2.error());
+        }
+        result = eval_control_parallel(*num1, *den1, *num2, *den2);
+    } else if (assign.callee == "control_feedback" &&
+               (assign.args.size() == 4 || assign.args.size() == 5)) {
+        auto numG = resolve_operand(assign.args[0]);
+        if (!numG) {
+            return std::unexpected(numG.error());
+        }
+        auto denG = resolve_operand(assign.args[1]);
+        if (!denG) {
+            return std::unexpected(denG.error());
+        }
+        auto numH = resolve_operand(assign.args[2]);
+        if (!numH) {
+            return std::unexpected(numH.error());
+        }
+        auto denH = resolve_operand(assign.args[3]);
+        if (!denH) {
+            return std::unexpected(denH.error());
+        }
+        int sign = -1;
+        if (assign.args.size() == 5) {
+            double sign_d = 0.0;
+            if (!parse_number(assign.args[4], sign_d)) {
+                auto sign_expr = eval_scalar_expr(state_, assign.args[4]);
+                if (!sign_expr) {
+                    return std::unexpected(
+                        DomainError{"control_feedback", "expected feedback sign -1 or +1"});
+                }
+                sign_d = *sign_expr;
+            }
+            if (sign_d != -1.0 && sign_d != 1.0) {
+                return std::unexpected(
+                    DomainError{"control_feedback", "expected feedback sign -1 or +1"});
+            }
+            sign = static_cast<int>(sign_d);
+        }
+        result = eval_control_feedback(*numG, *denG, *numH, *denH, sign);
+    } else if (assign.callee == "control_ss2tf" && assign.args.size() == 1) {
+        auto ss_m = resolve_operand(assign.args[0]);
+        if (!ss_m) {
+            return std::unexpected(ss_m.error());
+        }
+        result = eval_control_ss2tf(*ss_m);
+    } else if (assign.callee == "control_d2c" && assign.args.size() == 5) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto B_m = resolve_operand(assign.args[1]);
+        if (!B_m) {
+            return std::unexpected(B_m.error());
+        }
+        auto C_m = resolve_operand(assign.args[2]);
+        if (!C_m) {
+            return std::unexpected(C_m.error());
+        }
+        auto D_m = resolve_operand(assign.args[3]);
+        if (!D_m) {
+            return std::unexpected(D_m.error());
+        }
+        double Ts = 0.0;
+        if (!parse_number(assign.args[4], Ts)) {
+            auto ts_expr = eval_scalar_expr(state_, assign.args[4]);
+            if (!ts_expr) {
+                return std::unexpected(DomainError{"control_d2c", "expected positive Ts"});
+            }
+            Ts = *ts_expr;
+        }
+        result = eval_control_d2c(*A_m, *B_m, *C_m, *D_m, Ts,
+                                  control::DiscretizationMethod::ZOH, "control_d2c");
+    } else if (assign.callee == "control_c2d_tf" && assign.args.size() == 3) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        double Ts = 0.0;
+        if (!parse_number(assign.args[2], Ts)) {
+            auto ts_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!ts_expr) {
+                return std::unexpected(DomainError{"control_c2d_tf", "expected positive Ts"});
+            }
+            Ts = *ts_expr;
+        }
+        result = eval_control_c2d_tf(*num_m, *den_m, Ts, control::DiscretizationMethod::ZOH,
+                                     "control_c2d_tf");
+    } else if (assign.callee == "control_d2c_tf" && assign.args.size() == 3) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        double Ts = 0.0;
+        if (!parse_number(assign.args[2], Ts)) {
+            auto ts_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!ts_expr) {
+                return std::unexpected(DomainError{"control_d2c_tf", "expected positive Ts"});
+            }
+            Ts = *ts_expr;
+        }
+        result = eval_control_d2c_tf(*num_m, *den_m, Ts, control::DiscretizationMethod::ZOH,
+                                     "control_d2c_tf");
+    } else if ((assign.callee == "ode_adams_bashforth2" ||
+                assign.callee == "ode_backward_euler" || assign.callee == "ode_bdf2") &&
+               assign.args.size() == 5) {
+        OdeResult (*solver)(OdeFunc, double, double, double, size_t) = nullptr;
+        if (assign.callee == "ode_adams_bashforth2") {
+            solver = ode_adams_bashforth2;
+        } else if (assign.callee == "ode_backward_euler") {
+            solver = ode_backward_euler;
+        } else {
+            solver = ode_bdf2;
+        }
+        result = eval_ode_fixed_step_matrix(
+            assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
+            trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
+            solver);
+    } else if (assign.callee == "signal_autocorr" && assign.args.size() == 2) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto max_lag_val = parse_scalar_arg(assign.args[1], "signal_autocorr");
+        if (!max_lag_val) {
+            return std::unexpected(max_lag_val.error());
+        }
+        const int max_lag = static_cast<int>(*max_lag_val);
+        if (max_lag < 0 || *max_lag_val != max_lag) {
+            return std::unexpected(
+                DomainError{"signal_autocorr", "expected non-negative integer max_lag"});
+        }
+        result = eval_signal_autocorr(*x, max_lag);
+    } else if ((assign.callee == "signal_lms" || assign.callee == "signal_lms_weights") &&
+               assign.args.size() == 4) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto d = resolve_operand(assign.args[1]);
+        if (!d) {
+            return std::unexpected(d.error());
+        }
+        auto filter_length_val = parse_scalar_arg(assign.args[2], assign.callee.c_str());
+        if (!filter_length_val) {
+            return std::unexpected(filter_length_val.error());
+        }
+        auto mu_val = parse_scalar_arg(assign.args[3], assign.callee.c_str());
+        if (!mu_val) {
+            return std::unexpected(mu_val.error());
+        }
+        if (assign.callee == "signal_lms") {
+            result = eval_signal_lms(*x, *d, *filter_length_val, *mu_val);
+        } else {
+            result = eval_signal_lms_weights(*x, *d, *filter_length_val, *mu_val);
+        }
+    } else if (assign.callee == "signal_envelope" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto env = eval_signal_envelope(*matrix);
+        if (!env) {
+            return std::unexpected(env.error());
+        }
+        result = *env;
+    } else if (assign.callee == "signal_hilbert" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto analytic = eval_signal_hilbert(*matrix);
+        if (!analytic) {
+            return std::unexpected(analytic.error());
+        }
+        result = *analytic;
+    } else if (assign.callee == "signal_instantaneous_phase" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto phase = eval_signal_instantaneous_phase(*matrix);
+        if (!phase) {
+            return std::unexpected(phase.error());
+        }
+        result = *phase;
+    } else if (assign.callee == "signal_unwrap" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto unwrapped = eval_signal_unwrap(*matrix);
+        if (!unwrapped) {
+            return std::unexpected(unwrapped.error());
+        }
+        result = *unwrapped;
     }
 
     return result;
