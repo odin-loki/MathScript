@@ -20287,7 +20287,12 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "combo_motzkin_paths" || callee == "combo_set_partitions" ||
            callee == "combo_restricted_partitions" ||
            callee == "poly_squarefree" || callee == "poly_gcd" ||
-           callee == "poly_monic" || callee == "poly_reverse";
+           callee == "poly_monic" || callee == "poly_reverse" ||
+           callee == "poly_lcm" || callee == "poly_div_quot" || callee == "poly_mod" ||
+           callee == "poly_eval_at" || callee == "poly_sylvester" ||
+           callee == "numthy_factor_exp" || callee == "numthy_farey" ||
+           callee == "numthy_stern_brocot" || callee == "numthy_pell_solve" ||
+           callee == "numthy_quadratic_residues";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21754,6 +21759,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return gamma_inc_reg_upper(args[0], args[1]);
         }
         if (fn == "special_pochhammer") {
+            if (args[1] < 0.0 || std::floor(args[1]) != args[1]) {
+                return std::unexpected(
+                    DomainError{"special_pochhammer", "expected non-negative integer n"});
+            }
             return pochhammer(args[0], static_cast<int>(args[1]));
         }
         if (fn == "special_falling_factorial") {
@@ -23458,61 +23467,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey" ||
-                assign.callee == "numthy_stern_brocot" ||
-                assign.callee == "numthy_pell_solve" ||
-                assign.callee == "numthy_quadratic_residues") &&
-               assign.args.size() == 1) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(DomainError{
-                    assign.callee,
-                    assign.callee == "numthy_factor_exp"
-                        ? "expected numthy_factor_exp(n)"
-                        : assign.callee == "numthy_farey"
-                              ? "expected numthy_farey(n)"
-                              : assign.callee == "numthy_stern_brocot"
-                                    ? "expected numthy_stern_brocot(n)"
-                                    : assign.callee == "numthy_pell_solve"
-                                          ? "expected numthy_pell_solve(D)"
-                                          : "expected numthy_quadratic_residues(p)"});
-            }
-            n_d = *n_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        if (assign.callee == "numthy_factor_exp") {
-            if (n < 2 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_factor_exp", "expected integer n >= 2"});
-            }
-            result = eval_numthy_factor_exp(n);
-        } else if (assign.callee == "numthy_farey") {
-            if (n < 1 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_farey", "expected positive integer n"});
-            }
-            result = eval_numthy_farey(n);
-        } else if (assign.callee == "numthy_stern_brocot") {
-            if (n < 0 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_stern_brocot", "expected non-negative integer n"});
-            }
-            result = eval_numthy_stern_brocot(n);
-        } else if (assign.callee == "numthy_pell_solve") {
-            if (n < 1 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_pell_solve", "expected positive integer D"});
-            }
-            result = eval_numthy_pell_solve(n);
-        } else {
-            if (n < 3 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_quadratic_residues", "expected odd prime p >= 3"});
-            }
-            result = eval_numthy_quadratic_residues(n);
-        }
     } else if (assign.callee == "numthy_lucas_sequence" && assign.args.size() == 3) {
         double k_d = 0.0;
         double P_d = 0.0;
@@ -23577,76 +23531,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(roots.error());
         }
         result = *roots;
-    } else if (assign.callee == "poly_lcm" && assign.args.size() == 2) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        auto l = eval_poly_lcm(*a, *b);
-        if (!l) {
-            return std::unexpected(l.error());
-        }
-        result = *l;
-    } else if (assign.callee == "poly_div_quot" && assign.args.size() == 2) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        auto quot = eval_poly_div_quot(*a, *b);
-        if (!quot) {
-            return std::unexpected(quot.error());
-        }
-        result = *quot;
-    } else if (assign.callee == "poly_mod" && assign.args.size() == 2) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        auto rem = eval_poly_mod(*a, *b);
-        if (!rem) {
-            return std::unexpected(rem.error());
-        }
-        result = *rem;
-    } else if (assign.callee == "poly_eval_at" && assign.args.size() == 2) {
-        auto coeffs = resolve_operand(assign.args[0]);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        auto xs = resolve_operand(assign.args[1]);
-        if (!xs) {
-            return std::unexpected(xs.error());
-        }
-        auto values = eval_poly_eval_at(*coeffs, *xs);
-        if (!values) {
-            return std::unexpected(values.error());
-        }
-        result = *values;
-    } else if (assign.callee == "poly_sylvester" && assign.args.size() == 2) {
-        auto p = resolve_operand(assign.args[0]);
-        if (!p) {
-            return std::unexpected(p.error());
-        }
-        auto q = resolve_operand(assign.args[1]);
-        if (!q) {
-            return std::unexpected(q.error());
-        }
-        auto S = eval_poly_sylvester(*p, *q);
-        if (!S) {
-            return std::unexpected(S.error());
-        }
-        result = *S;
     } else if (assign.callee == "poly_fit" && assign.args.size() == 3) {
         auto xs = resolve_operand(assign.args[0]);
         if (!xs) {
@@ -29225,7 +29109,46 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
             return std::unexpected(gray.error());
         }
         result = rgb_image_to_matrix(image::gray2rgb(*gray));
-    } else if (assign.callee == "impad" &&
+    }
+
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail14(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& arg_text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(arg_text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, arg_text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+    auto parse_positive_size_arg = [](double value, const char* fn,
+                                      const char* label) -> Result<std::size_t> {
+        const int i = static_cast<int>(value);
+        if (i < 1 || value != static_cast<double>(i)) {
+            return std::unexpected(DomainError{fn, label});
+        }
+        return static_cast<std::size_t>(i);
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "impad" &&
                (assign.args.size() == 2 || assign.args.size() == 3)) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -30053,6 +29976,131 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
             return std::unexpected(reversed.error());
         }
         result = *reversed;
+    } else if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey" ||
+                assign.callee == "numthy_stern_brocot" ||
+                assign.callee == "numthy_pell_solve" ||
+                assign.callee == "numthy_quadratic_residues") &&
+               assign.args.size() == 1) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(DomainError{
+                    assign.callee,
+                    assign.callee == "numthy_factor_exp"
+                        ? "expected numthy_factor_exp(n)"
+                        : assign.callee == "numthy_farey"
+                              ? "expected numthy_farey(n)"
+                              : assign.callee == "numthy_stern_brocot"
+                                    ? "expected numthy_stern_brocot(n)"
+                                    : assign.callee == "numthy_pell_solve"
+                                          ? "expected numthy_pell_solve(D)"
+                                          : "expected numthy_quadratic_residues(p)"});
+            }
+            n_d = *n_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        if (assign.callee == "numthy_factor_exp") {
+            if (n < 2 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_factor_exp", "expected integer n >= 2"});
+            }
+            result = eval_numthy_factor_exp(n);
+        } else if (assign.callee == "numthy_farey") {
+            if (n < 1 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_farey", "expected positive integer n"});
+            }
+            result = eval_numthy_farey(n);
+        } else if (assign.callee == "numthy_stern_brocot") {
+            if (n < 0 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_stern_brocot", "expected non-negative integer n"});
+            }
+            result = eval_numthy_stern_brocot(n);
+        } else if (assign.callee == "numthy_pell_solve") {
+            if (n < 1 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_pell_solve", "expected positive integer D"});
+            }
+            result = eval_numthy_pell_solve(n);
+        } else {
+            if (n < 3 || n_d != n) {
+                return std::unexpected(
+                    DomainError{"numthy_quadratic_residues", "expected odd prime p >= 3"});
+            }
+            result = eval_numthy_quadratic_residues(n);
+        }
+    } else if (assign.callee == "poly_lcm" && assign.args.size() == 2) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto l = eval_poly_lcm(*a, *b);
+        if (!l) {
+            return std::unexpected(l.error());
+        }
+        result = *l;
+    } else if (assign.callee == "poly_div_quot" && assign.args.size() == 2) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto quot = eval_poly_div_quot(*a, *b);
+        if (!quot) {
+            return std::unexpected(quot.error());
+        }
+        result = *quot;
+    } else if (assign.callee == "poly_mod" && assign.args.size() == 2) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto rem = eval_poly_mod(*a, *b);
+        if (!rem) {
+            return std::unexpected(rem.error());
+        }
+        result = *rem;
+    } else if (assign.callee == "poly_eval_at" && assign.args.size() == 2) {
+        auto coeffs = resolve_operand(assign.args[0]);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        auto xs = resolve_operand(assign.args[1]);
+        if (!xs) {
+            return std::unexpected(xs.error());
+        }
+        auto values = eval_poly_eval_at(*coeffs, *xs);
+        if (!values) {
+            return std::unexpected(values.error());
+        }
+        result = *values;
+    } else if (assign.callee == "poly_sylvester" && assign.args.size() == 2) {
+        auto p = resolve_operand(assign.args[0]);
+        if (!p) {
+            return std::unexpected(p.error());
+        }
+        auto q = resolve_operand(assign.args[1]);
+        if (!q) {
+            return std::unexpected(q.error());
+        }
+        auto S = eval_poly_sylvester(*p, *q);
+        if (!S) {
+            return std::unexpected(S.error());
+        }
+        result = *S;
     }
 
     return result;

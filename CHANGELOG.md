@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 297 — numthy/poly tail11, special_pochhammer) ✅ COMPLETE
+
+Sixty-seventh feature wave after Wave 296. Migrated number-theory and extended polynomial handlers to tail11/tail14; scalar `special_pochhammer` integer validation in `eval_scalar_call`; split `assign_matrix_call_tail14` from tail13 (MSVC C1061); `integration_repl_wave297_pipeline`.
+
+### Added (Wave 297)
+- **Numthy tail11** — `numthy_factor_exp`, `numthy_farey`, `numthy_stern_brocot`, `numthy_pell_solve`, `numthy_quadratic_residues`.
+- **Poly tail11** — `poly_lcm`, `poly_div_quot`, `poly_mod`, `poly_eval_at`, `poly_sylvester`.
+- **Special** — `special_pochhammer(a,n)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave297_pipeline`** — numthy/poly/special smoke.
+- **Unit** — `wave297_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 297 sync; **456** CTest suites.
+
+**456 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 296 — combo/poly tail11, hypergeo_0f1n/1f1n) ✅ COMPLETE
 
 Sixty-sixth feature wave after Wave 295. Migrated extended combo enumeration and polynomial handlers to tail11/tail13; scalar `hypergeo_0f1n`/`hypergeo_1f1n` integer validation in `eval_scalar_call`; `integration_repl_wave296_pipeline`.

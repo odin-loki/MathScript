@@ -10870,3 +10870,28 @@ TEST(ReplCommandsTest, wave296_special_scalar) {
     expect_ok(interp, "h1 = hypergeo_1f1n(1, 0.5, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("h1"), ms::hypergeo_1f1n(1, 0.5, 0.3), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave297_numthy_poly_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "fe = numthy_factor_exp(12)");
+    EXPECT_GT(interp.state().matrices.at("fe").rows(), 0u);
+
+    expect_ok(interp, "sb = numthy_stern_brocot(3)");
+    EXPECT_GT(interp.state().matrices.at("sb").rows(), 0u);
+
+    expect_ok(interp, "l = poly_lcm([-1; 1], [1; 1])");
+    EXPECT_GT(interp.state().matrices.at("l").rows(), 0u);
+
+    expect_ok(interp, "p = [1; 2]");
+    expect_ok(interp, "q = [1; 1]");
+    expect_ok(interp, "S = poly_sylvester(p, q)");
+    EXPECT_GT(interp.state().matrices.at("S").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave297_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "ph = special_pochhammer(2.5, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("ph"), ms::pochhammer(2.5, 3), 1e-9);
+}
