@@ -20251,6 +20251,14 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "stats_jarque_bera" || callee == "stats_ljung_box" ||
            callee == "threshold_otsu" || callee == "imrotate90" ||
            callee == "threshold_binary" || callee == "label_components" ||
+           callee == "imgaussfilt" || callee == "medfilt2" || callee == "boxfilter" ||
+           callee == "imdilate" || callee == "imerode" || callee == "imopen" ||
+           callee == "imclose" || callee == "bilateral" || callee == "canny" ||
+           callee == "imresize" || callee == "watershed" ||
+           callee == "topo_pairwise_distances" || callee == "combo_next_perm" ||
+           callee == "numthy_convergents" || callee == "imcrop" ||
+           callee == "geo_triangulate_polygon" || callee == "geo_convex_hull_3d" ||
+           callee == "stats_linear_regression" || callee == "stats_pacf" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -21792,9 +21800,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return hermite_he(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "chebyshev_v") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"chebyshev_v", "expected non-negative integer n"});
+            }
             return chebyshev_v(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "chebyshev_w") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"chebyshev_w", "expected non-negative integer n"});
+            }
             return chebyshev_w(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "sph_bessel_j") {
@@ -23011,167 +23027,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
     auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "imgaussfilt" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double sigma = 0.0;
-        if (!parse_number(assign.args[1], sigma)) {
-            return std::unexpected(DomainError{"imgaussfilt", "expected imgaussfilt(M, sigma)"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::imgaussfilt(*gray, static_cast<float>(sigma)));
-    } else if (assign.callee == "medfilt2" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double ksize_d = 0.0;
-        if (!parse_number(assign.args[1], ksize_d)) {
-            return std::unexpected(DomainError{"medfilt2", "expected medfilt2(M, ksize)"});
-        }
-        const int ksize = static_cast<int>(ksize_d);
-        if (ksize < 1 || ksize_d != ksize || (ksize % 2) == 0) {
-            return std::unexpected(
-                DomainError{"medfilt2", "expected positive odd integer ksize"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::medfilt2(*gray, ksize));
-    } else if (assign.callee == "boxfilter" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double ksize_d = 0.0;
-        if (!parse_number(assign.args[1], ksize_d)) {
-            return std::unexpected(DomainError{"boxfilter", "expected boxfilter(M, ksize)"});
-        }
-        const int ksize = static_cast<int>(ksize_d);
-        if (ksize < 1 || ksize_d != ksize || (ksize % 2) == 0) {
-            return std::unexpected(
-                DomainError{"boxfilter", "expected positive odd integer ksize"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::boxfilter(*gray, ksize));
-    } else if ((assign.callee == "imdilate" || assign.callee == "imerode" ||
-                assign.callee == "imopen" || assign.callee == "imclose") &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        int ksize = 3;
-        if (assign.args.size() == 2) {
-            double ksize_d = 0.0;
-            if (!parse_number(assign.args[1], ksize_d)) {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected morphology(M, ksize)"});
-            }
-            auto parsed = parse_morph_ksize(ksize_d, assign.callee.c_str());
-            if (!parsed) {
-                return std::unexpected(parsed.error());
-            }
-            ksize = *parsed;
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        if (assign.callee == "imdilate") {
-            result = gray_image_to_matrix(image::imdilate(*gray, ksize));
-        } else if (assign.callee == "imerode") {
-            result = gray_image_to_matrix(image::imerode(*gray, ksize));
-        } else if (assign.callee == "imopen") {
-            result = gray_image_to_matrix(image::imopen(*gray, ksize));
-        } else {
-            result = gray_image_to_matrix(image::imclose(*gray, ksize));
-        }
-    } else if (assign.callee == "bilateral" && assign.args.size() == 3) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double sigma_s = 0.0;
-        double sigma_r = 0.0;
-        if (!parse_number(assign.args[1], sigma_s) || !parse_number(assign.args[2], sigma_r)) {
-            return std::unexpected(
-                DomainError{"bilateral", "expected bilateral(M, sigma_s, sigma_r)"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(
-            image::bilateral(*gray, static_cast<float>(sigma_s), static_cast<float>(sigma_r)));
-    } else if (assign.callee == "canny" && assign.args.size() == 3) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double low = 0.0;
-        double high = 0.0;
-        if (!parse_number(assign.args[1], low) || !parse_number(assign.args[2], high)) {
-            return std::unexpected(DomainError{"canny", "expected canny(M, low, high)"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(
-            image::canny(*gray, static_cast<float>(low), static_cast<float>(high)));
-    } else if (assign.callee == "imresize" && assign.args.size() == 3) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double rows_d = 0.0;
-        double cols_d = 0.0;
-        if (!parse_number(assign.args[1], rows_d) || !parse_number(assign.args[2], cols_d)) {
-            return std::unexpected(DomainError{"imresize", "expected imresize(M, rows, cols)"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(
-            image::imresize(*gray, static_cast<int>(rows_d), static_cast<int>(cols_d)));
-    } else if (assign.callee == "watershed" && assign.args.size() == 2) {
-        auto gray_m = resolve_operand(assign.args[0]);
-        if (!gray_m) {
-            return std::unexpected(gray_m.error());
-        }
-        auto markers_m = resolve_operand(assign.args[1]);
-        if (!markers_m) {
-            return std::unexpected(markers_m.error());
-        }
-        auto gray = matrix_to_gray_image(*gray_m);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        // Marker labels are integer IDs, not intensities Ã¢â‚¬â€� do not apply 0..255 scaling.
-        if (markers_m->rows() == 0 || markers_m->cols() == 0) {
-            return std::unexpected(DomainError{"watershed", "empty markers matrix"});
-        }
-        image::Image markers(static_cast<int>(markers_m->rows()),
-                             static_cast<int>(markers_m->cols()), 1);
-        for (size_t r = 0; r < markers_m->rows(); ++r) {
-            for (size_t c = 0; c < markers_m->cols(); ++c) {
-                markers.at(static_cast<int>(r), static_cast<int>(c), 0) =
-                    static_cast<float>((*markers_m)(r, c));
-            }
-        }
-        result = gray_image_to_matrix(image::watershed(*gray, markers));
-    } else if (assign.callee == "slic" &&
+    if (assign.callee == "slic" &&
                (assign.args.size() == 2 || assign.args.size() == 3)) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23283,36 +23139,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(DomainError{"shi_tomasi", "expected positive integer n"});
         }
         result = eval_shi_tomasi(*matrix, n, static_cast<float>(quality));
-    } else if (assign.callee == "topo_pairwise_distances" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto dist = eval_topo_pairwise_distances(*matrix);
-        if (!dist) {
-            return std::unexpected(dist.error());
-        }
-        result = *dist;
-    } else if (assign.callee == "combo_next_perm" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto perm = eval_combo_next_perm(*matrix);
-        if (!perm) {
-            return std::unexpected(perm.error());
-        }
-        result = *perm;
-    } else if (assign.callee == "numthy_convergents" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto conv = eval_numthy_convergents(*matrix);
-        if (!conv) {
-            return std::unexpected(conv.error());
-        }
-        result = *conv;
     } else if (assign.callee == "ml_linear_fit" && assign.args.size() == 2) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
@@ -23680,78 +23506,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if (assign.callee == "imcrop" && assign.args.size() == 5) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double r0_d = 0.0;
-        double c0_d = 0.0;
-        double r1_d = 0.0;
-        double c1_d = 0.0;
-        if (!parse_number(assign.args[1], r0_d) || !parse_number(assign.args[2], c0_d) ||
-            !parse_number(assign.args[3], r1_d) || !parse_number(assign.args[4], c1_d)) {
-            return std::unexpected(
-                DomainError{"imcrop", "expected imcrop(M, r0, c0, r1, c1)"});
-        }
-        const int r0 = static_cast<int>(r0_d);
-        const int c0 = static_cast<int>(c0_d);
-        const int r1 = static_cast<int>(r1_d);
-        const int c1 = static_cast<int>(c1_d);
-        if (r0_d != r0 || c0_d != c0 || r1_d != r1 || c1_d != c1) {
-            return std::unexpected(DomainError{"imcrop", "expected integer crop bounds"});
-        }
-        auto cropped = eval_imcrop(*matrix, r0, c0, r1, c1);
-        if (!cropped) {
-            return std::unexpected(cropped.error());
-        }
-        result = *cropped;
-    } else if (assign.callee == "geo_triangulate_polygon" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto tris = eval_geo_triangulate_polygon(*matrix);
-        if (!tris) {
-            return std::unexpected(tris.error());
-        }
-        result = *tris;
-    } else if (assign.callee == "geo_convex_hull_3d" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto faces = eval_geo_convex_hull_3d(*matrix);
-        if (!faces) {
-            return std::unexpected(faces.error());
-        }
-        result = *faces;
-    } else if (assign.callee == "stats_linear_regression" && assign.args.size() == 2) {
-        auto x = resolve_operand(assign.args[0]);
-        if (!x) {
-            return std::unexpected(x.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        result = eval_stats_linear_regression(*x, *y);
-    } else if (assign.callee == "stats_pacf" && assign.args.size() == 2) {
-        auto x = resolve_operand(assign.args[0]);
-        if (!x) {
-            return std::unexpected(x.error());
-        }
-        double max_lag_d = 0.0;
-        if (!parse_number(assign.args[1], max_lag_d)) {
-            return std::unexpected(
-                DomainError{"stats_pacf", "expected stats_pacf(x, max_lag)"});
-        }
-        const int max_lag = static_cast<int>(max_lag_d);
-        if (max_lag < 0 || max_lag_d != max_lag) {
-            return std::unexpected(
-                DomainError{"stats_pacf", "expected non-negative integer max_lag"});
-        }
-        result = eval_stats_pacf(*x, max_lag);
     } else if (assign.callee == "stats_kde" &&
                (assign.args.size() == 3 || assign.args.size() == 4)) {
         auto samples = resolve_operand(assign.args[0]);
@@ -29952,6 +29706,268 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
         } else {
             result = eval_geo_kdtree_range(*matrix, qx, qy, arg3);
         }
+    } else if (assign.callee == "imgaussfilt" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double sigma = 0.0;
+        if (!parse_number(assign.args[1], sigma)) {
+            return std::unexpected(DomainError{"imgaussfilt", "expected imgaussfilt(M, sigma)"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::imgaussfilt(*gray, static_cast<float>(sigma)));
+    } else if (assign.callee == "medfilt2" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double ksize_d = 0.0;
+        if (!parse_number(assign.args[1], ksize_d)) {
+            return std::unexpected(DomainError{"medfilt2", "expected medfilt2(M, ksize)"});
+        }
+        const int ksize = static_cast<int>(ksize_d);
+        if (ksize < 1 || ksize_d != ksize || (ksize % 2) == 0) {
+            return std::unexpected(
+                DomainError{"medfilt2", "expected positive odd integer ksize"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::medfilt2(*gray, ksize));
+    } else if (assign.callee == "boxfilter" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double ksize_d = 0.0;
+        if (!parse_number(assign.args[1], ksize_d)) {
+            return std::unexpected(DomainError{"boxfilter", "expected boxfilter(M, ksize)"});
+        }
+        const int ksize = static_cast<int>(ksize_d);
+        if (ksize < 1 || ksize_d != ksize || (ksize % 2) == 0) {
+            return std::unexpected(
+                DomainError{"boxfilter", "expected positive odd integer ksize"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::boxfilter(*gray, ksize));
+    } else if ((assign.callee == "imdilate" || assign.callee == "imerode" ||
+                assign.callee == "imopen" || assign.callee == "imclose") &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        int ksize = 3;
+        if (assign.args.size() == 2) {
+            double ksize_d = 0.0;
+            if (!parse_number(assign.args[1], ksize_d)) {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected morphology(M, ksize)"});
+            }
+            auto parsed = parse_morph_ksize(ksize_d, assign.callee.c_str());
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            ksize = *parsed;
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        if (assign.callee == "imdilate") {
+            result = gray_image_to_matrix(image::imdilate(*gray, ksize));
+        } else if (assign.callee == "imerode") {
+            result = gray_image_to_matrix(image::imerode(*gray, ksize));
+        } else if (assign.callee == "imopen") {
+            result = gray_image_to_matrix(image::imopen(*gray, ksize));
+        } else {
+            result = gray_image_to_matrix(image::imclose(*gray, ksize));
+        }
+    } else if (assign.callee == "bilateral" && assign.args.size() == 3) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double sigma_s = 0.0;
+        double sigma_r = 0.0;
+        if (!parse_number(assign.args[1], sigma_s) || !parse_number(assign.args[2], sigma_r)) {
+            return std::unexpected(
+                DomainError{"bilateral", "expected bilateral(M, sigma_s, sigma_r)"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(
+            image::bilateral(*gray, static_cast<float>(sigma_s), static_cast<float>(sigma_r)));
+    } else if (assign.callee == "canny" && assign.args.size() == 3) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double low = 0.0;
+        double high = 0.0;
+        if (!parse_number(assign.args[1], low) || !parse_number(assign.args[2], high)) {
+            return std::unexpected(DomainError{"canny", "expected canny(M, low, high)"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(
+            image::canny(*gray, static_cast<float>(low), static_cast<float>(high)));
+    } else if (assign.callee == "imresize" && assign.args.size() == 3) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double rows_d = 0.0;
+        double cols_d = 0.0;
+        if (!parse_number(assign.args[1], rows_d) || !parse_number(assign.args[2], cols_d)) {
+            return std::unexpected(DomainError{"imresize", "expected imresize(M, rows, cols)"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(
+            image::imresize(*gray, static_cast<int>(rows_d), static_cast<int>(cols_d)));
+    } else if (assign.callee == "watershed" && assign.args.size() == 2) {
+        auto gray_m = resolve_operand(assign.args[0]);
+        if (!gray_m) {
+            return std::unexpected(gray_m.error());
+        }
+        auto markers_m = resolve_operand(assign.args[1]);
+        if (!markers_m) {
+            return std::unexpected(markers_m.error());
+        }
+        auto gray = matrix_to_gray_image(*gray_m);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        // Marker labels are integer IDs, not intensities Ã¢â‚¬â€� do not apply 0..255 scaling.
+        if (markers_m->rows() == 0 || markers_m->cols() == 0) {
+            return std::unexpected(DomainError{"watershed", "empty markers matrix"});
+        }
+        image::Image markers(static_cast<int>(markers_m->rows()),
+                             static_cast<int>(markers_m->cols()), 1);
+        for (size_t r = 0; r < markers_m->rows(); ++r) {
+            for (size_t c = 0; c < markers_m->cols(); ++c) {
+                markers.at(static_cast<int>(r), static_cast<int>(c), 0) =
+                    static_cast<float>((*markers_m)(r, c));
+            }
+        }
+        result = gray_image_to_matrix(image::watershed(*gray, markers));
+    } else if (assign.callee == "topo_pairwise_distances" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto dist = eval_topo_pairwise_distances(*matrix);
+        if (!dist) {
+            return std::unexpected(dist.error());
+        }
+        result = *dist;
+    } else if (assign.callee == "combo_next_perm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto perm = eval_combo_next_perm(*matrix);
+        if (!perm) {
+            return std::unexpected(perm.error());
+        }
+        result = *perm;
+    } else if (assign.callee == "numthy_convergents" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto conv = eval_numthy_convergents(*matrix);
+        if (!conv) {
+            return std::unexpected(conv.error());
+        }
+        result = *conv;
+    } else if (assign.callee == "imcrop" && assign.args.size() == 5) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double r0_d = 0.0;
+        double c0_d = 0.0;
+        double r1_d = 0.0;
+        double c1_d = 0.0;
+        if (!parse_number(assign.args[1], r0_d) || !parse_number(assign.args[2], c0_d) ||
+            !parse_number(assign.args[3], r1_d) || !parse_number(assign.args[4], c1_d)) {
+            return std::unexpected(
+                DomainError{"imcrop", "expected imcrop(M, r0, c0, r1, c1)"});
+        }
+        const int r0 = static_cast<int>(r0_d);
+        const int c0 = static_cast<int>(c0_d);
+        const int r1 = static_cast<int>(r1_d);
+        const int c1 = static_cast<int>(c1_d);
+        if (r0_d != r0 || c0_d != c0 || r1_d != r1 || c1_d != c1) {
+            return std::unexpected(DomainError{"imcrop", "expected integer crop bounds"});
+        }
+        auto cropped = eval_imcrop(*matrix, r0, c0, r1, c1);
+        if (!cropped) {
+            return std::unexpected(cropped.error());
+        }
+        result = *cropped;
+    } else if (assign.callee == "geo_triangulate_polygon" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto tris = eval_geo_triangulate_polygon(*matrix);
+        if (!tris) {
+            return std::unexpected(tris.error());
+        }
+        result = *tris;
+    } else if (assign.callee == "geo_convex_hull_3d" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto faces = eval_geo_convex_hull_3d(*matrix);
+        if (!faces) {
+            return std::unexpected(faces.error());
+        }
+        result = *faces;
+    } else if (assign.callee == "stats_linear_regression" && assign.args.size() == 2) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        result = eval_stats_linear_regression(*x, *y);
+    } else if (assign.callee == "stats_pacf" && assign.args.size() == 2) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        double max_lag_d = 0.0;
+        if (!parse_number(assign.args[1], max_lag_d)) {
+            return std::unexpected(
+                DomainError{"stats_pacf", "expected stats_pacf(x, max_lag)"});
+        }
+        const int max_lag = static_cast<int>(max_lag_d);
+        if (max_lag < 0 || max_lag_d != max_lag) {
+            return std::unexpected(
+                DomainError{"stats_pacf", "expected non-negative integer max_lag"});
+        }
+        result = eval_stats_pacf(*x, max_lag);
     }
 
     return result;

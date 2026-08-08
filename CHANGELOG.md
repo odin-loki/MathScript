@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 290 — image/topo/stats tail11, chebyshev_v/chebyshev_w) ✅ COMPLETE
+
+Sixtieth feature wave after Wave 289. Migrated image filters, topo/combo, and stats handlers to tail11/tail13; scalar `chebyshev_v`/`chebyshev_w` integer validation in `eval_scalar_call`; `integration_repl_wave290_pipeline`.
+
+### Added (Wave 290)
+- **Image tail11** — `imgaussfilt`, `medfilt2`, `boxfilter`, `imdilate`/`imerode`/`imopen`/`imclose`, `bilateral`, `canny`, `imresize`, `watershed`, `imcrop`.
+- **Topo/combo tail11** — `topo_pairwise_distances`, `combo_next_perm`, `numthy_convergents`.
+- **Geo/stats tail11** — `geo_triangulate_polygon`, `geo_convex_hull_3d`, `stats_linear_regression`, `stats_pacf`.
+- **Special** — `chebyshev_v(n,x)` and `chebyshev_w(n,x)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave290_pipeline`** — image/topo/stats/special smoke.
+- **Unit** — `wave290_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 290 sync; **449** CTest suites.
+
+**449 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 289 — stats/geo/image tail11, chebyshev_u/hermite_he) ✅ COMPLETE
 
 Fifty-ninth feature wave after Wave 288. Migrated extended stats, geo, and image handlers to tail11/tail13; scalar `chebyshev_u`/`hermite_he` integer validation in `eval_scalar_call`; `integration_repl_wave289_pipeline`; split `assign_matrix_call_tail13` from tail12 (MSVC C1061).

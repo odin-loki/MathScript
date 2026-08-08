@@ -521,6 +521,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `geo_voronoi` / `geo_min_bounding_rect` / `geo_kdtree_knn` / `geo_kdtree_range` (tail11) | Extended computational geometry assign (Wave 289) |
 | `threshold_otsu` / `imrotate90` / `threshold_binary` / `label_components` (tail11) | Extended image processing assign (Wave 289) |
 | `chebyshev_u` / `hermite_he` (scalar eval) | Chebyshev U / probabilist Hermite in assign expr (Wave 289) |
+| `imgaussfilt` / `medfilt2` / `boxfilter` / `imdilate` / `imerode` / `imopen` / `imclose` / `bilateral` / `canny` / `imresize` / `watershed` / `imcrop` (tail11) | Extended image filter assign (Wave 290) |
+| `topo_pairwise_distances` / `combo_next_perm` / `numthy_convergents` (tail11) | Topology/combinatorics assign (Wave 290) |
+| `geo_triangulate_polygon` / `geo_convex_hull_3d` / `stats_linear_regression` / `stats_pacf` (tail11) | Geo/stats assign (Wave 290) |
+| `chebyshev_v` / `chebyshev_w` (scalar eval) | Chebyshev V/W in assign expr (Wave 290) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

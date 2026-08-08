@@ -10687,3 +10687,28 @@ TEST(ReplCommandsTest, wave289_special_scalar) {
     expect_ok(interp, "he = hermite_he(2, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("he"), ms::hermite_he(2, 0.3), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave290_image_topo_stats_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "G = [10, 20, 30, 40; 50, 60, 70, 80]");
+    expect_ok(interp, "B = imgaussfilt(G, 0.5)");
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 2u);
+
+    expect_ok(interp, "D = topo_pairwise_distances([0, 0; 1, 0; 0, 1])");
+    EXPECT_EQ(interp.state().matrices.at("D").rows(), 3u);
+
+    expect_ok(interp, "M = [1, 2, 3, 4, 5; 6, 7, 8, 9, 10; 11, 12, 13, 14, 15]");
+    expect_ok(interp, "C = imcrop(M, 1, 1, 3, 4)");
+    EXPECT_EQ(interp.state().matrices.at("C").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave290_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "cv = chebyshev_v(1, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("cv"), ms::chebyshev_v(1, 0.3), 1e-9);
+
+    expect_ok(interp, "cw = chebyshev_w(2, 0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("cw"), ms::chebyshev_w(2, 0.2), 1e-9);
+}
