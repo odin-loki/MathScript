@@ -494,6 +494,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `ode_euler` / `signal_conv2` (tail11) | ODE/signal beside W282 rk4/sosfilt (Wave 283) |
 | `control_obsv` / `control_kalman_predict_cov` / `control_step_response` (tail11) | Control observability/Kalman/step (Wave 283) |
 | `struve_h` / `kelvin_ber` / `jacobi_sn` (scalar eval) | Special-function scalar assigns (Wave 283) |
+| `pde_poisson_2d` / `pde_burgers_1d` / `pde_laplace_2d` / `pde_helmholtz_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` (tail11) | Extended PDE suite (Wave 284) |
+| `control_impulse_response` / `control_kalman_update_cov` / `control_ctrb_gram` / `control_tf2ss` / `control_series` (tail11) | Control TF/Kalman/Gram (Wave 284) |
+| `signal_deconv` / `signal_firwin` / `signal_xcorr` / `signal_xcov` (tail11) | Signal processing chain (Wave 284) |
+| `ode_midpoint` (tail11) | ODE family beside W283 euler (Wave 284) |
+| `ellip_k` (scalar eval) | Complete elliptic K in assign expr (Wave 284) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

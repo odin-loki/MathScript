@@ -20191,7 +20191,14 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "sparse_spmv" || callee == "sparse_to_dense" || callee == "sparse_add" ||
            callee == "ode_euler" || callee == "control_obsv" ||
            callee == "control_kalman_predict_cov" || callee == "control_step_response" ||
-           callee == "signal_conv2" ||
+           callee == "signal_conv2" || callee == "control_impulse_response" ||
+           callee == "control_kalman_update_cov" || callee == "control_ctrb_gram" ||
+           callee == "control_tf2ss" || callee == "control_series" ||
+           callee == "pde_poisson_2d" || callee == "pde_burgers_1d" ||
+           callee == "pde_laplace_2d" || callee == "pde_helmholtz_2d" ||
+           callee == "pde_advection_1d_lax_wendroff" || callee == "pde_reaction_diffusion_1d" ||
+           callee == "signal_deconv" || callee == "signal_firwin" || callee == "signal_firwin_highpass" ||
+           callee == "signal_xcorr" || callee == "signal_xcov" || callee == "ode_midpoint" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -21324,6 +21331,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "ellip_e") {
             return ellip_e(arg);
+        }
+        if (fn == "ellip_k") {
+            return ellip_k(arg);
         }
         if (fn == "ellip_d") {
             return ellip_d(arg);
@@ -24372,49 +24382,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                 assign.callee, "expected non-negative integer n and n_max"});
         }
         result = eval_quantum_fock_state(n, n_max);
-    } else if (assign.callee == "pde_poisson_2d" && assign.args.size() == 5) {
-        auto f_m = resolve_operand(assign.args[0]);
-        if (!f_m) {
-            return std::unexpected(f_m.error());
-        }
-        double dx = 0.0;
-        double dy = 0.0;
-        double max_iter_d = 0.0;
-        double tolerance = 0.0;
-        if (!parse_number(assign.args[1], dx) || !parse_number(assign.args[2], dy) ||
-            !parse_number(assign.args[3], max_iter_d) ||
-            !parse_number(assign.args[4], tolerance)) {
-            return std::unexpected(DomainError{
-                "pde_poisson_2d",
-                "expected pde_poisson_2d(f, dx, dy, max_iterations, tolerance)"});
-        }
-        const int max_iter_i = static_cast<int>(max_iter_d);
-        if (max_iter_i < 0 || max_iter_d != max_iter_i) {
-            return std::unexpected(DomainError{
-                "pde_poisson_2d", "expected non-negative integer max_iterations"});
-        }
-        result = eval_pde_poisson_2d(*f_m, dx, dy, static_cast<std::size_t>(max_iter_i),
-                                     tolerance);
-    } else if (assign.callee == "pde_burgers_1d" && assign.args.size() == 5) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double nu = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], nu) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_burgers_1d", "expected pde_burgers_1d(u0, nu, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_burgers_1d(*u0_m, nu, dx, dt, static_cast<std::size_t>(steps_i));
     } else if (assign.callee == "fem_poisson3d" && assign.args.size() == 3) {
         double nx_d = 0.0;
         double ny_d = 0.0;
@@ -24485,67 +24452,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(cropped.error());
         }
         result = *cropped;
-    } else if (assign.callee == "signal_deconv" && assign.args.size() == 2) {
-        auto y = resolve_operand(assign.args[0]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        result = eval_signal_deconv(*y, *b);
-    } else if ((assign.callee == "signal_firwin" || assign.callee == "signal_firwin_highpass") &&
-               (assign.args.size() == 2 || assign.args.size() == 3)) {
-        double n_taps_d = 0.0;
-        double cutoff = 0.0;
-        if (!parse_number(assign.args[0], n_taps_d) || !parse_number(assign.args[1], cutoff)) {
-            return std::unexpected(DomainError{
-                assign.callee, "expected " + assign.callee + "(n_taps, cutoff[, window])"});
-        }
-        const int n_taps = static_cast<int>(n_taps_d);
-        if (n_taps < 1 || n_taps_d != n_taps) {
-            return std::unexpected(
-                DomainError{assign.callee, "expected integer n_taps >= 1"});
-        }
-        FirWindow window = FirWindow::Hamming;
-        if (assign.args.size() == 3) {
-            auto parsed = parse_fir_window(assign.args[2], assign.callee.c_str());
-            if (!parsed) {
-                return std::unexpected(parsed.error());
-            }
-            window = *parsed;
-        }
-        if (assign.callee == "signal_firwin") {
-            result = eval_signal_firwin(n_taps, cutoff, window);
-        } else {
-            result = eval_signal_firwin_highpass(n_taps, cutoff, window);
-        }
-    } else if ((assign.callee == "signal_xcorr" || assign.callee == "signal_xcov") &&
-               assign.args.size() == 3) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        double max_lag_d = 0.0;
-        if (!parse_number(assign.args[2], max_lag_d)) {
-            return std::unexpected(DomainError{
-                assign.callee, "expected " + assign.callee + "(a, b, max_lag)"});
-        }
-        const int max_lag = static_cast<int>(max_lag_d);
-        if (max_lag < 0 || max_lag_d != max_lag) {
-            return std::unexpected(
-                DomainError{assign.callee, "expected non-negative integer max_lag"});
-        }
-        if (assign.callee == "signal_xcorr") {
-            result = eval_signal_xcorr(*a, *b, max_lag);
-        } else {
-            result = eval_signal_xcov(*a, *b, max_lag);
-        }
     } else if (assign.callee == "signal_autocorr" && assign.args.size() == 2) {
         auto x = resolve_operand(assign.args[0]);
         if (!x) {
@@ -25074,43 +24980,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             fs = *fs_expr;
         }
         result = eval_fft_goertzel(*matrix, f, fs);
-    } else if (assign.callee == "control_impulse_response" &&
-               (assign.args.size() == 2 || assign.args.size() == 3 || assign.args.size() == 4)) {
-        auto num_m = resolve_operand(assign.args[0]);
-        if (!num_m) {
-            return std::unexpected(num_m.error());
-        }
-        auto den_m = resolve_operand(assign.args[1]);
-        if (!den_m) {
-            return std::unexpected(den_m.error());
-        }
-        double t_end = 10.0;
-        int n_pts = 500;
-        if (assign.args.size() >= 3) {
-            if (!parse_number(assign.args[2], t_end)) {
-                auto t_expr = eval_scalar_expr(state_, assign.args[2]);
-                if (!t_expr) {
-                    return std::unexpected(t_expr.error());
-                }
-                t_end = *t_expr;
-            }
-        }
-        if (assign.args.size() == 4) {
-            double n_pts_d = 0.0;
-            if (!parse_number(assign.args[3], n_pts_d)) {
-                auto n_expr = eval_scalar_expr(state_, assign.args[3]);
-                if (!n_expr) {
-                    return std::unexpected(n_expr.error());
-                }
-                n_pts_d = *n_expr;
-            }
-            if (n_pts_d < 2.0 || std::floor(n_pts_d) != n_pts_d) {
-                return std::unexpected(
-                    DomainError{"control_impulse_response", "expected integer n_pts >= 2"});
-            }
-            n_pts = static_cast<int>(n_pts_d);
-        }
-        result = eval_control_impulse_response(*num_m, *den_m, t_end, n_pts);
     } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -25533,32 +25402,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         result = eval_numthy_lucas_sequence(static_cast<int64_t>(k_d),
                                            static_cast<int64_t>(P_d),
                                            static_cast<int64_t>(Q_d));
-    } else if (assign.callee == "control_kalman_update_cov" && assign.args.size() == 5) {
-        auto x_m = resolve_operand(assign.args[0]);
-        if (!x_m) {
-            return std::unexpected(x_m.error());
-        }
-        auto P_m = resolve_operand(assign.args[1]);
-        if (!P_m) {
-            return std::unexpected(P_m.error());
-        }
-        auto z_m = resolve_operand(assign.args[2]);
-        if (!z_m) {
-            return std::unexpected(z_m.error());
-        }
-        auto H_m = resolve_operand(assign.args[3]);
-        if (!H_m) {
-            return std::unexpected(H_m.error());
-        }
-        auto R_m = resolve_operand(assign.args[4]);
-        if (!R_m) {
-            return std::unexpected(R_m.error());
-        }
-        auto updated = eval_control_kalman_update_cov(*x_m, *P_m, *z_m, *H_m, *R_m);
-        if (!updated) {
-            return std::unexpected(updated.error());
-        }
-        result = *updated;
     }
 
     if (!result) {
@@ -25747,20 +25590,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(coeffs.error());
         }
         result = *coeffs;
-    } else if (assign.callee == "control_ctrb_gram" && assign.args.size() == 2) {
-        auto A_m = resolve_operand(assign.args[0]);
-        if (!A_m) {
-            return std::unexpected(A_m.error());
-        }
-        auto B_m = resolve_operand(assign.args[1]);
-        if (!B_m) {
-            return std::unexpected(B_m.error());
-        }
-        auto value = eval_control_ctrb_gram(*A_m, *B_m);
-        if (!value) {
-            return std::unexpected(value.error());
-        }
-        result = *value;
     } else if (assign.callee == "control_obsv_gram" && assign.args.size() == 2) {
         auto A_m = resolve_operand(assign.args[0]);
         if (!A_m) {
@@ -25775,20 +25604,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(value.error());
         }
         result = *value;
-    } else if (assign.callee == "control_tf2ss" && assign.args.size() == 2) {
-        auto num_m = resolve_operand(assign.args[0]);
-        if (!num_m) {
-            return std::unexpected(num_m.error());
-        }
-        auto den_m = resolve_operand(assign.args[1]);
-        if (!den_m) {
-            return std::unexpected(den_m.error());
-        }
-        auto ss = eval_control_tf2ss(*num_m, *den_m);
-        if (!ss) {
-            return std::unexpected(ss.error());
-        }
-        result = *ss;
     } else if ((assign.callee == "control_c2d" || assign.callee == "control_c2d_b") &&
                assign.args.size() == 5) {
         auto A_m = resolve_operand(assign.args[0]);
@@ -25958,26 +25773,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
             return std::unexpected(cheb.error());
         }
         result = *cheb;
-    }
-
-    else if (assign.callee == "control_series" && assign.args.size() == 4) {
-        auto num1 = resolve_operand(assign.args[0]);
-        if (!num1) {
-            return std::unexpected(num1.error());
-        }
-        auto den1 = resolve_operand(assign.args[1]);
-        if (!den1) {
-            return std::unexpected(den1.error());
-        }
-        auto num2 = resolve_operand(assign.args[2]);
-        if (!num2) {
-            return std::unexpected(num2.error());
-        }
-        auto den2 = resolve_operand(assign.args[3]);
-        if (!den2) {
-            return std::unexpected(den2.error());
-        }
-        result = eval_control_series(*num1, *den1, *num2, *den2);
     } else if (assign.callee == "control_parallel" && assign.args.size() == 4) {
         auto num1 = resolve_operand(assign.args[0]);
         if (!num1) {
@@ -27135,99 +26930,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             return std::unexpected(transformed.error());
         }
         result = *transformed;
-    } else if (assign.callee == "pde_laplace_2d" && assign.args.size() == 3) {
-        auto nx_val = parse_scalar_arg(assign.args[0], "pde_laplace_2d");
-        if (!nx_val) {
-            return std::unexpected(nx_val.error());
-        }
-        auto ny_val = parse_scalar_arg(assign.args[1], "pde_laplace_2d");
-        if (!ny_val) {
-            return std::unexpected(ny_val.error());
-        }
-        const int nx = static_cast<int>(*nx_val);
-        const int ny = static_cast<int>(*ny_val);
-        if (nx < 1 || ny < 1 || *nx_val != nx || *ny_val != ny) {
-            return std::unexpected(
-                DomainError{"pde_laplace_2d", "expected positive integer nx and ny"});
-        }
-        auto boundary_m = resolve_operand(assign.args[2]);
-        if (!boundary_m) {
-            return std::unexpected(boundary_m.error());
-        }
-        result = eval_pde_laplace_2d(nx, ny, *boundary_m);
-    } else if (assign.callee == "pde_helmholtz_2d" &&
-               (assign.args.size() == 4 || assign.args.size() == 5)) {
-        auto f_m = resolve_operand(assign.args[0]);
-        if (!f_m) {
-            return std::unexpected(f_m.error());
-        }
-        auto k = parse_scalar_arg(assign.args[1], "pde_helmholtz_2d");
-        if (!k) {
-            return std::unexpected(k.error());
-        }
-        auto dx = parse_scalar_arg(assign.args[2], "pde_helmholtz_2d");
-        if (!dx) {
-            return std::unexpected(dx.error());
-        }
-        auto dy = parse_scalar_arg(assign.args[3], "pde_helmholtz_2d");
-        if (!dy) {
-            return std::unexpected(dy.error());
-        }
-        if (assign.args.size() == 4) {
-            result = eval_pde_helmholtz_2d(*f_m, *k, *dx, *dy);
-        } else {
-            auto g_m = resolve_operand(assign.args[4]);
-            if (!g_m) {
-                return std::unexpected(g_m.error());
-            }
-            result = eval_pde_helmholtz_2d(*f_m, *k, *dx, *dy, &(*g_m));
-        }
-    } else if (assign.callee == "pde_advection_1d_lax_wendroff" && assign.args.size() == 5) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double v = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], v) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_advection_1d_lax_wendroff",
-                "expected pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(DomainError{
-                "pde_advection_1d_lax_wendroff", "expected non-negative integer steps"});
-        }
-        result = eval_pde_advection_1d_lax_wendroff(*u0_m, v, dx, dt,
-                                                    static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "pde_reaction_diffusion_1d" && assign.args.size() == 6) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double D = 0.0;
-        double r = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], D) || !parse_number(assign.args[2], r) ||
-            !parse_number(assign.args[3], dx) || !parse_number(assign.args[4], dt) ||
-            !parse_number(assign.args[5], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_reaction_diffusion_1d",
-                "expected pde_reaction_diffusion_1d(u0, D, r, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(DomainError{
-                "pde_reaction_diffusion_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_reaction_diffusion_1d(*u0_m, D, r, dx, dt,
-                                                static_cast<std::size_t>(steps_i));
     } else if (assign.callee == "arithmetic_encode_vec" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -27559,14 +27261,11 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
         }
         result = *decoded;
     } else if ((assign.callee == "ode_adams_bashforth2" ||
-                assign.callee == "ode_midpoint" ||
                 assign.callee == "ode_backward_euler" || assign.callee == "ode_bdf2") &&
                assign.args.size() == 5) {
         OdeResult (*solver)(OdeFunc, double, double, double, size_t) = nullptr;
         if (assign.callee == "ode_adams_bashforth2") {
             solver = ode_adams_bashforth2;
-        } else if (assign.callee == "ode_midpoint") {
-            solver = ode_midpoint;
         } else if (assign.callee == "ode_backward_euler") {
             solver = ode_backward_euler;
         } else {
@@ -29252,7 +28951,53 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             return std::unexpected(poly_val.error());
         }
         result = eval_signal_savgol_wp(*x, *window_val, *poly_val);
-    } else if (assign.callee == "quantum_hadamard" && assign.args.size() == 1) {
+    }
+
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail12(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail12(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+    auto parse_positive_size_arg = [](double value, const char* fn,
+                                      const char* label) -> Result<std::size_t> {
+        const int i = static_cast<int>(value);
+        if (i < 1 || value != static_cast<double>(i)) {
+            return std::unexpected(DomainError{fn, label});
+        }
+        return static_cast<std::size_t>(i);
+    };
+    auto parse_uint64_arg = [](double value, const char* fn,
+                               const char* label) -> Result<uint64_t> {
+        if (value < 0.0 || value != std::floor(value)) {
+            return std::unexpected(DomainError{fn, label});
+        }
+        return static_cast<uint64_t>(value);
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "quantum_hadamard" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
@@ -29746,6 +29491,335 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             return std::unexpected(K.error());
         }
         result = eval_signal_conv2(*A, *K);
+    } else if (assign.callee == "control_impulse_response" &&
+               (assign.args.size() == 2 || assign.args.size() == 3 || assign.args.size() == 4)) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        auto t_end = parse_scalar_arg(assign.args.size() >= 3 ? assign.args[2] : "10",
+                                      "control_impulse_response");
+        if (!t_end) {
+            return std::unexpected(t_end.error());
+        }
+        int n_pts = 500;
+        if (assign.args.size() == 4) {
+            auto n_pts_val = parse_scalar_arg(assign.args[3], "control_impulse_response");
+            if (!n_pts_val) {
+                return std::unexpected(n_pts_val.error());
+            }
+            if (*n_pts_val < 2.0 || std::floor(*n_pts_val) != *n_pts_val) {
+                return std::unexpected(
+                    DomainError{"control_impulse_response", "expected integer n_pts >= 2"});
+            }
+            n_pts = static_cast<int>(*n_pts_val);
+        }
+        result = eval_control_impulse_response(*num_m, *den_m, *t_end, n_pts);
+    } else if (assign.callee == "control_kalman_update_cov" && assign.args.size() == 5) {
+        auto x_m = resolve_operand(assign.args[0]);
+        if (!x_m) {
+            return std::unexpected(x_m.error());
+        }
+        auto P_m = resolve_operand(assign.args[1]);
+        if (!P_m) {
+            return std::unexpected(P_m.error());
+        }
+        auto z_m = resolve_operand(assign.args[2]);
+        if (!z_m) {
+            return std::unexpected(z_m.error());
+        }
+        auto H_m = resolve_operand(assign.args[3]);
+        if (!H_m) {
+            return std::unexpected(H_m.error());
+        }
+        auto R_m = resolve_operand(assign.args[4]);
+        if (!R_m) {
+            return std::unexpected(R_m.error());
+        }
+        auto updated = eval_control_kalman_update_cov(*x_m, *P_m, *z_m, *H_m, *R_m);
+        if (!updated) {
+            return std::unexpected(updated.error());
+        }
+        result = *updated;
+    } else if (assign.callee == "control_ctrb_gram" && assign.args.size() == 2) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto B_m = resolve_operand(assign.args[1]);
+        if (!B_m) {
+            return std::unexpected(B_m.error());
+        }
+        auto value = eval_control_ctrb_gram(*A_m, *B_m);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
+    } else if (assign.callee == "control_tf2ss" && assign.args.size() == 2) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        auto ss = eval_control_tf2ss(*num_m, *den_m);
+        if (!ss) {
+            return std::unexpected(ss.error());
+        }
+        result = *ss;
+    } else if (assign.callee == "control_series" && assign.args.size() == 4) {
+        auto num1 = resolve_operand(assign.args[0]);
+        if (!num1) {
+            return std::unexpected(num1.error());
+        }
+        auto den1 = resolve_operand(assign.args[1]);
+        if (!den1) {
+            return std::unexpected(den1.error());
+        }
+        auto num2 = resolve_operand(assign.args[2]);
+        if (!num2) {
+            return std::unexpected(num2.error());
+        }
+        auto den2 = resolve_operand(assign.args[3]);
+        if (!den2) {
+            return std::unexpected(den2.error());
+        }
+        result = eval_control_series(*num1, *den1, *num2, *den2);
+    } else if (assign.callee == "pde_poisson_2d" && assign.args.size() == 5) {
+        auto f_m = resolve_operand(assign.args[0]);
+        if (!f_m) {
+            return std::unexpected(f_m.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[1], "pde_poisson_2d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dy = parse_scalar_arg(assign.args[2], "pde_poisson_2d");
+        if (!dy) {
+            return std::unexpected(dy.error());
+        }
+        auto max_iter_val = parse_scalar_arg(assign.args[3], "pde_poisson_2d");
+        if (!max_iter_val) {
+            return std::unexpected(max_iter_val.error());
+        }
+        auto tolerance = parse_scalar_arg(assign.args[4], "pde_poisson_2d");
+        if (!tolerance) {
+            return std::unexpected(tolerance.error());
+        }
+        const int max_iter_i = static_cast<int>(*max_iter_val);
+        if (max_iter_i < 0 || *max_iter_val != max_iter_i) {
+            return std::unexpected(
+                DomainError{"pde_poisson_2d", "expected non-negative integer max_iterations"});
+        }
+        result = eval_pde_poisson_2d(*f_m, *dx, *dy, static_cast<std::size_t>(max_iter_i),
+                                     *tolerance);
+    } else if (assign.callee == "pde_burgers_1d" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto nu = parse_scalar_arg(assign.args[1], "pde_burgers_1d");
+        if (!nu) {
+            return std::unexpected(nu.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[2], "pde_burgers_1d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[3], "pde_burgers_1d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto steps_val = parse_scalar_arg(assign.args[4], "pde_burgers_1d");
+        if (!steps_val) {
+            return std::unexpected(steps_val.error());
+        }
+        const int steps_i = static_cast<int>(*steps_val);
+        if (steps_i < 0 || *steps_val != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_burgers_1d(*u0_m, *nu, *dx, *dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_laplace_2d" && assign.args.size() == 3) {
+        auto nx_val = parse_scalar_arg(assign.args[0], "pde_laplace_2d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto ny_val = parse_scalar_arg(assign.args[1], "pde_laplace_2d");
+        if (!ny_val) {
+            return std::unexpected(ny_val.error());
+        }
+        const int nx = static_cast<int>(*nx_val);
+        const int ny = static_cast<int>(*ny_val);
+        if (nx < 1 || ny < 1 || *nx_val != nx || *ny_val != ny) {
+            return std::unexpected(
+                DomainError{"pde_laplace_2d", "expected positive integer nx and ny"});
+        }
+        auto boundary_m = resolve_operand(assign.args[2]);
+        if (!boundary_m) {
+            return std::unexpected(boundary_m.error());
+        }
+        result = eval_pde_laplace_2d(nx, ny, *boundary_m);
+    } else if (assign.callee == "pde_helmholtz_2d" &&
+               (assign.args.size() == 4 || assign.args.size() == 5)) {
+        auto f_m = resolve_operand(assign.args[0]);
+        if (!f_m) {
+            return std::unexpected(f_m.error());
+        }
+        auto k = parse_scalar_arg(assign.args[1], "pde_helmholtz_2d");
+        if (!k) {
+            return std::unexpected(k.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[2], "pde_helmholtz_2d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dy = parse_scalar_arg(assign.args[3], "pde_helmholtz_2d");
+        if (!dy) {
+            return std::unexpected(dy.error());
+        }
+        if (assign.args.size() == 4) {
+            result = eval_pde_helmholtz_2d(*f_m, *k, *dx, *dy);
+        } else {
+            auto g_m = resolve_operand(assign.args[4]);
+            if (!g_m) {
+                return std::unexpected(g_m.error());
+            }
+            result = eval_pde_helmholtz_2d(*f_m, *k, *dx, *dy, &(*g_m));
+        }
+    } else if (assign.callee == "pde_advection_1d_lax_wendroff" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto v = parse_scalar_arg(assign.args[1], "pde_advection_1d_lax_wendroff");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[2], "pde_advection_1d_lax_wendroff");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[3], "pde_advection_1d_lax_wendroff");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto steps_val = parse_scalar_arg(assign.args[4], "pde_advection_1d_lax_wendroff");
+        if (!steps_val) {
+            return std::unexpected(steps_val.error());
+        }
+        const int steps_i = static_cast<int>(*steps_val);
+        if (steps_i < 0 || *steps_val != steps_i) {
+            return std::unexpected(DomainError{
+                "pde_advection_1d_lax_wendroff", "expected non-negative integer steps"});
+        }
+        result = eval_pde_advection_1d_lax_wendroff(*u0_m, *v, *dx, *dt,
+                                                    static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_reaction_diffusion_1d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto D = parse_scalar_arg(assign.args[1], "pde_reaction_diffusion_1d");
+        if (!D) {
+            return std::unexpected(D.error());
+        }
+        auto r = parse_scalar_arg(assign.args[2], "pde_reaction_diffusion_1d");
+        if (!r) {
+            return std::unexpected(r.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[3], "pde_reaction_diffusion_1d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[4], "pde_reaction_diffusion_1d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto steps_val = parse_scalar_arg(assign.args[5], "pde_reaction_diffusion_1d");
+        if (!steps_val) {
+            return std::unexpected(steps_val.error());
+        }
+        const int steps_i = static_cast<int>(*steps_val);
+        if (steps_i < 0 || *steps_val != steps_i) {
+            return std::unexpected(DomainError{
+                "pde_reaction_diffusion_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_reaction_diffusion_1d(*u0_m, *D, *r, *dx, *dt,
+                                                static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "signal_deconv" && assign.args.size() == 2) {
+        auto y = resolve_operand(assign.args[0]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        result = eval_signal_deconv(*y, *b);
+    } else if ((assign.callee == "signal_firwin" || assign.callee == "signal_firwin_highpass") &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto n_taps_val = parse_scalar_arg(assign.args[0], assign.callee.c_str());
+        if (!n_taps_val) {
+            return std::unexpected(n_taps_val.error());
+        }
+        auto cutoff = parse_scalar_arg(assign.args[1], assign.callee.c_str());
+        if (!cutoff) {
+            return std::unexpected(cutoff.error());
+        }
+        const int n_taps = static_cast<int>(*n_taps_val);
+        if (n_taps < 1 || *n_taps_val != n_taps) {
+            return std::unexpected(
+                DomainError{assign.callee, "expected integer n_taps >= 1"});
+        }
+        FirWindow window = FirWindow::Hamming;
+        if (assign.args.size() == 3) {
+            auto parsed = parse_fir_window(assign.args[2], assign.callee.c_str());
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            window = *parsed;
+        }
+        if (assign.callee == "signal_firwin") {
+            result = eval_signal_firwin(n_taps, *cutoff, window);
+        } else {
+            result = eval_signal_firwin_highpass(n_taps, *cutoff, window);
+        }
+    } else if ((assign.callee == "signal_xcorr" || assign.callee == "signal_xcov") &&
+               assign.args.size() == 3) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto max_lag_val = parse_scalar_arg(assign.args[2], assign.callee.c_str());
+        if (!max_lag_val) {
+            return std::unexpected(max_lag_val.error());
+        }
+        const int max_lag = static_cast<int>(*max_lag_val);
+        if (max_lag < 0 || *max_lag_val != max_lag) {
+            return std::unexpected(
+                DomainError{assign.callee, "expected non-negative integer max_lag"});
+        }
+        if (assign.callee == "signal_xcorr") {
+            result = eval_signal_xcorr(*a, *b, max_lag);
+        } else {
+            result = eval_signal_xcov(*a, *b, max_lag);
+        }
+    } else if (assign.callee == "ode_midpoint" && assign.args.size() == 5) {
+        result = eval_ode_fixed_step_matrix(
+            assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
+            trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
+            ode_midpoint);
     }
 
     return result;

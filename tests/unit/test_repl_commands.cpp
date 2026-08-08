@@ -10529,3 +10529,30 @@ TEST(ReplCommandsTest, wave283_ode_signal_special) {
     EXPECT_TRUE(interp.state().scalars.count("sh") > 0);
     EXPECT_TRUE(interp.state().scalars.count("js") > 0);
 }
+
+TEST(ReplCommandsTest, wave284_pde_control_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "f0 = zeros(4, 4)");
+    expect_ok(interp, "p2 = pde_poisson_2d(f0, 0.1, 0.1, 50, 1e-8)");
+    EXPECT_EQ(interp.state().matrices.at("p2").rows(), 4u);
+
+    expect_ok(interp, "ser = control_series([1], [1, 1], [2], [1, 2])");
+    EXPECT_EQ(interp.state().matrices.at("ser").rows(), 2u);
+
+    expect_ok(interp, "Wc = control_ctrb_gram([-1, 0; 0, -2], [1; 1])");
+    EXPECT_GT(interp.state().matrices.at("Wc").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave284_signal_ode_special) {
+    Interpreter interp;
+
+    expect_ok(interp, "h = signal_firwin(4, 0.3)");
+    EXPECT_GT(interp.state().matrices.at("h").rows(), 0u);
+
+    expect_ok(interp, "tr = ode_midpoint(\"y\", 0, 1, 1, 5)");
+    EXPECT_GT(interp.state().matrices.at("tr").rows(), 0u);
+
+    expect_ok(interp, "ek = ellip_k(0.5)");
+    EXPECT_TRUE(interp.state().scalars.count("ek") > 0);
+}

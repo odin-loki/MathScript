@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 284 — PDE/control/signal tail11, ODE midpoint, ellip_k) ✅ COMPLETE
+
+Fifty-fourth feature wave after Wave 283. Migrated PDE/control/signal/ODE handlers to tail11; scalar `ellip_k` in `eval_scalar_call`; `integration_repl_wave284_pipeline`.
+
+### Added (Wave 284)
+- **PDE tail11** — `pde_poisson_2d`, `pde_burgers_1d`, `pde_laplace_2d`, `pde_helmholtz_2d`, `pde_advection_1d_lax_wendroff`, `pde_reaction_diffusion_1d`.
+- **Control tail11** — `control_impulse_response`, `control_kalman_update_cov`, `control_ctrb_gram`, `control_tf2ss`, `control_series`.
+- **Signal tail11** — `signal_deconv`, `signal_firwin`/`signal_firwin_highpass`, `signal_xcorr`/`signal_xcov`.
+- **ODE tail11** — `ode_midpoint`.
+- **Special** — `ellip_k(k)` in scalar one-arg eval path.
+
+### Tests
+- **`integration_repl_wave284_pipeline`** — PDE/control/signal/ODE/special smoke.
+- **Unit** — `wave284_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 284 sync; **443** CTest suites.
+
+**443 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 283 — PDE/sparse/control tail11, ODE/signal, special scalars) ✅ COMPLETE
 
 Fifty-third feature wave after Wave 282. Migrated PDE/sparse/control/signal handlers to tail11; scalar `struve_h`, `kelvin_ber`, `jacobi_sn` in `eval_scalar_call`; `integration_repl_wave283_pipeline`.
