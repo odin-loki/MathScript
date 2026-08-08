@@ -508,6 +508,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `signal_coherence` (tail11) | Magnitude-squared coherence assign (Wave 286) |
 | `ode_rosenbrock23` / `ode_trapezoidal` (tail11) | Stiff ODE matrix assign (Wave 286) |
 | `legendre_q` (scalar eval) | Legendre Q in assign expr (Wave 286) |
+| `graph_pagerank` / `graph_betweenness` / `graph_closeness` / `graph_degree_centrality` / `graph_topological_sort` / `graph_greedy_colour` / `graph_k_core_decomposition` / `graph_euler_circuit` / `graph_scc` / `graph_louvain` / `graph_floyd_warshall` / `graph_dijkstra` (tail11) | Graph analytics suite (Wave 287) |
+| `prewitt` / `scharr` / `roberts` / `laplacian` / `histeq` / `sharpen` (tail11) | Image filter suite (Wave 287) |
+| `poly_deriv` (tail11) | Polynomial derivative assign (Wave 287) |
+| `hermite_h` / `spherical_jn` (scalar eval) | Special polynomial/Bessel in assign expr (Wave 287) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

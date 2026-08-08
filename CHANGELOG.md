@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 287 — graph/image/poly tail11, hermite_h/spherical_jn) ✅ COMPLETE
+
+Fifty-seventh feature wave after Wave 286. Migrated graph/image/poly handlers to tail11/tail12; scalar `hermite_h`/`spherical_jn` integer validation in `eval_scalar_call`; `integration_repl_wave287_pipeline`.
+
+### Added (Wave 287)
+- **Graph tail11** — `graph_pagerank`, `graph_betweenness`, `graph_closeness`, `graph_degree_centrality`, `graph_topological_sort`, `graph_greedy_colour`, `graph_k_core_decomposition`, `graph_euler_circuit`, `graph_scc`, `graph_louvain`, `graph_floyd_warshall`, `graph_dijkstra`.
+- **Image tail11** — `prewitt`, `scharr`, `roberts`, `laplacian`, `histeq`, `sharpen`.
+- **Poly tail11** — `poly_deriv`.
+- **Special** — `hermite_h(n,x)` and `spherical_jn(n,x)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave287_pipeline`** — graph/image/poly/special smoke.
+- **Unit** — `wave287_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 287 sync; **446** CTest suites.
+
+**446 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 286 — FFT/control/signal/ODE tail11, legendre_q) ✅ COMPLETE
 
 Fifty-sixth feature wave after Wave 285. Migrated FFT/control/signal/ODE handlers to tail11/tail12; scalar `legendre_q` validation in `eval_scalar_call`; `integration_repl_wave286_pipeline`.

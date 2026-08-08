@@ -10604,3 +10604,29 @@ TEST(ReplCommandsTest, wave286_signal_ode_special) {
     expect_ok(interp, "lq = legendre_q(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("lq"), ms::legendre_q(2, 0.5), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave287_graph_image_poly_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [0, 1; 1, 0]");
+    expect_ok(interp, "pr = graph_pagerank(A)");
+    EXPECT_EQ(interp.state().matrices.at("pr").rows(), 2u);
+
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_ok(interp, "L = laplacian(M)");
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 2u);
+
+    expect_ok(interp, "p = [1; 2; 3]");
+    expect_ok(interp, "dp = poly_deriv(p)");
+    EXPECT_EQ(interp.state().matrices.at("dp").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave287_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "hh = hermite_h(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("hh"), ms::hermite_h(2, 0.5), 1e-9);
+
+    expect_ok(interp, "sj = spherical_jn(0, 1.0)");
+    EXPECT_NEAR(interp.state().scalars.at("sj"), ms::spherical_jn(0, 1.0), 1e-9);
+}
