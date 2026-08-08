@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-08-08 (Wave 273 ✅ COMPLETE — **432 CTest suites** on `main`)
+**Updated:** 2026-08-08 (Wave 274 ✅ COMPLETE — **433 CTest suites** on `main`)
 
 ---
 
@@ -568,7 +568,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 274+) — deferred
+## Wave 274 — FEM 1D composable, CFD 1D/2D advection, quantum dagger/matmul/Schmidt bases, izaac rand, tail11 ✅ COMPLETE
+
+| Area | REPL bindings |
+|------|----------------|
+| FEM 1D | `fem_mesh1d`, `fem_stiffness_1d`, `fem_load_1d`, `fem_lagrange_eval` |
+| CFD | `cfd_grid1d`, `cfd_square_pulse`, `cfd_run_advection`, `cfd_upwind_step_1d`, `cfd_run_advection_2d` |
+| Quantum | `quantum_dagger`, `quantum_matmul_dm`, `quantum_schmidt_bases` |
+| Izaac | `izaac_rand_matrix` |
+| Dispatch | extended `assign_matrix_call_tail11` |
+| Tests | `integration_repl_wave274_pipeline`; FEM/CFD/quantum/izaac unit coverage |
+
+**433 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–274** closed for this incremental batch.
+
+---
+
+## Next (Wave 275+) — deferred
 
 | Item | Notes |
 |------|--------|

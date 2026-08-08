@@ -8964,6 +8964,106 @@ Result<Matrix<double>> eval_fem_poisson3d(
     return out;
 }
 
+constexpr double kFemMesh1dTag = 269.0;
+
+Matrix<double> pack_fem_mesh1d(const fem::Mesh1D& mesh) {
+    const std::size_t n_nodes = mesh.nodes.size();
+    const std::size_t n_elem = mesh.connectivity.size();
+    Matrix<double> out(1 + n_nodes + n_elem, 3, 0.0);
+    out(0, 0) = kFemMesh1dTag;
+    out(0, 1) = static_cast<double>(n_nodes);
+    out(0, 2) = static_cast<double>(n_elem);
+    for (std::size_t i = 0; i < n_nodes; ++i) {
+        out(1 + i, 0) = mesh.nodes[i];
+    }
+    for (std::size_t e = 0; e < n_elem; ++e) {
+        const std::size_t row = 1 + n_nodes + e;
+        out(row, 0) = static_cast<double>(mesh.connectivity[e][0]);
+        out(row, 1) = static_cast<double>(mesh.connectivity[e][1]);
+    }
+    return out;
+}
+
+Result<fem::Mesh1D> matrix_to_fem_mesh1d(const Matrix<double>& m, const char* fn) {
+    if (m.rows() < 1 || m.cols() < 3 || m(0, 0) != kFemMesh1dTag) {
+        return std::unexpected(DomainError{fn, "expected packed fem_mesh1d matrix"});
+    }
+    const double n_nodes_d = m(0, 1);
+    const double n_elem_d = m(0, 2);
+    if (n_nodes_d < 2.0 || n_elem_d < 1.0 || std::floor(n_nodes_d) != n_nodes_d ||
+        std::floor(n_elem_d) != n_elem_d) {
+        return std::unexpected(DomainError{fn, "invalid fem_mesh1d header"});
+    }
+    const std::size_t n_nodes = static_cast<std::size_t>(n_nodes_d);
+    const std::size_t n_elem = static_cast<std::size_t>(n_elem_d);
+    if (m.rows() != 1 + n_nodes + n_elem) {
+        return std::unexpected(DomainError{fn, "fem_mesh1d row count mismatch"});
+    }
+    fem::Mesh1D mesh;
+    mesh.nodes.resize(n_nodes);
+    mesh.connectivity.resize(n_elem);
+    for (std::size_t i = 0; i < n_nodes; ++i) {
+        mesh.nodes[i] = m(1 + i, 0);
+    }
+    for (std::size_t e = 0; e < n_elem; ++e) {
+        const std::size_t row = 1 + n_nodes + e;
+        for (int k = 0; k < 2; ++k) {
+            const double idx_d = m(row, static_cast<std::size_t>(k));
+            if (idx_d < 0.0 || std::floor(idx_d) != idx_d) {
+                return std::unexpected(DomainError{fn, "expected non-negative integer element index"});
+            }
+            mesh.connectivity[e][static_cast<std::size_t>(k)] = static_cast<std::size_t>(idx_d);
+        }
+    }
+    return mesh;
+}
+
+Result<Matrix<double>> eval_fem_mesh1d(double a, double b, std::size_t n_elements) {
+    constexpr const char* fn = "fem_mesh1d";
+    if (n_elements == 0) {
+        return std::unexpected(DomainError{fn, "expected positive n_elements"});
+    }
+    if (b <= a) {
+        return std::unexpected(DomainError{fn, "expected b > a"});
+    }
+    return pack_fem_mesh1d(fem::mesh1d(a, b, n_elements));
+}
+
+Result<Matrix<double>> eval_fem_stiffness_1d(const Matrix<double>& mesh_m) {
+    constexpr const char* fn = "fem_stiffness_1d";
+    auto mesh = matrix_to_fem_mesh1d(mesh_m, fn);
+    if (!mesh) {
+        return std::unexpected(mesh.error());
+    }
+    return col_matrix_to_matrix(fem::assemble_stiffness_1d(*mesh));
+}
+
+Result<Matrix<double>> eval_fem_load_1d(const Matrix<double>& mesh_m, double f_const) {
+    constexpr const char* fn = "fem_load_1d";
+    auto mesh = matrix_to_fem_mesh1d(mesh_m, fn);
+    if (!mesh) {
+        return std::unexpected(mesh.error());
+    }
+    return col_matrix_to_matrix(
+        fem::assemble_load_1d(*mesh, [f_const](double) { return f_const; }));
+}
+
+Result<Matrix<double>> eval_fem_lagrange_eval(double xi) {
+    constexpr const char* fn = "fem_lagrange_eval";
+    if (xi < 0.0 || xi > 1.0) {
+        return std::unexpected(DomainError{fn, "expected xi in [0, 1]"});
+    }
+    const auto basis = fem::lagrange_basis();
+    const auto values = basis.evaluate(xi);
+    const auto derivs = basis.derivative(xi);
+    Matrix<double> out(2, 2, 0.0);
+    out(0, 0) = values[0];
+    out(0, 1) = values[1];
+    out(1, 0) = derivs[0];
+    out(1, 1) = derivs[1];
+    return out;
+}
+
 constexpr double kFemMesh2dTag = 270.0;
 
 Matrix<double> pack_fem_mesh2d(const fem::Mesh2D& mesh) {
@@ -9456,6 +9556,128 @@ Result<Matrix<double>> eval_cfd_advection3d(std::size_t nx, std::size_t ny, std:
     return grid3d_to_matrix(result.u.back());
 }
 
+Matrix<double> pack_cfd_grid1d(const cfd::Grid1D& grid) {
+    const size_t ncols = std::max(grid.n, size_t{4});
+    Matrix<double> out(2, ncols, 0.0);
+    out(0, 0) = grid.x0;
+    out(0, 1) = grid.x1;
+    out(0, 2) = grid.dx;
+    out(0, 3) = static_cast<double>(grid.n);
+    for (size_t j = 0; j < grid.n; ++j) {
+        out(1, j) = grid.x[j];
+    }
+    return out;
+}
+
+Result<cfd::Grid1D> cfd_grid1d_from_packed_matrix(const Matrix<double>& m, const char* fn) {
+    if (m.rows() != 2 || m.cols() < 4) {
+        return std::unexpected(DomainError{
+            fn, "expected packed CFD grid1d matrix (2 rows, header [x0,x1,dx,n])"});
+    }
+    const double n_d = m(0, 3);
+    const int n_i = static_cast<int>(n_d);
+    if (n_i < 2 || n_d != n_i) {
+        return std::unexpected(DomainError{fn, "invalid packed grid n (expected integer >= 2)"});
+    }
+    const size_t n = static_cast<size_t>(n_i);
+    if (m.cols() < n) {
+        return std::unexpected(DomainError{fn, "packed grid coordinate row shorter than n"});
+    }
+    cfd::Grid1D grid;
+    grid.x0 = m(0, 0);
+    grid.x1 = m(0, 1);
+    grid.dx = m(0, 2);
+    grid.n = n;
+    grid.x.assign(n, 0.0);
+    for (size_t j = 0; j < n; ++j) {
+        grid.x[j] = m(1, j);
+    }
+    return grid;
+}
+
+Result<Matrix<double>> eval_cfd_grid1d(double x0, double x1, std::size_t n) {
+    constexpr const char* fn = "cfd_grid1d";
+    if (x1 <= x0) {
+        return std::unexpected(DomainError{fn, "expected x1 > x0"});
+    }
+    if (n < 2) {
+        return std::unexpected(DomainError{fn, "expected n >= 2"});
+    }
+    const cfd::Grid1D grid = cfd::grid1d(x0, x1, n);
+    if (grid.n == 0) {
+        return std::unexpected(DomainError{fn, "invalid grid dimensions"});
+    }
+    return pack_cfd_grid1d(grid);
+}
+
+Result<Matrix<double>> eval_cfd_square_pulse(
+    const Matrix<double>& grid_m, double xc, double width, double amplitude) {
+    constexpr const char* fn = "cfd_square_pulse";
+    auto grid = cfd_grid1d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    const auto pulse = cfd::square_pulse(*grid, xc, width, amplitude);
+    if (pulse.empty()) {
+        return std::unexpected(DomainError{fn, "failed to build square pulse"});
+    }
+    return vector_to_column(pulse);
+}
+
+Result<Matrix<double>> eval_cfd_run_advection(const Matrix<double>& grid_m,
+                                              const Matrix<double>& u_m, double v,
+                                              double t_end, double dt) {
+    constexpr const char* fn = "cfd_run_advection";
+    auto grid = cfd_grid1d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    auto u0 = matrix_to_coeff_vector(u_m, fn);
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    if (u0->size() != grid->n) {
+        return std::unexpected(DomainError{fn, "field length must match grid n"});
+    }
+    if (t_end <= 0.0 || dt <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    const auto vx = cfd::constant_velocity(u0->size(), v);
+    const auto result = cfd::run_advection(*u0, vx, t_end, dt, grid->dx);
+    if (result.u.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return vector_to_column(result.u.back());
+}
+
+Result<Matrix<double>> eval_cfd_upwind_step_1d(const Matrix<double>& grid_m,
+                                               const Matrix<double>& u_m, double v, double dt,
+                                               cfd::BoundaryCondition bc) {
+    constexpr const char* fn = "cfd_upwind_step_1d";
+    auto grid = cfd_grid1d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    auto u0 = matrix_to_coeff_vector(u_m, fn);
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    if (u0->size() != grid->n) {
+        return std::unexpected(DomainError{fn, "field length must match grid n"});
+    }
+    if (dt <= 0.0 || grid->dx <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive dt and dx"});
+    }
+    const std::vector<double> vx = {v};
+    const auto u1 = cfd::upwind_fvm_advection(*u0, vx, dt, grid->dx, bc);
+    if (u1.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return vector_to_column(u1);
+}
+
 Matrix<double> pack_cfd_grid2d(const cfd::Grid2D& grid) {
     const size_t ncols = std::max({grid.nx, grid.ny, size_t{8}});
     Matrix<double> out(3, ncols, 0.0);
@@ -9600,6 +9822,33 @@ Result<double> eval_cfd_integrated_mass_2d(
         return std::unexpected(DomainError{fn, "expected positive dx and dy"});
     }
     return cfd::integrated_mass_2d(*u, dx, dy);
+}
+
+Result<Matrix<double>> eval_cfd_run_advection_2d(const Matrix<double>& grid_m,
+                                                 const Matrix<double>& u_m, double vx, double vy,
+                                                 double t_end, double dt) {
+    constexpr const char* fn = "cfd_run_advection_2d";
+    auto grid = cfd_grid2d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    auto u0 = matrix_to_grid(u_m, fn);
+    if (!u0) {
+        return std::unexpected(u0.error());
+    }
+    if (t_end <= 0.0 || dt <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    const std::size_t n_cells = grid->nx * grid->ny;
+    const auto vx_field = cfd::constant_velocity(n_cells, vx);
+    const auto vy_field = cfd::constant_velocity(n_cells, vy);
+    const auto result = cfd::run_advection_2d(
+        *u0, vx_field, vy_field, t_end, dt, grid->dx, grid->dy);
+    if (result.u.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return grid_to_matrix(result.u.back());
 }
 
 constexpr double kFemMesh3dTag = 271.0;
@@ -10331,6 +10580,77 @@ Result<Matrix<double>> eval_cfd_run_advection_3d(const Matrix<double>& grid_m,
             DomainError{fn, "CFL stability condition violated or invalid input"});
     }
     return grid3d_to_matrix(result.u.back());
+}
+
+Result<Matrix<double>> eval_quantum_dagger(const Matrix<double>& op_m) {
+    constexpr const char* fn = "quantum_dagger";
+    auto op = matrix_to_density_matrix(op_m, fn);
+    if (!op) {
+        return std::unexpected(op.error());
+    }
+    return density_matrix_to_matrix(quantum::dagger(*op));
+}
+
+Result<Matrix<double>> eval_quantum_matmul_dm(const Matrix<double>& A_m,
+                                              const Matrix<double>& B_m) {
+    constexpr const char* fn = "quantum_matmul_dm";
+    auto A = matrix_to_density_matrix(A_m, fn);
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto B = matrix_to_density_matrix(B_m, fn);
+    if (!B) {
+        return std::unexpected(B.error());
+    }
+    if (A->size() != B->size()) {
+        return std::unexpected(
+            DomainError{fn, "operators must have same dimension"});
+    }
+    return density_matrix_to_matrix(quantum::matmul_dm(*A, *B));
+}
+
+Result<Matrix<double>> eval_izaac_rand_matrix(size_t rows, size_t cols) {
+    constexpr const char* fn = "izaac_rand_matrix";
+    if (rows < 1 || cols < 1) {
+        return std::unexpected(DomainError{fn, "expected positive rows and cols"});
+    }
+    auto rng_check = require_session_rng(fn);
+    if (!rng_check) {
+        return std::unexpected(rng_check.error());
+    }
+    return izaac::rand_matrix(rows, cols);
+}
+
+constexpr double kQuantumSchmidtBasesTag = 282.0;
+
+Result<Matrix<double>> eval_quantum_schmidt_bases(const Matrix<double>& psi_m, int dim_a,
+                                                  int dim_b) {
+    constexpr const char* fn = "quantum_schmidt_bases";
+    auto psi = matrix_to_ket(psi_m, fn);
+    if (!psi) {
+        return std::unexpected(psi.error());
+    }
+    const auto decomp = quantum::schmidt_decomposition(*psi, dim_a, dim_b);
+    const std::size_t rank = decomp.coefficients.size();
+    if (rank == 0) {
+        return std::unexpected(DomainError{fn, "empty Schmidt decomposition"});
+    }
+    const std::size_t cols = std::max(rank, size_t{3});
+    Matrix<double> out(1 + static_cast<std::size_t>(dim_a) + static_cast<std::size_t>(dim_b),
+                       cols, 0.0);
+    out(0, 0) = kQuantumSchmidtBasesTag;
+    out(0, 1) = static_cast<double>(dim_a);
+    out(0, 2) = static_cast<double>(dim_b);
+    for (std::size_t k = 0; k < rank; ++k) {
+        for (int i = 0; i < dim_a; ++i) {
+            out(1 + static_cast<std::size_t>(i), k) = decomp.basis_a[k][static_cast<std::size_t>(i)].real();
+        }
+        for (int j = 0; j < dim_b; ++j) {
+            out(1 + static_cast<std::size_t>(dim_a) + static_cast<std::size_t>(j), k) =
+                decomp.basis_b[k][static_cast<std::size_t>(j)].real();
+        }
+    }
+    return out;
 }
 
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
@@ -16968,6 +17288,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "signal_unwrap" ||
             fn == "quantum_commutator" || fn == "quantum_tensor_product" ||
             fn == "quantum_ket_tensor_product" || fn == "quantum_outer" ||
+            fn == "quantum_dagger" || fn == "quantum_matmul_dm" ||
             fn == "signal_hamming" || fn == "signal_hanning" || fn == "signal_blackman" ||
             fn == "signal_parzen" || fn == "signal_triangular" ||
             fn == "cplx_blaschke_product" ||
@@ -19225,6 +19546,13 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "izaac_vrf_prove" || callee == "izaac_encrypt" ||
            callee == "izaac_decrypt" || callee == "izaac_randn_matrix" ||
            callee == "cfd_run_advection_3d" ||
+           callee == "fem_mesh1d" || callee == "fem_stiffness_1d" || callee == "fem_load_1d" ||
+           callee == "fem_lagrange_eval" ||
+           callee == "cfd_grid1d" || callee == "cfd_square_pulse" ||
+           callee == "cfd_run_advection" || callee == "cfd_run_advection_2d" ||
+           callee == "cfd_upwind_step_1d" ||
+           callee == "quantum_dagger" || callee == "quantum_matmul_dm" ||
+           callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases" ||
            callee == "gria_divergence_trajectory";
 }
 
@@ -19730,6 +20058,33 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "cfd_run_advection_3d") {
         return arity == 7;
+    }
+    if (callee == "fem_mesh1d") {
+        return arity == 3;
+    }
+    if (callee == "fem_stiffness_1d" || callee == "fem_lagrange_eval" || callee == "quantum_dagger") {
+        return arity == 1;
+    }
+    if (callee == "fem_load_1d" || callee == "izaac_rand_matrix" || callee == "quantum_matmul_dm") {
+        return arity == 2;
+    }
+    if (callee == "cfd_grid1d") {
+        return arity == 3;
+    }
+    if (callee == "cfd_square_pulse") {
+        return arity == 3 || arity == 4;
+    }
+    if (callee == "cfd_run_advection") {
+        return arity == 5;
+    }
+    if (callee == "cfd_run_advection_2d") {
+        return arity == 6;
+    }
+    if (callee == "cfd_upwind_step_1d") {
+        return arity == 4 || arity == 5;
+    }
+    if (callee == "quantum_schmidt_bases") {
+        return arity == 3;
     }
     if (callee == "ode_euler" || callee == "ode_rk4" || callee == "ode_midpoint" ||
         callee == "ode_backward_euler" || callee == "ode_adams_bashforth2" ||
@@ -27896,6 +28251,220 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             return std::unexpected(dt.error());
         }
         result = eval_cfd_run_advection_3d(*grid, *u, *vx, *vy, *vz, *t_end, *dt);
+    } else if (assign.callee == "fem_mesh1d" && assign.args.size() == 3) {
+        auto a = parse_scalar_arg(assign.args[0], "fem_mesh1d");
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = parse_scalar_arg(assign.args[1], "fem_mesh1d");
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto n_val = parse_scalar_arg(assign.args[2], "fem_mesh1d");
+        if (!n_val) {
+            return std::unexpected(n_val.error());
+        }
+        auto n_i = parse_positive_size_arg(*n_val, "fem_mesh1d", "expected positive integer n_elements");
+        if (!n_i) {
+            return std::unexpected(n_i.error());
+        }
+        result = eval_fem_mesh1d(*a, *b, *n_i);
+    } else if (assign.callee == "fem_stiffness_1d" && assign.args.size() == 1) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        result = eval_fem_stiffness_1d(*mesh);
+    } else if (assign.callee == "fem_load_1d" && assign.args.size() == 2) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_1d");
+        if (!f_val) {
+            return std::unexpected(f_val.error());
+        }
+        result = eval_fem_load_1d(*mesh, *f_val);
+    } else if (assign.callee == "fem_lagrange_eval" && assign.args.size() == 1) {
+        auto xi = parse_scalar_arg(assign.args[0], "fem_lagrange_eval");
+        if (!xi) {
+            return std::unexpected(xi.error());
+        }
+        result = eval_fem_lagrange_eval(*xi);
+    } else if (assign.callee == "cfd_grid1d" && assign.args.size() == 3) {
+        auto x0 = parse_scalar_arg(assign.args[0], "cfd_grid1d");
+        if (!x0) {
+            return std::unexpected(x0.error());
+        }
+        auto x1 = parse_scalar_arg(assign.args[1], "cfd_grid1d");
+        if (!x1) {
+            return std::unexpected(x1.error());
+        }
+        auto n_val = parse_scalar_arg(assign.args[2], "cfd_grid1d");
+        if (!n_val) {
+            return std::unexpected(n_val.error());
+        }
+        const int n_i = static_cast<int>(*n_val);
+        if (n_i < 2 || *n_val != n_i) {
+            return std::unexpected(DomainError{"cfd_grid1d", "expected integer n >= 2"});
+        }
+        result = eval_cfd_grid1d(*x0, *x1, static_cast<std::size_t>(n_i));
+    } else if (assign.callee == "cfd_square_pulse" &&
+               (assign.args.size() == 3 || assign.args.size() == 4)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse");
+        if (!xc) {
+            return std::unexpected(xc.error());
+        }
+        auto width = parse_scalar_arg(assign.args[2], "cfd_square_pulse");
+        if (!width) {
+            return std::unexpected(width.error());
+        }
+        double amplitude = 1.0;
+        if (assign.args.size() == 4) {
+            auto amp = parse_scalar_arg(assign.args[3], "cfd_square_pulse");
+            if (!amp) {
+                return std::unexpected(amp.error());
+            }
+            amplitude = *amp;
+        }
+        result = eval_cfd_square_pulse(*grid, *xc, *width, amplitude);
+    } else if (assign.callee == "cfd_run_advection" && assign.args.size() == 5) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto u = resolve_operand(assign.args[1]);
+        if (!u) {
+            return std::unexpected(u.error());
+        }
+        auto v = parse_scalar_arg(assign.args[2], "cfd_run_advection");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        auto t_end = parse_scalar_arg(assign.args[3], "cfd_run_advection");
+        if (!t_end) {
+            return std::unexpected(t_end.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[4], "cfd_run_advection");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        result = eval_cfd_run_advection(*grid, *u, *v, *t_end, *dt);
+    } else if (assign.callee == "cfd_run_advection_2d" && assign.args.size() == 6) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto u = resolve_operand(assign.args[1]);
+        if (!u) {
+            return std::unexpected(u.error());
+        }
+        auto vx = parse_scalar_arg(assign.args[2], "cfd_run_advection_2d");
+        if (!vx) {
+            return std::unexpected(vx.error());
+        }
+        auto vy = parse_scalar_arg(assign.args[3], "cfd_run_advection_2d");
+        if (!vy) {
+            return std::unexpected(vy.error());
+        }
+        auto t_end = parse_scalar_arg(assign.args[4], "cfd_run_advection_2d");
+        if (!t_end) {
+            return std::unexpected(t_end.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[5], "cfd_run_advection_2d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        result = eval_cfd_run_advection_2d(*grid, *u, *vx, *vy, *t_end, *dt);
+    } else if (assign.callee == "cfd_upwind_step_1d" &&
+               (assign.args.size() == 4 || assign.args.size() == 5)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto u = resolve_operand(assign.args[1]);
+        if (!u) {
+            return std::unexpected(u.error());
+        }
+        auto v = parse_scalar_arg(assign.args[2], "cfd_upwind_step_1d");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[3], "cfd_upwind_step_1d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        cfd::BoundaryCondition bc = cfd::BoundaryCondition::Periodic;
+        if (assign.args.size() == 5) {
+            auto bc_val = parse_scalar_arg(assign.args[4], "cfd_upwind_step_1d");
+            if (!bc_val) {
+                return std::unexpected(bc_val.error());
+            }
+            auto parsed_bc = parse_cfd_bc(*bc_val, "cfd_upwind_step_1d");
+            if (!parsed_bc) {
+                return std::unexpected(parsed_bc.error());
+            }
+            bc = *parsed_bc;
+        }
+        result = eval_cfd_upwind_step_1d(*grid, *u, *v, *dt, bc);
+    } else if (assign.callee == "quantum_dagger" && assign.args.size() == 1) {
+        auto op = resolve_operand(assign.args[0]);
+        if (!op) {
+            return std::unexpected(op.error());
+        }
+        result = eval_quantum_dagger(*op);
+    } else if (assign.callee == "quantum_matmul_dm" && assign.args.size() == 2) {
+        auto A = resolve_operand(assign.args[0]);
+        if (!A) {
+            return std::unexpected(A.error());
+        }
+        auto B = resolve_operand(assign.args[1]);
+        if (!B) {
+            return std::unexpected(B.error());
+        }
+        result = eval_quantum_matmul_dm(*A, *B);
+    } else if (assign.callee == "izaac_rand_matrix" && assign.args.size() == 2) {
+        auto rows_val = parse_scalar_arg(assign.args[0], "izaac_rand_matrix");
+        if (!rows_val) {
+            return std::unexpected(rows_val.error());
+        }
+        auto cols_val = parse_scalar_arg(assign.args[1], "izaac_rand_matrix");
+        if (!cols_val) {
+            return std::unexpected(cols_val.error());
+        }
+        auto rows_i = parse_positive_size_arg(*rows_val, "izaac_rand_matrix", "expected positive integer rows");
+        if (!rows_i) {
+            return std::unexpected(rows_i.error());
+        }
+        auto cols_i = parse_positive_size_arg(*cols_val, "izaac_rand_matrix", "expected positive integer cols");
+        if (!cols_i) {
+            return std::unexpected(cols_i.error());
+        }
+        result = eval_izaac_rand_matrix(*rows_i, *cols_i);
+    } else if (assign.callee == "quantum_schmidt_bases" && assign.args.size() == 3) {
+        auto psi = resolve_operand(assign.args[0]);
+        if (!psi) {
+            return std::unexpected(psi.error());
+        }
+        auto dim_a_val = parse_scalar_arg(assign.args[1], "quantum_schmidt_bases");
+        if (!dim_a_val) {
+            return std::unexpected(dim_a_val.error());
+        }
+        auto dim_b_val = parse_scalar_arg(assign.args[2], "quantum_schmidt_bases");
+        if (!dim_b_val) {
+            return std::unexpected(dim_b_val.error());
+        }
+        const int dim_a = static_cast<int>(*dim_a_val);
+        const int dim_b = static_cast<int>(*dim_b_val);
+        if (dim_a < 1 || dim_b < 1 || *dim_a_val != dim_a || *dim_b_val != dim_b) {
+            return std::unexpected(DomainError{
+                "quantum_schmidt_bases", "expected positive integer dim_a and dim_b"});
+        }
+        result = eval_quantum_schmidt_bases(*psi, dim_a, dim_b);
     }
 
     return result;
@@ -33829,6 +34398,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = pde_wave_2d(u0,v0,c,dx,dy,dt,steps) 2D wave equation final grid (rows×cols)\n"
             "  name = pde_reaction_diffusion_1d(u0,D,r,dx,dt,steps) Fisher-KPP reaction-diffusion final state column\n"
             "  name = fem_poisson1d(n) 1D P1 Poisson -u''=1 on unit interval (zero BC)\n"
+            "  name = fem_mesh1d(a,b,n_elements) uniform 1D P1 mesh on [a,b]\n"
+            "  name = fem_stiffness_1d(mesh) 1D P1 stiffness matrix from packed fem_mesh1d\n"
+            "  name = fem_load_1d(mesh,f_const) 1D P1 load vector with constant f\n"
+            "  name = fem_lagrange_eval(xi) P1 Lagrange basis values and derivatives at xi\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
             "  name = fem_mesh2d_rectangular(x0,y0,x1,y1,nx,ny) structured 2D P1 triangular mesh\n"
@@ -33846,6 +34419,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = cfd_advection2d(nx,ny,vx,vy,t_end,dt) 2D FVM upwind advection final field\n"
             "  name = cfd_advection3d(nx,ny,nz,vx,vy,vz,t_end,dt) 3D FVM upwind advection final field\n"
             "  name = cfd_grid2d(x0,x1,y0,y1,nx,ny) 2D FVM grid metadata (3-row packed matrix)\n"
+            "  name = cfd_grid1d(x0,x1,n) 1D FVM grid metadata (2-row packed matrix)\n"
+            "  name = cfd_square_pulse(grid,xc,width[,amp]) 1D square pulse initial condition\n"
+            "  name = cfd_run_advection(grid,u,v,t_end,dt) 1D upwind advection to t_end\n"
+            "  name = cfd_upwind_step_1d(grid,u,v,dt[,bc]) one 1D upwind FVM step\n"
+            "  name = cfd_run_advection_2d(grid,u0,vx,vy,t_end,dt) 2D upwind advection to t_end\n"
             "  name = cfd_grid3d(x0,x1,y0,y1,z0,z1,nx,ny,nz) 3D FVM grid metadata (4-row packed matrix)\n"
             "  name = cfd_square_pulse_3d(grid,xc,yc,zc,wx,wy,wz[,amp]) 3D square pulse initial condition\n"
             "  name = cfd_upwind_step_3d(grid,u,vx,vy,vz,dt[,bc_x,bc_y,bc_z]) one 3D upwind FVM step\n"
@@ -34048,6 +34626,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_eigenspectrum(H) Hermitian eigenvalues as Nx1 column\n"
             "  name = quantum_ground_state(H) ground-state ket from Hermitian H\n"
             "  name = quantum_schmidt_decomposition(psi,dim_a,dim_b) Schmidt coefficients column\n"
+            "  name = quantum_schmidt_bases(psi,dim_a,dim_b) packed Schmidt basis matrices\n"
+            "  name = quantum_dagger(op) conjugate transpose of NxN operator\n"
+            "  name = quantum_matmul_dm(A,B) operator product A*B for NxN density matrices\n"
             "  name = quantum_ket_tensor_product(psi1,psi2) tensor product of Nx1 ket vectors\n"
             "  name = quantum_outer(ket,bra) outer product |ket><bra| as NxN density matrix\n"
             "  name = quantum_anticommutator(A,B) anticommutator {A,B} of NxN operators\n"
@@ -34464,6 +35045,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  izaac_encrypt(plaintext, key32) encrypt byte vector with 32-byte key\n"
             "  izaac_decrypt(ciphertext, key32) decrypt packed ciphertext with 32-byte key\n"
             "  izaac_randn_matrix(rows, cols) Gaussian random matrix (requires izaac seed)\n"
+            "  izaac_rand_matrix(rows, cols) uniform random matrix in [0,1) (requires izaac seed)\n"
             "  izaac_fuzz_mutate([65,66,67], 4) fuzz-mutate byte vector (requires izaac seed)\n"
             "  bloom_new(bf, 1000, 0.01) create session BloomFilter (requires izaac seed; handle persists)\n"
             "  bloom_insert(bf, \"item\") insert string into session BloomFilter\n"

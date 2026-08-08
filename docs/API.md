@@ -447,6 +447,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `cypha_nig_mean` / `cypha_nig_variance` | NIG distribution moments (Wave 273) |
 | `theta1_prime` / `jacobi_theta` | Theta function derivatives and Jacobi theta (Wave 273) |
 | `cfd_run_advection_3d(grid,u0,vx,vy,vz,t_end,dt)` | 3D upwind advection to t_end (Wave 273) |
+| `fem_mesh1d` / `fem_stiffness_1d` / `fem_load_1d` / `fem_lagrange_eval` | 1D FEM composable assembly (Wave 274) |
+| `cfd_grid1d` / `cfd_square_pulse` / `cfd_run_advection` / `cfd_upwind_step_1d` / `cfd_run_advection_2d` | 1D/2D CFD composable advection (Wave 274) |
+| `quantum_dagger` / `quantum_matmul_dm` / `quantum_schmidt_bases` | Operator algebra + Schmidt bases (Wave 274) |
+| `izaac_rand_matrix` | Uniform random matrix (Wave 274) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

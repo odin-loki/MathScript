@@ -7,6 +7,22 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 274 — FEM 1D composable, CFD 1D/2D advection, quantum dagger/matmul/Schmidt bases, izaac rand, tail11) ✅ COMPLETE
+
+Forty-fourth feature wave after Wave 273. FEM 1D mesh/stiffness/load/Lagrange eval; CFD 1D grid/pulse/advection/step and composable `cfd_run_advection_2d`; quantum `dagger`, `matmul_dm`, `schmidt_bases`; `izaac_rand_matrix`; extended `assign_matrix_call_tail11`; `integration_repl_wave274_pipeline`.
+
+### Added (Wave 274)
+- **FEM 1D REPL** — `fem_mesh1d(a,b,n)`; `fem_stiffness_1d(mesh)`; `fem_load_1d(mesh,f)`; `fem_lagrange_eval(xi)`.
+- **CFD REPL** — `cfd_grid1d`; `cfd_square_pulse`; `cfd_run_advection`; `cfd_upwind_step_1d`; `cfd_run_advection_2d`.
+- **Quantum REPL** — `quantum_dagger(op)`; `quantum_matmul_dm(A,B)`; `quantum_schmidt_bases(psi,dim_a,dim_b)`.
+- **Izaac REPL** — `izaac_rand_matrix(rows, cols)`.
+- **Tests** — `integration_repl_wave274_pipeline`; unit coverage for wave274 FEM/CFD/quantum/izaac.
+
+### Docs (Wave 274)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 274 sync; **433** CTest suites.
+
+**433 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-08-08 (Wave 273 — izaac VRF prove/verify/crypto, quantum Schmidt number/tensor/outer, Cypha NIG moments, theta specials, CFD advection 3D, tail11) ✅ COMPLETE
 
 Forty-third feature wave after Wave 272. Izaac VRF prove/verify, symmetric encrypt/decrypt, and session randn matrix; quantum Schmidt number, ket tensor product, and outer product; Cypha NIG mean/variance; `theta1_prime` and `jacobi_theta`; `cfd_run_advection_3d`; extended `assign_matrix_call_tail11`; `integration_repl_wave273_pipeline`.

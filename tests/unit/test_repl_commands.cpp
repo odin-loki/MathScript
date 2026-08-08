@@ -10144,3 +10144,58 @@ TEST(ReplCommandsTest, wave273_cfd_run_advection_3d) {
     ASSERT_GT(interp.state().matrices.count("uf"), 0u);
     EXPECT_EQ(interp.state().matrices.at("uf").rows(), 16u);
 }
+
+TEST(ReplCommandsTest, wave274_fem1d_cfd_composable) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fem_stiffness_1d(mesh)");
+    expect_contains(interp, "help", "cfd_grid1d(x0,x1,n)");
+
+    expect_ok(interp, "m1 = fem_mesh1d(0, 1, 8)");
+    expect_ok(interp, "K1 = fem_stiffness_1d(m1)");
+    expect_ok(interp, "f1 = fem_load_1d(m1, 1)");
+    expect_ok(interp, "sys1 = fem_apply_dirichlet(K1, f1, [0, 8], [0, 0])");
+    expect_ok(interp, "u1 = fem_solve(sys1)");
+    EXPECT_EQ(interp.state().matrices.at("u1").rows(), 9u);
+
+    expect_ok(interp, "g1 = cfd_grid1d(0, 1, 16)");
+    expect_ok(interp, "u0 = cfd_square_pulse(g1, 0.5, 0.25)");
+    expect_ok(interp, "u1c = cfd_upwind_step_1d(g1, u0, 0.2, 0.001)");
+    EXPECT_EQ(interp.state().matrices.at("u1c").rows(), 16u);
+}
+
+TEST(ReplCommandsTest, wave274_cfd_run_advection_2d) {
+    Interpreter interp;
+    expect_ok(interp, "g2 = cfd_grid2d(0, 1, 0, 1, 4, 4)");
+    expect_ok(interp, "u0 = cfd_square_pulse_2d(g2, 0.5, 0.5, 0.4, 0.4)");
+    expect_ok(interp, "uf = cfd_run_advection_2d(g2, u0, 0.2, 0, 0.01, 0.001)");
+    EXPECT_EQ(interp.state().matrices.at("uf").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("uf").cols(), 4u);
+}
+
+TEST(ReplCommandsTest, wave274_quantum_dagger_matmul_schmidt) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_dagger");
+    expect_contains(interp, "help", "quantum_schmidt_bases");
+
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "Ad = quantum_dagger(A)");
+    expect_ok(interp, "I2 = quantum_matmul_dm(A, Ad)");
+    EXPECT_EQ(interp.state().matrices.at("I2").rows(), 2u);
+
+    expect_ok(interp, "psi = [1; 0; 0; 1]");
+    expect_ok(interp, "sb = quantum_schmidt_bases(psi, 2, 2)");
+    EXPECT_GE(interp.state().matrices.at("sb").rows(), 5u);
+
+    expect_ok(interp, "le = fem_lagrange_eval(0.25)");
+    EXPECT_NEAR(interp.state().matrices.at("le")(0, 0), 0.75, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("le")(0, 1), 0.25, 1e-12);
+}
+
+TEST(ReplCommandsTest, wave274_izaac_rand_matrix) {
+    Interpreter interp;
+    expect_contains(interp, "help", "izaac_rand_matrix");
+    expect_ok(interp, "izaac seed 99");
+    expect_ok(interp, "rm = izaac_rand_matrix(3, 2)");
+    EXPECT_EQ(interp.state().matrices.at("rm").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("rm").cols(), 2u);
+}
