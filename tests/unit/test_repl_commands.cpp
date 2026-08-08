@@ -10773,3 +10773,26 @@ TEST(ReplCommandsTest, wave292_special_scalar) {
     expect_ok(interp, "gc = gegenbauer_c(3, 0.5, 0.25)");
     EXPECT_NEAR(interp.state().scalars.at("gc"), ms::gegenbauer_c(3, 0.5, 0.25), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave293_quantum_izaac_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "Ad = quantum_dagger(A)");
+    EXPECT_EQ(interp.state().matrices.at("Ad").rows(), 2u);
+
+    expect_ok(interp, "izaac seed 7");
+    expect_ok(interp, "rm = izaac_rand_matrix(2, 3)");
+    EXPECT_EQ(interp.state().matrices.at("rm").cols(), 3u);
+
+    expect_ok(interp, "psi = [1; 0; 0; 1]");
+    expect_ok(interp, "sb = quantum_schmidt_bases(psi, 2, 2)");
+    EXPECT_GE(interp.state().matrices.at("sb").rows(), 5u);
+}
+
+TEST(ReplCommandsTest, wave293_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "la = laguerre_la(2, 1.0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("la"), ms::laguerre_la(2, 1.0, 0.5), 1e-9);
+}

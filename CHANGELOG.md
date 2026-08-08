@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 293 — quantum/izaac tail11, laguerre_la) ✅ COMPLETE
+
+Sixty-third feature wave after Wave 292. Migrated quantum operator and izaac random-matrix handlers to tail11/tail13; scalar `laguerre_la` integer validation in `eval_scalar_call`; `integration_repl_wave293_pipeline`.
+
+### Added (Wave 293)
+- **Quantum tail11** — `quantum_dagger`, `quantum_matmul_dm`, `quantum_schmidt_bases`.
+- **Izaac tail11** — `izaac_rand_matrix`.
+- **Special** — `laguerre_la(n,a,x)` integer validation in scalar three-arg eval path.
+
+### Tests
+- **`integration_repl_wave293_pipeline`** — quantum/izaac/special smoke.
+- **Unit** — `wave293_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 293 sync; **452** CTest suites.
+
+**452 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 292 — image/FEM/CFD tail11, gegenbauer_c) ✅ COMPLETE
 
 Sixty-second feature wave after Wave 291. Migrated image padding/Radon, FEM 2D assembly, and CFD grid handlers to tail11/tail13; scalar `gegenbauer_c` integer validation in `eval_scalar_call`; `integration_repl_wave292_pipeline`.

@@ -22457,6 +22457,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return gegenbauer_c(static_cast<int>(args[0]), args[1], args[2]);
     }
     if (args.size() == 3 && fn == "laguerre_la") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+            return std::unexpected(
+                DomainError{"laguerre_la", "expected non-negative integer n"});
+        }
         return laguerre_la(static_cast<int>(args[0]), args[1], args[2]);
     }
     if (args.size() == 3 && fn == "prob_uniform_pdf") {
@@ -26160,60 +26164,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             bc = *parsed_bc;
         }
         result = eval_cfd_upwind_step_1d(*grid, *u, *v, *dt, bc);
-    } else if (assign.callee == "quantum_dagger" && assign.args.size() == 1) {
-        auto op = resolve_operand(assign.args[0]);
-        if (!op) {
-            return std::unexpected(op.error());
-        }
-        result = eval_quantum_dagger(*op);
-    } else if (assign.callee == "quantum_matmul_dm" && assign.args.size() == 2) {
-        auto A = resolve_operand(assign.args[0]);
-        if (!A) {
-            return std::unexpected(A.error());
-        }
-        auto B = resolve_operand(assign.args[1]);
-        if (!B) {
-            return std::unexpected(B.error());
-        }
-        result = eval_quantum_matmul_dm(*A, *B);
-    } else if (assign.callee == "izaac_rand_matrix" && assign.args.size() == 2) {
-        auto rows_val = parse_scalar_arg(assign.args[0], "izaac_rand_matrix");
-        if (!rows_val) {
-            return std::unexpected(rows_val.error());
-        }
-        auto cols_val = parse_scalar_arg(assign.args[1], "izaac_rand_matrix");
-        if (!cols_val) {
-            return std::unexpected(cols_val.error());
-        }
-        auto rows_i = parse_positive_size_arg(*rows_val, "izaac_rand_matrix", "expected positive integer rows");
-        if (!rows_i) {
-            return std::unexpected(rows_i.error());
-        }
-        auto cols_i = parse_positive_size_arg(*cols_val, "izaac_rand_matrix", "expected positive integer cols");
-        if (!cols_i) {
-            return std::unexpected(cols_i.error());
-        }
-        result = eval_izaac_rand_matrix(*rows_i, *cols_i);
-    } else if (assign.callee == "quantum_schmidt_bases" && assign.args.size() == 3) {
-        auto psi = resolve_operand(assign.args[0]);
-        if (!psi) {
-            return std::unexpected(psi.error());
-        }
-        auto dim_a_val = parse_scalar_arg(assign.args[1], "quantum_schmidt_bases");
-        if (!dim_a_val) {
-            return std::unexpected(dim_a_val.error());
-        }
-        auto dim_b_val = parse_scalar_arg(assign.args[2], "quantum_schmidt_bases");
-        if (!dim_b_val) {
-            return std::unexpected(dim_b_val.error());
-        }
-        const int dim_a = static_cast<int>(*dim_a_val);
-        const int dim_b = static_cast<int>(*dim_b_val);
-        if (dim_a < 1 || dim_b < 1 || *dim_a_val != dim_a || *dim_b_val != dim_b) {
-            return std::unexpected(DomainError{
-                "quantum_schmidt_bases", "expected positive integer dim_a and dim_b"});
-        }
-        result = eval_quantum_schmidt_bases(*psi, dim_a, dim_b);
     } else if (assign.callee == "cfd_constant_velocity" && assign.args.size() == 2) {
         auto n_val = parse_scalar_arg(assign.args[0], "cfd_constant_velocity");
         if (!n_val) {
@@ -30010,6 +29960,60 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
             amplitude = *amp;
         }
         result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
+    } else if (assign.callee == "quantum_dagger" && assign.args.size() == 1) {
+        auto op = resolve_operand(assign.args[0]);
+        if (!op) {
+            return std::unexpected(op.error());
+        }
+        result = eval_quantum_dagger(*op);
+    } else if (assign.callee == "quantum_matmul_dm" && assign.args.size() == 2) {
+        auto A = resolve_operand(assign.args[0]);
+        if (!A) {
+            return std::unexpected(A.error());
+        }
+        auto B = resolve_operand(assign.args[1]);
+        if (!B) {
+            return std::unexpected(B.error());
+        }
+        result = eval_quantum_matmul_dm(*A, *B);
+    } else if (assign.callee == "izaac_rand_matrix" && assign.args.size() == 2) {
+        auto rows_val = parse_scalar_arg(assign.args[0], "izaac_rand_matrix");
+        if (!rows_val) {
+            return std::unexpected(rows_val.error());
+        }
+        auto cols_val = parse_scalar_arg(assign.args[1], "izaac_rand_matrix");
+        if (!cols_val) {
+            return std::unexpected(cols_val.error());
+        }
+        auto rows_i = parse_positive_size_arg(*rows_val, "izaac_rand_matrix", "expected positive integer rows");
+        if (!rows_i) {
+            return std::unexpected(rows_i.error());
+        }
+        auto cols_i = parse_positive_size_arg(*cols_val, "izaac_rand_matrix", "expected positive integer cols");
+        if (!cols_i) {
+            return std::unexpected(cols_i.error());
+        }
+        result = eval_izaac_rand_matrix(*rows_i, *cols_i);
+    } else if (assign.callee == "quantum_schmidt_bases" && assign.args.size() == 3) {
+        auto psi = resolve_operand(assign.args[0]);
+        if (!psi) {
+            return std::unexpected(psi.error());
+        }
+        auto dim_a_val = parse_scalar_arg(assign.args[1], "quantum_schmidt_bases");
+        if (!dim_a_val) {
+            return std::unexpected(dim_a_val.error());
+        }
+        auto dim_b_val = parse_scalar_arg(assign.args[2], "quantum_schmidt_bases");
+        if (!dim_b_val) {
+            return std::unexpected(dim_b_val.error());
+        }
+        const int dim_a = static_cast<int>(*dim_a_val);
+        const int dim_b = static_cast<int>(*dim_b_val);
+        if (dim_a < 1 || dim_b < 1 || *dim_a_val != dim_a || *dim_b_val != dim_b) {
+            return std::unexpected(DomainError{
+                "quantum_schmidt_bases", "expected positive integer dim_a and dim_b"});
+        }
+        result = eval_quantum_schmidt_bases(*psi, dim_a, dim_b);
     }
 
     return result;
