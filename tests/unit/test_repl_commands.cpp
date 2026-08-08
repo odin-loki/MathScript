@@ -10842,3 +10842,31 @@ TEST(ReplCommandsTest, wave295_special_scalar) {
     expect_ok(interp, "un = chebyshev_un(2, 1, 0.25)");
     EXPECT_NEAR(interp.state().scalars.at("un"), ms::chebyshev_un(2, 1, 0.25), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave296_combo_poly_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "lw = combo_lyndon_words(3, 2)");
+    EXPECT_EQ(interp.state().matrices.at("lw").rows(), 2u);
+
+    expect_ok(interp, "db = combo_de_bruijn_sequence(2, 2)");
+    EXPECT_EQ(interp.state().matrices.at("db").rows(), 4u);
+
+    expect_ok(interp, "mult = [-12; 16; -7; 1]");
+    expect_ok(interp, "sf = poly_squarefree(mult)");
+    EXPECT_GT(interp.state().matrices.at("sf").rows(), 0u);
+
+    expect_ok(interp, "p = [1; 2; 3]");
+    expect_ok(interp, "rev = poly_reverse(p)");
+    EXPECT_NEAR(interp.state().matrices.at("rev")(0, 0), 3.0, 1e-9);
+}
+
+TEST(ReplCommandsTest, wave296_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "h0 = hypergeo_0f1n(2, 1.5, 0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("h0"), ms::hypergeo_0f1n(2, 1.5, 0.2), 1e-9);
+
+    expect_ok(interp, "h1 = hypergeo_1f1n(1, 0.5, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("h1"), ms::hypergeo_1f1n(1, 0.5, 0.3), 1e-9);
+}

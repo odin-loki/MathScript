@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 296 — combo/poly tail11, hypergeo_0f1n/1f1n) ✅ COMPLETE
+
+Sixty-sixth feature wave after Wave 295. Migrated extended combo enumeration and polynomial handlers to tail11/tail13; scalar `hypergeo_0f1n`/`hypergeo_1f1n` integer validation in `eval_scalar_call`; `integration_repl_wave296_pipeline`.
+
+### Added (Wave 296)
+- **Combo tail11** — `combo_lyndon_words`, `combo_de_bruijn_sequence`, `combo_motzkin_paths`, `combo_set_partitions`, `combo_restricted_partitions`.
+- **Poly tail11** — `poly_squarefree`, `poly_gcd`, `poly_monic`, `poly_reverse`.
+- **Special** — `hypergeo_0f1n(n,a,z)` and `hypergeo_1f1n(n,a,z)` integer validation in scalar three-arg eval path.
+
+### Tests
+- **`integration_repl_wave296_pipeline`** — combo/poly/special smoke.
+- **Unit** — `wave296_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 296 sync; **455** CTest suites.
+
+**455 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 295 — linalg/combo tail11, chebyshev_tn/un) ✅ COMPLETE
 
 Sixty-fifth feature wave after Wave 294. Migrated matrix decompositions, iterative solvers, and combo enumeration handlers to tail11/tail13; scalar `chebyshev_tn`/`chebyshev_un` integer validation in `eval_scalar_call`; `integration_repl_wave295_pipeline`.

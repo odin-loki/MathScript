@@ -20282,7 +20282,12 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "solve_sylvester" || callee == "minres" || callee == "cg" ||
            callee == "gmres" || callee == "jacobi" ||
            callee == "combo_gray_code" || callee == "combo_dyck_paths" ||
-           callee == "combo_necklaces" || callee == "combo_bracelets";
+           callee == "combo_necklaces" || callee == "combo_bracelets" ||
+           callee == "combo_lyndon_words" || callee == "combo_de_bruijn_sequence" ||
+           callee == "combo_motzkin_paths" || callee == "combo_set_partitions" ||
+           callee == "combo_restricted_partitions" ||
+           callee == "poly_squarefree" || callee == "poly_gcd" ||
+           callee == "poly_monic" || callee == "poly_reverse";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -22427,9 +22432,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return fox_h(args[0], args[1], args[2]);
     }
     if (args.size() == 3 && fn == "hypergeo_0f1n") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+            return std::unexpected(
+                DomainError{"hypergeo_0f1n", "expected non-negative integer n"});
+        }
         return hypergeo_0f1n(static_cast<int>(args[0]), args[1], args[2]);
     }
     if (args.size() == 3 && fn == "hypergeo_1f1n") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+            return std::unexpected(
+                DomainError{"hypergeo_1f1n", "expected non-negative integer n"});
+        }
         return hypergeo_1f1n(static_cast<int>(args[0]), args[1], args[2]);
     }
     if (args.size() == 3 && fn == "assoc_legendre_p") {
@@ -23445,74 +23458,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if (assign.callee == "combo_lyndon_words" && assign.args.size() == 2) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(
-                    DomainError{"combo_lyndon_words", "expected combo_lyndon_words(n,k)"});
-            }
-            n_d = *n_expr;
-        }
-        double k_d = 0.0;
-        if (!parse_number(assign.args[1], k_d)) {
-            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!k_expr) {
-                return std::unexpected(
-                    DomainError{"combo_lyndon_words", "expected combo_lyndon_words(n,k)"});
-            }
-            k_d = *k_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        const int k = static_cast<int>(k_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"combo_lyndon_words", "expected non-negative integer n"});
-        }
-        if (k <= 0 || k_d != k) {
-            return std::unexpected(
-                DomainError{"combo_lyndon_words", "expected positive integer k"});
-        }
-        auto words = eval_combo_lyndon_words(n, k);
-        if (!words) {
-            return std::unexpected(words.error());
-        }
-        result = *words;
-    } else if (assign.callee == "combo_de_bruijn_sequence" && assign.args.size() == 2) {
-        double k_d = 0.0;
-        if (!parse_number(assign.args[0], k_d)) {
-            auto k_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!k_expr) {
-                return std::unexpected(DomainError{
-                    "combo_de_bruijn_sequence", "expected combo_de_bruijn_sequence(k,n)"});
-            }
-            k_d = *k_expr;
-        }
-        double n_d = 0.0;
-        if (!parse_number(assign.args[1], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!n_expr) {
-                return std::unexpected(DomainError{
-                    "combo_de_bruijn_sequence", "expected combo_de_bruijn_sequence(k,n)"});
-            }
-            n_d = *n_expr;
-        }
-        const int k = static_cast<int>(k_d);
-        const int n = static_cast<int>(n_d);
-        if (k <= 0 || k_d != k) {
-            return std::unexpected(DomainError{
-                "combo_de_bruijn_sequence", "expected positive integer k"});
-        }
-        if (n <= 0 || n_d != n) {
-            return std::unexpected(DomainError{
-                "combo_de_bruijn_sequence", "expected positive integer n"});
-        }
-        auto seq = eval_combo_de_bruijn_sequence(k, n);
-        if (!seq) {
-            return std::unexpected(seq.error());
-        }
-        result = *seq;
     } else if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey" ||
                 assign.callee == "numthy_stern_brocot" ||
                 assign.callee == "numthy_pell_solve" ||
@@ -23568,80 +23513,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             }
             result = eval_numthy_quadratic_residues(n);
         }
-    } else if (assign.callee == "combo_motzkin_paths" && assign.args.size() == 1) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(n_expr.error());
-            }
-            n_d = *n_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"combo_motzkin_paths", "expected non-negative integer n"});
-        }
-        auto paths = eval_combo_motzkin_paths(n);
-        if (!paths) {
-            return std::unexpected(paths.error());
-        }
-        result = *paths;
-    } else if (assign.callee == "combo_set_partitions" && assign.args.size() == 1) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(n_expr.error());
-            }
-            n_d = *n_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"combo_set_partitions", "expected non-negative integer n"});
-        }
-        auto parts = eval_combo_set_partitions(n);
-        if (!parts) {
-            return std::unexpected(parts.error());
-        }
-        result = *parts;
-    } else if (assign.callee == "combo_restricted_partitions" && assign.args.size() == 2) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(DomainError{
-                    "combo_restricted_partitions",
-                    "expected combo_restricted_partitions(n,k)"});
-            }
-            n_d = *n_expr;
-        }
-        double k_d = 0.0;
-        if (!parse_number(assign.args[1], k_d)) {
-            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!k_expr) {
-                return std::unexpected(DomainError{
-                    "combo_restricted_partitions",
-                    "expected combo_restricted_partitions(n,k)"});
-            }
-            k_d = *k_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        const int k = static_cast<int>(k_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(DomainError{
-                "combo_restricted_partitions", "expected non-negative integer n"});
-        }
-        if (k < 0 || k_d != k) {
-            return std::unexpected(DomainError{
-                "combo_restricted_partitions", "expected non-negative integer k"});
-        }
-        auto parts = eval_combo_restricted_partitions(n, k);
-        if (!parts) {
-            return std::unexpected(parts.error());
-        }
-        result = *parts;
     } else if (assign.callee == "numthy_lucas_sequence" && assign.args.size() == 3) {
         double k_d = 0.0;
         double P_d = 0.0;
@@ -23706,50 +23577,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(roots.error());
         }
         result = *roots;
-    } else if (assign.callee == "poly_squarefree" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto sf = eval_poly_squarefree(*matrix);
-        if (!sf) {
-            return std::unexpected(sf.error());
-        }
-        result = *sf;
-    } else if (assign.callee == "poly_gcd" && assign.args.size() == 2) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        auto g = eval_poly_gcd(*a, *b);
-        if (!g) {
-            return std::unexpected(g.error());
-        }
-        result = *g;
-    } else if (assign.callee == "poly_monic" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto monic = eval_poly_monic(*matrix);
-        if (!monic) {
-            return std::unexpected(monic.error());
-        }
-        result = *monic;
-    } else if (assign.callee == "poly_reverse" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto reversed = eval_poly_reverse(*matrix);
-        if (!reversed) {
-            return std::unexpected(reversed.error());
-        }
-        result = *reversed;
     } else if (assign.callee == "poly_lcm" && assign.args.size() == 2) {
         auto a = resolve_operand(assign.args[0]);
         if (!a) {
@@ -30040,6 +29867,192 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
             return std::unexpected(bracs.error());
         }
         result = *bracs;
+    } else if (assign.callee == "combo_lyndon_words" && assign.args.size() == 2) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(
+                    DomainError{"combo_lyndon_words", "expected combo_lyndon_words(n,k)"});
+            }
+            n_d = *n_expr;
+        }
+        double k_d = 0.0;
+        if (!parse_number(assign.args[1], k_d)) {
+            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!k_expr) {
+                return std::unexpected(
+                    DomainError{"combo_lyndon_words", "expected combo_lyndon_words(n,k)"});
+            }
+            k_d = *k_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        const int k = static_cast<int>(k_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"combo_lyndon_words", "expected non-negative integer n"});
+        }
+        if (k <= 0 || k_d != k) {
+            return std::unexpected(
+                DomainError{"combo_lyndon_words", "expected positive integer k"});
+        }
+        auto words = eval_combo_lyndon_words(n, k);
+        if (!words) {
+            return std::unexpected(words.error());
+        }
+        result = *words;
+    } else if (assign.callee == "combo_de_bruijn_sequence" && assign.args.size() == 2) {
+        double k_d = 0.0;
+        if (!parse_number(assign.args[0], k_d)) {
+            auto k_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!k_expr) {
+                return std::unexpected(DomainError{
+                    "combo_de_bruijn_sequence", "expected combo_de_bruijn_sequence(k,n)"});
+            }
+            k_d = *k_expr;
+        }
+        double n_d = 0.0;
+        if (!parse_number(assign.args[1], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!n_expr) {
+                return std::unexpected(DomainError{
+                    "combo_de_bruijn_sequence", "expected combo_de_bruijn_sequence(k,n)"});
+            }
+            n_d = *n_expr;
+        }
+        const int k = static_cast<int>(k_d);
+        const int n = static_cast<int>(n_d);
+        if (k <= 0 || k_d != k) {
+            return std::unexpected(DomainError{
+                "combo_de_bruijn_sequence", "expected positive integer k"});
+        }
+        if (n <= 0 || n_d != n) {
+            return std::unexpected(DomainError{
+                "combo_de_bruijn_sequence", "expected positive integer n"});
+        }
+        auto seq = eval_combo_de_bruijn_sequence(k, n);
+        if (!seq) {
+            return std::unexpected(seq.error());
+        }
+        result = *seq;
+    } else if (assign.callee == "combo_motzkin_paths" && assign.args.size() == 1) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(n_expr.error());
+            }
+            n_d = *n_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"combo_motzkin_paths", "expected non-negative integer n"});
+        }
+        auto paths = eval_combo_motzkin_paths(n);
+        if (!paths) {
+            return std::unexpected(paths.error());
+        }
+        result = *paths;
+    } else if (assign.callee == "combo_set_partitions" && assign.args.size() == 1) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(n_expr.error());
+            }
+            n_d = *n_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"combo_set_partitions", "expected non-negative integer n"});
+        }
+        auto parts = eval_combo_set_partitions(n);
+        if (!parts) {
+            return std::unexpected(parts.error());
+        }
+        result = *parts;
+    } else if (assign.callee == "combo_restricted_partitions" && assign.args.size() == 2) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(DomainError{
+                    "combo_restricted_partitions",
+                    "expected combo_restricted_partitions(n,k)"});
+            }
+            n_d = *n_expr;
+        }
+        double k_d = 0.0;
+        if (!parse_number(assign.args[1], k_d)) {
+            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!k_expr) {
+                return std::unexpected(DomainError{
+                    "combo_restricted_partitions",
+                    "expected combo_restricted_partitions(n,k)"});
+            }
+            k_d = *k_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        const int k = static_cast<int>(k_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(DomainError{
+                "combo_restricted_partitions", "expected non-negative integer n"});
+        }
+        if (k < 0 || k_d != k) {
+            return std::unexpected(DomainError{
+                "combo_restricted_partitions", "expected non-negative integer k"});
+        }
+        auto parts = eval_combo_restricted_partitions(n, k);
+        if (!parts) {
+            return std::unexpected(parts.error());
+        }
+        result = *parts;
+    } else if (assign.callee == "poly_squarefree" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto sf = eval_poly_squarefree(*matrix);
+        if (!sf) {
+            return std::unexpected(sf.error());
+        }
+        result = *sf;
+    } else if (assign.callee == "poly_gcd" && assign.args.size() == 2) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto g = eval_poly_gcd(*a, *b);
+        if (!g) {
+            return std::unexpected(g.error());
+        }
+        result = *g;
+    } else if (assign.callee == "poly_monic" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto monic = eval_poly_monic(*matrix);
+        if (!monic) {
+            return std::unexpected(monic.error());
+        }
+        result = *monic;
+    } else if (assign.callee == "poly_reverse" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto reversed = eval_poly_reverse(*matrix);
+        if (!reversed) {
+            return std::unexpected(reversed.error());
+        }
+        result = *reversed;
     }
 
     return result;
