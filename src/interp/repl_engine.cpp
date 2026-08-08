@@ -20185,7 +20185,13 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "fem_poisson1d" || callee == "control_kalman_predict" ||
            callee == "control_kalman_update" || callee == "control_ctrb" ||
            callee == "signal_sosfilt" || callee == "ode_rk4" || callee == "sparse_from_coo" ||
-           callee == "wavelet_compress_vec" ||
+           callee == "wavelet_compress_vec" || callee == "pde_wave_1d" ||
+           callee == "pde_heat_2d" || callee == "pde_heat_2d_cn_adi" || callee == "pde_poisson_1d" ||
+           callee == "pde_advection_1d" || callee == "wavelet_decompress_vec" ||
+           callee == "sparse_spmv" || callee == "sparse_to_dense" || callee == "sparse_add" ||
+           callee == "ode_euler" || callee == "control_obsv" ||
+           callee == "control_kalman_predict_cov" || callee == "control_step_response" ||
+           callee == "signal_conv2" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -21747,6 +21753,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "struve_l") {
             return struve_l(static_cast<int>(args[0]), args[1]);
         }
+        if (fn == "struve_h") {
+            return struve_h(static_cast<int>(args[0]), args[1]);
+        }
         if (fn == "struve_k") {
             return struve_k(static_cast<int>(args[0]), args[1]);
         }
@@ -21764,6 +21773,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "kelvin_bei") {
             return kelvin_bei(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "kelvin_ber") {
+            return kelvin_ber(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "kelvin_ker") {
             return kelvin_ker(static_cast<int>(args[0]), args[1]);
@@ -21797,6 +21809,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "jacobi_cn") {
             return jacobi_cn(args[0], args[1]);
+        }
+        if (fn == "jacobi_sn") {
+            return jacobi_sn(args[0], args[1]);
         }
         if (fn == "jacobi_dn") {
             return jacobi_dn(args[0], args[1]);
@@ -24357,26 +24372,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                 assign.callee, "expected non-negative integer n and n_max"});
         }
         result = eval_quantum_fock_state(n, n_max);
-    } else if (assign.callee == "pde_advection_1d" && assign.args.size() == 5) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double v = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], v) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dt) || !parse_number(assign.args[4], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_advection_1d", "expected pde_advection_1d(u0, v, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_advection_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_advection_1d(*u0_m, v, dx, dt, static_cast<std::size_t>(steps_i));
     } else if (assign.callee == "pde_poisson_2d" && assign.args.size() == 5) {
         auto f_m = resolve_operand(assign.args[0]);
         if (!f_m) {
@@ -24464,52 +24459,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if (assign.callee == "pde_heat_2d" && assign.args.size() == 6) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double alpha = 0.0;
-        double dx = 0.0;
-        double dy = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dy) || !parse_number(assign.args[4], dt) ||
-            !parse_number(assign.args[5], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_heat_2d", "expected pde_heat_2d(u0, alpha, dx, dy, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_heat_2d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_heat_2d(*u0_m, alpha, dx, dy, dt, static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "pde_wave_1d" && assign.args.size() == 6) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        auto v0_m = resolve_operand(assign.args[1]);
-        if (!v0_m) {
-            return std::unexpected(v0_m.error());
-        }
-        double c = 0.0;
-        double dx = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[2], c) || !parse_number(assign.args[3], dx) ||
-            !parse_number(assign.args[4], dt) || !parse_number(assign.args[5], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_wave_1d", "expected pde_wave_1d(u0, v0, c, dx, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_wave_1d", "expected non-negative integer steps"});
-        }
-        result = eval_pde_wave_1d(*u0_m, *v0_m, c, dx, dt, static_cast<std::size_t>(steps_i));
     } else if (assign.callee == "imcrop" && assign.args.size() == 5) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -24536,16 +24485,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(cropped.error());
         }
         result = *cropped;
-    } else if (assign.callee == "signal_conv2" && assign.args.size() == 2) {
-        auto A = resolve_operand(assign.args[0]);
-        if (!A) {
-            return std::unexpected(A.error());
-        }
-        auto K = resolve_operand(assign.args[1]);
-        if (!K) {
-            return std::unexpected(K.error());
-        }
-        result = eval_signal_conv2(*A, *K);
     } else if (assign.callee == "signal_deconv" && assign.args.size() == 2) {
         auto y = resolve_operand(assign.args[0]);
         if (!y) {
@@ -25135,8 +25074,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             fs = *fs_expr;
         }
         result = eval_fft_goertzel(*matrix, f, fs);
-    } else if ((assign.callee == "control_step_response" ||
-                assign.callee == "control_impulse_response") &&
+    } else if (assign.callee == "control_impulse_response" &&
                (assign.args.size() == 2 || assign.args.size() == 3 || assign.args.size() == 4)) {
         auto num_m = resolve_operand(assign.args[0]);
         if (!num_m) {
@@ -25168,15 +25106,11 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             }
             if (n_pts_d < 2.0 || std::floor(n_pts_d) != n_pts_d) {
                 return std::unexpected(
-                    DomainError{assign.callee, "expected integer n_pts >= 2"});
+                    DomainError{"control_impulse_response", "expected integer n_pts >= 2"});
             }
             n_pts = static_cast<int>(n_pts_d);
         }
-        if (assign.callee == "control_step_response") {
-            result = eval_control_step_response(*num_m, *den_m, t_end, n_pts);
-        } else {
-            result = eval_control_impulse_response(*num_m, *den_m, t_end, n_pts);
-        }
+        result = eval_control_impulse_response(*num_m, *den_m, t_end, n_pts);
     } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -25599,28 +25533,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         result = eval_numthy_lucas_sequence(static_cast<int64_t>(k_d),
                                            static_cast<int64_t>(P_d),
                                            static_cast<int64_t>(Q_d));
-    } else if (assign.callee == "control_kalman_predict_cov" && assign.args.size() == 4) {
-        auto x_m = resolve_operand(assign.args[0]);
-        if (!x_m) {
-            return std::unexpected(x_m.error());
-        }
-        auto P_m = resolve_operand(assign.args[1]);
-        if (!P_m) {
-            return std::unexpected(P_m.error());
-        }
-        auto A_m = resolve_operand(assign.args[2]);
-        if (!A_m) {
-            return std::unexpected(A_m.error());
-        }
-        auto Q_m = resolve_operand(assign.args[3]);
-        if (!Q_m) {
-            return std::unexpected(Q_m.error());
-        }
-        auto predicted = eval_control_kalman_predict_cov(*x_m, *P_m, *A_m, *Q_m);
-        if (!predicted) {
-            return std::unexpected(predicted.error());
-        }
-        result = *predicted;
     } else if (assign.callee == "control_kalman_update_cov" && assign.args.size() == 5) {
         auto x_m = resolve_operand(assign.args[0]);
         if (!x_m) {
@@ -25835,20 +25747,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(coeffs.error());
         }
         result = *coeffs;
-    } else if (assign.callee == "control_obsv" && assign.args.size() == 2) {
-        auto A_m = resolve_operand(assign.args[0]);
-        if (!A_m) {
-            return std::unexpected(A_m.error());
-        }
-        auto C_m = resolve_operand(assign.args[1]);
-        if (!C_m) {
-            return std::unexpected(C_m.error());
-        }
-        auto value = eval_control_obsv(*A_m, *C_m);
-        if (!value) {
-            return std::unexpected(value.error());
-        }
-        result = *value;
     } else if (assign.callee == "control_ctrb_gram" && assign.args.size() == 2) {
         auto A_m = resolve_operand(assign.args[0]);
         if (!A_m) {
@@ -27237,48 +27135,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail7(const MatrixCallAss
             return std::unexpected(transformed.error());
         }
         result = *transformed;
-    } else if (assign.callee == "pde_heat_2d_cn_adi" && assign.args.size() == 6) {
-        auto u0_m = resolve_operand(assign.args[0]);
-        if (!u0_m) {
-            return std::unexpected(u0_m.error());
-        }
-        double alpha = 0.0;
-        double dx = 0.0;
-        double dy = 0.0;
-        double dt = 0.0;
-        double steps_d = 0.0;
-        if (!parse_number(assign.args[1], alpha) || !parse_number(assign.args[2], dx) ||
-            !parse_number(assign.args[3], dy) || !parse_number(assign.args[4], dt) ||
-            !parse_number(assign.args[5], steps_d)) {
-            return std::unexpected(DomainError{
-                "pde_heat_2d_cn_adi",
-                "expected pde_heat_2d_cn_adi(u0, alpha, dx, dy, dt, steps)"});
-        }
-        const int steps_i = static_cast<int>(steps_d);
-        if (steps_i < 0 || steps_d != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_heat_2d_cn_adi", "expected non-negative integer steps"});
-        }
-        result = eval_pde_heat_2d_cn_adi(*u0_m, alpha, dx, dy, dt,
-                                         static_cast<std::size_t>(steps_i));
-    } else if (assign.callee == "pde_poisson_1d" && assign.args.size() == 4) {
-        auto f_m = resolve_operand(assign.args[0]);
-        if (!f_m) {
-            return std::unexpected(f_m.error());
-        }
-        auto dx = parse_scalar_arg(assign.args[1], "pde_poisson_1d");
-        if (!dx) {
-            return std::unexpected(dx.error());
-        }
-        auto ua = parse_scalar_arg(assign.args[2], "pde_poisson_1d");
-        if (!ua) {
-            return std::unexpected(ua.error());
-        }
-        auto ub = parse_scalar_arg(assign.args[3], "pde_poisson_1d");
-        if (!ub) {
-            return std::unexpected(ub.error());
-        }
-        result = eval_pde_poisson_1d(*f_m, *dx, *ua, *ub);
     } else if (assign.callee == "pde_laplace_2d" && assign.args.size() == 3) {
         auto nx_val = parse_scalar_arg(assign.args[0], "pde_laplace_2d");
         if (!nx_val) {
@@ -27702,51 +27558,13 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
             return std::unexpected(decoded.error());
         }
         result = *decoded;
-    } else if (assign.callee == "wavelet_decompress_vec" && assign.args.size() == 1) {
-        auto compressed = resolve_operand(assign.args[0]);
-        if (!compressed) {
-            return std::unexpected(compressed.error());
-        }
-        auto decoded = eval_wavelet_decompress_vec(*compressed);
-        if (!decoded) {
-            return std::unexpected(decoded.error());
-        }
-        result = *decoded;
-    } else if (assign.callee == "sparse_spmv" && assign.args.size() == 2) {
-        auto packed = resolve_operand(assign.args[0]);
-        if (!packed) {
-            return std::unexpected(packed.error());
-        }
-        auto x = resolve_operand(assign.args[1]);
-        if (!x) {
-            return std::unexpected(x.error());
-        }
-        result = eval_sparse_spmv(*packed, *x);
-    } else if (assign.callee == "sparse_to_dense" && assign.args.size() == 1) {
-        auto packed = resolve_operand(assign.args[0]);
-        if (!packed) {
-            return std::unexpected(packed.error());
-        }
-        result = eval_sparse_to_dense(*packed);
-    } else if (assign.callee == "sparse_add" && assign.args.size() == 2) {
-        auto left = resolve_operand(assign.args[0]);
-        if (!left) {
-            return std::unexpected(left.error());
-        }
-        auto right = resolve_operand(assign.args[1]);
-        if (!right) {
-            return std::unexpected(right.error());
-        }
-        result = eval_sparse_add(*left, *right);
-    } else if ((assign.callee == "ode_adams_bashforth2" || assign.callee == "ode_euler" ||
+    } else if ((assign.callee == "ode_adams_bashforth2" ||
                 assign.callee == "ode_midpoint" ||
                 assign.callee == "ode_backward_euler" || assign.callee == "ode_bdf2") &&
                assign.args.size() == 5) {
         OdeResult (*solver)(OdeFunc, double, double, double, size_t) = nullptr;
         if (assign.callee == "ode_adams_bashforth2") {
             solver = ode_adams_bashforth2;
-        } else if (assign.callee == "ode_euler") {
-            solver = ode_euler;
         } else if (assign.callee == "ode_midpoint") {
             solver = ode_midpoint;
         } else if (assign.callee == "ode_backward_euler") {
@@ -29674,6 +29492,260 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             return std::unexpected(compressed.error());
         }
         result = *compressed;
+    } else if (assign.callee == "pde_wave_1d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto v0_m = resolve_operand(assign.args[1]);
+        if (!v0_m) {
+            return std::unexpected(v0_m.error());
+        }
+        auto c = parse_scalar_arg(assign.args[2], "pde_wave_1d");
+        if (!c) {
+            return std::unexpected(c.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[3], "pde_wave_1d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[4], "pde_wave_1d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto steps_val = parse_scalar_arg(assign.args[5], "pde_wave_1d");
+        if (!steps_val) {
+            return std::unexpected(steps_val.error());
+        }
+        const int steps_i = static_cast<int>(*steps_val);
+        if (steps_i < 0 || *steps_val != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_wave_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_wave_1d(*u0_m, *v0_m, *c, *dx, *dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_heat_2d" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto alpha = parse_scalar_arg(assign.args[1], "pde_heat_2d");
+        if (!alpha) {
+            return std::unexpected(alpha.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[2], "pde_heat_2d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dy = parse_scalar_arg(assign.args[3], "pde_heat_2d");
+        if (!dy) {
+            return std::unexpected(dy.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[4], "pde_heat_2d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto steps_val = parse_scalar_arg(assign.args[5], "pde_heat_2d");
+        if (!steps_val) {
+            return std::unexpected(steps_val.error());
+        }
+        const int steps_i = static_cast<int>(*steps_val);
+        if (steps_i < 0 || *steps_val != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_heat_2d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_heat_2d(*u0_m, *alpha, *dx, *dy, *dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_heat_2d_cn_adi" && assign.args.size() == 6) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto alpha = parse_scalar_arg(assign.args[1], "pde_heat_2d_cn_adi");
+        if (!alpha) {
+            return std::unexpected(alpha.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[2], "pde_heat_2d_cn_adi");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dy = parse_scalar_arg(assign.args[3], "pde_heat_2d_cn_adi");
+        if (!dy) {
+            return std::unexpected(dy.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[4], "pde_heat_2d_cn_adi");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto steps_val = parse_scalar_arg(assign.args[5], "pde_heat_2d_cn_adi");
+        if (!steps_val) {
+            return std::unexpected(steps_val.error());
+        }
+        const int steps_i = static_cast<int>(*steps_val);
+        if (steps_i < 0 || *steps_val != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_heat_2d_cn_adi", "expected non-negative integer steps"});
+        }
+        result = eval_pde_heat_2d_cn_adi(*u0_m, *alpha, *dx, *dy, *dt,
+                                         static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "pde_poisson_1d" && assign.args.size() == 4) {
+        auto f_m = resolve_operand(assign.args[0]);
+        if (!f_m) {
+            return std::unexpected(f_m.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[1], "pde_poisson_1d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto ua = parse_scalar_arg(assign.args[2], "pde_poisson_1d");
+        if (!ua) {
+            return std::unexpected(ua.error());
+        }
+        auto ub = parse_scalar_arg(assign.args[3], "pde_poisson_1d");
+        if (!ub) {
+            return std::unexpected(ub.error());
+        }
+        result = eval_pde_poisson_1d(*f_m, *dx, *ua, *ub);
+    } else if (assign.callee == "pde_advection_1d" && assign.args.size() == 5) {
+        auto u0_m = resolve_operand(assign.args[0]);
+        if (!u0_m) {
+            return std::unexpected(u0_m.error());
+        }
+        auto v = parse_scalar_arg(assign.args[1], "pde_advection_1d");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        auto dx = parse_scalar_arg(assign.args[2], "pde_advection_1d");
+        if (!dx) {
+            return std::unexpected(dx.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[3], "pde_advection_1d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        auto steps_val = parse_scalar_arg(assign.args[4], "pde_advection_1d");
+        if (!steps_val) {
+            return std::unexpected(steps_val.error());
+        }
+        const int steps_i = static_cast<int>(*steps_val);
+        if (steps_i < 0 || *steps_val != steps_i) {
+            return std::unexpected(
+                DomainError{"pde_advection_1d", "expected non-negative integer steps"});
+        }
+        result = eval_pde_advection_1d(*u0_m, *v, *dx, *dt, static_cast<std::size_t>(steps_i));
+    } else if (assign.callee == "wavelet_decompress_vec" && assign.args.size() == 1) {
+        auto compressed = resolve_operand(assign.args[0]);
+        if (!compressed) {
+            return std::unexpected(compressed.error());
+        }
+        auto decoded = eval_wavelet_decompress_vec(*compressed);
+        if (!decoded) {
+            return std::unexpected(decoded.error());
+        }
+        result = *decoded;
+    } else if (assign.callee == "sparse_spmv" && assign.args.size() == 2) {
+        auto packed = resolve_operand(assign.args[0]);
+        if (!packed) {
+            return std::unexpected(packed.error());
+        }
+        auto x = resolve_operand(assign.args[1]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        result = eval_sparse_spmv(*packed, *x);
+    } else if (assign.callee == "sparse_to_dense" && assign.args.size() == 1) {
+        auto packed = resolve_operand(assign.args[0]);
+        if (!packed) {
+            return std::unexpected(packed.error());
+        }
+        result = eval_sparse_to_dense(*packed);
+    } else if (assign.callee == "sparse_add" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = eval_sparse_add(*left, *right);
+    } else if (assign.callee == "ode_euler" && assign.args.size() == 5) {
+        result = eval_ode_fixed_step_matrix(
+            assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
+            trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
+            ode_euler);
+    } else if (assign.callee == "control_obsv" && assign.args.size() == 2) {
+        auto A_m = resolve_operand(assign.args[0]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto C_m = resolve_operand(assign.args[1]);
+        if (!C_m) {
+            return std::unexpected(C_m.error());
+        }
+        auto value = eval_control_obsv(*A_m, *C_m);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
+    } else if (assign.callee == "control_kalman_predict_cov" && assign.args.size() == 4) {
+        auto x_m = resolve_operand(assign.args[0]);
+        if (!x_m) {
+            return std::unexpected(x_m.error());
+        }
+        auto P_m = resolve_operand(assign.args[1]);
+        if (!P_m) {
+            return std::unexpected(P_m.error());
+        }
+        auto A_m = resolve_operand(assign.args[2]);
+        if (!A_m) {
+            return std::unexpected(A_m.error());
+        }
+        auto Q_m = resolve_operand(assign.args[3]);
+        if (!Q_m) {
+            return std::unexpected(Q_m.error());
+        }
+        auto predicted = eval_control_kalman_predict_cov(*x_m, *P_m, *A_m, *Q_m);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "control_step_response" &&
+               (assign.args.size() == 2 || assign.args.size() == 3 || assign.args.size() == 4)) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        auto t_end = parse_scalar_arg(assign.args.size() >= 3 ? assign.args[2] : "10",
+                                      "control_step_response");
+        if (!t_end) {
+            return std::unexpected(t_end.error());
+        }
+        int n_pts = 500;
+        if (assign.args.size() == 4) {
+            auto n_pts_val = parse_scalar_arg(assign.args[3], "control_step_response");
+            if (!n_pts_val) {
+                return std::unexpected(n_pts_val.error());
+            }
+            if (*n_pts_val < 2.0 || std::floor(*n_pts_val) != *n_pts_val) {
+                return std::unexpected(
+                    DomainError{"control_step_response", "expected integer n_pts >= 2"});
+            }
+            n_pts = static_cast<int>(*n_pts_val);
+        }
+        result = eval_control_step_response(*num_m, *den_m, *t_end, n_pts);
+    } else if (assign.callee == "signal_conv2" && assign.args.size() == 2) {
+        auto A = resolve_operand(assign.args[0]);
+        if (!A) {
+            return std::unexpected(A.error());
+        }
+        auto K = resolve_operand(assign.args[1]);
+        if (!K) {
+            return std::unexpected(K.error());
+        }
+        result = eval_signal_conv2(*A, *K);
     }
 
     return result;

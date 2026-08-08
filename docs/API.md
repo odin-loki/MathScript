@@ -489,6 +489,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `signal_sosfilt` / `ode_rk4` / `sparse_from_coo` / `wavelet_compress_vec` (tail11) | Signal/ODE/sparse/wavelet (Wave 282) |
 | `quantum_hadamard` (tail11) | Hadamard on ket (Wave 282) |
 | `debye` / `clausen` / `eta_dirichlet` (scalar eval) | Special-function scalar assigns (Wave 282) |
+| `pde_wave_1d` / `pde_heat_2d` / `pde_heat_2d_cn_adi` / `pde_poisson_1d` / `pde_advection_1d` (tail11) | PDE composable dispatch (Wave 283) |
+| `wavelet_decompress_vec` / `sparse_spmv` / `sparse_to_dense` / `sparse_add` (tail11) | Sparse/wavelet round-trip (Wave 283) |
+| `ode_euler` / `signal_conv2` (tail11) | ODE/signal beside W282 rk4/sosfilt (Wave 283) |
+| `control_obsv` / `control_kalman_predict_cov` / `control_step_response` (tail11) | Control observability/Kalman/step (Wave 283) |
+| `struve_h` / `kelvin_ber` / `jacobi_sn` (scalar eval) | Special-function scalar assigns (Wave 283) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

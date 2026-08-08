@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 283 — PDE/sparse/control tail11, ODE/signal, special scalars) ✅ COMPLETE
+
+Fifty-third feature wave after Wave 282. Migrated PDE/sparse/control/signal handlers to tail11; scalar `struve_h`, `kelvin_ber`, `jacobi_sn` in `eval_scalar_call`; `integration_repl_wave283_pipeline`.
+
+### Added (Wave 283)
+- **PDE tail11** — `pde_wave_1d`, `pde_heat_2d`, `pde_heat_2d_cn_adi`, `pde_poisson_1d`, `pde_advection_1d`.
+- **Sparse/wavelet tail11** — `wavelet_decompress_vec`, `sparse_spmv`, `sparse_to_dense`, `sparse_add`.
+- **Control tail11** — `control_obsv`, `control_kalman_predict_cov`, `control_step_response`.
+- **ODE/signal tail11** — `ode_euler`, `signal_conv2`.
+- **Special** — `struve_h`, `kelvin_ber`, `jacobi_sn` in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave283_pipeline`** — PDE/sparse/control/ODE/signal/special smoke.
+- **Unit** — `wave283_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 283 sync; **442** CTest suites.
+
+**442 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 282 — PDE/control/signal tail11, sparse/ODE/wavelet, special scalars) ✅ COMPLETE
 
 Fifty-second feature wave after Wave 281. Migrated PDE/FEM/control/signal/ODE/sparse/wavelet handlers to tail11; scalar `debye`, `clausen`, `eta_dirichlet` in `eval_scalar_call`; `integration_repl_wave282_pipeline`.

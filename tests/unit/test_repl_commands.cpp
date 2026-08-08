@@ -10498,3 +10498,34 @@ TEST(ReplCommandsTest, wave282_signal_sparse_special) {
     expect_ok(interp, "db = debye(1, 0.25)");
     EXPECT_TRUE(interp.state().scalars.count("db") > 0);
 }
+
+TEST(ReplCommandsTest, wave283_pde_sparse_control) {
+    Interpreter interp;
+
+    expect_ok(interp, "u0 = zeros(4, 1)");
+    expect_ok(interp, "v0 = zeros(4, 1)");
+    expect_ok(interp, "w1 = pde_wave_1d(u0, v0, 1, 0.1, 0.1, 5)");
+    EXPECT_EQ(interp.state().matrices.at("w1").rows(), 4u);
+
+    expect_ok(interp, "ri = [0; 1]");
+    expect_ok(interp, "ci = [0; 1]");
+    expect_ok(interp, "vv = [2; 3]");
+    expect_ok(interp, "A = sparse_from_coo(2, 2, ri, ci, vv)");
+    expect_ok(interp, "y = sparse_spmv(A, [1; 2])");
+    EXPECT_GT(interp.state().matrices.at("y").rows(), 0u);
+
+    expect_ok(interp, "Ob = control_obsv([0, 1; 0, 0], [1, 0])");
+    EXPECT_GT(interp.state().matrices.at("Ob").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave283_ode_signal_special) {
+    Interpreter interp;
+
+    expect_ok(interp, "tr = ode_euler(\"y\", 0, 1, 1, 5)");
+    EXPECT_GT(interp.state().matrices.at("tr").rows(), 0u);
+
+    expect_ok(interp, "sh = struve_h(1, 0.25)");
+    expect_ok(interp, "js = jacobi_sn(0.5, 0.5)");
+    EXPECT_TRUE(interp.state().scalars.count("sh") > 0);
+    EXPECT_TRUE(interp.state().scalars.count("js") > 0);
+}
