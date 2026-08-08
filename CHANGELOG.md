@@ -7,6 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 276 — topo Cech/VR, FEM 3D solve, quantum time-evolve, run-length, Bessel specials, tail11) ✅ COMPLETE
+
+Forty-sixth feature wave after Wave 275. Topo `cech_complex`, `vietoris_rips`, simplicial Betti/Euler; `fem_solve_3d`, `fem_lagrange_deriv`; `quantum_time_evolve_psi`; `run_length_encode_vec`/`decode_vec`; Bessel `j/j1/y0/y1/zero_jnu`; extended `assign_matrix_call_tail11`; `integration_repl_wave276_pipeline`.
+
+### Added (Wave 276)
+- **Topo REPL** — `topo_cech_complex`, `topo_vietoris_rips`, `topo_simplicial_betti`, `topo_simplicial_euler`.
+- **FEM REPL** — `fem_solve_3d(K,f)`, `fem_lagrange_deriv(xi)`.
+- **Quantum REPL** — `quantum_time_evolve_psi(H,psi,t)`.
+- **Compress REPL** — `run_length_encode_vec`, `run_length_decode_vec`.
+- **Special REPL** — `bessel_j`, `bessel_j1`, `bessel_y0`, `bessel_y1`, `bessel_zero_jnu`.
+- **Tests** — `integration_repl_wave276_pipeline`; unit coverage for wave276 topo/FEM/quantum/compress/Bessel.
+
+### Docs (Wave 276)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 276 sync; **435** CTest suites.
+
+**435 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-08-08 (Wave 275 — CFD mass integrals, grid 2D step, Bell states, specials, cellai/crypto, tail11) ✅ COMPLETE
 
 Forty-fifth feature wave after Wave 274. CFD `integrated_mass_1d`, grid-based `integrated_mass_2d` and `upwind_step_2d`, `constant_velocity`; `quantum_bell_states`; special `spherical_yn`, `bessel_h/hy/l/lu`, `hermite_hn`; `cellai_hebbian_update` assign form; `crypto_to_hex`; extended `assign_matrix_call_tail11`; `integration_repl_wave275_pipeline`.

@@ -9267,6 +9267,33 @@ Result<Matrix<double>> eval_fem_solve_packed(const Matrix<double>& sys_m) {
     return eval_fem_solve(K_m, f_m);
 }
 
+Result<Matrix<double>> eval_fem_solve_3d(const Matrix<double>& K_m, const Matrix<double>& f_m) {
+    constexpr const char* fn = "fem_solve_3d";
+    ColMatrix<double> K = matrix_to_col_matrix(K_m);
+    auto f_col = sparse_vector_to_col_column(f_m, K.rows(), fn);
+    if (!f_col) {
+        return std::unexpected(f_col.error());
+    }
+    const auto u = fem::solve_fem_3d(K, *f_col);
+    if (!u) {
+        return std::unexpected(DomainError{fn, "linear solve failed"});
+    }
+    return col_matrix_to_matrix(*u);
+}
+
+Result<Matrix<double>> eval_fem_lagrange_deriv(double xi) {
+    constexpr const char* fn = "fem_lagrange_deriv";
+    if (xi < 0.0 || xi > 1.0) {
+        return std::unexpected(DomainError{fn, "expected xi in [0, 1]"});
+    }
+    const auto basis = fem::lagrange_basis();
+    const auto derivs = basis.derivative(xi);
+    Matrix<double> out(1, 2, 0.0);
+    out(0, 0) = derivs[0];
+    out(0, 1) = derivs[1];
+    return out;
+}
+
 Result<double> eval_cplx_green_function_disk(double zre, double zim, double z0re, double z0im,
                                               double radius) {
     return cplx::green_function_disk(cplx::C(zre, zim), cplx::C(z0re, z0im), radius);
@@ -10250,6 +10277,25 @@ Result<Matrix<double>> eval_quantum_ground_state(const Matrix<double>& H_m) {
         return std::unexpected(H.error());
     }
     return ket_to_column_matrix(quantum::ground_state(*H));
+}
+
+Result<Matrix<double>> eval_quantum_time_evolve_psi(const Matrix<double>& H_m,
+                                                      const Matrix<double>& psi_m, double t) {
+    constexpr const char* fn = "quantum_time_evolve_psi";
+    auto H = matrix_to_density_matrix(H_m, fn);
+    if (!H) {
+        return std::unexpected(H.error());
+    }
+    auto psi = matrix_to_ket(psi_m, fn);
+    if (!psi) {
+        return std::unexpected(psi.error());
+    }
+    if (H->size() != psi->size()) {
+        return std::unexpected(
+            DomainError{fn, "expected H and psi with matching dimension"});
+    }
+    const auto U = quantum::time_evolution_operator(*H, t);
+    return ket_to_column_matrix(quantum::op_apply(U, *psi));
 }
 
 Result<Matrix<double>> eval_quantum_anticommutator(const Matrix<double>& A_m,
@@ -13198,6 +13244,29 @@ Result<Matrix<double>> eval_quantum_time_evolution_matrix(const Matrix<double>& 
     return density_matrix_to_matrix(U);
 }
 
+Result<Matrix<double>> eval_run_length_encode_vec(const Matrix<double>& m) {
+  return bytes_to_matrix_col(compress::run_length_encode(matrix_to_bytes(m)));
+}
+
+Result<Matrix<double>> eval_run_length_decode_vec(const Matrix<double>& m) {
+    constexpr const char* fn = "run_length_decode_vec";
+    if (m.cols() != 1) {
+        return std::unexpected(
+            DomainError{fn, "expected Nx1 encoded byte vector"});
+    }
+    compress::Bytes encoded;
+    encoded.reserve(m.rows());
+    for (size_t i = 0; i < m.rows(); ++i) {
+        const double v = m(i, 0);
+        if (v < 0.0 || v > 255.0 || std::floor(v) != v) {
+            return std::unexpected(
+                DomainError{fn, "encoded values must be uint8 in [0,255]"});
+        }
+        encoded.push_back(static_cast<uint8_t>(v));
+    }
+    return bytes_to_matrix_col(compress::run_length_decode(encoded));
+}
+
 Result<Matrix<double>> eval_topo_betti_curve(const Matrix<double>& dist_m,
                                              const Matrix<double>& thresholds_m, int max_dim) {
     auto nested = matrix_to_square_nested(dist_m, "topo_betti_curve");
@@ -13232,6 +13301,82 @@ Matrix<double> simplicial_complex_to_matrix(const topo::SimplicialComplex& sc) {
         }
     }
     return out;
+}
+
+Result<topo::SimplicialComplex> matrix_to_simplicial_complex(const Matrix<double>& m,
+                                                             const char* fn) {
+    if (m.rows() == 0 || m.cols() < 1) {
+        return std::unexpected(DomainError{fn, "expected non-empty simplex matrix"});
+    }
+    topo::SimplicialComplex sc;
+    for (size_t r = 0; r < m.rows(); ++r) {
+        topo::Simplex simplex;
+        for (size_t c = 0; c < m.cols(); ++c) {
+            const double v = m(r, c);
+            if (v < 0.0) {
+                break;
+            }
+            const int i = static_cast<int>(v);
+            if (i < 0 || v != static_cast<double>(i)) {
+                return std::unexpected(DomainError{fn, "expected non-negative integer vertex indices"});
+            }
+            simplex.push_back(i);
+        }
+        if (!simplex.empty()) {
+            sc.add_simplex(simplex);
+        }
+    }
+    return sc;
+}
+
+Result<Matrix<double>> eval_topo_cech_complex(const Matrix<double>& dist_m, double epsilon,
+                                               int max_dim) {
+    auto nested = matrix_to_square_nested(dist_m, "topo_cech_complex");
+    if (!nested) {
+        return std::unexpected(nested.error());
+    }
+    if (max_dim < 0) {
+        return std::unexpected(
+            DomainError{"topo_cech_complex", "expected non-negative integer max_dim"});
+    }
+    return simplicial_complex_to_matrix(topo::cech_complex(*nested, epsilon, max_dim));
+}
+
+Result<Matrix<double>> eval_topo_vietoris_rips(const Matrix<double>& dist_m, double r,
+                                              int max_dim) {
+    auto nested = matrix_to_square_nested(dist_m, "topo_vietoris_rips");
+    if (!nested) {
+        return std::unexpected(nested.error());
+    }
+    if (max_dim < 0) {
+        return std::unexpected(
+            DomainError{"topo_vietoris_rips", "expected non-negative integer max_dim"});
+    }
+    return simplicial_complex_to_matrix(topo::vietoris_rips(*nested, r, max_dim));
+}
+
+Result<Matrix<double>> eval_topo_simplicial_betti(const Matrix<double>& sc_m) {
+    constexpr const char* fn = "topo_simplicial_betti";
+    auto sc = matrix_to_simplicial_complex(sc_m, fn);
+    if (!sc) {
+        return std::unexpected(sc.error());
+    }
+    const auto betti = sc->betti_numbers();
+    std::vector<double> values;
+    values.reserve(betti.size());
+    for (int b : betti) {
+        values.push_back(static_cast<double>(b));
+    }
+    return vector_to_column(values);
+}
+
+Result<double> eval_topo_simplicial_euler(const Matrix<double>& sc_m) {
+    constexpr const char* fn = "topo_simplicial_euler";
+    auto sc = matrix_to_simplicial_complex(sc_m, fn);
+    if (!sc) {
+        return std::unexpected(sc.error());
+    }
+    return static_cast<double>(sc->euler_characteristic());
 }
 
 Result<std::vector<std::vector<double>>> matrix_to_topo_points2d(const Matrix<double>& m,
@@ -19676,6 +19821,10 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "cfd_run_advection" || callee == "cfd_run_advection_2d" ||
            callee == "cfd_upwind_step_1d" ||
            callee == "cfd_constant_velocity" || callee == "cellai_hebbian_update" ||
+           callee == "topo_cech_complex" || callee == "topo_vietoris_rips" ||
+           callee == "topo_simplicial_betti" || callee == "fem_solve_3d" ||
+           callee == "fem_lagrange_deriv" || callee == "quantum_time_evolve_psi" ||
+           callee == "run_length_encode_vec" || callee == "run_length_decode_vec" ||
            callee == "quantum_dagger" || callee == "quantum_matmul_dm" ||
            callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases" ||
            callee == "gria_divergence_trajectory";
@@ -20214,6 +20363,19 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "cellai_hebbian_update") {
         return arity == 4;
     }
+    if (callee == "topo_cech_complex" || callee == "topo_vietoris_rips") {
+        return arity == 2 || arity == 3;
+    }
+    if (callee == "topo_simplicial_betti" || callee == "fem_lagrange_deriv" ||
+        callee == "run_length_encode_vec" || callee == "run_length_decode_vec") {
+        return arity == 1;
+    }
+    if (callee == "fem_solve_3d") {
+        return arity == 2;
+    }
+    if (callee == "quantum_time_evolve_psi") {
+        return arity == 3;
+    }
     if (callee == "quantum_schmidt_bases") {
         return arity == 3;
     }
@@ -20326,6 +20488,7 @@ bool is_scalar_matrix_call_callee(const std::string& callee) {
            callee == "stats_geometric_mean" || callee == "stats_harmonic_mean" ||
            callee == "stats_rms" || callee == "stats_mad" || callee == "stats_iqr" ||
            callee == "stats_min_value" || callee == "stats_max_value" ||
+           callee == "topo_simplicial_euler" ||
            callee == "count_components" || callee == "mpc_reconstruct";
 }
 
@@ -20683,6 +20846,18 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "special_airy_bip" || fn == "airy_bip") {
             return airy_bip(arg);
+        }
+        if (fn == "bessel_j0") {
+            return bessel_j0(arg);
+        }
+        if (fn == "bessel_j1") {
+            return bessel_j1(arg);
+        }
+        if (fn == "bessel_y0") {
+            return bessel_y0(arg);
+        }
+        if (fn == "bessel_y1") {
+            return bessel_y1(arg);
         }
         if (fn == "beta_dirichlet") {
             return beta_dirichlet(arg);
@@ -21059,6 +21234,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "bessel_k" || fn == "special_bessel_k") {
             return bessel_k(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "bessel_j") {
+            return bessel_j(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "bessel_zero_jnu") {
+            return bessel_zero_jnu(static_cast<int>(args[0]), static_cast<int>(args[1]));
         }
         if (fn == "chebyshev_t") {
             return chebyshev_t(static_cast<int>(args[0]), args[1]);
@@ -28698,6 +28879,100 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             return std::unexpected(lr.error());
         }
         result = eval_cellai_hebbian_update(*w, *x, *y, *lr);
+    } else if (assign.callee == "topo_cech_complex" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto dist = resolve_operand(assign.args[0]);
+        if (!dist) {
+            return std::unexpected(dist.error());
+        }
+        auto eps = parse_scalar_arg(assign.args[1], "topo_cech_complex");
+        if (!eps) {
+            return std::unexpected(eps.error());
+        }
+        int max_dim = 2;
+        if (assign.args.size() == 3) {
+            auto md = parse_scalar_arg(assign.args[2], "topo_cech_complex");
+            if (!md) {
+                return std::unexpected(md.error());
+            }
+            max_dim = static_cast<int>(*md);
+            if (*md != max_dim || max_dim < 0) {
+                return std::unexpected(
+                    DomainError{"topo_cech_complex", "expected non-negative integer max_dim"});
+            }
+        }
+        result = eval_topo_cech_complex(*dist, *eps, max_dim);
+    } else if (assign.callee == "topo_vietoris_rips" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto dist = resolve_operand(assign.args[0]);
+        if (!dist) {
+            return std::unexpected(dist.error());
+        }
+        auto r = parse_scalar_arg(assign.args[1], "topo_vietoris_rips");
+        if (!r) {
+            return std::unexpected(r.error());
+        }
+        int max_dim = 2;
+        if (assign.args.size() == 3) {
+            auto md = parse_scalar_arg(assign.args[2], "topo_vietoris_rips");
+            if (!md) {
+                return std::unexpected(md.error());
+            }
+            max_dim = static_cast<int>(*md);
+            if (*md != max_dim || max_dim < 0) {
+                return std::unexpected(
+                    DomainError{"topo_vietoris_rips", "expected non-negative integer max_dim"});
+            }
+        }
+        result = eval_topo_vietoris_rips(*dist, *r, max_dim);
+    } else if (assign.callee == "topo_simplicial_betti" && assign.args.size() == 1) {
+        auto sc = resolve_operand(assign.args[0]);
+        if (!sc) {
+            return std::unexpected(sc.error());
+        }
+        result = eval_topo_simplicial_betti(*sc);
+    } else if (assign.callee == "fem_solve_3d" && assign.args.size() == 2) {
+        auto K = resolve_operand(assign.args[0]);
+        if (!K) {
+            return std::unexpected(K.error());
+        }
+        auto f = resolve_operand(assign.args[1]);
+        if (!f) {
+            return std::unexpected(f.error());
+        }
+        result = eval_fem_solve_3d(*K, *f);
+    } else if (assign.callee == "fem_lagrange_deriv" && assign.args.size() == 1) {
+        auto xi = parse_scalar_arg(assign.args[0], "fem_lagrange_deriv");
+        if (!xi) {
+            return std::unexpected(xi.error());
+        }
+        result = eval_fem_lagrange_deriv(*xi);
+    } else if (assign.callee == "quantum_time_evolve_psi" && assign.args.size() == 3) {
+        auto H = resolve_operand(assign.args[0]);
+        if (!H) {
+            return std::unexpected(H.error());
+        }
+        auto psi = resolve_operand(assign.args[1]);
+        if (!psi) {
+            return std::unexpected(psi.error());
+        }
+        auto t = parse_scalar_arg(assign.args[2], "quantum_time_evolve_psi");
+        if (!t) {
+            return std::unexpected(t.error());
+        }
+        result = eval_quantum_time_evolve_psi(*H, *psi, *t);
+    } else if (assign.callee == "run_length_encode_vec" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_run_length_encode_vec(*matrix);
+    } else if (assign.callee == "run_length_decode_vec" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_run_length_decode_vec(*matrix);
     }
 
     return result;
@@ -29766,6 +30041,8 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
         value = eval_quantum_purity(*matrix);
     } else if (assign.callee == "quantum_concurrence") {
         value = eval_quantum_concurrence(*matrix);
+    } else if (assign.callee == "topo_simplicial_euler") {
+        value = eval_topo_simplicial_euler(*matrix);
     } else if (assign.callee == "tensorops_norm") {
         value = eval_tensorops_norm(*matrix);
     } else if (assign.callee == "graph_diameter") {
@@ -34221,6 +34498,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = watershed(G,M)    marker-controlled watershed on grayscale matrices\n"
             "  name = slic(M,K[,c])     SLIC superpixels on grayscale/RGB matrix (compactness c), harris(M[,k[,thr]]), hough_circles(M[,r_min,r_max]), hough_lines(M[,edge]), shi_tomasi(M,n[,q])\n"
             "  name = rle_encode_vec(M) run-length encode flattened matrix bytes\n"
+            "  name = run_length_encode_vec(M) alternate RLE encode (compress::run_length_encode)\n"
+            "  name = run_length_decode_vec(M) decode run_length_encode_vec output\n"
             "  name = rle_decode_vec(M) decode RLE byte vector to column vector\n"
             "  name = mtf_encode_vec(M) move-to-front encode flattened matrix bytes\n"
             "  name = mtf_decode_vec(M) decode MTF byte vector to column vector\n"
@@ -34417,6 +34696,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_kdtree_3d_knn(P,x,y,z,k) k nearest point indices as kx1 column from Nx3 set\n"
             "  name = geo_kdtree_3d_range(P,x,y,z,r) indices within radius r as mx1 column from Nx3 set\n"
             "  name = topo_pairwise_distances(P) NxN pairwise distance matrix from Nx2 points\n"
+            "  name = topo_cech_complex(dist,epsilon[,max_dim]) Cech complex from distance matrix\n"
+            "  name = topo_vietoris_rips(dist,r[,max_dim]) Vietoris-Rips complex from distance matrix\n"
+            "  name = topo_simplicial_betti(sc) Betti numbers column from simplex matrix\n"
+            "  chi = topo_simplicial_euler(sc) Euler characteristic from simplex matrix\n"
             "  name = geo_overlap_circles(x1,y1,r1,x2,y2,r2) 1 if circles overlap else 0\n"
             "  name = geo_point_in_aabb(px,py,minx,miny,maxx,maxy) 1 if point inside 2D AABB else 0\n"
             "  name = geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz) 1 if 3D AABBs overlap else 0\n"
@@ -34649,6 +34932,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = fem_stiffness_1d(mesh) 1D P1 stiffness matrix from packed fem_mesh1d\n"
             "  name = fem_load_1d(mesh,f_const) 1D P1 load vector with constant f\n"
             "  name = fem_lagrange_eval(xi) P1 Lagrange basis values and derivatives at xi\n"
+            "  name = fem_lagrange_deriv(xi) P1 Lagrange basis derivatives at xi\n"
+            "  name = fem_solve_3d(K,f) solve 3D FEM linear system K u = f\n"
             "  name = fem_poisson2d(nx,ny) 2D P1 Poisson -Laplacian(u)=1 on unit square (zero BC)\n"
             "  name = fem_poisson3d(nx,ny,nz) 3D P1 Poisson -Laplacian(u)=1 on unit cube (zero BC)\n"
             "  name = fem_mesh2d_rectangular(x0,y0,x1,y1,nx,ny) structured 2D P1 triangular mesh\n"
@@ -35124,6 +35409,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_schrodinger(H,psi0,t0,t1,n_steps) SchrÃƒÂ¶dinger trajectory (real parts)\n"
             "  name = quantum_schrodinger_final(H,psi0,t0,t1,n_steps) final SchrÃƒÂ¶dinger state column\n"
             "  name = quantum_time_evolution(H,t) time-evolution operator U(t) (real parts)\n"
+            "  name = quantum_time_evolve_psi(H,psi,t) evolve ket psi by U(t) from Hermitian H\n"
             "  name = quantum_commutator(A,B) commutator [A,B] of NxN operators\n"
             "  name = info_entropy(p) Shannon entropy (bits) of Nx1 probability vector\n"
             "  name = info_redundancy(p) source coding redundancy H_max - H(X) in bits\n"
@@ -35236,7 +35522,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_helix_torsion(t[,a[,b]]), diffgeo_sphere_gauss_bonnet([n]), diffgeo_sphere_gauss_bonnet_residual([n]), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
-            "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_yn(n,x), spherical_in(n,x), spherical_kn(n,x), bessel_h(nu,x), bessel_hy(nu,x), bessel_l(nu,x), bessel_lu(nu,x), hermite_hn(n,x)\n"
+            "  erf(x), gamma(x), bessel_j0(x), bessel_j1(x), bessel_y0(x), bessel_y1(x), bessel_j(nu,x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_yn(n,x), spherical_in(n,x), spherical_kn(n,x), bessel_h(nu,x), bessel_hy(nu,x), bessel_l(nu,x), bessel_lu(nu,x), hermite_hn(n,x), bessel_zero_jnu(nu,n)\n"
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), struve_hn(nu,x), struve_yn(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
             "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_d(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), theta1_prime(z,q), jacobi_theta(n,z,tau), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
@@ -42768,6 +43054,39 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return std::to_string(bessel_h(static_cast<int>(nu), x)) + "\n";
         }
 
+        if (fn == "bessel_j") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"bessel_j", "expected bessel_j(nu,x)"});
+            }
+            return std::to_string(bessel_j(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "bessel_j1") {
+            double x = 0.0;
+            if (!parse_number(arg_a, x)) {
+                return std::unexpected(DomainError{"bessel_j1", "expected bessel_j1(x)"});
+            }
+            return std::to_string(bessel_j1(x)) + "\n";
+        }
+
+        if (fn == "bessel_y0") {
+            double x = 0.0;
+            if (!parse_number(arg_a, x)) {
+                return std::unexpected(DomainError{"bessel_y0", "expected bessel_y0(x)"});
+            }
+            return std::to_string(bessel_y0(x)) + "\n";
+        }
+
+        if (fn == "bessel_y1") {
+            double x = 0.0;
+            if (!parse_number(arg_a, x)) {
+                return std::unexpected(DomainError{"bessel_y1", "expected bessel_y1(x)"});
+            }
+            return std::to_string(bessel_y1(x)) + "\n";
+        }
+
         if (fn == "bessel_hy") {
             double nu = 0.0;
             double x = 0.0;
@@ -45306,7 +45625,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
 
         if (fn == "erf" || fn == "erfc" || fn == "erfi" || fn == "erfcx" || fn == "dawson" ||
-            fn == "dawsonx" || fn == "gamma" || fn == "bessel_j0" || fn == "fresnel_c" ||
+            fn == "dawsonx" || fn == "gamma" || fn == "bessel_j0" || fn == "bessel_j1" ||
+            fn == "bessel_y0" || fn == "bessel_y1" || fn == "fresnel_c" ||
             fn == "fresnel_s" || fn == "ellip_k" || fn == "ellip_e" || fn == "zeta") {
             double value = 0.0;
             if (!parse_number(arg, value)) {
@@ -45329,6 +45649,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 out << gamma_func(value);
             } else if (fn == "bessel_j0") {
                 out << bessel_j0(value);
+            } else if (fn == "bessel_j1") {
+                out << bessel_j1(value);
+            } else if (fn == "bessel_y0") {
+                out << bessel_y0(value);
+            } else if (fn == "bessel_y1") {
+                out << bessel_y1(value);
             } else if (fn == "fresnel_c") {
                 out << fresnel_c(value);
             } else if (fn == "fresnel_s") {

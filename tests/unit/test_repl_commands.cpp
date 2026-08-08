@@ -10245,3 +10245,41 @@ TEST(ReplCommandsTest, wave275_special_crypto_cellai) {
     expect_ok(interp, "Wn = cellai_hebbian_update(W, X, Y, 0.05)");
     EXPECT_EQ(interp.state().matrices.at("Wn").rows(), 2u);
 }
+
+TEST(ReplCommandsTest, wave276_topo_fem_compress) {
+    Interpreter interp;
+    expect_contains(interp, "help", "topo_vietoris_rips");
+    expect_contains(interp, "help", "fem_solve_3d");
+
+    expect_ok(interp, "D = [0, 1; 1, 0]");
+    expect_ok(interp, "vr = topo_vietoris_rips(D, 1.0)");
+    expect_ok(interp, "b = topo_simplicial_betti(vr)");
+    expect_ok(interp, "e = topo_simplicial_euler(vr)");
+
+    expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
+    expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
+    expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
+    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    EXPECT_GT(interp.state().matrices.at("u3").rows(), 0u);
+
+    expect_ok(interp, "v = [1, 1, 2]");
+    expect_ok(interp, "e2 = run_length_encode_vec(v)");
+    expect_ok(interp, "d2 = run_length_decode_vec(e2)");
+    EXPECT_EQ(interp.state().matrices.at("d2").rows(), 3u);
+}
+
+TEST(ReplCommandsTest, wave276_quantum_bessel) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_time_evolve_psi");
+
+    expect_ok(interp, "H = [1, 0; 0, 2]");
+    expect_ok(interp, "psi = [1; 0]");
+    expect_ok(interp, "pt = quantum_time_evolve_psi(H, psi, 0.05)");
+    EXPECT_EQ(interp.state().matrices.at("pt").rows(), 2u);
+
+    expect_ok(interp, "bessel_j(0, 1.0)");
+    expect_ok(interp, "bessel_j1(1.0)");
+    expect_ok(interp, "bessel_y0(1.0)");
+    expect_ok(interp, "bessel_y1(1.0)");
+    expect_ok(interp, "bessel_zero_jnu(0, 1)");
+}

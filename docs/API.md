@@ -455,6 +455,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `quantum_bell_states` | Packed four Bell kets (Wave 275) |
 | `spherical_yn` / `bessel_h` / `bessel_hy` / `bessel_l` / `bessel_lu` / `hermite_hn` | Additional special functions (Wave 275) |
 | `cellai_hebbian_update` (assign) / `crypto_to_hex` | Hebbian assign + hex encode (Wave 275) |
+| `topo_cech_complex` / `topo_vietoris_rips` / `topo_simplicial_betti` / `topo_simplicial_euler` | Čech/VR complexes + simplicial invariants (Wave 276) |
+| `fem_solve_3d` / `fem_lagrange_deriv` | 3D FEM composable solve + Lagrange deriv (Wave 276) |
+| `quantum_time_evolve_psi` | U(t)·ψ time evolution (Wave 276) |
+| `run_length_encode_vec` / `run_length_decode_vec` | Alternate RLE codec (Wave 276) |
+| `bessel_j` / `bessel_j1` / `bessel_y0` / `bessel_y1` / `bessel_zero_jnu` | Additional Bessel specials (Wave 276) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

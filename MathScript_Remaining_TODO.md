@@ -598,7 +598,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 276+) — deferred
+## Wave 276 — topo Cech/VR, FEM 3D solve, quantum time-evolve, run-length, Bessel specials, tail11 ✅ COMPLETE
+
+| Area | REPL bindings |
+|------|----------------|
+| Topo | `topo_cech_complex`, `topo_vietoris_rips`, `topo_simplicial_betti`, `topo_simplicial_euler` |
+| FEM | `fem_solve_3d`, `fem_lagrange_deriv` |
+| Quantum | `quantum_time_evolve_psi` |
+| Compress | `run_length_encode_vec`, `run_length_decode_vec` |
+| Special | `bessel_j`, `bessel_j1`, `bessel_y0`, `bessel_y1`, `bessel_zero_jnu` |
+| Dispatch | extended `assign_matrix_call_tail11` |
+| Tests | `integration_repl_wave276_pipeline`; topo/FEM/quantum/compress/Bessel unit coverage |
+
+**435 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–276** closed for this incremental batch.
+
+---
+
+## Next (Wave 277+) — deferred
 
 | Item | Notes |
 |------|--------|
