@@ -460,6 +460,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `quantum_time_evolve_psi` | U(t)·ψ time evolution (Wave 276) |
 | `run_length_encode_vec` / `run_length_decode_vec` | Alternate RLE codec (Wave 276) |
 | `bessel_j` / `bessel_j1` / `bessel_y0` / `bessel_y1` / `bessel_zero_jnu` | Additional Bessel specials (Wave 276) |
+| `crypto_from_hex` / `ms::crypto::from_hex` | Hex decode to byte column matrix (Wave 277) |
+| `bloom_bit_count` / `bloom_hash_count` | Bloom filter introspection (Wave 277) |
+| `topo_simplicial_counts` / `topo_simplicial_dimension` | Simplex counts + max dimension (Wave 277) |
+| `huffman_decode_vec` / `ans_decode_vec` / `arithmetic_decode_vec` (assign) | Compress decode assign forms (Wave 277) |
+| 3D FEM/CFD + `fem_apply_dirichlet` + `quantum_schrodinger_final` (tail11) | Composable 3D pipeline dispatch (Wave 277) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

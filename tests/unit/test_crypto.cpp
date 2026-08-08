@@ -10,21 +10,6 @@ using namespace ms::crypto;
 
 namespace {
 
-std::vector<uint8_t> from_hex(std::string_view hex) {
-    std::vector<uint8_t> out;
-    out.reserve(hex.size() / 2);
-    for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
-        auto nibble = [](char c) -> int {
-            if (c >= '0' && c <= '9') return c - '0';
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            return -1;
-        };
-        out.push_back(static_cast<uint8_t>((nibble(hex[i]) << 4) | nibble(hex[i + 1])));
-    }
-    return out;
-}
-
 void expect_hex(const std::vector<uint8_t>& digest, std::string_view expected) {
     EXPECT_EQ(to_hex(std::span<const uint8_t>(digest)), expected);
 }
@@ -61,6 +46,21 @@ TEST(CryptoSha256, DigestSize) {
 TEST(CryptoSha256, HexHelperMatchesRaw) {
     const std::string msg = "MathScript crypto wave 220";
     EXPECT_EQ(sha256_hex(msg), to_hex(sha256(msg)));
+}
+
+TEST(CryptoFromHex, RoundTrip) {
+    const auto bytes = from_hex("deadbeef");
+    ASSERT_EQ(bytes.size(), 4u);
+    EXPECT_EQ(bytes[0], 0xde);
+    EXPECT_EQ(bytes[1], 0xad);
+    EXPECT_EQ(bytes[2], 0xbe);
+    EXPECT_EQ(bytes[3], 0xef);
+    EXPECT_EQ(to_hex(bytes), "deadbeef");
+}
+
+TEST(CryptoFromHex, InvalidReturnsEmpty) {
+    EXPECT_TRUE(from_hex("abc").empty());
+    EXPECT_TRUE(from_hex("gg").empty());
 }
 
 TEST(CryptoSha256, SpanInput) {

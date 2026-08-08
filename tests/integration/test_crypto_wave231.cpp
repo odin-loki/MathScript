@@ -13,21 +13,6 @@ using namespace ms::crypto;
 
 namespace {
 
-std::vector<uint8_t> from_hex(std::string_view hex) {
-    std::vector<uint8_t> out;
-    out.reserve(hex.size() / 2);
-    for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
-        auto nibble = [](char c) -> int {
-            if (c >= '0' && c <= '9') return c - '0';
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            return -1;
-        };
-        out.push_back(static_cast<uint8_t>((nibble(hex[i]) << 4) | nibble(hex[i + 1])));
-    }
-    return out;
-}
-
 void expect_hex(const std::vector<uint8_t>& bytes, std::string_view expected) {
     EXPECT_EQ(to_hex(std::span<const uint8_t>(bytes)), expected);
 }

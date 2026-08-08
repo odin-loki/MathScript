@@ -57,6 +57,7 @@ std::vector<uint8_t> hmac_sha256(std::string_view key, std::string_view data);
 std::vector<uint8_t> hmac_sha512(std::string_view key, std::string_view data);
 
 std::string to_hex(std::span<const uint8_t> bytes);
+std::vector<uint8_t> from_hex(std::string_view hex);
 std::string sha256_hex(std::span<const uint8_t> data);
 std::string sha512_hex(std::span<const uint8_t> data);
 std::string hmac_sha256_hex(std::span<const uint8_t> key,

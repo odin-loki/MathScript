@@ -14,6 +14,7 @@
 #include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
 #include "ms/frameworks/cellai/cellai.hpp"
+#include "ms/frameworks/izaac/izaac.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include <ms/ml/ml.hpp>
 #include "ms/ml/ml.hpp"
@@ -10282,4 +10283,43 @@ TEST(ReplCommandsTest, wave276_quantum_bessel) {
     expect_ok(interp, "bessel_y0(1.0)");
     expect_ok(interp, "bessel_y1(1.0)");
     expect_ok(interp, "bessel_zero_jnu(0, 1)");
+}
+
+TEST(ReplCommandsTest, wave277_crypto_bloom_topo) {
+    Interpreter interp;
+    ms::izaac::clear_session();
+    expect_contains(interp, "help", "crypto_from_hex");
+    expect_contains(interp, "help", "bloom_hash_count");
+
+    expect_ok(interp, "bytes = crypto_from_hex(\"00ff\")");
+    EXPECT_EQ(interp.state().matrices.at("bytes").rows(), 2u);
+
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "bloom_new(bf277, 50, 0.05)");
+    expect_ok(interp, "bloom_bit_count(bf277)");
+
+    expect_ok(interp, "D = [0, 1; 1, 0]");
+    expect_ok(interp, "vr = topo_vietoris_rips(D, 1.0)");
+    expect_ok(interp, "cnt = topo_simplicial_counts(vr)");
+    expect_ok(interp, "dim = topo_simplicial_dimension(vr)");
+}
+
+TEST(ReplCommandsTest, wave277_compress_fem_quantum) {
+    Interpreter interp;
+
+    expect_ok(interp, "orig = [10, 20, 30]");
+    expect_ok(interp, "aenc = arithmetic_encode_vec(orig)");
+    expect_ok(interp, "adec = arithmetic_decode_vec(orig, aenc)");
+    EXPECT_EQ(interp.state().matrices.at("adec").rows(), 3u);
+
+    expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
+    expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
+    expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
+    expect_ok(interp, "sys = fem_apply_dirichlet(K3, f3, [0], [0])");
+    EXPECT_GT(interp.state().matrices.at("sys").cols(), 1u);
+
+    expect_ok(interp, "H = [1, 0; 0, -1]");
+    expect_ok(interp, "psi0 = [1; 0]");
+    expect_ok(interp, "psif = quantum_schrodinger_final(H, psi0, 0, 0.05, 5)");
+    EXPECT_EQ(interp.state().matrices.at("psif").rows(), 2u);
 }

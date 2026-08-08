@@ -519,6 +519,19 @@ void sha512_hash(std::span<const std::uint8_t> data, std::uint8_t digest[64]) {
     }
 }
 
+int hex_nibble(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
 char hex_digit(int v) {
     return static_cast<char>(v < 10 ? ('0' + v) : ('a' + v - 10));
 }
@@ -1316,6 +1329,23 @@ std::string to_hex(std::span<const uint8_t> bytes) {
     for (std::size_t i = 0; i < bytes.size(); ++i) {
         out[i * 2] = hex_digit((bytes[i] >> 4) & 0x0f);
         out[i * 2 + 1] = hex_digit(bytes[i] & 0x0f);
+    }
+    return out;
+}
+
+std::vector<uint8_t> from_hex(std::string_view hex) {
+    if (hex.size() % 2 != 0) {
+        return {};
+    }
+    std::vector<uint8_t> out;
+    out.reserve(hex.size() / 2);
+    for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
+        const int hi = hex_nibble(hex[i]);
+        const int lo = hex_nibble(hex[i + 1]);
+        if (hi < 0 || lo < 0) {
+            return {};
+        }
+        out.push_back(static_cast<uint8_t>((hi << 4) | lo));
     }
     return out;
 }

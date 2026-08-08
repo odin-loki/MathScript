@@ -8543,6 +8543,15 @@ Result<std::string> eval_crypto_to_hex(const std::string& data_arg) {
     return crypto::to_hex(std::span<const uint8_t>(*data)) + "\n";
 }
 
+Result<Matrix<double>> eval_crypto_from_hex(const std::string& hex_arg) {
+    constexpr const char* fn = "crypto_from_hex";
+    auto bytes = parse_hex_arg(hex_arg, fn, "hex");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::Bytes(std::move(*bytes)));
+}
+
 Result<std::string> eval_crypto_sha512(const std::string& data_arg) {
     constexpr const char* fn = "crypto_sha512";
     auto data = parse_hex_arg(data_arg, fn, "data");
@@ -13379,6 +13388,30 @@ Result<double> eval_topo_simplicial_euler(const Matrix<double>& sc_m) {
     return static_cast<double>(sc->euler_characteristic());
 }
 
+Result<Matrix<double>> eval_topo_simplicial_counts(const Matrix<double>& sc_m) {
+    constexpr const char* fn = "topo_simplicial_counts";
+    auto sc = matrix_to_simplicial_complex(sc_m, fn);
+    if (!sc) {
+        return std::unexpected(sc.error());
+    }
+    const auto counts = sc->simplex_counts();
+    std::vector<double> values;
+    values.reserve(counts.size());
+    for (int c : counts) {
+        values.push_back(static_cast<double>(c));
+    }
+    return vector_to_column(values);
+}
+
+Result<double> eval_topo_simplicial_dimension(const Matrix<double>& sc_m) {
+    constexpr const char* fn = "topo_simplicial_dimension";
+    auto sc = matrix_to_simplicial_complex(sc_m, fn);
+    if (!sc) {
+        return std::unexpected(sc.error());
+    }
+    return static_cast<double>(sc->dimension());
+}
+
 Result<std::vector<std::vector<double>>> matrix_to_topo_points2d(const Matrix<double>& m,
                                                                  const char* fn) {
     auto pts = matrix_to_points2d(m, fn);
@@ -18080,6 +18113,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
     }
     const std::string fn = lower(trim_copy(cmd.substr(0, open)));
     if (fn != "bloom_new" && fn != "bloom_insert" && fn != "bloom_check" &&
+        fn != "bloom_bit_count" && fn != "bloom_hash_count" &&
         fn != "tokenbucket_new" && fn != "tokenbucket_consume" &&
         fn != "tokenbucket_available" && fn != "cellmemory_new" &&
         fn != "cellmemory_step" && fn != "cellmemory_recall" &&
@@ -18217,6 +18251,42 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(DomainError{fn, "expected quoted string item"});
         }
         return std::string(bloom->might_contain(string_item_bytes(item)) ? "true\n" : "false\n");
+    }
+
+    if (fn == "bloom_bit_count") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected bloom_bit_count(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::bloom::BloomFilter* bloom = nullptr;
+        auto bloom_check = require_session_object_type<izaac::bloom::BloomFilter>(
+            session_objects_, handle, fn.c_str(), bloom);
+        if (!bloom_check) {
+            return std::unexpected(bloom_check.error());
+        }
+        return std::to_string(bloom->bit_count()) + "\n";
+    }
+
+    if (fn == "bloom_hash_count") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected bloom_hash_count(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::bloom::BloomFilter* bloom = nullptr;
+        auto bloom_check = require_session_object_type<izaac::bloom::BloomFilter>(
+            session_objects_, handle, fn.c_str(), bloom);
+        if (!bloom_check) {
+            return std::unexpected(bloom_check.error());
+        }
+        return std::to_string(bloom->hash_count()) + "\n";
     }
 
     if (fn == "tokenbucket_new") {
@@ -19825,6 +19895,14 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "topo_simplicial_betti" || callee == "fem_solve_3d" ||
            callee == "fem_lagrange_deriv" || callee == "quantum_time_evolve_psi" ||
            callee == "run_length_encode_vec" || callee == "run_length_decode_vec" ||
+           callee == "crypto_from_hex" || callee == "topo_simplicial_counts" ||
+           callee == "huffman_decode_vec" || callee == "ans_decode_vec" ||
+           callee == "arithmetic_decode_vec" || callee == "fem_apply_dirichlet" ||
+           callee == "quantum_schrodinger_final" ||
+           callee == "fem_mesh3d_box" || callee == "fem_mesh3d" ||
+           callee == "fem_stiffness_3d" || callee == "assemble_stiffness_3d" ||
+           callee == "fem_load_3d" || callee == "cfd_grid3d" ||
+           callee == "cfd_square_pulse_3d" || callee == "cfd_upwind_step_3d" ||
            callee == "quantum_dagger" || callee == "quantum_matmul_dm" ||
            callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases" ||
            callee == "gria_divergence_trajectory";
@@ -20367,8 +20445,13 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 2 || arity == 3;
     }
     if (callee == "topo_simplicial_betti" || callee == "fem_lagrange_deriv" ||
-        callee == "run_length_encode_vec" || callee == "run_length_decode_vec") {
+        callee == "run_length_encode_vec" || callee == "run_length_decode_vec" ||
+        callee == "crypto_from_hex" || callee == "topo_simplicial_counts") {
         return arity == 1;
+    }
+    if (callee == "huffman_decode_vec" || callee == "ans_decode_vec" ||
+        callee == "arithmetic_decode_vec") {
+        return arity == 2;
     }
     if (callee == "fem_solve_3d") {
         return arity == 2;
@@ -20489,6 +20572,7 @@ bool is_scalar_matrix_call_callee(const std::string& callee) {
            callee == "stats_rms" || callee == "stats_mad" || callee == "stats_iqr" ||
            callee == "stats_min_value" || callee == "stats_max_value" ||
            callee == "topo_simplicial_euler" ||
+           callee == "topo_simplicial_dimension" ||
            callee == "count_components" || callee == "mpc_reconstruct";
 }
 
@@ -23982,30 +24066,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                 "quantum_schrodinger", "expected non-negative integer n_steps"});
         }
         result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
-    } else if (assign.callee == "quantum_schrodinger_final" && assign.args.size() == 5) {
-        auto H_m = resolve_operand(assign.args[0]);
-        if (!H_m) {
-            return std::unexpected(H_m.error());
-        }
-        auto psi0_m = resolve_operand(assign.args[1]);
-        if (!psi0_m) {
-            return std::unexpected(psi0_m.error());
-        }
-        double t0 = 0.0;
-        double t1 = 0.0;
-        double n_steps_d = 0.0;
-        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
-            !parse_number(assign.args[4], n_steps_d)) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger_final",
-                "expected quantum_schrodinger_final(H, psi0, t0, t1, n_steps)"});
-        }
-        const int n_steps = static_cast<int>(n_steps_d);
-        if (n_steps < 0 || n_steps_d != n_steps) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger_final", "expected non-negative integer n_steps"});
-        }
-        result = eval_quantum_schrodinger_final(*H_m, *psi0_m, t0, t1, n_steps);
     } else if (assign.callee == "pde_heat_1d" && assign.args.size() == 5) {
         auto x0_m = resolve_operand(assign.args[0]);
         if (!x0_m) {
@@ -27922,24 +27982,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
             return std::unexpected(f_val.error());
         }
         result = eval_fem_load_2d(*mesh, *f_val);
-    } else if (assign.callee == "fem_apply_dirichlet" && assign.args.size() == 4) {
-        auto K = resolve_operand(assign.args[0]);
-        if (!K) {
-            return std::unexpected(K.error());
-        }
-        auto f = resolve_operand(assign.args[1]);
-        if (!f) {
-            return std::unexpected(f.error());
-        }
-        auto nodes = resolve_operand(assign.args[2]);
-        if (!nodes) {
-            return std::unexpected(nodes.error());
-        }
-        auto values = resolve_operand(assign.args[3]);
-        if (!values) {
-            return std::unexpected(values.error());
-        }
-        result = eval_fem_apply_dirichlet(*K, *f, *nodes, *values);
     } else if (assign.callee == "fem_solve" && assign.args.size() == 2) {
         auto K = resolve_operand(assign.args[0]);
         if (!K) {
@@ -28186,167 +28228,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail10(const MatrixCallAs
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if ((assign.callee == "fem_mesh3d_box" || assign.callee == "fem_mesh3d") &&
-        assign.args.size() == 9) {
-        const char* fn = assign.callee.c_str();
-        std::array<Result<double>, 9> scalars{};
-        for (size_t i = 0; i < 9; ++i) {
-            scalars[i] = parse_scalar_arg(assign.args[i], fn);
-            if (!scalars[i]) {
-                return std::unexpected(scalars[i].error());
-            }
-        }
-        auto nx_i = parse_positive_size_arg(*scalars[6], fn, "expected positive integer nx");
-        if (!nx_i) {
-            return std::unexpected(nx_i.error());
-        }
-        auto ny_i = parse_positive_size_arg(*scalars[7], fn, "expected positive integer ny");
-        if (!ny_i) {
-            return std::unexpected(ny_i.error());
-        }
-        auto nz_i = parse_positive_size_arg(*scalars[8], fn, "expected positive integer nz");
-        if (!nz_i) {
-            return std::unexpected(nz_i.error());
-        }
-        result = eval_fem_mesh3d_box(*scalars[0], *scalars[1], *scalars[2], *scalars[3],
-                                     *scalars[4], *scalars[5], *nx_i, *ny_i, *nz_i);
-    } else if ((assign.callee == "fem_stiffness_3d" || assign.callee == "assemble_stiffness_3d") &&
-               assign.args.size() == 1) {
-        auto mesh = resolve_operand(assign.args[0]);
-        if (!mesh) {
-            return std::unexpected(mesh.error());
-        }
-        result = eval_fem_stiffness_3d(*mesh);
-    } else if (assign.callee == "fem_load_3d" && assign.args.size() == 2) {
-        auto mesh = resolve_operand(assign.args[0]);
-        if (!mesh) {
-            return std::unexpected(mesh.error());
-        }
-        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_3d");
-        if (!f_val) {
-            return std::unexpected(f_val.error());
-        }
-        result = eval_fem_load_3d(*mesh, *f_val);
-    } else if (assign.callee == "cfd_grid3d" && assign.args.size() == 9) {
-        const char* fn = "cfd_grid3d";
-        std::array<Result<double>, 9> scalars{};
-        for (size_t i = 0; i < 9; ++i) {
-            scalars[i] = parse_scalar_arg(assign.args[i], fn);
-            if (!scalars[i]) {
-                return std::unexpected(scalars[i].error());
-            }
-        }
-        const int nx_i = static_cast<int>(*scalars[6]);
-        const int ny_i = static_cast<int>(*scalars[7]);
-        const int nz_i = static_cast<int>(*scalars[8]);
-        if (nx_i < 2 || ny_i < 2 || nz_i < 2 || *scalars[6] != nx_i || *scalars[7] != ny_i ||
-            *scalars[8] != nz_i) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer nx, ny, nz >= 2"});
-        }
-        result = eval_cfd_grid3d(*scalars[0], *scalars[1], *scalars[2], *scalars[3], *scalars[4],
-                                 *scalars[5], static_cast<std::size_t>(nx_i),
-                                 static_cast<std::size_t>(ny_i), static_cast<std::size_t>(nz_i));
-    } else if (assign.callee == "cfd_square_pulse_3d" &&
-               (assign.args.size() == 7 || assign.args.size() == 8)) {
-        auto grid = resolve_operand(assign.args[0]);
-        if (!grid) {
-            return std::unexpected(grid.error());
-        }
-        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse_3d");
-        if (!xc) {
-            return std::unexpected(xc.error());
-        }
-        auto yc = parse_scalar_arg(assign.args[2], "cfd_square_pulse_3d");
-        if (!yc) {
-            return std::unexpected(yc.error());
-        }
-        auto zc = parse_scalar_arg(assign.args[3], "cfd_square_pulse_3d");
-        if (!zc) {
-            return std::unexpected(zc.error());
-        }
-        auto width_x = parse_scalar_arg(assign.args[4], "cfd_square_pulse_3d");
-        if (!width_x) {
-            return std::unexpected(width_x.error());
-        }
-        auto width_y = parse_scalar_arg(assign.args[5], "cfd_square_pulse_3d");
-        if (!width_y) {
-            return std::unexpected(width_y.error());
-        }
-        auto width_z = parse_scalar_arg(assign.args[6], "cfd_square_pulse_3d");
-        if (!width_z) {
-            return std::unexpected(width_z.error());
-        }
-        double amplitude = 1.0;
-        if (assign.args.size() == 8) {
-            auto amp = parse_scalar_arg(assign.args[7], "cfd_square_pulse_3d");
-            if (!amp) {
-                return std::unexpected(amp.error());
-            }
-            amplitude = *amp;
-        }
-        result = eval_cfd_square_pulse_3d(*grid, *xc, *yc, *zc, *width_x, *width_y, *width_z,
-                                          amplitude);
-    } else if (assign.callee == "cfd_upwind_step_3d" &&
-               (assign.args.size() == 6 || assign.args.size() == 9)) {
-        auto grid = resolve_operand(assign.args[0]);
-        if (!grid) {
-            return std::unexpected(grid.error());
-        }
-        auto u = resolve_operand(assign.args[1]);
-        if (!u) {
-            return std::unexpected(u.error());
-        }
-        auto vx = parse_scalar_arg(assign.args[2], "cfd_upwind_step_3d");
-        if (!vx) {
-            return std::unexpected(vx.error());
-        }
-        auto vy = parse_scalar_arg(assign.args[3], "cfd_upwind_step_3d");
-        if (!vy) {
-            return std::unexpected(vy.error());
-        }
-        auto vz = parse_scalar_arg(assign.args[4], "cfd_upwind_step_3d");
-        if (!vz) {
-            return std::unexpected(vz.error());
-        }
-        auto dt = parse_scalar_arg(assign.args[5], "cfd_upwind_step_3d");
-        if (!dt) {
-            return std::unexpected(dt.error());
-        }
-        cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
-        cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
-        cfd::BoundaryCondition bc_z = cfd::BoundaryCondition::Periodic;
-        if (assign.args.size() == 9) {
-            auto bcx = parse_scalar_arg(assign.args[6], "cfd_upwind_step_3d");
-            if (!bcx) {
-                return std::unexpected(bcx.error());
-            }
-            auto bcy = parse_scalar_arg(assign.args[7], "cfd_upwind_step_3d");
-            if (!bcy) {
-                return std::unexpected(bcy.error());
-            }
-            auto bcz = parse_scalar_arg(assign.args[8], "cfd_upwind_step_3d");
-            if (!bcz) {
-                return std::unexpected(bcz.error());
-            }
-            auto parsed_x = parse_cfd_bc(*bcx, "cfd_upwind_step_3d");
-            if (!parsed_x) {
-                return std::unexpected(parsed_x.error());
-            }
-            auto parsed_y = parse_cfd_bc(*bcy, "cfd_upwind_step_3d");
-            if (!parsed_y) {
-                return std::unexpected(parsed_y.error());
-            }
-            auto parsed_z = parse_cfd_bc(*bcz, "cfd_upwind_step_3d");
-            if (!parsed_z) {
-                return std::unexpected(parsed_z.error());
-            }
-            bc_x = *parsed_x;
-            bc_y = *parsed_y;
-            bc_z = *parsed_z;
-        }
-        result = eval_cfd_upwind_step_3d(*grid, *u, *vx, *vy, *vz, *dt, bc_x, bc_y, bc_z);
-    } else if (assign.callee == "gria_gf2n_generate_field" && assign.args.size() == 1) {
+    if (assign.callee == "gria_gf2n_generate_field" && assign.args.size() == 1) {
         auto n_val = parse_scalar_arg(assign.args[0], "gria_gf2n_generate_field");
         if (!n_val) {
             return std::unexpected(n_val.error());
@@ -28973,6 +28855,250 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             return std::unexpected(matrix.error());
         }
         result = eval_run_length_decode_vec(*matrix);
+    } else if (assign.callee == "crypto_from_hex" && assign.args.size() == 1) {
+        std::string hex;
+        if (!parse_quoted_string(assign.args[0], hex)) {
+            hex = trim_copy(assign.args[0]);
+        }
+        result = eval_crypto_from_hex(hex);
+    } else if (assign.callee == "topo_simplicial_counts" && assign.args.size() == 1) {
+        auto sc = resolve_operand(assign.args[0]);
+        if (!sc) {
+            return std::unexpected(sc.error());
+        }
+        result = eval_topo_simplicial_counts(*sc);
+    } else if (assign.callee == "huffman_decode_vec" && assign.args.size() == 2) {
+        auto orig = resolve_operand(assign.args[0]);
+        if (!orig) {
+            return std::unexpected(orig.error());
+        }
+        auto encoded = resolve_operand(assign.args[1]);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        result = eval_huffman_decode_vec(*orig, *encoded);
+    } else if (assign.callee == "ans_decode_vec" && assign.args.size() == 2) {
+        auto orig = resolve_operand(assign.args[0]);
+        if (!orig) {
+            return std::unexpected(orig.error());
+        }
+        auto encoded = resolve_operand(assign.args[1]);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        result = eval_ans_decode_vec(*orig, *encoded);
+    } else if (assign.callee == "arithmetic_decode_vec" && assign.args.size() == 2) {
+        auto orig = resolve_operand(assign.args[0]);
+        if (!orig) {
+            return std::unexpected(orig.error());
+        }
+        auto encoded = resolve_operand(assign.args[1]);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        result = eval_arithmetic_decode_vec(*orig, *encoded);
+    } else if (assign.callee == "fem_apply_dirichlet" && assign.args.size() == 4) {
+        auto K = resolve_operand(assign.args[0]);
+        if (!K) {
+            return std::unexpected(K.error());
+        }
+        auto f = resolve_operand(assign.args[1]);
+        if (!f) {
+            return std::unexpected(f.error());
+        }
+        auto nodes = resolve_operand(assign.args[2]);
+        if (!nodes) {
+            return std::unexpected(nodes.error());
+        }
+        auto values = resolve_operand(assign.args[3]);
+        if (!values) {
+            return std::unexpected(values.error());
+        }
+        result = eval_fem_apply_dirichlet(*K, *f, *nodes, *values);
+    } else if (assign.callee == "quantum_schrodinger_final" && assign.args.size() == 5) {
+        auto H_m = resolve_operand(assign.args[0]);
+        if (!H_m) {
+            return std::unexpected(H_m.error());
+        }
+        auto psi0_m = resolve_operand(assign.args[1]);
+        if (!psi0_m) {
+            return std::unexpected(psi0_m.error());
+        }
+        double t0 = 0.0;
+        double t1 = 0.0;
+        double n_steps_d = 0.0;
+        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
+            !parse_number(assign.args[4], n_steps_d)) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger_final",
+                "expected quantum_schrodinger_final(H, psi0, t0, t1, n_steps)"});
+        }
+        const int n_steps = static_cast<int>(n_steps_d);
+        if (n_steps < 0 || n_steps_d != n_steps) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger_final", "expected non-negative integer n_steps"});
+        }
+        result = eval_quantum_schrodinger_final(*H_m, *psi0_m, t0, t1, n_steps);
+    } else if ((assign.callee == "fem_mesh3d_box" || assign.callee == "fem_mesh3d") &&
+               assign.args.size() == 9) {
+        const char* fn = assign.callee.c_str();
+        std::array<Result<double>, 9> scalars{};
+        for (size_t i = 0; i < 9; ++i) {
+            scalars[i] = parse_scalar_arg(assign.args[i], fn);
+            if (!scalars[i]) {
+                return std::unexpected(scalars[i].error());
+            }
+        }
+        auto nx_i = parse_positive_size_arg(*scalars[6], fn, "expected positive integer nx");
+        if (!nx_i) {
+            return std::unexpected(nx_i.error());
+        }
+        auto ny_i = parse_positive_size_arg(*scalars[7], fn, "expected positive integer ny");
+        if (!ny_i) {
+            return std::unexpected(ny_i.error());
+        }
+        auto nz_i = parse_positive_size_arg(*scalars[8], fn, "expected positive integer nz");
+        if (!nz_i) {
+            return std::unexpected(nz_i.error());
+        }
+        result = eval_fem_mesh3d_box(*scalars[0], *scalars[1], *scalars[2], *scalars[3],
+                                     *scalars[4], *scalars[5], *nx_i, *ny_i, *nz_i);
+    } else if ((assign.callee == "fem_stiffness_3d" || assign.callee == "assemble_stiffness_3d") &&
+               assign.args.size() == 1) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        result = eval_fem_stiffness_3d(*mesh);
+    } else if (assign.callee == "fem_load_3d" && assign.args.size() == 2) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_3d");
+        if (!f_val) {
+            return std::unexpected(f_val.error());
+        }
+        result = eval_fem_load_3d(*mesh, *f_val);
+    } else if (assign.callee == "cfd_grid3d" && assign.args.size() == 9) {
+        const char* fn = "cfd_grid3d";
+        std::array<Result<double>, 9> scalars{};
+        for (size_t i = 0; i < 9; ++i) {
+            scalars[i] = parse_scalar_arg(assign.args[i], fn);
+            if (!scalars[i]) {
+                return std::unexpected(scalars[i].error());
+            }
+        }
+        const int nx_i = static_cast<int>(*scalars[6]);
+        const int ny_i = static_cast<int>(*scalars[7]);
+        const int nz_i = static_cast<int>(*scalars[8]);
+        if (nx_i < 2 || ny_i < 2 || nz_i < 2 || *scalars[6] != nx_i || *scalars[7] != ny_i ||
+            *scalars[8] != nz_i) {
+            return std::unexpected(
+                DomainError{fn, "expected non-negative integer nx, ny, nz >= 2"});
+        }
+        result = eval_cfd_grid3d(*scalars[0], *scalars[1], *scalars[2], *scalars[3], *scalars[4],
+                                 *scalars[5], static_cast<std::size_t>(nx_i),
+                                 static_cast<std::size_t>(ny_i), static_cast<std::size_t>(nz_i));
+    } else if (assign.callee == "cfd_square_pulse_3d" &&
+               (assign.args.size() == 7 || assign.args.size() == 8)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse_3d");
+        if (!xc) {
+            return std::unexpected(xc.error());
+        }
+        auto yc = parse_scalar_arg(assign.args[2], "cfd_square_pulse_3d");
+        if (!yc) {
+            return std::unexpected(yc.error());
+        }
+        auto zc = parse_scalar_arg(assign.args[3], "cfd_square_pulse_3d");
+        if (!zc) {
+            return std::unexpected(zc.error());
+        }
+        auto width_x = parse_scalar_arg(assign.args[4], "cfd_square_pulse_3d");
+        if (!width_x) {
+            return std::unexpected(width_x.error());
+        }
+        auto width_y = parse_scalar_arg(assign.args[5], "cfd_square_pulse_3d");
+        if (!width_y) {
+            return std::unexpected(width_y.error());
+        }
+        auto width_z = parse_scalar_arg(assign.args[6], "cfd_square_pulse_3d");
+        if (!width_z) {
+            return std::unexpected(width_z.error());
+        }
+        double amplitude = 1.0;
+        if (assign.args.size() == 8) {
+            auto amp = parse_scalar_arg(assign.args[7], "cfd_square_pulse_3d");
+            if (!amp) {
+                return std::unexpected(amp.error());
+            }
+            amplitude = *amp;
+        }
+        result = eval_cfd_square_pulse_3d(*grid, *xc, *yc, *zc, *width_x, *width_y, *width_z,
+                                          amplitude);
+    } else if (assign.callee == "cfd_upwind_step_3d" &&
+               (assign.args.size() == 6 || assign.args.size() == 9)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto u = resolve_operand(assign.args[1]);
+        if (!u) {
+            return std::unexpected(u.error());
+        }
+        auto vx = parse_scalar_arg(assign.args[2], "cfd_upwind_step_3d");
+        if (!vx) {
+            return std::unexpected(vx.error());
+        }
+        auto vy = parse_scalar_arg(assign.args[3], "cfd_upwind_step_3d");
+        if (!vy) {
+            return std::unexpected(vy.error());
+        }
+        auto vz = parse_scalar_arg(assign.args[4], "cfd_upwind_step_3d");
+        if (!vz) {
+            return std::unexpected(vz.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[5], "cfd_upwind_step_3d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
+        cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
+        cfd::BoundaryCondition bc_z = cfd::BoundaryCondition::Periodic;
+        if (assign.args.size() == 9) {
+            auto bcx = parse_scalar_arg(assign.args[6], "cfd_upwind_step_3d");
+            if (!bcx) {
+                return std::unexpected(bcx.error());
+            }
+            auto bcy = parse_scalar_arg(assign.args[7], "cfd_upwind_step_3d");
+            if (!bcy) {
+                return std::unexpected(bcy.error());
+            }
+            auto bcz = parse_scalar_arg(assign.args[8], "cfd_upwind_step_3d");
+            if (!bcz) {
+                return std::unexpected(bcz.error());
+            }
+            auto parsed_x = parse_cfd_bc(*bcx, "cfd_upwind_step_3d");
+            if (!parsed_x) {
+                return std::unexpected(parsed_x.error());
+            }
+            auto parsed_y = parse_cfd_bc(*bcy, "cfd_upwind_step_3d");
+            if (!parsed_y) {
+                return std::unexpected(parsed_y.error());
+            }
+            auto parsed_z = parse_cfd_bc(*bcz, "cfd_upwind_step_3d");
+            if (!parsed_z) {
+                return std::unexpected(parsed_z.error());
+            }
+            bc_x = *parsed_x;
+            bc_y = *parsed_y;
+            bc_z = *parsed_z;
+        }
+        result = eval_cfd_upwind_step_3d(*grid, *u, *vx, *vy, *vz, *dt, bc_x, bc_y, bc_z);
     }
 
     return result;
@@ -30043,6 +30169,8 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
         value = eval_quantum_concurrence(*matrix);
     } else if (assign.callee == "topo_simplicial_euler") {
         value = eval_topo_simplicial_euler(*matrix);
+    } else if (assign.callee == "topo_simplicial_dimension") {
+        value = eval_topo_simplicial_dimension(*matrix);
     } else if (assign.callee == "tensorops_norm") {
         value = eval_tensorops_norm(*matrix);
     } else if (assign.callee == "graph_diameter") {
@@ -34699,7 +34827,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = topo_cech_complex(dist,epsilon[,max_dim]) Cech complex from distance matrix\n"
             "  name = topo_vietoris_rips(dist,r[,max_dim]) Vietoris-Rips complex from distance matrix\n"
             "  name = topo_simplicial_betti(sc) Betti numbers column from simplex matrix\n"
+            "  name = topo_simplicial_counts(sc) simplex counts column by dimension\n"
             "  chi = topo_simplicial_euler(sc) Euler characteristic from simplex matrix\n"
+            "  dim = topo_simplicial_dimension(sc) maximum simplex dimension\n"
             "  name = geo_overlap_circles(x1,y1,r1,x2,y2,r2) 1 if circles overlap else 0\n"
             "  name = geo_point_in_aabb(px,py,minx,miny,maxx,maxy) 1 if point inside 2D AABB else 0\n"
             "  name = geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz) 1 if 3D AABBs overlap else 0\n"
@@ -34987,6 +35117,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_hkdf_sha512(hex_ikm,hex_salt,hex_info,len) HKDF-SHA512 extract/expand (hex I/O)\n"
             "  crypto_sha256(hex_data) SHA-256 digest (hex I/O)\n"
             "  crypto_to_hex(hex_data) encode raw bytes as lowercase hex\n"
+            "  name = crypto_from_hex(hex) decode hex string to byte column matrix\n"
             "  crypto_sha512(hex_data) SHA-512 digest (hex I/O)\n"
             "  crypto_hmac_sha256(hex_key,hex_data) HMAC-SHA256 digest (hex I/O)\n"
             "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
@@ -35589,6 +35720,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bloom_new(bf, 1000, 0.01) create session BloomFilter (requires izaac seed; handle persists)\n"
             "  bloom_insert(bf, \"item\") insert string into session BloomFilter\n"
             "  bloom_check(bf, \"item\") test membership in session BloomFilter (true/false)\n"
+            "  bloom_bit_count(bf) Bloom filter bit array size\n"
+            "  bloom_hash_count(bf) Bloom filter hash function count\n"
             "  tokenbucket_new(tb, 10, 1) create session TokenBucket (handle persists)\n"
             "  tokenbucket_consume(tb, 3, 0) consume tokens at now_seconds (true/false)\n"
             "  tokenbucket_available(tb, 5) available tokens at now_seconds\n"
@@ -35777,7 +35910,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cellai_hebbian_update(W,X,Y,lr) assign-form Hebbian weight update; cellai_energy(W,V,H)  cellai_boltzmann_weights(E[,T])\n"
             "  cellai_cell_to_cypha_features(h,[scales])\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
-            "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")\n"
+            "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")  bloom_bit_count(h)  bloom_hash_count(h)\n"
             "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)\n"
             "  cellmemory_new(h,in,dim,[scales])  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)\n"
             "  difmodel_new(h,in,out,experts,lr)  difmodel_update(h,X,Y)  difmodel_predict(h,X)  difmodel_predict_interval(h,X)\n"

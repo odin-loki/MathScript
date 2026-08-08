@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 277 — crypto from_hex, bloom introspection, topo simplicial counts, compress decode assign, 3D tail11 pipeline) ✅ COMPLETE
+
+Forty-seventh feature wave after Wave 276. `crypto_from_hex` / `ms::crypto::from_hex`; Bloom `bit_count`/`hash_count`; topo `simplicial_counts`/`simplicial_dimension`; compress `huffman_decode_vec`/`ans_decode_vec`/`arithmetic_decode_vec` assign forms; migrated 3D FEM/CFD/`fem_apply_dirichlet`/`quantum_schrodinger_final` to `assign_matrix_call_tail11`; `integration_repl_wave277_pipeline`.
+
+### Added (Wave 277)
+- **Crypto REPL** — `crypto_from_hex(hex)` byte column matrix; public `from_hex` in `ms::crypto`.
+- **Izaac Bloom** — `bloom_bit_count(handle)`, `bloom_hash_count(handle)` session introspection.
+- **Topo REPL** — `topo_simplicial_counts(sc)`, `topo_simplicial_dimension(sc)`.
+- **Compress REPL** — assign-form `huffman_decode_vec`, `ans_decode_vec`, `arithmetic_decode_vec` in tail11.
+- **Composable 3D pipeline** — `fem_mesh3d_box`/`stiffness_3d`/`load_3d`, `cfd_grid3d`/`square_pulse_3d`/`upwind_step_3d`, `fem_apply_dirichlet`, `quantum_schrodinger_final` on tail11.
+
+### Tests
+- **`integration_repl_wave277_pipeline`** — crypto/bloom/topo/compress/FEM-CFD/quantum smoke.
+- **Unit** — `wave277_*` in `test_repl_commands.cpp`; `CryptoFromHex` in `test_crypto.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 277 sync; **436** CTest suites.
+
+**436 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-08 (Wave 276 — topo Cech/VR, FEM 3D solve, quantum time-evolve, run-length, Bessel specials, tail11) ✅ COMPLETE
 
 Forty-sixth feature wave after Wave 275. Topo `cech_complex`, `vietoris_rips`, simplicial Betti/Euler; `fem_solve_3d`, `fem_lagrange_deriv`; `quantum_time_evolve_psi`; `run_length_encode_vec`/`decode_vec`; Bessel `j/j1/y0/y1/zero_jnu`; extended `assign_matrix_call_tail11`; `integration_repl_wave276_pipeline`.
