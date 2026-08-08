@@ -10557,6 +10557,36 @@ Result<double> eval_run_backtest_max_drawdown(const Matrix<double>& prices_m,
     return bt.max_drawdown;
 }
 
+Result<double> eval_run_backtest_total_return(const Matrix<double>& prices_m,
+                                              const Matrix<double>& positions_m,
+                                              double initial_capital) {
+    constexpr const char* fn = "run_backtest_total_return";
+    auto prices = matrix_to_coeff_vector(prices_m, fn);
+    if (!prices) {
+        return std::unexpected(prices.error());
+    }
+    if (prices->size() < 2) {
+        return std::unexpected(DomainError{fn, "expected price vector length >= 2"});
+    }
+    auto pos_vec = matrix_to_coeff_vector(positions_m, fn);
+    if (!pos_vec) {
+        return std::unexpected(pos_vec.error());
+    }
+    if (pos_vec->size() != prices->size()) {
+        return std::unexpected(DomainError{fn, "positions length must match prices"});
+    }
+    std::vector<int> positions;
+    positions.reserve(pos_vec->size());
+    for (double v : *pos_vec) {
+        if (v != std::floor(v)) {
+            return std::unexpected(DomainError{fn, "positions must be integers"});
+        }
+        positions.push_back(static_cast<int>(v));
+    }
+    const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
+    return bt.total_return;
+}
+
 Result<Matrix<double>> eval_izaac_vrf_keygen() {
     const auto key = izaac::keygen();
     Matrix<double> out(2, 32, 0.0);
@@ -17836,7 +17866,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "fixed_point" || fn == "illinois" || fn == "simulated_annealing" ||
             fn == "differential_evolution" || fn == "particle_swarm" ||
             fn == "gria_settling_time" || fn == "run_backtest_sharpe" ||
-            fn == "run_backtest_max_drawdown" || fn == "cellai_boltzmann_weights" ||
+            fn == "run_backtest_max_drawdown" || fn == "run_backtest_total_return" ||
+            fn == "cellai_energy" || fn == "gria_langton_lambda" || fn == "gria_alpha_ca" ||
+            fn == "cellai_boltzmann_weights" ||
             fn == "cellai_cell_to_cypha_features" ||
             fn == "tensorops_matmul" || fn == "tensorops_einsum") {
             return false;
@@ -20118,14 +20150,17 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "cfd_square_pulse_3d" || callee == "cfd_upwind_step_3d" ||
            callee == "crypto_bytes_to_hex" || callee == "bwt_decode_vec" ||
            callee == "run_backtest_equity" || callee == "cellmemory_long_term_state" ||
+           callee == "cellmemory_recall" || callee == "gria_ca_step" ||
+           callee == "gria_divergence_trajectory" || callee == "gria_gf2n_generate_field" ||
+           callee == "quantum_eigenspectrum" || callee == "quantum_ground_state" ||
+           callee == "quantum_grover_search" ||
            callee == "quantum_schrodinger" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
            callee == "cfd_grid2d" || callee == "cfd_square_pulse_2d" ||
            callee == "quantum_dagger" || callee == "quantum_matmul_dm" ||
-           callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases" ||
-           callee == "gria_divergence_trajectory";
+           callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -20677,6 +20712,21 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 3;
     }
     if (callee == "cellmemory_long_term_state") {
+        return arity == 1;
+    }
+    if (callee == "cellmemory_recall") {
+        return arity == 2;
+    }
+    if (callee == "gria_ca_step") {
+        return arity == 2;
+    }
+    if (callee == "gria_divergence_trajectory") {
+        return arity == 4;
+    }
+    if (callee == "gria_gf2n_generate_field") {
+        return arity == 1;
+    }
+    if (callee == "quantum_eigenspectrum" || callee == "quantum_ground_state") {
         return arity == 1;
     }
     if (callee == "quantum_schrodinger" || callee == "quantum_schrodinger_final") {
@@ -27887,39 +27937,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
             return std::unexpected(right.error());
         }
         result = eval_sparse_add(*left, *right);
-    } else if (assign.callee == "quantum_grover_search" &&
-               (assign.args.size() == 2 || assign.args.size() == 3)) {
-        auto n_qubits_val = parse_scalar_arg(assign.args[0], "quantum_grover_search");
-        if (!n_qubits_val) {
-            return std::unexpected(n_qubits_val.error());
-        }
-        const int n_qubits = static_cast<int>(*n_qubits_val);
-        if (n_qubits < 1 || *n_qubits_val != n_qubits) {
-            return std::unexpected(DomainError{
-                "quantum_grover_search", "expected positive integer n_qubits"});
-        }
-        auto marked_m = resolve_operand(assign.args[1]);
-        if (!marked_m) {
-            return std::unexpected(marked_m.error());
-        }
-        auto marked_indices = matrix_to_int_coeff_vector(*marked_m, "quantum_grover_search");
-        if (!marked_indices) {
-            return std::unexpected(marked_indices.error());
-        }
-        int n_iterations = quantum::grover_optimal_iterations(
-            n_qubits, static_cast<int>(marked_indices->size()));
-        if (assign.args.size() == 3) {
-            auto iter_val = parse_scalar_arg(assign.args[2], "quantum_grover_search");
-            if (!iter_val) {
-                return std::unexpected(iter_val.error());
-            }
-            n_iterations = static_cast<int>(*iter_val);
-            if (n_iterations < 0 || *iter_val != n_iterations) {
-                return std::unexpected(DomainError{
-                    "quantum_grover_search", "expected non-negative integer n_iterations"});
-            }
-        }
-        result = eval_quantum_grover_search(n_qubits, *marked_m, n_iterations);
     } else if ((assign.callee == "ode_adams_bashforth2" || assign.callee == "ode_euler" ||
                 assign.callee == "ode_rk4" || assign.callee == "ode_midpoint" ||
                 assign.callee == "ode_backward_euler" || assign.callee == "ode_bdf2") &&
@@ -28017,78 +28034,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "cellai_boltzmann_weights" &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        auto energies = resolve_coeff_vector(assign.args[0], "cellai_boltzmann_weights");
-        if (!energies) {
-            return std::unexpected(energies.error());
-        }
-        double temperature = 1.0;
-        if (assign.args.size() == 2) {
-            auto temp = parse_scalar_arg(assign.args[1], "cellai_boltzmann_weights");
-            if (!temp) {
-                return std::unexpected(temp.error());
-            }
-            temperature = *temp;
-        }
-        result = eval_cellai_boltzmann_weights(*energies, temperature);
-    } else if (assign.callee == "cellai_cell_to_cypha_features" &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        std::string handle = trim_copy(assign.args[0]);
-        if (!is_identifier(handle)) {
-            return std::unexpected(DomainError{
-                "cellai_cell_to_cypha_features", "expected CellMemory handle identifier"});
-        }
-        const auto it = session_objects_.find(handle);
-        if (it == session_objects_.end()) {
-            return std::unexpected(DomainError{
-                "cellai_cell_to_cypha_features", "session object not found: " + handle});
-        }
-        if (!std::holds_alternative<cellai::CellMemory>(it->second)) {
-            return std::unexpected(DomainError{
-                "cellai_cell_to_cypha_features",
-                std::string("session object '") + handle + "' is not a CellMemory"});
-        }
-        const cellai::CellMemory& memory = std::get<cellai::CellMemory>(it->second);
-        std::vector<double> time_scales;
-        if (assign.args.size() == 2) {
-            auto parsed_scales =
-                resolve_coeff_vector(assign.args[1], "cellai_cell_to_cypha_features");
-            if (!parsed_scales) {
-                return std::unexpected(parsed_scales.error());
-            }
-            time_scales = std::move(*parsed_scales);
-        }
-        result = eval_cellai_cell_to_cypha_features(memory, time_scales);
-    } else if (assign.callee == "gria_divergence_trajectory" && assign.args.size() == 4) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        auto rule_val = parse_scalar_arg(assign.args[2], "gria_divergence_trajectory");
-        if (!rule_val) {
-            return std::unexpected(rule_val.error());
-        }
-        auto n_steps_val = parse_scalar_arg(assign.args[3], "gria_divergence_trajectory");
-        if (!n_steps_val) {
-            return std::unexpected(n_steps_val.error());
-        }
-        const int rule = static_cast<int>(*rule_val);
-        if (*rule_val != rule || rule < 0 || rule > 255) {
-            return std::unexpected(
-                DomainError{"gria_divergence_trajectory", "expected integer rule in [0,255]"});
-        }
-        const int n_steps = static_cast<int>(*n_steps_val);
-        if (*n_steps_val != n_steps) {
-            return std::unexpected(DomainError{
-                "gria_divergence_trajectory", "expected integer n_steps"});
-        }
-        result = eval_gria_divergence_trajectory(*a, *b, rule, n_steps);
-    }
 
     if (!result) {
         const Error& err = result.error();
@@ -28127,30 +28072,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail10(const MatrixCallAs
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "gria_gf2n_generate_field" && assign.args.size() == 1) {
-        auto n_val = parse_scalar_arg(assign.args[0], "gria_gf2n_generate_field");
-        if (!n_val) {
-            return std::unexpected(n_val.error());
-        }
-        const int n = static_cast<int>(*n_val);
-        if (*n_val != n || n < 1 || n > 16) {
-            return std::unexpected(
-                DomainError{"gria_gf2n_generate_field", "expected integer n in [1,16]"});
-        }
-        result = eval_gria_gf2n_generate_field(n);
-    } else if (assign.callee == "quantum_eigenspectrum" && assign.args.size() == 1) {
-        auto H = resolve_operand(assign.args[0]);
-        if (!H) {
-            return std::unexpected(H.error());
-        }
-        result = eval_quantum_eigenspectrum(*H);
-    } else if (assign.callee == "quantum_ground_state" && assign.args.size() == 1) {
-        auto H = resolve_operand(assign.args[0]);
-        if (!H) {
-            return std::unexpected(H.error());
-        }
-        result = eval_quantum_ground_state(*H);
-    }
 
     if (!result) {
         const Error& err = result.error();
@@ -29397,6 +29318,194 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             t_max = *tmax;
         }
         result = eval_topo_persistence_landscape(*dgm, n_layers, n_samples, t_min, t_max);
+    } else if (assign.callee == "cellmemory_recall" && assign.args.size() == 2) {
+        std::string handle = trim_copy(assign.args[0]);
+        if (!is_identifier(handle)) {
+            return std::unexpected(DomainError{
+                "cellmemory_recall", "expected CellMemory handle identifier"});
+        }
+        const auto it = session_objects_.find(handle);
+        if (it == session_objects_.end()) {
+            return std::unexpected(DomainError{
+                "cellmemory_recall", "session object not found: " + handle});
+        }
+        if (!std::holds_alternative<cellai::CellMemory>(it->second)) {
+            return std::unexpected(DomainError{
+                "cellmemory_recall",
+                std::string("session object '") + handle + "' is not a CellMemory"});
+        }
+        auto time_scale = parse_scalar_arg(assign.args[1], "cellmemory_recall");
+        if (!time_scale) {
+            return std::unexpected(time_scale.error());
+        }
+        auto recalled = std::get<cellai::CellMemory>(it->second).recall(*time_scale);
+        if (!recalled) {
+            return std::unexpected(recalled.error());
+        }
+        result = *recalled;
+    } else if (assign.callee == "gria_ca_step" && assign.args.size() == 2) {
+        auto state = resolve_operand(assign.args[0]);
+        if (!state) {
+            return std::unexpected(state.error());
+        }
+        auto rule_val = parse_scalar_arg(assign.args[1], "gria_ca_step");
+        if (!rule_val) {
+            return std::unexpected(rule_val.error());
+        }
+        const int rule = static_cast<int>(*rule_val);
+        if (*rule_val != rule || rule < 0 || rule > 255) {
+            return std::unexpected(
+                DomainError{"gria_ca_step", "expected integer rule in [0,255]"});
+        }
+        result = eval_gria_ca_step(*state, rule);
+    } else if (assign.callee == "gria_divergence_trajectory" && assign.args.size() == 4) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto rule_val = parse_scalar_arg(assign.args[2], "gria_divergence_trajectory");
+        if (!rule_val) {
+            return std::unexpected(rule_val.error());
+        }
+        auto n_steps_val = parse_scalar_arg(assign.args[3], "gria_divergence_trajectory");
+        if (!n_steps_val) {
+            return std::unexpected(n_steps_val.error());
+        }
+        const int rule = static_cast<int>(*rule_val);
+        if (*rule_val != rule || rule < 0 || rule > 255) {
+            return std::unexpected(
+                DomainError{"gria_divergence_trajectory", "expected integer rule in [0,255]"});
+        }
+        const int n_steps = static_cast<int>(*n_steps_val);
+        if (*n_steps_val != n_steps) {
+            return std::unexpected(DomainError{
+                "gria_divergence_trajectory", "expected integer n_steps"});
+        }
+        result = eval_gria_divergence_trajectory(*a, *b, rule, n_steps);
+    } else if (assign.callee == "gria_gf2n_generate_field" && assign.args.size() == 1) {
+        auto n_val = parse_scalar_arg(assign.args[0], "gria_gf2n_generate_field");
+        if (!n_val) {
+            return std::unexpected(n_val.error());
+        }
+        const int n = static_cast<int>(*n_val);
+        if (*n_val != n || n < 1 || n > 16) {
+            return std::unexpected(
+                DomainError{"gria_gf2n_generate_field", "expected integer n in [1,16]"});
+        }
+        result = eval_gria_gf2n_generate_field(n);
+    } else if (assign.callee == "quantum_eigenspectrum" && assign.args.size() == 1) {
+        auto H = resolve_operand(assign.args[0]);
+        if (!H) {
+            return std::unexpected(H.error());
+        }
+        result = eval_quantum_eigenspectrum(*H);
+    } else if (assign.callee == "quantum_ground_state" && assign.args.size() == 1) {
+        auto H = resolve_operand(assign.args[0]);
+        if (!H) {
+            return std::unexpected(H.error());
+        }
+        result = eval_quantum_ground_state(*H);
+    } else if (assign.callee == "quantum_grover_search" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto n_qubits_val = parse_scalar_arg(assign.args[0], "quantum_grover_search");
+        if (!n_qubits_val) {
+            return std::unexpected(n_qubits_val.error());
+        }
+        const int n_qubits = static_cast<int>(*n_qubits_val);
+        if (n_qubits < 1 || *n_qubits_val != n_qubits) {
+            return std::unexpected(DomainError{
+                "quantum_grover_search", "expected positive integer n_qubits"});
+        }
+        auto marked_m = resolve_operand(assign.args[1]);
+        if (!marked_m) {
+            return std::unexpected(marked_m.error());
+        }
+        auto marked_indices = matrix_to_int_coeff_vector(*marked_m, "quantum_grover_search");
+        if (!marked_indices) {
+            return std::unexpected(marked_indices.error());
+        }
+        int n_iterations = quantum::grover_optimal_iterations(
+            n_qubits, static_cast<int>(marked_indices->size()));
+        if (assign.args.size() == 3) {
+            auto iter_val = parse_scalar_arg(assign.args[2], "quantum_grover_search");
+            if (!iter_val) {
+                return std::unexpected(iter_val.error());
+            }
+            n_iterations = static_cast<int>(*iter_val);
+            if (n_iterations < 0 || *iter_val != n_iterations) {
+                return std::unexpected(DomainError{
+                    "quantum_grover_search", "expected non-negative integer n_iterations"});
+            }
+        }
+        result = eval_quantum_grover_search(n_qubits, *marked_m, n_iterations);
+    } else if (assign.callee == "cellai_boltzmann_weights" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto resolve_coeff_vector = [&](const std::string& text,
+                                        const char* fn) -> Result<std::vector<double>> {
+            auto parsed = parse_bracket_vector_literal(trim_copy(text), fn);
+            if (parsed) {
+                return *parsed;
+            }
+            auto matrix = resolve_operand(text);
+            if (!matrix) {
+                return std::unexpected(matrix.error());
+            }
+            return matrix_to_coeff_vector(*matrix, fn);
+        };
+        auto energies = resolve_coeff_vector(assign.args[0], "cellai_boltzmann_weights");
+        if (!energies) {
+            return std::unexpected(energies.error());
+        }
+        double temperature = 1.0;
+        if (assign.args.size() == 2) {
+            auto temp = parse_scalar_arg(assign.args[1], "cellai_boltzmann_weights");
+            if (!temp) {
+                return std::unexpected(temp.error());
+            }
+            temperature = *temp;
+        }
+        result = eval_cellai_boltzmann_weights(*energies, temperature);
+    } else if (assign.callee == "cellai_cell_to_cypha_features" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        std::string handle = trim_copy(assign.args[0]);
+        if (!is_identifier(handle)) {
+            return std::unexpected(DomainError{
+                "cellai_cell_to_cypha_features", "expected CellMemory handle identifier"});
+        }
+        const auto it = session_objects_.find(handle);
+        if (it == session_objects_.end()) {
+            return std::unexpected(DomainError{
+                "cellai_cell_to_cypha_features", "session object not found: " + handle});
+        }
+        if (!std::holds_alternative<cellai::CellMemory>(it->second)) {
+            return std::unexpected(DomainError{
+                "cellai_cell_to_cypha_features",
+                std::string("session object '") + handle + "' is not a CellMemory"});
+        }
+        const cellai::CellMemory& memory = std::get<cellai::CellMemory>(it->second);
+        std::vector<double> time_scales;
+        if (assign.args.size() == 2) {
+            auto parsed = parse_bracket_vector_literal(trim_copy(assign.args[1]),
+                                                     "cellai_cell_to_cypha_features");
+            if (!parsed) {
+                auto matrix = resolve_operand(assign.args[1]);
+                if (!matrix) {
+                    return std::unexpected(matrix.error());
+                }
+                auto coeffs = matrix_to_coeff_vector(*matrix, "cellai_cell_to_cypha_features");
+                if (!coeffs) {
+                    return std::unexpected(coeffs.error());
+                }
+                time_scales = std::move(*coeffs);
+            } else {
+                time_scales = std::move(*parsed);
+            }
+        }
+        result = eval_cellai_cell_to_cypha_features(memory, time_scales);
     }
 
     return result;
@@ -34269,7 +34378,8 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 }
                 return assign_scalar(lhs, *value);
             }
-            if (callee == "run_backtest_sharpe" || callee == "run_backtest_max_drawdown") {
+            if (callee == "run_backtest_sharpe" || callee == "run_backtest_max_drawdown" ||
+                callee == "run_backtest_total_return") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 3) {
                     return std::unexpected(DomainError{
@@ -34292,10 +34402,97 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     }
                     capital = *cap_expr;
                 }
-                Result<double> value =
-                    callee == "run_backtest_sharpe"
-                        ? eval_run_backtest_sharpe(*prices_m, *positions_m, capital)
-                        : eval_run_backtest_max_drawdown(*prices_m, *positions_m, capital);
+                Result<double> value = std::unexpected(
+                    DomainError{callee, "unsupported backtest scalar"});
+                if (callee == "run_backtest_sharpe") {
+                    value = eval_run_backtest_sharpe(*prices_m, *positions_m, capital);
+                } else if (callee == "run_backtest_max_drawdown") {
+                    value = eval_run_backtest_max_drawdown(*prices_m, *positions_m, capital);
+                } else {
+                    value = eval_run_backtest_total_return(*prices_m, *positions_m, capital);
+                }
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "cellai_energy") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "cellai_energy", "expected cellai_energy(w, v, h)"});
+                }
+                auto w_m = eval_matrix_operand(trim_copy(call_args->at(0)));
+                if (!w_m) {
+                    return std::unexpected(w_m.error());
+                }
+                auto v_m = eval_matrix_operand(trim_copy(call_args->at(1)));
+                if (!v_m) {
+                    return std::unexpected(v_m.error());
+                }
+                auto h_m = eval_matrix_operand(trim_copy(call_args->at(2)));
+                if (!h_m) {
+                    return std::unexpected(h_m.error());
+                }
+                return assign_scalar(lhs, cellai::energy(*w_m, *v_m, *h_m));
+            }
+            if (callee == "gria_langton_lambda") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 1) {
+                    return std::unexpected(DomainError{
+                        "gria_langton_lambda", "expected gria_langton_lambda(rule)"});
+                }
+                double rule_d = 0.0;
+                if (!parse_number(trim_copy(call_args->front()), rule_d)) {
+                    auto rule_expr = eval_scalar_expr(state_, trim_copy(call_args->front()));
+                    if (!rule_expr) {
+                        return std::unexpected(rule_expr.error());
+                    }
+                    rule_d = *rule_expr;
+                }
+                const int rule = static_cast<int>(rule_d);
+                if (rule_d != rule || rule < 0 || rule > 255) {
+                    return std::unexpected(
+                        DomainError{"gria_langton_lambda", "expected integer rule in [0,255]"});
+                }
+                auto value = eval_gria_langton_lambda(rule);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "gria_alpha_ca") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        "gria_alpha_ca", "expected gria_alpha_ca(rule, steps, width)"});
+                }
+                double rule_d = 0.0;
+                double steps_d = 0.0;
+                double width_d = 0.0;
+                if (!parse_number(trim_copy((*call_args)[0]), rule_d) ||
+                    !parse_number(trim_copy((*call_args)[1]), steps_d) ||
+                    !parse_number(trim_copy((*call_args)[2]), width_d)) {
+                    return std::unexpected(DomainError{
+                        "gria_alpha_ca", "expected gria_alpha_ca(rule, steps, width)"});
+                }
+                const int rule = static_cast<int>(rule_d);
+                const int steps = static_cast<int>(steps_d);
+                const int width = static_cast<int>(width_d);
+                if (rule_d != rule || rule < 0 || rule > 255) {
+                    return std::unexpected(
+                        DomainError{"gria_alpha_ca", "expected integer rule in [0,255]"});
+                }
+                if (steps_d != steps || steps < 0) {
+                    return std::unexpected(
+                        DomainError{"gria_alpha_ca", "expected non-negative integer steps"});
+                }
+                if (width_d != width || width < 1) {
+                    return std::unexpected(
+                        DomainError{"gria_alpha_ca", "expected positive integer width"});
+                }
+                auto value = eval_gria_alpha_ca(rule, static_cast<size_t>(steps),
+                                                 static_cast<size_t>(width));
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -36029,7 +36226,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cypha_nig_variance(0, 1, 0, 1) NIG distribution variance\n"
             "  cypha_nig_sample(0, 1, 0, 1, 10) draw n NIG samples (requires izaac seed)\n"
             "  cellai_hebbian_update([0.1], [1], [0.8], 0.1) Hebbian weight update\n"
-            "  cellai_energy([1,2;3,4], [1;0], [1;2]) RBM energy scalar\n"
+            "  name = cellai_energy(w, v, h) RBM energy scalar assign\n"
             "  cellai_boltzmann_weights([0,1,2], 1) Gibbs weights over energy vector (default T=1)\n"
             "  cellai_cell_to_cypha_features(cm, [0.1,1,5]) Cypha feature vector from CellMemory\n"
             "  izaac_estimate_pi(1000) Monte Carlo pi estimate (requires izaac seed)\n"
@@ -36043,6 +36240,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = run_backtest_equity(prices, positions, capital) equity curve column from backtest\n"
             "  name = run_backtest_sharpe(prices, positions, capital) backtest Sharpe ratio\n"
             "  name = run_backtest_max_drawdown(prices, positions, capital) backtest max drawdown\n"
+            "  name = run_backtest_total_return(prices, positions, capital) backtest total return\n"
             "  izaac_vrf_keygen() 2×32 VRF key matrix (private row, public row)\n"
             "  izaac_vrf_prove(key, msg) VRF proof matrix from 2×32 key and byte message\n"
             "  izaac_vrf_verify(pub, msg, proof) verify VRF (1 valid, 0 invalid)\n"
@@ -36069,6 +36267,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cellmemory_recall(cm, 1.0) recall CellMemory state at time_scale\n"
             "  cellmemory_consolidate(cm) consolidate CellMemory long-term state\n"
             "  name = cellmemory_long_term_state(cm) CellMemory long-term state matrix\n"
+            "  name = cellmemory_recall(cm, t) recall CellMemory state column at time_scale\n"
             "  difmodel_new(dm, 1, 1, 2, 0.1) create session DifModel (handle persists)\n"
             "  difmodel_update(dm, [1], [0.5]) update DifModel with input/output column vectors\n"
             "  difmodel_predict(dm, [1]) predict with DifModel\n"
@@ -36253,7 +36452,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")  bloom_bit_count(h)  bloom_hash_count(h)\n"
             "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)  tokenbucket_capacity(h)  tokenbucket_refill_rate(h)\n"
             "  cellmemory_new(h,in,dim,[scales])  cellmemory_input_dim(h)  cellmemory_memory_dim(h)  cellmemory_time_scales(h)\n"
-            "  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)  cellmemory_long_term_state(h)\n"
+            "  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)  cellmemory_long_term_state(h)  cellmemory_recall(h,t) assign\n"
             "  difmodel_new(h,in,out,experts,lr)  difmodel_update(h,X,Y)  difmodel_predict(h,X)  difmodel_predict_interval(h,X)\n"
             "  difmodel_ood_score(h,X)  difmodel_gh_gate(h,X)\n"
             "  cluster_new(h,n,seed)  cluster_run_election(h)  cluster_replicate(h,leader,\"cmd\")  cluster_current_leader(h)  cluster_status(h)\n"

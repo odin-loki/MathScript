@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 280 — backtest total return, CellMemory recall assign, CellAI/GRIA scalars, tail11 migrations) ✅ COMPLETE
+
+Fiftieth feature wave after Wave 279. `run_backtest_total_return`; assign `cellmemory_recall`; scalar `cellai_energy`, `gria_langton_lambda`, `gria_alpha_ca`; migrated `gria_ca_step`, `gria_divergence_trajectory`, `gria_gf2n_generate_field`, `quantum_eigenspectrum`/`ground_state`, `quantum_grover_search`, `cellai_boltzmann_weights`, `cellai_cell_to_cypha_features` to tail11; `integration_repl_wave280_pipeline`.
+
+### Added (Wave 280)
+- **Backtest REPL** — scalar assign `run_backtest_total_return(prices, positions, capital)`.
+- **CellAI CellMemory** — assign `cellmemory_recall(cm, time_scale)` matrix output.
+- **CellAI / GRIA scalars** — assign `cellai_energy(w,v,h)`, `gria_langton_lambda(rule)`, `gria_alpha_ca(rule,steps,width)`.
+- **Composable tail11** — `gria_ca_step`, `gria_divergence_trajectory`, `gria_gf2n_generate_field`, `quantum_eigenspectrum`/`ground_state`, `quantum_grover_search`, `cellai_boltzmann_weights`, `cellai_cell_to_cypha_features`.
+
+### Tests
+- **`integration_repl_wave280_pipeline`** — backtest/CellMemory/CellAI/GRIA/quantum smoke.
+- **Unit** — `wave280_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 280 sync; **439** CTest suites.
+
+**439 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-08 (Wave 279 — CellMemory introspection, topo/quantum tail11, explicit CFD 2D step, backtest scalars, spherical_jn) ✅ COMPLETE
 
 Forty-ninth feature wave after Wave 278. `cellmemory_input_dim`/`memory_dim`/`time_scales`; assign `cellmemory_long_term_state`; migrated `quantum_partial_trace`, `topo_alpha_complex`/`select_landmarks`/`witness_complex`/`persistence_landscape`, unified `cfd_upwind_step_2d` explicit+grid to tail11; scalar `run_backtest_sharpe`/`max_drawdown`; `spherical_jn` in `eval_special_two_arg`; `integration_repl_wave279_pipeline`.

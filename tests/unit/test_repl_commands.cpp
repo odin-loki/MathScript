@@ -10402,3 +10402,36 @@ TEST(ReplCommandsTest, wave279_topo_quantum_cfd) {
     expect_ok(interp, "f1 = cfd_upwind_step_2d(f, 1, 0, 0.05, 0.2, 0.2)");
     EXPECT_EQ(interp.state().matrices.at("f1").rows(), 3u);
 }
+
+TEST(ReplCommandsTest, wave280_backtest_cell_energy) {
+    Interpreter interp;
+    ms::izaac::clear_session();
+    expect_contains(interp, "help", "run_backtest_total_return");
+
+    expect_ok(interp, "p = [10, 11, 12]");
+    expect_ok(interp, "q = [0, 1, 0]");
+    expect_ok(interp, "tr = run_backtest_total_return(p, q, 100)");
+
+    expect_ok(interp, "cellmemory_new(cm, 2, 2)");
+    expect_ok(interp, "r = cellmemory_recall(cm, 1)");
+    EXPECT_EQ(interp.state().matrices.at("r").rows(), 2u);
+
+    expect_ok(interp, "W = [0, 0; 0, 0]");
+    expect_ok(interp, "e = cellai_energy(W, [0; 0], [0; 0])");
+    EXPECT_TRUE(interp.state().scalars.count("e") > 0);
+}
+
+TEST(ReplCommandsTest, wave280_gria_quantum) {
+    Interpreter interp;
+
+    expect_ok(interp, "s = [1; 1; 0; 0]");
+    expect_ok(interp, "s2 = gria_ca_step(s, 30)");
+    EXPECT_EQ(interp.state().matrices.at("s2").rows(), 4u);
+
+    expect_ok(interp, "lam = gria_langton_lambda(110)");
+    EXPECT_TRUE(interp.state().scalars.count("lam") > 0);
+
+    expect_ok(interp, "H = [2, 1; 1, 2]");
+    expect_ok(interp, "ev = quantum_eigenspectrum(H)");
+    EXPECT_EQ(interp.state().matrices.at("ev").rows(), 2u);
+}

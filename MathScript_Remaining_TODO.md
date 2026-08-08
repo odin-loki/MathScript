@@ -605,8 +605,9 @@ See `CHANGELOG.md` for per-wave branch tables.
 - tail11: 2D FEM/CFD, `fem_solve`, `quantum_schrodinger`
 - `integration_repl_wave278_pipeline`
 - `integration_repl_wave279_pipeline`
+- `integration_repl_wave280_pipeline`
 
-**438 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–279** closed for this incremental batch.
+**439 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–280** closed for this incremental batch.
 
 ## Next (Wave 279+) — deferred
 

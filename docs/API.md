@@ -474,6 +474,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `quantum_partial_trace` / `topo_alpha_complex` / `topo_select_landmarks` / `topo_witness_complex` / `topo_persistence_landscape` (tail11) | Quantum + topo composable dispatch (Wave 279) |
 | explicit `cfd_upwind_step_2d(u,vx,vy,dt,dx,dy)` (tail11) | 2D upwind step without packed grid (Wave 279) |
 | `spherical_jn` (scalar two-arg eval) | Spherical Bessel j in assign expr (Wave 279) |
+| `run_backtest_total_return` / `cellmemory_recall` (assign) | Backtest scalar + CellMemory recall matrix (Wave 280) |
+| `cellai_energy` / `gria_langton_lambda` / `gria_alpha_ca` (scalar assign) | CellAI energy + GRIA CA metrics (Wave 280) |
+| `gria_ca_step` / `gria_divergence_trajectory` / `gria_gf2n_generate_field` (tail11) | GRIA composable pipeline (Wave 280) |
+| `quantum_eigenspectrum` / `quantum_ground_state` / `quantum_grover_search` (tail11) | Quantum spectral + Grover dispatch (Wave 280) |
+| `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` (tail11) | CellAI feature pipeline (Wave 280) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |
