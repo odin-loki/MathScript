@@ -607,8 +607,9 @@ See `CHANGELOG.md` for per-wave branch tables.
 - `integration_repl_wave279_pipeline`
 - `integration_repl_wave280_pipeline`
 - `integration_repl_wave281_pipeline`
+- `integration_repl_wave282_pipeline`
 
-**440 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–281** closed for this incremental batch.
+**441 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–282** closed for this incremental batch.
 
 ## Next (Wave 279+) — deferred
 

@@ -10469,3 +10469,32 @@ TEST(ReplCommandsTest, wave281_fem_cfd_cell) {
     expect_ok(interp, "cellmemory_new(cm, 2, 2)");
     expect_ok(interp, "cellmemory_reset(cm)");
 }
+
+TEST(ReplCommandsTest, wave282_pde_control_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "x0 = [0; 1; 0]");
+    expect_ok(interp, "h = pde_heat_1d(x0, 0.1, 0.1, 0.01, 5)");
+    EXPECT_EQ(interp.state().matrices.at("h").rows(), 3u);
+
+    expect_ok(interp, "u1 = fem_poisson1d(6)");
+    EXPECT_GT(interp.state().matrices.at("u1").rows(), 0u);
+
+    expect_ok(interp, "Co = control_ctrb([0, 1; 0, 0], [0; 1])");
+    EXPECT_GT(interp.state().matrices.at("Co").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave282_signal_sparse_special) {
+    Interpreter interp;
+
+    expect_ok(interp, "sos = [2, -2, 0, 2, -1, 0]");
+    expect_ok(interp, "x = [1; 2; 3]");
+    expect_ok(interp, "y = signal_sosfilt(sos, x)");
+    EXPECT_EQ(interp.state().matrices.at("y").rows(), 3u);
+
+    expect_ok(interp, "traj = ode_rk4(\"y\", 0, 1, 1, 5)");
+    EXPECT_GT(interp.state().matrices.at("traj").rows(), 0u);
+
+    expect_ok(interp, "db = debye(1, 0.25)");
+    EXPECT_TRUE(interp.state().scalars.count("db") > 0);
+}

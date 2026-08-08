@@ -484,6 +484,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `signal_resample` / `signal_savgol` (tail11 assign) | Signal processing assign forms (Wave 281) |
 | `gria_hamming_distance` (scalar assign) / `cellmemory_reset` | GRIA distance + CellMemory reset (Wave 281) |
 | `polylog` (scalar two-arg eval) | Polylogarithm in assign expr (Wave 281) |
+| `pde_heat_1d` / `pde_heat_1d_cn` / `pde_wave_2d` / `fem_poisson1d` (tail11) | PDE/FEM composable dispatch (Wave 282) |
+| `control_kalman_predict` / `control_kalman_update` / `control_ctrb` (tail11) | Kalman + controllability (Wave 282) |
+| `signal_sosfilt` / `ode_rk4` / `sparse_from_coo` / `wavelet_compress_vec` (tail11) | Signal/ODE/sparse/wavelet (Wave 282) |
+| `quantum_hadamard` (tail11) | Hadamard on ket (Wave 282) |
+| `debye` / `clausen` / `eta_dirichlet` (scalar eval) | Special-function scalar assigns (Wave 282) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

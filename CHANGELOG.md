@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 282 — PDE/control/signal tail11, sparse/ODE/wavelet, special scalars) ✅ COMPLETE
+
+Fifty-second feature wave after Wave 281. Migrated PDE/FEM/control/signal/ODE/sparse/wavelet handlers to tail11; scalar `debye`, `clausen`, `eta_dirichlet` in `eval_scalar_call`; `integration_repl_wave282_pipeline`.
+
+### Added (Wave 282)
+- **PDE/FEM tail11** — `pde_heat_1d`, `pde_heat_1d_cn`, `pde_wave_2d`, `fem_poisson1d`.
+- **Control tail11** — `control_kalman_predict`, `control_kalman_update`, `control_ctrb`.
+- **Signal/ODE/sparse tail11** — `signal_sosfilt`, `ode_rk4`, `sparse_from_coo`, `wavelet_compress_vec`.
+- **Quantum tail11** — `quantum_hadamard`.
+- **Special** — `debye(n,x)`, `clausen(theta)`, `eta_dirichlet(s)` in scalar eval path.
+
+### Tests
+- **`integration_repl_wave282_pipeline`** — PDE/FEM/control/signal/ODE/sparse/quantum/special smoke.
+- **Unit** — `wave282_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 282 sync; **441** CTest suites.
+
+**441 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-08 (Wave 281 — quantum algebra tail11, CFD/FEM pipelines, signal assign, GRIA hamming, cellmemory reset, polylog) ✅ COMPLETE
 
 Fifty-first feature wave after Wave 280. Migrated quantum algebra, FEM/CFD advection, and signal handlers to tail11; scalar `gria_hamming_distance`; session `cellmemory_reset`; `polylog` in `eval_special_two_arg`; `integration_repl_wave281_pipeline`.
