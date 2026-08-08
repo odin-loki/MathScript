@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 299 — combo/poly tail11, special_polygamma) ✅ COMPLETE
+
+Sixty-ninth feature wave after Wave 298. Migrated combo and extended polynomial handlers to tail11/tail14; scalar `special_polygamma` integer validation in `eval_scalar_call`; `integration_repl_wave299_pipeline`.
+
+### Added (Wave 299)
+- **Combo tail11** — `combo_prev_perm`.
+- **Poly tail11** — `poly_partial_fractions`, `poly_cheb_expand`.
+- **Special** — `special_polygamma(n,x)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave299_pipeline`** — combo/poly/special smoke.
+- **Unit** — `wave299_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 299 sync; **458** CTest suites.
+
+**458 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 298 — numthy/poly/graph tail11, special_falling_factorial) ✅ COMPLETE
 
 Sixty-eighth feature wave after Wave 297. Migrated numthy, polynomial, graph, and info handlers to tail11/tail14; scalar `special_falling_factorial` integer validation in `eval_scalar_call`; `integration_repl_wave298_pipeline`.

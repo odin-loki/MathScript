@@ -20297,7 +20297,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "poly_fit" || callee == "poly_interp_hermite" ||
            callee == "poly_rational_roots" || callee == "poly_factor_rational" ||
            callee == "graph_connected_components" ||
-           callee == "info_channel_capacity_input";
+           callee == "info_channel_capacity_input" ||
+           callee == "combo_prev_perm" ||
+           callee == "poly_partial_fractions" || callee == "poly_cheb_expand";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21755,6 +21757,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return info::rate_distortion_gaussian(args[0], args[1]);
         }
         if (fn == "special_polygamma") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"special_polygamma", "expected non-negative integer n"});
+            }
             return polygamma(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "special_gamma_inc_reg") {
@@ -23505,16 +23511,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(roots.error());
         }
         result = *roots;
-    } else if (assign.callee == "combo_prev_perm" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto perm = eval_combo_prev_perm(*matrix);
-        if (!perm) {
-            return std::unexpected(perm.error());
-        }
-        result = *perm;
     }
 
     if (!result) {
@@ -23556,52 +23552,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
             return std::unexpected(factors.error());
         }
         result = *factors;
-    } else if (assign.callee == "poly_partial_fractions" && assign.args.size() == 2) {
-        auto num = resolve_operand(assign.args[0]);
-        if (!num) {
-            return std::unexpected(num.error());
-        }
-        auto den = resolve_operand(assign.args[1]);
-        if (!den) {
-            return std::unexpected(den.error());
-        }
-        auto pf = eval_poly_partial_fractions(*num, *den);
-        if (!pf) {
-            return std::unexpected(pf.error());
-        }
-        result = *pf;
-    } else if (assign.callee == "poly_cheb_expand" && assign.args.size() == 4) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double n_d = 0.0;
-        if (!parse_number(assign.args[1], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!n_expr) {
-                return std::unexpected(
-                    DomainError{"poly_cheb_expand", "expected non-negative integer n"});
-            }
-            n_d = *n_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"poly_cheb_expand", "expected non-negative integer n"});
-        }
-        auto a = parse_scalar_arg(assign.args[2], "poly_cheb_expand");
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = parse_scalar_arg(assign.args[3], "poly_cheb_expand");
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        auto cheb = eval_poly_cheb_expand(*matrix, n, *a, *b);
-        if (!cheb) {
-            return std::unexpected(cheb.error());
-        }
-        result = *cheb;
     } else if (assign.callee == "finance_merton_implied_asset_params" && assign.args.size() == 5) {
         double E = 0.0;
         double sigma_E = 0.0;
@@ -30110,6 +30060,62 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
             return std::unexpected(fact.error());
         }
         result = *fact;
+    } else if (assign.callee == "combo_prev_perm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto perm = eval_combo_prev_perm(*matrix);
+        if (!perm) {
+            return std::unexpected(perm.error());
+        }
+        result = *perm;
+    } else if (assign.callee == "poly_partial_fractions" && assign.args.size() == 2) {
+        auto num = resolve_operand(assign.args[0]);
+        if (!num) {
+            return std::unexpected(num.error());
+        }
+        auto den = resolve_operand(assign.args[1]);
+        if (!den) {
+            return std::unexpected(den.error());
+        }
+        auto pf = eval_poly_partial_fractions(*num, *den);
+        if (!pf) {
+            return std::unexpected(pf.error());
+        }
+        result = *pf;
+    } else if (assign.callee == "poly_cheb_expand" && assign.args.size() == 4) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double n_d = 0.0;
+        if (!parse_number(assign.args[1], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!n_expr) {
+                return std::unexpected(
+                    DomainError{"poly_cheb_expand", "expected non-negative integer n"});
+            }
+            n_d = *n_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"poly_cheb_expand", "expected non-negative integer n"});
+        }
+        auto a = parse_scalar_arg(assign.args[2], "poly_cheb_expand");
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = parse_scalar_arg(assign.args[3], "poly_cheb_expand");
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        auto cheb = eval_poly_cheb_expand(*matrix, n, *a, *b);
+        if (!cheb) {
+            return std::unexpected(cheb.error());
+        }
+        result = *cheb;
     }
 
     return result;

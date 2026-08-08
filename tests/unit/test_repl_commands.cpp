@@ -10946,3 +10946,29 @@ TEST(ReplCommandsTest, wave298_special_scalar) {
     expect_ok(interp, "ff = special_falling_factorial(5, 2)");
     EXPECT_NEAR(interp.state().scalars.at("ff"), ms::falling_factorial(5.0, 2), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave299_combo_poly_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "pp = combo_prev_perm([1; 3; 2])");
+    ASSERT_GT(interp.state().matrices.count("pp"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pp").rows(), 3u);
+
+    expect_ok(interp, "num = [1; 0]");
+    expect_ok(interp, "den = [1; -1]");
+    expect_ok(interp, "pf = poly_partial_fractions(num, den)");
+    ASSERT_GT(interp.state().matrices.count("pf"), 0u);
+    EXPECT_GT(interp.state().matrices.at("pf").rows(), 0u);
+
+    expect_ok(interp, "p = [0; 0; 1]");
+    expect_ok(interp, "cheb = poly_cheb_expand(p, 3)");
+    ASSERT_GT(interp.state().matrices.count("cheb"), 0u);
+    EXPECT_GT(interp.state().matrices.at("cheb").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave299_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "pg = special_polygamma(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("pg"), ms::polygamma(1, 1.0), 1e-9);
+}
