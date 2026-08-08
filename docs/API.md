@@ -437,6 +437,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `weierstrass_zeta` / `weierstrass_sigma` / `jacobi_nd|cd|cs|ns|ds` | Weierstrass ζ/σ + Jacobi ratios (Wave 271) |
 | `gria_gf2n_generate_field(n)` | GF(2ⁿ) element enumeration column (Wave 271) |
 | `quantum_eigenspectrum(H)` / `quantum_ground_state(H)` | Hermitian spectrum + ground ket (Wave 271) |
+| `cfd_integrated_mass_3d(grid,u)` | 3D discrete mass integral (Wave 272) |
+| `ellip_d(k)` | Legendre elliptic integral D (Wave 272) |
+| `quantum_schmidt_decomposition(psi,dim_a,dim_b)` / `quantum_anticommutator(A,B)` | Schmidt coeffs + anticommutator (Wave 272) |
+| `izaac_exponential_mechanism` / `mpc_split` / `mpc_reconstruct` / `simulate_gbm_path` / `run_backtest` / `izaac_vrf_keygen` / `izaac_fuzz_mutate` | Izaac DP/MPC/backtest/VRF/fuzz (Wave 272) |
+| `axiom_gria_fitness` / `axiom_evolve` / `gria_dispatch_hint_register` / `gria_dispatch_hint_alpha` | Axiom GRIA + dispatch hints (Wave 272) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

@@ -9882,7 +9882,7 @@ TEST(ReplCommandsTest, wave271_cfd3d_primitives) {
     ASSERT_GT(interp.state().matrices.count("g3"), 0u);
     EXPECT_EQ(interp.state().matrices.at("g3").rows(), 4u);
 
-    expect_ok(interp, "u0 = cfd_square_pulse_3d(g3, 0.5, 0.5, 0.5, 0.2, 0.2, 0.2)");
+    expect_ok(interp, "u0 = cfd_square_pulse_3d(g3, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5)");
     ASSERT_GT(interp.state().matrices.count("u0"), 0u);
     EXPECT_EQ(interp.state().matrices.at("u0").rows(), 16u);
     EXPECT_EQ(interp.state().matrices.at("u0").cols(), 4u);
@@ -9954,4 +9954,100 @@ TEST(ReplCommandsTest, wave271_quantum_spectrum) {
     const auto ref_gs = ms::quantum::ground_state({{{2.0, 0.0}, {0.0, 0.0}}, {{0.0, 0.0}, {5.0, 0.0}}});
     EXPECT_NEAR(interp.state().matrices.at("gs")(0, 0), ref_gs[0].real(), 1e-9);
     EXPECT_NEAR(interp.state().matrices.at("gs")(1, 0), ref_gs[1].real(), 1e-9);
+}
+
+TEST(ReplCommandsTest, wave272_cfd_integrated_mass_3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cfd_integrated_mass_3d(grid,u)");
+
+    expect_ok(interp, "g3 = cfd_grid3d(0, 1, 0, 1, 0, 1, 4, 4, 4)");
+    expect_ok(interp, "u0 = cfd_square_pulse_3d(g3, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5)");
+    expect_ok(interp, "mass3 = cfd_integrated_mass_3d(g3, u0)");
+    EXPECT_GT(interp.state().scalars.at("mass3"), 0.0);
+}
+
+TEST(ReplCommandsTest, wave272_special_ellip_d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "ellip_d(k)");
+    const double k = 0.5;
+    expect_ok(interp, "ed = ellip_d(0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("ed"), ms::ellip_d(k), 1e-9);
+}
+
+TEST(ReplCommandsTest, wave272_quantum_schmidt_anticommutator) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_schmidt_decomposition(psi,dim_a,dim_b)");
+    expect_contains(interp, "help", "quantum_anticommutator(A,B)");
+
+    expect_ok(interp, "psi = [0.5; 0.5; 0.5; 0.5]");
+    expect_ok(interp, "sch = quantum_schmidt_decomposition(psi, 2, 2)");
+    ASSERT_GT(interp.state().matrices.count("sch"), 0u);
+    EXPECT_GT(interp.state().matrices.at("sch").rows(), 0u);
+
+    expect_ok(interp, "A = [1, 0; 0, 1]");
+    expect_ok(interp, "B = [0, 1; 1, 0]");
+    expect_ok(interp, "ac = quantum_anticommutator(A, B)");
+    ASSERT_GT(interp.state().matrices.count("ac"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("ac").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave272_izaac_mpc_backtest) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_contains(interp, "help", "izaac_exponential_mechanism");
+
+    expect_ok(interp, "idx = izaac_exponential_mechanism([1, 2, 3], 1, 1)");
+    EXPECT_GE(interp.state().scalars.at("idx"), 0.0);
+    EXPECT_LE(interp.state().scalars.at("idx"), 2.0);
+
+    expect_ok(interp, "sh = mpc_split(42, 5, 3)");
+    ASSERT_EQ(interp.state().matrices.at("sh").cols(), 3u);
+    expect_ok(interp, "sec = mpc_reconstruct(sh)");
+    EXPECT_NEAR(interp.state().scalars.at("sec"), 42.0, 1e-9);
+
+    expect_ok(interp, "path = simulate_gbm_path(100, 0.05, 0.2, 0.01, 20)");
+    EXPECT_EQ(interp.state().matrices.at("path").rows(), 21u);
+
+    expect_ok(interp, "prices = [100; 101; 102; 101]");
+    expect_ok(interp, "pos = [1; 1; 1; 0]");
+    expect_ok(interp, "bt = run_backtest(prices, pos, 10000)");
+    ASSERT_EQ(interp.state().matrices.at("bt").cols(), 4u);
+
+    expect_ok(interp, "vrf = izaac_vrf_keygen()");
+    EXPECT_EQ(interp.state().matrices.at("vrf").rows(), 2u);
+    EXPECT_EQ(interp.state().matrices.at("vrf").cols(), 32u);
+
+    expect_ok(interp, "mut = izaac_fuzz_mutate([65, 66, 67], 2)");
+    ASSERT_GT(interp.state().matrices.at("mut").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave272_axiom_gria_dispatch) {
+    Interpreter interp;
+    expect_contains(interp, "help", "axiom_gria_fitness");
+    expect_contains(interp, "help", "axiom_evolve(data");
+
+    expect_ok(interp, "fit = axiom_gria_fitness(\"x0\", [1, 2; 3, 4])");
+    EXPECT_GE(interp.state().scalars.at("fit"), 0.0);
+    EXPECT_LE(interp.state().scalars.at("fit"), 1.0);
+
+    expect_ok(interp, "best = axiom_evolve([1, 0; 0, 1], 8, 5)");
+    EXPECT_GT(interp.state().scalars.at("best"), 0.0);
+
+    expect_ok(interp, "a = gria_dispatch_hint_register(\"wave272_op\", 0.37)");
+    EXPECT_NEAR(interp.state().scalars.at("a"), 0.37, 1e-12);
+    expect_ok(interp, "ha = gria_dispatch_hint_alpha(\"wave272_op\")");
+    EXPECT_NEAR(interp.state().scalars.at("ha"), 0.37, 1e-12);
+}
+
+TEST(ReplCommandsTest, wave272_fem3d_pipeline) {
+    Interpreter interp;
+    expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 1, 1, 1)");
+    expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
+    expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
+    expect_ok(interp, "bc = [0]");
+    expect_ok(interp, "bv = [0]");
+    expect_ok(interp, "sys3 = fem_apply_dirichlet(K3, f3, bc, bv)");
+    expect_ok(interp, "u3 = fem_solve(sys3)");
+    ASSERT_GT(interp.state().matrices.count("u3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("u3").rows(), interp.state().matrices.at("K3").rows());
 }

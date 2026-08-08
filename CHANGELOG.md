@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 272 — CFD mass 3D, izaac MPC/backtest/VRF, axiom GRIA/evolve, quantum Schmidt/anticommutator, GRIA dispatch, ellip_d, tail11) ✅ COMPLETE
+
+Forty-second feature wave after Wave 271. CFD integrated mass 3D; izaac exponential mechanism, MPC split/reconstruct, GBM/backtest, VRF keygen, fuzz mutate; axiom GRIA fitness and parameterized evolve; quantum Schmidt decomposition and anticommutator; GRIA dispatch hints; `ellip_d`; `assign_matrix_call_tail11`; `integration_repl_wave272_pipeline`.
+
+### Added (Wave 272)
+- **CFD REPL** — `cfd_integrated_mass_3d(grid, u)`.
+- **Special REPL** — `ellip_d(k)`.
+- **Quantum REPL** — `quantum_schmidt_decomposition(psi,dim_a,dim_b)`; `quantum_anticommutator(A,B)`.
+- **Izaac REPL** — `izaac_exponential_mechanism`; `mpc_split` / `mpc_reconstruct`; `simulate_gbm_path` / `run_backtest`; `izaac_vrf_keygen`; `izaac_fuzz_mutate`.
+- **Axiom / GRIA REPL** — `axiom_gria_fitness`; `axiom_evolve(data[,pop,max_gen])`; `gria_dispatch_hint_register` / `gria_dispatch_hint_alpha`.
+- **Dispatch** — `assign_matrix_call_tail11`.
+- **Tests** — `integration_repl_wave272_pipeline`; unit coverage for wave272 CFD/special/quantum/izaac/axiom/FEM3D.
+
+### Docs (Wave 272)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 272 sync; **431** CTest suites.
+
+**431 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-08-08 (Wave 271 — FEM/CFD 3D primitives, Weierstrass ζ/σ, Jacobi ratios, GRIA field, quantum spectrum, tail10) ✅ COMPLETE
 
 Forty-first feature wave after Wave 270. FEM/CFD composable 3D assembly primitives; Weierstrass zeta/sigma and remaining Jacobi ratios; `gria_gf2n_generate_field`; `quantum_eigenspectrum` / `quantum_ground_state`; `assign_matrix_call_tail10`; `integration_repl_wave271_pipeline`.

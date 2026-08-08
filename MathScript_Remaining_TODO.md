@@ -1,7 +1,7 @@
 # MathScript — Remaining Work & Execution Plan
 
 **Author:** Odin Loch  
-**Updated:** 2026-08-08 (Wave 271 ✅ COMPLETE — **430 CTest suites** on `main`)
+**Updated:** 2026-08-08 (Wave 272 ✅ COMPLETE — **431 CTest suites** on `main`)
 
 ---
 
@@ -536,7 +536,23 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 272+) — deferred
+## Wave 272 — CFD mass 3D, izaac MPC/backtest/VRF, axiom GRIA/evolve, quantum Schmidt/anticommutator, GRIA dispatch, ellip_d, tail11 ✅ COMPLETE
+
+| Area | Deliverable |
+|------|-------------|
+| CFD REPL | `cfd_integrated_mass_3d(grid,u)` |
+| Special REPL | `ellip_d(k)` |
+| Quantum REPL | `quantum_schmidt_decomposition`; `quantum_anticommutator` |
+| Izaac REPL | exponential mechanism; MPC split/reconstruct; GBM/backtest; VRF keygen; fuzz mutate |
+| Axiom / GRIA | `axiom_gria_fitness`; `axiom_evolve`; dispatch hint register/alpha |
+| Dispatch | `assign_matrix_call_tail11` |
+| Tests | `integration_repl_wave272_pipeline`; FEM 3D mesh→K→f→Dirichlet→solve |
+
+**431 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–272** closed for this incremental batch.
+
+---
+
+## Next (Wave 273+) — deferred
 
 | Item | Notes |
 |------|--------|

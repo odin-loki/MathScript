@@ -470,6 +470,7 @@ thread_local std::vector<double> g_scalar_call_arg_buf;
 
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args);
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text);
+Result<void> require_session_rng(const char* fn);
 
 double matrix_max_value(const Matrix<double>& m) {
     double max_val = 0.0;
@@ -9910,6 +9911,183 @@ Result<Matrix<double>> eval_quantum_ground_state(const Matrix<double>& H_m) {
     return ket_to_column_matrix(quantum::ground_state(*H));
 }
 
+Result<Matrix<double>> eval_quantum_anticommutator(const Matrix<double>& A_m,
+                                                   const Matrix<double>& B_m) {
+    auto A = matrix_to_density_matrix(A_m, "quantum_anticommutator");
+    if (!A) {
+        return std::unexpected(A.error());
+    }
+    auto B = matrix_to_density_matrix(B_m, "quantum_anticommutator");
+    if (!B) {
+        return std::unexpected(B.error());
+    }
+    if (A->size() != B->size()) {
+        return std::unexpected(
+            DomainError{"quantum_anticommutator", "operators must have same dimension"});
+    }
+    return density_matrix_to_matrix(quantum::anticommutator(*A, *B));
+}
+
+Result<Matrix<double>> eval_quantum_schmidt_decomposition(const Matrix<double>& psi_m, int dim_a,
+                                                          int dim_b) {
+    constexpr const char* fn = "quantum_schmidt_decomposition";
+    auto psi = matrix_to_ket(psi_m, fn);
+    if (!psi) {
+        return std::unexpected(psi.error());
+    }
+    return vector_to_column(quantum::schmidt_decomposition(*psi, dim_a, dim_b).coefficients);
+}
+
+Result<double> eval_izaac_exponential_mechanism(const Matrix<double>& scores_m, double epsilon,
+                                                double sensitivity) {
+    constexpr const char* fn = "izaac_exponential_mechanism";
+    auto scores = matrix_to_coeff_vector(scores_m, fn);
+    if (!scores) {
+        return std::unexpected(scores.error());
+    }
+    if (scores->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty score vector"});
+    }
+    auto rng_check = require_session_rng(fn);
+    if (!rng_check) {
+        return std::unexpected(rng_check.error());
+    }
+    return static_cast<double>(izaac::diffpriv::exponential_mechanism(
+        *scores, epsilon, sensitivity, *izaac::g_session_rng));
+}
+
+Result<Matrix<double>> eval_mpc_split(uint64_t secret, int n, int k) {
+    constexpr const char* fn = "mpc_split";
+    if (n < 2 || k < 2 || k > n) {
+        return std::unexpected(DomainError{fn, "expected n>=2 and 2<=k<=n"});
+    }
+    if (secret >= izaac::mpc::PRIME) {
+        return std::unexpected(DomainError{fn, "secret must be < mpc PRIME"});
+    }
+    auto rng_check = require_session_rng(fn);
+    if (!rng_check) {
+        return std::unexpected(rng_check.error());
+    }
+    const auto shares = izaac::mpc::split_secret(secret, n, k, *izaac::g_session_rng);
+    Matrix<double> out(shares.size(), 3, 0.0);
+    for (size_t i = 0; i < shares.size(); ++i) {
+        out(i, 0) = static_cast<double>(shares[i].x);
+        out(i, 1) = static_cast<double>(shares[i].y & 0xFFFFFFFFu);
+        out(i, 2) = static_cast<double>(shares[i].y >> 32);
+    }
+    return out;
+}
+
+Result<double> eval_mpc_reconstruct(const Matrix<double>& shares_m) {
+    constexpr const char* fn = "mpc_reconstruct";
+    if (shares_m.cols() < 3 || shares_m.rows() < 2) {
+        return std::unexpected(DomainError{fn, "expected n×3 share matrix [x,y_lo,y_hi]"});
+    }
+    std::vector<izaac::mpc::Share> shares;
+    shares.reserve(shares_m.rows());
+    for (size_t i = 0; i < shares_m.rows(); ++i) {
+        const double x_d = shares_m(i, 0);
+        const double y_lo = shares_m(i, 1);
+        const double y_hi = shares_m(i, 2);
+        if (x_d != std::floor(x_d) || y_lo != std::floor(y_lo) || y_hi != std::floor(y_hi)) {
+            return std::unexpected(DomainError{fn, "share components must be integers"});
+        }
+        const uint64_t y =
+            (static_cast<uint64_t>(y_hi) << 32) | static_cast<uint64_t>(y_lo);
+        shares.push_back({static_cast<int>(x_d), y});
+    }
+    auto secret = izaac::mpc::reconstruct_secret(shares);
+    if (!secret) {
+        return std::unexpected(secret.error());
+    }
+    return static_cast<double>(*secret);
+}
+
+Result<Matrix<double>> eval_simulate_gbm_path(double s0, double mu, double sigma, double dt,
+                                              size_t steps) {
+    constexpr const char* fn = "simulate_gbm_path";
+    if (s0 <= 0.0 || sigma < 0.0 || dt <= 0.0 || steps < 1) {
+        return std::unexpected(DomainError{fn, "expected s0>0, sigma>=0, dt>0, steps>=1"});
+    }
+    auto rng_check = require_session_rng(fn);
+    if (!rng_check) {
+        return std::unexpected(rng_check.error());
+    }
+    return vector_to_column(izaac::backtest::simulate_gbm_path(s0, mu, sigma, dt, steps,
+                                                              *izaac::g_session_rng));
+}
+
+Result<Matrix<double>> eval_run_backtest(const Matrix<double>& prices_m,
+                                         const Matrix<double>& positions_m,
+                                         double initial_capital) {
+    constexpr const char* fn = "run_backtest";
+    auto prices = matrix_to_coeff_vector(prices_m, fn);
+    if (!prices) {
+        return std::unexpected(prices.error());
+    }
+    if (prices->size() < 2) {
+        return std::unexpected(DomainError{fn, "expected price vector length >= 2"});
+    }
+    auto pos_vec = matrix_to_coeff_vector(positions_m, fn);
+    if (!pos_vec) {
+        return std::unexpected(pos_vec.error());
+    }
+    if (pos_vec->size() != prices->size()) {
+        return std::unexpected(DomainError{fn, "positions length must match prices"});
+    }
+    std::vector<int> positions;
+    positions.reserve(pos_vec->size());
+    for (double v : *pos_vec) {
+        if (v != std::floor(v)) {
+            return std::unexpected(DomainError{fn, "positions must be integers"});
+        }
+        positions.push_back(static_cast<int>(v));
+    }
+    const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
+    Matrix<double> out(1, 4, 0.0);
+    out(0, 0) = bt.total_return;
+    out(0, 1) = bt.max_drawdown;
+    out(0, 2) = bt.sharpe_ratio;
+    out(0, 3) = static_cast<double>(bt.equity_curve.size());
+    return out;
+}
+
+Result<Matrix<double>> eval_izaac_vrf_keygen() {
+    const auto key = izaac::keygen();
+    Matrix<double> out(2, 32, 0.0);
+    for (size_t i = 0; i < 32; ++i) {
+        out(0, i) = static_cast<double>(key.private_key[i]);
+        out(1, i) = static_cast<double>(key.public_key[i]);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_izaac_fuzz_mutate(const Matrix<double>& input_m, size_t max_edits) {
+    constexpr const char* fn = "izaac_fuzz_mutate";
+    auto bytes_vec = matrix_to_coeff_vector(input_m, fn);
+    if (!bytes_vec) {
+        return std::unexpected(bytes_vec.error());
+    }
+    if (bytes_vec->empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty byte vector"});
+    }
+    std::vector<uint8_t> input;
+    input.reserve(bytes_vec->size());
+    for (double v : *bytes_vec) {
+        if (v < 0.0 || v > 255.0 || v != std::floor(v)) {
+            return std::unexpected(DomainError{fn, "expected byte values in [0,255]"});
+        }
+        input.push_back(static_cast<uint8_t>(v));
+    }
+    auto rng_check = require_session_rng(fn);
+    if (!rng_check) {
+        return std::unexpected(rng_check.error());
+    }
+    const auto mutated = izaac::fuzz::mutate(input, *izaac::g_session_rng, max_edits);
+    std::vector<double> out_vals(mutated.begin(), mutated.end());
+    return vector_to_column(out_vals);
+}
+
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall");
     if (!G) {
@@ -12689,7 +12867,8 @@ bool is_nullary_matrix_callee(const std::string& callee) {
            callee == "quantum_pauli_z" || callee == "quantum_pauli_plus" ||
            callee == "quantum_pauli_minus" || callee == "quantum_cnot_gate" ||
            callee == "quantum_swap_gate" || callee == "quantum_toffoli_gate" ||
-           callee == "quantum_identity" || callee == "quantum_hadamard_gate";
+           callee == "quantum_identity" || callee == "quantum_hadamard_gate" ||
+           callee == "izaac_vrf_keygen";
 }
 
 Result<Matrix<double>> eval_nullary_matrix_call(const std::string& fn) {
@@ -12722,6 +12901,9 @@ Result<Matrix<double>> eval_nullary_matrix_call(const std::string& fn) {
     }
     if (fn == "quantum_hadamard_gate") {
         return density_matrix_to_matrix(quantum::hadamard());
+    }
+    if (fn == "izaac_vrf_keygen") {
+        return eval_izaac_vrf_keygen();
     }
     return std::unexpected(DomainError{"eval", "unknown nullary matrix function: " + fn});
 }
@@ -13035,11 +13217,24 @@ bool try_parse_axiom_expr_fitness_call_assignment(const std::string& line,
         return false;
     }
     assign.callee = lower(trim_copy(rhs.substr(0, open)));
-    if (assign.callee != "axiom_mse_fitness" && assign.callee != "axiom_rmse_fitness") {
+    if (assign.callee != "axiom_mse_fitness" && assign.callee != "axiom_rmse_fitness" &&
+        assign.callee != "axiom_gria_fitness") {
         return false;
     }
     const auto call_args = split_call_args(rhs);
-    if (!call_args || call_args->size() != 3) {
+    if (!call_args) {
+        return false;
+    }
+    if (assign.callee == "axiom_gria_fitness") {
+        if (call_args->size() != 2) {
+            return false;
+        }
+        assign.expr_arg = trim_copy(call_args->at(0));
+        assign.inputs_arg = trim_copy(call_args->at(1));
+        assign.targets_arg.clear();
+        return !assign.expr_arg.empty() && !assign.inputs_arg.empty();
+    }
+    if (call_args->size() != 3) {
         return false;
     }
     assign.expr_arg = trim_copy(call_args->at(0));
@@ -13087,6 +13282,7 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "control_nyquist" || callee == "control_ctrb" ||
            callee == "control_obsv" || callee == "control_ctrb_gram" ||
            callee == "control_obsv_gram" || callee == "quantum_commutator" ||
+           callee == "quantum_anticommutator" ||
            callee == "poly_add" || callee == "poly_lagrange" ||
            callee == "poly_interp_newton" || callee == "quantum_tensor_product" ||
            callee == "ml_mat_mul" ||
@@ -13147,7 +13343,8 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "stats_weighted_variance" ||
            callee == "stats_two_sample_ttest" ||
            callee == "stats_chi2_gof" || callee == "graph_is_isomorphic" ||
-           callee == "graph_modularity" || callee == "gria_hamming_distance";
+           callee == "graph_modularity" || callee == "gria_hamming_distance" ||
+           callee == "cfd_integrated_mass_3d";
 }
 
 bool is_identifier(const std::string& text);
@@ -13407,7 +13604,8 @@ struct MatrixTwoScalarMixedCallAssign {
 
 bool is_matrix_two_scalar_mixed_call_callee(const std::string& callee) {
     return callee == "poly_root_count" || callee == "quantum_wigner" ||
-           callee == "quantum_husimi" || callee == "cfd_integrated_mass_2d";
+           callee == "quantum_husimi" || callee == "cfd_integrated_mass_2d" ||
+           callee == "izaac_exponential_mechanism";
 }
 
 bool try_parse_matrix_two_scalar_mixed_call_assignment(
@@ -14530,6 +14728,33 @@ Result<double> eval_axiom_rmse_fitness_call(const std::string& expr_arg,
         return std::unexpected(algo.error());
     }
     return make_axiom_repl_engine().rmse_fitness(*algo, inputs, targets);
+}
+
+Result<double> eval_axiom_gria_fitness_call(const std::string& expr_arg,
+                                            const Matrix<double>& data, const char* fn) {
+    auto algo = make_axiom_algorithm(expr_arg, fn);
+    if (!algo) {
+        return std::unexpected(algo.error());
+    }
+    return make_axiom_repl_engine().gria_fitness(*algo, data);
+}
+
+Result<double> eval_axiom_evolve_call(const Matrix<double>& data, size_t population_size,
+                                      size_t max_generations) {
+    axiom::EvolutionConfig cfg{};
+    cfg.population_size = population_size;
+    cfg.max_generations = max_generations;
+    axiom::Axiom engine(cfg, axiom::PrimitiveRegistry::build_from_ms_namespace());
+    const auto evolved = engine
+                          .evolve(
+                              [&](const axiom::Algorithm& a) {
+                                  return engine.gria_fitness(a, data);
+                              },
+                              [](const axiom::Algorithm& a) { return a.fitness > 0.45; });
+    if (!evolved) {
+        return std::unexpected(evolved.error());
+    }
+    return evolved->fitness;
 }
 
 Result<std::vector<double>> resolve_axiom_targets(const std::string& text, const char* fn,
@@ -18745,6 +18970,9 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "cellai_boltzmann_weights" || callee == "cellai_cell_to_cypha_features" ||
            callee == "gria_gf2n_generate_field" ||
            callee == "quantum_eigenspectrum" || callee == "quantum_ground_state" ||
+           callee == "quantum_schmidt_decomposition" ||
+           callee == "mpc_split" || callee == "simulate_gbm_path" || callee == "run_backtest" ||
+           callee == "izaac_vrf_keygen" || callee == "izaac_fuzz_mutate" ||
            callee == "gria_divergence_trajectory";
 }
 
@@ -19221,6 +19449,24 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "quantum_eigenspectrum" || callee == "quantum_ground_state") {
         return arity == 1;
     }
+    if (callee == "quantum_schmidt_decomposition") {
+        return arity == 3;
+    }
+    if (callee == "mpc_split") {
+        return arity == 3;
+    }
+    if (callee == "simulate_gbm_path") {
+        return arity == 5;
+    }
+    if (callee == "run_backtest") {
+        return arity == 3;
+    }
+    if (callee == "izaac_vrf_keygen") {
+        return arity == 0;
+    }
+    if (callee == "izaac_fuzz_mutate") {
+        return arity == 1 || arity == 2;
+    }
     if (callee == "ode_euler" || callee == "ode_rk4" || callee == "ode_midpoint" ||
         callee == "ode_backward_euler" || callee == "ode_adams_bashforth2" ||
         callee == "ode_bdf2") {
@@ -19330,7 +19576,7 @@ bool is_scalar_matrix_call_callee(const std::string& callee) {
            callee == "stats_geometric_mean" || callee == "stats_harmonic_mean" ||
            callee == "stats_rms" || callee == "stats_mad" || callee == "stats_iqr" ||
            callee == "stats_min_value" || callee == "stats_max_value" ||
-           callee == "count_components";
+           callee == "count_components" || callee == "mpc_reconstruct";
 }
 
 std::vector<std::string> split_comma_list(const std::string& text) {
@@ -19707,6 +19953,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "ellip_e") {
             return ellip_e(arg);
+        }
+        if (fn == "ellip_d") {
+            return ellip_d(arg);
         }
 
 
@@ -27158,6 +27407,145 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail10(const MatrixCallAs
         result = eval_quantum_ground_state(*H);
     }
 
+    if (!result) {
+        const Error& err = result.error();
+        if (const auto* de = std::get_if<DomainError>(&err)) {
+            if (de->function == "assign" && de->reason == "unsupported matrix call") {
+                return assign_matrix_call_tail11(assign);
+            }
+        }
+    }
+
+    return result;
+}
+
+Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAssign& assign) {
+    auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
+    auto parse_scalar_arg = [this](const std::string& text,
+                                   const char* fn) -> Result<double> {
+        double value = 0.0;
+        if (parse_number(text, value)) {
+            return value;
+        }
+        auto expr = eval_scalar_expr(state_, text);
+        if (!expr) {
+            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
+        }
+        return *expr;
+    };
+    auto parse_positive_size_arg = [](double value, const char* fn,
+                                      const char* label) -> Result<std::size_t> {
+        const int i = static_cast<int>(value);
+        if (i < 1 || value != static_cast<double>(i)) {
+            return std::unexpected(DomainError{fn, label});
+        }
+        return static_cast<std::size_t>(i);
+    };
+    auto parse_uint64_arg = [](double value, const char* fn,
+                               const char* label) -> Result<uint64_t> {
+        if (value < 0.0 || value != std::floor(value)) {
+            return std::unexpected(DomainError{fn, label});
+        }
+        return static_cast<uint64_t>(value);
+    };
+
+    Result<Matrix<double>> result =
+        std::unexpected(DomainError{"assign", "unsupported matrix call"});
+    if (assign.callee == "quantum_schmidt_decomposition" && assign.args.size() == 3) {
+        auto psi = resolve_operand(assign.args[0]);
+        if (!psi) {
+            return std::unexpected(psi.error());
+        }
+        auto dim_a_val = parse_scalar_arg(assign.args[1], "quantum_schmidt_decomposition");
+        if (!dim_a_val) {
+            return std::unexpected(dim_a_val.error());
+        }
+        auto dim_b_val = parse_scalar_arg(assign.args[2], "quantum_schmidt_decomposition");
+        if (!dim_b_val) {
+            return std::unexpected(dim_b_val.error());
+        }
+        const int dim_a = static_cast<int>(*dim_a_val);
+        const int dim_b = static_cast<int>(*dim_b_val);
+        if (dim_a < 1 || dim_b < 1 || *dim_a_val != dim_a || *dim_b_val != dim_b) {
+            return std::unexpected(DomainError{
+                "quantum_schmidt_decomposition", "expected positive integer dim_a and dim_b"});
+        }
+        result = eval_quantum_schmidt_decomposition(*psi, dim_a, dim_b);
+    } else if (assign.callee == "mpc_split" && assign.args.size() == 3) {
+        auto secret_val = parse_scalar_arg(assign.args[0], "mpc_split");
+        if (!secret_val) {
+            return std::unexpected(secret_val.error());
+        }
+        auto secret = parse_uint64_arg(*secret_val, "mpc_split", "expected unsigned integer secret");
+        if (!secret) {
+            return std::unexpected(secret.error());
+        }
+        auto n_val = parse_scalar_arg(assign.args[1], "mpc_split");
+        if (!n_val) {
+            return std::unexpected(n_val.error());
+        }
+        auto k_val = parse_scalar_arg(assign.args[2], "mpc_split");
+        if (!k_val) {
+            return std::unexpected(k_val.error());
+        }
+        const int n = static_cast<int>(*n_val);
+        const int k = static_cast<int>(*k_val);
+        if (*n_val != n || *k_val != k) {
+            return std::unexpected(DomainError{"mpc_split", "expected integer n and k"});
+        }
+        result = eval_mpc_split(*secret, n, k);
+    } else if (assign.callee == "simulate_gbm_path" && assign.args.size() == 5) {
+        const char* fn = "simulate_gbm_path";
+        std::array<Result<double>, 5> scalars{};
+        for (size_t i = 0; i < 5; ++i) {
+            scalars[i] = parse_scalar_arg(assign.args[i], fn);
+            if (!scalars[i]) {
+                return std::unexpected(scalars[i].error());
+            }
+        }
+        auto steps_i = parse_positive_size_arg(*scalars[4], fn, "expected positive integer steps");
+        if (!steps_i) {
+            return std::unexpected(steps_i.error());
+        }
+        result = eval_simulate_gbm_path(*scalars[0], *scalars[1], *scalars[2], *scalars[3], *steps_i);
+    } else if (assign.callee == "run_backtest" && assign.args.size() == 3) {
+        auto prices = resolve_operand(assign.args[0]);
+        if (!prices) {
+            return std::unexpected(prices.error());
+        }
+        auto positions = resolve_operand(assign.args[1]);
+        if (!positions) {
+            return std::unexpected(positions.error());
+        }
+        auto capital = parse_scalar_arg(assign.args[2], "run_backtest");
+        if (!capital) {
+            return std::unexpected(capital.error());
+        }
+        result = eval_run_backtest(*prices, *positions, *capital);
+    } else if (assign.callee == "izaac_vrf_keygen" && assign.args.empty()) {
+        result = eval_izaac_vrf_keygen();
+    } else if (assign.callee == "izaac_fuzz_mutate" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto input = resolve_operand(assign.args[0]);
+        if (!input) {
+            return std::unexpected(input.error());
+        }
+        size_t max_edits = 16;
+        if (assign.args.size() == 2) {
+            auto edits_val = parse_scalar_arg(assign.args[1], "izaac_fuzz_mutate");
+            if (!edits_val) {
+                return std::unexpected(edits_val.error());
+            }
+            const int edits_i = static_cast<int>(*edits_val);
+            if (*edits_val != edits_i || edits_i < 0) {
+                return std::unexpected(
+                    DomainError{"izaac_fuzz_mutate", "expected non-negative integer max_edits"});
+            }
+            max_edits = static_cast<size_t>(edits_i);
+        }
+        result = eval_izaac_fuzz_mutate(*input, max_edits);
+    }
+
     return result;
 }
 
@@ -28272,6 +28660,8 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
         value = eval_count_components(*matrix);
     } else if (assign.callee == "graph_is_connected") {
         value = eval_graph_is_connected(*matrix);
+    } else if (assign.callee == "mpc_reconstruct") {
+        value = eval_mpc_reconstruct(*matrix);
     } else if (assign.callee == "graph_is_strongly_connected") {
         value = eval_graph_is_strongly_connected(*matrix);
     } else if (assign.callee == "graph_is_tree") {
@@ -29163,26 +29553,113 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             if (!inputs) {
                 return std::unexpected(inputs.error());
             }
-            auto targets = resolve_axiom_targets(
-                axiom_fitness_call.targets_arg, axiom_fitness_call.callee.c_str(), resolve_matrix_arg);
-            if (!targets) {
-                return std::unexpected(targets.error());
-            }
             Result<double> value = std::unexpected(
                 DomainError{"assign", "unsupported axiom fitness call"});
-            if (axiom_fitness_call.callee == "axiom_mse_fitness") {
-                value = eval_axiom_mse_fitness_call(
-                    axiom_fitness_call.expr_arg, *inputs, *targets,
-                    axiom_fitness_call.callee.c_str());
-            } else if (axiom_fitness_call.callee == "axiom_rmse_fitness") {
-                value = eval_axiom_rmse_fitness_call(
-                    axiom_fitness_call.expr_arg, *inputs, *targets,
-                    axiom_fitness_call.callee.c_str());
+            if (axiom_fitness_call.callee == "axiom_gria_fitness") {
+                value = eval_axiom_gria_fitness_call(
+                    axiom_fitness_call.expr_arg, *inputs, axiom_fitness_call.callee.c_str());
+            } else {
+                auto targets = resolve_axiom_targets(
+                    axiom_fitness_call.targets_arg, axiom_fitness_call.callee.c_str(),
+                    resolve_matrix_arg);
+                if (!targets) {
+                    return std::unexpected(targets.error());
+                }
+                if (axiom_fitness_call.callee == "axiom_mse_fitness") {
+                    value = eval_axiom_mse_fitness_call(
+                        axiom_fitness_call.expr_arg, *inputs, *targets,
+                        axiom_fitness_call.callee.c_str());
+                } else if (axiom_fitness_call.callee == "axiom_rmse_fitness") {
+                    value = eval_axiom_rmse_fitness_call(
+                        axiom_fitness_call.expr_arg, *inputs, *targets,
+                        axiom_fitness_call.callee.c_str());
+                }
             }
             if (!value) {
                 return std::unexpected(value.error());
             }
             return assign_scalar(axiom_fitness_call.target, *value);
+        }
+
+        {
+            const auto open = rhs.find('(');
+            if (open != std::string::npos) {
+                const std::string callee = lower(trim_copy(rhs.substr(0, open)));
+                if (callee == "axiom_evolve") {
+                    const auto call_args = split_call_args(rhs);
+                    if (!call_args || call_args->size() < 1 || call_args->size() > 3) {
+                        return std::unexpected(DomainError{
+                            "axiom_evolve",
+                            "expected axiom_evolve(data[, population_size, max_generations])"});
+                    }
+                    auto data = eval_matrix_operand(trim_copy(call_args->at(0)));
+                    if (!data) {
+                        data = parse_matrix(trim_copy(call_args->at(0)));
+                    }
+                    if (!data) {
+                        return std::unexpected(data.error());
+                    }
+                    size_t population_size = 20;
+                    size_t max_generations = 25;
+                    if (call_args->size() >= 2) {
+                        double pop_d = 0.0;
+                        if (!parse_number(trim_copy(call_args->at(1)), pop_d) || pop_d < 1.0 ||
+                            std::floor(pop_d) != pop_d) {
+                            return std::unexpected(DomainError{
+                                "axiom_evolve", "expected positive integer population_size"});
+                        }
+                        population_size = static_cast<size_t>(pop_d);
+                    }
+                    if (call_args->size() == 3) {
+                        double gen_d = 0.0;
+                        if (!parse_number(trim_copy(call_args->at(2)), gen_d) || gen_d < 1.0 ||
+                            std::floor(gen_d) != gen_d) {
+                            return std::unexpected(DomainError{
+                                "axiom_evolve", "expected positive integer max_generations"});
+                        }
+                        max_generations = static_cast<size_t>(gen_d);
+                    }
+                    auto value = eval_axiom_evolve_call(*data, population_size, max_generations);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return assign_scalar(lhs, *value);
+                }
+                if (callee == "gria_dispatch_hint_register") {
+                    const auto call_args = split_call_args(rhs);
+                    if (!call_args || call_args->size() != 2) {
+                        return std::unexpected(DomainError{
+                            "gria_dispatch_hint_register",
+                            "expected gria_dispatch_hint_register(\"op\", alpha)"});
+                    }
+                    std::string op;
+                    if (!parse_quoted_string(trim_copy(call_args->at(0)), op) || op.empty()) {
+                        return std::unexpected(DomainError{
+                            "gria_dispatch_hint_register", "expected quoted operation name"});
+                    }
+                    double alpha = 0.0;
+                    if (!parse_number(trim_copy(call_args->at(1)), alpha)) {
+                        return std::unexpected(DomainError{
+                            "gria_dispatch_hint_register", "expected numeric alpha"});
+                    }
+                    gria::register_dispatch_hint(op, alpha);
+                    return assign_scalar(lhs, alpha);
+                }
+                if (callee == "gria_dispatch_hint_alpha") {
+                    const auto call_args = split_call_args(rhs);
+                    if (!call_args || call_args->size() != 1) {
+                        return std::unexpected(DomainError{
+                            "gria_dispatch_hint_alpha",
+                            "expected gria_dispatch_hint_alpha(\"op\")"});
+                    }
+                    std::string op;
+                    if (!parse_quoted_string(trim_copy(call_args->at(0)), op) || op.empty()) {
+                        return std::unexpected(DomainError{
+                            "gria_dispatch_hint_alpha", "expected quoted operation name"});
+                    }
+                    return assign_scalar(lhs, gria::dispatch_hint_alpha(op));
+                }
+            }
         }
 
         ScalarMatrixMixedCallAssign mixed_call{};
@@ -29281,6 +29758,8 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 value = eval_quantum_husimi(*matrix, scalar_a, scalar_b);
             } else if (matrix_two_scalar_call.callee == "cfd_integrated_mass_2d") {
                 value = eval_cfd_integrated_mass_2d(*matrix, scalar_a, scalar_b);
+            } else if (matrix_two_scalar_call.callee == "izaac_exponential_mechanism") {
+                value = eval_izaac_exponential_mechanism(*matrix, scalar_a, scalar_b);
             }
             if (!value) {
                 return std::unexpected(value.error());
@@ -29842,6 +30321,13 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 }
                 return assign_scalar(dual_call.target, *value);
             }
+            if (dual_call.callee == "cfd_integrated_mass_3d") {
+                auto value = eval_cfd_integrated_mass_3d(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
             if (dual_call.callee == "stats_spearman") {
                 auto value = eval_stats_spearman(*arg_a_m, *arg_b_m);
                 if (!value) {
@@ -30130,6 +30616,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             }
             if (matrix_dual_call.callee == "quantum_commutator") {
                 auto value = eval_quantum_commutator(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "quantum_anticommutator") {
+                auto value = eval_quantum_anticommutator(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -32537,6 +33034,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = ml_mse(p,t)       ML MSE on Nx1 vectors\n"
             "  name = axiom_evaluate(\"x0\", inputs) row-wise evaluate GP expression (x0, x1, ...)\n"
             "  name = axiom_mse_fitness(\"x0\", inputs, targets) supervised MSE fitness for expression\n"
+            "  name = axiom_gria_fitness(\"x0\", data) GRIA alpha-target fitness for expression\n"
+            "  name = axiom_evolve(data[,pop,max_gen]) evolve population; returns best GRIA fitness\n"
             "  name = axiom_rmse_fitness(\"x0\", inputs, targets) supervised RMSE fitness for expression\n"
             "  name = ml_r2(p,t)        ML RÃ‚Â² on Nx1 vectors\n"
             "  name = ml_f1(p,t)        ML F1 on binary Nx1 vectors\n"
@@ -32941,6 +33440,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = cfd_square_pulse_2d(grid,xc,yc,width_x,width_y[,amp]) axis-aligned square pulse\n"
             "  name = cfd_upwind_step_2d(u,vx,vy,dt,dx,dy[,bc_x,bc_y]) one 2D FVM upwind advection step\n"
             "  name = cfd_integrated_mass_2d(u,dx,dy) discrete mass integral sum(u)*dx*dy\n"
+            "  name = cfd_integrated_mass_3d(grid,u) discrete 3D mass integral from packed grid\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
             "  crypto_aes128_decrypt_block(key_hex,block_hex) AES-128 ECB block decrypt (hex I/O)\n"
             "  crypto_aes256_encrypt_block(key_hex,block_hex) AES-256 ECB block encrypt (hex I/O)\n"
@@ -33134,6 +33634,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_qft_gate(n_qubits) 2^n x 2^n QFT gate matrix\n"
             "  name = quantum_eigenspectrum(H) Hermitian eigenvalues as Nx1 column\n"
             "  name = quantum_ground_state(H) ground-state ket from Hermitian H\n"
+            "  name = quantum_schmidt_decomposition(psi,dim_a,dim_b) Schmidt coefficients column\n"
+            "  name = quantum_anticommutator(A,B) anticommutator {A,B} of NxN operators\n"
             "  name = finance_bs_call(S,K,T,r,sigma) Black-Scholes call price\n"
             "  name = finance_bs_put(S,K,T,r,sigma) Black-Scholes put price\n"
             "  name = finance_bs_gamma(S,K,T,r,sigma) Black-Scholes gamma\n"
@@ -33487,7 +33989,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_in(n,x), spherical_kn(n,x)\n"
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), struve_hn(nu,x), struve_yn(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
-            "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
+            "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_d(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
             "  theta1(z,q), theta2(z,q), theta3(z,q), theta4(z,q), weierstrass_p(z,g2,g3), weierstrass_pprime(z,g2,g3), weierstrass_zeta(z,g2,g3), weierstrass_sigma(z,g2,g3), zeta(s), polylog(n,z), mathieu_ce(n,q,x), mathieu_se(n,q,x), mathieu_a(n,q), mathieu_b(n,q), mathieu_mc(n,q,x), mathieu_ms(n,q,x)\n"
             "  spheroidal_lambda(n,m,c), spheroidal_s1(n,m,c,x), spheroidal_s2(n,m,c,x), pcf_u(a,x), pcf_v(a,x), pcf_w(a,x)\n"
             "  heun_g(a,q,alpha,beta,gamma,delta,z), heun_c(q,alpha,beta,gamma,delta,z)\n"
@@ -33533,6 +34035,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  izaac_estimate_pi(1000) Monte Carlo pi estimate (requires izaac seed)\n"
             "  izaac_laplace_noise(5, 1, 1) Laplace differential-privacy noise (requires izaac seed)\n"
             "  izaac_gaussian_noise(5, 1, 1e-5, 1) Gaussian DP noise (requires izaac seed)\n"
+            "  izaac_exponential_mechanism([1,2,3], 1, 1) DP exponential mechanism index (requires izaac seed)\n"
+            "  mpc_split(42, 5, 3) Shamir secret shares n×3 matrix [x,y_lo,y_hi] (requires izaac seed)\n"
+            "  mpc_reconstruct(shares) reconstruct secret from share matrix\n"
+            "  simulate_gbm_path(100, 0.05, 0.2, 0.01, 50) GBM price path column (requires izaac seed)\n"
+            "  run_backtest(prices, positions, 10000) backtest metrics 1×4 row (requires matching vectors)\n"
+            "  izaac_vrf_keygen() 2×32 VRF key matrix (private row, public row)\n"
+            "  izaac_fuzz_mutate([65,66,67], 4) fuzz-mutate byte vector (requires izaac seed)\n"
             "  bloom_new(bf, 1000, 0.01) create session BloomFilter (requires izaac seed; handle persists)\n"
             "  bloom_insert(bf, \"item\") insert string into session BloomFilter\n"
             "  bloom_check(bf, \"item\") test membership in session BloomFilter (true/false)\n"
@@ -33715,6 +34224,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         return std::string{
             "frameworks: GRIA, Cypha, CellAI, Izaac pure REPL functions\n"
             "  gria_entropy([data],bins)  gria_matrix_alpha(X,FX)  gria_is_critical(a,tol)  gria_classify(a)\n"
+            "  gria_dispatch_hint_register(\"op\",0.42)  gria_dispatch_hint_alpha(\"op\")\n"
             "  gria_ca_step(state,rule)  gria_langton_lambda(rule)  gria_alpha_ca(rule,steps,width)\n"
             "  gria_hamming_distance(a,b)  gria_divergence_trajectory(a,b,rule,n_steps)  gria_settling_time(a,b,rule,n_steps)\n"
             "  gria_gf2n_mul(a,b,poly)  gria_gf2n_pow(a,exp,poly)  gria_gf2n_inv(a,poly)\n"
