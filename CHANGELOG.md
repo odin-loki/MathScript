@@ -7,6 +7,22 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 275 — CFD mass integrals, grid 2D step, Bell states, specials, cellai/crypto, tail11) ✅ COMPLETE
+
+Forty-fifth feature wave after Wave 274. CFD `integrated_mass_1d`, grid-based `integrated_mass_2d` and `upwind_step_2d`, `constant_velocity`; `quantum_bell_states`; special `spherical_yn`, `bessel_h/hy/l/lu`, `hermite_hn`; `cellai_hebbian_update` assign form; `crypto_to_hex`; extended `assign_matrix_call_tail11`; `integration_repl_wave275_pipeline`.
+
+### Added (Wave 275)
+- **CFD REPL** — `cfd_integrated_mass_1d(grid,u)`; grid `cfd_integrated_mass_2d(grid,u)`; grid `cfd_upwind_step_2d(grid,u,vx,vy,dt[,bc_x,bc_y])`; `cfd_constant_velocity(n,v)`.
+- **Quantum REPL** — `quantum_bell_states()` packed 4 Bell kets.
+- **Special REPL** — `spherical_yn`, `bessel_h`, `bessel_hy`, `bessel_l`, `bessel_lu`, `hermite_hn`.
+- **CellAI / crypto REPL** — `cellai_hebbian_update(W,X,Y,lr)` assign; `crypto_to_hex(hex_data)`.
+- **Tests** — `integration_repl_wave275_pipeline`; unit coverage for wave275 CFD/quantum/special/cellai/crypto.
+
+### Docs (Wave 275)
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 275 sync; **434** CTest suites.
+
+**434 CTest suites — all passing**. **28-bench smoke OK**. Still deferred: scalable multi-node MPI LA, full IDE/LSP, Linux baseline (`gh auth`), full NCCL multi-GPU.
+
 ## [1.0.0] - 2026-08-08 (Wave 274 — FEM 1D composable, CFD 1D/2D advection, quantum dagger/matmul/Schmidt bases, izaac rand, tail11) ✅ COMPLETE
 
 Forty-fourth feature wave after Wave 273. FEM 1D mesh/stiffness/load/Lagrange eval; CFD 1D grid/pulse/advection/step and composable `cfd_run_advection_2d`; quantum `dagger`, `matmul_dm`, `schmidt_bases`; `izaac_rand_matrix`; extended `assign_matrix_call_tail11`; `integration_repl_wave274_pipeline`.

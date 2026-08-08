@@ -451,6 +451,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `cfd_grid1d` / `cfd_square_pulse` / `cfd_run_advection` / `cfd_upwind_step_1d` / `cfd_run_advection_2d` | 1D/2D CFD composable advection (Wave 274) |
 | `quantum_dagger` / `quantum_matmul_dm` / `quantum_schmidt_bases` | Operator algebra + Schmidt bases (Wave 274) |
 | `izaac_rand_matrix` | Uniform random matrix (Wave 274) |
+| `cfd_integrated_mass_1d` / grid `cfd_integrated_mass_2d` / grid `cfd_upwind_step_2d` / `cfd_constant_velocity` | CFD mass + grid 2D step (Wave 275) |
+| `quantum_bell_states` | Packed four Bell kets (Wave 275) |
+| `spherical_yn` / `bessel_h` / `bessel_hy` / `bessel_l` / `bessel_lu` / `hermite_hn` | Additional special functions (Wave 275) |
+| `cellai_hebbian_update` (assign) / `crypto_to_hex` | Hebbian assign + hex encode (Wave 275) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

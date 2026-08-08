@@ -10199,3 +10199,49 @@ TEST(ReplCommandsTest, wave274_izaac_rand_matrix) {
     EXPECT_EQ(interp.state().matrices.at("rm").rows(), 3u);
     EXPECT_EQ(interp.state().matrices.at("rm").cols(), 2u);
 }
+
+TEST(ReplCommandsTest, wave275_cfd_mass_composable) {
+    Interpreter interp;
+    expect_contains(interp, "help", "cfd_integrated_mass_1d");
+    expect_contains(interp, "help", "cfd_constant_velocity");
+
+    expect_ok(interp, "g1 = cfd_grid1d(0, 1, 16)");
+    expect_ok(interp, "u0 = cfd_square_pulse(g1, 0.5, 0.25)");
+    expect_ok(interp, "u1 = cfd_upwind_step_1d(g1, u0, 0.2, 0.001)");
+    expect_ok(interp, "m1 = cfd_integrated_mass_1d(g1, u1)");
+    EXPECT_GT(interp.state().scalars.at("m1"), 0.0);
+
+    expect_ok(interp, "g2 = cfd_grid2d(0, 1, 0, 1, 4, 4)");
+    expect_ok(interp, "u2 = cfd_square_pulse_2d(g2, 0.5, 0.5, 0.4, 0.4)");
+    expect_ok(interp, "u3 = cfd_upwind_step_2d(g2, u2, 0.2, 0, 0.001)");
+    expect_ok(interp, "m2 = cfd_integrated_mass_2d(g2, u3)");
+    EXPECT_GT(interp.state().scalars.at("m2"), 0.0);
+
+    expect_ok(interp, "vc = cfd_constant_velocity(4, 2.0)");
+    EXPECT_EQ(interp.state().matrices.at("vc").rows(), 4u);
+}
+
+TEST(ReplCommandsTest, wave275_quantum_bell_states) {
+    Interpreter interp;
+    expect_contains(interp, "help", "quantum_bell_states");
+    expect_ok(interp, "bells = quantum_bell_states()");
+    EXPECT_EQ(interp.state().matrices.at("bells").rows(), 5u);
+    EXPECT_NEAR(interp.state().matrices.at("bells")(0, 0), 283.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, wave275_special_crypto_cellai) {
+    Interpreter interp;
+    expect_ok(interp, "spherical_yn(0, 1.0)");
+    expect_ok(interp, "bessel_h(0, 1.0)");
+    expect_ok(interp, "bessel_hy(1, 0.5)");
+    expect_ok(interp, "bessel_l(1, 0.5)");
+    expect_ok(interp, "bessel_lu(1, 0.5)");
+    expect_ok(interp, "hermite_hn(2, 0.5)");
+    expect_contains(interp, "crypto_to_hex(4142)", "4142");
+
+    expect_ok(interp, "W = [0.2; 0.3]");
+    expect_ok(interp, "X = [1; 0]");
+    expect_ok(interp, "Y = [0.9; 0.1]");
+    expect_ok(interp, "Wn = cellai_hebbian_update(W, X, Y, 0.05)");
+    EXPECT_EQ(interp.state().matrices.at("Wn").rows(), 2u);
+}

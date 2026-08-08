@@ -583,7 +583,22 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
-## Next (Wave 275+) — deferred
+## Wave 275 — CFD mass integrals, grid 2D step, Bell states, specials, cellai/crypto, tail11 ✅ COMPLETE
+
+| Area | REPL bindings |
+|------|----------------|
+| CFD | `cfd_integrated_mass_1d`, grid `cfd_integrated_mass_2d`, grid `cfd_upwind_step_2d`, `cfd_constant_velocity` |
+| Quantum | `quantum_bell_states` |
+| Special | `spherical_yn`, `bessel_h`, `bessel_hy`, `bessel_l`, `bessel_lu`, `hermite_hn` |
+| CellAI / crypto | `cellai_hebbian_update` (assign), `crypto_to_hex` |
+| Dispatch | extended `assign_matrix_call_tail11`; dual mass integrals |
+| Tests | `integration_repl_wave275_pipeline`; CFD/quantum/special/cellai/crypto unit coverage |
+
+**434 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–275** closed for this incremental batch.
+
+---
+
+## Next (Wave 276+) — deferred
 
 | Item | Notes |
 |------|--------|

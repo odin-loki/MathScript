@@ -725,6 +725,13 @@ Result<Matrix<double>> eval_cellai_boltzmann_weights(const std::vector<double>& 
     return vector_to_column(cellai::boltzmann_weights(energies, temperature));
 }
 
+Result<Matrix<double>> eval_cellai_hebbian_update(const Matrix<double>& w_m,
+                                                  const Matrix<double>& x_m,
+                                                  const Matrix<double>& y_m,
+                                                  double learning_rate) {
+    return cellai::hebbian_update(w_m, x_m, y_m, learning_rate);
+}
+
 Result<Matrix<double>> eval_cellai_cell_to_cypha_features(
     const cellai::CellMemory& memory, const std::vector<double>& time_scales) {
     return cellai::cell_to_cypha_features(memory, time_scales);
@@ -8527,6 +8534,15 @@ Result<std::string> eval_crypto_sha256(const std::string& data_arg) {
     return crypto::sha256_hex(std::span<const uint8_t>(*data)) + "\n";
 }
 
+Result<std::string> eval_crypto_to_hex(const std::string& data_arg) {
+    constexpr const char* fn = "crypto_to_hex";
+    auto data = parse_hex_arg(data_arg, fn, "data");
+    if (!data) {
+        return std::unexpected(data.error());
+    }
+    return crypto::to_hex(std::span<const uint8_t>(*data)) + "\n";
+}
+
 Result<std::string> eval_crypto_sha512(const std::string& data_arg) {
     constexpr const char* fn = "crypto_sha512";
     auto data = parse_hex_arg(data_arg, fn, "data");
@@ -9824,6 +9840,82 @@ Result<double> eval_cfd_integrated_mass_2d(
     return cfd::integrated_mass_2d(*u, dx, dy);
 }
 
+Result<double> eval_cfd_integrated_mass_1d(const Matrix<double>& grid_m,
+                                           const Matrix<double>& u_m) {
+    constexpr const char* fn = "cfd_integrated_mass_1d";
+    auto grid = cfd_grid1d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    auto u = matrix_to_coeff_vector(u_m, fn);
+    if (!u) {
+        return std::unexpected(u.error());
+    }
+    if (u->size() != grid->n) {
+        return std::unexpected(DomainError{fn, "field length must match grid n"});
+    }
+    return cfd::integrated_mass(*u, grid->dx);
+}
+
+Result<double> eval_cfd_integrated_mass_2d_from_grid(const Matrix<double>& grid_m,
+                                                     const Matrix<double>& u_m) {
+    constexpr const char* fn = "cfd_integrated_mass_2d";
+    auto grid = cfd_grid2d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    auto u = matrix_to_grid(u_m, fn);
+    if (!u) {
+        return std::unexpected(u.error());
+    }
+    if (u->size() != grid->ny || (!u->empty() && u->front().size() != grid->nx)) {
+        return std::unexpected(DomainError{fn, "field shape must match packed grid nx/ny"});
+    }
+    return cfd::integrated_mass_2d(*u, grid->dx, grid->dy);
+}
+
+Result<Matrix<double>> eval_cfd_constant_velocity(std::size_t n, double v) {
+    constexpr const char* fn = "cfd_constant_velocity";
+    if (n < 1) {
+        return std::unexpected(DomainError{fn, "expected n >= 1"});
+    }
+    return vector_to_column(cfd::constant_velocity(n, v));
+}
+
+Result<Matrix<double>> eval_cfd_upwind_step_2d_from_grid(
+    const Matrix<double>& grid_m,
+    const Matrix<double>& u_m,
+    double vx,
+    double vy,
+    double dt,
+    cfd::BoundaryCondition bc_x,
+    cfd::BoundaryCondition bc_y) {
+    constexpr const char* fn = "cfd_upwind_step_2d";
+    auto grid = cfd_grid2d_from_packed_matrix(grid_m, fn);
+    if (!grid) {
+        return std::unexpected(grid.error());
+    }
+    auto u = matrix_to_grid(u_m, fn);
+    if (!u) {
+        return std::unexpected(u.error());
+    }
+    if (u->empty() || u->front().empty()) {
+        return std::unexpected(DomainError{fn, "expected non-empty 2D field matrix"});
+    }
+    if (dt <= 0.0 || grid->dx <= 0.0 || grid->dy <= 0.0) {
+        return std::unexpected(DomainError{fn, "expected positive dt, dx, and dy"});
+    }
+    const std::vector<double> vx_field = {vx};
+    const std::vector<double> vy_field = {vy};
+    const auto u1 = cfd::upwind_fvm_advection_2d(
+        *u, vx_field, vy_field, dt, grid->dx, grid->dy, bc_x, bc_y);
+    if (u1.empty()) {
+        return std::unexpected(
+            DomainError{fn, "CFL stability condition violated or invalid input"});
+    }
+    return grid_to_matrix(u1);
+}
+
 Result<Matrix<double>> eval_cfd_run_advection_2d(const Matrix<double>& grid_m,
                                                  const Matrix<double>& u_m, double vx, double vy,
                                                  double t_end, double dt) {
@@ -10648,6 +10740,28 @@ Result<Matrix<double>> eval_quantum_schmidt_bases(const Matrix<double>& psi_m, i
         for (int j = 0; j < dim_b; ++j) {
             out(1 + static_cast<std::size_t>(dim_a) + static_cast<std::size_t>(j), k) =
                 decomp.basis_b[k][static_cast<std::size_t>(j)].real();
+        }
+    }
+    return out;
+}
+
+constexpr double kQuantumBellStatesTag = 283.0;
+
+Result<Matrix<double>> eval_quantum_bell_states() {
+    constexpr const char* fn = "quantum_bell_states";
+    const auto states = quantum::bell_states();
+    if (states.size() != 4) {
+        return std::unexpected(DomainError{fn, "expected four Bell states"});
+    }
+    constexpr std::size_t dim = 4;
+    Matrix<double> out(1 + dim, 4, 0.0);
+    out(0, 0) = kQuantumBellStatesTag;
+    for (std::size_t k = 0; k < states.size(); ++k) {
+        if (states[k].size() != dim) {
+            return std::unexpected(DomainError{fn, "unexpected Bell state dimension"});
+        }
+        for (std::size_t i = 0; i < dim; ++i) {
+            out(1 + i, k) = states[k][i].real();
         }
     }
     return out;
@@ -13433,7 +13547,7 @@ bool is_nullary_matrix_callee(const std::string& callee) {
            callee == "quantum_pauli_minus" || callee == "quantum_cnot_gate" ||
            callee == "quantum_swap_gate" || callee == "quantum_toffoli_gate" ||
            callee == "quantum_identity" || callee == "quantum_hadamard_gate" ||
-           callee == "izaac_vrf_keygen";
+           callee == "quantum_bell_states" || callee == "izaac_vrf_keygen";
 }
 
 Result<Matrix<double>> eval_nullary_matrix_call(const std::string& fn) {
@@ -13466,6 +13580,9 @@ Result<Matrix<double>> eval_nullary_matrix_call(const std::string& fn) {
     }
     if (fn == "quantum_hadamard_gate") {
         return density_matrix_to_matrix(quantum::hadamard());
+    }
+    if (fn == "quantum_bell_states") {
+        return eval_quantum_bell_states();
     }
     if (fn == "izaac_vrf_keygen") {
         return eval_izaac_vrf_keygen();
@@ -13910,7 +14027,8 @@ bool is_scalar_dual_matrix_call_callee(const std::string& callee) {
            callee == "stats_two_sample_ttest" ||
            callee == "stats_chi2_gof" || callee == "graph_is_isomorphic" ||
            callee == "graph_modularity" || callee == "gria_hamming_distance" ||
-           callee == "cfd_integrated_mass_3d";
+           callee == "cfd_integrated_mass_3d" || callee == "cfd_integrated_mass_1d" ||
+           callee == "cfd_integrated_mass_2d";
 }
 
 bool is_identifier(const std::string& text);
@@ -16597,6 +16715,12 @@ std::optional<Result<std::string>> try_eval_crypto_command(const std::string& cm
             return std::unexpected(DomainError{fn, "expected crypto_sha256(hex_data)"});
         }
         return eval_crypto_sha256(call_args->at(0));
+    }
+    if (fn == "crypto_to_hex") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected crypto_to_hex(hex_data)"});
+        }
+        return eval_crypto_to_hex(call_args->at(0));
     }
     if (fn == "crypto_sha512") {
         if (call_args->size() != 1) {
@@ -19551,6 +19675,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "cfd_grid1d" || callee == "cfd_square_pulse" ||
            callee == "cfd_run_advection" || callee == "cfd_run_advection_2d" ||
            callee == "cfd_upwind_step_1d" ||
+           callee == "cfd_constant_velocity" || callee == "cellai_hebbian_update" ||
            callee == "quantum_dagger" || callee == "quantum_matmul_dm" ||
            callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases" ||
            callee == "gria_divergence_trajectory";
@@ -20006,7 +20131,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 5 || arity == 6;
     }
     if (callee == "cfd_upwind_step_2d") {
-        return arity == 6 || arity == 7 || arity == 8;
+        return arity >= 5 && arity <= 8;
     }
     if (callee == "fem_mesh3d_box" || callee == "fem_mesh3d") {
         return arity == 9;
@@ -20082,6 +20207,12 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "cfd_upwind_step_1d") {
         return arity == 4 || arity == 5;
+    }
+    if (callee == "cfd_constant_velocity") {
+        return arity == 2;
+    }
+    if (callee == "cellai_hebbian_update") {
+        return arity == 4;
     }
     if (callee == "quantum_schmidt_bases") {
         return arity == 3;
@@ -20964,6 +21095,24 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "spherical_kn") {
             return spherical_kn(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "spherical_yn") {
+            return spherical_yn(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "bessel_h") {
+            return bessel_h(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "bessel_hy") {
+            return bessel_hy(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "bessel_l") {
+            return bessel_l(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "bessel_lu") {
+            return bessel_lu(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "hermite_hn") {
+            return hermite_hn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_l") {
             return struve_l(static_cast<int>(args[0]), args[1]);
@@ -27735,10 +27884,14 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
         result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
     } else if (assign.callee == "cfd_upwind_step_2d" &&
                (assign.args.size() >= 6 && assign.args.size() <= 8)) {
-        auto u = resolve_operand(assign.args[0]);
-        if (!u) {
-            return std::unexpected(u.error());
+        auto first = resolve_operand(assign.args[0]);
+        if (!first) {
+            return std::unexpected(first.error());
         }
+        if (cfd_grid2d_from_packed_matrix(*first, "cfd_upwind_step_2d")) {
+            result = std::unexpected(DomainError{"assign", "unsupported matrix call"});
+        } else {
+        auto u = first;
         auto vx = parse_scalar_arg(assign.args[1], "cfd_upwind_step_2d");
         if (!vx) {
             return std::unexpected(vx.error());
@@ -27784,6 +27937,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
             bc_y = *parsed;
         }
         result = eval_cfd_upwind_step_2d(*u, *vx, *vy, *dt, *dx, *dy, bc_x, bc_y);
+        }
     } else if (assign.callee == "gria_divergence_trajectory" && assign.args.size() == 4) {
         auto a = resolve_operand(assign.args[0]);
         if (!a) {
@@ -28465,6 +28619,85 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
                 "quantum_schmidt_bases", "expected positive integer dim_a and dim_b"});
         }
         result = eval_quantum_schmidt_bases(*psi, dim_a, dim_b);
+    } else if (assign.callee == "cfd_constant_velocity" && assign.args.size() == 2) {
+        auto n_val = parse_scalar_arg(assign.args[0], "cfd_constant_velocity");
+        if (!n_val) {
+            return std::unexpected(n_val.error());
+        }
+        auto v = parse_scalar_arg(assign.args[1], "cfd_constant_velocity");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        auto n_i = parse_positive_size_arg(*n_val, "cfd_constant_velocity", "expected positive integer n");
+        if (!n_i) {
+            return std::unexpected(n_i.error());
+        }
+        result = eval_cfd_constant_velocity(*n_i, *v);
+    } else if (assign.callee == "cfd_upwind_step_2d" &&
+               (assign.args.size() >= 5 && assign.args.size() <= 7)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto u = resolve_operand(assign.args[1]);
+        if (!u) {
+            return std::unexpected(u.error());
+        }
+        auto vx = parse_scalar_arg(assign.args[2], "cfd_upwind_step_2d");
+        if (!vx) {
+            return std::unexpected(vx.error());
+        }
+        auto vy = parse_scalar_arg(assign.args[3], "cfd_upwind_step_2d");
+        if (!vy) {
+            return std::unexpected(vy.error());
+        }
+        auto dt = parse_scalar_arg(assign.args[4], "cfd_upwind_step_2d");
+        if (!dt) {
+            return std::unexpected(dt.error());
+        }
+        cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
+        cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
+        if (assign.args.size() >= 6) {
+            auto bcx = parse_scalar_arg(assign.args[5], "cfd_upwind_step_2d");
+            if (!bcx) {
+                return std::unexpected(bcx.error());
+            }
+            auto parsed = parse_cfd_bc(*bcx, "cfd_upwind_step_2d");
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            bc_x = *parsed;
+        }
+        if (assign.args.size() == 7) {
+            auto bcy = parse_scalar_arg(assign.args[6], "cfd_upwind_step_2d");
+            if (!bcy) {
+                return std::unexpected(bcy.error());
+            }
+            auto parsed = parse_cfd_bc(*bcy, "cfd_upwind_step_2d");
+            if (!parsed) {
+                return std::unexpected(parsed.error());
+            }
+            bc_y = *parsed;
+        }
+        result = eval_cfd_upwind_step_2d_from_grid(*grid, *u, *vx, *vy, *dt, bc_x, bc_y);
+    } else if (assign.callee == "cellai_hebbian_update" && assign.args.size() == 4) {
+        auto w = resolve_operand(assign.args[0]);
+        if (!w) {
+            return std::unexpected(w.error());
+        }
+        auto x = resolve_operand(assign.args[1]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto y = resolve_operand(assign.args[2]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto lr = parse_scalar_arg(assign.args[3], "cellai_hebbian_update");
+        if (!lr) {
+            return std::unexpected(lr.error());
+        }
+        result = eval_cellai_hebbian_update(*w, *x, *y, *lr);
     }
 
     return result;
@@ -31251,6 +31484,20 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             }
             if (dual_call.callee == "cfd_integrated_mass_3d") {
                 auto value = eval_cfd_integrated_mass_3d(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
+            if (dual_call.callee == "cfd_integrated_mass_1d") {
+                auto value = eval_cfd_integrated_mass_1d(*arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(dual_call.target, *value);
+            }
+            if (dual_call.callee == "cfd_integrated_mass_2d") {
+                auto value = eval_cfd_integrated_mass_2d_from_grid(*arg_a_m, *arg_b_m);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -34423,13 +34670,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = cfd_square_pulse(grid,xc,width[,amp]) 1D square pulse initial condition\n"
             "  name = cfd_run_advection(grid,u,v,t_end,dt) 1D upwind advection to t_end\n"
             "  name = cfd_upwind_step_1d(grid,u,v,dt[,bc]) one 1D upwind FVM step\n"
+            "  name = cfd_integrated_mass_1d(grid,u) discrete 1D mass integral from packed grid\n"
+            "  name = cfd_constant_velocity(n,v) constant velocity field column of length n\n"
             "  name = cfd_run_advection_2d(grid,u0,vx,vy,t_end,dt) 2D upwind advection to t_end\n"
             "  name = cfd_grid3d(x0,x1,y0,y1,z0,z1,nx,ny,nz) 3D FVM grid metadata (4-row packed matrix)\n"
             "  name = cfd_square_pulse_3d(grid,xc,yc,zc,wx,wy,wz[,amp]) 3D square pulse initial condition\n"
             "  name = cfd_upwind_step_3d(grid,u,vx,vy,vz,dt[,bc_x,bc_y,bc_z]) one 3D upwind FVM step\n"
             "  name = cfd_square_pulse_2d(grid,xc,yc,width_x,width_y[,amp]) axis-aligned square pulse\n"
             "  name = cfd_upwind_step_2d(u,vx,vy,dt,dx,dy[,bc_x,bc_y]) one 2D FVM upwind advection step\n"
+            "  name = cfd_upwind_step_2d(grid,u,vx,vy,dt[,bc_x,bc_y]) grid-based 2D upwind step\n"
             "  name = cfd_integrated_mass_2d(u,dx,dy) discrete mass integral sum(u)*dx*dy\n"
+            "  name = cfd_integrated_mass_2d(grid,u) discrete 2D mass integral from packed grid\n"
             "  name = cfd_integrated_mass_3d(grid,u) discrete 3D mass integral from packed grid\n"
             "  name = cfd_run_advection_3d(grid,u0,vx,vy,vz,t_end,dt) 3D upwind advection to t_end\n"
             "  crypto_aes128_encrypt_block(key_hex,block_hex) AES-128 ECB block encrypt (hex I/O)\n"
@@ -34450,6 +34701,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_hkdf_sha256(hex_ikm,hex_salt,hex_info,len) HKDF-SHA256 extract/expand (hex I/O)\n"
             "  crypto_hkdf_sha512(hex_ikm,hex_salt,hex_info,len) HKDF-SHA512 extract/expand (hex I/O)\n"
             "  crypto_sha256(hex_data) SHA-256 digest (hex I/O)\n"
+            "  crypto_to_hex(hex_data) encode raw bytes as lowercase hex\n"
             "  crypto_sha512(hex_data) SHA-512 digest (hex I/O)\n"
             "  crypto_hmac_sha256(hex_key,hex_data) HMAC-SHA256 digest (hex I/O)\n"
             "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
@@ -34616,6 +34868,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = quantum_ghz_state(n) n-qubit GHZ state column vector\n"
             "  name = quantum_w_state(n) n-qubit W state column vector\n"
             "  name = quantum_bell_state(index) Bell state ket column (index 0..3)\n"
+            "  name = quantum_bell_states() packed 4 Bell kets (tag 283)\n"
             "  name = quantum_hadamard_gate() 2x2 Hadamard gate matrix\n"
             "  name = quantum_op_apply(op,psi) apply NxN gate matrix to Nx1 state (real parts)\n"
             "  name = quantum_rotation_z(theta) 2x2 Z-rotation gate matrix\n"
@@ -34983,7 +35236,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_helix_torsion(t[,a[,b]]), diffgeo_sphere_gauss_bonnet([n]), diffgeo_sphere_gauss_bonnet_residual([n]), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
-            "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_in(n,x), spherical_kn(n,x)\n"
+            "  erf(x), gamma(x), bessel_j0(x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_yn(n,x), spherical_in(n,x), spherical_kn(n,x), bessel_h(nu,x), bessel_hy(nu,x), bessel_l(nu,x), bessel_lu(nu,x), hermite_hn(n,x)\n"
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), struve_hn(nu,x), struve_yn(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
             "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_d(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), theta1_prime(z,q), jacobi_theta(n,z,tau), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
@@ -35235,7 +35488,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  gria_gf2n_mul(a,b,poly)  gria_gf2n_pow(a,exp,poly)  gria_gf2n_inv(a,poly)\n"
             "  gria_lfsr_step(state,poly)  gria_alpha_lfsr(poly,steps)  gria_lfsr_is_maximal(poly,n)\n"
             "  cypha_nig_fit([data])  cypha_nig_pdf(x,mu,a,b,d)  cypha_nig_cdf(x,mu,a,b,d)  cypha_nig_mean(mu,a,b,d)  cypha_nig_variance(mu,a,b,d)  cypha_nig_sample(mu,a,b,d,n)\n"
-            "  cellai_hebbian_update(W,X,Y,lr)  cellai_energy(W,V,H)  cellai_boltzmann_weights(E[,T])\n"
+            "  cellai_hebbian_update(W,X,Y,lr) assign-form Hebbian weight update; cellai_energy(W,V,H)  cellai_boltzmann_weights(E[,T])\n"
             "  cellai_cell_to_cypha_features(h,[scales])\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
             "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")\n"
@@ -42495,6 +42748,60 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"spherical_jn", "expected spherical_jn(n,x)"});
             }
             return std::to_string(spherical_jn(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "spherical_yn") {
+            double n = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"spherical_yn", "expected spherical_yn(n,x)"});
+            }
+            return std::to_string(spherical_yn(static_cast<int>(n), x)) + "\n";
+        }
+
+        if (fn == "bessel_h") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"bessel_h", "expected bessel_h(nu,x)"});
+            }
+            return std::to_string(bessel_h(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "bessel_hy") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"bessel_hy", "expected bessel_hy(nu,x)"});
+            }
+            return std::to_string(bessel_hy(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "bessel_l") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"bessel_l", "expected bessel_l(nu,x)"});
+            }
+            return std::to_string(bessel_l(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "bessel_lu") {
+            double nu = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"bessel_lu", "expected bessel_lu(nu,x)"});
+            }
+            return std::to_string(bessel_lu(static_cast<int>(nu), x)) + "\n";
+        }
+
+        if (fn == "hermite_hn") {
+            double n = 0.0;
+            double x = 0.0;
+            if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
+                return std::unexpected(DomainError{"hermite_hn", "expected hermite_hn(n,x)"});
+            }
+            return std::to_string(hermite_hn(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "bessel_y" || fn == "special_bessel_y") {
