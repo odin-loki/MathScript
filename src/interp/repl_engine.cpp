@@ -20299,7 +20299,10 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_connected_components" ||
            callee == "info_channel_capacity_input" ||
            callee == "combo_prev_perm" ||
-           callee == "poly_partial_fractions" || callee == "poly_cheb_expand";
+           callee == "poly_partial_fractions" || callee == "poly_cheb_expand" ||
+           callee == "poly_lagrange" || callee == "poly_interp_newton" ||
+           callee == "poly_roots" || callee == "poly_factor" ||
+           callee == "sph_harm";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21790,15 +21793,31 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return beta_func(args[0], args[1]);
         }
         if (fn == "bessel_y" || fn == "special_bessel_y") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer nu"});
+            }
             return bessel_y(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_i" || fn == "special_bessel_i") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer nu"});
+            }
             return bessel_i(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_k" || fn == "special_bessel_k") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{fn, "expected non-negative integer nu"});
+            }
             return bessel_k(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_j") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"bessel_j", "expected non-negative integer nu"});
+            }
             return bessel_j(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_zero_jnu") {
@@ -21861,9 +21880,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return chebyshev_w(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "sph_bessel_j") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"sph_bessel_j", "expected non-negative integer n"});
+            }
             return sph_bessel_j(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "sph_bessel_y") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"sph_bessel_y", "expected non-negative integer n"});
+            }
             return sph_bessel_y(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_in") {
@@ -23143,34 +23170,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(predicted.error());
         }
         result = *predicted;
-    } else if (assign.callee == "poly_lagrange" && assign.args.size() == 2) {
-        auto xs = resolve_operand(assign.args[0]);
-        if (!xs) {
-            return std::unexpected(xs.error());
-        }
-        auto ys = resolve_operand(assign.args[1]);
-        if (!ys) {
-            return std::unexpected(ys.error());
-        }
-        auto coeffs = eval_poly_lagrange(*xs, *ys);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
-    } else if (assign.callee == "poly_interp_newton" && assign.args.size() == 2) {
-        auto xs = resolve_operand(assign.args[0]);
-        if (!xs) {
-            return std::unexpected(xs.error());
-        }
-        auto ys = resolve_operand(assign.args[1]);
-        if (!ys) {
-            return std::unexpected(ys.error());
-        }
-        auto coeffs = eval_poly_interp_newton(*xs, *ys);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
     } else if (assign.callee == "ml_ridge_fit" && assign.args.size() == 3) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
@@ -23501,17 +23500,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
     auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "poly_roots" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto roots = eval_poly_roots(*matrix);
-        if (!roots) {
-            return std::unexpected(roots.error());
-        }
-        result = *roots;
-    }
 
     if (!result) {
         const Error& err = result.error();
@@ -23542,17 +23530,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "poly_factor" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto factors = eval_poly_factor(*matrix);
-        if (!factors) {
-            return std::unexpected(factors.error());
-        }
-        result = *factors;
-    } else if (assign.callee == "finance_merton_implied_asset_params" && assign.args.size() == 5) {
+    if (assign.callee == "finance_merton_implied_asset_params" && assign.args.size() == 5) {
         double E = 0.0;
         double sigma_E = 0.0;
         double D = 0.0;
@@ -23694,25 +23672,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
             return std::unexpected(arb.error());
         }
         result = *arb;
-    } else if (assign.callee == "sph_harm" && assign.args.size() == 4) {
-        std::array<double, 4> args{};
-        for (std::size_t i = 0; i < 4; ++i) {
-            if (!parse_number(assign.args[i], args[i])) {
-                auto expr = eval_scalar_expr(state_, assign.args[i]);
-                if (!expr) {
-                    return std::unexpected(DomainError{
-                        "sph_harm", "expected sph_harm(l,m,theta,phi)"});
-                }
-                args[i] = *expr;
-            }
-        }
-        const int l = static_cast<int>(args[0]);
-        const int m = static_cast<int>(args[1]);
-        if (args[0] != l || args[1] != m) {
-            return std::unexpected(
-                DomainError{"sph_harm", "expected integer l and m"});
-        }
-        result = eval_sph_harm(l, m, args[2], args[3]);
     }
 
     if (!result) {
@@ -30116,6 +30075,73 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
             return std::unexpected(cheb.error());
         }
         result = *cheb;
+    } else if (assign.callee == "poly_lagrange" && assign.args.size() == 2) {
+        auto xs = resolve_operand(assign.args[0]);
+        if (!xs) {
+            return std::unexpected(xs.error());
+        }
+        auto ys = resolve_operand(assign.args[1]);
+        if (!ys) {
+            return std::unexpected(ys.error());
+        }
+        auto coeffs = eval_poly_lagrange(*xs, *ys);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "poly_interp_newton" && assign.args.size() == 2) {
+        auto xs = resolve_operand(assign.args[0]);
+        if (!xs) {
+            return std::unexpected(xs.error());
+        }
+        auto ys = resolve_operand(assign.args[1]);
+        if (!ys) {
+            return std::unexpected(ys.error());
+        }
+        auto coeffs = eval_poly_interp_newton(*xs, *ys);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "poly_roots" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto roots = eval_poly_roots(*matrix);
+        if (!roots) {
+            return std::unexpected(roots.error());
+        }
+        result = *roots;
+    } else if (assign.callee == "poly_factor" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto factors = eval_poly_factor(*matrix);
+        if (!factors) {
+            return std::unexpected(factors.error());
+        }
+        result = *factors;
+    } else if (assign.callee == "sph_harm" && assign.args.size() == 4) {
+        std::array<double, 4> args{};
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (!parse_number(assign.args[i], args[i])) {
+                auto expr = eval_scalar_expr(state_, assign.args[i]);
+                if (!expr) {
+                    return std::unexpected(DomainError{
+                        "sph_harm", "expected sph_harm(l,m,theta,phi)"});
+                }
+                args[i] = *expr;
+            }
+        }
+        const int l = static_cast<int>(args[0]);
+        const int m = static_cast<int>(args[1]);
+        if (args[0] != l || args[1] != m) {
+            return std::unexpected(
+                DomainError{"sph_harm", "expected integer l and m"});
+        }
+        result = eval_sph_harm(l, m, args[2], args[3]);
     }
 
     return result;

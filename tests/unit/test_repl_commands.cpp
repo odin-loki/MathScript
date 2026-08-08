@@ -10972,3 +10972,53 @@ TEST(ReplCommandsTest, wave299_special_scalar) {
     expect_ok(interp, "pg = special_polygamma(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("pg"), ms::polygamma(1, 1.0), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave300_poly_sph_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "xs = [0; 1; 2]");
+    expect_ok(interp, "ys = [1; 3; 5]");
+    expect_ok(interp, "p = poly_lagrange(xs, ys)");
+    ASSERT_GT(interp.state().matrices.count("p"), 0u);
+    EXPECT_GT(interp.state().matrices.at("p").rows(), 0u);
+
+    expect_ok(interp, "pn = poly_interp_newton(xs, ys)");
+    ASSERT_GT(interp.state().matrices.count("pn"), 0u);
+    EXPECT_GT(interp.state().matrices.at("pn").rows(), 0u);
+
+    expect_ok(interp, "p2 = [6; -5; 1]");
+    expect_ok(interp, "rts = poly_roots(p2)");
+    ASSERT_GT(interp.state().matrices.count("rts"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("rts").rows(), 2u);
+
+    expect_ok(interp, "fac = poly_factor(p2)");
+    ASSERT_GT(interp.state().matrices.count("fac"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("fac").rows(), 2u);
+
+    expect_ok(interp, "Y = sph_harm(1, 1, 0.5, 1)");
+    ASSERT_GT(interp.state().matrices.count("Y"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Y").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("Y").cols(), 2u);
+}
+
+TEST(ReplCommandsTest, wave300_bessel_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "bj = bessel_j(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bj"), ms::bessel_j(0, 1.0), 1e-9);
+
+    expect_ok(interp, "by = bessel_y(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("by"), ms::bessel_y(0, 1.0), 1e-9);
+
+    expect_ok(interp, "bi = bessel_i(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bi"), ms::bessel_i(0, 1.0), 1e-9);
+
+    expect_ok(interp, "bk = bessel_k(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bk"), ms::bessel_k(0, 1.0), 1e-9);
+
+    expect_ok(interp, "sj = sph_bessel_j(2, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sj"), ms::sph_bessel_j(2, 1.0), 1e-9);
+
+    expect_ok(interp, "sy = sph_bessel_y(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sy"), ms::sph_bessel_y(1, 1.0), 1e-9);
+}

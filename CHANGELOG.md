@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 300 — poly/sph tail11, bessel scalar) ✅ COMPLETE
+
+Seventieth feature wave after Wave 299. Migrated polynomial interpolation/factorization and spherical harmonic handlers to tail11/tail14; scalar `bessel_j`/`bessel_y`/`bessel_i`/`bessel_k`/`sph_bessel_j`/`sph_bessel_y` integer validation in `eval_scalar_call`; `integration_repl_wave300_pipeline`.
+
+### Added (Wave 300)
+- **Poly tail11** — `poly_lagrange`, `poly_interp_newton`, `poly_roots`, `poly_factor`.
+- **Special tail11** — `sph_harm`.
+- **Special** — Bessel family integer order validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave300_pipeline`** — poly/sph/bessel smoke.
+- **Unit** — `wave300_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 300 sync; **459** CTest suites.
+
+**459 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 299 — combo/poly tail11, special_polygamma) ✅ COMPLETE
 
 Sixty-ninth feature wave after Wave 298. Migrated combo and extended polynomial handlers to tail11/tail14; scalar `special_polygamma` integer validation in `eval_scalar_call`; `integration_repl_wave299_pipeline`.
