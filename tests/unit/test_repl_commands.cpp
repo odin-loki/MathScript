@@ -10818,3 +10818,27 @@ TEST(ReplCommandsTest, wave294_special_scalar) {
     expect_ok(interp, "ln = laguerre_ln(2, 0, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("ln"), ms::laguerre_ln(2, 0, 0.5), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave295_linalg_combo_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_ok(interp, "B = bidiag(A)");
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 3u);
+
+    expect_ok(interp, "gc = combo_gray_code(2)");
+    EXPECT_EQ(interp.state().matrices.at("gc").rows(), 4u);
+
+    expect_ok(interp, "dp = combo_dyck_paths(2)");
+    EXPECT_GT(interp.state().matrices.at("dp").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave295_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "tn = chebyshev_tn(3, 0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("tn"), ms::chebyshev_tn(3, 0, 0.5), 1e-9);
+
+    expect_ok(interp, "un = chebyshev_un(2, 1, 0.25)");
+    EXPECT_NEAR(interp.state().scalars.at("un"), ms::chebyshev_un(2, 1, 0.25), 1e-9);
+}

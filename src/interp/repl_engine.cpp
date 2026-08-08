@@ -20277,7 +20277,12 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "hess" || callee == "schur" ||
            callee == "geo_bezier_eval" || callee == "geo_bezier_deriv" ||
            callee == "geo_catmull_rom" || callee == "geo_hermite_curve" ||
-           callee == "geo_bspline_eval";
+           callee == "geo_bspline_eval" ||
+           callee == "bidiag" || callee == "eig" || callee == "ldl" ||
+           callee == "solve_sylvester" || callee == "minres" || callee == "cg" ||
+           callee == "gmres" || callee == "jacobi" ||
+           callee == "combo_gray_code" || callee == "combo_dyck_paths" ||
+           callee == "combo_necklaces" || callee == "combo_bracelets";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -22455,9 +22460,19 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return laguerre_ln(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
     }
     if (args.size() == 3 && fn == "chebyshev_tn") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 0.0 ||
+            std::floor(args[1]) != args[1]) {
+            return std::unexpected(
+                DomainError{"chebyshev_tn", "expected non-negative integer n and k"});
+        }
         return chebyshev_tn(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
     }
     if (args.size() == 3 && fn == "chebyshev_un") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 0.0 ||
+            std::floor(args[1]) != args[1]) {
+            return std::unexpected(
+                DomainError{"chebyshev_un", "expected non-negative integer n and k"});
+        }
         return chebyshev_un(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
     }
     if (args.size() == 3 && fn == "gegenbauer_c") {
@@ -23430,196 +23445,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto decomp = bidiag(*matrix);
-        if (!decomp) {
-            return std::unexpected(decomp.error());
-        }
-        result = decomp->B;
-    } else if (assign.callee == "eig" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto decomp = eig(*matrix);
-        if (!decomp) {
-            return std::unexpected(decomp.error());
-        }
-        result = decomp->values;
-    } else if (assign.callee == "ldl" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto decomp = ldl(*matrix);
-        if (!decomp) {
-            return std::unexpected(decomp.error());
-        }
-        result = decomp->L;
-    } else if (assign.callee == "solve_sylvester" && assign.args.size() == 3) {
-        auto A = resolve_operand(assign.args[0]);
-        if (!A) {
-            return std::unexpected(A.error());
-        }
-        auto B = resolve_operand(assign.args[1]);
-        if (!B) {
-            return std::unexpected(B.error());
-        }
-        auto C = resolve_operand(assign.args[2]);
-        if (!C) {
-            return std::unexpected(C.error());
-        }
-        result = solve_sylvester(*A, *B, *C);
-    } else if (assign.callee == "minres" && assign.args.size() == 2) {
-        auto left = resolve_operand(assign.args[0]);
-        if (!left) {
-            return std::unexpected(left.error());
-        }
-        auto right = resolve_operand(assign.args[1]);
-        if (!right) {
-            return std::unexpected(right.error());
-        }
-        result = minres(*left, *right);
-} else if (assign.callee == "cg" && assign.args.size() == 2) {
-        auto left = resolve_operand(assign.args[0]);
-        if (!left) {
-            return std::unexpected(left.error());
-        }
-        auto right = resolve_operand(assign.args[1]);
-        if (!right) {
-            return std::unexpected(right.error());
-        }
-        result = cg(*left, *right);
-    } else if (assign.callee == "gmres" && assign.args.size() == 2) {
-        auto left = resolve_operand(assign.args[0]);
-        if (!left) {
-            return std::unexpected(left.error());
-        }
-        auto right = resolve_operand(assign.args[1]);
-        if (!right) {
-            return std::unexpected(right.error());
-        }
-        result = gmres(*left, *right);
-    } else if (assign.callee == "jacobi" && assign.args.size() == 2) {
-        auto left = resolve_operand(assign.args[0]);
-        if (!left) {
-            return std::unexpected(left.error());
-        }
-        auto right = resolve_operand(assign.args[1]);
-        if (!right) {
-            return std::unexpected(right.error());
-        }
-        result = jacobi(*left, *right);
-    } else if (assign.callee == "combo_gray_code" && assign.args.size() == 1) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(n_expr.error());
-            }
-            n_d = *n_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"combo_gray_code", "expected non-negative integer n"});
-        }
-        auto codes = eval_combo_gray_code(n);
-        if (!codes) {
-            return std::unexpected(codes.error());
-        }
-        result = *codes;
-    } else if (assign.callee == "combo_dyck_paths" && assign.args.size() == 1) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(n_expr.error());
-            }
-            n_d = *n_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"combo_dyck_paths", "expected non-negative integer n"});
-        }
-        auto paths = eval_combo_dyck_paths(n);
-        if (!paths) {
-            return std::unexpected(paths.error());
-        }
-        result = *paths;
-    } else if (assign.callee == "combo_necklaces" && assign.args.size() == 2) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(
-                    DomainError{"combo_necklaces", "expected combo_necklaces(n,k)"});
-            }
-            n_d = *n_expr;
-        }
-        double k_d = 0.0;
-        if (!parse_number(assign.args[1], k_d)) {
-            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!k_expr) {
-                return std::unexpected(
-                    DomainError{"combo_necklaces", "expected combo_necklaces(n,k)"});
-            }
-            k_d = *k_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        const int k = static_cast<int>(k_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"combo_necklaces", "expected non-negative integer n"});
-        }
-        if (k <= 0 || k_d != k) {
-            return std::unexpected(
-                DomainError{"combo_necklaces", "expected positive integer k"});
-        }
-        auto necks = eval_combo_necklaces(n, k);
-        if (!necks) {
-            return std::unexpected(necks.error());
-        }
-        result = *necks;
-    } else if (assign.callee == "combo_bracelets" && assign.args.size() == 2) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(
-                    DomainError{"combo_bracelets", "expected combo_bracelets(n,k)"});
-            }
-            n_d = *n_expr;
-        }
-        double k_d = 0.0;
-        if (!parse_number(assign.args[1], k_d)) {
-            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!k_expr) {
-                return std::unexpected(
-                    DomainError{"combo_bracelets", "expected combo_bracelets(n,k)"});
-            }
-            k_d = *k_expr;
-        }
-        const int n = static_cast<int>(n_d);
-        const int k = static_cast<int>(k_d);
-        if (n < 0 || n_d != n) {
-            return std::unexpected(
-                DomainError{"combo_bracelets", "expected non-negative integer n"});
-        }
-        if (k <= 0 || k_d != k) {
-            return std::unexpected(
-                DomainError{"combo_bracelets", "expected positive integer k"});
-        }
-        auto bracs = eval_combo_bracelets(n, k);
-        if (!bracs) {
-            return std::unexpected(bracs.error());
-        }
-        result = *bracs;
     } else if (assign.callee == "combo_lyndon_words" && assign.args.size() == 2) {
         double n_d = 0.0;
         if (!parse_number(assign.args[0], n_d)) {
@@ -30025,6 +29850,196 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
             t = *t_expr;
         }
         result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
+    } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto decomp = bidiag(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        result = decomp->B;
+    } else if (assign.callee == "eig" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto decomp = eig(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        result = decomp->values;
+    } else if (assign.callee == "ldl" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto decomp = ldl(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        result = decomp->L;
+    } else if (assign.callee == "solve_sylvester" && assign.args.size() == 3) {
+        auto A = resolve_operand(assign.args[0]);
+        if (!A) {
+            return std::unexpected(A.error());
+        }
+        auto B = resolve_operand(assign.args[1]);
+        if (!B) {
+            return std::unexpected(B.error());
+        }
+        auto C = resolve_operand(assign.args[2]);
+        if (!C) {
+            return std::unexpected(C.error());
+        }
+        result = solve_sylvester(*A, *B, *C);
+    } else if (assign.callee == "minres" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = minres(*left, *right);
+    } else if (assign.callee == "cg" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = cg(*left, *right);
+    } else if (assign.callee == "gmres" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = gmres(*left, *right);
+    } else if (assign.callee == "jacobi" && assign.args.size() == 2) {
+        auto left = resolve_operand(assign.args[0]);
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = resolve_operand(assign.args[1]);
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        result = jacobi(*left, *right);
+    } else if (assign.callee == "combo_gray_code" && assign.args.size() == 1) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(n_expr.error());
+            }
+            n_d = *n_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"combo_gray_code", "expected non-negative integer n"});
+        }
+        auto codes = eval_combo_gray_code(n);
+        if (!codes) {
+            return std::unexpected(codes.error());
+        }
+        result = *codes;
+    } else if (assign.callee == "combo_dyck_paths" && assign.args.size() == 1) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(n_expr.error());
+            }
+            n_d = *n_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"combo_dyck_paths", "expected non-negative integer n"});
+        }
+        auto paths = eval_combo_dyck_paths(n);
+        if (!paths) {
+            return std::unexpected(paths.error());
+        }
+        result = *paths;
+    } else if (assign.callee == "combo_necklaces" && assign.args.size() == 2) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(
+                    DomainError{"combo_necklaces", "expected combo_necklaces(n,k)"});
+            }
+            n_d = *n_expr;
+        }
+        double k_d = 0.0;
+        if (!parse_number(assign.args[1], k_d)) {
+            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!k_expr) {
+                return std::unexpected(
+                    DomainError{"combo_necklaces", "expected combo_necklaces(n,k)"});
+            }
+            k_d = *k_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        const int k = static_cast<int>(k_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"combo_necklaces", "expected non-negative integer n"});
+        }
+        if (k <= 0 || k_d != k) {
+            return std::unexpected(
+                DomainError{"combo_necklaces", "expected positive integer k"});
+        }
+        auto necks = eval_combo_necklaces(n, k);
+        if (!necks) {
+            return std::unexpected(necks.error());
+        }
+        result = *necks;
+    } else if (assign.callee == "combo_bracelets" && assign.args.size() == 2) {
+        double n_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!n_expr) {
+                return std::unexpected(
+                    DomainError{"combo_bracelets", "expected combo_bracelets(n,k)"});
+            }
+            n_d = *n_expr;
+        }
+        double k_d = 0.0;
+        if (!parse_number(assign.args[1], k_d)) {
+            auto k_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!k_expr) {
+                return std::unexpected(
+                    DomainError{"combo_bracelets", "expected combo_bracelets(n,k)"});
+            }
+            k_d = *k_expr;
+        }
+        const int n = static_cast<int>(n_d);
+        const int k = static_cast<int>(k_d);
+        if (n < 0 || n_d != n) {
+            return std::unexpected(
+                DomainError{"combo_bracelets", "expected non-negative integer n"});
+        }
+        if (k <= 0 || k_d != k) {
+            return std::unexpected(
+                DomainError{"combo_bracelets", "expected positive integer k"});
+        }
+        auto bracs = eval_combo_bracelets(n, k);
+        if (!bracs) {
+            return std::unexpected(bracs.error());
+        }
+        result = *bracs;
     }
 
     return result;

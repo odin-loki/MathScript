@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 295 — linalg/combo tail11, chebyshev_tn/un) ✅ COMPLETE
+
+Sixty-fifth feature wave after Wave 294. Migrated matrix decompositions, iterative solvers, and combo enumeration handlers to tail11/tail13; scalar `chebyshev_tn`/`chebyshev_un` integer validation in `eval_scalar_call`; `integration_repl_wave295_pipeline`.
+
+### Added (Wave 295)
+- **Linalg tail11** — `bidiag`, `eig`, `ldl`, `solve_sylvester`, `minres`, `cg`, `gmres`, `jacobi`.
+- **Combo tail11** — `combo_gray_code`, `combo_dyck_paths`, `combo_necklaces`, `combo_bracelets`.
+- **Special** — `chebyshev_tn(n,k,x)` and `chebyshev_un(n,k,x)` integer validation in scalar three-arg eval path.
+
+### Tests
+- **`integration_repl_wave295_pipeline`** — linalg/combo/special smoke.
+- **Unit** — `wave295_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 295 sync; **454** CTest suites.
+
+**454 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 294 — linalg/geo tail11, laguerre_ln) ✅ COMPLETE
 
 Sixty-fourth feature wave after Wave 293. Migrated matrix decompositions, matrix functions, and geo curve handlers to tail11/tail13; scalar `laguerre_ln` integer validation in `eval_scalar_call`; `integration_repl_wave294_pipeline`.
