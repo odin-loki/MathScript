@@ -479,6 +479,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `gria_ca_step` / `gria_divergence_trajectory` / `gria_gf2n_generate_field` (tail11) | GRIA composable pipeline (Wave 280) |
 | `quantum_eigenspectrum` / `quantum_ground_state` / `quantum_grover_search` (tail11) | Quantum spectral + Grover dispatch (Wave 280) |
 | `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` (tail11) | CellAI feature pipeline (Wave 280) |
+| `quantum_ket_normalise` / `quantum_density_matrix` / `quantum_op_apply` / `quantum_commutator` / `quantum_anticommutator` / `quantum_ket_tensor_product` (tail11) | Quantum algebra composable dispatch (Wave 281) |
+| `fem_poisson2d` / `cfd_advection1d` / `cfd_advection2d` (tail11) | One-shot FEM/CFD solvers (Wave 281) |
+| `signal_resample` / `signal_savgol` (tail11 assign) | Signal processing assign forms (Wave 281) |
+| `gria_hamming_distance` (scalar assign) / `cellmemory_reset` | GRIA distance + CellMemory reset (Wave 281) |
+| `polylog` (scalar two-arg eval) | Polylogarithm in assign expr (Wave 281) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

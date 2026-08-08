@@ -10435,3 +10435,37 @@ TEST(ReplCommandsTest, wave280_gria_quantum) {
     expect_ok(interp, "ev = quantum_eigenspectrum(H)");
     EXPECT_EQ(interp.state().matrices.at("ev").rows(), 2u);
 }
+
+TEST(ReplCommandsTest, wave281_quantum_signal_gria) {
+    Interpreter interp;
+
+    expect_ok(interp, "psi = [1; 0]");
+    expect_ok(interp, "rho = quantum_density_matrix(psi)");
+    EXPECT_EQ(interp.state().matrices.at("rho").rows(), 2u);
+
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_ok(interp, "y = signal_savgol(x, 3, 1)");
+    EXPECT_EQ(interp.state().matrices.at("y").rows(), 5u);
+
+    expect_ok(interp, "a = [1; 0; 1]");
+    expect_ok(interp, "b = [0; 1; 0]");
+    expect_ok(interp, "d = gria_hamming_distance(a, b)");
+    EXPECT_TRUE(interp.state().scalars.count("d") > 0);
+
+    expect_ok(interp, "pl = polylog(2, 0.25)");
+    EXPECT_TRUE(interp.state().scalars.count("pl") > 0);
+}
+
+TEST(ReplCommandsTest, wave281_fem_cfd_cell) {
+    Interpreter interp;
+    ms::izaac::clear_session();
+
+    expect_ok(interp, "u = fem_poisson2d(3, 3)");
+    EXPECT_GT(interp.state().matrices.at("u").rows(), 0u);
+
+    expect_ok(interp, "f = cfd_advection1d(8, 1, 0.05, 0.01)");
+    EXPECT_GT(interp.state().matrices.at("f").rows(), 0u);
+
+    expect_ok(interp, "cellmemory_new(cm, 2, 2)");
+    expect_ok(interp, "cellmemory_reset(cm)");
+}

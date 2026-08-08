@@ -7,6 +7,27 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 281 — quantum algebra tail11, CFD/FEM pipelines, signal assign, GRIA hamming, cellmemory reset, polylog) ✅ COMPLETE
+
+Fifty-first feature wave after Wave 280. Migrated quantum algebra, FEM/CFD advection, and signal handlers to tail11; scalar `gria_hamming_distance`; session `cellmemory_reset`; `polylog` in `eval_special_two_arg`; `integration_repl_wave281_pipeline`.
+
+### Added (Wave 281)
+- **Quantum REPL tail11** — `quantum_ket_normalise`, `quantum_density_matrix`, `quantum_op_apply`, `quantum_commutator`, `quantum_anticommutator`, `quantum_ket_tensor_product`.
+- **CFD/FEM tail11** — `fem_poisson2d`, `cfd_advection1d`, `cfd_advection2d`.
+- **Signal REPL tail11** — assign `signal_resample`, `signal_savgol`.
+- **GRIA REPL** — scalar assign `gria_hamming_distance(a,b)`.
+- **CellAI** — session `cellmemory_reset(handle)`.
+- **Special** — `polylog(n,z)` in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave281_pipeline`** — quantum/FEM/CFD/signal/GRIA/CellMemory smoke.
+- **Unit** — `wave281_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 281 sync; **440** CTest suites.
+
+**440 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-08 (Wave 280 — backtest total return, CellMemory recall assign, CellAI/GRIA scalars, tail11 migrations) ✅ COMPLETE
 
 Fiftieth feature wave after Wave 279. `run_backtest_total_return`; assign `cellmemory_recall`; scalar `cellai_energy`, `gria_langton_lambda`, `gria_alpha_ca`; migrated `gria_ca_step`, `gria_divergence_trajectory`, `gria_gf2n_generate_field`, `quantum_eigenspectrum`/`ground_state`, `quantum_grover_search`, `cellai_boltzmann_weights`, `cellai_cell_to_cypha_features` to tail11; `integration_repl_wave280_pipeline`.

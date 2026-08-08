@@ -17865,7 +17865,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "bisection" || fn == "brentq" || fn == "secant" || fn == "halley" ||
             fn == "fixed_point" || fn == "illinois" || fn == "simulated_annealing" ||
             fn == "differential_evolution" || fn == "particle_swarm" ||
-            fn == "gria_settling_time" || fn == "run_backtest_sharpe" ||
+            fn == "gria_settling_time" || fn == "gria_hamming_distance" ||
+            fn == "run_backtest_sharpe" ||
             fn == "run_backtest_max_drawdown" || fn == "run_backtest_total_return" ||
             fn == "cellai_energy" || fn == "gria_langton_lambda" || fn == "gria_alpha_ca" ||
             fn == "cellai_boltzmann_weights" ||
@@ -18262,7 +18263,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         fn != "cellmemory_input_dim" && fn != "cellmemory_memory_dim" &&
         fn != "cellmemory_time_scales" && fn != "cellmemory_step" &&
         fn != "cellmemory_recall" && fn != "cellmemory_consolidate" &&
-        fn != "cellai_cell_to_cypha_features" &&
+        fn != "cellmemory_reset" && fn != "cellai_cell_to_cypha_features" &&
         fn != "difmodel_new" &&
         fn != "difmodel_update" && fn != "difmodel_predict" &&
         fn != "difmodel_predict_interval" && fn != "difmodel_ood_score" &&
@@ -18731,6 +18732,25 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(result.error());
         }
         return std::string{"consolidated\n"};
+    }
+
+    if (fn == "cellmemory_reset") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cellmemory_reset(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        memory->reset();
+        return std::string{"reset CellMemory '" + handle + "'\n"};
     }
 
     if (fn == "cellai_cell_to_cypha_features") {
@@ -20155,6 +20175,12 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "quantum_eigenspectrum" || callee == "quantum_ground_state" ||
            callee == "quantum_grover_search" ||
            callee == "quantum_schrodinger" ||
+           callee == "quantum_ket_normalise" || callee == "quantum_density_matrix" ||
+           callee == "quantum_op_apply" || callee == "quantum_commutator" ||
+           callee == "quantum_anticommutator" || callee == "quantum_ket_tensor_product" ||
+           callee == "fem_poisson2d" || callee == "cfd_advection1d" ||
+           callee == "cfd_advection2d" || callee == "signal_resample" ||
+           callee == "signal_savgol" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -20551,6 +20577,25 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "quantum_grover_search") {
         return arity == 2 || arity == 3;
+    }
+    if (callee == "quantum_ket_normalise" || callee == "quantum_density_matrix") {
+        return arity == 1;
+    }
+    if (callee == "quantum_op_apply" || callee == "quantum_commutator" ||
+        callee == "quantum_anticommutator" || callee == "quantum_ket_tensor_product") {
+        return arity == 2;
+    }
+    if (callee == "fem_poisson2d") {
+        return arity == 2;
+    }
+    if (callee == "cfd_advection1d") {
+        return arity == 4;
+    }
+    if (callee == "cfd_advection2d") {
+        return arity == 6;
+    }
+    if (callee == "signal_resample" || callee == "signal_savgol") {
+        return arity == 3;
     }
     if (callee == "quantum_schrodinger" || callee == "quantum_schrodinger_final") {
         return arity == 5;
@@ -21660,6 +21705,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "spherical_jn") {
             return spherical_jn(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "polylog") {
+            return polylog(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_kn") {
             return spherical_kn(static_cast<int>(args[0]), args[1]);
@@ -24247,18 +24295,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         col(0, 0) = out[0].real();
         col(1, 0) = out[1].real();
         result = col;
-    } else if (assign.callee == "quantum_ket_normalise" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_quantum_ket_normalise_matrix(*matrix);
-    } else if (assign.callee == "quantum_density_matrix" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_quantum_density_matrix(*matrix);
     } else if (assign.callee == "quantum_ket_superposition" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -24416,20 +24452,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                 DomainError{"fem_poisson1d", "expected non-negative integer n"});
         }
         result = eval_fem_poisson1d(static_cast<std::size_t>(n_i));
-    } else if (assign.callee == "fem_poisson2d" && assign.args.size() == 2) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d)) {
-            return std::unexpected(
-                DomainError{"fem_poisson2d", "expected fem_poisson2d(nx, ny)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-            return std::unexpected(
-                DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
-        }
-        result = eval_fem_poisson2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i));
     } else if (assign.callee == "fem_poisson3d" && assign.args.size() == 3) {
         double nx_d = 0.0;
         double ny_d = 0.0;
@@ -24448,28 +24470,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_fem_poisson3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                     static_cast<std::size_t>(nz_i));
-    } else if (assign.callee == "cfd_advection2d" && assign.args.size() == 6) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        double vx = 0.0;
-        double vy = 0.0;
-        double t_end = 0.0;
-        double dt = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
-            !parse_number(assign.args[2], vx) || !parse_number(assign.args[3], vy) ||
-            !parse_number(assign.args[4], t_end) || !parse_number(assign.args[5], dt)) {
-            return std::unexpected(DomainError{
-                "cfd_advection2d",
-                "expected cfd_advection2d(nx, ny, vx, vy, t_end, dt)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
-        }
-        result = eval_cfd_advection2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                      vx, vy, t_end, dt);
     } else if (assign.callee == "cfd_advection3d" && assign.args.size() == 8) {
         double nx_d = 0.0;
         double ny_d = 0.0;
@@ -27959,30 +27959,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
             assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
             trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
             solver);
-    } else if (assign.callee == "cfd_advection1d" && assign.args.size() == 4) {
-        auto nx_val = parse_scalar_arg(assign.args[0], "cfd_advection1d");
-        if (!nx_val) {
-            return std::unexpected(nx_val.error());
-        }
-        auto vx_val = parse_scalar_arg(assign.args[1], "cfd_advection1d");
-        if (!vx_val) {
-            return std::unexpected(vx_val.error());
-        }
-        auto t_end_val = parse_scalar_arg(assign.args[2], "cfd_advection1d");
-        if (!t_end_val) {
-            return std::unexpected(t_end_val.error());
-        }
-        auto dt_val = parse_scalar_arg(assign.args[3], "cfd_advection1d");
-        if (!dt_val) {
-            return std::unexpected(dt_val.error());
-        }
-        const int nx_i = static_cast<int>(*nx_val);
-        if (nx_i < 0 || *nx_val != nx_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection1d", "expected non-negative integer nx"});
-        }
-        result = eval_cfd_advection1d(static_cast<std::size_t>(nx_i), *vx_val, *t_end_val,
-                                      *dt_val);
     }
 
     if (!result) {
@@ -29506,6 +29482,159 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             }
         }
         result = eval_cellai_cell_to_cypha_features(memory, time_scales);
+    } else if (assign.callee == "quantum_ket_normalise" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_quantum_ket_normalise_matrix(*matrix);
+    } else if (assign.callee == "quantum_density_matrix" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_quantum_density_matrix(*matrix);
+    } else if (assign.callee == "quantum_op_apply" && assign.args.size() == 2) {
+        auto op = resolve_operand(assign.args[0]);
+        if (!op) {
+            return std::unexpected(op.error());
+        }
+        auto psi = resolve_operand(assign.args[1]);
+        if (!psi) {
+            return std::unexpected(psi.error());
+        }
+        result = eval_quantum_op_apply(*op, *psi);
+    } else if (assign.callee == "quantum_commutator" && assign.args.size() == 2) {
+        auto A = resolve_operand(assign.args[0]);
+        if (!A) {
+            return std::unexpected(A.error());
+        }
+        auto B = resolve_operand(assign.args[1]);
+        if (!B) {
+            return std::unexpected(B.error());
+        }
+        result = eval_quantum_commutator(*A, *B);
+    } else if (assign.callee == "quantum_anticommutator" && assign.args.size() == 2) {
+        auto A = resolve_operand(assign.args[0]);
+        if (!A) {
+            return std::unexpected(A.error());
+        }
+        auto B = resolve_operand(assign.args[1]);
+        if (!B) {
+            return std::unexpected(B.error());
+        }
+        result = eval_quantum_anticommutator(*A, *B);
+    } else if (assign.callee == "quantum_ket_tensor_product" && assign.args.size() == 2) {
+        auto psi1 = resolve_operand(assign.args[0]);
+        if (!psi1) {
+            return std::unexpected(psi1.error());
+        }
+        auto psi2 = resolve_operand(assign.args[1]);
+        if (!psi2) {
+            return std::unexpected(psi2.error());
+        }
+        result = eval_quantum_ket_tensor_product(*psi1, *psi2);
+    } else if (assign.callee == "fem_poisson2d" && assign.args.size() == 2) {
+        auto nx_val = parse_scalar_arg(assign.args[0], "fem_poisson2d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto ny_val = parse_scalar_arg(assign.args[1], "fem_poisson2d");
+        if (!ny_val) {
+            return std::unexpected(ny_val.error());
+        }
+        const int nx_i = static_cast<int>(*nx_val);
+        const int ny_i = static_cast<int>(*ny_val);
+        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
+            return std::unexpected(
+                DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_fem_poisson2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i));
+    } else if (assign.callee == "cfd_advection1d" && assign.args.size() == 4) {
+        auto nx_val = parse_scalar_arg(assign.args[0], "cfd_advection1d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto vx_val = parse_scalar_arg(assign.args[1], "cfd_advection1d");
+        if (!vx_val) {
+            return std::unexpected(vx_val.error());
+        }
+        auto t_end_val = parse_scalar_arg(assign.args[2], "cfd_advection1d");
+        if (!t_end_val) {
+            return std::unexpected(t_end_val.error());
+        }
+        auto dt_val = parse_scalar_arg(assign.args[3], "cfd_advection1d");
+        if (!dt_val) {
+            return std::unexpected(dt_val.error());
+        }
+        const int nx_i = static_cast<int>(*nx_val);
+        if (nx_i < 0 || *nx_val != nx_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection1d", "expected non-negative integer nx"});
+        }
+        result = eval_cfd_advection1d(static_cast<std::size_t>(nx_i), *vx_val, *t_end_val,
+                                      *dt_val);
+    } else if (assign.callee == "cfd_advection2d" && assign.args.size() == 6) {
+        auto nx_val = parse_scalar_arg(assign.args[0], "cfd_advection2d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto ny_val = parse_scalar_arg(assign.args[1], "cfd_advection2d");
+        if (!ny_val) {
+            return std::unexpected(ny_val.error());
+        }
+        auto vx_val = parse_scalar_arg(assign.args[2], "cfd_advection2d");
+        if (!vx_val) {
+            return std::unexpected(vx_val.error());
+        }
+        auto vy_val = parse_scalar_arg(assign.args[3], "cfd_advection2d");
+        if (!vy_val) {
+            return std::unexpected(vy_val.error());
+        }
+        auto t_end_val = parse_scalar_arg(assign.args[4], "cfd_advection2d");
+        if (!t_end_val) {
+            return std::unexpected(t_end_val.error());
+        }
+        auto dt_val = parse_scalar_arg(assign.args[5], "cfd_advection2d");
+        if (!dt_val) {
+            return std::unexpected(dt_val.error());
+        }
+        const int nx_i = static_cast<int>(*nx_val);
+        const int ny_i = static_cast<int>(*ny_val);
+        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_cfd_advection2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                      *vx_val, *vy_val, *t_end_val, *dt_val);
+    } else if (assign.callee == "signal_resample" && assign.args.size() == 3) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto p_val = parse_scalar_arg(assign.args[1], "signal_resample");
+        if (!p_val) {
+            return std::unexpected(p_val.error());
+        }
+        auto q_val = parse_scalar_arg(assign.args[2], "signal_resample");
+        if (!q_val) {
+            return std::unexpected(q_val.error());
+        }
+        result = eval_signal_resample_pq(*x, *p_val, *q_val);
+    } else if (assign.callee == "signal_savgol" && assign.args.size() == 3) {
+        auto x = resolve_operand(assign.args[0]);
+        if (!x) {
+            return std::unexpected(x.error());
+        }
+        auto window_val = parse_scalar_arg(assign.args[1], "signal_savgol");
+        if (!window_val) {
+            return std::unexpected(window_val.error());
+        }
+        auto poly_val = parse_scalar_arg(assign.args[2], "signal_savgol");
+        if (!poly_val) {
+            return std::unexpected(poly_val.error());
+        }
+        result = eval_signal_savgol_wp(*x, *window_val, *poly_val);
     }
 
     return result;
@@ -34378,6 +34507,27 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 }
                 return assign_scalar(lhs, *value);
             }
+            if (callee == "gria_hamming_distance") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 2) {
+                    return std::unexpected(DomainError{
+                        "gria_hamming_distance",
+                        "expected gria_hamming_distance(a, b)"});
+                }
+                auto a_m = eval_matrix_operand(trim_copy(call_args->at(0)));
+                if (!a_m) {
+                    return std::unexpected(a_m.error());
+                }
+                auto b_m = eval_matrix_operand(trim_copy(call_args->at(1)));
+                if (!b_m) {
+                    return std::unexpected(b_m.error());
+                }
+                auto value = eval_gria_hamming_distance(*a_m, *b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
             if (callee == "run_backtest_sharpe" || callee == "run_backtest_max_drawdown" ||
                 callee == "run_backtest_total_return") {
                 const auto call_args = split_call_args(rhs);
@@ -36208,6 +36358,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  gria_alpha_ca(rule,steps,width) CA information-alpha over steps x width lattice\n"
             "  gria_hamming_distance(a,b) Hamming distance between two CA configurations\n"
             "  name = gria_divergence_trajectory(a,b,rule,n_steps) Hamming divergence trace over n_steps\n"
+            "  name = gria_hamming_distance(a,b) Hamming distance between byte columns\n"
             "  gria_settling_time(a,b,rule,n_steps) first step where distance reaches 0 (-1 if none)\n"
             "  gria_gf2n_mul(a, b, poly) multiply in GF(2^n) with reduction polynomial poly\n"
             "  gria_gf2n_pow(a, exp, poly) exponentiate in GF(2^n)\n"
@@ -36266,6 +36417,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cellmemory_step(cm, [1;0]) step CellMemory with input column vector\n"
             "  cellmemory_recall(cm, 1.0) recall CellMemory state at time_scale\n"
             "  cellmemory_consolidate(cm) consolidate CellMemory long-term state\n"
+            "  cellmemory_reset(cm) reset CellMemory internal state\n"
             "  name = cellmemory_long_term_state(cm) CellMemory long-term state matrix\n"
             "  name = cellmemory_recall(cm, t) recall CellMemory state column at time_scale\n"
             "  difmodel_new(dm, 1, 1, 2, 0.1) create session DifModel (handle persists)\n"
@@ -36452,7 +36604,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")  bloom_bit_count(h)  bloom_hash_count(h)\n"
             "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)  tokenbucket_capacity(h)  tokenbucket_refill_rate(h)\n"
             "  cellmemory_new(h,in,dim,[scales])  cellmemory_input_dim(h)  cellmemory_memory_dim(h)  cellmemory_time_scales(h)\n"
-            "  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)  cellmemory_long_term_state(h)  cellmemory_recall(h,t) assign\n"
+            "  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)  cellmemory_reset(h)\n"
             "  difmodel_new(h,in,out,experts,lr)  difmodel_update(h,X,Y)  difmodel_predict(h,X)  difmodel_predict_interval(h,X)\n"
             "  difmodel_ood_score(h,X)  difmodel_gh_gate(h,X)\n"
             "  cluster_new(h,n,seed)  cluster_run_election(h)  cluster_replicate(h,leader,\"cmd\")  cluster_current_leader(h)  cluster_status(h)\n"
