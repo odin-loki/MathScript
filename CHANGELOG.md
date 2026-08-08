@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 278 — token bucket introspection, crypto bytes-to-hex, BWT decode assign, 2D FEM/CFD tail11, quantum trajectory, backtest equity) ✅ COMPLETE
+
+Forty-eighth feature wave after Wave 277. `tokenbucket_capacity`/`refill_rate`; `crypto_bytes_to_hex`; `bwt_decode_vec` assign; `run_backtest_equity`; migrated `quantum_schrodinger`, 2D FEM/CFD, `fem_solve` to `assign_matrix_call_tail11`; `integration_repl_wave278_pipeline`.
+
+### Added (Wave 278)
+- **Izaac TokenBucket** — `tokenbucket_capacity(handle)`, `tokenbucket_refill_rate(handle)` session introspection.
+- **Crypto REPL** — `crypto_bytes_to_hex(bytes)` hex ASCII byte column from byte matrix.
+- **Compress REPL** — assign-form `bwt_decode_vec(L, primary_index)` in tail11.
+- **Backtest REPL** — `run_backtest_equity(prices, positions, capital)` equity curve column.
+- **Composable 2D pipeline** — `fem_mesh2d_rectangular`/`stiffness_2d`/`load_2d`/`fem_solve`, `cfd_grid2d`/`square_pulse_2d`, `quantum_schrodinger` on tail11.
+
+### Tests
+- **`integration_repl_wave278_pipeline`** — token/crypto/BWT/FEM-CFD/quantum/backtest smoke.
+- **Unit** — `wave278_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 278 sync; **437** CTest suites.
+
+**437 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-08 (Wave 277 — crypto from_hex, bloom introspection, topo simplicial counts, compress decode assign, 3D tail11 pipeline) ✅ COMPLETE
 
 Forty-seventh feature wave after Wave 276. `crypto_from_hex` / `ms::crypto::from_hex`; Bloom `bit_count`/`hash_count`; topo `simplicial_counts`/`simplicial_dimension`; compress `huffman_decode_vec`/`ans_decode_vec`/`arithmetic_decode_vec` assign forms; migrated 3D FEM/CFD/`fem_apply_dirichlet`/`quantum_schrodinger_final` to `assign_matrix_call_tail11`; `integration_repl_wave277_pipeline`.

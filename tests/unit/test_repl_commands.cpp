@@ -10323,3 +10323,47 @@ TEST(ReplCommandsTest, wave277_compress_fem_quantum) {
     expect_ok(interp, "psif = quantum_schrodinger_final(H, psi0, 0, 0.05, 5)");
     EXPECT_EQ(interp.state().matrices.at("psif").rows(), 2u);
 }
+
+TEST(ReplCommandsTest, wave278_token_crypto_bwt) {
+    Interpreter interp;
+    ms::izaac::clear_session();
+    expect_contains(interp, "help", "tokenbucket_refill_rate");
+    expect_contains(interp, "help", "crypto_bytes_to_hex");
+
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "tokenbucket_new(tb278, 5, 1)");
+    expect_ok(interp, "tokenbucket_capacity(tb278)");
+
+    expect_ok(interp, "b = crypto_from_hex(\"ff\")");
+    expect_ok(interp, "h = crypto_bytes_to_hex(b)");
+    EXPECT_EQ(interp.state().matrices.at("h").rows(), 2u);
+
+    expect_ok(interp, "x = [10, 20, 30]");
+    expect_ok(interp, "e = bwt_encode_vec(x)");
+    expect_ok(interp, "pi = bwt_primary_index(x)");
+    expect_ok(interp, "d = bwt_decode_vec(e, pi)");
+    EXPECT_EQ(interp.state().matrices.at("d").rows(), 3u);
+}
+
+TEST(ReplCommandsTest, wave278_fem_cfd_quantum) {
+    Interpreter interp;
+
+    expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
+    expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
+    expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
+    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    EXPECT_GT(interp.state().matrices.at("u2").rows(), 0u);
+
+    expect_ok(interp, "g2 = cfd_grid2d(0, 1, 0, 1, 4, 4)");
+    expect_ok(interp, "u0 = cfd_square_pulse_2d(g2, 0.5, 0.5, 0.2, 0.2)");
+
+    expect_ok(interp, "H = [1, 0; 0, 2]");
+    expect_ok(interp, "psi0 = [1; 0]");
+    expect_ok(interp, "tr = quantum_schrodinger(H, psi0, 0, 0.1, 3)");
+    EXPECT_EQ(interp.state().matrices.at("tr").rows(), 4u);
+
+    expect_ok(interp, "p = [1, 2, 3]");
+    expect_ok(interp, "q = [0, 1, 0]");
+    expect_ok(interp, "eq = run_backtest_equity(p, q, 100)");
+    EXPECT_EQ(interp.state().matrices.at("eq").rows(), 3u);
+}

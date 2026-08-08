@@ -598,6 +598,24 @@ See `CHANGELOG.md` for per-wave branch tables.
 
 ---
 
+## Wave 278 — token bucket introspection, crypto bytes-to-hex, BWT decode assign, 2D FEM/CFD tail11, quantum trajectory, backtest equity ✅ COMPLETE
+
+- `tokenbucket_capacity`, `tokenbucket_refill_rate`
+- `crypto_bytes_to_hex`, `bwt_decode_vec` assign, `run_backtest_equity`
+- tail11: 2D FEM/CFD, `fem_solve`, `quantum_schrodinger`
+- `integration_repl_wave278_pipeline`
+
+**437 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–278** closed for this incremental batch.
+
+## Next (Wave 279+) — deferred
+
+| Item | Notes |
+|------|--------|
+| Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block iterative solvers |
+| Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
+| Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
+| Deeper API gaps | Full NCCL multi-GPU, weighted blossom, etc. |
+
 ## Wave 277 — crypto from_hex, bloom introspection, topo simplicial counts, compress decode assign, 3D tail11 pipeline ✅ COMPLETE
 
 - `crypto_from_hex`, `ms::crypto::from_hex`
@@ -608,15 +626,6 @@ See `CHANGELOG.md` for per-wave branch tables.
 - `integration_repl_wave277_pipeline`
 
 **436 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–277** closed for this incremental batch.
-
-## Next (Wave 278+) — deferred
-
-| Item | Notes |
-|------|--------|
-| Scalable multi-node MPI LA | Beyond stub/block `dist_*` gather and block iterative solvers |
-| Full IDE | clangd/LSP, debugger, rich rendered LaTeX (master plan §11) |
-| Linux baseline medians | Refresh via `bench-baseline-linux.yml` when `gh` authenticated |
-| Deeper API gaps | Full NCCL multi-GPU, weighted blossom, etc. |
 
 ## Wave 276 — topo Cech/VR, FEM 3D solve, quantum time-evolve, run-length, Bessel specials, tail11 ✅ COMPLETE
 

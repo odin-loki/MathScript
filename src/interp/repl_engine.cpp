@@ -8552,6 +8552,25 @@ Result<Matrix<double>> eval_crypto_from_hex(const std::string& hex_arg) {
     return bytes_to_matrix_col(compress::Bytes(std::move(*bytes)));
 }
 
+Result<std::string> eval_crypto_bytes_to_hex(const Matrix<double>& bytes_m) {
+    constexpr const char* fn = "crypto_bytes_to_hex";
+    auto bytes = matrix_col_to_bytes(bytes_m, fn);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return crypto::to_hex(std::span<const uint8_t>(*bytes)) + "\n";
+}
+
+Result<Matrix<double>> eval_crypto_bytes_to_hex_vec(const Matrix<double>& bytes_m) {
+    auto hex = eval_crypto_bytes_to_hex(bytes_m);
+    if (!hex) {
+        return std::unexpected(hex.error());
+    }
+    std::string trimmed = trim_copy(*hex);
+    compress::Bytes ascii(trimmed.begin(), trimmed.end());
+    return bytes_to_matrix_col(ascii);
+}
+
 Result<std::string> eval_crypto_sha512(const std::string& data_arg) {
     constexpr const char* fn = "crypto_sha512";
     auto data = parse_hex_arg(data_arg, fn, "data");
@@ -10446,6 +10465,36 @@ Result<Matrix<double>> eval_run_backtest(const Matrix<double>& prices_m,
     out(0, 2) = bt.sharpe_ratio;
     out(0, 3) = static_cast<double>(bt.equity_curve.size());
     return out;
+}
+
+Result<Matrix<double>> eval_run_backtest_equity(const Matrix<double>& prices_m,
+                                                const Matrix<double>& positions_m,
+                                                double initial_capital) {
+    constexpr const char* fn = "run_backtest_equity";
+    auto prices = matrix_to_coeff_vector(prices_m, fn);
+    if (!prices) {
+        return std::unexpected(prices.error());
+    }
+    if (prices->size() < 2) {
+        return std::unexpected(DomainError{fn, "expected price vector length >= 2"});
+    }
+    auto pos_vec = matrix_to_coeff_vector(positions_m, fn);
+    if (!pos_vec) {
+        return std::unexpected(pos_vec.error());
+    }
+    if (pos_vec->size() != prices->size()) {
+        return std::unexpected(DomainError{fn, "positions length must match prices"});
+    }
+    std::vector<int> positions;
+    positions.reserve(pos_vec->size());
+    for (double v : *pos_vec) {
+        if (v != std::floor(v)) {
+            return std::unexpected(DomainError{fn, "positions must be integers"});
+        }
+        positions.push_back(static_cast<int>(v));
+    }
+    const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
+    return vector_to_column(bt.equity_curve);
 }
 
 Result<Matrix<double>> eval_izaac_vrf_keygen() {
@@ -18115,7 +18164,8 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
     if (fn != "bloom_new" && fn != "bloom_insert" && fn != "bloom_check" &&
         fn != "bloom_bit_count" && fn != "bloom_hash_count" &&
         fn != "tokenbucket_new" && fn != "tokenbucket_consume" &&
-        fn != "tokenbucket_available" && fn != "cellmemory_new" &&
+        fn != "tokenbucket_available" && fn != "tokenbucket_capacity" &&
+        fn != "tokenbucket_refill_rate" && fn != "cellmemory_new" &&
         fn != "cellmemory_step" && fn != "cellmemory_recall" &&
         fn != "cellmemory_consolidate" && fn != "cellai_cell_to_cypha_features" &&
         fn != "difmodel_new" &&
@@ -18361,6 +18411,42 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(DomainError{fn, "expected numeric now_seconds"});
         }
         return std::to_string(bucket->available_tokens(now_seconds)) + "\n";
+    }
+
+    if (fn == "tokenbucket_capacity") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected tokenbucket_capacity(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::ratelimit::TokenBucket* bucket = nullptr;
+        auto bucket_check = require_session_object_type<izaac::ratelimit::TokenBucket>(
+            session_objects_, handle, fn.c_str(), bucket);
+        if (!bucket_check) {
+            return std::unexpected(bucket_check.error());
+        }
+        return std::to_string(bucket->capacity()) + "\n";
+    }
+
+    if (fn == "tokenbucket_refill_rate") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected tokenbucket_refill_rate(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        izaac::ratelimit::TokenBucket* bucket = nullptr;
+        auto bucket_check = require_session_object_type<izaac::ratelimit::TokenBucket>(
+            session_objects_, handle, fn.c_str(), bucket);
+        if (!bucket_check) {
+            return std::unexpected(bucket_check.error());
+        }
+        return std::to_string(bucket->refill_rate_per_sec()) + "\n";
     }
 
     if (fn == "cellmemory_new") {
@@ -19903,6 +19989,12 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "fem_stiffness_3d" || callee == "assemble_stiffness_3d" ||
            callee == "fem_load_3d" || callee == "cfd_grid3d" ||
            callee == "cfd_square_pulse_3d" || callee == "cfd_upwind_step_3d" ||
+           callee == "crypto_bytes_to_hex" || callee == "bwt_decode_vec" ||
+           callee == "run_backtest_equity" || callee == "quantum_schrodinger" ||
+           callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
+           callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
+           callee == "fem_load_2d" || callee == "fem_solve" ||
+           callee == "cfd_grid2d" || callee == "cfd_square_pulse_2d" ||
            callee == "quantum_dagger" || callee == "quantum_matmul_dm" ||
            callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases" ||
            callee == "gria_divergence_trajectory";
@@ -20450,8 +20542,35 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         return arity == 1;
     }
     if (callee == "huffman_decode_vec" || callee == "ans_decode_vec" ||
-        callee == "arithmetic_decode_vec") {
+        callee == "arithmetic_decode_vec" || callee == "bwt_decode_vec") {
         return arity == 2;
+    }
+    if (callee == "run_backtest" || callee == "run_backtest_equity") {
+        return arity == 3;
+    }
+    if (callee == "quantum_schrodinger" || callee == "quantum_schrodinger_final") {
+        return arity == 5;
+    }
+    if (callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d") {
+        return arity == 6;
+    }
+    if (callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d") {
+        return arity == 1;
+    }
+    if (callee == "fem_load_2d") {
+        return arity == 2;
+    }
+    if (callee == "fem_solve") {
+        return arity == 1 || arity == 2;
+    }
+    if (callee == "cfd_grid2d") {
+        return arity == 6;
+    }
+    if (callee == "cfd_square_pulse_2d") {
+        return arity == 5 || arity == 6;
+    }
+    if (callee == "crypto_bytes_to_hex") {
+        return arity == 1;
     }
     if (callee == "fem_solve_3d") {
         return arity == 2;
@@ -24042,30 +24161,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                 "expected positive integer d1, d2 and subsystem 0 or 1"});
         }
         result = eval_quantum_partial_trace_matrix(*matrix, d1, d2, subsystem);
-    } else if (assign.callee == "quantum_schrodinger" && assign.args.size() == 5) {
-        auto H_m = resolve_operand(assign.args[0]);
-        if (!H_m) {
-            return std::unexpected(H_m.error());
-        }
-        auto psi0_m = resolve_operand(assign.args[1]);
-        if (!psi0_m) {
-            return std::unexpected(psi0_m.error());
-        }
-        double t0 = 0.0;
-        double t1 = 0.0;
-        double n_steps_d = 0.0;
-        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
-            !parse_number(assign.args[4], n_steps_d)) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger",
-                "expected quantum_schrodinger(H, psi0, t0, t1, n_steps)"});
-        }
-        const int n_steps = static_cast<int>(n_steps_d);
-        if (n_steps < 0 || n_steps_d != n_steps) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger", "expected non-negative integer n_steps"});
-        }
-        result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
     } else if (assign.callee == "pde_heat_1d" && assign.args.size() == 5) {
         auto x0_m = resolve_operand(assign.args[0]);
         if (!x0_m) {
@@ -27929,76 +28024,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if ((assign.callee == "fem_mesh2d_rectangular" || assign.callee == "fem_mesh2d") &&
-        assign.args.size() == 6) {
-        const char* fn = assign.callee.c_str();
-        auto x0 = parse_scalar_arg(assign.args[0], fn);
-        if (!x0) {
-            return std::unexpected(x0.error());
-        }
-        auto y0 = parse_scalar_arg(assign.args[1], fn);
-        if (!y0) {
-            return std::unexpected(y0.error());
-        }
-        auto x1 = parse_scalar_arg(assign.args[2], fn);
-        if (!x1) {
-            return std::unexpected(x1.error());
-        }
-        auto y1 = parse_scalar_arg(assign.args[3], fn);
-        if (!y1) {
-            return std::unexpected(y1.error());
-        }
-        auto nx = parse_scalar_arg(assign.args[4], fn);
-        if (!nx) {
-            return std::unexpected(nx.error());
-        }
-        auto ny = parse_scalar_arg(assign.args[5], fn);
-        if (!ny) {
-            return std::unexpected(ny.error());
-        }
-        auto nx_i = parse_positive_size_arg(*nx, fn, "expected positive integer nx");
-        if (!nx_i) {
-            return std::unexpected(nx_i.error());
-        }
-        auto ny_i = parse_positive_size_arg(*ny, fn, "expected positive integer ny");
-        if (!ny_i) {
-            return std::unexpected(ny_i.error());
-        }
-        result = eval_fem_mesh2d_rectangular(*x0, *y0, *x1, *y1, *nx_i, *ny_i);
-    } else if ((assign.callee == "fem_stiffness_2d" || assign.callee == "assemble_stiffness_2d") &&
-               assign.args.size() == 1) {
-        auto mesh = resolve_operand(assign.args[0]);
-        if (!mesh) {
-            return std::unexpected(mesh.error());
-        }
-        result = eval_fem_stiffness_2d(*mesh);
-    } else if (assign.callee == "fem_load_2d" && assign.args.size() == 2) {
-        auto mesh = resolve_operand(assign.args[0]);
-        if (!mesh) {
-            return std::unexpected(mesh.error());
-        }
-        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_2d");
-        if (!f_val) {
-            return std::unexpected(f_val.error());
-        }
-        result = eval_fem_load_2d(*mesh, *f_val);
-    } else if (assign.callee == "fem_solve" && assign.args.size() == 2) {
-        auto K = resolve_operand(assign.args[0]);
-        if (!K) {
-            return std::unexpected(K.error());
-        }
-        auto f = resolve_operand(assign.args[1]);
-        if (!f) {
-            return std::unexpected(f.error());
-        }
-        result = eval_fem_solve(*K, *f);
-    } else if (assign.callee == "fem_solve" && assign.args.size() == 1) {
-        auto sys = resolve_operand(assign.args[0]);
-        if (!sys) {
-            return std::unexpected(sys.error());
-        }
-        result = eval_fem_solve_packed(*sys);
-    } else if (assign.callee == "cellai_boltzmann_weights" &&
+    if (assign.callee == "cellai_boltzmann_weights" &&
                (assign.args.size() == 1 || assign.args.size() == 2)) {
         auto energies = resolve_coeff_vector(assign.args[0], "cellai_boltzmann_weights");
         if (!energies) {
@@ -28041,70 +28067,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
             time_scales = std::move(*parsed_scales);
         }
         result = eval_cellai_cell_to_cypha_features(memory, time_scales);
-    } else if (assign.callee == "cfd_grid2d" && assign.args.size() == 6) {
-        auto x0 = parse_scalar_arg(assign.args[0], "cfd_grid2d");
-        if (!x0) {
-            return std::unexpected(x0.error());
-        }
-        auto x1 = parse_scalar_arg(assign.args[1], "cfd_grid2d");
-        if (!x1) {
-            return std::unexpected(x1.error());
-        }
-        auto y0 = parse_scalar_arg(assign.args[2], "cfd_grid2d");
-        if (!y0) {
-            return std::unexpected(y0.error());
-        }
-        auto y1 = parse_scalar_arg(assign.args[3], "cfd_grid2d");
-        if (!y1) {
-            return std::unexpected(y1.error());
-        }
-        auto nx_val = parse_scalar_arg(assign.args[4], "cfd_grid2d");
-        if (!nx_val) {
-            return std::unexpected(nx_val.error());
-        }
-        auto ny_val = parse_scalar_arg(assign.args[5], "cfd_grid2d");
-        if (!ny_val) {
-            return std::unexpected(ny_val.error());
-        }
-        const int nx_i = static_cast<int>(*nx_val);
-        const int ny_i = static_cast<int>(*ny_val);
-        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
-            return std::unexpected(
-                DomainError{"cfd_grid2d", "expected non-negative integer nx and ny"});
-        }
-        result = eval_cfd_grid2d(*x0, *x1, *y0, *y1, static_cast<std::size_t>(nx_i),
-                                 static_cast<std::size_t>(ny_i));
-    } else if (assign.callee == "cfd_square_pulse_2d" &&
-               (assign.args.size() == 5 || assign.args.size() == 6)) {
-        auto grid = resolve_operand(assign.args[0]);
-        if (!grid) {
-            return std::unexpected(grid.error());
-        }
-        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse_2d");
-        if (!xc) {
-            return std::unexpected(xc.error());
-        }
-        auto yc = parse_scalar_arg(assign.args[2], "cfd_square_pulse_2d");
-        if (!yc) {
-            return std::unexpected(yc.error());
-        }
-        auto width_x = parse_scalar_arg(assign.args[3], "cfd_square_pulse_2d");
-        if (!width_x) {
-            return std::unexpected(width_x.error());
-        }
-        auto width_y = parse_scalar_arg(assign.args[4], "cfd_square_pulse_2d");
-        if (!width_y) {
-            return std::unexpected(width_y.error());
-        }
-        double amplitude = 1.0;
-        if (assign.args.size() == 6) {
-            auto amp = parse_scalar_arg(assign.args[5], "cfd_square_pulse_2d");
-            if (!amp) {
-                return std::unexpected(amp.error());
-            }
-            amplitude = *amp;
-        }
-        result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
     } else if (assign.callee == "cfd_upwind_step_2d" &&
                (assign.args.size() >= 6 && assign.args.size() <= 8)) {
         auto first = resolve_operand(assign.args[0]);
@@ -29099,6 +29061,193 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             bc_z = *parsed_z;
         }
         result = eval_cfd_upwind_step_3d(*grid, *u, *vx, *vy, *vz, *dt, bc_x, bc_y, bc_z);
+    } else if (assign.callee == "crypto_bytes_to_hex" && assign.args.size() == 1) {
+        auto bytes = resolve_operand(assign.args[0]);
+        if (!bytes) {
+            return std::unexpected(bytes.error());
+        }
+        result = eval_crypto_bytes_to_hex_vec(*bytes);
+    } else if (assign.callee == "bwt_decode_vec" && assign.args.size() == 2) {
+        auto l = resolve_operand(assign.args[0]);
+        if (!l) {
+            return std::unexpected(l.error());
+        }
+        auto pi = parse_scalar_arg(assign.args[1], "bwt_decode_vec");
+        if (!pi) {
+            return std::unexpected(pi.error());
+        }
+        result = eval_bwt_decode_vec(*l, *pi);
+    } else if (assign.callee == "run_backtest_equity" && assign.args.size() == 3) {
+        auto prices = resolve_operand(assign.args[0]);
+        if (!prices) {
+            return std::unexpected(prices.error());
+        }
+        auto positions = resolve_operand(assign.args[1]);
+        if (!positions) {
+            return std::unexpected(positions.error());
+        }
+        auto capital = parse_scalar_arg(assign.args[2], "run_backtest_equity");
+        if (!capital) {
+            return std::unexpected(capital.error());
+        }
+        result = eval_run_backtest_equity(*prices, *positions, *capital);
+    } else if (assign.callee == "quantum_schrodinger" && assign.args.size() == 5) {
+        auto H_m = resolve_operand(assign.args[0]);
+        if (!H_m) {
+            return std::unexpected(H_m.error());
+        }
+        auto psi0_m = resolve_operand(assign.args[1]);
+        if (!psi0_m) {
+            return std::unexpected(psi0_m.error());
+        }
+        double t0 = 0.0;
+        double t1 = 0.0;
+        double n_steps_d = 0.0;
+        if (!parse_number(assign.args[2], t0) || !parse_number(assign.args[3], t1) ||
+            !parse_number(assign.args[4], n_steps_d)) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger",
+                "expected quantum_schrodinger(H, psi0, t0, t1, n_steps)"});
+        }
+        const int n_steps = static_cast<int>(n_steps_d);
+        if (n_steps < 0 || n_steps_d != n_steps) {
+            return std::unexpected(DomainError{
+                "quantum_schrodinger", "expected non-negative integer n_steps"});
+        }
+        result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
+    } else if ((assign.callee == "fem_mesh2d_rectangular" || assign.callee == "fem_mesh2d") &&
+               assign.args.size() == 6) {
+        const char* fn = assign.callee.c_str();
+        auto x0 = parse_scalar_arg(assign.args[0], fn);
+        if (!x0) {
+            return std::unexpected(x0.error());
+        }
+        auto y0 = parse_scalar_arg(assign.args[1], fn);
+        if (!y0) {
+            return std::unexpected(y0.error());
+        }
+        auto x1 = parse_scalar_arg(assign.args[2], fn);
+        if (!x1) {
+            return std::unexpected(x1.error());
+        }
+        auto y1 = parse_scalar_arg(assign.args[3], fn);
+        if (!y1) {
+            return std::unexpected(y1.error());
+        }
+        auto nx = parse_scalar_arg(assign.args[4], fn);
+        if (!nx) {
+            return std::unexpected(nx.error());
+        }
+        auto ny = parse_scalar_arg(assign.args[5], fn);
+        if (!ny) {
+            return std::unexpected(ny.error());
+        }
+        auto nx_i = parse_positive_size_arg(*nx, fn, "expected positive integer nx");
+        if (!nx_i) {
+            return std::unexpected(nx_i.error());
+        }
+        auto ny_i = parse_positive_size_arg(*ny, fn, "expected positive integer ny");
+        if (!ny_i) {
+            return std::unexpected(ny_i.error());
+        }
+        result = eval_fem_mesh2d_rectangular(*x0, *y0, *x1, *y1, *nx_i, *ny_i);
+    } else if ((assign.callee == "fem_stiffness_2d" || assign.callee == "assemble_stiffness_2d") &&
+               assign.args.size() == 1) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        result = eval_fem_stiffness_2d(*mesh);
+    } else if (assign.callee == "fem_load_2d" && assign.args.size() == 2) {
+        auto mesh = resolve_operand(assign.args[0]);
+        if (!mesh) {
+            return std::unexpected(mesh.error());
+        }
+        auto f_val = parse_scalar_arg(assign.args[1], "fem_load_2d");
+        if (!f_val) {
+            return std::unexpected(f_val.error());
+        }
+        result = eval_fem_load_2d(*mesh, *f_val);
+    } else if (assign.callee == "fem_solve" && assign.args.size() == 2) {
+        auto K = resolve_operand(assign.args[0]);
+        if (!K) {
+            return std::unexpected(K.error());
+        }
+        auto f = resolve_operand(assign.args[1]);
+        if (!f) {
+            return std::unexpected(f.error());
+        }
+        result = eval_fem_solve(*K, *f);
+    } else if (assign.callee == "fem_solve" && assign.args.size() == 1) {
+        auto sys = resolve_operand(assign.args[0]);
+        if (!sys) {
+            return std::unexpected(sys.error());
+        }
+        result = eval_fem_solve_packed(*sys);
+    } else if (assign.callee == "cfd_grid2d" && assign.args.size() == 6) {
+        auto x0 = parse_scalar_arg(assign.args[0], "cfd_grid2d");
+        if (!x0) {
+            return std::unexpected(x0.error());
+        }
+        auto x1 = parse_scalar_arg(assign.args[1], "cfd_grid2d");
+        if (!x1) {
+            return std::unexpected(x1.error());
+        }
+        auto y0 = parse_scalar_arg(assign.args[2], "cfd_grid2d");
+        if (!y0) {
+            return std::unexpected(y0.error());
+        }
+        auto y1 = parse_scalar_arg(assign.args[3], "cfd_grid2d");
+        if (!y1) {
+            return std::unexpected(y1.error());
+        }
+        auto nx_val = parse_scalar_arg(assign.args[4], "cfd_grid2d");
+        if (!nx_val) {
+            return std::unexpected(nx_val.error());
+        }
+        auto ny_val = parse_scalar_arg(assign.args[5], "cfd_grid2d");
+        if (!ny_val) {
+            return std::unexpected(ny_val.error());
+        }
+        const int nx_i = static_cast<int>(*nx_val);
+        const int ny_i = static_cast<int>(*ny_val);
+        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
+            return std::unexpected(
+                DomainError{"cfd_grid2d", "expected non-negative integer nx and ny"});
+        }
+        result = eval_cfd_grid2d(*x0, *x1, *y0, *y1, static_cast<std::size_t>(nx_i),
+                                 static_cast<std::size_t>(ny_i));
+    } else if (assign.callee == "cfd_square_pulse_2d" &&
+               (assign.args.size() == 5 || assign.args.size() == 6)) {
+        auto grid = resolve_operand(assign.args[0]);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        auto xc = parse_scalar_arg(assign.args[1], "cfd_square_pulse_2d");
+        if (!xc) {
+            return std::unexpected(xc.error());
+        }
+        auto yc = parse_scalar_arg(assign.args[2], "cfd_square_pulse_2d");
+        if (!yc) {
+            return std::unexpected(yc.error());
+        }
+        auto width_x = parse_scalar_arg(assign.args[3], "cfd_square_pulse_2d");
+        if (!width_x) {
+            return std::unexpected(width_x.error());
+        }
+        auto width_y = parse_scalar_arg(assign.args[4], "cfd_square_pulse_2d");
+        if (!width_y) {
+            return std::unexpected(width_y.error());
+        }
+        double amplitude = 1.0;
+        if (assign.args.size() == 6) {
+            auto amp = parse_scalar_arg(assign.args[5], "cfd_square_pulse_2d");
+            if (!amp) {
+                return std::unexpected(amp.error());
+            }
+            amplitude = *amp;
+        }
+        result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
     }
 
     return result;
@@ -35118,6 +35267,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_sha256(hex_data) SHA-256 digest (hex I/O)\n"
             "  crypto_to_hex(hex_data) encode raw bytes as lowercase hex\n"
             "  name = crypto_from_hex(hex) decode hex string to byte column matrix\n"
+            "  name = crypto_bytes_to_hex(bytes) encode byte column matrix as hex ASCII byte column\n"
             "  crypto_sha512(hex_data) SHA-512 digest (hex I/O)\n"
             "  crypto_hmac_sha256(hex_key,hex_data) HMAC-SHA256 digest (hex I/O)\n"
             "  crypto_hmac_sha512(hex_key,hex_data) HMAC-SHA512 digest (hex I/O)\n"
@@ -35709,6 +35859,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  mpc_reconstruct(shares) reconstruct secret from share matrix\n"
             "  simulate_gbm_path(100, 0.05, 0.2, 0.01, 50) GBM price path column (requires izaac seed)\n"
             "  run_backtest(prices, positions, 10000) backtest metrics 1×4 row (requires matching vectors)\n"
+            "  name = run_backtest_equity(prices, positions, capital) equity curve column from backtest\n"
             "  izaac_vrf_keygen() 2×32 VRF key matrix (private row, public row)\n"
             "  izaac_vrf_prove(key, msg) VRF proof matrix from 2×32 key and byte message\n"
             "  izaac_vrf_verify(pub, msg, proof) verify VRF (1 valid, 0 invalid)\n"
@@ -35725,6 +35876,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tokenbucket_new(tb, 10, 1) create session TokenBucket (handle persists)\n"
             "  tokenbucket_consume(tb, 3, 0) consume tokens at now_seconds (true/false)\n"
             "  tokenbucket_available(tb, 5) available tokens at now_seconds\n"
+            "  tokenbucket_capacity(tb) configured token bucket capacity\n"
+            "  tokenbucket_refill_rate(tb) configured refill rate per second\n"
             "  cellmemory_new(cm, 2, 4, [0.1, 1, 10]) create session CellMemory (handle persists)\n"
             "  cellmemory_step(cm, [1;0]) step CellMemory with input column vector\n"
             "  cellmemory_recall(cm, 1.0) recall CellMemory state at time_scale\n"
@@ -35911,7 +36064,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cellai_cell_to_cypha_features(h,[scales])\n"
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
             "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")  bloom_bit_count(h)  bloom_hash_count(h)\n"
-            "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)\n"
+            "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)  tokenbucket_capacity(h)  tokenbucket_refill_rate(h)\n"
             "  cellmemory_new(h,in,dim,[scales])  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)\n"
             "  difmodel_new(h,in,out,experts,lr)  difmodel_update(h,X,Y)  difmodel_predict(h,X)  difmodel_predict_interval(h,X)\n"
             "  difmodel_ood_score(h,X)  difmodel_gh_gate(h,X)\n"

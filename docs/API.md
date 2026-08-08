@@ -465,6 +465,10 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `topo_simplicial_counts` / `topo_simplicial_dimension` | Simplex counts + max dimension (Wave 277) |
 | `huffman_decode_vec` / `ans_decode_vec` / `arithmetic_decode_vec` (assign) | Compress decode assign forms (Wave 277) |
 | 3D FEM/CFD + `fem_apply_dirichlet` + `quantum_schrodinger_final` (tail11) | Composable 3D pipeline dispatch (Wave 277) |
+| `tokenbucket_capacity` / `tokenbucket_refill_rate` | Token bucket introspection (Wave 278) |
+| `crypto_bytes_to_hex` | Byte matrix to hex ASCII column (Wave 278) |
+| `bwt_decode_vec` (assign) / `run_backtest_equity` | BWT decode assign + equity curve (Wave 278) |
+| 2D FEM/CFD + `fem_solve` + `quantum_schrodinger` (tail11) | Composable 2D pipeline dispatch (Wave 278) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

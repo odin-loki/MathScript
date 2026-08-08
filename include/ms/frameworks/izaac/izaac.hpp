@@ -101,6 +101,8 @@ public:
     TokenBucket(double capacity, double refill_rate_per_sec);
     bool try_consume(double tokens, double now_seconds);
     double available_tokens(double now_seconds) const;
+    double capacity() const { return capacity_; }
+    double refill_rate_per_sec() const { return refill_rate_; }
 
 private:
     double capacity_;
