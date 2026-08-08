@@ -10580,3 +10580,27 @@ TEST(ReplCommandsTest, wave285_ode_special) {
     expect_ok(interp, "lp = legendre_p(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("lp"), ms::legendre_p(2, 0.5), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave286_fft_control_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "R = fft_rfft([1; 0; 0; 0])");
+    EXPECT_EQ(interp.state().matrices.at("R").rows(), 3u);
+
+    expect_ok(interp, "bode = control_bode([1], [1, 1], 1)");
+    EXPECT_EQ(interp.state().matrices.at("bode").rows(), 1u);
+}
+
+TEST(ReplCommandsTest, wave286_signal_ode_special) {
+    Interpreter interp;
+
+    expect_ok(interp, "x = [1; 2; 3; 4; 5; 6; 7; 8]");
+    expect_ok(interp, "c = signal_coherence(x, x, 8.0, 8)");
+    EXPECT_GT(interp.state().matrices.at("c").rows(), 0u);
+
+    expect_ok(interp, "tr = ode_trapezoidal(\"-y\", 0, 1, 1, 10)");
+    EXPECT_GT(interp.state().matrices.at("tr").rows(), 0u);
+
+    expect_ok(interp, "lq = legendre_q(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("lq"), ms::legendre_q(2, 0.5), 1e-9);
+}

@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 286 — FFT/control/signal/ODE tail11, legendre_q) ✅ COMPLETE
+
+Fifty-sixth feature wave after Wave 285. Migrated FFT/control/signal/ODE handlers to tail11/tail12; scalar `legendre_q` validation in `eval_scalar_call`; `integration_repl_wave286_pipeline`.
+
+### Added (Wave 286)
+- **FFT tail11** — `fft_rfft`, `fft_dft`, `fft_ifft`, `fft_fft2`, `ifft2`, `idst2`, `fft_dct2`, `fft_idct2`, `fft_dst2`, `fftshift`, `ifftshift`, `fftfreq`, `rfftfreq`, `fft_goertzel`.
+- **Control tail11** — `control_bode`.
+- **Signal tail11** — `signal_coherence` matrix assign.
+- **ODE tail11** — `ode_rosenbrock23`, `ode_trapezoidal` matrix assign.
+- **Special** — `legendre_q(n,x)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave286_pipeline`** — FFT/control/signal/ODE/special smoke.
+- **Unit** — `wave286_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 286 sync; **445** CTest suites.
+
+**445 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 285 — control/signal/ODE tail11, legendre_p) ✅ COMPLETE
 
 Fifty-fifth feature wave after Wave 284. Migrated control/signal/ODE handlers to tail11/tail12; scalar `legendre_p` in `eval_scalar_call`; `integration_repl_wave285_pipeline`.

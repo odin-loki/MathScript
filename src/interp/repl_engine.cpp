@@ -14986,6 +14986,14 @@ Result<std::string> format_ode_trajectory(const OdeResult& result) {
     return oss.str();
 }
 
+OdeResult ode_trapezoidal_wrapped(OdeFunc f, double t0, double y0, double t_end, size_t steps) {
+    return ode_trapezoidal(f, t0, t_end, y0, static_cast<int>(steps));
+}
+
+OdeResult ode_rosenbrock23_wrapped(OdeFunc f, double t0, double y0, double t_end, size_t steps) {
+    return ode_rosenbrock23(f, t0, y0, t_end, static_cast<int>(steps));
+}
+
 Result<Matrix<double>> eval_ode_fixed_step_matrix(const std::string& fn,
                                                   const std::string& formula_arg,
                                                   const std::string& t0_arg,
@@ -20009,7 +20017,7 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "cfd_upwind_step_2d" || callee == "cfd_upwind_step_3d" ||
            callee == "ode_euler" || callee == "ode_rk4" || callee == "ode_midpoint" ||
            callee == "ode_backward_euler" || callee == "ode_adams_bashforth2" ||
-           callee == "ode_bdf2" ||
+           callee == "ode_bdf2" || callee == "ode_rosenbrock23" || callee == "ode_trapezoidal" ||
            callee == "topo_betti_curve" || callee == "control_bode" ||
            callee == "control_step_response" || callee == "control_impulse_response" ||
            callee == "control_kalman_predict" || callee == "control_kalman_update" ||
@@ -20206,6 +20214,13 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "signal_autocorr" || callee == "signal_lms" || callee == "signal_lms_weights" ||
            callee == "signal_envelope" || callee == "signal_hilbert" ||
            callee == "signal_instantaneous_phase" || callee == "signal_unwrap" ||
+           callee == "fft_rfft" || callee == "fft_dft" || callee == "fft_ifft" ||
+           callee == "fft_fft2" || callee == "ifft2" || callee == "idst2" ||
+           callee == "fft_dct2" || callee == "fft_idct2" || callee == "fft_dst2" ||
+           callee == "fftshift" || callee == "ifftshift" || callee == "fftfreq" ||
+           callee == "rfftfreq" || callee == "fft_goertzel" || callee == "control_bode" ||
+           callee == "signal_coherence" || callee == "ode_rosenbrock23" ||
+           callee == "ode_trapezoidal" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -20834,7 +20849,7 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "ode_euler" || callee == "ode_rk4" || callee == "ode_midpoint" ||
         callee == "ode_backward_euler" || callee == "ode_adams_bashforth2" ||
-        callee == "ode_bdf2") {
+        callee == "ode_bdf2" || callee == "ode_rosenbrock23" || callee == "ode_trapezoidal") {
         return arity == 5;
     }
     if (callee == "cfd_advection2d") {
@@ -21717,6 +21732,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return laguerre_l(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "legendre_q") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"legendre_q", "expected non-negative integer n"});
+            }
             return legendre_q(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "hermite_he") {
@@ -23356,66 +23375,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(dc.error());
         }
         result = *dc;
-    } else if (assign.callee == "fft_rfft" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto spectrum = eval_fft_rfft(*matrix);
-        if (!spectrum) {
-            return std::unexpected(spectrum.error());
-        }
-        result = *spectrum;
-    } else if (assign.callee == "fft_dft" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto spectrum = eval_fft_dft(*matrix);
-        if (!spectrum) {
-            return std::unexpected(spectrum.error());
-        }
-        result = *spectrum;
-    } else if (assign.callee == "fft_ifft" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto signal = eval_fft_ifft(*matrix);
-        if (!signal) {
-            return std::unexpected(signal.error());
-        }
-        result = *signal;
-    } else if (assign.callee == "fft_fft2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto spectrum = eval_fft_fft2(*matrix);
-        if (!spectrum) {
-            return std::unexpected(spectrum.error());
-        }
-        result = *spectrum;
-    } else if (assign.callee == "ifft2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto signal = eval_fft_ifft2(*matrix);
-        if (!signal) {
-            return std::unexpected(signal.error());
-        }
-        result = *signal;
-    } else if (assign.callee == "idst2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto signal = eval_fft_idst2(*matrix);
-        if (!signal) {
-            return std::unexpected(signal.error());
-        }
-        result = *signal;
     } else if (assign.callee == "kruskal_wallis" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -24074,86 +24033,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(edge.error());
         }
         result = *edge;
-    } else if (assign.callee == "fftshift" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto shifted = eval_fftshift(*matrix);
-        if (!shifted) {
-            return std::unexpected(shifted.error());
-        }
-        result = *shifted;
-    } else if (assign.callee == "ifftshift" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto shifted = eval_ifftshift(*matrix);
-        if (!shifted) {
-            return std::unexpected(shifted.error());
-        }
-        result = *shifted;
-    } else if (assign.callee == "fftfreq" &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(DomainError{"fftfreq", "expected fftfreq(n[, d])"});
-            }
-            n_d = *n_expr;
-        }
-        const int n_i = static_cast<int>(n_d);
-        if (n_i < 0 || n_d != n_i) {
-            return std::unexpected(
-                DomainError{"fftfreq", "expected non-negative integer n"});
-        }
-        double d = 1.0;
-        if (assign.args.size() == 2) {
-            if (!parse_number(assign.args[1], d)) {
-                auto d_expr = eval_scalar_expr(state_, assign.args[1]);
-                if (!d_expr) {
-                    return std::unexpected(DomainError{"fftfreq", "expected fftfreq(n[, d])"});
-                }
-                d = *d_expr;
-            }
-        }
-        auto freqs = eval_fftfreq(static_cast<size_t>(n_i), d);
-        if (!freqs) {
-            return std::unexpected(freqs.error());
-        }
-        result = *freqs;
-    } else if (assign.callee == "rfftfreq" &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        double n_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto n_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!n_expr) {
-                return std::unexpected(DomainError{"rfftfreq", "expected rfftfreq(n[, d])"});
-            }
-            n_d = *n_expr;
-        }
-        const int n_i = static_cast<int>(n_d);
-        if (n_i < 0 || n_d != n_i) {
-            return std::unexpected(
-                DomainError{"rfftfreq", "expected non-negative integer n"});
-        }
-        double d = 1.0;
-        if (assign.args.size() == 2) {
-            if (!parse_number(assign.args[1], d)) {
-                auto d_expr = eval_scalar_expr(state_, assign.args[1]);
-                if (!d_expr) {
-                    return std::unexpected(DomainError{"rfftfreq", "expected rfftfreq(n[, d])"});
-                }
-                d = *d_expr;
-            }
-        }
-        auto freqs = eval_rfftfreq(static_cast<size_t>(n_i), d);
-        if (!freqs) {
-            return std::unexpected(freqs.error());
-        }
-        result = *freqs;
     } else if (assign.callee == "poly_deriv" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -24242,36 +24121,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(edges.error());
         }
         result = *edges;
-    } else if (assign.callee == "fft_dct2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto coeffs = eval_fft_dct2(*matrix);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
-    } else if (assign.callee == "fft_idct2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto signal = eval_fft_idct2(*matrix);
-        if (!signal) {
-            return std::unexpected(signal.error());
-        }
-        result = *signal;
-    } else if (assign.callee == "fft_dst2" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto coeffs = eval_fft_dst2(*matrix);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
     } else if (assign.callee == "diffgeo_surface_normal_sphere" && assign.args.size() == 2) {
         double u = 0.0;
         double v = 0.0;
@@ -24891,30 +24740,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             t = *t_expr;
         }
         result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
-    } else if (assign.callee == "fft_goertzel" && assign.args.size() == 3) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double f = 0.0;
-        double fs = 0.0;
-        if (!parse_number(assign.args[1], f)) {
-            auto f_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!f_expr) {
-                return std::unexpected(DomainError{
-                    "fft_goertzel", "expected fft_goertzel(x, f, fs)"});
-            }
-            f = *f_expr;
-        }
-        if (!parse_number(assign.args[2], fs)) {
-            auto fs_expr = eval_scalar_expr(state_, assign.args[2]);
-            if (!fs_expr) {
-                return std::unexpected(DomainError{
-                    "fft_goertzel", "expected fft_goertzel(x, f, fs)"});
-            }
-            fs = *fs_expr;
-        }
-        result = eval_fft_goertzel(*matrix, f, fs);
     } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -29832,6 +29657,233 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail12(const MatrixCallAs
             return std::unexpected(unwrapped.error());
         }
         result = *unwrapped;
+    } else if (assign.callee == "fft_rfft" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto spectrum = eval_fft_rfft(*matrix);
+        if (!spectrum) {
+            return std::unexpected(spectrum.error());
+        }
+        result = *spectrum;
+    } else if (assign.callee == "fft_dft" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto spectrum = eval_fft_dft(*matrix);
+        if (!spectrum) {
+            return std::unexpected(spectrum.error());
+        }
+        result = *spectrum;
+    } else if (assign.callee == "fft_ifft" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto signal = eval_fft_ifft(*matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        result = *signal;
+    } else if (assign.callee == "fft_fft2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto spectrum = eval_fft_fft2(*matrix);
+        if (!spectrum) {
+            return std::unexpected(spectrum.error());
+        }
+        result = *spectrum;
+    } else if (assign.callee == "ifft2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto signal = eval_fft_ifft2(*matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        result = *signal;
+    } else if (assign.callee == "idst2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto signal = eval_fft_idst2(*matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        result = *signal;
+    } else if (assign.callee == "fft_dct2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto coeffs = eval_fft_dct2(*matrix);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "fft_idct2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto signal = eval_fft_idct2(*matrix);
+        if (!signal) {
+            return std::unexpected(signal.error());
+        }
+        result = *signal;
+    } else if (assign.callee == "fft_dst2" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto coeffs = eval_fft_dst2(*matrix);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "fftshift" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto shifted = eval_fftshift(*matrix);
+        if (!shifted) {
+            return std::unexpected(shifted.error());
+        }
+        result = *shifted;
+    } else if (assign.callee == "ifftshift" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto shifted = eval_ifftshift(*matrix);
+        if (!shifted) {
+            return std::unexpected(shifted.error());
+        }
+        result = *shifted;
+    } else if (assign.callee == "fftfreq" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto n_val = parse_scalar_arg(assign.args[0], "fftfreq");
+        if (!n_val) {
+            return std::unexpected(n_val.error());
+        }
+        const int n_i = static_cast<int>(*n_val);
+        if (n_i < 0 || *n_val != n_i) {
+            return std::unexpected(
+                DomainError{"fftfreq", "expected non-negative integer n"});
+        }
+        double d = 1.0;
+        if (assign.args.size() == 2) {
+            auto d_val = parse_scalar_arg(assign.args[1], "fftfreq");
+            if (!d_val) {
+                return std::unexpected(d_val.error());
+            }
+            d = *d_val;
+        }
+        auto freqs = eval_fftfreq(static_cast<size_t>(n_i), d);
+        if (!freqs) {
+            return std::unexpected(freqs.error());
+        }
+        result = *freqs;
+    } else if (assign.callee == "rfftfreq" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto n_val = parse_scalar_arg(assign.args[0], "rfftfreq");
+        if (!n_val) {
+            return std::unexpected(n_val.error());
+        }
+        const int n_i = static_cast<int>(*n_val);
+        if (n_i < 0 || *n_val != n_i) {
+            return std::unexpected(
+                DomainError{"rfftfreq", "expected non-negative integer n"});
+        }
+        double d = 1.0;
+        if (assign.args.size() == 2) {
+            auto d_val = parse_scalar_arg(assign.args[1], "rfftfreq");
+            if (!d_val) {
+                return std::unexpected(d_val.error());
+            }
+            d = *d_val;
+        }
+        auto freqs = eval_rfftfreq(static_cast<size_t>(n_i), d);
+        if (!freqs) {
+            return std::unexpected(freqs.error());
+        }
+        result = *freqs;
+    } else if (assign.callee == "fft_goertzel" && assign.args.size() == 3) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto f_val = parse_scalar_arg(assign.args[1], "fft_goertzel");
+        if (!f_val) {
+            return std::unexpected(f_val.error());
+        }
+        auto fs_val = parse_scalar_arg(assign.args[2], "fft_goertzel");
+        if (!fs_val) {
+            return std::unexpected(fs_val.error());
+        }
+        result = eval_fft_goertzel(*matrix, *f_val, *fs_val);
+    } else if (assign.callee == "control_bode" && assign.args.size() == 3) {
+        auto num_m = resolve_operand(assign.args[0]);
+        if (!num_m) {
+            return std::unexpected(num_m.error());
+        }
+        auto den_m = resolve_operand(assign.args[1]);
+        if (!den_m) {
+            return std::unexpected(den_m.error());
+        }
+        auto w_val = parse_scalar_arg(assign.args[2], "control_bode");
+        if (!w_val) {
+            return std::unexpected(w_val.error());
+        }
+        auto bode = eval_control_bode(*num_m, *den_m, *w_val);
+        if (!bode) {
+            return std::unexpected(bode.error());
+        }
+        result = *bode;
+    } else if (assign.callee == "signal_coherence" && assign.args.size() == 4) {
+        auto x_m = resolve_operand(assign.args[0]);
+        if (!x_m) {
+            return std::unexpected(x_m.error());
+        }
+        auto y_m = resolve_operand(assign.args[1]);
+        if (!y_m) {
+            return std::unexpected(y_m.error());
+        }
+        auto fs_val = parse_scalar_arg(assign.args[2], "signal_coherence");
+        if (!fs_val) {
+            return std::unexpected(fs_val.error());
+        }
+        auto nperseg_val = parse_scalar_arg(assign.args[3], "signal_coherence");
+        if (!nperseg_val) {
+            return std::unexpected(nperseg_val.error());
+        }
+        const int nperseg = static_cast<int>(*nperseg_val);
+        if (nperseg < 1 || *nperseg_val != nperseg) {
+            return std::unexpected(
+                DomainError{"signal_coherence", "expected positive integer nperseg"});
+        }
+        auto coh = eval_signal_coherence(*x_m, *y_m, *fs_val, static_cast<size_t>(nperseg));
+        if (!coh) {
+            return std::unexpected(coh.error());
+        }
+        result = *coh;
+    } else if (assign.callee == "ode_rosenbrock23" && assign.args.size() == 5) {
+        result = eval_ode_fixed_step_matrix(
+            assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
+            trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
+            ode_rosenbrock23_wrapped);
+    } else if (assign.callee == "ode_trapezoidal" && assign.args.size() == 5) {
+        result = eval_ode_fixed_step_matrix(
+            assign.callee, trim_copy(assign.args[0]), trim_copy(assign.args[1]),
+            trim_copy(assign.args[2]), trim_copy(assign.args[3]), trim_copy(assign.args[4]),
+            ode_trapezoidal_wrapped);
     }
 
     return result;
@@ -30414,28 +30466,6 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
             return std::unexpected(curve.error());
         }
         result = *curve;
-    } else if (assign.callee == "control_bode" && assign.args.size() == 3) {
-        auto num_m = resolve_operand(assign.args[0]);
-        if (!num_m) {
-            return std::unexpected(num_m.error());
-        }
-        auto den_m = resolve_operand(assign.args[1]);
-        if (!den_m) {
-            return std::unexpected(den_m.error());
-        }
-        double w = 0.0;
-        if (!parse_number(assign.args[2], w)) {
-            auto w_expr = eval_scalar_expr(state_, assign.args[2]);
-            if (!w_expr) {
-                return std::unexpected(w_expr.error());
-            }
-            w = *w_expr;
-        }
-        auto bode = eval_control_bode(*num_m, *den_m, w);
-        if (!bode) {
-            return std::unexpected(bode.error());
-        }
-        result = *bode;
     } else if (assign.callee == "compress_bits_to_bytes" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
