@@ -525,6 +525,9 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `topo_pairwise_distances` / `combo_next_perm` / `numthy_convergents` (tail11) | Topology/combinatorics assign (Wave 290) |
 | `geo_triangulate_polygon` / `geo_convex_hull_3d` / `stats_linear_regression` / `stats_pacf` (tail11) | Geo/stats assign (Wave 290) |
 | `chebyshev_v` / `chebyshev_w` (scalar eval) | Chebyshev V/W in assign expr (Wave 290) |
+| `slic` / `hough_lines` / `hough_circles` / `harris` / `shi_tomasi` / `imtophat` / `imbothat` / `imgradient_morph` / `imadjust` / `imhist` / `gray2rgb` (tail11) | Image feature/color assign (Wave 291) |
+| `stats_kde` / `stats_bootstrap_ci` / `stats_arfit` / `stats_multiple_regression` (tail11) | Extended stats assign (Wave 291) |
+| `legendre_pn` / `assoc_legendre_p` (scalar eval) | Associated Legendre in assign expr (Wave 291) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

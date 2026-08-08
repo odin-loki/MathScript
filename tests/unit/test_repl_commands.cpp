@@ -10712,3 +10712,43 @@ TEST(ReplCommandsTest, wave290_special_scalar) {
     expect_ok(interp, "cw = chebyshev_w(2, 0.2)");
     EXPECT_NEAR(interp.state().scalars.at("cw"), ms::chebyshev_w(2, 0.2), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave291_image_stats_tail11) {
+    Interpreter interp;
+
+    // Bright quadrant corner -> Harris keypoints (tail11 routing smoke).
+    expect_ok(interp,
+              "Q = [0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,0,0,0,0,0,0; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1; "
+              "0,0,0,0,0,0,1,1,1,1,1,1]");
+    expect_ok(interp, "H = harris(Q, 0.04, 0.001)");
+    ASSERT_GT(interp.state().matrices.count("H"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("H").cols(), 3u);
+    ASSERT_GT(interp.state().matrices.at("H").rows(), 0u);
+
+    expect_ok(interp, "k = stats_kde([0; 1; 2], [-1; 0; 1; 2], 1)");
+    EXPECT_GT(interp.state().matrices.at("k").rows(), 0u);
+
+    expect_ok(interp, "G = [1, 2; 3, 4]");
+    expect_ok(interp, "RGB = gray2rgb(G)");
+    EXPECT_EQ(interp.state().matrices.at("RGB").cols(), 3u);
+}
+
+TEST(ReplCommandsTest, wave291_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "lp = legendre_pn(1, 0, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("lp"), ms::legendre_pn(1, 0, 0.3), 1e-9);
+
+    expect_ok(interp, "ap = assoc_legendre_p(1, 0, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("ap"), ms::assoc_legendre_p(1, 0, 0.3), 1e-9);
+}

@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 291 — image/stats tail11, legendre_pn/assoc_legendre_p) ✅ COMPLETE
+
+Sixty-first feature wave after Wave 290. Migrated image feature detection, extended stats, and color handlers to tail11/tail13; scalar `legendre_pn`/`assoc_legendre_p` integer validation in `eval_scalar_call`; `integration_repl_wave291_pipeline`.
+
+### Added (Wave 291)
+- **Image tail11** — `slic`, `hough_lines`, `hough_circles`, `harris`, `shi_tomasi`, `imtophat`/`imbothat`/`imgradient_morph`, `imadjust`, `imhist`, `gray2rgb`.
+- **Stats tail11** — `stats_kde`, `stats_bootstrap_ci`, `stats_arfit`, `stats_multiple_regression`.
+- **Special** — `legendre_pn(n,m,x)` and `assoc_legendre_p(l,m,x)` integer validation in scalar three-arg eval path.
+
+### Tests
+- **`integration_repl_wave291_pipeline`** — image/stats/special smoke.
+- **Unit** — `wave291_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 291 sync; **450** CTest suites.
+
+**450 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 290 — image/topo/stats tail11, chebyshev_v/chebyshev_w) ✅ COMPLETE
 
 Sixtieth feature wave after Wave 289. Migrated image filters, topo/combo, and stats handlers to tail11/tail13; scalar `chebyshev_v`/`chebyshev_w` integer validation in `eval_scalar_call`; `integration_repl_wave290_pipeline`.
