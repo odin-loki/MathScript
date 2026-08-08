@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 298 — numthy/poly/graph tail11, special_falling_factorial) ✅ COMPLETE
+
+Sixty-eighth feature wave after Wave 297. Migrated numthy, polynomial, graph, and info handlers to tail11/tail14; scalar `special_falling_factorial` integer validation in `eval_scalar_call`; `integration_repl_wave298_pipeline`.
+
+### Added (Wave 298)
+- **Numthy tail11** — `numthy_lucas_sequence`.
+- **Poly tail11** — `poly_fit`, `poly_interp_hermite`, `poly_rational_roots`, `poly_factor_rational`.
+- **Graph/info tail11** — `graph_connected_components`, `info_channel_capacity_input`.
+- **Special** — `special_falling_factorial(a,n)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave298_pipeline`** — numthy/poly/graph/special smoke.
+- **Unit** — `wave298_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 298 sync; **457** CTest suites.
+
+**457 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 297 — numthy/poly tail11, special_pochhammer) ✅ COMPLETE
 
 Sixty-seventh feature wave after Wave 296. Migrated number-theory and extended polynomial handlers to tail11/tail14; scalar `special_pochhammer` integer validation in `eval_scalar_call`; split `assign_matrix_call_tail14` from tail13 (MSVC C1061); `integration_repl_wave297_pipeline`.

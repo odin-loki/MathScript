@@ -10895,3 +10895,54 @@ TEST(ReplCommandsTest, wave297_special_scalar) {
     expect_ok(interp, "ph = special_pochhammer(2.5, 3)");
     EXPECT_NEAR(interp.state().scalars.at("ph"), ms::pochhammer(2.5, 3), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave298_numthy_poly_graph_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "lu = numthy_lucas_sequence(5, 1, -1)");
+    ASSERT_GT(interp.state().matrices.count("lu"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("lu").rows(), 1u);
+    EXPECT_EQ(interp.state().matrices.at("lu").cols(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("lu")(0, 0), 5.0, 1e-9);
+    EXPECT_NEAR(interp.state().matrices.at("lu")(0, 1), 11.0, 1e-9);
+
+    expect_ok(interp, "xs = [0; 1; 2; 3]");
+    expect_ok(interp, "ys = [1; 3; 5; 7]");
+    expect_ok(interp, "c = poly_fit(xs, ys, 1)");
+    ASSERT_GT(interp.state().matrices.count("c"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("c").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("c")(0, 0), 1.0, 1e-6);
+    EXPECT_NEAR(interp.state().matrices.at("c")(1, 0), 2.0, 1e-6);
+
+    expect_ok(interp, "hxs = [2]");
+    expect_ok(interp, "hys = [5]");
+    expect_ok(interp, "hdys = [3]");
+    expect_ok(interp, "ph = poly_interp_hermite(hxs, hys, hdys)");
+    ASSERT_GT(interp.state().matrices.count("ph"), 0u);
+
+    expect_ok(interp, "A = [0,1,0,0; 1,0,0,0; 0,0,0,1; 0,0,1,0]");
+    expect_ok(interp, "cc = graph_connected_components(A)");
+    ASSERT_GT(interp.state().matrices.count("cc"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("cc").rows(), 2u);
+
+    expect_ok(interp, "W = [0.8, 0.2; 0.2, 0.8]");
+    expect_ok(interp, "pin = info_channel_capacity_input(W)");
+    ASSERT_GT(interp.state().matrices.count("pin"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("pin").rows(), 2u);
+
+    expect_ok(interp, "p = [6; -5; 1]");
+    expect_ok(interp, "rr = poly_rational_roots(p)");
+    ASSERT_GT(interp.state().matrices.count("rr"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("rr").rows(), 2u);
+
+    expect_ok(interp, "fr = poly_factor_rational(p)");
+    ASSERT_GT(interp.state().matrices.count("fr"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("fr").rows(), 3u);
+}
+
+TEST(ReplCommandsTest, wave298_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "ff = special_falling_factorial(5, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("ff"), ms::falling_factorial(5.0, 2), 1e-9);
+}

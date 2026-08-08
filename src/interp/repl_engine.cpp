@@ -20292,7 +20292,12 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "poly_eval_at" || callee == "poly_sylvester" ||
            callee == "numthy_factor_exp" || callee == "numthy_farey" ||
            callee == "numthy_stern_brocot" || callee == "numthy_pell_solve" ||
-           callee == "numthy_quadratic_residues";
+           callee == "numthy_quadratic_residues" ||
+           callee == "numthy_lucas_sequence" ||
+           callee == "poly_fit" || callee == "poly_interp_hermite" ||
+           callee == "poly_rational_roots" || callee == "poly_factor_rational" ||
+           callee == "graph_connected_components" ||
+           callee == "info_channel_capacity_input";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21766,6 +21771,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return pochhammer(args[0], static_cast<int>(args[1]));
         }
         if (fn == "special_falling_factorial") {
+            if (args[1] < 0.0 || std::floor(args[1]) != args[1]) {
+                return std::unexpected(
+                    DomainError{"special_falling_factorial", "expected non-negative integer n"});
+            }
             return falling_factorial(args[0], static_cast<int>(args[1]));
         }
         if (fn == "special_gamma_inc") {
@@ -23467,41 +23476,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if (assign.callee == "numthy_lucas_sequence" && assign.args.size() == 3) {
-        double k_d = 0.0;
-        double P_d = 0.0;
-        double Q_d = 0.0;
-        if (!parse_number(assign.args[0], k_d)) {
-            auto k_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!k_expr) {
-                return std::unexpected(DomainError{
-                    "numthy_lucas_sequence", "expected numthy_lucas_sequence(k,P,Q)"});
-            }
-            k_d = *k_expr;
-        }
-        if (!parse_number(assign.args[1], P_d)) {
-            auto P_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!P_expr) {
-                return std::unexpected(DomainError{
-                    "numthy_lucas_sequence", "expected numthy_lucas_sequence(k,P,Q)"});
-            }
-            P_d = *P_expr;
-        }
-        if (!parse_number(assign.args[2], Q_d)) {
-            auto Q_expr = eval_scalar_expr(state_, assign.args[2]);
-            if (!Q_expr) {
-                return std::unexpected(DomainError{
-                    "numthy_lucas_sequence", "expected numthy_lucas_sequence(k,P,Q)"});
-            }
-            Q_d = *Q_expr;
-        }
-        if (std::floor(k_d) != k_d || std::floor(P_d) != P_d || std::floor(Q_d) != Q_d) {
-            return std::unexpected(
-                DomainError{"numthy_lucas_sequence", "expected integer arguments"});
-        }
-        result = eval_numthy_lucas_sequence(static_cast<int64_t>(k_d),
-                                           static_cast<int64_t>(P_d),
-                                           static_cast<int64_t>(Q_d));
     }
 
     if (!result) {
@@ -23531,51 +23505,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(roots.error());
         }
         result = *roots;
-    } else if (assign.callee == "poly_fit" && assign.args.size() == 3) {
-        auto xs = resolve_operand(assign.args[0]);
-        if (!xs) {
-            return std::unexpected(xs.error());
-        }
-        auto ys = resolve_operand(assign.args[1]);
-        if (!ys) {
-            return std::unexpected(ys.error());
-        }
-        double degree_d = 0.0;
-        if (!parse_number(assign.args[2], degree_d)) {
-            auto degree_expr = eval_scalar_expr(state_, assign.args[2]);
-            if (!degree_expr) {
-                return std::unexpected(
-                    DomainError{"poly_fit", "expected poly_fit(xs, ys, degree)"});
-            }
-            degree_d = *degree_expr;
-        }
-        const int degree = static_cast<int>(degree_d);
-        if (degree_d != degree) {
-            return std::unexpected(DomainError{"poly_fit", "expected integer degree"});
-        }
-        auto coeffs = eval_poly_fit(*xs, *ys, degree);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
-    } else if (assign.callee == "poly_interp_hermite" && assign.args.size() == 3) {
-        auto xs = resolve_operand(assign.args[0]);
-        if (!xs) {
-            return std::unexpected(xs.error());
-        }
-        auto ys = resolve_operand(assign.args[1]);
-        if (!ys) {
-            return std::unexpected(ys.error());
-        }
-        auto dys = resolve_operand(assign.args[2]);
-        if (!dys) {
-            return std::unexpected(dys.error());
-        }
-        auto coeffs = eval_poly_interp_hermite(*xs, *ys, *dys);
-        if (!coeffs) {
-            return std::unexpected(coeffs.error());
-        }
-        result = *coeffs;
     } else if (assign.callee == "combo_prev_perm" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23586,26 +23515,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail3(const MatrixCallAss
             return std::unexpected(perm.error());
         }
         result = *perm;
-    } else if (assign.callee == "graph_connected_components" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto cc = eval_graph_connected_components(*matrix);
-        if (!cc) {
-            return std::unexpected(cc.error());
-        }
-        result = *cc;
-    } else if (assign.callee == "info_channel_capacity_input" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto pin = eval_info_channel_capacity_input(*matrix);
-        if (!pin) {
-            return std::unexpected(pin.error());
-        }
-        result = *pin;
     }
 
     if (!result) {
@@ -23647,26 +23556,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
             return std::unexpected(factors.error());
         }
         result = *factors;
-    } else if (assign.callee == "poly_rational_roots" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto roots = eval_poly_rational_roots(*matrix, 1e-6);
-        if (!roots) {
-            return std::unexpected(roots.error());
-        }
-        result = *roots;
-    } else if (assign.callee == "poly_factor_rational" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto fact = eval_poly_factor_rational(*matrix, 1e-6);
-        if (!fact) {
-            return std::unexpected(fact.error());
-        }
-        result = *fact;
     } else if (assign.callee == "poly_partial_fractions" && assign.args.size() == 2) {
         auto num = resolve_operand(assign.args[0]);
         if (!num) {
@@ -30101,6 +29990,126 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
             return std::unexpected(S.error());
         }
         result = *S;
+    } else if (assign.callee == "numthy_lucas_sequence" && assign.args.size() == 3) {
+        double k_d = 0.0;
+        double P_d = 0.0;
+        double Q_d = 0.0;
+        if (!parse_number(assign.args[0], k_d)) {
+            auto k_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!k_expr) {
+                return std::unexpected(DomainError{
+                    "numthy_lucas_sequence", "expected numthy_lucas_sequence(k,P,Q)"});
+            }
+            k_d = *k_expr;
+        }
+        if (!parse_number(assign.args[1], P_d)) {
+            auto P_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!P_expr) {
+                return std::unexpected(DomainError{
+                    "numthy_lucas_sequence", "expected numthy_lucas_sequence(k,P,Q)"});
+            }
+            P_d = *P_expr;
+        }
+        if (!parse_number(assign.args[2], Q_d)) {
+            auto Q_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!Q_expr) {
+                return std::unexpected(DomainError{
+                    "numthy_lucas_sequence", "expected numthy_lucas_sequence(k,P,Q)"});
+            }
+            Q_d = *Q_expr;
+        }
+        if (std::floor(k_d) != k_d || std::floor(P_d) != P_d || std::floor(Q_d) != Q_d) {
+            return std::unexpected(
+                DomainError{"numthy_lucas_sequence", "expected integer arguments"});
+        }
+        result = eval_numthy_lucas_sequence(static_cast<int64_t>(k_d),
+                                           static_cast<int64_t>(P_d),
+                                           static_cast<int64_t>(Q_d));
+    } else if (assign.callee == "poly_fit" && assign.args.size() == 3) {
+        auto xs = resolve_operand(assign.args[0]);
+        if (!xs) {
+            return std::unexpected(xs.error());
+        }
+        auto ys = resolve_operand(assign.args[1]);
+        if (!ys) {
+            return std::unexpected(ys.error());
+        }
+        double degree_d = 0.0;
+        if (!parse_number(assign.args[2], degree_d)) {
+            auto degree_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!degree_expr) {
+                return std::unexpected(
+                    DomainError{"poly_fit", "expected poly_fit(xs, ys, degree)"});
+            }
+            degree_d = *degree_expr;
+        }
+        const int degree = static_cast<int>(degree_d);
+        if (degree_d != degree) {
+            return std::unexpected(DomainError{"poly_fit", "expected integer degree"});
+        }
+        auto coeffs = eval_poly_fit(*xs, *ys, degree);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "poly_interp_hermite" && assign.args.size() == 3) {
+        auto xs = resolve_operand(assign.args[0]);
+        if (!xs) {
+            return std::unexpected(xs.error());
+        }
+        auto ys = resolve_operand(assign.args[1]);
+        if (!ys) {
+            return std::unexpected(ys.error());
+        }
+        auto dys = resolve_operand(assign.args[2]);
+        if (!dys) {
+            return std::unexpected(dys.error());
+        }
+        auto coeffs = eval_poly_interp_hermite(*xs, *ys, *dys);
+        if (!coeffs) {
+            return std::unexpected(coeffs.error());
+        }
+        result = *coeffs;
+    } else if (assign.callee == "graph_connected_components" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto cc = eval_graph_connected_components(*matrix);
+        if (!cc) {
+            return std::unexpected(cc.error());
+        }
+        result = *cc;
+    } else if (assign.callee == "info_channel_capacity_input" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto pin = eval_info_channel_capacity_input(*matrix);
+        if (!pin) {
+            return std::unexpected(pin.error());
+        }
+        result = *pin;
+    } else if (assign.callee == "poly_rational_roots" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto roots = eval_poly_rational_roots(*matrix, 1e-6);
+        if (!roots) {
+            return std::unexpected(roots.error());
+        }
+        result = *roots;
+    } else if (assign.callee == "poly_factor_rational" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto fact = eval_poly_factor_rational(*matrix, 1e-6);
+        if (!fact) {
+            return std::unexpected(fact.error());
+        }
+        result = *fact;
     }
 
     return result;
