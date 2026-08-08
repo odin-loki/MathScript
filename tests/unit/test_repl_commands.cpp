@@ -10630,3 +10630,35 @@ TEST(ReplCommandsTest, wave287_special_scalar) {
     expect_ok(interp, "sj = spherical_jn(0, 1.0)");
     EXPECT_NEAR(interp.state().scalars.at("sj"), ms::spherical_jn(0, 1.0), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave288_graph_stats_geo_image_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [0, 1; 1, 0]");
+    expect_ok(interp, "L = graph_laplacian(A)");
+    EXPECT_EQ(interp.state().matrices.at("L").rows(), 2u);
+
+    expect_ok(interp, "E = graph_mst_kruskal(A)");
+    EXPECT_GT(interp.state().matrices.at("E").rows(), 0u);
+
+    expect_ok(interp, "g = [1; 2; 3; 4; 5; 6; 7; 8; 9; 10]");
+    expect_ok(interp, "sw = stats_shapiro_wilk(g)");
+    EXPECT_EQ(interp.state().matrices.at("sw").rows(), 1u);
+
+    expect_ok(interp, "H = geo_convex_hull([0, 0; 1, 0; 0, 1])");
+    EXPECT_GE(interp.state().matrices.at("H").rows(), 3u);
+
+    expect_ok(interp, "M = [10, 20; 30, 40]");
+    expect_ok(interp, "A2 = adapthisteq(M)");
+    EXPECT_EQ(interp.state().matrices.at("A2").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave288_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "ll = laguerre_l(1, 0.3)");
+    EXPECT_NEAR(interp.state().scalars.at("ll"), ms::laguerre_l(1, 0.3), 1e-9);
+
+    expect_ok(interp, "ct = chebyshev_t(2, 0.4)");
+    EXPECT_NEAR(interp.state().scalars.at("ct"), ms::chebyshev_t(2, 0.4), 1e-9);
+}

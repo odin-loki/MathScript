@@ -20230,6 +20230,19 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "poly_deriv" || callee == "prewitt" || callee == "scharr" ||
            callee == "roberts" || callee == "laplacian" || callee == "histeq" ||
            callee == "sharpen" ||
+           callee == "graph_biconnected_components" || callee == "graph_eulerian_path" ||
+           callee == "graph_hamiltonian_path" || callee == "graph_tsp_heuristic" ||
+           callee == "graph_eigenvector_centrality" || callee == "graph_katz_centrality" ||
+           callee == "graph_adjacency_spectrum" || callee == "graph_laplacian" ||
+           callee == "graph_normalised_laplacian" || callee == "graph_eccentricity" ||
+           callee == "graph_articulation_points" || callee == "graph_bridges" ||
+           callee == "graph_maximum_matching" || callee == "graph_transitive_closure" ||
+           callee == "graph_bellman_ford" || callee == "graph_mst_kruskal" ||
+           callee == "graph_mst_prim" ||
+           callee == "adapthisteq" || callee == "imflip" ||
+           callee == "kruskal_wallis" || callee == "stats_shapiro_wilk" ||
+           callee == "stats_mann_whitney_u" || callee == "stats_ks_2sample" ||
+           callee == "geo_delaunay_2d" || callee == "geo_convex_hull" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -21729,6 +21742,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return bessel_zero_jnu(static_cast<int>(args[0]), static_cast<int>(args[1]));
         }
         if (fn == "chebyshev_t") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"chebyshev_t", "expected non-negative integer n"});
+            }
             return chebyshev_t(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "chebyshev_u") {
@@ -21742,6 +21759,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return hermite_h(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "laguerre_l") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"laguerre_l", "expected non-negative integer n"});
+            }
             return laguerre_l(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "legendre_q") {
@@ -23118,20 +23139,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
         }
         result = gray_image_to_matrix(
             image::imresize(*gray, static_cast<int>(rows_d), static_cast<int>(cols_d)));
-    } else if (assign.callee == "imflip" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double horizontal = 0.0;
-        if (!parse_number(assign.args[1], horizontal)) {
-            return std::unexpected(DomainError{"imflip", "expected imflip(M, horizontal)"});
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::imflip(*gray, horizontal != 0.0));
     } else if (assign.callee == "imrotate90" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23157,16 +23164,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(gray.error());
         }
         result = gray_image_to_matrix(image::threshold_binary(*gray, static_cast<float>(t)));
-    } else if (assign.callee == "adapthisteq" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::adapthisteq(*gray));
     } else if (assign.callee == "label_components" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23322,22 +23319,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(DomainError{"shi_tomasi", "expected positive integer n"});
         }
         result = eval_shi_tomasi(*matrix, n, static_cast<float>(quality));
-    } else if (assign.callee == "kruskal_wallis" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto stats = eval_kruskal_wallis(*matrix);
-        if (!stats) {
-            return std::unexpected(stats.error());
-        }
-        result = *stats;
-    } else if (assign.callee == "stats_shapiro_wilk" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_stats_shapiro_wilk(*matrix);
     } else if (assign.callee == "stats_one_way_anova" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23362,16 +23343,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(matrix.error());
         }
         result = eval_stats_fligner(*matrix);
-    } else if (assign.callee == "stats_mann_whitney_u" && assign.args.size() == 2) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        result = eval_stats_mann_whitney_u(*a, *b);
     } else if (assign.callee == "stats_wilcoxon_signed_rank" && assign.args.size() == 2) {
         auto x = resolve_operand(assign.args[0]);
         if (!x) {
@@ -23388,16 +23359,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(matrix.error());
         }
         result = eval_stats_friedman(*matrix);
-    } else if (assign.callee == "stats_ks_2sample" && assign.args.size() == 2) {
-        auto a = resolve_operand(assign.args[0]);
-        if (!a) {
-            return std::unexpected(a.error());
-        }
-        auto b = resolve_operand(assign.args[1]);
-        if (!b) {
-            return std::unexpected(b.error());
-        }
-        result = eval_stats_ks_2sample(*a, *b);
     } else if (assign.callee == "stats_jarque_bera" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23420,16 +23381,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
                 DomainError{"stats_ljung_box", "expected positive integer max_lag"});
         }
         result = eval_stats_ljung_box(*x, max_lag);
-    } else if (assign.callee == "geo_delaunay_2d" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto tris = eval_geo_delaunay_2d(*matrix);
-        if (!tris) {
-            return std::unexpected(tris.error());
-        }
-        result = *tris;
     } else if (assign.callee == "geo_voronoi" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23440,16 +23391,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail(const MatrixCallAssi
             return std::unexpected(verts.error());
         }
         result = *verts;
-    } else if (assign.callee == "geo_convex_hull" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto hull = eval_geo_convex_hull(*matrix);
-        if (!hull) {
-            return std::unexpected(hull.error());
-        }
-        result = *hull;
     } else if (assign.callee == "geo_min_bounding_rect" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23653,146 +23594,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(At.error());
         }
         result = *At;
-    } else if (assign.callee == "graph_biconnected_components" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto bcc = eval_graph_biconnected_components(*matrix);
-        if (!bcc) {
-            return std::unexpected(bcc.error());
-        }
-        result = *bcc;
-    } else if (assign.callee == "graph_eulerian_path" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto path = eval_graph_eulerian_path(*matrix);
-        if (!path) {
-            return std::unexpected(path.error());
-        }
-        result = *path;
-    } else if (assign.callee == "graph_hamiltonian_path" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto path = eval_graph_hamiltonian_path(*matrix);
-        if (!path) {
-            return std::unexpected(path.error());
-        }
-        result = *path;
-    } else if (assign.callee == "graph_tsp_heuristic" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto tour = eval_graph_tsp_heuristic(*matrix);
-        if (!tour) {
-            return std::unexpected(tour.error());
-        }
-        result = *tour;
-    } else if (assign.callee == "graph_eigenvector_centrality" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto ec = eval_graph_eigenvector_centrality(*matrix);
-        if (!ec) {
-            return std::unexpected(ec.error());
-        }
-        result = *ec;
-    } else if (assign.callee == "graph_katz_centrality" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto kc = eval_graph_katz_centrality(*matrix);
-        if (!kc) {
-            return std::unexpected(kc.error());
-        }
-        result = *kc;
-    } else if (assign.callee == "graph_adjacency_spectrum" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto spec = eval_graph_adjacency_spectrum(*matrix);
-        if (!spec) {
-            return std::unexpected(spec.error());
-        }
-        result = *spec;
-    } else if (assign.callee == "graph_laplacian" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto L = eval_graph_laplacian(*matrix);
-        if (!L) {
-            return std::unexpected(L.error());
-        }
-        result = *L;
-    } else if (assign.callee == "graph_normalised_laplacian" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto Ln = eval_graph_normalised_laplacian(*matrix);
-        if (!Ln) {
-            return std::unexpected(Ln.error());
-        }
-        result = *Ln;
-    } else if (assign.callee == "graph_eccentricity" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto ecc = eval_graph_eccentricity(*matrix);
-        if (!ecc) {
-            return std::unexpected(ecc.error());
-        }
-        result = *ecc;
-    } else if (assign.callee == "graph_articulation_points" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto aps = eval_graph_articulation_points(*matrix);
-        if (!aps) {
-            return std::unexpected(aps.error());
-        }
-        result = *aps;
-    } else if (assign.callee == "graph_bridges" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto br = eval_graph_bridges(*matrix);
-        if (!br) {
-            return std::unexpected(br.error());
-        }
-        result = *br;
-    } else if (assign.callee == "graph_maximum_matching" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto mm = eval_graph_maximum_matching(*matrix);
-        if (!mm) {
-            return std::unexpected(mm.error());
-        }
-        result = *mm;
-    } else if (assign.callee == "graph_transitive_closure" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto reach = eval_graph_transitive_closure(*matrix);
-        if (!reach) {
-            return std::unexpected(reach.error());
-        }
-        result = *reach;
     } else if (assign.callee == "finance_min_variance_portfolio" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23890,50 +23691,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(post.error());
         }
         result = *post;
-    } else if (assign.callee == "graph_bellman_ford" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double source_d = 0.0;
-        if (!parse_number(assign.args[1], source_d)) {
-            auto source_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!source_expr) {
-                return std::unexpected(DomainError{
-                    "graph_bellman_ford", "expected graph_bellman_ford(A, source)"});
-            }
-            source_d = *source_expr;
-        }
-        const int source = static_cast<int>(source_d);
-        if (source < 0 || source_d != source) {
-            return std::unexpected(DomainError{
-                "graph_bellman_ford", "expected non-negative integer source"});
-        }
-        auto sp = eval_graph_bellman_ford(*matrix, source);
-        if (!sp) {
-            return std::unexpected(sp.error());
-        }
-        result = *sp;
-    } else if (assign.callee == "graph_mst_kruskal" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto edges = eval_graph_mst_kruskal(*matrix);
-        if (!edges) {
-            return std::unexpected(edges.error());
-        }
-        result = *edges;
-    } else if (assign.callee == "graph_mst_prim" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto edges = eval_graph_mst_prim(*matrix);
-        if (!edges) {
-            return std::unexpected(edges.error());
-        }
-        result = *edges;
     } else if (assign.callee == "diffgeo_surface_normal_sphere" && assign.args.size() == 2) {
         double u = 0.0;
         double v = 0.0;
@@ -29896,6 +29653,270 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail12(const MatrixCallAs
             return std::unexpected(gray.error());
         }
         result = gray_image_to_matrix(image::sharpen(*gray));
+    } else if (assign.callee == "graph_biconnected_components" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto bcc = eval_graph_biconnected_components(*matrix);
+        if (!bcc) {
+            return std::unexpected(bcc.error());
+        }
+        result = *bcc;
+    } else if (assign.callee == "graph_eulerian_path" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto path = eval_graph_eulerian_path(*matrix);
+        if (!path) {
+            return std::unexpected(path.error());
+        }
+        result = *path;
+    } else if (assign.callee == "graph_hamiltonian_path" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto path = eval_graph_hamiltonian_path(*matrix);
+        if (!path) {
+            return std::unexpected(path.error());
+        }
+        result = *path;
+    } else if (assign.callee == "graph_tsp_heuristic" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto tour = eval_graph_tsp_heuristic(*matrix);
+        if (!tour) {
+            return std::unexpected(tour.error());
+        }
+        result = *tour;
+    } else if (assign.callee == "graph_eigenvector_centrality" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto ec = eval_graph_eigenvector_centrality(*matrix);
+        if (!ec) {
+            return std::unexpected(ec.error());
+        }
+        result = *ec;
+    } else if (assign.callee == "graph_katz_centrality" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto kc = eval_graph_katz_centrality(*matrix);
+        if (!kc) {
+            return std::unexpected(kc.error());
+        }
+        result = *kc;
+    } else if (assign.callee == "graph_adjacency_spectrum" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto spec = eval_graph_adjacency_spectrum(*matrix);
+        if (!spec) {
+            return std::unexpected(spec.error());
+        }
+        result = *spec;
+    } else if (assign.callee == "graph_laplacian" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto L = eval_graph_laplacian(*matrix);
+        if (!L) {
+            return std::unexpected(L.error());
+        }
+        result = *L;
+    } else if (assign.callee == "graph_normalised_laplacian" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto Ln = eval_graph_normalised_laplacian(*matrix);
+        if (!Ln) {
+            return std::unexpected(Ln.error());
+        }
+        result = *Ln;
+    } else if (assign.callee == "graph_eccentricity" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto ecc = eval_graph_eccentricity(*matrix);
+        if (!ecc) {
+            return std::unexpected(ecc.error());
+        }
+        result = *ecc;
+    } else if (assign.callee == "graph_articulation_points" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto aps = eval_graph_articulation_points(*matrix);
+        if (!aps) {
+            return std::unexpected(aps.error());
+        }
+        result = *aps;
+    } else if (assign.callee == "graph_bridges" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto br = eval_graph_bridges(*matrix);
+        if (!br) {
+            return std::unexpected(br.error());
+        }
+        result = *br;
+    } else if (assign.callee == "graph_maximum_matching" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto mm = eval_graph_maximum_matching(*matrix);
+        if (!mm) {
+            return std::unexpected(mm.error());
+        }
+        result = *mm;
+    } else if (assign.callee == "graph_transitive_closure" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto reach = eval_graph_transitive_closure(*matrix);
+        if (!reach) {
+            return std::unexpected(reach.error());
+        }
+        result = *reach;
+    } else if (assign.callee == "graph_bellman_ford" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double source_d = 0.0;
+        if (!parse_number(assign.args[1], source_d)) {
+            auto source_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!source_expr) {
+                return std::unexpected(DomainError{
+                    "graph_bellman_ford", "expected graph_bellman_ford(A, source)"});
+            }
+            source_d = *source_expr;
+        }
+        const int source = static_cast<int>(source_d);
+        if (source < 0 || source_d != source) {
+            return std::unexpected(DomainError{
+                "graph_bellman_ford", "expected non-negative integer source"});
+        }
+        auto sp = eval_graph_bellman_ford(*matrix, source);
+        if (!sp) {
+            return std::unexpected(sp.error());
+        }
+        result = *sp;
+    } else if (assign.callee == "graph_mst_kruskal" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto edges = eval_graph_mst_kruskal(*matrix);
+        if (!edges) {
+            return std::unexpected(edges.error());
+        }
+        result = *edges;
+    } else if (assign.callee == "graph_mst_prim" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto edges = eval_graph_mst_prim(*matrix);
+        if (!edges) {
+            return std::unexpected(edges.error());
+        }
+        result = *edges;
+    } else if (assign.callee == "adapthisteq" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::adapthisteq(*gray));
+    } else if (assign.callee == "imflip" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double horizontal = 0.0;
+        if (!parse_number(assign.args[1], horizontal)) {
+            return std::unexpected(DomainError{"imflip", "expected imflip(M, horizontal)"});
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::imflip(*gray, horizontal != 0.0));
+    } else if (assign.callee == "kruskal_wallis" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto stats = eval_kruskal_wallis(*matrix);
+        if (!stats) {
+            return std::unexpected(stats.error());
+        }
+        result = *stats;
+    } else if (assign.callee == "stats_shapiro_wilk" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_stats_shapiro_wilk(*matrix);
+    } else if (assign.callee == "stats_mann_whitney_u" && assign.args.size() == 2) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        result = eval_stats_mann_whitney_u(*a, *b);
+    } else if (assign.callee == "stats_ks_2sample" && assign.args.size() == 2) {
+        auto a = resolve_operand(assign.args[0]);
+        if (!a) {
+            return std::unexpected(a.error());
+        }
+        auto b = resolve_operand(assign.args[1]);
+        if (!b) {
+            return std::unexpected(b.error());
+        }
+        result = eval_stats_ks_2sample(*a, *b);
+    } else if (assign.callee == "geo_delaunay_2d" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto tris = eval_geo_delaunay_2d(*matrix);
+        if (!tris) {
+            return std::unexpected(tris.error());
+        }
+        result = *tris;
+    } else if (assign.callee == "geo_convex_hull" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto hull = eval_geo_convex_hull(*matrix);
+        if (!hull) {
+            return std::unexpected(hull.error());
+        }
+        result = *hull;
     }
 
     return result;

@@ -7,6 +7,26 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 288 — graph/stats/geo/image tail11, laguerre_l/chebyshev_t) ✅ COMPLETE
+
+Fifty-eighth feature wave after Wave 287. Migrated graph paths/analytics, stats, geo, and image handlers to tail11/tail12; scalar `laguerre_l`/`chebyshev_t` integer validation in `eval_scalar_call`; `integration_repl_wave288_pipeline`.
+
+### Added (Wave 288)
+- **Graph tail11** — `graph_biconnected_components`, `graph_eulerian_path`, `graph_hamiltonian_path`, `graph_tsp_heuristic`, `graph_eigenvector_centrality`, `graph_katz_centrality`, `graph_adjacency_spectrum`, `graph_laplacian`, `graph_normalised_laplacian`, `graph_eccentricity`, `graph_articulation_points`, `graph_bridges`, `graph_maximum_matching`, `graph_transitive_closure`, `graph_bellman_ford`, `graph_mst_kruskal`, `graph_mst_prim`.
+- **Stats tail11** — `kruskal_wallis`, `stats_shapiro_wilk`, `stats_mann_whitney_u`, `stats_ks_2sample`.
+- **Geo tail11** — `geo_delaunay_2d`, `geo_convex_hull`.
+- **Image tail11** — `adapthisteq`, `imflip`.
+- **Special** — `laguerre_l(n,x)` and `chebyshev_t(n,x)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave288_pipeline`** — graph/stats/geo/image/special smoke.
+- **Unit** — `wave288_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 288 sync; **447** CTest suites.
+
+**447 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 287 — graph/image/poly tail11, hermite_h/spherical_jn) ✅ COMPLETE
 
 Fifty-seventh feature wave after Wave 286. Migrated graph/image/poly handlers to tail11/tail12; scalar `hermite_h`/`spherical_jn` integer validation in `eval_scalar_call`; `integration_repl_wave287_pipeline`.

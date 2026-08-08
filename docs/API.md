@@ -512,6 +512,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `prewitt` / `scharr` / `roberts` / `laplacian` / `histeq` / `sharpen` (tail11) | Image filter suite (Wave 287) |
 | `poly_deriv` (tail11) | Polynomial derivative assign (Wave 287) |
 | `hermite_h` / `spherical_jn` (scalar eval) | Special polynomial/Bessel in assign expr (Wave 287) |
+| `graph_biconnected_components` / `graph_eulerian_path` / `graph_hamiltonian_path` / `graph_tsp_heuristic` / `graph_eigenvector_centrality` / `graph_katz_centrality` / `graph_adjacency_spectrum` / `graph_laplacian` / `graph_normalised_laplacian` / `graph_eccentricity` / `graph_articulation_points` / `graph_bridges` / `graph_maximum_matching` / `graph_transitive_closure` / `graph_bellman_ford` / `graph_mst_kruskal` / `graph_mst_prim` (tail11) | Extended graph suite (Wave 288) |
+| `kruskal_wallis` / `stats_shapiro_wilk` / `stats_mann_whitney_u` / `stats_ks_2sample` (tail11) | Nonparametric stats assign (Wave 288) |
+| `geo_delaunay_2d` / `geo_convex_hull` (tail11) | Computational geometry assign (Wave 288) |
+| `adapthisteq` / `imflip` (tail11) | Image enhancement assign (Wave 288) |
+| `laguerre_l` / `chebyshev_t` (scalar eval) | Orthogonal polynomials in assign expr (Wave 288) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |
