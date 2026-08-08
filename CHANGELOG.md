@@ -7,6 +7,27 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-08 (Wave 279 — CellMemory introspection, topo/quantum tail11, explicit CFD 2D step, backtest scalars, spherical_jn) ✅ COMPLETE
+
+Forty-ninth feature wave after Wave 278. `cellmemory_input_dim`/`memory_dim`/`time_scales`; assign `cellmemory_long_term_state`; migrated `quantum_partial_trace`, `topo_alpha_complex`/`select_landmarks`/`witness_complex`/`persistence_landscape`, unified `cfd_upwind_step_2d` explicit+grid to tail11; scalar `run_backtest_sharpe`/`max_drawdown`; `spherical_jn` in `eval_special_two_arg`; `integration_repl_wave279_pipeline`.
+
+### Added (Wave 279)
+- **CellAI CellMemory** — `cellmemory_input_dim`, `cellmemory_memory_dim`, `cellmemory_time_scales` session introspection; assign `cellmemory_long_term_state(handle)`; getters on `CellMemory`.
+- **Topo REPL tail11** — assign `topo_alpha_complex`, `topo_select_landmarks`, `topo_witness_complex`, `topo_persistence_landscape`.
+- **Quantum REPL tail11** — assign `quantum_partial_trace`.
+- **CFD REPL tail11** — unified `cfd_upwind_step_2d` grid + explicit `(u,vx,vy,dt,dx,dy)` dispatch.
+- **Backtest REPL** — scalar assign `run_backtest_sharpe`, `run_backtest_max_drawdown`.
+- **Special functions** — `spherical_jn(n,x)` in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave279_pipeline`** — CellMemory/backtest/special/topo/quantum/CFD smoke.
+- **Unit** — `wave279_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 279 sync; **438** CTest suites.
+
+**438 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-08 (Wave 278 — token bucket introspection, crypto bytes-to-hex, BWT decode assign, 2D FEM/CFD tail11, quantum trajectory, backtest equity) ✅ COMPLETE
 
 Forty-eighth feature wave after Wave 277. `tokenbucket_capacity`/`refill_rate`; `crypto_bytes_to_hex`; `bwt_decode_vec` assign; `run_backtest_equity`; migrated `quantum_schrodinger`, 2D FEM/CFD, `fem_solve` to `assign_matrix_call_tail11`; `integration_repl_wave278_pipeline`.

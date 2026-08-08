@@ -604,8 +604,9 @@ See `CHANGELOG.md` for per-wave branch tables.
 - `crypto_bytes_to_hex`, `bwt_decode_vec` assign, `run_backtest_equity`
 - tail11: 2D FEM/CFD, `fem_solve`, `quantum_schrodinger`
 - `integration_repl_wave278_pipeline`
+- `integration_repl_wave279_pipeline`
 
-**437 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–278** closed for this incremental batch.
+**438 CTest suites** — all passing on `main`. **28-bench smoke OK**. Feature waves **231–279** closed for this incremental batch.
 
 ## Next (Wave 279+) — deferred
 

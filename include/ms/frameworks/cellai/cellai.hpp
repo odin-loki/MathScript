@@ -26,6 +26,10 @@ public:
     // Read-only snapshot for tests and diagnostics (no direct mutation of internal state).
     const Matrix<double>& long_term_state() const { return long_term_; }
 
+    size_t input_dim() const { return input_dim_; }
+    size_t memory_dim() const { return memory_dim_; }
+    const std::vector<double>& time_scales() const { return time_scales_; }
+
 private:
     size_t input_dim_;
     size_t memory_dim_;

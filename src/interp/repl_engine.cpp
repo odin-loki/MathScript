@@ -10497,6 +10497,66 @@ Result<Matrix<double>> eval_run_backtest_equity(const Matrix<double>& prices_m,
     return vector_to_column(bt.equity_curve);
 }
 
+Result<double> eval_run_backtest_sharpe(const Matrix<double>& prices_m,
+                                        const Matrix<double>& positions_m,
+                                        double initial_capital) {
+    constexpr const char* fn = "run_backtest_sharpe";
+    auto prices = matrix_to_coeff_vector(prices_m, fn);
+    if (!prices) {
+        return std::unexpected(prices.error());
+    }
+    if (prices->size() < 2) {
+        return std::unexpected(DomainError{fn, "expected price vector length >= 2"});
+    }
+    auto pos_vec = matrix_to_coeff_vector(positions_m, fn);
+    if (!pos_vec) {
+        return std::unexpected(pos_vec.error());
+    }
+    if (pos_vec->size() != prices->size()) {
+        return std::unexpected(DomainError{fn, "positions length must match prices"});
+    }
+    std::vector<int> positions;
+    positions.reserve(pos_vec->size());
+    for (double v : *pos_vec) {
+        if (v != std::floor(v)) {
+            return std::unexpected(DomainError{fn, "positions must be integers"});
+        }
+        positions.push_back(static_cast<int>(v));
+    }
+    const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
+    return bt.sharpe_ratio;
+}
+
+Result<double> eval_run_backtest_max_drawdown(const Matrix<double>& prices_m,
+                                              const Matrix<double>& positions_m,
+                                              double initial_capital) {
+    constexpr const char* fn = "run_backtest_max_drawdown";
+    auto prices = matrix_to_coeff_vector(prices_m, fn);
+    if (!prices) {
+        return std::unexpected(prices.error());
+    }
+    if (prices->size() < 2) {
+        return std::unexpected(DomainError{fn, "expected price vector length >= 2"});
+    }
+    auto pos_vec = matrix_to_coeff_vector(positions_m, fn);
+    if (!pos_vec) {
+        return std::unexpected(pos_vec.error());
+    }
+    if (pos_vec->size() != prices->size()) {
+        return std::unexpected(DomainError{fn, "positions length must match prices"});
+    }
+    std::vector<int> positions;
+    positions.reserve(pos_vec->size());
+    for (double v : *pos_vec) {
+        if (v != std::floor(v)) {
+            return std::unexpected(DomainError{fn, "positions must be integers"});
+        }
+        positions.push_back(static_cast<int>(v));
+    }
+    const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
+    return bt.max_drawdown;
+}
+
 Result<Matrix<double>> eval_izaac_vrf_keygen() {
     const auto key = izaac::keygen();
     Matrix<double> out(2, 32, 0.0);
@@ -17775,7 +17835,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "bisection" || fn == "brentq" || fn == "secant" || fn == "halley" ||
             fn == "fixed_point" || fn == "illinois" || fn == "simulated_annealing" ||
             fn == "differential_evolution" || fn == "particle_swarm" ||
-            fn == "gria_settling_time" || fn == "cellai_boltzmann_weights" ||
+            fn == "gria_settling_time" || fn == "run_backtest_sharpe" ||
+            fn == "run_backtest_max_drawdown" || fn == "cellai_boltzmann_weights" ||
             fn == "cellai_cell_to_cypha_features" ||
             fn == "tensorops_matmul" || fn == "tensorops_einsum") {
             return false;
@@ -18166,8 +18227,10 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         fn != "tokenbucket_new" && fn != "tokenbucket_consume" &&
         fn != "tokenbucket_available" && fn != "tokenbucket_capacity" &&
         fn != "tokenbucket_refill_rate" && fn != "cellmemory_new" &&
-        fn != "cellmemory_step" && fn != "cellmemory_recall" &&
-        fn != "cellmemory_consolidate" && fn != "cellai_cell_to_cypha_features" &&
+        fn != "cellmemory_input_dim" && fn != "cellmemory_memory_dim" &&
+        fn != "cellmemory_time_scales" && fn != "cellmemory_step" &&
+        fn != "cellmemory_recall" && fn != "cellmemory_consolidate" &&
+        fn != "cellai_cell_to_cypha_features" &&
         fn != "difmodel_new" &&
         fn != "difmodel_update" && fn != "difmodel_predict" &&
         fn != "difmodel_predict_interval" && fn != "difmodel_ood_score" &&
@@ -18447,6 +18510,70 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(bucket_check.error());
         }
         return std::to_string(bucket->refill_rate_per_sec()) + "\n";
+    }
+
+    if (fn == "cellmemory_input_dim") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cellmemory_input_dim(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        return std::to_string(memory->input_dim()) + "\n";
+    }
+
+    if (fn == "cellmemory_memory_dim") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cellmemory_memory_dim(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        return std::to_string(memory->memory_dim()) + "\n";
+    }
+
+    if (fn == "cellmemory_time_scales") {
+        if (call_args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected cellmemory_time_scales(handle)"});
+        }
+        std::string handle;
+        auto handle_check = parse_session_handle(call_args->at(0), fn.c_str(), handle);
+        if (!handle_check) {
+            return std::unexpected(handle_check.error());
+        }
+        cellai::CellMemory* memory = nullptr;
+        auto memory_check = require_session_object_type<cellai::CellMemory>(
+            session_objects_, handle, fn.c_str(), memory);
+        if (!memory_check) {
+            return std::unexpected(memory_check.error());
+        }
+        const auto& scales = memory->time_scales();
+        std::ostringstream out;
+        out << "[";
+        for (size_t i = 0; i < scales.size(); ++i) {
+            if (i > 0) {
+                out << ", ";
+            }
+            out << scales[i];
+        }
+        out << "]\n";
+        return out.str();
     }
 
     if (fn == "cellmemory_new") {
@@ -19990,7 +20117,8 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "fem_load_3d" || callee == "cfd_grid3d" ||
            callee == "cfd_square_pulse_3d" || callee == "cfd_upwind_step_3d" ||
            callee == "crypto_bytes_to_hex" || callee == "bwt_decode_vec" ||
-           callee == "run_backtest_equity" || callee == "quantum_schrodinger" ||
+           callee == "run_backtest_equity" || callee == "cellmemory_long_term_state" ||
+           callee == "quantum_schrodinger" ||
            callee == "fem_mesh2d_rectangular" || callee == "fem_mesh2d" ||
            callee == "fem_stiffness_2d" || callee == "assemble_stiffness_2d" ||
            callee == "fem_load_2d" || callee == "fem_solve" ||
@@ -20547,6 +20675,9 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     }
     if (callee == "run_backtest" || callee == "run_backtest_equity") {
         return arity == 3;
+    }
+    if (callee == "cellmemory_long_term_state") {
+        return arity == 1;
     }
     if (callee == "quantum_schrodinger" || callee == "quantum_schrodinger_final") {
         return arity == 5;
@@ -21476,6 +21607,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "spherical_in") {
             return spherical_in(static_cast<int>(args[0]), args[1]);
+        }
+        if (fn == "spherical_jn") {
+            return spherical_jn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_kn") {
             return spherical_kn(static_cast<int>(args[0]), args[1]);
@@ -24137,30 +24271,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
                 assign.callee, "expected non-negative integer n and n_max"});
         }
         result = eval_quantum_fock_state(n, n_max);
-    } else if (assign.callee == "quantum_partial_trace" && assign.args.size() == 4) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double d1_d = 0.0;
-        double d2_d = 0.0;
-        double sub_d = 0.0;
-        if (!parse_number(assign.args[1], d1_d) || !parse_number(assign.args[2], d2_d) ||
-            !parse_number(assign.args[3], sub_d)) {
-            return std::unexpected(DomainError{
-                "quantum_partial_trace",
-                "expected quantum_partial_trace(rho, d1, d2, subsystem)"});
-        }
-        const int d1 = static_cast<int>(d1_d);
-        const int d2 = static_cast<int>(d2_d);
-        const int subsystem = static_cast<int>(sub_d);
-        if (d1 < 1 || d2 < 1 || d1_d != d1 || d2_d != d2 || (subsystem != 0 && subsystem != 1) ||
-            sub_d != subsystem) {
-            return std::unexpected(DomainError{
-                "quantum_partial_trace",
-                "expected positive integer d1, d2 and subsystem 0 or 1"});
-        }
-        result = eval_quantum_partial_trace_matrix(*matrix, d1, d2, subsystem);
     } else if (assign.callee == "pde_heat_1d" && assign.args.size() == 5) {
         auto x0_m = resolve_operand(assign.args[0]);
         if (!x0_m) {
@@ -27777,123 +27887,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail8(const MatrixCallAss
             return std::unexpected(right.error());
         }
         result = eval_sparse_add(*left, *right);
-    } else if (assign.callee == "topo_alpha_complex" &&
-               (assign.args.size() == 2 || assign.args.size() == 3)) {
-        auto P = resolve_operand(assign.args[0]);
-        if (!P) {
-            return std::unexpected(P.error());
-        }
-        auto alpha = parse_scalar_arg(assign.args[1], "topo_alpha_complex");
-        if (!alpha) {
-            return std::unexpected(alpha.error());
-        }
-        int max_dim = 2;
-        if (assign.args.size() == 3) {
-            auto md = parse_scalar_arg(assign.args[2], "topo_alpha_complex");
-            if (!md) {
-                return std::unexpected(md.error());
-            }
-            max_dim = static_cast<int>(*md);
-            if (max_dim < 0 || *md != max_dim) {
-                return std::unexpected(
-                    DomainError{"topo_alpha_complex", "expected non-negative integer max_dim"});
-            }
-        }
-        result = eval_topo_alpha_complex(*P, *alpha, max_dim);
-    } else if (assign.callee == "topo_select_landmarks" &&
-               (assign.args.size() == 2 || assign.args.size() == 3)) {
-        auto P = resolve_operand(assign.args[0]);
-        if (!P) {
-            return std::unexpected(P.error());
-        }
-        auto n_arg = parse_scalar_arg(assign.args[1], "topo_select_landmarks");
-        if (!n_arg) {
-            return std::unexpected(n_arg.error());
-        }
-        const int n_landmarks = static_cast<int>(*n_arg);
-        if (n_landmarks < 1 || *n_arg != n_landmarks) {
-            return std::unexpected(
-                DomainError{"topo_select_landmarks", "expected positive integer n"});
-        }
-        int seed_index = 0;
-        if (assign.args.size() == 3) {
-            auto seed = parse_scalar_arg(assign.args[2], "topo_select_landmarks");
-            if (!seed) {
-                return std::unexpected(seed.error());
-            }
-            seed_index = static_cast<int>(*seed);
-            if (*seed != seed_index) {
-                return std::unexpected(
-                    DomainError{"topo_select_landmarks", "expected integer seed_index"});
-            }
-        }
-        result = eval_topo_select_landmarks(*P, n_landmarks, seed_index);
-    } else if (assign.callee == "topo_witness_complex" &&
-               (assign.args.size() == 3 || assign.args.size() == 4)) {
-        auto P = resolve_operand(assign.args[0]);
-        if (!P) {
-            return std::unexpected(P.error());
-        }
-        auto landmarks = resolve_operand(assign.args[1]);
-        if (!landmarks) {
-            return std::unexpected(landmarks.error());
-        }
-        auto eps = parse_scalar_arg(assign.args[2], "topo_witness_complex");
-        if (!eps) {
-            return std::unexpected(eps.error());
-        }
-        int max_dim = 2;
-        if (assign.args.size() == 4) {
-            auto md = parse_scalar_arg(assign.args[3], "topo_witness_complex");
-            if (!md) {
-                return std::unexpected(md.error());
-            }
-            max_dim = static_cast<int>(*md);
-            if (max_dim < 0 || *md != max_dim) {
-                return std::unexpected(
-                    DomainError{"topo_witness_complex", "expected non-negative integer max_dim"});
-            }
-        }
-        result = eval_topo_witness_complex(*P, *landmarks, *eps, max_dim);
-    } else if (assign.callee == "topo_persistence_landscape" &&
-               (assign.args.size() == 3 || assign.args.size() == 5)) {
-        auto dgm = resolve_operand(assign.args[0]);
-        if (!dgm) {
-            return std::unexpected(dgm.error());
-        }
-        auto layers_arg = parse_scalar_arg(assign.args[1], "topo_persistence_landscape");
-        if (!layers_arg) {
-            return std::unexpected(layers_arg.error());
-        }
-        auto samples_arg = parse_scalar_arg(assign.args[2], "topo_persistence_landscape");
-        if (!samples_arg) {
-            return std::unexpected(samples_arg.error());
-        }
-        const int n_layers = static_cast<int>(*layers_arg);
-        const int n_samples = static_cast<int>(*samples_arg);
-        if (n_layers < 1 || *layers_arg != n_layers) {
-            return std::unexpected(
-                DomainError{"topo_persistence_landscape", "expected integer n_layers >= 1"});
-        }
-        if (n_samples < 2 || *samples_arg != n_samples) {
-            return std::unexpected(
-                DomainError{"topo_persistence_landscape", "expected integer n_samples >= 2"});
-        }
-        double t_min = 0.0;
-        double t_max = 0.0;
-        if (assign.args.size() == 5) {
-            auto tmin = parse_scalar_arg(assign.args[3], "topo_persistence_landscape");
-            if (!tmin) {
-                return std::unexpected(tmin.error());
-            }
-            auto tmax = parse_scalar_arg(assign.args[4], "topo_persistence_landscape");
-            if (!tmax) {
-                return std::unexpected(tmax.error());
-            }
-            t_min = *tmin;
-            t_max = *tmax;
-        }
-        result = eval_topo_persistence_landscape(*dgm, n_layers, n_samples, t_min, t_max);
     } else if (assign.callee == "quantum_grover_search" &&
                (assign.args.size() == 2 || assign.args.size() == 3)) {
         auto n_qubits_val = parse_scalar_arg(assign.args[0], "quantum_grover_search");
@@ -28067,62 +28060,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail9(const MatrixCallAss
             time_scales = std::move(*parsed_scales);
         }
         result = eval_cellai_cell_to_cypha_features(memory, time_scales);
-    } else if (assign.callee == "cfd_upwind_step_2d" &&
-               (assign.args.size() >= 6 && assign.args.size() <= 8)) {
-        auto first = resolve_operand(assign.args[0]);
-        if (!first) {
-            return std::unexpected(first.error());
-        }
-        if (cfd_grid2d_from_packed_matrix(*first, "cfd_upwind_step_2d")) {
-            result = std::unexpected(DomainError{"assign", "unsupported matrix call"});
-        } else {
-        auto u = first;
-        auto vx = parse_scalar_arg(assign.args[1], "cfd_upwind_step_2d");
-        if (!vx) {
-            return std::unexpected(vx.error());
-        }
-        auto vy = parse_scalar_arg(assign.args[2], "cfd_upwind_step_2d");
-        if (!vy) {
-            return std::unexpected(vy.error());
-        }
-        auto dt = parse_scalar_arg(assign.args[3], "cfd_upwind_step_2d");
-        if (!dt) {
-            return std::unexpected(dt.error());
-        }
-        auto dx = parse_scalar_arg(assign.args[4], "cfd_upwind_step_2d");
-        if (!dx) {
-            return std::unexpected(dx.error());
-        }
-        auto dy = parse_scalar_arg(assign.args[5], "cfd_upwind_step_2d");
-        if (!dy) {
-            return std::unexpected(dy.error());
-        }
-        cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
-        cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
-        if (assign.args.size() >= 7) {
-            auto bcx = parse_scalar_arg(assign.args[6], "cfd_upwind_step_2d");
-            if (!bcx) {
-                return std::unexpected(bcx.error());
-            }
-            auto parsed = parse_cfd_bc(*bcx, "cfd_upwind_step_2d");
-            if (!parsed) {
-                return std::unexpected(parsed.error());
-            }
-            bc_x = *parsed;
-        }
-        if (assign.args.size() == 8) {
-            auto bcy = parse_scalar_arg(assign.args[7], "cfd_upwind_step_2d");
-            if (!bcy) {
-                return std::unexpected(bcy.error());
-            }
-            auto parsed = parse_cfd_bc(*bcy, "cfd_upwind_step_2d");
-            if (!parsed) {
-                return std::unexpected(parsed.error());
-            }
-            bc_y = *parsed;
-        }
-        result = eval_cfd_upwind_step_2d(*u, *vx, *vy, *dt, *dx, *dy, bc_x, bc_y);
-        }
     } else if (assign.callee == "gria_divergence_trajectory" && assign.args.size() == 4) {
         auto a = resolve_operand(assign.args[0]);
         if (!a) {
@@ -28659,52 +28596,103 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
         }
         result = eval_cfd_constant_velocity(*n_i, *v);
     } else if (assign.callee == "cfd_upwind_step_2d" &&
-               (assign.args.size() >= 5 && assign.args.size() <= 7)) {
-        auto grid = resolve_operand(assign.args[0]);
-        if (!grid) {
-            return std::unexpected(grid.error());
+               (assign.args.size() >= 5 && assign.args.size() <= 8)) {
+        auto first = resolve_operand(assign.args[0]);
+        if (!first) {
+            return std::unexpected(first.error());
         }
-        auto u = resolve_operand(assign.args[1]);
-        if (!u) {
-            return std::unexpected(u.error());
-        }
-        auto vx = parse_scalar_arg(assign.args[2], "cfd_upwind_step_2d");
-        if (!vx) {
-            return std::unexpected(vx.error());
-        }
-        auto vy = parse_scalar_arg(assign.args[3], "cfd_upwind_step_2d");
-        if (!vy) {
-            return std::unexpected(vy.error());
-        }
-        auto dt = parse_scalar_arg(assign.args[4], "cfd_upwind_step_2d");
-        if (!dt) {
-            return std::unexpected(dt.error());
-        }
-        cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
-        cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
-        if (assign.args.size() >= 6) {
-            auto bcx = parse_scalar_arg(assign.args[5], "cfd_upwind_step_2d");
-            if (!bcx) {
-                return std::unexpected(bcx.error());
+        if (cfd_grid2d_from_packed_matrix(*first, "cfd_upwind_step_2d") &&
+            assign.args.size() <= 7) {
+            auto grid = first;
+            auto u = resolve_operand(assign.args[1]);
+            if (!u) {
+                return std::unexpected(u.error());
             }
-            auto parsed = parse_cfd_bc(*bcx, "cfd_upwind_step_2d");
-            if (!parsed) {
-                return std::unexpected(parsed.error());
+            auto vx = parse_scalar_arg(assign.args[2], "cfd_upwind_step_2d");
+            if (!vx) {
+                return std::unexpected(vx.error());
             }
-            bc_x = *parsed;
+            auto vy = parse_scalar_arg(assign.args[3], "cfd_upwind_step_2d");
+            if (!vy) {
+                return std::unexpected(vy.error());
+            }
+            auto dt = parse_scalar_arg(assign.args[4], "cfd_upwind_step_2d");
+            if (!dt) {
+                return std::unexpected(dt.error());
+            }
+            cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
+            cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
+            if (assign.args.size() >= 6) {
+                auto bcx = parse_scalar_arg(assign.args[5], "cfd_upwind_step_2d");
+                if (!bcx) {
+                    return std::unexpected(bcx.error());
+                }
+                auto parsed = parse_cfd_bc(*bcx, "cfd_upwind_step_2d");
+                if (!parsed) {
+                    return std::unexpected(parsed.error());
+                }
+                bc_x = *parsed;
+            }
+            if (assign.args.size() == 7) {
+                auto bcy = parse_scalar_arg(assign.args[6], "cfd_upwind_step_2d");
+                if (!bcy) {
+                    return std::unexpected(bcy.error());
+                }
+                auto parsed = parse_cfd_bc(*bcy, "cfd_upwind_step_2d");
+                if (!parsed) {
+                    return std::unexpected(parsed.error());
+                }
+                bc_y = *parsed;
+            }
+            result = eval_cfd_upwind_step_2d_from_grid(*grid, *u, *vx, *vy, *dt, bc_x, bc_y);
+        } else if (assign.args.size() >= 6 && assign.args.size() <= 8) {
+            auto u = first;
+            auto vx = parse_scalar_arg(assign.args[1], "cfd_upwind_step_2d");
+            if (!vx) {
+                return std::unexpected(vx.error());
+            }
+            auto vy = parse_scalar_arg(assign.args[2], "cfd_upwind_step_2d");
+            if (!vy) {
+                return std::unexpected(vy.error());
+            }
+            auto dt = parse_scalar_arg(assign.args[3], "cfd_upwind_step_2d");
+            if (!dt) {
+                return std::unexpected(dt.error());
+            }
+            auto dx = parse_scalar_arg(assign.args[4], "cfd_upwind_step_2d");
+            if (!dx) {
+                return std::unexpected(dx.error());
+            }
+            auto dy = parse_scalar_arg(assign.args[5], "cfd_upwind_step_2d");
+            if (!dy) {
+                return std::unexpected(dy.error());
+            }
+            cfd::BoundaryCondition bc_x = cfd::BoundaryCondition::Periodic;
+            cfd::BoundaryCondition bc_y = cfd::BoundaryCondition::Periodic;
+            if (assign.args.size() >= 7) {
+                auto bcx = parse_scalar_arg(assign.args[6], "cfd_upwind_step_2d");
+                if (!bcx) {
+                    return std::unexpected(bcx.error());
+                }
+                auto parsed = parse_cfd_bc(*bcx, "cfd_upwind_step_2d");
+                if (!parsed) {
+                    return std::unexpected(parsed.error());
+                }
+                bc_x = *parsed;
+            }
+            if (assign.args.size() == 8) {
+                auto bcy = parse_scalar_arg(assign.args[7], "cfd_upwind_step_2d");
+                if (!bcy) {
+                    return std::unexpected(bcy.error());
+                }
+                auto parsed = parse_cfd_bc(*bcy, "cfd_upwind_step_2d");
+                if (!parsed) {
+                    return std::unexpected(parsed.error());
+                }
+                bc_y = *parsed;
+            }
+            result = eval_cfd_upwind_step_2d(*u, *vx, *vy, *dt, *dx, *dy, bc_x, bc_y);
         }
-        if (assign.args.size() == 7) {
-            auto bcy = parse_scalar_arg(assign.args[6], "cfd_upwind_step_2d");
-            if (!bcy) {
-                return std::unexpected(bcy.error());
-            }
-            auto parsed = parse_cfd_bc(*bcy, "cfd_upwind_step_2d");
-            if (!parsed) {
-                return std::unexpected(parsed.error());
-            }
-            bc_y = *parsed;
-        }
-        result = eval_cfd_upwind_step_2d_from_grid(*grid, *u, *vx, *vy, *dt, bc_x, bc_y);
     } else if (assign.callee == "cellai_hebbian_update" && assign.args.size() == 4) {
         auto w = resolve_operand(assign.args[0]);
         if (!w) {
@@ -29248,6 +29236,167 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail11(const MatrixCallAs
             amplitude = *amp;
         }
         result = eval_cfd_square_pulse_2d(*grid, *xc, *yc, *width_x, *width_y, amplitude);
+    } else if (assign.callee == "cellmemory_long_term_state" && assign.args.size() == 1) {
+        std::string handle = trim_copy(assign.args[0]);
+        if (!is_identifier(handle)) {
+            return std::unexpected(DomainError{
+                "cellmemory_long_term_state", "expected CellMemory handle identifier"});
+        }
+        const auto it = session_objects_.find(handle);
+        if (it == session_objects_.end()) {
+            return std::unexpected(DomainError{
+                "cellmemory_long_term_state", "session object not found: " + handle});
+        }
+        if (!std::holds_alternative<cellai::CellMemory>(it->second)) {
+            return std::unexpected(DomainError{
+                "cellmemory_long_term_state",
+                std::string("session object '") + handle + "' is not a CellMemory"});
+        }
+        result = std::get<cellai::CellMemory>(it->second).long_term_state();
+    } else if (assign.callee == "quantum_partial_trace" && assign.args.size() == 4) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto d1_val = parse_scalar_arg(assign.args[1], "quantum_partial_trace");
+        if (!d1_val) {
+            return std::unexpected(d1_val.error());
+        }
+        auto d2_val = parse_scalar_arg(assign.args[2], "quantum_partial_trace");
+        if (!d2_val) {
+            return std::unexpected(d2_val.error());
+        }
+        auto sub_val = parse_scalar_arg(assign.args[3], "quantum_partial_trace");
+        if (!sub_val) {
+            return std::unexpected(sub_val.error());
+        }
+        const int d1 = static_cast<int>(*d1_val);
+        const int d2 = static_cast<int>(*d2_val);
+        const int subsystem = static_cast<int>(*sub_val);
+        if (d1 < 1 || d2 < 1 || *d1_val != d1 || *d2_val != d2 ||
+            (subsystem != 0 && subsystem != 1) || *sub_val != subsystem) {
+            return std::unexpected(DomainError{
+                "quantum_partial_trace",
+                "expected positive integer d1, d2 and subsystem 0 or 1"});
+        }
+        result = eval_quantum_partial_trace_matrix(*matrix, d1, d2, subsystem);
+    } else if (assign.callee == "topo_alpha_complex" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto P = resolve_operand(assign.args[0]);
+        if (!P) {
+            return std::unexpected(P.error());
+        }
+        auto alpha = parse_scalar_arg(assign.args[1], "topo_alpha_complex");
+        if (!alpha) {
+            return std::unexpected(alpha.error());
+        }
+        int max_dim = 2;
+        if (assign.args.size() == 3) {
+            auto md = parse_scalar_arg(assign.args[2], "topo_alpha_complex");
+            if (!md) {
+                return std::unexpected(md.error());
+            }
+            max_dim = static_cast<int>(*md);
+            if (max_dim < 0 || *md != max_dim) {
+                return std::unexpected(
+                    DomainError{"topo_alpha_complex", "expected non-negative integer max_dim"});
+            }
+        }
+        result = eval_topo_alpha_complex(*P, *alpha, max_dim);
+    } else if (assign.callee == "topo_select_landmarks" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto P = resolve_operand(assign.args[0]);
+        if (!P) {
+            return std::unexpected(P.error());
+        }
+        auto n_arg = parse_scalar_arg(assign.args[1], "topo_select_landmarks");
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n_landmarks = static_cast<int>(*n_arg);
+        if (n_landmarks < 1 || *n_arg != n_landmarks) {
+            return std::unexpected(
+                DomainError{"topo_select_landmarks", "expected positive integer n"});
+        }
+        int seed_index = 0;
+        if (assign.args.size() == 3) {
+            auto seed = parse_scalar_arg(assign.args[2], "topo_select_landmarks");
+            if (!seed) {
+                return std::unexpected(seed.error());
+            }
+            seed_index = static_cast<int>(*seed);
+            if (*seed != seed_index) {
+                return std::unexpected(
+                    DomainError{"topo_select_landmarks", "expected integer seed_index"});
+            }
+        }
+        result = eval_topo_select_landmarks(*P, n_landmarks, seed_index);
+    } else if (assign.callee == "topo_witness_complex" &&
+               (assign.args.size() == 3 || assign.args.size() == 4)) {
+        auto P = resolve_operand(assign.args[0]);
+        if (!P) {
+            return std::unexpected(P.error());
+        }
+        auto landmarks = resolve_operand(assign.args[1]);
+        if (!landmarks) {
+            return std::unexpected(landmarks.error());
+        }
+        auto eps = parse_scalar_arg(assign.args[2], "topo_witness_complex");
+        if (!eps) {
+            return std::unexpected(eps.error());
+        }
+        int max_dim = 2;
+        if (assign.args.size() == 4) {
+            auto md = parse_scalar_arg(assign.args[3], "topo_witness_complex");
+            if (!md) {
+                return std::unexpected(md.error());
+            }
+            max_dim = static_cast<int>(*md);
+            if (max_dim < 0 || *md != max_dim) {
+                return std::unexpected(
+                    DomainError{"topo_witness_complex", "expected non-negative integer max_dim"});
+            }
+        }
+        result = eval_topo_witness_complex(*P, *landmarks, *eps, max_dim);
+    } else if (assign.callee == "topo_persistence_landscape" &&
+               (assign.args.size() == 3 || assign.args.size() == 5)) {
+        auto dgm = resolve_operand(assign.args[0]);
+        if (!dgm) {
+            return std::unexpected(dgm.error());
+        }
+        auto layers_arg = parse_scalar_arg(assign.args[1], "topo_persistence_landscape");
+        if (!layers_arg) {
+            return std::unexpected(layers_arg.error());
+        }
+        auto samples_arg = parse_scalar_arg(assign.args[2], "topo_persistence_landscape");
+        if (!samples_arg) {
+            return std::unexpected(samples_arg.error());
+        }
+        const int n_layers = static_cast<int>(*layers_arg);
+        const int n_samples = static_cast<int>(*samples_arg);
+        if (n_layers < 1 || *layers_arg != n_layers) {
+            return std::unexpected(
+                DomainError{"topo_persistence_landscape", "expected integer n_layers >= 1"});
+        }
+        if (n_samples < 2 || *samples_arg != n_samples) {
+            return std::unexpected(
+                DomainError{"topo_persistence_landscape", "expected integer n_samples >= 2"});
+        }
+        double t_min = 0.0;
+        double t_max = 0.0;
+        if (assign.args.size() == 5) {
+            auto tmin = parse_scalar_arg(assign.args[3], "topo_persistence_landscape");
+            if (!tmin) {
+                return std::unexpected(tmin.error());
+            }
+            auto tmax = parse_scalar_arg(assign.args[4], "topo_persistence_landscape");
+            if (!tmax) {
+                return std::unexpected(tmax.error());
+            }
+            t_min = *tmin;
+            t_max = *tmax;
+        }
+        result = eval_topo_persistence_landscape(*dgm, n_layers, n_samples, t_min, t_max);
     }
 
     return result;
@@ -34120,6 +34269,38 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 }
                 return assign_scalar(lhs, *value);
             }
+            if (callee == "run_backtest_sharpe" || callee == "run_backtest_max_drawdown") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(DomainError{
+                        callee,
+                        "expected " + callee + "(prices, positions, capital)"});
+                }
+                auto prices_m = eval_matrix_operand(trim_copy(call_args->at(0)));
+                if (!prices_m) {
+                    return std::unexpected(prices_m.error());
+                }
+                auto positions_m = eval_matrix_operand(trim_copy(call_args->at(1)));
+                if (!positions_m) {
+                    return std::unexpected(positions_m.error());
+                }
+                double capital = 0.0;
+                if (!parse_number(trim_copy((*call_args)[2]), capital)) {
+                    auto cap_expr = eval_scalar_expr(state_, trim_copy((*call_args)[2]));
+                    if (!cap_expr) {
+                        return std::unexpected(cap_expr.error());
+                    }
+                    capital = *cap_expr;
+                }
+                Result<double> value =
+                    callee == "run_backtest_sharpe"
+                        ? eval_run_backtest_sharpe(*prices_m, *positions_m, capital)
+                        : eval_run_backtest_max_drawdown(*prices_m, *positions_m, capital);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
             if (callee == "info_joint_entropy") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 3) {
@@ -35860,6 +36041,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  simulate_gbm_path(100, 0.05, 0.2, 0.01, 50) GBM price path column (requires izaac seed)\n"
             "  run_backtest(prices, positions, 10000) backtest metrics 1×4 row (requires matching vectors)\n"
             "  name = run_backtest_equity(prices, positions, capital) equity curve column from backtest\n"
+            "  name = run_backtest_sharpe(prices, positions, capital) backtest Sharpe ratio\n"
+            "  name = run_backtest_max_drawdown(prices, positions, capital) backtest max drawdown\n"
             "  izaac_vrf_keygen() 2×32 VRF key matrix (private row, public row)\n"
             "  izaac_vrf_prove(key, msg) VRF proof matrix from 2×32 key and byte message\n"
             "  izaac_vrf_verify(pub, msg, proof) verify VRF (1 valid, 0 invalid)\n"
@@ -35879,9 +36062,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tokenbucket_capacity(tb) configured token bucket capacity\n"
             "  tokenbucket_refill_rate(tb) configured refill rate per second\n"
             "  cellmemory_new(cm, 2, 4, [0.1, 1, 10]) create session CellMemory (handle persists)\n"
+            "  cellmemory_input_dim(cm) CellMemory input dimension\n"
+            "  cellmemory_memory_dim(cm) CellMemory memory dimension\n"
+            "  cellmemory_time_scales(cm) CellMemory time-scale vector\n"
             "  cellmemory_step(cm, [1;0]) step CellMemory with input column vector\n"
             "  cellmemory_recall(cm, 1.0) recall CellMemory state at time_scale\n"
             "  cellmemory_consolidate(cm) consolidate CellMemory long-term state\n"
+            "  name = cellmemory_long_term_state(cm) CellMemory long-term state matrix\n"
             "  difmodel_new(dm, 1, 1, 2, 0.1) create session DifModel (handle persists)\n"
             "  difmodel_update(dm, [1], [0.5]) update DifModel with input/output column vectors\n"
             "  difmodel_predict(dm, [1]) predict with DifModel\n"
@@ -36065,7 +36252,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  izaac seed N  izaac_estimate_pi(n)  izaac_laplace_noise(v,e,s)  izaac_gaussian_noise(v,e,d,s)\n"
             "  bloom_new(h,n,fp)  bloom_insert(h,\"item\")  bloom_check(h,\"item\")  bloom_bit_count(h)  bloom_hash_count(h)\n"
             "  tokenbucket_new(h,cap,rate)  tokenbucket_consume(h,t,now)  tokenbucket_available(h,now)  tokenbucket_capacity(h)  tokenbucket_refill_rate(h)\n"
-            "  cellmemory_new(h,in,dim,[scales])  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)\n"
+            "  cellmemory_new(h,in,dim,[scales])  cellmemory_input_dim(h)  cellmemory_memory_dim(h)  cellmemory_time_scales(h)\n"
+            "  cellmemory_step(h,M)  cellmemory_recall(h,t)  cellmemory_consolidate(h)  cellmemory_long_term_state(h)\n"
             "  difmodel_new(h,in,out,experts,lr)  difmodel_update(h,X,Y)  difmodel_predict(h,X)  difmodel_predict_interval(h,X)\n"
             "  difmodel_ood_score(h,X)  difmodel_gh_gate(h,X)\n"
             "  cluster_new(h,n,seed)  cluster_run_election(h)  cluster_replicate(h,leader,\"cmd\")  cluster_current_leader(h)  cluster_status(h)\n"

@@ -469,6 +469,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `crypto_bytes_to_hex` | Byte matrix to hex ASCII column (Wave 278) |
 | `bwt_decode_vec` (assign) / `run_backtest_equity` | BWT decode assign + equity curve (Wave 278) |
 | 2D FEM/CFD + `fem_solve` + `quantum_schrodinger` (tail11) | Composable 2D pipeline dispatch (Wave 278) |
+| `cellmemory_input_dim` / `memory_dim` / `time_scales` / `cellmemory_long_term_state` | CellMemory introspection + long-term state (Wave 279) |
+| `run_backtest_sharpe` / `run_backtest_max_drawdown` | Backtest scalar metrics (Wave 279) |
+| `quantum_partial_trace` / `topo_alpha_complex` / `topo_select_landmarks` / `topo_witness_complex` / `topo_persistence_landscape` (tail11) | Quantum + topo composable dispatch (Wave 279) |
+| explicit `cfd_upwind_step_2d(u,vx,vy,dt,dx,dy)` (tail11) | 2D upwind step without packed grid (Wave 279) |
+| `spherical_jn` (scalar two-arg eval) | Spherical Bessel j in assign expr (Wave 279) |
 | `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
 | `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
 | `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |

@@ -10367,3 +10367,38 @@ TEST(ReplCommandsTest, wave278_fem_cfd_quantum) {
     expect_ok(interp, "eq = run_backtest_equity(p, q, 100)");
     EXPECT_EQ(interp.state().matrices.at("eq").rows(), 3u);
 }
+
+TEST(ReplCommandsTest, wave279_cell_backtest_special) {
+    Interpreter interp;
+    ms::izaac::clear_session();
+    expect_contains(interp, "help", "cellmemory_memory_dim");
+    expect_contains(interp, "help", "run_backtest_max_drawdown");
+
+    expect_ok(interp, "cellmemory_new(cm, 2, 2, [1, 5])");
+    expect_ok(interp, "cellmemory_input_dim(cm)");
+    expect_ok(interp, "lt = cellmemory_long_term_state(cm)");
+    EXPECT_EQ(interp.state().matrices.at("lt").rows(), 2u);
+
+    expect_ok(interp, "p = [10, 11, 12]");
+    expect_ok(interp, "q = [0, 1, 0]");
+    expect_ok(interp, "sh = run_backtest_sharpe(p, q, 1000)");
+    expect_ok(interp, "sj = spherical_jn(1, 2)");
+    EXPECT_TRUE(interp.state().scalars.count("sh") > 0);
+    EXPECT_TRUE(interp.state().scalars.count("sj") > 0);
+}
+
+TEST(ReplCommandsTest, wave279_topo_quantum_cfd) {
+    Interpreter interp;
+
+    expect_ok(interp, "pts = [0, 0; 1, 0; 0, 1]");
+    expect_ok(interp, "lm = topo_select_landmarks(pts, 2)");
+    EXPECT_EQ(interp.state().matrices.at("lm").rows(), 2u);
+
+    expect_ok(interp, "rho = [1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0]");
+    expect_ok(interp, "r = quantum_partial_trace(rho, 2, 2, 1)");
+    EXPECT_EQ(interp.state().matrices.at("r").rows(), 2u);
+
+    expect_ok(interp, "f = [0, 1, 0; 0, 1, 0; 0, 1, 0]");
+    expect_ok(interp, "f1 = cfd_upwind_step_2d(f, 1, 0, 0.05, 0.2, 0.2)");
+    EXPECT_EQ(interp.state().matrices.at("f1").rows(), 3u);
+}
