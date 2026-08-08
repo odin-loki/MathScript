@@ -10796,3 +10796,25 @@ TEST(ReplCommandsTest, wave293_special_scalar) {
     expect_ok(interp, "la = laguerre_la(2, 1.0, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("la"), ms::laguerre_la(2, 1.0, 0.5), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave294_linalg_geo_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_ok(interp, "H = hess(A)");
+    EXPECT_EQ(interp.state().matrices.at("H").rows(), 3u);
+    EXPECT_NEAR(interp.state().matrices.at("H")(2, 0), 0.0, 1e-10);
+
+    expect_ok(interp, "T = schur(A)");
+    EXPECT_EQ(interp.state().matrices.at("T").rows(), 3u);
+
+    expect_ok(interp, "pt = geo_bezier_eval([0, 0; 1, 2; 2, 0], 0.5)");
+    EXPECT_EQ(interp.state().matrices.at("pt").cols(), 2u);
+}
+
+TEST(ReplCommandsTest, wave294_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "ln = laguerre_ln(2, 0, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("ln"), ms::laguerre_ln(2, 0, 0.5), 1e-9);
+}

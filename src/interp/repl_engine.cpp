@@ -20271,7 +20271,13 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "fem_load_2d" || callee == "fem_solve" ||
            callee == "cfd_grid2d" || callee == "cfd_square_pulse_2d" ||
            callee == "quantum_dagger" || callee == "quantum_matmul_dm" ||
-           callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases";
+           callee == "izaac_rand_matrix" || callee == "quantum_schmidt_bases" ||
+           callee == "sqrtm" || callee == "logm" || callee == "cosm" || callee == "sinm" ||
+           callee == "diag" || callee == "tril" || callee == "triu" ||
+           callee == "hess" || callee == "schur" ||
+           callee == "geo_bezier_eval" || callee == "geo_bezier_deriv" ||
+           callee == "geo_catmull_rom" || callee == "geo_hermite_curve" ||
+           callee == "geo_bspline_eval";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -22441,6 +22447,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return lerch_phi(args[0], args[1], args[2]);
     }
     if (args.size() == 3 && fn == "laguerre_ln") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 0.0 ||
+            std::floor(args[1]) != args[1]) {
+            return std::unexpected(
+                DomainError{"laguerre_ln", "expected non-negative integer n and k"});
+        }
         return laguerre_ln(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
     }
     if (args.size() == 3 && fn == "chebyshev_tn") {
@@ -23419,178 +23430,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
-    } else if (assign.callee == "sqrtm" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = sqrtm(*matrix);
-    } else if (assign.callee == "logm" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = logm(*matrix);
-    } else if (assign.callee == "cosm" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = cosm(*matrix);
-    } else if (assign.callee == "sinm" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = sinm(*matrix);
-    } else if (assign.callee == "diag" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto v = matrix_to_coeff_vector(*matrix, "diag");
-        if (!v) {
-            return std::unexpected(v.error());
-        }
-        if (v->empty()) {
-            return std::unexpected(DomainError{"diag", "expected non-empty vector"});
-        }
-        result = diag(*v);
-    } else if (assign.callee == "tril" &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        int k = 0;
-        if (assign.args.size() == 2) {
-            double k_d = 0.0;
-            if (!parse_number(assign.args[1], k_d)) {
-                auto it = state_.scalars.find(assign.args[1]);
-                if (it != state_.scalars.end()) {
-                    k_d = it->second;
-                } else {
-                    return std::unexpected(
-                        DomainError{"tril", "expected tril(A) or tril(A, k)"});
-                }
-            }
-            if (k_d != static_cast<int>(k_d)) {
-                return std::unexpected(DomainError{"tril", "expected integer k"});
-            }
-            k = static_cast<int>(k_d);
-        }
-        result = tril(*matrix, k);
-    } else if (assign.callee == "triu" &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        int k = 0;
-        if (assign.args.size() == 2) {
-            double k_d = 0.0;
-            if (!parse_number(assign.args[1], k_d)) {
-                auto it = state_.scalars.find(assign.args[1]);
-                if (it != state_.scalars.end()) {
-                    k_d = it->second;
-                } else {
-                    return std::unexpected(
-                        DomainError{"triu", "expected triu(A) or triu(A, k)"});
-                }
-            }
-            if (k_d != static_cast<int>(k_d)) {
-                return std::unexpected(DomainError{"triu", "expected integer k"});
-            }
-            k = static_cast<int>(k_d);
-        }
-        result = triu(*matrix, k);
-    } else if (assign.callee == "hess" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = hess(*matrix);
-    } else if (assign.callee == "schur" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto decomp = schur(*matrix);
-        if (!decomp) {
-            return std::unexpected(decomp.error());
-        }
-        result = decomp->T;
-    } else if ((assign.callee == "geo_bezier_eval" || assign.callee == "geo_bezier_deriv" ||
-                assign.callee == "geo_catmull_rom") &&
-               assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double t = 0.0;
-        if (!parse_number(assign.args[1], t)) {
-            auto t_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!t_expr) {
-                return std::unexpected(DomainError{
-                    assign.callee,
-                    assign.callee == "geo_bezier_eval"
-                        ? "expected geo_bezier_eval(ctrl, t)"
-                        : (assign.callee == "geo_bezier_deriv"
-                               ? "expected geo_bezier_deriv(ctrl, t)"
-                               : "expected geo_catmull_rom(ctrl, t)")});
-            }
-            t = *t_expr;
-        }
-        if (assign.callee == "geo_bezier_eval") {
-            result = eval_geo_bezier_eval(*matrix, t);
-        } else if (assign.callee == "geo_bezier_deriv") {
-            result = eval_geo_bezier_deriv(*matrix, t);
-        } else {
-            result = eval_geo_catmull_rom(*matrix, t);
-        }
-    } else if (assign.callee == "geo_hermite_curve" && assign.args.size() == 9) {
-        std::array<double, 9> args{};
-        for (std::size_t i = 0; i < 9; ++i) {
-            if (!parse_number(assign.args[i], args[i])) {
-                auto expr = eval_scalar_expr(state_, assign.args[i]);
-                if (!expr) {
-                    return std::unexpected(DomainError{
-                        "geo_hermite_curve",
-                        "expected geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t)"});
-                }
-                args[i] = *expr;
-            }
-        }
-        result = eval_geo_hermite_curve(args[0], args[1], args[2], args[3], args[4], args[5],
-                                        args[6], args[7], args[8]);
-    } else if (assign.callee == "geo_bspline_eval" && assign.args.size() == 4) {
-        auto ctrl = resolve_operand(assign.args[0]);
-        if (!ctrl) {
-            return std::unexpected(ctrl.error());
-        }
-        auto knots = resolve_operand(assign.args[1]);
-        if (!knots) {
-            return std::unexpected(knots.error());
-        }
-        double degree = 0.0;
-        double t = 0.0;
-        if (!parse_number(assign.args[2], degree)) {
-            auto deg_expr = eval_scalar_expr(state_, assign.args[2]);
-            if (!deg_expr) {
-                return std::unexpected(DomainError{
-                    "geo_bspline_eval", "expected geo_bspline_eval(ctrl, knots, degree, t)"});
-            }
-            degree = *deg_expr;
-        }
-        if (!parse_number(assign.args[3], t)) {
-            auto t_expr = eval_scalar_expr(state_, assign.args[3]);
-            if (!t_expr) {
-                return std::unexpected(DomainError{
-                    "geo_bspline_eval", "expected geo_bspline_eval(ctrl, knots, degree, t)"});
-            }
-            t = *t_expr;
-        }
-        result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
     } else if (assign.callee == "bidiag" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -30014,6 +29853,178 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail13(const MatrixCallAs
                 "quantum_schmidt_bases", "expected positive integer dim_a and dim_b"});
         }
         result = eval_quantum_schmidt_bases(*psi, dim_a, dim_b);
+    } else if (assign.callee == "sqrtm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = sqrtm(*matrix);
+    } else if (assign.callee == "logm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = logm(*matrix);
+    } else if (assign.callee == "cosm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = cosm(*matrix);
+    } else if (assign.callee == "sinm" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = sinm(*matrix);
+    } else if (assign.callee == "diag" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto v = matrix_to_coeff_vector(*matrix, "diag");
+        if (!v) {
+            return std::unexpected(v.error());
+        }
+        if (v->empty()) {
+            return std::unexpected(DomainError{"diag", "expected non-empty vector"});
+        }
+        result = diag(*v);
+    } else if (assign.callee == "tril" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        int k = 0;
+        if (assign.args.size() == 2) {
+            double k_d = 0.0;
+            if (!parse_number(assign.args[1], k_d)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    k_d = it->second;
+                } else {
+                    return std::unexpected(
+                        DomainError{"tril", "expected tril(A) or tril(A, k)"});
+                }
+            }
+            if (k_d != static_cast<int>(k_d)) {
+                return std::unexpected(DomainError{"tril", "expected integer k"});
+            }
+            k = static_cast<int>(k_d);
+        }
+        result = tril(*matrix, k);
+    } else if (assign.callee == "triu" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        int k = 0;
+        if (assign.args.size() == 2) {
+            double k_d = 0.0;
+            if (!parse_number(assign.args[1], k_d)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    k_d = it->second;
+                } else {
+                    return std::unexpected(
+                        DomainError{"triu", "expected triu(A) or triu(A, k)"});
+                }
+            }
+            if (k_d != static_cast<int>(k_d)) {
+                return std::unexpected(DomainError{"triu", "expected integer k"});
+            }
+            k = static_cast<int>(k_d);
+        }
+        result = triu(*matrix, k);
+    } else if (assign.callee == "hess" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = hess(*matrix);
+    } else if (assign.callee == "schur" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto decomp = schur(*matrix);
+        if (!decomp) {
+            return std::unexpected(decomp.error());
+        }
+        result = decomp->T;
+    } else if ((assign.callee == "geo_bezier_eval" || assign.callee == "geo_bezier_deriv" ||
+                assign.callee == "geo_catmull_rom") &&
+               assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double t = 0.0;
+        if (!parse_number(assign.args[1], t)) {
+            auto t_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!t_expr) {
+                return std::unexpected(DomainError{
+                    assign.callee,
+                    assign.callee == "geo_bezier_eval"
+                        ? "expected geo_bezier_eval(ctrl, t)"
+                        : (assign.callee == "geo_bezier_deriv"
+                               ? "expected geo_bezier_deriv(ctrl, t)"
+                               : "expected geo_catmull_rom(ctrl, t)")});
+            }
+            t = *t_expr;
+        }
+        if (assign.callee == "geo_bezier_eval") {
+            result = eval_geo_bezier_eval(*matrix, t);
+        } else if (assign.callee == "geo_bezier_deriv") {
+            result = eval_geo_bezier_deriv(*matrix, t);
+        } else {
+            result = eval_geo_catmull_rom(*matrix, t);
+        }
+    } else if (assign.callee == "geo_hermite_curve" && assign.args.size() == 9) {
+        std::array<double, 9> args{};
+        for (std::size_t i = 0; i < 9; ++i) {
+            if (!parse_number(assign.args[i], args[i])) {
+                auto expr = eval_scalar_expr(state_, assign.args[i]);
+                if (!expr) {
+                    return std::unexpected(DomainError{
+                        "geo_hermite_curve",
+                        "expected geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t)"});
+                }
+                args[i] = *expr;
+            }
+        }
+        result = eval_geo_hermite_curve(args[0], args[1], args[2], args[3], args[4], args[5],
+                                        args[6], args[7], args[8]);
+    } else if (assign.callee == "geo_bspline_eval" && assign.args.size() == 4) {
+        auto ctrl = resolve_operand(assign.args[0]);
+        if (!ctrl) {
+            return std::unexpected(ctrl.error());
+        }
+        auto knots = resolve_operand(assign.args[1]);
+        if (!knots) {
+            return std::unexpected(knots.error());
+        }
+        double degree = 0.0;
+        double t = 0.0;
+        if (!parse_number(assign.args[2], degree)) {
+            auto deg_expr = eval_scalar_expr(state_, assign.args[2]);
+            if (!deg_expr) {
+                return std::unexpected(DomainError{
+                    "geo_bspline_eval", "expected geo_bspline_eval(ctrl, knots, degree, t)"});
+            }
+            degree = *deg_expr;
+        }
+        if (!parse_number(assign.args[3], t)) {
+            auto t_expr = eval_scalar_expr(state_, assign.args[3]);
+            if (!t_expr) {
+                return std::unexpected(DomainError{
+                    "geo_bspline_eval", "expected geo_bspline_eval(ctrl, knots, degree, t)"});
+            }
+            t = *t_expr;
+        }
+        result = eval_geo_bspline_eval(*ctrl, *knots, degree, t);
     }
 
     return result;

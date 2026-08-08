@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 294 — linalg/geo tail11, laguerre_ln) ✅ COMPLETE
+
+Sixty-fourth feature wave after Wave 293. Migrated matrix decompositions, matrix functions, and geo curve handlers to tail11/tail13; scalar `laguerre_ln` integer validation in `eval_scalar_call`; `integration_repl_wave294_pipeline`.
+
+### Added (Wave 294)
+- **Linalg tail11** — `sqrtm`, `logm`, `cosm`, `sinm`, `diag`, `tril`, `triu`, `hess`, `schur`.
+- **Geo tail11** — `geo_bezier_eval`, `geo_bezier_deriv`, `geo_catmull_rom`, `geo_hermite_curve`, `geo_bspline_eval`.
+- **Special** — `laguerre_ln(n,k,x)` integer validation in scalar three-arg eval path.
+
+### Tests
+- **`integration_repl_wave294_pipeline`** — linalg/geo/special smoke.
+- **Unit** — `wave294_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 294 sync; **453** CTest suites.
+
+**453 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 293 — quantum/izaac tail11, laguerre_la) ✅ COMPLETE
 
 Sixty-third feature wave after Wave 292. Migrated quantum operator and izaac random-matrix handlers to tail11/tail13; scalar `laguerre_la` integer validation in `eval_scalar_call`; `integration_repl_wave293_pipeline`.
