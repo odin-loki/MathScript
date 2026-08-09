@@ -20325,7 +20325,12 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "finance_bl_posterior_returns_default_omega" ||
            callee == "ml_lasso_fit" || callee == "ml_lasso_predict" ||
            callee == "ml_elastic_net_fit" || callee == "ml_elastic_net_predict" ||
-           callee == "ml_knn_fit" || callee == "ml_knn_predict";
+           callee == "ml_knn_fit" || callee == "ml_knn_predict" ||
+           callee == "ml_naive_bayes_fit" || callee == "ml_naive_bayes_predict" ||
+           callee == "ml_lda_fit" || callee == "ml_lda_predict" ||
+           callee == "ml_lda_transform" ||
+           callee == "ml_pca_fit" || callee == "ml_pca_transform" ||
+           callee == "ml_pca_fit_transform";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -23092,9 +23097,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return cplx::cross_ratio(z1, z2, z3, z4);
     }
     if (args.size() == 2 && fn == "mathieu_a") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+            return std::unexpected(
+                DomainError{"mathieu_a", "expected non-negative integer n"});
+        }
         return mathieu_a(static_cast<int>(args[0]), args[1]);
     }
     if (args.size() == 2 && fn == "mathieu_b") {
+        if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+            return std::unexpected(
+                DomainError{"mathieu_b", "expected non-negative integer n"});
+        }
         return mathieu_b(static_cast<int>(args[0]), args[1]);
     }
     if (args.size() == 2 && fn == "pcf_u") {
@@ -23447,142 +23460,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "ml_naive_bayes_fit" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        auto fitted = eval_ml_naive_bayes_fit(*X, *y);
-        if (!fitted) {
-            return std::unexpected(fitted.error());
-        }
-        result = *fitted;
-    } else if (assign.callee == "ml_naive_bayes_predict" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto predicted = eval_ml_naive_bayes_predict(*X, *model);
-        if (!predicted) {
-            return std::unexpected(predicted.error());
-        }
-        result = *predicted;
-    } else if (assign.callee == "ml_lda_fit" &&
-               (assign.args.size() == 2 || assign.args.size() == 3)) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        int n_components = 0;
-        if (assign.args.size() == 3) {
-            auto n_comp = parse_scalar_arg(assign.args[2], "ml_lda_fit");
-            if (!n_comp) {
-                return std::unexpected(n_comp.error());
-            }
-            n_components = static_cast<int>(*n_comp);
-            if (n_components < 0 || *n_comp != n_components) {
-                return std::unexpected(
-                    DomainError{"ml_lda_fit", "expected non-negative integer n_components"});
-            }
-        }
-        auto fitted = eval_ml_lda_fit(*X, *y, n_components);
-        if (!fitted) {
-            return std::unexpected(fitted.error());
-        }
-        result = *fitted;
-    } else if (assign.callee == "ml_lda_predict" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto predicted = eval_ml_lda_predict(*X, *model);
-        if (!predicted) {
-            return std::unexpected(predicted.error());
-        }
-        result = *predicted;
-    } else if (assign.callee == "ml_lda_transform" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto transformed = eval_ml_lda_transform(*X, *model);
-        if (!transformed) {
-            return std::unexpected(transformed.error());
-        }
-        result = *transformed;
-    } else if (assign.callee == "ml_pca_fit" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto n_comp = parse_scalar_arg(assign.args[1], "ml_pca_fit");
-        if (!n_comp) {
-            return std::unexpected(n_comp.error());
-        }
-        const int n_components = static_cast<int>(*n_comp);
-        if (*n_comp != n_components) {
-            return std::unexpected(
-                DomainError{"ml_pca_fit", "expected integer n_components"});
-        }
-        auto fitted = eval_ml_pca_fit(*X, n_components);
-        if (!fitted) {
-            return std::unexpected(fitted.error());
-        }
-        result = *fitted;
-    } else if (assign.callee == "ml_pca_transform" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto transformed = eval_ml_pca_transform(*X, *model);
-        if (!transformed) {
-            return std::unexpected(transformed.error());
-        }
-        result = *transformed;
-    } else if (assign.callee == "ml_pca_fit_transform" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto n_comp = parse_scalar_arg(assign.args[1], "ml_pca_fit_transform");
-        if (!n_comp) {
-            return std::unexpected(n_comp.error());
-        }
-        const int n_components = static_cast<int>(*n_comp);
-        if (*n_comp != n_components) {
-            return std::unexpected(
-                DomainError{"ml_pca_fit_transform", "expected integer n_components"});
-        }
-        auto transformed = eval_ml_pca_fit_transform(*X, n_components);
-        if (!transformed) {
-            return std::unexpected(transformed.error());
-        }
-        result = *transformed;
-    } else if (assign.callee == "ml_kmeans_fit" && assign.args.size() == 2) {
+    if (assign.callee == "ml_kmeans_fit" && assign.args.size() == 2) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
             return std::unexpected(X.error());
@@ -30261,6 +30139,141 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
             return std::unexpected(predicted.error());
         }
         result = *predicted;
+    } else if (assign.callee == "ml_naive_bayes_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto fitted = eval_ml_naive_bayes_fit(*X, *y);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_naive_bayes_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_naive_bayes_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_lda_fit" &&
+               (assign.args.size() == 2 || assign.args.size() == 3)) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        int n_components = 0;
+        if (assign.args.size() == 3) {
+            auto n_comp = parse_scalar_arg(assign.args[2], "ml_lda_fit");
+            if (!n_comp) {
+                return std::unexpected(n_comp.error());
+            }
+            n_components = static_cast<int>(*n_comp);
+            if (n_components < 0 || *n_comp != n_components) {
+                return std::unexpected(
+                    DomainError{"ml_lda_fit", "expected non-negative integer n_components"});
+            }
+        }
+        auto fitted = eval_ml_lda_fit(*X, *y, n_components);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_lda_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_lda_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_lda_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto transformed = eval_ml_lda_transform(*X, *model);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
+    } else if (assign.callee == "ml_pca_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto n_comp = parse_scalar_arg(assign.args[1], "ml_pca_fit");
+        if (!n_comp) {
+            return std::unexpected(n_comp.error());
+        }
+        const int n_components = static_cast<int>(*n_comp);
+        if (*n_comp != n_components) {
+            return std::unexpected(
+                DomainError{"ml_pca_fit", "expected integer n_components"});
+        }
+        auto fitted = eval_ml_pca_fit(*X, n_components);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_pca_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto transformed = eval_ml_pca_transform(*X, *model);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
+    } else if (assign.callee == "ml_pca_fit_transform" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto n_comp = parse_scalar_arg(assign.args[1], "ml_pca_fit_transform");
+        if (!n_comp) {
+            return std::unexpected(n_comp.error());
+        }
+        const int n_components = static_cast<int>(*n_comp);
+        if (*n_comp != n_components) {
+            return std::unexpected(
+                DomainError{"ml_pca_fit_transform", "expected integer n_components"});
+        }
+        auto transformed = eval_ml_pca_fit_transform(*X, n_components);
+        if (!transformed) {
+            return std::unexpected(transformed.error());
+        }
+        result = *transformed;
     }
 
     return result;

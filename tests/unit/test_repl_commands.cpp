@@ -11295,3 +11295,47 @@ TEST(ReplCommandsTest, wave306_lambert_w_scalar) {
     expect_ok(interp, "ws = special_lambert_w(-1, -0.2)");
     EXPECT_NEAR(interp.state().scalars.at("ws"), ms::lambert_w(-1, -0.2), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave307_ml_naive_bayes_lda_pca_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "Nbx = [1,1; 2,2; 1.5,1.5; -1,-1; -2,-2]");
+    expect_ok(interp, "Nby = [0; 0; 0; 1; 1]");
+    expect_ok(interp, "nb_m = ml_naive_bayes_fit(Nbx, Nby)");
+    expect_ok(interp, "nb_p = ml_naive_bayes_predict([1,1], nb_m)");
+    EXPECT_NEAR(interp.state().matrices.at("nb_p")(0, 0), 0.0, 1e-6);
+
+    expect_ok(interp, "Lx = [-2,-1; -1,-0.5; 2,1; 3,1.5]");
+    expect_ok(interp, "Ly = [0; 0; 1; 1]");
+    expect_ok(interp, "lda_m = ml_lda_fit(Lx, Ly)");
+    expect_ok(interp, "lda_p = ml_lda_predict([0,0; 3,1], lda_m)");
+    EXPECT_LT(interp.state().matrices.at("lda_p")(0, 0), 0.5);
+    EXPECT_GT(interp.state().matrices.at("lda_p")(1, 0), 0.5);
+
+    expect_ok(interp, "lda_z = ml_lda_transform(Lx, lda_m)");
+    EXPECT_EQ(interp.state().matrices.at("lda_z").rows(), 4u);
+    EXPECT_GE(interp.state().matrices.at("lda_z").cols(), 1u);
+
+    expect_ok(interp, "X = [1, 0; 2, 0; 3, 0; 4, 0; 5, 0]");
+    expect_ok(interp, "model = ml_pca_fit(X, 1)");
+    EXPECT_EQ(interp.state().matrices.at("model").rows(), 2u);
+
+    expect_ok(interp, "Z = ml_pca_transform(X, model)");
+    EXPECT_EQ(interp.state().matrices.at("Z").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("Z").cols(), 1u);
+
+    expect_ok(interp, "Z2 = ml_pca_fit_transform(X, 1)");
+    EXPECT_EQ(interp.state().matrices.at("Z2").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("Z2").cols(), 1u);
+}
+
+TEST(ReplCommandsTest, wave307_mathieu_scalar) {
+    Interpreter interp;
+
+    const double a_ref = ms::mathieu_a(1, 0.1);
+    expect_ok(interp, "a = mathieu_a(1, 0.1)");
+    EXPECT_NEAR(interp.state().scalars.at("a"), a_ref, 1e-3);
+
+    expect_ok(interp, "b = mathieu_b(1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("b"), ms::mathieu_b(1, 0.0), 1e-8);
+}

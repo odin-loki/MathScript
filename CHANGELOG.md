@@ -7,6 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 307 — ML naive Bayes/LDA/PCA tail11, Mathieu scalar) ✅ COMPLETE
+
+Seventy-seventh feature wave after Wave 306. Migrated naive Bayes, LDA, and PCA handlers to tail11/tail14; scalar `mathieu_a`/`mathieu_b` integer order validation in `eval_scalar_call`; `integration_repl_wave307_pipeline`.
+
+### Added (Wave 307)
+- **ML tail11** — `ml_naive_bayes_fit`, `ml_naive_bayes_predict`, `ml_lda_fit`, `ml_lda_predict`, `ml_lda_transform`, `ml_pca_fit`, `ml_pca_transform`, `ml_pca_fit_transform`.
+- **Special** — Mathieu characteristic value integer order validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave307_pipeline`** — naive Bayes/LDA/PCA/Mathieu smoke.
+- **Unit** — `wave307_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 307 sync; **466** CTest suites.
+
+**466 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 306 — ML/finance tail11, Lambert W scalar) ✅ COMPLETE
 
 Seventy-sixth feature wave after Wave 305. Migrated ML logistic/lasso/elastic-net/k-NN and finance Merton/Black–Litterman handlers to tail11/tail14; scalar `lambert_w`/`special_lambert_w` branch validation in `eval_scalar_call`; `integration_repl_wave306_pipeline`.
