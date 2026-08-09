@@ -11022,3 +11022,48 @@ TEST(ReplCommandsTest, wave300_bessel_scalar) {
     expect_ok(interp, "sy = sph_bessel_y(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("sy"), ms::sph_bessel_y(1, 1.0), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave301_ml_linalg_graph_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "At = ml_mat_transpose(A)");
+    ASSERT_GT(interp.state().matrices.count("At"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("At").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("At")(0, 1), 3.0, 1e-9);
+
+    expect_ok(interp, "I2 = eye(2)");
+    expect_ok(interp, "S = funm(I2, \"exp\")");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("S")(0, 0), std::exp(1.0), 1e-6);
+
+    expect_ok(interp, "Pd = precond_diag(A)");
+    ASSERT_GT(interp.state().matrices.count("Pd"), 0u);
+
+    expect_ok(interp, "M = [4, -1, 0; -1, 4, -1; 0, -1, 4]");
+    expect_ok(interp, "Ps = precond_ssor(M, 1.2)");
+    ASSERT_GT(interp.state().matrices.count("Ps"), 0u);
+
+    expect_ok(interp, "arb = graph_min_arborescence([0, 1, 10; 0, 0, 2; 0, 0, 0], 0)");
+    ASSERT_GT(interp.state().matrices.count("arb"), 0u);
+    EXPECT_GT(interp.state().matrices.at("arb").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave301_spherical_bessel_zero_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "in0 = spherical_in(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("in0"), ms::spherical_in(0, 1.0), 1e-9);
+
+    expect_ok(interp, "kn0 = spherical_kn(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("kn0"), ms::spherical_kn(0, 1.0), 1e-9);
+
+    expect_ok(interp, "yn0 = spherical_yn(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("yn0"), ms::spherical_yn(0, 1.0), 1e-9);
+
+    expect_ok(interp, "jz = bessel_zero_jnu(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("jz"), ms::bessel_zero_jnu(0, 1), 1e-9);
+
+    expect_ok(interp, "yz = bessel_zero_ynu(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("yz"), ms::bessel_zero_ynu(0, 1), 1e-9);
+}

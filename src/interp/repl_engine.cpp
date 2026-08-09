@@ -20302,7 +20302,10 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "poly_partial_fractions" || callee == "poly_cheb_expand" ||
            callee == "poly_lagrange" || callee == "poly_interp_newton" ||
            callee == "poly_roots" || callee == "poly_factor" ||
-           callee == "sph_harm";
+           callee == "sph_harm" ||
+           callee == "ml_mat_transpose" ||
+           callee == "funm" || callee == "precond_diag" || callee == "precond_ssor" ||
+           callee == "graph_min_arborescence";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21821,6 +21824,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return bessel_j(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_zero_jnu") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 1.0 ||
+                std::floor(args[1]) != args[1]) {
+                return std::unexpected(DomainError{
+                    "bessel_zero_jnu", "expected non-negative integer nu and positive integer n"});
+            }
             return bessel_zero_jnu(static_cast<int>(args[0]), static_cast<int>(args[1]));
         }
         if (fn == "chebyshev_t") {
@@ -21894,6 +21902,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return sph_bessel_y(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_in") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"spherical_in", "expected non-negative integer n"});
+            }
             return spherical_in(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_jn") {
@@ -21910,9 +21922,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return debye(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_kn") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"spherical_kn", "expected non-negative integer n"});
+            }
             return spherical_kn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_yn") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"spherical_yn", "expected non-negative integer n"});
+            }
             return spherical_yn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_h") {
@@ -21964,6 +21984,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return kelvin_kei(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_zero_ynu") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 1.0 ||
+                std::floor(args[1]) != args[1]) {
+                return std::unexpected(DomainError{
+                    "bessel_zero_ynu", "expected non-negative integer nu and positive integer n"});
+            }
             return bessel_zero_ynu(static_cast<int>(args[0]), static_cast<int>(args[1]));
         }
         if (fn == "lambert_w" || fn == "special_lambert_w") {
@@ -23246,16 +23271,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(predicted.error());
         }
         result = *predicted;
-    } else if (assign.callee == "ml_mat_transpose" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto At = eval_ml_mat_transpose(*matrix);
-        if (!At) {
-            return std::unexpected(At.error());
-        }
-        result = *At;
     } else if (assign.callee == "finance_min_variance_portfolio" && assign.args.size() == 1) {
         auto matrix = resolve_operand(assign.args[0]);
         if (!matrix) {
@@ -23599,79 +23614,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
             return std::unexpected(post.error());
         }
         result = *post;
-    }
-    else if (assign.callee == "funm" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        std::string fn_name;
-        if (!parse_quoted_string(assign.args[1], fn_name)) {
-            return std::unexpected(
-                DomainError{"funm", "expected funm(A, \"sin\"|\"cos\"|\"exp\"|\"sqrt\")"});
-        }
-        fn_name = lower(trim_copy(fn_name));
-        if (fn_name == "sin") {
-            result = sinm(*matrix);
-        } else if (fn_name == "cos") {
-            result = cosm(*matrix);
-        } else if (fn_name == "exp") {
-            result = expm(*matrix);
-        } else if (fn_name == "sqrt") {
-            result = sqrtm(*matrix);
-        } else {
-            return std::unexpected(
-                DomainError{"funm", "expected \"sin\", \"cos\", \"exp\", or \"sqrt\""});
-        }
-    } else if (assign.callee == "precond_diag" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = vector_to_column(precond_diag(*matrix));
-    } else if (assign.callee == "precond_ssor" &&
-               (assign.args.size() == 1 || assign.args.size() == 2)) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double omega = 1.0;
-        if (assign.args.size() == 2) {
-            if (!parse_number(assign.args[1], omega)) {
-                auto it = state_.scalars.find(assign.args[1]);
-                if (it != state_.scalars.end()) {
-                    omega = it->second;
-                } else {
-                    return std::unexpected(
-                        DomainError{"precond_ssor", "expected precond_ssor(A[, omega])"});
-                }
-            }
-        }
-        result = precond_ssor(*matrix, omega);
-    } else if (assign.callee == "graph_min_arborescence" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        double root_d = 0.0;
-        if (!parse_number(assign.args[1], root_d)) {
-            auto root_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!root_expr) {
-                return std::unexpected(DomainError{
-                    "graph_min_arborescence", "expected graph_min_arborescence(A, root)"});
-            }
-            root_d = *root_expr;
-        }
-        const int root = static_cast<int>(root_d);
-        if (root < 0 || root_d != root) {
-            return std::unexpected(
-                DomainError{"graph_min_arborescence", "expected non-negative integer root"});
-        }
-        auto arb = eval_graph_min_arborescence(*matrix, root);
-        if (!arb) {
-            return std::unexpected(arb.error());
-        }
-        result = *arb;
     }
 
     if (!result) {
@@ -30142,6 +30084,88 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
                 DomainError{"sph_harm", "expected integer l and m"});
         }
         result = eval_sph_harm(l, m, args[2], args[3]);
+    } else if (assign.callee == "ml_mat_transpose" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto At = eval_ml_mat_transpose(*matrix);
+        if (!At) {
+            return std::unexpected(At.error());
+        }
+        result = *At;
+    } else if (assign.callee == "funm" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        std::string fn_name;
+        if (!parse_quoted_string(assign.args[1], fn_name)) {
+            return std::unexpected(
+                DomainError{"funm", "expected funm(A, \"sin\"|\"cos\"|\"exp\"|\"sqrt\")"});
+        }
+        fn_name = lower(trim_copy(fn_name));
+        if (fn_name == "sin") {
+            result = sinm(*matrix);
+        } else if (fn_name == "cos") {
+            result = cosm(*matrix);
+        } else if (fn_name == "exp") {
+            result = expm(*matrix);
+        } else if (fn_name == "sqrt") {
+            result = sqrtm(*matrix);
+        } else {
+            return std::unexpected(
+                DomainError{"funm", "expected \"sin\", \"cos\", \"exp\", or \"sqrt\""});
+        }
+    } else if (assign.callee == "precond_diag" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = vector_to_column(precond_diag(*matrix));
+    } else if (assign.callee == "precond_ssor" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double omega = 1.0;
+        if (assign.args.size() == 2) {
+            if (!parse_number(assign.args[1], omega)) {
+                auto it = state_.scalars.find(assign.args[1]);
+                if (it != state_.scalars.end()) {
+                    omega = it->second;
+                } else {
+                    return std::unexpected(
+                        DomainError{"precond_ssor", "expected precond_ssor(A[, omega])"});
+                }
+            }
+        }
+        result = precond_ssor(*matrix, omega);
+    } else if (assign.callee == "graph_min_arborescence" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        double root_d = 0.0;
+        if (!parse_number(assign.args[1], root_d)) {
+            auto root_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!root_expr) {
+                return std::unexpected(DomainError{
+                    "graph_min_arborescence", "expected graph_min_arborescence(A, root)"});
+            }
+            root_d = *root_expr;
+        }
+        const int root = static_cast<int>(root_d);
+        if (root < 0 || root_d != root) {
+            return std::unexpected(
+                DomainError{"graph_min_arborescence", "expected non-negative integer root"});
+        }
+        auto arb = eval_graph_min_arborescence(*matrix, root);
+        if (!arb) {
+            return std::unexpected(arb.error());
+        }
+        result = *arb;
     }
 
     return result;

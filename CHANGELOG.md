@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 301 — ml/linalg/graph tail11, spherical/bessel-zero scalar) ✅ COMPLETE
+
+Seventy-first feature wave after Wave 300. Migrated ML transpose, matrix-function/preconditioner, and graph arborescence handlers to tail11/tail14; scalar `spherical_in`/`spherical_kn`/`spherical_yn`/`bessel_zero_jnu`/`bessel_zero_ynu` integer validation in `eval_scalar_call`; `integration_repl_wave301_pipeline`.
+
+### Added (Wave 301)
+- **ML tail11** — `ml_mat_transpose`.
+- **Linalg tail11** — `funm`, `precond_diag`, `precond_ssor`.
+- **Graph tail11** — `graph_min_arborescence`.
+- **Special** — spherical harmonic/Bessel-zero integer order validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave301_pipeline`** — ml/linalg/graph/spherical smoke.
+- **Unit** — `wave301_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 301 sync; **460** CTest suites.
+
+**460 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 300 — poly/sph tail11, bessel scalar) ✅ COMPLETE
 
 Seventieth feature wave after Wave 299. Migrated polynomial interpolation/factorization and spherical harmonic handlers to tail11/tail14; scalar `bessel_j`/`bessel_y`/`bessel_i`/`bessel_k`/`sph_bessel_j`/`sph_bessel_y` integer validation in `eval_scalar_call`; `integration_repl_wave300_pipeline`.
