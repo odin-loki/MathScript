@@ -11067,3 +11067,36 @@ TEST(ReplCommandsTest, wave301_spherical_bessel_zero_scalar) {
     expect_ok(interp, "yz = bessel_zero_ynu(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("yz"), ms::bessel_zero_ynu(0, 1), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave302_image_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "G = [1, 2; 3, 4]");
+    expect_ok(interp, "K = ones(3, 3) / 9");
+    expect_ok(interp, "F = imfilter(G, K)");
+    ASSERT_GT(interp.state().matrices.count("F"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("F").rows(), 2u);
+
+    expect_ok(interp, "Sx = sobel_x(G)");
+    ASSERT_GT(interp.state().matrices.count("Sx"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Sx").rows(), 2u);
+
+    expect_ok(interp, "Sy = sobel_y(G)");
+    ASSERT_GT(interp.state().matrices.count("Sy"), 0u);
+
+    expect_ok(interp, "L = laplacian_of_gaussian(G, 1)");
+    ASSERT_GT(interp.state().matrices.count("L"), 0u);
+
+    expect_ok(interp, "D = dft_magnitude(G)");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+}
+
+TEST(ReplCommandsTest, wave302_special_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "pl = polylog(2, 0.25)");
+    EXPECT_NEAR(interp.state().scalars.at("pl"), ms::polylog(2, 0.25), 1e-9);
+
+    expect_ok(interp, "db = debye(1, 0.25)");
+    EXPECT_NEAR(interp.state().scalars.at("db"), ms::debye(1, 0.25), 1e-9);
+}

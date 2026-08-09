@@ -20305,7 +20305,10 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "sph_harm" ||
            callee == "ml_mat_transpose" ||
            callee == "funm" || callee == "precond_diag" || callee == "precond_ssor" ||
-           callee == "graph_min_arborescence";
+           callee == "graph_min_arborescence" ||
+           callee == "imfilter" || callee == "sobel_x" || callee == "sobel_y" ||
+           callee == "hsv2rgb" || callee == "dft_magnitude" ||
+           callee == "laplacian_of_gaussian";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21916,9 +21919,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return spherical_jn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "polylog") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"polylog", "expected non-negative integer n"});
+            }
             return polylog(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "debye") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"debye", "expected non-negative integer n"});
+            }
             return debye(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "spherical_kn") {
@@ -23645,80 +23656,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail5(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "imfilter" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto kernel_m = resolve_operand(assign.args[1]);
-        if (!kernel_m) {
-            return std::unexpected(kernel_m.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        auto kernel = matrix_to_filter_kernel(*kernel_m, "imfilter");
-        if (!kernel) {
-            return std::unexpected(kernel.error());
-        }
-        result = gray_image_to_matrix(image::imfilter(*gray, *kernel));
-    } else if (assign.callee == "sobel_x" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::sobel_x(*gray));
-    } else if (assign.callee == "sobel_y" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::sobel_y(*gray));
-    } else if (assign.callee == "hsv2rgb" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto hsv = matrix_to_rgb_image(*matrix);
-        if (!hsv) {
-            return std::unexpected(hsv.error());
-        }
-        result = rgb_image_to_matrix(image::hsv2rgb(*hsv));
-    } else if (assign.callee == "dft_magnitude" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        result = gray_image_to_matrix(image::dft_magnitude(*gray));
-    } else if (assign.callee == "laplacian_of_gaussian" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto gray = matrix_to_gray_image(*matrix);
-        if (!gray) {
-            return std::unexpected(gray.error());
-        }
-        auto sigma = parse_scalar_arg(assign.args[1], "laplacian_of_gaussian");
-        if (!sigma) {
-            return std::unexpected(sigma.error());
-        }
-        result = gray_image_to_matrix(
-            image::laplacian_of_gaussian(*gray, static_cast<float>(*sigma)));
-    }
 
     if (!result) {
         const Error& err = result.error();
@@ -30166,6 +30103,79 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
             return std::unexpected(arb.error());
         }
         result = *arb;
+    } else if (assign.callee == "imfilter" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto kernel_m = resolve_operand(assign.args[1]);
+        if (!kernel_m) {
+            return std::unexpected(kernel_m.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        auto kernel = matrix_to_filter_kernel(*kernel_m, "imfilter");
+        if (!kernel) {
+            return std::unexpected(kernel.error());
+        }
+        result = gray_image_to_matrix(image::imfilter(*gray, *kernel));
+    } else if (assign.callee == "sobel_x" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::sobel_x(*gray));
+    } else if (assign.callee == "sobel_y" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::sobel_y(*gray));
+    } else if (assign.callee == "hsv2rgb" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto hsv = matrix_to_rgb_image(*matrix);
+        if (!hsv) {
+            return std::unexpected(hsv.error());
+        }
+        result = rgb_image_to_matrix(image::hsv2rgb(*hsv));
+    } else if (assign.callee == "dft_magnitude" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        result = gray_image_to_matrix(image::dft_magnitude(*gray));
+    } else if (assign.callee == "laplacian_of_gaussian" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto gray = matrix_to_gray_image(*matrix);
+        if (!gray) {
+            return std::unexpected(gray.error());
+        }
+        auto sigma = parse_scalar_arg(assign.args[1], "laplacian_of_gaussian");
+        if (!sigma) {
+            return std::unexpected(sigma.error());
+        }
+        result = gray_image_to_matrix(
+            image::laplacian_of_gaussian(*gray, static_cast<float>(*sigma)));
     }
 
     return result;

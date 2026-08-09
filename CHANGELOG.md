@@ -7,6 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 302 — image tail11, polylog/debye scalar) ✅ COMPLETE
+
+Seventy-second feature wave after Wave 301. Migrated image filtering/gradient handlers to tail11/tail14; scalar `polylog`/`debye` integer validation in `eval_scalar_call`; `integration_repl_wave302_pipeline`.
+
+### Added (Wave 302)
+- **Image tail11** — `imfilter`, `sobel_x`, `sobel_y`, `hsv2rgb`, `dft_magnitude`, `laplacian_of_gaussian`.
+- **Special** — `polylog(n,z)` and `debye(n,x)` integer validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave302_pipeline`** — image/special smoke.
+- **Unit** — `wave302_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 302 sync; **461** CTest suites.
+
+**461 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 301 — ml/linalg/graph tail11, spherical/bessel-zero scalar) ✅ COMPLETE
 
 Seventy-first feature wave after Wave 300. Migrated ML transpose, matrix-function/preconditioner, and graph arborescence handlers to tail11/tail14; scalar `spherical_in`/`spherical_kn`/`spherical_yn`/`bessel_zero_jnu`/`bessel_zero_ynu` integer validation in `eval_scalar_call`; `integration_repl_wave301_pipeline`.
