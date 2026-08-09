@@ -11198,3 +11198,53 @@ TEST(ReplCommandsTest, wave304_struve_scalar) {
     expect_ok(interp, "we = weber_e(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("we"), ms::weber_e(0, 1.0), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave305_diffgeo_quantum_fem_cfd_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "N = diffgeo_surface_normal_sphere(0.5, 0.3)");
+    ASSERT_GT(interp.state().matrices.count("N"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("N").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("N").cols(), 1u);
+
+    expect_ok(interp, "sup = quantum_ket_superposition([1; 1])");
+    ASSERT_GT(interp.state().matrices.count("sup"), 0u);
+
+    expect_ok(interp, "kb = quantum_ket_basis(2, 0)");
+    ASSERT_GT(interp.state().matrices.count("kb"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("kb").rows(), 2u);
+
+    expect_ok(interp, "fs = quantum_fock_state(1, 3)");
+    ASSERT_GT(interp.state().matrices.count("fs"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("fs").rows(), 4u);
+
+    expect_ok(interp, "u3 = fem_poisson3d(2, 2, 2)");
+    ASSERT_GT(interp.state().matrices.count("u3"), 0u);
+    EXPECT_GT(interp.state().matrices.at("u3").rows(), 0u);
+
+    expect_ok(interp, "uf3 = cfd_advection3d(8, 8, 8, 1, 0, 0, 0.2, 0.01)");
+    ASSERT_GT(interp.state().matrices.count("uf3"), 0u);
+    EXPECT_GT(interp.state().matrices.at("uf3").rows(), 0u);
+}
+
+TEST(ReplCommandsTest, wave305_kelvin_struve_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "hn = struve_hn(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("hn"), ms::struve_hn(1, 1.0), 1e-9);
+
+    expect_ok(interp, "yn = struve_yn(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("yn"), ms::struve_yn(0, 1.0), 1e-9);
+
+    expect_ok(interp, "bei = kelvin_bei(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bei"), ms::kelvin_bei(0, 1.0), 1e-9);
+
+    expect_ok(interp, "ber = kelvin_ber(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ber"), ms::kelvin_ber(0, 1.0), 1e-9);
+
+    expect_ok(interp, "ker = kelvin_ker(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("ker"), ms::kelvin_ker(0, 1.0), 1e-9);
+
+    expect_ok(interp, "kei = kelvin_kei(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("kei"), ms::kelvin_kei(0, 1.0), 1e-9);
+}

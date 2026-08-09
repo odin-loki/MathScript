@@ -7,6 +7,25 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 305 — diffgeo/quantum/FEM/CFD tail11, Kelvin/Struve scalar) ✅ COMPLETE
+
+Seventy-fifth feature wave after Wave 304. Migrated differential geometry, quantum, FEM, and CFD handlers to tail11/tail14; scalar `struve_hn`/`struve_yn`/`kelvin_bei`/`kelvin_ber`/`kelvin_ker`/`kelvin_kei` integer validation in `eval_scalar_call`; `integration_repl_wave305_pipeline`.
+
+### Added (Wave 305)
+- **Diffgeo tail11** — `diffgeo_surface_normal_sphere`.
+- **Quantum tail11** — `quantum_ket_superposition`, `quantum_ket_basis`, `quantum_fock_state`.
+- **FEM/CFD tail11** — `fem_poisson3d`, `cfd_advection3d`.
+- **Special** — Kelvin/extended Struve integer order validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave305_pipeline`** — diffgeo/quantum/FEM/CFD/Kelvin smoke.
+- **Unit** — `wave305_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 305 sync; **464** CTest suites.
+
+**464 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 304 — geo tail11, Struve/Anger/Weber scalar) ✅ COMPLETE
 
 Seventy-fourth feature wave after Wave 303. Migrated computational geometry handlers to tail11/tail14; scalar `struve_l`/`struve_h`/`struve_k`/`anger_j`/`weber_e` integer validation in `eval_scalar_call`; `integration_repl_wave304_pipeline`.

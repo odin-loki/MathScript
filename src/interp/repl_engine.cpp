@@ -20315,7 +20315,11 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "finance_bl_posterior_returns" ||
            callee == "geo_upper_hull" || callee == "geo_lower_hull" ||
            callee == "geo_bezier_subdivide" ||
-           callee == "geo_kdtree_3d_knn" || callee == "geo_kdtree_3d_range";
+           callee == "geo_kdtree_3d_knn" || callee == "geo_kdtree_3d_range" ||
+           callee == "diffgeo_surface_normal_sphere" ||
+           callee == "quantum_ket_superposition" || callee == "quantum_ket_basis" ||
+           callee == "quantum_fock_state" ||
+           callee == "fem_poisson3d" || callee == "cfd_advection3d";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -22010,9 +22014,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return struve_k(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_hn") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"struve_hn", "expected non-negative integer nu"});
+            }
             return struve_hn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_yn") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"struve_yn", "expected non-negative integer nu"});
+            }
             return struve_yn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "anger_j") {
@@ -22030,15 +22042,31 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return weber_e(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "kelvin_bei") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"kelvin_bei", "expected non-negative integer nu"});
+            }
             return kelvin_bei(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "kelvin_ber") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"kelvin_ber", "expected non-negative integer nu"});
+            }
             return kelvin_ber(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "kelvin_ker") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"kelvin_ker", "expected non-negative integer nu"});
+            }
             return kelvin_ker(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "kelvin_kei") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"kelvin_kei", "expected non-negative integer nu"});
+            }
             return kelvin_kei(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_zero_ynu") {
@@ -23329,134 +23357,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(predicted.error());
         }
         result = *predicted;
-    } else if (assign.callee == "diffgeo_surface_normal_sphere" && assign.args.size() == 2) {
-        double u = 0.0;
-        double v = 0.0;
-        if (!parse_number(assign.args[0], u)) {
-            auto u_expr = eval_scalar_expr(state_, assign.args[0]);
-            if (!u_expr) {
-                return std::unexpected(u_expr.error());
-            }
-            u = *u_expr;
-        }
-        if (!parse_number(assign.args[1], v)) {
-            auto v_expr = eval_scalar_expr(state_, assign.args[1]);
-            if (!v_expr) {
-                return std::unexpected(v_expr.error());
-            }
-            v = *v_expr;
-        }
-        auto normal = eval_diffgeo_surface_normal_sphere(u, v);
-        if (!normal) {
-            return std::unexpected(normal.error());
-        }
-        result = *normal;
-    } else if (assign.callee == "quantum_ket_superposition" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_quantum_ket_superposition_matrix(*matrix);
-    } else if (assign.callee == "quantum_ket_basis" && assign.args.size() == 2) {
-        double dim_d = 0.0;
-        double index_d = 0.0;
-        if (!parse_number(assign.args[0], dim_d)) {
-            auto it = state_.scalars.find(assign.args[0]);
-            if (it != state_.scalars.end()) {
-                dim_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric dim argument"});
-            }
-        }
-        if (!parse_number(assign.args[1], index_d)) {
-            auto it = state_.scalars.find(assign.args[1]);
-            if (it != state_.scalars.end()) {
-                index_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric index argument"});
-            }
-        }
-        const int dim = static_cast<int>(dim_d);
-        const int index = static_cast<int>(index_d);
-        if (dim < 1 || dim_d != dim || index_d != index) {
-            return std::unexpected(DomainError{
-                assign.callee, "expected positive integer dim and integer index"});
-        }
-        result = eval_quantum_ket_basis(dim, index);
-    } else if (assign.callee == "quantum_fock_state" && assign.args.size() == 2) {
-        double n_d = 0.0;
-        double n_max_d = 0.0;
-        if (!parse_number(assign.args[0], n_d)) {
-            auto it = state_.scalars.find(assign.args[0]);
-            if (it != state_.scalars.end()) {
-                n_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric n argument"});
-            }
-        }
-        if (!parse_number(assign.args[1], n_max_d)) {
-            auto it = state_.scalars.find(assign.args[1]);
-            if (it != state_.scalars.end()) {
-                n_max_d = it->second;
-            } else {
-                return std::unexpected(
-                    DomainError{assign.callee, "expected numeric n_max argument"});
-            }
-        }
-        const int n = static_cast<int>(n_d);
-        const int n_max = static_cast<int>(n_max_d);
-        if (n_max < 0 || n_d != n || n_max_d != n_max) {
-            return std::unexpected(DomainError{
-                assign.callee, "expected non-negative integer n and n_max"});
-        }
-        result = eval_quantum_fock_state(n, n_max);
-    } else if (assign.callee == "fem_poisson3d" && assign.args.size() == 3) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        double nz_d = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
-            !parse_number(assign.args[2], nz_d)) {
-            return std::unexpected(
-                DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        const int nz_i = static_cast<int>(nz_d);
-        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-            return std::unexpected(
-                DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
-        }
-        result = eval_fem_poisson3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                    static_cast<std::size_t>(nz_i));
-    } else if (assign.callee == "cfd_advection3d" && assign.args.size() == 8) {
-        double nx_d = 0.0;
-        double ny_d = 0.0;
-        double nz_d = 0.0;
-        double vx = 0.0;
-        double vy = 0.0;
-        double vz = 0.0;
-        double t_end = 0.0;
-        double dt = 0.0;
-        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
-            !parse_number(assign.args[2], nz_d) || !parse_number(assign.args[3], vx) ||
-            !parse_number(assign.args[4], vy) || !parse_number(assign.args[5], vz) ||
-            !parse_number(assign.args[6], t_end) || !parse_number(assign.args[7], dt)) {
-            return std::unexpected(DomainError{
-                "cfd_advection3d",
-                "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
-        }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        const int nz_i = static_cast<int>(nz_d);
-        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
-        }
-        result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                        static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
     }
 
     if (!result) {
@@ -30223,6 +30123,134 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
         } else {
             result = eval_geo_kdtree_3d_range(*matrix, *qx, *qy, *qz, *arg4);
         }
+    } else if (assign.callee == "diffgeo_surface_normal_sphere" && assign.args.size() == 2) {
+        double u = 0.0;
+        double v = 0.0;
+        if (!parse_number(assign.args[0], u)) {
+            auto u_expr = eval_scalar_expr(state_, assign.args[0]);
+            if (!u_expr) {
+                return std::unexpected(u_expr.error());
+            }
+            u = *u_expr;
+        }
+        if (!parse_number(assign.args[1], v)) {
+            auto v_expr = eval_scalar_expr(state_, assign.args[1]);
+            if (!v_expr) {
+                return std::unexpected(v_expr.error());
+            }
+            v = *v_expr;
+        }
+        auto normal = eval_diffgeo_surface_normal_sphere(u, v);
+        if (!normal) {
+            return std::unexpected(normal.error());
+        }
+        result = *normal;
+    } else if (assign.callee == "quantum_ket_superposition" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_quantum_ket_superposition_matrix(*matrix);
+    } else if (assign.callee == "quantum_ket_basis" && assign.args.size() == 2) {
+        double dim_d = 0.0;
+        double index_d = 0.0;
+        if (!parse_number(assign.args[0], dim_d)) {
+            auto it = state_.scalars.find(assign.args[0]);
+            if (it != state_.scalars.end()) {
+                dim_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric dim argument"});
+            }
+        }
+        if (!parse_number(assign.args[1], index_d)) {
+            auto it = state_.scalars.find(assign.args[1]);
+            if (it != state_.scalars.end()) {
+                index_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric index argument"});
+            }
+        }
+        const int dim = static_cast<int>(dim_d);
+        const int index = static_cast<int>(index_d);
+        if (dim < 1 || dim_d != dim || index_d != index) {
+            return std::unexpected(DomainError{
+                assign.callee, "expected positive integer dim and integer index"});
+        }
+        result = eval_quantum_ket_basis(dim, index);
+    } else if (assign.callee == "quantum_fock_state" && assign.args.size() == 2) {
+        double n_d = 0.0;
+        double n_max_d = 0.0;
+        if (!parse_number(assign.args[0], n_d)) {
+            auto it = state_.scalars.find(assign.args[0]);
+            if (it != state_.scalars.end()) {
+                n_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric n argument"});
+            }
+        }
+        if (!parse_number(assign.args[1], n_max_d)) {
+            auto it = state_.scalars.find(assign.args[1]);
+            if (it != state_.scalars.end()) {
+                n_max_d = it->second;
+            } else {
+                return std::unexpected(
+                    DomainError{assign.callee, "expected numeric n_max argument"});
+            }
+        }
+        const int n = static_cast<int>(n_d);
+        const int n_max = static_cast<int>(n_max_d);
+        if (n_max < 0 || n_d != n || n_max_d != n_max) {
+            return std::unexpected(DomainError{
+                assign.callee, "expected non-negative integer n and n_max"});
+        }
+        result = eval_quantum_fock_state(n, n_max);
+    } else if (assign.callee == "fem_poisson3d" && assign.args.size() == 3) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double nz_d = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], nz_d)) {
+            return std::unexpected(
+                DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        const int nz_i = static_cast<int>(nz_d);
+        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+            return std::unexpected(
+                DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+        }
+        result = eval_fem_poisson3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                    static_cast<std::size_t>(nz_i));
+    } else if (assign.callee == "cfd_advection3d" && assign.args.size() == 8) {
+        double nx_d = 0.0;
+        double ny_d = 0.0;
+        double nz_d = 0.0;
+        double vx = 0.0;
+        double vy = 0.0;
+        double vz = 0.0;
+        double t_end = 0.0;
+        double dt = 0.0;
+        if (!parse_number(assign.args[0], nx_d) || !parse_number(assign.args[1], ny_d) ||
+            !parse_number(assign.args[2], nz_d) || !parse_number(assign.args[3], vx) ||
+            !parse_number(assign.args[4], vy) || !parse_number(assign.args[5], vz) ||
+            !parse_number(assign.args[6], t_end) || !parse_number(assign.args[7], dt)) {
+            return std::unexpected(DomainError{
+                "cfd_advection3d",
+                "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
+        }
+        const int nx_i = static_cast<int>(nx_d);
+        const int ny_i = static_cast<int>(ny_d);
+        const int nz_i = static_cast<int>(nz_d);
+        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
+            return std::unexpected(
+                DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
+        }
+        result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
+                                        static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
     }
 
     return result;
