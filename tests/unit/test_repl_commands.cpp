@@ -11100,3 +11100,55 @@ TEST(ReplCommandsTest, wave302_special_scalar) {
     expect_ok(interp, "db = debye(1, 0.25)");
     EXPECT_NEAR(interp.state().scalars.at("db"), ms::debye(1, 0.25), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave303_finance_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "cov2 = [0.04, 0.01; 0.01, 0.02]");
+    expect_ok(interp, "w_min = finance_min_variance_portfolio(cov2)");
+    ASSERT_GT(interp.state().matrices.count("w_min"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w_min").rows(), 2u);
+    EXPECT_NEAR(interp.state().matrices.at("w_min")(0, 0) +
+                    interp.state().matrices.at("w_min")(1, 0),
+                1.0,
+                1e-8);
+
+    expect_ok(interp, "mu2 = [0.07; 0.035]");
+    expect_ok(interp, "w_ef = finance_efficient_frontier(cov2, mu2, 0.07)");
+    ASSERT_GT(interp.state().matrices.count("w_ef"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("w_ef").rows(), 2u);
+
+    expect_ok(interp, "w_ms = finance_max_sharpe(cov2, mu2, 0.02)");
+    ASSERT_GT(interp.state().matrices.count("w_ms"), 0u);
+
+    expect_ok(interp, "w_mkt = [0.6; 0.4]");
+    expect_ok(interp, "pi_bl = finance_bl_implied_returns(cov2, w_mkt, 2.5)");
+    ASSERT_GT(interp.state().matrices.count("pi_bl"), 0u);
+    EXPECT_NEAR(interp.state().matrices.at("pi_bl")(0, 0), 0.07, 1e-6);
+
+    expect_ok(interp, "pi = [0.05; 0.07]");
+    expect_ok(interp, "P = [1, 0]");
+    expect_ok(interp, "Q = [0.10]");
+    expect_ok(interp, "post = finance_bl_posterior_returns(pi, cov2, P, Q, 0.05)");
+    ASSERT_GT(interp.state().matrices.count("post"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("post").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave303_bessel_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "bh = bessel_h(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("bh"), ms::bessel_h(0, 1.0), 1e-9);
+
+    expect_ok(interp, "bhy = bessel_hy(1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("bhy"), ms::bessel_hy(1, 0.5), 1e-9);
+
+    expect_ok(interp, "bl = bessel_l(1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("bl"), ms::bessel_l(1, 0.5), 1e-9);
+
+    expect_ok(interp, "blu = bessel_lu(1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("blu"), ms::bessel_lu(1, 0.5), 1e-9);
+
+    expect_ok(interp, "hh = hermite_hn(2, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("hh"), ms::hermite_hn(2, 0.5), 1e-9);
+}

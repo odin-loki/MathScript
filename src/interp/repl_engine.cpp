@@ -20308,7 +20308,11 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "graph_min_arborescence" ||
            callee == "imfilter" || callee == "sobel_x" || callee == "sobel_y" ||
            callee == "hsv2rgb" || callee == "dft_magnitude" ||
-           callee == "laplacian_of_gaussian";
+           callee == "laplacian_of_gaussian" ||
+           callee == "finance_min_variance_portfolio" ||
+           callee == "finance_efficient_frontier" || callee == "finance_max_sharpe" ||
+           callee == "finance_bl_implied_returns" ||
+           callee == "finance_bl_posterior_returns";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21947,18 +21951,38 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return spherical_yn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_h") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"bessel_h", "expected non-negative integer nu"});
+            }
             return bessel_h(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_hy") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"bessel_hy", "expected non-negative integer nu"});
+            }
             return bessel_hy(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_l") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"bessel_l", "expected non-negative integer nu"});
+            }
             return bessel_l(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "bessel_lu") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"bessel_lu", "expected non-negative integer nu"});
+            }
             return bessel_lu(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "hermite_hn") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"hermite_hn", "expected non-negative integer n"});
+            }
             return hermite_hn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_l") {
@@ -23282,103 +23306,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
             return std::unexpected(predicted.error());
         }
         result = *predicted;
-    } else if (assign.callee == "finance_min_variance_portfolio" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto w = eval_finance_min_variance_portfolio(*matrix);
-        if (!w) {
-            return std::unexpected(w.error());
-        }
-        result = *w;
-    } else if (assign.callee == "finance_efficient_frontier" && assign.args.size() == 3) {
-        auto cov = resolve_operand(assign.args[0]);
-        if (!cov) {
-            return std::unexpected(cov.error());
-        }
-        auto mu = resolve_operand(assign.args[1]);
-        if (!mu) {
-            return std::unexpected(mu.error());
-        }
-        double target_return = 0.0;
-        if (!parse_number(assign.args[2], target_return)) {
-            return std::unexpected(DomainError{
-                "finance_efficient_frontier",
-                "expected finance_efficient_frontier(cov, mu, target_return)"});
-        }
-        auto w = eval_finance_efficient_frontier(*cov, *mu, target_return);
-        if (!w) {
-            return std::unexpected(w.error());
-        }
-        result = *w;
-    } else if (assign.callee == "finance_max_sharpe" && assign.args.size() == 3) {
-        auto cov = resolve_operand(assign.args[0]);
-        if (!cov) {
-            return std::unexpected(cov.error());
-        }
-        auto mu = resolve_operand(assign.args[1]);
-        if (!mu) {
-            return std::unexpected(mu.error());
-        }
-        double risk_free = 0.0;
-        if (!parse_number(assign.args[2], risk_free)) {
-            return std::unexpected(DomainError{
-                "finance_max_sharpe", "expected finance_max_sharpe(cov, mu, risk_free)"});
-        }
-        auto w = eval_finance_max_sharpe(*cov, *mu, risk_free);
-        if (!w) {
-            return std::unexpected(w.error());
-        }
-        result = *w;
-    } else if (assign.callee == "finance_bl_implied_returns" && assign.args.size() == 3) {
-        auto cov = resolve_operand(assign.args[0]);
-        if (!cov) {
-            return std::unexpected(cov.error());
-        }
-        auto w_mkt = resolve_operand(assign.args[1]);
-        if (!w_mkt) {
-            return std::unexpected(w_mkt.error());
-        }
-        double delta = 0.0;
-        if (!parse_number(assign.args[2], delta)) {
-            return std::unexpected(DomainError{
-                "finance_bl_implied_returns",
-                "expected finance_bl_implied_returns(cov, w_mkt, delta)"});
-        }
-        auto pi = eval_finance_bl_implied_returns(*cov, *w_mkt, delta);
-        if (!pi) {
-            return std::unexpected(pi.error());
-        }
-        result = *pi;
-    } else if (assign.callee == "finance_bl_posterior_returns" && assign.args.size() == 5) {
-        auto pi = resolve_operand(assign.args[0]);
-        if (!pi) {
-            return std::unexpected(pi.error());
-        }
-        auto cov = resolve_operand(assign.args[1]);
-        if (!cov) {
-            return std::unexpected(cov.error());
-        }
-        auto P = resolve_operand(assign.args[2]);
-        if (!P) {
-            return std::unexpected(P.error());
-        }
-        auto Q = resolve_operand(assign.args[3]);
-        if (!Q) {
-            return std::unexpected(Q.error());
-        }
-        double tau = 0.0;
-        if (!parse_number(assign.args[4], tau)) {
-            return std::unexpected(DomainError{
-                "finance_bl_posterior_returns",
-                "expected finance_bl_posterior_returns(pi, cov, P, Q, tau)"});
-        }
-        auto post = eval_finance_bl_posterior_returns(*pi, *cov, *P, *Q, tau);
-        if (!post) {
-            return std::unexpected(post.error());
-        }
-        result = *post;
     } else if (assign.callee == "diffgeo_surface_normal_sphere" && assign.args.size() == 2) {
         double u = 0.0;
         double v = 0.0;
@@ -30176,6 +30103,103 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
         }
         result = gray_image_to_matrix(
             image::laplacian_of_gaussian(*gray, static_cast<float>(*sigma)));
+    } else if (assign.callee == "finance_min_variance_portfolio" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto w = eval_finance_min_variance_portfolio(*matrix);
+        if (!w) {
+            return std::unexpected(w.error());
+        }
+        result = *w;
+    } else if (assign.callee == "finance_efficient_frontier" && assign.args.size() == 3) {
+        auto cov = resolve_operand(assign.args[0]);
+        if (!cov) {
+            return std::unexpected(cov.error());
+        }
+        auto mu = resolve_operand(assign.args[1]);
+        if (!mu) {
+            return std::unexpected(mu.error());
+        }
+        double target_return = 0.0;
+        if (!parse_number(assign.args[2], target_return)) {
+            return std::unexpected(DomainError{
+                "finance_efficient_frontier",
+                "expected finance_efficient_frontier(cov, mu, target_return)"});
+        }
+        auto w = eval_finance_efficient_frontier(*cov, *mu, target_return);
+        if (!w) {
+            return std::unexpected(w.error());
+        }
+        result = *w;
+    } else if (assign.callee == "finance_max_sharpe" && assign.args.size() == 3) {
+        auto cov = resolve_operand(assign.args[0]);
+        if (!cov) {
+            return std::unexpected(cov.error());
+        }
+        auto mu = resolve_operand(assign.args[1]);
+        if (!mu) {
+            return std::unexpected(mu.error());
+        }
+        double risk_free = 0.0;
+        if (!parse_number(assign.args[2], risk_free)) {
+            return std::unexpected(DomainError{
+                "finance_max_sharpe", "expected finance_max_sharpe(cov, mu, risk_free)"});
+        }
+        auto w = eval_finance_max_sharpe(*cov, *mu, risk_free);
+        if (!w) {
+            return std::unexpected(w.error());
+        }
+        result = *w;
+    } else if (assign.callee == "finance_bl_implied_returns" && assign.args.size() == 3) {
+        auto cov = resolve_operand(assign.args[0]);
+        if (!cov) {
+            return std::unexpected(cov.error());
+        }
+        auto w_mkt = resolve_operand(assign.args[1]);
+        if (!w_mkt) {
+            return std::unexpected(w_mkt.error());
+        }
+        double delta = 0.0;
+        if (!parse_number(assign.args[2], delta)) {
+            return std::unexpected(DomainError{
+                "finance_bl_implied_returns",
+                "expected finance_bl_implied_returns(cov, w_mkt, delta)"});
+        }
+        auto pi = eval_finance_bl_implied_returns(*cov, *w_mkt, delta);
+        if (!pi) {
+            return std::unexpected(pi.error());
+        }
+        result = *pi;
+    } else if (assign.callee == "finance_bl_posterior_returns" && assign.args.size() == 5) {
+        auto pi = resolve_operand(assign.args[0]);
+        if (!pi) {
+            return std::unexpected(pi.error());
+        }
+        auto cov = resolve_operand(assign.args[1]);
+        if (!cov) {
+            return std::unexpected(cov.error());
+        }
+        auto P = resolve_operand(assign.args[2]);
+        if (!P) {
+            return std::unexpected(P.error());
+        }
+        auto Q = resolve_operand(assign.args[3]);
+        if (!Q) {
+            return std::unexpected(Q.error());
+        }
+        double tau = 0.0;
+        if (!parse_number(assign.args[4], tau)) {
+            return std::unexpected(DomainError{
+                "finance_bl_posterior_returns",
+                "expected finance_bl_posterior_returns(pi, cov, P, Q, tau)"});
+        }
+        auto post = eval_finance_bl_posterior_returns(*pi, *cov, *P, *Q, tau);
+        if (!post) {
+            return std::unexpected(post.error());
+        }
+        result = *post;
     }
 
     return result;

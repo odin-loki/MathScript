@@ -7,6 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 303 — finance tail11, extended Bessel scalar) ✅ COMPLETE
+
+Seventy-third feature wave after Wave 302. Migrated portfolio optimization and Black–Litterman handlers to tail11/tail14; scalar `bessel_h`/`bessel_hy`/`bessel_l`/`bessel_lu`/`hermite_hn` integer validation in `eval_scalar_call`; `integration_repl_wave303_pipeline`.
+
+### Added (Wave 303)
+- **Finance tail11** — `finance_min_variance_portfolio`, `finance_efficient_frontier`, `finance_max_sharpe`, `finance_bl_implied_returns`, `finance_bl_posterior_returns`.
+- **Special** — extended Bessel/Hermite integer order validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave303_pipeline`** — finance/Bessel smoke.
+- **Unit** — `wave303_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 303 sync; **462** CTest suites.
+
+**462 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 302 — image tail11, polylog/debye scalar) ✅ COMPLETE
 
 Seventy-second feature wave after Wave 301. Migrated image filtering/gradient handlers to tail11/tail14; scalar `polylog`/`debye` integer validation in `eval_scalar_call`; `integration_repl_wave302_pipeline`.
