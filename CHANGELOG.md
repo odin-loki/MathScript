@@ -7,6 +7,24 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 306 — ML/finance tail11, Lambert W scalar) ✅ COMPLETE
+
+Seventy-sixth feature wave after Wave 305. Migrated ML logistic/lasso/elastic-net/k-NN and finance Merton/Black–Litterman handlers to tail11/tail14; scalar `lambert_w`/`special_lambert_w` branch validation in `eval_scalar_call`; `integration_repl_wave306_pipeline`.
+
+### Added (Wave 306)
+- **ML tail11** — `ml_logistic_fit`, `ml_logistic_predict`, `ml_lasso_fit`, `ml_lasso_predict`, `ml_elastic_net_fit`, `ml_elastic_net_predict`, `ml_knn_fit`, `ml_knn_predict`.
+- **Finance tail11** — `finance_merton_implied_asset_params`, `finance_bl_posterior_returns_default_omega`.
+- **Special** — Lambert W branch (0 or -1) validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave306_pipeline`** — ML/finance/Lambert W smoke.
+- **Unit** — `wave306_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 306 sync; **465** CTest suites.
+
+**465 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 305 — diffgeo/quantum/FEM/CFD tail11, Kelvin/Struve scalar) ✅ COMPLETE
 
 Seventy-fifth feature wave after Wave 304. Migrated differential geometry, quantum, FEM, and CFD handlers to tail11/tail14; scalar `struve_hn`/`struve_yn`/`kelvin_bei`/`kelvin_ber`/`kelvin_ker`/`kelvin_kei` integer validation in `eval_scalar_call`; `integration_repl_wave305_pipeline`.

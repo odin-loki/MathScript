@@ -20319,7 +20319,13 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "diffgeo_surface_normal_sphere" ||
            callee == "quantum_ket_superposition" || callee == "quantum_ket_basis" ||
            callee == "quantum_fock_state" ||
-           callee == "fem_poisson3d" || callee == "cfd_advection3d";
+           callee == "fem_poisson3d" || callee == "cfd_advection3d" ||
+           callee == "ml_logistic_fit" || callee == "ml_logistic_predict" ||
+           callee == "finance_merton_implied_asset_params" ||
+           callee == "finance_bl_posterior_returns_default_omega" ||
+           callee == "ml_lasso_fit" || callee == "ml_lasso_predict" ||
+           callee == "ml_elastic_net_fit" || callee == "ml_elastic_net_predict" ||
+           callee == "ml_knn_fit" || callee == "ml_knn_predict";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -22078,6 +22084,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return bessel_zero_ynu(static_cast<int>(args[0]), static_cast<int>(args[1]));
         }
         if (fn == "lambert_w" || fn == "special_lambert_w") {
+            if (std::floor(args[0]) != args[0] || (args[0] != 0.0 && args[0] != -1.0)) {
+                return std::unexpected(
+                    DomainError{fn, "expected integer branch 0 or -1"});
+            }
             return lambert_w(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "hypergeo_0f1") {
@@ -23329,35 +23339,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail2(const MatrixCallAss
     auto resolve_operand = [this](const std::string& text) { return eval_matrix_operand(text); };
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "ml_logistic_fit" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        auto fitted = eval_ml_logistic_fit(*X, *y);
-        if (!fitted) {
-            return std::unexpected(fitted.error());
-        }
-        result = *fitted;
-    } else if (assign.callee == "ml_logistic_predict" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto predicted = eval_ml_logistic_predict(*X, *model);
-        if (!predicted) {
-            return std::unexpected(predicted.error());
-        }
-        result = *predicted;
-    }
 
     if (!result) {
         const Error& err = result.error();
@@ -23406,76 +23387,6 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail4(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "finance_merton_implied_asset_params" && assign.args.size() == 5) {
-        double E = 0.0;
-        double sigma_E = 0.0;
-        double D = 0.0;
-        double r = 0.0;
-        double T = 0.0;
-        if (auto v = parse_scalar_arg(assign.args[0], "finance_merton_implied_asset_params")) {
-            E = *v;
-        } else {
-            return std::unexpected(v.error());
-        }
-        if (auto v = parse_scalar_arg(assign.args[1], "finance_merton_implied_asset_params")) {
-            sigma_E = *v;
-        } else {
-            return std::unexpected(v.error());
-        }
-        if (auto v = parse_scalar_arg(assign.args[2], "finance_merton_implied_asset_params")) {
-            D = *v;
-        } else {
-            return std::unexpected(v.error());
-        }
-        if (auto v = parse_scalar_arg(assign.args[3], "finance_merton_implied_asset_params")) {
-            r = *v;
-        } else {
-            return std::unexpected(v.error());
-        }
-        if (auto v = parse_scalar_arg(assign.args[4], "finance_merton_implied_asset_params")) {
-            T = *v;
-        } else {
-            return std::unexpected(v.error());
-        }
-        auto value = eval_finance_merton_implied_asset_params(E, sigma_E, D, r, T);
-        if (!value) {
-            return std::unexpected(value.error());
-        }
-        result = *value;
-    } else if (assign.callee == "finance_bl_posterior_returns_default_omega" &&
-               assign.args.size() == 5) {
-        auto pi = resolve_operand(assign.args[0]);
-        if (!pi) {
-            return std::unexpected(pi.error());
-        }
-        auto cov = resolve_operand(assign.args[1]);
-        if (!cov) {
-            return std::unexpected(cov.error());
-        }
-        auto P = resolve_operand(assign.args[2]);
-        if (!P) {
-            return std::unexpected(P.error());
-        }
-        auto Q = resolve_operand(assign.args[3]);
-        if (!Q) {
-            return std::unexpected(Q.error());
-        }
-        double tau = 0.0;
-        if (!parse_number(assign.args[4], tau)) {
-            auto tau_expr = eval_scalar_expr(state_, assign.args[4]);
-            if (!tau_expr) {
-                return std::unexpected(DomainError{
-                    "finance_bl_posterior_returns_default_omega",
-                    "expected finance_bl_posterior_returns_default_omega(pi, cov, P, Q, tau)"});
-            }
-            tau = *tau_expr;
-        }
-        auto post = eval_finance_bl_posterior_returns_default_omega(*pi, *cov, *P, *Q, tau);
-        if (!post) {
-            return std::unexpected(post.error());
-        }
-        result = *post;
-    }
 
     if (!result) {
         const Error& err = result.error();
@@ -23536,111 +23447,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "ml_lasso_fit" && assign.args.size() == 3) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        auto alpha = parse_scalar_arg(assign.args[2], "ml_lasso_fit");
-        if (!alpha) {
-            return std::unexpected(alpha.error());
-        }
-        auto fitted = eval_ml_lasso_fit(*X, *y, *alpha);
-        if (!fitted) {
-            return std::unexpected(fitted.error());
-        }
-        result = *fitted;
-    } else if (assign.callee == "ml_lasso_predict" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto predicted = eval_ml_lasso_predict(*X, *model);
-        if (!predicted) {
-            return std::unexpected(predicted.error());
-        }
-        result = *predicted;
-    } else if (assign.callee == "ml_elastic_net_fit" && assign.args.size() == 4) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        auto alpha = parse_scalar_arg(assign.args[2], "ml_elastic_net_fit");
-        if (!alpha) {
-            return std::unexpected(alpha.error());
-        }
-        auto l1_ratio = parse_scalar_arg(assign.args[3], "ml_elastic_net_fit");
-        if (!l1_ratio) {
-            return std::unexpected(l1_ratio.error());
-        }
-        auto fitted = eval_ml_elastic_net_fit(*X, *y, *alpha, *l1_ratio);
-        if (!fitted) {
-            return std::unexpected(fitted.error());
-        }
-        result = *fitted;
-    } else if (assign.callee == "ml_elastic_net_predict" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto predicted = eval_ml_elastic_net_predict(*X, *model);
-        if (!predicted) {
-            return std::unexpected(predicted.error());
-        }
-        result = *predicted;
-    } else if (assign.callee == "ml_knn_fit" && assign.args.size() == 3) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto y = resolve_operand(assign.args[1]);
-        if (!y) {
-            return std::unexpected(y.error());
-        }
-        auto k_val = parse_scalar_arg(assign.args[2], "ml_knn_fit");
-        if (!k_val) {
-            return std::unexpected(k_val.error());
-        }
-        const int k = static_cast<int>(*k_val);
-        if (k < 1 || *k_val != k) {
-            return std::unexpected(DomainError{"ml_knn_fit", "expected positive integer k"});
-        }
-        auto fitted = eval_ml_knn_fit(*X, *y, k);
-        if (!fitted) {
-            return std::unexpected(fitted.error());
-        }
-        result = *fitted;
-    } else if (assign.callee == "ml_knn_predict" && assign.args.size() == 2) {
-        auto X = resolve_operand(assign.args[0]);
-        if (!X) {
-            return std::unexpected(X.error());
-        }
-        auto model = resolve_operand(assign.args[1]);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        auto predicted = eval_ml_knn_predict(*X, *model);
-        if (!predicted) {
-            return std::unexpected(predicted.error());
-        }
-        result = *predicted;
-    } else if (assign.callee == "ml_naive_bayes_fit" && assign.args.size() == 2) {
+    if (assign.callee == "ml_naive_bayes_fit" && assign.args.size() == 2) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
             return std::unexpected(X.error());
@@ -30251,6 +30058,209 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
         }
         result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
                                         static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
+    } else if (assign.callee == "ml_logistic_fit" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto fitted = eval_ml_logistic_fit(*X, *y);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_logistic_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_logistic_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    }
+    if (assign.callee == "finance_merton_implied_asset_params" && assign.args.size() == 5) {
+        double E = 0.0;
+        double sigma_E = 0.0;
+        double D = 0.0;
+        double r = 0.0;
+        double T = 0.0;
+        if (auto v = parse_scalar_arg(assign.args[0], "finance_merton_implied_asset_params")) {
+            E = *v;
+        } else {
+            return std::unexpected(v.error());
+        }
+        if (auto v = parse_scalar_arg(assign.args[1], "finance_merton_implied_asset_params")) {
+            sigma_E = *v;
+        } else {
+            return std::unexpected(v.error());
+        }
+        if (auto v = parse_scalar_arg(assign.args[2], "finance_merton_implied_asset_params")) {
+            D = *v;
+        } else {
+            return std::unexpected(v.error());
+        }
+        if (auto v = parse_scalar_arg(assign.args[3], "finance_merton_implied_asset_params")) {
+            r = *v;
+        } else {
+            return std::unexpected(v.error());
+        }
+        if (auto v = parse_scalar_arg(assign.args[4], "finance_merton_implied_asset_params")) {
+            T = *v;
+        } else {
+            return std::unexpected(v.error());
+        }
+        auto value = eval_finance_merton_implied_asset_params(E, sigma_E, D, r, T);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        result = *value;
+    } else if (assign.callee == "finance_bl_posterior_returns_default_omega" &&
+               assign.args.size() == 5) {
+        auto pi = resolve_operand(assign.args[0]);
+        if (!pi) {
+            return std::unexpected(pi.error());
+        }
+        auto cov = resolve_operand(assign.args[1]);
+        if (!cov) {
+            return std::unexpected(cov.error());
+        }
+        auto P = resolve_operand(assign.args[2]);
+        if (!P) {
+            return std::unexpected(P.error());
+        }
+        auto Q = resolve_operand(assign.args[3]);
+        if (!Q) {
+            return std::unexpected(Q.error());
+        }
+        double tau = 0.0;
+        if (!parse_number(assign.args[4], tau)) {
+            auto tau_expr = eval_scalar_expr(state_, assign.args[4]);
+            if (!tau_expr) {
+                return std::unexpected(DomainError{
+                    "finance_bl_posterior_returns_default_omega",
+                    "expected finance_bl_posterior_returns_default_omega(pi, cov, P, Q, tau)"});
+            }
+            tau = *tau_expr;
+        }
+        auto post = eval_finance_bl_posterior_returns_default_omega(*pi, *cov, *P, *Q, tau);
+        if (!post) {
+            return std::unexpected(post.error());
+        }
+        result = *post;
+    }
+    if (assign.callee == "ml_lasso_fit" && assign.args.size() == 3) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto alpha = parse_scalar_arg(assign.args[2], "ml_lasso_fit");
+        if (!alpha) {
+            return std::unexpected(alpha.error());
+        }
+        auto fitted = eval_ml_lasso_fit(*X, *y, *alpha);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_lasso_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_lasso_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_elastic_net_fit" && assign.args.size() == 4) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto alpha = parse_scalar_arg(assign.args[2], "ml_elastic_net_fit");
+        if (!alpha) {
+            return std::unexpected(alpha.error());
+        }
+        auto l1_ratio = parse_scalar_arg(assign.args[3], "ml_elastic_net_fit");
+        if (!l1_ratio) {
+            return std::unexpected(l1_ratio.error());
+        }
+        auto fitted = eval_ml_elastic_net_fit(*X, *y, *alpha, *l1_ratio);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_elastic_net_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_elastic_net_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
+    } else if (assign.callee == "ml_knn_fit" && assign.args.size() == 3) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto y = resolve_operand(assign.args[1]);
+        if (!y) {
+            return std::unexpected(y.error());
+        }
+        auto k_val = parse_scalar_arg(assign.args[2], "ml_knn_fit");
+        if (!k_val) {
+            return std::unexpected(k_val.error());
+        }
+        const int k = static_cast<int>(*k_val);
+        if (k < 1 || *k_val != k) {
+            return std::unexpected(DomainError{"ml_knn_fit", "expected positive integer k"});
+        }
+        auto fitted = eval_ml_knn_fit(*X, *y, k);
+        if (!fitted) {
+            return std::unexpected(fitted.error());
+        }
+        result = *fitted;
+    } else if (assign.callee == "ml_knn_predict" && assign.args.size() == 2) {
+        auto X = resolve_operand(assign.args[0]);
+        if (!X) {
+            return std::unexpected(X.error());
+        }
+        auto model = resolve_operand(assign.args[1]);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        auto predicted = eval_ml_knn_predict(*X, *model);
+        if (!predicted) {
+            return std::unexpected(predicted.error());
+        }
+        result = *predicted;
     }
 
     return result;

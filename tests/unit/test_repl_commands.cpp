@@ -11248,3 +11248,50 @@ TEST(ReplCommandsTest, wave305_kelvin_struve_scalar) {
     expect_ok(interp, "kei = kelvin_kei(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("kei"), ms::kelvin_kei(0, 1.0), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave306_ml_finance_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "X = [-2; -1; 1; 2]");
+    expect_ok(interp, "y = [0; 0; 1; 1]");
+    expect_ok(interp, "log_m = ml_logistic_fit(X, y)");
+    expect_ok(interp, "log_p = ml_logistic_predict([2], log_m)");
+    ASSERT_GT(interp.state().matrices.count("log_p"), 0u);
+
+    expect_ok(interp, "Xr = [0;1;2;3;4]");
+    expect_ok(interp, "yr = [1;3;5;7;9]");
+    expect_ok(interp, "lasso_m = ml_lasso_fit(Xr, yr, 0.001)");
+    expect_ok(interp, "lasso_p = ml_lasso_predict([5], lasso_m)");
+    EXPECT_NEAR(interp.state().matrices.at("lasso_p")(0, 0), 11.0, 0.5);
+
+    expect_ok(interp, "enet_m = ml_elastic_net_fit(Xr, yr, 0.001, 0.5)");
+    expect_ok(interp, "enet_p = ml_elastic_net_predict([5], enet_m)");
+    EXPECT_NEAR(interp.state().matrices.at("enet_p")(0, 0), 11.0, 0.5);
+
+    expect_ok(interp, "Kx = [0,0; 1,0; 0,1; 3,3; 4,3; 3,4]");
+    expect_ok(interp, "Ky = [0; 0; 0; 1; 1; 1]");
+    expect_ok(interp, "knn_m = ml_knn_fit(Kx, Ky, 3)");
+    expect_ok(interp, "knn_p = ml_knn_predict([0.5,0.5; 3.5,3.5], knn_m)");
+    ASSERT_GT(interp.state().matrices.count("knn_p"), 0u);
+
+    expect_ok(interp, "cov2 = [0.04, 0.01; 0.01, 0.02]");
+    expect_ok(interp, "pi = [0.05; 0.07]");
+    expect_ok(interp, "P = [1, 0]");
+    expect_ok(interp, "Q = [0.10]");
+    expect_ok(interp, "post = finance_bl_posterior_returns_default_omega(pi, cov2, P, Q, 0.05)");
+    ASSERT_GT(interp.state().matrices.count("post"), 0u);
+
+    expect_ok(interp, "merton = finance_merton_implied_asset_params(120, 0.3, 100, 0.05, 1)");
+    EXPECT_EQ(interp.state().matrices.at("merton").cols(), 6u);
+}
+
+TEST(ReplCommandsTest, wave306_lambert_w_scalar) {
+    Interpreter interp;
+
+    const double w_ref = ms::lambert_w(0, 1.0);
+    expect_ok(interp, "w = lambert_w(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("w"), w_ref, 1e-9);
+
+    expect_ok(interp, "ws = special_lambert_w(-1, -0.2)");
+    EXPECT_NEAR(interp.state().scalars.at("ws"), ms::lambert_w(-1, -0.2), 1e-9);
+}
