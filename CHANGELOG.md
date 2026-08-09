@@ -7,6 +7,23 @@ MathScript is developed in **waves** — batches of 1–8 parallel AI coding sub
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-09 (Wave 304 — geo tail11, Struve/Anger/Weber scalar) ✅ COMPLETE
+
+Seventy-fourth feature wave after Wave 303. Migrated computational geometry handlers to tail11/tail14; scalar `struve_l`/`struve_h`/`struve_k`/`anger_j`/`weber_e` integer validation in `eval_scalar_call`; `integration_repl_wave304_pipeline`.
+
+### Added (Wave 304)
+- **Geo tail11** — `geo_upper_hull`, `geo_lower_hull`, `geo_bezier_subdivide`, `geo_kdtree_3d_knn`, `geo_kdtree_3d_range`.
+- **Special** — Struve/Anger/Weber integer order validation in scalar two-arg eval path.
+
+### Tests
+- **`integration_repl_wave304_pipeline`** — geo/Struve smoke.
+- **Unit** — `wave304_*` in `test_repl_commands.cpp`.
+
+### Docs
+- **`README.md`**, **`docs/API.md`**, **`MathScript_Remaining_TODO.md`** — Wave 304 sync; **463** CTest suites.
+
+**463 CTest suites — all passing**. **28-bench smoke OK**.
+
 ## [1.0.0] - 2026-08-09 (Wave 303 — finance tail11, extended Bessel scalar) ✅ COMPLETE
 
 Seventy-third feature wave after Wave 302. Migrated portfolio optimization and Black–Litterman handlers to tail11/tail14; scalar `bessel_h`/`bessel_hy`/`bessel_l`/`bessel_lu`/`hermite_hn` integer validation in `eval_scalar_call`; `integration_repl_wave303_pipeline`.

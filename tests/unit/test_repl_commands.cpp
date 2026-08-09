@@ -11152,3 +11152,49 @@ TEST(ReplCommandsTest, wave303_bessel_scalar) {
     expect_ok(interp, "hh = hermite_hn(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("hh"), ms::hermite_hn(2, 0.5), 1e-9);
 }
+
+TEST(ReplCommandsTest, wave304_geo_tail11) {
+    Interpreter interp;
+
+    expect_ok(interp, "sq = [0,0; 1,0; 1,1; 0,1]");
+    expect_ok(interp, "uh = geo_upper_hull(sq)");
+    ASSERT_GT(interp.state().matrices.count("uh"), 0u);
+    EXPECT_GE(interp.state().matrices.at("uh").rows(), 2u);
+
+    expect_ok(interp, "lh = geo_lower_hull(sq)");
+    ASSERT_GT(interp.state().matrices.count("lh"), 0u);
+    EXPECT_GE(interp.state().matrices.at("lh").rows(), 2u);
+
+    expect_ok(interp, "ctrl = [0, 0; 1, 2; 2, 0]");
+    expect_ok(interp, "sub = geo_bezier_subdivide(ctrl, 0.5)");
+    ASSERT_GT(interp.state().matrices.count("sub"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("sub").rows(), 6u);
+
+    expect_ok(interp, "P = [0,0,0; 1,0,0; 2,0,0]");
+    expect_ok(interp, "n = geo_kdtree_3d_knn(P, 0.9, 0, 0, 2)");
+    ASSERT_GT(interp.state().matrices.count("n"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("n").rows(), 2u);
+
+    expect_ok(interp, "r = geo_kdtree_3d_range(P, 1.0, 0, 0, 1.5)");
+    ASSERT_GT(interp.state().matrices.count("r"), 0u);
+    EXPECT_GE(interp.state().matrices.at("r").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, wave304_struve_scalar) {
+    Interpreter interp;
+
+    expect_ok(interp, "sl = struve_l(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sl"), ms::struve_l(0, 1.0), 1e-9);
+
+    expect_ok(interp, "sh = struve_h(1, 0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("sh"), ms::struve_h(1, 0.5), 1e-9);
+
+    expect_ok(interp, "sk = struve_k(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sk"), ms::struve_k(0, 1.0), 1e-9);
+
+    expect_ok(interp, "aj = anger_j(1, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("aj"), ms::anger_j(1, 1.0), 1e-9);
+
+    expect_ok(interp, "we = weber_e(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("we"), ms::weber_e(0, 1.0), 1e-9);
+}

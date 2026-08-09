@@ -20312,7 +20312,10 @@ bool is_matrix_call_callee(const std::string& callee) {
            callee == "finance_min_variance_portfolio" ||
            callee == "finance_efficient_frontier" || callee == "finance_max_sharpe" ||
            callee == "finance_bl_implied_returns" ||
-           callee == "finance_bl_posterior_returns";
+           callee == "finance_bl_posterior_returns" ||
+           callee == "geo_upper_hull" || callee == "geo_lower_hull" ||
+           callee == "geo_bezier_subdivide" ||
+           callee == "geo_kdtree_3d_knn" || callee == "geo_kdtree_3d_range";
 }
 
 bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
@@ -21986,12 +21989,24 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return hermite_hn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_l") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"struve_l", "expected non-negative integer nu"});
+            }
             return struve_l(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_h") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"struve_h", "expected non-negative integer nu"});
+            }
             return struve_h(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_k") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"struve_k", "expected non-negative integer nu"});
+            }
             return struve_k(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "struve_hn") {
@@ -22001,9 +22016,17 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return struve_yn(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "anger_j") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"anger_j", "expected non-negative integer nu"});
+            }
             return anger_j(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "weber_e") {
+            if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
+                return std::unexpected(
+                    DomainError{"weber_e", "expected non-negative integer nu"});
+            }
             return weber_e(static_cast<int>(args[0]), args[1]);
         }
         if (fn == "kelvin_bei") {
@@ -23613,56 +23636,7 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail6(const MatrixCallAss
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "geo_upper_hull" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_geo_upper_hull(*matrix);
-    } else if (assign.callee == "geo_lower_hull" && assign.args.size() == 1) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        result = eval_geo_lower_hull(*matrix);
-    } else if (assign.callee == "geo_bezier_subdivide" && assign.args.size() == 2) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto t = parse_scalar_arg(assign.args[1], "geo_bezier_subdivide");
-        if (!t) {
-            return std::unexpected(t.error());
-        }
-        result = eval_geo_bezier_subdivide(*matrix, *t);
-    } else if ((assign.callee == "geo_kdtree_3d_knn" || assign.callee == "geo_kdtree_3d_range") &&
-               assign.args.size() == 5) {
-        auto matrix = resolve_operand(assign.args[0]);
-        if (!matrix) {
-            return std::unexpected(matrix.error());
-        }
-        auto qx = parse_scalar_arg(assign.args[1], assign.callee.c_str());
-        if (!qx) {
-            return std::unexpected(qx.error());
-        }
-        auto qy = parse_scalar_arg(assign.args[2], assign.callee.c_str());
-        if (!qy) {
-            return std::unexpected(qy.error());
-        }
-        auto qz = parse_scalar_arg(assign.args[3], assign.callee.c_str());
-        if (!qz) {
-            return std::unexpected(qz.error());
-        }
-        auto arg4 = parse_scalar_arg(assign.args[4], assign.callee.c_str());
-        if (!arg4) {
-            return std::unexpected(arg4.error());
-        }
-        if (assign.callee == "geo_kdtree_3d_knn") {
-            result = eval_geo_kdtree_3d_knn(*matrix, *qx, *qy, *qz, *arg4);
-        } else {
-            result = eval_geo_kdtree_3d_range(*matrix, *qx, *qy, *qz, *arg4);
-        }
-    } else if (assign.callee == "ml_lasso_fit" && assign.args.size() == 3) {
+    if (assign.callee == "ml_lasso_fit" && assign.args.size() == 3) {
         auto X = resolve_operand(assign.args[0]);
         if (!X) {
             return std::unexpected(X.error());
@@ -30200,6 +30174,55 @@ Result<Matrix<double>> Interpreter::assign_matrix_call_tail14(const MatrixCallAs
             return std::unexpected(post.error());
         }
         result = *post;
+    } else if (assign.callee == "geo_upper_hull" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_geo_upper_hull(*matrix);
+    } else if (assign.callee == "geo_lower_hull" && assign.args.size() == 1) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        result = eval_geo_lower_hull(*matrix);
+    } else if (assign.callee == "geo_bezier_subdivide" && assign.args.size() == 2) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto t = parse_scalar_arg(assign.args[1], "geo_bezier_subdivide");
+        if (!t) {
+            return std::unexpected(t.error());
+        }
+        result = eval_geo_bezier_subdivide(*matrix, *t);
+    } else if ((assign.callee == "geo_kdtree_3d_knn" || assign.callee == "geo_kdtree_3d_range") &&
+               assign.args.size() == 5) {
+        auto matrix = resolve_operand(assign.args[0]);
+        if (!matrix) {
+            return std::unexpected(matrix.error());
+        }
+        auto qx = parse_scalar_arg(assign.args[1], assign.callee.c_str());
+        if (!qx) {
+            return std::unexpected(qx.error());
+        }
+        auto qy = parse_scalar_arg(assign.args[2], assign.callee.c_str());
+        if (!qy) {
+            return std::unexpected(qy.error());
+        }
+        auto qz = parse_scalar_arg(assign.args[3], assign.callee.c_str());
+        if (!qz) {
+            return std::unexpected(qz.error());
+        }
+        auto arg4 = parse_scalar_arg(assign.args[4], assign.callee.c_str());
+        if (!arg4) {
+            return std::unexpected(arg4.error());
+        }
+        if (assign.callee == "geo_kdtree_3d_knn") {
+            result = eval_geo_kdtree_3d_knn(*matrix, *qx, *qy, *qz, *arg4);
+        } else {
+            result = eval_geo_kdtree_3d_range(*matrix, *qx, *qy, *qz, *arg4);
+        }
     }
 
     return result;
