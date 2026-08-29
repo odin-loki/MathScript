@@ -276,8 +276,43 @@ bool sourceLocationIsExempt(const clang::ASTContext& ctx, clang::SourceLocation 
         return true;
     }
     const clang::SourceManager& sm = ctx.getSourceManager();
-    return sm.isInSystemHeader(sm.getSpellingLoc(loc)) ||
-           sm.isInSystemHeader(sm.getExpansionLoc(loc));
+
+    auto locIsSystem = [&](clang::SourceLocation l) -> bool {
+        if (l.isInvalid()) {
+            return false;
+        }
+        if (sm.isInSystemHeader(l)) {
+            return true;
+        }
+        const clang::FileID fid = sm.getFileID(l);
+        if (fid.isInvalid()) {
+            return false;
+        }
+        const clang::SourceLocation start = sm.getLocForStartOfFile(fid);
+        return start.isValid() && sm.isInSystemHeader(start);
+    };
+
+    if (locIsSystem(loc) || locIsSystem(sm.getSpellingLoc(loc)) ||
+        locIsSystem(sm.getExpansionLoc(loc)) || locIsSystem(sm.getFileLoc(loc))) {
+        return true;
+    }
+
+    const clang::PresumedLoc presumed = sm.getPresumedLoc(loc);
+    if (!presumed.isValid()) {
+        return false;
+    }
+    if (auto file_ref = sm.getFileManager().getOptionalFileRef(presumed.getFilename())) {
+        const clang::FileID presumed_fid = sm.translateFile(*file_ref);
+        if (presumed_fid.isValid()) {
+            const clang::SourceLocation start = sm.getLocForStartOfFile(presumed_fid);
+            if (start.isValid() && sm.isInSystemHeader(start)) {
+                return true;
+            }
+        }
+    }
+    const llvm::StringRef file = presumed.getFilename();
+    return file.contains("/usr/include/") || file.contains("/usr/lib/") ||
+           file.contains("libstdc++") || file.contains("/c++/");
 }
 
 } // namespace ms::plugin

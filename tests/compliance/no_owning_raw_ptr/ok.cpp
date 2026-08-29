@@ -10,5 +10,5 @@ struct Owner {
 
 int main() {
     Owner o;
-    return o.backup.size();
+    return static_cast<int>(o.backup.size());
 }

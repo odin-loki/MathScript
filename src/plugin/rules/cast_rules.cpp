@@ -74,6 +74,9 @@ bool CastRules::visitCStyleCastExpr(clang::CStyleCastExpr* expr) {
         sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
+    if (expr->getType()->isVoidType()) {
+        return true;
+    }
     env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_cstyle_cast_);
     return true;
 }
@@ -103,7 +106,9 @@ bool CastRules::visitImplicitCastExpr(clang::ImplicitCastExpr* expr) {
     }
     const auto parents = env_.Ctx.getParents(*expr);
     for (const auto& parent : parents) {
-        if (parent.get<clang::ExplicitCastExpr>()) {
+        // static_cast / functional-style T(x) / C-style (T)x wrap the
+        // conversion in ImplicitCastExpr; the written cast is the parent.
+        if (parent.get<clang::CastExpr>()) {
             return true;
         }
     }

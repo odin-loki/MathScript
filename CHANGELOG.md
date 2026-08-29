@@ -11,7 +11,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - Linux `-fno-exceptions`: control `c2d`/`d2c` helpers in `repl_engine_internal.cpp` no longer wrap non-throwing `control::*` calls in `try`/`catch`.
 - Clang plugin builds on LLVM 18: `DeclNamespace.h` is included only when present (`NamespaceDecl` is already in `Decl.h`); narrowing diagnostics use `CK_*` instead of `ImplicitCastKind`; unused-`expected` is detected via discarded `CallExpr` (Clang has no `ExprStmt`).
 - Plugin smoke test: Clang 18 requires capturing function-local constexpr string arrays in the unsafe-registry lambda.
-- Clang plugin: ignore system headers; do not treat `static_cast`/`static_cast`-style explicit casts as implicit narrowing.
+- Clang plugin: ignore system headers; do not treat written casts as implicit narrowing; allow `(void)` discards; treat initialized/`auto` locals as initialized. Compliance `unused_expected` uses a local `expected` stand-in (libstdc++ `std::expected` is unavailable under Clang + `-fno-exceptions` on CI).
 - Linux link: use `lld` when it is on PATH; GCC CI jobs now install `lld` so `-fuse-ld=lld` is not a hard missing-linker failure.
 - Local prove-out (Windows MSVC Release, CUDA off): **816/816** CTest suites passed (~36 s at `-j 32`); 28 Google Benchmark targets passed with `--benchmark_min_time=0.001s`. Windows ZIP smoke: `scripts/package_smoke.ps1` → `mathscript-1.0.0-win64.zip`.
 - MSVC `/W4` compile warnings in library and test TUs were cleared (unused locals, `[[nodiscard]]`, `size_t`→`int`, unused statics).

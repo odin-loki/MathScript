@@ -1,8 +1,14 @@
 // MUST NOT compile when the ms-profile Clang plugin is active.
+// Local stand-in: the plugin matches any record named `expected`.
 
-#include <expected>
+template <typename T, typename E>
+struct expected {
+    T value{};
+    expected() = default;
+    expected(T v) : value(v) {}
+};
 
-std::expected<int, int> compute() {
+expected<int, int> compute() {
     return 1;
 }
 

@@ -78,16 +78,18 @@ bool MemoryRules::visitVarDecl(clang::VarDecl* decl) {
         env_.CI.getDiagnostics().Report(decl->getBeginLoc(), diag_volatile_sync_);
         return true;
     }
-    if (clang::isa<clang::ParmVarDecl>(decl)) {
+    if (clang::isa<clang::ParmVarDecl>(decl) || decl->isInvalidDecl()) {
         return true;
     }
     if (!decl->hasLocalStorage() || decl->isImplicit()) {
         return true;
     }
-    if (decl->hasInit() || decl->getInit() != nullptr) {
+    if (decl->hasInit() || decl->getInit() != nullptr || decl->getAnyInitializer()) {
         return true;
     }
-    if (decl->getType()->isReferenceType()) {
+    const clang::QualType type = decl->getType();
+    if (type.isNull() || type->isReferenceType() || type->isUndeducedType() ||
+        type->isDependentType() || type->containsErrors()) {
         return true;
     }
     env_.CI.getDiagnostics().Report(decl->getBeginLoc(), diag_uninit_);
