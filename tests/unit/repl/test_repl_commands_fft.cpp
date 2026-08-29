@@ -3711,3 +3711,10 @@ TEST(ReplCommandsTest, fft_rfft_noassign) {
     expect_contains(interp, "fft_rfft([1; 0; 0; 0])", "rfft");
     expect_error_contains(interp, "fft_rfft([1, 2; 3, 4])", "coefficient vector");
 }
+
+TEST(ReplCommandsTest, fft_irfft_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "S = fft_rfft([1; 2; 3; 4])");
+    expect_contains(interp, "fft_irfft(S, 4)", "signal =");
+    expect_error_contains(interp, "fft_irfft(S, 1.5)", "positive integer n");
+}

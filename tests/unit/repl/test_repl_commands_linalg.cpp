@@ -11336,3 +11336,9 @@ TEST(ReplCommandsTest, matrix_rank_noassign) {
     expect_contains(interp, "matrix_rank([1, 2; 2, 4])", "1");
     expect_error_contains(interp, "matrix_rank(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, bidiag_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bidiag([1, 2; 3, 4])");
+    expect_error_contains(interp, "bidiag(no_such_matrix)", "unknown matrix");
+}

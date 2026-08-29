@@ -130,6 +130,76 @@ TEST(SymbolicSeriesTest, zero_order_is_zero) {
     EXPECT_NEAR(sym_eval(series, {{"x", 1.0}}), 0.0, 1e-12);
 }
 
+TEST(SymbolicSeriesTest, negative_order_is_zero) {
+    const auto series = sym_series(sym_exp(sym_var("x")), "x", 0.0, -3);
+    EXPECT_EQ(series.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(series, {{"x", 2.0}}), 0.0, 1e-12);
+}
+
+TEST(SymbolicSeriesTest, order_one_is_value_at_point) {
+    const auto exp_at_zero = sym_series(sym_exp(sym_var("x")), "x", 0.0, 1);
+    EXPECT_NEAR(sym_eval(exp_at_zero, {{"x", 0.4}}), 1.0, 1e-12);
+
+    const auto sin_at_zero = sym_series(sym_sin(sym_var("x")), "x", 0.0, 1);
+    EXPECT_NEAR(sym_eval(sin_at_zero, {{"x", 0.4}}), 0.0, 1e-12);
+}
+
+TEST(SymbolicSeriesTest, geometric_one_over_one_minus_x) {
+    const auto expr = sym_div(sym_const(1.0), sym_sub(sym_const(1.0), sym_var("x")));
+    const auto series = sym_series(expr, "x", 0.0, 4);
+    const auto expected = sym_add(
+        sym_add(sym_const(1.0), sym_var("x")),
+        sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_pow(sym_var("x"), sym_const(3.0))));
+
+    for (const double x : {0.0, 0.1, -0.2, 0.25}) {
+        expect_eval_equivalent(expected, series, {{"x", x}}, 1e-6);
+    }
+}
+
+TEST(SymbolicSeriesTest, tan_at_zero_order_four) {
+    const auto series = sym_series(sym_tan(sym_var("x")), "x", 0.0, 4);
+    const auto expected = sym_add(
+        sym_var("x"),
+        sym_div(sym_pow(sym_var("x"), sym_const(3.0)), sym_const(3.0)));
+
+    for (const double x : {0.0, 0.1, -0.15}) {
+        expect_eval_equivalent(expected, series, {{"x", x}}, 1e-3);
+    }
+}
+
+TEST(SymbolicSeriesTest, constant_higher_order_stays_constant) {
+    const auto series = sym_series(sym_const(5.0), "x", 1.0, 5);
+    EXPECT_NEAR(sym_eval(series, {{"x", 99.0}}), 5.0, 1e-12);
+}
+
+TEST(SymbolicSeriesTest, sqrt_at_one_order_three) {
+    const auto expr = sym_sqrt(sym_var("x"));
+    const auto series = sym_series(expr, "x", 1.0, 3);
+    const auto shift = sym_sub(sym_var("x"), sym_const(1.0));
+    const auto expected = sym_sub(
+        sym_add(sym_const(1.0), sym_mul(sym_const(0.5), clone_expr(shift))),
+        sym_mul(sym_const(0.125), sym_pow(clone_expr(shift), sym_const(2.0))));
+
+    for (const double x : {0.85, 1.0, 1.15}) {
+        expect_eval_equivalent(expected, series, {{"x", x}}, 1e-4);
+    }
+}
+
+TEST(SymbolicSeriesTest, exp_at_nonzero_point) {
+    const auto series = sym_series(sym_exp(sym_var("x")), "x", 1.0, 3);
+    for (const double x : {0.8, 1.0, 1.2}) {
+        EXPECT_NEAR(sym_eval(series, {{"x", x}}), std::exp(x), 5e-3);
+    }
+}
+
+TEST(SymbolicSeriesTest, sin_at_pi_over_six) {
+    const double point = std::numbers::pi / 6.0;
+    const auto series = sym_series(sym_sin(sym_var("x")), "x", point, 3);
+    for (const double x : {point - 0.1, point, point + 0.1}) {
+        EXPECT_NEAR(sym_eval(series, {{"x", x}}), std::sin(x), 2e-3);
+    }
+}
+
 TEST(SymbolicSolveLinearTest, single_variable_numeric) {
     auto eq = sym_add(sym_mul(sym_const(2.0), sym_var("x")), sym_const(4.0));
     const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});

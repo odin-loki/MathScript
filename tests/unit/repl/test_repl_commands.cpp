@@ -20649,3 +20649,13 @@ TEST(ReplCommandsTest, signal_firwin_lms_error_paths) {
     expect_error(interp, "signal_coherence(missing, missing, 8, 8)");
 }
 
+TEST(ReplCommandsTest, clausen_1_execute_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "clausen(1)");
+}
+
+TEST(ReplCommandsTest, eta_dirichlet_2_execute_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "eta_dirichlet(2)");
+}
+

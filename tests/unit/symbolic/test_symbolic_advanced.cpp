@@ -92,3 +92,23 @@ TEST(SymAdvancedTest, multiple_variables) {
     EXPECT_NEAR(eval2(d_x, 3.0, 5.0), 5.0, 1e-12);
     EXPECT_NEAR(eval2(d_y, 3.0, 5.0), 3.0, 1e-12);
 }
+
+TEST(SymAdvancedTest, simplify_zero_and_one_identities) {
+    const auto left_zero = sym_simplify(sym_add(sym_const(0.0), sym_sin(sym_var("x"))));
+    EXPECT_NEAR(eval_at(left_zero, 0.7), std::sin(0.7), 1e-12);
+
+    const auto right_one = sym_simplify(sym_mul(sym_cos(sym_var("x")), sym_const(1.0)));
+    EXPECT_NEAR(eval_at(right_one, 0.7), std::cos(0.7), 1e-12);
+}
+
+TEST(SymAdvancedTest, differentiate_quotient_and_sqrt) {
+    auto quot = sym_div(sym_sin(sym_var("x")), sym_var("x"));
+    const auto d_quot = sym_simplify(sym_diff(std::move(quot), "x"));
+    const double x = 1.2;
+    const double expected = (x * std::cos(x) - std::sin(x)) / (x * x);
+    EXPECT_NEAR(eval_at(d_quot, x), expected, 1e-9);
+
+    auto root = sym_sqrt(sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_const(1.0)));
+    const auto d_root = sym_simplify(sym_diff(std::move(root), "x"));
+    EXPECT_NEAR(eval_at(d_root, 1.0), 1.0 / std::sqrt(2.0), 1e-9);
+}

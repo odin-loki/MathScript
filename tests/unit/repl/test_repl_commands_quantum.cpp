@@ -5553,3 +5553,11 @@ TEST(ReplCommandsTest, quantum_von_neumann_entropy_noassign) {
     expect_error_contains(interp, "quantum_von_neumann_entropy(no_such_matrix)",
                           "unknown matrix");
 }
+
+TEST(ReplCommandsTest, quantum_concurrence_noassign) {
+    Interpreter interp;
+    expect_contains(interp,
+                    "quantum_concurrence([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0])",
+                    "0");
+    expect_error_contains(interp, "quantum_concurrence(no_such_matrix)", "unknown matrix");
+}

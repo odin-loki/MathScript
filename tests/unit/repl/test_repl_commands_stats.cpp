@@ -4733,3 +4733,63 @@ TEST(ReplCommandsTest, stats_rms_noassign) {
     expect_ok(interp, "stats_rms([3; 4])");
     expect_error_contains(interp, "stats_rms(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, stats_skewness_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_skewness([1; 2; 3; 4; 5])", "0");
+    expect_error_contains(interp, "stats_skewness(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_kurtosis_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_kurtosis([1; 2; 3; 4; 5])");
+    expect_error_contains(interp, "stats_kurtosis(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_mode_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_mode([1; 2; 2; 3])", "2");
+    expect_error_contains(interp, "stats_mode(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_geometric_mean_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_geometric_mean([2; 8])", "4");
+    expect_error_contains(interp, "stats_geometric_mean(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_harmonic_mean_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_harmonic_mean([1; 2; 3; 4])", "1.92");
+    expect_error_contains(interp, "stats_harmonic_mean(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_mad_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_mad([1; 1; 2; 2; 4; 6; 9])", "1.4826");
+    expect_error_contains(interp, "stats_mad(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_iqr_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_iqr([1; 2; 3; 4; 5; 6; 7; 8; 9])", "4");
+    expect_error_contains(interp, "stats_iqr(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_ttest_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_ttest([6; 7; 8; 9; 10], 5)");
+    expect_error_contains(interp, "stats_ttest(no_such_matrix, 5)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_trimmed_mean_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_trimmed_mean([1; 2; 3; 4; 5; 6; 7; 8; 9; 10], 0.1)");
+    expect_error_contains(interp, "stats_trimmed_mean(no_such_matrix, 0.1)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_vif_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_vif([1, 1; 1, -1; 1, 1; 1, -1; 1, 1; 1, -1], 0)");
+    expect_error_contains(interp, "stats_vif(no_such_matrix, 0)", "unknown matrix");
+}

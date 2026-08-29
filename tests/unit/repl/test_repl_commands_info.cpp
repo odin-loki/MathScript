@@ -804,3 +804,27 @@ TEST(ReplCommandsTest, info_normalized_entropy_noassign) {
     expect_contains(interp, "info_normalized_entropy([0.5; 0.5])", "1");
     expect_error_contains(interp, "info_normalized_entropy(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, info_lz_complexity_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_lz_complexity([0; 1; 0; 1; 1; 0])", "1.");
+    expect_error_contains(interp, "info_lz_complexity(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_source_coding_rate_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_source_coding_rate([0.5; 0.5])", "1");
+    expect_error_contains(interp, "info_source_coding_rate(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_mutual_info_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_mutual_info([0.25, 0; 0, 0.25])", "1");
+    expect_error_contains(interp, "info_mutual_info(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_blahut_arimoto_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_blahut_arimoto([1, 0; 0, 1])", "1");
+    expect_error_contains(interp, "info_blahut_arimoto(no_such_matrix)", "unknown matrix");
+}

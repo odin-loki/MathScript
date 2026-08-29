@@ -3365,3 +3365,31 @@ TEST(ReplCommandsTest, finance_max_drawdown_noassign) {
     expect_ok(interp, "finance_max_drawdown([1; 1.1; 0.9; 1.2])");
     expect_error_contains(interp, "finance_max_drawdown(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, finance_var_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_var([0.1; -0.05; 0.2])", "0.");
+    expect_error_contains(interp, "finance_var(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, finance_cvar_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_cvar([0.1; -0.05; 0.2])", "0.");
+    expect_error_contains(interp, "finance_cvar(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, finance_historical_var_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ret = [-0.20; -0.15; -0.10; -0.05; 0.0; 0.05; 0.10; 0.15; 0.20; 0.25]");
+    expect_contains(interp, "finance_historical_var(ret, 0.95)", "0.2");
+    expect_error_contains(interp, "finance_historical_var(no_such_matrix, 0.95)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, finance_historical_cvar_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ret = [-0.20; -0.15; -0.10; -0.05; 0.0; 0.05; 0.10; 0.15; 0.20; 0.25]");
+    expect_contains(interp, "finance_historical_cvar(ret, 0.95)", "0.2");
+    expect_error_contains(interp, "finance_historical_cvar(no_such_matrix, 0.95)",
+                          "unknown matrix");
+}

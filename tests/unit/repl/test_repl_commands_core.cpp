@@ -1024,3 +1024,34 @@ TEST(ReplCommandsTest, decompress_sparse_32) {
     expect_ok(interp, "S = sparse_add(A, B)");
     ASSERT_GT(interp.state().matrices.count("S"), 0u);
 }
+
+TEST(ReplCommandsTest, sym_diff_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "sym_diff(\"sin(x)*x^2\", \"x\")", "x");
+    expect_error_contains(interp, "sym_diff(\"x^2\", x)", "expected sym_diff");
+}
+
+TEST(ReplCommandsTest, sym_integrate_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "sym_integrate(\"x^2\", \"x\")", "x");
+    expect_error_contains(interp, "sym_integrate(\"x^2\", x)", "expected sym_integrate");
+}
+
+TEST(ReplCommandsTest, sym_eval_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "sym_eval(\"x^2+1\", \"x=3\")", "10");
+    expect_error_contains(interp, "sym_eval(\"x^2+1\", \"x\")", "var=value");
+}
+
+TEST(ReplCommandsTest, sym_collect_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "sym_collect(\"x+x+1\", \"x\")", "x");
+    expect_error_contains(interp, "sym_collect(\"x+x+1\", x)", "expected sym_collect");
+}
+
+TEST(ReplCommandsTest, sym_solve_linear_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "sym_solve_linear(\"2*x+4\", \"x\")", "x");
+    expect_error_contains(interp, "sym_solve_linear(\"2*x+4\", x)",
+                          "quoted semicolon-separated identifier");
+}

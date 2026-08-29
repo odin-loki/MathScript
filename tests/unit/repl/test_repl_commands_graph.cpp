@@ -5479,3 +5479,27 @@ TEST(ReplCommandsTest, graph_is_bipartite_noassign) {
     expect_ok(interp, "graph_is_bipartite([0, 1; 1, 0])");
     expect_error_contains(interp, "graph_is_bipartite([1, 2])", "square");
 }
+
+TEST(ReplCommandsTest, graph_algebraic_connectivity_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "graph_algebraic_connectivity([0,1,0; 1,0,1; 0,1,0])");
+    expect_error_contains(interp, "graph_algebraic_connectivity([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_chromatic_number_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_chromatic_number([0, 1, 1; 1, 0, 1; 1, 1, 0])", "3");
+    expect_error_contains(interp, "graph_chromatic_number([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_is_planar_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_is_planar([0,1,0; 1,0,1; 0,1,0])", "1");
+    expect_error_contains(interp, "graph_is_planar([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_is_strongly_connected_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_is_strongly_connected([0, 1, 0; 0, 0, 1; 1, 0, 0])", "1");
+    expect_error_contains(interp, "graph_is_strongly_connected([1, 2])", "square");
+}

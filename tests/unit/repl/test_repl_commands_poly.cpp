@@ -4673,3 +4673,46 @@ TEST(ReplCommandsTest, poly_discriminant_noassign) {
     expect_contains(interp, "poly_discriminant([1; -2; 1])", "0");
     expect_error_contains(interp, "poly_discriminant(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, poly_integ_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_integ([3], 0)", "integ =");
+    expect_error_contains(interp, "poly_integ(no_such_matrix, 0)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_shift_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_shift([0; 0; 1], 1)", "shift =");
+    expect_error_contains(interp, "poly_shift(no_such_matrix, 1)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_scale_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_scale([0; 0; 1], 2)", "scale =");
+    expect_error_contains(interp, "poly_scale(missing, 2)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_pow_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_pow([1; 1], 2)", "pow =");
+    expect_error_contains(interp, "poly_pow([1; 1], 1.5)", "non-negative integer n");
+}
+
+TEST(ReplCommandsTest, poly_cheb_expand_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "p = [1; -2; 0; 1]");
+    expect_contains(interp, "poly_cheb_expand(p, 3)", "cheb =");
+    expect_error_contains(interp, "poly_cheb_expand(p, 1.5)", "non-negative integer n");
+}
+
+TEST(ReplCommandsTest, poly_eval_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_eval([1; -1; 1], 2)", "3");
+    expect_error_contains(interp, "poly_eval(no_such_matrix, 2)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_cheb_eval_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_cheb_eval([0; 1], 0.5)", "0.5");
+    expect_error_contains(interp, "poly_cheb_eval(no_such_matrix, 0.5)", "unknown matrix");
+}

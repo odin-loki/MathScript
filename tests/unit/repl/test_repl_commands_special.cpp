@@ -17474,3 +17474,94 @@ TEST(ReplCommandsTest, special_pseudo_voigt_execute_no_assign) {
     expect_error_contains(interp, "special_pseudo_voigt(0, 1, 0.5, missing)",
                           "special_pseudo_voigt");
 }
+
+TEST(ReplCommandsTest, clausen_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "clausen(1)");
+}
+
+TEST(ReplCommandsTest, eta_dirichlet_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "eta_dirichlet(2)");
+}
+
+TEST(ReplCommandsTest, erf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "erf(0.5)");
+    expect_error_contains(interp, "erf(missing)", "expected numeric");
+}
+
+TEST(ReplCommandsTest, erfc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "erfc(0.5)");
+}
+
+TEST(ReplCommandsTest, erfi_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "erfi(0.5)");
+}
+
+TEST(ReplCommandsTest, erfcx_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "erfcx(0)");
+}
+
+TEST(ReplCommandsTest, dawson_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "dawson(0.5)");
+}
+
+TEST(ReplCommandsTest, dawsonx_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "dawsonx(0.5)");
+}
+
+TEST(ReplCommandsTest, gamma_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gamma(5)");
+}
+
+TEST(ReplCommandsTest, bessel_j0_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_j0(1)");
+}
+
+TEST(ReplCommandsTest, bessel_j1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_j1(1)");
+}
+
+TEST(ReplCommandsTest, bessel_y0_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_y0(1)");
+}
+
+TEST(ReplCommandsTest, bessel_y1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_y1(1)");
+}
+
+TEST(ReplCommandsTest, fresnel_c_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "fresnel_c(1)");
+}
+
+TEST(ReplCommandsTest, fresnel_s_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "fresnel_s(1)");
+}
+
+TEST(ReplCommandsTest, ellip_k_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ellip_k(0.5)");
+}
+
+TEST(ReplCommandsTest, ellip_e_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ellip_e(0.5)");
+}
+
+TEST(ReplCommandsTest, zeta_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "zeta(2)");
+}

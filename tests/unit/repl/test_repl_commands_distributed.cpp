@@ -2172,3 +2172,80 @@ TEST(ReplCommandsTest, dist_lsmr_lsqr_matmul_32) {
     ASSERT_GT(interp.state().matrices.count("P"), 0u);
     EXPECT_NEAR(interp.state().matrices.at("P")(0, 0), 19.0, 1e-6);
 }
+
+TEST(ReplCommandsTest, dist_tfqmr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_tfqmr(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_lsmr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_lsmr(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_lsqr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_lsqr(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_matmul_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_ok(interp, "N = [5, 6; 7, 8]");
+    expect_contains(interp, "dist_matmul(M, N)", "C =");
+}
+
+TEST(ReplCommandsTest, dist_solve_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_solve(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_cg_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_cg(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_gmres_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "G = [3, 1; 1, 2]");
+    expect_ok(interp, "brhs = [5; 5]");
+    expect_contains(interp, "dist_gmres(G, brhs)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_jacobi_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_jacobi(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_bicgstab_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_bicgstab(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_minres_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_minres(A, b)", "x =");
+}
+
+TEST(ReplCommandsTest, dist_qmr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "dist_qmr(A, b)", "x =");
+}

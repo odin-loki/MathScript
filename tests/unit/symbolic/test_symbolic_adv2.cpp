@@ -81,6 +81,21 @@ TEST(SymbolicAdv2, Eval_Sin_AtPiOver2) {
     EXPECT_NEAR(sym_eval(sym_sin(sym_const(M_PI / 2.0)), {}), 1.0, 1e-10);
 }
 
+TEST(SymbolicAdv2, Eval_Sub_Div_Neg) {
+    auto expr = sym_div(sym_sub(sym_var("x"), sym_const(1.0)), sym_neg(sym_const(2.0)));
+    EXPECT_NEAR(sym_eval(expr, {{"x", 5.0}}), -2.0, 1e-10);
+}
+
+TEST(SymbolicAdv2, Eval_Tan_Sqrt) {
+    EXPECT_NEAR(sym_eval(sym_tan(sym_const(0.0)), {}), 0.0, 1e-10);
+    EXPECT_NEAR(sym_eval(sym_sqrt(sym_const(16.0)), {}), 4.0, 1e-10);
+}
+
+TEST(SymbolicAdv2, Eval_Deriv_Node) {
+    auto expr = sym_deriv(sym_mul(sym_var("x"), sym_var("x")), "x");
+    EXPECT_NEAR(sym_eval(expr, {{"x", 3.0}}), 6.0, 1e-10);
+}
+
 // ---------------------------------------------------------------------------
 // sym_diff: symbolic differentiation
 // ---------------------------------------------------------------------------

@@ -3430,3 +3430,39 @@ TEST(ReplCommandsTest, numthy_convergents_noassign) {
     expect_contains(interp, "numthy_convergents([3; 7; 15; 1])", "convergents");
     expect_error_contains(interp, "numthy_convergents([1, 2; 3, 4])", "coefficient vector");
 }
+
+TEST(ReplCommandsTest, numthy_factor_exp_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_factor_exp(12)", "op =");
+}
+
+TEST(ReplCommandsTest, numthy_farey_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_farey(4)", "op =");
+}
+
+TEST(ReplCommandsTest, numthy_stern_brocot_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_stern_brocot(3)", "op =");
+}
+
+TEST(ReplCommandsTest, numthy_pell_solve_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_pell_solve(2)", "op =");
+}
+
+TEST(ReplCommandsTest, numthy_quadratic_residues_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_quadratic_residues(7)", "op =");
+}
+
+TEST(ReplCommandsTest, numthy_primitive_root_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_primitive_root(7)", "3");
+}
+
+TEST(ReplCommandsTest, bigint_gcd_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "bigint_gcd(\"12\", \"18\")", "6");
+    expect_error_contains(interp, "bigint_gcd(12, 18)", "expected bigint_gcd");
+}

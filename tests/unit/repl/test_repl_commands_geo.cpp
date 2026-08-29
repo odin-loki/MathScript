@@ -3965,3 +3965,39 @@ TEST(ReplCommandsTest, geo_moment_of_inertia_noassign) {
     expect_contains(interp, "geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])", "42.6667");
     expect_error_contains(interp, "geo_moment_of_inertia(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, geo_bezier_eval_x_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_bezier_eval_x([0, 0; 1, 2; 2, 0], 0.5)", "1");
+    expect_error_contains(interp, "geo_bezier_eval_x([0, 0; 1, 1], 0.5)",
+                          "at least 3 control points");
+}
+
+TEST(ReplCommandsTest, geo_bezier_eval_y_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_bezier_eval_y([0, 0; 1, 2; 2, 0], 0.5)", "1");
+    expect_error_contains(interp, "geo_bezier_eval_y([0, 0; 1, 1], 0.5)",
+                          "at least 3 control points");
+}
+
+TEST(ReplCommandsTest, geo_intersect_seg_seg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_intersect_seg_seg(0, 0, 2, 2, 0, 2, 2, 0)", "1");
+    expect_contains(interp, "geo_intersect_seg_seg(0, 0, 1, 0, 0, 1, 1, 1)", "0");
+    expect_error_contains(interp, "geo_intersect_seg_seg(0, 0, 2, 2, 0, 2, 2, missing)",
+                         "geo_intersect_seg_seg");
+}
+
+TEST(ReplCommandsTest, geo_dist_point_seg3d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_dist_point_seg3d(0, 0, 0, 1, 0, 0, 2, 0, 0)", "1");
+    expect_error_contains(interp, "geo_dist_point_seg3d(0, 0, 0, 1, 0, 0, 2, 0, missing)",
+                         "geo_dist_point_seg3d");
+}
+
+TEST(ReplCommandsTest, geo_dist_point_plane_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_dist_point_plane(0, 0, 1, 0, 0, 1, 0)", "1");
+    expect_error_contains(interp, "geo_dist_point_plane(0, 0, 1, 0, 0, 1, not_a_number)",
+                         "geo_dist_point_plane");
+}

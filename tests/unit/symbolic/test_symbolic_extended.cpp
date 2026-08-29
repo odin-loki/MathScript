@@ -293,6 +293,19 @@ TEST(SymbolicExtendedTest, substitute_in_unary_ops) {
     EXPECT_EQ(sym_to_string(replaced).find("x"), std::string::npos);
 }
 
+TEST(SymbolicExtendedTest, simplify_right_zero_and_right_one) {
+    const auto times_zero = sym_simplify(sym_mul(sym_sin(sym_var("x")), sym_const(0.0)));
+    EXPECT_NEAR(sym_eval(times_zero, {{"x", 1.25}}), 0.0, 1e-12);
+
+    const auto times_one = sym_simplify(sym_mul(sym_log(sym_var("x")), sym_const(1.0)));
+    EXPECT_NEAR(sym_eval(times_one, {{"x", std::exp(1.0)}}), 1.0, 1e-12);
+}
+
+TEST(SymbolicExtendedTest, eval_deriv_of_quotient) {
+    const auto expr = sym_deriv(sym_div(sym_var("x"), sym_add(sym_var("x"), sym_const(1.0))), "x");
+    EXPECT_NEAR(sym_eval(expr, {{"x", 1.0}}), 0.25, 1e-12);
+}
+
 TEST(SymbolicExpandTest, expand_binomial_product) {
     const auto original =
         sym_mul(sym_add(sym_var("x"), sym_const(1.0)), sym_add(sym_var("x"), sym_const(2.0)));

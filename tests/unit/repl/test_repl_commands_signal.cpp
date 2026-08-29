@@ -5624,3 +5624,15 @@ TEST(ReplCommandsTest, signal_unwrap_noassign) {
     expect_contains(interp, "signal_unwrap([0; 1.5708; 3.1416; -1.5708; 0])", "unwrap");
     expect_error_contains(interp, "signal_unwrap([1, 2; 3, 4])", "coefficient vector");
 }
+
+TEST(ReplCommandsTest, signal_firwin_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_firwin(11, 0.3, 0)", "b =");
+    expect_error_contains(interp, "signal_firwin(1.5, 0.2, 0)", "integer n_taps");
+}
+
+TEST(ReplCommandsTest, signal_firwin_highpass_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_firwin_highpass(11, 0.3, 1)", "b =");
+    expect_error_contains(interp, "signal_firwin_highpass(1.5, 0.3, 1)", "integer n_taps");
+}

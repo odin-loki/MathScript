@@ -169,3 +169,33 @@ TEST(SymbolicExtTest, diff_const_trig_is_zero) {
     const auto d_cos = sym_simplify(sym_diff(sym_cos(sym_const(0.5)), "x"));
     EXPECT_NEAR(sym_eval(d_cos, {{"x", 3.0}}), 0.0, 1e-12);
 }
+
+TEST(SymbolicExtTest, simplify_does_not_fold_invalid_const) {
+    const auto neg_sqrt = sym_simplify(sym_sqrt(sym_const(-4.0)));
+    EXPECT_EQ(neg_sqrt.op, SymOp::Sqrt);
+
+    const auto log_zero = sym_simplify(sym_log(sym_const(0.0)));
+    EXPECT_EQ(log_zero.op, SymOp::Log);
+
+    const auto zero_over_zero = sym_simplify(sym_div(sym_const(0.0), sym_const(0.0)));
+    EXPECT_EQ(zero_over_zero.op, SymOp::Div);
+}
+
+TEST(SymbolicExtTest, simplify_nested_left_zero_add) {
+    const auto nested = sym_simplify(sym_add(sym_add(sym_const(0.0), sym_const(0.0)), sym_var("x")));
+    EXPECT_NEAR(sym_eval(nested, {{"x", 6.0}}), 6.0, 1e-12);
+}
+
+TEST(SymbolicExtTest, diff_zero_power_and_const_base) {
+    const auto d_zero = sym_simplify(sym_diff(sym_pow(sym_var("x"), sym_const(0.0)), "x"));
+    EXPECT_NEAR(sym_eval(d_zero, {{"x", 3.0}}), 0.0, 1e-12);
+
+    const auto d_base = sym_simplify(sym_diff(sym_pow(sym_const(2.0), sym_var("x")), "x"));
+    EXPECT_NEAR(sym_eval(d_base, {{"x", 3.0}}), 8.0 * std::log(2.0), 1e-9);
+}
+
+TEST(SymbolicExtTest, eval_tan_sqrt_div_and_neg) {
+    const auto expr = sym_div(sym_neg(sym_tan(sym_var("x"))), sym_sqrt(sym_add(sym_var("x"), sym_const(2.0))));
+    const double x = 0.4;
+    EXPECT_NEAR(sym_eval(expr, {{"x", x}}), -std::tan(x) / std::sqrt(x + 2.0), 1e-12);
+}
