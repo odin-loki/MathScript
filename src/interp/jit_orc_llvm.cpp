@@ -440,8 +440,7 @@ std::optional<double> call_jit_fn0(llvm::orc::LLJIT& jit, const std::string& sym
         return std::nullopt;
     }
     using Fn = double (*)();
-    const auto addr = static_cast<uintptr_t>(sym->getAddress());
-    return reinterpret_cast<Fn>(addr)();
+    return sym->toPtr<Fn>()();
 }
 
 std::optional<double> call_jit_fn1(llvm::orc::LLJIT& jit, const std::string& symbol, double a) {
@@ -451,8 +450,7 @@ std::optional<double> call_jit_fn1(llvm::orc::LLJIT& jit, const std::string& sym
         return std::nullopt;
     }
     using Fn = double (*)(double);
-    const auto addr = static_cast<uintptr_t>(sym->getAddress());
-    return reinterpret_cast<Fn>(addr)(a);
+    return sym->toPtr<Fn>()(a);
 }
 
 std::optional<double> call_jit_fn2(llvm::orc::LLJIT& jit, const std::string& symbol, double a,
@@ -463,8 +461,7 @@ std::optional<double> call_jit_fn2(llvm::orc::LLJIT& jit, const std::string& sym
         return std::nullopt;
     }
     using Fn = double (*)(double, double);
-    const auto addr = static_cast<uintptr_t>(sym->getAddress());
-    return reinterpret_cast<Fn>(addr)(a, b);
+    return sym->toPtr<Fn>()(a, b);
 }
 
 std::optional<double> call_jit_fn3(llvm::orc::LLJIT& jit, const std::string& symbol, double a,
@@ -475,8 +472,7 @@ std::optional<double> call_jit_fn3(llvm::orc::LLJIT& jit, const std::string& sym
         return std::nullopt;
     }
     using Fn = double (*)(double, double, double);
-    const auto addr = static_cast<uintptr_t>(sym->getAddress());
-    return reinterpret_cast<Fn>(addr)(a, b, c);
+    return sym->toPtr<Fn>()(a, b, c);
 }
 
 std::optional<double> call_jit_fn4(llvm::orc::LLJIT& jit, const std::string& symbol, double a,
@@ -487,8 +483,7 @@ std::optional<double> call_jit_fn4(llvm::orc::LLJIT& jit, const std::string& sym
         return std::nullopt;
     }
     using Fn = double (*)(double, double, double, double);
-    const auto addr = static_cast<uintptr_t>(sym->getAddress());
-    return reinterpret_cast<Fn>(addr)(a, b, c, d);
+    return sym->toPtr<Fn>()(a, b, c, d);
 }
 
 std::optional<double> call_jit_dynamic(llvm::orc::LLJIT& jit, const std::string& symbol,

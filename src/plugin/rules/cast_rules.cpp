@@ -1,6 +1,7 @@
 #include "cast_rules.hpp"
 
 #include "clang/AST/OperationKinds.h"
+#include "clang/AST/ParentMapContext.h"
 #include "clang/Basic/Diagnostic.h"
 
 namespace ms::plugin::rules {
@@ -37,20 +38,33 @@ void CastRules::registerDiagnostics(clang::DiagnosticsEngine& diag) {
         "Check the return value or propagate the error.");
 }
 
-bool CastRules::visitExprStmt(clang::ExprStmt* stmt) {
-    if (!stmt || env_.unsafe_depth > 0) {
+bool CastRules::visitCallExpr(clang::CallExpr* expr) {
+    if (!expr || env_.unsafe_depth > 0) {
         return true;
     }
-    const auto* call =
-        clang::dyn_cast<clang::CallExpr>(stmt->getExpr()->IgnoreParenImpCasts());
-    if (!call) {
-        return true;
-    }
-    const clang::QualType ret = call->getCallReturnType(env_.Ctx);
+    const clang::QualType ret = expr->getCallReturnType(env_.Ctx);
     if (!typeIsExpected(ret)) {
         return true;
     }
-    env_.CI.getDiagnostics().Report(call->getBeginLoc(), diag_unused_expected_);
+
+    const clang::Stmt* cur = expr;
+    for (int depth = 0; cur && depth < 8; ++depth) {
+        const auto parents = env_.Ctx.getParents(*cur);
+        if (parents.empty()) {
+            return true;
+        }
+        const clang::DynTypedNode& parent = parents[0];
+        if (parent.get<clang::CompoundStmt>() || parent.get<clang::CaseStmt>() ||
+            parent.get<clang::DefaultStmt>() || parent.get<clang::LabelStmt>()) {
+            env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_unused_expected_);
+            return true;
+        }
+        if (const auto* ewc = parent.get<clang::ExprWithCleanups>()) {
+            cur = ewc;
+            continue;
+        }
+        return true;
+    }
     return true;
 }
 
@@ -83,11 +97,11 @@ bool CastRules::visitImplicitCastExpr(clang::ImplicitCastExpr* expr) {
         return true;
     }
     const auto kind = expr->getCastKind();
-    if (kind == clang::ImplicitCastKind::FloatingToIntegral) {
+    if (kind == clang::CK_FloatingToIntegral) {
         env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_narrowing_);
         return true;
     }
-    if (kind != clang::ImplicitCastKind::IntegralCast) {
+    if (kind != clang::CK_IntegralCast) {
         return true;
     }
     const clang::QualType dst = expr->getType().getCanonicalType();

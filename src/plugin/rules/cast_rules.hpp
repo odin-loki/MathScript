@@ -14,7 +14,7 @@ public:
 
     void registerDiagnostics(clang::DiagnosticsEngine& diag);
 
-    bool visitExprStmt(clang::ExprStmt* stmt);
+    bool visitCallExpr(clang::CallExpr* expr);
     bool visitCStyleCastExpr(clang::CStyleCastExpr* expr);
     bool visitCXXConstCastExpr(clang::CXXConstCastExpr* expr);
     bool visitCXXReinterpretCastExpr(clang::CXXReinterpretCastExpr* expr);

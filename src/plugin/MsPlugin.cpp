@@ -91,8 +91,11 @@ public:
         return result;
     }
 
-    bool VisitExprStmt(clang::ExprStmt* stmt) {
-        return cast_rules_.visitExprStmt(stmt);
+    bool VisitCallExpr(clang::CallExpr* expr) {
+        if (!memory_rules_.visitCallExpr(expr)) {
+            return false;
+        }
+        return cast_rules_.visitCallExpr(expr);
     }
 
     bool VisitFieldDecl(clang::FieldDecl* decl) {
@@ -113,10 +116,6 @@ public:
 
     bool VisitCXXThrowExpr(clang::CXXThrowExpr* expr) {
         return exception_rules_.visitCXXThrowExpr(expr);
-    }
-
-    bool VisitCallExpr(clang::CallExpr* expr) {
-        return memory_rules_.visitCallExpr(expr);
     }
 
     bool VisitCXXTryStmt(clang::CXXTryStmt* stmt) {
