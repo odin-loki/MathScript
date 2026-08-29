@@ -1,4 +1,5 @@
 #pragma once
+#include "ms/error/error_types.hpp"
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -20,7 +21,13 @@ public:
     BigInt() : digits(1, 0) {}
     BigInt(long long v);
     explicit BigInt(const std::string& s);
+    /// Parse `s` in `base` (2–36). On failure (bad base or digit) constructs zero.
     explicit BigInt(const std::string& s, int base);
+
+    /// Parse `s` in `base` (2–36). Returns DomainError on bad base or digit.
+    static Result<BigInt> parse(const std::string& s, int base);
+    /// Parse a base-10 string. Returns DomainError on invalid digits.
+    static Result<BigInt> parse(const std::string& s);
 
     // Comparison
     int cmp_abs(const BigInt& o) const;  // -1 < 0 > +1
@@ -49,6 +56,7 @@ public:
     bool is_zero() const;
     bool is_one() const;
     std::string to_string() const;
+    /// Convert to `base` (2–36). Invalid base returns an empty string.
     std::string to_string(int base) const;
     long long to_ll() const;
     double to_double() const;

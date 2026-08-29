@@ -14,6 +14,8 @@ GoogleTest is fetched automatically when `MS_BUILD_TESTS=ON`.
 
 ## Build
 
+Local Windows work uses **one** tree: `build-msvc`. Do not keep extra `build-*` directories. Linux CI jobs use short-lived names (`build-linux`, `build-cov`, …) that should not accumulate on a workstation.
+
 ### Windows (MSVC)
 
 ```powershell
@@ -32,25 +34,42 @@ Clean rebuild:
 .\build.ps1 -Clean
 ```
 
+Benchmarks in the same tree (`MS_BUILD_BENCHMARKS=ON`):
+
+```powershell
+.\build.ps1 -Benchmark
+```
+
 Or manually with Ninja after loading the VS developer environment (see `README.md`).
 
 ### Linux (GCC 13, CI-style)
 
 ```bash
-cmake -S . -B build-linux -G Ninja \
+cmake -S . -B build -G Ninja \
   -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 \
   -DCMAKE_BUILD_TYPE=Release \
   -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF
-cmake --build build-linux
+cmake --build build
 ```
 
 ## Test
 
 ```bash
-ctest --test-dir build-linux --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
-On Windows, use `build-msvc` instead of `build-linux`.
+On Windows, use `build-msvc` instead of `build`. Filter by domain:
+
+```bash
+ctest --test-dir build -R test_fft          # FFT unit tests
+ctest --test-dir build -R int_linalg         # linear-algebra REPL pipelines
+```
+
+### Adding a matrix REPL callee
+
+1. Create `src/interp/matrix_calls/<domain>/<callee>.cpp` implementing `handle_<name>` and `ms_register_matrix_call_<name>()` that calls `register_matrix_call("name", &handle_<name>)`. Domain folders match the library (`linalg`, `fft`, `signal`, `stats`, …).
+2. Reconfigure CMake (`GLOB_RECURSE` regenerates the registrar).
+3. Add a GTest in `tests/unit/repl/test_repl_commands_<domain>.cpp` (or `test_repl_commands.cpp` for session/meta) and/or `tests/integration/<domain>/`.
 
 ## Coverage
 

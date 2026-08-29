@@ -1,7 +1,5 @@
 #include "ms/core/tensor.hpp"
 
-#include <stdexcept>
-
 namespace ms {
 
 template<typename S, size_t N>
@@ -35,14 +33,14 @@ size_t Tensor<S, N>::total_size() const {
 }
 
 template<typename S, size_t N>
-Tensor<S, N> Tensor<S, N>::reshape(const std::vector<size_t>& new_shape) const {
+Result<Tensor<S, N>> Tensor<S, N>::reshape(const std::vector<size_t>& new_shape) const {
     size_t new_total = 1;
     for (size_t d : new_shape) {
         new_total *= d;
     }
     if (new_total != total_size()) {
-        throw std::invalid_argument(
-            "Tensor reshape: product of new shape must equal total_size()");
+        return std::unexpected(DomainError{
+            "reshape", "product of new shape must equal total_size()"});
     }
     Tensor<S, N> result(new_shape);
     result.data_ = data_;

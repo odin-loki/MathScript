@@ -34,7 +34,7 @@ public:
         return static_cast<value_type*>(ptr);
     }
     
-    static void deallocate(value_type* ptr, size_t n) {
+    static void deallocate(value_type* ptr, size_t /*n*/) {
         aligned_free(ptr);
     }
 };

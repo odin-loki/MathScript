@@ -138,7 +138,7 @@ Assignments of the form `name = <expr>` support:
 - Unary libm calls: `sin`, `cos`, `sqrt`, `exp`, `log`, …
 - Two-argument libm calls: `pow(x, 2)`, `min(a, b)`, `max(a, b)`, `atan2(y, x)`
 
-Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; **Wave 233 GUI**: script-editor syntax highlighting, window/splitter layout persistence, variable inspector panel, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Wave 238 GUI**: **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel** toggle, **File → Export Command History…**; **Wave 262 GUI**: **Reverse Lines** (**Ctrl+Shift+R**); **Wave 268 GUI**: **Kebab Case Selection** (**Ctrl+Alt+K**); **Wave 269 GUI**: **Camel Case Selection** (**Ctrl+Alt+C**), **Screaming Snake Case Selection** (**Ctrl+Alt+Shift+S**), **Trim Leading Whitespace** (**Ctrl+Shift+B**)). Session meta-commands: `export history <file>`, `save_history <file>` (Wave 238). CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
+Plot commands: `plot`, `scatter`, `hist`, `imshow`, `spy`, `surf`; `show` redisplays ASCII preview; `saveplot <file>` writes ASCII preview to disk (GUI **Export Plot as PNG** when `MS_BUILD_GUI=ON`; GUI REPL input supports **Up-arrow / Down-arrow command history** with draft recall; script-editor syntax highlighting, window/splitter layout persistence, variable inspector, red error output, **Stop** cooperative cancel, status-bar GPU name and free/total memory; **Find in Output** (**Ctrl+F** / **F3**), **View → Show Plot Panel**, **File → Export Command History…**; **Reverse Lines** (**Ctrl+Shift+R**); **Kebab Case Selection** (**Ctrl+Alt+K**); **Camel Case Selection** (**Ctrl+Alt+C**), **Screaming Snake Case Selection** (**Ctrl+Alt+Shift+S**), **Trim Leading Whitespace** (**Ctrl+Shift+B**)). Session meta-commands: `export history <file>`, `save_history <file>`. CLI: `mathscriptc` script runner (executes .ms files as REPL command sequences); `mathscript-repl -e`, `--load`, `--jit`. Matrix assignment: `C = matmul(A, B)`, `x = solve(A, b)`, `T = transpose(A)`, `L = chol(A)`, `expm`/`inv`. Constructors: `zeros`/`eye`/`ones`/`rand`/`randn`. Multi-target: `L, U, P = lu(A)`, `Q, R = qr(A)`, `U, S, V = svd(A)`, `D, V = eig_sym(A)`. Scalar from matrix: `d = det(A)`, etc. Session `save`/`load` persists scalars, matrices, plot state, and command history.
 
 ### REPL bindings
 
@@ -154,48 +154,34 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `kron(A, B)` | Kronecker product; nested operands supported (e.g. `kron(eye(2), eye(2))`) |
 | `repmat(A, p, q)` | Tile matrix `p×q` |
 | `linspace(a, b, n)` | Equally spaced `n×1` column vector |
+| `matmul(A, B)` / `tensorops_matmul(A, B)` / `tensorops_einsum(...)` | Dense / tensor matmul and einsum |
+| `solve(A, b)` / `bicgstab(A, b)` / `qmr(A, b)` | Dense solve + BiCGSTAB/QMR |
+| `lsqr(A, b)` / `lsq(A, b)` / `tfqmr(A, b)` / `lsmr(A, b)` | Least-squares / TFQMR / LSMR |
+| `transpose(A)` / `chol(A)` / `expm(A)` / `inv(A)` | Transpose / Cholesky / matrix exponential / inverse |
+| `zeros` / `eye` / `ones` / `rand` / `randn` | Grouped matrix constructors |
 
 **Image, compression, ML, and bignum (matrix/scalar assignment):**
 
 | Call | Description |
 |------|-------------|
 | `rgb2gray(M)` | `(H·W)×3` RGB rows → grayscale column vector |
-| `rgb2hsv(M)` | `(H·W)×3` RGB rows → `H×3` HSV matrix (Wave 234) |
+| `rgb2hsv(M)` | `(H·W)×3` RGB rows → `H×3` HSV matrix |
 | `sobel(M)`, `prewitt(M)`, `scharr(M)`, `roberts(M)`, `imgaussfilt(M, σ)`, `laplacian(M)`, `histeq(M)`, `sharpen(M)`, `threshold_otsu(M)`, `imresize(M, r, c)` | Grayscale image ops on `H×W` matrices |
-| `imdilate(M, k)`, `imerode(M, k)`, `imopen(M, k)`, `imclose(M, k)` | Binary/grayscale morphology on `H×W` matrices (Wave 234) |
+| `imdilate(M, k)`, `imerode(M, k)`, `imopen(M, k)`, `imclose(M, k)` | Binary/grayscale morphology on `H×W` matrices |
 | `rle_encode_vec(M)`, `rle_decode_vec(M)` | RLE on flattened matrix bytes |
 | `delta_encode_vec(M)`, `delta_decode_vec(M)` | Delta coding on flattened bytes |
-| `arithmetic_encode_vec(M)`, `arithmetic_decode_vec(orig_M, E)` | Arithmetic range coding on flattened bytes (Wave 268) |
-| `ans_encode_vec(M)`, `ans_decode_vec(orig_M, E)` | ANS entropy coding on flattened bytes (Wave 268) |
-| `golomb_rice_encode_vec(M, m_bits)`, `golomb_rice_decode_vec(E, m_bits, count)` | Golomb–Rice coding on flattened u32 column (Wave 269) |
-| `wavelet_compress_vec(M[, threshold])`, `wavelet_decompress_vec(E)` | Haar wavelet compress/decompress on flattened bytes (Wave 269) |
-| `ml_linear_fit(X, y)`, `ml_linear_predict(X, model)` | Ordinary least-squares regression fit/predict (Wave 234) |
-| `ml_ridge_fit(X, y, alpha)`, `ml_ridge_predict(X, model)` | Ridge regression fit/predict (Wave 234) |
-| `ml_lasso_fit(X, y, alpha)`, `ml_lasso_predict(X, model)` | Lasso regression fit/predict (Wave 267) |
-| `ml_elastic_net_fit(X, y, alpha, l1_ratio)`, `ml_elastic_net_predict(X, model)` | Elastic Net fit/predict (Wave 267) |
-| `ml_knn_fit(X, y, k)`, `ml_knn_predict(X, model)` | k-nearest neighbours classifier fit/predict (Wave 267) |
-| `ml_naive_bayes_fit(X, y)`, `ml_naive_bayes_predict(X, model)` | Gaussian Naive Bayes fit/predict (Wave 267) |
-| `ml_lda_fit(X, y[, n_components])`, `ml_lda_predict(X, model)`, `ml_lda_transform(X, model)` | Linear Discriminant Analysis fit/predict/transform (Wave 267) |
-| `ml_qda_fit(X, y)`, `ml_qda_predict(X, model)` | Quadratic Discriminant Analysis fit/predict (Wave 268) |
-| `ml_svm_fit(X, y[, C[, gamma]])`, `ml_svm_predict(X, model)` | Support Vector Machine fit/predict (Wave 268) |
-| `ml_decision_tree_fit(X, y[, max_depth])`, `ml_decision_tree_predict(X, model)` | Decision tree classifier fit/predict (Wave 268) |
-| `ml_random_forest_fit(X, y[, n_trees[, max_features]])`, `ml_random_forest_predict(X, model)` | Random forest classifier fit/predict (Wave 268) |
-| `ml_adaboost_fit(X, y[, n_estimators[, max_depth]])`, `ml_adaboost_predict(X, model)` | AdaBoost classifier fit/predict (Wave 268) |
-| `ml_gmm_fit(X[, n_components])`, `ml_gmm_predict(X, model)`, `ml_gmm_predict_proba(X, model)` | Gaussian mixture model fit/labels/probabilities (Wave 268) |
-| `ml_dbscan_fit(X, eps, min_samples)` | DBSCAN cluster labels column (Wave 268) |
-| `ml_spectral_clustering(X, k[, sigma])` | Spectral clustering labels column (Wave 268) |
-| `ml_standard_scaler_fit(X)`, `ml_standard_scaler_transform(X, model)` | Standard scaler fit/transform (Wave 268) |
-| `ml_minmax_scaler_fit(X)`, `ml_minmax_scaler_transform(X, model)` | Min–max scaler fit/transform (Wave 268) |
-| `Xtr, ytr, Xte, yte = ml_train_test_split(X, y[, test_size[, seed]])` | Stratified train/test split (Wave 268) |
-| `ml_roc_auc(p, t)`, `ml_average_precision(p, t)` | Binary ROC-AUC / average precision on matching `N×1` vectors (Wave 268) |
-| `ml_confusion_matrix(p, t[, threshold])` | Confusion matrix as `2×2` (Wave 269) |
-| `ml_roc_curve(p, t)` | ROC curve as `N×3` [threshold, TPR, FPR] (Wave 269) |
-| `ml_precision_recall_curve(p, t)` | PR curve as `N×3` [threshold, precision, recall] (Wave 269) |
-| `ml_gradient_boosting_fit(X, y[, n_estimators[, lr[, max_depth]]])`, `ml_gradient_boosting_predict(X, model)` | Gradient boosting regressor fit/predict (Wave 269) |
-| `ml_isolation_forest_fit(X[, n_trees[, sample_size[, seed]]])`, `ml_isolation_forest_score(X, model)` | Isolation Forest anomaly fit/scores (Wave 269) |
-| `ml_agglomerative_fit(X[, n_clusters[, linkage]])` | Agglomerative cluster labels column (Wave 269) |
-| `ml_tsne_fit(X[, perplexity[, n_iter[, seed]]])` | t-SNE 2D embedding (Wave 269) |
-| `ml_logistic_fit(X, y)`, `ml_logistic_predict(X, model)` | Binary logistic regression fit/predict (Wave 234) |
+| `arithmetic_encode_vec(M)`, `arithmetic_decode_vec(orig_M, E)` | Arithmetic range coding on flattened bytes |
+| `ans_encode_vec(M)`, `ans_decode_vec(orig_M, E)` | ANS entropy coding on flattened bytes |
+| `golomb_rice_encode_vec(M, m_bits)`, `golomb_rice_decode_vec(E, m_bits, count)` | Golomb–Rice coding on flattened u32 column |
+| `wavelet_compress_vec(M[, threshold])`, `wavelet_decompress_vec(E)` | Haar wavelet compress/decompress on flattened bytes |
+| `ml_lasso_fit(X, y, alpha)`, `ml_lasso_predict(X, model)` | Lasso regression fit/predict |
+| `ml_elastic_net_fit(X, y, alpha, l1_ratio)`, `ml_elastic_net_predict(X, model)` | Elastic Net fit/predict |
+| `ml_knn_fit(X, y, k)`, `ml_knn_predict(X, model)` | k-nearest neighbours classifier fit/predict |
+| `ml_naive_bayes_fit(X, y)`, `ml_naive_bayes_predict(X, model)` | Gaussian Naive Bayes fit/predict |
+| `ml_lda_fit(X, y[, n_components])`, `ml_lda_predict(X, model)`, `ml_lda_transform(X, model)` | Linear Discriminant Analysis fit/predict/transform |
+| `Xtr, ytr, Xte, yte = ml_train_test_split(X, y[, test_size[, seed]])` | Stratified train/test split |
+| `ml_roc_auc(p, t)`, `ml_average_precision(p, t)` | Binary ROC-AUC / average precision on matching `N×1` vectors |
+| `ml_logistic_fit(X, y)`, `ml_logistic_predict(X, model)` | Binary logistic regression fit/predict |
 | `ml_accuracy(p, t)`, `ml_rmse(p, t)`, `ml_mse(p, t)`, `ml_r2(p, t)`, `ml_f1(p, t)`, `ml_precision(p, t)`, `ml_recall(p, t)`, `ml_mae(p, t)` | ML metrics on matching `N×1` vectors |
 | `bigint("495")`, `bigint_factorial(n)`, `bigint_fib(n)`, `bigint_gcd("a", "b")` | Bignum parse/ops; results as scalars when representable in `double` |
 
@@ -216,7 +202,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `sym_laplace("expr", "t", "s")` | Laplace transform (time → s-domain) |
 | `sym_ilaplace("expr", "s", "t")` | Inverse Laplace transform (s-domain → time) |
 | `sym_mellin("expr", "t", "s")` | Mellin transform (t-domain → s-domain; table: `c`, `t^a`, `exp(-a*t)`, `t^n*exp(-a*t)`, `1/(1+t)`) |
-| `sym_hankel("expr", "r", "k")` / `sym_ihankel(...)` | Hankel transform MVP (Wave 241) |
+| `sym_hankel("expr", "r", "k")` / `sym_ihankel(...)` | Hankel transform MVP |
 | `sym_imellin("expr", "s", "t")` | Inverse Mellin transform (s-domain → t); unsupported → `sym_deriv` sentinel |
 | `sym_hankel("expr", "r", "k")` | Hankel transform (r-domain → k-domain; table: `exp(-a*r)`, `r^n*exp(-a*r)`, `1/sqrt(r^2+a^2)`) |
 | `sym_ihankel("expr", "k", "r")` | Inverse Hankel transform (k-domain → r); unsupported → `sym_deriv` sentinel |
@@ -234,19 +220,19 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `lbfgs("formula", x0)` | Limited-memory BFGS |
 | `nelder_mead("formula", x0)` | Nelder–Mead simplex |
 | `adam("formula", x0[, lr, max_iter])` | Adam adaptive gradient |
-| `conjugate_gradient("formula", x0[, lr, max_iter])` | Nonlinear conjugate-gradient minimization (Wave 268) |
-| `rmsprop("formula", x0[, lr, max_iter])` | RMSprop adaptive gradient (Wave 268) |
-| `adadelta("formula", x0[, lr, max_iter])` | Adadelta adaptive gradient (Wave 268) |
+| `conjugate_gradient("formula", x0[, lr, max_iter])` | Nonlinear conjugate-gradient minimization |
+| `rmsprop("formula", x0[, lr, max_iter])` | RMSprop adaptive gradient |
+| `adadelta("formula", x0[, lr, max_iter])` | Adadelta adaptive gradient |
 | `golden_section("formula", a, b)` | 1-D golden-section search on `[a, b]` |
-| `bisection("formula", a, b[, tol[, max_iter]])` | Bracketed root finding (Wave 268) |
-| `brentq("formula", a, b[, tol[, max_iter]])` | Brent's method root finding (Wave 268) |
-| `secant("formula", x0, x1[, tol[, max_iter]])` | Secant root finding (Wave 268) |
-| `halley("f", "df", "d2f", x0[, tol[, max_iter]])` | Halley's method root finding (Wave 268) |
-| `fixed_point("formula", x0[, tol[, max_iter]])` | Fixed-point iteration (Wave 268) |
-| `illinois("formula", a, b[, tol[, max_iter]])` | Illinois regula falsi root finding (Wave 268) |
-| `simulated_annealing("formula", x0[, T0[, cooling[, max_iter[, seed]]]])` | Simulated annealing global search (Wave 268) |
-| `differential_evolution("formula", bounds[, pop[, F[, CR[, max_iter[, seed]]]]])` | Differential evolution global search (Wave 268) |
-| `particle_swarm("formula", bounds[, n_particles[, max_iter[, seed]]])` | Particle swarm global search (Wave 268) |
+| `bisection("formula", a, b[, tol[, max_iter]])` | Bracketed root finding |
+| `brentq("formula", a, b[, tol[, max_iter]])` | Brent's method root finding |
+| `secant("formula", x0, x1[, tol[, max_iter]])` | Secant root finding |
+| `halley("f", "df", "d2f", x0[, tol[, max_iter]])` | Halley's method root finding |
+| `fixed_point("formula", x0[, tol[, max_iter]])` | Fixed-point iteration |
+| `illinois("formula", a, b[, tol[, max_iter]])` | Illinois regula falsi root finding |
+| `simulated_annealing("formula", x0[, T0[, cooling[, max_iter[, seed]]]])` | Simulated annealing global search |
+| `differential_evolution("formula", bounds[, pop[, F[, CR[, max_iter[, seed]]]]])` | Differential evolution global search |
+| `particle_swarm("formula", bounds[, n_particles[, max_iter[, seed]]])` | Particle swarm global search |
 | `levenberg_marquardt("formula", x0)` | Nonlinear least squares (returns residual norm) |
 
 **Control analysis (scalar/matrix assignment):**
@@ -259,7 +245,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `control_step_response(num, den[, t_end[, n_pts]])` | Step response as `N×2` `[t, y]` |
 | `control_impulse_response(num, den[, t_end[, n_pts]])` | Impulse response as `N×2` `[t, y]` |
 | `control_nyquist(num, den)` | Nyquist curve as `N×2` real/imag matrix |
-| `control_lqe(A, C, Q, R)` | Linear quadratic estimator (Kalman) gain matrix (Wave 237) |
+| `control_lqe(A, C, Q, R)` | Linear quadratic estimator (Kalman) gain matrix |
 
 **Quantum information (scalar assignment):**
 
@@ -270,7 +256,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `quantum_uncertainty(psi, A, B)` | Uncertainty product ⟨AB⟩ − ⟨A⟩⟨B⟩ |
 | `quantum_grover_optimal_iterations(n_qubits, n_marked)` | Optimal Grover iteration count |
 
-**Finance portfolio/pricing (scalar/matrix assignment, Wave 234):**
+**Finance portfolio/pricing:**
 
 | Call | Description |
 |------|-------------|
@@ -280,24 +266,24 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `finance_max_sharpe(cov, mu, risk_free)` | Maximum Sharpe (tangency) portfolio weights |
 | `finance_portfolio_return(weights, returns)` | Portfolio expected return from `N×1` weights and returns |
 | `finance_heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)` | Heston stochastic-volatility European call price |
-| `finance_sabr_call(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European call price (Wave 237) |
-| `finance_sabr_put(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European put price (Wave 241) |
-| `finance_bachelier_call(F, K, T, r, sigma)` | Bachelier normal-model call on forward `F` (Wave 262) |
-| `finance_bachelier_put(F, K, T, r, sigma)` | Bachelier normal-model put on forward `F` (Wave 262) |
-| `finance_vasicek_bond_price(r, a, b, sigma, tau)` | Vasicek zero-coupon bond price (Wave 262) |
-| `finance_cir_bond_price(r, a, b, sigma, tau)` | CIR zero-coupon bond price (Wave 262) |
-| `finance_trinomial_option(S, K, T, r, sigma, n_steps, is_call, is_american)` | Boyle trinomial-tree option price (Wave 262) |
+| `finance_sabr_call(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European call price |
+| `finance_sabr_put(S, K, T, r, alpha, beta, rho, nu)` | SABR stochastic-volatility European put price |
+| `finance_bachelier_call(F, K, T, r, sigma)` | Bachelier normal-model call on forward `F` |
+| `finance_bachelier_put(F, K, T, r, sigma)` | Bachelier normal-model put on forward `F` |
+| `finance_vasicek_bond_price(r, a, b, sigma, tau)` | Vasicek zero-coupon bond price |
+| `finance_cir_bond_price(r, a, b, sigma, tau)` | CIR zero-coupon bond price |
+| `finance_trinomial_option(S, K, T, r, sigma, n_steps, is_call, is_american)` | Boyle trinomial-tree option price |
 
-**Graph community/centrality (matrix assignment, Wave 234):**
+**Graph community/centrality:**
 
 | Call | Description |
 |------|-------------|
 | `graph_louvain(A)` | Louvain community partition as `K×M` vertex-index matrix |
 | `graph_eigenvector_centrality(A)` | Power-iteration eigenvector centrality column |
 | `graph_articulation_points(A)` | Articulation points of undirected adjacency `A` as `N×1` column |
-| `graph_bridges(A)` | Bridge edges of undirected graph as `E×2` endpoint matrix (Wave 237) |
-| `graph_min_cut(A, source, sink)` | Minimum s–t cut value on directed capacity matrix (Wave 237) |
-| `graph_transitive_closure(A)` | Boolean reachability closure as `N×N` matrix (Wave 237) |
+| `graph_bridges(A)` | Bridge edges of undirected graph as `E×2` endpoint matrix |
+| `graph_min_cut(A, source, sink)` | Minimum s–t cut value on directed capacity matrix |
+| `graph_transitive_closure(A)` | Boolean reachability closure as `N×N` matrix |
 
 **CUDA matrix ops (matrix assignment, stub-safe when `MS_ENABLE_CUDA=OFF`):**
 
@@ -305,251 +291,466 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 |------|-------------|
 | `cuda_lu(A)` | GPU LU factorization summary (when CUDA available) |
 | `cuda_add(A, B)` | Element-wise matrix add on GPU (falls back to CPU) |
-| `cuda_allreduce_sum(x)` | NCCL all-reduce sum of scalar `x` (stub: identity when NCCL off or size 1; Wave 237) |
+| `cuda_allreduce_sum(x)` | NCCL all-reduce sum of scalar `x` |
 
 **Crypto, FEM, and CFD (string/matrix assignment):**
 
 | Call | Description |
 |------|-------------|
 | `crypto_aes128_encrypt_block(key_hex, block_hex)` | AES-128 ECB single-block encrypt; returns hex ciphertext |
-| `crypto_aes128_decrypt_block(key_hex, block_hex)` | AES-128 ECB single-block decrypt; returns hex plaintext (Wave 253) |
-| `crypto_aes256_encrypt_block(key_hex, block_hex)` | AES-256 ECB single-block encrypt; returns hex ciphertext (Wave 251) |
+| `crypto_aes128_decrypt_block(key_hex, block_hex)` | AES-128 ECB single-block decrypt; returns hex plaintext |
+| `crypto_aes256_encrypt_block(key_hex, block_hex)` | AES-256 ECB single-block encrypt; returns hex ciphertext |
 | `crypto_aes128_cbc_encrypt(key_hex, iv_hex, plain_hex)` | AES-128 CBC encrypt; returns hex ciphertext |
 | `crypto_aes128_cbc_decrypt(key_hex, iv_hex, cipher_hex)` | AES-128 CBC decrypt; returns hex plaintext |
-| `crypto_aes128_gcm_encrypt(key_hex, iv_hex, aad_hex, plaintext_hex)` | AES-128-GCM seal; returns hex `ciphertext:tag` (Wave 234) |
-| `crypto_aes128_gcm_decrypt(key_hex, iv_hex, aad_hex, ciphertext_hex, tag_hex)` | AES-128-GCM open; returns hex plaintext (Wave 234) |
+| `crypto_aes128_gcm_encrypt(key_hex, iv_hex, aad_hex, plaintext_hex)` | AES-128-GCM seal; returns hex `ciphertext:tag` |
+| `crypto_aes128_gcm_decrypt(key_hex, iv_hex, aad_hex, ciphertext_hex, tag_hex)` | AES-128-GCM open; returns hex plaintext |
 | `crypto_chacha20(key_hex, nonce_hex, counter, data_hex)` | ChaCha20 stream cipher (XOR self-inverse); returns hex output |
-| `crypto_chacha20_poly1305_encrypt(key_hex, nonce_hex, aad_hex, plaintext_hex)` | ChaCha20-Poly1305 seal; returns hex `ciphertext:tag` (Wave 235) |
-| `crypto_chacha20_poly1305_decrypt(key_hex, nonce_hex, aad_hex, ciphertext_hex, tag_hex)` | ChaCha20-Poly1305 open; returns hex plaintext (Wave 235) |
-| `crypto_x25519_shared(priv_hex, pub_hex)` | X25519 ECDH shared secret as hex (Wave 236) |
-| `crypto_x25519_keypair(hex_priv32)` | X25519 public key from 32-byte private key hex (Wave 255) |
-| `mpi_bcast(x)` | MPI stub broadcast from root 0 (identity when stub; Wave 254) |
-| `geo_triangulate_polygon(P)` / `geo_convex_hull_3d(P)` | Polygon triangulation / 3D hull face indices (Wave 255) |
-| `geo_kdtree_knn(P,x,y,k)` / `geo_kdtree_range(P,x,y,r)` | 2D KD-tree kNN / range query index columns (Wave 255) |
-| `geo_intersect_seg_seg(...)` / `geo_intersect_ray_sphere(...)` / `geo_intersect_ray_aabb(...)` | Intersection tests → 1/0 (Wave 255) |
-| `graph_katz_centrality(A)` / `graph_laplacian(A)` / `graph_adjacency_spectrum(A)` | Katz / Laplacian / spectral radius (Wave 255) |
-| `graph_algebraic_connectivity(A)` | Fiedler value scalar (Wave 255) |
-| `stats_linear_regression(x,y)` / `stats_pacf` / `stats_kde` / `stats_bootstrap_ci` | Regression / PACF / KDE (optional kernel) / bootstrap CI 1×4 (Wave 256; KDE/CI shape Wave 270) |
-| `stats_shapiro_wilk` / `stats_mann_whitney_u` / `stats_one_way_anova` / `stats_wilcoxon_signed_rank` | Hypothesis tests (Wave 256) |
-| `graph_normalised_laplacian(A)` / `graph_modularity(A,C)` / `graph_eccentricity(A)` / `graph_is_strongly_connected(A)` | Structure metrics (Wave 256) |
-| `geo_kdtree_3d_nearest` / `geo_intersect_ray_tri` / `geo_dist_point_plane` / `geo_dist_point_seg3d` | 3D geo queries (Wave 256) |
-| `imflip` / `imrotate90` / `threshold_binary` / `adapthisteq` | Image transforms (Wave 256) |
-| `stats_friedman` / `stats_ks_2sample` / `stats_jarque_bera` / `stats_ljung_box` | Nonparametric / normality / residual tests (Wave 257) |
-| `stats_levene` / `stats_bartlett` / `stats_fligner` | Variance homogeneity tests (Wave 257) |
-| `label_components` / `watershed` / `slic` | Segmentation (Wave 257) |
-| `hough_lines` / `hough_circles` / `harris` / `shi_tomasi` | Hough + corners (Wave 257) |
-| `prob_*_pdf/cdf/ppf` extensions | Lognormal/weibull/etc. + beta/gamma/f CDF (Wave 257) |
-| `imtophat` / `imbothat` / `imadjust` / `imhist` | Morphology + histogram (Wave 258) |
-| `radon` / `iradon` / `gray2rgb` / `impad` | Radon + color/pad (Wave 258) |
-| `sqrtm` / `logm` / `tril` / `triu` / `cosm` / `sinm` | Matrix functions (Wave 258) |
-| `graph_dijkstra` / `graph_bellman_ford` | Shortest paths → Nx2 [dist,parent] (Wave 258) |
-| `info_permutation_entropy` / `info_transfer_entropy` | Time-series information measures (Wave 258) |
-| `stats_partial_correlation` / `stats_weighted_mean` / `stats_trimmed_mean` / `stats_arfit` / `stats_multiple_regression` | Correlation / means / regression (Wave 258) |
-| `stats_weighted_variance` / `stats_weighted_correlation` / `stats_bootstrap_mean` | Weighted variance/correlation and bootstrap mean (Wave 261) |
-| `stats_vif` / `stats_variance_inflation_factor` | VIF for column `j` of design matrix `X` (Wave 260) |
-| `hess(A)` / `schur(A)` / `T, Q = schur(A)` | Hessenberg / Schur (Wave 259) |
-| `finance_efficient_frontier` / `finance_max_sharpe` | Mean-variance portfolios (Wave 259) |
-| `geo_bezier_eval` / `geo_catmull_rom` / `geo_bspline_eval` | Curve evaluation → 1×2 (Wave 259) |
-| `geo_bezier_deriv` / `geo_hermite_curve` | Bezier derivative / Hermite point → 1×2 (Wave 260) |
-| `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization (Wave 259) |
-| `combo_eulerian(n,k)` | Eulerian number A(n,k) (Wave 261) |
-| `combo_gray_code(n)` | Binary reflected Gray codes as 2^n×n matrix, MSB-first 0/1 rows (Wave 261) |
-| `combo_dyck_paths(n)` | All Dyck paths as Catalan×2n matrix (+1 up, -1 down steps) (Wave 261) |
-| `combo_necklaces(n,k)` | Distinct necklaces of length n over k colors as K×n 0/1 matrix (Wave 262) |
-| `combo_de_bruijn_sequence(k,n)` | De Bruijn sequence B(k,n) as k^n×1 column (Wave 262) |
-| `combo_set_partitions(n)` | All set partitions of {0..n-1} as B×n block-label matrix (Wave 262) |
-| `combo_motzkin_paths(n)` | All Motzkin paths as M×n matrix (+1 U, -1 D, 0 F steps) (Wave 262) |
-| `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` (Wave 260) |
-| `numthy_factor_exp(n)` / `numthy_farey(n)` | Prime exponents / Farey fractions as `K×2` (Wave 261) |
-| `numthy_is_carmichael(n)` | Carmichael test → `1`/`0` (Wave 261) |
-| `numthy_stern_brocot(n)` / `numthy_lucas_sequence(k,P,Q)` | Stern-Brocot fractions as `N×2` / Lucas `U_k,V_k` as `1×2` (Wave 262) |
-| `numthy_multiplicative_order(a,n)` / `numthy_carmichael_lambda(n)` | Multiplicative order / Carmichael λ (Wave 262) |
-| `fft_goertzel(x,f,fs)` | Single-bin Goertzel DFT as 1×2 `[re,im]` (Wave 260) |
-| `fftfreq(n[,d])` / `rfftfreq(n[,d])` | NumPy-compatible FFT/rFFT frequency axes as `N×1` columns (Wave 261) |
-| `ifftshift(S)` | Inverse cyclic shift of `N×2` complex spectrum (Wave 261) |
-| `bidiag(A)` / `U, B, V = bidiag(A)` | Bidiagonalization (Wave 260) |
-| `eig(A)` / `D, V = eig(A)` | General eigenvalues and eigenvectors (Wave 261) |
-| `ldl(A)` / `L, D = ldl(A)` | Symmetric LDL^T factorization (Wave 261) |
-| `solve_sylvester(A,B,C)` | Sylvester equation `A*X + X*B = C` (Wave 260) |
-| `minres(A,b)` | MINRES iterative solve (Wave 260) |
-| `cg(A,b)` | Conjugate gradient iterative solve (Wave 261) |
-| `gmres(A,b)` | GMRES iterative solve (Wave 261) |
-| `jacobi(A,b)` | Jacobi iterative solve (Wave 261) |
-| `lsq(A,b)` | Least-squares solve via dense `ms::lsq` (Wave 262) |
-| `diag(v)` | Diagonal matrix from column vector `v` (Wave 262) |
-| `poly_resultant(p,q)` | Sylvester resultant of coefficient columns (low-to-high) (Wave 262) |
-| `poly_discriminant(p)` | Discriminant of coefficient column (low-to-high) (Wave 262) |
-| `poly_lagrange(xs,ys)` / `poly_interp_newton(xs,ys)` | Lagrange / Newton interpolation coefficient columns (Wave 263) |
-| `combo_bracelets(n,k)` / `combo_lyndon_words(n,k)` | Bracelets / Lyndon words as enumeration matrices (Wave 263) |
-| `combo_restricted_partitions(n,k)` / `combo_involutions(n)` | Restricted partitions matrix / involution count (Wave 263) |
-| `numthy_pell_solve(D)` / `numthy_quadratic_residues(p)` | Pell fundamental solution `1×2` / QR column (Wave 263) |
-| `finance_bl_implied_returns` / `finance_bl_posterior_returns` | Black–Litterman implied / posterior returns (Wave 263) |
-| `finance_merton_distance_to_default` / `finance_historical_var` / `finance_historical_cvar` | Merton DD / historical VaR-CVaR (Wave 263) |
-| `control_kalman_predict` / `control_kalman_update` (+ `_cov`) | Kalman predict/update mean or covariance (Wave 263) |
-| `special_voigt` / `special_pseudo_voigt_auto` / `special_airy_ai` | Voigt / pseudo-Voigt / Airy Ai scalars (Wave 263) |
-| `poly_roots(p)` / `poly_fit` / `poly_interp_hermite` / `poly_gcd` / `poly_squarefree` | Roots (Nx2), fit/Hermite coeffs, GCD, square-free part (Wave 264) |
-| `numthy_cornacchia(d,p)` | Cornacchia solution as `1×2` (Wave 264) |
-| `finance_treynor` / `finance_information_ratio` | Treynor ratio / information ratio (Wave 264) |
-| `control_ctrb` / `control_obsv` (+ `_gram`) / `control_tf2ss` / `control_c2d` / `control_c2d_b` | Controllability/observability, packed SS, ZOH Ad/Bd (Wave 264) |
-| `bessel_y` / `bessel_i` / `lambert_w` / `kummer_u` / `special_airy_bi` | Special-function scalars (Wave 264) |
-| `info_blahut_arimoto(W)` / `info_channel_capacity(W)` | Discrete channel capacity (bits) (Wave 264) |
-| `poly_shift` / `poly_scale` / `poly_monic` / `poly_reverse` / `poly_pow` / `poly_lcm` / `poly_div_quot` / `poly_mod` / `poly_eval_at` / `poly_sylvester` | Polynomial transforms / algebra (Wave 265) |
-| `poly_factor` / `poly_rational_roots` / `poly_factor_rational` / `poly_partial_fractions` / `poly_root_count` / `poly_cheb_eval` | Factorization / Chebyshev eval (Wave 265) |
-| `control_series` / `control_parallel` / `control_feedback` / `control_ss2tf` / `control_d2c` / `control_c2d_tf` / `control_d2c_tf` | TF algebra + c2d/d2c (Wave 265) |
-| `finance_merton_implied_asset_params` / `finance_bl_posterior_returns_default_omega` | Merton implied 1×6 / BL posterior (Wave 265) |
-| `combo_prev_perm` / `combo_prev_comb` | Previous permutation / combination (Wave 265) |
-| `bessel_k` / `chebyshev_t` / `chebyshev_u` / `hermite_h` / `laguerre_l` / `sph_bessel_j` / `sph_bessel_y` / `assoc_legendre_p` / `gegenbauer_c` | Orthogonal / Bessel specials (Wave 265) |
-| `matrix_rank` / `funm` / `precond_diag` / `precond_ssor` | Rank / matrix function / preconditioners (Wave 265) |
-| `graph_connected_components` / `graph_is_planar` | Connected components / planarity (Wave 265) |
-| `info_normalized_entropy` / `info_channel_capacity_input` | Normalized entropy / capacity-achieving input (Wave 265) |
-| `poly_cheb_expand(p,n[,a,b])` | Chebyshev expansion of polynomial (Wave 266) |
-| `control_c2d_tustin` / `control_c2d_euler` / `control_d2c_tustin` / `control_d2c_euler` (+ `_tf_tustin`) | Tustin/Euler discretizations (Wave 266) |
-| `erfi` / `erfcx` / `dawson` / `special_gamma_inc` / `special_beta_inc` / `beta` | Error / incomplete specials (Wave 266) |
-| `legendre_q` / `hermite_he` / `laguerre_la` / `chebyshev_v` / `chebyshev_w` / `sph_harm` | Orthogonal / spherical harmonics (Wave 266) |
-| `hypergeo_0f1` / `hypergeo_1f1` / `hypergeo_2f1` / `whittaker_m` / `whittaker_w` / `kummer_m` | Hypergeometric / Whittaker (Wave 266) |
-| `mathieu_se` / `mathieu_b` / `mathieu_mc` / `mathieu_ms` / `heun_c` / `heun_d` / `heun_b` / `heun_t` / `painleve2` | Mathieu / Heun / Painlevé II (Wave 266) |
-| `prob_chi2_ppf` / `prob_exp_ppf` / `stats_ks_norm` | Chi²/exp PPF / one-sample KS vs normal (Wave 266) |
-| `graph_min_arborescence(A,root)` | Min spanning arborescence packed matrix (Wave 266) |
-| `imfilter` / `sobel_x` / `sobel_y` / `hsv2rgb` / `dft_magnitude` / `laplacian_of_gaussian` | Image filters / transforms (Wave 266) |
-| `painleve3`–`painleve6` / `dawsonx` / elliptic / Jacobi / theta / Meijer / Mathieu / spheroidal / PCF / zeta-Airy orthog | Extended specials (Wave 267) |
-| `ode_trapezoidal` / `ode_cashkarp` / `ode_rk23` / `ode_exponential_euler` / `ode_rosenbrock23` | Adaptive/stiff ODE solvers (Wave 267) |
-| `ml_lasso_*` / `ml_elastic_net_*` / `ml_knn_*` / `ml_naive_bayes_*` / `ml_lda_*` / `ml_pca_*` / `ml_kmeans_*` | Supervised + unsupervised ML (Wave 267) |
-| `ml_qda_*` / `ml_svm_*` | QDA + SVM classifiers (Wave 268) |
-| `ml_decision_tree_*` / `ml_random_forest_*` / `ml_adaboost_*` | Tree ensembles (Wave 268) |
-| `ml_gmm_*` / `ml_dbscan_fit` / `ml_spectral_clustering` | GMM + density/spectral clustering (Wave 268) |
-| `ml_standard_scaler_*` / `ml_minmax_scaler_*` / `ml_train_test_split` / `ml_roc_auc` / `ml_average_precision` | Scalers, split, ROC/PR metrics (Wave 268) |
-| `pde_heat_1d_cn` / `pde_heat_2d_cn_adi` | Crank–Nicolson heat (1D / 2D ADI) (Wave 268) |
-| `pde_poisson_1d` / `pde_laplace_2d` / `pde_helmholtz_2d` | Elliptic PDE solvers (Wave 268) |
-| `pde_wave_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` | Hyperbolic/advection/reaction–diffusion (Wave 268) |
-| `conjugate_gradient` / `rmsprop` / `adadelta` / root finders / global search | Extended optim REPL (Wave 268) |
-| `arithmetic_encode_vec` / `ans_encode_vec` (+ decode) | Vector compress codecs (Wave 268) |
-| `golomb_rice_encode_vec` / `wavelet_compress_vec` (+ decode) | Golomb–Rice + wavelet compress (Wave 269) |
-| `sparse_from_coo(rows, cols, I, J, V)` / `sparse_spmv(S, x)` / `sparse_to_dense(S)` | COO sparse matrix pack, SpMV, densify (Wave 269) |
-| `tensorops_decompose_nmf(h, V, rank)` / `tensorops_reconstruct_nmf(h)` | Session NMF decompose/reconstruct (Wave 269) |
-| `tensorops_decompose_tt(h, T, shape, eps)` / `tensorops_reconstruct_tt(h)` | Session TT decompose/reconstruct (Wave 269) |
-| `topo_alpha_complex(P, alpha[, max_dim])` / `topo_witness_complex(P, landmarks[, max_epsilon[, max_dim]])` / `topo_persistence_landscape(dgm, n_layers, n_samples)` | Alpha/witness complexes + persistence landscape (Wave 269) |
-| `quantum_wigner(rho, x, p)` / `quantum_husimi(rho, alpha_re, alpha_im)` / `quantum_grover_search(n_qubits, marked[, n_iterations])` | Wigner/Husimi quasi-probability + Grover search state (Wave 269) |
-| `cplx_green_function_disk(zre, zim, z0re, z0im[, radius])` / `ode_adams_bashforth2("formula", t0, y0, t_end, steps)` / `cfd_advection1d(nx, vx, t_end, dt)` | Complex Green's function, AB2 IVP, 1D upwind advection (Wave 269) |
-| `diffgeo_helix_torsion(t[, a[, b]])` / `diffgeo_sphere_gauss_bonnet(n)` / `diffgeo_sphere_gauss_bonnet_residual(n)` | Helix torsion + sphere Gauss–Bonnet presets (Wave 269) |
-| `fem_mesh2d_rectangular` / `fem_stiffness_2d` / `fem_load_2d` / `fem_apply_dirichlet` / `fem_solve` / `fem_poisson2d` | 2D FEM assembly + Poisson solve (Wave 270) |
-| `fem_mesh3d_box` / `fem_stiffness_3d` / `fem_load_3d` | 3D FEM assembly primitives (Wave 271) |
-| `cfd_grid3d` / `cfd_square_pulse_3d` / `cfd_upwind_step_3d` | 3D CFD grid/IC/step (Wave 271) |
-| `weierstrass_zeta` / `weierstrass_sigma` / `jacobi_nd|cd|cs|ns|ds` | Weierstrass ζ/σ + Jacobi ratios (Wave 271) |
-| `gria_gf2n_generate_field(n)` | GF(2ⁿ) element enumeration column (Wave 271) |
-| `quantum_eigenspectrum(H)` / `quantum_ground_state(H)` | Hermitian spectrum + ground ket (Wave 271) |
-| `cfd_integrated_mass_3d(grid,u)` | 3D discrete mass integral (Wave 272) |
-| `ellip_d(k)` | Legendre elliptic integral D (Wave 272) |
-| `quantum_schmidt_decomposition(psi,dim_a,dim_b)` / `quantum_anticommutator(A,B)` | Schmidt coeffs + anticommutator (Wave 272) |
-| `izaac_exponential_mechanism` / `mpc_split` / `mpc_reconstruct` / `simulate_gbm_path` / `run_backtest` / `izaac_vrf_keygen` / `izaac_fuzz_mutate` | Izaac DP/MPC/backtest/VRF/fuzz (Wave 272) |
-| `axiom_gria_fitness` / `axiom_evolve` / `gria_dispatch_hint_register` / `gria_dispatch_hint_alpha` | Axiom GRIA + dispatch hints (Wave 272) |
-| `izaac_vrf_prove` / `izaac_vrf_verify` / `izaac_encrypt` / `izaac_decrypt` / `izaac_randn_matrix` | Izaac VRF prove/verify, crypto, randn (Wave 273) |
-| `quantum_schmidt_number` / `quantum_ket_tensor_product` / `quantum_outer` | Schmidt number + ket tensor/outer (Wave 273) |
-| `cypha_nig_mean` / `cypha_nig_variance` | NIG distribution moments (Wave 273) |
-| `theta1_prime` / `jacobi_theta` | Theta function derivatives and Jacobi theta (Wave 273) |
-| `cfd_run_advection_3d(grid,u0,vx,vy,vz,t_end,dt)` | 3D upwind advection to t_end (Wave 273) |
-| `fem_mesh1d` / `fem_stiffness_1d` / `fem_load_1d` / `fem_lagrange_eval` | 1D FEM composable assembly (Wave 274) |
-| `cfd_grid1d` / `cfd_square_pulse` / `cfd_run_advection` / `cfd_upwind_step_1d` / `cfd_run_advection_2d` | 1D/2D CFD composable advection (Wave 274) |
-| `quantum_dagger` / `quantum_matmul_dm` / `quantum_schmidt_bases` | Operator algebra + Schmidt bases (Wave 274) |
-| `izaac_rand_matrix` | Uniform random matrix (Wave 274) |
-| `cfd_integrated_mass_1d` / grid `cfd_integrated_mass_2d` / grid `cfd_upwind_step_2d` / `cfd_constant_velocity` | CFD mass + grid 2D step (Wave 275) |
-| `quantum_bell_states` | Packed four Bell kets (Wave 275) |
-| `spherical_yn` / `bessel_h` / `bessel_hy` / `bessel_l` / `bessel_lu` / `hermite_hn` | Additional special functions (Wave 275) |
-| `cellai_hebbian_update` (assign) / `crypto_to_hex` | Hebbian assign + hex encode (Wave 275) |
-| `topo_cech_complex` / `topo_vietoris_rips` / `topo_simplicial_betti` / `topo_simplicial_euler` | Čech/VR complexes + simplicial invariants (Wave 276) |
-| `fem_solve_3d` / `fem_lagrange_deriv` | 3D FEM composable solve + Lagrange deriv (Wave 276) |
-| `quantum_time_evolve_psi` | U(t)·ψ time evolution (Wave 276) |
-| `run_length_encode_vec` / `run_length_decode_vec` | Alternate RLE codec (Wave 276) |
-| `bessel_j` / `bessel_j1` / `bessel_y0` / `bessel_y1` / `bessel_zero_jnu` | Additional Bessel specials (Wave 276) |
-| `crypto_from_hex` / `ms::crypto::from_hex` | Hex decode to byte column matrix (Wave 277) |
-| `bloom_bit_count` / `bloom_hash_count` | Bloom filter introspection (Wave 277) |
-| `topo_simplicial_counts` / `topo_simplicial_dimension` | Simplex counts + max dimension (Wave 277) |
-| `huffman_decode_vec` / `ans_decode_vec` / `arithmetic_decode_vec` (assign) | Compress decode assign forms (Wave 277) |
-| 3D FEM/CFD + `fem_apply_dirichlet` + `quantum_schrodinger_final` (tail11) | Composable 3D pipeline dispatch (Wave 277) |
-| `tokenbucket_capacity` / `tokenbucket_refill_rate` | Token bucket introspection (Wave 278) |
-| `crypto_bytes_to_hex` | Byte matrix to hex ASCII column (Wave 278) |
-| `bwt_decode_vec` (assign) / `run_backtest_equity` | BWT decode assign + equity curve (Wave 278) |
-| 2D FEM/CFD + `fem_solve` + `quantum_schrodinger` (tail11) | Composable 2D pipeline dispatch (Wave 278) |
-| `cellmemory_input_dim` / `memory_dim` / `time_scales` / `cellmemory_long_term_state` | CellMemory introspection + long-term state (Wave 279) |
-| `run_backtest_sharpe` / `run_backtest_max_drawdown` | Backtest scalar metrics (Wave 279) |
-| `quantum_partial_trace` / `topo_alpha_complex` / `topo_select_landmarks` / `topo_witness_complex` / `topo_persistence_landscape` (tail11) | Quantum + topo composable dispatch (Wave 279) |
-| explicit `cfd_upwind_step_2d(u,vx,vy,dt,dx,dy)` (tail11) | 2D upwind step without packed grid (Wave 279) |
-| `spherical_jn` (scalar two-arg eval) | Spherical Bessel j in assign expr (Wave 279) |
-| `run_backtest_total_return` / `cellmemory_recall` (assign) | Backtest scalar + CellMemory recall matrix (Wave 280) |
-| `cellai_energy` / `gria_langton_lambda` / `gria_alpha_ca` (scalar assign) | CellAI energy + GRIA CA metrics (Wave 280) |
-| `gria_ca_step` / `gria_divergence_trajectory` / `gria_gf2n_generate_field` (tail11) | GRIA composable pipeline (Wave 280) |
-| `quantum_eigenspectrum` / `quantum_ground_state` / `quantum_grover_search` (tail11) | Quantum spectral + Grover dispatch (Wave 280) |
-| `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` (tail11) | CellAI feature pipeline (Wave 280) |
-| `quantum_ket_normalise` / `quantum_density_matrix` / `quantum_op_apply` / `quantum_commutator` / `quantum_anticommutator` / `quantum_ket_tensor_product` (tail11) | Quantum algebra composable dispatch (Wave 281) |
-| `fem_poisson2d` / `cfd_advection1d` / `cfd_advection2d` (tail11) | One-shot FEM/CFD solvers (Wave 281) |
-| `signal_resample` / `signal_savgol` (tail11 assign) | Signal processing assign forms (Wave 281) |
-| `gria_hamming_distance` (scalar assign) / `cellmemory_reset` | GRIA distance + CellMemory reset (Wave 281) |
-| `polylog` (scalar two-arg eval) | Polylogarithm in assign expr (Wave 281) |
-| `pde_heat_1d` / `pde_heat_1d_cn` / `pde_wave_2d` / `fem_poisson1d` (tail11) | PDE/FEM composable dispatch (Wave 282) |
-| `control_kalman_predict` / `control_kalman_update` / `control_ctrb` (tail11) | Kalman + controllability (Wave 282) |
-| `signal_sosfilt` / `ode_rk4` / `sparse_from_coo` / `wavelet_compress_vec` (tail11) | Signal/ODE/sparse/wavelet (Wave 282) |
-| `quantum_hadamard` (tail11) | Hadamard on ket (Wave 282) |
-| `debye` / `clausen` / `eta_dirichlet` (scalar eval) | Special-function scalar assigns (Wave 282) |
-| `pde_wave_1d` / `pde_heat_2d` / `pde_heat_2d_cn_adi` / `pde_poisson_1d` / `pde_advection_1d` (tail11) | PDE composable dispatch (Wave 283) |
-| `wavelet_decompress_vec` / `sparse_spmv` / `sparse_to_dense` / `sparse_add` (tail11) | Sparse/wavelet round-trip (Wave 283) |
-| `ode_euler` / `signal_conv2` (tail11) | ODE/signal beside W282 rk4/sosfilt (Wave 283) |
-| `control_obsv` / `control_kalman_predict_cov` / `control_step_response` (tail11) | Control observability/Kalman/step (Wave 283) |
-| `struve_h` / `kelvin_ber` / `jacobi_sn` (scalar eval) | Special-function scalar assigns (Wave 283) |
-| `pde_poisson_2d` / `pde_burgers_1d` / `pde_laplace_2d` / `pde_helmholtz_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` (tail11) | Extended PDE suite (Wave 284) |
-| `control_impulse_response` / `control_kalman_update_cov` / `control_ctrb_gram` / `control_tf2ss` / `control_series` (tail11) | Control TF/Kalman/Gram (Wave 284) |
-| `signal_deconv` / `signal_firwin` / `signal_xcorr` / `signal_xcov` (tail11) | Signal processing chain (Wave 284) |
-| `ode_midpoint` (tail11) | ODE family beside W283 euler (Wave 284) |
-| `ellip_k` (scalar eval) | Complete elliptic K in assign expr (Wave 284) |
-| `control_obsv_gram` / `control_parallel` / `control_feedback` / `control_ss2tf` / `control_d2c` / `control_c2d` / `control_c2d_tf` / `control_d2c_tf` (tail11) | Control TF/SS conversions (Wave 285) |
-| `signal_autocorr` / `signal_lms` / `signal_envelope` / `signal_hilbert` / `signal_instantaneous_phase` / `signal_unwrap` (tail11) | Signal analytics chain (Wave 285) |
-| `ode_adams_bashforth2` / `ode_backward_euler` / `ode_bdf2` (tail11) | Additional fixed-step ODE solvers (Wave 285) |
-| `legendre_p` (scalar eval) | Legendre polynomial in assign expr (Wave 285) |
-| `fft_rfft` / `fft_dft` / `fft_ifft` / `fft_fft2` / `ifft2` / `idst2` / `fft_dct2` / `fft_idct2` / `fft_dst2` / `fftshift` / `ifftshift` / `fftfreq` / `rfftfreq` / `fft_goertzel` (tail11) | FFT suite (Wave 286) |
-| `control_bode` (tail11) | Bode magnitude/phase matrix (Wave 286) |
-| `signal_coherence` (tail11) | Magnitude-squared coherence assign (Wave 286) |
-| `ode_rosenbrock23` / `ode_trapezoidal` (tail11) | Stiff ODE matrix assign (Wave 286) |
-| `legendre_q` (scalar eval) | Legendre Q in assign expr (Wave 286) |
-| `graph_pagerank` / `graph_betweenness` / `graph_closeness` / `graph_degree_centrality` / `graph_topological_sort` / `graph_greedy_colour` / `graph_k_core_decomposition` / `graph_euler_circuit` / `graph_scc` / `graph_louvain` / `graph_floyd_warshall` / `graph_dijkstra` (tail11) | Graph analytics suite (Wave 287) |
-| `prewitt` / `scharr` / `roberts` / `laplacian` / `histeq` / `sharpen` (tail11) | Image filter suite (Wave 287) |
-| `poly_deriv` (tail11) | Polynomial derivative assign (Wave 287) |
-| `hermite_h` / `spherical_jn` (scalar eval) | Special polynomial/Bessel in assign expr (Wave 287) |
-| `graph_biconnected_components` / `graph_eulerian_path` / `graph_hamiltonian_path` / `graph_tsp_heuristic` / `graph_eigenvector_centrality` / `graph_katz_centrality` / `graph_adjacency_spectrum` / `graph_laplacian` / `graph_normalised_laplacian` / `graph_eccentricity` / `graph_articulation_points` / `graph_bridges` / `graph_maximum_matching` / `graph_transitive_closure` / `graph_bellman_ford` / `graph_mst_kruskal` / `graph_mst_prim` (tail11) | Extended graph suite (Wave 288) |
-| `kruskal_wallis` / `stats_shapiro_wilk` / `stats_mann_whitney_u` / `stats_ks_2sample` (tail11) | Nonparametric stats assign (Wave 288) |
-| `geo_delaunay_2d` / `geo_convex_hull` (tail11) | Computational geometry assign (Wave 288) |
-| `adapthisteq` / `imflip` (tail11) | Image enhancement assign (Wave 288) |
-| `laguerre_l` / `chebyshev_t` (scalar eval) | Orthogonal polynomials in assign expr (Wave 288) |
-| `stats_one_way_anova` / `stats_levene` / `stats_bartlett` / `stats_fligner` / `stats_wilcoxon_signed_rank` / `stats_friedman` / `stats_jarque_bera` / `stats_ljung_box` (tail11) | Extended inferential stats assign (Wave 289) |
-| `geo_voronoi` / `geo_min_bounding_rect` / `geo_kdtree_knn` / `geo_kdtree_range` (tail11) | Extended computational geometry assign (Wave 289) |
-| `threshold_otsu` / `imrotate90` / `threshold_binary` / `label_components` (tail11) | Extended image processing assign (Wave 289) |
-| `chebyshev_u` / `hermite_he` (scalar eval) | Chebyshev U / probabilist Hermite in assign expr (Wave 289) |
-| `imgaussfilt` / `medfilt2` / `boxfilter` / `imdilate` / `imerode` / `imopen` / `imclose` / `bilateral` / `canny` / `imresize` / `watershed` / `imcrop` (tail11) | Extended image filter assign (Wave 290) |
-| `topo_pairwise_distances` / `combo_next_perm` / `numthy_convergents` (tail11) | Topology/combinatorics assign (Wave 290) |
-| `geo_triangulate_polygon` / `geo_convex_hull_3d` / `stats_linear_regression` / `stats_pacf` (tail11) | Geo/stats assign (Wave 290) |
-| `chebyshev_v` / `chebyshev_w` (scalar eval) | Chebyshev V/W in assign expr (Wave 290) |
-| `slic` / `hough_lines` / `hough_circles` / `harris` / `shi_tomasi` / `imtophat` / `imbothat` / `imgradient_morph` / `imadjust` / `imhist` / `gray2rgb` (tail11) | Image feature/color assign (Wave 291) |
-| `stats_kde` / `stats_bootstrap_ci` / `stats_arfit` / `stats_multiple_regression` (tail11) | Extended stats assign (Wave 291) |
-| `legendre_pn` / `assoc_legendre_p` (scalar eval) | Associated Legendre in assign expr (Wave 291) |
-| `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection (Wave 270) |
-| `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve (Wave 270) |
-| `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR (Wave 270) |
-| `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` | CellAI Boltzmann / Cypha features (Wave 270) |
-| `geo_upper_hull` / `geo_lower_hull` / `geo_bezier_subdivide` / `geo_kdtree_3d_knn` / `geo_kdtree_3d_range` | Hull / bezier / 3D kdtree (Wave 267) |
-| `stats_max_value(x)` | Maximum of sample vector (Wave 267) |
-| `imgradient_morph` | Morphological gradient (Wave 259) |
-| `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 (Wave 254) |
-| `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 (Wave 254) |
-| `signal_deconv(y,b)` | Polynomial deconvolution of column vectors (Wave 254) |
-| `signal_lms(x,d,filter_length,mu)` / `signal_lms_weights(...)` | LMS adaptive filter output/error or final weights (Wave 254) |
-| `signal_czt(x,m,w_re,w_im,a_re,a_im)` / `signal_czt_zoom(...)` | Chirp Z-Transform / zoom-FFT as M×2 `[re,im]` (Wave 254) |
-| `crypto_hkdf_sha256(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA256 extract/expand; returns `len` bytes as hex (Wave 238) |
-| `crypto_pbkdf2_sha256(hex_pass, hex_salt, iter, dklen)` | PBKDF2-HMAC-SHA256; returns `dklen` bytes as hex (Wave 239) |
-| `crypto_ed25519_keypair(hex_seed)` | Ed25519 public key from 32-byte seed (hex out; Wave 240) |
-| `crypto_ed25519_sign(hex_seed_or_sk, hex_msg)` | Ed25519 signature (hex; Wave 240) |
-| `crypto_ed25519_verify(hex_pub, hex_msg, hex_sig)` | Ed25519 verify → `1`/`0` (Wave 240) |
-| `fem_poisson1d(n)` | 1D P1 Poisson solve on unit interval (`f=1`, zero Dirichlet); returns solution column (Wave 268 REPL) |
+| `crypto_chacha20_poly1305_encrypt(key_hex, nonce_hex, aad_hex, plaintext_hex)` | ChaCha20-Poly1305 seal; returns hex `ciphertext:tag` |
+| `crypto_chacha20_poly1305_decrypt(key_hex, nonce_hex, aad_hex, ciphertext_hex, tag_hex)` | ChaCha20-Poly1305 open; returns hex plaintext |
+| `crypto_x25519_shared(priv_hex, pub_hex)` | X25519 ECDH shared secret as hex |
+| `crypto_x25519_keypair(hex_priv32)` | X25519 public key from 32-byte private key hex |
+| `mpi_bcast(x)` | MPI stub broadcast from root 0 |
+| `geo_triangulate_polygon(P)` / `geo_convex_hull_3d(P)` | Polygon triangulation / 3D hull face indices |
+| `geo_kdtree_knn(P,x,y,k)` / `geo_kdtree_range(P,x,y,r)` | 2D KD-tree kNN / range query index columns |
+| `geo_intersect_seg_seg(...)` / `geo_intersect_ray_sphere(...)` / `geo_intersect_ray_aabb(...)` | Intersection tests → 1/0 |
+| `graph_katz_centrality(A)` / `graph_laplacian(A)` / `graph_adjacency_spectrum(A)` | Katz / Laplacian / spectral radius |
+| `graph_algebraic_connectivity(A)` | Fiedler value scalar |
+| `stats_linear_regression(x,y)` / `stats_pacf` / `stats_kde` / `stats_bootstrap_ci` | Regression / PACF / KDE (optional kernel) / bootstrap CI 1×4 |
+| `stats_shapiro_wilk` / `stats_mann_whitney_u` / `stats_one_way_anova` / `stats_wilcoxon_signed_rank` | Hypothesis tests |
+| `graph_normalised_laplacian(A)` / `graph_modularity(A,C)` / `graph_eccentricity(A)` / `graph_is_strongly_connected(A)` | Structure metrics |
+| `geo_kdtree_3d_nearest` / `geo_intersect_ray_tri` / `geo_dist_point_plane` / `geo_dist_point_seg3d` | 3D geo queries |
+| `imflip` / `imrotate90` / `threshold_binary` / `adapthisteq` | Image transforms |
+| `stats_levene` / `stats_bartlett` / `stats_fligner` | Variance homogeneity tests |
+| `label_components` / `watershed` / `slic` | Segmentation |
+| `hough_lines` / `hough_circles` / `harris` / `shi_tomasi` | Hough + corners |
+| `prob_*_pdf/cdf/ppf` extensions | Lognormal/weibull/etc. + beta/gamma/f CDF |
+| `imtophat` / `imbothat` / `imadjust` / `imhist` | Morphology + histogram |
+| `radon` / `iradon` / `gray2rgb` / `impad` | Radon + color/pad |
+| `sqrtm` / `logm` / `tril` / `triu` / `cosm` / `sinm` | Matrix functions |
+| `graph_dijkstra` / `graph_bellman_ford` | Shortest paths → Nx2 [dist,parent] |
+| `info_permutation_entropy` / `info_transfer_entropy` | Time-series information measures |
+| `stats_partial_correlation` / `stats_weighted_mean` / `stats_trimmed_mean` / `stats_arfit` / `stats_multiple_regression` | Correlation / means / regression |
+| `stats_weighted_variance` / `stats_weighted_correlation` / `stats_bootstrap_mean` | Weighted variance/correlation and bootstrap mean |
+| `stats_vif` / `stats_variance_inflation_factor` | VIF for column `j` of design matrix `X` |
+| `hess(A)` / `schur(A)` / `T, Q = schur(A)` | Hessenberg / Schur |
+| `finance_efficient_frontier` / `finance_max_sharpe` | Mean-variance portfolios |
+| `geo_bezier_eval` / `geo_catmull_rom` / `geo_bspline_eval` | Curve evaluation → 1×2 |
+| `geo_bezier_deriv` / `geo_hermite_curve` | Bezier derivative / Hermite point → 1×2 |
+| `combo_binomial` / `combo_bell_num` / `numthy_factor` | Combinatorics / factorization |
+| `combo_eulerian(n,k)` | Eulerian number A(n,k) |
+| `combo_gray_code(n)` | Binary reflected Gray codes as 2^n×n matrix, MSB-first 0/1 rows |
+| `combo_dyck_paths(n)` | All Dyck paths as Catalan×2n matrix (+1 up, -1 down steps) |
+| `combo_necklaces(n,k)` | Distinct necklaces of length n over k colors as K×n 0/1 matrix |
+| `combo_de_bruijn_sequence(k,n)` | De Bruijn sequence B(k,n) as k^n×1 column |
+| `combo_set_partitions(n)` | All set partitions of {0..n-1} as B×n block-label matrix |
+| `combo_motzkin_paths(n)` | All Motzkin paths as M×n matrix (+1 U, -1 D, 0 F steps) |
+| `numthy_divisors` / `numthy_divisors_vec` | Sorted divisors as `N×1` |
+| `numthy_factor_exp(n)` / `numthy_farey(n)` | Prime exponents / Farey fractions as `K×2` |
+| `numthy_is_carmichael(n)` | Carmichael test → `1`/`0` |
+| `numthy_stern_brocot(n)` / `numthy_lucas_sequence(k,P,Q)` | Stern-Brocot fractions as `N×2` / Lucas `U_k,V_k` as `1×2` |
+| `numthy_multiplicative_order(a,n)` / `numthy_carmichael_lambda(n)` | Multiplicative order / Carmichael λ |
+| `fft_goertzel(x,f,fs)` | Single-bin Goertzel DFT as 1×2 `[re,im]` |
+| `fftfreq(n[,d])` / `rfftfreq(n[,d])` | NumPy-compatible FFT/rFFT frequency axes as `N×1` columns |
+| `ifftshift(S)` | Inverse cyclic shift of `N×2` complex spectrum |
+| `bidiag(A)` / `U, B, V = bidiag(A)` | Bidiagonalization |
+| `eig(A)` / `D, V = eig(A)` | General eigenvalues and eigenvectors |
+| `ldl(A)` / `L, D = ldl(A)` | Symmetric LDL^T factorization |
+| `solve_sylvester(A,B,C)` | Sylvester equation `A*X + X*B = C` |
+| `minres(A,b)` | MINRES iterative solve |
+| `cg(A,b)` | Conjugate gradient iterative solve |
+| `gmres(A,b)` | GMRES iterative solve |
+| `jacobi(A,b)` | Jacobi iterative solve |
+| `lsq(A,b)` | Least-squares solve via dense `ms::lsq` |
+| `diag(v)` | Diagonal matrix from column vector `v` |
+| `poly_resultant(p,q)` | Sylvester resultant of coefficient columns (low-to-high) |
+| `poly_discriminant(p)` | Discriminant of coefficient column (low-to-high) |
+| `poly_lagrange(xs,ys)` / `poly_interp_newton(xs,ys)` | Lagrange / Newton interpolation coefficient columns |
+| `combo_bracelets(n,k)` / `combo_lyndon_words(n,k)` | Bracelets / Lyndon words as enumeration matrices |
+| `combo_restricted_partitions(n,k)` / `combo_involutions(n)` | Restricted partitions matrix / involution count |
+| `numthy_pell_solve(D)` / `numthy_quadratic_residues(p)` | Pell fundamental solution `1×2` / QR column |
+| `finance_bl_implied_returns` / `finance_bl_posterior_returns` | Black–Litterman implied / posterior returns |
+| `finance_merton_distance_to_default` / `finance_historical_var` / `finance_historical_cvar` | Merton DD / historical VaR-CVaR |
+| `control_kalman_predict` / `control_kalman_update` (+ `_cov`) | Kalman predict/update mean or covariance |
+| `special_voigt` / `special_pseudo_voigt_auto` / `special_airy_ai` | Voigt / pseudo-Voigt / Airy Ai scalars |
+| `poly_roots(p)` / `poly_fit` / `poly_interp_hermite` / `poly_gcd` / `poly_squarefree` | Roots (Nx2), fit/Hermite coeffs, GCD, square-free part |
+| `numthy_cornacchia(d,p)` | Cornacchia solution as `1×2` |
+| `finance_treynor` / `finance_information_ratio` | Treynor ratio / information ratio |
+| `control_ctrb` / `control_obsv` (+ `_gram`) / `control_tf2ss` / `control_c2d` / `control_c2d_b` | Controllability/observability, packed SS, ZOH Ad/Bd |
+| `bessel_y` / `bessel_i` / `lambert_w` / `kummer_u` / `special_airy_bi` | Special-function scalars |
+| `info_blahut_arimoto(W)` / `info_channel_capacity(W)` | Discrete channel capacity (bits) |
+| `poly_shift` / `poly_scale` / `poly_monic` / `poly_reverse` / `poly_pow` / `poly_lcm` / `poly_div_quot` / `poly_mod` / `poly_eval_at` / `poly_sylvester` | Polynomial transforms / algebra |
+| `poly_factor` / `poly_rational_roots` / `poly_factor_rational` / `poly_partial_fractions` / `poly_root_count` / `poly_cheb_eval` | Factorization / Chebyshev eval |
+| `control_series` / `control_parallel` / `control_feedback` / `control_ss2tf` / `control_d2c` / `control_c2d_tf` / `control_d2c_tf` | TF algebra + c2d/d2c |
+| `finance_merton_implied_asset_params` / `finance_bl_posterior_returns_default_omega` | Merton implied 1×6 / BL posterior |
+| `combo_prev_perm` / `combo_prev_comb` | Previous permutation / combination |
+| `bessel_k` / `chebyshev_t` / `chebyshev_u` / `hermite_h` / `laguerre_l` / `sph_bessel_j` / `sph_bessel_y` / `assoc_legendre_p` / `gegenbauer_c` | Orthogonal / Bessel specials |
+| `matrix_rank` / `funm` / `precond_diag` / `precond_ssor` | Rank / matrix function / preconditioners |
+| `graph_connected_components` / `graph_is_planar` | Connected components / planarity |
+| `info_normalized_entropy` / `info_channel_capacity_input` | Normalized entropy / capacity-achieving input |
+| `poly_cheb_expand(p,n[,a,b])` | Chebyshev expansion of polynomial |
+| `erfi` / `erfcx` / `dawson` / `special_gamma_inc` / `special_beta_inc` / `beta` | Error / incomplete specials |
+| `legendre_q` / `hermite_he` / `laguerre_la` / `chebyshev_v` / `chebyshev_w` / `sph_harm` | Orthogonal / spherical harmonics |
+| `hypergeo_0f1` / `hypergeo_1f1` / `hypergeo_2f1` / `whittaker_m` / `whittaker_w` / `kummer_m` | Hypergeometric / Whittaker |
+| `mathieu_se` / `mathieu_b` / `mathieu_mc` / `mathieu_ms` / `heun_c` / `heun_d` / `heun_b` / `heun_t` / `painleve2` | Mathieu / Heun / Painlevé II |
+| `prob_chi2_ppf` / `prob_exp_ppf` / `stats_ks_norm` | Chi²/exp PPF / one-sample KS vs normal |
+| `graph_min_arborescence(A,root)` | Min spanning arborescence packed matrix |
+| `imfilter` / `sobel_x` / `sobel_y` / `hsv2rgb` / `dft_magnitude` / `laplacian_of_gaussian` | Image filters / transforms |
+| `painleve3`–`painleve6` / `dawsonx` / elliptic / Jacobi / theta / Meijer / Mathieu / spheroidal / PCF / zeta-Airy orthog | Extended specials |
+| `ode_trapezoidal` / `ode_cashkarp` / `ode_rk23` / `ode_exponential_euler` / `ode_rosenbrock23` | Adaptive/stiff ODE solvers |
+| `ml_decision_tree_*` / `ml_random_forest_*` / `ml_adaboost_*` | Tree ensembles |
+| `ml_gmm_*` / `ml_dbscan_fit` / `ml_spectral_clustering` | GMM + density/spectral clustering |
+| `ml_standard_scaler_*` / `ml_minmax_scaler_*` / `ml_train_test_split` / `ml_roc_auc` / `ml_average_precision` | Scalers, split, ROC/PR metrics |
+| `pde_heat_1d_cn` / `pde_heat_2d_cn_adi` | Crank–Nicolson heat (1D / 2D ADI) |
+| `pde_poisson_1d` / `pde_laplace_2d` / `pde_helmholtz_2d` | Elliptic PDE solvers |
+| `pde_wave_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` | Hyperbolic/advection/reaction–diffusion |
+| `conjugate_gradient` / `rmsprop` / `adadelta` / root finders / global search | Extended optim REPL |
+| `sparse_from_coo(rows, cols, I, J, V)` / `sparse_spmv(S, x)` / `sparse_to_dense(S)` | COO sparse matrix pack, SpMV, densify |
+| `tensorops_decompose_nmf(h, V, rank)` / `tensorops_reconstruct_nmf(h)` | Session NMF decompose/reconstruct |
+| `tensorops_decompose_tt(h, T, shape, eps)` / `tensorops_reconstruct_tt(h)` | Session TT decompose/reconstruct |
+| `topo_alpha_complex(P, alpha[, max_dim])` / `topo_witness_complex(P, landmarks[, max_epsilon[, max_dim]])` / `topo_persistence_landscape(dgm, n_layers, n_samples)` | Alpha/witness complexes + persistence landscape |
+| `quantum_wigner(rho, x, p)` / `quantum_husimi(rho, alpha_re, alpha_im)` / `quantum_grover_search(n_qubits, marked[, n_iterations])` | Wigner/Husimi quasi-probability + Grover search state |
+| `cplx_green_function_disk(zre, zim, z0re, z0im[, radius])` / `ode_adams_bashforth2("formula", t0, y0, t_end, steps)` / `cfd_advection1d(nx, vx, t_end, dt)` | Complex Green's function, AB2 IVP, 1D upwind advection |
+| `diffgeo_helix_torsion(t[, a[, b]])` / `diffgeo_sphere_gauss_bonnet(n)` / `diffgeo_sphere_gauss_bonnet_residual(n)` | Helix torsion + sphere Gauss–Bonnet presets |
+| `fem_mesh2d_rectangular` / `fem_stiffness_2d` / `fem_load_2d` / `fem_apply_dirichlet` / `fem_solve` / `fem_poisson2d` | 2D FEM assembly + Poisson solve |
+| `fem_mesh3d_box` / `fem_stiffness_3d` / `fem_load_3d` | 3D FEM assembly primitives |
+| `cfd_grid3d` / `cfd_square_pulse_3d` / `cfd_upwind_step_3d` | 3D CFD grid/IC/step |
+| `weierstrass_zeta` / `weierstrass_sigma` / `jacobi_nd|cd|cs|ns|ds` | Weierstrass ζ/σ + Jacobi ratios |
+| `gria_gf2n_generate_field(n)` | GF(2ⁿ) element enumeration column |
+| `quantum_eigenspectrum(H)` / `quantum_ground_state(H)` | Hermitian spectrum + ground ket |
+| `cfd_integrated_mass_3d(grid,u)` | 3D discrete mass integral |
+| `ellip_d(k)` | Legendre elliptic integral D |
+| `quantum_schmidt_decomposition(psi,dim_a,dim_b)` / `quantum_anticommutator(A,B)` | Schmidt coeffs + anticommutator |
+| `izaac_exponential_mechanism` / `mpc_split` / `mpc_reconstruct` / `simulate_gbm_path` / `run_backtest` / `izaac_vrf_keygen` / `izaac_fuzz_mutate` | Izaac DP/MPC/backtest/VRF/fuzz |
+| `axiom_gria_fitness` / `axiom_evolve` / `gria_dispatch_hint_register` / `gria_dispatch_hint_alpha` | Axiom GRIA + dispatch hints |
+| `izaac_vrf_prove` / `izaac_vrf_verify` / `izaac_encrypt` / `izaac_decrypt` / `izaac_randn_matrix` | Izaac VRF prove/verify, crypto, randn |
+| `quantum_schmidt_number` / `quantum_ket_tensor_product` / `quantum_outer` | Schmidt number + ket tensor/outer |
+| `cypha_nig_mean` / `cypha_nig_variance` | NIG distribution moments |
+| `theta1_prime` / `jacobi_theta` | Theta function derivatives and Jacobi theta |
+| `cfd_run_advection_3d(grid,u0,vx,vy,vz,t_end,dt)` | 3D upwind advection to t_end |
+| `fem_mesh1d` / `fem_stiffness_1d` / `fem_load_1d` / `fem_lagrange_eval` | 1D FEM composable assembly |
+| `cfd_grid1d` / `cfd_square_pulse` / `cfd_run_advection` / `cfd_upwind_step_1d` / `cfd_run_advection_2d` | 1D/2D CFD composable advection |
+| `quantum_dagger` / `quantum_matmul_dm` / `quantum_schmidt_bases` | Operator algebra + Schmidt bases |
+| `izaac_rand_matrix` | Uniform random matrix |
+| `cfd_integrated_mass_1d` / grid `cfd_integrated_mass_2d` / grid `cfd_upwind_step_2d` / `cfd_constant_velocity` | CFD mass + grid 2D step |
+| `quantum_bell_states` | Packed four Bell kets |
+| `spherical_yn` / `bessel_h` / `bessel_hy` / `bessel_l` / `bessel_lu` / `hermite_hn` | Additional special functions |
+| `cellai_hebbian_update` (assign) / `crypto_to_hex` | Hebbian assign + hex encode |
+| `topo_cech_complex` / `topo_vietoris_rips` / `topo_simplicial_betti` / `topo_simplicial_euler` | Čech/VR complexes + simplicial invariants |
+| `fem_solve_3d` / `fem_lagrange_deriv` | 3D FEM composable solve + Lagrange deriv |
+| `quantum_time_evolve_psi` | U(t)·ψ time evolution |
+| `run_length_encode_vec` / `run_length_decode_vec` | Alternate RLE codec |
+| `bessel_j` / `bessel_j1` / `bessel_y0` / `bessel_y1` / `bessel_zero_jnu` | Additional Bessel specials |
+| `crypto_from_hex` / `ms::crypto::from_hex` | Hex decode to byte column matrix |
+| `bloom_bit_count` / `bloom_hash_count` | Bloom filter introspection |
+| `topo_simplicial_counts` / `topo_simplicial_dimension` | Simplex counts + max dimension |
+| `huffman_decode_vec` / `ans_decode_vec` / `arithmetic_decode_vec` (assign) | Compress decode assign forms |
+| 3D FEM/CFD + `fem_apply_dirichlet` + `quantum_schrodinger_final` | Composable 3D pipeline dispatch |
+| `tokenbucket_capacity` / `tokenbucket_refill_rate` | Token bucket introspection |
+| `crypto_bytes_to_hex` | Byte matrix to hex ASCII column |
+| `bwt_decode_vec` (assign) / `run_backtest_equity` | BWT decode assign + equity curve |
+| 2D FEM/CFD + `fem_solve` + `quantum_schrodinger` | Composable 2D pipeline dispatch |
+| `cellmemory_input_dim` / `memory_dim` / `time_scales` / `cellmemory_long_term_state` | CellMemory introspection + long-term state |
+| `run_backtest_sharpe` / `run_backtest_max_drawdown` | Backtest scalar metrics |
+| `quantum_partial_trace` / `topo_alpha_complex` / `topo_select_landmarks` / `topo_witness_complex` / `topo_persistence_landscape` | Quantum + topo composable dispatch |
+| explicit `cfd_upwind_step_2d(u,vx,vy,dt,dx,dy)` | 2D upwind step without packed grid |
+| `spherical_jn` (scalar two-arg eval) | Spherical Bessel j in assign expr |
+| `run_backtest_total_return` / `cellmemory_recall` (assign) | Backtest scalar + CellMemory recall matrix |
+| `cellai_energy` / `gria_langton_lambda` / `gria_alpha_ca` (scalar assign) | CellAI energy + GRIA CA metrics |
+| `gria_ca_step` / `gria_divergence_trajectory` / `gria_gf2n_generate_field` | GRIA composable pipeline |
+| `quantum_eigenspectrum` / `quantum_ground_state` / `quantum_grover_search` | Quantum spectral + Grover dispatch |
+| `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` | CellAI feature pipeline |
+| `quantum_ket_normalise` / `quantum_density_matrix` / `quantum_op_apply` / `quantum_commutator` / `quantum_anticommutator` / `quantum_ket_tensor_product` | Quantum algebra composable dispatch |
+| `fem_poisson2d` / `cfd_advection1d` / `cfd_advection2d` | One-shot FEM/CFD solvers |
+| `signal_resample` / `signal_savgol` | Signal processing assign forms |
+| `gria_hamming_distance` (scalar assign) / `cellmemory_reset` | GRIA distance + CellMemory reset |
+| `polylog` (scalar two-arg eval) | Polylogarithm in assign expr |
+| `pde_heat_1d` / `pde_heat_1d_cn` / `pde_wave_2d` / `fem_poisson1d` | PDE/FEM composable dispatch |
+| `control_kalman_predict` / `control_kalman_update` / `control_ctrb` | Kalman + controllability |
+| `signal_sosfilt` / `ode_rk4` / `sparse_from_coo` / `wavelet_compress_vec` | Signal/ODE/sparse/wavelet |
+| `quantum_hadamard` | Hadamard on ket |
+| `debye` / `clausen` / `eta_dirichlet` (scalar eval) | Special-function scalar assigns |
+| `pde_wave_1d` / `pde_heat_2d` / `pde_heat_2d_cn_adi` / `pde_poisson_1d` / `pde_advection_1d` | PDE composable dispatch |
+| `wavelet_decompress_vec` / `sparse_spmv` / `sparse_to_dense` / `sparse_add` | Sparse/wavelet round-trip |
+| `ode_euler` / `signal_conv2` | ODE/signal beside W282 rk4/sosfilt |
+| `control_obsv` / `control_kalman_predict_cov` / `control_step_response` | Control observability/Kalman/step |
+| `struve_h` / `kelvin_ber` / `jacobi_sn` (scalar eval) | Special-function scalar assigns |
+| `pde_poisson_2d` / `pde_burgers_1d` / `pde_laplace_2d` / `pde_helmholtz_2d` / `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` | Extended PDE suite |
+| `control_impulse_response` / `control_kalman_update_cov` / `control_ctrb_gram` / `control_tf2ss` / `control_series` | Control TF/Kalman/Gram |
+| `signal_deconv` / `signal_firwin` / `signal_xcorr` / `signal_xcov` | Signal processing chain |
+| `ode_midpoint` | ODE family beside W283 euler |
+| `ellip_k` (scalar eval) | Complete elliptic K in assign expr |
+| `control_obsv_gram` / `control_parallel` / `control_feedback` / `control_ss2tf` / `control_d2c` / `control_c2d` / `control_c2d_tf` / `control_d2c_tf` | Control TF/SS conversions |
+| `signal_autocorr` / `signal_lms` / `signal_envelope` / `signal_hilbert` / `signal_instantaneous_phase` / `signal_unwrap` | Signal analytics chain |
+| `ode_adams_bashforth2` / `ode_backward_euler` / `ode_bdf2` | Additional fixed-step ODE solvers |
+| `legendre_p` (scalar eval) | Legendre polynomial in assign expr |
+| `fft_rfft` / `fft_dft` / `fft_ifft` / `fft_fft2` / `ifft2` / `idst2` / `fft_dct2` / `fft_idct2` / `fft_dst2` / `fftshift` / `ifftshift` / `fftfreq` / `rfftfreq` / `fft_goertzel` | FFT suite |
+| `control_bode` | Bode magnitude/phase matrix |
+| `signal_coherence` | Magnitude-squared coherence assign |
+| `ode_rosenbrock23` / `ode_trapezoidal` | Stiff ODE matrix assign |
+| `legendre_q` (scalar eval) | Legendre Q in assign expr |
+| `graph_pagerank` / `graph_betweenness` / `graph_closeness` / `graph_degree_centrality` / `graph_topological_sort` / `graph_greedy_colour` / `graph_k_core_decomposition` / `graph_euler_circuit` / `graph_scc` / `graph_louvain` / `graph_floyd_warshall` / `graph_dijkstra` | Graph analytics suite |
+| `prewitt` / `scharr` / `roberts` / `laplacian` / `histeq` / `sharpen` | Image filter suite |
+| `poly_deriv` | Polynomial derivative assign |
+| `hermite_h` / `spherical_jn` (scalar eval) | Special polynomial/Bessel in assign expr |
+| `graph_biconnected_components` / `graph_eulerian_path` / `graph_hamiltonian_path` / `graph_tsp_heuristic` / `graph_eigenvector_centrality` / `graph_katz_centrality` / `graph_adjacency_spectrum` / `graph_laplacian` / `graph_normalised_laplacian` / `graph_eccentricity` / `graph_articulation_points` / `graph_bridges` / `graph_maximum_matching` / `graph_transitive_closure` / `graph_bellman_ford` / `graph_mst_kruskal` / `graph_mst_prim` | Extended graph suite |
+| `kruskal_wallis` / `stats_shapiro_wilk` / `stats_mann_whitney_u` / `stats_ks_2sample` | Nonparametric stats assign |
+| `geo_delaunay_2d` / `geo_convex_hull` | Computational geometry assign |
+| `adapthisteq` / `imflip` | Image enhancement assign |
+| `laguerre_l` / `chebyshev_t` (scalar eval) | Orthogonal polynomials in assign expr |
+| `geo_voronoi` / `geo_min_bounding_rect` / `geo_kdtree_knn` / `geo_kdtree_range` | Extended computational geometry assign |
+| `threshold_otsu` / `imrotate90` / `threshold_binary` / `label_components` | Extended image processing assign |
+| `chebyshev_u` / `hermite_he` (scalar eval) | Chebyshev U / probabilist Hermite in assign expr |
+| `imgaussfilt` / `medfilt2` / `boxfilter` / `imdilate` / `imerode` / `imopen` / `imclose` / `bilateral` / `canny` / `imresize` / `watershed` / `imcrop` | Extended image filter assign |
+| `topo_pairwise_distances` / `combo_next_perm` / `numthy_convergents` | Topology/combinatorics assign |
+| `geo_triangulate_polygon` / `geo_convex_hull_3d` / `stats_linear_regression` / `stats_pacf` | Geo/stats assign |
+| `chebyshev_v` / `chebyshev_w` (scalar eval) | Chebyshev V/W in assign expr |
+| `slic` / `hough_lines` / `hough_circles` / `harris` / `shi_tomasi` / `imtophat` / `imbothat` / `imgradient_morph` / `imadjust` / `imhist` / `gray2rgb` | Image feature/color assign |
+| `stats_kde` / `stats_bootstrap_ci` / `stats_arfit` / `stats_multiple_regression` | Extended stats assign |
+| `legendre_pn` / `assoc_legendre_p` (scalar eval) | Associated Legendre in assign expr |
+| `ml_kmeans_fit` / `ml_kmeans_predict` / `ml_qda_fit` / `ml_qda_predict` / `ml_svm_fit` / `ml_svm_predict` | kmeans/QDA/SVM composable dispatch |
+| `mathieu_ce` / `mathieu_se` / `mathieu_mc` / `mathieu_ms` (scalar 3-arg) | Integer order `n` validation |
+| `ml_decision_tree_*` / `ml_random_forest_*` / `ml_adaboost_*` | Tree-ensemble composable dispatch |
+| `hermite_hf` / `spheroidal_lambda` (scalar eval) | Integer-order validation |
+| `ml_gmm_*` / `ml_dbscan_fit` / `ml_spectral_clustering` | Clustering composable dispatch |
+| `spheroidal_s1` (scalar 4-arg) | Integer n/m validation |
+| `spheroidal_s2` (scalar 4-arg) | Integer n/m validation |
+| `quantum_schmidt_decomposition` / `mpc_split` / `simulate_gbm_path` / `run_backtest` | Quantum/MPC/GBM/backtest body split |
+| `izaac_vrf_keygen` / `izaac_fuzz_mutate` / `izaac_vrf_prove` / `izaac_encrypt` / `izaac_decrypt` / `izaac_randn_matrix` | Izaac VRF/crypto/randn body split |
+| `cfd_run_advection_3d` / `fem_mesh1d` / `fem_stiffness_1d` / `fem_load_1d` / `fem_lagrange_eval` | CFD 3D / FEM 1D body split |
+| `cfd_grid1d` / `cfd_square_pulse` / `cfd_run_advection` / `cfd_run_advection_2d` | CFD 1D/2D advection body split |
+| `cfd_upwind_step_1d` / `cfd_constant_velocity` | CFD 1D upwind / constant velocity body split |
+| `cfd_upwind_step_2d` | CFD 2D upwind body split |
+| `cellai_hebbian_update` / `topo_cech_complex` / `topo_vietoris_rips` / `topo_simplicial_betti` | CellAI/topo body split |
+| `fem_solve_3d` / `fem_lagrange_deriv` / `quantum_time_evolve_psi` / `run_length_encode_vec` / `run_length_decode_vec` | FEM 3D / quantum / RLE body split |
+| `crypto_from_hex` / `topo_simplicial_counts` / `huffman_decode_vec` / `ans_decode_vec` / `arithmetic_decode_vec` | Crypto/topo/compress decode body split |
+| `fem_apply_dirichlet` / `quantum_schrodinger_final` | FEM Dirichlet / Schrödinger final body split |
+| `fem_mesh3d_box`/`fem_mesh3d` / `fem_stiffness_3d`/`assemble_stiffness_3d` / `fem_load_3d` | FEM 3D mesh/stiffness/load body split |
+| `cfd_grid3d` / `cfd_square_pulse_3d` | CFD 3D grid/IC body split |
+| `cfd_upwind_step_3d` | CFD 3D upwind body split |
+| `crypto_bytes_to_hex` / `bwt_decode_vec` / `run_backtest_equity` | Crypto/BWT/backtest body split |
+| `quantum_schrodinger` / `cellmemory_long_term_state` / `quantum_partial_trace` | Quantum/CellMemory body split |
+| `topo_alpha_complex` / `topo_select_landmarks` / `topo_witness_complex` / `topo_persistence_landscape` | Topo alpha/witness/landscape body split |
+| `cellmemory_recall` / `gria_ca_step` / `gria_divergence_trajectory` / `gria_gf2n_generate_field` | CellMemory/GRIA body split |
+| `quantum_eigenspectrum` / `quantum_ground_state` / `quantum_grover_search` | Quantum spectrum/Grover body split |
+| `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` | CellAI Boltzmann/Cypha body split |
+| `quantum_ket_normalise` / `quantum_density_matrix` / `quantum_op_apply` / `quantum_commutator` | Quantum algebra body split |
+| `quantum_anticommutator` / `quantum_ket_tensor_product` | Quantum anticommutator/tensor body split |
+| `fem_poisson2d` / `cfd_advection1d` | FEM Poisson / CFD 1D advection body split |
+| `cfd_advection2d` | CFD 2D advection body split |
+| `signal_resample` / `signal_savgol` | Signal resample/savgol body split |
+| `quantum_hadamard` / `pde_heat_1d` / `pde_heat_1d_cn` | Quantum Hadamard / 1D heat body split |
+| `pde_wave_2d` / `fem_poisson1d` | 2D wave / FEM Poisson 1D body split |
+| `control_kalman_predict` / `control_kalman_update` / `control_ctrb` | Kalman/controllability body split |
+| `signal_sosfilt` / `ode_rk4` / `sparse_from_coo` | sosfilt/RK4/sparse COO body split |
+| `wavelet_compress_vec` / `pde_wave_1d` | Wavelet compress / 1D wave body split |
+| `pde_heat_2d` / `pde_heat_2d_cn_adi` | 2D heat/ADI body split |
+| `pde_poisson_1d` / `pde_advection_1d` / `wavelet_decompress_vec` | 1D Poisson/advection / wavelet decompress body split |
+| `ode_euler` / `control_obsv` / `control_kalman_predict_cov` | Euler/observability/Kalman cov body split |
+| `control_step_response` / `signal_conv2` | Step response / conv2 body split |
+| `control_impulse_response` / `control_kalman_update_cov` | Impulse / Kalman update cov body split |
+| `control_ctrb_gram` / `control_tf2ss` / `control_series` | Gram/tf2ss/series body split |
+| `pde_poisson_2d` / `pde_burgers_1d` | 2D Poisson / Burgers body split |
+| `pde_laplace_2d` / `pde_helmholtz_2d` | Laplace/Helmholtz body split |
+| `pde_advection_1d_lax_wendroff` / `pde_reaction_diffusion_1d` | Lax–Wendroff / reaction–diffusion body split |
+| `signal_deconv` / `signal_firwin` / `signal_firwin_highpass` / `signal_xcorr` / `signal_xcov` | deconv/firwin/xcorr body split |
+| `ode_midpoint` / `control_obsv_gram` | Midpoint / observability Gram body split |
+| `control_c2d` / `control_c2d_b` / `control_parallel` | c2d/parallel body split |
+| `control_feedback` / `control_ss2tf` | Feedback / SS-to-TF body split |
+| `control_d2c` / `control_c2d_tf` / `control_d2c_tf` | d2c / TF discretisation body split |
+| `ode_adams_bashforth2` / `ode_backward_euler` / `ode_bdf2` | AB2 / backward Euler / BDF2 body split |
+| `signal_autocorr` / `signal_lms` / `signal_lms_weights` | Autocorr / LMS body split |
+| `signal_envelope` / `signal_hilbert` | Envelope / Hilbert body split |
+| `signal_instantaneous_phase` / `signal_unwrap` | Inst. phase / unwrap body split |
+| `fft_rfft` / `fft_dft` / `fft_ifft` | RFFT / DFT / IFFT body split |
+| `fft_fft2` / `ifft2` / `idst2` | 2D FFT / IFFT / IDST body split |
+| `fft_dct2` / `fft_idct2` / `fft_dst2` | DCT2 / IDCT2 / DST2 body split |
+| `fftshift` / `ifftshift` | FFT shift body split |
+| `fftfreq` / `rfftfreq` | FFT frequency-axis body split |
+| `fft_goertzel` / `control_bode` | Goertzel / Bode body split |
+| `signal_coherence` / `ode_rosenbrock23` | Coherence / Rosenbrock body split |
+| `ode_trapezoidal` / `graph_pagerank` | Trapezoidal / PageRank body split |
+| `graph_betweenness` / `graph_closeness` / `graph_degree_centrality` | Betweenness / closeness / degree centrality body split |
+| `graph_topological_sort` / `graph_greedy_colour` | Topological sort / greedy colour body split |
+| `graph_k_core_decomposition` / `graph_euler_circuit` | k-core / Euler circuit body split |
+| `graph_scc` / `graph_louvain` | SCC / Louvain body split |
+| `graph_floyd_warshall` / `graph_dijkstra` | Floyd–Warshall / Dijkstra body split |
+| `poly_deriv` / `prewitt` / `scharr` | Polynomial derivative / Prewitt / Scharr body split |
+| `roberts` / `laplacian` | Roberts / Laplacian body split |
+| `histeq` / `sharpen` | Histogram equalisation / sharpen body split |
+| `graph_biconnected_components` / `graph_eulerian_path` | Biconnected components / Eulerian path body split |
+| `graph_hamiltonian_path` / `graph_tsp_heuristic` | Hamiltonian path / TSP heuristic body split |
+| `graph_eigenvector_centrality` / `graph_katz_centrality` | Eigenvector / Katz centrality body split |
+| `graph_adjacency_spectrum` / `graph_laplacian` | Adjacency spectrum / Laplacian body split |
+| `graph_normalised_laplacian` / `graph_eccentricity` | Normalised Laplacian / eccentricity body split |
+| `graph_articulation_points` / `graph_bridges` | Articulation points / bridges body split |
+| `graph_maximum_matching` / `graph_transitive_closure` | Maximum matching / transitive closure body split |
+| `graph_bellman_ford` / `graph_mst_kruskal` / `graph_mst_prim` | Bellman–Ford / Kruskal / Prim body split |
+| `adapthisteq` / `imflip` | CLAHE / flip body split |
+| `kruskal_wallis` / `stats_shapiro_wilk` | Kruskal–Wallis / Shapiro–Wilk body split |
+| `stats_mann_whitney_u` / `stats_ks_2sample` | Mann–Whitney U / two-sample KS body split |
+| `geo_delaunay_2d` / `geo_convex_hull` | Delaunay / convex hull body split |
+| `threshold_otsu` / `imrotate90` | Otsu threshold / rotate-90 body split |
+| `threshold_binary` / `label_components` | Binary threshold / connected-components body split |
+| `stats_one_way_anova` / `stats_levene` / `stats_bartlett` / `stats_fligner` | ANOVA / Levene / Bartlett / Fligner body split |
+| `geo_voronoi` / `geo_min_bounding_rect` | Voronoi / min bounding rect body split |
+| `geo_kdtree_knn` / `geo_kdtree_range` / `imgaussfilt` | KD-tree kNN / range / Gaussian filter body split |
+| `medfilt2` / `boxfilter` | Median / box filter body split |
+| `imdilate` / `imerode` / `imopen` / `imclose` / `bilateral` | Morphology / bilateral body split |
+| `canny` / `imresize` | Canny / resize body split |
+| `watershed` / `topo_pairwise_distances` | Watershed / pairwise distances body split |
+| `combo_next_perm` / `numthy_convergents` | Next permutation / convergents body split |
+| `imcrop` / `geo_triangulate_polygon` | Crop / polygon triangulation body split |
+| `geo_convex_hull_3d` / `stats_linear_regression` | 3D hull / linear regression body split |
+| `stats_pacf` / `slic` | PACF / SLIC body split |
+| `hough_lines` / `hough_circles` | Hough lines / circles body split |
+| `harris` / `shi_tomasi` | Harris / Shi-Tomasi body split |
+| `stats_kde` / `stats_bootstrap_ci` | KDE / bootstrap CI body split |
+| `stats_arfit` / `stats_multiple_regression` | AR-fit / multiple regression body split |
+| `imtophat` / `imbothat` / `imgradient_morph` / `imadjust` | Tophat / bothat / morph gradient / adjust body split |
+| `imhist` / `gray2rgb` | Histogram / gray-to-RGB body split |
+| `impad` / `radon` | Pad / Radon body split |
+| `iradon` / `fem_mesh2d_rectangular`/`fem_mesh2d` | Inverse Radon / 2D FEM mesh body split |
+| `fem_stiffness_2d`/`assemble_stiffness_2d` / `fem_load_2d` | 2D stiffness / load body split |
+| `fem_solve` / `cfd_grid2d` | FEM solve / 2D CFD grid body split |
+| `cfd_square_pulse_2d` / `quantum_dagger` | 2D square pulse / dagger body split |
+| `quantum_matmul_dm` / `izaac_rand_matrix` | Density-matrix multiply / Izaac rand body split |
+| `quantum_schmidt_bases` / `sqrtm` | Schmidt bases / matrix square-root body split |
+| `logm` / `cosm` / `sinm` | Matrix log / cos / sin body split |
+| `diag` / `tril` | Diagonal / lower-triangular body split |
+| `triu` / `hess` | Upper-triangular / Hessenberg body split |
+| `schur` / `geo_bezier_eval`/`geo_bezier_deriv`/`geo_catmull_rom` | Schur / Bezier/Catmull-Rom body split |
+| `geo_hermite_curve` / `geo_bspline_eval` | Hermite curve / B-spline body split |
+| `bidiag` / `eig` | Bidiagonalization / eigenvalues body split |
+| `ldl` / `solve_sylvester` | LDL / Sylvester body split |
+| `minres` / `cg` | MINRES / conjugate-gradient body split |
+| `gmres` / `jacobi` | GMRES / Jacobi body split |
+| `combo_gray_code` / `combo_dyck_paths` | Gray codes / Dyck paths body split |
+| `combo_necklaces` / `combo_bracelets` | Necklaces / bracelets body split |
+| `combo_lyndon_words` / `combo_de_bruijn_sequence` | Lyndon words / De Bruijn sequence body split |
+| `combo_motzkin_paths` / `combo_set_partitions` | Motzkin paths / set partitions body split |
+| `combo_restricted_partitions` / `poly_squarefree` | Restricted partitions / square-free poly body split |
+| `poly_gcd` / `poly_monic` | Polynomial GCD / monic body split |
+| `poly_reverse` / `numthy_factor_exp`/`numthy_farey`/`numthy_stern_brocot`/`numthy_pell_solve`/`numthy_quadratic_residues` | Poly reverse / numthy body split |
+| `poly_lcm` / `poly_div_quot` | Polynomial LCM / quotient body split |
+| `poly_mod` / `poly_eval_at` | Polynomial mod / eval-at body split |
+| `poly_sylvester` / `numthy_lucas_sequence` | Polynomial Sylvester / Lucas sequence body split |
+| `poly_fit` / `poly_interp_hermite` | Polynomial fit / Hermite interp body split |
+| `graph_connected_components` / `info_channel_capacity_input` | Connected components / channel-capacity input body split |
+| `poly_rational_roots` / `poly_factor_rational` | Rational roots / rational factor body split |
+| `combo_prev_perm` / `poly_partial_fractions` | Previous permutation / partial fractions body split |
+| `poly_cheb_expand` / `poly_lagrange` | Chebyshev expand / Lagrange interp body split |
+| `poly_interp_newton` / `poly_roots` | Newton interpolation / polynomial roots body split |
+| `poly_factor` / `sph_harm` | Polynomial factor / spherical harmonics body split |
+| `ml_mat_transpose` / `funm` | Matrix transpose / matrix function body split |
+| `precond_diag` / `precond_ssor` | Diagonal / SSOR preconditioner body split |
+| `graph_min_arborescence` / `imfilter` | Min arborescence / image filter body split |
+| `sobel_x` / `sobel_y` | Sobel-x / Sobel-y body split |
+| `hsv2rgb` / `dft_magnitude` | HSV-to-RGB / DFT magnitude body split |
+| `laplacian_of_gaussian` / `finance_min_variance_portfolio` | LoG / min-variance portfolio body split |
+| `finance_bl_implied_returns` / `finance_bl_posterior_returns` | Black–Litterman implied / posterior returns body split |
+| `geo_upper_hull` / `geo_lower_hull` | Upper / lower hull body split |
+| `geo_bezier_subdivide` / `geo_kdtree_3d_knn`/`geo_kdtree_3d_range` | Bezier subdivide / 3D kdtree body split |
+| `diffgeo_surface_normal_sphere` / `quantum_ket_superposition` | Sphere surface normal / ket superposition body split |
+| `quantum_ket_basis` / `quantum_fock_state` | Ket basis / Fock state body split |
+| `fem_poisson3d` / `cfd_advection3d` | 3D Poisson / 3D advection body split |
+| `ml_logistic_fit` / `ml_logistic_predict` | Logistic fit / predict body split |
+| `finance_merton_implied_asset_params` / `finance_bl_posterior_returns_default_omega` | Merton implied params / BL default-omega posterior body split |
+| `ml_lasso_fit` / `ml_lasso_predict` | Lasso fit / predict body split |
+| `ml_elastic_net_fit` / `ml_elastic_net_predict` | Elastic Net fit / predict body split |
+| `ml_knn_fit` / `ml_knn_predict` | kNN fit / predict body split |
+| `ml_naive_bayes_fit` / `ml_naive_bayes_predict` | Naive Bayes fit / predict body split |
+| `ml_lda_fit` / `ml_lda_predict` / `ml_lda_transform` | LDA fit / predict / transform body split |
+| `ml_pca_fit` / `ml_pca_transform` / `ml_pca_fit_transform` | PCA fit / transform / fit-transform body split |
+| `quantum_schmidt_decomposition` / `mpc_split` | Schmidt decomposition / MPC split body split |
+| `simulate_gbm_path` / `run_backtest` | GBM path / backtest body split |
+| `izaac_vrf_keygen` / `izaac_fuzz_mutate` | Izaac VRF keygen / fuzz mutate body split |
+| `izaac_vrf_prove` | Izaac VRF prove body split |
+| `izaac_encrypt` / `izaac_decrypt` | Izaac encrypt / decrypt body split |
+| `izaac_randn_matrix` | Izaac randn matrix body split |
+| `cfd_run_advection_3d` | 3D advection run body split |
+| `fem_mesh1d` / `fem_stiffness_1d` | 1D FEM mesh / stiffness body split |
+| `fem_load_1d` / `fem_lagrange_eval` | 1D FEM load / Lagrange eval body split |
+| `cfd_grid1d` / `cfd_square_pulse` | 1D CFD grid / square pulse body split |
+| `cfd_run_advection` / `cfd_run_advection_2d` | 1D/2D advection run body split |
+| `cfd_upwind_step_1d` / `cfd_constant_velocity` | CFD 1D upwind / constant velocity body split |
+| `cfd_upwind_step_2d` / `cellai_hebbian_update` | CFD 2D upwind / Hebbian update body split |
+| `topo_cech_complex` / `topo_vietoris_rips` / `topo_simplicial_betti` | Čech/VR / simplicial Betti body split |
+| `fem_solve_3d` / `fem_lagrange_deriv` / `quantum_time_evolve_psi` | FEM 3D / Lagrange deriv / time evolve body split |
+| `run_length_encode_vec` / `run_length_decode_vec` / `crypto_from_hex` | RLE / hex decode body split |
+| `topo_simplicial_counts` / `huffman_decode_vec` / `ans_decode_vec` / `arithmetic_decode_vec` | Topo counts / compress decode body split |
+| `fem_apply_dirichlet` / `quantum_schrodinger_final` | FEM Dirichlet / Schrödinger final body split |
+| `fem_mesh3d_box`/`fem_mesh3d` / `fem_stiffness_3d`/`assemble_stiffness_3d` | FEM 3D mesh / stiffness body split |
+| `fem_load_3d` / `cfd_grid3d` | FEM 3D load / CFD 3D grid body split |
+| `cfd_square_pulse_3d` / `cfd_upwind_step_3d` | CFD 3D square pulse / upwind body split |
+| `crypto_bytes_to_hex` / `bwt_decode_vec` | Hex encode / BWT decode body split |
+| `run_backtest_equity` / `quantum_schrodinger` | Backtest equity / Schrödinger body split |
+| `cellmemory_long_term_state` / `quantum_partial_trace` | CellMemory long-term / partial trace body split |
+| `topo_alpha_complex` / `topo_select_landmarks` / `topo_witness_complex` / `topo_persistence_landscape` | Topo alpha/witness/landscape body split |
+| `cellmemory_recall` / `gria_ca_step` / `gria_divergence_trajectory` / `gria_gf2n_generate_field` | CellMemory recall / GRIA body split |
+| `quantum_eigenspectrum` / `quantum_ground_state` / `quantum_grover_search` | Quantum spectrum/Grover body split |
+| `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` | CellAI Boltzmann/Cypha body split |
+| `quantum_ket_normalise` / `quantum_density_matrix` / `quantum_op_apply` / `quantum_commutator` | Quantum algebra body split |
+| `quantum_anticommutator` / `quantum_ket_tensor_product` | Quantum anticommutator/tensor body split |
+| `fem_poisson2d` / `cfd_advection1d` | FEM Poisson / CFD 1D advection body split |
+| `cfd_advection2d` | CFD 2D advection body split |
+| `signal_resample` / `signal_savgol` | Signal resample/savgol body split |
+| `quantum_hadamard` / `pde_heat_1d` / `pde_heat_1d_cn` | Quantum Hadamard / 1D heat body split |
+| `pde_wave_2d` / `fem_poisson1d` | 2D wave / FEM Poisson 1D body split |
+| `control_kalman_predict` / `control_kalman_update` | Kalman predict/update body split |
+| `control_ctrb` / `signal_sosfilt` | Controllability / SOS filter body split |
+| `ode_rk4` / `sparse_from_coo` | RK4 / sparse COO body split |
+| `wavelet_compress_vec` / `pde_wave_1d` | Wavelet compress / 1D wave body split |
+| `pde_heat_2d` / `pde_heat_2d_cn_adi` | 2D heat/ADI body split |
+| `pde_poisson_1d` / `pde_advection_1d` | 1D Poisson/advection body split |
+| `ml_qda_fit` / `ml_qda_predict` / `ml_svm_fit` / `ml_svm_predict` | Leftover QDA/SVM copies from tail7 |
+| `ml_decision_tree_fit` / `ml_decision_tree_predict` / `ml_random_forest_fit` / `ml_random_forest_predict` | Leftover tree-ensemble copies from tail7 |
+| `ml_adaboost_fit` / `ml_adaboost_predict` / `ml_gmm_fit` / `ml_gmm_predict` / `ml_gmm_predict_proba` | Leftover AdaBoost/GMM copies from tail7 |
+| `ml_dbscan_fit` / `ml_spectral_clustering` / `ml_standard_scaler_fit` / `ml_standard_scaler_transform` | Leftover DBSCAN/spectral/scaler copies from tail7 |
+| `matmul` / `tensorops_matmul` / `tensorops_einsum` | Dense / tensor matmul and einsum from main `assign_matrix_call` body |
+| `solve` / `bicgstab` / `qmr` | Dense solve + BiCGSTAB/QMR from main `assign_matrix_call` body |
+| `lsqr` / `lsq` / `tfqmr` / `lsmr` | Least-squares / TFQMR / LSMR from main `assign_matrix_call` body |
+| `dist_solve` / `dist_cg` / `dist_gmres` / `dist_jacobi` | Distributed solve/CG/GMRES/Jacobi from main `assign_matrix_call` body |
+| `dist_bicgstab` / `dist_minres` / `dist_qmr` / `dist_tfqmr` | Distributed BiCGSTAB/MINRES/QMR/TFQMR from main `assign_matrix_call` body |
+| `dist_lsmr` / `dist_lsqr` / `dist_matmul` | Distributed LSMR/LSQR/matmul from main `assign_matrix_call` body |
+| `transpose` / `chol` / `expm` / `inv` | Transpose / Cholesky / expm / inverse from main `assign_matrix_call` body |
+| `zeros` / `eye` / `ones` / `rand` / `randn` | Grouped constructors from main `assign_matrix_call` body |
+| `pinv` / `null` / `orth` / `kron` | Pseudo-inverse / null / orth / Kronecker from main `assign_matrix_call` body |
+| `repmat` / `linspace` / `rgb2gray` / `rgb2hsv` | Tile / linspace / RGB convert from main `assign_matrix_call` body |
+| `sobel` / `rle_encode_vec` / `rle_decode_vec` | Sobel / RLE encode/decode from main `assign_matrix_call` body |
+| `mtf_encode_vec` / `bwt_encode_vec` / `mtf_decode_vec` | MTF/BWT encode / MTF decode from main `assign_matrix_call` body |
+| `delta_encode_vec` / `delta_decode_vec` / `lzw_encode_vec` / `lzw_decode_vec` | Delta / LZW encode/decode from main `assign_matrix_call` body |
+| `huffman_encode_vec` / `lz77_encode_vec` / `topo_betti_curve` | Huffman/LZ77 encode / Betti curve from main `assign_matrix_call` body |
+| `compress_bits_to_bytes` / `compress_bytes_to_bits` / `diffgeo_geodesic_euclidean` | Bit-pack helpers / Euclidean geodesic from main `assign_matrix_call` body |
+| `lz77_decode_vec` / `bzip2_compress_vec` / `bzip2_decompress_vec` | LZ77 decode / bzip2 compress/decompress from main `assign_matrix_call` body |
+| `combo_unrank_permutation` | Combinatorial unrank permutation from main `assign_matrix_call` body |
+| `numthy_continued_fraction` | Continued-fraction coefficients from main `assign_matrix_call` body |
+| `numthy_primes` | Prime list from main `assign_matrix_call` body |
+| `numthy_cornacchia` | Cornacchia solution from main `assign_matrix_call` body |
+| `combo_unrank_combination` | Combinatorial unrank combination from main `assign_matrix_call` body |
+| `quantum_coherent_state` | Coherent state from main `assign_matrix_call` body |
+| `control_c2d_tustin` / `control_c2d_euler` / `control_d2c_tustin` / `control_d2c_euler` | Tustin/Euler c2d/d2c from main `assign_matrix_call` body |
+| `cfd_grid2d` / `cfd_square_pulse_2d` / `cfd_upwind_step_2d` / `cfd_advection2d` | 2D CFD grid/IC/step/advection |
+| `voigt` / `weierstrass_p` / `weierstrass_pprime` / `jacobi_*` / `struve_*` | Voigt, Weierstrass ℘, Jacobi ratios, Struve |
+| `gria_ca_step` / `gria_gf2n_mul|pow|inv` / `gria_lfsr_step` / `gria_alpha_lfsr` | GRIA CA + GF(2ⁿ) + LFSR |
+| `cellai_boltzmann_weights` / `cellai_cell_to_cypha_features` | CellAI Boltzmann / Cypha features |
+| `geo_upper_hull` / `geo_lower_hull` / `geo_bezier_subdivide` / `geo_kdtree_3d_knn` / `geo_kdtree_3d_range` | Hull / bezier / 3D kdtree |
+| `stats_max_value(x)` | Maximum of sample vector |
+| `imgradient_morph` | Morphological gradient |
+| `geo_point_in_aabb(px,py,minx,miny,maxx,maxy)` | 1 if point inside 2D AABB else 0 |
+| `geo_overlap_aabb(...)` | 1 if 3D AABBs overlap else 0 |
+| `signal_deconv(y,b)` | Polynomial deconvolution of column vectors |
+| `signal_lms(x,d,filter_length,mu)` / `signal_lms_weights(...)` | LMS adaptive filter output/error or final weights |
+| `signal_czt(x,m,w_re,w_im,a_re,a_im)` / `signal_czt_zoom(...)` | Chirp Z-Transform / zoom-FFT as M×2 `[re,im]` |
+| `crypto_hkdf_sha256(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA256 extract/expand; returns `len` bytes as hex |
+| `crypto_pbkdf2_sha256(hex_pass, hex_salt, iter, dklen)` | PBKDF2-HMAC-SHA256; returns `dklen` bytes as hex |
+| `crypto_ed25519_keypair(hex_seed)` | Ed25519 public key from 32-byte seed |
+| `crypto_ed25519_sign(hex_seed_or_sk, hex_msg)` | Ed25519 signature |
+| `crypto_ed25519_verify(hex_pub, hex_msg, hex_sig)` | Ed25519 verify → `1`/`0` |
+| `fem_poisson1d(n)` | 1D P1 Poisson solve on unit interval (`f=1`, zero Dirichlet); returns solution column |
 | `fem_poisson2d(nx, ny)` | 2D P1 Poisson solve on unit square (`f=1`, zero Dirichlet); returns solution matrix |
-| `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column (Wave 236) |
+| `fem_poisson3d(nx, ny, nz)` | 3D P1 Poisson solve on unit cube (`f=1`, zero Dirichlet); returns solution column |
 | `cfd_advection2d(nx, ny, vx, vy, cfl, dt)` | 2D structured FVM upwind advection final field |
-| `cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)` | 3D structured FVM upwind advection final field (Wave 236) |
+| `cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)` | 3D structured FVM upwind advection final field |
 
 **MPI / distributed (scalar/matrix assignment):**
 
@@ -559,66 +760,66 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `mpi_rank()` | Current MPI rank (stub: 0) |
 | `mpi_size()` | MPI world size (stub: 1) |
 | `mpi_allreduce_sum(x)` | All-reduce sum of scalar `x` (stub: identity) |
-| `dist_solve(A, b)` | Distributed linear solve `A x = b` (stub: local gather + `ms::solve`) |
-| `dist_matmul(A, B)` | Distributed matrix multiply — row-block local GEMM (stub-safe single-rank; Wave 236) |
-| `dist_cg(A, b)` | Distributed conjugate-gradient linear solve (stub: gather + CG on rank 0; Wave 238) |
-| `dist_gmres(A, b)` | Distributed GMRES (stub gather or MPI block; Wave 239/240) |
-| `dist_jacobi(A, b)` | Distributed Jacobi (stub gather or MPI block; Wave 240) |
-| `dist_bicgstab(A, b)` | Distributed BiCGSTAB (stub gather; Wave 241) |
-| `dist_minres(A, b)` | Distributed MINRES (stub gather; Wave 242) |
-| `dist_qmr(A, b)` | Distributed QMR (stub gather; Wave 243) |
-| `dist_tfqmr(A, b)` | Distributed TFQMR (stub gather; Wave 244) |
-| `bicgstab(A, b)` / `qmr(A, b)` / `lsqr(A, b)` / `tfqmr(A, b)` / `lsmr(A, b)` | Local iterative solvers (Wave 240/243/244; `tfqmr` MVP via BiCGSTAB) |
-| `cuda_allreduce_max(x)` / `cuda_allreduce_min(x)` | NCCL stub max/min (identity when stub; Wave 242) |
-| `crypto_hmac_sha512(hex_key, hex_data)` | HMAC-SHA512 digest as hex (Wave 243) |
-| `crypto_pbkdf2_hmac_sha512(hex_pass, hex_salt, iter, dklen)` | PBKDF2-HMAC-SHA512 (Wave 244) |
-| `crypto_hkdf_sha512(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA512 (Wave 245) |
-| `crypto_aes256_cbc_encrypt` / `crypto_aes256_cbc_decrypt` | AES-256-CBC hex I/O (Wave 245) |
-| `crypto_aes256_gcm_encrypt` / `crypto_aes256_gcm_decrypt` | AES-256-GCM AEAD hex I/O (Wave 246) |
-| `dist_lsmr(A, b)` | Distributed LSMR (stub gather; Wave 246) |
-| `cuda_allreduce_prod(x)` | NCCL stub product (identity when stub; Wave 246) |
-| `cuda_allreduce_avg(x)` | NCCL stub average (identity when stub; Wave 247) |
-| `cuda_broadcast(x)` | NCCL stub broadcast from root 0 (identity when stub; Wave 248) |
-| `cuda_reduce(x)` | NCCL stub reduce-to-root (identity when stub; Wave 249) |
-| `crypto_constant_time_eq(hex_a,hex_b)` | Constant-time compare → `1`/`0` (Wave 248) |
-| `crypto_random_bytes(n)` | Random bytes as hex (MVP; Wave 248) |
-| `crypto_sha256(hex_data)` / `crypto_hmac_sha256(hex_key,hex_data)` | SHA-256 / HMAC-SHA256 hex digests (Wave 249) |
-| `crypto_sha512(hex_data)` | SHA-512 hex digest (Wave 250) |
-| `crypto_aes256_encrypt_block(key_hex,block_hex)` / `crypto_aes256_decrypt_block(...)` | AES-256 ECB single block (Wave 251/252) |
-| `crypto_aes128_decrypt_block(key_hex,block_hex)` | AES-128 ECB single-block decrypt (Wave 253) |
-| `cuda_allgather(x)` | NCCL stub allgather (Wave 253) |
-| `mpi_barrier()` | MPI stub barrier (Wave 252) |
-| `signal_sosfilt(sos,x)` | Second-order sections filter (Wave 252) |
-| `signal_firwin` / `signal_firwin_highpass` | Windowed-sinc FIR design (Wave 252) |
-| `signal_savgol(x,window_length,polyorder)` | Savitzky–Golay smooth (Wave 252) |
-| `signal_xcorr` / `signal_xcov` / `signal_autocorr` | Lag-domain correlation (Wave 253) |
-| `signal_median_filter(x,window_length)` | Odd-window median filter (Wave 253) |
-| `signal_conv2(A,K)` | 2D convolution (Wave 253) |
-| `signal_median_filter(x,window_length)` | Sliding-window median filter (Wave 253) |
-| `cuda_nccl_available()` / `cuda_nccl_comm_size()` / `cuda_nccl_device_count()` | NCCL stub introspection (Wave 250) |
-| `mpi_allreduce_max(x)` / `mpi_allreduce_min(x)` | MPI stub max/min (Wave 251) |
-| `signal_coherence(x,y,fs,nperseg)` | Magnitude-squared coherence Nx2 (Wave 250) |
-| `signal_filtfilt(b,a,x)` / `signal_filter(b,a,x)` | Zero-phase / causal IIR apply (Wave 250/251) |
-| `signal_cheby1(order,rp_db,cutoff,fs[,type])` | Chebyshev I coeffs 2×N (Wave 251) |
-| `geo_convex_hull(P)` | Convex hull vertices K×2 (Wave 251) |
-| `dist_lsqr(A, b)` | Distributed LSQR (stub gather; Wave 249) |
-| `signal_resample(x,p,q)` / `signal_decimate(x,q)` / `signal_interpolate(x,p)` | Rational resampling (Wave 249) |
-| `geo_clip_polygon(A,B)` | Clip Nx2 subject against Mx2 convex window → Kx2 (Wave 248) |
-| `signal_upsample(x,n)` / `signal_downsample(x,n)` | Integer rate change (Wave 248) |
-| `graph_maximum_matching(A)` | Edmonds blossom matching → Mx2 edges (Wave 246) |
-| `signal_unwrap(x)` | NumPy-style phase unwrap (Wave 247) |
-| `geo_minkowski_sum(A,B)` | Convex Minkowski sum → Mx2 (Wave 247) |
-| `geo_min_bounding_rect(P)` | Oriented bounding rect `[cx;cy;w;h;angle_rad]` (Wave 247) |
-| `signal_instantaneous_phase(x)` | Analytic-signal phase column (Wave 243) |
-| `signal_spectrogram(x, fs)` | STFT magnitude matrix (Wave 244) |
-| `finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)` | Heston put via put-call parity (Wave 244) |
-| `geo_poly_union` / `geo_poly_intersect` / `geo_poly_diff` | Convex polygon boolean ops (Wave 245) |
-| `graph_k_core_decomposition(A)` / `graph_k_core_subgraph(A,k)` / `graph_chromatic_number(A)` | Graph core / coloring (Wave 245) |
-| `signal_cheby2(order, rs_db, cutoff, fs)` | Chebyshev Type II IIR design; returns `[b; a]` rows (Wave 241) |
-| `signal_periodogram(x, fs)` / `signal_welch_psd(x, fs, nperseg)` | PSD helpers; freq/power columns (Wave 241) |
-| `signal_envelope(x)` / `signal_hilbert(x)` / `signal_instantaneous_freq(x, fs)` | Analytic-signal helpers; envelope column, Hilbert N×2 [re,im], inst. freq column (Wave 242) |
+| `dist_solve(A, b)` | Distributed linear solve `A x = b` |
+| `dist_matmul(A, B)` | Distributed matrix multiply — row-block local GEMM |
+| `dist_cg(A, b)` | Distributed conjugate-gradient linear solve |
+| `dist_gmres(A, b)` | Distributed GMRES |
+| `dist_jacobi(A, b)` | Distributed Jacobi |
+| `dist_bicgstab(A, b)` | Distributed BiCGSTAB |
+| `dist_minres(A, b)` | Distributed MINRES |
+| `dist_qmr(A, b)` | Distributed QMR |
+| `dist_tfqmr(A, b)` | Distributed TFQMR |
+| `bicgstab(A, b)` / `qmr(A, b)` / `lsqr(A, b)` / `tfqmr(A, b)` / `lsmr(A, b)` | Local iterative solvers |
+| `cuda_allreduce_max(x)` / `cuda_allreduce_min(x)` | NCCL stub max/min |
+| `crypto_hmac_sha512(hex_key, hex_data)` | HMAC-SHA512 digest as hex |
+| `crypto_pbkdf2_hmac_sha512(hex_pass, hex_salt, iter, dklen)` | PBKDF2-HMAC-SHA512 |
+| `crypto_hkdf_sha512(hex_ikm, hex_salt, hex_info, len)` | HKDF-SHA512 |
+| `crypto_aes256_cbc_encrypt` / `crypto_aes256_cbc_decrypt` | AES-256-CBC hex I/O |
+| `crypto_aes256_gcm_encrypt` / `crypto_aes256_gcm_decrypt` | AES-256-GCM AEAD hex I/O |
+| `dist_lsmr(A, b)` | Distributed LSMR |
+| `cuda_allreduce_prod(x)` | NCCL stub product |
+| `cuda_allreduce_avg(x)` | NCCL stub average |
+| `cuda_broadcast(x)` | NCCL stub broadcast from root 0 |
+| `cuda_reduce(x)` | NCCL stub reduce-to-root |
+| `crypto_constant_time_eq(hex_a,hex_b)` | Constant-time compare → `1`/`0` |
+| `crypto_random_bytes(n)` | Random bytes as hex |
+| `crypto_sha256(hex_data)` / `crypto_hmac_sha256(hex_key,hex_data)` | SHA-256 / HMAC-SHA256 hex digests |
+| `crypto_sha512(hex_data)` | SHA-512 hex digest |
+| `crypto_aes256_encrypt_block(key_hex,block_hex)` / `crypto_aes256_decrypt_block(...)` | AES-256 ECB single block |
+| `crypto_aes128_decrypt_block(key_hex,block_hex)` | AES-128 ECB single-block decrypt |
+| `cuda_allgather(x)` | NCCL stub allgather |
+| `mpi_barrier()` | MPI stub barrier |
+| `signal_sosfilt(sos,x)` | Second-order sections filter |
+| `signal_firwin` / `signal_firwin_highpass` | Windowed-sinc FIR design |
+| `signal_savgol(x,window_length,polyorder)` | Savitzky–Golay smooth |
+| `signal_xcorr` / `signal_xcov` / `signal_autocorr` | Lag-domain correlation |
+| `signal_median_filter(x,window_length)` | Odd-window median filter |
+| `signal_conv2(A,K)` | 2D convolution |
+| `signal_median_filter(x,window_length)` | Sliding-window median filter |
+| `cuda_nccl_available()` / `cuda_nccl_comm_size()` / `cuda_nccl_device_count()` | NCCL stub introspection |
+| `mpi_allreduce_max(x)` / `mpi_allreduce_min(x)` | MPI stub max/min |
+| `signal_coherence(x,y,fs,nperseg)` | Magnitude-squared coherence Nx2 |
+| `signal_filtfilt(b,a,x)` / `signal_filter(b,a,x)` | Zero-phase / causal IIR apply |
+| `signal_cheby1(order,rp_db,cutoff,fs[,type])` | Chebyshev I coeffs 2×N |
+| `geo_convex_hull(P)` | Convex hull vertices K×2 |
+| `dist_lsqr(A, b)` | Distributed LSQR |
+| `signal_resample(x,p,q)` / `signal_decimate(x,q)` / `signal_interpolate(x,p)` | Rational resampling |
+| `geo_clip_polygon(A,B)` | Clip Nx2 subject against Mx2 convex window → Kx2 |
+| `signal_upsample(x,n)` / `signal_downsample(x,n)` | Integer rate change |
+| `graph_maximum_matching(A)` | Edmonds blossom matching → Mx2 edges |
+| `signal_unwrap(x)` | NumPy-style phase unwrap |
+| `geo_minkowski_sum(A,B)` | Convex Minkowski sum → Mx2 |
+| `geo_min_bounding_rect(P)` | Oriented bounding rect `[cx;cy;w;h;angle_rad]` |
+| `signal_instantaneous_phase(x)` | Analytic-signal phase column |
+| `signal_spectrogram(x, fs)` | STFT magnitude matrix |
+| `finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)` | Heston put via put-call parity |
+| `geo_poly_union` / `geo_poly_intersect` / `geo_poly_diff` | Convex polygon boolean ops |
+| `graph_k_core_decomposition(A)` / `graph_k_core_subgraph(A,k)` / `graph_chromatic_number(A)` | Graph core / coloring |
+| `signal_cheby2(order, rs_db, cutoff, fs)` | Chebyshev Type II IIR design; returns `[b; a]` rows |
+| `signal_periodogram(x, fs)` / `signal_welch_psd(x, fs, nperseg)` | PSD helpers; freq/power columns |
+| `signal_envelope(x)` / `signal_hilbert(x)` / `signal_instantaneous_freq(x, fs)` | Analytic-signal helpers; envelope column, Hilbert N×2 [re,im], inst. freq column |
 
-**Session meta-commands (Wave 238):**
+**Session meta-commands:**
 
 | Command | Description |
 |---------|-------------|

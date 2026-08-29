@@ -22,7 +22,7 @@ Result<S> rank(const Matrix<S, OA, Alloc>& A, S tol) {
     }
 
     if (tol == S(0)) {
-        tol = S(1e-10) * std::max<S>(A.rows(), A.cols()) * svd_result->S(0, 0);
+        tol = S(1e-10) * std::max(static_cast<S>(A.rows()), static_cast<S>(A.cols())) * svd_result->S(0, 0);
     }
 
     size_t r = 0;

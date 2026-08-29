@@ -69,6 +69,8 @@ struct MultiMatrixCallAssign {
     std::vector<std::string> args;
 };
 
+struct MatrixCallCtx;
+
 using SessionObject = std::variant<
     izaac::bloom::BloomFilter,
     izaac::ratelimit::TokenBucket,
@@ -81,6 +83,8 @@ using SessionObject = std::variant<
     tensorops::TTDecomposition>;
 
 class Interpreter {
+    friend struct MatrixCallCtx;
+
 public:
     Result<std::string> execute(const std::string& line);
     Result<std::string> execute_assignment(const std::string& cmd);
@@ -112,20 +116,6 @@ public:
     Result<std::string> assign_scalar_binary(const ScalarBinaryAssign& assign);
     Result<std::string> assign_scalar_expr(const std::string& name, const std::string& expr);
     Result<std::string> assign_matrix_call(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail2(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail3(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail4(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail5(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail6(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail7(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail8(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail9(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail10(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail11(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail12(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail13(const MatrixCallAssign& assign);
-    Result<Matrix<double>> assign_matrix_call_tail14(const MatrixCallAssign& assign);
     Result<std::string> assign_scalar_matrix_call(const ScalarMatrixCallAssign& assign);
     Result<std::string> assign_multi_matrix_call(const MultiMatrixCallAssign& assign);
     std::vector<std::pair<std::string, std::string>> list_session_objects() const;

@@ -2,100 +2,59 @@
 
 [![CI](https://github.com/odin-loki/MathScript/actions/workflows/ci.yml/badge.svg)](https://github.com/odin-loki/MathScript/actions/workflows/ci.yml)
 
-MathScript is a C++23 computer-algebra and HPC math system: 35 static libraries under `src/` (dense/sparse linear algebra through number theory and computational geometry), an in-tree BLAS/LAPACK CPU kernel layer with no external linear-algebra dependency, a console REPL (`mathscript-repl`) with optional LLVM ORC JIT for scalar expressions, and a Clang plugin that enforces a restricted C++ subset (`Result<T>` instead of exceptions, no raw `new`, twenty compile-time compliance rules). Executables: `mathscriptc`, `mathscript-repl`, `mathscript-server`; optional Qt GUI and CUDA/MPI backends behind CMake flags.
+MathScript is a C++23 computer-algebra and numerical library with a console REPL. It implements dense and sparse linear algebra, special functions, statistics, ODE/PDE/FEM/CFD, optimisation, signal and image processing, number theory, graphs, geometry, topology, quantum primitives, control, finance, compression, and a small symbolic CAS — all against one set of conventions (`Result<T>` instead of exceptions, no external BLAS/LAPACK).
+
+Executables: `mathscriptc`, `mathscript-repl`, `mathscript-server`. Optional Qt GUI, CUDA, MPI, and LLVM ORC JIT are CMake-gated.
 
 ## Documentation
 
-- [User guide](docs/USER_GUIDE.md) — new to the REPL? Start here for install, first session, and common commands.
-- [Architecture](docs/ARCHITECTURE.md) — repository layout, module table, CMake options, and CI job reference for contributors.
-- [API index](docs/API.md) — public headers under `include/ms/`, grouped by module with function-level notes.
-- [Contributing](docs/CONTRIBUTING.md) — full build matrix: coverage, libFuzzer, Valgrind, Clang plugin, JIT, benchmarks, packaging.
-- [Release checklist](docs/RELEASE.md) — Phase 10 exit criteria and the 1.0.0 tag procedure.
-- [Changelog](CHANGELOG.md) — authoritative wave-by-wave history (Waves 56–206 and onward); the README does not duplicate it.
-- [Master plan](mathscript-master-plan.md) — original ten-phase design spec and delivery roadmap.
-- [Unsafe surface review](UNSAFE_REVIEW.md) — approved `MS_UNSAFE` escape hatches and the scripted audit baseline.
+| Document | Contents |
+|----------|----------|
+| [User guide](docs/USER_GUIDE.md) | Install, first REPL session, syntax, plotting, JIT |
+| [Architecture](docs/ARCHITECTURE.md) | Layout, modules, CMake options, tests, CI |
+| [API index](docs/API.md) | Public headers under `include/ms/` and REPL bindings |
+| [Contributing](docs/CONTRIBUTING.md) | Build, test, coverage, fuzz, plugin, packaging |
+| [Performance](docs/PERFORMANCE.md) | Benchmarks, baselines, known complexity trade-offs |
+| [Release](docs/RELEASE.md) | 1.0.0 tag criteria and remaining gates |
+| [1.0 scope](docs/RELEASE_DECISIONS.md) | Stubs and post-1.0 deferrals (decided, not remaining) |
+| [Unsafe surface](UNSAFE_REVIEW.md) | Approved `MS_UNSAFE` sites |
+| [Wave history](docs/WAVES.md) | How the library was built, wave by wave |
 
-## What this actually is
+## What it is
 
-Most of the surface area is a fairly conventional (if unusually broad) numerical library: linear algebra, FFT, statistics, ODE/PDE solvers, optimization, signal/image processing, number theory, graph theory, computational/differential geometry, topology, quantum computing primitives, control theory, and financial math, all implemented from scratch against the same conventions (`std::vector`-of-coefficients polynomials, `Result<T>` instead of exceptions, defensive early-returns on malformed input, doc comments that cite the reference formula rather than just restating the signature).
+The surface is a numerical library: linear algebra, FFT, statistics, solvers, optimisation, signal/image processing, number theory, graphs, geometry, topology, quantum primitives, control, and finance. Implementations share `std::vector` coefficient polynomials, `Result<T>` error handling, and defensive checks on malformed input.
 
-Two things make it a bit more interesting than "yet another math library":
+Two properties of the tree:
 
-- **It doesn't borrow BLAS/LAPACK.** The `linalg` module implements its own LU/QR/SVD/eig/Cholesky kernels, LAPACK-style (`dorgbr`, `dlartg`, `dbdsqr`, ...). That's more work than linking Eigen, but it means every numerical bug is *this repository's* bug to find, not a black box — see [Bugs that were worth finding](#bugs-that-were-worth-finding) below.
-- **It's built almost entirely by waves of parallel AI subagents**, each working in an isolated git worktree on one self-contained module addition, tested and merged independently. See `mathscript-master-plan.md` and [`CHANGELOG.md`](CHANGELOG.md) for the full history.
+- **In-tree BLAS/LAPACK.** `linalg` owns LU/QR/SVD/eig/Cholesky and LAPACK-style kernels (`dorgbr`, `dlartg`, `dbdsqr`, …). There is no Eigen or OpenBLAS dependency for the default path.
+- **Restricted C++ subset.** A Clang plugin can enforce twenty compile-time rules (no raw `new`, no `throw`, no C-style casts, …). Production code returns `Result<T>`.
 
-## Architecture, briefly
+## Modules
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full repository layout, module table, and CMake option reference. The short version: static libraries per module under `src/`, mirrored public headers under `include/ms/`, GoogleTest suites under `tests/{unit,numerical,integration,fuzz}/`, everything wired through a single CMake monorepo build.
-
-Verified module directories under `src/` (35 libraries, excluding `exe`/`gui`/`plugin`):
+Static libraries under `src/` (35 libraries, plus `exe` / `gui` / `plugin`):
 
 | Group | Modules |
 |-------|---------|
-| **Core & dispatch** | `core`, `runtime`, `linalg`, `simd`, `cuda`, `distributed` |
-| **Numerical methods** | `fft`, `ode`, `pde`, `poly`, `optim`, `special`, `signal` |
-| **Statistics & ML** | `stats`, `prob`, `ml`, `info` |
-| **Applied domains** | `finance`, `control`, `graph`, `geo`, `diffgeo`, `topo`, `quantum`, `cplx`, `tensorops`, `numthy`, `combo`, `bignum`, `compress`, `image` |
-| **Symbolic & REPL** | `symbolic`, `interp` |
-| **Research frameworks** | `frameworks` (`axiom`, `cellai`, `cypha`, `gria`, `izaac`) |
-| **Legacy helpers** | `domain` |
+| Core and dispatch | `core`, `runtime`, `linalg`, `simd`, `cuda`, `distributed` |
+| Numerical methods | `fft`, `ode`, `pde`, `fem`, `cfd`, `poly`, `optim`, `special`, `signal` |
+| Statistics and ML | `stats`, `prob`, `ml`, `info` |
+| Applied | `finance`, `control`, `graph`, `geo`, `diffgeo`, `topo`, `quantum`, `cplx`, `tensorops`, `numthy`, `combo`, `bignum`, `compress`, `image`, `crypto` |
+| Symbolic and REPL | `symbolic`, `interp` |
+| Frameworks | `frameworks` (`axiom`, `cellai`, `cypha`, `gria`, `izaac`) |
+| Helpers | `domain` |
 
-CPU BLAS/LAPACK kernels live inside `linalg` and are exposed via `include/ms/cpu/blas.hpp` and `include/ms/cpu/lapack.hpp`.
-
-## Bugs that were worth finding
-
-A few things surfaced during development that are worth calling out on their own merits, independent of which wave found them:
-
-- **A sign error in `dlartg` and a wrong transpose flag in `dorgbr`** silently corrupted right singular vectors and `U`/`V` orthogonality in `ms::linalg::svd` for dozens of waves before anyone noticed, for essentially any `m×n` matrix with `n≥3` — masked because reconstruction (`U·Σ·Vᵗ`) still looked self-consistent even with the wrong orthogonal factors. Found while investigating an unrelated rank-deficient-tensor-decomposition bug, fixed by computing the Givens rotation directly via `hypot`/`cs=f/r`/`sn=g/r` instead of a sign-fragile `copysign` formula.
-- **`ms::izaac::CSPRNG` was badly biased** — only 8 of 32 internal state bytes were mutated per call. It was caught by a Monte Carlo π estimator returning `4.0` and `3.0` instead of something near `3.14159`, which is about as visible as a broken RNG can get. Replaced with a proper xoshiro256** generator with SplitMix64 seed expansion.
-- **A mirror-index bug in the shared low-pass FFT filter helper** made every "low-pass" filter in `ms::signal` (`lowpass`, `butterworth`, `highpass`, `bandpass`) zero out nearly all non-DC frequency content regardless of the requested cutoff — functionally a no-op beyond the mean. A pre-existing test had been passing by silently relying on the bug.
-
-None of these were caught by code review; all three were caught by a test asserting a *property* of the correct answer (orthogonality, a known constant, a known filter response) rather than checking that the code ran without crashing.
+CPU BLAS/LAPACK kernels live in `linalg` and are declared in `include/ms/cpu/blas.hpp` and `include/ms/cpu/lapack.hpp`.
 
 ## Status
 
-- **Version:** 1.0.0 — Phase 10 (hardening) complete; profiling iteration **fully complete** through Wave 230 — code, infra, and baseline path (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md))
-- **Tests:** **466** CTest suites, 100% passing (CUDA disabled in CI); ~91% line coverage (**90%** minimum enforced in CI)
-- **CI:** Windows MSVC + Linux GCC 13 build/test; coverage; libFuzzer smoke (7 targets); Valgrind memcheck; benchmark regression gate (`bench_matmul`, `bench_fft`, 10% tolerance); Clang plugin compliance (20 enforced rules); vendor checksum verification; optional `jit-linux` and `plugin-linux` jobs
+- **Version:** CMake project version **1.0.0**. The `v1.0.0` git tag is not cut; remaining gates are in [`docs/RELEASE.md`](docs/RELEASE.md).
+- **Tests:** **816** CTest suites, 100% passed on Windows MSVC Release (CUDA off, ~36 s at `-j 32`). Tests live under `tests/{unit,numerical,integration,performance}/<domain>/`. CI enforces **90%** line coverage. REPL matrix calls dispatch through a name-keyed handler registry (`src/interp/matrix_calls/<domain>/`).
+- **Benchmarks:** 28 Google Benchmark targets passed locally with `--benchmark_min_time=0.001s`. CI regression uses 10% tolerance vs `linux-gcc13.json`.
+- **CI:** Windows MSVC and Linux GCC 13; coverage; libFuzzer smoke (7 targets); Valgrind; 28-bench regression (10% tolerance); Clang plugin; vendor checksums; optional JIT and plugin jobs.
 
-## Product closure (feature waves 231–274)
+## Build
 
-After the profiling iteration closed at Wave 230, forty-four parallel **feature waves** (231–274) expanded crypto, FEM/CFD, distributed stubs, symbolic transforms, REPL bindings, and Qt GUI polish. Wave 274 added FEM 1D composable assembly, CFD 1D/2D composable advection, quantum dagger/matmul/Schmidt bases, and `izaac_rand_matrix`. See [`CHANGELOG.md`](CHANGELOG.md) for per-wave detail. Remaining roadmap depth (scalable multi-node MPI linear algebra, full IDE/LSP) stays deferred per [`mathscript-master-plan.md`](mathscript-master-plan.md) §2.12/§7/§10/§11.
-
-| Wave | Focus |
-|------|--------|
-| **231** | Crypto AES/ChaCha; FEM 2D; CFD 2D + benchmark cases |
-| **232** | Symbolic transforms; CUDA LU/StreamPool; MPI REPL; plugin audit; GUI command history |
-| **233** | GUI polish (syntax highlight, layout, inspector, Stop); optim/control/quantum REPL; `sym_dsolve`; CUDA REPL |
-| **234** | Finance/graph/image/ml REPL; AES-128-GCM |
-| **235** | ChaCha20-Poly1305; FEM 3D mesh/stiffness; GUI Ctrl+Enter Run |
-| **236** | X25519; CFD/FEM 3D solve; `dist_matmul`; GUI Clear/About/Recent/font zoom |
-| **237** | NCCL stub; modular plugin rules; remaining REPL gaps (SABR, graph cuts, LQE, edge filters) |
-| **238** | `dist_cg`; GUI find-in-output and plot toggle; HKDF-SHA256; 3D bench cases; history export/persist |
-| **239** | PBKDF2; `dist_gmres`; GUI script find/goto-line; `run_file`; HKDF/X25519/`dist_cg` benches |
-| **240** | Ed25519; `dist_jacobi` + GMRES MPI; Mellin; GUI line numbers/LaTeX export; graph/finance/`bicgstab` REPL; bench gaps |
-| **241** | Hankel; `sabr_put`; `dist_bicgstab`; signal cheby2/PSD REPL; GUI completer; Ed25519/`dist_jacobi` benches |
-| **242** | `dist_minres`; graph iso/TSP REPL; hilbert/envelope; GUI theme toggle; NCCL max/min; SABR/`dist_bicgstab` benches |
-| **243** | `dist_qmr`; HMAC-SHA512; `qmr`/`lsqr`/phase REPL; GUI word wrap; graph articulation tests; `dist_minres` bench |
-| **244** | `dist_tfqmr`; PBKDF2-SHA512; `heston_put`; `tfqmr`/`lsmr`/spectrogram REPL; GUI replace; Wave 243 benches |
-| **245** | AES-256-CBC; HKDF-SHA512; `poly_diff` + geo boolean REPL; graph k-core/chromatic; GUI find-prev; Wave 244 benches |
-| **246** | AES-256-GCM; `dist_lsmr`; blossom matching; NCCL `allreduce_prod`; GUI Duplicate Line; Wave 245 benches |
-| **247** | `unwrap`; geo minkowski/OBB REPL; NCCL `allreduce_avg`; Toggle Comment; wave247 pipeline; Wave 246 benches |
-| **248** | NCCL `broadcast`; `constant_time_eq`/`random_bytes`; geo clip + upsample/downsample REPL; GUI Indent; Wave 247 benches |
-| **249** | NCCL `reduce`; `dist_lsqr`; SHA-256 REPL; signal resample/decimate/interpolate; GUI Move Line; Wave 248 benches |
-| **250** | `crypto_sha512`; NCCL introspect; `signal_coherence`/`filtfilt`; GUI Delete Line; `BM_DistLsqr`; wave250 pipeline |
-| **251** | `signal_filter`/`cheby1`; MPI max/min; `geo_convex_hull`; Select All/Undo; AES-256 block; wave251 pipeline |
-| **252** | `sosfilt`/`firwin`/`savgol`; `mpi_barrier`; AES-256 decrypt; GUI Replace All; wave252 pipeline |
-| **253** | xcorr/xcov/autocorr; median_filter; conv2; AES-128 decrypt; NCCL allgather; matching brace |
-| **254** | deconv/LMS/CZT; `mpi_bcast`; geo AABB; GUI Add Selection; wave254 pipeline |
-| **255** | geo triangulate/hull3d/kdtree/ray; graph spectral; X25519 keypair; Trim Whitespace |
-| **256** | stats TS/inference; graph structure; geo 3D; image transforms; Remove Blank Lines |
-
-## Build (quickstart)
-
-Enough to get a first build and REPL session. For coverage, fuzz, Valgrind, plugin, JIT, and packaging options, see [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).
-
-### Windows
+Windows (single tree `build-msvc`):
 
 ```powershell
 .\build.ps1
@@ -103,30 +62,16 @@ ctest --test-dir build-msvc --output-on-failure
 .\build-msvc\bin\mathscript-repl.exe
 ```
 
-One-shot eval: `.\build-msvc\bin\mathscript-repl.exe -e "surf([1, 2; 3, 4])"`. Optional JIT: `--jit -e "x = 1 + 2"` when built with `-DMS_BUILD_JIT=ON`.
-
-### Linux (CI-style)
+Linux:
 
 ```bash
-cmake -S . -B build-linux -G Ninja \
+cmake -S . -B build -G Ninja \
   -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 \
   -DCMAKE_BUILD_TYPE=Release \
   -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF
-cmake --build build-linux
-ctest --test-dir build-linux --output-on-failure
-./build-linux/bin/mathscript-repl
+cmake --build build
+ctest --test-dir build --output-on-failure
+./build/bin/mathscript-repl
 ```
 
-## Phase progress
-
-| Phase | Name | Status |
-|-------|------|--------|
-| 0 | Foundation | Complete |
-| 1 | Core types + REPL | Complete |
-| 2 | Math library (CPU) | Complete |
-| 3 | GPU / CUDA | Stub + optional backend |
-| 4–8 | IDE, distributed, frameworks, special functions | Substantial progress |
-| 9 | Own BLAS/LAPACK core | Complete |
-| 10 | Hardening (CI, coverage, packaging) | Complete — **v1.0.0** |
-
-Per-wave additions (REPL bindings, new modules, bug fixes) are recorded only in [`CHANGELOG.md`](CHANGELOG.md).
+Optional: `.\build.ps1 -Benchmark` (same `build-msvc` tree, `MS_BUILD_BENCHMARKS=ON`). Full options: [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).

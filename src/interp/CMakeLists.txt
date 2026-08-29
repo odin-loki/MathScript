@@ -1,11 +1,51 @@
 set(_MS_INTERP_SOURCES repl_engine.cpp plot_console.cpp jit_backend_factory.cpp jit_orc_stub.cpp)
 
+file(GLOB_RECURSE _MS_MATRIX_CALL_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/matrix_calls/*.cpp")
+
+set(_MS_MATRIX_CALL_REGISTER "${CMAKE_CURRENT_BINARY_DIR}/matrix_call_register_all.cpp")
+set(_MS_MATRIX_CALL_DECLS "")
+set(_MS_MATRIX_CALL_CALLS "")
+file(GLOB_RECURSE _MS_MATRIX_CALL_STEMS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/matrix_calls"
+    "${CMAKE_CURRENT_SOURCE_DIR}/matrix_calls/*.cpp")
+list(SORT _MS_MATRIX_CALL_STEMS)
+foreach(_src ${_MS_MATRIX_CALL_STEMS})
+    get_filename_component(_stem ${_src} NAME_WE)
+    string(APPEND _MS_MATRIX_CALL_DECLS "void ms_register_matrix_call_${_stem}();\n")
+    string(APPEND _MS_MATRIX_CALL_CALLS "    ms_register_matrix_call_${_stem}();\n")
+endforeach()
+
+file(WRITE "${_MS_MATRIX_CALL_REGISTER}"
+"#include \"matrix_call.hpp\"
+
+namespace ms::interp {
+
+${_MS_MATRIX_CALL_DECLS}
+void ensure_matrix_calls_registered() {
+    static bool done = false;
+    if (done) {
+        return;
+    }
+    done = true;
+${_MS_MATRIX_CALL_CALLS}}
+
+} // namespace ms::interp
+")
+
+list(APPEND _MS_INTERP_SOURCES
+    repl_engine_internal.cpp
+    matrix_call.cpp
+    ${_MS_MATRIX_CALL_SOURCES}
+    ${_MS_MATRIX_CALL_REGISTER}
+)
+
 if(MS_BUILD_JIT)
     list(APPEND _MS_INTERP_SOURCES jit_orc_llvm.cpp)
 endif()
 
 add_library(ms_interp STATIC ${_MS_INTERP_SOURCES})
 target_include_directories(ms_interp PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
+target_include_directories(ms_interp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ms_interp PUBLIC
     ms_core ms_linalg ms_fft ms_runtime ms_simd ms_distributed ms_frameworks ms_special
     ms_image ms_compress ms_bignum ms_ml
@@ -14,6 +54,9 @@ target_link_libraries(ms_interp PUBLIC
     ms_crypto ms_fem ms_cfd
 )
 target_compile_features(ms_interp PUBLIC cxx_std_23)
+if(MSVC)
+    target_compile_options(ms_interp PRIVATE /bigobj)
+endif()
 if(MS_ENABLE_COVERAGE AND NOT MSVC)
     target_compile_options(ms_interp PRIVATE -fexceptions)
 endif()

@@ -64,13 +64,14 @@ class MatMul : public MatExpr<MatMul<L, R>> {
     const MatExpr<L>& l_;
     const MatExpr<R>& r_;
 public:
-    MatMul(const MatExpr<L>& l, const MatExpr<R>& r) : l_(l.self()), r_(r.self()) {
-        if (l_.cols() != r_.rows())
-            throw DimensionMismatch(l_.rows(), l_.cols(), r_.rows(), r_.cols());
-    }
-    size_t rows_impl() const { return l_.rows(); }
-    size_t cols_impl() const { return r_.cols(); }
+    MatMul(const MatExpr<L>& l, const MatExpr<R>& r) : l_(l.self()), r_(r.self()) {}
+    bool valid() const { return l_.cols() == r_.rows(); }
+    size_t rows_impl() const { return valid() ? l_.rows() : 0; }
+    size_t cols_impl() const { return valid() ? r_.cols() : 0; }
     auto eval_at(size_t r, size_t c) const {
+        using value_type = decltype(l_.eval_at(0, 0) * r_.eval_at(0, 0));
+        if (!valid() || l_.cols() == 0)
+            return value_type{};
         auto sum = l_.eval_at(r, 0) * r_.eval_at(0, c);
         for (size_t k = 1; k < l_.cols(); ++k)
             sum += l_.eval_at(r, k) * r_.eval_at(k, c);

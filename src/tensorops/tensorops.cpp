@@ -11,6 +11,19 @@
 namespace ms {
 namespace tensorops {
 
+namespace {
+int to_i(std::size_t n) noexcept {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4267)
+#endif
+    return static_cast<int>(n);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+}
+} // namespace
+
 // ========================== Tensor basics ==========================
 
 static long numel_shape(const std::vector<int>& shape) {
@@ -89,7 +102,7 @@ std::vector<std::vector<double>> Tensor::unfold(int mode) const {
 Tensor Tensor::fold(const std::vector<std::vector<double>>& mat,
                     int mode, const std::vector<int>& shape) {
     Tensor T(shape, 0.0);
-    int N = static_cast<int>(shape.size());
+    int N = static_cast<int>(to_i(shape.size()));
     long total = T.numel();
     for (long f=0; f<total; ++f) {
         std::vector<int> midx(N);
@@ -125,7 +138,7 @@ Tensor Tensor::operator*(double s) const {
 namespace {
 
 std::vector<long> row_major_strides(const std::vector<int>& shape) {
-    const int nd = static_cast<int>(shape.size());
+    const int nd = static_cast<int>(to_i(shape.size()));
     std::vector<long> strides(nd, 1);
     long stride = 1;
     for (int i = nd - 1; i >= 0; --i) {
@@ -143,7 +156,7 @@ long linear_index(const std::vector<int>& idx, const std::vector<long>& strides)
 }
 
 bool odometer_advance(std::vector<int>& idx, const std::vector<int>& sizes) {
-    for (int d = static_cast<int>(idx.size()) - 1; d >= 0; --d) {
+    for (int d = static_cast<int>(to_i(idx.size())) - 1; d >= 0; --d) {
         ++idx[d];
         if (idx[d] < sizes[d]) return true;
         idx[d] = 0;
@@ -220,8 +233,8 @@ Tensor contract_general(const Tensor& A, const Tensor& B,
     free_all.reserve(freeA_sizes.size() + freeB_sizes.size());
     free_all.insert(free_all.end(), freeA_sizes.begin(), freeA_sizes.end());
     free_all.insert(free_all.end(), freeB_sizes.begin(), freeB_sizes.end());
-    std::vector<int> free_idx(free_all.size(), 0);
-    std::vector<int> con(con_sizes.size(), 0);
+    std::vector<int> free_idx(to_i(free_all.size()), 0);
+    std::vector<int> con(to_i(con_sizes.size()), 0);
 
     do {
         for (size_t i = 0; i < freeA_axes.size(); ++i)
@@ -296,7 +309,7 @@ Tensor contract(const Tensor& A, const Tensor& B,
 }
 
 Tensor mode_product(const Tensor& T, const std::vector<std::vector<double>>& M, int mode) {
-    int new_dim = static_cast<int>(M.size());
+    int new_dim = static_cast<int>(to_i(M.size()));
     int old_dim = T.shape[mode];
     std::vector<int> new_shape = T.shape;
     new_shape[mode] = new_dim;
@@ -330,7 +343,7 @@ Tensor einsum(const std::string& subscripts, const Tensor& A, const Tensor& B) {
     std::string sC = subscripts.substr(arrow+2);
 
     std::vector<std::pair<int,int>> contractions;
-    for (int i = 0; i < static_cast<int>(sA.size()); ++i) {
+    for (int i = 0; i < static_cast<int>(to_i(sA.size())); ++i) {
         const char c = sA[static_cast<size_t>(i)];
         if (sC.find(c) != std::string::npos) continue;
         const auto posB = sB.find(c);
@@ -346,9 +359,9 @@ Tensor einsum(const std::string& subscripts, const Tensor& A, const Tensor& B) {
 std::vector<std::vector<double>>
 khatri_rao(const std::vector<std::vector<double>>& A,
            const std::vector<std::vector<double>>& B) {
-    int rA = static_cast<int>(A.size()), rB = static_cast<int>(B.size());
-    int cols = static_cast<int>(A[0].size());
-    if ((int)B[0].size() != cols) return {};  // column mismatch
+    int rA = static_cast<int>(to_i(A.size())), rB = static_cast<int>(to_i(B.size()));
+    int cols = static_cast<int>(to_i(A[0].size()));
+    if (to_i(B[0].size()) != cols) return {};  // column mismatch
     int rows = rA * rB;
     std::vector<std::vector<double>> res(rows, std::vector<double>(cols));
     for (int c=0; c<cols; ++c)
@@ -361,7 +374,7 @@ khatri_rao(const std::vector<std::vector<double>>& A,
 std::vector<std::vector<double>>
 kronecker(const std::vector<std::vector<double>>& A,
           const std::vector<std::vector<double>>& B) {
-    int rA=A.size(), cA=A[0].size(), rB=B.size(), cB=B[0].size();
+    int rA=to_i(A.size()), cA=to_i(A[0].size()), rB=to_i(B.size()), cB=to_i(B[0].size());
     std::vector<std::vector<double>> res(rA*rB, std::vector<double>(cA*cB));
     for (int ia=0;ia<rA;++ia)
         for (int ja=0;ja<cA;++ja)
@@ -429,7 +442,7 @@ double tensor_inner(const Tensor& A, const Tensor& B) {
 static std::vector<std::vector<double>>
 mat_mul(const std::vector<std::vector<double>>& A,
         const std::vector<std::vector<double>>& B) {
-    int m=A.size(), k=A[0].size(), n=B[0].size();
+    int m=to_i(A.size()), k=to_i(A[0].size()), n=to_i(B[0].size());
     std::vector<std::vector<double>> C(m, std::vector<double>(n,0));
     for (int i=0;i<m;++i) for (int l=0;l<k;++l) for (int j=0;j<n;++j)
         C[i][j]+=A[i][l]*B[l][j];
@@ -439,7 +452,7 @@ mat_mul(const std::vector<std::vector<double>>& A,
 // Transpose matrix
 static std::vector<std::vector<double>>
 mat_T(const std::vector<std::vector<double>>& A) {
-    int m=A.size(), n=A[0].size();
+    int m=to_i(A.size()), n=to_i(A[0].size());
     std::vector<std::vector<double>> B(n, std::vector<double>(m));
     for (int i=0;i<m;++i) for (int j=0;j<n;++j) B[j][i]=A[i][j];
     return B;
@@ -449,7 +462,7 @@ mat_T(const std::vector<std::vector<double>>& A) {
 static std::vector<std::vector<double>>
 mat_solve_system(std::vector<std::vector<double>> A,
                  std::vector<std::vector<double>> B) {
-    int n=A.size(), nb=B[0].size();
+    int n=to_i(A.size()), nb=to_i(B[0].size());
     for (int col=0;col<n;++col) {
         int pivot=col;
         for (int row=col+1;row<n;++row)
@@ -472,20 +485,20 @@ mat_solve_system(std::vector<std::vector<double>> A,
 static std::vector<std::vector<double>>
 mat_hadamard(const std::vector<std::vector<double>>& A,
              const std::vector<std::vector<double>>& B) {
-    int m=A.size(), n=A[0].size();
+    int m=to_i(A.size()), n=to_i(A[0].size());
     std::vector<std::vector<double>> C(m, std::vector<double>(n));
     for (int i=0;i<m;++i) for (int j=0;j<n;++j) C[i][j]=A[i][j]*B[i][j];
     return C;
 }
 
 // Pseudo-inverse via normal equations
-static std::vector<std::vector<double>>
+[[maybe_unused]] static std::vector<std::vector<double>>
 mat_pinv(const std::vector<std::vector<double>>& A) {
     // (A^T A)^{-1} A^T
     auto At = mat_T(A);
     auto AtA = mat_mul(At, A);
     // Identity
-    int n=AtA.size();
+    int n=to_i(AtA.size());
     std::vector<std::vector<double>> I(n, std::vector<double>(n,0));
     for (int i=0;i<n;++i) I[i][i]=1.0;
     auto inv = mat_solve_system(AtA, I);
@@ -496,10 +509,10 @@ static Tensor reconstruct_cp_from_factors(
     const std::vector<std::vector<std::vector<double>>>& factors,
     const std::vector<double>& weights,
     int rank) {
-    int N = static_cast<int>(factors.size());
+    int N = static_cast<int>(to_i(factors.size()));
     std::vector<int> shapes(N);
     for (int mode = 0; mode < N; ++mode)
-        shapes[mode] = static_cast<int>(factors[mode].size());
+        shapes[mode] = static_cast<int>(to_i(factors[mode].size()));
     Tensor Trecon(shapes, 0.0);
     for (int r = 0; r < rank; ++r) {
         Tensor term({shapes[0]});
@@ -585,7 +598,7 @@ CPDecomposition decompose_cp(const Tensor& T, int rank,
 static std::vector<std::vector<double>>
 truncated_svd_left(const std::vector<std::vector<double>>& M, int rank) {
     // Power iteration for each singular vector
-    int m=M.size(), n=M[0].size();
+    int m=to_i(M.size()), n=to_i(M[0].size());
     auto Mt = mat_T(M);
     auto MtM = mat_mul(Mt, M);
     std::vector<std::vector<double>> U(m, std::vector<double>(rank, 0.0));
@@ -676,7 +689,7 @@ TuckerDecomposition decompose_tucker(const Tensor& T, const std::vector<int>& ra
 
 Tensor reconstruct_tucker(const TuckerDecomposition& tucker) {
     Tensor result = tucker.core;
-    int N = static_cast<int>(tucker.factors.size());
+    int N = static_cast<int>(to_i(tucker.factors.size()));
     for (int m = 0; m < N; ++m)
         result = mode_product(result, tucker.factors[m], m);
     return result;
@@ -698,7 +711,7 @@ static double mat_frobenius_norm(const std::vector<std::vector<double>>& A) {
 static std::vector<std::vector<double>>
 mat_sub(const std::vector<std::vector<double>>& A,
         const std::vector<std::vector<double>>& B) {
-    int m = static_cast<int>(A.size()), n = static_cast<int>(A[0].size());
+    int m = static_cast<int>(to_i(A.size())), n = static_cast<int>(to_i(A[0].size()));
     std::vector<std::vector<double>> C(m, std::vector<double>(n));
     for (int i = 0; i < m; ++i)
         for (int j = 0; j < n; ++j) C[i][j] = A[i][j] - B[i][j];
@@ -709,7 +722,7 @@ static std::vector<std::vector<double>>
 mat_element_divide(const std::vector<std::vector<double>>& num,
                    const std::vector<std::vector<double>>& den,
                    double eps) {
-    int m = static_cast<int>(num.size()), n = static_cast<int>(num[0].size());
+    int m = static_cast<int>(to_i(num.size())), n = static_cast<int>(to_i(num[0].size()));
     std::vector<std::vector<double>> C(m, std::vector<double>(n));
     for (int i = 0; i < m; ++i)
         for (int j = 0; j < n; ++j) C[i][j] = num[i][j] / (den[i][j] + eps);
@@ -748,10 +761,10 @@ Result<NMFDecomposition> decompose_nmf(const std::vector<std::vector<double>>& m
     if (matrix.empty() || matrix[0].empty()) {
         return std::unexpected(DomainError{"decompose_nmf", "matrix must not be empty"});
     }
-    int m = static_cast<int>(matrix.size());
-    int n = static_cast<int>(matrix[0].size());
+    int m = static_cast<int>(to_i(matrix.size()));
+    int n = static_cast<int>(to_i(matrix[0].size()));
     for (int i = 1; i < m; ++i) {
-        if (static_cast<int>(matrix[i].size()) != n) {
+        if (static_cast<int>(to_i(matrix[i].size())) != n) {
             return std::unexpected(DomainError{"decompose_nmf", "matrix must be rectangular"});
         }
     }
@@ -927,7 +940,7 @@ ThinSVD compute_thin_svd(const Tensor& M2d) {
 // Smallest truncation rank r_k (1 <= r_k <= S.size()) such that the sum of squared
 // discarded singular values (indices r_k..end, S sorted descending) is <= delta^2.
 int truncation_rank(const std::vector<double>& S, double delta) {
-    int r_full = static_cast<int>(S.size());
+    int r_full = static_cast<int>(to_i(S.size()));
     double budget_sq = delta * delta;
     // discarded[i] = sum_{j=i..r_full-1} S[j]^2, i.e. the squared reconstruction error
     // incurred by keeping only the first i singular values.
@@ -1020,7 +1033,7 @@ Result<TTDecomposition> decompose_tt(const Tensor& T, double eps) {
 }
 
 Tensor reconstruct_tt(const TTDecomposition& tt) {
-    int d = static_cast<int>(tt.cores.size());
+    int d = static_cast<int>(to_i(tt.cores.size()));
     if (d == 0) return Tensor();
 
     Tensor result = tt.cores[0];  // shape (1, n_0, r_1)

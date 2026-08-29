@@ -17,7 +17,7 @@ struct Mesh1D {
 };
 
 /// Uniform 1D mesh on [a, b] with @p n_elements elements (n_elements + 1 nodes).
-Mesh1D mesh1d(double a, double b, std::size_t n_elements);
+Result<Mesh1D> mesh1d(double a, double b, std::size_t n_elements);
 
 struct Mesh2D {
     /// Node coordinates as (x, y).
@@ -27,7 +27,7 @@ struct Mesh2D {
 };
 
 /// Structured triangular mesh on [x0, x1] x [y0, y1] with @p nx by @p ny cells.
-Mesh2D mesh2d_rectangular(
+Result<Mesh2D> mesh2d_rectangular(
     double x0, double y0, double x1, double y1, std::size_t nx, std::size_t ny);
 
 struct Mesh3D {
@@ -38,7 +38,7 @@ struct Mesh3D {
 };
 
 /// Structured tetrahedral mesh on [x0, x1] x [y0, y1] x [z0, z1] with @p nx by @p ny by @p nz cells.
-Mesh3D mesh3d_box(
+Result<Mesh3D> mesh3d_box(
     double x0,
     double y0,
     double z0,
@@ -54,41 +54,41 @@ struct LagrangeBasis {
     int degree = 1;
 
     /// Values of N0(xi), N1(xi) at reference coordinate xi in [0, 1].
-    std::array<double, 2> evaluate(double xi) const;
+    Result<std::array<double, 2>> evaluate(double xi) const;
 
     /// Derivatives dN/dxi at xi in [0, 1].
-    std::array<double, 2> derivative(double xi) const;
+    Result<std::array<double, 2>> derivative(double xi) const;
 };
 
 /// Return the P1 Lagrange basis on the reference element [0, 1].
 LagrangeBasis lagrange_basis();
 
 /// Assemble the global stiffness matrix for -u'' on a 1D P1 mesh.
-ColMatrix<double> assemble_stiffness_1d(const Mesh1D& mesh);
+Result<ColMatrix<double>> assemble_stiffness_1d(const Mesh1D& mesh);
 
 /// Assemble the global load vector for integral(f * phi_i) dx (2-point Gauss).
-ColMatrix<double> assemble_load_1d(
+Result<ColMatrix<double>> assemble_load_1d(
     const Mesh1D& mesh,
     const std::function<double(double)>& f);
 
 /// Assemble the global stiffness matrix for -Laplacian(u) on a 2D P1 mesh.
-ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh);
+Result<ColMatrix<double>> assemble_stiffness_2d(const Mesh2D& mesh);
 
 /// Assemble the global stiffness matrix for -Laplacian(u) on a 3D P1 mesh.
-ColMatrix<double> assemble_stiffness_3d(const Mesh3D& mesh);
+Result<ColMatrix<double>> assemble_stiffness_3d(const Mesh3D& mesh);
 
 /// Assemble the global load vector for integral(f * phi_i) dA (3-point quadrature).
-ColMatrix<double> assemble_load_2d(
+Result<ColMatrix<double>> assemble_load_2d(
     const Mesh2D& mesh,
     const std::function<double(double, double)>& f);
 
 /// Assemble the global load vector for integral(f * phi_i) dV (4-point quadrature).
-ColMatrix<double> assemble_load_3d(
+Result<ColMatrix<double>> assemble_load_3d(
     const Mesh3D& mesh,
     const std::function<double(double, double, double)>& f);
 
 /// Apply Dirichlet boundary conditions by modifying @p K and @p f in place.
-void apply_dirichlet(
+Result<void> apply_dirichlet(
     ColMatrix<double>& K,
     ColMatrix<double>& f,
     const std::vector<std::size_t>& node_indices,

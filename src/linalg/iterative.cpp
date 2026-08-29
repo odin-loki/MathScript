@@ -298,7 +298,6 @@ Result<Matrix<S, OA, Alloc>> minres(
 
         // Apply Givens rotations
         double delta = c_cur * alpha - c_old * s_cur * beta;
-        double eps   = s_old * beta;
         double gamma = std::sqrt(delta * delta + beta_next * beta_next);
         if (gamma < 1e-14) gamma = 1e-14;
         double c_new = delta / gamma;

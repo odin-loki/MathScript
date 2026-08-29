@@ -8,7 +8,6 @@
 #include <complex>
 #include <limits>
 #include <numeric>
-#include <stdexcept>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -343,18 +342,18 @@ static std::vector<std::vector<double>> mat_sub(
     return C;
 }
 
-static std::vector<std::vector<double>> mat_inv(
+static Result<std::vector<std::vector<double>>> mat_inv(
     const std::vector<std::vector<double>>& A) {
     const int n = static_cast<int>(A.size());
     auto Am = to_ms_matrix(A);
     auto I = eye<double>(static_cast<size_t>(n));
     auto inv = solve(Am, I);
     if (!inv)
-        throw std::runtime_error("matrix inversion failed");
+        return std::unexpected(DomainError{"control_inv", "matrix inversion failed"});
     return from_ms_matrix(*inv);
 }
 
-static Matrix<double> expm_scaled(const Matrix<double>& A) {
+static Result<Matrix<double>> expm_scaled(const Matrix<double>& A) {
     const size_t n = A.rows();
     double norm = 0.0;
     for (size_t i = 0; i < n; ++i)
@@ -375,7 +374,7 @@ static Matrix<double> expm_scaled(const Matrix<double>& A) {
     for (int k = 1; k <= 20; ++k) {
         auto next = matmul(term, M);
         if (!next)
-            throw std::runtime_error("matmul failed");
+            return std::unexpected(DomainError{"control_expm", "matmul failed"});
         term = *next;
         const double inv_k = 1.0 / static_cast<double>(k);
         for (size_t i = 0; i < n; ++i)
@@ -388,7 +387,7 @@ static Matrix<double> expm_scaled(const Matrix<double>& A) {
     for (int i = 0; i < s; ++i) {
         auto sq = matmul(result, result);
         if (!sq)
-            throw std::runtime_error("matmul failed");
+            return std::unexpected(DomainError{"control_expm", "matmul failed"});
         result = *sq;
     }
     return result;
@@ -416,11 +415,11 @@ static std::vector<std::vector<double>> logm_series(
     return L;
 }
 
-static void c2d_zoh_ab(const std::vector<std::vector<double>>& A,
-                       const std::vector<std::vector<double>>& B,
-                       double Ts,
-                       std::vector<std::vector<double>>& Ad,
-                       std::vector<std::vector<double>>& Bd) {
+static Result<void> c2d_zoh_ab(const std::vector<std::vector<double>>& A,
+                               const std::vector<std::vector<double>>& B,
+                               double Ts,
+                               std::vector<std::vector<double>>& Ad,
+                               std::vector<std::vector<double>>& Bd) {
     const int n = static_cast<int>(A.size());
     const int m = static_cast<int>(B[0].size());
     const int nm = n + m;
@@ -432,21 +431,24 @@ static void c2d_zoh_ab(const std::vector<std::vector<double>>& A,
             Mc(static_cast<size_t>(i), static_cast<size_t>(n + j)) = B[i][j] * Ts;
     }
     const auto E = expm_scaled(Mc);
+    if (!E)
+        return std::unexpected(E.error());
     Ad.assign(n, std::vector<double>(n, 0.0));
     Bd.assign(n, std::vector<double>(m, 0.0));
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j)
-            Ad[i][j] = E(static_cast<size_t>(i), static_cast<size_t>(j));
+            Ad[i][j] = (*E)(static_cast<size_t>(i), static_cast<size_t>(j));
         for (int j = 0; j < m; ++j)
-            Bd[i][j] = E(static_cast<size_t>(i), static_cast<size_t>(n + j));
+            Bd[i][j] = (*E)(static_cast<size_t>(i), static_cast<size_t>(n + j));
     }
+    return {};
 }
 
-static void d2c_zoh_ab(const std::vector<std::vector<double>>& Ad,
-                       const std::vector<std::vector<double>>& Bd,
-                       double Ts,
-                       std::vector<std::vector<double>>& A,
-                       std::vector<std::vector<double>>& B) {
+static Result<void> d2c_zoh_ab(const std::vector<std::vector<double>>& Ad,
+                               const std::vector<std::vector<double>>& Bd,
+                               double Ts,
+                               std::vector<std::vector<double>>& A,
+                               std::vector<std::vector<double>>& B) {
     const int n = static_cast<int>(Ad.size());
     auto Ad_minus_I = mat_sub(Ad, identity_mat(n));
     if (matrix_inf_norm(Ad_minus_I) < 1.0) {
@@ -454,57 +456,65 @@ static void d2c_zoh_ab(const std::vector<std::vector<double>>& Ad,
     } else {
         auto log_result = logm(to_ms_matrix(Ad));
         if (!log_result)
-            throw std::runtime_error("logm failed in d2c ZOH");
+            return std::unexpected(DomainError{"control_d2c", "logm failed in d2c ZOH"});
         A = mat_scale(from_ms_matrix(*log_result), 1.0 / Ts);
     }
 
     if (matrix_inf_norm(Ad_minus_I) > 1e-12) {
         auto inv = mat_inv(Ad_minus_I);
-        B = matmul(inv, matmul(A, Bd));
+        if (!inv)
+            return std::unexpected(inv.error());
+        B = matmul(*inv, matmul(A, Bd));
     } else {
         B = mat_scale(Bd, 1.0 / Ts);
     }
+    return {};
 }
 
-static void c2d_tustin(const std::vector<std::vector<double>>& A,
-                       const std::vector<std::vector<double>>& B,
-                       const std::vector<std::vector<double>>& C,
-                       const std::vector<std::vector<double>>& D,
-                       double Ts,
-                       std::vector<std::vector<double>>& Ad,
-                       std::vector<std::vector<double>>& Bd,
-                       std::vector<std::vector<double>>& Cd,
-                       std::vector<std::vector<double>>& Dd) {
+static Result<void> c2d_tustin(const std::vector<std::vector<double>>& A,
+                               const std::vector<std::vector<double>>& B,
+                               const std::vector<std::vector<double>>& C,
+                               const std::vector<std::vector<double>>& D,
+                               double Ts,
+                               std::vector<std::vector<double>>& Ad,
+                               std::vector<std::vector<double>>& Bd,
+                               std::vector<std::vector<double>>& Cd,
+                               std::vector<std::vector<double>>& Dd) {
     const int n = static_cast<int>(A.size());
     auto I = identity_mat(n);
     auto half = 0.5 * Ts;
     auto T = mat_sub(I, mat_scale(A, half));
     auto Tinv = mat_inv(T);
-    Ad = matmul(Tinv, matadd(I, mat_scale(A, half)));
-    Bd = matmul(Tinv, mat_scale(B, Ts));
-    Cd = matmul(C, Tinv);
+    if (!Tinv)
+        return std::unexpected(Tinv.error());
+    Ad = matmul(*Tinv, matadd(I, mat_scale(A, half)));
+    Bd = matmul(*Tinv, mat_scale(B, Ts));
+    Cd = matmul(C, *Tinv);
     auto CTinvB = matmul(Cd, B);
     Dd = D;
     for (int i = 0; i < static_cast<int>(D.size()); ++i)
         for (int j = 0; j < static_cast<int>(D[0].size()); ++j)
             Dd[i][j] = D[i][j] + half * CTinvB[i][j];
+    return {};
 }
 
-static void d2c_tustin(const std::vector<std::vector<double>>& Ad,
-                       const std::vector<std::vector<double>>& Bd,
-                       const std::vector<std::vector<double>>& Cd,
-                       const std::vector<std::vector<double>>& Dd,
-                       double Ts,
-                       std::vector<std::vector<double>>& A,
-                       std::vector<std::vector<double>>& B,
-                       std::vector<std::vector<double>>& C,
-                       std::vector<std::vector<double>>& D) {
+static Result<void> d2c_tustin(const std::vector<std::vector<double>>& Ad,
+                               const std::vector<std::vector<double>>& Bd,
+                               const std::vector<std::vector<double>>& Cd,
+                               const std::vector<std::vector<double>>& Dd,
+                               double Ts,
+                               std::vector<std::vector<double>>& A,
+                               std::vector<std::vector<double>>& B,
+                               std::vector<std::vector<double>>& C,
+                               std::vector<std::vector<double>>& D) {
     const int n = static_cast<int>(Ad.size());
     auto I = identity_mat(n);
     auto half = 0.5 * Ts;
     auto IplusAd = matadd(I, Ad);
     auto IplusAd_inv = mat_inv(IplusAd);
-    A = mat_scale(matmul(IplusAd_inv, mat_sub(Ad, I)), 2.0 / Ts);
+    if (!IplusAd_inv)
+        return std::unexpected(IplusAd_inv.error());
+    A = mat_scale(matmul(*IplusAd_inv, mat_sub(Ad, I)), 2.0 / Ts);
     auto T = mat_sub(I, mat_scale(A, half));
     B = mat_scale(matmul(T, Bd), 1.0 / Ts);
     C = matmul(Cd, T);
@@ -513,16 +523,19 @@ static void d2c_tustin(const std::vector<std::vector<double>>& Ad,
     for (int i = 0; i < static_cast<int>(D.size()); ++i)
         for (int j = 0; j < static_cast<int>(D[0].size()); ++j)
             D[i][j] = Dd[i][j] - half * CdB[i][j];
+    return {};
 }
 
 StateSpace c2d(const StateSpace& sys, double Ts, DiscretizationMethod method) {
     std::vector<std::vector<double>> Ad, Bd, Cd = sys.C, Dd = sys.D;
     switch (method) {
     case DiscretizationMethod::ZOH:
-        c2d_zoh_ab(sys.A, sys.B, Ts, Ad, Bd);
+        if (auto r = c2d_zoh_ab(sys.A, sys.B, Ts, Ad, Bd); !r)
+            return sys;
         break;
     case DiscretizationMethod::Tustin:
-        c2d_tustin(sys.A, sys.B, sys.C, sys.D, Ts, Ad, Bd, Cd, Dd);
+        if (auto r = c2d_tustin(sys.A, sys.B, sys.C, sys.D, Ts, Ad, Bd, Cd, Dd); !r)
+            return sys;
         break;
     case DiscretizationMethod::Euler:
         Ad = matadd(identity_mat(sys.n), mat_scale(sys.A, Ts));
@@ -536,10 +549,12 @@ StateSpace d2c(const StateSpace& sys, double Ts, DiscretizationMethod method) {
     std::vector<std::vector<double>> A, B, C = sys.C, D = sys.D;
     switch (method) {
     case DiscretizationMethod::ZOH:
-        d2c_zoh_ab(sys.A, sys.B, Ts, A, B);
+        if (auto r = d2c_zoh_ab(sys.A, sys.B, Ts, A, B); !r)
+            return sys;
         break;
     case DiscretizationMethod::Tustin:
-        d2c_tustin(sys.A, sys.B, sys.C, sys.D, Ts, A, B, C, D);
+        if (auto r = d2c_tustin(sys.A, sys.B, sys.C, sys.D, Ts, A, B, C, D); !r)
+            return sys;
         break;
     case DiscretizationMethod::Euler:
         A = mat_scale(mat_sub(sys.A, identity_mat(sys.n)), 1.0 / Ts);
@@ -893,7 +908,7 @@ static bool gauss_solve_flat(std::vector<double>& K, int n, int cols) {
     return true;
 }
 
-static bool gauss_solve(std::vector<std::vector<double>>& K, int n) {
+[[maybe_unused]] static bool gauss_solve(std::vector<std::vector<double>>& K, int n) {
     const int cols = n + 1;
     std::vector<double> flat(static_cast<size_t>(n * cols));
     for (int i = 0; i < n; ++i)
@@ -1347,9 +1362,9 @@ PIDGains pidtune(const TransferFunction& plant, double bandwidth) {
 
 // Small dense matrix inverse via Gauss-Jordan with partial pivoting, in the
 // same defensive style as gauss_solve() above: never throws, and reports
-// singularity through `ok` instead (unlike mat_inv(), which throws — not
-// usable here since a singular innovation covariance is an expected,
-// recoverable degenerate input rather than a programming error).
+// singularity through `ok` instead (mat_inv() now returns Result rather than
+// throwing). A singular innovation covariance is an expected, recoverable
+// degenerate input rather than a programming error.
 static std::vector<std::vector<double>> kalman_safe_inverse(
     const std::vector<std::vector<double>>& M, bool& ok) {
     const int n = static_cast<int>(M.size());

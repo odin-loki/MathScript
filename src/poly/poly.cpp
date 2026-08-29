@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <numeric>
 #include <set>
-#include <stdexcept>
 #include <utility>
 
 namespace ms {
@@ -249,16 +248,17 @@ static double binom_double(int n, int k) {
     return r;
 }
 
-std::vector<double> poly_pow(const std::vector<double>& p, int n) {
+Result<std::vector<double>> poly_pow(const std::vector<double>& p, int n) {
     if (n < 0) {
-        throw std::invalid_argument("poly_pow: negative exponent unsupported");
+        return std::unexpected(
+            DomainError{"poly_pow", "negative exponent unsupported"});
     }
     if (n == 0) {
-        return {1.0};
+        return std::vector<double>{1.0};
     }
     auto base = strip(p);
     if (base.empty()) {
-        return {0.0};
+        return std::vector<double>{0.0};
     }
     std::vector<double> result = {1.0};
     std::vector<double> cur = base;

@@ -100,6 +100,25 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-linux -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Release ${{ env.MS_CI_LINUX_FLAGS }}
 
+      - name: No-exceptions tree gate
+        run: |
+          set -euo pipefail
+          CXX=g++-13
+          FLAGS=(-std=c++23 -fno-exceptions -fsyntax-only -Iinclude -Ibuild-linux/include)
+          files=(
+            src/core/tensor.cpp
+            src/poly/poly.cpp
+            src/bignum/bignum.cpp
+            src/control/control.cpp
+            src/fem/fem.cpp
+            src/cpu/blas.cpp
+            src/runtime/cpu/blas_dgemm.cpp
+          )
+          for f in "${files[@]}"; do
+            echo "checking $f"
+            "$CXX" "${FLAGS[@]}" -c "$f" -o /dev/null
+          done
+
       - name: Build
         run: cmake --build build-linux
 

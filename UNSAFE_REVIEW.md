@@ -1,6 +1,6 @@
 # Unsafe Surface Review
 
-MathScript restricts unchecked memory access, raw casts, and interop boundaries via `[[ms::unsafe("reason")]]` annotations (see `mathscript-master-plan.md` §7.4). This file tracks the statically audited baseline until the Clang plugin audit (`MS_BUILD_PLUGIN`) is enabled in CI.
+MathScript restricts unchecked memory access, raw casts, and interop boundaries via `[[ms::unsafe("reason")]]` annotations. This file tracks the statically audited baseline. Full compile-fail enforcement is the Clang plugin (`MS_BUILD_PLUGIN=ON`, CI job `plugin-linux`).
 
 ## Baseline
 

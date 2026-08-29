@@ -2,7 +2,7 @@
 # Usage: .\build.ps1 [-Test] [-Benchmark] [-Configure] [-Clean]
 #   -Configure  Run CMake configure only (no build)
 #   -Clean      Remove build directory before configure+build
-#   -Benchmark  Configure build-msvc-bench with MS_BUILD_BENCHMARKS=ON
+#   -Benchmark  Same build-msvc tree with MS_BUILD_BENCHMARKS=ON, then smoke 28 benches
 
 param(
     [switch]$Test,
@@ -14,11 +14,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$BuildDir = if ($Benchmark) {
-    Join-Path $Root "build-msvc-bench"
-} else {
-    Join-Path $Root "build-msvc"
-}
+$BuildDir = Join-Path $Root "build-msvc"
 
 if ($Clean -and (Test-Path $BuildDir)) {
     Remove-Item -Recurse -Force $BuildDir

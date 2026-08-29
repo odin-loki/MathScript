@@ -6,7 +6,7 @@ MathScript ships a line-oriented **REPL** (read–eval–print loop) that lets y
 
 ## Starting the REPL
 
-After a successful build, the console REPL binary is `mathscript-repl` (e.g. `build-msvc/bin/mathscript-repl.exe` on Windows, `build-linux/bin/mathscript-repl` on Linux).
+After a successful build, the console REPL binary is `mathscript-repl` (e.g. `build-msvc/bin/mathscript-repl.exe` on Windows, `build/bin/mathscript-repl` on Linux).
 
 **Interactive session** — type commands at the `ms>` prompt; type `exit` or `quit` to leave:
 
@@ -182,7 +182,7 @@ Several crypto helpers take **hex-encoded** byte strings and return hex output. 
 ms> crypto_hkdf_sha256("0b0b0b0b0b0b0b0b0b0b0b", "000102030405060708090a0b0c", "f0f1f2f3f4f5f6f7f8f9", 42)
 ```
 
-Other Wave 231+ bindings include AES-128/256 CBC, ChaCha20, AES-GCM, ChaCha20-Poly1305, X25519, PBKDF2, and Ed25519 (`crypto_ed25519_keypair` / `sign` / `verify`) — see [`docs/API.md`](API.md).
+Related bindings include AES-128/256 CBC, ChaCha20, AES-GCM, ChaCha20-Poly1305, X25519, PBKDF2, and Ed25519 (`crypto_ed25519_keypair` / `sign` / `verify`) — see [`docs/API.md`](API.md).
 
 ---
 
@@ -270,7 +270,7 @@ There is no native GUI window in the console REPL.
 
 When built with **`MS_BUILD_GUI=ON`**, the **`mathscript-gui`** IDE (Qt6) runs the same REPL engine but renders plots in **`PlotWidget`** (2-D) and **`PlotSurfWidget`** (3-D surfaces), with PNG export from the File menu. The REPL input bar accepts the same plot commands.
 
-**Wave 238–240 GUI additions:**
+**GUI (`mathscript-gui`, `MS_BUILD_GUI=ON`):**
 
 | Feature | How to use |
 |---------|------------|
@@ -282,7 +282,7 @@ When built with **`MS_BUILD_GUI=ON`**, the **`mathscript-gui`** IDE (Qt6) runs t
 | Export command history | **File → Export Command History…** — save REPL input history to a text file |
 | Up/Down command history | **Up-arrow / Down-arrow** in the REPL input bar (draft recall on Down past newest entry) |
 
-Earlier GUI waves added syntax highlighting, layout persistence, variable inspector, cooperative **Stop**, status-bar GPU info, **Ctrl+Enter** Run, Clear Output (**Ctrl+L**), Open Recent, font zoom, and About dialog — all optional when `MS_BUILD_GUI=ON`.
+The IDE also has script-editor syntax highlighting, layout persistence, a variable inspector, cooperative **Stop**, status-bar GPU info, **Ctrl+Enter** Run, Clear Output (**Ctrl+L**), Open Recent, font zoom, and an About dialog.
 
 Named matrices work as arguments: `scatter(X, Y)`, `imshow(M)`, `spy(S)`.
 
@@ -404,6 +404,6 @@ JIT does not change numerical results — it only affects how scalar assignments
 - **[`docs/API.md`](API.md)** — exhaustive REPL function reference grouped by module (linalg, stats, signal, ML, graph, special functions, …).
 - **[`docs/ARCHITECTURE.md`](ARCHITECTURE.md)** — how the REPL, JIT backend, session registry, and GUI fit into the wider library.
 - **[`docs/CONTRIBUTING.md`](CONTRIBUTING.md)** — build options, test commands, coverage, and JIT build instructions.
-- **[`CHANGELOG.md`](../CHANGELOG.md)** — recent features, new REPL bindings, and breaking changes.
+- **[`docs/WAVES.md`](WAVES.md)** — wave-by-wave implementation history.
 
 Type **`help`** at the `ms>` prompt anytime for an inline summary of syntax, plotting, ODE formula strings, and the most common function forms.

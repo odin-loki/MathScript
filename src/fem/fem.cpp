@@ -2,7 +2,6 @@
 
 #include "ms/core/operations.hpp"
 #include <cmath>
-#include <stdexcept>
 #include <vector>
 
 namespace ms {
@@ -17,25 +16,28 @@ constexpr double k_gauss_w[2] = {1.0, 1.0};
 constexpr double k_tri_quad_xi[3] = {1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0};
 constexpr double k_tri_quad_eta[3] = {1.0 / 6.0, 1.0 / 6.0, 2.0 / 3.0};
 
-void validate_dirichlet(
+Result<void> validate_dirichlet(
     const ColMatrix<double>& K,
     const ColMatrix<double>& f,
     const std::vector<std::size_t>& node_indices,
     const std::vector<double>& values) {
     if (K.rows() != K.cols()) {
-        throw std::invalid_argument("assemble_stiffness: K must be square");
+        return std::unexpected(DomainError{"assemble_stiffness", "K must be square"});
     }
     if (f.rows() != K.rows() || f.cols() != 1) {
-        throw std::invalid_argument("apply_dirichlet: f must be a column vector matching K");
+        return std::unexpected(
+            DomainError{"apply_dirichlet", "f must be a column vector matching K"});
     }
     if (node_indices.size() != values.size()) {
-        throw std::invalid_argument("apply_dirichlet: node_indices and values size mismatch");
+        return std::unexpected(
+            DomainError{"apply_dirichlet", "node_indices and values size mismatch"});
     }
     for (std::size_t idx : node_indices) {
         if (idx >= K.rows()) {
-            throw std::invalid_argument("apply_dirichlet: node index out of range");
+            return std::unexpected(DomainError{"apply_dirichlet", "node index out of range"});
         }
     }
+    return {};
 }
 
 constexpr double k_tridiag_singular_tol = 1e-300;
@@ -108,12 +110,12 @@ Result<ColMatrix<double>> solve_fem_tridiag(
 
 } // namespace
 
-Mesh1D mesh1d(double a, double b, std::size_t n_elements) {
+Result<Mesh1D> mesh1d(double a, double b, std::size_t n_elements) {
     if (n_elements == 0) {
-        throw std::invalid_argument("mesh1d: n_elements must be positive");
+        return std::unexpected(DomainError{"mesh1d", "n_elements must be positive"});
     }
     if (!(a < b)) {
-        throw std::invalid_argument("mesh1d: require a < b");
+        return std::unexpected(DomainError{"mesh1d", "require a < b"});
     }
 
     Mesh1D mesh;
@@ -131,13 +133,14 @@ Mesh1D mesh1d(double a, double b, std::size_t n_elements) {
     return mesh;
 }
 
-Mesh2D mesh2d_rectangular(
+Result<Mesh2D> mesh2d_rectangular(
     double x0, double y0, double x1, double y1, std::size_t nx, std::size_t ny) {
     if (nx == 0 || ny == 0) {
-        throw std::invalid_argument("mesh2d_rectangular: nx and ny must be positive");
+        return std::unexpected(DomainError{"mesh2d_rectangular", "nx and ny must be positive"});
     }
     if (!(x0 < x1) || !(y0 < y1)) {
-        throw std::invalid_argument("mesh2d_rectangular: require x0 < x1 and y0 < y1");
+        return std::unexpected(
+            DomainError{"mesh2d_rectangular", "require x0 < x1 and y0 < y1"});
     }
 
     Mesh2D mesh;
@@ -175,7 +178,7 @@ Mesh2D mesh2d_rectangular(
     return mesh;
 }
 
-Mesh3D mesh3d_box(
+Result<Mesh3D> mesh3d_box(
     double x0,
     double y0,
     double z0,
@@ -186,10 +189,12 @@ Mesh3D mesh3d_box(
     std::size_t ny,
     std::size_t nz) {
     if (nx == 0 || ny == 0 || nz == 0) {
-        throw std::invalid_argument("mesh3d_box: nx, ny, and nz must be positive");
+        return std::unexpected(
+            DomainError{"mesh3d_box", "nx, ny, and nz must be positive"});
     }
     if (!(x0 < x1) || !(y0 < y1) || !(z0 < z1)) {
-        throw std::invalid_argument("mesh3d_box: require x0 < x1, y0 < y1, and z0 < z1");
+        return std::unexpected(
+            DomainError{"mesh3d_box", "require x0 < x1, y0 < y1, and z0 < z1"});
     }
 
     Mesh3D mesh;
@@ -245,29 +250,29 @@ Mesh3D mesh3d_box(
     return mesh;
 }
 
-std::array<double, 2> LagrangeBasis::evaluate(double xi) const {
+Result<std::array<double, 2>> LagrangeBasis::evaluate(double xi) const {
     if (degree != 1) {
-        throw std::invalid_argument("LagrangeBasis::evaluate: only P1 supported");
+        return std::unexpected(DomainError{"LagrangeBasis::evaluate", "only P1 supported"});
     }
-    return {1.0 - xi, xi};
+    return std::array<double, 2>{1.0 - xi, xi};
 }
 
-std::array<double, 2> LagrangeBasis::derivative(double xi) const {
+Result<std::array<double, 2>> LagrangeBasis::derivative(double xi) const {
     (void)xi;
     if (degree != 1) {
-        throw std::invalid_argument("LagrangeBasis::derivative: only P1 supported");
+        return std::unexpected(DomainError{"LagrangeBasis::derivative", "only P1 supported"});
     }
-    return {-1.0, 1.0};
+    return std::array<double, 2>{-1.0, 1.0};
 }
 
 LagrangeBasis lagrange_basis() {
     return LagrangeBasis{};
 }
 
-ColMatrix<double> assemble_stiffness_1d(const Mesh1D& mesh) {
+Result<ColMatrix<double>> assemble_stiffness_1d(const Mesh1D& mesh) {
     const std::size_t n_nodes = mesh.nodes.size();
     if (n_nodes < 2 || mesh.connectivity.empty()) {
-        throw std::invalid_argument("assemble_stiffness_1d: mesh is too small");
+        return std::unexpected(DomainError{"assemble_stiffness_1d", "mesh is too small"});
     }
 
     ColMatrix<double> K(n_nodes, n_nodes, 0.0);
@@ -275,12 +280,14 @@ ColMatrix<double> assemble_stiffness_1d(const Mesh1D& mesh) {
         const std::size_t n0 = elem[0];
         const std::size_t n1 = elem[1];
         if (n1 >= n_nodes || n0 >= n_nodes) {
-            throw std::invalid_argument("assemble_stiffness_1d: invalid connectivity");
+            return std::unexpected(
+                DomainError{"assemble_stiffness_1d", "invalid connectivity"});
         }
 
         const double h = mesh.nodes[n1] - mesh.nodes[n0];
         if (h <= 0.0) {
-            throw std::invalid_argument("assemble_stiffness_1d: non-positive element length");
+            return std::unexpected(
+                DomainError{"assemble_stiffness_1d", "non-positive element length"});
         }
 
         const double k = 1.0 / h;
@@ -292,12 +299,12 @@ ColMatrix<double> assemble_stiffness_1d(const Mesh1D& mesh) {
     return K;
 }
 
-ColMatrix<double> assemble_load_1d(
+Result<ColMatrix<double>> assemble_load_1d(
     const Mesh1D& mesh,
     const std::function<double(double)>& f) {
     const std::size_t n_nodes = mesh.nodes.size();
     if (n_nodes < 2 || mesh.connectivity.empty()) {
-        throw std::invalid_argument("assemble_load_1d: mesh is too small");
+        return std::unexpected(DomainError{"assemble_load_1d", "mesh is too small"});
     }
 
     ColMatrix<double> load(n_nodes, 1, 0.0);
@@ -310,7 +317,8 @@ ColMatrix<double> assemble_load_1d(
         const double x1 = mesh.nodes[n1];
         const double h = x1 - x0;
         if (h <= 0.0) {
-            throw std::invalid_argument("assemble_load_1d: non-positive element length");
+            return std::unexpected(
+                DomainError{"assemble_load_1d", "non-positive element length"});
         }
 
         for (int q = 0; q < 2; ++q) {
@@ -318,17 +326,20 @@ ColMatrix<double> assemble_load_1d(
             const double x = x0 + h * xi_ref;
             const double weight = 0.5 * h * k_gauss_w[q];
             const auto N = basis.evaluate(xi_ref);
-            load(n0, 0) += weight * f(x) * N[0];
-            load(n1, 0) += weight * f(x) * N[1];
+            if (!N) {
+                return std::unexpected(N.error());
+            }
+            load(n0, 0) += weight * f(x) * (*N)[0];
+            load(n1, 0) += weight * f(x) * (*N)[1];
         }
     }
     return load;
 }
 
-ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh) {
+Result<ColMatrix<double>> assemble_stiffness_2d(const Mesh2D& mesh) {
     const std::size_t n_nodes = mesh.nodes.size();
     if (n_nodes < 3 || mesh.triangles.empty()) {
-        throw std::invalid_argument("assemble_stiffness_2d: mesh is too small");
+        return std::unexpected(DomainError{"assemble_stiffness_2d", "mesh is too small"});
     }
 
     ColMatrix<double> K(n_nodes, n_nodes, 0.0);
@@ -337,7 +348,8 @@ ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh) {
         const std::size_t n1 = tri[1];
         const std::size_t n2 = tri[2];
         if (n0 >= n_nodes || n1 >= n_nodes || n2 >= n_nodes) {
-            throw std::invalid_argument("assemble_stiffness_2d: invalid connectivity");
+            return std::unexpected(
+                DomainError{"assemble_stiffness_2d", "invalid connectivity"});
         }
 
         const double x0 = mesh.nodes[n0][0];
@@ -350,7 +362,8 @@ ColMatrix<double> assemble_stiffness_2d(const Mesh2D& mesh) {
         const double area =
             0.5 * ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
         if (std::abs(area) <= 0.0) {
-            throw std::invalid_argument("assemble_stiffness_2d: degenerate triangle");
+            return std::unexpected(
+                DomainError{"assemble_stiffness_2d", "degenerate triangle"});
         }
 
         const double b[3] = {y1 - y2, y2 - y0, y0 - y1};
@@ -424,7 +437,7 @@ Vec3 matvec_transpose(const double m[3][3], const Vec3& v) {
         m[0][2] * v.x + m[1][2] * v.y + m[2][2] * v.z};
 }
 
-void add_tet_stiffness(
+Result<void> add_tet_stiffness(
     ColMatrix<double>& K,
     const std::array<Vec3, 4>& verts,
     const std::array<std::size_t, 4>& nodes) {
@@ -433,13 +446,15 @@ void add_tet_stiffness(
     const Vec3 e3 = verts[3] - verts[0];
         const double signed_volume = det3(e1, e2, e3) / 6.0;
     if (std::abs(signed_volume) <= 0.0) {
-        throw std::invalid_argument("assemble_stiffness_3d: degenerate tetrahedron");
+        return std::unexpected(
+            DomainError{"assemble_stiffness_3d", "degenerate tetrahedron"});
     }
     const double volume = std::abs(signed_volume);
 
     double j_inv[3][3];
     if (!invert3x3(e1, e2, e3, j_inv)) {
-        throw std::invalid_argument("assemble_stiffness_3d: degenerate tetrahedron");
+        return std::unexpected(
+            DomainError{"assemble_stiffness_3d", "degenerate tetrahedron"});
     }
 
     const std::array<Vec3, 4> grad_ref = {
@@ -459,6 +474,7 @@ void add_tet_stiffness(
             K(nodes[i], nodes[j]) += ke;
         }
     }
+    return {};
 }
 
 constexpr double k_tet_quad_lambda[4][4] = {
@@ -468,7 +484,7 @@ constexpr double k_tet_quad_lambda[4][4] = {
     {0.13819660, 0.13819660, 0.13819660, 0.58541020},
 };
 
-void add_tet_load(
+Result<void> add_tet_load(
     ColMatrix<double>& load,
     const std::array<Vec3, 4>& verts,
     const std::array<std::size_t, 4>& nodes,
@@ -478,7 +494,7 @@ void add_tet_load(
     const Vec3 e3 = verts[3] - verts[0];
     const double volume = std::abs(det3(e1, e2, e3)) / 6.0;
     if (volume <= 0.0) {
-        throw std::invalid_argument("assemble_load_3d: degenerate tetrahedron");
+        return std::unexpected(DomainError{"assemble_load_3d", "degenerate tetrahedron"});
     }
 
     const double weight = volume / 4.0;
@@ -496,14 +512,15 @@ void add_tet_load(
             load(nodes[i], 0) += weight * fq * N[i];
         }
     }
+    return {};
 }
 
 } // namespace
 
-ColMatrix<double> assemble_stiffness_3d(const Mesh3D& mesh) {
+Result<ColMatrix<double>> assemble_stiffness_3d(const Mesh3D& mesh) {
     const std::size_t n_nodes = mesh.nodes.size();
     if (n_nodes < 4 || mesh.tetrahedra.empty()) {
-        throw std::invalid_argument("assemble_stiffness_3d: mesh is too small");
+        return std::unexpected(DomainError{"assemble_stiffness_3d", "mesh is too small"});
     }
 
     ColMatrix<double> K(n_nodes, n_nodes, 0.0);
@@ -513,7 +530,8 @@ ColMatrix<double> assemble_stiffness_3d(const Mesh3D& mesh) {
         const std::size_t n2 = tet[2];
         const std::size_t n3 = tet[3];
         if (n0 >= n_nodes || n1 >= n_nodes || n2 >= n_nodes || n3 >= n_nodes) {
-            throw std::invalid_argument("assemble_stiffness_3d: invalid connectivity");
+            return std::unexpected(
+                DomainError{"assemble_stiffness_3d", "invalid connectivity"});
         }
 
         const std::array<Vec3, 4> verts = {
@@ -521,17 +539,19 @@ ColMatrix<double> assemble_stiffness_3d(const Mesh3D& mesh) {
             Vec3{mesh.nodes[n1][0], mesh.nodes[n1][1], mesh.nodes[n1][2]},
             Vec3{mesh.nodes[n2][0], mesh.nodes[n2][1], mesh.nodes[n2][2]},
             Vec3{mesh.nodes[n3][0], mesh.nodes[n3][1], mesh.nodes[n3][2]}};
-        add_tet_stiffness(K, verts, tet);
+        if (auto r = add_tet_stiffness(K, verts, tet); !r) {
+            return std::unexpected(r.error());
+        }
     }
     return K;
 }
 
-ColMatrix<double> assemble_load_2d(
+Result<ColMatrix<double>> assemble_load_2d(
     const Mesh2D& mesh,
     const std::function<double(double, double)>& f) {
     const std::size_t n_nodes = mesh.nodes.size();
     if (n_nodes < 3 || mesh.triangles.empty()) {
-        throw std::invalid_argument("assemble_load_2d: mesh is too small");
+        return std::unexpected(DomainError{"assemble_load_2d", "mesh is too small"});
     }
 
     ColMatrix<double> load(n_nodes, 1, 0.0);
@@ -549,7 +569,7 @@ ColMatrix<double> assemble_load_2d(
         const double area =
             0.5 * ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0));
         if (std::abs(area) <= 0.0) {
-            throw std::invalid_argument("assemble_load_2d: degenerate triangle");
+            return std::unexpected(DomainError{"assemble_load_2d", "degenerate triangle"});
         }
 
         const std::size_t nodes[3] = {n0, n1, n2};
@@ -571,12 +591,12 @@ ColMatrix<double> assemble_load_2d(
     return load;
 }
 
-ColMatrix<double> assemble_load_3d(
+Result<ColMatrix<double>> assemble_load_3d(
     const Mesh3D& mesh,
     const std::function<double(double, double, double)>& f) {
     const std::size_t n_nodes = mesh.nodes.size();
     if (n_nodes < 4 || mesh.tetrahedra.empty()) {
-        throw std::invalid_argument("assemble_load_3d: mesh is too small");
+        return std::unexpected(DomainError{"assemble_load_3d", "mesh is too small"});
     }
 
     ColMatrix<double> load(n_nodes, 1, 0.0);
@@ -586,7 +606,7 @@ ColMatrix<double> assemble_load_3d(
         const std::size_t n2 = tet[2];
         const std::size_t n3 = tet[3];
         if (n0 >= n_nodes || n1 >= n_nodes || n2 >= n_nodes || n3 >= n_nodes) {
-            throw std::invalid_argument("assemble_load_3d: invalid connectivity");
+            return std::unexpected(DomainError{"assemble_load_3d", "invalid connectivity"});
         }
 
         const std::array<Vec3, 4> verts = {
@@ -594,17 +614,21 @@ ColMatrix<double> assemble_load_3d(
             Vec3{mesh.nodes[n1][0], mesh.nodes[n1][1], mesh.nodes[n1][2]},
             Vec3{mesh.nodes[n2][0], mesh.nodes[n2][1], mesh.nodes[n2][2]},
             Vec3{mesh.nodes[n3][0], mesh.nodes[n3][1], mesh.nodes[n3][2]}};
-        add_tet_load(load, verts, tet, f);
+        if (auto r = add_tet_load(load, verts, tet, f); !r) {
+            return std::unexpected(r.error());
+        }
     }
     return load;
 }
 
-void apply_dirichlet(
+Result<void> apply_dirichlet(
     ColMatrix<double>& K,
     ColMatrix<double>& f,
     const std::vector<std::size_t>& node_indices,
     const std::vector<double>& values) {
-    validate_dirichlet(K, f, node_indices, values);
+    if (auto r = validate_dirichlet(K, f, node_indices, values); !r) {
+        return r;
+    }
 
     for (std::size_t k = 0; k < node_indices.size(); ++k) {
         const std::size_t i = node_indices[k];
@@ -623,6 +647,7 @@ void apply_dirichlet(
         K(i, i) = 1.0;
         f(i, 0) = g;
     }
+    return {};
 }
 
 Result<ColMatrix<double>> solve_fem(

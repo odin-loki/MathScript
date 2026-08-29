@@ -4,12 +4,7 @@
 # Usage:
 #   bash scripts/tag_1.0.0_checklist.sh
 #
-# After fuzz-24h.yml completes with zero crashes:
-#   1. Update project(MathScript VERSION ...) in CMakeLists.txt to 1.0.0
-#   2. Re-run cmake configure (regenerates include/ms/version.hpp)
-#   3. Update CHANGELOG.md [Unreleased] -> [1.0.0] with date
-#   4. bash scripts/pre_release.sh
-#   5. Confirm CI green on main, then: git tag v1.0.0 && git push origin v1.0.0
+# After fuzz-24h.yml completes with zero crashes, see docs/RELEASE.md for tag steps.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,7 +15,7 @@ echo "Current: ${VERSION_LINE:-unknown}"
 echo
 echo "Required before tagging (see docs/RELEASE.md):"
 echo "  [ ] CI green on main (.github/workflows/ci.yml)"
-echo "  [ ] 368 CTest suites passing"
+echo "  [ ] 816 CTest suites passing"
 echo "  [ ] Coverage >= 90% (coverage-linux)"
 echo "  [ ] Valgrind clean (valgrind-linux)"
 echo "  [ ] fuzz-24h.yml: 86400 s x 7 targets, zero crashes"

@@ -1,0 +1,45 @@
+
+#include <gtest/gtest.h>
+#include <cmath>
+#include <string>
+
+#include "ms/interp/repl_engine.hpp"
+#include "ms/special/special.hpp"
+
+using namespace ms::interp;
+
+namespace {
+
+void expect_ok(Interpreter& interp, const std::string& cmd) {
+    const auto result = interp.execute(cmd);
+    ASSERT_TRUE(result.has_value()) << cmd << " error: "
+                                    << (result ? *result : "unknown");
+}
+
+void expect_contains(Interpreter& interp, const std::string& cmd, const std::string& needle) {
+    const auto result = interp.execute(cmd);
+    ASSERT_TRUE(result.has_value()) << cmd;
+    EXPECT_NE(result->find(needle), std::string::npos) << cmd << " output: " << *result;
+}
+
+} // namespace
+
+TEST(IntegrationGeo,  BezierKdtreeTail28) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_bezier_subdivide");
+    expect_contains(interp, "help", "geo_kdtree_3d_knn");
+
+    expect_ok(interp, "ctrl = [0, 0; 1, 2; 2, 0]");
+    expect_ok(interp, "sub = geo_bezier_subdivide(ctrl, 0.5)");
+    EXPECT_EQ(interp.state().matrices.at("sub").rows(), 6u);
+
+    expect_ok(interp, "P = [0,0,0; 1,0,0; 2,0,0]");
+    expect_ok(interp, "n = geo_kdtree_3d_knn(P, 0.9, 0, 0, 2)");
+    EXPECT_EQ(interp.state().matrices.at("n").rows(), 2u);
+}
+
+TEST(IntegrationGeo,  SphericalKnScalar) {
+    Interpreter interp;
+    expect_ok(interp, "sk = spherical_kn(0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sk"), ms::spherical_kn(0, 1.0), 1e-8);
+}

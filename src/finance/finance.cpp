@@ -1186,7 +1186,6 @@ double trinomial_option(double S, double K, double T, double r, double sigma,
                         int n_steps, bool is_call, bool is_american) {
     double dt = T / n_steps;
     double u = std::exp(sigma * std::sqrt(2.0 * dt));
-    double d = 1.0 / u;
     double disc = std::exp(-r * dt);
 
     double up_leg = std::exp(sigma * std::sqrt(dt / 2.0));

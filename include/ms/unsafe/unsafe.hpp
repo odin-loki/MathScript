@@ -11,8 +11,8 @@
 #if defined(__clang__) || defined(__GNUC__)
 #define MS_UNSAFE(reason) ms::unsafe(reason)
 #elif defined(_MSC_VER)
-// MSVC: unknown custom attributes compile; reason string is not forwarded in the attribute.
-#define MS_UNSAFE(reason) ms::unsafe
+// MSVC warns C5030 on unknown attributes; the Clang plugin is the enforcement path.
+#define MS_UNSAFE(reason)
 #else
 #define MS_UNSAFE(reason)
 #endif

@@ -1,3 +1,4 @@
+#include "ms/core/attributes.hpp"
 #include "ms/cpu/blas.hpp"
 #include "ms/simd/simd.hpp"
 
@@ -12,7 +13,7 @@ bool is_no_transpose(char trans) {
     return trans == 'N' || trans == 'n';
 }
 
-__forceinline void scale_vector(int n, double beta, double* y, int incy) {
+MS_FORCEINLINE void scale_vector(int n, double beta, double* y, int incy) {
     if (beta == 1.0) {
         return;
     }
@@ -35,7 +36,7 @@ __forceinline void scale_vector(int n, double beta, double* y, int incy) {
     }
 }
 
-__forceinline void dgemv_nn(
+MS_FORCEINLINE void dgemv_nn(
     int m,
     int n,
     double alpha,
@@ -78,7 +79,7 @@ __forceinline void dgemv_nn(
     }
 }
 
-__forceinline void dgemv_t(
+MS_FORCEINLINE void dgemv_t(
     int m,
     int n,
     double alpha,

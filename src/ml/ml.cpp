@@ -9,12 +9,37 @@
 #include <random>
 #include <set>
 #include <functional>
+#include <cstddef>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
 namespace ms {
 namespace ml {
+
+namespace {
+int to_i(std::size_t n) noexcept {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4267)
+#pragma warning(disable : 4244)
+#endif
+    return static_cast<int>(n);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+}
+int to_i(double x) noexcept {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#endif
+    return static_cast<int>(x);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+}
+} // namespace
 
 // ========================== Utilities ==========================
 
@@ -26,20 +51,20 @@ Mat mat_eye(int n) {
 }
 Mat mat_T(const Mat& A) {
     if (A.empty()) return {};
-    int m=A.size(), n=A[0].size();
+    int m=to_i(A.size()), n=to_i(A[0].size());
     Mat B(n, Vec(m));
     for (int i=0;i<m;++i) for (int j=0;j<n;++j) B[j][i]=A[i][j];
     return B;
 }
 Mat mat_mul(const Mat& A, const Mat& B) {
-    int m=A.size(), k=A[0].size(), n=B[0].size();
+    int m=to_i(A.size()), k=to_i(A[0].size()), n=to_i(B[0].size());
     Mat C(m, Vec(n,0));
     for (int i=0;i<m;++i) for (int l=0;l<k;++l) for (int j=0;j<n;++j)
         C[i][j]+=A[i][l]*B[l][j];
     return C;
 }
 Vec mat_vec(const Mat& A, const Vec& x) {
-    int m=A.size(), n=x.size();
+    int m=to_i(A.size()), n=to_i(x.size());
     Vec y(m,0);
     for (int i=0;i<m;++i) for (int j=0;j<n;++j) y[i]+=A[i][j]*x[j];
     return y;
@@ -78,7 +103,7 @@ static Mat add_bias(const Mat& X) {
 
 // Solve Ax=b via Gauss-Jordan
 static Vec gauss_solve(Mat A, Vec b) {
-    int n=A.size();
+    int n=to_i(A.size());
     for (int col=0;col<n;++col) {
         int p=col;
         for (int r=col+1;r<n;++r) if (std::abs(A[r][col])>std::abs(A[p][col])) p=r;
@@ -119,7 +144,7 @@ double LinearRegression::score(const Mat& X, const Vec& y) const { return r2_sco
 
 void RidgeRegression::fit(const Mat& X, const Vec& y, bool use_intercept) {
     Mat Xb = use_intercept ? add_bias(X) : X;
-    int n=Xb[0].size();
+    int n=to_i(Xb[0].size());
     auto Xt = mat_T(Xb);
     auto XtX = mat_mul(Xt, Xb);
     for (int i=1;i<n;++i) XtX[i][i]+=alpha;  // don't regularise intercept
@@ -143,7 +168,7 @@ static double soft_threshold(double x, double t) {
 }
 
 void LassoRegression::fit(const Mat& X, const Vec& y) {
-    int n=X.size(), p=X[0].size();
+    int n=to_i(X.size()), p=to_i(X[0].size());
     coef.assign(p, 0.0); intercept=0;
     Vec r=y;
     for (int iter=0;iter<max_iter;++iter) {
@@ -175,7 +200,7 @@ Vec LassoRegression::predict(const Mat& X) const {
 void ElasticNet::fit(const Mat& X, const Vec& y) {
     coef.clear(); intercept=0.0;
     if (X.empty() || y.empty() || X.size()!=y.size() || X[0].empty()) return;
-    int n=X.size(), p=X[0].size();
+    int n=to_i(X.size()), p=to_i(X[0].size());
     coef.assign(p, 0.0); intercept=0;
     double l1=alpha*l1_ratio, l2=alpha*(1.0-l1_ratio);
     Vec r=y;
@@ -208,7 +233,7 @@ Vec ElasticNet::predict(const Mat& X) const {
 static double sigmoid(double z) { return 1.0/(1.0+std::exp(-z)); }
 
 void LogisticRegression::fit(const Mat& X, const Vec& y) {
-    int n=X.size(), p=X[0].size();
+    int n=to_i(X.size()), p=to_i(X[0].size());
     coef.assign(p,0.0); intercept=0;
     double lr=0.1/C;
     for (int iter=0;iter<max_iter;++iter) {
@@ -247,7 +272,7 @@ Vec KNN::predict(const Mat& X) const {
         std::sort(dists.begin(),dists.end());
         // Majority vote
         std::map<double,int> counts;
-        for (int l=0;l<k && l<(int)dists.size();++l) counts[dists[l].second]++;
+        for (int l=0;l<k && l<to_i(dists.size());++l) counts[dists[l].second]++;
         auto it=std::max_element(counts.begin(),counts.end(),[](auto&a,auto&b){return a.second<b.second;});
         pred[i]=it->first;
     }
@@ -260,7 +285,7 @@ double KNN::score(const Mat& X, const Vec& y) const { return accuracy(predict(X)
 void NaiveBayes::fit(const Mat& X, const Vec& y) {
     std::set<double> cls(y.begin(),y.end());
     classes.assign(cls.begin(),cls.end());
-    int C=classes.size(), n=X.size(), p=X[0].size();
+    int C=to_i(classes.size()), n=to_i(X.size()), p=to_i(X[0].size());
     mean.assign(C,Vec(p,0)); var.assign(C,Vec(p,0)); class_prior.assign(C,0);
     std::vector<int> counts(C,0);
     std::vector<int> class_idx(n);
@@ -283,7 +308,7 @@ void NaiveBayes::fit(const Mat& X, const Vec& y) {
 Vec NaiveBayes::predict(const Mat& X) const {
     Vec pred(X.size());
     if (X.empty()) return pred;
-    const int C=static_cast<int>(classes.size()), p=static_cast<int>(X[0].size());
+    const int C=static_cast<int>(to_i(classes.size())), p=static_cast<int>(to_i(X[0].size()));
     Vec log_prior(C);
     Mat inv_var(C, Vec(p)), log_norm(C, Vec(p));
     for (int c=0;c<C;++c) {
@@ -318,7 +343,7 @@ static Mat mat_add_reg(const Mat& A, double reg) {
 }
 
 static Mat mat_inv(const Mat& A, double reg=0.0) {
-    int n=(int)A.size();
+    int n=to_i(A.size());
     if (n==0) return {};
     Mat inv(n, Vec(n,0.0));
     Mat base=mat_add_reg(A, reg);
@@ -337,7 +362,7 @@ static double mat_quad_form(const Mat& A, const Vec& x) {
 }
 
 static double mat_logdet_spd(Mat A, double reg=0.0) {
-    int n=(int)A.size();
+    int n=to_i(A.size());
     if (n==0) return 0.0;
     for (int i=0;i<n;++i) A[i][i]+=reg;
     Mat L(n, Vec(n,0.0));
@@ -359,7 +384,7 @@ static double mat_logdet_spd(Mat A, double reg=0.0) {
 }
 
 static void sym_eig_power(const Mat& A, Mat& evecs, Vec& evals, int k, int max_iter=200) {
-    int n=(int)A.size();
+    int n=to_i(A.size());
     k=std::min(k, n);
     evecs.assign(k, Vec(n,0.0));
     evals.assign(k, 0.0);
@@ -396,7 +421,7 @@ static void sym_eig_power(const Mat& A, Mat& evecs, Vec& evals, int k, int max_i
 }
 
 static Mat class_scatter(const Mat& X, const Vec& mean) {
-    int p=(int)mean.size();
+    int p=to_i(mean.size());
     Mat S=mat_zeros(p, p);
     for (const auto& x:X) {
         Vec d=vec_sub(x, mean);
@@ -417,7 +442,7 @@ void LDA::fit(const Mat& X, const Vec& y) {
 
     std::set<double> cls(y.begin(), y.end());
     classes.assign(cls.begin(), cls.end());
-    int C=(int)classes.size(), n=(int)X.size(), p=(int)X[0].size();
+    int C=to_i(classes.size()), n=to_i(X.size()), p=to_i(X[0].size());
     if (C<2) return;
 
     mean.assign(C, Vec(p,0.0));
@@ -484,7 +509,7 @@ void LDA::fit(const Mat& X, const Vec& y) {
 Vec LDA::predict(const Mat& X) const {
     Vec pred(X.size(), classes.empty()?0.0:classes[0]);
     if (classes.empty()||discrim_coef.empty()) return pred;
-    int C=(int)classes.size();
+    int C=to_i(classes.size());
     for (size_t i=0;i<X.size();++i) {
         double best=-1e300; int best_c=0;
         for (int c=0;c<C;++c) {
@@ -500,7 +525,7 @@ double LDA::score(const Mat& X, const Vec& y) const { return accuracy(predict(X)
 
 Mat LDA::transform(const Mat& X) const {
     if (projection.empty()||overall_mean.empty()) return {};
-    int k=(int)projection.size(), p=(int)overall_mean.size();
+    int k=to_i(projection.size()), p=to_i(overall_mean.size());
     Mat Z(X.size(), Vec(k, 0.0));
     for (size_t i=0;i<X.size();++i) {
         Vec xc(p);
@@ -519,7 +544,7 @@ void QDA::fit(const Mat& X, const Vec& y) {
 
     std::set<double> cls(y.begin(), y.end());
     classes.assign(cls.begin(), cls.end());
-    int C=(int)classes.size(), n=(int)X.size(), p=(int)X[0].size();
+    int C=to_i(classes.size()), n=to_i(X.size()), p=to_i(X[0].size());
     if (C<1) return;
 
     mean.assign(C, Vec(p, 0.0));
@@ -570,7 +595,7 @@ void QDA::fit(const Mat& X, const Vec& y) {
 Vec QDA::predict(const Mat& X) const {
     Vec pred(X.size(), classes.empty()?0.0:classes[0]);
     if (classes.empty()||quad_coef.empty()) return pred;
-    int C=(int)classes.size(), p=(int)X[0].size();
+    int C=to_i(classes.size()), p=to_i(X[0].size());
     for (size_t i=0;i<X.size();++i) {
         double best=-1e300; int best_c=0;
         for (int c=0;c<C;++c) {
@@ -674,7 +699,7 @@ static bool tree_all_same(const Vec& y, const std::vector<int>& idx, const std::
 
 int DecisionTree::build(const Mat& X, const Vec& y, std::vector<int>& idx, int depth) {
     const Vec& weights = fit_weights_;
-    int node_idx = (int)nodes.size();
+    int node_idx = to_i(nodes.size());
     nodes.push_back({});
     if (depth >= max_depth || idx.size() <= 1) {
         nodes[node_idx].value = tree_leaf_value(y, idx, criterion, weights);
@@ -688,7 +713,7 @@ int DecisionTree::build(const Mat& X, const Vec& y, std::vector<int>& idx, int d
     double best_g = 1e300;
     int best_f = -1;
     double best_t = 0;
-    int p = (int)X[0].size();
+    int p = to_i(X[0].size());
     double idx_w = tree_idx_weight_sum(weights, idx);
     for (int f = 0; f < p; ++f) {
         std::vector<double> vals;
@@ -723,7 +748,7 @@ int DecisionTree::build(const Mat& X, const Vec& y, std::vector<int>& idx, int d
 void DecisionTree::fit(const Mat& X, const Vec& y) {
     fit_weights_.clear();
     nodes.clear();
-    std::vector<int> idx(X.size());
+    std::vector<int> idx(to_i(X.size()));
     std::iota(idx.begin(), idx.end(), 0);
     build(X, y, idx, 0);
 }
@@ -733,7 +758,7 @@ void DecisionTree::fit(const Mat& X, const Vec& y, const Vec& sample_weights) {
     if (!sample_weights.empty() && sample_weights.size() == X.size())
         fit_weights_ = sample_weights;
     nodes.clear();
-    std::vector<int> idx(X.size());
+    std::vector<int> idx(to_i(X.size()));
     std::iota(idx.begin(), idx.end(), 0);
     build(X, y, idx, 0);
     fit_weights_.clear();
@@ -766,7 +791,7 @@ static Mat select_columns(const Mat& X, const std::vector<int>& cols) {
 void RandomForest::fit(const Mat& X, const Vec& y) {
     trees.clear();
     feature_indices.clear();
-    int n=(int)X.size(), p=(int)X[0].size();
+    int n=to_i(X.size()), p=to_i(X[0].size());
     std::mt19937 rng(config.seed);
     std::uniform_int_distribution<int> row_dist(0, std::max(0,n-1));
 
@@ -855,7 +880,7 @@ void AdaBoost::fit(const Mat& X, const Vec& y) {
     if (X.empty() || y.empty() || X.size() != y.size() || !adaboost_binary_labels(y))
         return;
 
-    int n = (int)X.size();
+    int n = to_i(X.size());
     Vec weights((size_t)n, 1.0 / n);
 
     for (size_t m = 0; m < config.n_estimators; ++m) {
@@ -953,7 +978,7 @@ void SVM::fit(const Mat& X, const Vec& y_in) {
     Vec y=y_in;
     if (!svm_normalize_labels(y)) return;
 
-    int n=(int)X.size();
+    int n=to_i(X.size());
     double C=config.C, tol=config.tol;
 
     Mat K(n, Vec(n));
@@ -1061,7 +1086,7 @@ Vec SVM::predict(const Mat& X) const {
 // ========================== KMeans ==========================
 
 void KMeans::fit(const Mat& X) {
-    int n=X.size(), p=X[0].size();
+    int n=to_i(X.size()), p=to_i(X[0].size());
     // K-means++ init
     std::mt19937 rng(42);
     centers.clear();
@@ -1079,7 +1104,7 @@ void KMeans::fit(const Mat& X) {
         std::uniform_real_distribution<double> ud(0,tot);
         double r=ud(rng); double cum=0;
         for (int i=0;i<n;++i) { cum+=dists[i]; if (cum>=r){centers.push_back(X[i]);break;} }
-        if ((int)centers.size()<ci+1) centers.push_back(X[n-1]);
+        if (to_i(centers.size())<ci+1) centers.push_back(X[n-1]);
     }
 
     labels_.resize(static_cast<size_t>(n));
@@ -1103,7 +1128,7 @@ void KMeans::fit(const Mat& X) {
             std::fill(new_centers[c].begin(), new_centers[c].end(), 0.0);
         }
         for (int i=0;i<n;++i) {
-            const int lab=labels_[i];
+            const int lab = to_i(labels_[i]);
             cnt[lab]++;
             for (int j=0;j<p;++j) new_centers[lab][j]+=X[i][j];
         }
@@ -1128,7 +1153,7 @@ Vec KMeans::predict(const Mat& X) const {
 }
 double KMeans::inertia(const Mat& X) const {
     double s=0;
-    for (size_t i=0;i<X.size();++i) { double d=eucl_dist(X[i],centers[(int)labels_[i]]); s+=d*d; }
+    for (size_t i=0;i<X.size();++i) { double d=eucl_dist(X[i],centers[to_i(labels_[i])]); s+=d*d; }
     return s;
 }
 
@@ -1137,7 +1162,7 @@ double KMeans::inertia(const Mat& X) const {
 static constexpr double GMM_VAR_FLOOR = 1e-6;
 
 static double gmm_log_gaussian_diag(const Vec& x, const Vec& mean, const Vec& var) {
-    int p=(int)x.size();
+    int p=to_i(x.size());
     double log_det=0, mahal=0;
     for (int j=0;j<p;++j) {
         double v=std::max(var[j], GMM_VAR_FLOOR);
@@ -1150,7 +1175,7 @@ static double gmm_log_gaussian_diag(const Vec& x, const Vec& mean, const Vec& va
 
 static Mat gmm_responsibilities(const Mat& X, const Mat& means, const Mat& variances,
                                 const Vec& weights, double* log_likelihood=nullptr) {
-    int n=(int)X.size(), p=(int)X[0].size();
+    int n=to_i(X.size());
     size_t k=means.size();
     Mat resp(n, Vec(k, 0.0));
     double ll=0;
@@ -1177,7 +1202,7 @@ void GaussianMixture::fit(const Mat& X) {
     means.clear(); variances.clear(); weights.clear();
     log_likelihood=0.0;
     if (X.empty()) return;
-    int n=(int)X.size(), p=(int)X[0].size();
+    int n=to_i(X.size()), p=to_i(X[0].size());
     size_t k=std::min(config.n_components, (size_t)n);
     if (k==0) return;
 
@@ -1270,11 +1295,11 @@ double IsolationForest::avg_path_length(size_t n) {
 
 int IsolationForest::build_tree(Tree& tree, const Mat& X, const std::vector<int>& idx,
                                 std::mt19937& rng, int depth, int n_feat) {
-    int node_idx = (int)tree.nodes.size();
+    int node_idx = to_i(tree.nodes.size());
     tree.nodes.push_back({});
     tree.nodes[node_idx].size = idx.size();
 
-    if (depth >= (int)tree.height_limit || idx.size() <= 1) return node_idx;
+    if (depth >= tree.height_limit || to_i(idx.size()) <= 1) return node_idx;
 
     std::uniform_int_distribution<int> feat_dist(0, std::max(0, n_feat - 1));
     int feat = feat_dist(rng);
@@ -1306,7 +1331,7 @@ int IsolationForest::build_tree(Tree& tree, const Mat& X, const std::vector<int>
 }
 
 double IsolationForest::path_length_one(const Tree& tree, const Vec& x, int node) {
-    if (node < 0 || node >= (int)tree.nodes.size()) return 0.0;
+    if (node < 0 || node >= to_i(tree.nodes.size())) return 0.0;
     const auto& nd = tree.nodes[node];
     if (nd.feature < 0) {
         return nd.size > 1 ? avg_path_length(nd.size) : 0.0;
@@ -1323,8 +1348,8 @@ void IsolationForest::fit(const Mat& X) {
     n_features_ = 0;
     if (X.empty() || X[0].empty()) return;
 
-    int n = (int)X.size();
-    int p = (int)X[0].size();
+    int n = to_i(X.size());
+    int p = to_i(X[0].size());
     n_features_ = p;
     subsample_size_ = std::min(sample_size, (size_t)n);
     if (subsample_size_ == 0) return;
@@ -1418,7 +1443,7 @@ IsolationForest IsolationForest::from_state(const IsolationForestState& state) {
 // ========================== DBSCAN ==========================
 
 void DBSCAN::fit(const Mat& X) {
-    int n=X.size();
+    int n=to_i(X.size());
     labels_.assign(n,-1);
     int cluster=-1;
     std::vector<bool> visited(n,false);
@@ -1433,7 +1458,7 @@ void DBSCAN::fit(const Mat& X) {
         if (visited[i]) continue;
         visited[i]=true;
         auto nb=neighbors(i);
-        if ((int)nb.size()<min_samples) { labels_[i]=-1; continue; }
+        if (to_i(nb.size())<min_samples) { labels_[i]=-1; continue; }
         labels_[i]=++cluster;
         std::vector<int> seeds=nb;
         for (size_t si=0;si<seeds.size();++si) {
@@ -1441,7 +1466,7 @@ void DBSCAN::fit(const Mat& X) {
             if (!visited[q]) {
                 visited[q]=true;
                 auto nb2=neighbors(q);
-                if ((int)nb2.size()>=min_samples) seeds.insert(seeds.end(),nb2.begin(),nb2.end());
+                if (to_i(nb2.size())>=min_samples) seeds.insert(seeds.end(),nb2.begin(),nb2.end());
             }
             if (labels_[q]==-1) labels_[q]=cluster;
         }
@@ -1464,7 +1489,7 @@ static double rbf_affinity(double sq_dist, double inv_two_sigma_sq) {
 }
 
 static Mat build_affinity(const Mat& X, double sigma, int n_neighbors) {
-    int n = (int)X.size();
+    int n = to_i(X.size());
     Mat W(n, Vec(n, 0.0));
     if (n == 0) return W;
 
@@ -1508,7 +1533,7 @@ static Mat build_affinity(const Mat& X, double sigma, int n_neighbors) {
 }
 
 static Mat symmetric_normalized_laplacian(const Mat& W) {
-    int n = (int)W.size();
+    int n = to_i(W.size());
     Mat L = mat_eye(n);
     if (n == 0) return L;
 
@@ -1602,8 +1627,8 @@ static Mat spectral_embedding_jacobi(const Mat& L, int k) {
     ms::ColMatrix<double> V;
     ms::ColMatrix<double> evals = ml_jacobi_eigen_symmetric(Lm, V);
     ml_sort_eig_descending(evals, V);
-    int dim = (int)evals.rows();
-    int n = (int)L.size();
+    int dim = to_i(evals.rows());
+    int n = to_i(L.size());
     int use_k = std::min(k, dim);
     int start = std::max(0, dim - use_k);
 
@@ -1626,8 +1651,8 @@ static bool spectral_eig_sym_valid(const ms::EigResult& res) {
 
 static Mat spectral_embedding_from_eig(const ms::EigResult& res, int k) {
     const auto& evecs = res.vectors;
-    int dim = (int)res.values.rows();
-    int n = (int)evecs.rows();
+    int dim = to_i(res.values.rows());
+    int n = to_i(evecs.rows());
     int use_k = std::min(k, dim);
     int start = std::max(0, dim - use_k);
 
@@ -1644,7 +1669,7 @@ static Mat spectral_embedding_from_eig(const ms::EigResult& res, int k) {
 
 std::vector<int> spectral_clustering(const Mat& X, int n_clusters,
                                        double sigma, int n_neighbors) {
-    int n = (int)X.size();
+    int n = to_i(X.size());
     if (n == 0 || X[0].empty()) return {};
 
     int k = std::max(1, std::min(n_clusters, n));
@@ -1674,7 +1699,7 @@ std::vector<int> spectral_clustering(const Mat& X, int n_clusters,
 // ========================== Agglomerative Clustering ==========================
 
 void AgglomerativeClustering::fit(const Mat& X) {
-    int n=X.size();
+    int n=to_i(X.size());
     labels_.resize(n);
     // Start: each point is its own cluster
     std::vector<std::set<int>> clusters(n);
@@ -1686,7 +1711,7 @@ void AgglomerativeClustering::fit(const Mat& X) {
 
     std::vector<int> active(n); std::iota(active.begin(),active.end(),0);
 
-    while ((int)active.size()>n_clusters) {
+    while (to_i(active.size())>n_clusters) {
         // Find closest pair
         double best=1e300; int bi=-1,bj=-1;
         for (size_t ai=0;ai<active.size();++ai) for (size_t aj=ai+1;aj<active.size();++aj) {
@@ -1708,14 +1733,14 @@ void AgglomerativeClustering::fit(const Mat& X) {
     }
 
     // Assign labels
-    for (int li=0;li<(int)active.size();++li)
+    for (int li=0;li<to_i(active.size());++li)
         for (int i:clusters[active[li]]) labels_[i]=li;
 }
 
 // ========================== PCA ==========================
 
 static void svd_power(const Mat& A, Mat& U, Vec& s, Mat& Vt, int k, int max_iter=100) {
-    int m=A.size(), n=A[0].size();
+    int m=to_i(A.size()), n=to_i(A[0].size());
     U.assign(k, Vec(m)); s.assign(k,0); Vt.assign(k, Vec(n));
     // Thin SVD via randomised power iteration
     std::mt19937 rng(42);
@@ -1761,7 +1786,7 @@ static void svd_power(const Mat& A, Mat& U, Vec& s, Mat& Vt, int k, int max_iter
 }
 
 void PCA::fit(const Mat& X) {
-    int n=X.size(), p=X[0].size();
+    int n=to_i(X.size()), p=to_i(X[0].size());
     // Center
     mean_.assign(p,0);
     for (auto& row:X) for (int j=0;j<p;++j) mean_[j]+=row[j];
@@ -1778,7 +1803,7 @@ void PCA::fit(const Mat& X) {
 }
 
 Mat PCA::transform(const Mat& X) const {
-    int n=X.size(), k=components.size();
+    int n=to_i(X.size()), k=to_i(components.size());
     Mat Z(n, Vec(k,0));
     for (int i=0;i<n;++i) {
         Vec xc(X[i].size());
@@ -1789,7 +1814,7 @@ Mat PCA::transform(const Mat& X) const {
 }
 Mat PCA::fit_transform(const Mat& X) { fit(X); return transform(X); }
 Mat PCA::inverse_transform(const Mat& Z) const {
-    int n=Z.size(), k=components.size(), p=mean_.size();
+    int n=to_i(Z.size()), k=to_i(components.size()), p=to_i(mean_.size());
     Mat Xr(n, Vec(p,0));
     for (int i=0;i<n;++i) {
         for (int r=0;r<k;++r)
@@ -1802,7 +1827,7 @@ Mat PCA::inverse_transform(const Mat& Z) const {
 // ========================== t-SNE (simplified Barnes-Hut stub) ==========================
 
 Mat TSNE::fit_transform(const Mat& X) const {
-    int n=X.size();
+    int n=to_i(X.size());
     // Compute pairwise affinities
     std::vector<std::vector<double>> P(n, std::vector<double>(n,0));
     for (int i=0;i<n;++i) {
@@ -1979,7 +2004,7 @@ Var var_pow(const Var& x, double n) {
 
 // Numerical gradient helper for functions not using Var
 Vec grad(std::function<Var(const std::vector<Var>&)> f, const Vec& x) {
-    int n=x.size(); Vec g(n);
+    int n=to_i(x.size()); Vec g(n);
     for (int i=0;i<n;++i) {
         std::vector<Var> xv(n);
         for (int j=0;j<n;++j) { xv[j]=Var(x[j]); xv[j].node->grad=0; }
@@ -1991,10 +2016,10 @@ Vec grad(std::function<Var(const std::vector<Var>&)> f, const Vec& x) {
 }
 
 Mat jacobian(std::function<std::vector<Var>(const std::vector<Var>&)> F, const Vec& x) {
-    int n=x.size();
+    int n=to_i(x.size());
     // Forward evaluation to get output size
     std::vector<Var> xv(n); for (int i=0;i<n;++i) xv[i]=Var(x[i]);
-    auto yv=F(xv); int m=yv.size();
+    auto yv=F(xv); int m=to_i(yv.size());
     Mat J(m, Vec(n,0));
     for (int k=0;k<m;++k) {
         std::vector<Var> xv2(n); for (int i=0;i<n;++i) { xv2[i]=Var(x[i]); xv2[i].node->grad=0; }
@@ -2006,7 +2031,7 @@ Mat jacobian(std::function<std::vector<Var>(const std::vector<Var>&)> F, const V
 }
 
 Mat hessian(std::function<Var(const std::vector<Var>&)> f, const Vec& x) {
-    double h=1e-5; int n=x.size(); Mat H(n,Vec(n));
+    double h=1e-5; int n=to_i(x.size()); Mat H(n,Vec(n));
     for (int i=0;i<n;++i) for (int j=0;j<n;++j) {
         Vec xpp=x,xpm=x,xmp=x,xmm=x;
         xpp[i]+=h;xpp[j]+=h; xpm[i]+=h;xpm[j]-=h;
@@ -2067,7 +2092,7 @@ NeuralNet& NeuralNet::add(int out_dim, std::string activation) {
         // defer — need input_dim from first batch
         layers.emplace_back(1, out_dim, std::move(activation));
     } else {
-        int in_dim=layers.back().W[0].size();  // Wrong, fix at compile time
+        int in_dim=to_i(layers.back().W[0].size());  // Wrong, fix at compile time
         (void)in_dim;
         layers.emplace_back(1, out_dim, std::move(activation));
     }
@@ -2079,12 +2104,12 @@ void NeuralNet::compile(std::string loss, double learning_rate) {
 }
 
 void NeuralNet::fit(const Mat& X, const Mat& Y, int epochs, int batch) {
-    int n=X.size(), in_dim=X[0].size(), out_dim=Y[0].size();
+    int n=to_i(X.size()), in_dim=to_i(X[0].size()), out_dim=to_i(Y[0].size());
     // (Re-)init layers with correct dimensions
     std::vector<int> dims;
     dims.push_back(in_dim);
     std::vector<std::string> acts;
-    for (auto& l:layers) { dims.push_back(l.W.size()); acts.push_back(l.activation); }
+    for (auto& l:layers) { dims.push_back(to_i(l.W.size())); acts.push_back(l.activation); }
     dims.back()=out_dim;  // last layer output
     if (acts.empty()) { acts.push_back("relu"); dims.push_back(out_dim); }
     layers.clear();
@@ -2105,7 +2130,7 @@ void NeuralNet::fit(const Mat& X, const Mat& Y, int epochs, int batch) {
 
 void NeuralNet::backward(const Vec& x, const Vec& target) {
     // Forward pass: store z and a for each layer
-    int L=layers.size();
+    int L=to_i(layers.size());
     std::vector<Vec> zs(L), as(L+1);
     as[0]=x;
     for (int l=0;l<L;++l) {
@@ -2129,7 +2154,7 @@ void NeuralNet::backward(const Vec& x, const Vec& target) {
             for (size_t i=0;i<delta.size();++i) delta[i]*=act_deriv(zs[l][i],layers[l].activation);
         }
         // Gradient of W and b
-        int out=layers[l].W.size(), in=layers[l].W[0].size();
+        int out=to_i(layers[l].W.size()), in=to_i(layers[l].W[0].size());
         Vec grad_b=delta;
         Mat grad_W(out, Vec(in,0));
         for (int i=0;i<out;++i) for (int j=0;j<in;++j) grad_W[i][j]=delta[i]*as[l][j];
@@ -2154,7 +2179,7 @@ void NeuralNet::backward(const Vec& x, const Vec& target) {
 }
 
 Mat NeuralNet::predict(const Mat& X) {
-    Mat out; int L=layers.size();
+    Mat out; int L=to_i(layers.size());
     for (auto& x:X) {
         Vec a=x;
         for (int l=0;l<L;++l) a=layers[l].forward_activate(layers[l].forward(a));
@@ -2332,31 +2357,31 @@ double average_precision(const Vec& yp, const Vec& yt) {
 // ========================== Preprocessing ==========================
 
 void StandardScaler::fit(const Mat& X) {
-    int p=X[0].size(); mean_.assign(p,0); std_.assign(p,0);
+    int p=to_i(X[0].size()); mean_.assign(p,0); std_.assign(p,0);
     for (auto& row:X) for (int j=0;j<p;++j) mean_[j]+=row[j];
     for (auto& m:mean_) m/=X.size();
     for (auto& row:X) for (int j=0;j<p;++j) std_[j]+=(row[j]-mean_[j])*(row[j]-mean_[j]);
     for (auto& s:std_) s=std::sqrt(s/X.size()+1e-12);
 }
 Mat StandardScaler::transform(const Mat& X) const {
-    int p=mean_.size(); Mat Z(X.size(),Vec(p));
+    int p=to_i(mean_.size()); Mat Z(to_i(X.size()),Vec(p));
     for (size_t i=0;i<X.size();++i) for (int j=0;j<p;++j) Z[i][j]=(X[i][j]-mean_[j])/std_[j];
     return Z;
 }
 Mat StandardScaler::fit_transform(const Mat& X) { fit(X); return transform(X); }
 Mat StandardScaler::inverse_transform(const Mat& Z) const {
-    int p=mean_.size(); Mat X(Z.size(),Vec(p));
+    int p=to_i(mean_.size()); Mat X(to_i(Z.size()),Vec(p));
     for (size_t i=0;i<Z.size();++i) for (int j=0;j<p;++j) X[i][j]=Z[i][j]*std_[j]+mean_[j];
     return X;
 }
 void MinMaxScaler::fit(const Mat& X) {
-    int p=X[0].size();
+    int p=to_i(X[0].size());
     min_.assign(p,std::numeric_limits<double>::infinity());
     max_.assign(p,-std::numeric_limits<double>::infinity());
     for (auto& row:X) for (int j=0;j<p;++j){ min_[j]=std::min(min_[j],row[j]); max_[j]=std::max(max_[j],row[j]); }
 }
 Mat MinMaxScaler::transform(const Mat& X) const {
-    int p=min_.size(); Mat Z(X.size(),Vec(p));
+    int p=to_i(min_.size()); Mat Z(to_i(X.size()),Vec(p));
     for (size_t i=0;i<X.size();++i) for (int j=0;j<p;++j) Z[i][j]=(X[i][j]-min_[j])/(max_[j]-min_[j]+1e-12);
     return Z;
 }
@@ -2366,11 +2391,11 @@ Mat MinMaxScaler::fit_transform(const Mat& X){ fit(X); return transform(X); }
 
 std::pair<std::pair<Mat,Vec>,std::pair<Mat,Vec>>
 train_test_split(const Mat& X, const Vec& y, double test_size, int seed) {
-    int n=X.size();
+    int n=to_i(X.size());
     std::mt19937 rng(seed);
     std::vector<int> idx(n); std::iota(idx.begin(),idx.end(),0);
     std::shuffle(idx.begin(),idx.end(),rng);
-    int n_test=std::max(1,(int)(n*test_size));
+    int n_test=std::max(1, to_i(static_cast<double>(n) * test_size));
     Mat Xtr,Xte; Vec ytr,yte;
     for (int i=0;i<n;++i){
         if (i<n_test){Xte.push_back(X[idx[i]]);yte.push_back(y[idx[i]]);}
@@ -2381,7 +2406,7 @@ train_test_split(const Mat& X, const Vec& y, double test_size, int seed) {
 
 Vec cross_val_score(std::function<double(const Mat&,const Vec&,const Mat&,const Vec&)> scorer,
                     const Mat& X, const Vec& y, int cv) {
-    int n=X.size(), fold=n/cv;
+    int n=to_i(X.size()), fold=n/cv;
     Vec scores;
     for (int k=0;k<cv;++k) {
         Mat Xte,Xtr; Vec yte,ytr;

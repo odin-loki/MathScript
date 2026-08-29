@@ -2,8 +2,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstddef>
 #include <random>
-#include <stdexcept>
 
 namespace ms {
 namespace bignum {
@@ -28,7 +28,10 @@ char digit_char(int d) {
 
 BigInt::BigInt(long long v) {
     negative = v < 0;
-    unsigned long long uv = negative ? -(unsigned long long)v : (unsigned long long)v;
+    unsigned long long uv = static_cast<unsigned long long>(v);
+    if (negative) {
+        uv = 0ull - uv;
+    }
     digits.clear();
     if (uv == 0) { digits.push_back(0); return; }
     while (uv > 0) { digits.push_back(uv % BASE); uv /= BASE; }
@@ -54,25 +57,34 @@ BigInt::BigInt(const std::string& s) {
     if (is_zero()) negative = false;
 }
 
-BigInt::BigInt(const std::string& s, int base) {
+Result<BigInt> BigInt::parse(const std::string& s, int base) {
     if (base < 2 || base > 36)
-        throw std::invalid_argument("BigInt base must be in [2, 36]");
+        return std::unexpected(DomainError{"BigInt::parse", "base must be in [2, 36]"});
     std::string str = s;
     bool is_neg = false;
     if (!str.empty() && str[0] == '-') { is_neg = true; str = str.substr(1); }
     if (!str.empty() && str[0] == '+') str = str.substr(1);
-    if (str.empty()) { digits = {0}; negative = false; return; }
-
     BigInt result(0LL);
+    if (str.empty()) return result;
+
     BigInt bbase(static_cast<long long>(base));
     for (char c : str) {
         int d = digit_value(c);
         if (d < 0 || d >= base)
-            throw std::invalid_argument("invalid digit for BigInt base");
+            return std::unexpected(DomainError{"BigInt::parse", "invalid digit for base"});
         result = result * bbase + BigInt(static_cast<long long>(d));
     }
-    *this = std::move(result);
-    negative = is_neg && !is_zero();
+    result.negative = is_neg && !result.is_zero();
+    return result;
+}
+
+Result<BigInt> BigInt::parse(const std::string& s) {
+    return parse(s, 10);
+}
+
+BigInt::BigInt(const std::string& s, int base) : digits(1, 0), negative(false) {
+    if (auto r = parse(s, base))
+        *this = std::move(*r);
 }
 
 void BigInt::trim() {
@@ -97,7 +109,7 @@ std::string BigInt::to_string() const {
 
 std::string BigInt::to_string(int base) const {
     if (base < 2 || base > 36)
-        throw std::invalid_argument("BigInt base must be in [2, 36]");
+        return {};
     if (base == 10) return to_string();
     if (is_zero()) return "0";
 
@@ -191,11 +203,12 @@ BigInt BigInt::operator-(const BigInt& o) const {
 }
 
 BigInt BigInt::operator*(const BigInt& o) const {
-    int n=digits.size(), m=o.digits.size();
+    const std::size_t n = digits.size();
+    const std::size_t m = o.digits.size();
     BigInt r; r.digits.assign(n+m, 0);
-    for (int i=0;i<n;++i) {
+    for (std::size_t i=0;i<n;++i) {
         uint64_t carry=0;
-        for (int j=0;j<m||carry;++j) {
+        for (std::size_t j=0;j<m||carry;++j) {
             uint64_t cur=(uint64_t)r.digits[i+j]+carry;
             if (j<m) cur+=(uint64_t)digits[i]*o.digits[j];
             r.digits[i+j]=cur%BASE; carry=cur/BASE;
@@ -454,13 +467,11 @@ Rational::Rational(const std::string& s) {
         else {
             std::string int_part = s.substr(0, dot);
             std::string frac_part = s.substr(dot+1);
-            int flen = frac_part.size();
-            // Remove leading '-' for computation
             bool neg = !int_part.empty() && int_part[0]=='-';
             if (neg) int_part=int_part.substr(1);
             BigInt n_int(int_part.empty()?"0":int_part);
             BigInt n_frac(frac_part.empty()?"0":frac_part);
-            BigInt d_pow = bigint_pow(BigInt(10LL), flen);
+            BigInt d_pow = bigint_pow(BigInt(10LL), static_cast<long long>(frac_part.size()));
             num = n_int*d_pow + n_frac;
             den = d_pow;
             if (neg) num.negative=true;

@@ -1,12 +1,12 @@
 # Regenerate MSVC Release benchmark baseline medians on Windows.
-# Usage: .\scripts\bench_write_msvc_baseline.ps1 [-BuildDir build-msvc-bench]
+# Usage: .\scripts\bench_write_msvc_baseline.ps1 [-BuildDir build-msvc]
 #
 # Requires a Release benchmark build: .\build.ps1 -Benchmark
 # Runs all add_ms_bench targets from tests/performance/CMakeLists.txt with 0.1s min time
 # and 3 repetitions, then writes median_time_ns into tests/performance/baselines/msvc-release.json.
 
 param(
-    [string]$BuildDir = "build-msvc-bench"
+    [string]$BuildDir = "build-msvc"
 )
 
 $ErrorActionPreference = "Stop"

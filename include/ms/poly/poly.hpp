@@ -42,8 +42,8 @@ std::vector<double> poly_gcd(const std::vector<double>& a,
 std::vector<double> poly_lcm(const std::vector<double>& a,
                                const std::vector<double>& b);
 
-// Exponentiation (n >= 0; n=0 returns {1}; negative n unsupported)
-std::vector<double> poly_pow(const std::vector<double>& p, int n);
+// Exponentiation (n >= 0; n=0 returns {1}; negative n is DomainError)
+Result<std::vector<double>> poly_pow(const std::vector<double>& p, int n);
 
 // Normalize leading coefficient to 1 (zero poly returned unchanged)
 std::vector<double> poly_monic(const std::vector<double>& p);

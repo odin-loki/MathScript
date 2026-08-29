@@ -1,3 +1,4 @@
+#include "ms/core/attributes.hpp"
 #include "ms/cpu/blas.hpp"
 #include "ms/cpu/blas_kernel.hpp"
 #include "ms/simd/simd.hpp"
@@ -10,7 +11,7 @@ namespace ms::cpu::blas {
 
 namespace {
 
-__forceinline void scale_matrix(int m, int n, double beta, double* C, int ldc) {
+MS_FORCEINLINE void scale_matrix(int m, int n, double beta, double* C, int ldc) {
     if (beta == 1.0) {
         return;
     }
@@ -27,7 +28,7 @@ __forceinline void scale_matrix(int m, int n, double beta, double* C, int ldc) {
     }
 }
 
-__forceinline void dgemm_nn_rank1(
+MS_FORCEINLINE void dgemm_nn_rank1(
     int m,
     int n,
     int k,

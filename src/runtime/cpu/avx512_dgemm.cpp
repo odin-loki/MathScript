@@ -1,3 +1,4 @@
+#include "ms/core/attributes.hpp"
 #include "ms/cpu/blas_kernel.hpp"
 #include "ms/simd/isa.hpp"
 
@@ -15,7 +16,7 @@ bool runtime_available() {
     return enabled;
 }
 
-__forceinline __m512d load_b_panel(
+MS_FORCEINLINE __m512d load_b_panel(
     int j0,
     int p,
     const double* B,
@@ -33,7 +34,7 @@ __forceinline __m512d load_b_panel(
         B[j0_u * ldb_u + p_u]);
 }
 
-__forceinline void store_acc_row(
+MS_FORCEINLINE void store_acc_row(
     __m512d acc,
     int i0,
     int j0,
@@ -53,7 +54,7 @@ __forceinline void store_acc_row(
     C[(j0_u + 7) * ldc_u + i_u] += tmp[7];
 }
 
-__forceinline void micro_kernel_4x8(
+MS_FORCEINLINE void micro_kernel_4x8(
     int k,
     int i0,
     int j0,
@@ -129,7 +130,7 @@ __forceinline void micro_kernel_4x8(
     store_acc_row(acc3, i0 + 3, j0, C, ldc_u);
 }
 
-__forceinline void rank1_tail(
+MS_FORCEINLINE void rank1_tail(
     int i0,
     int m_count,
     int j0,
@@ -183,7 +184,7 @@ __forceinline void rank1_tail(
     }
 }
 
-__forceinline void scale_matrix(int m, int n, double beta, double* C, int ldc) {
+MS_FORCEINLINE void scale_matrix(int m, int n, double beta, double* C, int ldc) {
     if (beta == 1.0) {
         return;
     }
