@@ -25,7 +25,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - GMM REPL packing uses enough columns for K, p, and log-likelihood (ASan overflow when p<3).
 - POSIX `aligned_alloc` rounds size up to a multiple of alignment.
 - `dorgbr` P-wide reflector scan stays inside A's column count (`k` when `lda >= n`) so tall factors are not over-read.
-- ASan CI does not halt on UBSan reports (ed25519 ref10 and `BigInt::to_ll` overflow). Overflows still print; ASan `halt_on_error=1` remains.
+- Valgrind memcheck skips `test_crypto` (ed25519/ref10 exceeds the CTest timeout under memcheck; ASan and the Linux/Windows unit jobs still run it).
 - `MLGMM.ThreeBlobsMeansMatch` tolerance 2.5 on CI MSVC.
 - Linux package smoke: Debian CPack uses `mathscript_1.0.0_amd64.deb` (`DEB-DEFAULT`); CI glob is `mathscript*.deb`.
 - `linux-gcc13.json` matmul medians recalibrated from GitHub-hosted ubuntu-24.04 (`MS_ENABLE_AVX512=OFF`). Tolerance remains 10%.

@@ -171,7 +171,7 @@ On push/PR to `main`:
 2. **build-test-linux** — GCC 13, no-exceptions syntax gate, CTest, CPack, unsafe audit
 3. **coverage-linux** — 80% line coverage minimum (90% is the v1.0.0 tag goal)
 4. **fuzz-linux** — 7 libFuzzer smokes
-5. **valgrind-linux** — memcheck (unit + numerical)
+5. **valgrind-linux** — memcheck (unit + numerical; skips `test_crypto`)
 6. **sanitizer-linux** — ASan/UBSan (full CTest via shared test bundle; leak detection off)
 7. **plugin-linux** — twenty compile-fail rules
 8. **jit-linux** — ORC JIT smoke

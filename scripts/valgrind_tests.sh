@@ -35,5 +35,6 @@ fi
 export CTEST_MEMORYCHECK_COMMAND=valgrind
 export CTEST_MEMORYCHECK_COMMAND_OPTIONS="${MEMCHECK_OPTS[*]}"
 
-echo "Valgrind memcheck in ${TEST_DIR} (excluding test_fuzz_stress)"
-ctest --test-dir "${TEST_DIR}" -T memcheck -E test_fuzz_stress --output-on-failure -j1
+echo "Valgrind memcheck in ${TEST_DIR} (excluding test_fuzz_stress and test_crypto)"
+# test_crypto: ed25519/ref10 is too slow under memcheck (CI timeout). Covered by ASan + unit CTest.
+ctest --test-dir "${TEST_DIR}" -T memcheck -E "test_fuzz_stress|test_crypto" --output-on-failure -j1

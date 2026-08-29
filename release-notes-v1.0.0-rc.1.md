@@ -15,7 +15,7 @@ Met on the green `main` CI run that produced these packages:
 
 - Full CTest (816 suites) on Windows MSVC and Linux GCC 13 (`-fno-exceptions`)
 - Coverage CI gate **80%** (library `src/` after excluding plugin, GUI, CUDA stubs, and `matrix_calls`; **90%** is still a `v1.0.0` goal)
-- Valgrind memcheck on unit + numerical tests
+- Valgrind memcheck on unit + numerical tests (`test_crypto` excluded: ed25519 is too slow under memcheck)
 - ASan/UBSan on the test suite (overflows fail the job; **leak detection is off** in CI; UBSan reports do not halt)
 - libFuzzer smoke, Clang plugin / compliance, LLVM ORC JIT smoke
 - Benchmark regression within 10% of `linux-gcc13.json`
