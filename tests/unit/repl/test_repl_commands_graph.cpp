@@ -188,6 +188,92 @@ TEST(ReplCommandsTest, graph_max_flow) {
     expect_contains(interp, "graph_max_flow(Aflow, 0, 3)", "4");
 }
 
+TEST(ReplCommandsTest, graph_min_cut) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_min_cut(A,source,sink)");
+
+    expect_ok(interp, "Aflow = [0, 3, 2, 0; 0, 0, 0, 2; 0, 0, 0, 3; 0, 0, 0, 0]");
+    expect_ok(interp, "mc = graph_min_cut(Aflow, 0, 3)");
+    EXPECT_NEAR(interp.state().scalars.at("mc"), 4.0, 1e-9);
+    expect_contains(interp, "graph_min_cut(Aflow, 0, 3)", "4");
+
+    expect_error_contains(interp, "graph_min_cut(Aflow, 0, 9)", "source/sink");
+    expect_ok(interp, "ns = [1, 2]");
+    expect_error_contains(interp, "graph_min_cut(ns, 0, 1)", "square");
+}
+
+TEST(ReplCommandsTest, graph_bipartite_match) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_bipartite_match(A,left_size)");
+
+    expect_ok(interp, "A = [0, 0, 1, 1; 0, 0, 1, 1; 0, 0, 0, 0; 0, 0, 0, 0]");
+    expect_ok(interp, "m = graph_bipartite_match(A, 2)");
+    EXPECT_NEAR(interp.state().scalars.at("m"), 2.0, 1e-9);
+    expect_contains(interp, "graph_bipartite_match(A, 2)", "2");
+
+    expect_error_contains(interp, "graph_bipartite_match(missing, 2)", "unknown matrix");
+    expect_error_contains(interp, "graph_bipartite_match(A, 1.5)", "integer");
+}
+
+TEST(ReplCommandsTest, graph_is_isomorphic) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_is_isomorphic(A,B)");
+
+    expect_ok(interp, "A = [0, 1, 0; 1, 0, 1; 0, 1, 0]");
+    expect_ok(interp, "B = [0, 1, 1; 1, 0, 0; 1, 0, 0]");
+    expect_ok(interp, "same = graph_is_isomorphic(A, A)");
+    EXPECT_NEAR(interp.state().scalars.at("same"), 1.0, 1e-9);
+    expect_ok(interp, "hit = graph_is_isomorphic(A, B)");
+    EXPECT_NEAR(interp.state().scalars.at("hit"), 1.0, 1e-9);
+    expect_ok(interp, "miss = graph_is_isomorphic(A, [0, 1, 1; 1, 0, 1; 1, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("miss"), 0.0, 1e-9);
+    expect_contains(interp, "graph_is_isomorphic(A, A)", "1");
+
+    expect_error_contains(interp, "graph_is_isomorphic(A, missing)", "unknown matrix");
+    expect_ok(interp, "ns = [1, 2]");
+    expect_error_contains(interp, "graph_is_isomorphic(A, ns)", "square");
+}
+
+TEST(ReplCommandsTest, graph_chromatic_number) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_chromatic_number(A)");
+
+    expect_ok(interp, "tri = graph_chromatic_number([0, 1, 1; 1, 0, 1; 1, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("tri"), 3.0, 1e-9);
+    expect_ok(interp, "path = graph_chromatic_number([0, 1, 0; 1, 0, 1; 0, 1, 0])");
+    EXPECT_NEAR(interp.state().scalars.at("path"), 2.0, 1e-9);
+    expect_contains(interp, "graph_chromatic_number([0, 1, 1; 1, 0, 1; 1, 1, 0])", "3");
+
+    expect_error_contains(interp, "graph_chromatic_number(missing)", "unknown matrix");
+    expect_ok(interp, "ns = [1, 2]");
+    expect_error_contains(interp, "graph_chromatic_number(ns)", "square");
+}
+
+TEST(ReplCommandsTest, graph_k_core_subgraph) {
+    Interpreter interp;
+    expect_contains(interp, "help", "graph_k_core_subgraph(A,k)");
+
+    expect_ok(interp, "C4 = [0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0]");
+    expect_ok(interp, "k2 = graph_k_core_subgraph(C4, 2)");
+    ASSERT_GT(interp.state().matrices.count("k2"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("k2").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("k2").cols(), 4u);
+
+    expect_ok(interp, "k3 = graph_k_core_subgraph(C4, 3)");
+    ASSERT_GT(interp.state().matrices.count("k3"), 0u);
+    const auto& k3 = interp.state().matrices.at("k3");
+    double k3_edges = 0.0;
+    for (size_t i = 0; i < k3.rows(); ++i) {
+        for (size_t j = 0; j < k3.cols(); ++j) {
+            k3_edges += k3(i, j);
+        }
+    }
+    EXPECT_NEAR(k3_edges, 0.0, 1e-9);
+
+    expect_error_contains(interp, "bad = graph_k_core_subgraph(C4, 1.5)", "integer k");
+    expect_error_contains(interp, "bad = graph_k_core_subgraph(missing, 2)", "unknown matrix");
+}
+
 TEST(ReplCommandsTest, graph_is_bipartite) {
     Interpreter interp;
     expect_contains(interp, "help", "graph_is_bipartite(A)");

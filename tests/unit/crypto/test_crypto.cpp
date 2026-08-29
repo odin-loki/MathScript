@@ -944,3 +944,70 @@ TEST(CryptoRandomBytes, NonDeterministicAcrossCalls) {
     const auto b = random_bytes(16);
     EXPECT_NE(a, b);
 }
+
+// ---- Hex helpers on span overloads ----
+
+TEST(CryptoHexHelpers, Sha256HexSpanMatchesRaw) {
+    const std::array<uint8_t, 3> bytes = {0x61, 0x62, 0x63};
+    EXPECT_EQ(sha256_hex(std::span<const uint8_t>(bytes)),
+              to_hex(sha256(bytes)));
+    EXPECT_EQ(sha256_hex(std::span<const uint8_t>(bytes)),
+              "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}
+
+TEST(CryptoHexHelpers, Sha512HexSpanMatchesRaw) {
+    const std::array<uint8_t, 3> bytes = {0x61, 0x62, 0x63};
+    EXPECT_EQ(sha512_hex(std::span<const uint8_t>(bytes)),
+              to_hex(sha512(bytes)));
+}
+
+TEST(CryptoHexHelpers, HmacSha256HexSpanMatchesRfc4231) {
+    const std::vector<uint8_t> key(20, 0x0b);
+    const std::string data = "Hi There";
+    const auto hex = hmac_sha256_hex(
+        std::span<const uint8_t>(key),
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()), data.size()));
+    EXPECT_EQ(hex, "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+}
+
+TEST(CryptoHexHelpers, HmacSha512HexSpanMatchesRfc4231) {
+    const std::vector<uint8_t> key(20, 0x0b);
+    const std::string data = "Hi There";
+    const auto hex = hmac_sha512_hex(
+        std::span<const uint8_t>(key),
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(data.data()), data.size()));
+    EXPECT_EQ(hex,
+              "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cd"
+              "edaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854");
+}
+
+// ---- Ed25519 RFC 8032 TEST 2 (one-byte message) ----
+
+TEST(CryptoEd25519, Rfc8032Test2OneByteMessage) {
+    const auto seed = from_hex(
+        "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb");
+    const auto kp = ed25519_keypair(seed);
+    expect_hex(std::vector<uint8_t>(kp.public_key.begin(), kp.public_key.end()),
+               "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c");
+
+    const auto msg = from_hex("72");
+    const auto sig = ed25519_sign(seed, msg);
+    expect_hex(std::vector<uint8_t>(sig.begin(), sig.end()),
+               "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da"
+               "085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00");
+    EXPECT_TRUE(ed25519_verify(kp.public_key, msg, sig));
+}
+
+TEST(CryptoAes128Gcm, TamperedCiphertextFailsOpen) {
+    const auto key = from_hex("00000000000000000000000000000000");
+    const auto iv = from_hex("000000000000000000000000");
+    const auto plain = from_hex("00000000000000000000000000000000");
+    const auto seal = aes128_gcm_encrypt(key, iv, std::span<const uint8_t>{}, plain);
+    ASSERT_FALSE(seal.ciphertext.empty());
+    auto bad = seal.ciphertext;
+    bad[0] ^= 0x01;
+    const auto opened =
+        aes128_gcm_decrypt(key, iv, std::span<const uint8_t>{}, bad,
+                           std::span<const uint8_t>(seal.tag.data(), seal.tag.size()));
+    EXPECT_TRUE(opened.empty());
+}

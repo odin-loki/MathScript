@@ -116,6 +116,39 @@ TEST(ReplCommandsTest, fem3d_pipeline) {
     EXPECT_EQ(interp.state().matrices.at("u3").rows(), interp.state().matrices.at("K3").rows());
 }
 
+TEST(ReplCommandsTest, fem_mesh3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fem_mesh3d_box(x0,y0,z0,x1,y1,z1,nx,ny,nz)");
+
+    expect_ok(interp, "m3 = fem_mesh3d(0, 0, 0, 1, 1, 1, 1, 1, 1)");
+    ASSERT_GT(interp.state().matrices.count("m3"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("m3")(0, 0), 271.0);
+
+    expect_ok(interp, "ref = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 1, 1, 1)");
+    EXPECT_EQ(interp.state().matrices.at("m3").rows(), interp.state().matrices.at("ref").rows());
+
+    expect_error_contains(interp, "bad = fem_mesh3d(0, 0, 0, 1, 1, 1, 0, 1, 1)",
+                         "positive integer nx");
+    expect_error(interp, "bad = fem_mesh3d(0, 0, 0)");
+}
+
+TEST(ReplCommandsTest, assemble_stiffness_3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "fem_stiffness_3d(mesh)");
+
+    expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 1, 1, 1)");
+    expect_ok(interp, "K = assemble_stiffness_3d(m3)");
+    ASSERT_GT(interp.state().matrices.count("K"), 0u);
+    EXPECT_GT(interp.state().matrices.at("K").rows(), 0u);
+    EXPECT_EQ(interp.state().matrices.at("K").rows(), interp.state().matrices.at("K").cols());
+
+    expect_ok(interp, "Kref = fem_stiffness_3d(m3)");
+    EXPECT_EQ(interp.state().matrices.at("K").rows(), interp.state().matrices.at("Kref").rows());
+
+    expect_error_contains(interp, "bad = assemble_stiffness_3d(missing)", "unknown matrix");
+    expect_error_contains(interp, "bad = assemble_stiffness_3d([1, 2; 3, 4])", "fem_stiffness_3d");
+}
+
 TEST(ReplCommandsTest, fem1d_cfd_composable) {
     Interpreter interp;
     expect_contains(interp, "help", "fem_stiffness_1d(mesh)");

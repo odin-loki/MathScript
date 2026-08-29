@@ -380,6 +380,39 @@ TEST(ReplCommandsTest, run_file_one_nested_source_ok) {
     std::filesystem::remove(dir);
 }
 
+TEST(ReplCommandsTest, run_file_rejects_oversized_script) {
+    const auto path =
+        (std::filesystem::temp_directory_path() / "mathscript_src_too_big.ms").string();
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << std::string(256 * 1024 + 1, 'x');
+    }
+
+    Interpreter interp;
+    expect_error_contains(interp, "source " + path, "too large");
+    std::filesystem::remove(path);
+}
+
+TEST(ReplCommandsTest, run_file_rejects_overlong_line) {
+    const auto path =
+        (std::filesystem::temp_directory_path() / "mathscript_src_long_line.ms").string();
+    {
+        std::ofstream out(path);
+        out << "x = " << std::string(8200, '1') << "\n";
+    }
+
+    Interpreter interp;
+    expect_error_contains(interp, "source " + path, "line too long");
+    std::filesystem::remove(path);
+}
+
+#ifndef _WIN32
+TEST(ReplCommandsTest, run_file_rejects_device_node) {
+    Interpreter interp;
+    expect_error_contains(interp, "source /dev/zero", "cannot open");
+}
+#endif
+
 TEST(ReplCommandsTest, is_script_skip_line) {
     EXPECT_TRUE(Interpreter::is_script_skip_line(""));
     EXPECT_TRUE(Interpreter::is_script_skip_line("   "));

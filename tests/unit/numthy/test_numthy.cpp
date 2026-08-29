@@ -711,3 +711,49 @@ TEST(NumthyMultiplicativeOrder, ModulusZeroIsError) {
     EXPECT_FALSE(multiplicative_order(1, 0).has_value());
     EXPECT_FALSE(multiplicative_order(0, 0).has_value());
 }
+
+TEST(NumthyPrimality, NextPrimeBelowTwo) {
+    EXPECT_EQ(nextprime(0), 2u);
+    EXPECT_EQ(nextprime(1), 2u);
+}
+
+TEST(NumthyFactor, PrimePower) {
+    EXPECT_EQ(factor(8), (std::vector<uint64_t>{2, 2, 2}));
+    EXPECT_EQ(factor(9), (std::vector<uint64_t>{3, 3}));
+    EXPECT_EQ(factor(25), (std::vector<uint64_t>{5, 5}));
+}
+
+TEST(NumthyArith, CRTSizeMismatchOrEmpty) {
+    EXPECT_FALSE(crt({}, {}).has_value());
+    EXPECT_FALSE(crt({1, 2}, {3}).has_value());
+}
+
+TEST(NumthyArith, CRTNonCoprimeModuliError) {
+    // gcd(4, 6) != 1: sequential CRT requires mod_inv and fails.
+    EXPECT_FALSE(crt({1, 3}, {4, 6}).has_value());
+}
+
+TEST(NumthyModular, DiscreteLogNoSolution) {
+    // 4^x = 2^{2x} never equals 2^1 mod 11.
+    EXPECT_FALSE(discrete_log(4, 2, 11).has_value());
+}
+
+TEST(NumthyModular, DiscreteLogIdentityMoreBases) {
+    auto x = discrete_log(3, 9, 13);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_EQ(mod_pow(3, x.value(), 13), 9u);
+}
+
+TEST(NumthyModular, TonelliShanksNonResidue) {
+    EXPECT_EQ(legendre_symbol(3, 7), -1);
+    EXPECT_FALSE(tonelli_shanks(3, 7).has_value());
+}
+
+TEST(NumthyModular, TonelliShanksPCongruentOneMod4) {
+    // 13 ≡ 1 (mod 4) uses the full Tonelli–Shanks loop; 4^2 ≡ 3 (mod 13).
+    auto r = tonelli_shanks(3, 13);
+    ASSERT_TRUE(r.has_value());
+    const uint64_t x = r.value();
+    EXPECT_EQ((x * x) % 13, 3u);
+    EXPECT_TRUE(x == 4u || x == 9u);
+}

@@ -712,3 +712,52 @@ TEST(InfoLZ, EmptyAndConstantVsAlternating) {
     const std::vector<int> alt = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
     EXPECT_GE(lz_complexity(alt), lz_complexity(constant));
 }
+
+TEST(InfoChainRule, JointEqualsHXPlusHYGivenX) {
+    const std::vector<double> pxy = {0.10, 0.30, 0.40, 0.20};
+    const std::vector<double> px = {0.40, 0.60};
+    EXPECT_NEAR(joint_entropy(pxy, 2, 2, 2.0),
+                entropy(px, 2.0) + conditional_entropy(pxy, 2, 2, 2.0), 1e-12);
+}
+
+TEST(InfoChainRule, MutualInfoEqualsHXPlusHYMinusHXY) {
+    const std::vector<double> pxy = {0.10, 0.30, 0.40, 0.20};
+    const std::vector<double> px = {0.40, 0.60};
+    const std::vector<double> py = {0.50, 0.50};
+    EXPECT_NEAR(mutual_info(pxy, 2, 2, 2.0),
+                entropy(px, 2.0) + entropy(py, 2.0) - joint_entropy(pxy, 2, 2, 2.0),
+                1e-12);
+}
+
+TEST(InfoChainRule, MutualInfoEqualsHYMinusHYGivenX) {
+    const std::vector<double> pxy = {0.10, 0.30, 0.40, 0.20};
+    const std::vector<double> py = {0.50, 0.50};
+    EXPECT_NEAR(mutual_info(pxy, 2, 2, 2.0),
+                entropy(py, 2.0) - conditional_entropy(pxy, 2, 2, 2.0), 1e-12);
+}
+
+TEST(InfoSampleEntropy, ConstantSeriesClosedForm) {
+    // All Chebyshev distances are 0, so A/B = C(n-m-1,2)/C(n-m,2) = (n-m-2)/(n-m).
+    const std::vector<double> x(12, 3.0);
+    const int m = 2;
+    const double n = 12.0;
+    EXPECT_NEAR(sample_entropy(x, m, 0.2),
+                -std::log((n - m - 2.0) / (n - m)), 1e-12);
+}
+
+TEST(InfoSampleEntropy, HandComputedRatio) {
+    // windows of length 1: three matches; length 2: one match => -log(1/3)
+    const std::vector<double> x = {0.0, 0.0, 0.1, 0.1};
+    EXPECT_NEAR(sample_entropy(x, 1, 0.2), std::log(3.0), 1e-12);
+}
+
+TEST(InfoSampleEntropy, TooShortReturnsZero) {
+    EXPECT_NEAR(sample_entropy(std::vector<double>{1.0, 2.0}, 2, 0.5), 0.0, 1e-12);
+    EXPECT_NEAR(sample_entropy(std::vector<double>{}, 2, 0.5), 0.0, 1e-12);
+}
+
+TEST(InfoTsallis, QTwoUniform) {
+    const std::vector<double> p = {0.25, 0.25, 0.25, 0.25};
+    // (1 - n*(1/n)^2) / (2-1) = 1 - 1/n
+    EXPECT_NEAR(tsallis_entropy(p, 2.0), 0.75, 1e-12);
+}

@@ -734,3 +734,19 @@ TEST(ComboDeBruijnSequence, LargerCaseExercisesAlgorithm) {
     auto windows = cyclic_windows(seq, 2, 5);
     EXPECT_EQ(windows.size(), 32u);
 }
+
+TEST(ComboEnum, RankCombinationRoundTrip) {
+    const int n = 5;
+    const int k = 3;
+    const uint64_t count = binomial(5, 3);
+    for (uint64_t r = 0; r < count; ++r) {
+        auto v = unrank_combination(n, k, r);
+        EXPECT_EQ(rank_combination(v, n), r) << "r=" << r;
+    }
+    auto v0 = unrank_combination(4, 2, 0);
+    EXPECT_EQ(v0, (std::vector<int>{0, 1}));
+    EXPECT_EQ(rank_combination(v0, 4), 0u);
+    auto v1 = unrank_combination(4, 2, 1);
+    EXPECT_EQ(v1, (std::vector<int>{0, 2}));
+    EXPECT_EQ(rank_combination(v1, 4), 1u);
+}

@@ -1139,3 +1139,72 @@ TEST(OdeAdvanced2, AdamsBashforth2Vec_EmptyAndHarmonic) {
     EXPECT_NEAR(ab.y.back()[0], rk.y.back()[0], 0.05);
     EXPECT_NEAR(ab.y.back()[1], rk.y.back()[1], 0.05);
 }
+
+// ---------------------------------------------------------------------------
+// ode_rosenbrock23_vec / ode_rosenbrock23
+// ---------------------------------------------------------------------------
+
+TEST(OdeAdvanced2, Rosenbrock23Vec_ZeroStepsOrBadInterval) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{-50.0 * y[0]};
+    };
+    const std::vector<double> y0 = {1.0};
+
+    const auto zero_steps = ode_rosenbrock23_vec(f, 0.0, y0, 1.0, 0);
+    ASSERT_EQ(zero_steps.t.size(), 1u);
+    ASSERT_EQ(zero_steps.y.size(), 1u);
+    EXPECT_NEAR(zero_steps.t.front(), 0.0, 1e-15);
+    EXPECT_NEAR(zero_steps.y.front()[0], 1.0, 1e-15);
+
+    const auto bad_interval = ode_rosenbrock23_vec(f, 1.0, y0, 0.0, 20);
+    ASSERT_EQ(bad_interval.t.size(), 1u);
+    ASSERT_EQ(bad_interval.y.size(), 1u);
+    EXPECT_NEAR(bad_interval.t.front(), 1.0, 1e-15);
+    EXPECT_NEAR(bad_interval.y.front()[0], 1.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, Rosenbrock23Vec_StiffDecayBounded) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{-50.0 * y[0], -50.0 * y[1]};
+    };
+    const auto result = ode_rosenbrock23_vec(f, 0.0, {1.0, 1.0}, 1.0, 20);
+    ASSERT_FALSE(result.y.empty());
+    ASSERT_EQ(result.y.back().size(), 2u);
+    for (const auto& state : result.y) {
+        for (double v : state) {
+            EXPECT_TRUE(std::isfinite(v));
+        }
+    }
+    EXPECT_LT(std::abs(result.y.back()[0]), 1.0);
+    EXPECT_LT(std::abs(result.y.back()[1]), 1.0);
+}
+
+TEST(OdeAdvanced2, Rosenbrock23_ScalarDecay) {
+    const auto f = [](double, double y) { return -y; };
+    const auto result = ode_rosenbrock23(f, 0.0, 1.0, 1.0, 40);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), std::exp(-1.0), 0.05);
+}
+
+// ---------------------------------------------------------------------------
+// ode_cashkarp
+// ---------------------------------------------------------------------------
+
+TEST(OdeAdvanced2, CashKarp_DecayVsAnalytic) {
+    const auto f = [](double, double y) { return -y; };
+    const double exact = std::exp(-1.0);
+
+    const auto coarse = ode_cashkarp(f, 0.0, 1.0, 1.0, 1e-3, 1e-5);
+    const auto tight = ode_cashkarp(f, 0.0, 1.0, 1.0, 1e-8, 1e-10);
+    ASSERT_FALSE(coarse.y.empty());
+    ASSERT_FALSE(tight.y.empty());
+    const double err_coarse = std::abs(coarse.y.back() - exact);
+    const double err_tight = std::abs(tight.y.back() - exact);
+    EXPECT_LT(err_tight, err_coarse);
+
+    const auto ic_only = ode_cashkarp(f, 1.0, 1.0, 0.0);
+    ASSERT_EQ(ic_only.t.size(), 1u);
+    ASSERT_EQ(ic_only.y.size(), 1u);
+    EXPECT_NEAR(ic_only.t.front(), 1.0, 1e-15);
+    EXPECT_NEAR(ic_only.y.front(), 1.0, 1e-15);
+}

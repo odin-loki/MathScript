@@ -2134,3 +2134,39 @@ TEST(FinanceSabrPut, StandardParametersReasonableMagnitude) {
     EXPECT_GT(p, 0.0);
     EXPECT_LT(p, kSabrATM.K * std::exp(-kSabrATM.r * kSabrATM.T));
 }
+
+TEST(FinanceSortino, AllUpsideReturnsHuge) {
+    // No return below the risk-free rate: sortino_ratio returns the 1e9 sentinel.
+    std::vector<double> returns = {0.02, 0.05, 0.10, 0.01, 0.08};
+    EXPECT_NEAR(sortino_ratio(returns, 0.0), 1e9, 1e-6);
+}
+
+TEST(FinanceSortino, MixedReturnsFinite) {
+    std::vector<double> returns = {0.1, -0.05, 0.02};
+    double s = sortino_ratio(returns, 0.0);
+    EXPECT_TRUE(std::isfinite(s));
+    EXPECT_GT(s, 0.0);
+}
+
+TEST(FinanceBond, ZeroCouponModifiedDurationAndConvexity) {
+    // Zero-coupon: Macaulay duration = n, modified = n/(1+y),
+    // convexity = n*(n+1)/(1+y)^2.
+    double c = 0.0, y = 0.05, fv = 100.0;
+    int n = 10;
+    EXPECT_NEAR(bond_modified_duration(c, y, n, fv), 10.0 / 1.05, 1e-8);
+    EXPECT_NEAR(bond_convexity(c, y, n, fv), 10.0 * 11.0 / (1.05 * 1.05), 1e-8);
+}
+
+TEST(FinanceAnnuity, ZeroRateIdentities) {
+    EXPECT_NEAR(fv_annuity(0.0, 5, 10.0, 100.0), -100.0 - 50.0, 1e-12);
+    EXPECT_NEAR(pmt_annuity(0.0, 5, 100.0, 50.0), -30.0, 1e-12);
+}
+
+TEST(FinanceAnnuity, PositiveRateRoundTrip) {
+    // Payment that amortizes a loan of pv0 to fv=0; remaining FV is then ~0.
+    double rate = 0.05;
+    int n = 10;
+    double pv0 = 100.0, fv = 0.0;
+    double pmt = pmt_annuity(rate, n, pv0, fv);
+    EXPECT_NEAR(fv_annuity(rate, n, pmt, pv0), 0.0, 1e-8);
+}

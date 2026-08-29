@@ -1,10 +1,23 @@
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <system_error>
 
 #include "ms/interp/repl_engine.hpp"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+    static const bool isolated_cwd = [] {
+        std::error_code ec;
+        const auto dir = std::filesystem::temp_directory_path() / "mathscript_fuzz_repl";
+        std::filesystem::create_directories(dir, ec);
+        if (!ec) {
+            std::filesystem::current_path(dir, ec);
+        }
+        return true;
+    }();
+    (void)isolated_cwd;
+
     if (size < 4 || size > 512) {
         return 0;
     }

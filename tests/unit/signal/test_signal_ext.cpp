@@ -1857,3 +1857,21 @@ TEST(SignalExtTest, xcorr_fft_partial_zero_lag_matches_dot_product) {
     }
     EXPECT_NEAR(out[static_cast<size_t>(max_lag)], expected, 1e-9);
 }
+
+TEST(SignalExtTest, hilbert_real_part_equals_input) {
+    const auto x = cosine_signal(256, 1000.0, 40.0);
+    const auto z = hilbert(x);
+    ASSERT_EQ(z.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(z[i].real(), x[i], 1e-10) << "i=" << i;
+    }
+}
+
+TEST(SignalExtTest, unwrap_already_continuous_is_identity) {
+    const std::vector<double> phase = {0.0, 0.4, 0.8, 1.2, 1.6};
+    const auto out = unwrap(phase);
+    ASSERT_EQ(out.size(), phase.size());
+    for (size_t i = 0; i < phase.size(); ++i) {
+        EXPECT_NEAR(out[i], phase[i], 1e-15);
+    }
+}

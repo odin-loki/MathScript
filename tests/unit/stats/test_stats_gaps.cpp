@@ -171,3 +171,251 @@ TEST(StatsGapsTest, SimdAxpy_InPlace) {
     EXPECT_NEAR(y[1], 4.0, 1e-12);
     EXPECT_NEAR(y[2], 5.0, 1e-12);
 }
+
+// ---------------------------------------------------------------------------
+// arfit / pacf
+// ---------------------------------------------------------------------------
+
+TEST(StatsGapsTest, ArfitAR1RecoversPhi) {
+    // Exact AR(1): x_t = 0.7 x_{t-1}, x_0 = 1
+    std::vector<double> x(80);
+    x[0] = 1.0;
+    for (size_t i = 1; i < x.size(); ++i)
+        x[i] = 0.7 * x[i - 1];
+    auto phi = arfit(x, 1);
+    ASSERT_EQ(phi.size(), 1u);
+    EXPECT_NEAR(phi[0], 0.7, 0.05);
+}
+
+TEST(StatsGapsTest, PacfLag1MatchesCorr) {
+    // Same exact AR(1). pacf[0] is lag 0 (= 1); lag-1 is pacf[1].
+    std::vector<double> x(80);
+    x[0] = 1.0;
+    for (size_t i = 1; i < x.size(); ++i)
+        x[i] = 0.7 * x[i - 1];
+    auto p = pacf(x, 4);
+    ASSERT_GE(p.size(), 5u);
+    EXPECT_NEAR(p[1], 0.7, 0.15);
+    EXPECT_NEAR(p[2], 0.0, 0.15);
+    EXPECT_NEAR(p[3], 0.0, 0.15);
+    EXPECT_NEAR(p[4], 0.0, 0.15);
+}
+
+// ---------------------------------------------------------------------------
+// geometric_mean / harmonic_mean / rms
+// ---------------------------------------------------------------------------
+
+TEST(StatsGapsTest, GeometricMean_ExactProduct) {
+    const std::vector<double> data = {2.0, 8.0, 32.0};
+    EXPECT_NEAR(geometric_mean(data), 8.0, 1e-12);
+}
+
+TEST(StatsGapsTest, GeometricMean_AllEqual) {
+    const std::vector<double> data = {5.0, 5.0, 5.0, 5.0};
+    EXPECT_NEAR(geometric_mean(data), 5.0, 1e-12);
+}
+
+TEST(StatsGapsTest, GeometricMean_AMGM) {
+    const std::vector<double> data = {1.0, 4.0};
+    EXPECT_NEAR(geometric_mean(data), 2.0, 1e-12);
+    EXPECT_LE(geometric_mean(data), mean(data) + 1e-12);
+}
+
+TEST(StatsGapsTest, GeometricMean_EmptyAndNonPositive) {
+    EXPECT_NEAR(geometric_mean(std::vector<double>{}), 0.0, 1e-12);
+    EXPECT_TRUE(std::isnan(geometric_mean(std::vector<double>{1.0, 0.0})));
+    EXPECT_TRUE(std::isnan(geometric_mean(std::vector<double>{-2.0, 3.0})));
+}
+
+TEST(StatsGapsTest, HarmonicMean_ExactPair) {
+    // 2 / (1 + 1/4) = 1.6
+    const std::vector<double> data = {1.0, 4.0};
+    EXPECT_NEAR(harmonic_mean(data), 1.6, 1e-12);
+}
+
+TEST(StatsGapsTest, HarmonicMean_AllEqual) {
+    const std::vector<double> data = {3.0, 3.0, 3.0};
+    EXPECT_NEAR(harmonic_mean(data), 3.0, 1e-12);
+}
+
+TEST(StatsGapsTest, HarmonicMean_HM_LE_GM_LE_AM) {
+    const std::vector<double> data = {1.0, 2.0, 4.0};
+    const double hm = harmonic_mean(data);
+    const double gm = geometric_mean(data);
+    const double am = mean(data);
+    EXPECT_NEAR(hm, 12.0 / 7.0, 1e-12);
+    EXPECT_NEAR(gm, 2.0, 1e-12);
+    EXPECT_LE(hm, gm + 1e-12);
+    EXPECT_LE(gm, am + 1e-12);
+}
+
+TEST(StatsGapsTest, HarmonicMean_EmptyAndZero) {
+    EXPECT_NEAR(harmonic_mean(std::vector<double>{}), 0.0, 1e-12);
+    EXPECT_NEAR(harmonic_mean(std::vector<double>{2.0, 0.0, 3.0}), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Rms_ThreeFour) {
+    // rms({3,4}) = sqrt((9+16)/2) = sqrt(12.5)
+    const std::vector<double> data = {3.0, 4.0};
+    EXPECT_NEAR(rms(data), std::sqrt(12.5), 1e-12);
+}
+
+TEST(StatsGapsTest, Rms_ConstantAndEmpty) {
+    EXPECT_NEAR(rms(std::vector<double>{7.0, 7.0, 7.0}), 7.0, 1e-12);
+    EXPECT_NEAR(rms(std::vector<double>{}), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Rms_MatchesQuadraticMean) {
+    const std::vector<double> data = {-2.0, 1.0, 2.0};
+    EXPECT_NEAR(rms(data), std::sqrt((4.0 + 1.0 + 4.0) / 3.0), 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// spearman / kendall
+// ---------------------------------------------------------------------------
+
+TEST(StatsGapsTest, Spearman_PerfectMonotone) {
+    const std::vector<double> x = {1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> y = {1.0, 4.0, 9.0, 16.0};
+    EXPECT_NEAR(spearman(x, y), 1.0, 1e-12);
+    const std::vector<double> y_rev = {16.0, 9.0, 4.0, 1.0};
+    EXPECT_NEAR(spearman(x, y_rev), -1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Spearman_HandComputedRanks) {
+    // ranks x={1,2,3}, y={1,3,2} => d^2 = 0+1+1=2; 1 - 6*2/(3*8) = 1 - 12/24 = 0.5
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> y = {1.0, 3.0, 2.0};
+    EXPECT_NEAR(spearman(x, y), 0.5, 1e-12);
+}
+
+TEST(StatsGapsTest, Spearman_EmptyOrMismatch) {
+    EXPECT_NEAR(spearman(std::vector<double>{}, std::vector<double>{}), 0.0, 1e-12);
+    const std::vector<double> x = {1.0, 2.0};
+    const std::vector<double> y = {1.0};
+    EXPECT_NEAR(spearman(x, y), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Kendall_PerfectConcordance) {
+    const std::vector<double> x = {1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> y = {10.0, 20.0, 30.0, 40.0};
+    EXPECT_NEAR(kendall(x, y), 1.0, 1e-12);
+    const std::vector<double> y_rev = {40.0, 30.0, 20.0, 10.0};
+    EXPECT_NEAR(kendall(x, y_rev), -1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Kendall_HandComputedOneDiscord) {
+    // pairs: (1,2) C, (1,3) C, (2,3) D => (2-1)/3 = 1/3
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> y = {1.0, 3.0, 2.0};
+    EXPECT_NEAR(kendall(x, y), 1.0 / 3.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Kendall_EmptyOrMismatch) {
+    EXPECT_NEAR(kendall(std::vector<double>{}, std::vector<double>{}), 0.0, 1e-12);
+    const std::vector<double> x = {1.0, 2.0};
+    const std::vector<double> y = {1.0};
+    EXPECT_NEAR(kendall(x, y), 0.0, 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// chi2_gof / ks_test
+// ---------------------------------------------------------------------------
+
+TEST(StatsGapsTest, Chi2Gof_ObservedEqualsExpected) {
+    const std::vector<double> obs = {10.0, 20.0, 30.0};
+    EXPECT_NEAR(chi2_gof(obs, obs), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Chi2Gof_HandComputed) {
+    // (8-10)^2/10 + (12-10)^2/10 = 0.4 + 0.4 = 0.8
+    const std::vector<double> obs = {8.0, 12.0};
+    const std::vector<double> exp = {10.0, 10.0};
+    EXPECT_NEAR(chi2_gof(obs, exp), 0.8, 1e-12);
+}
+
+TEST(StatsGapsTest, Chi2Gof_EmptyOrMismatch) {
+    EXPECT_NEAR(chi2_gof(std::vector<double>{}, std::vector<double>{}), 0.0, 1e-12);
+    const std::vector<double> obs = {1.0, 2.0};
+    const std::vector<double> exp = {1.0};
+    EXPECT_NEAR(chi2_gof(obs, exp), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, KsTest_UniformExact) {
+    // x = {0.25, 0.5, 0.75}, F = identity. D_n = 0.25
+    const std::vector<double> x = {0.25, 0.5, 0.75};
+    const double d = ks_test(x, [](double t) { return t; });
+    EXPECT_NEAR(d, 0.25, 1e-12);
+}
+
+TEST(StatsGapsTest, KsTest_Empty) {
+    EXPECT_NEAR(ks_test(std::vector<double>{}, [](double t) { return t; }), 0.0, 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// multiple_regression / acf / bootstrap_mean
+// ---------------------------------------------------------------------------
+
+TEST(StatsGapsTest, MultipleRegression_ExactLine) {
+    // y = 1 + 2 x
+    const std::vector<std::vector<double>> X = {
+        {1.0, 1.0}, {1.0, 2.0}, {1.0, 3.0}, {1.0, 4.0}};
+    const std::vector<double> y = {3.0, 5.0, 7.0, 9.0};
+    const auto beta = multiple_regression(X, y);
+    ASSERT_EQ(beta.size(), 2u);
+    EXPECT_NEAR(beta[0], 1.0, 1e-12);
+    EXPECT_NEAR(beta[1], 2.0, 1e-12);
+}
+
+TEST(StatsGapsTest, MultipleRegression_SinglePredictor) {
+    const std::vector<std::vector<double>> X = {{1.0}, {2.0}, {3.0}};
+    const std::vector<double> y = {3.0, 6.0, 9.0};
+    const auto beta = multiple_regression(X, y);
+    ASSERT_EQ(beta.size(), 1u);
+    EXPECT_NEAR(beta[0], 3.0, 1e-12);
+}
+
+TEST(StatsGapsTest, MultipleRegression_EmptyDesign) {
+    EXPECT_TRUE(multiple_regression({}, std::vector<double>{}).empty());
+}
+
+TEST(StatsGapsTest, Acf_LagZeroIsOne) {
+    const std::vector<double> x = {1.0, 3.0, 2.0, 5.0};
+    const auto r = acf(x, 2);
+    ASSERT_EQ(r.size(), 3u);
+    EXPECT_NEAR(r[0], 1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Acf_HandComputedThreePoints) {
+    // x={1,2,3}, mean=2, var0=2; rho(1)=0, rho(2)=-0.5
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const auto r = acf(x, 2);
+    ASSERT_EQ(r.size(), 3u);
+    EXPECT_NEAR(r[0], 1.0, 1e-12);
+    EXPECT_NEAR(r[1], 0.0, 1e-12);
+    EXPECT_NEAR(r[2], -0.5, 1e-12);
+}
+
+TEST(StatsGapsTest, Acf_ConstantAndInvalid) {
+    const auto flat = acf(std::vector<double>{4.0, 4.0, 4.0}, 2);
+    ASSERT_EQ(flat.size(), 3u);
+    EXPECT_NEAR(flat[0], 0.0, 1e-12);
+    EXPECT_TRUE(acf(std::vector<double>{}, 2).empty());
+    EXPECT_TRUE(acf(std::vector<double>{1.0, 2.0}, -1).empty());
+}
+
+TEST(StatsGapsTest, BootstrapMean_ConstantIsExact) {
+    const std::vector<double> data = {5.0, 5.0, 5.0, 5.0};
+    EXPECT_NEAR(bootstrap_mean(data, 200, 7), 5.0, 1e-12);
+}
+
+TEST(StatsGapsTest, BootstrapMean_NearSampleMean) {
+    const std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0};
+    EXPECT_NEAR(bootstrap_mean(data, 4000, 42), mean(data), 0.15);
+}
+
+TEST(StatsGapsTest, BootstrapMean_DeterministicSeedAndEmpty) {
+    const std::vector<double> data = {1.0, 2.0, 3.0};
+    EXPECT_NEAR(bootstrap_mean(data, 300, 99), bootstrap_mean(data, 300, 99), 1e-15);
+    EXPECT_NEAR(bootstrap_mean(std::vector<double>{}, 100, 1), 0.0, 1e-12);
+}

@@ -911,3 +911,60 @@ TEST(PolyExtTest, poly_factor_repeated_and_simple_real_roots) {
     EXPECT_EQ(mult_one, 1);
     expect_poly_near(reconstruct_from_poly_factors(factors), p, 1e-4);
 }
+
+// ---------------------------------------------------------------------------
+// poly_partial_fractions
+// ---------------------------------------------------------------------------
+
+TEST(PolyPartialFractions, EmptyDenomReturnsEmpty) {
+    const std::vector<double> num{1.0, 2.0};
+    const auto empty_den = poly_partial_fractions(num, {});
+    EXPECT_TRUE(empty_den.quotient.empty());
+    EXPECT_TRUE(empty_den.terms.empty());
+    const auto zero_den = poly_partial_fractions(num, {0.0});
+    EXPECT_TRUE(zero_den.quotient.empty());
+    EXPECT_TRUE(zero_den.terms.empty());
+}
+
+TEST(PolyPartialFractions, SimpleRealPole) {
+    // 1 / (x - 1)
+    const std::vector<double> num{1.0};
+    const std::vector<double> den{-1.0, 1.0};
+    const auto res = poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_EQ(res.terms.size(), 1u);
+    EXPECT_FALSE(res.terms[0].is_quadratic);
+    EXPECT_NEAR(res.terms[0].r, 1.0, 1e-6);
+    EXPECT_NEAR(res.terms[0].A, 1.0, 1e-6);
+    EXPECT_EQ(res.terms[0].k, 1);
+}
+
+TEST(PolyPartialFractions, ImproperQuadraticHasQuotient) {
+    // x^2 / (x - 1) = x + 1 + 1/(x - 1)
+    const std::vector<double> num{0.0, 0.0, 1.0};
+    const std::vector<double> den{-1.0, 1.0};
+    const auto res = poly_partial_fractions(num, den);
+    ASSERT_FALSE(res.quotient.empty());
+    expect_poly_near(res.quotient, {1.0, 1.0}, 1e-6);
+    ASSERT_EQ(res.terms.size(), 1u);
+    EXPECT_FALSE(res.terms[0].is_quadratic);
+    EXPECT_NEAR(res.terms[0].r, 1.0, 1e-6);
+    EXPECT_EQ(res.terms[0].k, 1);
+}
+
+// ---------------------------------------------------------------------------
+// poly_fit
+// ---------------------------------------------------------------------------
+
+TEST(PolyFit, RecoversQuadratic) {
+    const std::vector<double> xs{0.0, 1.0, 2.0, 3.0};
+    std::vector<double> ys;
+    for (double x : xs) {
+        ys.push_back(1.0 + 2.0 * x + 3.0 * x * x);
+    }
+    const auto c = poly_fit(xs, ys, 2);
+    expect_poly_near(c, {1.0, 2.0, 3.0}, 1e-8);
+    for (size_t i = 0; i < xs.size(); ++i) {
+        EXPECT_NEAR(eval_at(c, xs[i]), ys[i], 1e-8) << "i=" << i;
+    }
+}

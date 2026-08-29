@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <functional>
 
 #include "ms/linalg/linalg.hpp"
 #include "ms/core/operations.hpp"
@@ -276,4 +277,227 @@ TEST(LogmTest, expm_of_logm_recovers_A) {
     for (size_t i = 0; i < 2; ++i)
         for (size_t j = 0; j < 2; ++j)
             EXPECT_NEAR((*E)(i, j), A(i, j), 1e-7);
+}
+
+// ---------------------------------------------------------------------------
+// sinm / cosm / funm
+// ---------------------------------------------------------------------------
+
+TEST(MatrixFunctions, SinmCosmDiagonal) {
+    const double pi_half = std::acos(-1.0) * 0.5;
+    DMatrix A{{0, 0}, {0, pi_half}};
+    const auto S = sinm(A);
+    ASSERT_TRUE(S.has_value());
+    EXPECT_NEAR((*S)(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR((*S)(1, 1), 1.0, 1e-9);
+    EXPECT_NEAR((*S)(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR((*S)(1, 0), 0.0, 1e-9);
+
+    const auto C = cosm(A);
+    ASSERT_TRUE(C.has_value());
+    EXPECT_NEAR((*C)(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR((*C)(1, 1), 0.0, 1e-9);
+    EXPECT_NEAR((*C)(0, 1), 0.0, 1e-9);
+    EXPECT_NEAR((*C)(1, 0), 0.0, 1e-9);
+}
+
+TEST(MatrixFunctions, FunmMatchesSinm) {
+    const double pi_half = std::acos(-1.0) * 0.5;
+    DMatrix A{{0, 0}, {0, pi_half}};
+    const auto S = sinm(A);
+    ASSERT_TRUE(S.has_value());
+    std::function<double(double)> sine = [](double x) { return std::sin(x); };
+    const auto F = funm(A, sine);
+    ASSERT_TRUE(F.has_value());
+    EXPECT_TRUE(matrices_close(*F, *S, 1e-9));
+}
+
+// ---------------------------------------------------------------------------
+// expm
+// ---------------------------------------------------------------------------
+
+TEST(ExpmTest, zero_matrix_is_identity) {
+    const DMatrix Z = zeros<double>(3, 3);
+    const auto E = expm(Z);
+    ASSERT_TRUE(E.has_value());
+    EXPECT_TRUE(matrices_close(*E, eye<double>(3), 1e-12));
+}
+
+TEST(ExpmTest, diagonal_matches_elementwise_exp) {
+    DMatrix A = zeros<double>(2, 2);
+    A(0, 0) = 0.0;
+    A(1, 1) = std::log(2.0);
+    const auto E = expm(A);
+    ASSERT_TRUE(E.has_value());
+    EXPECT_NEAR((*E)(0, 0), 1.0, 1e-10);
+    EXPECT_NEAR((*E)(1, 1), 2.0, 1e-10);
+    EXPECT_NEAR((*E)(0, 1), 0.0, 1e-10);
+    EXPECT_NEAR((*E)(1, 0), 0.0, 1e-10);
+}
+
+TEST(ExpmTest, nilpotent_truncates_to_I_plus_A) {
+    // A = [[0, 1], [0, 0]], A^2 = 0 => expm(A) = I + A
+    DMatrix A{{0, 1}, {0, 0}};
+    const auto E = expm(A);
+    ASSERT_TRUE(E.has_value());
+    EXPECT_NEAR((*E)(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR((*E)(0, 1), 1.0, 1e-12);
+    EXPECT_NEAR((*E)(1, 0), 0.0, 1e-12);
+    EXPECT_NEAR((*E)(1, 1), 1.0, 1e-12);
+}
+
+TEST(ExpmTest, det_expm_equals_exp_trace) {
+    DMatrix A{{0.2, 0.1}, {0.0, -0.3}};
+    const auto E = expm(A);
+    ASSERT_TRUE(E.has_value());
+    const auto d = det(*E);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_NEAR(*d, std::exp(0.2 - 0.3), 1e-8);
+}
+
+TEST(ExpmTest, nonsquare_fails) {
+    DMatrix A{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_FALSE(expm(A).has_value());
+}
+
+// ---------------------------------------------------------------------------
+// pinv / null / orth
+// ---------------------------------------------------------------------------
+
+TEST(PinvTest, identity_is_itself) {
+    const DMatrix I = eye<double>(3);
+    const auto P = pinv(I);
+    ASSERT_TRUE(P.has_value());
+    EXPECT_TRUE(matrices_close(*P, I, 1e-10));
+}
+
+TEST(PinvTest, moore_penrose_on_full_rank_2x2) {
+    DMatrix A{{4, 1}, {1, 3}};
+    const auto P = pinv(A);
+    ASSERT_TRUE(P.has_value());
+    const DMatrix APA = A * (*P) * A;
+    const DMatrix PAP = (*P) * A * (*P);
+    EXPECT_TRUE(matrices_close(APA, A, 1e-8));
+    EXPECT_TRUE(matrices_close(PAP, *P, 1e-8));
+}
+
+TEST(PinvTest, rank_deficient_recovers_A) {
+    DMatrix A{{1, 2}, {2, 4}};
+    const auto P = pinv(A);
+    ASSERT_TRUE(P.has_value());
+    const DMatrix APA = A * (*P) * A;
+    EXPECT_TRUE(matrices_close(APA, A, 1e-8));
+}
+
+TEST(NullTest, rank_one_2x2_one_dimensional_kernel) {
+    DMatrix A{{1, 2}, {2, 4}};
+    const auto N = null(A);
+    ASSERT_TRUE(N.has_value());
+    ASSERT_EQ(N->rows(), 2u);
+    ASSERT_EQ(N->cols(), 1u);
+    EXPECT_NEAR(A(0, 0) * (*N)(0, 0) + A(0, 1) * (*N)(1, 0), 0.0, 1e-8);
+    EXPECT_NEAR(A(1, 0) * (*N)(0, 0) + A(1, 1) * (*N)(1, 0), 0.0, 1e-8);
+}
+
+TEST(NullTest, full_rank_square_empty_kernel) {
+    const DMatrix I = eye<double>(2);
+    const auto N = null(I);
+    ASSERT_TRUE(N.has_value());
+    EXPECT_EQ(N->rows(), 2u);
+    EXPECT_EQ(N->cols(), 0u);
+}
+
+TEST(OrthTest, columns_orthonormal_and_span_range) {
+    DMatrix A{{1, 0}, {1, 1}, {0, 1}};
+    const auto Q = orth(A);
+    ASSERT_TRUE(Q.has_value());
+    ASSERT_EQ(Q->rows(), 3u);
+    ASSERT_GE(Q->cols(), 2u);
+    for (size_t i = 0; i < Q->cols(); ++i) {
+        for (size_t j = 0; j < Q->cols(); ++j) {
+            double dot = 0.0;
+            for (size_t k = 0; k < Q->rows(); ++k)
+                dot += (*Q)(k, i) * (*Q)(k, j);
+            EXPECT_NEAR(dot, i == j ? 1.0 : 0.0, 1e-8);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// kron / linspace / repmat / matrix_rank / cond / minres
+// ---------------------------------------------------------------------------
+
+TEST(KronTest, identity_kron_identity_is_identity) {
+    const DMatrix I2 = eye<double>(2);
+    const DMatrix K = kron(I2, I2);
+    EXPECT_TRUE(matrices_close(K, eye<double>(4), 1e-12));
+}
+
+TEST(KronTest, mixed_product_identity) {
+    DMatrix A{{1, 2}, {0, 1}};
+    DMatrix B{{3, 0}, {1, 2}};
+    const DMatrix K = kron(A, B);
+    EXPECT_EQ(K.rows(), 4u);
+    EXPECT_EQ(K.cols(), 4u);
+    EXPECT_NEAR(K(0, 0), 3.0, 1e-12);
+    EXPECT_NEAR(K(0, 1), 0.0, 1e-12);
+    EXPECT_NEAR(K(1, 0), 1.0, 1e-12);
+    EXPECT_NEAR(K(1, 1), 2.0, 1e-12);
+    EXPECT_NEAR(K(0, 2), 6.0, 1e-12);
+}
+
+TEST(LinspaceTest, endpoints_and_spacing) {
+    const auto v = linspace(0.0, 4.0, 5u);
+    ASSERT_EQ(v.size(), 5u);
+    EXPECT_NEAR(v.front(), 0.0, 1e-14);
+    EXPECT_NEAR(v.back(), 4.0, 1e-14);
+    for (size_t i = 0; i < v.size(); ++i)
+        EXPECT_NEAR(v[i], static_cast<double>(i), 1e-12);
+}
+
+TEST(LinspaceTest, single_and_empty) {
+    const auto one = linspace(3.0, 9.0, 1u);
+    ASSERT_EQ(one.size(), 1u);
+    EXPECT_NEAR(one[0], 3.0, 1e-14);
+    EXPECT_TRUE(linspace(0.0, 1.0, 0u).empty());
+}
+
+TEST(RepmatTest, tiles_2x2) {
+    DMatrix A{{1, 2}, {3, 4}};
+    const DMatrix R = repmat(A, 2, 2);
+    ASSERT_EQ(R.rows(), 4u);
+    ASSERT_EQ(R.cols(), 4u);
+    EXPECT_NEAR(R(0, 0), 1.0, 1e-14);
+    EXPECT_NEAR(R(0, 2), 1.0, 1e-14);
+    EXPECT_NEAR(R(2, 0), 1.0, 1e-14);
+    EXPECT_NEAR(R(3, 3), 4.0, 1e-14);
+}
+
+TEST(MatrixRankTest, identity_and_rank_one) {
+    EXPECT_EQ(matrix_rank(eye<double>(3)), 3);
+    DMatrix A{{1, 2}, {2, 4}};
+    EXPECT_EQ(matrix_rank(A), 1);
+    EXPECT_EQ(matrix_rank(zeros<double>(2, 2)), 0);
+}
+
+TEST(CondTest, identity_is_one) {
+    const auto c = cond(eye<double>(3));
+    ASSERT_TRUE(c.has_value());
+    EXPECT_NEAR(*c, 1.0, 1e-10);
+}
+
+TEST(MinresTest, identity_recovers_rhs) {
+    const DMatrix A = eye<double>(3);
+    DMatrix b{{1}, {2}, {3}};
+    const auto x = minres(A, b, 100, 1e-10);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_NEAR((*x)(0, 0), 1.0, 1e-8);
+    EXPECT_NEAR((*x)(1, 0), 2.0, 1e-8);
+    EXPECT_NEAR((*x)(2, 0), 3.0, 1e-8);
+}
+
+TEST(MinresTest, dimension_mismatch_fails) {
+    DMatrix A{{4, 1}, {1, 3}};
+    DMatrix b{{1}, {2}, {3}};
+    EXPECT_FALSE(minres(A, b).has_value());
 }

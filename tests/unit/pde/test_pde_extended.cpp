@@ -1339,3 +1339,73 @@ TEST(PdeExtTest, heat_2d_cn_adi_invalid_parameters) {
     EXPECT_TRUE(pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.0, 0.01, 5).u.empty());
     EXPECT_TRUE(pde_heat_2d_cn_adi(u0, 0.1, 0.1, 0.1, 0.0, 5).u.empty());
 }
+
+// ---------------------------------------------------------------------------
+// pde_heat_1d — analytic Fourier mode + stability
+// ---------------------------------------------------------------------------
+
+TEST(PdeExtTest, heat_1d_fourier_mode_decays_analytically) {
+    const std::size_t n = 21;
+    const double dx = 0.05;
+    const double L = static_cast<double>(n - 1) * dx;
+    const double alpha = 0.1;
+    const double dt = 0.001;
+    const std::size_t steps = 50;
+    auto x0 = sin_initial_1d(n);
+    const auto result = pde_heat_1d(x0, alpha, dx, dt, steps);
+    ASSERT_FALSE(result.u.empty());
+    ASSERT_EQ(result.u.size(), steps + 1);
+    const double t = static_cast<double>(steps) * dt;
+    const double decay = std::exp(-alpha * M_PI * M_PI * t / (L * L));
+    for (std::size_t i = 0; i < n; ++i) {
+        const double exact = x0[i] * decay;
+        EXPECT_NEAR(result.u.back()[i], exact, 0.02);
+    }
+    EXPECT_NEAR(result.u.back().front(), 0.0, 1e-12);
+    EXPECT_NEAR(result.u.back().back(), 0.0, 1e-12);
+}
+
+TEST(PdeExtTest, heat_1d_stability_rejection) {
+    std::vector<double> x0(11, 0.0);
+    x0[5] = 1.0;
+    const auto result = pde_heat_1d(x0, 1.0, 0.1, 0.1, 5);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(PdeExtTest, heat_1d_too_small_or_zero_steps) {
+    EXPECT_TRUE(pde_heat_1d({0.0, 1.0}, 0.1, 0.1, 0.001, 5).u.empty());
+    EXPECT_TRUE(pde_heat_1d(sin_initial_1d(11), 0.1, 0.1, 0.001, 0).u.empty());
+}
+
+TEST(PdeExtTest, heat_1d_cn_fourier_mode_decays_analytically) {
+    const std::size_t n = 21;
+    const double dx = 0.05;
+    const double L = static_cast<double>(n - 1) * dx;
+    const double alpha = 0.1;
+    const double dt = 0.01;
+    const std::size_t steps = 20;
+    auto x0 = sin_initial_1d(n);
+    const auto result = pde_heat_1d_cn(x0, alpha, dx, dt, steps);
+    ASSERT_FALSE(result.u.empty());
+    const double t = static_cast<double>(steps) * dt;
+    const double decay = std::exp(-alpha * M_PI * M_PI * t / (L * L));
+    for (std::size_t i = 0; i < n; ++i)
+        EXPECT_NEAR(result.u.back()[i], x0[i] * decay, 0.03);
+}
+
+TEST(PdeExtTest, wave_1d_standing_wave_matches_cosine) {
+    const std::size_t n = 21;
+    const double dx = 0.05;
+    const double L = static_cast<double>(n - 1) * dx;
+    const double c = 1.0;
+    const double dt = 0.01;
+    const std::size_t steps = 10;
+    auto u0 = sin_initial_1d(n);
+    std::vector<double> v0(n, 0.0);
+    const auto result = pde_wave_1d(u0, v0, c, dx, dt, steps);
+    ASSERT_FALSE(result.u.empty());
+    const double t = static_cast<double>(steps) * dt;
+    const double factor = std::cos(c * M_PI * t / L);
+    for (std::size_t i = 0; i < n; ++i)
+        EXPECT_NEAR(result.u.back()[i], u0[i] * factor, 0.05);
+}

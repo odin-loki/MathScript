@@ -346,6 +346,44 @@ TEST(ReplCommandsTest, image) {
     ASSERT_GT(interp.state().matrices.count("D"), 0u);
 }
 
+TEST(ReplCommandsTest, imopen) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imopen(M,k)");
+
+    expect_ok(interp, "M = [0,0,0,0,0; 0,1,1,1,0; 0,1,1,1,0; 0,1,1,1,0; 0,0,0,0,0]");
+    expect_ok(interp, "O = imopen(M, 3)");
+    ASSERT_GT(interp.state().matrices.count("O"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("O").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("O").cols(), 5u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("O")(2, 2)));
+
+    expect_ok(interp, "O1 = imopen(M)");
+    ASSERT_GT(interp.state().matrices.count("O1"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("O1").rows(), 5u);
+
+    expect_error_contains(interp, "bad = imopen(missing, 3)", "unknown matrix");
+    expect_error_contains(interp, "bad = imopen(M, 2)", "odd integer ksize");
+}
+
+TEST(ReplCommandsTest, imclose) {
+    Interpreter interp;
+    expect_contains(interp, "help", "imclose(M,k)");
+
+    expect_ok(interp, "M = [0,0,0,0,0; 0,1,1,1,0; 0,1,0,1,0; 0,1,1,1,0; 0,0,0,0,0]");
+    expect_ok(interp, "C = imclose(M, 3)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("C").rows(), 5u);
+    EXPECT_EQ(interp.state().matrices.at("C").cols(), 5u);
+    EXPECT_TRUE(std::isfinite(interp.state().matrices.at("C")(2, 2)));
+
+    expect_ok(interp, "C1 = imclose(M)");
+    ASSERT_GT(interp.state().matrices.count("C1"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("C1").rows(), 5u);
+
+    expect_error_contains(interp, "bad = imclose(missing, 3)", "unknown matrix");
+    expect_error_contains(interp, "bad = imclose(M, 4)", "odd integer ksize");
+}
+
 TEST(ReplCommandsTest, poly_prewitt_scharr) {
     Interpreter interp;
 

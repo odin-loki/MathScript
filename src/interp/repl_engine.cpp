@@ -5607,6 +5607,24 @@ bool Interpreter::is_script_skip_line(const std::string& line) {
 namespace {
 
 constexpr int kMaxScriptDepth = 8;
+constexpr std::uintmax_t kMaxScriptBytes = 256 * 1024;
+constexpr std::size_t kMaxScriptLine = 8192;
+
+Result<void> check_script_file(const std::string& path, const char* op) {
+    std::error_code ec;
+    const auto status = std::filesystem::status(path, ec);
+    if (ec || !std::filesystem::is_regular_file(status)) {
+        return std::unexpected(DomainError{op, "cannot open: " + path});
+    }
+    const auto sz = std::filesystem::file_size(path, ec);
+    if (ec) {
+        return std::unexpected(DomainError{op, "cannot open: " + path});
+    }
+    if (sz > kMaxScriptBytes) {
+        return std::unexpected(DomainError{op, "script too large: " + path});
+    }
+    return {};
+}
 
 std::string run_file_key(const std::string& path) {
     std::error_code ec;
@@ -5660,6 +5678,10 @@ Result<std::string> Interpreter::run_file(const std::string& path) {
         }
     } guard(*this, key);
 
+    if (auto checked = check_script_file(path, "run_file"); !checked) {
+        return std::unexpected(checked.error());
+    }
+
     std::ifstream in(path);
     if (!in) {
         return std::unexpected(DomainError{"run_file", "cannot open: " + path});
@@ -5668,6 +5690,9 @@ Result<std::string> Interpreter::run_file(const std::string& path) {
     std::ostringstream out;
     std::string line;
     while (std::getline(in, line)) {
+        if (line.size() > kMaxScriptLine) {
+            return std::unexpected(DomainError{"run_file", "script line too long"});
+        }
         if (is_script_skip_line(line)) {
             continue;
         }
@@ -5698,6 +5723,9 @@ Result<std::string> Interpreter::run_file(const std::string& path) {
 }
 
 Result<void> Interpreter::load_session(const std::string& path) {
+    if (auto checked = check_script_file(path, "load"); !checked) {
+        return std::unexpected(checked.error());
+    }
     std::ifstream in(path);
     if (!in) {
         return std::unexpected(DomainError{"load", "cannot open: " + path});
@@ -5707,6 +5735,9 @@ Result<void> Interpreter::load_session(const std::string& path) {
     bool have_plot = false;
     std::string line;
     while (std::getline(in, line)) {
+        if (line.size() > kMaxScriptLine) {
+            return std::unexpected(DomainError{"load", "session line too long"});
+        }
         line = trim(line);
         if (line.empty() || line[0] == '#') {
             continue;
@@ -5789,6 +5820,16 @@ Result<void> Interpreter::load_session(const std::string& path) {
 }
 
 Result<void> Interpreter::export_history(const std::string& path) const {
+    std::size_t nbytes = 0;
+    for (const auto& cmd : state_.history) {
+        if (cmd.size() > kMaxScriptLine) {
+            return std::unexpected(DomainError{"export", "history entry too long"});
+        }
+        nbytes += cmd.size() + 1;
+        if (nbytes > kMaxScriptBytes) {
+            return std::unexpected(DomainError{"export", "history too large"});
+        }
+    }
     std::ofstream out(path);
     if (!out) {
         return std::unexpected(DomainError{"export", "cannot open: " + path});

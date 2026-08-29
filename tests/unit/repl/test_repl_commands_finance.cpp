@@ -394,6 +394,58 @@ TEST(ReplCommandsTest, finance_digital_option) {
     expect_contains(interp, "finance_digital_option(200, 100, 1, 0.05, 0.2, 1, 1)", "0.9");
 }
 
+TEST(ReplCommandsTest, finance_heston) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho)");
+    expect_contains(interp, "help", "finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)");
+
+    expect_contains(interp, "finance_heston_call(100, 100, 1, 0.05, 0.04, 2, 0.04, 0.3, -0.5)", ".");
+    expect_contains(interp, "finance_heston_put(100, 100, 1, 0.05, 0.04, 2, 0.04, 0.3, -0.5)", ".");
+
+    expect_error_contains(
+        interp, "finance_heston_call(100, 100, 1, 0.05, 0.04, 2, 0.04, 0.3, missing)",
+        "finance_heston_call");
+    expect_error_contains(
+        interp, "finance_heston_put(100, 100, 1, 0.05, 0.04, 2, 0.04, 0.3, missing)",
+        "finance_heston_put");
+}
+
+TEST(ReplCommandsTest, finance_sabr) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_sabr_call(S,K,T,r,alpha,beta,rho,nu)");
+    expect_contains(interp, "help", "finance_sabr_put");
+
+    expect_ok(interp, "c = finance_sabr_call(100, 100, 1, 0.05, 0.2, 1, 0, 0.3)");
+    EXPECT_GT(interp.state().scalars.at("c"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("c")));
+    expect_ok(interp, "p = finance_sabr_put(100, 100, 1, 0.05, 0.2, 1, 0, 0.3)");
+    EXPECT_GT(interp.state().scalars.at("p"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("p")));
+    expect_contains(interp, "finance_sabr_call(100, 100, 1, 0.05, 0.2, 1, 0, 0.3)", "\n");
+
+    expect_error_contains(interp, "finance_sabr_call(100, 100, 1, 0.05, 0.2, 1, 0, missing)",
+                         "finance_sabr_call");
+}
+
+TEST(ReplCommandsTest, finance_geo_asian) {
+    Interpreter interp;
+    expect_contains(interp, "help", "finance_geo_asian_call(S,K,T,r,sigma,n_fixings)");
+    expect_contains(interp, "help", "finance_geo_asian_put(S,K,T,r,sigma,n_fixings)");
+
+    expect_ok(interp, "c = finance_geo_asian_call(100, 100, 1, 0.05, 0.2, 12)");
+    EXPECT_GT(interp.state().scalars.at("c"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("c")));
+    expect_ok(interp, "p = finance_geo_asian_put(100, 100, 1, 0.05, 0.2, 12)");
+    EXPECT_GT(interp.state().scalars.at("p"), 0.0);
+    EXPECT_TRUE(std::isfinite(interp.state().scalars.at("p")));
+    expect_contains(interp, "finance_geo_asian_call(100, 100, 1, 0.05, 0.2, 12)", "\n");
+
+    expect_error_contains(interp, "finance_geo_asian_call(100, 100, 1, 0.05, 0.2, 1.5)",
+                         "n_fixings");
+    expect_error_contains(interp, "finance_geo_asian_put(100, 100, 1, 0.05, 0.2, missing)",
+                         "finance_geo_asian_put");
+}
+
 TEST(ReplCommandsTest, finance_american_option) {
     Interpreter interp;
     expect_contains(interp, "help", "finance_american_option(S,K,T,r,sigma,call,steps)");

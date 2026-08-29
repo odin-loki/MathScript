@@ -305,6 +305,21 @@ TEST(GeoIntersect, OverlapAABBAndPointInAABB) {
     EXPECT_FALSE(point_in_aabb({3,1}, box));
 }
 
+TEST(GeoIntersect, OverlapCircleCircle) {
+    Circle2D a{{0.0, 0.0}, 1.0};
+    Circle2D same{{0.0, 0.0}, 1.0};
+    EXPECT_TRUE(overlap_circle_circle(a, same));
+
+    Circle2D nested{{0.0, 0.0}, 0.5};
+    EXPECT_TRUE(overlap_circle_circle(a, nested));
+
+    Circle2D tangent{{2.0, 0.0}, 1.0};
+    EXPECT_TRUE(overlap_circle_circle(a, tangent));
+
+    Circle2D apart{{3.0, 0.0}, 1.0};
+    EXPECT_FALSE(overlap_circle_circle(a, apart));
+}
+
 TEST(GeoIntersect, PointInPolygon) {
     Polygon2D poly = {{0,0},{4,0},{4,4},{0,4}};
     EXPECT_TRUE(point_in_polygon({2,2}, poly));

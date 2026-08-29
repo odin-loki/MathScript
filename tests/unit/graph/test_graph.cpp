@@ -2137,3 +2137,106 @@ TEST(GraphMatching, SelfLoopIgnored) {
     ASSERT_EQ(m.size(), 1u);
     EXPECT_EQ(m[0], (std::pair<int, int>{0, 1}));
 }
+
+// ---- Degree centrality ----
+TEST(GraphCentrality, PathOfThree) {
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    auto dc = degree_centrality(G);
+    ASSERT_EQ(dc.size(), 3u);
+    EXPECT_NEAR(dc[0], 0.5, 1e-12);
+    EXPECT_NEAR(dc[1], 1.0, 1e-12);
+    EXPECT_NEAR(dc[2], 0.5, 1e-12);
+}
+
+TEST(GraphCentrality, Star) {
+    Graph G(4, false);
+    G.add_edge(0, 1);
+    G.add_edge(0, 2);
+    G.add_edge(0, 3);
+    auto dc = degree_centrality(G);
+    ASSERT_EQ(dc.size(), 4u);
+    EXPECT_NEAR(dc[0], 1.0, 1e-12);
+    EXPECT_NEAR(dc[1], 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(dc[2], 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(dc[3], 1.0 / 3.0, 1e-12);
+}
+
+TEST(GraphBasic, FromEdgeListDirectedCounts) {
+    auto G = from_edge_list(3, {{0, 1, 2.0}, {1, 2, 3.0}}, /*directed=*/true);
+    EXPECT_EQ(G.n_vertices(), 3);
+    EXPECT_EQ(G.n_edges(), 2);
+    EXPECT_TRUE(G.is_directed());
+    auto e = G.edges();
+    ASSERT_EQ(e.size(), 2u);
+}
+
+TEST(GraphShortestPath, BellmanFordNegativeCycleDetected) {
+    Graph G(3, true);
+    G.add_edge(0, 1, 1.0);
+    G.add_edge(1, 2, 1.0);
+    G.add_edge(2, 0, -3.0);
+    auto result = bellman_ford(G, 0);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(GraphShortestPath, FloydWarshallMatchesDijkstra) {
+    Graph G(4, true);
+    G.add_edge(0, 1, 4.0);
+    G.add_edge(0, 2, 1.0);
+    G.add_edge(2, 1, 2.0);
+    G.add_edge(1, 3, 1.0);
+    G.add_edge(2, 3, 5.0);
+    auto [dist, parent] = dijkstra(G, 0);
+    auto fw = floyd_warshall(G);
+    for (int v = 0; v < 4; ++v)
+        EXPECT_NEAR(fw[0][v], dist[v], 1e-10);
+}
+
+TEST(GraphProperties, PlanarHeuristicK5Rejected) {
+    Graph G(5, false);
+    add_clique(G, 0, 5);
+    EXPECT_FALSE(is_planar_k5_k33_check(G));
+}
+
+TEST(GraphProperties, PlanarHeuristicTreeAccepted) {
+    Graph G(4, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 3);
+    EXPECT_TRUE(is_planar_k5_k33_check(G));
+}
+
+TEST(GraphMatching, HopcroftKarpCompleteBipartite) {
+    Graph G(5, false);
+    for (int L = 0; L < 2; ++L)
+        for (int R = 2; R < 5; ++R)
+            G.add_edge(L, R);
+    auto hk = bipartite_match(G, 2);
+    ASSERT_TRUE(hk.has_value());
+    EXPECT_EQ(*hk, 2);
+}
+
+TEST(GraphMatching, HopcroftKarpEmptyRightUnmatched) {
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    auto hk = bipartite_match(G, 1);
+    ASSERT_TRUE(hk.has_value());
+    EXPECT_EQ(*hk, 1);
+}
+
+TEST(GraphSpectral, AdjacencySpectrumCompleteGraph) {
+    Graph G(4, false);
+    add_clique(G, 0, 4);
+    auto spec = adjacency_spectrum(G);
+    ASSERT_EQ(spec.size(), 1u);
+    EXPECT_NEAR(spec[0], 3.0, 1e-6);
+}
+
+TEST(GraphSpectral, AdjacencySpectrumIsolatedVertex) {
+    Graph G(1, false);
+    auto spec = adjacency_spectrum(G);
+    ASSERT_EQ(spec.size(), 1u);
+    EXPECT_NEAR(spec[0], 0.0, 1e-12);
+}

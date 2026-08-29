@@ -1144,3 +1144,104 @@ TEST(ControlMargins, SecondOrderPlantHasFiniteCrossover) {
     EXPECT_TRUE(std::isfinite(m.phase_margin_deg) || std::isinf(m.phase_margin_deg));
     EXPECT_TRUE(std::isfinite(m.gain_margin_db) || std::isinf(m.gain_margin_db));
 }
+
+// ---- Controllability / observability matrices ----
+TEST(ControlCtrbObsv, DoubleIntegrator) {
+    std::vector<std::vector<double>> A = {{0.0, 1.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> B = {{0.0}, {1.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}};
+
+    auto Co = ctrb(A, B);
+    ASSERT_EQ(Co.size(), 2u);
+    ASSERT_EQ(Co[0].size(), 2u);
+    ASSERT_EQ(Co[1].size(), 2u);
+    EXPECT_NEAR(Co[0][0], 0.0, 1e-12);
+    EXPECT_NEAR(Co[0][1], 1.0, 1e-12);
+    EXPECT_NEAR(Co[1][0], 1.0, 1e-12);
+    EXPECT_NEAR(Co[1][1], 0.0, 1e-12);
+
+    auto Ob = obsv(A, C);
+    ASSERT_EQ(Ob.size(), 2u);
+    ASSERT_EQ(Ob[0].size(), 2u);
+    ASSERT_EQ(Ob[1].size(), 2u);
+    EXPECT_NEAR(Ob[0][0], 1.0, 1e-12);
+    EXPECT_NEAR(Ob[0][1], 0.0, 1e-12);
+    EXPECT_NEAR(Ob[1][0], 0.0, 1e-12);
+    EXPECT_NEAR(Ob[1][1], 1.0, 1e-12);
+
+    EXPECT_TRUE(is_controllable(A, B));
+    EXPECT_TRUE(is_observable(A, C));
+}
+
+// ---- State-space construction ----
+TEST(ControlSS, ConstructionDimensions) {
+    auto sys = ss({{0.0, 1.0}, {0.0, 0.0}}, {{0.0}, {1.0}}, {{1.0, 0.0}}, {{0.0}});
+    EXPECT_EQ(sys.n, 2);
+    EXPECT_EQ(sys.m, 1);
+    EXPECT_EQ(sys.p, 1);
+    EXPECT_EQ(sys.A.size(), 2u);
+    EXPECT_EQ(sys.B.size(), 2u);
+    EXPECT_EQ(sys.C.size(), 1u);
+    EXPECT_EQ(sys.D.size(), 1u);
+}
+
+TEST(ControlTF, SeriesPolesAreUnion) {
+    auto g = tf({1.0}, {1.0, 1.0});
+    auto h = tf({1.0}, {1.0, 2.0});
+    auto s = series(g, h);
+    auto p = poles(s);
+    ASSERT_EQ(p.size(), 2u);
+    std::vector<double> reals = {p[0].real(), p[1].real()};
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -2.0, 1e-6);
+    EXPECT_NEAR(reals[1], -1.0, 1e-6);
+    EXPECT_NEAR(dcgain(s), 0.5, 1e-8);
+}
+
+TEST(ControlTF, PositiveFeedbackIntegratorUnstable) {
+    auto plant = tf({1.0}, {1.0, 0.0});
+    auto sense = tf({1.0}, {1.0});
+    auto cl = feedback(plant, sense, +1);
+    EXPECT_FALSE(is_stable(cl));
+}
+
+TEST(ControlMargins, FirstOrderHasInfiniteGainMargin) {
+    auto sys = tf({1.0}, {1.0, 1.0});
+    auto m = margin(sys);
+    EXPECT_NEAR(m.phase_margin_deg, 180.0, 2.0);
+    EXPECT_NEAR(m.gain_crossover_freq, 0.0, 1e-9);
+    EXPECT_TRUE(std::isinf(m.gain_margin_db));
+}
+
+TEST(ControlMargins, TypeOnePlantPhaseMargin) {
+    // G(s) = 1/(s(s+1)): |G(jω)|=1 at ω² = (√5-1)/2, PM = 180-90-atan(ω)
+    auto sys = tf({1.0}, {1.0, 1.0, 0.0});
+    auto m = margin(sys);
+    const double wgc = std::sqrt((std::sqrt(5.0) - 1.0) / 2.0);
+    const double pm = 90.0 - std::atan(wgc) * 180.0 / M_PI;
+    EXPECT_NEAR(m.gain_crossover_freq, wgc, 0.05);
+    EXPECT_NEAR(m.phase_margin_deg, pm, 3.0);
+    EXPECT_TRUE(std::isfinite(m.phase_margin_deg));
+}
+
+TEST(ControlRiccati, SatisfiesContinuousARE) {
+    std::vector<std::vector<double>> A = {{-2.0, 1.0}, {0.0, -3.0}};
+    std::vector<std::vector<double>> B = {{1.0}, {1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto Xr = riccati(A, B, Q, R);
+    ASSERT_TRUE(Xr.has_value());
+    const auto& X = Xr.value();
+    auto At = mat_transpose(A);
+    auto Bt = mat_transpose(B);
+    auto AtX = mat_matmul(At, X);
+    auto XA = mat_matmul(X, A);
+    auto XB = mat_matmul(X, B);
+    auto Rinv = std::vector<std::vector<double>>{{1.0 / R[0][0]}};
+    auto XBRBtx = mat_matmul(mat_matmul(XB, Rinv), mat_matmul(Bt, X));
+    auto residual = mat_add(mat_add(AtX, XA), Q);
+    for (size_t i = 0; i < residual.size(); ++i)
+        for (size_t j = 0; j < residual[i].size(); ++j)
+            residual[i][j] -= XBRBtx[i][j];
+    EXPECT_NEAR(mat_max_abs(residual), 0.0, 1e-5);
+}

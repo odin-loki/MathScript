@@ -124,3 +124,43 @@ TEST(SpecialExtTest, lambert_w_domain_errors) {
     EXPECT_TRUE(std::isnan(lambert_w(-1, 1.0)));
     EXPECT_TRUE(std::isnan(lambert_w(2, 1.0)));
 }
+
+TEST(SpecialExtTest, erfi_odd_and_small_x) {
+    EXPECT_NEAR(erfi(0.0), 0.0, 1e-15);
+    EXPECT_NEAR(erfi(-0.4), -erfi(0.4), 1e-14);
+    // Two-term series: (2/sqrt(pi)) (x + x^3/3)
+    const double x = 0.02;
+    const double series = 2.0 / std::sqrt(std::numbers::pi) * (x + x * x * x / 3.0);
+    EXPECT_NEAR(erfi(x), series, 1e-9);
+}
+
+TEST(SpecialExtTest, erfcx_scaled_complement) {
+    EXPECT_NEAR(erfcx(0.0), 1.0, 1e-15);
+    const double x = 0.75;
+    EXPECT_NEAR(erfcx(x), std::erfc(x) * std::exp(x * x), 1e-12);
+    EXPECT_NEAR(erfcx(-0.5), 2.0 * std::exp(0.25) - erfcx(0.5), 1e-12);
+}
+
+TEST(SpecialExtTest, dawsonx_alias_and_odd) {
+    EXPECT_NEAR(dawson(0.0), 0.0, 1e-15);
+    EXPECT_NEAR(dawsonx(0.0), 0.0, 1e-15);
+    EXPECT_NEAR(dawsonx(0.6), dawson(0.6), 1e-15);
+    EXPECT_NEAR(dawson(-0.6), -dawson(0.6), 1e-14);
+    // F(x) ~ x as x -> 0
+    EXPECT_NEAR(dawson(0.01), 0.01, 1e-6);
+}
+
+TEST(SpecialExtTest, debye_small_x_and_known) {
+    EXPECT_NEAR(debye(1, 1e-9), 1.0, 1e-15);
+    // D_n(x) ~ 1 - n x / (2(n+1)) for small x
+    EXPECT_NEAR(debye(1, 0.01), 1.0 - 0.01 / 4.0, 1e-5);
+    EXPECT_NEAR(debye(3, 0.01), 1.0 - 3.0 * 0.01 / 8.0, 1e-5);
+    EXPECT_NEAR(debye(1, 1.0), 0.7775046349571536, 1e-6);
+}
+
+TEST(SpecialExtTest, debye_domain_errors) {
+    EXPECT_TRUE(std::isnan(debye(0, 1.0)));
+    EXPECT_TRUE(std::isnan(debye(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(debye(1, 0.0)));
+    EXPECT_TRUE(std::isnan(debye(2, -0.5)));
+}

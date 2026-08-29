@@ -123,6 +123,53 @@ TEST(ReplCommandsTest, tensorops_nmf_tt) {
         interp, "tensorops_reconstruct_nmf(cp1)", "tensorops_reconstruct_nmf");
 }
 
+TEST(ReplCommandsTest, tensorops_decompose_cp) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_decompose_cp");
+
+    expect_contains(interp, "tensorops_decompose_cp(cp1, [1, 2; 3, 4], 1)", "CPDecomposition");
+    expect_contains(interp, "tensorops_reconstruct_cp(cp1)", "[");
+
+    expect_error_contains(interp, "tensorops_decompose_cp(cp1, [1, 2; 3, 4], 1)",
+                         "already exists");
+    expect_error_contains(interp, "tensorops_decompose_cp(cp_bad, [1, 2; 3, 4])",
+                         "tensorops_decompose_cp");
+    expect_error_contains(interp, "tensorops_reconstruct_cp(missing)",
+                         "tensorops_reconstruct_cp");
+}
+
+TEST(ReplCommandsTest, tensorops_decompose_tucker) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_decompose_tucker");
+
+    expect_contains(interp, "tensorops_decompose_tucker(tk1, [1, 2, 3; 4, 5, 6], [1, 2])",
+                    "TuckerDecomposition");
+    expect_contains(interp, "tensorops_reconstruct_tucker(tk1)", "[");
+
+    expect_error_contains(interp, "tensorops_decompose_tucker(tk1, [1, 2; 3, 4], [1, 1])",
+                         "already exists");
+    expect_error_contains(interp, "tensorops_decompose_tucker(tk_bad, [1, 2; 3, 4], [1])",
+                         "dimensionality");
+    expect_error_contains(interp, "tensorops_reconstruct_tucker(missing)",
+                         "tensorops_reconstruct_tucker");
+}
+
+TEST(ReplCommandsTest, tensorops_decompose_hosvd) {
+    Interpreter interp;
+    expect_contains(interp, "help", "tensorops_decompose_hosvd");
+
+    expect_contains(interp, "tensorops_decompose_hosvd(hs1, [1, 2, 3; 4, 5, 6], [1, 2])",
+                    "TuckerDecomposition");
+    expect_contains(interp, "tensorops_reconstruct_tucker(hs1)", "[");
+
+    expect_error_contains(interp, "tensorops_decompose_hosvd(hs1, [1, 2; 3, 4], [1, 1])",
+                         "already exists");
+    expect_error_contains(interp, "tensorops_decompose_hosvd(hs_bad, [1, 2; 3, 4])",
+                         "tensorops_decompose_hosvd");
+    expect_error_contains(interp, "tensorops_decompose_hosvd(hs_rank, [1, 2; 3, 4], [3, 1])",
+                         "rank exceeds");
+}
+
 TEST(ReplCommandsTest, matmul_tensorops) {
     Interpreter interp;
 

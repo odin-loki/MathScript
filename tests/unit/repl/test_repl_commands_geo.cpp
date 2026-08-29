@@ -280,8 +280,11 @@ TEST(ReplCommandsTest, geo_overlap_circles) {
 
     expect_ok(interp, "ov = geo_overlap_circles(0, 0, 1, 0, 0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("ov"), 1.0, 1e-9);
+    expect_ok(interp, "sep = geo_overlap_circles(0, 0, 1, 3, 0, 1)");
+    EXPECT_NEAR(interp.state().scalars.at("sep"), 0.0, 1e-9);
 
     expect_contains(interp, "geo_overlap_circles(0, 0, 1, 0, 0, 1)", "1");
+    expect_contains(interp, "geo_overlap_circles(0, 0, 1, 3, 0, 1)", "0");
 }
 
 TEST(ReplCommandsTest, geo_aabb) {
@@ -492,6 +495,121 @@ TEST(ReplCommandsTest, geo) {
     expect_ok(interp, "r = geo_kdtree_3d_range(P, 1.0, 0, 0, 1.5)");
     ASSERT_GT(interp.state().matrices.count("r"), 0u);
     EXPECT_GE(interp.state().matrices.at("r").rows(), 2u);
+}
+
+TEST(ReplCommandsTest, geo_intersect_ray_tri) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz)");
+
+    expect_ok(interp, "hit = geo_intersect_ray_tri(0, 0, -1, 0, 0, 1, 1, 0, 0, -1, 1, 0, -1, -1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("hit"), 1.0, 1e-9);
+    expect_ok(interp, "miss = geo_intersect_ray_tri(0, 0, -1, 0, 0, -1, 1, 0, 0, -1, 1, 0, -1, -1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("miss"), 0.0, 1e-9);
+    expect_contains(interp, "geo_intersect_ray_tri(0, 0, -1, 0, 0, 1, 1, 0, 0, -1, 1, 0, -1, -1, 0)", "1");
+
+    expect_error_contains(interp, "geo_intersect_ray_tri(0, 0, 0)", "geo_intersect_ray_tri");
+}
+
+TEST(ReplCommandsTest, geo_dist_point_plane) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_dist_point_plane(px,py,pz,nx,ny,nz,d)");
+
+    expect_ok(interp, "d = geo_dist_point_plane(0, 0, 1, 0, 0, 1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("d"), 1.0, 1e-9);
+    expect_ok(interp, "on = geo_dist_point_plane(0, 0, 0, 0, 0, 1, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("on"), 0.0, 1e-9);
+    expect_contains(interp, "geo_dist_point_plane(0, 0, 1, 0, 0, 1, 0)", "1");
+
+    expect_error_contains(interp, "geo_dist_point_plane(0, 0, 1, 0, 0, 1, not_a_number)",
+                         "geo_dist_point_plane");
+}
+
+TEST(ReplCommandsTest, geo_dist_point_seg3d) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2)");
+
+    expect_ok(interp, "d = geo_dist_point_seg3d(0, 0, 0, 1, 0, 0, 2, 0, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("d"), 1.0, 1e-9);
+    expect_ok(interp, "on = geo_dist_point_seg3d(1.5, 0, 0, 1, 0, 0, 2, 0, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("on"), 0.0, 1e-9);
+    expect_contains(interp, "geo_dist_point_seg3d(0, 0, 0, 1, 0, 0, 2, 0, 0)", "1");
+
+    expect_error_contains(interp, "geo_dist_point_seg3d(0, 0, 0, 1, 0, 0, 2, 0, missing)",
+                         "geo_dist_point_seg3d");
+}
+
+TEST(ReplCommandsTest, geo_kdtree_3d_nearest) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_kdtree_3d_nearest(P,x,y,z)");
+
+    expect_ok(interp, "P = [0, 0, 0; 1, 0, 0; 2, 0, 0]");
+    expect_ok(interp, "idx = geo_kdtree_3d_nearest(P, 0.9, 0, 0)");
+    EXPECT_NEAR(interp.state().scalars.at("idx"), 1.0, 1e-9);
+    expect_contains(interp, "geo_kdtree_3d_nearest(P, 0.9, 0, 0)", "1");
+
+    expect_ok(interp, "P2 = [0, 0; 1, 0]");
+    expect_error_contains(interp, "bad = geo_kdtree_3d_nearest(P2, 0, 0, 0)", "Nx3");
+    expect_error_contains(interp, "bad = geo_kdtree_3d_nearest(missing, 0, 0, 0)",
+                         "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_poly_boolean) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_poly_union(A,B)");
+    expect_contains(interp, "help", "geo_poly_intersect(A,B)");
+    expect_contains(interp, "help", "geo_poly_diff(A,B)");
+
+    expect_ok(interp, "A = [0, 0; 2, 0; 2, 2; 0, 2]");
+    expect_ok(interp, "B = [1, 1; 3, 1; 3, 3; 1, 3]");
+    expect_ok(interp, "U = geo_poly_union(A, B)");
+    ASSERT_GT(interp.state().matrices.count("U"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("U").cols(), 2u);
+    EXPECT_GE(interp.state().matrices.at("U").rows(), 4u);
+
+    expect_ok(interp, "I = geo_poly_intersect(A, B)");
+    ASSERT_GT(interp.state().matrices.count("I"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("I").cols(), 2u);
+    EXPECT_GE(interp.state().matrices.at("I").rows(), 3u);
+
+    expect_ok(interp, "D = geo_poly_diff(A, B)");
+    ASSERT_GT(interp.state().matrices.count("D"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("D").cols(), 2u);
+    EXPECT_GE(interp.state().matrices.at("D").rows(), 3u);
+
+    expect_ok(interp, "bad = [0, 0, 0; 1, 0, 0]");
+    expect_error_contains(interp, "Ubad = geo_poly_union(bad, A)", "Nx2");
+    expect_error_contains(interp, "Ibad = geo_poly_intersect(missing, A)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_minkowski_sum) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_minkowski_sum(A,B)");
+
+    expect_ok(interp, "A = [0, 0; 1, 0; 1, 1; 0, 1]");
+    expect_ok(interp, "B = [0, 0; 1, 0; 1, 1; 0, 1]");
+    expect_ok(interp, "S = geo_minkowski_sum(A, B)");
+    ASSERT_GT(interp.state().matrices.count("S"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("S").cols(), 2u);
+    EXPECT_GE(interp.state().matrices.at("S").rows(), 4u);
+
+    expect_ok(interp, "bad = [0; 1; 2]");
+    expect_error_contains(interp, "geo_minkowski_sum(bad, A)", "Nx2");
+}
+
+TEST(ReplCommandsTest, geo_clip_polygon) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_clip_polygon(A,B)");
+
+    expect_ok(interp, "subj = [0, 0; 2, 0; 2, 2; 0, 2]");
+    expect_ok(interp, "win = [0.5, 0.5; 1.5, 0.5; 1.5, 1.5; 0.5, 1.5]");
+    expect_ok(interp, "C = geo_clip_polygon(subj, win)");
+    ASSERT_GT(interp.state().matrices.count("C"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("C").cols(), 2u);
+    EXPECT_GE(interp.state().matrices.at("C").rows(), 3u);
+
+    expect_ok(interp, "bad = [0, 0, 0; 1, 0, 0]");
+    expect_error_contains(interp, "Cbad = geo_clip_polygon(bad, win)", "Nx2");
+    expect_error_contains(interp, "Cmiss = geo_clip_polygon(missing, win)", "unknown matrix");
 }
 
 TEST(ReplCommandsTest, geo_vec2d_length_scalar) {
