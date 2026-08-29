@@ -168,15 +168,15 @@ TEST(PinnedAllocatorTest, MultipleAllocations) {
 // ---------------------------------------------------------------------------
 
 TEST(AlignedFunctions, AlignedAlloc_Returns_NonNull) {
-    void* p = aligned_alloc(64, 256);
+    void* p = ms::memory::aligned_alloc(64, 256);
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(reinterpret_cast<uintptr_t>(p) % 64, 0u);
-    aligned_free(p);
+    ms::memory::aligned_free(p);
 }
 
 TEST(AlignedFunctions, AlignedAlloc_16byte_Alignment) {
-    void* p = aligned_alloc(16, 128);
+    void* p = ms::memory::aligned_alloc(16, 128);
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(reinterpret_cast<uintptr_t>(p) % 16, 0u);
-    aligned_free(p);
+    ms::memory::aligned_free(p);
 }

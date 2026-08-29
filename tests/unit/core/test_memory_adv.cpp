@@ -183,7 +183,7 @@ TEST(MemoryAdv, AlignedAlloc_MultipleAllocations) {
 }
 
 TEST(MemoryAdv, AlignedFreeFunction_Works) {
-    void* p = aligned_alloc(64, 256);
+    void* p = ms::memory::aligned_alloc(64, 256);
     EXPECT_NE(p, nullptr);
-    aligned_free(p);
+    ms::memory::aligned_free(p);
 }

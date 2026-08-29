@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Print add_ms_bench target names from tests/performance/CMakeLists.txt.
+# Collect bench_* executable names from tests/performance/bench_*.cpp.
 # Sourceable: sets MS_BENCH_TARGETS array.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CMAKE_LISTS="${ROOT}/tests/performance/CMakeLists.txt"
+BENCH_DIR="${ROOT}/tests/performance"
 
 mapfile -t MS_BENCH_TARGETS < <(
-    grep -E '^\s*add_ms_bench\s*\(' "${CMAKE_LISTS}" \
-        | sed -E 's/^\s*add_ms_bench\s*\(\s*([[:alnum:]_]+).*/\1/'
+    find "${BENCH_DIR}" -name 'bench_*.cpp' \
+        | sed 's|.*/||; s|\.cpp$||' | sort
 )
 
 if [[ ${#MS_BENCH_TARGETS[@]} -eq 0 ]]; then
-    echo "No add_ms_bench targets found in ${CMAKE_LISTS}" >&2
+    echo "No bench_*.cpp targets found in ${BENCH_DIR}" >&2
     exit 1
 fi
 
