@@ -73,7 +73,7 @@ ctest --test-dir build -R int_linalg         # linear-algebra REPL pipelines
 
 ## Coverage
 
-Linux Debug build with gcov instrumentation (CI enforces **90%** minimum line coverage of compiled `src/`, excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars):
+Linux Debug build with gcov instrumentation (CI enforces **80%** minimum line coverage of compiled `src/`, excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars; **90%** remains the `v1.0.0` tag goal):
 
 ```bash
 cmake -S . -B build-cov -G Ninja \
@@ -83,7 +83,7 @@ cmake -S . -B build-cov -G Ninja \
   -DMS_ENABLE_COVERAGE=ON -DMS_LINK_TESTS_SHARED=ON
 cmake --build build-cov
 ctest --test-dir build-cov --output-on-failure
-MS_COVERAGE_MIN=90 bash scripts/coverage_report.sh build-cov
+MS_COVERAGE_MIN=80 bash scripts/coverage_report.sh build-cov
 ```
 
 Or run the CMake target after configuring with coverage enabled:

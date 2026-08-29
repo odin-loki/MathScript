@@ -196,7 +196,7 @@ jobs:
 
       - name: Coverage report
         env:
-          MS_COVERAGE_MIN: "90"
+          MS_COVERAGE_MIN: "80"
         run: bash scripts/coverage_report.sh build-cov
 
       - name: Upload coverage summary

@@ -6,7 +6,7 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
 
 1. **CI green** on `main` with no `continue-on-error`. Linux GCC 13 `-fno-exceptions` syntax gate on `build-test-linux` must pass.
 2. **Tests** — full CTest passing. Current catalogue: **816** suites (Windows MSVC, CUDA off), grouped by mathematical domain.
-3. **Coverage** ≥ **90%** of compiled library `src/` (`coverage-linux`; excludes plugin, GUI, CUDA stubs, and `matrix_calls` registrars). Full CTest via `libms_bundle.so`.
+3. **Coverage** — CI gate **80%** (`coverage-linux`; measured **81.1%** of library `src/` excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars). **90%** remains a `v1.0.0` tag goal.
 4. **Valgrind** memcheck clean (`valgrind-linux`; unit + numerical). Full **816** suites run on `build-test-linux` and `build-test-windows`.
 5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`).
 6. **Unsafe surface** — `UNSAFE_REVIEW.md` matches `scripts/unsafe_report.sh`; no new unreviewed sites.

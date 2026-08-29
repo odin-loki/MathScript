@@ -9,7 +9,7 @@ src/cuda/fft.cpp:85:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
 src/cuda/fft.cpp:86:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
 src/frameworks/axiom/axiom.cpp:217:    GPNode* point_a = const_cast<GPNode*>(nodes_a[random_int(rng, 0, static_cast<int>(nodes_a.size()))]);
 src/frameworks/axiom/axiom.cpp:245:    GPNode* target = const_cast<GPNode*>(nodes[random_int(rng, 0, static_cast<int>(nodes.size()))]);
-src/interp/repl_engine_internal.cpp:18267:        reinterpret_cast<const uint8_t*>(item.data()), item.size());
+src/interp/repl_engine_internal.cpp:18270:        reinterpret_cast<const uint8_t*>(item.data()), item.size());
 src/plugin/rules/cast_rules.cpp:14:        "[ms-profile] C-style cast is prohibited outside [[ms::unsafe]]. "
 src/plugin/rules/cast_rules.cpp:15:        "Use static_cast, const_cast, or reinterpret_cast instead.");
 src/plugin/rules/cast_rules.cpp:16:    diag_const_cast_ = diag.getCustomDiagID(

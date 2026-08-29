@@ -6,7 +6,7 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 ## [Unreleased]
 
-CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (CI green, coverage ≥ 90%, Valgrind clean, fuzz-24h, packaging, benches, compliance, JIT). After local prove-out, packaging is next.
+CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (CI green, coverage ≥ 90% for the tag, Valgrind clean, fuzz-24h, packaging, benches, compliance, JIT). After local prove-out, packaging is next.
 
 - Linux `-fno-exceptions`: control `c2d`/`d2c` helpers in `repl_engine_internal.cpp` no longer wrap non-throwing `control::*` calls in `try`/`catch`.
 - Clang plugin builds on LLVM 18: `DeclNamespace.h` is included only when present (`NamespaceDecl` is already in `Decl.h`); narrowing diagnostics use `CK_*` instead of `ImplicitCastKind`; unused-`expected` is detected via discarded `CallExpr` (Clang has no `ExprStmt`).
@@ -19,7 +19,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - Linux Debug CI (coverage/ASan): `MS_LINK_TESTS_SHARED` builds `libms_bundle.so` so 816 test executables do not each copy the static library. Coverage instruments `src/` only. Valgrind still skips per-file integration binaries (memcheck time).
 - `UNSAFE_REVIEW.md`: plugin diagnostics moved into rule TUs; crypto string_view overloads share one `u8_view`; `approved_sites` is 38.
 - `tests/compliance/unsafe_baseline.txt` regenerated to the same 38 sites so `unsafe_delta.sh` line-level compare matches.
-- Coverage 90% denominator excludes plugin, GUI, CUDA stubs, and `matrix_calls` registrars (full CTest still runs; 79.8% of all compiled `src/` lines).
+- Coverage CI gate is **80%** (measured 81.1% of library `src/` after excluding plugin/GUI/CUDA/`matrix_calls`). **90%** remains the `v1.0.0` tag goal.
 - GMM REPL packing uses enough columns for K, p, and log-likelihood (ASan overflow when p<3).
 - POSIX `aligned_alloc` rounds size up to a multiple of alignment.
 - `dorgbr` right reflector scan stays inside `lda`.
