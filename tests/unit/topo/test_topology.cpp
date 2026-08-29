@@ -15,7 +15,7 @@ TEST(TopologyTest, total_threads_positive) {
 }
 
 TEST(TopologyTest, has_cuda_no_throw) {
-    EXPECT_NO_THROW({ (void)has_cuda(); });
+    { (void)has_cuda(); }
 }
 
 TEST(TopologyTest, nearest_numa_node) {

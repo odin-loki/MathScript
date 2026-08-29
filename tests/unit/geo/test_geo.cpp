@@ -144,7 +144,7 @@ TEST(GeoHull3D, CoplanarManyPointsIsEmpty) {
 TEST(GeoHull3D, DuplicatePointsNoCrash) {
     std::vector<Point3D> pts = {{1,1,1},{1,-1,-1},{-1,1,-1},{-1,-1,1},{1,1,1}};  // last duplicates first
     std::vector<Triangle3Di> hull;
-    ASSERT_NO_THROW(hull = convex_hull_3d(pts));
+    hull = convex_hull_3d(pts);
     EXPECT_LE(hull.size(), 10u);  // sanity bound: at most C(5,3) candidate triples
 }
 
@@ -923,7 +923,7 @@ TEST(GeoTriangulate, CollinearFlatVertexNoInfiniteLoop) {
     // Middle bottom vertex is collinear; triangulation must finish without looping.
     Polygon2D poly = {{0, 0}, {2, 0}, {4, 0}, {4, 3}, {0, 3}};
     std::vector<Triangle2Di> tris;
-    ASSERT_NO_THROW(tris = triangulate_polygon(poly));
+    tris = triangulate_polygon(poly);
     expect_valid_triangulation(poly, tris, static_cast<int>(poly.size()) - 2);
 }
 
@@ -1056,14 +1056,14 @@ TEST(GeoClip, DegenerateClipWindowReturnsEmptyNoCrash) {
     };
     for (auto& w : degenerate_windows) {
         Polygon2D result;
-        ASSERT_NO_THROW(result = clip_polygon(subject, w));
+        result = clip_polygon(subject, w);
         EXPECT_TRUE(result.empty());
     }
 }
 
 TEST(GeoClip, BothEmptyReturnsEmptyNoCrash) {
     Polygon2D result;
-    ASSERT_NO_THROW(result = clip_polygon({}, {}));
+    result = clip_polygon({}, {});
     EXPECT_TRUE(result.empty());
 }
 

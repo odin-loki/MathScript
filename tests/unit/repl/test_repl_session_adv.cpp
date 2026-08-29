@@ -176,29 +176,29 @@ TEST(ReplVariables, ListVariables_MultipleVars) {
 
 TEST(ReplPipelineAdv, Sequential_Arithmetic) {
     Interpreter interp;
-    EXPECT_NO_THROW({
+    {
         static_cast<void>(interp.assign_scalar_expr("x1", "10"));
         static_cast<void>(interp.assign_scalar_expr("x2", "20"));
         static_cast<void>(interp.assign_scalar_expr("sum", "x1 + x2"));
-    });
+    }
     SUCCEED();
 }
 
 TEST(ReplPipelineAdv, Trig_Functions) {
     Interpreter interp;
-    EXPECT_NO_THROW({
+    {
         static_cast<void>(interp.assign_scalar_expr("s", "sin(1.0)"));
         static_cast<void>(interp.assign_scalar_expr("c", "cos(1.0)"));
         static_cast<void>(interp.assign_scalar_expr("t", "tan(0.5)"));
-    });
+    }
     SUCCEED();
 }
 
 TEST(ReplPipelineAdv, Complex_Expr) {
     Interpreter interp;
-    EXPECT_NO_THROW({
+    {
         static_cast<void>(interp.assign_scalar_expr("r", "sqrt(9)"));
         static_cast<void>(interp.assign_scalar_expr("p", "pow(2, 10)"));
-    });
+    }
     SUCCEED();
 }

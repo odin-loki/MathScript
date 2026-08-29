@@ -140,17 +140,17 @@ TEST(CudaNvmlTest, multiple_device_indices_do_not_crash) {
 }
 
 TEST(CudaNvmlTest, negative_device_index_does_not_crash) {
-    EXPECT_NO_THROW({
+    {
         const size_t free_bytes = cuda::device_memory_free(-1);
         EXPECT_GE(free_bytes, 0u);
-    });
+    }
 }
 
 TEST(CudaNvmlTest, out_of_range_device_index_does_not_crash) {
-    EXPECT_NO_THROW({
+    {
         const size_t free_bytes = cuda::device_memory_free(9999);
         EXPECT_GE(free_bytes, 0u);
-    });
+    }
 }
 
 TEST(CudaNvmlTest, result_never_underflows) {

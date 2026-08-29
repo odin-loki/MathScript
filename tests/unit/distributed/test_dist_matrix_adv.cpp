@@ -151,7 +151,7 @@ TEST(DistMatrixAdv, AllreduceSum_LargeValue) {
 
 TEST(DistMatrixAdv, Barrier_DoesNotThrow) {
     auto ctx = init(0, nullptr);
-    EXPECT_NO_THROW(barrier(ctx));
+    barrier(ctx);
     finalize(ctx);
 }
 

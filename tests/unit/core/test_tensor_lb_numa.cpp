@@ -53,11 +53,11 @@ TEST(TensorTest, FloatTensor) {
 }
 
 TEST(TensorTest, LargeTensor_NoThrow) {
-    EXPECT_NO_THROW({
+    {
         Tensor<double> t(100, 200);
         t.at(99, 199) = 1.0;
         EXPECT_NEAR(t.at(99, 199), 1.0, 1e-15);
-    });
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -116,12 +116,12 @@ TEST(DistributedAdv, Bcast_Identity) {
 
 TEST(DistributedAdv, Barrier_DoesNotCrash) {
     MPIContext ctx;
-    EXPECT_NO_THROW(barrier(ctx));
+    barrier(ctx);
 }
 
 TEST(DistributedAdv, Finalize_DoesNotCrash) {
     MPIContext ctx;
-    EXPECT_NO_THROW(finalize(ctx));
+    finalize(ctx);
 }
 
 // ---------------------------------------------------------------------------

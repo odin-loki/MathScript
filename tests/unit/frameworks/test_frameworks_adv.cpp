@@ -278,7 +278,7 @@ TEST(GriaAdv, Entropy_UniformData) {
 // ---------------------------------------------------------------------------
 
 TEST(GriaAdv, RegisterDispatchHint_Smoke) {
-    EXPECT_NO_THROW(gria::register_dispatch_hint("test_op", 0.5));
+    gria::register_dispatch_hint("test_op", 0.5);
 }
 
 TEST(GriaAdv, DispatchHintAlpha_AfterRegister) {

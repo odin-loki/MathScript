@@ -71,7 +71,7 @@ TEST(RuntimeTest, concurrent_tasks_no_crash) {
     }
 
     for (auto& future : futures) {
-        ASSERT_NO_THROW(future.get());
+        future.get();
     }
 
     EXPECT_EQ(completed.load(), 100);

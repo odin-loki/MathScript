@@ -28,7 +28,7 @@ TEST(DispatchTest, decide_cpu_policy_always_cpu) {
 TEST(DispatchTest, decide_gpu_policy_fallback_when_no_cuda) {
     const auto d = decide(1000, ExecPolicy::GPU);
     // In no-CUDA build, GPU policy should not crash and backend is set
-    EXPECT_NO_THROW((void)d.backend);
+    (void)d.backend;
 }
 
 TEST(DispatchTest, decide_with_topology) {
@@ -42,7 +42,7 @@ TEST(DispatchTest, execute_does_not_throw) {
     DispatchDecision d;
     d.backend = Backend::CPU;
     d.n_threads = 1;
-    EXPECT_NO_THROW(execute(d));
+    execute(d);
 }
 
 TEST(DispatchTest, get_policy_from_error_returns_cpu) {
@@ -58,8 +58,8 @@ TEST(DispatchTest, decide_large_workload_uses_more_threads) {
 }
 
 TEST(DispatchTest, decide_zero_workload_no_crash) {
-    EXPECT_NO_THROW({
+    {
         const auto d = decide(0, ExecPolicy::AUTO);
         (void)d.backend;
-    });
+    }
 }

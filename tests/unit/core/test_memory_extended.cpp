@@ -51,7 +51,7 @@ TEST(ArenaExtTest, ResetDoesNotCrash) {
     Arena arena(4096);
     auto* p = arena.allocate<int>(10);
     (void)p;
-    EXPECT_NO_THROW(arena.reset());
+    arena.reset();
 }
 
 TEST(ArenaExtTest, AllocateAfterReset) {

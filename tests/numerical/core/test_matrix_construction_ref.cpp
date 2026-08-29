@@ -284,5 +284,5 @@ TEST(MatrixUtils, TransposeSwapsDimensions) {
 
 TEST(MatrixUtils, PrintDoesNotCrash) {
     DMatrix A{{1.0, 2.0}, {3.0, 4.0}};
-    EXPECT_NO_THROW(A.print());
+    A.print();
 }

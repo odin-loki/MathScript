@@ -81,7 +81,7 @@ TEST(RuntimeDispatchAdv, Decide_ZeroWorkload) {
 
 TEST(RuntimeDispatchAdv, Execute_CPUDecision_Smoke) {
     auto d = decide(100, ExecPolicy::CPU);
-    EXPECT_NO_THROW(execute(d));
+    execute(d);
 }
 
 // ---------------------------------------------------------------------------

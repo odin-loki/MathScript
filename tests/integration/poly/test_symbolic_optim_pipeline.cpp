@@ -177,10 +177,10 @@ TEST(ProbDomainPipeline, GammaDistribution_IntegratesToOne) {
 // ---------------------------------------------------------------------------
 
 TEST(SymbolicPipeline, Simplify_DoesNotCrash) {
-    EXPECT_NO_THROW({
+    {
         auto simplified = sym_simplify(sym_add(sym_var("x"), sym_const(0.0)));
         (void)simplified;
-    });
+    }
 }
 
 TEST(SymbolicPipeline, Eval_Polynomial_Expression) {

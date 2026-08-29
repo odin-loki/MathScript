@@ -143,10 +143,10 @@ TEST(SpecialGroup4, LerchPhi_Finite) {
 
 TEST(SpecialGroup4, FoxH_Smoke) {
     // fox_h(a, b, z): smoke test only
-    EXPECT_NO_THROW({
+    {
         double v = fox_h(1.0, 1.0, 0.5);
         (void)v;
-    });
+    }
     SUCCEED();
 }
 
@@ -164,26 +164,26 @@ TEST(SpecialGroup4, FoxH_Finite_Or_Not_Crash) {
 
 TEST(SpecialGroup4, HeunB_Smoke) {
     // heun_b(q, alpha, beta, delta, z): smoke test
-    EXPECT_NO_THROW({
+    {
         double v = heun_b(1.0, 0.5, 0.5, 0.5, 0.3);
         (void)v;
-    });
+    }
     SUCCEED();
 }
 
 TEST(SpecialGroup4, HeunD_Smoke) {
-    EXPECT_NO_THROW({
+    {
         double v = heun_d(1.0, 0.5, 0.5, 0.5, 0.3);
         (void)v;
-    });
+    }
     SUCCEED();
 }
 
 TEST(SpecialGroup4, HeunT_Smoke) {
-    EXPECT_NO_THROW({
+    {
         double v = heun_t(1.0, 0.5, 0.5, 0.5, 0.3);
         (void)v;
-    });
+    }
     SUCCEED();
 }
 

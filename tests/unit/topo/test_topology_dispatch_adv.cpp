@@ -35,12 +35,12 @@ TEST(TopologyAdv, NumaCount_NonNegative) {
 }
 
 TEST(TopologyAdv, SystemTopology_Detect_DoesNotCrash) {
-    EXPECT_NO_THROW({
+    {
         SystemTopology topo;
         (void)topo.total_cores();
         (void)topo.total_threads();
         (void)topo.numa_count();
-    });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -56,10 +56,10 @@ TEST(TopologyAdv, NearestNumaNode_Returns_NonNegativeOrMinusOne) {
 
 TEST(TopologyAdv, NearestNumaNode_Finite) {
     SystemTopology topo;
-    EXPECT_NO_THROW({
+    {
         int r = nearest_numa_node(0, topo);
         (void)r;
-    });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -72,18 +72,18 @@ TEST(TopologyAdv, GetGpuCount_NonNegative) {
 }
 
 TEST(TopologyAdv, GetGpuCount_DoesNotCrash) {
-    EXPECT_NO_THROW({
+    {
         int c = get_gpu_count();
         (void)c;
-    });
+    }
 }
 
 TEST(TopologyAdv, GetGpuModel_InvalidDevice_DoesNotCrash) {
     // With CUDA off, device -1 or 0 should return empty/stub string
-    EXPECT_NO_THROW({
+    {
         std::string model = get_gpu_model(-1);
         (void)model;
-    });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -120,17 +120,17 @@ TEST(DispatchAdv, DispatchDecision_DefaultInit) {
 
 TEST(DispatchAdv, Decide_With_Topology) {
     SystemTopology topo;
-    EXPECT_NO_THROW({
+    {
         auto d = decide(512, ExecPolicy::CPU, topo);
         (void)d;
-    });
+    }
 }
 
 TEST(DispatchAdv, GetPolicyFromError_DoesNotCrash) {
-    EXPECT_NO_THROW({
+    {
         auto policy = get_policy_from_error();
         (void)policy;
-    });
+    }
 }
 
 TEST(DispatchAdv, ExecPolicy_Enum_Values_Distinct) {

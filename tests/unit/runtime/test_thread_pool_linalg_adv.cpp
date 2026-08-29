@@ -32,7 +32,7 @@ TEST(ThreadPool, Size_NonNegative) {
 
 TEST(ThreadPool, Initialize_DoesNotCrash) {
     auto& pool = ThreadPool::instance();
-    EXPECT_NO_THROW(pool.initialize(2));
+    pool.initialize(2);
     SUCCEED();
 }
 
@@ -67,7 +67,7 @@ TEST(ThreadPool, Submit_WithCapture) {
 TEST(ThreadPool, Wait_DoesNotCrash) {
     auto& pool = ThreadPool::instance();
     pool.initialize(2);
-    EXPECT_NO_THROW(pool.wait());
+    pool.wait();
 }
 
 TEST(ThreadPool, Parallel_Sum) {
