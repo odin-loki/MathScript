@@ -18,6 +18,8 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - Signal+optim pipeline: compare residual energy vs each tone (unit sines share RMS, so the old closeness check was noise).
 - Linux Debug CI (coverage/ASan): `MS_LINK_TESTS_SHARED` builds `libms_bundle.so` so 816 test executables do not each copy the static library. Coverage instruments `src/` only. Valgrind still skips per-file integration binaries (memcheck time).
 - `UNSAFE_REVIEW.md`: plugin diagnostics moved into rule TUs; crypto string_view overloads share one `u8_view`; `approved_sites` is 38.
+- `tests/compliance/unsafe_baseline.txt` regenerated to the same 38 sites so `unsafe_delta.sh` line-level compare matches.
+- Coverage report: ignore unused lcov exclude patterns when test TUs are not instrumented.
 - Linux package smoke: Debian CPack uses `mathscript_1.0.0_amd64.deb` (`DEB-DEFAULT`); CI glob is `mathscript*.deb`.
 - `linux-gcc13.json` matmul medians recalibrated from GitHub-hosted ubuntu-24.04 (`MS_ENABLE_AVX512=OFF`). Tolerance remains 10%.
 - Local prove-out (Windows MSVC Release, CUDA off): **816/816** CTest suites passed (~36 s at `-j 32`); 28 Google Benchmark targets passed with `--benchmark_min_time=0.001s`. Windows ZIP smoke: `scripts/package_smoke.ps1` → `mathscript-1.0.0-win64.zip`.

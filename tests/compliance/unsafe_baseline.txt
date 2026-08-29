@@ -1,9 +1,41 @@
 # MathScript unsafe baseline — one reviewed site per line (file:line:match)
 # Regenerate: bash scripts/unsafe_delta.sh --write-baseline [REPORT_PATH]
-# Matches approved_sites: 6 in UNSAFE_REVIEW.md
-src/cuda/fft.cpp:85:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
-src/cuda/fft.cpp:86:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
+# Matches approved_sites: 38 in UNSAFE_REVIEW.md
+include/ms/unsafe/unsafe.hpp:1:// MathScript [[ms::unsafe]] attribute macro (master plan §7.4)
+src/crypto/crypto.cpp:1083:    return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
 src/cuda/fft.cpp:145:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
 src/cuda/fft.cpp:146:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
+src/cuda/fft.cpp:85:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
+src/cuda/fft.cpp:86:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
+src/frameworks/axiom/axiom.cpp:217:    GPNode* point_a = const_cast<GPNode*>(nodes_a[random_int(rng, 0, static_cast<int>(nodes_a.size()))]);
+src/frameworks/axiom/axiom.cpp:245:    GPNode* target = const_cast<GPNode*>(nodes[random_int(rng, 0, static_cast<int>(nodes.size()))]);
+src/interp/repl_engine_internal.cpp:18267:        reinterpret_cast<const uint8_t*>(item.data()), item.size());
+src/plugin/rules/cast_rules.cpp:14:        "[ms-profile] C-style cast is prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/cast_rules.cpp:15:        "Use static_cast, const_cast, or reinterpret_cast instead.");
+src/plugin/rules/cast_rules.cpp:16:    diag_const_cast_ = diag.getCustomDiagID(
+src/plugin/rules/cast_rules.cpp:18:        "[ms-profile] 'const_cast' is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/cast_rules.cpp:21:        "[ms-profile] 'reinterpret_cast' is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/cast_rules.cpp:24:        "[ms-profile] 'goto' is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/cast_rules.cpp:27:        "[ms-profile] raw pointer arithmetic is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/cast_rules.cpp:30:        "[ms-profile] implicit narrowing conversion is prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/cast_rules.cpp:34:        "[ms-profile] signed/unsigned comparison is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/cast_rules.cpp:37:        "[ms-profile] discarding std::expected/ms::Result is prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/cast_rules.cpp:89:    env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_const_cast_);
+src/plugin/rules/cast_rules.hpp:28:    unsigned diag_const_cast_ = 0;
+src/plugin/rules/exception_rules.cpp:12:        "[ms-profile] 'throw' is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/exception_rules.cpp:15:        "[ms-profile] 'try'/'catch' is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/memory_rules.cpp:13:        "[ms-profile] 'new' is prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/memory_rules.cpp:17:        "[ms-profile] 'delete' is prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/memory_rules.cpp:22:        "outside [[ms::unsafe]]. Use RAII containers or ms allocators instead.");
+src/plugin/rules/memory_rules.cpp:25:        "[ms-profile] variable-length arrays are prohibited outside [[ms::unsafe]].");
+src/plugin/rules/memory_rules.cpp:28:        "[ms-profile] uninitialized local variables are prohibited outside [[ms::unsafe]].");
+src/plugin/rules/memory_rules.cpp:31:        "[ms-profile] storing std::span past callee lifetime is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/memory_rules.cpp:34:        "[ms-profile] 'volatile' for synchronization is prohibited outside [[ms::unsafe]].");
+src/plugin/rules/memory_rules.cpp:37:        "[ms-profile] owning raw pointer members are prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/memory_rules.cpp:41:        "[ms-profile] raw std::thread construction is prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/memory_rules.cpp:45:        "[ms-profile] manual mutex.lock()/try_lock() is prohibited outside [[ms::unsafe]]. "
+src/plugin/rules/memory_rules.cpp:49:        "[ms-profile] 'std::thread::detach' is prohibited outside [[ms::unsafe]].");
+src/plugin/unsafe_registry.cpp:1:// MathScript Unsafe Registry - collects [[ms::unsafe]] / MS_UNSAFE audit sites
 src/plugin/unsafe_registry.hpp:1:// MathScript Unsafe Registry - Tracks [[ms::unsafe]] annotation sites
-src/plugin/unsafe_registry.hpp:39:#define UNSAFE_SITE(reason) ms::plugin::record_unsafe_annotation(__FILE__, __LINE__, reason)
+src/plugin/unsafe_registry.hpp:41:// Called by UNSAFE_SITE() macro at compile time (non-plugin builds).
+src/plugin/unsafe_registry.hpp:47:#define UNSAFE_SITE(reason) ms::plugin::record_unsafe_annotation(__FILE__, __LINE__, reason)
