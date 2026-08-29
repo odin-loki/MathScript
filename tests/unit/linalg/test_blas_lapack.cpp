@@ -1282,8 +1282,8 @@ TEST(LapackDormbrTest, apply_q_left_and_p_right) {
     cpu::lapack::dormbr('Q', 'L', 'N', m, n, k, A.data(), m, tauq.data(), C.data(), m);
     EXPECT_NE(C(0, 0), 1.0);
 
-    ColMatrix<double> Dmat(n, n, 1.0);
-    cpu::lapack::dormbr('P', 'R', 'T', n, n, k, A.data(), m, taup.data(), Dmat.data(), n);
+    ColMatrix<double> Dmat(n, m, 1.0);
+    cpu::lapack::dormbr('P', 'R', 'T', m, n, k, A.data(), m, taup.data(), Dmat.data(), n);
     EXPECT_NE(Dmat(0, 0), 1.0);
 }
 
