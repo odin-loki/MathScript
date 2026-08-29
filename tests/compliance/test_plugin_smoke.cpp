@@ -81,7 +81,7 @@ TEST(PluginSmokeTest, unsafe_registry_records_known_site) {
     ASSERT_GE(sites.size(), 1u);
 
     const bool found = std::any_of(
-        sites.begin(), sites.end(), [](const ms::plugin::UnsafeSite& site) {
+        sites.begin(), sites.end(), [=](const ms::plugin::UnsafeSite& site) {
             return site.file == kKnownFile && site.line == kKnownLine &&
                    site.justification == kKnownReason;
         });
