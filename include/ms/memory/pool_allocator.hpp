@@ -2,8 +2,9 @@
 
 #pragma once
 
-#include <mutex>
+#include <cstddef>
 #include <cstdlib>
+#include <mutex>
 
 namespace ms::memory {
 
@@ -20,6 +21,21 @@ class PoolAllocator {
     std::mutex mtx_;
 
 public:
+    PoolAllocator() = default;
+    PoolAllocator(const PoolAllocator&) = delete;
+    PoolAllocator& operator=(const PoolAllocator&) = delete;
+
+    ~PoolAllocator() {
+        Slab* s = slabs_;
+        slabs_ = nullptr;
+        freelist_ = nullptr;
+        while (s) {
+            Slab* n = s->next;
+            delete s;
+            s = n;
+        }
+    }
+
     void* allocate() {
         std::lock_guard lock(mtx_);
         if (!freelist_) grow();
