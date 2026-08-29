@@ -16,7 +16,8 @@ void ExceptionRules::registerDiagnostics(clang::DiagnosticsEngine& diag) {
 }
 
 bool ExceptionRules::visitCXXThrowExpr(clang::CXXThrowExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_throw_);
@@ -24,7 +25,8 @@ bool ExceptionRules::visitCXXThrowExpr(clang::CXXThrowExpr* expr) {
 }
 
 bool ExceptionRules::visitCXXTryStmt(clang::CXXTryStmt* stmt) {
-    if (!stmt || env_.unsafe_depth > 0) {
+    if (!stmt || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, stmt->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(stmt->getBeginLoc(), diag_catch_);

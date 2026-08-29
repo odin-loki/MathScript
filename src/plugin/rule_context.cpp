@@ -271,4 +271,13 @@ bool typeIsExpected(clang::QualType type) {
     return record && record->getName() == "expected";
 }
 
+bool sourceLocationIsExempt(const clang::ASTContext& ctx, clang::SourceLocation loc) {
+    if (loc.isInvalid()) {
+        return true;
+    }
+    const clang::SourceManager& sm = ctx.getSourceManager();
+    return sm.isInSystemHeader(sm.getSpellingLoc(loc)) ||
+           sm.isInSystemHeader(sm.getExpansionLoc(loc));
+}
+
 } // namespace ms::plugin

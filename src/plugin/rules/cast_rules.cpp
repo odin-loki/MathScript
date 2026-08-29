@@ -39,7 +39,8 @@ void CastRules::registerDiagnostics(clang::DiagnosticsEngine& diag) {
 }
 
 bool CastRules::visitCallExpr(clang::CallExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     const clang::QualType ret = expr->getCallReturnType(env_.Ctx);
@@ -69,7 +70,8 @@ bool CastRules::visitCallExpr(clang::CallExpr* expr) {
 }
 
 bool CastRules::visitCStyleCastExpr(clang::CStyleCastExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_cstyle_cast_);
@@ -77,7 +79,8 @@ bool CastRules::visitCStyleCastExpr(clang::CStyleCastExpr* expr) {
 }
 
 bool CastRules::visitCXXConstCastExpr(clang::CXXConstCastExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_const_cast_);
@@ -85,7 +88,8 @@ bool CastRules::visitCXXConstCastExpr(clang::CXXConstCastExpr* expr) {
 }
 
 bool CastRules::visitCXXReinterpretCastExpr(clang::CXXReinterpretCastExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_reinterpret_);
@@ -93,8 +97,15 @@ bool CastRules::visitCXXReinterpretCastExpr(clang::CXXReinterpretCastExpr* expr)
 }
 
 bool CastRules::visitImplicitCastExpr(clang::ImplicitCastExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
+    }
+    const auto parents = env_.Ctx.getParents(*expr);
+    for (const auto& parent : parents) {
+        if (parent.get<clang::ExplicitCastExpr>()) {
+            return true;
+        }
     }
     const auto kind = expr->getCastKind();
     if (kind == clang::CK_FloatingToIntegral) {
@@ -116,7 +127,8 @@ bool CastRules::visitImplicitCastExpr(clang::ImplicitCastExpr* expr) {
 }
 
 bool CastRules::visitBinaryOperator(clang::BinaryOperator* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     const auto op = expr->getOpcode();
@@ -149,7 +161,8 @@ bool CastRules::visitBinaryOperator(clang::BinaryOperator* expr) {
 }
 
 bool CastRules::visitGotoStmt(clang::GotoStmt* stmt) {
-    if (!stmt || env_.unsafe_depth > 0) {
+    if (!stmt || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, stmt->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(stmt->getBeginLoc(), diag_goto_);

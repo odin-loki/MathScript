@@ -50,7 +50,8 @@ void MemoryRules::registerDiagnostics(clang::DiagnosticsEngine& diag) {
 }
 
 bool MemoryRules::visitFieldDecl(clang::FieldDecl* decl) {
-    if (!decl || env_.unsafe_depth > 0) {
+    if (!decl || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, decl->getBeginLoc())) {
         return true;
     }
     const clang::QualType type = decl->getType();
@@ -65,7 +66,8 @@ bool MemoryRules::visitFieldDecl(clang::FieldDecl* decl) {
 }
 
 bool MemoryRules::visitVarDecl(clang::VarDecl* decl) {
-    if (!decl || env_.unsafe_depth > 0) {
+    if (!decl || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, decl->getBeginLoc())) {
         return true;
     }
     if (decl->getType()->isVariableArrayType()) {
@@ -93,7 +95,8 @@ bool MemoryRules::visitVarDecl(clang::VarDecl* decl) {
 }
 
 bool MemoryRules::visitCXXNewExpr(clang::CXXNewExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_new_);
@@ -101,7 +104,8 @@ bool MemoryRules::visitCXXNewExpr(clang::CXXNewExpr* expr) {
 }
 
 bool MemoryRules::visitCXXDeleteExpr(clang::CXXDeleteExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     env_.CI.getDiagnostics().Report(expr->getBeginLoc(), diag_delete_);
@@ -109,7 +113,8 @@ bool MemoryRules::visitCXXDeleteExpr(clang::CXXDeleteExpr* expr) {
 }
 
 bool MemoryRules::visitCallExpr(clang::CallExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     const auto* callee = expr->getDirectCallee();
@@ -125,7 +130,8 @@ bool MemoryRules::visitCallExpr(clang::CallExpr* expr) {
 }
 
 bool MemoryRules::visitCXXConstructExpr(clang::CXXConstructExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     const auto* ctor = expr->getConstructor();
@@ -141,7 +147,8 @@ bool MemoryRules::visitCXXConstructExpr(clang::CXXConstructExpr* expr) {
 }
 
 bool MemoryRules::visitCXXMemberCallExpr(clang::CXXMemberCallExpr* expr) {
-    if (!expr || env_.unsafe_depth > 0) {
+    if (!expr || env_.unsafe_depth > 0 ||
+        sourceLocationIsExempt(env_.Ctx, expr->getBeginLoc())) {
         return true;
     }
     const auto* method = expr->getMethodDecl();

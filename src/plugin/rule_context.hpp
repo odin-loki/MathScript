@@ -47,5 +47,6 @@ bool typeIsSignedIntegral(clang::QualType type);
 bool typeIsUnsignedIntegral(clang::QualType type);
 bool typeIsStdSpan(clang::QualType type);
 bool typeIsExpected(clang::QualType type);
+bool sourceLocationIsExempt(const clang::ASTContext& ctx, clang::SourceLocation loc);
 
 } // namespace ms::plugin

@@ -2,6 +2,7 @@
 /build/
 /build-*/
 /install-smoke/
+/install-smoke-wsl/
 /out/
 /cmake-build-*/
 
