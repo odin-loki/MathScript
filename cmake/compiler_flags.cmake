@@ -54,8 +54,10 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_link_options(
         -Wl,-z,relro,-z,now
-        -pie
     )
+    # -pie is for executables only. Shared modules (ms_plugin) must not receive
+    # it: Clang+lld warns "argument unused during compilation: '-pie'".
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
     find_program(MS_LLD_LINKER NAMES ld.lld lld)
     if(MS_LLD_LINKER)
         add_link_options(-fuse-ld=lld)

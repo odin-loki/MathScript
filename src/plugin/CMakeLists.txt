@@ -5,6 +5,7 @@ if(MS_BUILD_PLUGIN)
     find_package(Clang REQUIRED CONFIG)
 
     add_library(ms_plugin_registry STATIC unsafe_registry.cpp)
+    set_target_properties(ms_plugin_registry PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_include_directories(ms_plugin_registry PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
@@ -15,6 +16,7 @@ if(MS_BUILD_PLUGIN)
         rules/exception_rules.cpp
         rules/cast_rules.cpp
     )
+    set_target_properties(ms_plugin_rules PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_include_directories(ms_plugin_rules PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${LLVM_INCLUDE_DIRS}
