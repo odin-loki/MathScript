@@ -128,6 +128,7 @@ Headers mirror `src/` plus `cpu/`, `memory/`, `error/` (`Result<T>`), and `unsaf
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `MS_BUILD_TESTS` | ON | GoogleTest + CTest |
+| `MS_BUILD_INTEGRATION` | ON | Per-file integration executables (off on Debug coverage/Valgrind/ASan CI) |
 | `MS_BUILD_BENCHMARKS` | OFF | 28 Google Benchmark targets |
 | `MS_BUILD_GUI` | OFF | Qt6 IDE |
 | `MS_BUILD_FUZZ` | OFF | libFuzzer targets |
@@ -167,10 +168,10 @@ On push/PR to `main`:
 
 1. **build-test-windows** — MSVC Release, full CTest, ZIP smoke
 2. **build-test-linux** — GCC 13, no-exceptions syntax gate, CTest, CPack, unsafe audit
-3. **coverage-linux** — 90% line coverage minimum
+3. **coverage-linux** — 90% line coverage minimum (unit + numerical)
 4. **fuzz-linux** — 7 libFuzzer smokes
-5. **valgrind-linux** — memcheck
-6. **sanitizer-linux** — ASan/UBSan
+5. **valgrind-linux** — memcheck (unit + numerical)
+6. **sanitizer-linux** — ASan/UBSan (unit + numerical)
 7. **plugin-linux** — twenty compile-fail rules
 8. **jit-linux** — ORC JIT smoke
 9. **benchmark-linux** — 28 benches, 10% regression vs baseline

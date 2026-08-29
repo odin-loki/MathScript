@@ -5,6 +5,7 @@ option(MS_BUILD_GUI "Build Qt6 IDE" OFF)
 
 # Tests
 option(MS_BUILD_TESTS "Build test suite" ON)
+option(MS_BUILD_INTEGRATION "Build per-file integration test executables" ON)
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/vendor/googletest/CMakeLists.txt")
     set(_MS_VENDOR_GTEST_DEFAULT ON)

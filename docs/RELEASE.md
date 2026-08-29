@@ -6,8 +6,8 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
 
 1. **CI green** on `main` with no `continue-on-error`. Linux GCC 13 `-fno-exceptions` syntax gate on `build-test-linux` must pass.
 2. **Tests** — full CTest passing. Current catalogue: **816** suites (Windows MSVC, CUDA off), grouped by mathematical domain.
-3. **Coverage** ≥ **90%** (`coverage-linux`).
-4. **Valgrind** memcheck clean (`valgrind-linux`).
+3. **Coverage** ≥ **90%** (`coverage-linux`; unit + numerical; `-DMS_BUILD_INTEGRATION=OFF` so Debug+gcov fits on the runner).
+4. **Valgrind** memcheck clean (`valgrind-linux`; unit + numerical). Full **816** suites run on `build-test-linux` and `build-test-windows`.
 5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`).
 6. **Unsafe surface** — `UNSAFE_REVIEW.md` matches `scripts/unsafe_report.sh`; no new unreviewed sites.
 7. **Packaging** — smoke scripts plus extra CPack generators when tools are present. `scripts/package_smoke.sh` installs the prefix and runs `cpack -G TGZ`. `scripts/package_smoke.ps1` installs the prefix and runs `cpack -G ZIP`. CI also runs DEB/RPM (Linux) and NSIS/WiX (Windows) when those tools exist.

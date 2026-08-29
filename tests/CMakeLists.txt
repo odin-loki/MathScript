@@ -126,7 +126,9 @@ endif()
 
 add_subdirectory(compliance)
 add_subdirectory(numerical)
-add_subdirectory(integration)
+if(MS_BUILD_INTEGRATION)
+    add_subdirectory(integration)
+endif()
 
 if(MS_BUILD_FUZZ)
     add_subdirectory(fuzz)
