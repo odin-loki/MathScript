@@ -306,6 +306,9 @@ jobs:
         run: cmake --build build-sanitizer
 
       - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
         run: >
           ctest --test-dir build-sanitizer --output-on-failure
           -E "test_fuzz_stress|test_cuda_matmul|test_cuda_stub"

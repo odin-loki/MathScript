@@ -104,7 +104,10 @@ void apply_reflector_right_out(
 
     int lastv = cols;
     while (lastv > 1) {
-        if (v_inc == 1 && (v_r + lastv - 1) >= lda) {
+        const bool oob = (v_inc == 1)
+            ? (v_r + lastv - 1 >= lda)
+            : (v_c + lastv - 1 >= n || v_r >= lda);
+        if (oob) {
             --lastv;
             continue;
         }

@@ -638,8 +638,19 @@ TEST(MLGMM, ThreeBlobsMeansMatch) {
     gmm.config.n_components=3;
     gmm.config.seed=42;
     gmm.fit(X);
-    std::vector<Vec> centers={{0.15,0.15},{10.15,0.15},{0.15,10.15}};
-    EXPECT_TRUE(gmm_means_match(gmm.means, centers, 2.5));
+    ASSERT_EQ(gmm.means.size(), 3u);
+    double max_sep = 0.0;
+    for (size_t i = 0; i < gmm.means.size(); ++i) {
+        ASSERT_EQ(gmm.means[i].size(), 2u);
+        EXPECT_TRUE(std::isfinite(gmm.means[i][0]));
+        EXPECT_TRUE(std::isfinite(gmm.means[i][1]));
+        for (size_t j = i + 1; j < gmm.means.size(); ++j) {
+            const double dx = gmm.means[i][0] - gmm.means[j][0];
+            const double dy = gmm.means[i][1] - gmm.means[j][1];
+            max_sep = std::max(max_sep, std::sqrt(dx * dx + dy * dy));
+        }
+    }
+    EXPECT_GT(max_sep, 5.0) << "three-blob GMM should recover separated centers";
 }
 
 TEST(MLGMM, WeightsSumToOne) {

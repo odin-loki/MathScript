@@ -172,7 +172,7 @@ On push/PR to `main`:
 3. **coverage-linux** — 80% line coverage minimum (90% is the v1.0.0 tag goal)
 4. **fuzz-linux** — 7 libFuzzer smokes
 5. **valgrind-linux** — memcheck (unit + numerical)
-6. **sanitizer-linux** — ASan/UBSan (full CTest via shared test bundle)
+6. **sanitizer-linux** — ASan/UBSan (full CTest via shared test bundle; leak detection off)
 7. **plugin-linux** — twenty compile-fail rules
 8. **jit-linux** — ORC JIT smoke
 9. **benchmark-linux** — 28 benches, 10% regression vs baseline
