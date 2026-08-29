@@ -41,7 +41,7 @@ Windows baseline refresh: `.\scripts\bench_write_msvc_baseline.ps1`.
 | File | Use |
 |------|--------|
 | `tests/performance/baselines/msvc-release.json` | Windows medians |
-| `tests/performance/baselines/linux-gcc13.json` | Linux CI medians (`benchmark-linux`) |
+| `tests/performance/baselines/linux-gcc13.json` | Linux CI medians (`benchmark-linux` on ubuntu-24.04, AVX-512 off) |
 
 Null median entries are skipped by the regression script.
 

@@ -66,6 +66,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 endif()
 
+# Debug/coverage/ASan trees link hundreds of test executables. Concurrent links
+# on GitHub-hosted runners exhaust disk (ENOSPC) and can bus-error ld.
+if(NOT MSVC AND CMAKE_GENERATOR MATCHES "Ninja")
+    if(MS_ENABLE_COVERAGE OR MS_ENABLE_ASAN OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+        cmake_host_system_information(RESULT _ms_cores QUERY NUMBER_OF_LOGICAL_CORES)
+        if(NOT _ms_cores OR _ms_cores LESS 1)
+            set(_ms_cores 4)
+        endif()
+        set(_ms_link_jobs 2)
+        if(MS_ENABLE_COVERAGE)
+            set(_ms_link_jobs 1)
+        endif()
+        set_property(GLOBAL PROPERTY JOB_POOLS
+            compile_jobs=${_ms_cores} link_jobs=${_ms_link_jobs})
+        set(CMAKE_JOB_POOL_COMPILE compile_jobs)
+        set(CMAKE_JOB_POOL_LINK link_jobs)
+    endif()
+endif()
+
 # Plugin — loaded for all non-plugin targets (master plan §3.4).
 # Call ms_enable_plugin_enforcement() from root CMakeLists after add_subdirectory(src).
 function(ms_enable_plugin_enforcement)

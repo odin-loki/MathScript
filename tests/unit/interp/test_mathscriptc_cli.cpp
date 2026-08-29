@@ -4,9 +4,35 @@
 #include <gtest/gtest.h>
 #include <string>
 
+#ifndef _WIN32
+#include <sys/wait.h>
+#endif
+
 #ifndef MATHSCRIPTC_PATH
 #error "MATHSCRIPTC_PATH must be defined by CMake"
 #endif
+
+namespace {
+
+int system_exit_code(const std::string& cmd) {
+    const int rc = std::system(cmd.c_str());
+#ifdef _WIN32
+    return rc;
+#else
+    if (rc == -1) {
+        return -1;
+    }
+    if (WIFEXITED(rc)) {
+        return WEXITSTATUS(rc);
+    }
+    if (WIFSIGNALED(rc)) {
+        return 128 + WTERMSIG(rc);
+    }
+    return rc;
+#endif
+}
+
+} // namespace
 
 TEST(MathscriptcCliTest, version_exits_zero) {
 #ifdef _WIN32
@@ -14,7 +40,7 @@ TEST(MathscriptcCliTest, version_exits_zero) {
 #else
     const std::string cmd = std::string("\"") + MATHSCRIPTC_PATH + "\" --version >/dev/null 2>&1";
 #endif
-    const int rc = std::system(cmd.c_str());
+    const int rc = system_exit_code(cmd);
     EXPECT_EQ(rc, 0);
 }
 
@@ -37,7 +63,7 @@ TEST(MathscriptcCliTest, script_file_exits_zero) {
     const std::string cmd =
         std::string("\"") + MATHSCRIPTC_PATH + "\" \"" + script_path + "\" >/dev/null 2>&1";
 #endif
-    const int rc = std::system(cmd.c_str());
+    const int rc = system_exit_code(cmd);
     EXPECT_EQ(rc, 0);
 
     std::filesystem::remove(path);
@@ -49,7 +75,7 @@ TEST(MathscriptcCliTest, help_exits_zero) {
 #else
     const std::string cmd = std::string("\"") + MATHSCRIPTC_PATH + "\" --help >/dev/null 2>&1";
 #endif
-    const int rc = std::system(cmd.c_str());
+    const int rc = system_exit_code(cmd);
     EXPECT_EQ(rc, 0);
 }
 
@@ -59,7 +85,7 @@ TEST(MathscriptcCliTest, no_args_exits_nonzero) {
 #else
     const std::string cmd = std::string("\"") + MATHSCRIPTC_PATH + "\" >/dev/null 2>&1";
 #endif
-    const int rc = std::system(cmd.c_str());
+    const int rc = system_exit_code(cmd);
     EXPECT_NE(rc, 0);
 }
 
@@ -71,7 +97,7 @@ TEST(MathscriptcCliTest, missing_file_exits_nonzero) {
     const std::string cmd = std::string("\"") + MATHSCRIPTC_PATH
         + "\" nosuchfile_mathscriptc_test.ms >/dev/null 2>&1";
 #endif
-    const int rc = std::system(cmd.c_str());
+    const int rc = system_exit_code(cmd);
     EXPECT_NE(rc, 0);
 }
 
@@ -95,7 +121,7 @@ TEST(MathscriptcCliTest, comments_and_blanks_skipped) {
     const std::string cmd =
         std::string("\"") + MATHSCRIPTC_PATH + "\" \"" + path.generic_string() + "\" >/dev/null 2>&1";
 #endif
-    const int rc = std::system(cmd.c_str());
+    const int rc = system_exit_code(cmd);
     EXPECT_EQ(rc, 0);
 
     std::filesystem::remove(path);
@@ -120,7 +146,7 @@ TEST(MathscriptcCliTest, error_line_exits_nonzero_but_continues) {
     const std::string cmd =
         std::string("\"") + MATHSCRIPTC_PATH + "\" \"" + path.generic_string() + "\" >/dev/null 2>&1";
 #endif
-    const int rc = std::system(cmd.c_str());
+    const int rc = system_exit_code(cmd);
     EXPECT_EQ(rc, 1);
 
     std::filesystem::remove(path);

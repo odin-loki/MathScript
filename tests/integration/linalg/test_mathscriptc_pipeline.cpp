@@ -6,6 +6,8 @@
 
 #ifdef _WIN32
 #include <process.h>
+#else
+#include <sys/wait.h>
 #endif
 
 #ifndef MATHSCRIPTC_PATH
@@ -35,7 +37,17 @@ int run_mathscriptc(const std::filesystem::path& script_path) {
     return static_cast<int>(_spawnl(_P_WAIT, exe.c_str(), exe.c_str(), script.c_str(), nullptr));
 #else
     const std::string cmd = std::string("\"") + exe + "\" \"" + script + "\" >/dev/null 2>&1";
-    return std::system(cmd.c_str());
+    const int rc = std::system(cmd.c_str());
+    if (rc == -1) {
+        return -1;
+    }
+    if (WIFEXITED(rc)) {
+        return WEXITSTATUS(rc);
+    }
+    if (WIFSIGNALED(rc)) {
+        return 128 + WTERMSIG(rc);
+    }
+    return rc;
 #endif
 }
 

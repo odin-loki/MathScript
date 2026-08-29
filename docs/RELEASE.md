@@ -11,7 +11,7 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
 5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`).
 6. **Unsafe surface** — `UNSAFE_REVIEW.md` matches `scripts/unsafe_report.sh`; no new unreviewed sites.
 7. **Packaging** — smoke scripts plus extra CPack generators when tools are present. `scripts/package_smoke.sh` installs the prefix and runs `cpack -G TGZ`. `scripts/package_smoke.ps1` installs the prefix and runs `cpack -G ZIP`. CI also runs DEB/RPM (Linux) and NSIS/WiX (Windows) when those tools exist.
-8. **Benchmarks** — within **10%** of `linux-gcc13.json` (`benchmark-linux`).
+8. **Benchmarks** — within **10%** of `linux-gcc13.json` (`benchmark-linux` on GitHub-hosted ubuntu-24.04, AVX-512 off).
 9. **Compliance** — `plugin-linux` green, twenty compile-fail rules.
 10. **JIT** — `jit-linux` with `-DMS_BUILD_JIT=ON`.
 11. **Documentation** — architecture, API, contributing, and this file match the tagged tree. Wave-by-wave history lives in [`WAVES.md`](WAVES.md).

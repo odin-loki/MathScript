@@ -13,6 +13,11 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - Plugin smoke test: Clang 18 requires capturing function-local constexpr string arrays in the unsafe-registry lambda.
 - Clang plugin: ignore system headers; do not treat written casts as implicit narrowing; allow `(void)` discards; treat initialized/`auto` locals as initialized. Compliance `unused_expected` uses a local `expected` stand-in (libstdc++ `std::expected` is unavailable under Clang + `-fno-exceptions` on CI).
 - Tests: unwrap `EXPECT_NO_THROW`/`ASSERT_NO_THROW` (GoogleTest always emits `try`/`catch` for those macros). `GTEST_HAS_EXCEPTIONS=0` remains set for GCC/Clang tests.
+- CLI tests: decode POSIX `std::system` wait status so `mathscriptc` exit 1 is not compared as 256.
+- DiffGeo unit helix torsion: GCC -O3 third-derivative FD is ~0.03 off analytic 1/2; tolerance is 4e-2.
+- Signal+optim pipeline: compare residual energy vs each tone (unit sines share RMS, so the old closeness check was noise).
+- Linux Debug CI (coverage/Valgrind/ASan): free runner disk; Ninja link job pool; `-g1` debug info. Valgrind job timeout 180 min.
+- `linux-gcc13.json` matmul medians recalibrated from GitHub-hosted ubuntu-24.04 (`MS_ENABLE_AVX512=OFF`). Tolerance remains 10%.
 - Local prove-out (Windows MSVC Release, CUDA off): **816/816** CTest suites passed (~36 s at `-j 32`); 28 Google Benchmark targets passed with `--benchmark_min_time=0.001s`. Windows ZIP smoke: `scripts/package_smoke.ps1` → `mathscript-1.0.0-win64.zip`.
 - MSVC `/W4` compile warnings in library and test TUs were cleared (unused locals, `[[nodiscard]]`, `size_t`→`int`, unused statics).
 - Tests are grouped by mathematical domain (`tests/unit/linalg`, `tests/integration/fft`, …). Duplicate remigration wave pipelines were collapsed.

@@ -48,12 +48,15 @@ TEST(SignalOptimPipeline, Lowpass_Reduces_HighFreq_Power) {
     auto filtered = lowpass(mixed, cutoff, fs);
     ASSERT_EQ(filtered.size(), N);
 
-    // After lowpass, RMS should be closer to the low-frequency tone than the high
-    const double rms_low = rms(low);
-    const double rms_filtered = rms(filtered);
-    const double rms_high = rms(high);
-    EXPECT_LT(std::abs(rms_filtered - rms_low), std::abs(rms_filtered - rms_high))
-        << "Lowpass RMS should be closer to low-only than high-only";
+    // Unit-amplitude sines share the same RMS, so comparing |rms(filtered)-rms(low)|
+    // vs |rms(filtered)-rms(high)| is noise. Residual energy vs each tone is the check.
+    std::vector<double> err_low(N), err_high(N);
+    for (size_t i = 0; i < N; ++i) {
+        err_low[i] = filtered[i] - low[i];
+        err_high[i] = filtered[i] - high[i];
+    }
+    EXPECT_LT(rms(err_low), rms(err_high))
+        << "Lowpass output should match the low-frequency tone, not the high";
 
     // Filtered signal should have less energy than mixed
     double power_mixed = 0.0, power_filtered = 0.0;
