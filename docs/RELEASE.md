@@ -1,6 +1,6 @@
 # MathScript 1.0.0 release
 
-CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Local Windows prove-out (816/816 CTest, 28-bench smoke) is done; remaining work includes CI, coverage, Valgrind, fuzz-24h, and packaging. Scope that will not ship in 1.0 is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
+CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI all 9 jobs green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux, Valgrind memcheck clean (unit + numerical), and packaging smoke. Remaining for the tag includes the 24 h fuzz marathon and **90%** coverage (CI gate is already **80%**, measured 81.1%). Scope that will not ship in 1.0 is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
 
 ## Tag criteria
 

@@ -16,7 +16,7 @@ echo
 echo "Required before tagging (see docs/RELEASE.md):"
 echo "  [ ] CI green on main (.github/workflows/ci.yml)"
 echo "  [ ] 816 CTest suites passing"
-echo "  [ ] Coverage >= 90% (coverage-linux)"
+echo "  [ ] Coverage >= 90% tag goal (CI gate is 80%; coverage-linux)"
 echo "  [ ] Valgrind clean (valgrind-linux)"
 echo "  [ ] fuzz-24h.yml: 86400 s x 7 targets, zero crashes"
 echo "  [ ] Verify gh run list --workflow=fuzz-24h.yml shows 7 completed with no crashes"
