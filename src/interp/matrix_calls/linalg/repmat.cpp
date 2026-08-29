@@ -44,7 +44,19 @@ Result<Matrix<double>> handle_repmat(Interpreter& interp, const MatrixCallAssign
         if (!parse_number(assign.args[2], q_d)) {
             return std::unexpected(DomainError{"repmat", "expected numeric col repeat count"});
         }
-        result = repmat(*matrix, static_cast<size_t>(p_d), static_cast<size_t>(q_d));
+        size_t p = 0;
+        size_t q = 0;
+        if (!repl_dims_allowed(p_d, q_d, p, q)) {
+            return std::unexpected(DomainError{"repmat", kReplMatrixTooLarge});
+        }
+        const size_t in_r = matrix->rows();
+        const size_t in_c = matrix->cols();
+        if ((p != 0 && in_r > kMaxReplMatrixElems / p) ||
+            (q != 0 && in_c > kMaxReplMatrixElems / q) ||
+            !repl_elems_allowed(in_r * p, in_c * q)) {
+            return std::unexpected(DomainError{"repmat", kReplMatrixTooLarge});
+        }
+        result = repmat(*matrix, p, q);
     }
 
     return result;

@@ -4772,6 +4772,14 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
     if (!result) {
         return std::unexpected(result.error());
     }
+    const size_t rows = result->rows();
+    const size_t cols = result->cols();
+    if (rows != 0 && cols != 0 &&
+        (rows > kMaxReplMatrixElems || cols > kMaxReplMatrixElems ||
+         rows > kMaxReplMatrixElems / cols)) {
+        return std::unexpected(
+            DomainError{"repl", "matrix too large (max 262144 elements)"});
+    }
     state_.matrices[assign.target] = *result;
     std::ostringstream out;
     out << assign.target << " =\n";

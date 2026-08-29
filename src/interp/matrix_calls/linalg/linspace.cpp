@@ -38,7 +38,12 @@ Result<Matrix<double>> handle_linspace(Interpreter& interp, const MatrixCallAssi
             !parse_number(assign.args[2], n_d)) {
             return std::unexpected(DomainError{"linspace", "expected linspace(a, b, n)"});
         }
-        const auto vec = linspace(a, b, static_cast<size_t>(n_d));
+        size_t n = 0;
+        size_t one = 0;
+        if (!repl_dims_allowed(1.0, n_d, one, n)) {
+            return std::unexpected(DomainError{"linspace", kReplMatrixTooLarge});
+        }
+        const auto vec = linspace(a, b, n);
         Matrix<double> col(vec.size(), 1);
         for (size_t i = 0; i < vec.size(); ++i) {
             col(i, 0) = vec[i];

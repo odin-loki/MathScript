@@ -56,8 +56,12 @@ Result<Matrix<double>> handle_eye(Interpreter& interp, const MatrixCallAssign& a
         } else {
             n_d = m_d;
         }
-        const size_t rows = static_cast<size_t>(m_d);
-        const size_t cols = static_cast<size_t>(n_d);
+        size_t rows = 0;
+        size_t cols = 0;
+        if (!repl_dims_allowed(m_d, n_d, rows, cols)) {
+            return std::unexpected(
+                DomainError{assign.callee, kReplMatrixTooLarge});
+        }
         if (assign.callee == "zeros") {
             result = zeros<double>(rows, cols);
         } else if (assign.callee == "eye") {

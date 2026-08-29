@@ -8,6 +8,7 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (coverage ≥ 90% for the tag, fuzz-24h, benches, compliance, JIT). Pre-release `v1.0.0-rc.1` is published.
 
+- REPL constructors (`ones`/`zeros`/`eye`/`rand`/`randn`/`linspace`/`repmat`/`kron`) refuse dimensions above 262144 elements before allocating (libFuzzer `ones(9999)` OOM).
 - CPU SIMD kernels use xsimd (`batch<double>`) instead of raw AVX2 intrinsics; CUDA `add_inplace`/`fill`/`mul_inplace`/`scale` launch `.cu` kernels when `MS_ENABLE_CUDA` and a device is present, otherwise xsimd host fallback.
 - REPL `source`/`run_file` reject circular scripts, cap nesting at 8, and nest via `run_file` instead of re-entering `execute` (libFuzzer `source 8` stack overflow).
 - REPL `source`/`run_file`/`load` accept only regular files ≤ 256 KiB with lines ≤ 8 KiB; `export_history`/`save_history` refuse oversized history (libFuzzer 24h timeout in `export_history`).

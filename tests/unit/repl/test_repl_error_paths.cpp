@@ -67,3 +67,19 @@ TEST(ReplErrorPathTest, scalar_overwrite) {
     ASSERT_TRUE((interp.execute("x = 42.0")).has_value());
     EXPECT_NEAR(interp.state().scalars.at("x"), 42.0, 1e-12);
 }
+
+// libFuzzer 24h OOM: ones(9999) allocated a 9999x9999 matrix (~800 MB).
+TEST(ReplErrorPathTest, ones_too_large_refused) {
+    Interpreter interp;
+    const auto assigned = interp.execute("P = ones(9999)");
+    ASSERT_FALSE(assigned.has_value());
+    EXPECT_NE(format_error(assigned.error()).find("too large"), std::string::npos);
+
+    const auto zeros_big = interp.execute("Z = zeros(9999)");
+    ASSERT_FALSE(zeros_big.has_value());
+    EXPECT_NE(format_error(zeros_big.error()).find("too large"), std::string::npos);
+
+    const auto rand_big = interp.execute("R = rand(9999, 9999)");
+    ASSERT_FALSE(rand_big.has_value());
+    EXPECT_NE(format_error(rand_big.error()).find("too large"), std::string::npos);
+}

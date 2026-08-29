@@ -44,8 +44,12 @@ Result<Matrix<double>> handle_rand(Interpreter& interp, const MatrixCallAssign& 
             if (it != ctx.state().scalars.end()) n_d = it->second;
             else return std::unexpected(DomainError{assign.callee, "expected numeric size"});
         }
-        const size_t rows = static_cast<size_t>(m_d);
-        const size_t cols = static_cast<size_t>(n_d);
+        size_t rows = 0;
+        size_t cols = 0;
+        if (!repl_dims_allowed(m_d, n_d, rows, cols)) {
+            return std::unexpected(
+                DomainError{assign.callee, kReplMatrixTooLarge});
+        }
         if (assign.callee == "rand") {
             auto R = rand<double>(rows, cols, 0u);
             Matrix<double> stored(rows, cols);

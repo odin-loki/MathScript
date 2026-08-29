@@ -41,6 +41,15 @@ Result<Matrix<double>> handle_kron(Interpreter& interp, const MatrixCallAssign& 
         if (!right) {
             return std::unexpected(right.error());
         }
+        const size_t out_r = left->rows();
+        const size_t out_c = left->cols();
+        const size_t rr = right->rows();
+        const size_t rc = right->cols();
+        if ((rr != 0 && out_r > kMaxReplMatrixElems / rr) ||
+            (rc != 0 && out_c > kMaxReplMatrixElems / rc) ||
+            !repl_elems_allowed(out_r * rr, out_c * rc)) {
+            return std::unexpected(DomainError{"kron", kReplMatrixTooLarge});
+        }
         result = kron(*left, *right);
     }
 
