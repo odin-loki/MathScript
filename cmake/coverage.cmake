@@ -1,6 +1,7 @@
 if(MS_ENABLE_COVERAGE)
     if(MS_COMPILER STREQUAL "clang" OR MS_COMPILER STREQUAL "gcc")
-        add_compile_options(-O0 -g --coverage -fprofile-arcs -ftest-coverage)
+        # Instrument libraries in src/CMakeLists.txt. Executables still link
+        # --coverage so gcov constructors run.
         add_link_options(--coverage)
         message(STATUS "Coverage instrumentation enabled (gcov/llvm-cov)")
         if(MS_BUILD_TESTS)

@@ -80,7 +80,7 @@ cmake -S . -B build-cov -G Ninja \
   -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 \
   -DCMAKE_BUILD_TYPE=Debug \
   -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF \
-  -DMS_ENABLE_COVERAGE=ON -DMS_BUILD_INTEGRATION=OFF
+  -DMS_ENABLE_COVERAGE=ON -DMS_LINK_TESTS_SHARED=ON
 cmake --build build-cov
 ctest --test-dir build-cov --output-on-failure
 MS_COVERAGE_MIN=90 bash scripts/coverage_report.sh build-cov
