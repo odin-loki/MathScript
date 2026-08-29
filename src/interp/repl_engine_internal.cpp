@@ -1092,7 +1092,9 @@ Result<double> eval_ml_kmeans_inertia(const Matrix<double>& X_m,
 Matrix<double> ml_gmm_to_matrix(const ml::GaussianMixture& gmm) {
     const int K = static_cast<int>(gmm.means.size());
     const int p = K > 0 ? static_cast<int>(gmm.means[0].size()) : 0;
-    Matrix<double> out(static_cast<size_t>(2 * K + 2), static_cast<size_t>(std::max(p, 1)));
+    // Header uses columns 0..2 (K, p, log_likelihood); weights use columns 0..K-1.
+    const int cols = std::max({p, K, 3});
+    Matrix<double> out(static_cast<size_t>(2 * K + 2), static_cast<size_t>(std::max(cols, 1)));
     out(0, 0) = static_cast<double>(K);
     out(0, 1) = static_cast<double>(p);
     out(0, 2) = gmm.log_likelihood;
@@ -1125,8 +1127,9 @@ Result<ml::GaussianMixture> ml_gmm_from_matrix(const Matrix<double>& model, cons
     }
     const int K = static_cast<int>(model(0, 0));
     const int p = static_cast<int>(model(0, 1));
+    const int need_cols = std::max({p, K, 3});
     if (K < 1 || p < 1 || model.rows() != static_cast<size_t>(2 * K + 2) ||
-        model.cols() != static_cast<size_t>(p)) {
+        model.cols() < static_cast<size_t>(need_cols)) {
         return std::unexpected(DomainError{fn, "invalid GMM model layout"});
     }
     ml::GaussianMixture gmm;

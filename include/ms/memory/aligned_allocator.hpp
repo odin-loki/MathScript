@@ -9,10 +9,16 @@ namespace ms::memory {
 
 // Free function wrappers for cross-platform compatibility
 static inline void* aligned_alloc(size_t align, size_t size) {
+    if (align == 0) {
+        align = 1;
+    }
     #ifdef _WIN32
-    return _aligned_malloc(size, align);  // _aligned_malloc(size, alignment)
+    return _aligned_malloc(size, align);
     #else
-    return std::aligned_alloc(align, size);
+    // POSIX: size must be a multiple of alignment.
+    const size_t rounded = (size + align - 1) / align * align;
+    const size_t bytes = rounded == 0 ? align : rounded;
+    return std::aligned_alloc(align, bytes);
     #endif
 }
 

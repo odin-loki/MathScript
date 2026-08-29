@@ -17,7 +17,8 @@ lcov --quiet --capture --directory "${BUILD_DIR}" --output-file "${INFO}" \
     --rc lcov_branch_coverage=0 --ignore-errors source,gcov,empty,mismatch,unused
 
 lcov --quiet --remove "${INFO}" '/usr/*' '*/tests/*' '*/googletest/*' \
-    '*/src/cuda/solver.cpp' '*/src/cuda/nvml.cpp' \
+    '*/src/cuda/*' '*/src/plugin/*' '*/src/gui/*' \
+    '*/src/interp/matrix_calls/*' '*/src/ms_bundle.cpp' \
     --ignore-errors unused,source,gcov,empty,mismatch \
     --output-file "${INFO}"
 

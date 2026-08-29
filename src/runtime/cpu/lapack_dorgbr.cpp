@@ -104,6 +104,10 @@ void apply_reflector_right_out(
 
     int lastv = cols;
     while (lastv > 1) {
+        if (v_inc == 1 && (v_r + lastv - 1) >= lda) {
+            --lastv;
+            continue;
+        }
         const double vj = (v_inc == 1) ? A[(v_r + lastv - 1) + v_c * lda] : A[v_r + (v_c + lastv - 1) * lda];
         if (vj != 0.0) {
             break;

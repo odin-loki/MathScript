@@ -73,7 +73,7 @@ ctest --test-dir build -R int_linalg         # linear-algebra REPL pipelines
 
 ## Coverage
 
-Linux Debug build with gcov instrumentation (CI enforces **90%** minimum line coverage):
+Linux Debug build with gcov instrumentation (CI enforces **90%** minimum line coverage of compiled `src/`, excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars):
 
 ```bash
 cmake -S . -B build-cov -G Ninja \

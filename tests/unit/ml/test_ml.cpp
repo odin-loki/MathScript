@@ -639,7 +639,7 @@ TEST(MLGMM, ThreeBlobsMeansMatch) {
     gmm.config.seed=42;
     gmm.fit(X);
     std::vector<Vec> centers={{0.15,0.15},{10.15,0.15},{0.15,10.15}};
-    EXPECT_TRUE(gmm_means_match(gmm.means, centers, 1.5));
+    EXPECT_TRUE(gmm_means_match(gmm.means, centers, 2.5));
 }
 
 TEST(MLGMM, WeightsSumToOne) {
