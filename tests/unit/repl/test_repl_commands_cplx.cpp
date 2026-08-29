@@ -764,3 +764,11 @@ TEST(ReplCommandsTest, joukowski_scalar_33) {
     const auto w = ms::cplx::joukowski(ms::cplx::C{1.0, 0.0});
     EXPECT_NEAR(interp.state().scalars.at("jw"), std::abs(w), 1e-8);
 }
+
+TEST(ReplCommandsTest, cplx_blaschke_product_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "zeros = [0.3, 0; 0, 0.4]");
+    expect_ok(interp, "cplx_blaschke_product(0.5, 0.2, zeros)");
+    expect_error_contains(interp, "cplx_blaschke_product(0.5, missing, zeros)",
+                          "cplx_blaschke_product");
+}

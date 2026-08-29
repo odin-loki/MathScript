@@ -6439,3 +6439,10 @@ TEST(ReplCommandsTest, c2d_tf_d2c_tf_32) {
     ASSERT_GT(interp.state().matrices.count("C"), 0u);
     ASSERT_GT(interp.state().matrices.at("C").rows(), 0u);
 }
+
+TEST(ReplCommandsTest, control_dare_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "control_dare([0.5], [1], [1], [1])", "X =");
+    expect_error_contains(interp, "control_dare([0.5], [1], [1, 0; 0, 1], [1])",
+                          "same size as A");
+}

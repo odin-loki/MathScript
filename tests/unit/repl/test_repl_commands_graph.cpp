@@ -5213,3 +5213,269 @@ TEST(ReplCommandsTest, bellman_kruskal_32) {
     expect_ok(interp, "mst = graph_mst_kruskal(W)");
     ASSERT_GT(interp.state().matrices.count("mst"), 0u);
 }
+
+TEST(ReplCommandsTest, graph_astar_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
+    expect_ok(interp, "h = [3; 2; 1; 0]");
+    expect_contains(interp, "graph_astar(A, 0, 3, h)", "path =");
+    expect_error_contains(interp, "graph_astar(A, 0.5, 3, h)",
+                          "integer source and target");
+}
+
+TEST(ReplCommandsTest, graph_max_flow_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "Aflow = [0, 3, 2, 0; 0, 0, 0, 2; 0, 0, 0, 3; 0, 0, 0, 0]");
+    expect_contains(interp, "graph_max_flow(Aflow, 0, 3)", "4");
+    expect_error_contains(interp, "graph_max_flow(Aflow, missing, 3)",
+                          "graph_max_flow");
+}
+
+TEST(ReplCommandsTest, graph_min_cut_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "Aflow = [0, 3, 2, 0; 0, 0, 0, 2; 0, 0, 0, 3; 0, 0, 0, 0]");
+    expect_contains(interp, "graph_min_cut(Aflow, 0, 3)", "4");
+    expect_error_contains(interp, "graph_min_cut(Aflow, missing, 3)",
+                          "graph_min_cut");
+}
+
+TEST(ReplCommandsTest, graph_bfs_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
+    expect_contains(interp, "graph_bfs(A, 0)", "order =");
+    expect_error_contains(interp, "graph_bfs(A, 1.5)",
+                          "non-negative integer source");
+}
+
+TEST(ReplCommandsTest, graph_katz_centrality_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_katz_centrality([0, 1, 0; 1, 0, 1; 0, 1, 0])", "katz_centrality");
+    expect_error_contains(interp, "graph_katz_centrality([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_adjacency_spectrum_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_adjacency_spectrum([0, 1, 0; 1, 0, 1; 0, 1, 0])",
+                    "adjacency_spectrum");
+    expect_error_contains(interp, "graph_adjacency_spectrum([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_laplacian_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_laplacian([0, 1, 0; 1, 0, 1; 0, 1, 0])", "laplacian");
+    expect_error_contains(interp, "graph_laplacian([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_normalised_laplacian_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_normalised_laplacian([0, 1, 0; 1, 0, 1; 0, 1, 0])",
+                    "normalised_laplacian");
+    expect_error_contains(interp, "graph_normalised_laplacian([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_eccentricity_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_eccentricity([0, 1, 0, 0; 1, 0, 1, 0; 0, 1, 0, 1; 0, 0, 1, 0])",
+                    "eccentricity");
+    expect_error_contains(interp, "graph_eccentricity([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_articulation_points_noassign) {
+    Interpreter interp;
+    expect_contains(interp,
+                    "graph_articulation_points([0, 1, 1, 0, 0, 0; 1, 0, 1, 0, 0, 0; 1, 1, 0, 1, 0, 0; "
+                    "0, 0, 1, 0, 1, 1; 0, 0, 0, 1, 0, 1; 0, 0, 0, 1, 1, 0])",
+                    "articulation_points");
+    expect_error_contains(interp, "graph_articulation_points([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_bridges_noassign) {
+    Interpreter interp;
+    expect_contains(interp,
+                    "graph_bridges([0, 1, 1, 0, 0, 0; 1, 0, 1, 0, 0, 0; 1, 1, 0, 1, 0, 0; "
+                    "0, 0, 1, 0, 1, 1; 0, 0, 0, 1, 0, 1; 0, 0, 0, 1, 1, 0])",
+                    "bridges");
+    expect_error_contains(interp, "graph_bridges([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_maximum_matching_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_maximum_matching([0, 1; 1, 0])", "matching");
+    expect_error_contains(interp, "graph_maximum_matching([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_transitive_closure_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_transitive_closure([0, 1, 0; 0, 0, 1; 0, 0, 0])", "reach");
+    expect_error_contains(interp, "graph_transitive_closure([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_floyd_warshall_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_floyd_warshall([0, 1, 5; 0, 0, 1; 0, 0, 0])", "dist");
+    expect_error_contains(interp, "graph_floyd_warshall([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_mst_kruskal_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_mst_kruskal([0, 1, 0, 10; 1, 0, 2, 0; 0, 2, 0, 3; 10, 0, 3, 0])",
+                    "mst");
+    expect_error_contains(interp, "graph_mst_kruskal([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_mst_prim_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_mst_prim([0, 1, 0, 10; 1, 0, 2, 0; 0, 2, 0, 3; 10, 0, 3, 0])",
+                    "mst");
+    expect_error_contains(interp, "graph_mst_prim([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_topological_sort_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_topological_sort([0, 1, 1, 0; 0, 0, 0, 1; 0, 0, 0, 1; 0, 0, 0, 0])",
+                    "order");
+    expect_error_contains(interp, "graph_topological_sort([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_greedy_colour_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_greedy_colour([0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0])",
+                    "colors");
+    expect_error_contains(interp, "graph_greedy_colour([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_k_core_decomposition_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_k_core_decomposition([0, 1, 1, 1; 1, 0, 1, 0; 1, 1, 0, 0; 1, 0, 0, 0])",
+                    "cores");
+    expect_error_contains(interp, "graph_k_core_decomposition([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_euler_circuit_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_euler_circuit([0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0])",
+                    "circuit");
+    expect_error_contains(interp, "graph_euler_circuit([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_eulerian_path_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_eulerian_path([0, 1, 0, 0; 1, 0, 1, 0; 0, 1, 0, 1; 0, 0, 1, 0])",
+                    "path");
+    expect_error_contains(interp, "graph_eulerian_path([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_hamiltonian_path_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_hamiltonian_path([0, 1, 0, 0; 1, 0, 1, 0; 0, 1, 0, 1; 0, 0, 1, 0])",
+                    "path");
+    expect_error_contains(interp, "graph_hamiltonian_path([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_tsp_heuristic_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_tsp_heuristic([0, 3, 4; 3, 0, 5; 4, 5, 0])", "tour");
+    expect_error_contains(interp, "graph_tsp_heuristic([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_biconnected_components_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_biconnected_components([0, 1, 0, 0; 1, 0, 1, 0; 0, 1, 0, 1; 0, 0, 1, 0])",
+                    "bcc");
+    expect_error_contains(interp, "graph_biconnected_components([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_scc_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_scc([0, 1, 0, 0; 0, 0, 1, 0; 1, 0, 0, 0; 0, 0, 1, 0])", "scc");
+    expect_error_contains(interp, "graph_scc([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_connected_components_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_connected_components([0, 1, 0, 0; 1, 0, 0, 0; 0, 0, 0, 1; 0, 0, 1, 0])",
+                    "cc");
+    expect_error_contains(interp, "graph_connected_components([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_louvain_noassign) {
+    Interpreter interp;
+    expect_contains(interp,
+                    "graph_louvain([0, 1, 1, 0, 0, 0; 1, 0, 1, 0, 0, 0; 1, 1, 0, 1, 0, 0; "
+                    "0, 0, 1, 0, 1, 1; 0, 0, 0, 1, 0, 1; 0, 0, 0, 1, 1, 0])",
+                    "louvain");
+    expect_error_contains(interp, "graph_louvain([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_eigenvector_centrality_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_eigenvector_centrality([0, 1, 0; 1, 0, 1; 0, 1, 0])",
+                    "eigenvector_centrality");
+    expect_error_contains(interp, "graph_eigenvector_centrality([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_pagerank_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_pagerank([0, 1, 0; 1, 0, 1; 0, 1, 0])", "pagerank");
+    expect_error_contains(interp, "graph_pagerank([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_betweenness_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_betweenness([0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0])",
+                    "betweenness");
+    expect_error_contains(interp, "graph_betweenness([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_closeness_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_closeness([0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0])",
+                    "closeness");
+    expect_error_contains(interp, "graph_closeness([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_degree_centrality_noassign) {
+    Interpreter interp;
+    expect_contains(interp,
+                    "graph_degree_centrality([0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0])",
+                    "degree_centrality");
+    expect_error_contains(interp, "graph_degree_centrality([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_diameter_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_diameter([0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0])",
+                    "3");
+    expect_error_contains(interp, "graph_diameter([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_radius_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_radius([0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0])",
+                    "2");
+    expect_error_contains(interp, "graph_radius([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_is_connected_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_is_connected([0, 1, 0; 1, 0, 1; 0, 1, 0])", "1");
+    expect_error_contains(interp, "graph_is_connected([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_is_dag_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "graph_is_dag([0, 1, 0; 0, 0, 1; 0, 0, 0])", "1");
+    expect_error_contains(interp, "graph_is_dag([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_is_tree_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "graph_is_tree([0, 1, 0; 1, 0, 1; 0, 1, 0])");
+    expect_error_contains(interp, "graph_is_tree([1, 2])", "square");
+}
+
+TEST(ReplCommandsTest, graph_is_bipartite_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "graph_is_bipartite([0, 1; 1, 0])");
+    expect_error_contains(interp, "graph_is_bipartite([1, 2])", "square");
+}

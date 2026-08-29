@@ -3863,3 +3863,105 @@ TEST(ReplCommandsTest, geo_hermite_curve_geo_bspline_eval_31) {
     expect_ok(interp, "bs = geo_bspline_eval(ctrl, knots, 1, 0.5)");
     EXPECT_NEAR(interp.state().matrices.at("bs")(0, 0), 1.0, 1e-9);
 }
+
+TEST(ReplCommandsTest, geo_kdtree_nearest_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_kdtree_nearest([0, 0; 1, 0; 2, 0; 3, 0; 4, 0], 1.1, 0)", "1");
+    expect_error_contains(interp, "geo_kdtree_nearest([0; 1; 2], 0, 0)", "Nx2");
+}
+
+TEST(ReplCommandsTest, geo_bezier_eval_x_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_bezier_eval_x([0, 0; 1, 2; 2, 0], 0.5)", "1");
+    expect_error_contains(interp, "geo_bezier_eval_x([0, 0; 1, 1], 0.5)",
+                          "at least 3 control points");
+}
+
+TEST(ReplCommandsTest, geo_kdtree_3d_nearest_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "P = [0, 0, 0; 1, 0, 0; 0, 1, 0]");
+    expect_contains(interp, "geo_kdtree_3d_nearest(P, 0.9, 0, 0)", "1");
+    expect_ok(interp, "P2 = [0, 0; 1, 0]");
+    expect_error_contains(interp, "geo_kdtree_3d_nearest(P2, 0, 0, 0)", "Nx3");
+}
+
+TEST(ReplCommandsTest, geo_delaunay_2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_delaunay_2d([0, 0; 1, 0; 0.5, 0.866])", "triangles");
+    expect_error_contains(interp, "geo_delaunay_2d([0, 0; 1, 0])", "at least 3 points");
+}
+
+TEST(ReplCommandsTest, geo_voronoi_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_voronoi([0, 0; 1, 0; 1, 1; 0, 1])", "voronoi");
+    expect_error_contains(interp, "geo_voronoi([0, 0; 1, 0])", "at least 3 points");
+}
+
+TEST(ReplCommandsTest, geo_convex_hull_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_convex_hull([0, 0; 1, 0; 0, 1])", "hull");
+    expect_error_contains(interp, "geo_convex_hull([0, 0; 1, 0])", "at least 3 points");
+}
+
+TEST(ReplCommandsTest, geo_triangulate_polygon_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_triangulate_polygon([0, 0; 1, 0; 1, 1; 0, 1])", "triangles");
+    expect_error_contains(interp, "geo_triangulate_polygon([0, 0; 1, 0])", "at least 3 points");
+}
+
+TEST(ReplCommandsTest, geo_convex_hull_3d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_convex_hull_3d([1, 1, 1; 1, -1, -1; -1, 1, -1; -1, -1, 1])",
+                    "faces");
+    expect_error_contains(interp, "geo_convex_hull_3d([1, 1, 1; 0, 0, 0; 2, 2, 2])",
+                          "at least 4 points");
+}
+
+TEST(ReplCommandsTest, geo_min_bounding_rect_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_min_bounding_rect([0, 0; 1, 0; 0.5, 1])", "rect");
+    expect_error_contains(interp, "geo_min_bounding_rect(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_polygon_area_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_polygon_area([0, 0; 1, 0; 1, 1; 0, 1])", "1");
+    expect_error_contains(interp, "geo_polygon_area(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_polygon_perimeter_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_polygon_perimeter([0, 0; 4, 0; 4, 4; 0, 4])", "16");
+    expect_error_contains(interp, "geo_polygon_perimeter(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_signed_area_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_signed_area([0, 0; 4, 0; 4, 4; 0, 4])", "16");
+    expect_error_contains(interp, "geo_signed_area(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_centroid_x_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_centroid_x([0, 0; 4, 0; 4, 4; 0, 4])", "2");
+    expect_error_contains(interp, "geo_centroid_x(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_centroid_y_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_centroid_y([0, 0; 4, 0; 4, 4; 0, 4])", "2");
+    expect_error_contains(interp, "geo_centroid_y(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_convex_hull_area_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sq = [0, 0; 1, 0; 1, 1; 0, 1]");
+    expect_contains(interp, "geo_convex_hull_area(sq)", "1");
+    expect_error_contains(interp, "geo_convex_hull_area([0, 0; 1, 0])", "at least 3 points");
+}
+
+TEST(ReplCommandsTest, geo_moment_of_inertia_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])", "42.6667");
+    expect_error_contains(interp, "geo_moment_of_inertia(no_such_matrix)", "unknown matrix");
+}

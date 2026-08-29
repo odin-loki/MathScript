@@ -4661,3 +4661,15 @@ TEST(ReplCommandsTest, poly_interp_newton_poly_roots_31) {
     expect_ok(interp, "rts = poly_roots(p2)");
     ASSERT_GT(interp.state().matrices.count("rts"), 0u);
 }
+
+TEST(ReplCommandsTest, poly_scale_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_scale([0; 0; 1], 2)", "scale =");
+    expect_error_contains(interp, "poly_scale(missing, 2)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_discriminant_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_discriminant([1; -2; 1])", "0");
+    expect_error_contains(interp, "poly_discriminant(no_such_matrix)", "unknown matrix");
+}

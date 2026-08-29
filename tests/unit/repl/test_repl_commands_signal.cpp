@@ -5409,3 +5409,218 @@ TEST(ReplCommandsTest, coherence_rosenbrock_33) {
     expect_ok(interp, "tr = ode_rosenbrock23(\"-10*y\", 0, 1, 1, 20)");
     EXPECT_GT(interp.state().matrices.at("tr").rows(), 0u);
 }
+
+TEST(ReplCommandsTest, signal_firwin_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_firwin(11, 0.3)", "b =");
+    expect_contains(interp, "signal_firwin(11, 0.3, 1)", "b =");
+    expect_contains(interp, "signal_firwin(11, 0.3, 2)", "b =");
+
+    expect_error_contains(interp, "signal_firwin(1.5, 0.3)", "expected integer n_taps >= 1");
+    expect_error_contains(interp, "signal_firwin(0, 0.3)", "expected integer n_taps >= 1");
+    expect_error_contains(interp, "signal_firwin(1.5, 0.3, 1)", "expected integer n_taps >= 1");
+    expect_error_contains(interp, "signal_firwin(abc, 0.3)",
+                          "expected signal_firwin(n_taps, cutoff[, window])");
+    expect_error_contains(interp, "signal_firwin(11, xyz)",
+                          "expected signal_firwin(n_taps, cutoff[, window])");
+    expect_error_contains(interp, "signal_firwin(abc, 0.3, 1)",
+                          "expected signal_firwin(n_taps, cutoff[, window])");
+    expect_error_contains(interp, "h = signal_firwin(1.5, 0.3)", "expected integer n_taps >= 1");
+    expect_error_contains(interp, "h = signal_firwin(not_a_number, 0.3)", "numeric");
+}
+
+TEST(ReplCommandsTest, signal_firwin_highpass_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_firwin_highpass(11, 0.3)", "b =");
+    expect_contains(interp, "signal_firwin_highpass(11, 0.3, 1)", "b =");
+
+    expect_error_contains(interp, "signal_firwin_highpass(1.5, 0.3)",
+                          "expected integer n_taps >= 1");
+    expect_error_contains(interp, "signal_firwin_highpass(0, 0.3, 1)",
+                          "expected integer n_taps >= 1");
+    expect_error_contains(interp, "signal_firwin_highpass(abc, 0.3)",
+                          "expected signal_firwin_highpass(n_taps, cutoff[, window])");
+    expect_error_contains(interp, "signal_firwin_highpass(11, xyz, 1)",
+                          "expected signal_firwin_highpass(n_taps, cutoff[, window])");
+}
+
+TEST(ReplCommandsTest, signal_lms_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_lms([1; 0; -1; 2], [0.5; -0.25; 1; 0], 2, 0)", "lms =");
+
+    expect_error_contains(interp, "signal_lms(missing, [0.5; -0.25; 1; 0], 2, 0)",
+                          "unknown matrix");
+    expect_error_contains(interp, "signal_lms([1; 0; -1; 2], missing, 2, 0)", "unknown matrix");
+    expect_error_contains(interp, "signal_lms([1; 0; -1; 2], [0.5; -0.25; 1; 0], 2, notnum)",
+                          "expected signal_lms(x, d, filter_length, mu)");
+    expect_error_contains(interp, "ye = signal_lms(missing, [0.5; -0.25; 1; 0], 2, 0)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_lms_weights_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_lms_weights([1; 0; -1; 2], [0.5; -0.25; 1; 0], 2, 0)",
+                    "lms_weights =");
+
+    expect_error_contains(interp, "signal_lms_weights(missing, [0.5; -0.25; 1; 0], 2, 0)",
+                          "unknown matrix");
+    expect_error_contains(interp, "signal_lms_weights([1; 0; -1; 2], [0.5; -0.25; 1; 0], 2, notnum)",
+                          "expected signal_lms_weights(x, d, filter_length, mu)");
+}
+
+TEST(ReplCommandsTest, signal_coherence_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp,
+                    "signal_coherence([1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0], "
+                    "[1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0], 8.0, 8)",
+                    "coherence =");
+
+    expect_error_contains(
+        interp, "signal_coherence(missing, [1; 0; -1; 0; 1; 0; -1; 0], 8.0, 8)",
+        "unknown matrix");
+    expect_error_contains(
+        interp,
+        "signal_coherence([1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0], "
+        "[1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0], notnum, 8)",
+        "expected signal_coherence(x, y, fs, nperseg)");
+    expect_error_contains(
+        interp, "c = signal_coherence(missing, [1; 0; -1; 0; 1; 0; -1; 0], 8.0, 8)",
+        "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_czt_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_czt([1; 2; 3; 4], 4, 0, -1, 1, 0)", "czt =");
+
+    expect_error_contains(interp, "signal_czt([1; 2; 3; 4], 0, 0, -1, 1, 0)",
+                          "expected positive integer m");
+    expect_error_contains(interp, "signal_czt([1; 2; 3; 4], 1.5, 0, -1, 1, 0)",
+                          "expected positive integer m");
+    expect_error_contains(interp, "signal_czt([1; 2; 3; 4], notnum, 0, -1, 1, 0)",
+                          "expected signal_czt(x, m, w_re, w_im, a_re, a_im)");
+    expect_error_contains(interp, "Z = signal_czt(missing, 4, 0, -1, 1, 0)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_czt_zoom_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_czt_zoom([1; 2; 3; 4], 0.0, 0.5, 8, 4.0)", "czt_zoom =");
+
+    expect_error_contains(interp, "signal_czt_zoom([1; 2; 3; 4], 0.0, 0.5, 0, 4.0)",
+                          "expected positive integer m");
+    expect_error_contains(interp, "signal_czt_zoom([1; 2; 3; 4], 0.0, 0.5, 1.5, 4.0)",
+                          "expected positive integer m");
+    expect_error_contains(interp, "signal_czt_zoom([1; 2; 3; 4], 0.0, 0.5, notnum, 4.0)",
+                          "expected signal_czt_zoom(x, f_start, f_stop, m, fs)");
+    expect_error_contains(interp, "zoom = signal_czt_zoom(missing, 0.0, 0.5, 8, 4.0)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_cheby1_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_cheby1(2, 1.0, 0.25, 2.0)", "ba =");
+    expect_contains(interp, "signal_cheby1(2, 1.0, 0.25, 2.0, 1)", "ba =");
+
+    expect_error_contains(interp, "signal_cheby1(0, 1.0, 0.25, 2.0)",
+                          "expected integer order >= 1");
+    expect_error_contains(interp, "signal_cheby1(1.5, 1.0, 0.25, 2.0)",
+                          "expected integer order >= 1");
+    expect_error_contains(interp, "signal_cheby1(notnum, 1.0, 0.25, 2.0)",
+                          "expected signal_cheby1(order, rp_db, cutoff, fs[, type])");
+    expect_error_contains(interp, "ba = signal_cheby1(0, 1.0, 0.25, 2.0)",
+                          "expected integer order >= 1");
+    expect_error_contains(interp, "ba = signal_cheby1(abc, 1.0, 0.25, 2.0)",
+                          "expected signal_cheby1(order, rp_db, cutoff, fs[, type])");
+}
+
+TEST(ReplCommandsTest, signal_bandpass_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_bandpass([1; 0; -1; 0], 0.1, 0.3, 1.0)", "filtered =");
+
+    expect_error_contains(interp, "signal_bandpass(missing, 0.1, 0.3, 1.0)", "unknown matrix");
+    expect_error_contains(interp, "signal_bandpass([1; 0; -1; 0], notnum, 0.3, 1.0)",
+                          "expected signal_bandpass(x, low, high, fs)");
+    expect_error_contains(interp, "bp = signal_bandpass(missing, 0.1, 0.3, 1.0)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_resample_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_resample([1; 2; 3; 4], 2, 2)", "resampled =");
+
+    expect_error_contains(interp, "signal_resample(missing, 2, 2)", "unknown matrix");
+    expect_error_contains(interp, "signal_resample([1; 2; 3; 4], notnum, 2)",
+                          "expected signal_resample(x, p, q)");
+    expect_error_contains(interp, "rs = signal_resample(missing, 2, 2)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_periodogram_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_periodogram([1; 0; -1; 0], 1.0)", "psd =");
+
+    expect_error_contains(interp, "signal_periodogram(missing, 1.0)", "unknown matrix");
+    expect_error_contains(interp, "signal_periodogram([1; 0; -1; 0], notnum)",
+                          "expected signal_periodogram(x, fs)");
+    expect_error_contains(interp, "p = signal_periodogram(missing, 1.0)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_moving_average_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_moving_average([5; 5; 5; 5], 3)", "smoothed =");
+
+    expect_error_contains(interp, "signal_moving_average(missing, 3)", "unknown matrix");
+    expect_error_contains(interp, "signal_moving_average([5; 5; 5; 5], 0)",
+                          "expected positive integer window");
+    expect_error_contains(interp, "signal_moving_average([5; 5; 5; 5], 1.5)",
+                          "expected positive integer window");
+    expect_error_contains(interp, "ma = signal_moving_average(missing, 3)", "unknown matrix");
+    expect_error_contains(interp, "ma = signal_moving_average([5; 5; 5; 5], 0)",
+                          "expected positive integer window");
+}
+
+TEST(ReplCommandsTest, signal_lowpass_execute_errors) {
+    Interpreter interp;
+
+    expect_contains(interp, "signal_lowpass([1; 0; -1; 0], 0.25, 1.0)", "filtered =");
+
+    expect_error_contains(interp, "signal_lowpass(missing, 0.25, 1.0)", "unknown matrix");
+    expect_error_contains(interp, "signal_lowpass([1; 0; -1; 0], notnum, 1.0)",
+                          "expected signal_lowpass(x, cutoff, fs)");
+    expect_error_contains(interp, "y = signal_lowpass(missing, 0.25, 1.0)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_envelope_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_envelope([1; 2; 3; 4])", "envelope");
+    expect_error_contains(interp, "signal_envelope([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, signal_hilbert_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_hilbert([1; 2; 3; 4])", "hilbert");
+    expect_error_contains(interp, "signal_hilbert([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, signal_instantaneous_phase_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_instantaneous_phase([1; 0; -1; 0; 1; 0; -1; 0])", "phase");
+    expect_error_contains(interp, "signal_instantaneous_phase([1, 2; 3, 4])",
+                          "coefficient vector");
+}
+
+TEST(ReplCommandsTest, signal_unwrap_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_unwrap([0; 1.5708; 3.1416; -1.5708; 0])", "unwrap");
+    expect_error_contains(interp, "signal_unwrap([1, 2; 3, 4])", "coefficient vector");
+}

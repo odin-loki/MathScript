@@ -17467,3 +17467,10 @@ TEST(ReplCommandsTest, legendre_q_scalar_34) {
     expect_ok(interp, "lq = legendre_q(1, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("lq"), ms::legendre_q(1, 0.5), 1e-8);
 }
+
+TEST(ReplCommandsTest, special_pseudo_voigt_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "special_pseudo_voigt(0, 1, 0.5, 0.4)");
+    expect_error_contains(interp, "special_pseudo_voigt(0, 1, 0.5, missing)",
+                          "special_pseudo_voigt");
+}

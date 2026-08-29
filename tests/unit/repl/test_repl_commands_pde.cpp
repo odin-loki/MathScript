@@ -3672,3 +3672,11 @@ TEST(ReplCommandsTest, lax_wendroff_rd_33) {
     ASSERT_GT(interp.state().matrices.count("rd"), 0u);
     EXPECT_EQ(interp.state().matrices.at("rd").rows(), 21u);
 }
+
+TEST(ReplCommandsTest, pde_reaction_diffusion_1d_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "u0r = linspace(0.4, 0.4, 21)");
+    expect_contains(interp, "pde_reaction_diffusion_1d(u0r, 0.05, 2.0, 0.1, 0.01, 30)", "u =");
+    expect_error_contains(interp, "pde_reaction_diffusion_1d(u0r, 0.05, 2.0, 0.1, 0.01, 1.5)",
+                          "non-negative integer steps");
+}

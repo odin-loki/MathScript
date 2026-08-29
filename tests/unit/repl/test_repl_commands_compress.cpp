@@ -4511,3 +4511,10 @@ TEST(ReplCommandsTest, lz77_bzip2_32) {
     ASSERT_GT(interp.state().matrices.count("DR"), 0u);
     EXPECT_EQ(interp.state().matrices.at("DR").rows(), 11u);
 }
+
+TEST(ReplCommandsTest, bwt_primary_index_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "B = [98; 97; 110; 97; 110; 97]");
+    expect_ok(interp, "bwt_primary_index(B)");
+    expect_error_contains(interp, "bwt_primary_index(no_such_matrix)", "unknown matrix");
+}

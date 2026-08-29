@@ -2468,3 +2468,9 @@ TEST(ReplCommandsTest, pairwise_nextperm_31) {
     EXPECT_NEAR(interp.state().matrices.at("np")(1, 0), 3.0, 1e-9);
     EXPECT_NEAR(interp.state().matrices.at("np")(2, 0), 2.0, 1e-9);
 }
+
+TEST(ReplCommandsTest, topo_pairwise_distances_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "topo_pairwise_distances([0, 0; 1, 0; 0, 1])", "dist");
+    expect_error_contains(interp, "topo_pairwise_distances([1; 2; 3])", "Nx2");
+}

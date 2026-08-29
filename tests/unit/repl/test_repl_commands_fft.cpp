@@ -3638,3 +3638,76 @@ TEST(ReplCommandsTest, goertzel_bode_33) {
     expect_ok(interp, "bode = control_bode([1], [1, 1], 1)");
     EXPECT_EQ(interp.state().matrices.at("bode").rows(), 1u);
 }
+
+TEST(ReplCommandsTest, fft_irfft_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "S = fft_rfft([1; 2; 3; 4])");
+    expect_contains(interp, "fft_irfft(S, 4)", "signal =");
+    expect_error_contains(interp, "fft_irfft(S, 1.5)", "positive integer n");
+}
+
+TEST(ReplCommandsTest, fft_dct2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fft_dct2([1; 2; 3; 4])", "dct");
+    expect_error_contains(interp, "fft_dct2([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, fft_idct2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fft_idct2([1; 2; 3; 4])", "idct");
+    expect_error_contains(interp, "fft_idct2([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, fft_dst2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fft_dst2([1; 2; 3; 4])", "dst");
+    expect_error_contains(interp, "fft_dst2([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, fftshift_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "fftshift([1, 2; 3, 4])");
+    expect_error_contains(interp, "fftshift(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ifftshift_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ifftshift([1, 2; 3, 4])");
+    expect_error_contains(interp, "ifftshift(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, fft_dft_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fft_dft([1; 0; 0; 0])", "dft");
+    expect_error_contains(interp, "fft_dft([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, fft_ifft_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fft_ifft([1, 0; 0, 0; -1, 0; 0, 0])", "ifft");
+    expect_error_contains(interp, "fft_ifft([1; 2; 3; 4])", "Nx2");
+}
+
+TEST(ReplCommandsTest, fft_fft2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fft_fft2([1, 0; 2, 0; 3, 0; 4, 0])", "fft2");
+    expect_error_contains(interp, "fft_fft2([1; 2; 3; 4])", "Nx2");
+}
+
+TEST(ReplCommandsTest, ifft2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ifft2([1, 0; 2, 0; 3, 0; 4, 0])", "ifft2");
+    expect_error_contains(interp, "ifft2([1; 2; 3; 4])", "Nx2");
+}
+
+TEST(ReplCommandsTest, idst2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "idst2([1; 2; 3; 4])", "idst2");
+    expect_error_contains(interp, "idst2([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, fft_rfft_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fft_rfft([1; 0; 0; 0])", "rfft");
+    expect_error_contains(interp, "fft_rfft([1, 2; 3, 4])", "coefficient vector");
+}

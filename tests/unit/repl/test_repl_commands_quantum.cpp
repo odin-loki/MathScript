@@ -5477,3 +5477,79 @@ TEST(ReplCommandsTest, izaac_rand_matrix_schmidt_bases_31) {
     expect_ok(interp, "sb = quantum_schmidt_bases(psi, 2, 2)");
     EXPECT_GE(interp.state().matrices.at("sb").rows(), 5u);
 }
+
+TEST(ReplCommandsTest, quantum_density_matrix_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_density_matrix([1; 0])", "rho");
+    expect_error_contains(interp, "quantum_density_matrix(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_grover_search_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_grover_search(2, [1], 1)", "state =");
+    expect_error_contains(interp, "quantum_grover_search(0, [1])",
+                          "positive integer n_qubits");
+}
+
+TEST(ReplCommandsTest, quantum_schmidt_rank_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_schmidt_rank([1; 0; 0; 0], 2, 2)", "1");
+    expect_error_contains(interp, "quantum_schmidt_rank([1; 0; 0; 0], 0, 2)",
+                          "positive integer dim_a and dim_b");
+}
+
+TEST(ReplCommandsTest, quantum_entanglement_entropy_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_entanglement_entropy([1; 0; 0; 0], 2, 2)", "0");
+    expect_error_contains(interp, "quantum_entanglement_entropy([1; 0; 0; 0], 1.5, 2)",
+                          "positive integer dim_a and dim_b");
+}
+
+TEST(ReplCommandsTest, quantum_schrodinger_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_schrodinger([0.5, 0; 0, -0.5], [1; 0], 0, 0.1, 5)",
+                    "traj =");
+    expect_error_contains(interp, "quantum_schrodinger([0.5, 0; 0, -0.5], [1; 0], 0, 0.1, 1.5)",
+                          "non-negative integer n_steps");
+}
+
+TEST(ReplCommandsTest, quantum_husimi_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "psi1 = quantum_fock_state(1, 3)");
+    expect_ok(interp, "rho1 = quantum_density_matrix(psi1)");
+    expect_ok(interp, "quantum_husimi(rho1, 1, 0)");
+    expect_error_contains(interp, "quantum_husimi(rho1, missing, 0)",
+                          "quantum_husimi");
+}
+
+TEST(ReplCommandsTest, quantum_hadamard_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_hadamard([1; 0])", "state");
+    expect_error_contains(interp, "quantum_hadamard([1; 0; 0])", "2x1");
+}
+
+TEST(ReplCommandsTest, quantum_ket_normalise_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_ket_normalise([2; 0])", "state");
+    expect_error_contains(interp, "quantum_ket_normalise([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, quantum_ket_superposition_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_ket_superposition([1; 1])", "state");
+    expect_error_contains(interp, "quantum_ket_superposition([1, 2; 3, 4])",
+                          "coefficient vector");
+}
+
+TEST(ReplCommandsTest, quantum_purity_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_purity([1, 0; 0, 0])", "1");
+    expect_error_contains(interp, "quantum_purity(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_von_neumann_entropy_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_von_neumann_entropy([1, 0; 0, 0])", "0");
+    expect_error_contains(interp, "quantum_von_neumann_entropy(no_such_matrix)",
+                          "unknown matrix");
+}

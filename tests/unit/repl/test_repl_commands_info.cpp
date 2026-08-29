@@ -706,3 +706,101 @@ TEST(ReplCommandsTest, graph_connected_components_info_channel_capacity_input_31
     expect_ok(interp, "pin = info_channel_capacity_input(W)");
     EXPECT_EQ(interp.state().matrices.at("pin").rows(), 2u);
 }
+
+TEST(ReplCommandsTest, info_permutation_entropy) {
+    Interpreter interp;
+
+    expect_ok(interp, "info_permutation_entropy([1;2;3;4;5])");
+    expect_contains(interp, "info_permutation_entropy([1; 2; 3; 4; 5], 3, 1)", "0");
+
+    expect_error_contains(interp, "info_permutation_entropy()",
+                          "expected info_permutation_entropy(x[, order[, delay]])");
+    expect_error_contains(interp, "info_permutation_entropy([1;2;3;4;5], 0)",
+                          "expected positive integer order");
+    expect_error_contains(interp, "info_permutation_entropy([1;2;3;4;5], 3, 0)",
+                          "expected positive integer delay");
+    expect_error_contains(interp, "info_permutation_entropy([1;2;3;4;5], notnum)",
+                          "expected info_permutation_entropy(x[, order[, delay]])");
+    expect_error_contains(interp, "info_permutation_entropy(missing)", "unknown matrix");
+    expect_error_contains(interp, "pe = info_permutation_entropy()",
+                          "expected info_permutation_entropy(x[, order[, delay]])");
+    expect_error_contains(interp, "pe = info_permutation_entropy([1;2;3;4;5], 0)",
+                          "expected positive integer order");
+    expect_error_contains(interp, "pe = info_permutation_entropy([1;2;3;4;5], 1.5)",
+                          "expected positive integer order");
+}
+
+TEST(ReplCommandsTest, info_sample_entropy_errors) {
+    Interpreter interp;
+
+    expect_error_contains(interp, "info_sample_entropy(missing, 2, 0.5)", "unknown matrix");
+    expect_error_contains(interp, "info_sample_entropy([1; 2; 3; 4; 5], 0, 0.5)",
+                          "expected positive integer m");
+    expect_error_contains(interp, "info_sample_entropy([1; 2; 3; 4; 5], 1.5, 0.5)",
+                          "expected positive integer m");
+    expect_error_contains(interp, "info_sample_entropy([1; 2; 3; 4; 5], notnum, 0.5)",
+                          "expected info_sample_entropy(x, m, r)");
+    expect_error_contains(interp, "se = info_sample_entropy()",
+                          "expected info_sample_entropy(x, m, r)");
+    expect_error_contains(interp, "se = info_sample_entropy(missing, 2, 0.5)", "unknown matrix");
+    expect_error_contains(interp, "se = info_sample_entropy([1; 2; 3; 4; 5], 0, 0.5)",
+                          "expected positive integer m");
+}
+
+TEST(ReplCommandsTest, info_transfer_entropy_errors) {
+    Interpreter interp;
+
+    expect_ok(interp, "info_transfer_entropy([1; 2; 3; 4; 5], [2; 3; 4; 5; 6])");
+
+    expect_error_contains(interp, "info_transfer_entropy()",
+                          "expected info_transfer_entropy(x, y[, bins[, lag]])");
+    expect_error_contains(interp, "info_transfer_entropy(missing, [1; 2; 3; 4; 5])",
+                          "unknown matrix");
+    expect_error_contains(interp, "info_transfer_entropy([1; 2; 3; 4; 5], [2; 3; 4; 5; 6], 0)",
+                          "expected positive integer bins");
+    expect_error_contains(interp, "info_transfer_entropy([1; 2; 3; 4; 5], [2; 3; 4; 5; 6], 8, 0)",
+                          "expected positive integer lag");
+    expect_error_contains(interp, "info_transfer_entropy([1; 2; 3; 4; 5], [2; 3; 4; 5; 6], notnum)",
+                          "expected info_transfer_entropy(x, y[, bins[, lag]])");
+    expect_error_contains(interp, "te = info_transfer_entropy([1; 2; 3; 4; 5])",
+                          "expected info_transfer_entropy(x, y[, bins[, lag]])");
+    expect_error_contains(interp, "te = info_transfer_entropy(missing, [1; 2; 3; 4; 5])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_channel_capacity_input_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_channel_capacity_input([0.8, 0.2; 0.2, 0.8])", "p_in");
+    expect_error_contains(interp, "info_channel_capacity_input(no_such_matrix)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_entropy_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_entropy([0.5; 0.5])", "1");
+    expect_error_contains(interp, "info_entropy(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_redundancy_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_redundancy([0.9; 0.1])", "0.5");
+    expect_error_contains(interp, "info_redundancy(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_efficiency_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_efficiency([0.5; 0.5])", "1");
+    expect_error_contains(interp, "info_efficiency(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_channel_capacity_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_channel_capacity([0.8, 0.2; 0.2, 0.8])", "0.278");
+    expect_error_contains(interp, "info_channel_capacity(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_normalized_entropy_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_normalized_entropy([0.5; 0.5])", "1");
+    expect_error_contains(interp, "info_normalized_entropy(no_such_matrix)", "unknown matrix");
+}

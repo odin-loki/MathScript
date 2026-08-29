@@ -3424,3 +3424,9 @@ TEST(ReplCommandsTest, poly_reverse_numthy_factor_exp_numthy_farey_31) {
     expect_ok(interp, "f = numthy_farey(4)");
     EXPECT_EQ(interp.state().matrices.at("f").rows(), 7u);
 }
+
+TEST(ReplCommandsTest, numthy_convergents_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_convergents([3; 7; 15; 1])", "convergents");
+    expect_error_contains(interp, "numthy_convergents([1, 2; 3, 4])", "coefficient vector");
+}

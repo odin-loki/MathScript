@@ -3287,3 +3287,81 @@ TEST(ReplCommandsTest, simulate_gbm_path_run_backtest_30) {
     ASSERT_GT(interp.state().matrices.count("bt"), 0u);
     EXPECT_EQ(interp.state().matrices.at("bt").cols(), 4u);
 }
+
+TEST(ReplCommandsTest, finance_binomial_call_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_binomial_call(100, 100, 1, 0.05, 0.2, 50)", ".");
+    expect_error_contains(interp, "finance_binomial_call(100, 100, 1, 0.05, 0.2, missing)",
+                          "finance_binomial_call");
+}
+
+TEST(ReplCommandsTest, finance_binomial_put_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_binomial_put(100, 100, 1, 0.05, 0.2, 50)", ".");
+    expect_error_contains(interp, "finance_binomial_put(100, 100, 1, 0.05, 0.2, 1.5)",
+                          "non-negative integer steps");
+}
+
+TEST(ReplCommandsTest, finance_bs_rho_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bs_rho(100, 100, 1, 0.05, 0.2, 1)", "53.");
+    expect_error_contains(interp, "finance_bs_rho(100, 100, 1, 0.05, 0.2, 0.5)",
+                          "integer call");
+}
+
+TEST(ReplCommandsTest, finance_mc_lookback_fixed_call_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "finance_mc_lookback_fixed_call(100, 100, 1, 0.05, 0.2, 80, 10, 7)");
+    expect_error_contains(
+        interp, "finance_mc_lookback_fixed_call(100, 100, 1, 0.05, 0.2, 1.5, 10, 7)",
+        "non-negative integer n_paths");
+}
+
+TEST(ReplCommandsTest, finance_heston_call_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "finance_heston_call(100, 100, 1, 0.05, 0.04, 2, 0.04, 0.3, -0.5)");
+    expect_error(interp, "finance_heston_call(100, 100)");
+    expect_error_contains(
+        interp, "finance_heston_call(100, 100, 1, 0.05, 0.04, 2, 0.04, 0.3, missing)",
+        "finance_heston_call");
+}
+
+TEST(ReplCommandsTest, finance_min_variance_portfolio_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_min_variance_portfolio([2, 0.1; 0.1, 1])",
+                    "min_variance_portfolio");
+    expect_error_contains(interp, "finance_min_variance_portfolio([1, 2])",
+                          "square matrix");
+}
+
+TEST(ReplCommandsTest, izaac_gaussian_noise_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "izaac_gaussian_noise(5, 1, 1e-5, 1)");
+    expect_error_contains(interp, "izaac_gaussian_noise(5, 1, 1e-5)",
+                          "izaac_gaussian_noise");
+}
+
+TEST(ReplCommandsTest, finance_sortino_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "finance_sortino([1; 2; 3])");
+    expect_error_contains(interp, "finance_sortino([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, finance_irr_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_irr([-100, 110])", "0.1");
+    expect_error_contains(interp, "finance_irr(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, finance_sharpe_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "finance_sharpe([0.1; 0.2; -0.05])");
+    expect_error_contains(interp, "finance_sharpe(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, finance_max_drawdown_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "finance_max_drawdown([1; 1.1; 0.9; 1.2])");
+    expect_error_contains(interp, "finance_max_drawdown(no_such_matrix)", "unknown matrix");
+}

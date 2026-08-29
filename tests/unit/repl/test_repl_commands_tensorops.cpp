@@ -937,3 +937,9 @@ TEST(ReplCommandsTest, matmul_tensorops_32) {
     ASSERT_GT(interp.state().matrices.count("E"), 0u);
     ASSERT_GT(interp.state().matrices.at("E").rows(), 0u);
 }
+
+TEST(ReplCommandsTest, tensorops_norm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "tensorops_norm([3; 4])", "5");
+    expect_error_contains(interp, "tensorops_norm(no_such_matrix)", "unknown matrix");
+}

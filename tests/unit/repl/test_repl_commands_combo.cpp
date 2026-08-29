@@ -2454,3 +2454,21 @@ TEST(ReplCommandsTest, combo_motzkin_paths_combo_set_partitions_31) {
     expect_ok(interp, "sp2 = combo_set_partitions(2)");
     EXPECT_EQ(interp.state().matrices.at("sp2").rows(), 2u);
 }
+
+TEST(ReplCommandsTest, combo_next_perm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "combo_next_perm([1; 2; 3])", "perm");
+    expect_error_contains(interp, "combo_next_perm([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, combo_prev_perm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "combo_prev_perm([1; 3; 2])", "perm");
+    expect_error_contains(interp, "combo_prev_perm([1, 2; 3, 4])", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, combo_rank_permutation_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "combo_rank_permutation([2; 1; 0])", "5");
+    expect_error_contains(interp, "combo_rank_permutation(no_such_matrix)", "unknown matrix");
+}

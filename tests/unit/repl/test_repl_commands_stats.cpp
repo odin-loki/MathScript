@@ -4661,3 +4661,75 @@ TEST(ReplCommandsTest, arfit_multireg_33) {
     expect_ok(interp, "beta = stats_multiple_regression(X, y)");
     EXPECT_NEAR(interp.state().matrices.at("beta")(0, 0), 1.0, 0.01);
 }
+
+TEST(ReplCommandsTest, stats_bootstrap_mean_errors) {
+    Interpreter interp;
+
+    expect_ok(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 20, 1)");
+
+    expect_error_contains(interp, "stats_bootstrap_mean(missing, 20, 1)", "unknown matrix");
+    expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 0, 1)",
+                          "expected positive integer n_boot");
+    expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 1.5, 1)",
+                          "expected positive integer n_boot");
+    expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], notnum, 1)",
+                          "expected stats_bootstrap_mean(x[, n_boot[, seed]])");
+    expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 20, -1)",
+                          "expected non-negative integer seed");
+    expect_error_contains(interp, "bm = stats_bootstrap_mean()",
+                          "expected stats_bootstrap_mean(x[, n_boot[, seed]])");
+    expect_error_contains(interp, "bm = stats_bootstrap_mean(missing)", "unknown matrix");
+    expect_error_contains(interp, "bm = stats_bootstrap_mean([1; 2; 3; 4; 5], 0)",
+                          "expected positive integer n_boot");
+    expect_error_contains(interp, "bm = stats_bootstrap_mean([1; 2; 3; 4; 5], 20, -1)",
+                          "expected non-negative integer seed");
+}
+
+TEST(ReplCommandsTest, kruskal_wallis_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "kruskal_wallis([10, 11, 12; 20, 21, 22; 30, 31, 32])",
+                    "kruskal_wallis");
+    expect_error_contains(interp, "kruskal_wallis([1, 2, 3])", "at least two group rows");
+}
+
+TEST(ReplCommandsTest, stats_mean_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_mean([1; 2; 3; 4; 5])", "3");
+    expect_error_contains(interp, "stats_mean(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_median_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_median([1; 2; 3; 4; 5])", "3");
+    expect_error_contains(interp, "stats_median(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_var_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_var([1; 2; 3; 4; 5])", "2.5");
+    expect_error_contains(interp, "stats_var(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_stddev_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.58114");
+    expect_error_contains(interp, "stats_stddev(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_min_value_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_min_value([1; 2; 3; 4; 5])", "1");
+    expect_error_contains(interp, "stats_min_value(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_max_value_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "stats_max_value([1; 2; 3; 4; 5])", "5");
+    expect_error_contains(interp, "stats_max_value(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_rms_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_rms([3; 4])");
+    expect_error_contains(interp, "stats_rms(no_such_matrix)", "unknown matrix");
+}

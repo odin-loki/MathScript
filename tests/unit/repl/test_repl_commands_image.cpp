@@ -5163,3 +5163,10 @@ TEST(ReplCommandsTest, radon_iradon_32) {
     expect_ok(interp, "R = iradon(S, Th)");
     EXPECT_EQ(interp.state().matrices.at("R").rows(), 8u);
 }
+
+TEST(ReplCommandsTest, count_components_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "B = [1, 1, 0; 1, 1, 0; 0, 0, 1]");
+    expect_contains(interp, "count_components(B)", "2");
+    expect_error_contains(interp, "count_components(no_such_matrix)", "unknown matrix");
+}

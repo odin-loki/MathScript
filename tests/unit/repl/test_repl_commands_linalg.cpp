@@ -7,6 +7,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "ms/cplx/cplx.hpp"
@@ -11175,4 +11176,163 @@ TEST(ReplCommandsTest, ml_mat_transpose_funm_31) {
     expect_ok(interp, "S = funm(I2, \"exp\")");
     ASSERT_GT(interp.state().matrices.count("S"), 0u);
     EXPECT_NEAR(interp.state().matrices.at("S")(0, 0), std::exp(1.0), 1e-8);
+}
+
+TEST(ReplCommandsTest, solve_sylvester_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "As = [1, 0; 0, 2]");
+    expect_ok(interp, "Bs = [3, 0; 0, 4]");
+    expect_ok(interp, "Cs = [4, 10; 15, 24]");
+    expect_contains(interp, "solve_sylvester(As, Bs, Cs)", "X =");
+    expect_ok(interp, "Bbad = [3]");
+    expect_error_contains(interp, "solve_sylvester(As, Bbad, Cs)", "dimension mismatch");
+}
+
+TEST(ReplCommandsTest, bidiag_two_target_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_contains(interp, "bidiag(A)", "B =");
+    expect_ok(interp, "U, B = bidiag(A)");
+    ASSERT_GT(interp.state().matrices.count("U"), 0u);
+    ASSERT_GT(interp.state().matrices.count("B"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("U").rows(), 3u);
+    EXPECT_EQ(interp.state().matrices.at("B").rows(), 3u);
+    expect_error_contains(interp, "bidiag(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, lu_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "lu([2, 0; 1, 3])", "L =");
+    expect_error_contains(interp, "lu(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, qr_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "qr([1, 2; 3, 4])", "Q =");
+    expect_error_contains(interp, "qr(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, chol_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "chol([4, 1; 1, 3])", "L =");
+    expect_error(interp, "chol([-1, 0; 0, -1])");
+}
+
+TEST(ReplCommandsTest, svd_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "svd([3, 1; 1, 2])", "singular values");
+    expect_error_contains(interp, "svd(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, eig_sym_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "eig_sym([2, 0; 0, 3])", "eigenvalues");
+    expect_error_contains(interp, "eig_sym([1, 2; 3, 4])", "not symmetric");
+}
+
+TEST(ReplCommandsTest, ldl_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ldl([4, 1; 1, 3])", "L =");
+    expect_error_contains(interp, "ldl([1, 2; 3, 4])", "not symmetric");
+}
+
+TEST(ReplCommandsTest, hess_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "hess([1, 2, 3; 4, 5, 6; 7, 8, 9])", "H =");
+    expect_error_contains(interp, "hess(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, schur_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "schur([1, 2, 3; 4, 5, 6; 7, 8, 9])", "T =");
+    expect_error_contains(interp, "schur(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, eig_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "eig([1, 2; 3, 4])", "eigenvalues");
+    expect_error_contains(interp, "eig(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, diag_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "diag([1, 2, 3])", "D =");
+    expect_error_contains(interp, "diag(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, prewitt_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "prewitt([1, 2, 3; 4, 5, 6; 7, 8, 9])", "edge");
+    expect_error_contains(interp, "prewitt(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, scharr_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "scharr([1, 2, 3; 4, 5, 6; 7, 8, 9])", "edge");
+    expect_error_contains(interp, "scharr(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, roberts_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "roberts([1, 2, 3; 4, 5, 6; 7, 8, 9])", "edge");
+    expect_error_contains(interp, "roberts(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_deriv_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_deriv([1; 2; 3])", "deriv");
+    expect_error_contains(interp, "poly_deriv(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ml_mat_transpose_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ml_mat_transpose([1, 2; 3, 4])", "At");
+    expect_error_contains(interp, "ml_mat_transpose(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, cuda_lu_noassign) {
+    Interpreter interp;
+    const auto cuda_lu_result = interp.execute("cuda_lu([4, 1; 1, 3])");
+    ASSERT_FALSE(cuda_lu_result.has_value());
+    const auto* device = std::get_if<ms::DeviceError>(&cuda_lu_result.error());
+    ASSERT_NE(device, nullptr) << "cuda_lu error: " << ms::format_error(cuda_lu_result.error());
+    EXPECT_NE(std::string(device->msg).find("cuda lu"), std::string::npos)
+        << "cuda lu error: " << std::string(device->msg);
+    expect_error_contains(interp, "cuda_lu(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, det_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "det([1, 2; 3, 4])", "-2");
+    expect_error_contains(interp, "det([1, 2])", "dimension mismatch");
+}
+
+TEST(ReplCommandsTest, trace_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "trace([1, 2; 3, 4])", "5");
+    expect_error_contains(interp, "trace([1, 2])", "dimension mismatch");
+}
+
+TEST(ReplCommandsTest, norm_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "norm([3; 4])");
+    expect_error_contains(interp, "norm(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, rank_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "rank([1, 2; 2, 4])", "1");
+    expect_error_contains(interp, "rank(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, cond_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cond([1, 0; 0, 1])");
+    expect_error_contains(interp, "cond(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, matrix_rank_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "matrix_rank([1, 2; 2, 4])", "1");
+    expect_error_contains(interp, "matrix_rank(no_such_matrix)", "unknown matrix");
 }

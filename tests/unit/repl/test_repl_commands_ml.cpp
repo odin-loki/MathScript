@@ -10257,3 +10257,19 @@ TEST(ReplCommandsTest, tsne_golomb_31) {
     ASSERT_GT(interp.state().matrices.count("GR"), 0u);
     EXPECT_EQ(interp.state().matrices.at("GR").rows(), 5u);
 }
+
+TEST(ReplCommandsTest, ml_train_test_split_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "X10 = [0,0;1,1;2,2;3,3;4,4;5,5;6,6;7,7;8,8;9,9]");
+    expect_ok(interp, "y = [0; 1; 0; 1; 0; 1; 0; 1; 0; 1]");
+    expect_ok(interp, "Xtr, ytr, Xte, yte = ml_train_test_split(X10, y, 0.2, 42)");
+    expect_error(interp, "ml_train_test_split(X10, y, 0.2, 42)");
+    expect_error_contains(interp, "Xtr, ytr, Xte, yte = ml_train_test_split(X10, y, 0.2, 1.5)",
+                          "integer seed");
+}
+
+TEST(ReplCommandsTest, ml_vec_norm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ml_vec_norm([3; 4])", "5");
+    expect_error_contains(interp, "ml_vec_norm(no_such_matrix)", "unknown matrix");
+}

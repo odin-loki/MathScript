@@ -20593,3 +20593,59 @@ TEST(ReplCommandsTest, laguerre_l_scalar_34) {
     expect_ok(interp, "lg = laguerre_l(1, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("lg"), ms::laguerre_l(1, 0.5), 1e-8);
 }
+
+TEST(ReplCommandsTest, unary_display_factorizations) {
+    Interpreter interp;
+    expect_ok(interp, "A = [2, 0; 0, 3]");
+    expect_contains(interp, "bidiag(A)", "B =");
+    expect_contains(interp, "qr(A)", "Q =");
+    expect_contains(interp, "lu(A)", "L =");
+    expect_contains(interp, "svd(A)", "singular values");
+    expect_contains(interp, "eig(A)", "eigenvalues");
+    expect_contains(interp, "eig_sym(A)", "eigenvalues");
+    expect_contains(interp, "hess(A)", "H =");
+    expect_contains(interp, "schur(A)", "T =");
+    expect_contains(interp, "chol(A)", "L =");
+    expect_ok(interp, "U2, B2 = bidiag(A)");
+    ASSERT_GT(interp.state().matrices.count("U2"), 0u);
+    ASSERT_GT(interp.state().matrices.count("B2"), 0u);
+    expect_error(interp, "bidiag(no_such_matrix)");
+    expect_error(interp, "chol([-1, 0; 0, -1])");
+}
+
+TEST(ReplCommandsTest, unary_display_transforms) {
+    Interpreter interp;
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_contains(interp, "fftshift(M)", "shifted");
+    expect_contains(interp, "ifftshift(M)", "shifted");
+    expect_contains(interp, "ml_mat_transpose(M)", "At");
+    expect_contains(interp, "poly_deriv([1; 2; 3])", "deriv");
+    expect_contains(interp, "diag([1, 2, 3])", "D =");
+    expect_contains(interp, "prewitt([1, 2, 3; 4, 5, 6; 7, 8, 9])", "edge");
+    expect_contains(interp, "scharr([1, 2, 3; 4, 5, 6; 7, 8, 9])", "edge");
+    expect_contains(interp, "roberts([1, 2, 3; 4, 5, 6; 7, 8, 9])", "edge");
+    expect_error(interp, "fftshift(missing)");
+}
+
+TEST(ReplCommandsTest, info_permutation_entropy_errors) {
+    Interpreter interp;
+    expect_ok(interp, "xpe = [1; 2; 3; 4; 5; 6]");
+    expect_contains(interp, "info_permutation_entropy(xpe)", "\n");
+    expect_contains(interp, "info_permutation_entropy(xpe, 3, 1)", "\n");
+    expect_error_contains(interp, "info_permutation_entropy()", "info_permutation_entropy");
+    expect_error_contains(interp, "info_permutation_entropy(xpe, 0)", "positive integer order");
+    expect_error_contains(interp, "info_permutation_entropy(xpe, 3, 0)", "positive integer delay");
+    expect_error(interp, "info_permutation_entropy(xpe, not_a_number)");
+}
+
+TEST(ReplCommandsTest, signal_firwin_lms_error_paths) {
+    Interpreter interp;
+    expect_ok(interp, "signal_firwin(5, 0.2)");
+    expect_ok(interp, "signal_firwin(5, 0.2, 0)");
+    expect_error_contains(interp, "signal_firwin(1.5, 0.2)", "integer n_taps");
+    expect_error(interp, "signal_firwin(foo, 0.2)");
+    expect_ok(interp, "signal_lms([1; 0; -1; 2], [0.5; -0.25; 1; 0], 2, 0)");
+    expect_error(interp, "signal_lms(missing_x, [1; 2], 2, 0)");
+    expect_error(interp, "signal_coherence(missing, missing, 8, 8)");
+}
+
