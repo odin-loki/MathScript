@@ -24,7 +24,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - `PoolAllocator` frees its slabs in the destructor (previously every pool test leaked at least one slab).
 - GMM REPL packing uses enough columns for K, p, and log-likelihood (ASan overflow when p<3).
 - POSIX `aligned_alloc` rounds size up to a multiple of alignment.
-- `dorgbr` right reflector scan stays inside `lda` and, for P-wide, inside A's column count (`k` when `lda >= n`).
+- `dorgbr` P-wide reflector scan stays inside A's column count (`k` when `lda >= n`) so tall factors are not over-read.
 - ASan CI does not halt on UBSan reports (ed25519 ref10 and `BigInt::to_ll` overflow). Overflows still print; ASan `halt_on_error=1` remains.
 - `MLGMM.ThreeBlobsMeansMatch` tolerance 2.5 on CI MSVC.
 - Linux package smoke: Debian CPack uses `mathscript_1.0.0_amd64.deb` (`DEB-DEFAULT`); CI glob is `mathscript*.deb`.

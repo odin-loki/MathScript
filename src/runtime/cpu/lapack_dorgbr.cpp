@@ -478,13 +478,11 @@ int dormbr(
         // P is n-by-n; apply to the leading n-by-n block of C (rows n..m-1 unchanged).
         apply_p_left_tall(n, k, A, lda, tau, C, ldc, tr);
     } else {
-        // Tall/square (m>=n): gebrd stores P reflectors in rows at (i, i+1:n-1).
-        // apply_p_right_wide walks columns 0..max(m,n)-1 and OOB-reads tall A (only n cols).
-        if (m >= n) {
+        if (m == n) {
             apply_p_right_tall(n, k, A, lda, tau, C, ldc, tr);
         } else {
-            // Wide (m<n): C is m-by-n; P reflectors use the wide row layout.
-            apply_p_right_wide(m, n, k, A, lda, tau, C, ldc, tr);
+            // Tall C is n-by-m; wide C is m-by-n. Both walk the wide-P row layout.
+            apply_p_right_wide((std::min)(m, n), (std::max)(m, n), k, A, lda, tau, C, ldc, tr);
         }
     }
     return 0;
