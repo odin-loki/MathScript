@@ -95,7 +95,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build ripgrep rpm
+          sudo apt-get install -y g++-13 ninja-build lld ripgrep rpm
 
       - name: Configure
         run: cmake -S . -B build-linux -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Release ${{ env.MS_CI_LINUX_FLAGS }}
@@ -172,7 +172,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build lcov
+          sudo apt-get install -y g++-13 ninja-build lld lcov
 
       - name: Configure
         run: cmake -S . -B build-cov -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Debug -DMS_ENABLE_COVERAGE=ON ${{ env.MS_CI_LINUX_FLAGS }}
@@ -244,7 +244,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build valgrind
+          sudo apt-get install -y g++-13 ninja-build lld valgrind
 
       - name: Configure
         run: cmake -S . -B build-valgrind -G Ninja -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Debug ${{ env.MS_CI_LINUX_FLAGS }}
@@ -264,7 +264,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build
+          sudo apt-get install -y g++-13 ninja-build lld
 
       - name: Configure
         run: >
@@ -350,7 +350,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build
+          sudo apt-get install -y g++-13 ninja-build lld
 
       - name: Configure
         run: >

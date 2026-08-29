@@ -55,8 +55,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_link_options(
         -Wl,-z,relro,-z,now
         -pie
-        -fuse-ld=lld
     )
+    find_program(MS_LLD_LINKER NAMES ld.lld lld)
+    if(MS_LLD_LINKER)
+        add_link_options(-fuse-ld=lld)
+    else()
+        message(STATUS "lld not found; using the default system linker")
+    endif()
 endif()
 
 # Plugin — loaded for all non-plugin targets (master plan §3.4).

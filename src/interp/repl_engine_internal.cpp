@@ -5825,13 +5825,10 @@ Result<Matrix<double>> eval_control_c2d(const Matrix<double>& A_m, const Matrix<
     if (C->empty() || (*C)[0].size() != A->size()) {
         return std::unexpected(DomainError{fn, "expected C with column count equal to A size"});
     }
-    try {
-        const control::StateSpace sys(std::move(*A), std::move(*B), std::move(*C), std::move(*D));
-        const auto disc = control::c2d(sys, Ts, method);
-        return nested_to_matrix(disc.A);
-    } catch (const std::exception& ex) {
-        return std::unexpected(DomainError{fn, ex.what()});
-    }
+
+    const control::StateSpace sys(std::move(*A), std::move(*B), std::move(*C), std::move(*D));
+    const auto disc = control::c2d(sys, Ts, method);
+    return nested_to_matrix(disc.A);
 }
 
 Result<Matrix<double>> eval_control_c2d_B(const Matrix<double>& A_m, const Matrix<double>& B_m,
@@ -5863,13 +5860,10 @@ Result<Matrix<double>> eval_control_c2d_B(const Matrix<double>& A_m, const Matri
     if (C->empty() || (*C)[0].size() != A->size()) {
         return std::unexpected(DomainError{fn, "expected C with column count equal to A size"});
     }
-    try {
-        const control::StateSpace sys(std::move(*A), std::move(*B), std::move(*C), std::move(*D));
-        const auto disc = control::c2d(sys, Ts, control::DiscretizationMethod::ZOH);
-        return nested_to_matrix(disc.B);
-    } catch (const std::exception& ex) {
-        return std::unexpected(DomainError{fn, ex.what()});
-    }
+
+    const control::StateSpace sys(std::move(*A), std::move(*B), std::move(*C), std::move(*D));
+    const auto disc = control::c2d(sys, Ts, control::DiscretizationMethod::ZOH);
+    return nested_to_matrix(disc.B);
 }
 
 Matrix<double> pack_transfer_function(const control::TransferFunction& sys) {
@@ -6009,13 +6003,10 @@ Result<Matrix<double>> eval_control_d2c(const Matrix<double>& A_m, const Matrix<
     if (C->empty() || (*C)[0].size() != A->size()) {
         return std::unexpected(DomainError{fn, "expected C with column count equal to A size"});
     }
-    try {
-        const control::StateSpace sys(std::move(*A), std::move(*B), std::move(*C), std::move(*D));
-        const auto cont = control::d2c(sys, Ts, method);
-        return nested_to_matrix(cont.A);
-    } catch (const std::exception& ex) {
-        return std::unexpected(DomainError{fn, ex.what()});
-    }
+
+    const control::StateSpace sys(std::move(*A), std::move(*B), std::move(*C), std::move(*D));
+    const auto cont = control::d2c(sys, Ts, method);
+    return nested_to_matrix(cont.A);
 }
 
 Result<Matrix<double>> eval_control_c2d_tf(const Matrix<double>& num_m,
@@ -6029,11 +6020,8 @@ Result<Matrix<double>> eval_control_c2d_tf(const Matrix<double>& num_m,
     if (!sys) {
         return std::unexpected(sys.error());
     }
-    try {
-        return pack_transfer_function(control::c2d(*sys, Ts, method));
-    } catch (const std::exception& ex) {
-        return std::unexpected(DomainError{fn, ex.what()});
-    }
+
+    return pack_transfer_function(control::c2d(*sys, Ts, method));
 }
 
 Result<Matrix<double>> eval_control_d2c_tf(const Matrix<double>& num_m,
@@ -6047,11 +6035,8 @@ Result<Matrix<double>> eval_control_d2c_tf(const Matrix<double>& num_m,
     if (!sys) {
         return std::unexpected(sys.error());
     }
-    try {
-        return pack_transfer_function(control::d2c(*sys, Ts, method));
-    } catch (const std::exception& ex) {
-        return std::unexpected(DomainError{fn, ex.what()});
-    }
+
+    return pack_transfer_function(control::d2c(*sys, Ts, method));
 }
 
 Result<double> eval_quantum_purity(const Matrix<double>& rho_m) {

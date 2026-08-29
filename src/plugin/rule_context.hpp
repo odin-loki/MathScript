@@ -4,7 +4,9 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#if __has_include("clang/AST/DeclNamespace.h")
 #include "clang/AST/DeclNamespace.h"
+#endif
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/CompilerInstance.h"
 

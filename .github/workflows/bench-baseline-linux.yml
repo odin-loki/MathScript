@@ -14,7 +14,7 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build
+          sudo apt-get install -y g++-13 ninja-build lld
 
       - name: Configure
         run: >

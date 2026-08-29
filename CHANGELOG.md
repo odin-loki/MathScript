@@ -8,6 +8,9 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (CI green, coverage ≥ 90%, Valgrind clean, fuzz-24h, packaging, benches, compliance, JIT). After local prove-out, packaging is next.
 
+- Linux `-fno-exceptions`: control `c2d`/`d2c` helpers in `repl_engine_internal.cpp` no longer wrap non-throwing `control::*` calls in `try`/`catch`.
+- Clang plugin builds on LLVM 18: `DeclNamespace.h` is included only when present (`NamespaceDecl` is already in `Decl.h`).
+- Linux link: use `lld` when it is on PATH; GCC CI jobs now install `lld` so `-fuse-ld=lld` is not a hard missing-linker failure.
 - Local prove-out (Windows MSVC Release, CUDA off): **816/816** CTest suites passed (~36 s at `-j 32`); 28 Google Benchmark targets passed with `--benchmark_min_time=0.001s`. Windows ZIP smoke: `scripts/package_smoke.ps1` → `mathscript-1.0.0-win64.zip`.
 - MSVC `/W4` compile warnings in library and test TUs were cleared (unused locals, `[[nodiscard]]`, `size_t`→`int`, unused statics).
 - Tests are grouped by mathematical domain (`tests/unit/linalg`, `tests/integration/fft`, …). Duplicate remigration wave pipelines were collapsed.
