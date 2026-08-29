@@ -95,6 +95,28 @@ TEST(ControlTF, StepResponse) {
     EXPECT_NEAR(s.y.back(), 1.0, 0.05);
 }
 
+TEST(ControlTF, NyquistFirstOrder) {
+    auto sys = tf({1.0}, {1.0, 1.0});  // 1/(s+1)
+    auto pts = nyquist(sys, 0.01, 100.0, 50);
+    ASSERT_EQ(pts.size(), 50u);
+    EXPECT_NEAR(pts.front().first, 1.0, 0.05);
+    EXPECT_NEAR(pts.front().second, 0.0, 0.05);
+    EXPECT_NEAR(pts.back().first, 0.0, 0.05);
+    EXPECT_NEAR(pts.back().second, 0.0, 0.05);
+    EXPECT_LT(pts[25].second, 0.0);
+}
+
+TEST(ControlTF, ImpulseResponse) {
+    // 1/(s+1): impulse response y(t) = e^{-t}
+    auto sys = tf({1.0}, {1.0, 1.0});
+    auto s = impulse_response(sys, 5.0, 200);
+    EXPECT_EQ(s.t.size(), 200u);
+    EXPECT_EQ(s.y.size(), 200u);
+    EXPECT_NEAR(s.y.front(), 1.0, 0.05);
+    EXPECT_NEAR(s.y.back(), 0.0, 0.05);
+    EXPECT_LT(s.y.back(), s.y.front());
+}
+
 // ---- tf2ss conversion ----
 TEST(ControlSS, TF2SS) {
     auto sys = tf({1.0}, {1.0, 3.0, 2.0});  // 1/(s+1)(s+2)
@@ -1113,4 +1135,12 @@ TEST(ControlStepInfo, EmptyTraceDoesNotCrash) {
     EXPECT_TRUE(std::isnan(info.rise_time));
     EXPECT_TRUE(std::isinf(info.settling_time));
     EXPECT_NEAR(info.overshoot_pct, 0.0, 1e-12);
+}
+
+TEST(ControlMargins, SecondOrderPlantHasFiniteCrossover) {
+    auto sys = tf({1.0}, {1.0, 1.0, 1.0});
+    auto m = margin(sys);
+    EXPECT_GE(m.gain_crossover_freq, 0.0);
+    EXPECT_TRUE(std::isfinite(m.phase_margin_deg) || std::isinf(m.phase_margin_deg));
+    EXPECT_TRUE(std::isfinite(m.gain_margin_db) || std::isinf(m.gain_margin_db));
 }

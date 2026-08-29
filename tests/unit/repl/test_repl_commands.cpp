@@ -315,6 +315,71 @@ TEST(ReplCommandsTest, run_file_unlike_load_keeps_session) {
     std::filesystem::remove(session_path);
 }
 
+TEST(ReplCommandsTest, source_8_missing_does_not_crash) {
+    Interpreter interp;
+    const auto result = interp.execute("source 8");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(ReplCommandsTest, source_self_is_circular) {
+    const auto path =
+        (std::filesystem::temp_directory_path() / "mathscript_src_cycle.ms").string();
+    {
+        std::ofstream out(path);
+        out << "source " << path << "\n";
+    }
+
+    Interpreter interp;
+    expect_error_contains(interp, "source " + path, "circular source");
+    std::filesystem::remove(path);
+}
+
+TEST(ReplCommandsTest, run_file_nested_source_is_capped) {
+    const auto dir = std::filesystem::temp_directory_path() / "mathscript_src_nest";
+    std::filesystem::create_directories(dir);
+    std::vector<std::filesystem::path> files;
+    for (int i = 0; i < 9; ++i) {
+        files.push_back(dir / ("f" + std::to_string(i) + ".ms"));
+    }
+    for (int i = 0; i < 8; ++i) {
+        std::ofstream out(files[static_cast<size_t>(i)]);
+        out << "source " << files[static_cast<size_t>(i + 1)].string() << "\n";
+    }
+    {
+        std::ofstream out(files.back());
+        out << "x = 1\n";
+    }
+
+    Interpreter interp;
+    expect_error_contains(interp, "source " + files.front().string(), "nesting too deep");
+    for (const auto& path : files) {
+        std::filesystem::remove(path);
+    }
+    std::filesystem::remove(dir);
+}
+
+TEST(ReplCommandsTest, run_file_one_nested_source_ok) {
+    const auto dir = std::filesystem::temp_directory_path() / "mathscript_src_one_nest";
+    std::filesystem::create_directories(dir);
+    const auto inner = dir / "inner.ms";
+    const auto outer = dir / "outer.ms";
+    {
+        std::ofstream out(inner);
+        out << "x = 7\n";
+    }
+    {
+        std::ofstream out(outer);
+        out << "source " << inner.string() << "\n";
+    }
+
+    Interpreter interp;
+    expect_contains(interp, "source " + outer.string(), "ran script from");
+    EXPECT_DOUBLE_EQ(interp.state().scalars.at("x"), 7.0);
+    std::filesystem::remove(inner);
+    std::filesystem::remove(outer);
+    std::filesystem::remove(dir);
+}
+
 TEST(ReplCommandsTest, is_script_skip_line) {
     EXPECT_TRUE(Interpreter::is_script_skip_line(""));
     EXPECT_TRUE(Interpreter::is_script_skip_line("   "));

@@ -279,6 +279,32 @@ TEST(GeoIntersect, RayAABB) {
     EXPECT_NEAR(t, 4.0, 1e-10);
 }
 
+TEST(GeoIntersect, RayTri_Hit) {
+    Ray3D ray{{0,0,-1}, {0,0,1}};
+    Triangle3D tri{{-1,-1,0},{1,-1,0},{0,1,0}};
+    double t = -1.0;
+    EXPECT_TRUE(intersect_ray_tri(ray, tri, &t));
+    EXPECT_NEAR(t, 1.0, 1e-10);
+}
+
+TEST(GeoIntersect, RayTri_MissAndParallel) {
+    Triangle3D tri{{-1,-1,0},{1,-1,0},{0,1,0}};
+    Ray3D away{{0,0,-1}, {0,0,-1}};
+    EXPECT_FALSE(intersect_ray_tri(away, tri));
+    Ray3D parallel{{0,0,-1}, {1,0,0}};
+    EXPECT_FALSE(intersect_ray_tri(parallel, tri));
+}
+
+TEST(GeoIntersect, OverlapAABBAndPointInAABB) {
+    AABB3D a{{0,0,0},{1,1,1}}, b{{0.5,0.5,0.5},{1.5,1.5,1.5}};
+    EXPECT_TRUE(overlap_aabb_aabb(a, b));
+    AABB3D c{{2,2,2},{3,3,3}};
+    EXPECT_FALSE(overlap_aabb_aabb(a, c));
+    AABB2D box{{0,0},{2,2}};
+    EXPECT_TRUE(point_in_aabb({1,1}, box));
+    EXPECT_FALSE(point_in_aabb({3,1}, box));
+}
+
 TEST(GeoIntersect, PointInPolygon) {
     Polygon2D poly = {{0,0},{4,0},{4,4},{0,4}};
     EXPECT_TRUE(point_in_polygon({2,2}, poly));
@@ -291,6 +317,17 @@ TEST(GeoDist, PointToSegment) {
     Segment2D s{{0,0},{4,0}};
     EXPECT_NEAR(dist_point_segment({2, 3}, s), 3.0, 1e-10);
     EXPECT_NEAR(dist_point_segment({-1, 0}, s), 1.0, 1e-10);
+}
+
+TEST(GeoDist, PointToLinePlaneAndSegment3) {
+    EXPECT_NEAR(dist_point_line({0,0}, {1,1,-1}), std::sqrt(0.5), 1e-12);
+    Plane3D pl{{0,0,1}, 0.0};
+    EXPECT_NEAR(dist_point_plane({0,0,5}, pl), 5.0, 1e-12);
+    Segment3D s{{0,0,0},{4,0,0}};
+    EXPECT_NEAR(dist_point_segment3({2,3,0}, s), 3.0, 1e-12);
+    EXPECT_NEAR(dist_point_segment3({-1,0,0}, s), 1.0, 1e-12);
+    Segment3D deg{{1,1,1},{1,1,1}};
+    EXPECT_NEAR(dist_point_segment3({1,1,2}, deg), 1.0, 1e-12);
 }
 
 // ---- Bezier ----
@@ -1325,4 +1362,25 @@ TEST(GeoPolyDiff, DegenerateAReturnsEmpty) {
     Polygon2D b = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     EXPECT_TRUE(poly_diff({{0, 0}, {1, 1}}, b).empty());
     EXPECT_TRUE(poly_diff({{0, 0}}, b).empty());
+}
+
+TEST(GeoCurves, Degree1BSplineEndpoints) {
+    std::vector<Point2D> ctrl = {{0, 0}, {2, 2}};
+    const std::vector<double> knots = {0, 0, 1, 1};
+    const auto p0 = bspline_eval(ctrl, knots, 1, 0.0);
+    const auto pmid = bspline_eval(ctrl, knots, 1, 0.5);
+    EXPECT_NEAR(p0.x, 0.0, 1e-9);
+    EXPECT_NEAR(p0.y, 0.0, 1e-9);
+    EXPECT_NEAR(pmid.x, 1.0, 1e-9);
+    EXPECT_NEAR(pmid.y, 1.0, 1e-9);
+}
+
+TEST(GeoCurves, CatmullRomEndpoints) {
+    std::vector<Point2D> ctrl = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    const auto p0 = catmull_rom(ctrl, 0.0);
+    const auto p1 = catmull_rom(ctrl, 1.0);
+    EXPECT_NEAR(p0.x, 0.0, 1e-9);
+    EXPECT_NEAR(p0.y, 0.0, 1e-9);
+    EXPECT_NEAR(p1.x, 0.0, 1e-9);
+    EXPECT_NEAR(p1.y, 1.0, 1e-9);
 }

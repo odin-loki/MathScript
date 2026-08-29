@@ -63,6 +63,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 #include <iomanip>
 #include <memory>
 #include <optional>
@@ -5603,7 +5604,62 @@ bool Interpreter::is_script_skip_line(const std::string& line) {
     return trimmed.empty() || trimmed[0] == '#';
 }
 
+namespace {
+
+constexpr int kMaxScriptDepth = 8;
+
+std::string run_file_key(const std::string& path) {
+    std::error_code ec;
+    const auto abs = std::filesystem::absolute(path, ec);
+    if (ec) {
+        return path;
+    }
+    const auto canon = std::filesystem::weakly_canonical(abs, ec);
+    if (ec) {
+        return abs.string();
+    }
+    return canon.string();
+}
+
+std::optional<std::string> nested_source_path(const std::string& cmd) {
+    const std::string lcmd = lower(cmd);
+    if (lcmd == "run_file" || lcmd == "source") {
+        return std::string{};
+    }
+    if (lcmd.rfind("run_file ", 0) == 0) {
+        return Interpreter::trim(cmd.substr(9));
+    }
+    if (lcmd.rfind("source ", 0) == 0) {
+        return Interpreter::trim(cmd.substr(7));
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
 Result<std::string> Interpreter::run_file(const std::string& path) {
+    if (script_depth_ >= kMaxScriptDepth) {
+        return std::unexpected(DomainError{"run_file", "script nesting too deep"});
+    }
+    const std::string key = run_file_key(path);
+    for (const auto& seen : script_stack_) {
+        if (seen == key) {
+            return std::unexpected(DomainError{"run_file", "circular source: " + path});
+        }
+    }
+
+    struct DepthGuard {
+        Interpreter& self;
+        explicit DepthGuard(Interpreter& s, std::string k) : self(s) {
+            ++self.script_depth_;
+            self.script_stack_.push_back(std::move(k));
+        }
+        ~DepthGuard() {
+            --self.script_depth_;
+            self.script_stack_.pop_back();
+        }
+    } guard(*this, key);
+
     std::ifstream in(path);
     if (!in) {
         return std::unexpected(DomainError{"run_file", "cannot open: " + path});
@@ -5618,7 +5674,12 @@ Result<std::string> Interpreter::run_file(const std::string& path) {
 
         const std::string cmd = trim(line);
         Result<std::string> result;
-        if (cmd.find('=') != std::string::npos) {
+        if (const auto nested = nested_source_path(cmd)) {
+            if (nested->empty()) {
+                return std::unexpected(DomainError{"run_file", "missing path"});
+            }
+            result = run_file(*nested);
+        } else if (cmd.find('=') != std::string::npos) {
             state_.history.push_back(cmd);
             result = execute_assignment(cmd);
         } else {

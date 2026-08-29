@@ -8,6 +8,9 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (coverage ≥ 90% for the tag, fuzz-24h, benches, compliance, JIT). Pre-release `v1.0.0-rc.1` is published.
 
+- REPL `source`/`run_file` reject circular scripts, cap nesting at 8, and nest via `run_file` instead of re-entering `execute` (libFuzzer `source 8` stack overflow).
+- `BigInt::to_ll` no longer multiplies the limb base after the last of three limbs (UBSan overflow at `1e18 * 1e9`).
+- Tests: IsolationForest `export_state`/`from_state` round-trip; `poly_diff`; graph matching; control `step_info`; previously uncalled cplx/ODE/info/quantum/combo APIs; crypto REPL AES-GCM/CBC, ChaCha-Poly1305, HKDF, PBKDF2, Ed25519.
 - Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) published. CI all 9 jobs green on [run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904).
 - Linux `-fno-exceptions`: control `c2d`/`d2c` helpers in `repl_engine_internal.cpp` no longer wrap non-throwing `control::*` calls in `try`/`catch`.
 - Clang plugin builds on LLVM 18: `DeclNamespace.h` is included only when present (`NamespaceDecl` is already in `Decl.h`); narrowing diagnostics use `CK_*` instead of `ImplicitCastKind`; unused-`expected` is detected via discarded `CallExpr` (Clang has no `ExprStmt`).

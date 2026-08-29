@@ -198,6 +198,25 @@ TEST(GraphBasic, AddEdges) {
     EXPECT_EQ(G.n_edges(), 3);
 }
 
+TEST(GraphBasic, RemoveEdge) {
+    Graph G(3, false);
+    G.add_edge(0, 1, 1.0);
+    G.add_edge(1, 2, 1.0);
+    EXPECT_EQ(G.n_edges(), 2);
+    G.remove_edge(0, 1);
+    EXPECT_EQ(G.n_edges(), 1);
+    auto e = G.edges();
+    ASSERT_EQ(e.size(), 1u);
+    EXPECT_EQ(e[0].from, 1);
+    EXPECT_EQ(e[0].to, 2);
+    Graph D(3, true);
+    D.add_edge(0, 1, 1.0);
+    D.add_edge(1, 0, 1.0);
+    D.remove_edge(0, 1);
+    EXPECT_EQ(D.n_edges(), 1);
+    EXPECT_TRUE(D.is_directed());
+}
+
 // ---- BFS ----
 TEST(GraphTraversal, BFS) {
     Graph G(4, false);
@@ -728,6 +747,47 @@ TEST(GraphShortestPath, AStar) {
     ASSERT_TRUE(path.has_value());
     EXPECT_EQ(path.value().front(), 0);
     EXPECT_EQ(path.value().back(), 3);
+}
+
+TEST(GraphHamiltonian, PathExistsAndMissing) {
+    Graph path(4, false);
+    path.add_edge(0, 1);
+    path.add_edge(1, 2);
+    path.add_edge(2, 3);
+    auto hp = hamiltonian_path(path);
+    ASSERT_TRUE(hp.has_value());
+    ASSERT_EQ(hp->size(), 4u);
+    EXPECT_EQ((*hp)[0], 0);
+
+    Graph star(4, false);
+    star.add_edge(0, 1);
+    star.add_edge(0, 2);
+    star.add_edge(0, 3);
+    auto none = hamiltonian_path(star);
+    EXPECT_FALSE(none.has_value());
+}
+
+TEST(GraphProperties, ClosenessRadiusComponentsAndPlanar) {
+    Graph G(4, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 3);
+    auto cc = closeness_centrality(G);
+    ASSERT_EQ(cc.size(), 4u);
+    EXPECT_GT(cc[1], cc[0]);
+    EXPECT_EQ(radius(G), 2);
+    auto comps = connected_components(G);
+    EXPECT_EQ(comps.size(), 1u);
+    EXPECT_TRUE(is_planar_k5_k33_check(G));
+    auto spec = adjacency_spectrum(G);
+    ASSERT_EQ(spec.size(), 1u);
+    EXPECT_GT(spec[0], 0.0);
+    EXPECT_EQ(chromatic_number_approx(G), 2);
+    Graph directed(3, true);
+    directed.add_edge(0, 1);
+    directed.add_edge(1, 2);
+    directed.add_edge(2, 0);
+    EXPECT_TRUE(is_strongly_connected(directed));
 }
 
 TEST(GraphShortestPath, AStarPrefersCheaperRoute) {

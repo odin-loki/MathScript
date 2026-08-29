@@ -124,6 +124,8 @@ private:
     SessionState state_;
     std::map<std::string, SessionObject> session_objects_;
     std::atomic<bool>* cancel_flag_ = nullptr;
+    int script_depth_ = 0;
+    std::vector<std::string> script_stack_;
     std::optional<Result<std::string>> try_session_object_command(const std::string& cmd);
     Result<Matrix<double>> parse_matrix(const std::string& text) const;
     Result<Matrix<double>> resolve_matrix(const std::string& name) const;

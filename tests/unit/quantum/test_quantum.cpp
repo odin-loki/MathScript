@@ -943,3 +943,52 @@ TEST(QuantumSchmidt, InvalidDimensionsReturnEmpty) {
     EXPECT_TRUE(decomp.coefficients.empty());
     EXPECT_EQ(schmidt_rank(psi, 3, 2), 0);
 }
+
+TEST(QuantumAlgebra, AnticommutatorXXIsTwiceIdentity) {
+    auto X = pauli_x();
+    auto ac = anticommutator(X, X);
+    auto I = identity(2);
+    ASSERT_EQ(ac.size(), 2u);
+    EXPECT_NEAR(ac[0][0].real(), 2.0 * I[0][0].real(), 1e-10);
+    EXPECT_NEAR(ac[1][1].real(), 2.0, 1e-10);
+    EXPECT_NEAR(std::abs(ac[0][1]), 0.0, 1e-10);
+}
+
+TEST(QuantumAlgebra, TraceDistanceIdenticalAndOrthogonal) {
+    auto rho = density_matrix(ket_basis(2, 0));
+    auto sigma = density_matrix(ket_basis(2, 1));
+    EXPECT_NEAR(trace_distance(rho, rho), 0.0, 1e-10);
+    EXPECT_GT(trace_distance(rho, sigma), 0.4);
+}
+
+TEST(QuantumAlgebra, BellConcurrenceIsOne) {
+    auto rho = density_matrix(bell_states()[0]);
+    EXPECT_NEAR(concurrence(rho), 1.0, 1e-8);
+    EXPECT_NEAR(concurrence(density_matrix(ket_basis(2, 0))), 0.0, 1e-12);
+}
+
+TEST(QuantumGates, PhaseAndRotationZeroAreIdentity) {
+    auto I = identity(2);
+    auto P = phase_gate(0.0);
+    auto Rx = rotation_x(0.0);
+    auto Ry = rotation_y(0.0);
+    auto Rz = rotation_z(0.0);
+    EXPECT_NEAR(P[0][0].real(), I[0][0].real(), 1e-12);
+    EXPECT_NEAR(P[1][1].real(), 1.0, 1e-12);
+    EXPECT_NEAR(Rx[0][0].real(), 1.0, 1e-12);
+    EXPECT_NEAR(Ry[0][0].real(), 1.0, 1e-12);
+    EXPECT_NEAR(Rz[0][0].real(), 1.0, 1e-12);
+}
+
+TEST(QuantumGates, ToffoliFlips111To110) {
+    auto T = toffoli_gate();
+    auto out = op_apply(T, ket_basis(8, 7));
+    ASSERT_EQ(out.size(), 8u);
+    EXPECT_NEAR(std::abs(out[6]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(out[7]), 0.0, 1e-12);
+}
+
+TEST(QuantumMeasure, ExpectationDmPauliZ) {
+    auto rho = density_matrix(ket_basis(2, 0));
+    EXPECT_NEAR(expectation_dm(rho, pauli_z()), 1.0, 1e-10);
+}

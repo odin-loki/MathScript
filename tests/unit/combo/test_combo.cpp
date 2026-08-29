@@ -168,6 +168,25 @@ TEST(ComboEnum, NextCombination) {
     EXPECT_FALSE(next_comb(v, 4));
 }
 
+TEST(ComboEnum, PrevPermutationRoundTrip) {
+    std::vector<int> v = {1, 2, 3};
+    ASSERT_TRUE(next_perm(v));
+    EXPECT_EQ(v, (std::vector<int>{1, 3, 2}));
+    EXPECT_TRUE(prev_perm(v));
+    EXPECT_EQ(v, (std::vector<int>{1, 2, 3}));
+    EXPECT_FALSE(prev_perm(v));
+}
+
+TEST(ComboEnum, PrevCombinationRoundTrip) {
+    std::vector<int> start = {0, 1};
+    std::vector<int> v = start;
+    ASSERT_TRUE(next_comb(v, 4));
+    EXPECT_EQ(v, (std::vector<int>{0, 2}));
+    EXPECT_TRUE(prev_comb(v, 4));
+    EXPECT_EQ(v, start);
+    EXPECT_FALSE(prev_comb(v, 4));
+}
+
 TEST(ComboEnum, RankPermutation) {
     std::vector<int> v = {0, 1, 2};
     EXPECT_EQ(rank_permutation(v), 0u);

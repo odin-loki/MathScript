@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <random>
 
 namespace ms {
@@ -127,8 +128,18 @@ std::string BigInt::to_string(int base) const {
 }
 
 long long BigInt::to_ll() const {
-    long long v = 0, base = 1;
-    for (size_t i=0; i<digits.size() && i<3; ++i) { v += (long long)digits[i]*base; base*=BASE; }
+    long long v = 0;
+    long long base = 1;
+    const size_t n = digits.size() < 3 ? digits.size() : 3;
+    for (size_t i = 0; i < n; ++i) {
+        v += static_cast<long long>(digits[i]) * base;
+        if (i + 1 < n) {
+            if (base > (std::numeric_limits<long long>::max)() / BASE) {
+                break;
+            }
+            base *= BASE;
+        }
+    }
     return negative ? -v : v;
 }
 

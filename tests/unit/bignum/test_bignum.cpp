@@ -32,6 +32,12 @@ TEST(BigIntBasic, FromString) {
     EXPECT_EQ(m.to_string(), "-42");
 }
 
+TEST(BigIntBasic, ToLlThreeLimbsNoOverflow) {
+    BigInt n("1000000000000000000");
+    EXPECT_EQ(n.to_ll(), 1000000000000000000LL);
+    EXPECT_EQ(n.to_string(), "1000000000000000000");
+}
+
 TEST(BigIntBasic, Shift10) {
     BigInt n(123LL);
     auto s=n.shift10(2);

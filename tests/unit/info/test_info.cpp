@@ -685,3 +685,30 @@ TEST(TransferEntropy, DegenerateTooShortForLag) {
     EXPECT_NEAR(transfer_entropy(x, y, 8, 1), 0.0, 1e-12);
     EXPECT_NEAR(transfer_entropy(x, y, 8, 2), 0.0, 1e-12);
 }
+
+TEST(InfoTsallis, QOneMatchesShannonNats) {
+    const std::vector<double> p = {0.25, 0.25, 0.25, 0.25};
+    EXPECT_NEAR(tsallis_entropy(p, 1.0), entropy(p, std::exp(1.0)), 1e-10);
+    EXPECT_GT(tsallis_entropy(p, 2.0), 0.0);
+}
+
+TEST(InfoSourceCoding, RateMatchesShannonBits) {
+    const std::vector<double> p = {0.5, 0.5};
+    EXPECT_NEAR(source_coding_rate(p), 1.0, 1e-12);
+}
+
+TEST(InfoRateDistortion, GaussianClosedForm) {
+    EXPECT_NEAR(rate_distortion_gaussian(4.0, 1.0), 1.0, 1e-12);
+    EXPECT_NEAR(rate_distortion_gaussian(1.0, 2.0), 0.0, 1e-12);
+}
+
+TEST(InfoDiffEntropy, UniformInterval) {
+    EXPECT_NEAR(differential_entropy_uniform(0.0, std::exp(1.0)), 1.0, 1e-12);
+}
+
+TEST(InfoLZ, EmptyAndConstantVsAlternating) {
+    EXPECT_NEAR(lz_complexity({}), 0.0, 1e-12);
+    const std::vector<int> constant(32, 0);
+    const std::vector<int> alt = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+    EXPECT_GE(lz_complexity(alt), lz_complexity(constant));
+}

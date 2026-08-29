@@ -74,6 +74,18 @@ TEST(MLLinReg, Predict) {
     EXPECT_NEAR(p[0], 4.0, 0.01);
 }
 
+TEST(MLLinReg, FitWithoutIntercept) {
+    // y = 2x through the origin
+    Mat X={{1},{2},{3},{4},{5}};
+    Vec y={2,4,6,8,10};
+    LinearRegression lr;
+    lr.fit(X,y,false);
+    EXPECT_NEAR(lr.intercept, 0.0, 1e-12);
+    ASSERT_EQ(lr.coef.size(), 1u);
+    EXPECT_NEAR(lr.coef[0], 2.0, 1e-6);
+    EXPECT_NEAR(lr.score(X,y), 1.0, 1e-6);
+}
+
 // ---- Ridge Regression ----
 
 TEST(MLRidge, SimpleRegression) {
@@ -92,6 +104,17 @@ TEST(MLRidge, PredictWithIntercept) {
     rr.fit(X,y);
     auto p=rr.predict({{4}});
     EXPECT_NEAR(p[0], 9.0, 0.2);
+}
+
+TEST(MLRidge, FitWithoutIntercept) {
+    Mat X={{1},{2},{3},{4}};
+    Vec y={2,4,6,8};
+    RidgeRegression rr(1e-6);
+    rr.fit(X,y,false);
+    EXPECT_NEAR(rr.intercept, 0.0, 1e-12);
+    ASSERT_EQ(rr.coef.size(), 1u);
+    EXPECT_NEAR(rr.coef[0], 2.0, 0.05);
+    EXPECT_GT(rr.score(X,y), 0.99);
 }
 
 // ---- Lasso ----
@@ -542,6 +565,21 @@ TEST(MLDecisionTree, EntropyCriterion) {
     EXPECT_GE(dt.score(X,y), 0.8);
 }
 
+TEST(MLDecisionTree, WeightedFit) {
+    // Identical features → single leaf; unweighted majority is 0, but a heavy
+    // weight on the lone positive flips the weighted leaf value to 1.
+    Mat X={{0},{0},{0},{0}};
+    Vec y={0,0,0,1};
+    DecisionTree plain(1);
+    plain.fit(X, y);
+    EXPECT_NEAR(plain.predict({{0}})[0], 0.0, 1e-12);
+
+    Vec w={1,1,1,100};
+    DecisionTree weighted(1);
+    weighted.fit(X, y, w);
+    EXPECT_NEAR(weighted.predict({{0}})[0], 1.0, 1e-12);
+}
+
 // ---- KMeans ----
 
 TEST(MLKMeans, TwoClusters) {
@@ -939,11 +977,46 @@ TEST(MLIsolationForest, BatchMatchesSingle) {
         EXPECT_NEAR(batch[i], iso.anomaly_score(X[i]), 1e-12);
 }
 
+TEST(MLIsolationForest, ExportFromStateRoundTrip) {
+    auto X = isolation_cluster_outlier_data();
+    IsolationForest iso(40, 32, 5);
+    iso.fit(X);
+    const auto state = iso.export_state();
+    EXPECT_EQ(state.n_trees, 40u);
+    EXPECT_EQ(state.sample_size, 32u);
+    EXPECT_EQ(state.seed, 5u);
+    EXPECT_EQ(state.n_features, 2);
+    EXPECT_FALSE(state.trees.empty());
+
+    const IsolationForest restored = IsolationForest::from_state(state);
+    const auto original = iso.anomaly_scores(X);
+    const auto roundtrip = restored.anomaly_scores(X);
+    ASSERT_EQ(original.size(), roundtrip.size());
+    for (size_t i = 0; i < original.size(); ++i)
+        EXPECT_NEAR(original[i], roundtrip[i], 1e-12);
+    EXPECT_NEAR(iso.anomaly_score({0.5, 0.5}), restored.anomaly_score({0.5, 0.5}),
+                1e-12);
+}
+
 TEST(MLAgglomerative, FitPredict) {
     Mat X;
     for (int i=0;i<5;++i) X.push_back({(double)i,0});
     for (int i=0;i<5;++i) X.push_back({(double)i+100,0});
     AgglomerativeClustering ac(2);
+    ac.fit(X);
+    EXPECT_EQ(ac.labels_.size(), 10u);
+    double l0=ac.labels_[0];
+    for (int i=0;i<5;++i) EXPECT_EQ(ac.labels_[i],l0);
+    double l1=ac.labels_[5];
+    for (int i=5;i<10;++i) EXPECT_EQ(ac.labels_[i],l1);
+    EXPECT_NE(l0,l1);
+}
+
+TEST(MLAgglomerative, SingleLinkage) {
+    Mat X;
+    for (int i=0;i<5;++i) X.push_back({(double)i,0});
+    for (int i=0;i<5;++i) X.push_back({(double)i+100,0});
+    AgglomerativeClustering ac(2, "single");
     ac.fit(X);
     EXPECT_EQ(ac.labels_.size(), 10u);
     double l0=ac.labels_[0];
@@ -1085,6 +1158,20 @@ TEST(MLSpectralClustering, EmptyInputReturnsEmpty) {
     Mat X;
     auto labels = spectral_clustering(X, 2, 1.0);
     EXPECT_TRUE(labels.empty());
+}
+
+TEST(MLSpectralClustering, KnnAffinityPartitionsBlobs) {
+    auto X = spectral_two_blob_data();
+    auto labels = spectral_clustering(X, 2, 1.0, 5);
+    EXPECT_EQ(labels.size(), X.size());
+    EXPECT_TRUE(spectral_blobs_partitioned(labels, 15));
+}
+
+TEST(MLSpectralClustering, KnnAffinityNonPositiveSigmaFallsBack) {
+    auto X = spectral_two_blob_data();
+    auto labels = spectral_clustering(X, 2, 0.0, 4);
+    EXPECT_EQ(labels.size(), X.size());
+    EXPECT_EQ(spectral_distinct_labels(labels), 2u);
 }
 
 // ---- PCA ----
@@ -1687,6 +1774,25 @@ TEST(MLNeuralNet, XOR) {
     auto pred=nn.predict(X);
     EXPECT_EQ(pred.size(), 4u);
     EXPECT_EQ(pred[0].size(), 1u);
+}
+
+TEST(MLNeuralNet, SoftmaxCrossEntropy) {
+    Mat X={{0,0},{0,1},{1,0},{1,1}};
+    Mat Y={{1,0},{0,1},{0,1},{1,0}};
+    NeuralNet nn;
+    nn.add(4,"tanh").add(2,"softmax");
+    nn.compile("crossentropy",0.05);
+    nn.fit(X,Y,40,4);
+    auto pred=nn.predict(X);
+    ASSERT_EQ(pred.size(), 4u);
+    ASSERT_EQ(pred[0].size(), 2u);
+    for (const auto& row : pred) {
+        EXPECT_TRUE(std::isfinite(row[0]));
+        EXPECT_TRUE(std::isfinite(row[1]));
+        EXPECT_NEAR(row[0] + row[1], 1.0, 1e-8);
+        EXPECT_GE(row[0], 0.0);
+        EXPECT_GE(row[1], 0.0);
+    }
 }
 
 // ---- Random Forest ----

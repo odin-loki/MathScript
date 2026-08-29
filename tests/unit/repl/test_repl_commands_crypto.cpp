@@ -656,3 +656,169 @@ TEST(ReplCommandsTest, hex_bwt_32) {
     ASSERT_GT(interp.state().matrices.count("dec"), 0u);
     EXPECT_EQ(interp.state().matrices.at("dec").rows(), 4u);
 }
+
+TEST(ReplCommandsTest, crypto_hmac_sha512_rfc4231) {
+    Interpreter interp;
+    expect_contains(
+        interp,
+        "crypto_hmac_sha512(0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b,4869205468657265)",
+        "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cd"
+        "edaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854");
+}
+
+TEST(ReplCommandsTest, crypto_hkdf_sha256_rfc5869) {
+    Interpreter interp;
+    expect_contains(
+        interp,
+        "crypto_hkdf_sha256(0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b,"
+        "000102030405060708090a0b0c,f0f1f2f3f4f5f6f7f8f9,42)",
+        "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
+        "34007208d5b887185865");
+}
+
+TEST(ReplCommandsTest, crypto_hkdf_sha512_rfc5869) {
+    Interpreter interp;
+    expect_contains(
+        interp,
+        "crypto_hkdf_sha512(0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b,"
+        "000102030405060708090a0b0c,f0f1f2f3f4f5f6f7f8f9,42)",
+        "832390086cda71fb47625bb5ceb168e4c8e26a1a16ed34d9fc7fe92c14815793"
+        "38da362cb8d9f925d7cb");
+}
+
+TEST(ReplCommandsTest, crypto_pbkdf2_sha256_rfc6070) {
+    Interpreter interp;
+    expect_contains(interp, "crypto_pbkdf2_sha256(70617373776f7264,73616c74,1,20)",
+                    "120fb6cffcf8b32c43e7225256c4f837a86548c9");
+}
+
+TEST(ReplCommandsTest, crypto_pbkdf2_hmac_sha512_rfc8018) {
+    Interpreter interp;
+    expect_contains(
+        interp, "crypto_pbkdf2_hmac_sha512(70617373776f7264,73616c74,1,64)",
+        "867f70cf1ade02cff3752599a3a53dc4af34c7a669815ae5d513554e1c8cf252"
+        "c02d470a285a0501bad999bfe943c08f050235d7d68b1da55e63f73b60a57fce");
+}
+
+TEST(ReplCommandsTest, crypto_aes128_cbc_roundtrip) {
+    Interpreter interp;
+    const char* key = "2b7e151628aed2a6abf7158809cf4f3c";
+    const char* iv = "000102030405060708090a0b0c0d0e0f";
+    const char* plain =
+        "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"
+        "30c81c46a35ce411e5fbc1191a0a16ef";
+    const auto enc = interp.execute(std::string("crypto_aes128_cbc_encrypt(") + key + "," + iv +
+                                    "," + plain + ")");
+    ASSERT_TRUE(enc.has_value());
+    std::string cipher = *enc;
+    while (!cipher.empty() && (cipher.back() == '\n' || cipher.back() == ' ')) {
+        cipher.pop_back();
+    }
+    const auto dec = interp.execute(std::string("crypto_aes128_cbc_decrypt(") + key + "," + iv +
+                                    "," + cipher + ")");
+    ASSERT_TRUE(dec.has_value());
+    EXPECT_NE((*dec).find(plain), std::string::npos);
+}
+
+TEST(ReplCommandsTest, crypto_aes256_cbc_roundtrip) {
+    Interpreter interp;
+    const char* key =
+        "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4";
+    const char* iv = "000102030405060708090a0b0c0d0e0f";
+    const char* plain =
+        "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"
+        "30c81c46a35ce411e5fbc1191a0a52ef";
+    const auto enc = interp.execute(std::string("crypto_aes256_cbc_encrypt(") + key + "," + iv +
+                                    "," + plain + ")");
+    ASSERT_TRUE(enc.has_value());
+    std::string cipher = *enc;
+    while (!cipher.empty() && (cipher.back() == '\n' || cipher.back() == ' ')) {
+        cipher.pop_back();
+    }
+    const auto dec = interp.execute(std::string("crypto_aes256_cbc_decrypt(") + key + "," + iv +
+                                    "," + cipher + ")");
+    ASSERT_TRUE(dec.has_value());
+    EXPECT_NE((*dec).find(plain), std::string::npos);
+}
+
+TEST(ReplCommandsTest, crypto_aes128_gcm_nist_case2) {
+    Interpreter interp;
+    expect_contains(
+        interp,
+        "crypto_aes128_gcm_encrypt(00000000000000000000000000000000,"
+        "000000000000000000000000,\"\",00000000000000000000000000000000)",
+        "0388dace60b6a392f328c2b971b2fe78");
+    expect_contains(
+        interp,
+        "crypto_aes128_gcm_decrypt(00000000000000000000000000000000,"
+        "000000000000000000000000,\"\",0388dace60b6a392f328c2b971b2fe78,"
+        "ab6e47d42cec13bdf53a67b21257bddf)",
+        "00000000000000000000000000000000");
+}
+
+TEST(ReplCommandsTest, crypto_aes256_gcm_nist_case14) {
+    Interpreter interp;
+    expect_contains(
+        interp,
+        "crypto_aes256_gcm_encrypt("
+        "0000000000000000000000000000000000000000000000000000000000000000,"
+        "000000000000000000000000,\"\",00000000000000000000000000000000)",
+        "cea7403d4d606b6e074ec5d3baf39d18");
+    expect_contains(
+        interp,
+        "crypto_aes256_gcm_decrypt("
+        "0000000000000000000000000000000000000000000000000000000000000000,"
+        "000000000000000000000000,\"\",cea7403d4d606b6e074ec5d3baf39d18,"
+        "d0d1c8a799996bf0265b98b5d48ab919)",
+        "00000000000000000000000000000000");
+}
+
+TEST(ReplCommandsTest, crypto_chacha20_poly1305_rfc8439) {
+    Interpreter interp;
+    const std::string cmd =
+        "crypto_chacha20_poly1305_encrypt("
+        "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f,"
+        "070000004041424344454647,50515253c0c1c2c3c4c5c6c7,"
+        "4c616469657320616e642047656e746c656d656e206f662074686520636c617373206f66202739393a2049662049"
+        "20636f756c64206f6666657220796f75206f6e6c79206f6e652074697020666f7220746865206675747572652c2073"
+        "756e73637265656e20776f756c642062652069742e)";
+    expect_contains(interp, cmd, "1ae10b594f09e26a7e902ecbd0600691");
+    expect_contains(
+        interp,
+        "crypto_chacha20_poly1305_decrypt("
+        "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f,"
+        "070000004041424344454647,50515253c0c1c2c3c4c5c6c7,"
+        "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6"
+        "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36"
+        "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc"
+        "3ff4def08e4b7a9de576d26586cec64b6116,1ae10b594f09e26a7e902ecbd0600691)",
+        "4c616469657320616e642047656e746c656d656e");
+}
+
+TEST(ReplCommandsTest, crypto_ed25519_rfc8032) {
+    Interpreter interp;
+    const char* seed =
+        "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+    expect_contains(interp, std::string("crypto_ed25519_keypair(") + seed + ")",
+                    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+    expect_contains(
+        interp, std::string("crypto_ed25519_sign(") + seed + ",\"\")",
+        "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+        "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+    expect_contains(
+        interp,
+        "crypto_ed25519_verify("
+        "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a,\"\","
+        "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+        "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b)",
+        "1");
+}
+
+TEST(ReplCommandsTest, crypto_random_bytes_and_constant_time_eq) {
+    Interpreter interp;
+    const auto rand = interp.execute("crypto_random_bytes(16)");
+    ASSERT_TRUE(rand.has_value());
+    EXPECT_GE(rand->size(), 32u);
+    expect_contains(interp, "crypto_constant_time_eq(00ff,00ff)", "1");
+    expect_contains(interp, "crypto_constant_time_eq(00ff,00fe)", "0");
+}

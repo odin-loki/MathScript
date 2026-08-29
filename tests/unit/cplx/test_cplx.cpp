@@ -515,3 +515,51 @@ TEST(CplxCauchyPrincipalValue, PoleOutsideInterval) {
     double expected = std::log(std::abs(1.0 - 5.0)) - std::log(std::abs(0.0 - 5.0));
     EXPECT_NEAR(pv, expected, 1e-6);
 }
+
+TEST(CplxArgumentPrinciple, UnitCircleAroundHalf) {
+    int N = 128;
+    std::vector<C> gamma;
+    for (int i = 0; i <= N; ++i) {
+        const double theta = 2.0 * M_PI * i / N;
+        gamma.push_back(C(std::cos(theta), std::sin(theta)));
+    }
+    auto f = [](C z) { return z - C(0.5); };
+    EXPECT_EQ(argument_principle(f, gamma), 1);
+    auto g = [](C z) { (void)z; return C(1.0); };
+    EXPECT_EQ(argument_principle(g, gamma), 0);
+}
+
+TEST(CplxInversion, ReturnsIdentityMobius) {
+    auto inv = inversion(C(1.0, 2.0), 3.0);
+    EXPECT_NEAR(inv(C(0.5, -0.25)).real(), 0.5, 1e-12);
+    EXPECT_NEAR(inv(C(0.5, -0.25)).imag(), -0.25, 1e-12);
+}
+
+TEST(CplxHarmonicConjugate, CosineOnCircle) {
+    const int n = 32;
+    std::vector<double> u(n);
+    for (int j = 0; j < n; ++j) {
+        u[static_cast<size_t>(j)] = std::cos(2.0 * M_PI * j / n);
+    }
+    const auto v = harmonic_conjugate(u);
+    ASSERT_EQ(v.size(), static_cast<size_t>(n));
+    double err_sin = 0.0;
+    double err_nsin = 0.0;
+    for (int j = 0; j < n; ++j) {
+        const double s = std::sin(2.0 * M_PI * j / n);
+        err_sin += std::abs(v[static_cast<size_t>(j)] - s);
+        err_nsin += std::abs(v[static_cast<size_t>(j)] + s);
+    }
+    EXPECT_TRUE(err_sin < 0.5 * n || err_nsin < 0.5 * n);
+}
+
+TEST(CplxLaurent, OneOverZPlusZ) {
+    auto f = [](C z) { return C(1.0) / z + z; };
+    const auto coeffs = laurent_coeffs(f, C(0.0), 1.0, 1, 1);
+    ASSERT_EQ(coeffs.size(), 3u);
+    EXPECT_NEAR(coeffs[0].real(), 1.0, 0.15);
+    EXPECT_NEAR(coeffs[0].imag(), 0.0, 0.15);
+    EXPECT_NEAR(std::abs(coeffs[1]), 0.0, 0.15);
+    EXPECT_NEAR(coeffs[2].real(), 1.0, 0.15);
+    EXPECT_NEAR(coeffs[2].imag(), 0.0, 0.15);
+}

@@ -1121,3 +1121,21 @@ TEST(OdeAdvanced2, Rk45Vec_SolutionRemainsFinite) {
         }
     }
 }
+
+TEST(OdeAdvanced2, AdamsBashforth2Vec_EmptyAndHarmonic) {
+    const OdeFuncVec sys = [](double, const std::vector<double>& y) {
+        return std::vector<double>{y[1], -y[0]};
+    };
+    const auto empty_steps = ode_adams_bashforth2_vec(sys, 0.0, {1.0, 0.0}, 1.0, 0);
+    EXPECT_TRUE(empty_steps.t.empty());
+    const auto empty_y0 = ode_adams_bashforth2_vec(sys, 0.0, {}, 1.0, 10);
+    EXPECT_TRUE(empty_y0.t.empty());
+
+    const size_t steps = 200;
+    const auto ab = ode_adams_bashforth2_vec(sys, 0.0, {1.0, 0.0}, 1.0, steps);
+    const auto rk = ode_rk4_vec(sys, 0.0, {1.0, 0.0}, 1.0, steps);
+    ASSERT_EQ(ab.y.size(), steps + 1);
+    ASSERT_EQ(rk.y.size(), steps + 1);
+    EXPECT_NEAR(ab.y.back()[0], rk.y.back()[0], 0.05);
+    EXPECT_NEAR(ab.y.back()[1], rk.y.back()[1], 0.05);
+}
