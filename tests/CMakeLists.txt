@@ -1,5 +1,12 @@
 include(CTest)
 
+# GoogleTest's EXPECT_NO_THROW expands to try/catch when GTEST_HAS_EXCEPTIONS=1.
+# GCC may still define __EXCEPTIONS under -fno-exceptions; force the no-throw
+# macros to execute the statement instead of using exception handling.
+if(NOT MSVC)
+    add_compile_definitions(GTEST_HAS_EXCEPTIONS=0)
+endif()
+
 function(add_ms_test name source)
     add_executable(${name} ${source})
     target_link_libraries(${name} PRIVATE mathscript GTest::gtest_main)
