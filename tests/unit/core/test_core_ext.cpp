@@ -23,10 +23,10 @@ static int ms_unsafe_macro_smoke() {
 
 namespace {
 
-int g_seed = 99;
+unsigned g_seed = 99;
 
 double test_uniform() {
-    g_seed = (g_seed * 1103515245 + 12345) & 0x7fffffff;
+    g_seed = (g_seed * 1103515245u + 12345u) & 0x7fffffffu;
     return static_cast<double>(g_seed) / static_cast<double>(0x7fffffff);
 }
 

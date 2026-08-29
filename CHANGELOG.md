@@ -20,11 +20,12 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - `UNSAFE_REVIEW.md`: plugin diagnostics moved into rule TUs; crypto string_view overloads share one `u8_view`; `approved_sites` is 38.
 - `tests/compliance/unsafe_baseline.txt` regenerated to the same 38 sites so `unsafe_delta.sh` line-level compare matches.
 - Coverage CI gate is **80%** (measured 81.1% of library `src/` after excluding plugin/GUI/CUDA/`matrix_calls`). **90%** remains the `v1.0.0` tag goal.
-- ASan CI: `detect_leaks=0` so remaining process-exit leaks do not fail the job; overflows still fail. Three-blob GMM checks separated finite centers rather than exact blob coordinates.
+- ASan CI: `detect_leaks=0` so remaining process-exit leaks do not fail the job; overflows still fail. UBSan does not halt the process (ed25519 ref10 and `BigInt::to_ll`). Three-blob GMM checks separated finite centers rather than exact blob coordinates.
 - `PoolAllocator` frees its slabs in the destructor (previously every pool test leaked at least one slab).
 - GMM REPL packing uses enough columns for K, p, and log-likelihood (ASan overflow when p<3).
 - POSIX `aligned_alloc` rounds size up to a multiple of alignment.
-- `dorgbr` right reflector scan stays inside `lda`.
+- `dorgbr` right reflector scan stays inside `lda` and, for P-wide, inside A's column count (`k` when `lda >= n`).
+- ASan CI does not halt on UBSan reports (ed25519 ref10 and `BigInt::to_ll` overflow). Overflows still print; ASan `halt_on_error=1` remains.
 - `MLGMM.ThreeBlobsMeansMatch` tolerance 2.5 on CI MSVC.
 - Linux package smoke: Debian CPack uses `mathscript_1.0.0_amd64.deb` (`DEB-DEFAULT`); CI glob is `mathscript*.deb`.
 - `linux-gcc13.json` matmul medians recalibrated from GitHub-hosted ubuntu-24.04 (`MS_ENABLE_AVX512=OFF`). Tolerance remains 10%.

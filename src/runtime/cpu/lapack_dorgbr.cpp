@@ -95,18 +95,22 @@ void apply_reflector_right_out(
     int v_r,
     int v_c,
     int v_inc,
-    double tau) {
+    double tau,
+    int a_cols) {
     const int rows = r1 - r0;
     const int cols = c1 - c0;
     if (tau == 0.0 || rows == 0) {
         return;
+    }
+    if (a_cols <= 0) {
+        a_cols = n;
     }
 
     int lastv = cols;
     while (lastv > 1) {
         const bool oob = (v_inc == 1)
             ? (v_r + lastv - 1 >= lda)
-            : (v_c + lastv - 1 >= n || v_r >= lda);
+            : (v_c + lastv - 1 >= a_cols || v_r >= lda);
         if (oob) {
             --lastv;
             continue;
@@ -264,11 +268,11 @@ void apply_q_right(int m, int n, int k, const double* A, int lda, const double* 
     const int count = (std::min)(k, m);
     if (trans) {
         for (int i = count - 1; i >= 0; --i) {
-            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, 1, tau[i]);
+            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, 1, tau[i], n);
         }
     } else {
         for (int i = 0; i < count; ++i) {
-            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, 1, tau[i]);
+            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, 1, tau[i], n);
         }
     }
 }
@@ -290,11 +294,11 @@ void apply_p_right_tall(int n, int k, const double* A, int lda, const double* ta
     }
     if (apply_pt) {
         for (int i = 0; i < count; ++i) {
-            apply_reflector_right_out(C, ldc, n, n, 0, n, i + 1, n, A, lda, i, i + 1, lda, tau[i]);
+            apply_reflector_right_out(C, ldc, n, n, 0, n, i + 1, n, A, lda, i, i + 1, lda, tau[i], n);
         }
     } else {
         for (int i = count - 1; i >= 0; --i) {
-            apply_reflector_right_out(C, ldc, n, n, 0, n, i + 1, n, A, lda, i, i + 1, lda, tau[i]);
+            apply_reflector_right_out(C, ldc, n, n, 0, n, i + 1, n, A, lda, i, i + 1, lda, tau[i], n);
         }
     }
 }
@@ -316,13 +320,16 @@ void apply_p_right_wide(int m, int n, int k, const double* A, int lda, const dou
     if (count <= 0) {
         return;
     }
+    // Wide gebrd A is m-by-n (lda < n). Tall A passed with a swapped C (n-by-m)
+    // has only k columns; walking C's n columns over-reads the factor.
+    const int a_cols = (lda >= n) ? (std::min)(k, n) : n;
     if (apply_pt) {
         for (int i = 0; i < count; ++i) {
-            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, lda, tau[i]);
+            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, lda, tau[i], a_cols);
         }
     } else {
         for (int i = count - 1; i >= 0; --i) {
-            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, lda, tau[i]);
+            apply_reflector_right_out(C, ldc, m, n, 0, m, i, n, A, lda, i, i, lda, tau[i], a_cols);
         }
     }
 }
@@ -471,11 +478,13 @@ int dormbr(
         // P is n-by-n; apply to the leading n-by-n block of C (rows n..m-1 unchanged).
         apply_p_left_tall(n, k, A, lda, tau, C, ldc, tr);
     } else {
-        if (m == n) {
+        // Tall/square (m>=n): gebrd stores P reflectors in rows at (i, i+1:n-1).
+        // apply_p_right_wide walks columns 0..max(m,n)-1 and OOB-reads tall A (only n cols).
+        if (m >= n) {
             apply_p_right_tall(n, k, A, lda, tau, C, ldc, tr);
         } else {
-            // Tall (m>n): C is n-by-m; wide (m<n): C is m-by-n. Both use wide-P reflector layout.
-            apply_p_right_wide((std::min)(m, n), (std::max)(m, n), k, A, lda, tau, C, ldc, tr);
+            // Wide (m<n): C is m-by-n; P reflectors use the wide row layout.
+            apply_p_right_wide(m, n, k, A, lda, tau, C, ldc, tr);
         }
     }
     return 0;
