@@ -41,12 +41,12 @@ set(MS_CXX_FLAGS_SHIPPING
     -D_FORTIFY_SOURCE=3
 )
 
-# Global flags - exceptions and RTTI off (GCC/Clang only; MSVC uses /EHs-c- etc.)
+# Global flags - exceptions and RTTI off (GCC/Clang CXX only; do not pass to nvcc).
 if(NOT MSVC)
     add_compile_options(
-        -fno-exceptions
-        -fno-rtti
-        -fno-strict-aliasing
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-strict-aliasing>
     )
 endif()
 

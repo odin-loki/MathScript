@@ -42,7 +42,7 @@ Each library subdirectory builds `ms_<name>` except `plugin`, `gui`, and `exe`. 
 | `special` | `ms_special` | Bessel, gamma, elliptic, hypergeometric, and related functions |
 | `symbolic` | `ms_symbolic` | Expression AST: parse, differentiate, simplify, transforms |
 | `domain` | `ms_domain` | Small combinatorics and graph helpers |
-| `simd` | `ms_simd` | ISA detection and vectorised kernels |
+| `simd` | `ms_simd` | ISA detection and xsimd vectorised kernels |
 
 CPU BLAS/LAPACK kernels are in `src/runtime/cpu/` and `src/cpu/`, exposed via `include/ms/cpu/blas.hpp` and `include/ms/cpu/lapack.hpp`.
 
@@ -81,7 +81,7 @@ CPU BLAS/LAPACK kernels are in `src/runtime/cpu/` and `src/cpu/`, exposed via `i
 | Module | Library | Role |
 |--------|---------|------|
 | `interp` | `ms_interp` | REPL, session state, plot hooks, optional ORC JIT |
-| `cuda` | `ms_cuda` | Optional GPU buffers, BLAS, FFT, solvers, NCCL stubs |
+| `cuda` | `ms_cuda` | Optional GPU buffers, BLAS, FFT, solvers, `.cu` elementwise kernels with xsimd host fallback, NCCL stubs |
 | `distributed` | `ms_distributed` | MPI context, block/gather `dist_*` solvers |
 | `plugin` | `ms_plugin` | Optional Clang AST plugin (`MS_BUILD_PLUGIN=ON`) |
 

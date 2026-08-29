@@ -1,15 +1,30 @@
 #include "ms/simd/simd.hpp"
+#include "xsimd/xsimd.hpp"
 #include <cmath>
 #include <cstdlib>
-#include <immintrin.h>
 
 namespace ms::simd {
 
 namespace {
 
+using batch_t = xsimd::batch<double>;
+constexpr size_t kWidth = batch_t::size;
+
 const IsaFeatures& cached_isa() {
     static IsaFeatures features = detect_isa();
     return features;
+}
+
+bool force_scalar() {
+    const char* force = std::getenv("MS_SIMD_FORCE_SCALAR");
+    return force != nullptr && force[0] != '\0' && force[0] != '0';
+}
+
+Kernel active_kernel() {
+    if (force_scalar() || !cached_isa().avx2) {
+        return Kernel::Scalar;
+    }
+    return Kernel::Avx2;
 }
 
 void add_scalar(std::span<const double> a, std::span<const double> b, std::span<double> out) {
@@ -21,10 +36,10 @@ void add_scalar(std::span<const double> a, std::span<const double> b, std::span<
 void add_avx2(std::span<const double> a, std::span<const double> b, std::span<double> out) {
     size_t i = 0;
     const size_t n = out.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d va = _mm256_loadu_pd(a.data() + i);
-        const __m256d vb = _mm256_loadu_pd(b.data() + i);
-        _mm256_storeu_pd(out.data() + i, _mm256_add_pd(va, vb));
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t va = batch_t::load_unaligned(a.data() + i);
+        const batch_t vb = batch_t::load_unaligned(b.data() + i);
+        (va + vb).store_unaligned(out.data() + i);
     }
     for (; i < n; ++i) {
         out[i] = a[i] + b[i];
@@ -40,10 +55,10 @@ void sub_scalar(std::span<const double> a, std::span<const double> b, std::span<
 void sub_avx2(std::span<const double> a, std::span<const double> b, std::span<double> out) {
     size_t i = 0;
     const size_t n = out.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d va = _mm256_loadu_pd(a.data() + i);
-        const __m256d vb = _mm256_loadu_pd(b.data() + i);
-        _mm256_storeu_pd(out.data() + i, _mm256_sub_pd(va, vb));
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t va = batch_t::load_unaligned(a.data() + i);
+        const batch_t vb = batch_t::load_unaligned(b.data() + i);
+        (va - vb).store_unaligned(out.data() + i);
     }
     for (; i < n; ++i) {
         out[i] = a[i] - b[i];
@@ -59,10 +74,10 @@ void mul_scalar(std::span<const double> a, std::span<const double> b, std::span<
 void mul_avx2(std::span<const double> a, std::span<const double> b, std::span<double> out) {
     size_t i = 0;
     const size_t n = out.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d va = _mm256_loadu_pd(a.data() + i);
-        const __m256d vb = _mm256_loadu_pd(b.data() + i);
-        _mm256_storeu_pd(out.data() + i, _mm256_mul_pd(va, vb));
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t va = batch_t::load_unaligned(a.data() + i);
+        const batch_t vb = batch_t::load_unaligned(b.data() + i);
+        (va * vb).store_unaligned(out.data() + i);
     }
     for (; i < n; ++i) {
         out[i] = a[i] * b[i];
@@ -76,12 +91,12 @@ void scale_scalar(double alpha, std::span<const double> x, std::span<double> out
 }
 
 void scale_avx2(double alpha, std::span<const double> x, std::span<double> out) {
-    const __m256d va = _mm256_set1_pd(alpha);
+    const batch_t va(alpha);
     size_t i = 0;
     const size_t n = out.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d vx = _mm256_loadu_pd(x.data() + i);
-        _mm256_storeu_pd(out.data() + i, _mm256_mul_pd(va, vx));
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t vx = batch_t::load_unaligned(x.data() + i);
+        (va * vx).store_unaligned(out.data() + i);
     }
     for (; i < n; ++i) {
         out[i] = alpha * x[i];
@@ -95,13 +110,13 @@ void axpy_scalar(double alpha, std::span<const double> x, std::span<double> y) {
 }
 
 void axpy_avx2(double alpha, std::span<const double> x, std::span<double> y) {
-    const __m256d va = _mm256_set1_pd(alpha);
+    const batch_t va(alpha);
     size_t i = 0;
     const size_t n = y.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d vx = _mm256_loadu_pd(x.data() + i);
-        const __m256d vy = _mm256_loadu_pd(y.data() + i);
-        _mm256_storeu_pd(y.data() + i, _mm256_fmadd_pd(va, vx, vy));
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t vx = batch_t::load_unaligned(x.data() + i);
+        const batch_t vy = batch_t::load_unaligned(y.data() + i);
+        xsimd::fma(va, vx, vy).store_unaligned(y.data() + i);
     }
     for (; i < n; ++i) {
         y[i] += alpha * x[i];
@@ -117,21 +132,15 @@ double dot_scalar(std::span<const double> a, std::span<const double> b) {
 }
 
 double dot_avx2(std::span<const double> a, std::span<const double> b) {
-    __m256d acc = _mm256_setzero_pd();
+    batch_t acc(0.0);
     size_t i = 0;
     const size_t n = a.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d va = _mm256_loadu_pd(a.data() + i);
-        const __m256d vb = _mm256_loadu_pd(b.data() + i);
-#if defined(__FMA__)
-        acc = _mm256_fmadd_pd(va, vb, acc);
-#else
-        acc = _mm256_add_pd(acc, _mm256_mul_pd(va, vb));
-#endif
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t va = batch_t::load_unaligned(a.data() + i);
+        const batch_t vb = batch_t::load_unaligned(b.data() + i);
+        acc = xsimd::fma(va, vb, acc);
     }
-    alignas(32) double parts[4];
-    _mm256_store_pd(parts, acc);
-    double sum = parts[0] + parts[1] + parts[2] + parts[3];
+    double sum = xsimd::reduce_add(acc);
     for (; i < n; ++i) {
         sum += a[i] * b[i];
     }
@@ -146,46 +155,14 @@ double sum_scalar(std::span<const double> x) {
     return total;
 }
 
-double norm_l2_scalar(std::span<const double> x) {
-    double sum = 0.0;
-    for (size_t i = 0; i < x.size(); ++i) {
-        sum += x[i] * x[i];
-    }
-    return std::sqrt(sum);
-}
-
-double norm_l2_avx2(std::span<const double> x) {
-    __m256d acc = _mm256_setzero_pd();
-    size_t i = 0;
-    const size_t n = x.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d vx = _mm256_loadu_pd(x.data() + i);
-#if defined(__FMA__)
-        acc = _mm256_fmadd_pd(vx, vx, acc);
-#else
-        acc = _mm256_add_pd(acc, _mm256_mul_pd(vx, vx));
-#endif
-    }
-    alignas(32) double parts[4];
-    _mm256_store_pd(parts, acc);
-    double sum = parts[0] + parts[1] + parts[2] + parts[3];
-    for (; i < n; ++i) {
-        sum += x[i] * x[i];
-    }
-    return std::sqrt(sum);
-}
-
 double sum_avx2(std::span<const double> x) {
-    __m256d acc = _mm256_setzero_pd();
+    batch_t acc(0.0);
     size_t i = 0;
     const size_t n = x.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d vx = _mm256_loadu_pd(x.data() + i);
-        acc = _mm256_add_pd(acc, vx);
+    for (; i + kWidth <= n; i += kWidth) {
+        acc = acc + batch_t::load_unaligned(x.data() + i);
     }
-    alignas(32) double parts[4];
-    _mm256_store_pd(parts, acc);
-    double total = parts[0] + parts[1] + parts[2] + parts[3];
+    double total = xsimd::reduce_add(acc);
     for (; i < n; ++i) {
         total += x[i];
     }
@@ -201,24 +178,41 @@ double sum_squares_scalar(std::span<const double> x) {
 }
 
 double sum_squares_avx2(std::span<const double> x) {
-    __m256d acc = _mm256_setzero_pd();
+    batch_t acc(0.0);
     size_t i = 0;
     const size_t n = x.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d vx = _mm256_loadu_pd(x.data() + i);
-#if defined(__FMA__)
-        acc = _mm256_fmadd_pd(vx, vx, acc);
-#else
-        acc = _mm256_add_pd(acc, _mm256_mul_pd(vx, vx));
-#endif
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t vx = batch_t::load_unaligned(x.data() + i);
+        acc = xsimd::fma(vx, vx, acc);
     }
-    alignas(32) double parts[4];
-    _mm256_store_pd(parts, acc);
-    double sum = parts[0] + parts[1] + parts[2] + parts[3];
+    double sum = xsimd::reduce_add(acc);
     for (; i < n; ++i) {
         sum += x[i] * x[i];
     }
     return sum;
+}
+
+double norm_l2_scalar(std::span<const double> x) {
+    double sum = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        sum += x[i] * x[i];
+    }
+    return std::sqrt(sum);
+}
+
+double norm_l2_avx2(std::span<const double> x) {
+    batch_t acc(0.0);
+    size_t i = 0;
+    const size_t n = x.size();
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t vx = batch_t::load_unaligned(x.data() + i);
+        acc = xsimd::fma(vx, vx, acc);
+    }
+    double sum = xsimd::reduce_add(acc);
+    for (; i < n; ++i) {
+        sum += x[i] * x[i];
+    }
+    return std::sqrt(sum);
 }
 
 void abs_scalar(std::span<const double> x, std::span<double> out) {
@@ -228,12 +222,11 @@ void abs_scalar(std::span<const double> x, std::span<double> out) {
 }
 
 void abs_avx2(std::span<const double> x, std::span<double> out) {
-    const __m256d sign_mask = _mm256_set1_pd(-0.0);
     size_t i = 0;
     const size_t n = out.size();
-    for (; i + 4 <= n; i += 4) {
-        const __m256d vx = _mm256_loadu_pd(x.data() + i);
-        _mm256_storeu_pd(out.data() + i, _mm256_andnot_pd(sign_mask, vx));
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t vx = batch_t::load_unaligned(x.data() + i);
+        xsimd::abs(vx).store_unaligned(out.data() + i);
     }
     for (; i < n; ++i) {
         out[i] = std::abs(x[i]);
@@ -249,28 +242,31 @@ void exp_map_scalar(std::span<const double> x, std::span<double> out) {
 void exp_map_avx2(std::span<const double> x, std::span<double> out) {
     size_t i = 0;
     const size_t n = out.size();
-    for (; i + 4 <= n; i += 4) {
-        alignas(32) double in[4];
-        alignas(32) double tmp[4];
-        _mm256_store_pd(in, _mm256_loadu_pd(x.data() + i));
-        for (int k = 0; k < 4; ++k) {
-            tmp[k] = std::exp(in[k]);
-        }
-        _mm256_storeu_pd(out.data() + i, _mm256_load_pd(tmp));
+    for (; i + kWidth <= n; i += kWidth) {
+        const batch_t vx = batch_t::load_unaligned(x.data() + i);
+        xsimd::exp(vx).store_unaligned(out.data() + i);
     }
     for (; i < n; ++i) {
         out[i] = std::exp(x[i]);
     }
 }
 
-Kernel active_kernel() {
-    if (const char* force = std::getenv("MS_SIMD_FORCE_SCALAR"); force != nullptr && force[0] != '\0' && force[0] != '0') {
-        return Kernel::Scalar;
+void fill_scalar(std::span<double> out, double value) {
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = value;
     }
-    if (cached_isa().avx2) {
-        return Kernel::Avx2;
+}
+
+void fill_avx2(std::span<double> out, double value) {
+    const batch_t bv(value);
+    size_t i = 0;
+    const size_t n = out.size();
+    for (; i + kWidth <= n; i += kWidth) {
+        bv.store_unaligned(out.data() + i);
     }
-    return Kernel::Scalar;
+    for (; i < n; ++i) {
+        out[i] = value;
+    }
 }
 
 } // namespace
@@ -279,7 +275,15 @@ DispatchInfo dispatch_info() {
     DispatchInfo info;
     info.isa = cached_isa();
     info.active = active_kernel();
+    info.batch_width = batch_width();
     return info;
+}
+
+std::size_t batch_width() {
+    if (active_kernel() == Kernel::Scalar) {
+        return 1;
+    }
+    return kWidth;
 }
 
 void add(std::span<const double> a, std::span<const double> b, std::span<double> out) {
@@ -372,6 +376,14 @@ void exp_map(std::span<const double> x, std::span<double> out) {
         exp_map_avx2(x, out);
     } else {
         exp_map_scalar(x, out);
+    }
+}
+
+void fill(std::span<double> out, double value) {
+    if (active_kernel() == Kernel::Avx2) {
+        fill_avx2(out, value);
+    } else {
+        fill_scalar(out, value);
     }
 }
 

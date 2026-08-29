@@ -2,6 +2,7 @@
 
 #include "ms/simd/isa.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string>
 #include <vector>
@@ -13,9 +14,11 @@ enum class Kernel : uint8_t { Scalar, Avx2, Avx512 };
 struct DispatchInfo {
     Kernel active = Kernel::Scalar;
     IsaFeatures isa;
+    std::size_t batch_width = 1;
 };
 
 DispatchInfo dispatch_info();
+std::size_t batch_width();
 
 void add(std::span<const double> a, std::span<const double> b, std::span<double> out);
 void sub(std::span<const double> a, std::span<const double> b, std::span<double> out);
@@ -28,6 +31,7 @@ double sum_squares(std::span<const double> x);
 double norm_l2(std::span<const double> x);
 void abs(std::span<const double> x, std::span<double> out);
 void exp_map(std::span<const double> x, std::span<double> out);
+void fill(std::span<double> out, double value);
 
 std::vector<double> gemv(
     std::span<const double> A,
