@@ -360,3 +360,63 @@ TEST(CfdUpwindFvm, CflEqualsOneAccepted) {
     EXPECT_NEAR(u1[2], 1.0, 1e-12);
     EXPECT_NEAR(integrated_mass(u1, 0.1), integrated_mass(u, 0.1), 1e-12);
 }
+
+TEST(CfdUpwindFvm, TwoDZeroFluxCflOneAndMismatch) {
+    const std::vector<std::vector<double>> u0 = {
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+    };
+    const std::vector<double> vx{1.0};
+    const std::vector<double> vy{0.0};
+    const auto u1 = upwind_fvm_advection_2d(
+        u0, vx, vy, 0.2, 0.2, 0.2, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    ASSERT_EQ(u1[0].size(), u0[0].size());
+    EXPECT_NEAR(integrated_mass_2d(u1, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+
+    const std::vector<double> bad{0.1, 0.2};
+    EXPECT_TRUE(upwind_fvm_advection_2d(u0, bad, vy, 0.01, 0.2, 0.2).empty());
+    EXPECT_TRUE(upwind_fvm_advection_2d({}, vx, vy, 0.01, 0.2, 0.2).empty());
+}
+
+TEST(CfdUpwindFvm, ThreeDZeroFluxNegativeAndCflOne) {
+    std::vector<std::vector<std::vector<double>>> u0(
+        2, std::vector<std::vector<double>>(2, std::vector<double>(2, 0.0)));
+    u0[1][1][1] = 1.0;
+    const std::vector<double> vx_neg{-1.0};
+    const std::vector<double> v0{0.0};
+    const auto u1 = upwind_fvm_advection_3d(
+        u0, vx_neg, v0, v0, 0.2, 0.2, 0.2, 0.2,
+        BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), 2u);
+    EXPECT_NEAR(integrated_mass_3d(u1, 0.2, 0.2, 0.2), integrated_mass_3d(u0, 0.2, 0.2, 0.2), 1e-12);
+
+    const std::vector<double> vx_pos{1.0};
+    const auto u2 = upwind_fvm_advection_3d(u0, vx_pos, v0, v0, 0.2, 0.2, 0.2, 0.2);
+    ASSERT_EQ(u2.size(), 2u);
+    EXPECT_NEAR(integrated_mass_3d(u2, 0.2, 0.2, 0.2), integrated_mass_3d(u0, 0.2, 0.2, 0.2), 1e-12);
+}
+
+TEST(CfdUpwindFvm, TwoDThreeDCellWiseLastFace) {
+    const std::vector<std::vector<double>> u2 = {
+        {1.0, 0.0},
+        {0.0, 1.0},
+    };
+    const std::vector<double> vx2{0.2, 0.2, 0.2, 0.2};
+    const std::vector<double> vy2{0.0, 0.0, 0.0, 0.0};
+    const auto s2 = upwind_fvm_advection_2d(u2, vx2, vy2, 0.05, 0.2, 0.2);
+    ASSERT_EQ(s2.size(), 2u);
+    EXPECT_TRUE(std::isfinite(s2[0][0]));
+    EXPECT_NEAR(integrated_mass_2d(s2, 0.2, 0.2), integrated_mass_2d(u2, 0.2, 0.2), 1e-12);
+
+    std::vector<std::vector<std::vector<double>>> u3(
+        2, std::vector<std::vector<double>>(2, std::vector<double>(2, 0.0)));
+    u3[0][0][0] = 1.0;
+    const std::vector<double> vx3(8, 0.2);
+    const std::vector<double> v03(8, 0.0);
+    const auto s3 = upwind_fvm_advection_3d(u3, vx3, v03, v03, 0.05, 0.2, 0.2, 0.2);
+    ASSERT_EQ(s3.size(), 2u);
+    EXPECT_NEAR(integrated_mass_3d(s3, 0.2, 0.2, 0.2), integrated_mass_3d(u3, 0.2, 0.2, 0.2), 1e-12);
+    EXPECT_TRUE(upwind_fvm_advection_3d({}, vx3, v03, v03, 0.01, 0.2, 0.2, 0.2).empty());
+}

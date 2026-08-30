@@ -1543,3 +1543,52 @@ TEST(OdeAdvanced2, MidpointRk2_OneStep_AndRosenbrock23ScalarZero) {
     EXPECT_NEAR(rb.t.front(), 0.0, 1e-15);
     EXPECT_NEAR(rb.y.front(), 1.5, 1e-15);
 }
+
+TEST(OdeAdvanced2, Rk45Vec_LaterStageSizeMismatch_StopsAtIc) {
+    // DOPRI stages: call 1=k1, 2=k2, then k3..k6. Keep k1/k2 sized, break later.
+    const std::vector<double> y0{1.0, 0.0};
+    const size_t n = y0.size();
+    auto run_fail_after = [&](int good_calls) {
+        int calls = 0;
+        const OdeFuncVec f = [&calls, good_calls, n](double, const std::vector<double>&) {
+            ++calls;
+            if (calls <= good_calls) {
+                return std::vector<double>(n, 0.0);
+            }
+            return std::vector<double>{};
+        };
+        return ode_rk45_vec(f, 0.0, y0, 1.0);
+    };
+
+    for (int good : {2, 3, 4, 5}) {
+        const auto result = run_fail_after(good);
+        ASSERT_EQ(result.t.size(), 1u);
+        ASSERT_EQ(result.y.size(), 1u);
+        ASSERT_EQ(result.y.front().size(), 2u);
+        EXPECT_NEAR(result.t.front(), 0.0, 1e-15);
+        EXPECT_NEAR(result.y.front()[0], 1.0, 1e-15);
+        EXPECT_NEAR(result.y.front()[1], 0.0, 1e-15);
+    }
+}
+
+TEST(OdeAdvanced2, DaeIndex1_StageK3AndK4SizeMismatch_NotConverged) {
+    auto run_fail_after = [](int good_calls) {
+        int calls = 0;
+        const DaeDiffFunc f = [&calls, good_calls](double, const std::vector<double>&,
+                                                    const std::vector<double>& z) {
+            ++calls;
+            if (calls <= good_calls) {
+                return std::vector<double>{z[0]};
+            }
+            return std::vector<double>{};
+        };
+        const DaeAlgFunc g = [](double t, const std::vector<double>&,
+                                 const std::vector<double>& z) {
+            return std::vector<double>{z[0] - std::cos(t)};
+        };
+        return ode_dae_index1(f, g, 0.0, {0.0}, {1.0}, 1.0, 8);
+    };
+
+    EXPECT_FALSE(run_fail_after(2).converged);
+    EXPECT_FALSE(run_fail_after(3).converged);
+}

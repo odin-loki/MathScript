@@ -1249,3 +1249,76 @@ TEST(PolyExtTest, cheb_eval_t0_expand_linear_and_root_count_reversed) {
     const std::vector<double> p{2.0, -3.0, 1.0};
     EXPECT_EQ(poly_root_count(p, 3.0, 0.0), -2);
 }
+
+TEST(PolyExtTest, roots_degree5_companion_complex_pairs) {
+    // (x-1)(x^2+1)(x^2+4) = x^5 - x^4 + 5x^3 - 5x^2 + 4x - 4
+    // Degree > 2 forces companion / Schur 2x2 blocks (disc<0 and a real 1x1).
+    const std::vector<double> coeffs{-4.0, 4.0, -5.0, 5.0, -1.0, 1.0};
+    const auto r = poly_roots(coeffs);
+    ASSERT_EQ(r.size(), 5u);
+    int n_real = 0;
+    int n_complex = 0;
+    for (const auto& z : r) {
+        if (std::abs(z.imag()) < 1e-6) {
+            ++n_real;
+            EXPECT_NEAR(z.real(), 1.0, 1e-4);
+        } else {
+            ++n_complex;
+            EXPECT_NEAR(z.real(), 0.0, 1e-4);
+            const double im = std::abs(z.imag());
+            EXPECT_TRUE(std::abs(im - 1.0) < 1e-3 || std::abs(im - 2.0) < 1e-3);
+        }
+    }
+    EXPECT_EQ(n_real, 1);
+    EXPECT_EQ(n_complex, 4);
+}
+
+TEST(PolyPartialFractions, RepeatedComplexPairClusters) {
+    // 1 / (x^2+1)^2 : repeated conjugate pair groups in pf_group_roots.
+    const std::vector<double> num{1.0};
+    const std::vector<double> den{1.0, 0.0, 2.0, 0.0, 1.0};
+    const auto res = poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_FALSE(res.terms.empty());
+    int quad_terms = 0;
+    int max_k = 0;
+    for (const auto& term : res.terms) {
+        EXPECT_TRUE(std::isfinite(term.A));
+        EXPECT_TRUE(std::isfinite(term.B));
+        EXPECT_TRUE(std::isfinite(term.C));
+        if (term.is_quadratic) {
+            ++quad_terms;
+            max_k = std::max(max_k, term.k);
+            EXPECT_NEAR(term.p, 0.0, 5e-3);
+            EXPECT_NEAR(term.q, 1.0, 5e-3);
+        }
+    }
+    EXPECT_GE(quad_terms, 1);
+    EXPECT_GE(max_k, 1);
+}
+
+TEST(PolyPartialFractions, TripleComplexPairOrUnknownsMismatch) {
+    // (x^2+1)^3 = x^6 + 3x^4 + 3x^2 + 1. Nearby ±i roots cluster (1101-1107);
+    // if grouping count != 6 the solver returns the quotient only (1196).
+    const std::vector<double> num{1.0};
+    const std::vector<double> den{1.0, 0.0, 3.0, 0.0, 3.0, 0.0, 1.0};
+    const auto res = poly_partial_fractions(num, den);
+    for (double c : res.quotient) {
+        EXPECT_TRUE(std::isfinite(c));
+    }
+    for (const auto& term : res.terms) {
+        EXPECT_TRUE(std::isfinite(term.A));
+        EXPECT_TRUE(std::isfinite(term.B));
+        EXPECT_TRUE(std::isfinite(term.C));
+    }
+    if (!res.terms.empty()) {
+        bool any_quad = false;
+        for (const auto& term : res.terms) {
+            if (term.is_quadratic) {
+                any_quad = true;
+                EXPECT_NEAR(term.q, 1.0, 5e-3);
+            }
+        }
+        EXPECT_TRUE(any_quad);
+    }
+}

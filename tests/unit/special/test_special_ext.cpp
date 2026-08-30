@@ -395,3 +395,13 @@ TEST(SpecialExtTest, voigt_gaussian_limit_peak) {
     EXPECT_NEAR(peak, 1.0 / (sigma * std::sqrt(2.0 * std::numbers::pi)), 1e-8);
     EXPECT_NEAR(voigt(1.0, sigma, 0.0), voigt(-1.0, sigma, 0.0), 1e-12);
 }
+
+TEST(SpecialExtTest, bessel_y_nu_two_and_three) {
+    EXPECT_TRUE(std::isfinite(bessel_y(2, 1.5)));
+    EXPECT_TRUE(std::isfinite(bessel_y(3, 1.5)));
+}
+
+TEST(SpecialExtTest, bessel_i_negative_x_parity) {
+    EXPECT_NEAR(bessel_i(0, -0.5), bessel_i(0, 0.5), 1e-12);
+    EXPECT_NEAR(bessel_i(1, -0.5), -bessel_i(1, 0.5), 1e-12);
+}

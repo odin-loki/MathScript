@@ -2497,3 +2497,16 @@ TEST(ReplCommandsTest, combo_derangements_too_large_noassign) {
     expect_error_contains(interp, "combo_derangements(11)", "too large");
     expect_error_contains(interp, "combo_all_permutations(9)", "too large");
 }
+
+TEST(ReplCommandsTest, combo_factorial_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = combo_factorial(4)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 24.0, 1e-12);
+    expect_error_contains(interp, "s = combo_factorial(-1)", "combo_factorial");
+}
+
+TEST(ReplCommandsTest, combo_involutions_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = combo_involutions(3)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 4.0, 1e-12);
+}

@@ -943,3 +943,17 @@ TEST(ReplCommandsTest, tensorops_norm_noassign) {
     expect_contains(interp, "tensorops_norm([3; 4])", "5");
     expect_error_contains(interp, "tensorops_norm(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, tensorops_decompose_tucker_5arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "tensorops_decompose_tucker(tk5, [1, 2, 3; 4, 5, 6], [1, 2], 10, 1e-4)",
+                    "TuckerDecomposition");
+}
+
+TEST(ReplCommandsTest, tensorops_decompose_tucker_5arg_bad_iter_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "tensorops_decompose_tucker(tkbad, [1, 2, 3; 4, 5, 6], [1, 2], 0, 1e-4)",
+                         "expected positive integer max_iter and positive tol");
+    expect_error_contains(interp, "tensorops_decompose_tucker(tkbad2, [1, 2, 3; 4, 5, 6], [1, 2], 10, 0)",
+                         "expected positive integer max_iter and positive tol");
+}

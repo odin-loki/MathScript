@@ -818,3 +818,9 @@ TEST(ReplCommandsTest, cplx_cauchy_integral_scalar_assign) {
     expect_ok(interp, "z = cplx_cauchy_integral(0, 0)");
     ASSERT_GT(interp.state().scalars.count("z"), 0u);
 }
+
+TEST(ReplCommandsTest, cplx_poisson_kernel_missing_r_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "cplx_poisson_kernel(0, 0, missing)",
+                          "expected cplx_poisson_kernel(theta,phi,r)");
+}

@@ -2701,3 +2701,166 @@ TEST(BlasDgemvTest, n_le_zero_early_return) {
     EXPECT_DOUBLE_EQ(y[0], 9.0);
     EXPECT_DOUBLE_EQ(y[1], 8.0);
 }
+
+TEST(LapackDgesvdTest, empty_or_k_zero) {
+    std::vector<double> dummy(4, 1.0);
+    std::vector<double> S(1, 99.0);
+    std::vector<double> U(1, 99.0);
+    std::vector<double> VT(1, 99.0);
+    EXPECT_EQ(cpu::lapack::dgesvd(0, 0, dummy.data(), 1, S.data(), U.data(), 1, VT.data(), 1), 0);
+    EXPECT_EQ(cpu::lapack::dgesvd(1, 0, dummy.data(), 1, S.data(), U.data(), 1, VT.data(), 1), 0);
+
+    std::vector<double> A1{5.0};
+    std::vector<double> S1(1, 0.0);
+    std::vector<double> U1(1, 0.0);
+    std::vector<double> VT1(1, 0.0);
+    EXPECT_EQ(cpu::lapack::dgesvd(1, 1, A1.data(), 1, S1.data(), U1.data(), 1, VT1.data(), 1), 1);
+
+    std::vector<double> A{3.0, 0.0, 0.0, 4.0};
+    std::vector<double> S2(2, 0.0);
+    std::vector<double> U2(4, 0.0);
+    std::vector<double> VT2(4, 0.0);
+    ASSERT_EQ(cpu::lapack::dgesvd(2, 2, A.data(), 2, S2.data(), U2.data(), 2, VT2.data(), 2), 0);
+    EXPECT_NEAR(S2[0], 4.0, 1e-10);
+    EXPECT_NEAR(S2[1], 3.0, 1e-10);
+}
+
+TEST(LapackDgesvdTest, wide_and_tall_rank_deficient) {
+    {
+        ColMatrix<double> A{{1.0, 2.0, 0.0}, {3.0, 4.0, 0.0}};
+        const ColMatrix<double> A_ref = A;
+        const int m = 2;
+        const int n = 3;
+        const int k = 2;
+        std::vector<double> S(static_cast<std::size_t>(k));
+        ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
+        ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), k), 0);
+        EXPECT_GT(S[0], S[1]);
+        EXPECT_GE(S[1], 0.0);
+
+        ColMatrix<double> Sigma = zeros<double>(k, k);
+        for (int i = 0; i < k; ++i) {
+            Sigma(static_cast<std::size_t>(i), static_cast<std::size_t>(i)) = S[static_cast<std::size_t>(i)];
+        }
+        ColMatrix<double> V(static_cast<std::size_t>(n), static_cast<std::size_t>(k));
+        for (int j = 0; j < k; ++j) {
+            for (int i = 0; i < n; ++i) {
+                V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    VT(static_cast<std::size_t>(j), static_cast<std::size_t>(i));
+            }
+        }
+        const ColMatrix<double> prod = U * Sigma * transpose(V);
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                EXPECT_NEAR(prod(static_cast<std::size_t>(i), static_cast<std::size_t>(j)), A_ref(i, j), 1e-8);
+            }
+        }
+    }
+
+    {
+        ColMatrix<double> A{{1.0, 0.0}, {2.0, 0.0}, {3.0, 0.0}};
+        const ColMatrix<double> A_ref = A;
+        const int m = 3;
+        const int n = 2;
+        const int k = 2;
+        std::vector<double> S(static_cast<std::size_t>(k));
+        ColMatrix<double> U(static_cast<std::size_t>(m), static_cast<std::size_t>(k));
+        ColMatrix<double> VT(static_cast<std::size_t>(k), static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgesvd(m, n, A.data(), m, S.data(), U.data(), m, VT.data(), k), 0);
+        EXPECT_NEAR(S[0], std::sqrt(14.0), 1e-8);
+        EXPECT_NEAR(S[1], 0.0, 1e-8);
+
+        ColMatrix<double> Sigma = zeros<double>(k, k);
+        for (int i = 0; i < k; ++i) {
+            Sigma(static_cast<std::size_t>(i), static_cast<std::size_t>(i)) = S[static_cast<std::size_t>(i)];
+        }
+        ColMatrix<double> V(static_cast<std::size_t>(n), static_cast<std::size_t>(k));
+        for (int j = 0; j < k; ++j) {
+            for (int i = 0; i < n; ++i) {
+                V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    VT(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+            }
+        }
+        const ColMatrix<double> prod = U * Sigma * transpose(V);
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                EXPECT_NEAR(prod(static_cast<std::size_t>(i), static_cast<std::size_t>(j)), A_ref(i, j), 1e-8);
+            }
+        }
+    }
+}
+
+TEST(LapackDorgbrTest, identity_square_zero_tau) {
+    const int n = 3;
+    ColMatrix<double> A(static_cast<std::size_t>(n), static_cast<std::size_t>(n), 0.0);
+    for (int i = 0; i < n; ++i) {
+        A(static_cast<std::size_t>(i), static_cast<std::size_t>(i)) = 1.0;
+    }
+    std::vector<double> D(static_cast<std::size_t>(n));
+    std::vector<double> E(static_cast<std::size_t>(n - 1));
+    std::vector<double> tauq(static_cast<std::size_t>(n), 99.0);
+    std::vector<double> taup(static_cast<std::size_t>(n), 99.0);
+    ASSERT_EQ(cpu::lapack::dgebrd(n, n, A.data(), n, D.data(), E.data(), tauq.data(), taup.data()), 0);
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(tauq[static_cast<std::size_t>(i)], 0.0, 1e-12);
+        EXPECT_NEAR(taup[static_cast<std::size_t>(i)], 0.0, 1e-12);
+    }
+
+    ColMatrix<double> Q(static_cast<std::size_t>(n), static_cast<std::size_t>(n), 0.0);
+    cpu::lapack::dorgbr('Q', n, n, n, A.data(), n, tauq.data(), Q.data(), n);
+    ColMatrix<double> P(static_cast<std::size_t>(n), static_cast<std::size_t>(n), 0.0);
+    cpu::lapack::dorgbr('P', n, n, n, A.data(), n, taup.data(), P.data(), n);
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            const double eye = (i == j) ? 1.0 : 0.0;
+            EXPECT_NEAR(Q(static_cast<std::size_t>(i), static_cast<std::size_t>(j)), eye, 1e-12);
+            EXPECT_NEAR(P(static_cast<std::size_t>(i), static_cast<std::size_t>(j)), eye, 1e-12);
+        }
+    }
+}
+
+TEST(LapackDorgbrTest, wide_already_bidiagonal_trailing_zeros) {
+    const int m = 2;
+    const int n = 3;
+    ColMatrix<double> A{{3.0, 1.0, 0.0}, {0.0, 4.0, 0.0}};
+    std::vector<double> D(static_cast<std::size_t>(m));
+    std::vector<double> E(static_cast<std::size_t>(m - 1));
+    std::vector<double> tauq(static_cast<std::size_t>(m), 0.0);
+    std::vector<double> taup(static_cast<std::size_t>(m), 0.0);
+    ASSERT_EQ(cpu::lapack::dgebrd(m, n, A.data(), m, D.data(), E.data(), tauq.data(), taup.data()), 0);
+    EXPECT_NEAR(tauq[0], 0.0, 1e-12);
+    EXPECT_NEAR(tauq[1], 0.0, 1e-12);
+    EXPECT_NEAR(taup[1], 0.0, 1e-12);
+
+    ColMatrix<double> P(static_cast<std::size_t>(m), static_cast<std::size_t>(n), 0.0);
+    cpu::lapack::dorgbr('P', m, n, m, A.data(), m, taup.data(), P.data(), m);
+    expect_orthogonal_rows(P);
+}
+
+TEST(LapackPotrfTest, dpotrf_1x1) {
+    double a = 4.0;
+    ASSERT_EQ(cpu::lapack::dpotrf('L', 1, &a, 1), 0);
+    EXPECT_NEAR(a, 2.0, 1e-12);
+    EXPECT_EQ(cpu::lapack::dpotrf('L', 0, &a, 1), 0);
+    EXPECT_EQ(cpu::lapack::dpotrf('U', 1, &a, 1), 1);
+    EXPECT_EQ(cpu::lapack::dpotrf('L', 1, nullptr, 1), 1);
+}
+
+TEST(LapackGelsTest, dgels_1x1_and_underdetermined) {
+    std::vector<double> A1{2.0};
+    std::vector<double> B1{6.0};
+    ASSERT_EQ(cpu::lapack::dgels(1, 1, 1, A1.data(), 1, B1.data(), 1), 0);
+    EXPECT_NEAR(B1[0], 3.0, 1e-12);
+
+    ColMatrix<double> I{{1.0, 0.0}, {0.0, 1.0}};
+    ColMatrix<double> B{{4.0}, {5.0}};
+    ASSERT_EQ(cpu::lapack::dgels(2, 2, 1, I.data(), 2, B.data(), 2), 0);
+    EXPECT_NEAR(B(0, 0), 4.0, 1e-12);
+    EXPECT_NEAR(B(1, 0), 5.0, 1e-12);
+
+    ColMatrix<double> wide{{1.0, 2.0, 3.0}};
+    ColMatrix<double> rhs{{1.0}};
+    EXPECT_EQ(cpu::lapack::dgels(1, 3, 1, wide.data(), 1, rhs.data(), 1), 2);
+    EXPECT_EQ(cpu::lapack::dgels(0, 1, 1, A1.data(), 1, B1.data(), 1), 0);
+}

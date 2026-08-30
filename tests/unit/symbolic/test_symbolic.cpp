@@ -505,3 +505,74 @@ TEST(SymbolicCasTest, dsolve_independent_rhs_and_imellin_c_over_s) {
     const auto im = sym_imellin(sym_div(std::move(five), sym_var("s")), "s", "t");
     EXPECT_NEAR(sym_eval(im, {}), 5.0, 1e-12);
 }
+
+TEST(SymbolicCasTest, ilaplace_swapped_const_a2_and_laplace_exp_neg) {
+    // 2 / (4 + s^2): swapped addends, const a^2 (not pow), sine pair with a = 2.
+    const auto sine = sym_ilaplace(
+        sym_div(sym_const(2.0), sym_add(sym_const(4.0), sym_pow(sym_var("s"), sym_const(2.0)))),
+        "s", "t");
+    EXPECT_NEAR(sym_eval(sine, {{"t", 0.3}}), std::sin(2.0 * 0.3), 1e-12);
+
+    // exp(-3*t) = exp((-3)*t): match_scaled_var const-on-left, L{e^{at}} with a = -3.
+    const auto decay = sym_laplace(
+        sym_exp(sym_mul(sym_const(-3.0), sym_var("t"))), "t", "s");
+    EXPECT_NEAR(sym_eval(decay, {{"s", 5.0}}), 1.0 / (5.0 + 3.0), 1e-12);
+
+    // exp(t*(-3)): same scale with const on the right of Mul.
+    const auto decay_right = sym_laplace(
+        sym_exp(sym_mul(sym_var("t"), sym_const(-3.0))), "t", "s");
+    EXPECT_NEAR(sym_eval(decay_right, {{"s", 5.0}}), 1.0 / 8.0, 1e-12);
+
+    // exp(-(3*t)): Laplace matches scaled var only, so Neg-wrapped product is a sentinel.
+    const auto wrapped = sym_laplace(
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("t")))), "t", "s");
+    EXPECT_EQ(wrapped.op, SymOp::Deriv);
+    EXPECT_EQ(wrapped.name, "t");
+}
+
+TEST(SymbolicCasTest, mellin_one_plus_t_and_exp_neg_both_shapes) {
+    const double pi_over_sin = std::numbers::pi / std::sin(std::numbers::pi * 0.5);
+
+    const auto left_one = sym_mellin(
+        sym_div(sym_const(1.0), sym_add(sym_const(1.0), sym_var("t"))), "t", "s");
+    EXPECT_NEAR(sym_eval(left_one, {{"s", 0.5}}), pi_over_sin, 1e-12);
+
+    const auto right_one = sym_mellin(
+        sym_div(sym_const(1.0), sym_add(sym_var("t"), sym_const(1.0))), "t", "s");
+    EXPECT_NEAR(sym_eval(right_one, {{"s", 0.5}}), pi_over_sin, 1e-12);
+
+    // exp((-4)*t) vs exp(-(4*t)): both match_exp_neg_at, M{e^{-a t}} = a^{-s}.
+    const auto scale_neg = sym_mellin(
+        sym_exp(sym_mul(sym_const(-4.0), sym_var("t"))), "t", "s");
+    EXPECT_NEAR(sym_eval(scale_neg, {{"s", 2.0}}), 1.0 / 16.0, 1e-12);
+
+    const auto neg_product = sym_mellin(
+        sym_exp(sym_neg(sym_mul(sym_const(4.0), sym_var("t")))), "t", "s");
+    EXPECT_NEAR(sym_eval(neg_product, {{"s", 2.0}}), 1.0 / 16.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, hankel_sqrt_const_first_and_ihankel_mul_numer) {
+    // 1/sqrt(9 + r^2): match_one_over_sqrt with swapped addends and const a^2.
+    const auto sqrt_swapped = sym_hankel(
+        sym_div(
+            sym_const(1.0),
+            sym_sqrt(sym_add(sym_const(9.0), sym_pow(sym_var("r"), sym_const(2.0))))),
+        "r", "k");
+    EXPECT_NEAR(sym_eval(sqrt_swapped, {{"k", 1.0}}), std::exp(-3.0), 1e-12);
+
+    // n=0 k-domain: (1*2) / (k^2 + 4)^{3/2} — const*const numerator, a = 2.
+    const auto mul_numer = sym_ihankel(
+        sym_div(
+            sym_mul(sym_const(1.0), sym_const(2.0)),
+            sym_pow(
+                sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_const(4.0)),
+                sym_const(1.5))),
+        "k", "r");
+    EXPECT_NEAR(sym_eval(mul_numer, {{"r", 1.0}}), std::exp(-2.0), 1e-9);
+
+    // exp(-(3*k))/k: match_exp_neg_ak_over_k with const on the left of Mul.
+    const auto decay = sym_ihankel(
+        sym_div(sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("k")))), sym_var("k")),
+        "k", "r");
+    EXPECT_NEAR(sym_eval(decay, {{"r", 4.0}}), 1.0 / 5.0, 1e-12);
+}

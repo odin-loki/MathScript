@@ -777,3 +777,74 @@ TEST(StatsGapsTest, Vif_JaggedRowAndSingleColumn) {
     const std::vector<std::vector<double>> one_col = {{1.0}, {2.0}, {3.0}};
     EXPECT_NEAR(vif(one_col, 0), 1.0, 1e-12);
 }
+
+TEST(StatsGapsTest, KruskalFriedman_EmptyJaggedAndAllTies) {
+    const auto kw_empty = kruskal_wallis({{1.0, 2.0, 3.0}, {}});
+    EXPECT_NEAR(kw_empty.h_stat, 0.0, 1e-12);
+    EXPECT_EQ(kw_empty.df, 0);
+    EXPECT_NEAR(kw_empty.p_value, 1.0, 1e-12);
+
+    const auto kw_ties = kruskal_wallis({{1.0, 1.0, 1.0}, {1.0, 1.0, 1.0}});
+    EXPECT_NEAR(kw_ties.h_stat, 0.0, 1e-12);
+    EXPECT_EQ(kw_ties.df, 1);
+    EXPECT_NEAR(kw_ties.p_value, 1.0, 1e-12);
+
+    const auto fr_jagged = friedman({{1.0, 2.0}, {1.0}});
+    EXPECT_NEAR(fr_jagged.chi2_stat, 0.0, 1e-12);
+    EXPECT_EQ(fr_jagged.df, 0);
+    EXPECT_NEAR(fr_jagged.p_value, 1.0, 1e-12);
+
+    const auto fr_ties = friedman({{5.0, 5.0}, {5.0, 5.0}});
+    EXPECT_NEAR(fr_ties.chi2_stat, 0.0, 1e-12);
+    EXPECT_EQ(fr_ties.df, 1);
+    EXPECT_NEAR(fr_ties.p_value, 1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Ks2SampleLjungBoxJarque_EmptyN1Constant) {
+    const std::vector<double> empty;
+    const std::vector<double> low = {1.0, 2.0};
+    const std::vector<double> high = {10.0, 20.0};
+    const auto ks_empty = ks_test_2sample(empty, low);
+    EXPECT_NEAR(ks_empty.d_stat, 0.0, 1e-12);
+    EXPECT_NEAR(ks_empty.p_value, 0.0, 1e-12);
+
+    const auto ks_split = ks_test_2sample(low, high);
+    EXPECT_GT(ks_split.d_stat, 0.0);
+    EXPECT_GE(ks_split.p_value, 0.0);
+    EXPECT_LE(ks_split.p_value, 1.0);
+
+    const std::vector<double> one = {4.0};
+    const auto lb_n1 = ljung_box(one, 3);
+    EXPECT_NEAR(lb_n1.q_stat, 0.0, 1e-12);
+    EXPECT_EQ(lb_n1.df, 0);
+    EXPECT_NEAR(lb_n1.p_value, 1.0, 1e-12);
+    const auto lb_bad_lag = ljung_box(low, 0);
+    EXPECT_EQ(lb_bad_lag.df, 0);
+
+    const auto jb_tiny = jarque_bera(low);
+    EXPECT_NEAR(jb_tiny.jb_stat, 0.0, 1e-12);
+    EXPECT_NEAR(jb_tiny.p_value, 1.0, 1e-12);
+    const std::vector<double> flat = {3.0, 3.0, 3.0, 3.0, 3.0};
+    const auto jb_flat = jarque_bera(flat);
+    EXPECT_NEAR(jb_flat.jb_stat, 0.0, 1e-12);
+    EXPECT_NEAR(jb_flat.p_value, 1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, BootstrapCI_InvertedLevelAndKdeFar) {
+    const std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0};
+    auto mean_stat = [](std::span<const double> v) { return mean(v); };
+    const auto r = bootstrap_ci(data, mean_stat, 10, -0.6, 1);
+    EXPECT_TRUE(std::isfinite(r.lower));
+    EXPECT_TRUE(std::isfinite(r.upper));
+    EXPECT_NEAR(r.point_estimate, mean(data), 1e-12);
+
+    const auto pair_ci = bootstrap_ci(data, -0.6, 10, 1);
+    EXPECT_TRUE(std::isfinite(pair_ci.first));
+    EXPECT_TRUE(std::isfinite(pair_ci.second));
+
+    const std::vector<double> samples = {0.0};
+    const std::vector<double> grid = {10.0};
+    const auto dens = kde(samples, grid, 1.0, "epanechnikov");
+    ASSERT_EQ(dens.size(), 1u);
+    EXPECT_NEAR(dens[0], 0.0, 1e-12);
+}

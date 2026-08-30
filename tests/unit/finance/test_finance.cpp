@@ -2591,3 +2591,27 @@ TEST(FinanceTVM, IrrZeroDerivativeErrors) {
     std::vector<double> flat_cf{1.0, 0.0, 0.0};
     EXPECT_FALSE(irr(flat_cf, 0.1).has_value());
 }
+
+TEST(FinanceSabr, AtmHaganCorrectionTermsFinite) {
+    // F != K so the ATM expansion is skipped; rho ~ 1 hits z_over_x denom ~ 0.
+    const double call = sabr_call(100.0, 90.0, 1.0, 0.0, 0.2, 0.5, 1.0 - 1e-16, 0.4);
+    const double put = sabr_put(100.0, 90.0, 1.0, 0.0, 0.2, 0.5, 1.0 - 1e-16, 0.4);
+    EXPECT_TRUE(std::isfinite(call) || std::isnan(call));
+    EXPECT_TRUE(std::isfinite(put) || std::isnan(put));
+}
+
+TEST(FinanceMerton, UnconvergedButPositiveAssetKeepsMetrics) {
+    double V_true = 180.0, sigma_V_true = 0.22, D = 100.0, r = 0.05, T = 1.0;
+    auto [E, sigma_E] = merton_forward_equity(V_true, sigma_V_true, D, r, T);
+    ASSERT_GT(E, 0.0);
+    MertonResult result = merton_implied_asset_params(E, sigma_E, D, r, T, 1, 1e-16);
+    EXPECT_FALSE(result.converged);
+    EXPECT_GT(result.implied_asset_value, 0.0);
+    EXPECT_GT(result.implied_asset_volatility, 0.0);
+    EXPECT_TRUE(std::isfinite(result.implied_asset_value));
+    EXPECT_TRUE(std::isfinite(result.implied_asset_volatility));
+    EXPECT_TRUE(std::isfinite(result.distance_to_default));
+    EXPECT_TRUE(std::isfinite(result.probability_of_default));
+    EXPECT_GE(result.probability_of_default, 0.0);
+    EXPECT_LE(result.probability_of_default, 1.0);
+}

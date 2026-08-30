@@ -1350,3 +1350,43 @@ TEST(CryptoEd25519, EmptySeedReturnsZeroKeys) {
     EXPECT_EQ(sig, (std::array<uint8_t, ed25519_signature_size>{}));
     EXPECT_FALSE(ed25519_verify(kp.public_key, empty_msg, sig));
 }
+
+TEST(CryptoChaCha20Poly1305, ShortMessageAndSplitAadRoundtrip) {
+    std::array<uint8_t, 32> key{};
+    key[0] = 0x11;
+    std::array<uint8_t, 12> nonce{};
+    nonce[0] = 0x22;
+    const std::size_t plain_lens[] = {3, 17, 31};
+    const std::size_t aad_lens[] = {1, 20};
+    for (const std::size_t plen : plain_lens) {
+        std::vector<uint8_t> plain(plen);
+        for (std::size_t i = 0; i < plen; ++i) {
+            plain[i] = static_cast<uint8_t>(0x30 + i);
+        }
+        for (const std::size_t alen : aad_lens) {
+            std::vector<uint8_t> aad(alen);
+            for (std::size_t i = 0; i < alen; ++i) {
+                aad[i] = static_cast<uint8_t>(0xa0 + i);
+            }
+            const auto seal = chacha20_poly1305_encrypt(key, nonce, aad, plain);
+            ASSERT_EQ(seal.ciphertext.size(), plen);
+            std::vector<uint8_t> tag(seal.tag.begin(), seal.tag.end());
+            const auto opened = chacha20_poly1305_decrypt(key, nonce, aad, seal.ciphertext, tag);
+            EXPECT_EQ(opened, plain);
+        }
+    }
+}
+
+TEST(CryptoChaCha20Poly1305, EmptyPlaintextWithShortAad) {
+    std::array<uint8_t, 32> key{};
+    key[0] = 0x33;
+    std::array<uint8_t, 12> nonce{};
+    nonce[0] = 0x44;
+    std::vector<uint8_t> aad(7, 0x07);
+    std::vector<uint8_t> empty_plain;
+    const auto seal = chacha20_poly1305_encrypt(key, nonce, aad, empty_plain);
+    EXPECT_TRUE(seal.ciphertext.empty());
+    std::vector<uint8_t> tag(seal.tag.begin(), seal.tag.end());
+    const auto opened = chacha20_poly1305_decrypt(key, nonce, aad, seal.ciphertext, tag);
+    EXPECT_TRUE(opened.empty());
+}

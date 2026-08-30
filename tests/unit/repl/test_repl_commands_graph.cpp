@@ -5511,3 +5511,12 @@ TEST(ReplCommandsTest, graph_modularity_noassign) {
     expect_ok(interp, "graph_modularity(A, C)");
     expect_error_contains(interp, "graph_modularity(A, missing)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, graph_dijkstra_dist_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0,1,0; 1,0,1; 0,1,0]");
+    expect_contains(interp, "graph_dijkstra_dist(A, 0, 2)", "2");
+    expect_error_contains(interp, "graph_dijkstra_dist(no_such, 0, 2)", "unknown matrix");
+    expect_error_contains(interp, "graph_dijkstra_dist(A, missing, 1)",
+                         "expected graph_dijkstra_dist(A, source, target)");
+}

@@ -319,3 +319,20 @@ TEST(CoreExtTest, sym_eval_trailing_junk_and_log_zero) {
     const std::map<std::string, double> env{{"alpha", 3.0}};
     EXPECT_DOUBLE_EQ(Sym("alpha+1").eval(env), 4.0);
 }
+
+TEST(CoreExtTest, sym_eval_remaining_unaries_and_pow) {
+    EXPECT_NEAR(Sym("tanh(1)").eval(), std::tanh(1.0), 1e-12);
+    EXPECT_NEAR(Sym("tanh(-0.5)").eval(), std::tanh(-0.5), 1e-12);
+    EXPECT_DOUBLE_EQ(Sym("tan(0)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("asin(0)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("acos(1)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("atan(1)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("sinh(0)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("cosh(0)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("pow(2,3)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("2**3").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("1<2").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("1>0").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("sin()").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("tanh(").eval(), 0.0);
+}

@@ -3138,3 +3138,44 @@ TEST(SignalExtTest, xcorr_welch_empty_and_median_window_seven) {
     ASSERT_EQ(sg7.size(), x.size());
     EXPECT_TRUE(std::isfinite(sg7[3]));
 }
+
+TEST(SignalExtTest, czt_n_equals_one_and_zoom_invalid) {
+    const std::vector<double> one{4.0};
+    const std::complex<double> w(1.0, 0.0);
+    const std::complex<double> a(1.0, 0.0);
+    const auto czt_one = czt(one, 1, w, a);
+    ASSERT_EQ(czt_one.size(), 1u);
+    EXPECT_NEAR(czt_one[0].real(), 4.0, 1e-12);
+    EXPECT_NEAR(czt_one[0].imag(), 0.0, 1e-12);
+
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    EXPECT_TRUE(czt_zoom_fft({}, 10.0, 20.0, 8, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 20.0, 0, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 20.0, -2, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 20.0, 8, 0.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 20.0, 8, -50.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, -1.0, 20.0, 8, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 20.0, 10.0, 8, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 60.0, 8, 100.0).empty());
+}
+
+TEST(SignalExtTest, hilbert_length_three_roundtrip_energy) {
+    // n=3 is already covered by envelope_phase_freq_empty_and_odd_n; n=5 hits odd DFT.
+    const std::vector<double> x{0.8, -0.4, 0.15, 0.55, -0.2};
+    const auto z = hilbert(x);
+    ASSERT_EQ(z.size(), x.size());
+
+    double energy_x = 0.0;
+    double energy_real = 0.0;
+    double energy_z = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(z[i].real(), x[i], 1e-8) << "i=" << i;
+        EXPECT_TRUE(std::isfinite(z[i].imag()));
+        energy_x += x[i] * x[i];
+        energy_real += z[i].real() * z[i].real();
+        energy_z += std::norm(z[i]);
+    }
+    EXPECT_NEAR(energy_real, energy_x, 1e-8);
+    EXPECT_GE(energy_z + 1e-12, energy_x);
+    EXPECT_TRUE(std::isfinite(energy_z));
+}

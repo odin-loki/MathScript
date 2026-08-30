@@ -18367,3 +18367,33 @@ TEST(ReplCommandsTest, ellip_d_scalar_assign) {
     ASSERT_GT(interp.state().scalars.count("x"), 0u);
     EXPECT_NEAR(interp.state().scalars.at("x"), ms::ellip_d(0.5), 1e-8);
 }
+
+TEST(ReplCommandsTest, erf_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = erf(0)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, special_rgamma_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = special_rgamma(1)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, special_erfinv_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = special_erfinv(0)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, bernoulli_number_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = bernoulli_number(2)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 1.0 / 6.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, euler_number_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = euler_number(0)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 1.0, 1e-12);
+}

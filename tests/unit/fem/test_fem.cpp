@@ -948,3 +948,32 @@ TEST(FemSolve3D, empty_and_singular_zero) {
     ASSERT_FALSE(u.has_value());
     EXPECT_TRUE(std::holds_alternative<SingularMatrix>(u.error()));
 }
+
+TEST(FemStiffness3D, third_node_out_of_range) {
+    Mesh3D mesh;
+    mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    mesh.tetrahedra = {{{0, 1, 8, 3}}};
+    EXPECT_FALSE(assemble_stiffness_3d(mesh).has_value());
+    EXPECT_FALSE(assemble_load_3d(mesh, [](double, double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemAssemble, too_few_nodes_with_elements) {
+    Mesh2D mesh2;
+    mesh2.nodes = {{0.0, 0.0}, {1.0, 0.0}};
+    mesh2.triangles = {{{0, 1, 0}}};
+    EXPECT_FALSE(assemble_stiffness_2d(mesh2).has_value());
+    EXPECT_FALSE(assemble_load_2d(mesh2, [](double, double) { return 1.0; }).has_value());
+
+    Mesh3D mesh3;
+    mesh3.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
+    mesh3.tetrahedra = {{{0, 1, 2, 0}}};
+    EXPECT_FALSE(assemble_stiffness_3d(mesh3).has_value());
+    EXPECT_FALSE(assemble_load_3d(mesh3, [](double, double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemLagrangeBasis, degree_zero_rejected) {
+    LagrangeBasis basis;
+    basis.degree = 0;
+    EXPECT_FALSE(basis.evaluate(0.0).has_value());
+    EXPECT_FALSE(basis.derivative(0.0).has_value());
+}

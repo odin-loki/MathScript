@@ -3669,3 +3669,17 @@ TEST(ReplCommandsTest, numthy_farey_scalar_expr_noassign) {
     expect_ok(interp, "numthy_stern_brocot(n)");
     expect_error_contains(interp, "numthy_farey(not_a_scalar)", "expected numthy_farey(n)");
 }
+
+TEST(ReplCommandsTest, numthy_factor_exp_scalar_expr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "n = 12");
+    expect_ok(interp, "numthy_factor_exp(n)");
+    expect_error_contains(interp, "numthy_factor_exp(not_a_scalar)", "expected numthy_factor_exp(n)");
+}
+
+TEST(ReplCommandsTest, numthy_pell_solve_scalar_expr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "D = 2");
+    expect_ok(interp, "numthy_pell_solve(D)");
+    expect_error_contains(interp, "numthy_pell_solve(not_a_scalar)", "expected numthy_pell_solve(D)");
+}

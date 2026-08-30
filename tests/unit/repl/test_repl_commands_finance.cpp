@@ -3618,3 +3618,17 @@ TEST(ReplCommandsTest, finance_capm_noassign) {
     expect_error_contains(interp, "finance_capm(0.05, 1.2, missing)",
                           "expected finance_capm(risk_free,beta,market_return)");
 }
+
+TEST(ReplCommandsTest, finance_bond_price_4arg_missing_fv_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "finance_bond_price(0.05, 0.05, 10, missing)",
+                          "expected finance_bond_price(c,y,n,fv)");
+    expect_error_contains(interp, "finance_bond_price(0.05, 0.05, 1.5, 100)",
+                          "expected non-negative integer periods n");
+}
+
+TEST(ReplCommandsTest, finance_bond_price_negative_n_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "finance_bond_price(0.05, 0.05, -1, 100)",
+                          "expected non-negative integer periods n");
+}
