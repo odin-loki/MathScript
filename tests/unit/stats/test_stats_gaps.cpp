@@ -691,3 +691,54 @@ TEST(StatsGapsTest, RankCorr_SinglePointAndNaN) {
     EXPECT_TRUE(std::isnan(spearman(x, y)));
     EXPECT_NEAR(kendall(x, y), 0.0, 1e-12);
 }
+
+TEST(StatsGapsTest, Descriptive_EmptyAndSinglePoint) {
+    const std::vector<double> empty;
+    const std::vector<double> one = {7.0};
+    EXPECT_NEAR(mean(empty), 0.0, 1e-12);
+    EXPECT_NEAR(var(empty), 0.0, 1e-12);
+    EXPECT_NEAR(median(empty), 0.0, 1e-12);
+    EXPECT_NEAR(percentile(empty, 50.0), 0.0, 1e-12);
+    EXPECT_NEAR(mode(empty), 0.0, 1e-12);
+    EXPECT_NEAR(iqr(empty), 0.0, 1e-12);
+    EXPECT_NEAR(rms(empty), 0.0, 1e-12);
+    EXPECT_NEAR(mean(one), 7.0, 1e-12);
+    EXPECT_NEAR(var(one), 0.0, 1e-12);
+    EXPECT_NEAR(median(one), 7.0, 1e-12);
+    EXPECT_NEAR(percentile(one, 40.0), 7.0, 1e-12);
+    EXPECT_NEAR(iqr(one), 0.0, 1e-12);
+    EXPECT_NEAR(rms(one), 7.0, 1e-12);
+    EXPECT_NEAR(geometric_mean(one), 7.0, 1e-12);
+    EXPECT_NEAR(harmonic_mean(one), 7.0, 1e-12);
+}
+
+TEST(StatsGapsTest, WeightedCorr_N1MismatchAndAllTies) {
+    const std::vector<double> one_x = {1.0};
+    const std::vector<double> one_y = {2.0};
+    const std::vector<double> one_w = {1.0};
+    const std::vector<double> two_w = {1.0, 2.0};
+    EXPECT_NEAR(weighted_variance(one_x, one_w, true), 0.0, 1e-12);
+    EXPECT_NEAR(weighted_mean(one_x, two_w), 0.0, 1e-12);
+    EXPECT_NEAR(weighted_correlation(one_x, one_y, two_w), 0.0, 1e-12);
+    EXPECT_NEAR(correlation(one_x, one_y), 0.0, 1e-12);
+    EXPECT_NEAR(partial_correlation(one_x, one_y, one_x), 0.0, 1e-12);
+    const std::vector<double> tied_x = {5.0, 5.0, 5.0};
+    const std::vector<double> free_y = {1.0, 2.0, 3.0};
+    EXPECT_NEAR(kendall(tied_x, free_y), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, AnovaAcfArfit_SingletonAndN1) {
+    const std::vector<std::vector<double>> singletons = {{1.0}, {2.0}};
+    const auto anova = one_way_anova(singletons);
+    EXPECT_NEAR(anova.f_stat, 0.0, 1e-12);
+    EXPECT_EQ(anova.df_between, 0);
+
+    const std::vector<double> one = {4.0};
+    const auto ac = acf(one, 1);
+    ASSERT_EQ(ac.size(), 2u);
+    EXPECT_NEAR(ac[0], 0.0, 1e-12);
+    EXPECT_TRUE(arfit(one, 1).empty());
+    const auto pc = pacf(one, 1);
+    ASSERT_EQ(pc.size(), 2u);
+    EXPECT_NEAR(pc[0], 1.0, 1e-12);
+}

@@ -72,7 +72,8 @@ TEST(SimdXsimdTest, dispatch_info_batch_width_matches_batch_width) {
     EXPECT_EQ(dispatch_info().batch_width, batch_width());
 }
 
-TEST(SimdXsimdTest, kernel_is_scalar_or_avx2) {
+TEST(SimdXsimdTest, kernel_is_scalar_avx2_or_avx512) {
     const auto info = dispatch_info();
-    EXPECT_TRUE(info.active == Kernel::Scalar || info.active == Kernel::Avx2);
+    EXPECT_TRUE(info.active == Kernel::Scalar || info.active == Kernel::Avx2 ||
+                info.active == Kernel::Avx512);
 }

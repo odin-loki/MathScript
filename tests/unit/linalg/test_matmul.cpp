@@ -470,3 +470,41 @@ TEST(MatmulTest, row_major_cuda_copy_to_col_if_gpu) {
     EXPECT_DOUBLE_EQ((*C)(1, 0), 43.0);
     EXPECT_DOUBLE_EQ((*C)(1, 1), 50.0);
 }
+
+TEST(MatmulTest, row_major_rect_3x2_by_2x4) {
+    RMatrix A{{1, 2}, {3, 4}, {5, 6}};
+    RMatrix B{{1, 0, 1, 0}, {0, 1, 0, 1}};
+    auto C = matmul(A, B, static_cast<int>(ExecPolicy::CPU));
+    ASSERT_TRUE(C.has_value());
+    EXPECT_EQ(C->rows(), 3u);
+    EXPECT_EQ(C->cols(), 4u);
+    EXPECT_DOUBLE_EQ((*C)(0, 0), 1);
+    EXPECT_DOUBLE_EQ((*C)(0, 1), 2);
+    EXPECT_DOUBLE_EQ((*C)(0, 2), 1);
+    EXPECT_DOUBLE_EQ((*C)(0, 3), 2);
+    EXPECT_DOUBLE_EQ((*C)(1, 0), 3);
+    EXPECT_DOUBLE_EQ((*C)(1, 1), 4);
+    EXPECT_DOUBLE_EQ((*C)(2, 0), 5);
+    EXPECT_DOUBLE_EQ((*C)(2, 3), 6);
+}
+
+TEST(MatmulTest, row_major_transpose_like_gpu_copy) {
+    RMatrix A{{1, 2, 3}, {4, 5, 6}};
+    RMatrix At{{1, 4}, {2, 5}, {3, 6}};
+    auto AAt = matmul(A, At, static_cast<int>(ExecPolicy::GPU));
+    ASSERT_TRUE(AAt.has_value());
+    EXPECT_EQ(AAt->rows(), 2u);
+    EXPECT_EQ(AAt->cols(), 2u);
+    EXPECT_DOUBLE_EQ((*AAt)(0, 0), 14);
+    EXPECT_DOUBLE_EQ((*AAt)(0, 1), 32);
+    EXPECT_DOUBLE_EQ((*AAt)(1, 0), 32);
+    EXPECT_DOUBLE_EQ((*AAt)(1, 1), 77);
+
+    auto AtA = matmul(At, A, static_cast<int>(ExecPolicy::AUTO));
+    ASSERT_TRUE(AtA.has_value());
+    EXPECT_EQ(AtA->rows(), 3u);
+    EXPECT_EQ(AtA->cols(), 3u);
+    EXPECT_DOUBLE_EQ((*AtA)(0, 0), 17);
+    EXPECT_DOUBLE_EQ((*AtA)(1, 1), 29);
+    EXPECT_DOUBLE_EQ((*AtA)(2, 2), 45);
+}

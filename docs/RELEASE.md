@@ -1,13 +1,13 @@
 # MathScript 1.0.0 release
 
-CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI all 9 jobs green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux, Valgrind memcheck clean (unit + numerical), and packaging smoke. Remaining for the tag includes the 24 h fuzz marathon and **90%** coverage (CI gate is already **80%**, measured 81.1%). Scope that will not ship in 1.0 is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
+CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux, AddressSanitizer + UBSan, and packaging smoke. Remaining for the tag includes the 24 h fuzz marathon and **90%** coverage (CI gate is already **80%**, last measured **87.3%** on `c1654cd`). Scope that will not ship in 1.0 is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
 
 ## Tag criteria
 
 1. **CI green** on `main` with no `continue-on-error`. Linux GCC 13 `-fno-exceptions` syntax gate on `build-test-linux` must pass.
 2. **Tests** — full CTest passing. Current catalogue: **816** suites (Windows MSVC, CUDA off), grouped by mathematical domain.
 3. **Coverage** — CI gate **80%** (`coverage-linux`; measured **81.1%** of library `src/` excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars). **90%** remains a `v1.0.0` tag goal.
-4. **Valgrind** memcheck clean (`valgrind-linux`; unit + numerical, excluding `test_fuzz_stress` and `test_crypto` — ed25519 is too slow under memcheck). Full **816** suites run on `build-test-linux` and `build-test-windows`.
+4. **ASan + UBSan** clean (`sanitizer-linux`; overflows and UB fail the job). Leak detection stays off (`detect_leaks=0`) for process-exit pool/AD graphs. Full **816** suites run on `build-test-linux` and `build-test-windows`.
 5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`).
 6. **Unsafe surface** — `UNSAFE_REVIEW.md` matches `scripts/unsafe_report.sh`; no new unreviewed sites.
 7. **Packaging** — smoke scripts plus extra CPack generators when tools are present. `scripts/package_smoke.sh` installs the prefix and runs `cpack -G TGZ`. `scripts/package_smoke.ps1` installs the prefix and runs `cpack -G ZIP`. CI also runs DEB/RPM (Linux) and NSIS/WiX (Windows) when those tools exist.

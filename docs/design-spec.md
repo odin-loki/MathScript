@@ -7341,7 +7341,7 @@ Replace all Class A transitional libraries with own implementations. This runs i
 - Windows installer (NSIS/WiX)
 - Linux packages (deb, rpm)
 - Performance: all benchmarks within 10% of theoretical peak
-- Memory: no leaks under Valgrind/Dr. Memory on test suite
+- Memory: AddressSanitizer + UBSan on the test suite (CI `sanitizer-linux`)
 
 **Exit criterion:** Version 1.0.0 tag. All CI stages green. Unsafe surface report approved. Packages buildable on clean machines.
 
@@ -7352,7 +7352,7 @@ Waves 1 through 217 incrementally implemented this plan; each wave's specific ad
 **Current status:**
 - Phase 10 hardening substantially underway (see `docs/RELEASE.md`'s tag-criteria list for gate details)
 - CMake version field is 1.0.0; **v1.0.0 tag not cut** pending release gates (Linux GCC build, Wave 320 verification)
-- ~91% line coverage (90% gate); Valgrind memcheck; libFuzzer smoke (7 targets)
+- ~91% line coverage (90% tag gate, 80% CI gate); AddressSanitizer + UBSan; libFuzzer smoke (7 targets)
 - **956 CTest suites, all passing** (as of Audit Wave 314 leftover binds, verified Windows MSVC)
 - Wave 207: full documentation overhaul (README/ARCHITECTURE/API/USER_GUIDE/CONTRIBUTING/RELEASE/CHANGELOG/master-plan all rewritten or refreshed), plus 8 spec-vs-implementation gaps closed (special spherical harmonics, signal coherence, stats partial correlation/VIF, ML PR-AUC, finance historical VaR, graph min arborescence, poly_roots rewritten via companion-matrix eigenvalues, quantum Schmidt decomposition)
 - Wave 208: 8 more gaps closed in previously-untouched modules (optim conjugate gradient, control step_info, image hough_circles, tensorops NMF, graph k-core decomposition, signal Chirp Z-Transform, ML IsolationForest, geo polygon triangulation)

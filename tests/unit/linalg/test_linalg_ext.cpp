@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <functional>
+#include <vector>
 #include "ms/linalg/linalg.hpp"
 #include "ms/core/matrix.hpp"
 
@@ -800,4 +801,61 @@ TEST(ConstructionTest, empty_and_one_by_one_helpers) {
     EXPECT_TRUE(std::isfinite(Rn(0, 0)));
     EXPECT_NEAR(tril(D1)(0, 0), 9.0, 1e-15);
     EXPECT_NEAR(triu(D1, 1)(0, 0), 0.0, 1e-15);
+}
+
+TEST(ConstructionTest, diag_extract_rect_and_float) {
+    DMatrix wide{{1, 2, 3}, {4, 5, 6}};
+    const std::vector<double> dw = diag(wide);
+    ASSERT_EQ(dw.size(), 2u);
+    EXPECT_NEAR(dw[0], 1.0, 1e-15);
+    EXPECT_NEAR(dw[1], 5.0, 1e-15);
+
+    DMatrix tall{{1, 2}, {3, 4}, {5, 6}};
+    const std::vector<double> dt = diag(tall);
+    ASSERT_EQ(dt.size(), 2u);
+    EXPECT_NEAR(dt[0], 1.0, 1e-15);
+    EXPECT_NEAR(dt[1], 4.0, 1e-15);
+
+    const std::vector<float> fv{2.f, 3.f};
+    const auto Df = diag(fv);
+    EXPECT_EQ(Df.rows(), 2u);
+    EXPECT_FLOAT_EQ(Df(0, 0), 2.f);
+    EXPECT_FLOAT_EQ(Df(1, 1), 3.f);
+    EXPECT_FLOAT_EQ(Df(0, 1), 0.f);
+}
+
+TEST(ConstructionTest, leftover_kron_repmat_tril_rect) {
+    DMatrix A11{{3}};
+    DMatrix B{{1, 2}, {3, 4}};
+    const DMatrix K = kron(A11, B);
+    EXPECT_EQ(K.rows(), 2u);
+    EXPECT_NEAR(K(0, 0), 3.0, 1e-15);
+    EXPECT_NEAR(K(1, 1), 12.0, 1e-15);
+
+    const DMatrix R = repmat(A11, 2, 3);
+    EXPECT_EQ(R.rows(), 2u);
+    EXPECT_EQ(R.cols(), 3u);
+    EXPECT_NEAR(R(1, 2), 3.0, 1e-15);
+
+    DMatrix rect{{1, 2, 3}, {4, 5, 6}};
+    const DMatrix L = tril(rect);
+    EXPECT_NEAR(L(0, 0), 1.0, 1e-15);
+    EXPECT_NEAR(L(0, 1), 0.0, 1e-15);
+    EXPECT_NEAR(L(1, 0), 4.0, 1e-15);
+    EXPECT_NEAR(L(1, 1), 5.0, 1e-15);
+    EXPECT_NEAR(L(1, 2), 0.0, 1e-15);
+    const DMatrix U = triu(rect, 1);
+    EXPECT_NEAR(U(0, 0), 0.0, 1e-15);
+    EXPECT_NEAR(U(0, 1), 2.0, 1e-15);
+    EXPECT_NEAR(U(0, 2), 3.0, 1e-15);
+    EXPECT_NEAR(U(1, 1), 0.0, 1e-15);
+
+    const std::vector<float> grid = linspace(0.f, 2.f, 3u);
+    ASSERT_EQ(grid.size(), 3u);
+    EXPECT_FLOAT_EQ(grid[0], 0.f);
+    EXPECT_FLOAT_EQ(grid[2], 2.f);
+
+    const auto Rf = rand<float>(0, 2, 3u);
+    EXPECT_EQ(Rf.rows(), 0u);
+    EXPECT_EQ(Rf.cols(), 2u);
 }

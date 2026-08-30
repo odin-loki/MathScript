@@ -8,6 +8,10 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (coverage ≥ 90% for the tag, fuzz-24h, benches, compliance, JIT). Pre-release `v1.0.0-rc.1` is published.
 
+- Tests: extra control/signal/symbolic/BLAS/FEM/ODE/finance/poly/special/stats/core/CFD unit coverage plus leftover no-assignment REPL printers (unary math, bigint, optimizers, CFD 3D, cplx, gria, geo, ML, quantum).
+- CPU SIMD kernels report `Kernel::Avx512` when `MS_ENABLE_AVX512` and the CPU has AVX-512F; vector loops stay 4-wide xsimd (AVX2 compile) to avoid SIGILL. Dedicated `avx512_dgemm` remains the wide GEMM path.
+- CI memory job is AddressSanitizer + UBSan (`sanitizer-linux`). Valgrind is no longer a CI gate.
+
 - REPL constructors (`ones`/`zeros`/`eye`/`rand`/`randn`/`linspace`/`repmat`/`kron`) refuse dimensions above 262144 elements before allocating (libFuzzer `ones(9999)` OOM).
 - Combo listing enumerators (`derangements`, `all_permutations`, `all_subsets`, `gray_code`, partitions, necklaces, …) refuse oversized n so libFuzzer cannot OOM on `combo_derangements(11)`.
 - Tests: extra library coverage (image/signal/control/cfd/finance/special/ml/info/quantum/graph/combo/geo/stats/ode/pde/prob/linalg) plus remaining dual-matrix and scalar no-assignment REPL printers.
@@ -33,7 +37,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - CLI tests: decode POSIX `std::system` wait status so `mathscriptc` exit 1 is not compared as 256.
 - DiffGeo unit helix torsion: GCC -O3 third-derivative FD is ~0.03 off analytic 1/2; tolerance is 4e-2.
 - Signal+optim pipeline: compare residual energy vs each tone (unit sines share RMS, so the old closeness check was noise).
-- Linux Debug CI (coverage/ASan): `MS_LINK_TESTS_SHARED` builds `libms_bundle.so` so 816 test executables do not each copy the static library. Coverage instruments `src/` only. Valgrind still skips per-file integration binaries (memcheck time).
+- Linux Debug CI (coverage/ASan): `MS_LINK_TESTS_SHARED` builds `libms_bundle.so` so 816 test executables do not each copy the static library. Coverage instruments `src/` only.
 - `UNSAFE_REVIEW.md`: plugin diagnostics moved into rule TUs; crypto string_view overloads share one `u8_view`; `approved_sites` is 38.
 - `tests/compliance/unsafe_baseline.txt` regenerated to the same 38 sites so `unsafe_delta.sh` line-level compare matches.
 - Coverage CI gate is **80%** (measured 81.1% of library `src/` after excluding plugin/GUI/CUDA/`matrix_calls`). **90%** remains the `v1.0.0` tag goal.
@@ -42,7 +46,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - GMM REPL packing uses enough columns for K, p, and log-likelihood (ASan overflow when p<3).
 - POSIX `aligned_alloc` rounds size up to a multiple of alignment.
 - `dorgbr` P-wide reflector scan stays inside A's column count (`k` when `lda >= n`) so tall factors are not over-read.
-- Valgrind memcheck skips `test_crypto` (ed25519/ref10 exceeds the CTest timeout under memcheck; ASan and the Linux/Windows unit jobs still run it).
+- AddressSanitizer + UBSan is the CI memory gate (`sanitizer-linux`). `test_crypto` still runs there and on Windows/Linux unit jobs.
 - `MLGMM.ThreeBlobsMeansMatch` checks three finite, pairwise-separated centers (not exact blob coordinates).
 - Linux package smoke: Debian CPack uses `mathscript_1.0.0_amd64.deb` (`DEB-DEFAULT`); CI glob is `mathscript*.deb`.
 - `linux-gcc13.json` matmul medians recalibrated from GitHub-hosted ubuntu-24.04 (`MS_ENABLE_AVX512=OFF`). Tolerance remains 10%.

@@ -259,3 +259,36 @@ TEST(CoreExtTest, sym_empty_expr_wraps_as_zero) {
     const Sym from_null(static_cast<const char*>(nullptr));
     EXPECT_DOUBLE_EQ(from_null.eval(), 0.0);
 }
+
+TEST(CoreExtTest, sym_eval_whitespace_and_scientific) {
+    EXPECT_DOUBLE_EQ(Sym("  2 + 3  ").eval(), 5.0);
+    EXPECT_DOUBLE_EQ(Sym("1e2").eval(), 100.0);
+    EXPECT_NEAR(Sym("2.5e-1").eval(), 0.25, 1e-12);
+    EXPECT_NEAR(Sym("sin ( 0 )").eval(), 0.0, 1e-12);
+    EXPECT_NEAR(Sym(" ( 1 + 2 ) * 3 ").eval(), 9.0, 1e-12);
+}
+
+TEST(CoreExtTest, sym_eval_unary_chains_and_unknown_ident) {
+    EXPECT_DOUBLE_EQ(Sym("1+-2").eval(), -1.0);
+    EXPECT_DOUBLE_EQ(Sym("1--2").eval(), 3.0);
+    EXPECT_DOUBLE_EQ(Sym("--5").eval(), 5.0);
+    EXPECT_DOUBLE_EQ(Sym("---4").eval(), -4.0);
+    EXPECT_DOUBLE_EQ(Sym("+3").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("foo(1)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("abs(2)").eval(), 0.0);
+    const std::map<std::string, double> env{{"_x", 8.0}};
+    EXPECT_DOUBLE_EQ(Sym("_x").eval(env), 8.0);
+}
+
+TEST(CoreExtTest, sym_eval_nested_funcs_and_default_ctor) {
+    EXPECT_NEAR(Sym("sin(cos(0))").eval(), std::sin(1.0), 1e-12);
+    EXPECT_DOUBLE_EQ(Sym("((2+3)*4)").eval(), 20.0);
+    EXPECT_NEAR(Sym("sqrt(4+5)").eval(), 3.0, 1e-12);
+    EXPECT_NEAR(Sym("log(exp(1))").eval(), 1.0, 1e-12);
+    const Sym def;
+    EXPECT_DOUBLE_EQ(def.eval(), 0.0);
+    EXPECT_EQ(def.to_string(), "0");
+    const Sym product = Sym(1.5) * Sym(4.0);
+    EXPECT_NEAR(product.eval(), 6.0, 1e-12);
+    EXPECT_NE(product.to_string().find("*"), std::string::npos);
+}

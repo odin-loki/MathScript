@@ -3990,3 +3990,22 @@ TEST(ReplCommandsTest, gria_gf2n_inv_noassign) {
     expect_ok(interp, "gria_gf2n_inv(3, 7)");
     expect_error_contains(interp, "gria_gf2n_inv(3)", "expected gria_gf2n_inv(a, poly)");
 }
+
+TEST(ReplCommandsTest, gria_lfsr_step_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gria_lfsr_step(1, 3)");
+    expect_error_contains(interp, "gria_lfsr_step(1)", "expected gria_lfsr_step(state, poly)");
+}
+
+TEST(ReplCommandsTest, gria_alpha_lfsr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gria_alpha_lfsr(3, 8)");
+    expect_error_contains(interp, "gria_alpha_lfsr(3)", "expected gria_alpha_lfsr(poly, steps)");
+    expect_error_contains(interp, "gria_alpha_lfsr(3, 0)", "expected positive integer steps");
+}
+
+TEST(ReplCommandsTest, gria_lfsr_is_maximal_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "gria_lfsr_is_maximal(6, 3)", "true");
+    expect_error_contains(interp, "gria_lfsr_is_maximal(6, 0)", "expected positive integer n");
+}

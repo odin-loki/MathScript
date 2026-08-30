@@ -290,3 +290,34 @@ TEST(CfdUpwindFvm, VelocityLengthMismatchVsN) {
     const std::vector<double> v{0.1, 0.2};
     EXPECT_TRUE(upwind_fvm_advection(u, v, 0.01, 0.1).empty());
 }
+
+TEST(CfdRunAdvection, EmptyVelocity) {
+    const std::vector<double> u0{1.0, 0.0, 0.0};
+    const std::vector<double> empty;
+    const auto result = run_advection(u0, empty, 1.0, 0.1, 0.1);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(CfdRunAdvection, CflViolationAndNonPositiveDx) {
+    const std::vector<double> u0(8, 1.0);
+    const std::vector<double> v{2.0};
+    EXPECT_TRUE(run_advection(u0, v, 1.0, 0.1, 0.1).u.empty());
+    EXPECT_TRUE(run_advection(u0, v, 1.0, 0.0, 0.1).u.empty());
+    EXPECT_TRUE(run_advection(u0, v, 1.0, 0.1, 0.0).u.empty());
+}
+
+TEST(CfdUpwindFvm, CellWiseVelocityLastFace) {
+    const std::vector<double> u{0.0, 0.0, 1.0, 0.0};
+    const std::vector<double> v{0.5, 0.4, 0.3, 0.2};
+    const auto u1 = upwind_fvm_advection(u, v, 0.05, 0.2, BoundaryCondition::Periodic);
+    ASSERT_EQ(u1.size(), u.size());
+    EXPECT_TRUE(std::isfinite(u1.back()));
+    EXPECT_NEAR(integrated_mass(u1, 0.2), integrated_mass(u, 0.2), 1e-12);
+
+    const auto grid = grid1d(0.0, 1.0, 8);
+    const auto neg_width = square_pulse(grid, 0.5, -0.2, 1.0);
+    ASSERT_EQ(neg_width.size(), grid.n);
+    for (double ui : neg_width) {
+        EXPECT_NEAR(ui, 0.0, 1e-15);
+    }
+}

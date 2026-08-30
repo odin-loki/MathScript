@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <numeric>
 #include <span>
+#include <string>
 #include <variant>
 #include "ms/fft/fft.hpp"
 #include "ms/signal/signal.hpp"
@@ -2807,4 +2808,283 @@ TEST(SignalExtTest, coherence_odd_nperseg_self_unity) {
     for (double c : r->coherence) {
         EXPECT_NEAR(c, 1.0, 1e-9);
     }
+}
+
+TEST(SignalExtTest, welch_psd_overlap_frac_too_large_zero_hop) {
+    const std::vector<double> x{1.0, -0.5, 0.25, -0.25, 0.5, 0.0, -1.0, 0.75};
+    const double overlap = std::nextafter(1.0, 0.0);
+    const auto result = welch_psd(x, 8.0, 4, overlap);
+    if (!result.has_value()) {
+        ASSERT_TRUE(std::holds_alternative<DomainError>(result.error()));
+        const auto& err = std::get<DomainError>(result.error());
+        EXPECT_NE(err.reason.find("overlap_frac too large"), std::string::npos);
+        return;
+    }
+    ASSERT_EQ(result->frequencies.size(), result->power.size());
+    EXPECT_FALSE(result->power.empty());
+    for (double p : result->power) {
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_GE(p, 0.0);
+    }
+}
+
+TEST(SignalExtTest, spectrogram_overlap_frac_too_large_zero_hop) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.5, 0.25, -0.25, 0.75, -0.5};
+    const double overlap = std::nextafter(1.0, 0.0);
+    const auto result = spectrogram(x, 8.0, 4, overlap);
+    if (!result.has_value()) {
+        ASSERT_TRUE(std::holds_alternative<DomainError>(result.error()));
+        const auto& err = std::get<DomainError>(result.error());
+        EXPECT_NE(err.reason.find("overlap_frac too large"), std::string::npos);
+        return;
+    }
+    EXPECT_EQ(result->magnitude.rows(), result->times.size());
+    EXPECT_EQ(result->magnitude.cols(), result->frequencies.size());
+    EXPECT_FALSE(result->times.empty());
+}
+
+TEST(SignalExtTest, coherence_overlap_frac_too_large_zero_hop) {
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5, 0.25, -0.25, 0.75, -0.75};
+    const double overlap = std::nextafter(1.0, 0.0);
+    const auto result = coherence(x, x, 8.0, 4, overlap);
+    if (!result.has_value()) {
+        ASSERT_TRUE(std::holds_alternative<DomainError>(result.error()));
+        const auto& err = std::get<DomainError>(result.error());
+        EXPECT_NE(err.reason.find("overlap_frac too large"), std::string::npos);
+        return;
+    }
+    ASSERT_EQ(result->coherence.size(), result->frequencies.size());
+    for (double c : result->coherence) {
+        EXPECT_NEAR(c, 1.0, 1e-9);
+    }
+}
+
+TEST(SignalExtTest, welch_psd_no_complete_segments_fit) {
+    const std::vector<double> one{1.0};
+    const auto fits = welch_psd(one, 8.0, 1, 0.0);
+    if (!fits.has_value()) {
+        ASSERT_TRUE(std::holds_alternative<DomainError>(fits.error()));
+        const auto& err = std::get<DomainError>(fits.error());
+        EXPECT_NE(err.reason.find("no complete segments"), std::string::npos);
+        return;
+    }
+    ASSERT_EQ(fits->power.size(), fits->frequencies.size());
+    EXPECT_TRUE(std::isfinite(fits->power[0]));
+
+    const std::vector<double> pair{0.5, -0.25, 0.75, -0.5};
+    const auto exact = welch_psd(pair, 4.0, 4, 0.0);
+    if (!exact.has_value()) {
+        ASSERT_TRUE(std::holds_alternative<DomainError>(exact.error()));
+        const auto& err = std::get<DomainError>(exact.error());
+        EXPECT_NE(err.reason.find("no complete segments"), std::string::npos);
+        return;
+    }
+    ASSERT_EQ(exact->power.size(), exact->frequencies.size());
+    for (double p : exact->power) {
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_GE(p, 0.0);
+    }
+}
+
+TEST(SignalExtTest, spectrogram_no_complete_segments_fit) {
+    const std::vector<double> one{0.75};
+    const auto fits = spectrogram(one, 8.0, 1, 0.0);
+    if (!fits.has_value()) {
+        ASSERT_TRUE(std::holds_alternative<DomainError>(fits.error()));
+        const auto& err = std::get<DomainError>(fits.error());
+        EXPECT_NE(err.reason.find("no complete segments"), std::string::npos);
+        return;
+    }
+    EXPECT_EQ(fits->times.size(), 1u);
+    EXPECT_EQ(fits->magnitude.rows(), 1u);
+    EXPECT_EQ(fits->magnitude.cols(), fits->frequencies.size());
+}
+
+TEST(SignalExtTest, periodogram_odd_n_nyquist_bin_doubled) {
+    const std::vector<double> x{1.0, 0.5, -0.25, 0.75, -0.5, 0.25, -1.0};
+    const double fs = 14.0;
+    const auto r = periodogram(x, fs, {}, 7);
+    if (!r.has_value()) GTEST_SKIP() << "periodogram rejected odd n=7";
+    ASSERT_GE(r->frequencies.size(), 2u);
+    const double df = r->frequencies[1] - r->frequencies[0];
+    ASSERT_GT(df, 0.0);
+    const size_t n_fft = static_cast<size_t>(std::llround(fs / df));
+
+    std::vector<double> windowed(n_fft, 0.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        windowed[i] = x[i];
+    }
+    const double win_sq = static_cast<double>(x.size());
+    const double scale = 1.0 / (fs * win_sq);
+    const size_t n_freq = n_fft / 2 + 1;
+    ASSERT_EQ(r->power.size(), n_freq);
+    for (size_t k = 0; k < n_freq; ++k) {
+        std::complex<double> sum(0.0, 0.0);
+        for (size_t t = 0; t < n_fft; ++t) {
+            const double angle =
+                -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n_fft);
+            sum += windowed[t] * std::complex<double>(std::cos(angle), std::sin(angle));
+        }
+        double expected = std::norm(sum) * scale;
+        if (k > 0 && k + 1 < n_freq) {
+            expected *= 2.0;
+        }
+        if (n_fft % 2 != 0 && k + 1 == n_freq) {
+            expected *= 2.0;
+        }
+        EXPECT_NEAR(r->power[k], expected, 1e-9 * std::max(1.0, expected)) << "k=" << k;
+    }
+}
+
+TEST(SignalExtTest, welch_psd_odd_nfft_nyquist_bin_doubled) {
+    const std::vector<double> x{1.0, -0.5, 0.25, 0.75, -1.0, 0.1, 0.4};
+    const double fs = 14.0;
+    const auto r = welch_psd(x, fs, 7, 0.0);
+    if (!r.has_value()) GTEST_SKIP() << "welch_psd rejected odd segment_len 7";
+    ASSERT_GE(r->frequencies.size(), 2u);
+    const double df = r->frequencies[1] - r->frequencies[0];
+    ASSERT_GT(df, 0.0);
+    const size_t n_fft = static_cast<size_t>(std::llround(fs / df));
+    const auto win = hanning(7);
+    double win_sq = 0.0;
+    for (double w : win) {
+        win_sq += w * w;
+    }
+    std::vector<double> windowed(n_fft, 0.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        windowed[i] = x[i] * win[i];
+    }
+    const double scale = 1.0 / (fs * win_sq);
+    const size_t n_freq = n_fft / 2 + 1;
+    ASSERT_EQ(r->power.size(), n_freq);
+    for (size_t k = 0; k < n_freq; ++k) {
+        std::complex<double> sum(0.0, 0.0);
+        for (size_t t = 0; t < n_fft; ++t) {
+            const double angle =
+                -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n_fft);
+            sum += windowed[t] * std::complex<double>(std::cos(angle), std::sin(angle));
+        }
+        double expected = std::norm(sum) * scale;
+        if (k > 0 && k + 1 < n_freq) {
+            expected *= 2.0;
+        }
+        if (n_fft % 2 != 0 && k + 1 == n_freq) {
+            expected *= 2.0;
+        }
+        EXPECT_NEAR(r->power[k], expected, 1e-9 * std::max(1.0, expected)) << "k=" << k;
+    }
+}
+
+TEST(SignalExtTest, welch_psd_rfft_windowed_segment_error_path) {
+    const std::vector<double> x = sinusoid(32, 32.0, 4.0);
+    const auto w = welch_psd(x, 32.0, 8, 0.5);
+    if (!w.has_value()) {
+        EXPECT_TRUE(std::holds_alternative<DomainError>(w.error()));
+    } else {
+        ASSERT_EQ(w->frequencies.size(), w->power.size());
+        EXPECT_FALSE(w->power.empty());
+    }
+
+    const auto s = spectrogram(x, 32.0, 8, 0.5);
+    if (!s.has_value()) {
+        EXPECT_TRUE(std::holds_alternative<DomainError>(s.error()));
+    } else {
+        EXPECT_EQ(s->magnitude.rows(), s->times.size());
+        EXPECT_EQ(s->magnitude.cols(), s->frequencies.size());
+    }
+
+    const auto c = coherence(x, x, 32.0, 8, 0.5);
+    if (!c.has_value()) {
+        EXPECT_TRUE(std::holds_alternative<DomainError>(c.error()));
+    } else {
+        ASSERT_EQ(c->coherence.size(), c->frequencies.size());
+        for (double v : c->coherence) {
+            EXPECT_NEAR(v, 1.0, 1e-9);
+        }
+    }
+}
+
+TEST(SignalExtTest, czt_radix2_power_of_two_matches_direct) {
+    const std::vector<double> x{1.0, -0.5, 0.25, 0.75};
+    const double arg_w = -2.0 * M_PI / 4.0;
+    const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+    const std::complex<double> a(1.0, 0.0);
+    const auto fast = czt(x, 4, w, a);
+    if (fast.empty()) GTEST_SKIP() << "czt rejected n=4 m=4";
+    const auto direct = czt_direct(x, 4, w, a);
+    ASSERT_EQ(fast.size(), 4u);
+    for (size_t k = 0; k < 4; ++k) {
+        EXPECT_NEAR(fast[k].real(), direct[k].real(), 1e-9) << "k=" << k;
+        EXPECT_NEAR(fast[k].imag(), direct[k].imag(), 1e-9) << "k=" << k;
+    }
+}
+
+TEST(SignalExtTest, czt_odd_n_dft_fallback_matches_direct) {
+    const std::vector<double> x{1.0, -0.4, 0.3, 0.2, -0.8};
+    const double arg_w = -0.37;
+    const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+    const std::complex<double> a(0.9, 0.15);
+    const int m = 3;
+    const auto fast = czt(x, m, w, a);
+    if (fast.empty()) GTEST_SKIP() << "czt rejected odd n=5 m=3";
+    const auto direct = czt_direct(x, m, w, a);
+    ASSERT_EQ(fast.size(), static_cast<size_t>(m));
+    for (int k = 0; k < m; ++k) {
+        EXPECT_NEAR(fast[static_cast<size_t>(k)].real(), direct[static_cast<size_t>(k)].real(), 1e-9)
+            << "k=" << k;
+        EXPECT_NEAR(fast[static_cast<size_t>(k)].imag(), direct[static_cast<size_t>(k)].imag(), 1e-9)
+            << "k=" << k;
+    }
+}
+
+TEST(SignalExtTest, czt_even_n_radix2_recursive_matches_direct) {
+    const std::vector<double> x{0.5, -1.0, 0.25, 0.0, 0.75, -0.25, 0.1, -0.4};
+    const double arg_w = -2.0 * M_PI / 8.0;
+    const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+    const std::complex<double> a(1.0, 0.0);
+    const auto fast = czt(x, 8, w, a);
+    if (fast.empty()) GTEST_SKIP() << "czt rejected n=8 m=8";
+    const auto direct = czt_direct(x, 8, w, a);
+    ASSERT_EQ(fast.size(), 8u);
+    for (size_t k = 0; k < 8; ++k) {
+        EXPECT_NEAR(fast[k].real(), direct[k].real(), 1e-9) << "k=" << k;
+        EXPECT_NEAR(fast[k].imag(), direct[k].imag(), 1e-9) << "k=" << k;
+    }
+}
+
+TEST(SignalExtTest, lowpass_highpass_single_sample_short) {
+    const std::vector<double> one{0.8};
+    const auto lp = lowpass(one, 1.0, 8.0);
+    const auto hp = highpass(one, 1.0, 8.0);
+    ASSERT_EQ(lp.size(), one.size());
+    ASSERT_EQ(hp.size(), one.size());
+    EXPECT_TRUE(std::isfinite(lp[0]));
+    EXPECT_TRUE(std::isfinite(hp[0]));
+    EXPECT_NEAR(hp[0] + lp[0], one[0], 1e-9);
+
+    const std::vector<double> two{0.5, -0.5};
+    const auto lp2 = lowpass(two, 0.5, 4.0);
+    const auto hp2 = highpass(two, 0.5, 4.0);
+    ASSERT_EQ(lp2.size(), two.size());
+    ASSERT_EQ(hp2.size(), two.size());
+    EXPECT_NEAR(hp2[0] + lp2[0], two[0], 1e-8);
+    EXPECT_NEAR(hp2[1] + lp2[1], two[1], 1e-8);
+}
+
+TEST(SignalExtTest, butterworth_bandpass_single_sample_short) {
+    const std::vector<double> one{0.3};
+    const auto bw = butterworth(one, 1.0, 8.0);
+    const auto bp = bandpass(one, 0.5, 2.0, 8.0);
+    ASSERT_EQ(bw.size(), one.size());
+    ASSERT_EQ(bp.size(), one.size());
+    EXPECT_TRUE(std::isfinite(bw[0]));
+    EXPECT_TRUE(std::isfinite(bp[0]));
+
+    const std::vector<double> two{1.0, -1.0};
+    const auto bw2 = butterworth(two, 0.4, 4.0);
+    const auto bp2 = bandpass(two, 0.2, 1.5, 4.0);
+    ASSERT_EQ(bw2.size(), two.size());
+    ASSERT_EQ(bp2.size(), two.size());
+    for (double v : bw2) EXPECT_TRUE(std::isfinite(v));
+    for (double v : bp2) EXPECT_TRUE(std::isfinite(v));
 }

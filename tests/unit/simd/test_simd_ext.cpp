@@ -51,7 +51,8 @@ TEST(SimdExtTest, add_axpy_dot_exp_map) {
 
 TEST(SimdExtTest, dispatch_info_reports_kernel) {
     const auto info = dispatch_info();
-    EXPECT_TRUE(info.active == Kernel::Scalar || info.active == Kernel::Avx2);
+    EXPECT_TRUE(info.active == Kernel::Scalar || info.active == Kernel::Avx2 ||
+                info.active == Kernel::Avx512);
 }
 
 TEST(SimdExtTest, odd_length_vectors_hit_avx2_tails) {

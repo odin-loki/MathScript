@@ -1,6 +1,7 @@
 // MathScript Linear Solver Unit Test
 
 #include <gtest/gtest.h>
+#include <string>
 #include <variant>
 #include "ms/core/matrix.hpp"
 #include "ms/core/operations.hpp"
@@ -181,4 +182,42 @@ TEST(SolveTest, cuda_copy_path_if_gpu) {
     for (size_t i = 0; i < n; ++i) {
         EXPECT_NEAR((*x)(i, 0), static_cast<double>(i + 1), 1e-8);
     }
+}
+
+TEST(SolveTest, cpu_singular_holds_singular_matrix) {
+    DMatrix A{{1, 2}, {2, 4}};
+    DMatrix b{{3}, {6}};
+    auto result = solve(A, b);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_TRUE(std::holds_alternative<SingularMatrix>(result.error()));
+}
+
+TEST(SolveTest, non_square_holds_dimension_mismatch) {
+    DMatrix A{{1, 2, 3}, {4, 5, 6}};
+    DMatrix b{{1}, {2}};
+    auto result = solve(A, b);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(result.error()));
+    const auto mismatch = std::get<DimensionMismatch>(result.error());
+    EXPECT_EQ(mismatch.got_rows, A.rows());
+    EXPECT_EQ(mismatch.got_cols, A.cols());
+}
+
+TEST(SolveTest, det_trace_row_vector_dimension_mismatch) {
+    DMatrix row{{1.0, 2.0, 3.0}};
+    const auto d = det(row);
+    ASSERT_FALSE(d.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(d.error()));
+    EXPECT_FALSE(std::holds_alternative<DomainError>(d.error()));
+    const std::string det_msg = format_error(d.error());
+    EXPECT_NE(det_msg.find("dimension mismatch"), std::string::npos);
+    EXPECT_EQ(det_msg.find("square"), std::string::npos);
+
+    const auto t = trace(row);
+    ASSERT_FALSE(t.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(t.error()));
+    EXPECT_FALSE(std::holds_alternative<DomainError>(t.error()));
+    const std::string tr_msg = format_error(t.error());
+    EXPECT_NE(tr_msg.find("dimension mismatch"), std::string::npos);
+    EXPECT_EQ(tr_msg.find("square"), std::string::npos);
 }

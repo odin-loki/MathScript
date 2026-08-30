@@ -1171,3 +1171,54 @@ TEST(PolyExtTest, zero_poly_early_returns) {
     EXPECT_TRUE(poly_roots({0.0}).empty());
     EXPECT_TRUE(poly_roots({0.0, 0.0, 0.0}).empty());
 }
+
+TEST(PolyExtTest, roots_quartic_all_real_companion_2x2) {
+    // (x-1)(x-2)(x-3)(x-4) = x^4 - 10x^3 + 35x^2 - 50x + 24
+    // Companion QR / Schur fallback 2x2 blocks have nonnegative discriminant.
+    const std::vector<double> four_real{24.0, -50.0, 35.0, -10.0, 1.0};
+    const auto r = poly_roots(four_real);
+    ASSERT_EQ(r.size(), 4u);
+    std::vector<double> reals;
+    for (const auto& z : r) {
+        EXPECT_NEAR(z.imag(), 0.0, 1e-6);
+        reals.push_back(z.real());
+    }
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], 1.0, 1e-5);
+    EXPECT_NEAR(reals[1], 2.0, 1e-5);
+    EXPECT_NEAR(reals[2], 3.0, 1e-5);
+    EXPECT_NEAR(reals[3], 4.0, 1e-5);
+
+    const std::vector<double> repeated{1.0, -4.0, 6.0, -4.0, 1.0};
+    const auto rr = poly_roots(repeated);
+    ASSERT_EQ(rr.size(), 4u);
+    for (const auto& z : rr) {
+        EXPECT_NEAR(z.real(), 1.0, 5e-3);
+        EXPECT_NEAR(z.imag(), 0.0, 5e-3);
+    }
+}
+
+TEST(PolyExtTest, sylvester_zero_P_Q_and_eval_empty) {
+    const std::vector<double> zero_p{0.0};
+    const std::vector<double> zero_q{0.0};
+    const auto S00 = poly_sylvester(zero_p, zero_q);
+    EXPECT_EQ(S00.rows(), 1u);
+    EXPECT_EQ(S00.cols(), 1u);
+
+    const std::vector<double> lin{1.0, 2.0};
+    const auto Sp0 = poly_sylvester(zero_p, lin);
+    EXPECT_GE(Sp0.rows(), 1u);
+    const auto S0q = poly_sylvester(lin, zero_q);
+    EXPECT_GE(S0q.rows(), 1u);
+
+    const std::vector<double> empty_p;
+    EXPECT_NEAR(poly_eval(empty_p, 3.0)[0], 0.0, 1e-15);
+    const std::vector<double> xs{1.0, 2.0};
+    const auto at = poly_eval_at(empty_p, std::span<const double>(xs));
+    ASSERT_EQ(at.size(), 2u);
+    EXPECT_NEAR(at[0], 0.0, 1e-15);
+    EXPECT_NEAR(at[1], 0.0, 1e-15);
+    const std::vector<double> none;
+    EXPECT_TRUE(poly_eval_at(empty_p, std::span<const double>(none)).empty());
+    EXPECT_NEAR(poly_cheb_eval(empty_p, 0.5), 0.0, 1e-15);
+}

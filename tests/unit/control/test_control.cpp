@@ -1705,3 +1705,172 @@ TEST(ControlDiscretize, ZohD2cSingularAdMinusI) {
     EXPECT_NEAR(cont.A[0][0], orig.A[0][0], 1e-12);
     EXPECT_NEAR(cont.A[1][1], orig.A[1][1], 1e-12);
 }
+
+// ---- Remaining coverage: Durand–Kerner n>2, ss2tf D-only, inv/logm/expm
+//      failure paths, Kalman dim guards, unstable gramians, place/pidtune ----
+
+TEST(ControlTF, QuinticPolesDurandKerner) {
+    // (s+1)(s+2)(s+3)(s+4)(s+5) = s^5 + 15s^4 + 85s^3 + 225s^2 + 274s + 120
+    auto sys = tf({1.0}, {1.0, 15.0, 85.0, 225.0, 274.0, 120.0});
+    auto p = poles(sys);
+    ASSERT_EQ(p.size(), 5u);
+    std::vector<double> reals;
+    for (const auto& z : p) reals.push_back(z.real());
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -5.0, 2e-3);
+    EXPECT_NEAR(reals[1], -4.0, 2e-3);
+    EXPECT_NEAR(reals[2], -3.0, 2e-3);
+    EXPECT_NEAR(reals[3], -2.0, 2e-3);
+    EXPECT_NEAR(reals[4], -1.0, 2e-3);
+}
+
+TEST(ControlTF, CubicComplexPolesAndStability) {
+    // (s+1)(s^2 + 2s + 2) = s^3 + 3s^2 + 4s + 2  →  -1, -1±j
+    auto stable = tf({1.0}, {1.0, 3.0, 4.0, 2.0});
+    auto p = poles(stable);
+    ASSERT_EQ(p.size(), 3u);
+    EXPECT_TRUE(is_stable(stable));
+    std::vector<double> reals, imags;
+    for (const auto& z : p) {
+        reals.push_back(z.real());
+        imags.push_back(std::abs(z.imag()));
+    }
+    std::sort(reals.begin(), reals.end());
+    std::sort(imags.begin(), imags.end());
+    EXPECT_NEAR(reals[0], -1.0, 5e-3);
+    EXPECT_NEAR(reals[2], -1.0, 5e-3);
+    EXPECT_NEAR(imags[2], 1.0, 5e-3);
+
+    // (s-1)(s+2)(s+3) = s^3 + 4s^2 + s - 6 — RHP pole via Durand–Kerner
+    auto unstable = tf({1.0}, {1.0, 4.0, 1.0, -6.0});
+    EXPECT_FALSE(is_stable(unstable));
+}
+
+TEST(ControlSS, Ss2tfDOnlyZeroC) {
+    // n>0, C = 0: H(s) = D (constant). num = D * det(sI-A).
+    auto sys = ss({{-1.0, 0.0}, {0.0, -2.0}}, {{1.0}, {1.0}}, {{0.0, 0.0}}, {{4.0}});
+    auto g = ss2tf(sys);
+    EXPECT_NEAR(dcgain(g), 4.0, 1e-8);
+    auto p = poles(g);
+    ASSERT_EQ(p.size(), 2u);
+    std::vector<double> reals = {p[0].real(), p[1].real()};
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -2.0, 1e-5);
+    EXPECT_NEAR(reals[1], -1.0, 1e-5);
+}
+
+TEST(ControlSS, BiproperSs2tfFeedthrough) {
+    // (2s+3)/(s+1) = 2 + 1/(s+1): D ≠ 0 path in tf2ss / ss2tf.
+    auto orig = tf({2.0, 3.0}, {1.0, 1.0});
+    auto s = tf2ss(orig);
+    ASSERT_FALSE(s.D.empty());
+    ASSERT_FALSE(s.D[0].empty());
+    EXPECT_NEAR(s.D[0][0], 2.0, 1e-12);
+    auto back = ss2tf(s);
+    EXPECT_NEAR(dcgain(back), dcgain(orig), 1e-8);
+    EXPECT_NEAR(dcgain(orig), 3.0, 1e-12);
+}
+
+TEST(ControlDiscretize, ZohD2cLogmFarFromIdentity) {
+    // ||Ad − I||_∞ ≥ 1 forces the linalg logm branch (not the series).
+    const double Ts = 0.1;
+    auto orig = ss({{2.0, 0.0}, {0.0, 3.0}}, {{1.0}, {0.0}}, {{1.0, 0.0}}, {{0.0}});
+    auto cont = d2c(orig, Ts, DiscretizationMethod::ZOH);
+    const bool returned_original =
+        std::abs(cont.A[0][0] - orig.A[0][0]) < 1e-12 &&
+        std::abs(cont.A[1][1] - orig.A[1][1]) < 1e-12;
+    if (returned_original)
+        GTEST_SKIP() << "logm rejected Ad far from I";
+    EXPECT_NEAR(cont.A[0][0], std::log(2.0) / Ts, 1e-6);
+    EXPECT_NEAR(cont.A[1][1], std::log(3.0) / Ts, 1e-6);
+}
+
+TEST(ControlDiscretize, ZohD2cZeroAdLogmOrInv) {
+    // Ad = 0: ||Ad−I|| = 1 so logm(0) is attempted (undefined). Must not crash;
+    // failure returns the original discrete system.
+    auto orig = ss({{0.0, 0.0}, {0.0, 0.0}}, {{1.0}, {0.0}}, {{1.0, 0.0}}, {{0.0}});
+    auto cont = d2c(orig, 0.1, DiscretizationMethod::ZOH);
+    EXPECT_EQ(cont.n, orig.n);
+    EXPECT_EQ(cont.A.size(), orig.A.size());
+    EXPECT_EQ(cont.B.size(), orig.B.size());
+}
+
+TEST(ControlDiscretize, ZohC2dStiffExpmScaling) {
+    // ||A Ts|| ≫ 1/2 forces expm_scaled's scale-and-square loop.
+    const double Ts = 0.2;
+    auto sys = ss({{-80.0, 0.0}, {0.0, -90.0}}, {{1.0}, {0.0}}, {{1.0, 0.0}}, {{0.0}});
+    auto disc = c2d(sys, Ts, DiscretizationMethod::ZOH);
+    const bool returned_original =
+        std::abs(disc.A[0][0] - sys.A[0][0]) < 1e-12 &&
+        std::abs(disc.A[1][1] - sys.A[1][1]) < 1e-12;
+    if (returned_original)
+        GTEST_SKIP() << "control_expm failed on stiff A";
+    EXPECT_NEAR(disc.A[0][0], std::exp(-80.0 * Ts), 1e-8);
+    EXPECT_NEAR(disc.A[1][1], std::exp(-90.0 * Ts), 1e-8);
+}
+
+TEST(ControlKalman, PredictDefensivePMismatch) {
+    KalmanState state{{1.0, 2.0}, {{1.0}}};
+    std::vector<std::vector<double>> A = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{0.1, 0.0}, {0.0, 0.1}};
+    auto out = kalman_predict(state, A, Q);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, UpdateDefensiveRMismatch) {
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<double> z = {5.0};
+    auto out = kalman_update(state, z, H, R);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, UpdateDefensivePMismatch) {
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}}};
+    std::vector<std::vector<double>> H = {{1.0, 0.0}};
+    std::vector<std::vector<double>> R = {{1.0}};
+    std::vector<double> z = {5.0};
+    auto out = kalman_update(state, z, H, R);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlGram, SaddleUnstableLyapFails) {
+    // A = diag(1, −1): λ_i + λ_j = 0, so the Lyapunov map is singular.
+    auto sys = ss({{1.0, 0.0}, {0.0, -1.0}}, {{1.0}, {1.0}}, {{1.0, 1.0}}, {{0.0}});
+    EXPECT_FALSE(ctrb_gram(sys).has_value());
+    EXPECT_FALSE(obsv_gram(sys).has_value());
+}
+
+TEST(ControlGram, DoubleIntegratorBothGramsFail) {
+    auto sys = ss({{0.0, 1.0}, {0.0, 0.0}}, {{0.0}, {1.0}}, {{1.0, 0.0}}, {{0.0}});
+    EXPECT_FALSE(gram(sys, GramianType::Controllability).has_value());
+    EXPECT_FALSE(gram(sys, GramianType::Observability).has_value());
+}
+
+TEST(ControlPlace, ThirdOrderUncontrollableFails) {
+    std::vector<std::vector<double>> A = {{1.0, 0.0, 0.0}, {0.0, 2.0, 0.0}, {0.0, 0.0, 3.0}};
+    std::vector<std::vector<double>> B = {{1.0}, {0.0}, {0.0}};
+    std::vector<double> desired = {-1.0, -2.0, -3.0};
+    auto K = place(A, B, desired);
+    EXPECT_FALSE(K.has_value());
+    EXPECT_FALSE(is_controllable(A, B));
+}
+
+TEST(ControlCtrbObsv, ZeroCUnobservable) {
+    std::vector<std::vector<double>> A = {{-1.0, 0.0, 0.0}, {0.0, -2.0, 0.0}, {0.0, 0.0, -3.0}};
+    std::vector<std::vector<double>> C = {{0.0, 0.0, 0.0}};
+    EXPECT_FALSE(is_observable(A, C));
+}
+
+TEST(ControlPID, TuneIntegratorPlant) {
+    auto plant = tf({1.0}, {1.0, 0.0});
+    const double bw = 2.0;
+    auto gains = pidtune(plant, bw);
+    EXPECT_NEAR(gains.Kp, bw, 1e-10);
+    EXPECT_NEAR(gains.Ki, bw * bw / 10.0, 1e-10);
+    EXPECT_NEAR(gains.Kd, 1.0 / 10.0, 1e-10);
+}

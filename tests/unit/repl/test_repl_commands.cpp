@@ -20957,3 +20957,30 @@ TEST(ReplCommandsTest, levenberg_marquardt_noassign) {
                           "expected levenberg_marquardt(\"r0;r1;...\", x0[, max_iter[, tol]])");
 }
 
+TEST(ReplCommandsTest, adam_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(adam("(x0-3)*(x0-3)", [0]))cmd");
+    expect_error_contains(interp, "adam()", "expected adam(\"formula\", x0[, alpha[, max_iter]])");
+}
+
+TEST(ReplCommandsTest, adadelta_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(adadelta("(x0-3)*(x0-3)", [0]))cmd");
+    expect_error_contains(interp, "adadelta()",
+                          "expected adadelta(\"formula\", x0[, lr[, max_iter]])");
+}
+
+TEST(ReplCommandsTest, rmsprop_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(rmsprop("(x0-3)*(x0-3)", [0]))cmd");
+    expect_error_contains(interp, "rmsprop()",
+                          "expected rmsprop(\"formula\", x0[, alpha[, max_iter]])");
+}
+
+TEST(ReplCommandsTest, conjugate_gradient_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(conjugate_gradient("(x0-3)*(x0-3)", [0]))cmd");
+    expect_error_contains(interp, "conjugate_gradient()",
+                          "expected conjugate_gradient(\"formula\", x0[, tol[, max_iter]])");
+}
+

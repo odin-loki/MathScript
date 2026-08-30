@@ -169,7 +169,7 @@ echo
 if [[ "${WARNINGS}" -gt 0 ]]; then
     echo "Pre-release checklist finished with ${WARNINGS} warning(s). See docs/RELEASE.md before tagging v1.0.0."
 else
-    echo "Pre-release checklist passed locally (CI still required: coverage-linux, valgrind-linux, fuzz-linux, plugin-linux, benchmark-linux; plus manual fuzz-24h.yml before v1.0.0)."
+    echo "Pre-release checklist passed locally (CI still required: coverage-linux, sanitizer-linux, fuzz-linux, plugin-linux, benchmark-linux; plus manual fuzz-24h.yml before v1.0.0)."
 fi
 
 exit 0

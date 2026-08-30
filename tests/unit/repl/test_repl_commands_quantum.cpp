@@ -5700,3 +5700,23 @@ TEST(ReplCommandsTest, quantum_schmidt_rank_assign) {
     expect_error_contains(interp, "ptr = quantum_partial_trace(rho4, missing, 2, 0)",
                           "expected numeric scalar argument");
 }
+
+TEST(ReplCommandsTest, quantum_partial_trace_noassign) {
+    Interpreter interp;
+    expect_contains(interp,
+                    "quantum_partial_trace([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0], 2, 2, 0)",
+                    "rho =");
+    expect_contains(interp,
+                    "quantum_partial_trace([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0], 2, 2, 1)",
+                    "rho =");
+    expect_error_contains(interp, "quantum_partial_trace(no_such_matrix, 2, 2, 0)",
+                          "unknown matrix");
+    expect_error_contains(
+        interp,
+        "quantum_partial_trace([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0], missing, 2, 0)",
+        "expected quantum_partial_trace(rho, d1, d2, subsystem)");
+    expect_error_contains(
+        interp,
+        "quantum_partial_trace([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0], 2, 2, 2)",
+        "expected positive integer d1, d2 and subsystem 0 or 1");
+}

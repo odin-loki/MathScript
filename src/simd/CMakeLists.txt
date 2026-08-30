@@ -3,9 +3,10 @@ target_include_directories(ms_simd PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_BI
 target_link_libraries(ms_simd PUBLIC ms_core PRIVATE xsimd)
 target_compile_features(ms_simd PUBLIC cxx_std_23)
 
-# Compile AVX2 so xsimd::batch<double> is 4-wide. MS_ENABLE_AVX512 remains a
-# preprocessor flag; compiling AVX-512 by default would SIGILL on machines
-# without the ISA (CI already passes -DMS_ENABLE_AVX512=OFF).
+# Compile AVX2 so xsimd::batch<double> is 4-wide. MS_ENABLE_AVX512 still
+# enables Kernel::Avx512 reporting and the dedicated avx512_dgemm TU.
+# Compiling this TU as AVX-512 would SIGILL on machines without the ISA
+# (CI already passes -DMS_ENABLE_AVX512=OFF).
 if(MSVC)
     target_compile_options(ms_simd PRIVATE /arch:AVX2)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

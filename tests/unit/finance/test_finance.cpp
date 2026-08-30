@@ -2,7 +2,9 @@
 #include "ms/finance/finance.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 #include <random>
+#include <variant>
 #include <vector>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -2485,4 +2487,52 @@ TEST(FinancePortfolioOpt, MaxSharpeZeroExcessReturnErrors) {
     std::vector<double> mu_rf = {0.02, 0.02, 0.02};
     auto w = max_sharpe_portfolio(kCov3, mu_rf, 0.02, 3);
     EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinanceSabr, ForwardEqualsStrikeUsesAtmExpansion) {
+    const double S = 100.0;
+    const double r = 0.05;
+    const double T = 1.0;
+    const double K = S * std::exp(r * T);
+    const double call = sabr_call(S, K, T, r, 0.20, 0.5, -0.3, 0.4);
+    const double put = sabr_put(S, K, T, r, 0.20, 0.5, -0.3, 0.4);
+    EXPECT_TRUE(std::isfinite(call));
+    EXPECT_TRUE(std::isfinite(put));
+    EXPECT_GT(call, 0.0);
+    EXPECT_GT(put, 0.0);
+    EXPECT_NEAR(call - put, S - K * std::exp(-r * T), 1e-8);
+}
+
+TEST(FinanceSabr, NearAtmTinyZSetsZOverXToOne) {
+    const double S = 100.0;
+    const double r = 0.0;
+    const double T = 1.0;
+    const double F = S * std::exp(r * T);
+    const double K = F * std::exp(1e-11);
+    const double call = sabr_call(S, K, T, r, 0.20, 0.5, -0.3, 0.01);
+    const double put = sabr_put(S, K, T, r, 0.20, 0.5, -0.3, 0.01);
+    EXPECT_TRUE(std::isfinite(call));
+    EXPECT_TRUE(std::isfinite(put));
+    EXPECT_GE(call, 0.0);
+    EXPECT_GE(put, 0.0);
+}
+
+TEST(FinanceSabr, ZeroAlphaOtmIntrinsicAndInvalidNaN) {
+    const double S = 90.0;
+    const double K = 100.0;
+    const double T = 1.0;
+    const double r = 0.05;
+    EXPECT_NEAR(sabr_call(S, K, T, r, 0.0, 0.5, -0.3, 0.4),
+                std::max(S - K * std::exp(-r * T), 0.0), 1e-12);
+    EXPECT_NEAR(sabr_put(S, K, T, r, 1e-16, 0.5, -0.3, 0.4),
+                std::max(K * std::exp(-r * T) - S, 0.0), 1e-12);
+
+    EXPECT_TRUE(std::isnan(sabr_call(0.0, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(-1.0, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 0.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, 1.0, 0.05, -0.1, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 100.0, 1.0, 0.05, 0.2, -0.1, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, -0.2)));
+    const double inf = std::numeric_limits<double>::infinity();
+    EXPECT_TRUE(std::isnan(sabr_call(inf, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
 }

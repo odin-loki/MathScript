@@ -18353,3 +18353,10 @@ TEST(ReplCommandsTest, laguerre_la_noassign) {
     expect_ok(interp, "laguerre_la(2, 1, 0.5)");
     expect_error_contains(interp, "laguerre_la(2, 1, missing)", "expected laguerre_la(n,a,x)");
 }
+
+TEST(ReplCommandsTest, special_pseudo_voigt_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_pseudo_voigt(0, 1, 0.5, 0.4)");
+    expect_error_contains(interp, "special_pseudo_voigt(0, 1, 0.5, missing)",
+                          "expected special_pseudo_voigt(x,sigma,gamma,eta)");
+}

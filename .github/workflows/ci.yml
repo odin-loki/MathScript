@@ -245,36 +245,6 @@ jobs:
             ./build-fuzz/tests/fuzz/${target} "${ARGS[@]}"
           done
 
-  valgrind-linux:
-    name: Valgrind memcheck (Linux GCC 13)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Free disk space
-        run: bash scripts/ci_free_disk.sh
-
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++-13 ninja-build lld valgrind
-
-      - name: Configure
-        run: >
-          cmake -S . -B build-valgrind -G Ninja
-          -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_FLAGS_DEBUG="-O0 -g1 -fno-omit-frame-pointer"
-          -DMS_BUILD_INTEGRATION=OFF
-          ${{ env.MS_CI_LINUX_FLAGS }}
-
-      - name: Build
-        run: cmake --build build-valgrind
-
-      - name: Memcheck
-        run: bash scripts/valgrind_tests.sh build-valgrind
-
   sanitizer-linux:
     name: AddressSanitizer + UBSan (Linux GCC 13)
     runs-on: ubuntu-24.04

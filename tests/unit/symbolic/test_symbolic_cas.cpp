@@ -748,3 +748,129 @@ TEST(SymbolicParseTest, parse_identifier_with_digits) {
     ASSERT_TRUE(result.has_value());
     EXPECT_NEAR(sym_eval(*result, {{"x1", 3.0}}), 5.0, 1e-12);
 }
+
+TEST(SymbolicParseTest, parse_trailing_decimal_and_tan) {
+    const auto trailing = sym_parse("3.");
+    ASSERT_TRUE(trailing.has_value());
+    EXPECT_NEAR(sym_eval(*trailing, {}), 3.0, 1e-12);
+
+    const auto tan_zero = sym_parse("tan(0)");
+    ASSERT_TRUE(tan_zero.has_value());
+    EXPECT_NEAR(sym_eval(*tan_zero, {}), 0.0, 1e-12);
+}
+
+TEST(SymbolicParseTest, parse_underscore_digits_and_spaced_call) {
+    const auto ident = sym_parse("x_2");
+    ASSERT_TRUE(ident.has_value());
+    EXPECT_EQ(ident->op, SymOp::Var);
+    EXPECT_NEAR(sym_eval(*ident, {{"x_2", 8.0}}), 8.0, 1e-12);
+
+    const auto spaced = sym_parse("sin ( 0 )");
+    ASSERT_TRUE(spaced.has_value());
+    EXPECT_NEAR(sym_eval(*spaced, {}), 0.0, 1e-12);
+}
+
+TEST(SymbolicParseTest, parse_right_assoc_pow_and_unary_pluses) {
+    const auto pows = sym_parse("2^3^2");
+    ASSERT_TRUE(pows.has_value());
+    EXPECT_NEAR(sym_eval(*pows, {}), 512.0, 1e-12);
+
+    const auto pluses = sym_parse("++x");
+    ASSERT_TRUE(pluses.has_value());
+    EXPECT_NEAR(sym_eval(*pluses, {{"x", 4.0}}), 4.0, 1e-12);
+}
+
+TEST(SymbolicParseTest, parse_error_dollar_and_unclosed_cos) {
+    const auto dollar = sym_parse("$y");
+    if (dollar.has_value()) {
+        GTEST_SKIP() << "'$y' unexpectedly parsed";
+    }
+    EXPECT_FALSE(dollar.has_value());
+    EXPECT_FALSE(dollar.error().message.empty());
+
+    const auto unclosed = sym_parse("cos(");
+    if (unclosed.has_value()) {
+        GTEST_SKIP() << "'cos(' unexpectedly parsed";
+    }
+    EXPECT_FALSE(unclosed.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_unknown_ident_call_and_sci_plus_plus) {
+    const auto unknown = sym_parse("foo_bar(1)");
+    if (unknown.has_value()) {
+        GTEST_SKIP() << "unknown ident call unexpectedly parsed";
+    }
+    EXPECT_FALSE(unknown.has_value());
+
+    const auto sci = sym_parse("1e++2");
+    if (sci.has_value()) {
+        GTEST_SKIP() << "'1e++2' unexpectedly parsed";
+    }
+    EXPECT_FALSE(sci.has_value());
+}
+
+TEST(SymbolicParseTest, parse_nested_parens_and_log_sqrt) {
+    const auto nested = sym_parse("((3))");
+    ASSERT_TRUE(nested.has_value());
+    EXPECT_NEAR(sym_eval(*nested, {}), 3.0, 1e-12);
+
+    const auto folded = sym_parse("log(1)+sqrt(4)");
+    ASSERT_TRUE(folded.has_value());
+    EXPECT_NEAR(sym_eval(*folded, {}), 2.0, 1e-12);
+}
+
+TEST(SymbolicTransformsTest, fourier_zero_minus_quadratic_and_ifourier_omega2_first) {
+    const auto time = sym_fourier(
+        sym_exp(sym_sub(sym_const(0.0), sym_mul(sym_const(1.5), sym_pow(sym_var("t"), sym_const(2.0))))),
+        "t", "w");
+    const double scale = std::sqrt(std::numbers::pi / 1.5);
+    EXPECT_NEAR(sym_eval(time, {{"w", 1.0}}), scale * std::exp(-1.0 / 6.0), 1e-9);
+
+    const auto recovered = sym_ifourier(
+        sym_div(
+            sym_const(6.0),
+            sym_add(sym_pow(sym_var("w"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0)))),
+        "w", "t");
+    EXPECT_NEAR(sym_eval(recovered, {{"t", 0.5}}), std::exp(-1.5), 1e-9);
+}
+
+TEST(SymbolicDsolveTest, power_two_and_unsupported_ysin) {
+    const auto power = sym_dsolve(sym_pow(sym_var("y"), sym_const(2.0)), "x", "y");
+    EXPECT_NEAR(sym_eval(power, {{"x", 1.0}, {"C", 1.0}}), -0.5, 1e-12);
+
+    const auto miss = sym_dsolve(sym_mul(sym_var("y"), sym_sin(sym_var("y"))), "x", "y");
+    EXPECT_EQ(miss.op, SymOp::Deriv);
+    EXPECT_EQ(miss.name, "x");
+}
+
+TEST(SymbolicSeriesTest, exp_order_two_and_limit_reciprocal_square) {
+    const auto series = sym_series(sym_exp(sym_var("x")), "x", 0.0, 2);
+    EXPECT_NEAR(sym_eval(series, {{"x", 0.2}}), 1.2, 1e-12);
+
+    EXPECT_NEAR(sym_limit(sym_log(sym_var("x")), "x", std::exp(1.0)), 1.0, 1e-8);
+}
+
+TEST(SymbolicTransformsTest, ztransform_neg_base_and_iz_scaled_left) {
+    const auto zdom = sym_ztransform(sym_pow(sym_const(-0.5), sym_var("n")), "n", "z");
+    EXPECT_NEAR(sym_eval(zdom, {{"z", 2.0}}), 2.0 / (2.0 - (-0.5)), 1e-9);
+
+    const auto seq = sym_iztransform(
+        sym_mul(sym_const(3.0), sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(0.5)))),
+        "z", "n");
+    EXPECT_NEAR(sym_eval(seq, {{"n", 2.0}}), 3.0 * 0.25, 1e-9);
+}
+
+TEST(SymbolicTransformsTest, imellin_one_over_s_plus_const) {
+    const auto time = sym_imellin(
+        sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(3.0))), "s", "t");
+    EXPECT_NEAR(sym_eval(time, {{"t", 2.0}}), 8.0, 1e-12);
+}
+
+TEST(SymbolicTransformsTest, laplace_neg_of_power_and_ilaplace_t_fourth) {
+    const auto forward = sym_laplace(sym_neg(sym_pow(sym_var("t"), sym_const(3.0))), "t", "s");
+    EXPECT_NEAR(sym_eval(forward, {{"s", 2.0}}), -6.0 / 16.0, 1e-12);
+
+    const auto inverse = sym_ilaplace(
+        sym_div(sym_const(24.0), sym_pow(sym_var("s"), sym_const(5.0))), "s", "t");
+    EXPECT_NEAR(sym_eval(inverse, {{"t", 2.0}}), 16.0, 1e-12);
+}

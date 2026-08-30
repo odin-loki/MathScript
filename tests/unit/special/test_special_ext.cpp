@@ -348,3 +348,27 @@ TEST(SpecialExtTest, jacobi_p_rising_factorial_underflow) {
 TEST(SpecialExtTest, whittaker_w_both_representations_fail) {
     EXPECT_TRUE(std::isnan(whittaker_w(0.0, 0.0, 80.0)));
 }
+
+TEST(SpecialExtTest, erfi_airy_gamma_overflow_underflow) {
+    EXPECT_GT(std::abs(erfi(8.0)), 1e4);
+    EXPECT_LT(std::abs(airy_ai(80.0)), 1e-200);
+    EXPECT_TRUE(std::isinf(gamma_func(200.0)));
+}
+
+TEST(SpecialExtTest, bessel_ik_origin_and_domain) {
+    EXPECT_NEAR(bessel_i(0, 0.0), 1.0, 1e-15);
+    EXPECT_NEAR(bessel_i(1, 0.0), 0.0, 1e-15);
+    EXPECT_FALSE(std::isfinite(bessel_i(3, 0.0)));
+    EXPECT_TRUE(std::isnan(bessel_i(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(bessel_k(0, 0.0)));
+    EXPECT_TRUE(std::isnan(bessel_k(-2, 1.0)));
+}
+
+TEST(SpecialExtTest, jacobi_gegenbauer_whittaker_pcf_domain) {
+    EXPECT_TRUE(std::isnan(jacobi_p(2, 0.4, 0.3, 1.5)));
+    EXPECT_TRUE(std::isnan(gegenbauer_c(2, 0.5, -1.2)));
+    EXPECT_TRUE(std::isnan(whittaker_w(0.2, 0.3, -0.5)));
+    EXPECT_TRUE(std::isnan(tricomi_u(0.5, 1.5, 0.0)));
+    const double u0 = pcf_u(-1.0, 0.0);
+    EXPECT_TRUE(std::isfinite(u0));
+}

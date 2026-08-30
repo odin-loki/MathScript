@@ -21,10 +21,22 @@ bool force_scalar() {
 }
 
 Kernel active_kernel() {
-    if (force_scalar() || !cached_isa().avx2) {
+    if (force_scalar()) {
         return Kernel::Scalar;
     }
-    return Kernel::Avx2;
+#if defined(MS_ENABLE_AVX512) && MS_ENABLE_AVX512
+    if (cached_isa().avx512f) {
+        return Kernel::Avx512;
+    }
+#endif
+    if (cached_isa().avx2) {
+        return Kernel::Avx2;
+    }
+    return Kernel::Scalar;
+}
+
+bool use_vector_kernels() {
+    return active_kernel() != Kernel::Scalar;
 }
 
 void add_scalar(std::span<const double> a, std::span<const double> b, std::span<double> out) {
@@ -287,7 +299,7 @@ std::size_t batch_width() {
 }
 
 void add(std::span<const double> a, std::span<const double> b, std::span<double> out) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         add_avx2(a, b, out);
     } else {
         add_scalar(a, b, out);
@@ -295,7 +307,7 @@ void add(std::span<const double> a, std::span<const double> b, std::span<double>
 }
 
 void sub(std::span<const double> a, std::span<const double> b, std::span<double> out) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         sub_avx2(a, b, out);
     } else {
         sub_scalar(a, b, out);
@@ -303,7 +315,7 @@ void sub(std::span<const double> a, std::span<const double> b, std::span<double>
 }
 
 void mul(std::span<const double> a, std::span<const double> b, std::span<double> out) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         mul_avx2(a, b, out);
     } else {
         mul_scalar(a, b, out);
@@ -311,7 +323,7 @@ void mul(std::span<const double> a, std::span<const double> b, std::span<double>
 }
 
 void scale(double alpha, std::span<const double> x, std::span<double> out) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         scale_avx2(alpha, x, out);
     } else {
         scale_scalar(alpha, x, out);
@@ -319,7 +331,7 @@ void scale(double alpha, std::span<const double> x, std::span<double> out) {
 }
 
 void axpy(double alpha, std::span<const double> x, std::span<double> y) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         axpy_avx2(alpha, x, y);
     } else {
         axpy_scalar(alpha, x, y);
@@ -327,7 +339,7 @@ void axpy(double alpha, std::span<const double> x, std::span<double> y) {
 }
 
 double dot(std::span<const double> a, std::span<const double> b) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         return dot_avx2(a, b);
     }
     return dot_scalar(a, b);
@@ -337,7 +349,7 @@ double sum(std::span<const double> x) {
     if (x.empty()) {
         return 0.0;
     }
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         return sum_avx2(x);
     }
     return sum_scalar(x);
@@ -347,7 +359,7 @@ double sum_squares(std::span<const double> x) {
     if (x.empty()) {
         return 0.0;
     }
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         return sum_squares_avx2(x);
     }
     return sum_squares_scalar(x);
@@ -357,14 +369,14 @@ double norm_l2(std::span<const double> x) {
     if (x.empty()) {
         return 0.0;
     }
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         return norm_l2_avx2(x);
     }
     return norm_l2_scalar(x);
 }
 
 void abs(std::span<const double> x, std::span<double> out) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         abs_avx2(x, out);
     } else {
         abs_scalar(x, out);
@@ -372,7 +384,7 @@ void abs(std::span<const double> x, std::span<double> out) {
 }
 
 void exp_map(std::span<const double> x, std::span<double> out) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         exp_map_avx2(x, out);
     } else {
         exp_map_scalar(x, out);
@@ -380,7 +392,7 @@ void exp_map(std::span<const double> x, std::span<double> out) {
 }
 
 void fill(std::span<double> out, double value) {
-    if (active_kernel() == Kernel::Avx2) {
+    if (use_vector_kernels()) {
         fill_avx2(out, value);
     } else {
         fill_scalar(out, value);

@@ -1,6 +1,7 @@
 #include "ms/fem/fem.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
+#include <variant>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -845,4 +846,42 @@ TEST(FemLagrangeBasis, p2_degree_rejected) {
     basis.degree = 2;
     EXPECT_FALSE(basis.evaluate(0.0).has_value());
     EXPECT_FALSE(basis.derivative(1.0).has_value());
+}
+
+TEST(FemLoad, remaining_empty_connectivity_errors) {
+    Mesh1D mesh1;
+    mesh1.nodes = {0.0, 1.0};
+    EXPECT_FALSE(assemble_load_1d(mesh1, [](double) { return 1.0; }).has_value());
+
+    Mesh2D mesh2;
+    mesh2.nodes = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    EXPECT_FALSE(assemble_load_2d(mesh2, [](double, double) { return 1.0; }).has_value());
+
+    Mesh3D mesh3;
+    mesh3.nodes = {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    EXPECT_FALSE(assemble_load_3d(mesh3, [](double, double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemDirichlet, rejects_f_row_count_mismatch) {
+    ColMatrix<double> K(2, 2, 0.0);
+    ColMatrix<double> f_short(1, 1, 0.0);
+    const std::vector<std::size_t> nodes{0};
+    const std::vector<double> values{1.0};
+    const auto r = apply_dirichlet(K, f_short, nodes, values);
+    ASSERT_FALSE(r.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(r.error()));
+}
+
+TEST(FemSolve, non_column_rhs_and_singular_zero_matrix) {
+    ColMatrix<double> K(2, 2, 0.0);
+    K(0, 0) = 1.0;
+    K(1, 1) = 1.0;
+    ColMatrix<double> f_wide(2, 2, 1.0);
+    EXPECT_FALSE(solve_fem(K, f_wide).has_value());
+
+    ColMatrix<double> K_zero(2, 2, 0.0);
+    ColMatrix<double> f(2, 1, 1.0);
+    const auto u = solve_fem(K_zero, f);
+    ASSERT_FALSE(u.has_value());
+    EXPECT_TRUE(std::holds_alternative<SingularMatrix>(u.error()));
 }

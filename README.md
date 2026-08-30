@@ -50,7 +50,7 @@ CPU BLAS/LAPACK kernels live in `linalg` and are declared in `include/ms/cpu/bla
 - **Version:** CMake project version **1.0.0**. The `v1.0.0` git tag is not cut; remaining gates are in [`docs/RELEASE.md`](docs/RELEASE.md).
 - **Tests:** **816** CTest suites, 100% passed on Windows MSVC Release (CUDA off, ~36 s at `-j 32`). Tests live under `tests/{unit,numerical,integration,performance}/<domain>/`. CI enforces **90%** line coverage. REPL matrix calls dispatch through a name-keyed handler registry (`src/interp/matrix_calls/<domain>/`).
 - **Benchmarks:** 28 Google Benchmark targets passed locally with `--benchmark_min_time=0.001s`. CI regression uses 10% tolerance vs `linux-gcc13.json`.
-- **CI:** Windows MSVC and Linux GCC 13; coverage; libFuzzer smoke (7 targets); Valgrind; 28-bench regression (10% tolerance); Clang plugin; vendor checksums; optional JIT and plugin jobs.
+- **CI:** Windows MSVC and Linux GCC 13; coverage; libFuzzer smoke (7 targets); AddressSanitizer + UBSan; 28-bench regression (10% tolerance); Clang plugin; vendor checksums; optional JIT and plugin jobs.
 
 ## Build
 

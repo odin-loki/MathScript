@@ -88,3 +88,16 @@ TEST(SimdVectorOpsTest, dot_matches_scalar) {
     // 1*4 + 2*5 + 3*6 = 32
     EXPECT_DOUBLE_EQ(dot(std::span<const double>{a}, std::span<const double>{b}), 32.0);
 }
+
+TEST(SimdVectorOpsTest, avx512_kernel_reported_only_when_isa_and_flag) {
+    const auto info = dispatch_info();
+    if (info.isa.avx512f) {
+#if defined(MS_ENABLE_AVX512) && MS_ENABLE_AVX512
+        EXPECT_EQ(info.active, Kernel::Avx512);
+#else
+        EXPECT_TRUE(info.active == Kernel::Avx2 || info.active == Kernel::Scalar);
+#endif
+    } else {
+        EXPECT_NE(info.active, Kernel::Avx512);
+    }
+}

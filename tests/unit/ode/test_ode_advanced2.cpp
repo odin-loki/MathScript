@@ -1463,3 +1463,46 @@ TEST(OdeAdvanced2, DaeIndex1_AlgSizeWrongAfterNewton_NotConverged) {
     const auto result = ode_dae_index1(f, g, 0.0, {0.0}, {0.0}, 1.0, 4);
     EXPECT_FALSE(result.converged);
 }
+
+TEST(OdeAdvanced2, ImplicitNewton_SingularDg_UnitStep) {
+    const auto f_y = [](double, double y) { return y; };
+    const auto be = ode_backward_euler(f_y, 0.0, 1.0, 1.0, 1);
+    ASSERT_EQ(be.t.size(), 2u);
+    EXPECT_TRUE(std::isfinite(be.y.back()));
+
+    const auto f_2y = [](double, double y) { return 2.0 * y; };
+    const auto trap = ode_trapezoidal(f_2y, 0.0, 1.0, 1.0, 1);
+    ASSERT_EQ(trap.t.size(), 2u);
+    EXPECT_TRUE(std::isfinite(trap.y.back()));
+
+    const auto f_1p5y = [](double, double y) { return 1.5 * y; };
+    const auto bdf = ode_bdf2(f_1p5y, 0.0, 1.0, 1.0, 2);
+    ASSERT_GE(bdf.t.size(), 2u);
+    EXPECT_TRUE(std::isfinite(bdf.y.back()));
+}
+
+TEST(OdeAdvanced2, BvpShooting_RMidMovesLowerBracket) {
+    const auto f = [](double, double, double) { return 0.0; };
+    const auto result = ode_bvp_shooting(f, 0.0, 1.0, 1.0, 9.0, 40);
+    ASSERT_FALSE(result.y.empty());
+    if (result.converged) {
+        EXPECT_NEAR(result.y.back(), 9.0, 1e-6);
+        EXPECT_NEAR(result.yp.front(), 8.0, 1e-5);
+    }
+}
+
+TEST(OdeAdvanced2, EulerRk4ZeroSteps_AndDdeGridInterpolate) {
+    const auto decay = [](double, double y) { return -y; };
+    const auto euler_empty = ode_euler(decay, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(euler_empty.t.empty());
+    EXPECT_TRUE(euler_empty.y.empty());
+    const auto rk4_empty = ode_rk4(decay, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(rk4_empty.t.empty());
+    EXPECT_TRUE(rk4_empty.y.empty());
+
+    const auto dde_f = [](double, double y, double yd) { return -y + yd; };
+    const auto hist = [](double) { return 1.0; };
+    const auto dde = ode_dde_fixed_step(dde_f, hist, 0.0, 2.0, 0.15, 80);
+    ASSERT_FALSE(dde.y.empty());
+    EXPECT_TRUE(std::isfinite(dde.y.back()));
+}

@@ -4106,3 +4106,14 @@ TEST(ReplCommandsTest, geo_cross2d_noassign) {
     expect_error_contains(interp, "geo_cross2d(1, 0, 0, missing)",
                           "expected geo_cross2d(x1,y1,x2,y2)");
 }
+
+TEST(ReplCommandsTest, geo_intersect_ray_sphere_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_intersect_ray_sphere(0, 0, 0, 1, 0, 0, 2, 0, 0, 0.5)", "1");
+    expect_contains(interp, "geo_intersect_ray_sphere(0, 0, 0, 1, 0, 0, 100, 100, 0, 0.01)",
+                    "0");
+    expect_error_contains(interp, "geo_intersect_ray_sphere(0, 0, 0, 1, 0, 0, 2, 0, 0)",
+                          "expected geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r)");
+    expect_error_contains(interp, "geo_intersect_ray_sphere(0, 0, 0, 1, 0, 0, 2, 0, 0, missing)",
+                          "expected numeric arguments");
+}

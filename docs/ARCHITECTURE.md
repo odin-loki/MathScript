@@ -12,7 +12,7 @@ MathsScript/
 ├── include/ms/        # Public API (installed)
 ├── src/                # Libraries and executables
 ├── tests/              # unit, numerical, integration, fuzz, compliance, performance
-├── scripts/            # coverage, Valgrind, bench, packaging, unsafe audit
+├── scripts/            # coverage, ASan helpers, bench, packaging, unsafe audit
 ├── docs/               # This file, API, user guide, waves
 ├── vendor/             # Third-party sources; CHECKSUMS.sha256
 ├── build.ps1 / build.sh
@@ -128,7 +128,7 @@ Headers mirror `src/` plus `cpu/`, `memory/`, `error/` (`Result<T>`), and `unsaf
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `MS_BUILD_TESTS` | ON | GoogleTest + CTest |
-| `MS_BUILD_INTEGRATION` | ON | Per-file integration executables (Valgrind CI turns this off) |
+| `MS_BUILD_INTEGRATION` | ON | Per-file integration executables |
 | `MS_LINK_TESTS_SHARED` | OFF | PIC `libms_bundle.so` so Debug coverage/ASan can link 800 tests without copying the static library |
 | `MS_BUILD_BENCHMARKS` | OFF | 28 Google Benchmark targets |
 | `MS_BUILD_GUI` | OFF | Qt6 IDE |
@@ -171,10 +171,9 @@ On push/PR to `main`:
 2. **build-test-linux** — GCC 13, no-exceptions syntax gate, CTest, CPack, unsafe audit
 3. **coverage-linux** — 80% line coverage minimum (90% is the v1.0.0 tag goal)
 4. **fuzz-linux** — 7 libFuzzer smokes
-5. **valgrind-linux** — memcheck (unit + numerical; skips `test_crypto`)
-6. **sanitizer-linux** — ASan/UBSan (full CTest via shared test bundle; leak detection off)
-7. **plugin-linux** — twenty compile-fail rules
-8. **jit-linux** — ORC JIT smoke
-9. **benchmark-linux** — 28 benches, 10% regression vs baseline
+5. **sanitizer-linux** — ASan/UBSan (full CTest via shared test bundle; leak detection off)
+6. **plugin-linux** — twenty compile-fail rules
+7. **jit-linux** — ORC JIT smoke
+8. **benchmark-linux** — 28 benches, 10% regression vs baseline
 
 Nightly and `fuzz-24h.yml` cover longer fuzz campaigns. Tag criteria: [`RELEASE.md`](RELEASE.md).
