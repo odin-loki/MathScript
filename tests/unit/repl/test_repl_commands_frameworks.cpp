@@ -3646,3 +3646,30 @@ TEST(ReplCommandsTest, cellai_boltzmann_cypha_31) {
     expect_ok(interp, "cf = cellai_cell_to_cypha_features(cm894, [0.1, 1, 5])");
     ASSERT_GT(interp.state().matrices.count("cf"), 0u);
 }
+
+TEST(ReplCommandsTest, gria_hamming_distance_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "gria_hamming_distance([0; 0; 1; 1], [0; 1; 1; 1])", "1");
+    expect_error_contains(interp, "gria_hamming_distance([0; 1], missing)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, izaac_vrf_verify_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "vrf = izaac_vrf_keygen()");
+    expect_ok(interp, "msg = [65, 66, 67]");
+    expect_ok(interp, "proof = izaac_vrf_prove(vrf, msg)");
+    const auto& vrf = interp.state().matrices.at("vrf");
+    std::ostringstream pub_cmd;
+    pub_cmd << "pub = [";
+    for (size_t j = 0; j < 32; ++j) {
+        if (j > 0) {
+            pub_cmd << ", ";
+        }
+        pub_cmd << vrf(1, j);
+    }
+    pub_cmd << "]";
+    expect_ok(interp, pub_cmd.str());
+    expect_contains(interp, "izaac_vrf_verify(pub, msg, proof)", "1");
+    expect_error_contains(interp, "izaac_vrf_verify(missing, msg, proof)", "unknown matrix");
+}

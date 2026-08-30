@@ -3441,3 +3441,17 @@ TEST(ReplCommandsTest, finance_bachelier_call_noassign) {
     expect_error_contains(interp, "finance_bachelier_call(100, 100, 1.5, 0.04, missing)",
                           "finance_bachelier_call");
 }
+
+TEST(ReplCommandsTest, finance_sabr_put_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "finance_sabr_put(100, 100, 1, 0.05, 0.2, 1, 0, 0.3)");
+    expect_error_contains(interp, "finance_sabr_put(100, 100, 1, 0.05, 0.2, 1, 0, missing)",
+                          "finance_sabr_put");
+}
+
+TEST(ReplCommandsTest, finance_geo_asian_put_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "finance_geo_asian_put(100, 100, 1, 0.05, 0.2, 12)");
+    expect_error_contains(interp, "finance_geo_asian_put(100, 100, 1, 0.05, 0.2, missing)",
+                          "finance_geo_asian_put");
+}

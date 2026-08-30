@@ -750,3 +750,11 @@ TEST(ComboEnum, RankCombinationRoundTrip) {
     EXPECT_EQ(v1, (std::vector<int>{0, 2}));
     EXPECT_EQ(rank_combination(v1, 4), 1u);
 }
+
+TEST(ComboEnum, OversizedListingsAreEmpty) {
+    EXPECT_TRUE(derangements(11).empty());
+    EXPECT_TRUE(all_permutations(9).empty());
+    EXPECT_TRUE(all_subsets(17).empty());
+    EXPECT_TRUE(gray_code(17).empty());
+    EXPECT_TRUE(set_partitions(9).empty());
+}

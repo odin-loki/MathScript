@@ -5503,3 +5503,11 @@ TEST(ReplCommandsTest, graph_is_strongly_connected_noassign) {
     expect_contains(interp, "graph_is_strongly_connected([0, 1, 0; 0, 0, 1; 1, 0, 0])", "1");
     expect_error_contains(interp, "graph_is_strongly_connected([1, 2])", "square");
 }
+
+TEST(ReplCommandsTest, graph_modularity_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0,1,0; 1,0,1; 0,1,0]");
+    expect_ok(interp, "C = [0, 1, -1; 2, -1, -1]");
+    expect_ok(interp, "graph_modularity(A, C)");
+    expect_error_contains(interp, "graph_modularity(A, missing)", "unknown matrix");
+}

@@ -5636,3 +5636,131 @@ TEST(ReplCommandsTest, signal_firwin_highpass_noassign) {
     expect_contains(interp, "signal_firwin_highpass(11, 0.3, 1)", "b =");
     expect_error_contains(interp, "signal_firwin_highpass(1.5, 0.3, 1)", "integer n_taps");
 }
+
+TEST(ReplCommandsTest, signal_cheby2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_cheby2(2, 40.0, 0.25, 2.0)", "ba =");
+    expect_error_contains(interp, "signal_cheby2(1.5, 40.0, 0.25, 2.0)", "integer order >= 1");
+}
+
+TEST(ReplCommandsTest, signal_cheby2_type_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_cheby2(2, 40.0, 0.25, 2.0, 1)", "ba =");
+    expect_error_contains(interp, "signal_cheby2(2, 40.0, 0.25, 2.0, 2)",
+                          "type 0 (lowpass) or 1 (highpass)");
+}
+
+TEST(ReplCommandsTest, signal_welch_psd_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0]");
+    expect_contains(interp, "signal_welch_psd(x, 8.0, 8)", "psd =");
+    expect_error_contains(interp, "signal_welch_psd(missing, 8.0, 8)", "unknown matrix");
+    expect_error_contains(interp, "signal_welch_psd(x, 8.0, 1.5)", "positive integer nperseg");
+}
+
+TEST(ReplCommandsTest, signal_savgol_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 2; 3; 4]");
+    expect_contains(interp, "signal_savgol(x, 3, 2)", "savgol =");
+    expect_error_contains(interp, "signal_savgol(missing, 3, 2)", "unknown matrix");
+    expect_error_contains(interp, "signal_savgol(x, 4, 2)", "odd positive window_length");
+}
+
+TEST(ReplCommandsTest, signal_median_filter_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [5; 1; 3; 2; 4]");
+    expect_contains(interp, "signal_median_filter(x, 3)", "filtered =");
+    expect_error_contains(interp, "signal_median_filter(missing, 3)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_upsample_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_upsample([1; 2], 3)", "upsampled =");
+    expect_error_contains(interp, "signal_upsample(missing, 3)", "unknown matrix");
+    expect_error_contains(interp, "signal_upsample([1; 2], 0)", "positive integer n");
+}
+
+TEST(ReplCommandsTest, signal_downsample_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_downsample([1; 2; 3; 4; 5; 6], 2)", "downsampled =");
+    expect_error_contains(interp, "signal_downsample(missing, 2)", "unknown matrix");
+    expect_error_contains(interp, "signal_downsample([1; 2; 3; 4], 1.5)", "positive integer n");
+}
+
+TEST(ReplCommandsTest, signal_decimate_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_decimate([1; 2; 3; 4; 5; 6], 2)", "decimated =");
+    expect_error_contains(interp, "signal_decimate(missing, 2)", "unknown matrix");
+    expect_error_contains(interp, "signal_decimate([1; 2; 3; 4], 0)", "positive integer q");
+}
+
+TEST(ReplCommandsTest, signal_interpolate_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_interpolate([1; 2], 2)", "interpolated =");
+    expect_error_contains(interp, "signal_interpolate(missing, 2)", "unknown matrix");
+    expect_error_contains(interp, "signal_interpolate([1; 2], 0)", "positive integer p");
+}
+
+TEST(ReplCommandsTest, signal_convolve_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_convolve([1;2],[0;1])", "conv =");
+    expect_error_contains(interp, "signal_convolve(missing, [0;1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_correlate_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_correlate([1;2;3],[1;0;0])", "corr =");
+    expect_error_contains(interp, "signal_correlate(missing, [1;0;0])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_sosfilt_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sos = [2, -2, 0, 2, -1, 0]");
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_contains(interp, "signal_sosfilt(sos, x)", "y =");
+    expect_error_contains(interp, "signal_sosfilt(missing, x)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_conv2_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "K = [1, 0; 0, 1]");
+    expect_contains(interp, "signal_conv2(A, K)", "C =");
+    expect_error_contains(interp, "signal_conv2(missing, K)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_filtfilt_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "b = [1, -1]");
+    expect_ok(interp, "a = [1, -0.5]");
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_contains(interp, "signal_filtfilt(b, a, x)", "y =");
+    expect_error_contains(interp, "signal_filtfilt(missing, a, x)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_filter_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "b = [1, -1]");
+    expect_ok(interp, "a = [1, -0.5]");
+    expect_ok(interp, "x = [1; 2; 3; 4; 5]");
+    expect_contains(interp, "signal_filter(b, a, x)", "y =");
+    expect_error_contains(interp, "signal_filter(missing, a, x)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, signal_spectrogram_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 0; -1; 0; 1; 0; -1; 0]");
+    expect_contains(interp, "signal_spectrogram(x, 8.0)", "S =");
+    expect_error_contains(interp, "signal_spectrogram(missing, 8.0)", "unknown matrix");
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_error_contains(interp, "signal_spectrogram(M, 8.0)", "coefficient vector");
+}
+
+TEST(ReplCommandsTest, signal_instantaneous_freq_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 0; -1; 0; 1; 0; -1; 0]");
+    expect_contains(interp, "signal_instantaneous_freq(x, 8.0)", "freq =");
+    expect_error_contains(interp, "signal_instantaneous_freq(missing, 8.0)", "unknown matrix");
+    expect_ok(interp, "M = [1, 2; 3, 4]");
+    expect_error_contains(interp, "signal_instantaneous_freq(M, 8.0)", "coefficient vector");
+}

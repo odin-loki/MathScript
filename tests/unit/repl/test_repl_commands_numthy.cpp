@@ -3466,3 +3466,15 @@ TEST(ReplCommandsTest, bigint_gcd_noassign) {
     expect_contains(interp, "bigint_gcd(\"12\", \"18\")", "6");
     expect_error_contains(interp, "bigint_gcd(12, 18)", "expected bigint_gcd");
 }
+
+TEST(ReplCommandsTest, numthy_primes_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_primes(1, 20)", "primes =");
+    expect_error_contains(interp, "numthy_primes(1, missing)", "expected numthy_primes");
+}
+
+TEST(ReplCommandsTest, bigint_fib_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "bigint_fib(10)", "55");
+    expect_error_contains(interp, "bigint_fib(-1)", "non-negative integer");
+}

@@ -4716,3 +4716,43 @@ TEST(ReplCommandsTest, poly_cheb_eval_noassign) {
     expect_contains(interp, "poly_cheb_eval([0; 1], 0.5)", "0.5");
     expect_error_contains(interp, "poly_cheb_eval(no_such_matrix, 0.5)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, poly_add_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_add([1; 2], [3; 4])", "sum =");
+    expect_error_contains(interp, "poly_add(no_such_matrix, [3; 4])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_lagrange_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "xs = [0; 1; 2]");
+    expect_ok(interp, "ys = [1; 2; 5]");
+    expect_contains(interp, "poly_lagrange(xs, ys)", "coeffs =");
+    expect_error_contains(interp, "poly_lagrange(no_such_matrix, ys)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_interp_newton_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "xs = [0; 1; 2]");
+    expect_ok(interp, "ys = [1; 2; 5]");
+    expect_contains(interp, "poly_interp_newton(xs, ys)", "coeffs =");
+    expect_error_contains(interp, "poly_interp_newton(no_such_matrix, ys)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_mul_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_mul([1; 2], [3; 4])", "prod =");
+    expect_error_contains(interp, "poly_mul(no_such_matrix, [3; 4])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_sub_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_sub([5; 3], [2; 1])", "diff =");
+    expect_error_contains(interp, "poly_sub(no_such_matrix, [2; 1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, poly_compose_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_compose([1; 1], [0; 2])", "composed =");
+    expect_error_contains(interp, "poly_compose(no_such_matrix, [0; 2])", "unknown matrix");
+}

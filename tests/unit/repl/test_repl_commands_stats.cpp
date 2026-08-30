@@ -4793,3 +4793,25 @@ TEST(ReplCommandsTest, stats_vif_noassign) {
     expect_ok(interp, "stats_vif([1, 1; 1, -1; 1, 1; 1, -1; 1, 1; 1, -1], 0)");
     expect_error_contains(interp, "stats_vif(no_such_matrix, 0)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, stats_partial_correlation_noassign) {
+    Interpreter interp;
+    expect_ok(interp,
+              "stats_partial_correlation([1; 2; 3; 4; 5; 6; 7; 8], "
+              "[2; 4; 6; 8; 10; 12; 14; 16], [1; -1; 1; -1; 1; -1; 1; -1])");
+    expect_error_contains(interp, "stats_partial_correlation(missing, [1; 2], [1; 2])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_weighted_correlation_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_weighted_correlation([1; 2; 3; 4; 5], [2; 4; 6; 8; 10], [1; 1; 1; 1; 1])");
+    expect_error_contains(interp, "stats_weighted_correlation(missing, [1; 2], [1; 1])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_variance_inflation_factor_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_variance_inflation_factor([1, 1; 1, -1; 1, 1; 1, -1; 1, 1; 1, -1], 0)");
+    expect_error_contains(interp, "stats_variance_inflation_factor(missing, 0)", "unknown matrix");
+}

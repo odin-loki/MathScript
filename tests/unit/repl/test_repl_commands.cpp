@@ -20677,3 +20677,146 @@ TEST(ReplCommandsTest, heun_t_noassign) {
     expect_error_contains(interp, "heun_t(0.1, 0.2, 0.3, 0.4, missing)", "numeric");
 }
 
+TEST(ReplCommandsTest, beta_dirichlet_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "beta_dirichlet(2)");
+    expect_error_contains(interp, "beta_dirichlet(missing)", "expected numeric s");
+}
+
+TEST(ReplCommandsTest, cuda_add_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_ok(interp, "B = [5, 6; 7, 8]");
+    expect_contains(interp, "cuda_add(A, B)", "sum =");
+    expect_error_contains(interp, "cuda_add(no_such_matrix, B)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ml_mat_mul_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "I = eye(3)");
+    expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+    expect_contains(interp, "ml_mat_mul(I, A)", "C =");
+    expect_error_contains(interp, "ml_mat_mul(no_such_matrix, A)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, graph_k_core_subgraph_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "C4 = [0, 1, 0, 1; 1, 0, 1, 0; 0, 1, 0, 1; 1, 0, 1, 0]");
+    expect_contains(interp, "graph_k_core_subgraph(C4, 2)", "subgraph =");
+    expect_error_contains(interp, "graph_k_core_subgraph(C4, 1.5)", "integer k");
+}
+
+TEST(ReplCommandsTest, fem_poisson1d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fem_poisson1d(4, 0)", "u =");
+    expect_error_contains(interp, "fem_poisson1d(missing, 0)", "expected fem_poisson1d");
+}
+
+TEST(ReplCommandsTest, fem_poisson2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fem_poisson2d(2, 2)", "u =");
+    expect_error_contains(interp, "fem_poisson2d(2, missing)", "expected fem_poisson2d");
+}
+
+TEST(ReplCommandsTest, fem_poisson3d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fem_poisson3d(2, 2, 2)", "u =");
+    expect_error_contains(interp, "fem_poisson3d(2, 2, missing)", "expected fem_poisson3d");
+}
+
+TEST(ReplCommandsTest, sym_laplace_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_laplace(\"1\", \"t\", \"s\")");
+    expect_error_contains(interp, "sym_laplace(\"1\", t, \"s\")", "expected sym_laplace");
+}
+
+TEST(ReplCommandsTest, sym_ilaplace_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ilaplace(\"1/s\", \"s\", \"t\")");
+    expect_error_contains(interp, "sym_ilaplace(\"1/s\", s, \"t\")", "expected sym_ilaplace");
+}
+
+TEST(ReplCommandsTest, sym_mellin_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_mellin(\"1\", \"t\", \"s\")");
+    expect_error_contains(interp, "sym_mellin(\"1\", t, \"s\")", "expected sym_mellin");
+}
+
+TEST(ReplCommandsTest, sym_imellin_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_imellin(\"1\", \"s\", \"t\")");
+    expect_error_contains(interp, "sym_imellin(\"1\", s, \"t\")", "expected sym_imellin");
+}
+
+TEST(ReplCommandsTest, sym_hankel_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_hankel(\"1\", \"r\", \"k\")");
+    expect_error_contains(interp, "sym_hankel(\"1\", r, \"k\")", "expected sym_hankel");
+}
+
+TEST(ReplCommandsTest, sym_ihankel_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ihankel(\"1\", \"k\", \"r\")");
+    expect_error_contains(interp, "sym_ihankel(\"1\", k, \"r\")", "expected sym_ihankel");
+}
+
+TEST(ReplCommandsTest, sym_fourier_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_fourier(\"1\", \"t\", \"w\")");
+    expect_error_contains(interp, "sym_fourier(\"1\", t, \"w\")", "expected sym_fourier");
+}
+
+TEST(ReplCommandsTest, sym_ifourier_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ifourier(\"1\", \"w\", \"t\")");
+    expect_error_contains(interp, "sym_ifourier(\"1\", w, \"t\")", "expected sym_ifourier");
+}
+
+TEST(ReplCommandsTest, sym_ztransform_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ztransform(\"1\", \"n\", \"z\")");
+    expect_error_contains(interp, "sym_ztransform(\"1\", n, \"z\")", "expected sym_ztransform");
+}
+
+TEST(ReplCommandsTest, sym_iztransform_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_iztransform(\"1\", \"z\", \"n\")");
+    expect_error_contains(interp, "sym_iztransform(\"1\", z, \"n\")", "expected sym_iztransform");
+}
+
+TEST(ReplCommandsTest, sym_dsolve_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_dsolve(\"1\", \"x\", \"y\")");
+    expect_error_contains(interp, "sym_dsolve(\"1\", x, \"y\")", "expected sym_dsolve");
+}
+
+TEST(ReplCommandsTest, sym_substitute_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_substitute(\"x+1\", \"x\", \"2\")");
+    expect_error_contains(interp, "sym_substitute(\"x+1\", x, \"2\")", "expected sym_substitute");
+}
+
+TEST(ReplCommandsTest, sym_limit_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "sym_limit(\"x+1\", \"x\", 2)", "3");
+    expect_error_contains(interp, "sym_limit(\"x+1\", x, 2)", "expected sym_limit");
+}
+
+TEST(ReplCommandsTest, sym_series_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_series(\"exp(x)\", \"x\", 0, 2)");
+    expect_error_contains(interp, "sym_series(\"exp(x)\", x, 0, 2)", "expected sym_series");
+}
+
+TEST(ReplCommandsTest, sym_simplify_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_simplify(\"x+x\")");
+    expect_error_contains(interp, "sym_simplify(x+x)", "expected");
+}
+
+TEST(ReplCommandsTest, sym_expand_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_expand(\"x+x\")");
+    expect_error_contains(interp, "sym_expand(x+x)", "expected");
+}
+

@@ -4518,3 +4518,36 @@ TEST(ReplCommandsTest, bwt_primary_index_noassign) {
     expect_ok(interp, "bwt_primary_index(B)");
     expect_error_contains(interp, "bwt_primary_index(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, bwt_decode_vec_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "B = [98; 97; 110; 97; 110; 97]");
+    expect_ok(interp, "E = bwt_encode_vec(B)");
+    expect_ok(interp, "pi = bwt_primary_index(B)");
+    expect_contains(interp, "bwt_decode_vec(E, pi)", "decoded =");
+    expect_error_contains(interp, "bwt_decode_vec(no_such_matrix, pi)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, huffman_decode_vec_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "M = [97; 98; 99; 97; 97; 98]");
+    expect_ok(interp, "E = huffman_encode_vec(M)");
+    expect_contains(interp, "huffman_decode_vec(M, E)", "decoded =");
+    expect_error_contains(interp, "huffman_decode_vec(no_such_matrix, E)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, arithmetic_decode_vec_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "M = [97; 98; 99; 97; 97; 98]");
+    expect_ok(interp, "AE = arithmetic_encode_vec(M)");
+    expect_contains(interp, "arithmetic_decode_vec(M, AE)", "decoded =");
+    expect_error_contains(interp, "arithmetic_decode_vec(no_such_matrix, AE)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ans_decode_vec_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "M = [97; 98; 99; 97; 97; 98]");
+    expect_ok(interp, "NE = ans_encode_vec(M)");
+    expect_contains(interp, "ans_decode_vec(M, NE)", "decoded =");
+    expect_error_contains(interp, "ans_decode_vec(no_such_matrix, NE)", "unknown matrix");
+}

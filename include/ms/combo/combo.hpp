@@ -6,6 +6,13 @@
 namespace ms {
 namespace combo {
 
+// Listing enumerators refuse n above these (libFuzzer combo_derangements(11) OOM).
+inline constexpr int kMaxEnumFactorialN = 8;
+inline constexpr int kMaxEnumPow2N = 16;
+inline constexpr int kMaxEnumPartitionN = 40;
+inline constexpr int kMaxEnumNecklaceN = 10;
+inline constexpr int kMaxEnumAlphabetK = 6;
+
 // --- Factorials ---
 uint64_t factorial(uint32_t n);             // n!
 uint64_t double_factorial(uint32_t n);      // n!!

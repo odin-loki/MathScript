@@ -159,19 +159,19 @@ std::vector<int> unrank_combination(int n, int k, uint64_t rank) {
 }
 
 std::vector<std::vector<int>> all_permutations(int n) {
+    if (n < 0 || n > kMaxEnumFactorialN) return {};
     std::vector<int> v(n);
     std::iota(v.begin(), v.end(), 0);
     std::vector<std::vector<int>> result;
-    if (n <= 20)
-        result.reserve(static_cast<size_t>(factorial(static_cast<uint32_t>(n))));
+    result.reserve(static_cast<size_t>(factorial(static_cast<uint32_t>(n))));
     do { result.push_back(v); } while (std::next_permutation(v.begin(), v.end()));
     return result;
 }
 
 std::vector<std::vector<int>> all_subsets(int n) {
+    if (n < 0 || n > kMaxEnumPow2N) return {};
     std::vector<std::vector<int>> result;
-    if (n >= 0 && n < 31)
-        result.reserve(static_cast<size_t>(1) << n);
+    result.reserve(static_cast<size_t>(1) << n);
     for (int mask = 0; mask < (1 << n); ++mask) {
         std::vector<int> subset;
         for (int i = 0; i < n; ++i)
@@ -194,6 +194,7 @@ static void compositions_helper(int n, int max_parts, int min_val,
 }
 
 std::vector<std::vector<int>> all_compositions(int n, int max_parts) {
+    if (n < 0 || n > kMaxEnumPow2N) return {};
     if (max_parts < 0) max_parts = n;
     std::vector<std::vector<int>> result;
     std::vector<int> current;
@@ -212,6 +213,7 @@ static void partitions_helper(int n, int max_part, std::vector<int>& current,
 }
 
 std::vector<std::vector<int>> all_partitions(int n) {
+    if (n < 0 || n > kMaxEnumPartitionN) return {};
     std::vector<std::vector<int>> result;
     std::vector<int> current;
     partitions_helper(n, n, current, result);
@@ -268,6 +270,7 @@ static void derangements_helper(int pos, std::vector<int>& perm,
 }
 
 std::vector<std::vector<int>> derangements(int n) {
+    if (n < 0 || n > kMaxEnumFactorialN) return {};
     std::vector<std::vector<int>> result;
     std::vector<int> perm(n, -1);
     std::vector<bool> used(n, false);
@@ -362,6 +365,7 @@ static void set_partitions_extend(
 }
 
 std::vector<std::vector<std::vector<int>>> set_partitions(int n) {
+    if (n < 0 || n > kMaxEnumFactorialN) return {};
     if (n == 0) return {{}};
     auto prev = set_partitions(n - 1);
     std::vector<std::vector<std::vector<int>>> result;
@@ -399,7 +403,7 @@ static void dyck_paths_helper(int n, int open, int close, std::string& current,
 }
 
 std::vector<std::string> dyck_paths(int n) {
-    if (n < 0) return {};
+    if (n < 0 || n > 10) return {};
     std::vector<std::string> result;
     std::string current;
     dyck_paths_helper(n, 0, 0, current, result);
@@ -428,7 +432,7 @@ static void motzkin_paths_helper(int n, int pos, int height, std::string& curren
 }
 
 std::vector<std::string> motzkin_paths(int n) {
-    if (n < 0) return {};
+    if (n < 0 || n > 12) return {};
     std::vector<std::string> result;
     std::string current;
     motzkin_paths_helper(n, 0, 0, current, result);
@@ -459,6 +463,7 @@ static void necklaces_odometer(std::vector<int>& v, int k) {
 
 std::vector<std::vector<int>> necklaces(int n, int k) {
     if (n < 0 || k <= 0) return {};
+    if (n > kMaxEnumNecklaceN || k > kMaxEnumAlphabetK) return {};
     if (n == 0) return {{}};
     std::vector<int> v(n, 0);
     std::vector<std::vector<int>> result;
@@ -496,6 +501,7 @@ static bool is_bracelet_representative(const std::vector<int>& v) {
 
 std::vector<std::vector<int>> bracelets(int n, int k) {
     if (n < 0 || k <= 0) return {};
+    if (n > kMaxEnumNecklaceN || k > kMaxEnumAlphabetK) return {};
     if (n == 0) return {{}};
     std::vector<int> v(n, 0);
     std::vector<std::vector<int>> result;
@@ -528,6 +534,7 @@ static bool is_aperiodic(const std::vector<int>& v) {
 
 std::vector<std::vector<int>> lyndon_words(int n, int k) {
     if (n < 0 || k <= 0) return {};
+    if (n > kMaxEnumNecklaceN || k > kMaxEnumAlphabetK) return {};
     auto reps = necklaces(n, k);
     std::vector<std::vector<int>> result;
     result.reserve(reps.size());
@@ -539,7 +546,7 @@ std::vector<std::vector<int>> lyndon_words(int n, int k) {
 }
 
 std::vector<std::vector<int>> gray_code(int n) {
-    if (n < 0) return {};
+    if (n < 0 || n > kMaxEnumPow2N) return {};
     if (n == 0) return {{}};
     int total = 1 << n;
     std::vector<std::vector<int>> result;
@@ -578,6 +585,7 @@ static void de_bruijn_helper(int t, int p, int k, int n,
 
 std::vector<int> de_bruijn_sequence(int k, int n) {
     if (k <= 0 || n <= 0) return {};
+    if (k > kMaxEnumAlphabetK || n > kMaxEnumNecklaceN) return {};
     std::vector<int> a(static_cast<std::size_t>(n) + 1, 0);
     std::size_t expected_len = 1;
     for (int i = 0; i < n; ++i) expected_len *= static_cast<std::size_t>(k);

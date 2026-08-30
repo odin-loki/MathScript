@@ -4873,3 +4873,153 @@ TEST(ReplCommandsTest, prob_rayleigh_cdf_scalar_65) {
     expect_ok(interp, "rc = prob_rayleigh_cdf(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("rc"), ms::rayleigh_cdf(1, 1), 1e-8);
 }
+
+TEST(ReplCommandsTest, prob_lognormal_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_lognormal_pdf(1, 0, 1)");
+    expect_error_contains(interp, "prob_lognormal_pdf(1, 0, missing)", "prob_lognormal_pdf");
+}
+
+TEST(ReplCommandsTest, prob_lognormal_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_lognormal_cdf(1, 0, 1)");
+    expect_error_contains(interp, "prob_lognormal_cdf(1, 0, missing)", "prob_lognormal_cdf");
+}
+
+TEST(ReplCommandsTest, prob_lognormal_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_lognormal_ppf(0.5, 0, 1)");
+    expect_error_contains(interp, "prob_lognormal_ppf(0.5, 0, missing)", "prob_lognormal_ppf");
+}
+
+TEST(ReplCommandsTest, prob_weibull_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_weibull_pdf(1, 1, 2)");
+    expect_error_contains(interp, "prob_weibull_pdf(1, 1, missing)", "prob_weibull_pdf");
+}
+
+TEST(ReplCommandsTest, prob_weibull_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_weibull_cdf(1, 1, 2)");
+    expect_error_contains(interp, "prob_weibull_cdf(1, 1, missing)", "prob_weibull_cdf");
+}
+
+TEST(ReplCommandsTest, prob_weibull_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_weibull_ppf(0.5, 1, 2)");
+    expect_error_contains(interp, "prob_weibull_ppf(0.5, 1, missing)", "prob_weibull_ppf");
+}
+
+TEST(ReplCommandsTest, prob_laplace_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_laplace_pdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_laplace_pdf(0, 0, missing)", "prob_laplace_pdf");
+}
+
+TEST(ReplCommandsTest, prob_laplace_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_laplace_ppf(0.5, 0, 1)");
+    expect_error_contains(interp, "prob_laplace_ppf(0.5, 0, missing)", "prob_laplace_ppf");
+}
+
+TEST(ReplCommandsTest, prob_logistic_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_logistic_pdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_logistic_pdf(0, 0, missing)", "prob_logistic_pdf");
+}
+
+TEST(ReplCommandsTest, prob_logistic_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_logistic_cdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_logistic_cdf(0, 0, missing)", "prob_logistic_cdf");
+}
+
+TEST(ReplCommandsTest, prob_logistic_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_logistic_ppf(0.5, 0, 1)");
+    expect_error_contains(interp, "prob_logistic_ppf(0.5, 0, missing)", "prob_logistic_ppf");
+}
+
+TEST(ReplCommandsTest, prob_gumbel_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_gumbel_pdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_gumbel_pdf(0, 0, missing)", "prob_gumbel_pdf");
+}
+
+TEST(ReplCommandsTest, prob_gumbel_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_gumbel_cdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_gumbel_cdf(0, 0, missing)", "prob_gumbel_cdf");
+}
+
+TEST(ReplCommandsTest, prob_gumbel_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_gumbel_ppf(0.5, 0, 1)");
+    expect_error_contains(interp, "prob_gumbel_ppf(0.5, 0, missing)", "prob_gumbel_ppf");
+}
+
+TEST(ReplCommandsTest, prob_cauchy_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_cauchy_pdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_cauchy_pdf(0, 0, missing)", "prob_cauchy_pdf");
+}
+
+TEST(ReplCommandsTest, prob_cauchy_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_cauchy_ppf(0.5, 0, 1)");
+    expect_error_contains(interp, "prob_cauchy_ppf(0.5, 0, missing)", "prob_cauchy_ppf");
+}
+
+TEST(ReplCommandsTest, prob_pareto_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_pareto_pdf(2, 1, 1)");
+    expect_error_contains(interp, "prob_pareto_pdf(2, 1, missing)", "prob_pareto_pdf");
+}
+
+TEST(ReplCommandsTest, prob_pareto_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_pareto_cdf(2, 1, 1)");
+    expect_error_contains(interp, "prob_pareto_cdf(2, 1, missing)", "prob_pareto_cdf");
+}
+
+TEST(ReplCommandsTest, prob_pareto_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_pareto_ppf(0.5, 1, 1)");
+    expect_error_contains(interp, "prob_pareto_ppf(0.5, 1, missing)", "prob_pareto_ppf");
+}
+
+TEST(ReplCommandsTest, prob_gamma_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_gamma_cdf(0, 2, 1)");
+    expect_error_contains(interp, "prob_gamma_cdf(0, 2, missing)", "prob_gamma_cdf");
+}
+
+TEST(ReplCommandsTest, prob_beta_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_beta_cdf(0.5, 1, 1)");
+    expect_error_contains(interp, "prob_beta_cdf(0.5, 1, missing)", "prob_beta_cdf");
+}
+
+TEST(ReplCommandsTest, prob_f_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_f_cdf(1, 5, 5)");
+    expect_error_contains(interp, "prob_f_cdf(1, 5, missing)", "prob_f_cdf");
+}
+
+TEST(ReplCommandsTest, prob_rayleigh_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_rayleigh_pdf(1, 1)");
+    expect_error_contains(interp, "prob_rayleigh_pdf(1, missing)", "prob_rayleigh_pdf");
+}
+
+TEST(ReplCommandsTest, prob_rayleigh_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_rayleigh_cdf(1, 1)");
+    expect_error_contains(interp, "prob_rayleigh_cdf(1, missing)", "prob_rayleigh_cdf");
+}
+
+TEST(ReplCommandsTest, prob_rayleigh_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_rayleigh_ppf(0.5, 1)");
+    expect_error_contains(interp, "prob_rayleigh_ppf(0.5, missing)", "prob_rayleigh_ppf");
+}

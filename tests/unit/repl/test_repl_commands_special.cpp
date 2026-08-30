@@ -17619,3 +17619,451 @@ TEST(ReplCommandsTest, heun_g_noassign) {
     expect_ok(interp, "heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.0)");
     expect_error_contains(interp, "heun_g(a, 1, 2, 3, 4, 5, 6)", "heun_g");
 }
+
+TEST(ReplCommandsTest, painleve5_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "painleve5(0.5, 0.5, -0.05, 0.01, 0.02, 0.03, 0.04)");
+    expect_error_contains(interp, "painleve5(0.5, 0.5, -0.05, 0.01, 0.02, 0.03, missing)",
+                          "painleve5");
+}
+
+TEST(ReplCommandsTest, painleve6_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "painleve6(2.5, 0.5, -0.05, 0.1, 0.2, 0.3, 0.4)");
+    expect_error_contains(interp, "painleve6(2.5, 0.5, -0.05, 0.1, 0.2, 0.3, missing)",
+                          "painleve6");
+}
+
+TEST(ReplCommandsTest, heun_c_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "heun_c(0.1, 0.2, 0.3, 0.4, 0.5, 0.2)");
+    expect_error_contains(interp, "heun_c(a, 0.2, 0.3, 0.4, 0.5, 0.2)", "heun_c");
+}
+
+TEST(ReplCommandsTest, mathieu_se_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "mathieu_se(1, 0.1, 0.5)");
+    expect_error_contains(interp, "mathieu_se(1, 0.1, missing)", "mathieu_se");
+}
+
+TEST(ReplCommandsTest, mathieu_mc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "mathieu_mc(1, 0.2, 0.3)");
+    expect_error_contains(interp, "mathieu_mc(1, 0.2, missing)", "mathieu_mc");
+}
+
+TEST(ReplCommandsTest, mathieu_ms_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "mathieu_ms(1, 0.2, 0.3)");
+    expect_error_contains(interp, "mathieu_ms(1, 0.2, missing)", "mathieu_ms");
+}
+
+TEST(ReplCommandsTest, spheroidal_lambda_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "spheroidal_lambda(1, 0, 0.1)");
+    expect_error_contains(interp, "spheroidal_lambda(1, 0, missing)", "spheroidal_lambda");
+}
+
+TEST(ReplCommandsTest, legendre_pn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "legendre_pn(2, 0, 0.5)");
+    expect_error_contains(interp, "legendre_pn(2, 0, missing)", "legendre_pn");
+}
+
+TEST(ReplCommandsTest, lerch_phi_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "lerch_phi(0.5, 2, 0.3)");
+    expect_error_contains(interp, "lerch_phi(0.5, 2, missing)", "lerch_phi");
+}
+
+TEST(ReplCommandsTest, laguerre_ln_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "laguerre_ln(2, 0, 0.5)");
+    expect_error_contains(interp, "laguerre_ln(2, 0, missing)", "laguerre_ln");
+}
+
+TEST(ReplCommandsTest, chebyshev_tn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "chebyshev_tn(3, 0, 0.5)");
+    expect_error_contains(interp, "chebyshev_tn(3, 0, missing)", "chebyshev_tn");
+}
+
+TEST(ReplCommandsTest, chebyshev_un_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "chebyshev_un(2, 0, 0.5)");
+    expect_error_contains(interp, "chebyshev_un(2, 0, missing)", "chebyshev_un");
+}
+
+TEST(ReplCommandsTest, gegenbauer_c_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gegenbauer_c(2, 1, 0.5)");
+    expect_error_contains(interp, "gegenbauer_c(2, 1, missing)", "gegenbauer_c");
+}
+
+TEST(ReplCommandsTest, jacobi_theta_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_theta(1, 0.2, 0.5)");
+    expect_error_contains(interp, "jacobi_theta(1, 0.2, missing)", "jacobi_theta");
+}
+
+TEST(ReplCommandsTest, special_beta_inc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_beta_inc(0.3, 1, 1)");
+    expect_error_contains(interp, "special_beta_inc(0.3, 1, missing)", "special_beta_inc");
+}
+
+TEST(ReplCommandsTest, special_pseudo_voigt_auto_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_pseudo_voigt_auto(0, 1, 0.5)");
+    expect_error_contains(interp, "special_pseudo_voigt_auto(0, 1, missing)",
+                          "special_pseudo_voigt_auto");
+}
+
+TEST(ReplCommandsTest, weierstrass_sigma_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "weierstrass_sigma(0.5, 1, 0)");
+    expect_error_contains(interp, "weierstrass_sigma(0.5, 1, missing)", "weierstrass_sigma");
+}
+
+TEST(ReplCommandsTest, gamma_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gamma_cdf(1, 2, 1)");
+    expect_error_contains(interp, "gamma_cdf(1, 2, missing)", "gamma_cdf");
+}
+
+TEST(ReplCommandsTest, beta_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "beta_pdf(0.5, 1, 1)");
+    expect_error_contains(interp, "beta_pdf(0.5, 1, missing)", "beta_pdf");
+}
+
+TEST(ReplCommandsTest, beta_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "beta_cdf(0.5, 1, 1)");
+    expect_error_contains(interp, "beta_cdf(0.5, 1, missing)", "beta_cdf");
+}
+
+TEST(ReplCommandsTest, f_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "f_pdf(1, 5, 5)");
+    expect_error_contains(interp, "f_pdf(1, 5, missing)", "f_pdf");
+}
+
+TEST(ReplCommandsTest, f_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "f_cdf(1, 5, 5)");
+    expect_error_contains(interp, "f_cdf(1, 5, missing)", "f_cdf");
+}
+
+TEST(ReplCommandsTest, special_bessel_y_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_bessel_y(0, 1)");
+    expect_error_contains(interp, "special_bessel_y(0, missing)", "special_bessel_y");
+}
+
+TEST(ReplCommandsTest, bessel_i_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_i(1, 1)");
+    expect_error_contains(interp, "bessel_i(1, missing)", "bessel_i");
+}
+
+TEST(ReplCommandsTest, special_bessel_i_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_bessel_i(0, 1)");
+    expect_error_contains(interp, "special_bessel_i(0, missing)", "special_bessel_i");
+}
+
+TEST(ReplCommandsTest, special_bessel_k_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_bessel_k(1, 1)");
+    expect_error_contains(interp, "special_bessel_k(1, missing)", "special_bessel_k");
+}
+
+TEST(ReplCommandsTest, chebyshev_u_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "chebyshev_u(1, 0.5)");
+    expect_error_contains(interp, "chebyshev_u(1, missing)", "chebyshev_u");
+}
+
+TEST(ReplCommandsTest, hermite_h_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hermite_h(2, 0.5)");
+    expect_error_contains(interp, "hermite_h(2, missing)", "hermite_h");
+}
+
+TEST(ReplCommandsTest, hermite_hf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hermite_hf(2, 0.5)");
+    expect_error_contains(interp, "hermite_hf(2, missing)", "hermite_hf");
+}
+
+TEST(ReplCommandsTest, laguerre_l_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "laguerre_l(1, 0.5)");
+    expect_error_contains(interp, "laguerre_l(1, missing)", "laguerre_l");
+}
+
+TEST(ReplCommandsTest, hermite_he_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hermite_he(2, 0.5)");
+    expect_error_contains(interp, "hermite_he(2, missing)", "hermite_he");
+}
+
+TEST(ReplCommandsTest, chebyshev_v_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "chebyshev_v(1, 0.5)");
+    expect_error_contains(interp, "chebyshev_v(1, missing)", "chebyshev_v");
+}
+
+TEST(ReplCommandsTest, chebyshev_w_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "chebyshev_w(1, 0.5)");
+    expect_error_contains(interp, "chebyshev_w(1, missing)", "chebyshev_w");
+}
+
+TEST(ReplCommandsTest, mathieu_a_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "mathieu_a(1, 0.1)");
+    expect_error_contains(interp, "mathieu_a(1, missing)", "mathieu_a");
+}
+
+TEST(ReplCommandsTest, mathieu_b_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "mathieu_b(1, 0)");
+    expect_error_contains(interp, "mathieu_b(1, missing)", "mathieu_b");
+}
+
+TEST(ReplCommandsTest, pcf_u_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "pcf_u(0.5, 1)");
+    expect_error_contains(interp, "pcf_u(0.5, missing)", "pcf_u");
+}
+
+TEST(ReplCommandsTest, pcf_v_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "pcf_v(0.5, 1)");
+    expect_error_contains(interp, "pcf_v(0.5, missing)", "pcf_v");
+}
+
+TEST(ReplCommandsTest, pcf_w_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "pcf_w(0.5, 1)");
+    expect_error_contains(interp, "pcf_w(0.5, missing)", "pcf_w");
+}
+
+TEST(ReplCommandsTest, sph_bessel_j_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sph_bessel_j(2, 1)");
+    expect_error_contains(interp, "sph_bessel_j(2, missing)", "sph_bessel_j");
+}
+
+TEST(ReplCommandsTest, sph_bessel_y_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "sph_bessel_y(1, 1)");
+    expect_error_contains(interp, "sph_bessel_y(1, missing)", "sph_bessel_y");
+}
+
+TEST(ReplCommandsTest, lambert_w_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "lambert_w(0, 1)");
+    expect_error_contains(interp, "lambert_w(0, missing)", "lambert_w");
+}
+
+TEST(ReplCommandsTest, special_lambert_w_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_lambert_w(-1, -0.2)");
+    expect_error_contains(interp, "special_lambert_w(-1, missing)", "special_lambert_w");
+}
+
+TEST(ReplCommandsTest, hypergeo_1f1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hypergeo_1f1(1, 0)");
+    expect_error_contains(interp, "hypergeo_1f1(1, missing)", "hypergeo_1f1");
+}
+
+TEST(ReplCommandsTest, special_pochhammer_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_pochhammer(2.5, 3)");
+    expect_error_contains(interp, "special_pochhammer(2.5, missing)", "special_pochhammer");
+}
+
+TEST(ReplCommandsTest, special_falling_factorial_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_falling_factorial(5, 2)");
+    expect_error_contains(interp, "special_falling_factorial(5, missing)",
+                          "special_falling_factorial");
+}
+
+TEST(ReplCommandsTest, spherical_kn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "spherical_kn(1, 1)");
+    expect_error_contains(interp, "spherical_kn(1, missing)", "spherical_kn");
+}
+
+TEST(ReplCommandsTest, struve_l_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "struve_l(1, 1)");
+    expect_error_contains(interp, "struve_l(1, missing)", "struve_l");
+}
+
+TEST(ReplCommandsTest, struve_k_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "struve_k(0, 1)");
+    expect_error_contains(interp, "struve_k(0, missing)", "struve_k");
+}
+
+TEST(ReplCommandsTest, anger_j_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "anger_j(1, 1)");
+    expect_error_contains(interp, "anger_j(1, missing)", "anger_j");
+}
+
+TEST(ReplCommandsTest, weber_e_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "weber_e(0, 1)");
+    expect_error_contains(interp, "weber_e(0, missing)", "weber_e");
+}
+
+TEST(ReplCommandsTest, kelvin_ker_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "kelvin_ker(0, 1)");
+    expect_error_contains(interp, "kelvin_ker(0, missing)", "kelvin_ker");
+}
+
+TEST(ReplCommandsTest, kelvin_kei_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "kelvin_kei(0, 1)");
+    expect_error_contains(interp, "kelvin_kei(0, missing)", "kelvin_kei");
+}
+
+TEST(ReplCommandsTest, jacobi_dn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_dn(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_dn(0.5, missing)", "jacobi_dn");
+}
+
+TEST(ReplCommandsTest, jacobi_am_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_am(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_am(0.5, missing)", "jacobi_am");
+}
+
+TEST(ReplCommandsTest, jacobi_sd_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_sd(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_sd(0.5, missing)", "jacobi_sd");
+}
+
+TEST(ReplCommandsTest, jacobi_dc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_dc(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_dc(0.5, missing)", "jacobi_dc");
+}
+
+TEST(ReplCommandsTest, jacobi_nd_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_nd(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_nd(0.5, missing)", "jacobi_nd");
+}
+
+TEST(ReplCommandsTest, jacobi_cd_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_cd(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_cd(0.5, missing)", "jacobi_cd");
+}
+
+TEST(ReplCommandsTest, jacobi_cs_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_cs(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_cs(0.5, missing)", "jacobi_cs");
+}
+
+TEST(ReplCommandsTest, jacobi_ns_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_ns(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_ns(0.5, missing)", "jacobi_ns");
+}
+
+TEST(ReplCommandsTest, jacobi_ds_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_ds(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_ds(0.5, missing)", "jacobi_ds");
+}
+
+TEST(ReplCommandsTest, ellip_f_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ellip_f(0.3, 0.5)");
+    expect_error_contains(interp, "ellip_f(0.3, missing)", "ellip_f");
+}
+
+TEST(ReplCommandsTest, ellip_e_inc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ellip_e_inc(0.3, 0.5)");
+    expect_error_contains(interp, "ellip_e_inc(0.3, missing)", "ellip_e_inc");
+}
+
+TEST(ReplCommandsTest, theta1_prime_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "theta1_prime(0.2, 0.3)");
+    expect_error_contains(interp, "theta1_prime(0.2, missing)", "theta1_prime");
+}
+
+TEST(ReplCommandsTest, theta2_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "theta2(0.5, 0.3)");
+    expect_error_contains(interp, "theta2(0.5, missing)", "theta2");
+}
+
+TEST(ReplCommandsTest, theta4_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "theta4(0.5, 0.3)");
+    expect_error_contains(interp, "theta4(0.5, missing)", "theta4");
+}
+
+TEST(ReplCommandsTest, debye_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "debye(1, 1)");
+    expect_error_contains(interp, "debye(1, missing)", "debye");
+}
+
+TEST(ReplCommandsTest, special_airy_aip_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_airy_aip(0)");
+    expect_error_contains(interp, "special_airy_aip(missing)", "special_airy_aip");
+}
+
+TEST(ReplCommandsTest, special_airy_bip_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_airy_bip(0)");
+    expect_error_contains(interp, "special_airy_bip(missing)", "special_airy_bip");
+}
+
+TEST(ReplCommandsTest, airy_aip_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "airy_aip(0)");
+    expect_error_contains(interp, "airy_aip(missing)", "airy_aip");
+}
+
+TEST(ReplCommandsTest, airy_bip_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "airy_bip(0)");
+    expect_error_contains(interp, "airy_bip(missing)", "airy_bip");
+}
+
+TEST(ReplCommandsTest, special_rgamma_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_rgamma(1)");
+    expect_error_contains(interp, "special_rgamma(missing)", "special_rgamma");
+}
+
+TEST(ReplCommandsTest, bernoulli_number_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bernoulli_number(2)");
+    expect_error_contains(interp, "bernoulli_number(missing)", "bernoulli_number");
+}
+
+TEST(ReplCommandsTest, euler_number_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "euler_number(4)");
+    expect_error_contains(interp, "euler_number(missing)", "euler_number");
+}

@@ -2472,3 +2472,28 @@ TEST(ReplCommandsTest, combo_rank_permutation_noassign) {
     expect_contains(interp, "combo_rank_permutation([2; 1; 0])", "5");
     expect_error_contains(interp, "combo_rank_permutation(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, combo_unrank_combination_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "combo_unrank_combination(4, 2, 0)", "comb =");
+    expect_error_contains(interp, "combo_unrank_combination(4, 2, missing)",
+                          "expected combo_unrank_combination");
+}
+
+TEST(ReplCommandsTest, combo_next_comb_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "combo_next_comb([0; 1], 4)", "comb =");
+    expect_error_contains(interp, "combo_next_comb([0; 1], 1.5)", "non-negative integer n");
+}
+
+TEST(ReplCommandsTest, combo_prev_comb_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "combo_prev_comb([0; 2], 4)", "comb =");
+    expect_error_contains(interp, "combo_prev_comb([0; 2], 1.5)", "non-negative integer n");
+}
+
+TEST(ReplCommandsTest, combo_derangements_too_large_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "combo_derangements(11)", "too large");
+    expect_error_contains(interp, "combo_all_permutations(9)", "too large");
+}

@@ -5170,3 +5170,17 @@ TEST(ReplCommandsTest, count_components_noassign) {
     expect_contains(interp, "count_components(B)", "2");
     expect_error_contains(interp, "count_components(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, medfilt2_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "M = [0,0,0,0,0; 0,0,0,0,0; 0,0,1,0,0; 0,0,0,0,0; 0,0,0,0,0]");
+    expect_contains(interp, "medfilt2(M, 3)", "filtered =");
+    expect_error_contains(interp, "medfilt2(no_such_matrix, 3)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, imgaussfilt_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "G = [0, 0.5, 1; 0.25, 0.75, 0.5; 1, 0, 0.25]");
+    expect_contains(interp, "imgaussfilt(G, 1)", "filtered =");
+    expect_error_contains(interp, "imgaussfilt(no_such_matrix, 1)", "unknown matrix");
+}

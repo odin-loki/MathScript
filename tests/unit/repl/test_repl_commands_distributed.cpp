@@ -2249,3 +2249,75 @@ TEST(ReplCommandsTest, dist_qmr_noassign) {
     expect_ok(interp, "b = [1; 2]");
     expect_contains(interp, "dist_qmr(A, b)", "x =");
 }
+
+TEST(ReplCommandsTest, bicgstab_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "bicgstab(A, b)", "x =");
+    expect_error_contains(interp, "bicgstab(no_such_matrix, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, cg_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "cg(A, b)", "x =");
+    expect_error_contains(interp, "cg(no_such_matrix, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, gmres_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "G = [3, 1; 1, 2]");
+    expect_ok(interp, "brhs = [5; 5]");
+    expect_contains(interp, "gmres(G, brhs)", "x =");
+    expect_error_contains(interp, "gmres(no_such_matrix, brhs)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, jacobi_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "jacobi(A, b)", "x =");
+    expect_error_contains(interp, "jacobi(no_such_matrix, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, qmr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "qmr(A, b)", "x =");
+    expect_error_contains(interp, "qmr(no_such_matrix, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, lsqr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "lsqr(A, b)", "x =");
+    expect_error_contains(interp, "lsqr(no_such_matrix, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, tfqmr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "tfqmr(A, b)", "x =");
+    expect_error_contains(interp, "tfqmr(no_such_matrix, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, lsmr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "lsmr(A, b)", "x =");
+    expect_error_contains(interp, "lsmr(no_such_matrix, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, minres_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [4, 1; 1, 3]");
+    expect_ok(interp, "b = [1; 2]");
+    expect_contains(interp, "minres(A, b)", "x =");
+    expect_error_contains(interp, "minres(no_such_matrix, b)", "unknown matrix");
+}

@@ -4167,7 +4167,7 @@ Result<Matrix<double>> eval_quantum_ket_superposition_matrix(const Matrix<double
 }
 
 Result<Matrix<double>> eval_quantum_ghz_state(int n_qubits) {
-    if (n_qubits < 1) {
+    if (n_qubits < 1 || n_qubits > combo::kMaxEnumPow2N) {
         return std::unexpected(
             DomainError{"quantum_ghz_state", "expected integer n_qubits >= 1"});
     }
@@ -4188,7 +4188,7 @@ Result<double> eval_geo_centroid_y(const Matrix<double>& points_m) {
 }
 
 Result<Matrix<double>> eval_quantum_w_state(int n_qubits) {
-    if (n_qubits < 1) {
+    if (n_qubits < 1 || n_qubits > combo::kMaxEnumPow2N) {
         return std::unexpected(
             DomainError{"quantum_w_state", "expected integer n_qubits >= 1"});
     }
@@ -5379,9 +5379,9 @@ Result<Matrix<double>> eval_control_bode(const Matrix<double>& num_m, const Matr
 }
 
 Result<Matrix<double>> eval_combo_all_permutations(int n) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumFactorialN) {
         return std::unexpected(
-            DomainError{"combo_all_permutations", "expected non-negative integer n"});
+            DomainError{"combo_all_permutations", "n too large (max 8)"});
     }
     const auto rows = combo::all_permutations(n);
     Matrix<double> out(rows.size(), static_cast<size_t>(n));
@@ -5558,9 +5558,9 @@ Result<double> eval_graph_radius(const Matrix<double>& adj_m) {
 }
 
 Result<Matrix<double>> eval_combo_all_subsets(int n) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumPow2N) {
         return std::unexpected(
-            DomainError{"combo_all_subsets", "expected non-negative integer n"});
+            DomainError{"combo_all_subsets", "n too large (max 16)"});
     }
     const auto rows = combo::all_subsets(n);
     Matrix<double> out(rows.size(), static_cast<size_t>(n));
@@ -6244,17 +6244,17 @@ Matrix<double> combo_enum_rows_to_matrix(const std::vector<std::vector<int>>& ro
 }
 
 Result<Matrix<double>> eval_combo_all_compositions(int n) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumPow2N) {
         return std::unexpected(
-            DomainError{"combo_all_compositions", "expected non-negative integer n"});
+            DomainError{"combo_all_compositions", "n too large (max 16)"});
     }
     return combo_enum_rows_to_matrix(combo::all_compositions(n));
 }
 
 Result<Matrix<double>> eval_combo_all_partitions(int n) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumPartitionN) {
         return std::unexpected(
-            DomainError{"combo_all_partitions", "expected non-negative integer n"});
+            DomainError{"combo_all_partitions", "n too large (max 40)"});
     }
     return combo_enum_rows_to_matrix(combo::all_partitions(n));
 }
@@ -13107,9 +13107,9 @@ Result<Matrix<double>> eval_stats_ljung_box(const Matrix<double>& x_m, int max_l
 }
 
 Result<Matrix<double>> eval_combo_derangements(int n) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumFactorialN) {
         return std::unexpected(
-            DomainError{"combo_derangements", "expected non-negative integer n"});
+            DomainError{"combo_derangements", "n too large (max 8)"});
     }
     const auto rows = combo::derangements(n);
     Matrix<double> out(rows.size(), static_cast<size_t>(n));
@@ -13122,17 +13122,17 @@ Result<Matrix<double>> eval_combo_derangements(int n) {
 }
 
 Result<Matrix<double>> eval_combo_gray_code(int n) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumPow2N) {
         return std::unexpected(
-            DomainError{"combo_gray_code", "expected non-negative integer n"});
+            DomainError{"combo_gray_code", "n too large (max 16)"});
     }
     return combo_enum_rows_to_matrix(combo::gray_code(n));
 }
 
 Result<Matrix<double>> eval_combo_dyck_paths(int n) {
-    if (n < 0) {
+    if (n < 0 || n > 10) {
         return std::unexpected(
-            DomainError{"combo_dyck_paths", "expected non-negative integer n"});
+            DomainError{"combo_dyck_paths", "n too large (max 10)"});
     }
     const auto paths = combo::dyck_paths(n);
     Matrix<double> out(paths.size(), static_cast<size_t>(2 * n));
@@ -13145,57 +13145,57 @@ Result<Matrix<double>> eval_combo_dyck_paths(int n) {
 }
 
 Result<Matrix<double>> eval_combo_necklaces(int n, int k) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumNecklaceN) {
         return std::unexpected(
-            DomainError{"combo_necklaces", "expected non-negative integer n"});
+            DomainError{"combo_necklaces", "n too large (max 10)"});
     }
-    if (k <= 0) {
+    if (k <= 0 || k > combo::kMaxEnumAlphabetK) {
         return std::unexpected(
-            DomainError{"combo_necklaces", "expected positive integer k"});
+            DomainError{"combo_necklaces", "k too large (max 6)"});
     }
     return combo_enum_rows_to_matrix(combo::necklaces(n, k));
 }
 
 Result<Matrix<double>> eval_combo_bracelets(int n, int k) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumNecklaceN) {
         return std::unexpected(
-            DomainError{"combo_bracelets", "expected non-negative integer n"});
+            DomainError{"combo_bracelets", "n too large (max 10)"});
     }
-    if (k <= 0) {
+    if (k <= 0 || k > combo::kMaxEnumAlphabetK) {
         return std::unexpected(
-            DomainError{"combo_bracelets", "expected positive integer k"});
+            DomainError{"combo_bracelets", "k too large (max 6)"});
     }
     return combo_enum_rows_to_matrix(combo::bracelets(n, k));
 }
 
 Result<Matrix<double>> eval_combo_lyndon_words(int n, int k) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumNecklaceN) {
         return std::unexpected(
-            DomainError{"combo_lyndon_words", "expected non-negative integer n"});
+            DomainError{"combo_lyndon_words", "n too large (max 10)"});
     }
-    if (k <= 0) {
+    if (k <= 0 || k > combo::kMaxEnumAlphabetK) {
         return std::unexpected(
-            DomainError{"combo_lyndon_words", "expected positive integer k"});
+            DomainError{"combo_lyndon_words", "k too large (max 6)"});
     }
     return combo_enum_rows_to_matrix(combo::lyndon_words(n, k));
 }
 
 Result<Matrix<double>> eval_combo_de_bruijn_sequence(int k, int n) {
-    if (k <= 0) {
+    if (k <= 0 || k > combo::kMaxEnumAlphabetK) {
         return std::unexpected(
-            DomainError{"combo_de_bruijn_sequence", "expected positive integer k"});
+            DomainError{"combo_de_bruijn_sequence", "k too large (max 6)"});
     }
-    if (n <= 0) {
+    if (n <= 0 || n > combo::kMaxEnumNecklaceN) {
         return std::unexpected(
-            DomainError{"combo_de_bruijn_sequence", "expected positive integer n"});
+            DomainError{"combo_de_bruijn_sequence", "n too large (max 10)"});
     }
     return int_vector_to_column(combo::de_bruijn_sequence(k, n));
 }
 
 Result<Matrix<double>> eval_combo_motzkin_paths(int n) {
-    if (n < 0) {
+    if (n < 0 || n > 12) {
         return std::unexpected(
-            DomainError{"combo_motzkin_paths", "expected non-negative integer n"});
+            DomainError{"combo_motzkin_paths", "n too large (max 12)"});
     }
     const auto paths = combo::motzkin_paths(n);
     Matrix<double> out(paths.size(), static_cast<size_t>(n));
@@ -13209,9 +13209,9 @@ Result<Matrix<double>> eval_combo_motzkin_paths(int n) {
 }
 
 Result<Matrix<double>> eval_combo_set_partitions(int n) {
-    if (n < 0) {
+    if (n < 0 || n > combo::kMaxEnumFactorialN) {
         return std::unexpected(
-            DomainError{"combo_set_partitions", "expected non-negative integer n"});
+            DomainError{"combo_set_partitions", "n too large (max 8)"});
     }
     const auto parts = combo::set_partitions(n);
     Matrix<double> out(parts.size(), static_cast<size_t>(n));

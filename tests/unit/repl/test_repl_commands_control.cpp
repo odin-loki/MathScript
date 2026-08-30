@@ -6452,3 +6452,121 @@ TEST(ReplCommandsTest, control_place_noassign) {
     expect_contains(interp, "control_place([0, 1; 0, 0], [0; 1], [-2; -3])", "K =");
     expect_error_contains(interp, "control_place(missing, [0; 1], [-2; -3])", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, control_lyap_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [-1, 0; 0, -2]");
+    expect_ok(interp, "Q = eye(2)");
+    expect_contains(interp, "control_lyap(A, Q)", "X =");
+    expect_error_contains(interp, "control_lyap(missing, Q)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_ctrb_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 1; 0, -1]");
+    expect_ok(interp, "B = [0; 1]");
+    expect_contains(interp, "control_ctrb(A, B)", "ctrb =");
+    expect_error_contains(interp, "control_ctrb(missing, B)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_obsv_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 1; 0, -1]");
+    expect_ok(interp, "C = [1, 0]");
+    expect_contains(interp, "control_obsv(A, C)", "obsv =");
+    expect_error_contains(interp, "control_obsv(missing, C)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_ctrb_gram_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [-1, 0; 0, -2]");
+    expect_ok(interp, "B = [1; 1]");
+    expect_contains(interp, "control_ctrb_gram(A, B)", "Wc =");
+    expect_error_contains(interp, "control_ctrb_gram(missing, B)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_obsv_gram_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [-1, 0; 0, -2]");
+    expect_ok(interp, "C = [1, 0]");
+    expect_contains(interp, "control_obsv_gram(A, C)", "Wo =");
+    expect_error_contains(interp, "control_obsv_gram(missing, C)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_poles_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_contains(interp, "control_poles(num, den)", "poles =");
+    expect_error_contains(interp, "control_poles(missing, den)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_zeros_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "num = [1, 2]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_contains(interp, "control_zeros(num, den)", "zeros =");
+    expect_error_contains(interp, "control_zeros(missing, den)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_step_info_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_contains(interp, "control_step_info(num, den)", "step_info =");
+    expect_error_contains(interp, "control_step_info(missing, den)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_nyquist_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_contains(interp, "control_nyquist(num, den)", "nyquist =");
+    expect_error_contains(interp, "control_nyquist(missing, den)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_lqr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 1; 0, -1]");
+    expect_ok(interp, "B = [0; 1]");
+    expect_ok(interp, "Q = eye(2)");
+    expect_ok(interp, "R = [1]");
+    expect_contains(interp, "control_lqr(A, B, Q, R)", "K =");
+    expect_error_contains(interp, "control_lqr(missing, B, Q, R)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_lqe_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [-2, 1; 0, -3]");
+    expect_ok(interp, "C = [1, 0]");
+    expect_ok(interp, "Q = eye(2)");
+    expect_ok(interp, "R = [1]");
+    expect_contains(interp, "control_lqe(A, C, Q, R)", "L =");
+    expect_error_contains(interp, "control_lqe(missing, C, Q, R)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_riccati_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [-2, 1; 0, -3]");
+    expect_ok(interp, "B = [1; 1]");
+    expect_ok(interp, "Q = eye(2)");
+    expect_ok(interp, "R = [1]");
+    expect_contains(interp, "control_riccati(A, B, Q, R)", "X =");
+    expect_error_contains(interp, "control_riccati(missing, B, Q, R)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_bode_mag_db_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_ok(interp, "control_bode_mag_db(num, den, 1)");
+    expect_error_contains(interp, "control_bode_mag_db(missing, den, 1)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_bode_phase_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "num = [1]");
+    expect_ok(interp, "den = [1, 1]");
+    expect_ok(interp, "control_bode_phase(num, den, 1)");
+    expect_error_contains(interp, "control_bode_phase(missing, den, 1)", "unknown matrix");
+}

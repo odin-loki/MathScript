@@ -772,3 +772,22 @@ TEST(ReplCommandsTest, cplx_blaschke_product_execute_no_assign) {
     expect_error_contains(interp, "cplx_blaschke_product(0.5, missing, zeros)",
                           "cplx_blaschke_product");
 }
+
+TEST(ReplCommandsTest, cplx_winding_number_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "G = [1, 0; 0, 1; -1, 0; 0, -1]");
+    expect_contains(interp, "cplx_winding_number(G, 0, 0)", "1");
+    expect_error_contains(interp, "cplx_winding_number(no_such_matrix, 0, 0)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, cplx_residue_inv_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cplx_residue_inv(1, 0)", "1");
+    expect_error_contains(interp, "cplx_residue_inv(1, missing)", "expected cplx_residue_inv");
+}
+
+TEST(ReplCommandsTest, cplx_joukowski_inv_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cplx_joukowski_inv(1, 0)");
+    expect_error_contains(interp, "cplx_joukowski_inv(1, missing)", "expected cplx_joukowski_inv");
+}

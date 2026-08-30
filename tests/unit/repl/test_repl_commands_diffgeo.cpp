@@ -142,3 +142,31 @@ TEST(ReplCommandsTest, diffgeo_presets) {
     expect_ok(interp, "gb_def = diffgeo_sphere_gauss_bonnet()");
     EXPECT_NEAR(interp.state().scalars.at("gb_def"), 4.0 * M_PI, 0.05 * 4.0 * M_PI);
 }
+
+TEST(ReplCommandsTest, diffgeo_christoffel_sphere_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "diffgeo_christoffel_sphere(0, 1, 1, 0.7853981633974483, 0.5)");
+    expect_error_contains(interp, "diffgeo_christoffel_sphere(0, 1, 1, 0.5, missing)",
+                          "expected diffgeo_christoffel_sphere");
+}
+
+TEST(ReplCommandsTest, diffgeo_mean_curvature_sphere_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "diffgeo_mean_curvature_sphere(0.3, 0.7)");
+    expect_error_contains(interp, "diffgeo_mean_curvature_sphere(0.3, missing)",
+                          "expected diffgeo_mean_curvature_sphere");
+}
+
+TEST(ReplCommandsTest, diffgeo_ricci_scalar_sphere_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "diffgeo_ricci_scalar_sphere(0.3, 1.2)", "2");
+    expect_error_contains(interp, "diffgeo_ricci_scalar_sphere(0.3, missing)",
+                          "expected diffgeo_ricci_scalar_sphere");
+}
+
+TEST(ReplCommandsTest, diffgeo_einstein_scalar_sphere_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "diffgeo_einstein_scalar_sphere(1.047197551196598, 0.523598775598299)");
+    expect_error_contains(interp, "diffgeo_einstein_scalar_sphere(1.0, missing)",
+                          "expected diffgeo_einstein_scalar_sphere");
+}

@@ -5569,3 +5569,67 @@ TEST(ReplCommandsTest, quantum_tensor_product_noassign) {
     expect_contains(interp, "quantum_tensor_product(I2, X)", "op =");
     expect_error_contains(interp, "quantum_tensor_product(missing, X)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, quantum_schmidt_number_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "psi = [1; 0; 0; 1]");
+    expect_contains(interp, "quantum_schmidt_number(psi, 2, 2)", "2");
+    expect_error_contains(interp, "quantum_schmidt_number(missing, 2, 2)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_uncertainty_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "psi = [1; 0]");
+    expect_ok(interp, "X = quantum_pauli_x()");
+    expect_ok(interp, "Z = quantum_pauli_z()");
+    expect_contains(interp, "quantum_uncertainty(psi, X, Z)", "0");
+    expect_error_contains(interp, "quantum_uncertainty(missing, X, Z)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_schrodinger_final_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "H = [0.5, 0; 0, -0.5]");
+    expect_ok(interp, "psi0 = [1; 0]");
+    expect_contains(interp, "quantum_schrodinger_final(H, psi0, 0, 0.1, 10)", "psi =");
+    expect_error_contains(interp, "quantum_schrodinger_final(missing, psi0, 0, 0.1, 10)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_time_evolution_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "H = [0, 0.5; 0.5, 0]");
+    expect_contains(interp, "quantum_time_evolution(H, 0)", "U =");
+    expect_error_contains(interp, "quantum_time_evolution(missing, 0)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_op_apply_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "X = quantum_pauli_x()");
+    expect_ok(interp, "psi = [1; 0]");
+    expect_contains(interp, "quantum_op_apply(X, psi)", "psi =");
+    expect_error_contains(interp, "quantum_op_apply(missing, psi)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_commutator_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "X = quantum_pauli_x()");
+    expect_ok(interp, "Z = quantum_pauli_z()");
+    expect_contains(interp, "quantum_commutator(X, Z)", "comm =");
+    expect_error_contains(interp, "quantum_commutator(missing, Z)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_ket_tensor_product_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "a = [1; 0]");
+    expect_ok(interp, "b = [0; 1]");
+    expect_contains(interp, "quantum_ket_tensor_product(a, b)", "tp =");
+    expect_error_contains(interp, "quantum_ket_tensor_product(missing, b)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_outer_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "a = [1; 0]");
+    expect_ok(interp, "b = [0; 1]");
+    expect_contains(interp, "quantum_outer(a, b)", "outer =");
+    expect_error_contains(interp, "quantum_outer(missing, b)", "unknown matrix");
+}

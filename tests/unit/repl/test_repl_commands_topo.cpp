@@ -2474,3 +2474,37 @@ TEST(ReplCommandsTest, topo_pairwise_distances_noassign) {
     expect_contains(interp, "topo_pairwise_distances([0, 0; 1, 0; 0, 1])", "dist");
     expect_error_contains(interp, "topo_pairwise_distances([1; 2; 3])", "Nx2");
 }
+
+TEST(ReplCommandsTest, topo_vietoris_rips_betti0_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "Dtri = [0, 1, 1; 1, 0, 1; 1, 1, 0]");
+    expect_contains(interp, "topo_vietoris_rips_betti0(Dtri, 1.1, 2)", "1");
+    expect_error_contains(interp, "topo_vietoris_rips_betti0(no_such_matrix, 1.1, 2)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, topo_bottleneck_distance_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "dgm1 = [0, 0, 2; 1, 1, 3]");
+    expect_ok(interp, "dgm2 = [0, 0.2, 2.2; 1, 1.2, 3.2]");
+    expect_ok(interp, "topo_bottleneck_distance(dgm1, dgm2, 0)");
+    expect_error_contains(interp, "topo_bottleneck_distance(no_such_matrix, dgm2, 0)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, topo_wasserstein_distance_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "dgm = [0, 0, 2; 1, 1, 3]");
+    expect_contains(interp, "topo_wasserstein_distance(dgm, dgm, 0)", "0");
+    expect_error_contains(interp, "topo_wasserstein_distance(no_such_matrix, dgm, 0)",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, topo_persistence_diagram_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "S = [0, -1; 1, -1; 0, 1]");
+    expect_ok(interp, "births = [0; 0; 1]");
+    expect_contains(interp, "topo_persistence_diagram(S, births)", "dgm =");
+    expect_error_contains(interp, "topo_persistence_diagram(no_such_matrix, births)",
+                          "unknown matrix");
+}
