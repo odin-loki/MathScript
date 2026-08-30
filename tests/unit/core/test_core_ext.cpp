@@ -336,3 +336,80 @@ TEST(CoreExtTest, sym_eval_remaining_unaries_and_pow) {
     EXPECT_DOUBLE_EQ(Sym("sin()").eval(), 0.0);
     EXPECT_DOUBLE_EQ(Sym("tanh(").eval(), 0.0);
 }
+
+TEST(CoreExtTest, sym_eval_empty_paren_dot_and_leftover) {
+    EXPECT_DOUBLE_EQ(Sym("()").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym(".").eval(), 0.0);
+    EXPECT_NEAR(Sym("1.").eval(), 1.0, 1e-12);
+    EXPECT_DOUBLE_EQ(Sym("1$").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("2)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("*2").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("tanh()").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("sqrt()").eval(), 0.0);
+}
+
+TEST(CoreExtTest, sym_eval_func_name_as_var_and_bound_arg) {
+    const std::map<std::string, double> env_sin{{"sin", 3.0}};
+    EXPECT_DOUBLE_EQ(Sym("sin").eval(env_sin), 3.0);
+    EXPECT_DOUBLE_EQ(Sym("sin").eval(), 0.0);
+    const std::map<std::string, double> env_tanh{{"tanh", 4.0}};
+    EXPECT_DOUBLE_EQ(Sym("tanh").eval(env_tanh), 4.0);
+    const std::map<std::string, double> env_x{{"x", 0.0}};
+    EXPECT_NEAR(Sym("sin(x)").eval(env_x), 0.0, 1e-12);
+    EXPECT_NEAR(Sym("tanh(x)").eval(env_x), 0.0, 1e-12);
+    const std::map<std::string, double> env_x0{{"x0", 5.0}};
+    EXPECT_DOUBLE_EQ(Sym("x0").eval(env_x0), 5.0);
+    EXPECT_DOUBLE_EQ(Sym("_").eval(), 0.0);
+}
+
+TEST(CoreExtTest, sym_eval_assoc_and_nested_implemented) {
+    EXPECT_DOUBLE_EQ(Sym("1+2*3-4/2").eval(), 5.0);
+    EXPECT_NEAR(Sym("1/2/2").eval(), 0.25, 1e-12);
+    EXPECT_DOUBLE_EQ(Sym("-(1+2)").eval(), -3.0);
+    EXPECT_DOUBLE_EQ(Sym("1E2").eval(), 100.0);
+    EXPECT_NEAR(Sym("tanh(sin(0))").eval(), 0.0, 1e-12);
+    EXPECT_NEAR(Sym("exp(log(2))").eval(), 2.0, 1e-12);
+}
+
+TEST(CoreExtTest, sym_empty_wrap_compound_mul_div_sub) {
+    Sym empty("");
+    empty -= Sym(1.0);
+    EXPECT_NEAR(empty.eval(), -1.0, 1e-12);
+    Sym e2("");
+    e2 *= Sym(3.0);
+    EXPECT_NEAR(e2.eval(), 0.0, 1e-12);
+    Sym e3("");
+    e3 /= Sym(2.0);
+    EXPECT_NEAR(e3.eval(), 0.0, 1e-12);
+}
+
+TEST(CoreExtTest, sparse_add_duplicate_coo_and_col_mismatch) {
+    Sparse<double> a(2, 2, {0, 0}, {0, 0}, {1.0, 2.0});
+    Sparse<double> z(2, 2);
+    const auto summed = sparse_add(a, z);
+    EXPECT_EQ(summed.rows(), 2u);
+    EXPECT_EQ(summed.cols(), 2u);
+    EXPECT_EQ(summed.nnz(), 1u);
+    const auto dense = summed.to_dense();
+    EXPECT_DOUBLE_EQ(dense(0, 0), 3.0);
+
+    Sparse<double> wide(2, 3);
+    const auto mismatch = sparse_add(a, wide);
+    EXPECT_EQ(mismatch.rows(), 0u);
+    EXPECT_EQ(mismatch.cols(), 0u);
+}
+
+TEST(CoreExtTest, sparse_add_float_and_empty_spmv) {
+    Sparse<float> fa(2, 2, {0}, {0}, {1.5f});
+    Sparse<float> fb(2, 2, {0}, {0}, {2.5f});
+    const auto fc = sparse_add(fa, fb);
+    EXPECT_EQ(fc.nnz(), 1u);
+    const auto fd = fc.to_dense();
+    EXPECT_NEAR(static_cast<double>(fd(0, 0)), 4.0, 1e-6);
+
+    Sparse<double> empty(0, 0);
+    ColMatrix<double> x(0, 1);
+    const auto y = empty.spmv(x);
+    EXPECT_EQ(y.rows(), 0u);
+    EXPECT_EQ(empty.to_dense().rows(), 0u);
+}

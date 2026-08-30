@@ -18477,3 +18477,56 @@ TEST(ReplCommandsTest, bessel_zero_jnu_bad_n_scalar_assign) {
     expect_error_contains(interp, "s = bessel_zero_jnu(0, 0)",
                           "expected non-negative integer nu and positive integer n");
 }
+
+TEST(ReplCommandsTest, chebyshev_u_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = chebyshev_u(-1, 0.5)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, laguerre_l_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = laguerre_l(-1, 0.5)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, legendre_q_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = legendre_q(-1, 0.5)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, hermite_he_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = hermite_he(-1, 0.5)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, chebyshev_w_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = chebyshev_w(-1, 0.5)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, sph_bessel_y_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = sph_bessel_y(-1, 1)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, spherical_in_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = spherical_in(-1, 1)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, spherical_jn_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = spherical_jn(-1, 1)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, spherical_kn_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = spherical_kn(-1, 1)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, spherical_yn_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = spherical_yn(-1, 1)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, bessel_y_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_y(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, bessel_i_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_i(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, bessel_k_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_k(-1, 1)", "expected non-negative integer nu");
+}

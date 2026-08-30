@@ -1023,3 +1023,101 @@ TEST(NumthyMult, LiouvilleSquaresAndZero) {
         EXPECT_EQ(liouville(n), -1) << "n=" << n;
     }
 }
+
+TEST(NumthyPrimality, EvenAndDivisibleByThree) {
+    EXPECT_FALSE(isprime(6));
+    EXPECT_FALSE(isprime(9));
+    EXPECT_FALSE(isprime(15));
+    EXPECT_FALSE(isprime(27));
+    EXPECT_FALSE(isprime(49));
+    EXPECT_FALSE(isprime(121));
+    EXPECT_FALSE(isprime(561));
+    EXPECT_FALSE(isprime(1105));
+}
+
+TEST(NumthyPrimality, NextFromPrimeAndEven) {
+    EXPECT_EQ(nextprime(2), 3u);
+    EXPECT_EQ(nextprime(12), 13u);
+    EXPECT_EQ(nextprime(13), 17u);
+    EXPECT_EQ(nextprime(96), 97u);
+}
+
+TEST(NumthyPrimality, PrevFromOddAboveThree) {
+    EXPECT_EQ(prevprime(17), 13u);
+    EXPECT_EQ(prevprime(13), 11u);
+    EXPECT_EQ(prevprime(97), 89u);
+}
+
+TEST(NumthySieve, RangeStartingAtTwo) {
+    EXPECT_EQ(primes(2, 10), (std::vector<uint64_t>{2, 3, 5, 7}));
+    EXPECT_EQ(primes(3, 11), (std::vector<uint64_t>{3, 5, 7, 11}));
+}
+
+TEST(NumthyFactor, OddSemiprimeAboveSmallTrial) {
+    EXPECT_EQ(factor(323), (std::vector<uint64_t>{17, 19}));
+    EXPECT_EQ(factor(667), (std::vector<uint64_t>{23, 29}));
+    EXPECT_EQ(factor(8051), (std::vector<uint64_t>{83, 97}));
+}
+
+TEST(NumthyFactor, ThreeDistinctPrimesAndSquare) {
+    EXPECT_EQ(factor(105), (std::vector<uint64_t>{3, 5, 7}));
+    EXPECT_EQ(factor(49), (std::vector<uint64_t>{7, 7}));
+    auto fe = factor_exp(1764);
+    uint64_t prod = 1;
+    for (const auto& pe : fe) {
+        for (int i = 0; i < pe.second; ++i)
+            prod *= pe.first;
+    }
+    EXPECT_EQ(prod, 1764u);
+}
+
+TEST(NumthyMult, MobiusSquareFreeParity) {
+    EXPECT_EQ(mobius(7), -1);
+    EXPECT_EQ(mobius(11), -1);
+    EXPECT_EQ(mobius(105), -1);
+    EXPECT_EQ(mobius(210), 1);
+    EXPECT_EQ(mobius(2310), -1);
+}
+
+TEST(NumthyMult, MobiusPrimePowersAreZero) {
+    EXPECT_EQ(mobius(8), 0);
+    EXPECT_EQ(mobius(9), 0);
+    EXPECT_EQ(mobius(12), 0);
+    EXPECT_EQ(mobius(16), 0);
+    EXPECT_EQ(mobius(36), 0);
+    EXPECT_EQ(mobius(18), 0);
+}
+
+TEST(NumthyPartition, MoreKnownValues) {
+    EXPECT_EQ(partition(2), 2u);
+    EXPECT_EQ(partition(3), 3u);
+    EXPECT_EQ(partition(6), 11u);
+    EXPECT_EQ(partition(7), 15u);
+    EXPECT_EQ(partition(8), 22u);
+    EXPECT_EQ(partition(9), 30u);
+    EXPECT_EQ(partition(11), 56u);
+    EXPECT_EQ(partition(25), 1958u);
+    EXPECT_EQ(partition(30), 5604u);
+}
+
+TEST(NumthyPell, AdditionalFundamentals) {
+    struct Case { uint64_t D; uint64_t x; uint64_t y; };
+    const std::vector<Case> cases = {
+        {6, 5, 2}, {10, 19, 6}, {11, 10, 3},
+        {14, 15, 4}, {17, 33, 8}, {21, 55, 12},
+    };
+    for (const auto& c : cases) {
+        auto sol = pell_solve(c.D);
+        ASSERT_TRUE(sol.has_value()) << "D=" << c.D;
+        EXPECT_EQ(sol->first, c.x) << "D=" << c.D;
+        EXPECT_EQ(sol->second, c.y) << "D=" << c.D;
+        EXPECT_EQ(sol->first * sol->first - c.D * sol->second * sol->second, 1u)
+            << "D=" << c.D;
+    }
+}
+
+TEST(NumthyPell, MorePerfectSquaresAreErrors) {
+    EXPECT_FALSE(pell_solve(25).has_value());
+    EXPECT_FALSE(pell_solve(36).has_value());
+    EXPECT_FALSE(pell_solve(49).has_value());
+}

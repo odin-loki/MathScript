@@ -920,3 +920,93 @@ TEST(ComboEnum, FactorialAndPow2CapsRefuseOversized) {
     EXPECT_TRUE(oversize_subsets.empty());
     EXPECT_TRUE(oversize_gray.empty());
 }
+
+TEST(ComboSpecial, StirlingIdentities) {
+    for (uint32_t n = 1; n <= 8; ++n) {
+        EXPECT_EQ(stirling1(n, n), 1u) << "n=" << n;
+        EXPECT_EQ(stirling2(n, n), 1u) << "n=" << n;
+        EXPECT_EQ(stirling2(n, 1), 1u) << "n=" << n;
+        EXPECT_EQ(stirling1(n, 1), factorial(n - 1)) << "n=" << n;
+    }
+    EXPECT_EQ(stirling2(5, 2), 15u);
+    EXPECT_EQ(stirling2(6, 2), 31u);
+    EXPECT_EQ(stirling1(5, 2), 50u);
+    EXPECT_EQ(stirling1(6, 2), 274u);
+}
+
+TEST(ComboSpecial, BellEqualsSumStirling2) {
+    for (uint32_t n = 0; n <= 8; ++n) {
+        uint64_t sum = 0;
+        for (uint32_t k = 0; k <= n; ++k)
+            sum += stirling2(n, k);
+        EXPECT_EQ(sum, bell_num(n)) << "n=" << n;
+    }
+    EXPECT_EQ(bell_num(6), 203u);
+    EXPECT_EQ(bell_num(7), 877u);
+    EXPECT_EQ(bell_num(8), 4140u);
+}
+
+TEST(ComboSpecial, CatalanBinomialIdentity) {
+    for (uint32_t n = 0; n <= 10; ++n) {
+        EXPECT_EQ(catalan_num(n), binomial(2 * n, n) / (n + 1)) << "n=" << n;
+    }
+    EXPECT_EQ(catalan_num(6), 132u);
+    EXPECT_EQ(catalan_num(7), 429u);
+    EXPECT_EQ(catalan_num(8), 1430u);
+    EXPECT_EQ(catalan_num(9), 4862u);
+    EXPECT_EQ(catalan_num(10), 16796u);
+}
+
+TEST(ComboCounting, BinomialEdgesAndSymmetry) {
+    EXPECT_EQ(binomial(7, 0), 1u);
+    EXPECT_EQ(binomial(7, 7), 1u);
+    EXPECT_EQ(binomial(10, 8), binomial(10, 2));
+    EXPECT_EQ(binomial(12, 9), binomial(12, 3));
+    EXPECT_EQ(binomial(12, 9), 220u);
+    EXPECT_EQ(combinations(8, 0), 1u);
+    EXPECT_EQ(combinations(8, 8), 1u);
+    EXPECT_EQ(combinations_with_rep(5, 0), 1u);
+    EXPECT_EQ(combinations_with_rep(1, 4), 1u);
+}
+
+TEST(ComboEnum, ListingCapsAtLimitAreNonempty) {
+    EXPECT_EQ(all_permutations(kMaxEnumFactorialN).size(), factorial(kMaxEnumFactorialN));
+    EXPECT_EQ(derangements(kMaxEnumFactorialN).size(), subfactorial(kMaxEnumFactorialN));
+    EXPECT_EQ(set_partitions(kMaxEnumFactorialN).size(), bell_num(kMaxEnumFactorialN));
+    EXPECT_EQ(all_subsets(kMaxEnumPow2N).size(), static_cast<std::size_t>(1) << kMaxEnumPow2N);
+    EXPECT_EQ(gray_code(kMaxEnumPow2N).size(), static_cast<std::size_t>(1) << kMaxEnumPow2N);
+    EXPECT_EQ(all_partitions(kMaxEnumPartitionN).size(), 37338u);
+    EXPECT_EQ(all_compositions(kMaxEnumPow2N).size(), static_cast<std::size_t>(1) << (kMaxEnumPow2N - 1));
+}
+
+TEST(ComboEnum, ZeroLengthNecklaceBraceletLyndon) {
+    EXPECT_EQ(necklaces(0, 3), (std::vector<std::vector<int>>{{}}));
+    EXPECT_EQ(bracelets(0, 4), (std::vector<std::vector<int>>{{}}));
+    EXPECT_EQ(lyndon_words(0, 3), (std::vector<std::vector<int>>{{}}));
+    EXPECT_TRUE(bracelets(-1, 2).empty());
+    EXPECT_TRUE(bracelets(3, 0).empty());
+    EXPECT_TRUE(lyndon_words(0, 0).empty());
+}
+
+TEST(ComboEnum, PrevCombFillsTailAfterInteriorDecrement) {
+    std::vector<int> v = {0, 2, 3};
+    EXPECT_TRUE(prev_comb(v, 4));
+    EXPECT_EQ(v, (std::vector<int>{0, 1, 3}));
+    std::vector<int> last = {1, 2, 3};
+    EXPECT_TRUE(prev_comb(last, 4));
+    EXPECT_EQ(last, (std::vector<int>{0, 2, 3}));
+}
+
+TEST(ComboEnum, UnrankCombinationSingletonAndFull) {
+    EXPECT_EQ(unrank_combination(5, 1, 2), (std::vector<int>{2}));
+    EXPECT_EQ(unrank_combination(4, 4, 0), (std::vector<int>{0, 1, 2, 3}));
+    EXPECT_EQ(rank_combination(std::vector<int>{2}, 5), 2u);
+    EXPECT_EQ(rank_combination(std::vector<int>{0, 1, 2, 3}, 4), 0u);
+}
+
+TEST(ComboDeBruijnSequence, AtBinaryNecklaceCap) {
+    auto at_n = de_bruijn_sequence(2, kMaxEnumNecklaceN);
+    EXPECT_EQ(at_n.size(), 1024u);
+    EXPECT_TRUE(de_bruijn_sequence(0, kMaxEnumNecklaceN).empty());
+    EXPECT_TRUE(de_bruijn_sequence(kMaxEnumAlphabetK, 0).empty());
+}

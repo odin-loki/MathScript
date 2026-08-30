@@ -444,3 +444,58 @@ TEST(DistributedAdv, Iterative_1x1_JacobiCgGmres) {
     EXPECT_NEAR((*gmres)(0, 0), 2.0, 1e-8);
     finalize(ctx);
 }
+
+TEST(DistributedAdv, Iterative_1x1_Bicgstab) {
+    auto ctx = init(0, nullptr);
+    const ColMatrix<double> A{{4.0}};
+    const ColMatrix<double> b{{8.0}};
+    const auto dA = scatter(A, ctx).value();
+    const auto db = scatter(b, ctx).value();
+    const auto xb = dist_bicgstab(dA, db, ctx);
+    ASSERT_TRUE(xb.has_value());
+    ASSERT_EQ(xb->rows(), 1u);
+    EXPECT_NEAR((*xb)(0, 0), 2.0, 1e-8);
+    finalize(ctx);
+}
+
+TEST(DistributedAdv, Iterative_EmptySquare_Bicgstab) {
+    auto ctx = init(0, nullptr);
+    const ColMatrix<double> A(0, 0);
+    const ColMatrix<double> b(0, 1);
+    const auto dA = scatter(A, ctx).value();
+    const auto db = scatter(b, ctx).value();
+    const auto xb = dist_bicgstab(dA, db, ctx);
+    if (xb.has_value()) {
+        EXPECT_EQ(xb->rows(), 0u);
+    }
+    finalize(ctx);
+}
+
+TEST(DistributedAdv, Iterative_EmptySquare_RhsColsNotOne_JacobiGmresBicgstab) {
+    MPIContext ctx;
+    const auto A = dims_only(0, 0);
+    const auto b = dims_only(0, 0);
+    EXPECT_FALSE(dist_jacobi(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_gmres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_bicgstab(A, b, ctx).has_value());
+}
+
+TEST(DistributedAdv, Iterative_ZeroByOne_RowMismatch) {
+    MPIContext ctx;
+    const auto A = dims_only(0, 0);
+    const auto b = dims_only(1, 1);
+    EXPECT_FALSE(dist_jacobi(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_cg(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_gmres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_bicgstab(A, b, ctx).has_value());
+}
+
+TEST(DistributedAdv, Iterative_OneByOne_EmptyRhsCols) {
+    MPIContext ctx;
+    const auto A = dims_only(1, 1);
+    const auto b = dims_only(1, 0);
+    EXPECT_FALSE(dist_jacobi(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_cg(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_gmres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_bicgstab(A, b, ctx).has_value());
+}

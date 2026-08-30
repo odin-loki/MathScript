@@ -1600,3 +1600,126 @@ TEST(GeoIntersect, RaySphereTangentAndInterior) {
     EXPECT_TRUE(intersect_ray_sphere(interior_ray, unit, &t_far));
     EXPECT_NEAR(t_far, 1.0, 1e-10);
 }
+
+TEST(GeoHull, UpperLowerEmptyAndVertical) {
+    std::vector<Point2D> empty;
+    EXPECT_TRUE(upper_hull(empty).empty());
+    EXPECT_TRUE(lower_hull(empty).empty());
+
+    std::vector<Point2D> one{{1.5, -0.5}};
+    auto up1 = upper_hull(one);
+    auto lo1 = lower_hull(one);
+    ASSERT_EQ(up1.size(), 1u);
+    ASSERT_EQ(lo1.size(), 1u);
+    EXPECT_NEAR(up1[0].x, 1.5, 1e-12);
+
+    std::vector<Point2D> vertical{{0.0, 0.0}, {0.0, 1.0}, {0.0, 2.0}, {1.0, 0.0}};
+    auto hull = convex_hull_2d(vertical);
+    EXPECT_GE(hull.size(), 3u);
+    auto up = upper_hull(vertical);
+    auto lo = lower_hull(vertical);
+    EXPECT_GE(up.size(), 2u);
+    EXPECT_GE(lo.size(), 2u);
+}
+
+TEST(GeoDelaunay, FewerThanThreeAndVoronoiEmpty) {
+    std::vector<Point2D> empty;
+    EXPECT_TRUE(delaunay_2d(empty).empty());
+    EXPECT_TRUE(voronoi(empty).empty());
+
+    std::vector<Point2D> one{{0.0, 0.0}};
+    EXPECT_TRUE(delaunay_2d(one).empty());
+    EXPECT_TRUE(voronoi(one).empty());
+
+    std::vector<Point2D> two{{0.0, 0.0}, {1.0, 0.0}};
+    EXPECT_TRUE(delaunay_2d(two).empty());
+    EXPECT_TRUE(voronoi(two).empty());
+}
+
+TEST(GeoDelaunay, HexagonSixPoints) {
+    std::vector<Point2D> pts;
+    for (int i = 0; i < 6; ++i) {
+        const double a = static_cast<double>(i) * M_PI / 3.0;
+        pts.push_back({std::cos(a), std::sin(a)});
+    }
+    auto tris = delaunay_2d(pts);
+    EXPECT_GE(tris.size(), 4u);
+    auto centers = voronoi(pts);
+    EXPECT_EQ(centers.size(), tris.size());
+}
+
+TEST(GeoKDTree2D, EmptyAndSingleAndKnnCap) {
+    std::vector<Point2D> empty;
+    KDTree2D kd_empty(empty);
+    EXPECT_EQ(kd_empty.nearest({0.0, 0.0}), -1);
+    EXPECT_TRUE(kd_empty.knn({0.0, 0.0}, 3).empty());
+    EXPECT_TRUE(kd_empty.range({0.0, 0.0}, 1.0).empty());
+    EXPECT_TRUE(kd_empty.points().empty());
+
+    std::vector<Point2D> one{{2.0, -1.0}};
+    KDTree2D kd_one(one);
+    EXPECT_EQ(kd_one.nearest({0.0, 0.0}), 0);
+    auto knn_cap = kd_one.knn({0.0, 0.0}, 5);
+    EXPECT_EQ(knn_cap.size(), 1u);
+    auto r0 = kd_one.range({2.0, -1.0}, 0.0);
+    EXPECT_EQ(r0.size(), 1u);
+    EXPECT_TRUE(kd_one.range({10.0, 10.0}, 0.1).empty());
+}
+
+TEST(GeoKDTree3D, EmptyAndSingleAndMiss) {
+    std::vector<Point3D> empty;
+    KDTree3D kd_empty(empty);
+    EXPECT_EQ(kd_empty.nearest({0.0, 0.0, 0.0}), -1);
+    EXPECT_TRUE(kd_empty.knn({0.0, 0.0, 0.0}, 2).empty());
+    EXPECT_TRUE(kd_empty.range({0.0, 0.0, 0.0}, 1.0).empty());
+    EXPECT_TRUE(kd_empty.points().empty());
+
+    std::vector<Point3D> one{{0.0, 0.0, 0.0}};
+    KDTree3D kd_one(one);
+    EXPECT_EQ(kd_one.nearest({1.0, 0.0, 0.0}), 0);
+    EXPECT_EQ(kd_one.knn({0.0, 0.0, 0.0}, 4).size(), 1u);
+    EXPECT_TRUE(kd_one.range({5.0, 5.0, 5.0}, 0.25).empty());
+}
+
+TEST(GeoBezier, SingleControlAndCubicMidpoint) {
+    std::vector<Point2D> one{{1.5, 2.5}};
+    auto p = bezier_eval(one, 0.3);
+    EXPECT_NEAR(p.x, 1.5, 1e-12);
+    EXPECT_NEAR(p.y, 2.5, 1e-12);
+
+    std::vector<Point2D> cubic{{0.0, 0.0}, {0.0, 1.0}, {1.0, 1.0}, {1.0, 0.0}};
+    auto mid = bezier_eval(cubic, 0.5);
+    EXPECT_NEAR(mid.x, 0.5, 1e-12);
+    EXPECT_NEAR(mid.y, 0.75, 1e-12);
+
+    auto [left, right] = bezier_subdivide(cubic, 0.0);
+    EXPECT_EQ(left.size(), cubic.size());
+    EXPECT_NEAR(left.front().x, 0.0, 1e-12);
+    EXPECT_NEAR(right.back().x, 1.0, 1e-12);
+}
+
+TEST(GeoCurves, BSplinePastKnotAndOobWindow) {
+    std::vector<Point2D> ctrl{{0.0, 0.0}, {1.0, 1.0}};
+    const std::vector<double> knots{0.0, 0.0, 1.0, 1.0, 2.0};
+    auto past = bspline_eval(ctrl, knots, 2, 1.5);
+    EXPECT_TRUE(std::isfinite(past.x));
+    EXPECT_TRUE(std::isfinite(past.y));
+
+    std::vector<Point2D> line{{0.0, 0.0}, {4.0, 0.0}, {4.0, 4.0}, {0.0, 4.0}};
+    auto at_p1 = catmull_rom(line, 1.0 / 3.0);
+    EXPECT_NEAR(at_p1.x, 4.0, 1e-9);
+    EXPECT_NEAR(at_p1.y, 0.0, 1e-9);
+}
+
+TEST(GeoDist, SegmentEndpointsAndBeyond) {
+    Segment2D s{{0.0, 0.0}, {4.0, 0.0}};
+    EXPECT_NEAR(dist_point_segment({0.0, 0.0}, s), 0.0, 1e-12);
+    EXPECT_NEAR(dist_point_segment({4.0, 0.0}, s), 0.0, 1e-12);
+    EXPECT_NEAR(dist_point_segment({2.0, 0.0}, s), 0.0, 1e-12);
+    EXPECT_NEAR(dist_point_segment({8.0, 3.0}, s), 5.0, 1e-12);
+
+    Segment3D s3{{0.0, 0.0, 0.0}, {4.0, 0.0, 0.0}};
+    EXPECT_NEAR(dist_point_segment3({4.0, 0.0, 0.0}, s3), 0.0, 1e-12);
+    EXPECT_NEAR(dist_point_segment3({6.0, 0.0, 0.0}, s3), 2.0, 1e-12);
+    EXPECT_NEAR(dist_sq({0.0, 0.0}, {0.0, 0.0}), 0.0, 1e-12);
+}

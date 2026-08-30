@@ -2439,3 +2439,122 @@ TEST(ImageBasic, ImFromDataEmptyAndOneByOne) {
     EXPECT_EQ(one.channels, 1);
     EXPECT_FLOAT_EQ(one.at(0, 0, 0), 0.42f);
 }
+
+// ---- Remaining filter / hist / morph / empty-image branches ----
+
+TEST(ImageFilter, EvenBoxAndSmallGauss) {
+    Image img(6, 6, 1, 0.2f);
+    img.at(2, 2, 0) = 1.f;
+    auto box2 = boxfilter(img, 2);
+    EXPECT_EQ(box2.rows, 6);
+    EXPECT_GT(box2.at(2, 2, 0), 0.2f);
+    auto g = imgaussfilt(img, 0.4f);
+    EXPECT_LT(g.at(2, 2, 0), 1.f);
+    EXPECT_GT(g.at(2, 2, 0), 0.2f);
+    for (float v : g.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageFilter, BilateralTinyRangeSkipsDistant) {
+    Image img(5, 5, 1, 0.f);
+    img.at(2, 2, 0) = 1.f;
+    auto out = bilateral(img, 1.5f, 0.02f);
+    EXPECT_EQ(out.rows, 5);
+    EXPECT_GT(out.at(2, 2, 0), 0.7f);
+    EXPECT_NEAR(out.at(0, 0, 0), 0.f, 0.15f);
+}
+
+TEST(ImageFilter, ImfilterEmptyRowKernelReturnsCopy) {
+    Image img(4, 4, 1, 0.3f);
+    img.at(1, 1, 0) = 0.9f;
+    std::vector<std::vector<float>> empty_rows;
+    auto same = imfilter(img, empty_rows);
+    EXPECT_EQ(same.rows, 4);
+    EXPECT_FLOAT_EQ(same.at(1, 1, 0), 0.9f);
+}
+
+TEST(ImageFilter, Medfilt2KsizeNine) {
+    Image img(6, 6, 1, 0.1f);
+    img.at(3, 3, 0) = 1.f;
+    auto med9 = medfilt2(img, 9);
+    EXPECT_EQ(med9.rows, 6);
+    EXPECT_NEAR(med9.at(3, 3, 0), 0.1f, 0.15f);
+}
+
+TEST(ImageFilter, EmptyImageAllRemainingFilters) {
+    Image empty;
+    EXPECT_TRUE(imgaussfilt(empty, 0.5f).empty());
+    EXPECT_TRUE(boxfilter(empty, 5).empty());
+    EXPECT_TRUE(sharpen(empty).empty());
+    EXPECT_TRUE(bilateral(empty, 2.0f, 0.2f).empty());
+    EXPECT_TRUE(medfilt2(empty, 5).empty());
+    std::vector<std::vector<float>> ident{{1.f}};
+    EXPECT_TRUE(imfilter(empty, ident).empty());
+}
+
+TEST(ImageHist, ImadjustInvertedAndEqualRange) {
+    Image img(2, 2, 1, 0.f);
+    img.at(0, 0, 0) = 0.2f;
+    img.at(0, 1, 0) = 0.8f;
+    auto inv = imadjust(img, 0.8f, 0.2f, 0.f, 1.f);
+    EXPECT_TRUE(std::isfinite(inv.at(0, 0, 0)));
+    EXPECT_TRUE(std::isfinite(inv.at(0, 1, 0)));
+    auto eq = imadjust(img, 0.4f, 0.4f, 0.f, 1.f);
+    EXPECT_TRUE(std::isfinite(eq.at(0, 0, 0)));
+    EXPECT_GE(eq.at(0, 0, 0), 0.f);
+}
+
+TEST(ImageHist, HisteqClampsOutOfRange) {
+    Image img(2, 2, 1, 0.f);
+    img.at(0, 0, 0) = -0.4f;
+    img.at(0, 1, 0) = 1.8f;
+    img.at(1, 0, 0) = 0.3f;
+    img.at(1, 1, 0) = 0.6f;
+    auto eq = histeq(img);
+    EXPECT_EQ(eq.channels, 1);
+    for (float v : eq.data) {
+        EXPECT_TRUE(std::isfinite(v));
+        EXPECT_GE(v, 0.f);
+        EXPECT_LE(v, 1.f);
+    }
+}
+
+TEST(ImageHist, EmptyImhistDefaultBins) {
+    Image empty;
+    auto h = imhist(empty);
+    EXPECT_EQ(h.size(), 256u);
+    for (int v : h) EXPECT_EQ(v, 0);
+}
+
+TEST(ImageMorph, EmptyImageAllOps) {
+    Image empty;
+    EXPECT_TRUE(imdilate(empty).empty());
+    EXPECT_TRUE(imerode(empty).empty());
+    EXPECT_TRUE(imopen(empty).empty());
+    EXPECT_TRUE(imclose(empty).empty());
+    EXPECT_TRUE(imtophat(empty).empty());
+    EXPECT_TRUE(imbothat(empty).empty());
+    EXPECT_TRUE(imgradient_morph(empty).empty());
+}
+
+TEST(ImageMorph, RgbTophatBothatEmptyStayEmpty) {
+    EXPECT_TRUE(imtophat(Image{}, 5).empty());
+    EXPECT_TRUE(imbothat(Image{}, 5).empty());
+    Image rgb(4, 4, 3, 0.1f);
+    rgb.at(1, 1, 0) = 1.f;
+    auto th = imtophat(rgb, 3);
+    auto bh = imbothat(rgb, 3);
+    EXPECT_EQ(th.channels, 3);
+    EXPECT_EQ(bh.channels, 3);
+    EXPECT_GE(th.at(1, 1, 0), 0.f);
+}
+
+TEST(ImageHist, ImadjustEmptyStaysEmpty) {
+    EXPECT_TRUE(imadjust(Image{}, 0.f, 1.f, 0.f, 1.f).empty());
+}
+
+TEST(ImageFilter, SharpenEmptyAndOneByOneAlreadyFinite) {
+    EXPECT_TRUE(sharpen(Image{}).empty());
+    Image one(1, 1, 1, 0.3f);
+    auto s = sharpen(one);
+    EXPECT_TRUE(std::isfinite(s.at(0, 0, 0)));
+}

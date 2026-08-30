@@ -14,6 +14,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - Tests: extra control (margins/step-info/riccati MIMO/ss2tf), IZAAC, plot-console, distributed iterative, and dbdsqr/dormbr unit coverage.
 - Tests: extra QR/matmul mixed-storage, solve, dist, special, FEM, CFD, stats, poly, ODE, finance, and BLAS coverage plus REPL leftover printers (FEM Poisson parse, gria unsigned args, graph DFS, combo/numthy/special scalar-assign).
 - Tests: extra symbolic/signal/crypto/LAPACK/FEM/ODE/finance/stats/poly/CFD/BLAS/solve coverage plus eval_scalar_call DomainError REPL printers (combo/numthy/special negative-n and k>n).
+- Tests: extra graph/ML/image/PDE/geo/core/distributed/cplx/combo/numthy/control/special/sparse coverage plus remaining special eval_scalar_call DomainError REPL printers.
 - CPU SIMD kernels report `Kernel::Avx512` when `MS_ENABLE_AVX512` and the CPU has AVX-512F; vector loops stay 4-wide xsimd (AVX2 compile) to avoid SIGILL. Dedicated `avx512_dgemm` remains the wide GEMM path.
 - CI memory job is AddressSanitizer + UBSan (`sanitizer-linux`). Valgrind is no longer a CI gate.
 

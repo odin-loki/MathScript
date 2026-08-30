@@ -421,3 +421,84 @@ TEST(SpecialExtTest, bessel_j_origin_and_nu1) {
     EXPECT_NEAR(bessel_j(1, 0.0), 0.0, 1e-15);
     EXPECT_NEAR(bessel_j(2, 0.5), 0.03060402345867667, 1e-6);
 }
+
+TEST(SpecialExtTest, airy_bi_aip_bip_origin_and_tail) {
+    EXPECT_NEAR(airy_bi(0.0), 0.6149266274460007, 1e-3);
+    EXPECT_LT(airy_aip(0.0), 0.0);
+    EXPECT_GT(airy_bip(0.0), 0.0);
+    EXPECT_LT(std::abs(airy_ai(-0.5)), 1.0);
+    EXPECT_TRUE(std::isfinite(airy_bi(-0.5)));
+    const double ai_tail = airy_ai(6.0);
+    const double bi_tail = airy_bi(6.0);
+    EXPECT_LT(std::abs(ai_tail), 1e-4);
+    EXPECT_GT(bi_tail, 1.0);
+    EXPECT_TRUE(std::isfinite(airy_aip(6.0)));
+    EXPECT_TRUE(std::isfinite(airy_bip(6.0)));
+}
+
+TEST(SpecialExtTest, bessel_j_negative_x_and_high_order) {
+    EXPECT_NEAR(bessel_j(0, -1.0), bessel_j(0, 1.0), 1e-12);
+    EXPECT_NEAR(bessel_j(1, -1.0), -bessel_j(1, 1.0), 1e-12);
+    EXPECT_NEAR(bessel_j(2, 0.0), 0.0, 1e-15);
+    EXPECT_NEAR(bessel_j(3, 0.0), 0.0, 1e-15);
+    EXPECT_NEAR(bessel_j(-2, 0.0), 0.0, 1e-15);
+    EXPECT_NEAR(bessel_j(3, 1.0), 0.019563353982668406, 1e-5);
+}
+
+TEST(SpecialExtTest, bessel_y0_y1_nonpositive_and_negative_order) {
+    EXPECT_TRUE(std::isinf(bessel_y0(0.0)));
+    EXPECT_TRUE(std::isinf(bessel_y0(-0.2)));
+    EXPECT_TRUE(std::isinf(bessel_y1(0.0)));
+    EXPECT_TRUE(std::isinf(bessel_y1(-0.2)));
+    EXPECT_TRUE(std::isnan(bessel_y(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(bessel_y(2, 0.0)));
+    EXPECT_TRUE(std::isfinite(bessel_y0(0.25)));
+    EXPECT_TRUE(std::isfinite(bessel_y1(0.25)));
+}
+
+TEST(SpecialExtTest, bessel_zero_invalid_and_j1_first) {
+    EXPECT_TRUE(std::isnan(bessel_zero_jnu(-1, 1)));
+    EXPECT_TRUE(std::isnan(bessel_zero_jnu(0, 0)));
+    EXPECT_TRUE(std::isnan(bessel_zero_ynu(-2, 1)));
+    EXPECT_TRUE(std::isnan(bessel_zero_ynu(1, -3)));
+    const double z1 = bessel_zero_jnu(1, 1);
+    if (std::isfinite(z1) && z1 != 0.0)
+        EXPECT_NEAR(bessel_j(1, std::abs(z1)), 0.0, 1e-5);
+}
+
+TEST(SpecialExtTest, sph_bessel_j_n1_n2_and_origin) {
+    EXPECT_NEAR(sph_bessel_j(1, 1.0), std::sin(1.0) / (1.0 * 1.0) - std::cos(1.0) / 1.0, 1e-14);
+    EXPECT_NEAR(sph_bessel_j(2, 1.0), 0.062035052011373916, 1e-6);
+    EXPECT_NEAR(sph_bessel_j(2, 0.0), 0.0, 1e-15);
+    EXPECT_TRUE(std::isfinite(sph_bessel_y(2, 0.75)));
+}
+
+TEST(SpecialExtTest, ellip_f_e_inc_phi_zero_and_complete) {
+    EXPECT_NEAR(ellip_f(0.0, 0.5), 0.0, 1e-15);
+    EXPECT_NEAR(ellip_e_inc(0.0, 0.6), 0.0, 1e-15);
+    const double k = 0.5;
+    EXPECT_NEAR(ellip_f(0.5 * std::numbers::pi, k), ellip_k(k), 2e-3);
+    EXPECT_NEAR(ellip_e_inc(0.5 * std::numbers::pi, k), ellip_e(k), 2e-3);
+    EXPECT_NEAR(ellip_pi(0.0, k), ellip_k(k), 2e-3);
+    EXPECT_NEAR(ellip_d(k), (ellip_k(k) - ellip_e(k)) / (k * k), 1e-10);
+}
+
+TEST(SpecialExtTest, ellip_modulus_at_least_one_is_nan) {
+    EXPECT_TRUE(std::isnan(ellip_k(1.0)));
+    EXPECT_TRUE(std::isnan(ellip_e(1.1)));
+    EXPECT_TRUE(std::isnan(ellip_pi(0.2, -1.0)));
+    EXPECT_TRUE(std::isnan(ellip_f(0.3, 1.0)));
+    EXPECT_TRUE(std::isnan(ellip_e_inc(0.3, 1.2)));
+    EXPECT_TRUE(std::isnan(ellip_d(0.0)));
+    EXPECT_TRUE(std::isnan(ellip_d(1.0)));
+}
+
+TEST(SpecialExtTest, gamma_half_integer_and_inc_large_x) {
+    EXPECT_NEAR(gamma_func(0.5), std::sqrt(std::numbers::pi), 1e-12);
+    EXPECT_NEAR(log_gamma(0.5), 0.5 * std::log(std::numbers::pi), 1e-12);
+    EXPECT_NEAR(gamma_func(1.5), 0.5 * std::sqrt(std::numbers::pi), 1e-12);
+    EXPECT_NEAR(gamma_inc_reg(2.0, 8.0) + gamma_inc_reg_upper(2.0, 8.0), 1.0, 1e-10);
+    EXPECT_GT(gamma_inc_reg(1.5, 6.0), 0.95);
+    EXPECT_NEAR(gamma_inc(3.0, 2.0), gamma_inc_reg(3.0, 2.0) * gamma_func(3.0), 1e-12);
+}
+

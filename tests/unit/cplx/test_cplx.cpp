@@ -630,3 +630,129 @@ TEST(CplxCauchyPV, OddNptsStillAgrees) {
     EXPECT_NEAR(pv_even, 0.0, 1e-6);
     EXPECT_NEAR(pv_odd, pv_even, 1e-8);
 }
+
+TEST(CplxCauchyIntegral, PointOutsideIsZero) {
+    auto contour = unit_circle_contour(160);
+    auto f = [](C z) { return z * z + C(2.0); };
+    const C val = cauchy_integral(f, C(2.0, 0.0), contour, 80);
+    EXPECT_NEAR(val.real(), 0.0, 0.2);
+    EXPECT_NEAR(val.imag(), 0.0, 0.2);
+}
+
+TEST(CplxCauchyIntegral, SinglePointContourIsZero) {
+    std::vector<C> one_pt = {C(1.0, 0.0)};
+    auto f = [](C z) { return z + C(1.0); };
+    const C val = cauchy_integral(f, C(0.0), one_pt, 20);
+    EXPECT_NEAR(val.real(), 0.0, 1e-15);
+    EXPECT_NEAR(val.imag(), 0.0, 1e-15);
+}
+
+TEST(CplxArgumentPrinciple, EmptyAndVanishing) {
+    auto f = [](C z) { return z - C(0.25); };
+    EXPECT_EQ(argument_principle(f, {}), 0);
+    std::vector<C> one_pt = {C(1.0, 0.0)};
+    EXPECT_EQ(argument_principle(f, one_pt), 0);
+    auto contour = unit_circle_contour(64);
+    auto zero = [](C z) { (void)z; return C(0.0); };
+    EXPECT_EQ(argument_principle(zero, contour), 0);
+}
+
+TEST(CplxArgumentPrinciple, TwoInteriorZeros) {
+    auto contour = unit_circle_contour(128);
+    auto f = [](C z) { return (z - C(0.3)) * (z + C(0.3)); };
+    EXPECT_EQ(argument_principle(f, contour), 2);
+}
+
+TEST(CplxResidue, HolomorphicIsNearZero) {
+    auto f = [](C z) { return z * z + C(1.0); };
+    const C res = residue(f, C(0.0), 1e-5);
+    EXPECT_NEAR(std::abs(res), 0.0, 0.15);
+}
+
+TEST(CplxResidue, ScaledSimplePole) {
+    auto f = [](C z) { return C(5.0) / (z - C(2.0)); };
+    const C res = residue(f, C(2.0), 1e-5);
+    EXPECT_NEAR(res.real(), 5.0, 1e-2);
+    EXPECT_NEAR(res.imag(), 0.0, 1e-2);
+}
+
+TEST(CplxResidue, TwoEpsAgree) {
+    auto f = [](C z) { return C(1.0) / (z - C(-0.5, 0.25)); };
+    const C a = residue(f, C(-0.5, 0.25), 1e-4);
+    const C b = residue(f, C(-0.5, 0.25), 1e-6);
+    EXPECT_NEAR(a.real(), 1.0, 1e-2);
+    EXPECT_NEAR(b.real(), 1.0, 1e-2);
+    EXPECT_NEAR(a.real(), b.real(), 5e-2);
+    EXPECT_NEAR(a.imag(), b.imag(), 5e-2);
+}
+
+TEST(CplxJoukowskiInv, BranchPointDoubleRoot) {
+    const double c = 1.5;
+    const C w(2.0 * c, 0.0);
+    const auto roots = joukowski_inv(w, c);
+    ASSERT_EQ(roots.size(), 2u);
+    EXPECT_NEAR(roots[0].real(), c, 1e-12);
+    EXPECT_NEAR(roots[1].real(), c, 1e-12);
+    EXPECT_NEAR(roots[0].imag(), 0.0, 1e-12);
+    EXPECT_NEAR(roots[1].imag(), 0.0, 1e-12);
+}
+
+TEST(CplxJoukowskiInv, ZeroCGivesZeroAndW) {
+    const C w(1.2, -0.4);
+    const auto roots = joukowski_inv(w, 0.0);
+    ASSERT_EQ(roots.size(), 2u);
+    double best_w = 1e9;
+    double best_0 = 1e9;
+    for (const auto& r : roots) {
+        best_w = std::min(best_w, std::abs(r - w));
+        best_0 = std::min(best_0, std::abs(r));
+    }
+    EXPECT_LT(best_w, 1e-12);
+    EXPECT_LT(best_0, 1e-12);
+}
+
+TEST(CplxJoukowski, TinyZUsesOriginShortcut) {
+    const C z(1e-16, 0.0);
+    const C w = joukowski(z, 1.0);
+    EXPECT_NEAR(w.real(), z.real(), 1e-18);
+    EXPECT_NEAR(w.imag(), z.imag(), 1e-18);
+}
+
+TEST(CplxJoukowskiInv, CustomCRoundTrip) {
+    const C z(2.4, -0.7);
+    const double c = 1.25;
+    const C w = joukowski(z, c);
+    const auto roots = joukowski_inv(w, c);
+    ASSERT_EQ(roots.size(), 2u);
+    double best = 1e9;
+    for (const auto& r : roots) {
+        best = std::min(best, std::abs(r - z));
+    }
+    EXPECT_LT(best, 1e-10);
+}
+
+TEST(CplxGreenFunction, CoincidenceOnScaledDiskIsNegInf) {
+    const C z(0.4, -0.15);
+    const double g = green_function_disk(z, z, 2.5);
+    EXPECT_TRUE(std::isinf(g));
+    EXPECT_LT(g, 0.0);
+}
+
+TEST(CplxGreenFunction, BoundaryOfScaledDiskIsZero) {
+    const double R = 3.0;
+    const C inside(0.5, 0.2);
+    EXPECT_EQ(green_function_disk(C(R, 0.0), inside, R), 0.0);
+    EXPECT_EQ(green_function_disk(inside, C(0.0, R), R), 0.0);
+    EXPECT_EQ(green_function_disk(C(-R, 0.0), C(0.0, R), R), 0.0);
+}
+
+TEST(CplxMobius, LinearFixedPointAndTranslation) {
+    Mobius shift(C(1.0), C(2.0), C(0.0), C(1.0));
+    EXPECT_TRUE(shift.fixed_points().empty());
+    Mobius scale_shift(C(3.0), C(1.0), C(0.0), C(1.0));
+    const auto fps = scale_shift.fixed_points();
+    ASSERT_EQ(fps.size(), 1u);
+    EXPECT_NEAR(fps[0].real(), -0.5, 1e-12);
+    EXPECT_NEAR(fps[0].imag(), 0.0, 1e-12);
+    EXPECT_NEAR(scale_shift(fps[0]).real(), fps[0].real(), 1e-12);
+}

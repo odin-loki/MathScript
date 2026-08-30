@@ -1541,3 +1541,62 @@ TEST(PdeExtTest, wave_2d_empty_velocity) {
     const std::vector<std::vector<double>> empty_v0;
     EXPECT_TRUE(pde_wave_2d(u0, empty_v0, 1.0, 0.1, 0.1, 0.01, 5).u.empty());
 }
+
+TEST(PdeExtTest, heat_2d_narrow_or_short_grid) {
+    auto two_cols = make_grid(4, 2, 1.0);
+    EXPECT_TRUE(pde_heat_2d(two_cols, 0.1, 0.1, 0.1, 0.001, 5).u.empty());
+    auto two_rows = make_grid(2, 4, 1.0);
+    EXPECT_TRUE(pde_heat_2d(two_rows, 0.1, 0.1, 0.1, 0.001, 5).u.empty());
+}
+
+TEST(PdeExtTest, heat_1d_singleton_input) {
+    const std::vector<double> one{1.0};
+    EXPECT_TRUE(pde_heat_1d(one, 0.1, 0.1, 0.001, 5).u.empty());
+}
+
+TEST(PdeExtTest, advection_1d_too_short_and_lax_empty) {
+    const std::vector<double> two{0.0, 1.0};
+    EXPECT_TRUE(pde_advection_1d(two, 1.0, 0.1, 0.01, 5).u.empty());
+    const std::vector<double> empty;
+    EXPECT_TRUE(pde_advection_1d_lax_wendroff(empty, 1.0, 0.1, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_advection_1d_lax_wendroff(two, 1.0, 0.1, 0.01, 5).u.empty());
+}
+
+TEST(PdeExtTest, poisson_2d_narrow_grid) {
+    auto two_cols = make_grid(4, 2, 1.0);
+    EXPECT_TRUE(pde_poisson_2d(two_cols, 0.1, 0.1, 10, 1e-6).u.empty());
+    auto two_rows = make_grid(2, 4, 1.0);
+    EXPECT_TRUE(pde_poisson_2d(two_rows, 0.1, 0.1, 10, 1e-6).u.empty());
+}
+
+TEST(PdeExtTest, poisson_1d_singleton_input) {
+    const std::vector<double> one{1.0};
+    EXPECT_TRUE(pde_poisson_1d(one, 0.1, 0.0, 0.0).u.empty());
+}
+
+TEST(PdeExtTest, helmholtz_2d_boundary_shape_mismatch) {
+    auto f = make_grid(7, 7, 1.0);
+    auto g_wrong_cols = make_grid(7, 5, 0.0);
+    EXPECT_TRUE(pde_helmholtz_2d(f, 1.0, 0.1, 0.1, g_wrong_cols).u.empty());
+    auto g_wrong_rows = make_grid(5, 7, 0.0);
+    EXPECT_TRUE(pde_helmholtz_2d(f, 1.0, 0.1, 0.1, g_wrong_rows).u.empty());
+    auto g_empty = std::vector<std::vector<double>>{};
+    const auto zero_bc = pde_helmholtz_2d(f, 0.0, 0.2, 0.2, g_empty);
+    EXPECT_EQ(zero_bc.u.empty(), pde_helmholtz_2d(f, 0.0, 0.2, 0.2).u.empty());
+}
+
+TEST(PdeExtTest, burgers_1d_singleton_input) {
+    const std::vector<double> one{1.0};
+    EXPECT_TRUE(pde_burgers_1d(one, 0.01, 0.1, 0.001, 5).u.empty());
+}
+
+TEST(PdeExtTest, wave_2d_velocity_row_mismatch) {
+    auto u0 = make_grid(5, 5, 0.0);
+    auto v0 = make_grid(7, 5, 0.0);
+    EXPECT_TRUE(pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.01, 5).u.empty());
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_narrow_grid) {
+    auto two_cols = make_grid(4, 2, 1.0);
+    EXPECT_TRUE(pde_heat_2d_cn_adi(two_cols, 0.1, 0.1, 0.1, 0.01, 5).u.empty());
+}

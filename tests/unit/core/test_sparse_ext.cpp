@@ -159,3 +159,82 @@ TEST(SparseAddTest, partial_overlap_mixed_pattern) {
     const auto c = sparse_add(a, b);
     expect_sparse_matches_dense(c, dense_add(a.to_dense(), b.to_dense()));
 }
+
+TEST(SparseExtTest, from_coo_empty_to_dense_and_spmv) {
+    std::vector<size_t> empty_row;
+    std::vector<size_t> empty_col;
+    std::vector<double> empty_val;
+    Sparse<double> S(3, 4, empty_row, empty_col, empty_val);
+    EXPECT_EQ(S.rows(), 3u);
+    EXPECT_EQ(S.cols(), 4u);
+    EXPECT_EQ(S.nnz(), 0u);
+    const auto D = S.to_dense();
+    EXPECT_EQ(D.rows(), 3u);
+    EXPECT_EQ(D.cols(), 4u);
+    for (size_t i = 0; i < 3; ++i)
+        for (size_t j = 0; j < 4; ++j)
+            EXPECT_DOUBLE_EQ(D(i, j), 0.0);
+    ColMatrix<double> x(4, 1, 2.5);
+    const auto y = S.spmv(x);
+    ASSERT_EQ(y.rows(), 3u);
+    EXPECT_DOUBLE_EQ(y(0, 0), 0.0);
+    EXPECT_DOUBLE_EQ(y(1, 0), 0.0);
+    EXPECT_DOUBLE_EQ(y(2, 0), 0.0);
+}
+
+TEST(SparseAddTest, column_mismatch_returns_empty) {
+    std::vector<size_t> ra{0};
+    std::vector<size_t> ca{0};
+    std::vector<double> va{1.0};
+    std::vector<size_t> rb{0};
+    std::vector<size_t> cb{0};
+    std::vector<double> vb{2.0};
+    Sparse<double> a(2, 2, ra, ca, va);
+    Sparse<double> b(2, 3, rb, cb, vb);
+    const auto c = sparse_add(a, b);
+    EXPECT_EQ(c.rows(), 0u);
+    EXPECT_EQ(c.cols(), 0u);
+    EXPECT_EQ(c.nnz(), 0u);
+}
+
+TEST(SparseAddTest, duplicate_coo_entries_accumulate) {
+    std::vector<size_t> ra{0, 0, 1};
+    std::vector<size_t> ca{0, 0, 1};
+    std::vector<double> va{1.5, 2.5, 4.0};
+    std::vector<size_t> rb{0, 1};
+    std::vector<size_t> cb{0, 1};
+    std::vector<double> vb{1.0, -1.0};
+    Sparse<double> a(2, 2, ra, ca, va);
+    Sparse<double> b(2, 2, rb, cb, vb);
+    const auto c = sparse_add(a, b);
+    const auto d = c.to_dense();
+    EXPECT_NEAR(d(0, 0), 5.0, 1e-12);
+    EXPECT_NEAR(d(1, 1), 3.0, 1e-12);
+}
+
+TEST(SparseExtTest, spmv_unsorted_coo_and_float) {
+    std::vector<size_t> r{1, 0, 1};
+    std::vector<size_t> c{2, 0, 0};
+    std::vector<double> v{3.0, 2.0, 4.0};
+    Sparse<double> A(2, 3, r, c, v);
+    ColMatrix<double> x(3, 1, 0.0);
+    x(0, 0) = 1.0;
+    x(1, 0) = 5.0;
+    x(2, 0) = 2.0;
+    const auto y = A.spmv(x);
+    ASSERT_EQ(y.rows(), 2u);
+    EXPECT_NEAR(y(0, 0), 2.0, 1e-12);
+    EXPECT_NEAR(y(1, 0), 4.0 + 6.0, 1e-12);
+
+    std::vector<size_t> fr{0, 1};
+    std::vector<size_t> fc{1, 0};
+    std::vector<float> fv{2.0f, 3.0f};
+    Sparse<float> Sf(2, 2, fr, fc, fv);
+    ColMatrix<float> xf(2, 1, 0.0f);
+    xf(0, 0) = 1.0f;
+    xf(1, 0) = 4.0f;
+    const auto yf = Sf.spmv(xf);
+    ASSERT_EQ(yf.rows(), 2u);
+    EXPECT_FLOAT_EQ(yf(0, 0), 8.0f);
+    EXPECT_FLOAT_EQ(yf(1, 0), 3.0f);
+}

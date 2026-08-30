@@ -2516,3 +2516,165 @@ TEST(MLLoss, CategoricalCrossentropyNearZeroPrediction) {
     double expected = -std::log(1e-20 + 1e-12);
     EXPECT_NEAR(loss, expected, 1e-8);
 }
+
+// ---- Remaining kmeans / gmm / svm / ridge / knn empty and mismatch ----
+
+TEST(MLKMeans, EmptyPredictAfterFit) {
+    Mat X = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {1.0, 1.0}};
+    KMeans km(2);
+    km.fit(X);
+    Mat empty_query;
+    Vec pred = km.predict(empty_query);
+    EXPECT_TRUE(pred.empty());
+}
+
+TEST(MLKMeans, SinglePointKOne) {
+    Mat X = {{3.0, -1.0}};
+    KMeans km(1);
+    km.fit(X);
+    ASSERT_EQ(km.centers.size(), 1u);
+    EXPECT_NEAR(km.centers[0][0], 3.0, 1e-12);
+    EXPECT_NEAR(km.centers[0][1], -1.0, 1e-12);
+    Vec pred = km.predict(X);
+    ASSERT_EQ(pred.size(), 1u);
+    EXPECT_EQ(pred[0], 0.0);
+    EXPECT_NEAR(km.inertia(X), 0.0, 1e-12);
+}
+
+TEST(MLKMeans, KGreaterThanN) {
+    Mat X = {{0.0, 0.0}, {10.0, 0.0}};
+    KMeans km(5);
+    km.fit(X);
+    EXPECT_GE(km.centers.size(), 1u);
+    Vec pred = km.predict(X);
+    ASSERT_EQ(pred.size(), 2u);
+    EXPECT_TRUE(std::isfinite(pred[0]));
+    EXPECT_TRUE(std::isfinite(pred[1]));
+}
+
+TEST(MLGMM, EmptyPredictAndScoreAfterFit) {
+    Mat X = {{0.0}, {0.1}, {5.0}, {5.1}};
+    GaussianMixture gmm;
+    gmm.config.n_components = 2;
+    gmm.config.max_iter = 20;
+    gmm.fit(X);
+    Mat empty_query;
+    EXPECT_TRUE(gmm.predict(empty_query).empty());
+    EXPECT_TRUE(gmm.predict_proba(empty_query).empty());
+    EXPECT_TRUE(std::isinf(gmm.score(empty_query)));
+}
+
+TEST(MLGMM, ZeroComponentsClearsState) {
+    Mat X = {{0.0}, {1.0}, {2.0}};
+    GaussianMixture gmm;
+    gmm.config.n_components = 0;
+    gmm.fit(X);
+    EXPECT_TRUE(gmm.means.empty());
+    EXPECT_TRUE(gmm.weights.empty());
+    EXPECT_TRUE(gmm.predict_proba(X).empty());
+    Vec pred = gmm.predict(X);
+    EXPECT_EQ(pred.size(), X.size());
+    EXPECT_TRUE(std::isinf(gmm.score(X)));
+}
+
+TEST(MLGMM, MoreComponentsThanSamples) {
+    Mat X = {{0.0}, {1.0}};
+    GaussianMixture gmm;
+    gmm.config.n_components = 8;
+    gmm.config.max_iter = 10;
+    gmm.fit(X);
+    EXPECT_EQ(gmm.means.size(), 2u);
+    Vec pred = gmm.predict(X);
+    ASSERT_EQ(pred.size(), 2u);
+    EXPECT_TRUE(std::isfinite(pred[0]));
+    EXPECT_TRUE(std::isfinite(gmm.score(X)));
+}
+
+TEST(MLSVM, MismatchedRowCountNoOp) {
+    Mat X = {{-1.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}};
+    Vec y = {-1.0, 1.0};
+    SVM svm;
+    svm.fit(X, y);
+    EXPECT_TRUE(svm.support_vectors.empty());
+    EXPECT_TRUE(svm.alphas.empty());
+}
+
+TEST(MLSVM, EmptyYNonemptyXNoOp) {
+    Mat X = {{1.0, 0.0}};
+    Vec y;
+    SVM svm;
+    svm.fit(X, y);
+    EXPECT_TRUE(svm.support_vectors.empty());
+}
+
+TEST(MLSVM, EmptyQueryAfterFit) {
+    Mat X = {{-1.0, 0.0}, {1.0, 0.0}};
+    Vec y = {-1.0, 1.0};
+    SVM svm;
+    svm.config.kernel = SVMKernel::Linear;
+    svm.config.C = 10.0;
+    svm.fit(X, y);
+    Mat empty_query;
+    EXPECT_TRUE(svm.predict(empty_query).empty());
+    EXPECT_TRUE(svm.decision_function(empty_query).empty());
+}
+
+TEST(MLRidge, EmptyPredictAfterFit) {
+    Mat X = {{1.0}, {2.0}, {3.0}};
+    Vec y = {2.0, 4.0, 6.0};
+    RidgeRegression rr(0.01);
+    rr.fit(X, y);
+    Mat empty_query;
+    Vec pred = rr.predict(empty_query);
+    EXPECT_TRUE(pred.empty());
+}
+
+TEST(MLRidge, ScoreAfterFit) {
+    Mat X = {{1.0}, {2.0}, {3.0}, {4.0}};
+    Vec y = {1.0, 2.0, 3.0, 4.0};
+    RidgeRegression rr(1e-6);
+    rr.fit(X, y);
+    double s = rr.score(X, y);
+    EXPECT_TRUE(std::isfinite(s));
+    EXPECT_GT(s, 0.9);
+}
+
+TEST(MLRidge, ShortYStillFits) {
+    Mat X = {{1.0}, {2.0}, {3.0}};
+    Vec y = {1.0, 2.0};
+    RidgeRegression rr(0.1);
+    rr.fit(X, y);
+    EXPECT_EQ(rr.coef.size(), 1u);
+    EXPECT_TRUE(std::isfinite(rr.coef[0]));
+    EXPECT_TRUE(std::isfinite(rr.intercept));
+}
+
+TEST(MLKNN, EmptyTrainEmptyQuery) {
+    KNN knn(3);
+    knn.fit({}, {});
+    Mat empty_query;
+    EXPECT_TRUE(knn.predict(empty_query).empty());
+}
+
+TEST(MLKNN, KExceedsTrainSize) {
+    Mat X = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    Vec y = {0.0, 1.0, 0.0};
+    KNN knn(10);
+    knn.fit(X, y);
+    Vec pred = knn.predict(X);
+    ASSERT_EQ(pred.size(), 3u);
+    EXPECT_EQ(pred[0], 0.0);
+    EXPECT_NEAR(knn.score(X, y), accuracy(pred, y), 1e-12);
+}
+
+TEST(MLKNN, ShorterFeatureQueryUsesPrefix) {
+    Mat X = {{0.0, 0.0}, {10.0, 0.0}};
+    Vec y = {0.0, 1.0};
+    KNN knn(1);
+    knn.fit(X, y);
+    Mat q = {{0.1}, {9.9}};
+    Vec pred = knn.predict(q);
+    ASSERT_EQ(pred.size(), 2u);
+    EXPECT_EQ(pred[0], 0.0);
+    EXPECT_EQ(pred[1], 1.0);
+}

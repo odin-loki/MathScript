@@ -1966,3 +1966,141 @@ TEST(ControlSS, ThreeStateSs2tfPolyDet) {
     EXPECT_NEAR(reals[1], -2.0, 1e-4);
     EXPECT_NEAR(reals[2], -1.0, 1e-4);
 }
+
+TEST(ControlDiscretize, MimoZohC2dPreservesCAndTwoInputs) {
+    // m=2, p=2: c2d_zoh_ab walks both B columns; C and D are copied through.
+    auto orig = ss({{-1.0, 0.2}, {0.0, -2.0}},
+                   {{1.0, 0.3}, {0.1, 1.0}},
+                   {{1.0, 0.0}, {0.0, 1.0}},
+                   {{0.1, 0.2}, {0.3, 0.4}});
+    const double Ts = 0.05;
+    auto disc = c2d(orig, Ts, DiscretizationMethod::ZOH);
+    EXPECT_EQ(disc.n, 2);
+    EXPECT_EQ(disc.m, 2);
+    EXPECT_EQ(disc.p, 2);
+    ASSERT_EQ(disc.B.size(), 2u);
+    ASSERT_EQ(disc.B[0].size(), 2u);
+    EXPECT_NEAR(disc.C[0][0], orig.C[0][0], 1e-15);
+    EXPECT_NEAR(disc.C[1][1], orig.C[1][1], 1e-15);
+    EXPECT_NEAR(disc.D[0][1], orig.D[0][1], 1e-15);
+    EXPECT_NEAR(disc.D[1][0], orig.D[1][0], 1e-15);
+    EXPECT_NEAR(disc.A[0][0], std::exp(-1.0 * Ts), 2e-3);
+    EXPECT_NEAR(disc.A[1][1], std::exp(-2.0 * Ts), 2e-3);
+    for (const auto& row : disc.B)
+        for (double v : row) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ControlDiscretize, MimoTustinUpdatesTwoByTwoD) {
+    // Tustin Dd = D + (Ts/2) C (I - A Ts/2)^{-1} B hits both D rows and columns.
+    auto orig = ss({{-1.0, 0.0}, {0.0, -3.0}},
+                   {{1.0, 0.0}, {0.0, 1.0}},
+                   {{1.0, 0.0}, {0.0, 1.0}},
+                   {{0.2, 0.0}, {0.0, 0.3}});
+    const double Ts = 0.1;
+    auto disc = c2d(orig, Ts, DiscretizationMethod::Tustin);
+    ASSERT_EQ(disc.D.size(), 2u);
+    ASSERT_EQ(disc.D[0].size(), 2u);
+    EXPECT_NE(disc.D[0][0], orig.D[0][0]);
+    EXPECT_NE(disc.D[1][1], orig.D[1][1]);
+    EXPECT_TRUE(std::isfinite(disc.D[0][0]));
+    EXPECT_TRUE(std::isfinite(disc.D[1][1]));
+    auto back = d2c(disc, Ts, DiscretizationMethod::Tustin);
+    expect_ss_near(orig, back, 1e-8);
+}
+
+TEST(ControlDiscretize, DefaultMethodIsZoh) {
+    auto orig = mass_spring_damper();
+    const double Ts = 0.1;
+    auto implicit = c2d(orig, Ts);
+    auto explicit_zoh = c2d(orig, Ts, DiscretizationMethod::ZOH);
+    expect_ss_near(implicit, explicit_zoh, 1e-14);
+    auto back = d2c(implicit, Ts);
+    expect_ss_near(orig, back, 1e-5);
+}
+
+TEST(ControlDiscretize, EulerD2cExactInverse) {
+    const double Ts = 0.25;
+    auto disc = ss({{1.5, 0.0}, {0.0, 0.75}}, {{0.25, 0.0}, {0.0, 0.5}},
+                   {{1.0, 0.0}, {0.0, 1.0}}, {{0.0, 0.0}, {0.0, 0.0}});
+    auto cont = d2c(disc, Ts, DiscretizationMethod::Euler);
+    EXPECT_NEAR(cont.A[0][0], (1.5 - 1.0) / Ts, 1e-14);
+    EXPECT_NEAR(cont.A[1][1], (0.75 - 1.0) / Ts, 1e-14);
+    EXPECT_NEAR(cont.B[0][0], 0.25 / Ts, 1e-14);
+    EXPECT_NEAR(cont.B[1][1], 0.5 / Ts, 1e-14);
+}
+
+TEST(ControlDiscretize, TransferFunctionZohIsFinite) {
+    auto plant = tf({2.0}, {1.0, 3.0, 2.0});
+    auto disc = c2d(plant, 0.05, DiscretizationMethod::ZOH);
+    EXPECT_FALSE(disc.num.empty());
+    EXPECT_FALSE(disc.den.empty());
+    const double g = dcgain(disc);
+    EXPECT_TRUE(std::isfinite(g) || std::isinf(g));
+}
+
+TEST(ControlLyap, ThreeByThreeDiagonalClosedForm) {
+    std::vector<std::vector<double>> A = {{-1.0, 0.0, 0.0}, {0.0, -2.0, 0.0}, {0.0, 0.0, -3.0}};
+    std::vector<std::vector<double>> Q = {{2.0, 0.0, 0.0}, {0.0, 4.0, 0.0}, {0.0, 0.0, 6.0}};
+    auto X = lyap(A, Q);
+    ASSERT_TRUE(X.has_value());
+    ASSERT_EQ(X->size(), 3u);
+    EXPECT_NEAR((*X)[0][0], 1.0, 1e-8);
+    EXPECT_NEAR((*X)[1][1], 1.0, 1e-8);
+    EXPECT_NEAR((*X)[2][2], 1.0, 1e-8);
+    EXPECT_NEAR((*X)[0][1], 0.0, 1e-8);
+}
+
+TEST(ControlLyap, DiscreteTwoByTwoClosedForm) {
+    std::vector<std::vector<double>> A = {{0.5, 0.0}, {0.0, 0.4}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = dlyap(A, Q);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_NEAR((*X)[0][0], 1.0 / (1.0 - 0.25), 1e-8);
+    EXPECT_NEAR((*X)[1][1], 1.0 / (1.0 - 0.16), 1e-8);
+    EXPECT_NEAR((*X)[0][1], 0.0, 1e-8);
+}
+
+TEST(ControlPlace, ThirdOrderCompanionSucceeds) {
+    std::vector<std::vector<double>> A = {{0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}, {-6.0, -11.0, -6.0}};
+    std::vector<std::vector<double>> B = {{0.0}, {0.0}, {1.0}};
+    std::vector<double> desired = {-2.0, -3.0, -4.0};
+    auto K = place(A, B, desired);
+    ASSERT_TRUE(K.has_value());
+    ASSERT_EQ(K->size(), 3u);
+    std::vector<std::vector<double>> Acl(3, std::vector<double>(3, 0.0));
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            Acl[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+                A[static_cast<size_t>(i)][static_cast<size_t>(j)] -
+                B[static_cast<size_t>(i)][0] * (*K)[static_cast<size_t>(j)];
+    auto cl = ss2tf(ss(Acl, B, {{1.0, 0.0, 0.0}}, {{0.0}}));
+    auto p = poles(cl);
+    ASSERT_EQ(p.size(), 3u);
+    std::vector<double> reals = {p[0].real(), p[1].real(), p[2].real()};
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -4.0, 5e-3);
+    EXPECT_NEAR(reals[1], -3.0, 5e-3);
+    EXPECT_NEAR(reals[2], -2.0, 5e-3);
+}
+
+TEST(ControlBode, IntegratorPhaseIsMinusNinety) {
+    auto sys = tf({1.0}, {1.0, 0.0});
+    auto bd = bode(sys, 1.0, 10.0, 5);
+    ASSERT_EQ(bd.w.size(), 5u);
+    EXPECT_NEAR(bd.w[0], 1.0, 1e-12);
+    EXPECT_NEAR(bd.w[4], 10.0, 1e-12);
+    EXPECT_NEAR(bd.magnitude[0], 0.0, 0.05);
+    EXPECT_NEAR(bd.magnitude[4], -20.0, 0.05);
+    for (double ph : bd.phase)
+        EXPECT_NEAR(ph, -90.0, 1.0);
+}
+
+TEST(ControlBode, ZeroNumeratorMagnitudeIsNegInf) {
+    std::vector<double> num{0.0};
+    std::vector<double> den{1.0, 1.0};
+    auto sys = tf(num, den);
+    auto bd = bode(sys, 0.1, 10.0, 3);
+    ASSERT_EQ(bd.magnitude.size(), 3u);
+    for (double mag : bd.magnitude)
+        EXPECT_TRUE(std::isinf(mag) && mag < 0.0);
+}

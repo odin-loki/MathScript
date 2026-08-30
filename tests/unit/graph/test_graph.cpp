@@ -2326,3 +2326,213 @@ TEST(GraphCentrality, PageRankEmpty) {
     std::vector<double> ranks = pagerank(empty, 0.85, 20);
     EXPECT_TRUE(ranks.empty());
 }
+
+// ---- Remaining matching / bridges / articulation / colouring / dijkstra ----
+
+TEST(GraphMatching, DirectedEdgesOneWayStillMatch) {
+    Graph G(3, true);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 1u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, DirectedBothDirectionsPerfectMatch) {
+    Graph G(4, true);
+    G.add_edge(0, 1);
+    G.add_edge(1, 0);
+    G.add_edge(2, 3);
+    G.add_edge(3, 2);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 2u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, DuplicateEdgesDeduped) {
+    Graph G(2, false);
+    G.add_edge(0, 1);
+    G.add_edge(0, 1);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 1u);
+    EXPECT_EQ(m[0], (std::pair<int, int>{0, 1}));
+}
+
+TEST(GraphMatching, IsolatedPlusDisjointEdge) {
+    Graph G(5, false);
+    G.add_edge(1, 2);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 1u);
+    EXPECT_EQ(m[0], (std::pair<int, int>{1, 2}));
+}
+
+TEST(GraphMatching, FiveCycleBlossom) {
+    Graph G(5, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 3);
+    G.add_edge(3, 4);
+    G.add_edge(4, 0);
+    auto m = maximum_matching(G);
+    ASSERT_EQ(m.size(), 2u);
+    EXPECT_TRUE(is_valid_matching(G, m));
+}
+
+TEST(GraphMatching, HopcroftKarpNotBipartite) {
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 0);
+    auto hk = bipartite_match(G, 1);
+    EXPECT_FALSE(hk.has_value());
+}
+
+TEST(GraphMatching, HopcroftKarpEmptyAndZeroLeft) {
+    Graph empty(0, false);
+    auto hk0 = bipartite_match(empty, 0);
+    ASSERT_TRUE(hk0.has_value());
+    EXPECT_EQ(*hk0, 0);
+    Graph iso(3, false);
+    auto hk = bipartite_match(iso, 0);
+    ASSERT_TRUE(hk.has_value());
+    EXPECT_EQ(*hk, 0);
+}
+
+TEST(GraphConnectivity, ArticulationAndBridgesEmpty) {
+    Graph G(0, false);
+    EXPECT_TRUE(articulation_points(G).empty());
+    EXPECT_TRUE(bridges(G).empty());
+}
+
+TEST(GraphConnectivity, ArticulationAndBridgesIsolated) {
+    Graph G(4, false);
+    EXPECT_TRUE(articulation_points(G).empty());
+    EXPECT_TRUE(bridges(G).empty());
+}
+
+TEST(GraphConnectivity, ArticulationAndBridgesSingleVertex) {
+    Graph G(1, false);
+    EXPECT_TRUE(articulation_points(G).empty());
+    EXPECT_TRUE(bridges(G).empty());
+}
+
+TEST(GraphConnectivity, ArticulationStarHub) {
+    auto G = make_star(5);
+    auto aps = articulation_points(G);
+    ASSERT_EQ(aps.size(), 1u);
+    EXPECT_EQ(aps[0], 0);
+    auto br = bridges(G);
+    EXPECT_EQ(br.size(), 4u);
+    for (const auto& e : br) {
+        EXPECT_EQ(e.from, 0);
+        EXPECT_GE(e.to, 1);
+        EXPECT_LE(e.to, 4);
+    }
+}
+
+TEST(GraphConnectivity, BridgesDisconnectedTwoEdges) {
+    Graph G(6, false);
+    G.add_edge(0, 1);
+    G.add_edge(3, 4);
+    auto br = bridges(G);
+    ASSERT_EQ(br.size(), 2u);
+    EXPECT_EQ(br[0].from, 0);
+    EXPECT_EQ(br[0].to, 1);
+    EXPECT_EQ(br[1].from, 3);
+    EXPECT_EQ(br[1].to, 4);
+    EXPECT_TRUE(articulation_points(G).empty());
+}
+
+TEST(GraphConnectivity, ArticulationDirectedOutgoingTree) {
+    Graph G(4, true);
+    G.add_edge(0, 1);
+    G.add_edge(0, 2);
+    G.add_edge(1, 3);
+    auto aps = articulation_points(G);
+    EXPECT_FALSE(aps.empty());
+    auto br = bridges(G);
+    EXPECT_GE(br.size(), 1u);
+}
+
+TEST(GraphConnectivity, BridgesPreserveWeight) {
+    Graph G(3, false);
+    G.add_edge(0, 1, 2.5);
+    G.add_edge(1, 2, 7.5);
+    auto br = bridges(G);
+    ASSERT_EQ(br.size(), 2u);
+    EXPECT_NEAR(br[0].weight, 2.5, 1e-12);
+    EXPECT_NEAR(br[1].weight, 7.5, 1e-12);
+}
+
+TEST(GraphShortestPath, DijkstraSingleVertex) {
+    Graph G(1, false);
+    auto [dist, parent] = dijkstra(G, 0);
+    ASSERT_EQ(dist.size(), 1u);
+    EXPECT_NEAR(dist[0], 0.0, 1e-15);
+    ASSERT_EQ(parent.size(), 1u);
+    EXPECT_EQ(parent[0], -1);
+}
+
+TEST(GraphShortestPath, DijkstraDisconnectedUnreachableInf) {
+    Graph G(3, false);
+    G.add_edge(0, 1, 1.5);
+    auto [dist, parent] = dijkstra(G, 0);
+    ASSERT_EQ(dist.size(), 3u);
+    EXPECT_NEAR(dist[0], 0.0, 1e-15);
+    EXPECT_NEAR(dist[1], 1.5, 1e-12);
+    EXPECT_TRUE(std::isinf(dist[2]));
+    EXPECT_EQ(parent[2], -1);
+}
+
+TEST(GraphShortestPath, DijkstraDenseComplete) {
+    Graph G(4, false);
+    add_clique(G, 0, 4);
+    auto [dist, parent] = dijkstra(G, 0);
+    ASSERT_EQ(dist.size(), 4u);
+    EXPECT_NEAR(dist[0], 0.0, 1e-15);
+    for (int v = 1; v < 4; ++v)
+        EXPECT_NEAR(dist[v], 1.0, 1e-12);
+}
+
+TEST(GraphShortestPath, DijkstraSparsePath) {
+    Graph G(5, false);
+    for (int i = 0; i < 4; ++i) G.add_edge(i, i + 1, 1.0);
+    auto [dist, parent] = dijkstra(G, 0);
+    ASSERT_EQ(dist.size(), 5u);
+    EXPECT_NEAR(dist[4], 4.0, 1e-12);
+    EXPECT_EQ(parent[4], 3);
+}
+
+TEST(GraphColoring, EmptyAndIsolated) {
+    Graph empty(0, false);
+    EXPECT_TRUE(greedy_colour(empty).empty());
+    Graph iso(4, false);
+    auto colors = greedy_colour(iso);
+    ASSERT_EQ(colors.size(), 4u);
+    for (int c : colors) EXPECT_EQ(c, 0);
+    EXPECT_EQ(chromatic_number_approx(iso), 1);
+}
+
+TEST(GraphColoring, CompleteUsesNColours) {
+    Graph G(4, false);
+    add_clique(G, 0, 4);
+    auto colors = greedy_colour(G);
+    ASSERT_EQ(colors.size(), 4u);
+    std::set<int> used(colors.begin(), colors.end());
+    EXPECT_EQ(used.size(), 4u);
+    EXPECT_EQ(chromatic_number_approx(G), 4);
+    for (int v = 0; v < 4; ++v)
+        for (auto& [u, w] : G.neighbors(v))
+            EXPECT_NE(colors[v], colors[u]);
+}
+
+TEST(GraphColoring, PathIsTwoColourable) {
+    Graph G(5, false);
+    for (int i = 0; i < 4; ++i) G.add_edge(i, i + 1);
+    auto colors = greedy_colour(G);
+    ASSERT_EQ(colors.size(), 5u);
+    for (int v = 0; v < 5; ++v)
+        for (auto& [u, w] : G.neighbors(v))
+            EXPECT_NE(colors[v], colors[u]);
+    EXPECT_EQ(chromatic_number_approx(G), 2);
+}
