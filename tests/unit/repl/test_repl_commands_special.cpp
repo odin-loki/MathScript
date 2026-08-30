@@ -18530,3 +18530,80 @@ TEST(ReplCommandsTest, bessel_k_negative_nu_scalar_assign) {
     Interpreter interp;
     expect_error_contains(interp, "s = bessel_k(-1, 1)", "expected non-negative integer nu");
 }
+TEST(ReplCommandsTest, bessel_h_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_h(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, bessel_hy_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_hy(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, bessel_l_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_l(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, bessel_lu_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_lu(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, hermite_hn_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = hermite_hn(-1, 0.5)", "expected non-negative integer n");
+}
+TEST(ReplCommandsTest, struve_l_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = struve_l(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, struve_h_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = struve_h(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, struve_k_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = struve_k(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, struve_hn_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = struve_hn(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, struve_yn_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = struve_yn(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, anger_j_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = anger_j(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, weber_e_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = weber_e(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, kelvin_bei_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = kelvin_bei(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, kelvin_ber_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = kelvin_ber(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, kelvin_ker_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = kelvin_ker(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, kelvin_kei_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = kelvin_kei(-1, 1)", "expected non-negative integer nu");
+}
+TEST(ReplCommandsTest, bessel_zero_ynu_bad_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_zero_ynu(0, 0)",
+                          "expected non-negative integer nu and positive integer n");
+}
+TEST(ReplCommandsTest, lambert_w_bad_branch_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = lambert_w(1, 0.2)", "expected integer branch 0 or -1");
+}
+TEST(ReplCommandsTest, legendre_p_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = legendre_p(-1, 0.5)", "expected non-negative integer n");
+}
