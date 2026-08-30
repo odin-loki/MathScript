@@ -440,3 +440,33 @@ TEST(MatmulTest, float_all_policies_2x2) {
     EXPECT_FLOAT_EQ((*gpu)(1, 1), 50.f);
     EXPECT_FLOAT_EQ((*aut)(0, 1), 22.f);
 }
+
+TEST(MatmulTest, row_major_explicit_2x2) {
+    using RowM = Matrix<double, StorageOrder::RowMajor>;
+    RowM A{{1.0, 2.0}, {3.0, 4.0}};
+    RowM B{{5.0, 6.0}, {7.0, 8.0}};
+    auto C = matmul(A, B, static_cast<int>(ExecPolicy::CPU));
+    ASSERT_TRUE(C.has_value());
+    EXPECT_DOUBLE_EQ((*C)(0, 0), 19.0);
+    EXPECT_DOUBLE_EQ((*C)(0, 1), 22.0);
+    EXPECT_DOUBLE_EQ((*C)(1, 0), 43.0);
+    EXPECT_DOUBLE_EQ((*C)(1, 1), 50.0);
+}
+
+TEST(MatmulTest, row_major_cuda_copy_to_col_if_gpu) {
+    using RowM = Matrix<double, StorageOrder::RowMajor>;
+    RowM A{{1.0, 2.0}, {3.0, 4.0}};
+    RowM B{{5.0, 6.0}, {7.0, 8.0}};
+    const auto decision = decide(
+        (std::max)({A.rows(), A.cols(), B.cols()}),
+        ExecPolicy::GPU);
+    if (decision.backend != Backend::CUDA) {
+        GTEST_SKIP() << "decide() did not select CUDA";
+    }
+    auto C = matmul(A, B, static_cast<int>(ExecPolicy::GPU));
+    ASSERT_TRUE(C.has_value());
+    EXPECT_DOUBLE_EQ((*C)(0, 0), 19.0);
+    EXPECT_DOUBLE_EQ((*C)(0, 1), 22.0);
+    EXPECT_DOUBLE_EQ((*C)(1, 0), 43.0);
+    EXPECT_DOUBLE_EQ((*C)(1, 1), 50.0);
+}

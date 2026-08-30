@@ -5820,3 +5820,50 @@ TEST(ReplCommandsTest, signal_coherence_noassign) {
     expect_error_contains(interp, "signal_coherence(x, x, notnum, 8)",
                           "expected signal_coherence(x, y, fs, nperseg)");
 }
+
+TEST(ReplCommandsTest, signal_coherence_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 0; -1; 0; 1; 0; -1; 0]");
+    expect_ok(interp, "fs = 8");
+    expect_ok(interp, "nperseg = 8");
+    expect_ok(interp, "c = signal_coherence(x, x, fs, nperseg)");
+    ASSERT_GT(interp.state().matrices.count("c"), 0u);
+    expect_error_contains(interp, "c = signal_coherence(x, x, missing_fs, nperseg)",
+                          "expected numeric scalar argument");
+}
+
+TEST(ReplCommandsTest, signal_lms_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 0; -1; 2]");
+    expect_ok(interp, "d = [0.5; -0.25; 1; 0]");
+    expect_ok(interp, "filter_length = 2");
+    expect_ok(interp, "mu = 0");
+    expect_ok(interp, "ye = signal_lms(x, d, filter_length, mu)");
+    ASSERT_GT(interp.state().matrices.count("ye"), 0u);
+    expect_ok(interp, "w = signal_lms_weights(x, d, filter_length, mu)");
+    ASSERT_GT(interp.state().matrices.count("w"), 0u);
+    expect_error_contains(interp, "ye = signal_lms(x, d, missing_len, mu)",
+                          "expected numeric scalar argument");
+}
+
+TEST(ReplCommandsTest, signal_resample_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 2; 3; 4]");
+    expect_ok(interp, "p = 2");
+    expect_ok(interp, "q = 2");
+    expect_ok(interp, "rs = signal_resample(x, p, q)");
+    ASSERT_GT(interp.state().matrices.count("rs"), 0u);
+    expect_error_contains(interp, "rs = signal_resample(x, missing_p, q)",
+                          "expected numeric scalar argument");
+}
+
+TEST(ReplCommandsTest, signal_savgol_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 2; 3; 4]");
+    expect_ok(interp, "window = 3");
+    expect_ok(interp, "polyorder = 1");
+    expect_ok(interp, "y = signal_savgol(x, window, polyorder)");
+    ASSERT_GT(interp.state().matrices.count("y"), 0u);
+    expect_error_contains(interp, "y = signal_savgol(x, missing_w, polyorder)",
+                          "expected numeric scalar argument");
+}

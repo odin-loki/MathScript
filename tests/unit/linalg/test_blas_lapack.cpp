@@ -2565,3 +2565,94 @@ TEST(BlasDgemmTest, null_and_negative_k_noop) {
     cpu::blas::dgemm('N', 'N', 2, 2, 2, 1.0, nullptr, 2, B.data(), 2, 0.0, C.data(), 2);
     EXPECT_DOUBLE_EQ(C[0], 9.0);
 }
+
+TEST(BlasDgemvTest, no_transpose_non_unit_stride_beta_zero) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x_zero_col{1.0, 99.0, 0.0};
+    std::vector<double> y_zero_col{10.0, 88.0, 20.0, 88.0};
+    cpu::blas::dgemv(
+        'N', 2, 2, 1.0, A.data(), 2, x_zero_col.data(), 2, 0.0, y_zero_col.data(), 2);
+    EXPECT_DOUBLE_EQ(y_zero_col[0], 1.0);
+    EXPECT_DOUBLE_EQ(y_zero_col[1], 88.0);
+    EXPECT_DOUBLE_EQ(y_zero_col[2], 3.0);
+    EXPECT_DOUBLE_EQ(y_zero_col[3], 88.0);
+
+    const std::vector<double> x{1.0, 99.0, 1.0};
+    std::vector<double> y{10.0, 88.0, 20.0, 88.0};
+    cpu::blas::dgemv('N', 2, 2, 1.0, A.data(), 2, x.data(), 2, 0.0, y.data(), 2);
+    EXPECT_DOUBLE_EQ(y[0], 3.0);
+    EXPECT_DOUBLE_EQ(y[1], 88.0);
+    EXPECT_DOUBLE_EQ(y[2], 7.0);
+    EXPECT_DOUBLE_EQ(y[3], 88.0);
+}
+
+TEST(BlasDgemvTest, transpose_non_unit_stride) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 99.0, 1.0};
+    std::vector<double> y{10.0, 88.0, 20.0, 88.0};
+    cpu::blas::dgemv('T', 2, 2, 1.0, A.data(), 2, x.data(), 2, 0.0, y.data(), 2);
+    EXPECT_DOUBLE_EQ(y[0], 4.0);
+    EXPECT_DOUBLE_EQ(y[1], 88.0);
+    EXPECT_DOUBLE_EQ(y[2], 6.0);
+    EXPECT_DOUBLE_EQ(y[3], 88.0);
+}
+
+TEST(BlasDgemvTest, scale_beta_two_non_unit_incy) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 99.0, 1.0};
+    std::vector<double> y{10.0, 99.0, 20.0, 99.0};
+    cpu::blas::dgemv('N', 2, 2, 1.0, A.data(), 2, x.data(), 2, 2.0, y.data(), 2);
+    EXPECT_DOUBLE_EQ(y[0], 23.0);
+    EXPECT_DOUBLE_EQ(y[1], 99.0);
+    EXPECT_DOUBLE_EQ(y[2], 47.0);
+    EXPECT_DOUBLE_EQ(y[3], 99.0);
+}
+
+TEST(BlasDgemvTest, alpha_zero_after_scale_no_transpose) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 1.0};
+    std::vector<double> y{10.0, 20.0};
+    cpu::blas::dgemv('N', 2, 2, 0.0, A.data(), 2, x.data(), 1, 1.0, y.data(), 1);
+    EXPECT_DOUBLE_EQ(y[0], 10.0);
+    EXPECT_DOUBLE_EQ(y[1], 20.0);
+}
+
+TEST(BlasDgemvTest, alpha_zero_after_scale_transpose) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 1.0};
+    std::vector<double> y{7.0, 8.0};
+    cpu::blas::dgemv('T', 2, 2, 0.0, A.data(), 2, x.data(), 1, 1.0, y.data(), 1);
+    EXPECT_DOUBLE_EQ(y[0], 7.0);
+    EXPECT_DOUBLE_EQ(y[1], 8.0);
+}
+
+TEST(BlasDgemvTest, non_positive_or_null_noop) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 1.0};
+    std::vector<double> y{9.0, 8.0};
+    cpu::blas::dgemv('N', 0, 2, 1.0, A.data(), 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_DOUBLE_EQ(y[0], 9.0);
+    cpu::blas::dgemv('N', 2, 0, 1.0, A.data(), 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_DOUBLE_EQ(y[0], 9.0);
+    cpu::blas::dgemv('N', 2, 2, 1.0, nullptr, 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_DOUBLE_EQ(y[0], 9.0);
+    cpu::blas::dgemv('N', 2, 2, 1.0, A.data(), 2, nullptr, 1, 0.0, y.data(), 1);
+    EXPECT_DOUBLE_EQ(y[0], 9.0);
+    cpu::blas::dgemv('N', 2, 2, 1.0, A.data(), 2, x.data(), 1, 0.0, nullptr, 1);
+    EXPECT_DOUBLE_EQ(y[0], 9.0);
+}
+
+TEST(BlasLevel1Test, ddot_non_unit_stride) {
+    const std::vector<double> x{1.0, 99.0, 2.0, 99.0, 3.0};
+    const std::vector<double> y{4.0, 99.0, 5.0, 99.0, 6.0};
+    EXPECT_NEAR(cpu::blas::ddot(3, x.data(), 2, y.data(), 2), 32.0, 1e-12);
+}
+
+TEST(BlasLevel1Test, daxpy_non_unit_stride) {
+    const std::vector<double> x{10.0, 0.0, 20.0, 0.0, 30.0};
+    std::vector<double> y{1.0, 0.0, 2.0, 0.0, 3.0};
+    cpu::blas::daxpy(3, 0.5, x.data(), 2, y.data(), 2);
+    EXPECT_NEAR(y[0], 6.0, 1e-12);
+    EXPECT_NEAR(y[2], 12.0, 1e-12);
+    EXPECT_NEAR(y[4], 18.0, 1e-12);
+}

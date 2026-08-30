@@ -263,3 +263,30 @@ TEST(CfdInitialCondition, EmptyGridPulseIsEmpty) {
     const auto u = square_pulse(grid, 0.5, 0.2, 1.0);
     EXPECT_TRUE(u.empty());
 }
+
+TEST(CfdUpwindFvm, ZeroFluxNegativeVelocityRightGhost) {
+    const auto grid = grid1d(0.0, 1.0, 8);
+    std::vector<double> u0(grid.n, 0.0);
+    u0.back() = 1.0;
+    const auto v = constant_velocity(grid.n, -1.0);
+    const auto u1 = upwind_fvm_advection(u0, v, 0.05, grid.dx, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_TRUE(std::isfinite(u1.back()));
+}
+
+TEST(CfdUpwindFvm, EmptyFieldAndScalarVelocity) {
+    std::vector<double> empty;
+    const std::vector<double> scalar_v{0.5};
+    EXPECT_TRUE(upwind_fvm_advection(empty, scalar_v, 0.01, 0.1).empty());
+
+    const auto grid = grid1d(0.0, 1.0, 6);
+    const std::vector<double> u0(grid.n, 1.0);
+    const auto stepped = upwind_fvm_advection(u0, scalar_v, 0.01, grid.dx, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(stepped.size(), u0.size());
+}
+
+TEST(CfdUpwindFvm, VelocityLengthMismatchVsN) {
+    const std::vector<double> u{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> v{0.1, 0.2};
+    EXPECT_TRUE(upwind_fvm_advection(u, v, 0.01, 0.1).empty());
+}

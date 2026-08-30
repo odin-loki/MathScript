@@ -1102,3 +1102,72 @@ TEST(PolyExtTest, lagrange_two_points_line) {
     EXPECT_NEAR(eval_at(c, 0.0), 3.0, 1e-8);
     EXPECT_NEAR(eval_at(c, 1.0), 5.0, 1e-8);
 }
+
+TEST(PolyExtTest, roots_quadratic_complex_pair) {
+    // x^2 + 1 = 0, constant-first coeffs {1, 0, 1} -> roots ±i
+    const auto r = poly_roots({1.0, 0.0, 1.0});
+    ASSERT_EQ(r.size(), 2u);
+    const double im0 = std::abs(r[0].imag());
+    const double im1 = std::abs(r[1].imag());
+    EXPECT_NEAR(r[0].real(), 0.0, 1e-10);
+    EXPECT_NEAR(r[1].real(), 0.0, 1e-10);
+    EXPECT_NEAR(im0, 1.0, 1e-10);
+    EXPECT_NEAR(im1, 1.0, 1e-10);
+    EXPECT_LT(r[0].imag() * r[1].imag(), 0.0);
+}
+
+TEST(PolyExtTest, roots_cubic_one_real_and_complex_pair) {
+    // (x-1)(x^2+1) = x^3 - x^2 + x - 1
+    const auto r = poly_roots({-1.0, 1.0, -1.0, 1.0});
+    ASSERT_EQ(r.size(), 3u);
+    int n_real = 0;
+    int n_complex = 0;
+    for (const auto& z : r) {
+        if (std::abs(z.imag()) < 1e-8) {
+            ++n_real;
+            EXPECT_NEAR(z.real(), 1.0, 1e-6);
+        } else {
+            ++n_complex;
+            EXPECT_NEAR(z.real(), 0.0, 1e-6);
+            EXPECT_NEAR(std::abs(z.imag()), 1.0, 1e-6);
+        }
+    }
+    EXPECT_EQ(n_real, 1);
+    EXPECT_EQ(n_complex, 2);
+}
+
+TEST(PolyExtTest, roots_quartic_two_complex_pairs) {
+    // (x^2+1)(x^2+4) = x^4 + 5x^2 + 4 — even degree, no real roots, so the
+    // companion QR fallback extracts 2x2 blocks with negative discriminant.
+    const auto r = poly_roots({4.0, 0.0, 5.0, 0.0, 1.0});
+    ASSERT_EQ(r.size(), 4u);
+    int n_complex = 0;
+    for (const auto& z : r) {
+        if (std::abs(z.imag()) > 1e-6) {
+            ++n_complex;
+            EXPECT_NEAR(z.real(), 0.0, 1e-4);
+        }
+    }
+    EXPECT_GE(n_complex, 2);
+}
+
+TEST(PolyExtTest, zero_poly_early_returns) {
+    const auto pz = poly_pow({0.0}, 4);
+    ASSERT_TRUE(pz.has_value());
+    expect_poly_near(*pz, {0.0});
+
+    expect_poly_near(poly_monic({0.0, 0.0}), {0.0});
+    expect_poly_near(poly_reverse({0.0, 0.0}), {0.0});
+    expect_poly_near(poly_shift({0.0, 0.0}, 3.0), {0.0});
+    expect_poly_near(poly_scale({0.0, 0.0}, 2.0), {0.0});
+    expect_poly_near(poly_lcm({}, {}), {0.0});
+
+    const auto S = poly_sylvester({}, {});
+    EXPECT_EQ(S.rows(), 1u);
+    EXPECT_EQ(S.cols(), 1u);
+
+    EXPECT_NEAR(poly_discriminant({0.0, 0.0}), 0.0, 1e-15);
+    expect_poly_near(poly_squarefree({0.0, 0.0}), {0.0});
+    EXPECT_TRUE(poly_roots({0.0}).empty());
+    EXPECT_TRUE(poly_roots({0.0, 0.0, 0.0}).empty());
+}

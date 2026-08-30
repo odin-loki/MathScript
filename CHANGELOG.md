@@ -15,6 +15,7 @@ CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follo
 - Tests: extra symbolic/image/signal unit coverage plus no-assignment REPL printers (optim, frameworks session objects, vector ODEs including `ode_adams_bashforth2_vec`).
 - Tests: extra special/linalg/matmul/solve/BLAS unit coverage plus finance max-sharpe and cplx nullary no-assignment REPL printers.
 - Tests: extra control/fem/finance/poly/signal/distributed unit coverage plus remaining no-assignment REPL printers (session objects, dual-arity finance, senary-padded CFD/FEM).
+- Tests: extra symbolic transform, BLAS/matmul/solve, control, finance/poly/FEM/ODE, CFD, and core Sym coverage plus leftover REPL printers (geo, signal scalar-assign, quantum assign).
 - Tests: more no-assignment REPL `execute("fn(...)")` printers (special/signal/control/quantum/prob/stats/finance/poly/cplx/topo/combo/ode/pde/cfd) plus extra symbolic CAS/dsolve unit cases.
 - Tests: 117 no-assignment REPL `execute("fn(A)")` cases for `repl_engine.cpp` printers (graph/geo/linalg/fft/quantum/stats/info and related).
 - CPU SIMD kernels use xsimd (`batch<double>`) instead of raw AVX2 intrinsics; CUDA `add_inplace`/`fill`/`mul_inplace`/`scale` launch `.cu` kernels when `MS_ENABLE_CUDA` and a device is present, otherwise xsimd host fallback.

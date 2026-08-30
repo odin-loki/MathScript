@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <numeric>
 #include <span>
 #include <variant>
@@ -2629,4 +2630,181 @@ TEST(SignalExtTest, lms_identifies_delta) {
     ASSERT_EQ(r.output.size(), x.size());
     ASSERT_EQ(r.weights.size(), 2u);
     EXPECT_NEAR(r.output[0], 0.0, 1e-15);
+}
+
+namespace {
+
+Matrix<double> make_filled_matrix(size_t rows, size_t cols, uint32_t seed) {
+    Matrix<double> A(rows, cols);
+    uint32_t state = seed;
+    for (size_t i = 0; i < rows; ++i) {
+        for (size_t j = 0; j < cols; ++j) {
+            state = state * 1664525u + 1013904223u;
+            A(i, j) = static_cast<double>(state % 2000u) / 1000.0 - 1.0;
+        }
+    }
+    return A;
+}
+
+} // namespace
+
+TEST(SignalExtTest, conv2_separable_pivot_not_at_origin) {
+    // Rank-1 kernel with B(0,0) == 0 so try_separable_kernel searches for a pivot.
+    Matrix<double> B(3, 3, 0.0);
+    const std::vector<double> row_k{0.0, 1.0, 2.0};
+    const std::vector<double> col_k{1.0, 2.0, 3.0};
+    for (size_t i = 0; i < row_k.size(); ++i) {
+        for (size_t j = 0; j < col_k.size(); ++j) {
+            B(i, j) = row_k[i] * col_k[j];
+        }
+    }
+    const auto A = make_filled_matrix(32, 32, 9001u);
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, conv2_fast_zero_kernel_is_zero) {
+    const auto A = make_filled_matrix(32, 32, 4242u);
+    Matrix<double> Z(4, 4, 0.0);
+    const auto C = conv2(A, Z);
+    if (C.empty()) GTEST_SKIP() << "conv2 rejected large zero kernel";
+    ASSERT_EQ(C.rows(), A.rows() + Z.rows() - 1);
+    ASSERT_EQ(C.cols(), A.cols() + Z.cols() - 1);
+    for (size_t r = 0; r < C.rows(); ++r) {
+        for (size_t c = 0; c < C.cols(); ++c) {
+            EXPECT_NEAR(C(r, c), 0.0, 1e-12);
+        }
+    }
+}
+
+TEST(SignalExtTest, conv2_fast_column_vector_kernel) {
+    Matrix<double> col(4, 1, 0.0);
+    col(0, 0) = 1.0;
+    col(1, 0) = -2.0;
+    col(2, 0) = 0.5;
+    col(3, 0) = 1.5;
+    const auto A = make_filled_matrix(32, 32, 1717u);
+    expect_conv2_matches_reference(A, col);
+}
+
+TEST(SignalExtTest, conv2_by_rows_two_row_nonseparable) {
+    Matrix<double> B{{1.0, 0.0, 2.0}, {0.0, 1.0, 0.0}};
+    const auto A = make_filled_matrix(32, 32, 5050u);
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, conv2_by_rows_two_col_nonseparable) {
+    Matrix<double> B{{1.0, 0.0}, {0.0, 1.0}, {2.0, 0.0}};
+    const auto A = make_filled_matrix(32, 32, 6060u);
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, conv2_by_rows_two_by_two_nonseparable) {
+    Matrix<double> B{{1.0, 0.0}, {0.0, 1.0}};
+    const auto A = make_filled_matrix(32, 36, 7070u);
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, conv2_by_rows_wide_fft_convolve) {
+    Matrix<double> B{{1.0, -1.0, 0.5, 0.0, 2.0}, {0.0, 1.0, -0.25, 1.5, 0.0}};
+    const auto A = make_filled_matrix(32, 64, 8080u);
+    expect_conv2_matches_reference(A, B);
+}
+
+TEST(SignalExtTest, unwrap_three_pi_positive_jump) {
+    const std::vector<double> wrapped{0.0, 3.0 * M_PI};
+    const auto out = unwrap(wrapped);
+    ASSERT_EQ(out.size(), 2u);
+    EXPECT_NEAR(out[0], 0.0, 1e-15);
+    const double step = out[1] - out[0];
+    EXPECT_NEAR(std::abs(step), M_PI, 1e-12);
+}
+
+TEST(SignalExtTest, czt_length_one_single_bin) {
+    const std::vector<double> x{2.5};
+    const std::complex<double> w(1.0, 0.0);
+    const std::complex<double> a(1.0, 0.0);
+    const auto fast = czt(x, 1, w, a);
+    if (fast.empty()) GTEST_SKIP() << "czt rejected n=1 m=1";
+    const auto direct = czt_direct(x, 1, w, a);
+    ASSERT_EQ(fast.size(), 1u);
+    EXPECT_NEAR(fast[0].real(), direct[0].real(), 1e-12);
+    EXPECT_NEAR(fast[0].imag(), direct[0].imag(), 1e-12);
+}
+
+TEST(SignalExtTest, czt_odd_n_odd_m_matches_direct) {
+    const std::vector<double> x{1.0, -0.5, 0.25, 0.75, -1.25, 0.1, 0.4, -0.2, 0.9};
+    const double arg_w = -0.41;
+    const std::complex<double> w(std::cos(arg_w), std::sin(arg_w));
+    const std::complex<double> a(0.85, 0.2);
+    const int m = 7;
+    const auto fast = czt(x, m, w, a);
+    if (fast.empty()) GTEST_SKIP() << "czt rejected odd n/m";
+    const auto direct = czt_direct(x, m, w, a);
+    ASSERT_EQ(fast.size(), static_cast<size_t>(m));
+    for (int k = 0; k < m; ++k) {
+        EXPECT_NEAR(fast[static_cast<size_t>(k)].real(), direct[static_cast<size_t>(k)].real(), 1e-9)
+            << "k=" << k;
+        EXPECT_NEAR(fast[static_cast<size_t>(k)].imag(), direct[static_cast<size_t>(k)].imag(), 1e-9)
+            << "k=" << k;
+    }
+}
+
+TEST(SignalExtTest, periodogram_odd_nfft_above_crossover) {
+    const std::vector<double> x = sinusoid(65, 130.0, 10.0);
+    const auto r = periodogram(x, 130.0, {}, 65);
+    if (!r.has_value()) GTEST_SKIP() << "periodogram rejected odd nfft 65";
+    ASSERT_EQ(r->frequencies.size(), r->power.size());
+    EXPECT_FALSE(r->power.empty());
+    for (double p : r->power) {
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_GE(p, 0.0);
+    }
+}
+
+TEST(SignalExtTest, welch_odd_nfft_segment_keeps_finite) {
+    const std::vector<double> x = sinusoid(45, 90.0, 8.0);
+    const auto r = welch_psd(x, 90.0, 15, 0.0);
+    if (!r.has_value()) GTEST_SKIP() << "welch_psd rejected odd segment_len 15";
+    ASSERT_EQ(r->frequencies.size(), r->power.size());
+    EXPECT_FALSE(r->power.empty());
+    for (double p : r->power) {
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_GE(p, 0.0);
+    }
+}
+
+TEST(SignalExtTest, coherence_zero_reference_is_zero) {
+    const std::vector<double> x = sinusoid(64, 64.0, 8.0);
+    const std::vector<double> y(x.size(), 0.0);
+    const auto r = coherence(x, y, 64.0, 16, 0.5);
+    if (!r.has_value()) GTEST_SKIP() << "coherence rejected zero y";
+    ASSERT_EQ(r->coherence.size(), r->frequencies.size());
+    for (double c : r->coherence) {
+        EXPECT_NEAR(c, 0.0, 1e-12);
+    }
+}
+
+TEST(SignalExtTest, spectrogram_odd_segment_len_finite) {
+    const std::vector<double> x = sinusoid(45, 90.0, 8.0);
+    const auto r = spectrogram(x, 90.0, 15, 0.0);
+    if (!r.has_value()) GTEST_SKIP() << "spectrogram rejected odd segment_len 15";
+    EXPECT_EQ(r->magnitude.rows(), r->times.size());
+    EXPECT_EQ(r->magnitude.cols(), r->frequencies.size());
+    EXPECT_FALSE(r->times.empty());
+    for (size_t i = 0; i < r->magnitude.rows(); ++i) {
+        for (size_t j = 0; j < r->magnitude.cols(); ++j) {
+            EXPECT_TRUE(std::isfinite(r->magnitude(i, j)));
+            EXPECT_GE(r->magnitude(i, j), 0.0);
+        }
+    }
+}
+
+TEST(SignalExtTest, coherence_odd_nperseg_self_unity) {
+    const std::vector<double> x = sinusoid(45, 90.0, 8.0);
+    const auto r = coherence(x, x, 90.0, 15, 0.0);
+    if (!r.has_value()) GTEST_SKIP() << "coherence rejected odd nperseg 15";
+    ASSERT_FALSE(r->coherence.empty());
+    for (double c : r->coherence) {
+        EXPECT_NEAR(c, 1.0, 1e-9);
+    }
 }

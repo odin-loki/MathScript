@@ -4092,3 +4092,17 @@ TEST(ReplCommandsTest, geo_dist2d_noassign) {
     expect_contains(interp, "geo_dist2d(0, 0, 3, 4)", "5");
     expect_error_contains(interp, "geo_dist2d(0, 0, 3, missing)", "geo_dist2d");
 }
+
+TEST(ReplCommandsTest, geo_dist_sq2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_dist_sq2d(0, 0, 3, 4)", "25");
+    expect_error_contains(interp, "geo_dist_sq2d(0, 0, 3, missing)",
+                          "expected geo_dist_sq2d(x1,y1,x2,y2)");
+}
+
+TEST(ReplCommandsTest, geo_cross2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_cross2d(1, 0, 0, 1)", "1");
+    expect_error_contains(interp, "geo_cross2d(1, 0, 0, missing)",
+                          "expected geo_cross2d(x1,y1,x2,y2)");
+}

@@ -1,8 +1,11 @@
 // MathScript Linear Solver Unit Test
 
 #include <gtest/gtest.h>
+#include <variant>
 #include "ms/core/matrix.hpp"
 #include "ms/core/operations.hpp"
+#include "ms/runtime/dispatch.hpp"
+#include "ms/runtime/topology.hpp"
 
 using namespace ms;
 using DMatrix = ColMatrix<double>;
@@ -144,4 +147,38 @@ TEST(SolveTest, singular_3x3) {
     DMatrix A{{1, 2, 3}, {2, 4, 6}, {1, 1, 1}};
     DMatrix b{{1}, {2}, {3}};
     EXPECT_FALSE(solve(A, b).has_value());
+}
+
+TEST(SolveTest, square_rhs_row_mismatch) {
+    DMatrix A{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix b{{1.0}, {2.0}, {3.0}};
+    auto result = solve(A, b);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(result.error()));
+    const auto mismatch = std::get<DimensionMismatch>(result.error());
+    EXPECT_EQ(mismatch.got_rows, A.rows());
+    EXPECT_EQ(mismatch.got_cols, b.rows());
+}
+
+TEST(SolveTest, cuda_copy_path_if_gpu) {
+    if (!has_cuda()) {
+        GTEST_SKIP() << "CUDA not available";
+    }
+    const size_t n = 256;
+    const auto decision = decide(n, ExecPolicy::AUTO);
+    if (decision.backend != Backend::CUDA) {
+        GTEST_SKIP() << "decide() did not select CUDA";
+    }
+    DMatrix A = eye<double>(n);
+    DMatrix b(n, 1);
+    for (size_t i = 0; i < n; ++i) {
+        b(i, 0) = static_cast<double>(i + 1);
+    }
+    auto x = solve(A, b);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_EQ(x->rows(), n);
+    EXPECT_EQ(x->cols(), 1u);
+    for (size_t i = 0; i < n; ++i) {
+        EXPECT_NEAR((*x)(i, 0), static_cast<double>(i + 1), 1e-8);
+    }
 }

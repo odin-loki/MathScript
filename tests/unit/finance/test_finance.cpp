@@ -2409,3 +2409,80 @@ TEST(FinanceBarrier, UpInCallAndDownInPut) {
     EXPECT_TRUE(std::isfinite(up_in));
     EXPECT_TRUE(std::isfinite(down_in));
 }
+
+TEST(FinanceMerton, ImpliedAssetShortMaxIterDoesNotConverge) {
+    MertonResult result = merton_implied_asset_params(50.0, 0.25, 100.0, 0.05, 1.0, 1, 1e-16);
+    EXPECT_FALSE(result.converged);
+    if (std::isfinite(result.implied_asset_value) && result.implied_asset_value > 0.0 &&
+        std::isfinite(result.implied_asset_volatility) && result.implied_asset_volatility > 0.0) {
+        EXPECT_TRUE(std::isfinite(result.distance_to_default));
+        EXPECT_TRUE(std::isfinite(result.probability_of_default));
+        EXPECT_GE(result.probability_of_default, 0.0);
+        EXPECT_LE(result.probability_of_default, 1.0);
+    } else {
+        EXPECT_TRUE(std::isnan(result.implied_asset_value));
+        EXPECT_TRUE(std::isnan(result.implied_asset_volatility));
+    }
+}
+
+TEST(FinanceSabr, RhoOneHitsZOverXLimit) {
+    double c = sabr_call(100.0, 80.0, 1.0, 0.05, 0.20, 0.5, 1.0, 0.40);
+    double p = sabr_put(100.0, 120.0, 1.0, 0.05, 0.20, 0.5, 1.0, 0.40);
+    EXPECT_TRUE(std::isfinite(c));
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_GE(c, 0.0);
+    EXPECT_GE(p, 0.0);
+}
+
+TEST(FinanceSabr, NegativeExpiryReturnsIntrinsic) {
+    EXPECT_NEAR(sabr_call(110.0, 100.0, -0.25, 0.05, 0.20, 0.5, -0.3, 0.4), 10.0, 1e-12);
+    EXPECT_NEAR(sabr_put(90.0, 100.0, -0.25, 0.05, 0.20, 0.5, -0.3, 0.4), 10.0, 1e-12);
+}
+
+TEST(FinanceSabr, ExtremeSmileCorrectionReturnsNaN) {
+    double c = sabr_call(100.0, 100.0, 80.0, 0.0, 0.20, 0.5, -0.99, 5.0);
+    double p = sabr_put(100.0, 100.0, 80.0, 0.0, 0.20, 0.5, -0.99, 5.0);
+    EXPECT_TRUE(std::isnan(c));
+    EXPECT_TRUE(std::isnan(p));
+}
+
+TEST(FinanceBarrier, UpOutCallAndDownOutPut) {
+    double S = 100.0, T = 1.0, r = 0.05, sigma = 0.2;
+    double up_out_k_lt = barrier_option(S, 90.0, 120.0, T, r, sigma, true, false, true);
+    double up_out_k_ge = barrier_option(S, 130.0, 120.0, T, r, sigma, true, false, true);
+    double down_out_k_ge = barrier_option(S, 100.0, 80.0, T, r, sigma, false, false, false);
+    double down_out_k_lt = barrier_option(S, 70.0, 80.0, T, r, sigma, false, false, false);
+    EXPECT_TRUE(std::isfinite(up_out_k_lt));
+    EXPECT_NEAR(up_out_k_ge, 0.0, 1e-12);
+    EXPECT_TRUE(std::isfinite(down_out_k_ge));
+    EXPECT_NEAR(down_out_k_lt, 0.0, 1e-12);
+    EXPECT_GE(up_out_k_lt, 0.0);
+    EXPECT_GE(down_out_k_ge, 0.0);
+}
+
+TEST(FinanceBarrier, UpInCallStrikeAboveBarrier) {
+    double S = 100.0, K = 125.0, B = 120.0, T = 1.0, r = 0.05, sigma = 0.2;
+    double up_in = barrier_option(S, K, B, T, r, sigma, true, true, true);
+    EXPECT_TRUE(std::isfinite(up_in));
+    EXPECT_GE(up_in, 0.0);
+}
+
+TEST(FinanceBarrier, DownInPutStrikeBelowBarrier) {
+    double S = 100.0, K = 70.0, B = 80.0, T = 1.0, r = 0.05, sigma = 0.2;
+    double down_in = barrier_option(S, K, B, T, r, sigma, false, true, false);
+    EXPECT_TRUE(std::isfinite(down_in));
+    EXPECT_GE(down_in, 0.0);
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeCovSizeMismatchErrors) {
+    std::vector<double> short_cov = {0.10, 0.02, 0.02, 0.08};
+    std::vector<double> mu = {0.08, 0.12, 0.10};
+    auto w = max_sharpe_portfolio(short_cov, mu, 0.02, 3);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinancePortfolioOpt, MaxSharpeZeroExcessReturnErrors) {
+    std::vector<double> mu_rf = {0.02, 0.02, 0.02};
+    auto w = max_sharpe_portfolio(kCov3, mu_rf, 0.02, 3);
+    EXPECT_FALSE(w.has_value());
+}

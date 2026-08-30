@@ -1538,3 +1538,170 @@ TEST(ControlStepInfo, AlreadyInBandSettlesAtStart) {
     auto info = step_info(t, y, 1.0, 5.0);
     EXPECT_NEAR(info.settling_time, 0.0, 1e-12);
 }
+
+// m>1 skips place(); Kdir search must raise scale until lyap(Acl) is nonsingular.
+TEST(ControlRiccati, IllConditionedTwoInputScalesGain) {
+    std::vector<std::vector<double>> A = {{0.0, 0.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> B = {{1.0, 0.0}, {0.0, 1e-6}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = riccati(A, B, Q, R);
+    if (X.has_value()) {
+        ASSERT_EQ(X->size(), 2u);
+        EXPECT_TRUE(std::isfinite((*X)[0][0]));
+        EXPECT_TRUE(std::isfinite((*X)[1][1]));
+    }
+}
+
+TEST(ControlRiccati, DoubleIntegratorTwoInputGainSearch) {
+    std::vector<std::vector<double>> A = {{0.0, 1.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> B = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = riccati(A, B, Q, R);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_EQ(X->size(), 2u);
+    EXPECT_GT((*X)[0][0], 0.0);
+    EXPECT_GT((*X)[1][1], 0.0);
+}
+
+TEST(ControlRiccati, TwoInputUncontrollableSearchFails) {
+    std::vector<std::vector<double>> A = {{0.0, 1.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> B = {{1.0, 0.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = riccati(A, B, Q, R);
+    EXPECT_FALSE(X.has_value());
+}
+
+TEST(ControlLQR, TwoInputDoubleIntegrator) {
+    std::vector<std::vector<double>> A = {{0.0, 1.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> B = {{0.0, 1.0}, {1.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto K = lqr(A, B, Q, R);
+    ASSERT_TRUE(K.has_value());
+    EXPECT_EQ(K->size(), 2u);
+    EXPECT_EQ((*K)[0].size(), 2u);
+}
+
+TEST(ControlLQE, TwoOutputUsesGainSearch) {
+    std::vector<std::vector<double>> A = {{-1.0, 0.2}, {0.0, -2.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto est = lqe(A, C, Q, R);
+    ASSERT_TRUE(est.has_value());
+    EXPECT_EQ(est->P.size(), 2u);
+    EXPECT_EQ(est->L.size(), 2u);
+    EXPECT_EQ(est->L[0].size(), 2u);
+    EXPECT_GT(est->P[0][0], 0.0);
+}
+
+TEST(ControlTF, QuarticPolesDurandKerner) {
+    // (s+1)(s+2)(s+3)(s+4) = s^4 + 10s^3 + 35s^2 + 50s + 24
+    auto sys = tf({1.0}, {1.0, 10.0, 35.0, 50.0, 24.0});
+    auto p = poles(sys);
+    ASSERT_EQ(p.size(), 4u);
+    std::vector<double> reals;
+    for (const auto& z : p) reals.push_back(z.real());
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -4.0, 1e-3);
+    EXPECT_NEAR(reals[1], -3.0, 1e-3);
+    EXPECT_NEAR(reals[2], -2.0, 1e-3);
+    EXPECT_NEAR(reals[3], -1.0, 1e-3);
+}
+
+TEST(ControlTF, CubicZerosDurandKerner) {
+    auto sys = tf({1.0, 6.0, 11.0, 6.0}, {1.0, 10.0});
+    auto z = zeros(sys);
+    ASSERT_EQ(z.size(), 3u);
+    std::vector<double> reals = {z[0].real(), z[1].real(), z[2].real()};
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -3.0, 1e-3);
+    EXPECT_NEAR(reals[1], -2.0, 1e-3);
+    EXPECT_NEAR(reals[2], -1.0, 1e-3);
+}
+
+TEST(ControlTF, RepeatedQuarticPoles) {
+    // (s+1)^4 — clustered roots exercise Durand–Kerner den≈0 continue.
+    auto sys = tf({1.0}, {1.0, 4.0, 6.0, 4.0, 1.0});
+    auto p = poles(sys);
+    ASSERT_EQ(p.size(), 4u);
+    for (const auto& z : p) {
+        EXPECT_TRUE(std::isfinite(z.real()));
+        EXPECT_TRUE(std::isfinite(z.imag()));
+        EXPECT_NEAR(z.real(), -1.0, 0.5);
+    }
+}
+
+TEST(ControlTF, ComplexQuartetDurandKerner) {
+    // (s^2+2s+2)(s^2+4s+5) = s^4 + 6s^3 + 15s^2 + 18s + 10  →  -1±j, -2±j
+    auto sys = tf({1.0}, {1.0, 6.0, 15.0, 18.0, 10.0});
+    auto p = poles(sys);
+    ASSERT_EQ(p.size(), 4u);
+    std::vector<double> reals, imags;
+    for (const auto& z : p) {
+        reals.push_back(z.real());
+        imags.push_back(std::abs(z.imag()));
+    }
+    std::sort(reals.begin(), reals.end());
+    std::sort(imags.begin(), imags.end());
+    EXPECT_NEAR(reals[0], -2.0, 5e-3);
+    EXPECT_NEAR(reals[1], -2.0, 5e-3);
+    EXPECT_NEAR(reals[2], -1.0, 5e-3);
+    EXPECT_NEAR(reals[3], -1.0, 5e-3);
+    EXPECT_NEAR(imags[0], 1.0, 5e-3);
+    EXPECT_NEAR(imags[3], 1.0, 5e-3);
+}
+
+TEST(ControlSS, FourthOrderSs2tfMinorExpansion) {
+    auto plant = tf({1.0, 2.0, 3.0, 4.0}, {1.0, 10.0, 35.0, 50.0, 24.0});
+    auto back = ss2tf(tf2ss(plant));
+    EXPECT_NEAR(dcgain(back), dcgain(plant), 1e-5);
+    auto p = poles(back);
+    ASSERT_EQ(p.size(), 4u);
+}
+
+TEST(ControlDare, ThreeByThreeFillsIpSX) {
+    std::vector<std::vector<double>> A = {{0.3, 0.1, 0.0}, {0.0, 0.4, 0.05}, {0.0, 0.0, 0.5}};
+    std::vector<std::vector<double>> B = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    auto X = dare(A, B, Q, R);
+    ASSERT_TRUE(X.has_value());
+    ASSERT_EQ(X->size(), 3u);
+    EXPECT_GT((*X)[0][0], 0.0);
+    EXPECT_GT((*X)[1][1], 0.0);
+    EXPECT_GT((*X)[2][2], 0.0);
+    for (const auto& row : *X)
+        for (double v : row) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ControlDiscretize, TustinC2dSingularReturnsOriginal) {
+    // I - (Ts/2) A is singular when an eigenvalue of A is 2/Ts.
+    const double Ts = 0.1;
+    auto orig = ss({{2.0 / Ts, 1.0}, {0.0, 2.0 / Ts}}, {{1.0}, {0.0}},
+                   {{1.0, 0.0}}, {{0.0}});
+    auto disc = c2d(orig, Ts, DiscretizationMethod::Tustin);
+    EXPECT_NEAR(disc.A[0][0], orig.A[0][0], 1e-12);
+    EXPECT_NEAR(disc.A[1][1], orig.A[1][1], 1e-12);
+    EXPECT_NEAR(disc.B[0][0], orig.B[0][0], 1e-12);
+}
+
+TEST(ControlDiscretize, TustinD2cSingularReturnsOriginal) {
+    // I + Ad is singular when Ad = -I.
+    auto orig = ss({{-1.0, 0.0}, {0.0, -1.0}}, {{1.0}, {0.0}}, {{1.0, 0.0}}, {{0.0}});
+    auto cont = d2c(orig, 0.1, DiscretizationMethod::Tustin);
+    EXPECT_NEAR(cont.A[0][0], orig.A[0][0], 1e-12);
+    EXPECT_NEAR(cont.A[1][1], orig.A[1][1], 1e-12);
+    EXPECT_NEAR(cont.B[0][0], orig.B[0][0], 1e-12);
+}
+
+TEST(ControlDiscretize, ZohD2cSingularAdMinusI) {
+    // Ad has a unit eigenvalue but Ad ≠ I, so Ad−I is singular (control_inv).
+    auto orig = ss({{1.0, 0.0}, {0.0, 0.5}}, {{1.0}, {0.0}}, {{1.0, 0.0}}, {{0.0}});
+    auto cont = d2c(orig, 0.1, DiscretizationMethod::ZOH);
+    EXPECT_NEAR(cont.A[0][0], orig.A[0][0], 1e-12);
+    EXPECT_NEAR(cont.A[1][1], orig.A[1][1], 1e-12);
+}

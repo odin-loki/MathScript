@@ -5667,3 +5667,36 @@ TEST(ReplCommandsTest, quantum_inner_noassign) {
     expect_contains(interp, "quantum_inner([1; 0], [1; 0])", "1");
     expect_error_contains(interp, "quantum_inner(no_such_matrix, [1; 0])", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, quantum_wigner_assign) {
+    Interpreter interp;
+    expect_ok(interp, "rho = [1, 0; 0, 0]");
+    expect_ok(interp, "w = quantum_wigner(rho, 0, 0)");
+    ASSERT_GT(interp.state().scalars.count("w"), 0u);
+    expect_error_contains(interp, "w = quantum_wigner(rho, missing, 0)",
+                          "unknown scalar");
+}
+
+TEST(ReplCommandsTest, quantum_husimi_assign) {
+    Interpreter interp;
+    expect_ok(interp, "rho = [1, 0; 0, 0]");
+    expect_ok(interp, "h = quantum_husimi(rho, 0, 0)");
+    ASSERT_GT(interp.state().scalars.count("h"), 0u);
+    expect_error_contains(interp, "h = quantum_husimi(rho, missing, 0)",
+                          "unknown scalar");
+}
+
+TEST(ReplCommandsTest, quantum_schmidt_rank_assign) {
+    Interpreter interp;
+    expect_ok(interp, "psi = [1; 0; 0; 0]");
+    expect_ok(interp, "r = quantum_schmidt_rank(psi, 2, 2)");
+    ASSERT_GT(interp.state().scalars.count("r"), 0u);
+    expect_error_contains(interp, "r = quantum_schmidt_rank(psi, missing, 2)",
+                          "expected quantum_schmidt_rank(psi, dim_a, dim_b)");
+
+    expect_ok(interp, "rho4 = [1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0]");
+    expect_ok(interp, "ptr = quantum_partial_trace(rho4, 2, 2, 0)");
+    ASSERT_GT(interp.state().matrices.count("ptr"), 0u);
+    expect_error_contains(interp, "ptr = quantum_partial_trace(rho4, missing, 2, 0)",
+                          "expected numeric scalar argument");
+}

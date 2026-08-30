@@ -787,3 +787,62 @@ TEST(FemSolve3D, rejects_mismatch) {
     ColMatrix<double> f(1, 1, 0.0);
     EXPECT_FALSE(solve_fem_3d(K, f).has_value());
 }
+
+TEST(FemSolve, singular_tridiagonal_trailing_diag) {
+    ColMatrix<double> K(3, 3, 0.0);
+    K(0, 0) = 1.0;
+    K(1, 1) = 1.0;
+    ColMatrix<double> f(3, 1, 1.0);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemSolve, singular_tridiagonal_mid_pivot) {
+    ColMatrix<double> K(3, 3, 0.0);
+    K(0, 0) = 1.0;
+    K(0, 1) = 1.0;
+    K(1, 0) = 1.0;
+    K(1, 1) = 1.0;
+    K(2, 2) = 1.0;
+    ColMatrix<double> f(3, 1, 1.0);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemSolve, singular_dense_nondiagonal) {
+    ColMatrix<double> K(3, 3, 1.0);
+    ColMatrix<double> f(3, 1, 1.0);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemDirichlet, rejects_later_node_out_of_range) {
+    ColMatrix<double> K(2, 2, 0.0);
+    ColMatrix<double> f(2, 1, 0.0);
+    EXPECT_FALSE(apply_dirichlet(K, f, {0, 4}, {1.0, 2.0}).has_value());
+}
+
+TEST(FemStiffness1D, first_node_out_of_range) {
+    Mesh1D mesh;
+    mesh.nodes = {0.0, 1.0};
+    mesh.connectivity = {{{9, 1}}};
+    EXPECT_FALSE(assemble_stiffness_1d(mesh).has_value());
+}
+
+TEST(FemStiffness2D, first_node_out_of_range) {
+    Mesh2D mesh;
+    mesh.nodes = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    mesh.triangles = {{{8, 1, 2}}};
+    EXPECT_FALSE(assemble_stiffness_2d(mesh).has_value());
+}
+
+TEST(FemStiffness3D, first_node_out_of_range) {
+    Mesh3D mesh;
+    mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    mesh.tetrahedra = {{{7, 1, 2, 3}}};
+    EXPECT_FALSE(assemble_stiffness_3d(mesh).has_value());
+}
+
+TEST(FemLagrangeBasis, p2_degree_rejected) {
+    LagrangeBasis basis;
+    basis.degree = 2;
+    EXPECT_FALSE(basis.evaluate(0.0).has_value());
+    EXPECT_FALSE(basis.derivative(1.0).has_value());
+}

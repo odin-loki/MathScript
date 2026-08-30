@@ -1381,3 +1381,85 @@ TEST(OdeAdvanced2, ExponentialEuler_NegativeSteps_ReturnsEmpty) {
     EXPECT_TRUE(result.t.empty());
     EXPECT_TRUE(result.y.empty());
 }
+
+TEST(OdeAdvanced2, EventDetect_PositiveToNegativeCrossing) {
+    const auto f = [](double, double) { return -1.0; };
+    const auto g = [](double, double y) { return y; };
+    const auto result = ode_event_detect(f, g, 0.0, 2.0, 4.0, 40);
+    ASSERT_EQ(result.event_times.size(), 1u);
+    EXPECT_NEAR(result.event_times[0], 2.0, 1e-3);
+    EXPECT_NEAR(result.event_values[0], 0.0, 1e-3);
+}
+
+TEST(OdeAdvanced2, EventDetect_CoarseStepRootInSecondHalf) {
+    const auto f = [](double, double) { return 1.0; };
+    const auto g = [](double, double y) { return y - 0.75; };
+    const auto result = ode_event_detect(f, g, 0.0, 0.0, 1.0, 1);
+    ASSERT_EQ(result.event_times.size(), 1u);
+    EXPECT_NEAR(result.event_times[0], 0.75, 1e-6);
+    EXPECT_NEAR(result.event_values[0], 0.75, 1e-6);
+}
+
+TEST(OdeAdvanced2, BvpShooting_UnreachableOscillator_NotConverged) {
+    const auto f = [](double, double y, double) { return -y; };
+    const auto result = ode_bvp_shooting(f, 0.0, 0.0, M_PI, 1.0, 80);
+    EXPECT_FALSE(result.converged);
+}
+
+TEST(OdeAdvanced2, BvpShooting_LinearHitsBoundaryOrReportsFlag) {
+    const auto f = [](double, double, double) { return 0.0; };
+    const auto result = ode_bvp_shooting(f, 0.0, 0.0, 1.0, 2.0, 20);
+    ASSERT_FALSE(result.y.empty());
+    if (result.converged) {
+        EXPECT_NEAR(result.y.back(), 2.0, 1e-6);
+    }
+}
+
+TEST(OdeAdvanced2, DaeIndex1_MismatchedDiffRhs_NotConverged) {
+    const DaeDiffFunc f = [](double, const std::vector<double>&,
+                              const std::vector<double>&) {
+        return std::vector<double>{};
+    };
+    const DaeAlgFunc g = [](double t, const std::vector<double>&,
+                             const std::vector<double>& z) {
+        return std::vector<double>{z[0] - std::cos(t)};
+    };
+    const auto result = ode_dae_index1(f, g, 0.0, {0.0}, {1.0}, 1.0, 8);
+    EXPECT_FALSE(result.converged);
+}
+
+TEST(OdeAdvanced2, DaeIndex1_StageK2SizeMismatch_NotConverged) {
+    int calls = 0;
+    const DaeDiffFunc f = [&calls](double, const std::vector<double>&,
+                                    const std::vector<double>& z) {
+        ++calls;
+        if (calls == 1) {
+            return std::vector<double>{z[0]};
+        }
+        return std::vector<double>{};
+    };
+    const DaeAlgFunc g = [](double t, const std::vector<double>&,
+                             const std::vector<double>& z) {
+        return std::vector<double>{z[0] - std::cos(t)};
+    };
+    const auto result = ode_dae_index1(f, g, 0.0, {0.0}, {1.0}, 1.0, 8);
+    EXPECT_FALSE(result.converged);
+}
+
+TEST(OdeAdvanced2, DaeIndex1_AlgSizeWrongAfterNewton_NotConverged) {
+    int g_calls = 0;
+    const DaeDiffFunc f = [](double, const std::vector<double>&,
+                              const std::vector<double>& z) {
+        return std::vector<double>{z[0]};
+    };
+    const DaeAlgFunc g = [&g_calls](double t, const std::vector<double>&,
+                                    const std::vector<double>& z) {
+        ++g_calls;
+        if (g_calls > 150) {
+            return std::vector<double>{};
+        }
+        return std::vector<double>{z[0] * z[0] + 1.0};
+    };
+    const auto result = ode_dae_index1(f, g, 0.0, {0.0}, {0.0}, 1.0, 4);
+    EXPECT_FALSE(result.converged);
+}

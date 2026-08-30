@@ -578,3 +578,275 @@ TEST(SymbolicTransformsTest, ihankel_zero_and_linearity) {
     const auto inverse = sym_simplify(sym_ihankel(k_expr, "k", "r"));
     EXPECT_NEAR(sym_eval(inverse, {{"r", 1.0}}), -std::exp(-2.0), 1e-9);
 }
+
+TEST(SymbolicTransformsTest, laplace_sin_minus_neg_t_times_const) {
+    const auto time_expr = sym_sub(
+        sym_sin(sym_var("t")),
+        sym_neg(sym_mul(sym_var("t"), sym_const(2.0))));
+    const auto expected = sym_add(
+        sym_div(
+            sym_const(1.0),
+            sym_add(sym_pow(sym_var("s"), sym_const(2.0)), sym_const(1.0))),
+        sym_div(sym_const(2.0), sym_pow(sym_var("s"), sym_const(2.0))));
+    expect_laplace_pair(time_expr, expected, {{"s", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, laplace_t_times_right_const) {
+    const auto time_expr = sym_mul(sym_var("t"), sym_const(3.0));
+    const auto expected = sym_div(sym_const(3.0), sym_pow(sym_var("s"), sym_const(2.0)));
+    expect_laplace_pair(time_expr, expected, {{"s", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, ilaplace_sub_neg_and_right_const) {
+    const auto s_expr = sym_sub(
+        sym_div(sym_const(1.0), sym_sub(sym_var("s"), sym_const(1.0))),
+        sym_neg(sym_div(sym_const(1.0), sym_pow(sym_var("s"), sym_const(2.0)))));
+    const auto inverse = sym_simplify(sym_ilaplace(s_expr, "s", "t"));
+    EXPECT_NEAR(sym_eval(inverse, {{"t", 0.5}}), std::exp(0.5) + 0.5, 1e-9);
+
+    const auto scaled = sym_mul(
+        sym_div(sym_const(1.0), sym_sub(sym_var("s"), sym_const(1.0))),
+        sym_const(2.0));
+    expect_ilaplace_pair(
+        scaled, sym_mul(sym_const(2.0), sym_exp(sym_var("t"))), {{"t", 0.5}});
+}
+
+TEST(SymbolicTransformsTest, ilaplace_two_over_s_cubed) {
+    const auto s_expr = sym_div(sym_const(2.0), sym_pow(sym_var("s"), sym_const(3.0)));
+    const auto expected = sym_pow(sym_var("t"), sym_const(2.0));
+    expect_ilaplace_pair(s_expr, expected, {{"t", 1.5}});
+}
+
+TEST(SymbolicTransformsTest, ilaplace_swapped_a2_plus_s2) {
+    const auto sine = sym_div(
+        sym_const(3.0),
+        sym_add(sym_pow(sym_const(3.0), sym_const(2.0)), sym_pow(sym_var("s"), sym_const(2.0))));
+    expect_ilaplace_pair(sine, sym_sin(sym_mul(sym_const(3.0), sym_var("t"))), {{"t", 0.2}});
+
+    const auto cosine = sym_div(
+        sym_var("s"),
+        sym_add(sym_pow(sym_const(4.0), sym_const(2.0)), sym_pow(sym_var("s"), sym_const(2.0))));
+    expect_ilaplace_pair(cosine, sym_cos(sym_mul(sym_const(4.0), sym_var("t"))), {{"t", 0.25}});
+}
+
+TEST(SymbolicTransformsTest, mellin_sub_t_minus_neg_const) {
+    const auto time_expr = sym_sub(sym_var("t"), sym_neg(sym_const(1.0)));
+    const auto expected = sym_sub(
+        sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(1.0))),
+        sym_neg(sym_div(sym_const(1.0), sym_var("s"))));
+    expect_mellin_pair(time_expr, expected, {{"s", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, mellin_right_const_and_neg_scale_exp) {
+    const auto scaled = sym_mul(
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))),
+        sym_const(3.0));
+    expect_mellin_pair(
+        scaled, sym_div(sym_const(3.0), sym_pow(sym_const(2.0), sym_var("s"))), {{"s", 1.0}});
+
+    const auto neg_scale = sym_exp(sym_mul(sym_const(-2.0), sym_var("t")));
+    expect_mellin_pair(
+        neg_scale, sym_div(sym_const(1.0), sym_pow(sym_const(2.0), sym_var("s"))), {{"s", 1.0}});
+
+    const auto left_const = sym_mul(sym_const(4.0), sym_pow(sym_var("t"), sym_const(2.0)));
+    expect_mellin_pair(
+        left_const, sym_div(sym_const(4.0), sym_add(sym_var("s"), sym_const(2.0))), {{"s", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, mellin_exp_times_t_and_tpow) {
+    const auto t_on_right = sym_mul(
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))),
+        sym_var("t"));
+    expect_mellin_pair(
+        t_on_right,
+        sym_div(sym_const(1.0), sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(1.0)))),
+        {{"s", 1.0}});
+
+    const auto tpow_on_right = sym_mul(
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("t")))),
+        sym_pow(sym_var("t"), sym_const(2.0)));
+    expect_mellin_pair(
+        tpow_on_right,
+        sym_div(sym_const(2.0), sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0)))),
+        {{"s", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, imellin_sub_neg_and_right_const) {
+    const auto s_expr = sym_sub(
+        sym_div(sym_const(1.0), sym_var("s")),
+        sym_neg(sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(1.0)))));
+    const auto inverse = sym_simplify(sym_imellin(s_expr, "s", "t"));
+    EXPECT_NEAR(sym_eval(inverse, {{"t", 2.0}}), 1.0 + 2.0, 1e-9);
+
+    const auto scaled = sym_mul(sym_div(sym_const(1.0), sym_var("s")), sym_const(4.0));
+    expect_imellin_pair(scaled, sym_const(4.0), {{"t", 1.0}});
+
+    const auto added = sym_add(
+        sym_div(sym_const(1.0), sym_var("s")),
+        sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(1.0))));
+    expect_imellin_pair(added, sym_add(sym_const(1.0), sym_var("t")), {{"t", 2.0}});
+}
+
+TEST(SymbolicTransformsTest, imellin_factorial_over_a_pow_s_plus_n) {
+    const auto s_expr = sym_div(
+        sym_const(2.0),
+        sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0))));
+    const auto expected = sym_mul(
+        sym_pow(sym_var("t"), sym_const(2.0)),
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("t")))));
+    expect_imellin_pair(s_expr, expected, {{"t", 0.5}});
+}
+
+TEST(SymbolicTransformsTest, imellin_a_pow_s_plus_zero_and_one) {
+    const auto n0 = sym_div(
+        sym_const(1.0),
+        sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(0.0))));
+    expect_imellin_pair(
+        n0, sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))), {{"t", 0.75}});
+
+    const auto n1 = sym_div(
+        sym_const(1.0),
+        sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(1.0))));
+    const auto expected_n1 = sym_mul(
+        sym_pow(sym_var("t"), sym_const(1.0)),
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))));
+    expect_imellin_pair(n1, expected_n1, {{"t", 0.5}});
+}
+
+TEST(SymbolicTransformsTest, hankel_sub_scaled_exponentials) {
+    const auto r_expr = sym_sub(
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r")))),
+        sym_mul(sym_const(3.0), sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))))));
+    const auto expected = sym_sub(
+        sym_div(
+            sym_const(2.0),
+            sym_pow(
+                sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+                sym_const(1.5))),
+        sym_mul(
+            sym_const(3.0),
+            sym_div(
+                sym_const(2.0),
+                sym_pow(
+                    sym_add(
+                        sym_pow(sym_var("k"), sym_const(2.0)),
+                        sym_pow(sym_const(2.0), sym_const(2.0))),
+                    sym_const(1.5)))));
+    expect_hankel_pair(r_expr, expected, {{"k", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, hankel_exp_times_r_and_swapped_sqrt) {
+    const auto r_expr = sym_mul(
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))),
+        sym_var("r"));
+    const double numer = std::pow(2.0, 2) * std::tgamma(2.0) / std::sqrt(std::numbers::pi) * 3.0;
+    const auto expected = sym_div(
+        sym_const(numer),
+        sym_pow(
+            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))),
+            sym_const(2.0)));
+    expect_hankel_pair(r_expr, expected, {{"k", 2.0}});
+
+    const auto tpow_on_right = sym_mul(
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))),
+        sym_pow(sym_var("r"), sym_const(1.0)));
+    expect_hankel_pair(tpow_on_right, expected, {{"k", 2.0}});
+
+    const auto swapped_sqrt = sym_div(
+        sym_const(1.0),
+        sym_sqrt(sym_add(
+            sym_pow(sym_const(2.0), sym_const(2.0)),
+            sym_pow(sym_var("r"), sym_const(2.0)))));
+    const auto expected_sqrt = sym_div(
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("k")))),
+        sym_var("k"));
+    expect_hankel_pair(swapped_sqrt, expected_sqrt, {{"k", 2.5}});
+}
+
+TEST(SymbolicTransformsTest, ihankel_sub_exponential_forms) {
+    const auto k_expr = sym_sub(
+        sym_div(
+            sym_const(2.0),
+            sym_pow(
+                sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+                sym_const(1.5))),
+        sym_mul(
+            sym_const(3.0),
+            sym_div(
+                sym_const(2.0),
+                sym_pow(
+                    sym_add(
+                        sym_pow(sym_var("k"), sym_const(2.0)),
+                        sym_pow(sym_const(2.0), sym_const(2.0))),
+                    sym_const(1.5)))));
+    const auto inverse = sym_simplify(sym_ihankel(k_expr, "k", "r"));
+    EXPECT_NEAR(sym_eval(inverse, {{"r", 1.0}}), -2.0 * std::exp(-2.0), 1e-9);
+}
+
+TEST(SymbolicTransformsTest, ihankel_n1_form_and_right_const) {
+    const double numer = std::pow(2.0, 2) * std::tgamma(2.0) / std::sqrt(std::numbers::pi) * 3.0;
+    const auto k_n1 = sym_div(
+        sym_const(numer),
+        sym_pow(
+            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))),
+            sym_const(2.0)));
+    const auto expected_n1 = sym_mul(
+        sym_var("r"),
+        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))));
+    expect_ihankel_pair(k_n1, expected_n1, {{"r", 1.0}});
+
+    const auto scaled = sym_mul(
+        sym_div(
+            sym_const(2.0),
+            sym_pow(
+                sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+                sym_const(1.5))),
+        sym_const(2.0));
+    expect_ihankel_pair(
+        scaled,
+        sym_mul(sym_const(2.0), sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))))),
+        {{"r", 1.0}});
+
+    const auto mul_numer = sym_div(
+        sym_mul(sym_const(1.0), sym_const(2.0)),
+        sym_pow(
+            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+            sym_const(1.5)));
+    expect_ihankel_pair(
+        mul_numer, sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r")))), {{"r", 1.0}});
+}
+
+TEST(SymbolicTransformsTest, ihankel_add_and_nonzero_sentinel) {
+    const auto k_expr = sym_add(
+        sym_div(
+            sym_const(2.0),
+            sym_pow(
+                sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+                sym_const(1.5))),
+        sym_div(
+            sym_const(2.0),
+            sym_pow(
+                sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+                sym_const(1.5))));
+    const auto inverse = sym_simplify(sym_ihankel(k_expr, "k", "r"));
+    EXPECT_NEAR(sym_eval(inverse, {{"r", 1.0}}), 2.0 * std::exp(-2.0), 1e-9);
+
+    EXPECT_TRUE(is_deriv_sentinel(sym_const(1.0), sym_ihankel(sym_const(1.0), "k", "r"), "k"));
+}
+
+TEST(SymbolicTransformsTest, transform_unmatched_mul_and_nonzero_sentinels) {
+    EXPECT_TRUE(is_deriv_sentinel(
+        sym_mul(sym_var("t"), sym_sin(sym_var("t"))),
+        sym_laplace(sym_mul(sym_var("t"), sym_sin(sym_var("t"))), "t", "s"),
+        "t"));
+    EXPECT_TRUE(is_deriv_sentinel(sym_var("y"), sym_mellin(sym_var("y"), "t", "s"), "t"));
+    EXPECT_TRUE(is_deriv_sentinel(
+        sym_mul(sym_var("t"), sym_sin(sym_var("t"))),
+        sym_mellin(sym_mul(sym_var("t"), sym_sin(sym_var("t"))), "t", "s"),
+        "t"));
+    EXPECT_TRUE(is_deriv_sentinel(sym_const(3.0), sym_imellin(sym_const(3.0), "s", "t"), "s"));
+    EXPECT_TRUE(is_deriv_sentinel(
+        sym_exp(sym_var("r")),
+        sym_hankel(sym_exp(sym_var("r")), "r", "k"),
+        "r"));
+}

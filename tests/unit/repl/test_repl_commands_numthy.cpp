@@ -3661,3 +3661,11 @@ TEST(ReplCommandsTest, numthy_crt_noassign) {
     expect_contains(interp, "numthy_crt([2; 3; 2], [3; 5; 7])", "23");
     expect_error_contains(interp, "numthy_crt(no_such_matrix, [3; 5; 7])", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, numthy_farey_scalar_expr_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "n = 5");
+    expect_ok(interp, "numthy_farey(n)");
+    expect_ok(interp, "numthy_stern_brocot(n)");
+    expect_error_contains(interp, "numthy_farey(not_a_scalar)", "expected numthy_farey(n)");
+}

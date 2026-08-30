@@ -233,3 +233,29 @@ TEST(OnesTest, ShapeAndValues) {
         }
     }
 }
+
+TEST(CoreExtTest, sym_eval_malformed_and_edge_is_zero) {
+    EXPECT_DOUBLE_EQ(Sym("1+").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("1*").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("1/").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("-").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("(").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("(1").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("sin(").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("sin(1").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("@").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("1 2").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("1/0").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("log(-1)").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("sqrt(-1)").eval(), 0.0);
+    EXPECT_NEAR(Sym(".5").eval(), 0.5, 1e-12);
+}
+
+TEST(CoreExtTest, sym_empty_expr_wraps_as_zero) {
+    const Sym empty("");
+    EXPECT_DOUBLE_EQ(empty.eval(), 0.0);
+    const Sym wrapped = empty + Sym(2.0);
+    EXPECT_NEAR(wrapped.eval(), 2.0, 1e-12);
+    const Sym from_null(static_cast<const char*>(nullptr));
+    EXPECT_DOUBLE_EQ(from_null.eval(), 0.0);
+}
