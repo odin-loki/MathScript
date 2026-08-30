@@ -173,3 +173,57 @@ TEST(SymbolicDsolveTest, y_plus_independent_var_is_unsupported) {
     const SymExpr result = sym_dsolve(rhs, "x", "y");
     EXPECT_TRUE(is_deriv_sentinel(rhs, result, "x"));
 }
+
+TEST(SymbolicDsolveTest, constant_rhs_is_linear) {
+    const SymExpr rhs = sym_const(5.0);
+    const SymExpr solution = sym_simplify(sym_dsolve(rhs, "x", "y"));
+    expect_ode_solution(rhs, solution, "x");
+}
+
+TEST(SymbolicDsolveTest, multiplier_const_on_right) {
+    const SymExpr rhs = sym_mul(sym_var("y"), sym_const(3.0));
+    const SymExpr solution = sym_simplify(sym_dsolve(rhs, "x", "y"));
+    expect_ode_solution(rhs, solution, "x");
+}
+
+TEST(SymbolicDsolveTest, affine_nested_difference) {
+    const SymExpr rhs = sym_sub(sym_add(sym_var("y"), sym_const(2.0)), sym_const(1.0));
+    const SymExpr solution = sym_simplify(sym_dsolve(rhs, "x", "y"));
+    expect_ode_solution(rhs, solution, "x");
+}
+
+TEST(SymbolicDsolveTest, independent_power_is_supported) {
+    const SymExpr rhs = sym_pow(sym_var("x"), sym_const(3.0));
+    const SymExpr solution = sym_simplify(sym_dsolve(rhs, "x", "y"));
+    expect_ode_solution(rhs, solution, "x");
+}
+
+TEST(SymbolicDsolveTest, multiplier_sin_of_indep) {
+    const SymExpr rhs = sym_mul(sym_sin(sym_var("x")), sym_var("y"));
+    const SymExpr solution = sym_simplify(sym_dsolve(rhs, "x", "y"));
+    expect_ode_solution(rhs, solution, "x");
+}
+
+TEST(SymbolicDsolveTest, zero_rhs_is_constant_solution) {
+    const SymExpr rhs = sym_const(0.0);
+    const SymExpr solution = sym_simplify(sym_dsolve(rhs, "x", "y"));
+    expect_ode_solution(rhs, solution, "x");
+}
+
+TEST(SymbolicDsolveTest, tan_of_dep_is_unsupported) {
+    const SymExpr rhs = sym_tan(sym_var("y"));
+    const SymExpr result = sym_dsolve(rhs, "x", "y");
+    EXPECT_TRUE(is_deriv_sentinel(rhs, result, "x"));
+}
+
+TEST(SymbolicDsolveTest, product_y_times_y_is_unsupported) {
+    const SymExpr rhs = sym_mul(sym_var("y"), sym_var("y"));
+    const SymExpr result = sym_dsolve(rhs, "x", "y");
+    EXPECT_TRUE(is_deriv_sentinel(rhs, result, "x"));
+}
+
+TEST(SymbolicDsolveTest, independent_const_plus_var) {
+    const SymExpr rhs = sym_add(sym_const(1.0), sym_var("x"));
+    const SymExpr solution = sym_simplify(sym_dsolve(rhs, "x", "y"));
+    expect_ode_solution(rhs, solution, "x");
+}

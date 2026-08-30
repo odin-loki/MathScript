@@ -685,3 +685,141 @@ TEST(SymbolicParseTest, integrate_unsupported_parsed_form) {
     const auto integral = sym_integrate(*parsed, "x");
     EXPECT_EQ(integral.op, SymOp::Deriv);
 }
+
+TEST(SymbolicExpandTest, expand_zero_exponent_is_one) {
+    const auto original = sym_pow(sym_add(sym_var("x"), sym_var("y")), sym_const(0.0));
+    const auto expanded = sym_expand(clone_expr(original));
+    EXPECT_EQ(expanded.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(expanded, {{"x", 3.0}, {"y", 4.0}}), 1.0, 1e-12);
+}
+
+TEST(SymbolicExpandTest, expand_one_exponent_is_base) {
+    const auto original = sym_pow(sym_add(sym_var("x"), sym_const(4.0)), sym_const(1.0));
+    const auto expanded = sym_expand(clone_expr(original));
+    EXPECT_NEAR(sym_eval(expanded, {{"x", 2.0}}), 6.0, 1e-12);
+}
+
+TEST(SymbolicExpandTest, expand_left_difference) {
+    const auto original = sym_mul(sym_sub(sym_var("x"), sym_const(1.0)), sym_const(2.0));
+    const auto expanded = sym_expand(clone_expr(original));
+    for (const double x : {-1.0, 0.0, 3.0}) {
+        expect_eval_equivalent(original, expanded, {{"x", x}});
+    }
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
+}
+
+TEST(SymbolicExpandTest, expand_right_sum_of_var) {
+    const auto original = sym_mul(sym_const(3.0), sym_add(sym_var("x"), sym_const(1.0)));
+    const auto expanded = sym_expand(clone_expr(original));
+    for (const double x : {0.0, 1.0, -2.0}) {
+        expect_eval_equivalent(original, expanded, {{"x", x}});
+    }
+    EXPECT_FALSE(has_mul_with_sum_factor(expanded));
+}
+
+TEST(SymbolicExpandTest, expand_non_integer_exponent_noop) {
+    const auto original = sym_pow(sym_add(sym_var("x"), sym_const(1.0)), sym_const(1.5));
+    const auto expanded = sym_expand(clone_expr(original));
+    EXPECT_EQ(expanded.op, SymOp::Pow);
+    EXPECT_NEAR(sym_eval(expanded, {{"x", 3.0}}), std::pow(4.0, 1.5), 1e-12);
+}
+
+TEST(SymbolicExpandTest, expand_too_large_exponent_noop) {
+    const auto original = sym_pow(sym_var("x"), sym_const(9.0));
+    const auto expanded = sym_expand(clone_expr(original));
+    EXPECT_EQ(expanded.op, SymOp::Pow);
+    EXPECT_NEAR(sym_eval(expanded, {{"x", 2.0}}), 512.0, 1e-12);
+}
+
+TEST(SymbolicCollectTest, collect_empty_var_is_simplify) {
+    const auto original = sym_add(sym_const(1.0), sym_const(2.0));
+    const auto collected = sym_collect(original, "");
+    EXPECT_EQ(collected.op, SymOp::Const);
+    EXPECT_NEAR(collected.value, 3.0, 1e-12);
+}
+
+TEST(SymbolicCollectTest, collect_const_factor_on_right) {
+    const auto original = sym_add(sym_mul(sym_var("x"), sym_const(2.0)),
+                                  sym_mul(sym_var("x"), sym_const(5.0)));
+    const auto collected = sym_collect(original, "x");
+    for (const double x : {0.0, 1.0, -3.0}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+    }
+    EXPECT_NEAR(sym_eval(collected, {{"x", 1.0}}), 7.0, 1e-12);
+}
+
+TEST(SymbolicCollectTest, collect_single_power_term) {
+    const auto original = sym_pow(sym_var("x"), sym_const(3.0));
+    const auto collected = sym_collect(original, "x");
+    EXPECT_NEAR(sym_eval(collected, {{"x", 2.0}}), 8.0, 1e-12);
+}
+
+TEST(SymbolicCollectTest, collect_negated_quadratic) {
+    const auto original = sym_neg(sym_add(sym_pow(sym_var("x"), sym_const(2.0)),
+                                          sym_pow(sym_var("x"), sym_const(2.0))));
+    const auto collected = sym_collect(original, "x");
+    for (const double x : {-1.0, 0.0, 2.0}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_inside_product) {
+    const auto original = sym_mul(sym_const(3.0), sym_add(sym_var("x"), sym_var("x")));
+    const auto collected = sym_collect(original, "x");
+    EXPECT_NEAR(sym_eval(collected, {{"x", 4.0}}), 24.0, 1e-12);
+}
+
+TEST(SymbolicCollectTest, collect_cubic_polynomial) {
+    const auto original = sym_add(
+        sym_add(sym_pow(sym_var("x"), sym_const(3.0)),
+                sym_mul(sym_const(2.0), sym_pow(sym_var("x"), sym_const(3.0)))),
+        sym_var("x"));
+    const auto collected = sym_collect(original, "x");
+    for (const double x : {0.0, 1.0, -1.0, 2.0}) {
+        expect_eval_equivalent(original, collected, {{"x", x}});
+    }
+}
+
+TEST(SymbolicCollectTest, collect_other_var_power_as_other) {
+    const auto original = sym_add(sym_pow(sym_var("y"), sym_const(2.0)),
+                                  sym_mul(sym_const(2.0), sym_var("x")));
+    const auto collected = sym_collect(original, "x");
+    expect_eval_equivalent(original, collected, {{"x", 3.0}, {"y", 4.0}});
+}
+
+TEST(SymbolicExtendedTest, integrate_right_const_factor) {
+    const auto expr = sym_mul(sym_var("x"), sym_const(4.0));
+    expect_integrate_roundtrip(expr, "x", 2.0);
+    const auto integral = sym_simplify(sym_integrate(expr, "x"));
+    EXPECT_NEAR(sym_eval(integral, {{"x", 3.0}}), 18.0, 1e-12);
+}
+
+TEST(SymbolicExtendedTest, integrate_product_of_nonconst_is_sentinel) {
+    const auto unsupported = sym_integrate(sym_mul(sym_var("x"), sym_sin(sym_var("x"))), "x");
+    EXPECT_EQ(unsupported.op, SymOp::Deriv);
+}
+
+TEST(SymbolicExtendedTest, integrate_tan_log_exp_are_sentinel) {
+    EXPECT_EQ(sym_integrate(sym_tan(sym_var("x")), "x").op, SymOp::Deriv);
+    EXPECT_EQ(sym_integrate(sym_log(sym_var("x")), "x").op, SymOp::Deriv);
+    EXPECT_EQ(sym_integrate(sym_exp(sym_var("x")), "x").op, SymOp::Deriv);
+    EXPECT_EQ(sym_integrate(sym_sqrt(sym_var("x")), "x").op, SymOp::Deriv);
+}
+
+TEST(SymbolicExtendedTest, integrate_pow_of_sum_is_sentinel) {
+    const auto unsupported =
+        sym_integrate(sym_pow(sym_add(sym_var("x"), sym_const(1.0)), sym_const(2.0)), "x");
+    EXPECT_EQ(unsupported.op, SymOp::Deriv);
+}
+
+TEST(SymbolicParseTest, parse_leading_dot_five) {
+    const auto parsed = sym_parse(".25");
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_NEAR(sym_eval(*parsed, {}), 0.25, 1e-12);
+}
+
+TEST(SymbolicParseTest, parse_unary_plus_prefix) {
+    const auto parsed = sym_parse("+x");
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_NEAR(sym_eval(*parsed, {{"x", 6.0}}), 6.0, 1e-12);
+}

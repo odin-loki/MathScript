@@ -3673,3 +3673,220 @@ TEST(ReplCommandsTest, izaac_vrf_verify_noassign) {
     expect_contains(interp, "izaac_vrf_verify(pub, msg, proof)", "1");
     expect_error_contains(interp, "izaac_vrf_verify(missing, msg, proof)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, axiom_evaluate_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "axiom_evaluate(\"x0\", [1;2;3])", "Y =");
+    expect_error_contains(interp, "axiom_evaluate(\"x0\")",
+                          "expected axiom_evaluate(\"expr\", inputs)");
+}
+
+TEST(ReplCommandsTest, axiom_rmse_fitness_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "axiom_rmse_fitness(\"x0\", [1;2;3], [1,2,3])", "0");
+    expect_error_contains(interp, "axiom_rmse_fitness(\"x0\", [1;2;3])",
+                          "expected axiom_rmse_fitness(\"expr\", inputs, targets)");
+}
+
+TEST(ReplCommandsTest, gria_classify_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "gria_classify(0.5)", "critical");
+    expect_error_contains(interp, "gria_classify(0.5, 0.05)", "expected gria_classify(alpha)");
+}
+
+TEST(ReplCommandsTest, gria_entropy_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gria_entropy([1,2,2,3,3,3], 4)");
+    expect_error_contains(interp, "gria_entropy([1,2,2,3,3,3], 4, 1)",
+                          "expected gria_entropy([data], bins) with default bins=16");
+}
+
+TEST(ReplCommandsTest, gria_is_critical_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "gria_is_critical(0.5, 0.05)", "true");
+    expect_error_contains(
+        interp, "gria_is_critical(0.5, 0.05, 1)",
+        "expected gria_is_critical(alpha, tolerance) with default tolerance=0.05");
+}
+
+TEST(ReplCommandsTest, gria_matrix_alpha_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gria_matrix_alpha([1,2;3,4], [2,4;6,8])");
+    expect_error_contains(interp, "gria_matrix_alpha([1,2;3,4])",
+                          "expected gria_matrix_alpha(x_matrix, fx_matrix)");
+}
+
+TEST(ReplCommandsTest, cypha_nig_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cypha_nig_pdf(2.5, 0, 1, 0, 1)");
+    expect_error_contains(interp, "cypha_nig_pdf(1, 2, 3)",
+                          "expected cypha_nig_pdf(x, mu, alpha, beta, delta)");
+}
+
+TEST(ReplCommandsTest, cypha_nig_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cypha_nig_cdf(2.5, 0, 1, 0, 1)");
+    expect_error_contains(interp, "cypha_nig_cdf(1, 2, 3)",
+                          "expected cypha_nig_cdf(x, mu, alpha, beta, delta)");
+}
+
+TEST(ReplCommandsTest, cypha_nig_fit_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cypha_nig_fit([1,2,3,4])", "mu=");
+    expect_error_contains(interp, "cypha_nig_fit([1,2,3,4], 1)", "expected cypha_nig_fit([data])");
+}
+
+TEST(ReplCommandsTest, cypha_nig_sample_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_contains(interp, "cypha_nig_sample(0, 1, 0, 1, 5)", "samples =");
+    expect_error_contains(interp, "cypha_nig_sample(0, 1, 0, 1)",
+                          "expected cypha_nig_sample(mu, alpha, beta, delta, n)");
+}
+
+TEST(ReplCommandsTest, cellai_energy_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cellai_energy([1,2;3,4], [1;0], [1;2])", "-5");
+    expect_error_contains(interp, "cellai_energy([1,2;3,4], [1;0])",
+                          "expected cellai_energy(w_matrix, v_matrix, h_matrix)");
+}
+
+TEST(ReplCommandsTest, cellai_hebbian_update_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cellai_hebbian_update([0.1], [1], [0.8], 0.1)", "w =");
+    expect_error_contains(
+        interp, "cellai_hebbian_update([0.1], [1], [0.8])",
+        "expected cellai_hebbian_update(w_matrix, x_matrix, y_matrix, learning_rate)");
+}
+
+TEST(ReplCommandsTest, izaac_estimate_pi_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "izaac_estimate_pi(200)");
+    expect_error_contains(interp, "izaac_estimate_pi(200, 1)", "expected izaac_estimate_pi(samples)");
+}
+
+TEST(ReplCommandsTest, izaac_laplace_noise_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "izaac_laplace_noise(5, 1, 1)");
+    expect_error_contains(interp, "izaac_laplace_noise(5, 1)",
+                          "expected izaac_laplace_noise(true_value, epsilon, sensitivity)");
+}
+
+TEST(ReplCommandsTest, cluster_new_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cluster_new(cl, 3, 42)", "Cluster");
+    expect_error_contains(interp, "cluster_new(cl)", "expected cluster_new(handle, n_nodes, seed)");
+}
+
+TEST(ReplCommandsTest, cluster_run_election_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cluster_new(cl, 3, 42)");
+    expect_ok(interp, "cluster_run_election(cl)");
+    expect_error_contains(interp, "cluster_run_election(cl, 1)",
+                          "expected cluster_run_election(handle)");
+}
+
+TEST(ReplCommandsTest, cluster_status_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cluster_new(cl, 3, 42)");
+    expect_contains(interp, "cluster_status(cl)", "id=");
+    expect_error_contains(interp, "cluster_status(cl, 1)", "expected cluster_status(handle)");
+}
+
+TEST(ReplCommandsTest, cluster_current_leader_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cluster_new(cl, 3, 42)");
+    expect_contains(interp, "cluster_current_leader(cl)", "-1");
+    expect_error_contains(interp, "cluster_current_leader(cl, 1)",
+                          "expected cluster_current_leader(handle)");
+}
+
+TEST(ReplCommandsTest, difmodel_new_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "difmodel_new(dm, 1, 1, 2, 0.1)", "DifModel");
+    expect_error_contains(
+        interp, "difmodel_new(dm)",
+        "expected difmodel_new(handle, input_dim, output_dim, n_experts, learning_rate)");
+}
+
+TEST(ReplCommandsTest, difmodel_predict_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "difmodel_new(dm, 1, 1, 2, 0.1)");
+    expect_contains(interp, "difmodel_predict(dm, [1])", "[");
+    expect_error_contains(interp, "difmodel_predict(dm)",
+                          "expected difmodel_predict(handle, x_matrix)");
+}
+
+TEST(ReplCommandsTest, bloom_new_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_contains(interp, "bloom_new(bf, 100, 0.01)", "BloomFilter");
+    expect_error_contains(interp, "bloom_new(bf)",
+                          "expected bloom_new(handle, expected_items, false_positive_rate)");
+}
+
+TEST(ReplCommandsTest, bloom_insert_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "bloom_new(bf, 100, 0.01)");
+    expect_contains(interp, "bloom_insert(bf, \"item\")", "inserted");
+    expect_error_contains(interp, "bloom_insert(bf)", "expected bloom_insert(handle, \"item\")");
+}
+
+TEST(ReplCommandsTest, bloom_check_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "bloom_new(bf, 100, 0.01)");
+    expect_ok(interp, "bloom_insert(bf, \"item\")");
+    expect_contains(interp, "bloom_check(bf, \"item\")", "true");
+    expect_error_contains(interp, "bloom_check(bf)", "expected bloom_check(handle, \"item\")");
+}
+
+TEST(ReplCommandsTest, bloom_hash_count_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "izaac seed 42");
+    expect_ok(interp, "bloom_new(bf, 100, 0.01)");
+    expect_ok(interp, "bloom_hash_count(bf)");
+    expect_error_contains(interp, "bloom_hash_count(bf, 1)", "expected bloom_hash_count(handle)");
+}
+
+TEST(ReplCommandsTest, tokenbucket_new_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "tokenbucket_new(tb, 10, 1)", "TokenBucket");
+    expect_error_contains(interp, "tokenbucket_new(tb)",
+                          "expected tokenbucket_new(handle, capacity, refill_rate_per_sec)");
+}
+
+TEST(ReplCommandsTest, tokenbucket_consume_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "tokenbucket_new(tb, 10, 1)");
+    expect_contains(interp, "tokenbucket_consume(tb, 3, 0)", "true");
+    expect_error_contains(interp, "tokenbucket_consume(tb)",
+                          "expected tokenbucket_consume(handle, tokens, now_seconds)");
+}
+
+TEST(ReplCommandsTest, tokenbucket_available_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "tokenbucket_new(tb, 10, 1)");
+    expect_contains(interp, "tokenbucket_available(tb, 0)", "10");
+    expect_error_contains(interp, "tokenbucket_available(tb)",
+                          "expected tokenbucket_available(handle, now_seconds)");
+}
+
+TEST(ReplCommandsTest, tokenbucket_refill_rate_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "tokenbucket_new(tb, 10, 1)");
+    expect_contains(interp, "tokenbucket_refill_rate(tb)", "1");
+    expect_error_contains(interp, "tokenbucket_refill_rate(tb, 1)",
+                          "expected tokenbucket_refill_rate(handle)");
+}
+
+TEST(ReplCommandsTest, session_object_clear_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "tokenbucket_new(tb, 10, 1)");
+    expect_contains(interp, "session_object_clear(tb)", "cleared session object");
+    expect_error_contains(interp, "session_object_clear(tb, extra)",
+                          "expected session_object_clear(handle)");
+}

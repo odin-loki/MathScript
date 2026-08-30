@@ -265,3 +265,83 @@ TEST(SymbolicCasTest, eval_and_diff_unknown_op_is_zero) {
     EXPECT_EQ(d.op, SymOp::Const);
     EXPECT_NEAR(sym_eval(d, {}), 0.0, 1e-12);
 }
+
+TEST(SymbolicCasTest, simplify_log_of_positive_const) {
+    const auto folded = sym_simplify(sym_log(sym_const(std::exp(1.0))));
+    EXPECT_EQ(folded.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(folded, {}), 1.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, simplify_div_by_zero_const_stays_div) {
+    const auto expr = sym_simplify(sym_div(sym_const(1.0), sym_const(0.0)));
+    EXPECT_EQ(expr.op, SymOp::Div);
+}
+
+TEST(SymbolicCasTest, simplify_tan_and_sqrt_of_var_stay) {
+    const auto t = sym_simplify(sym_tan(sym_var("x")));
+    EXPECT_EQ(t.op, SymOp::Tan);
+    EXPECT_NEAR(sym_eval(t, {{"x", 0.3}}), std::tan(0.3), 1e-12);
+
+    const auto s = sym_simplify(sym_sqrt(sym_var("x")));
+    EXPECT_EQ(s.op, SymOp::Sqrt);
+    EXPECT_NEAR(sym_eval(s, {{"x", 16.0}}), 4.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, simplify_pow_zero_base_positive_exp) {
+    const auto folded = sym_simplify(sym_pow(sym_const(0.0), sym_const(3.0)));
+    EXPECT_EQ(folded.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(folded, {}), 0.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, simplify_neg_of_var_and_deriv_node) {
+    const auto neg = sym_simplify(sym_neg(sym_var("x")));
+    EXPECT_EQ(neg.op, SymOp::Neg);
+    EXPECT_NEAR(sym_eval(neg, {{"x", 4.0}}), -4.0, 1e-12);
+
+    const auto d = sym_simplify(sym_deriv(sym_var("x"), "x"));
+    EXPECT_EQ(d.op, SymOp::Deriv);
+}
+
+TEST(SymbolicCasTest, simplify_exp_of_nonzero_const) {
+    const auto folded = sym_simplify(sym_exp(sym_const(2.0)));
+    EXPECT_EQ(folded.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(folded, {}), std::exp(2.0), 1e-12);
+}
+
+TEST(SymbolicCasTest, diff_zero_base_variable_exponent) {
+    const auto d = sym_diff(sym_pow(sym_const(0.0), sym_var("x")), "x");
+    EXPECT_FALSE(sym_to_string(d).empty());
+}
+
+TEST(SymbolicCasTest, eval_nested_div_neg_tan) {
+    const auto expr = sym_div(sym_neg(sym_tan(sym_var("x"))), sym_const(2.0));
+    EXPECT_NEAR(sym_eval(expr, {{"x", 0.2}}), -std::tan(0.2) / 2.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, substitute_into_pow_and_div) {
+    const auto expr = sym_div(sym_pow(sym_var("x"), sym_const(3.0)), sym_var("x"));
+    const auto replaced = sym_substitute(expr, "x", sym_const(2.0));
+    EXPECT_NEAR(sym_eval(replaced, {}), 4.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, expand_power_zero_and_one) {
+    const auto z = sym_expand(sym_pow(sym_add(sym_var("x"), sym_const(1.0)), sym_const(0.0)));
+    EXPECT_EQ(z.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(z, {{"x", 9.0}}), 1.0, 1e-12);
+
+    const auto one = sym_expand(sym_pow(sym_add(sym_var("x"), sym_const(2.0)), sym_const(1.0)));
+    EXPECT_NEAR(sym_eval(one, {{"x", 3.0}}), 5.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, collect_empty_var_returns_simplified) {
+    const auto expr = sym_add(sym_const(2.0), sym_const(5.0));
+    const auto collected = sym_collect(expr, "");
+    EXPECT_EQ(collected.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(collected, {}), 7.0, 1e-12);
+}
+
+TEST(SymbolicCasTest, integrate_div_form_is_sentinel) {
+    const auto unsupported = sym_integrate(sym_div(sym_var("x"), sym_const(2.0)), "x");
+    EXPECT_EQ(unsupported.op, SymOp::Deriv);
+    EXPECT_EQ(unsupported.name, "x");
+}

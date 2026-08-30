@@ -2038,3 +2038,60 @@ TEST(ReplCommandsTest, ode_event_detect_noassign) {
     expect_error_contains(interp, "ode_event_detect(\"1\", \"y\", 0, -5, 10, 1.5)",
                           "non-negative integer steps");
 }
+
+TEST(ReplCommandsTest, ode_adams_bashforth2_vec_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_adams_bashforth2_vec(\"y1; -y0\", 0, [1, 0], 1, 40)",
+                    "traj =");
+    expect_error_contains(interp, "ode_adams_bashforth2_vec(\"y1; sin(\", 0, [1, 0], 1, 40)",
+                          "ode_adams_bashforth2_vec");
+    expect_error_contains(interp,
+                          "ode_adams_bashforth2_vec(\"y1; -y0\", 0, [1, 0], 1, 1.5)",
+                          "non-negative integer steps");
+}
+
+TEST(ReplCommandsTest, ode_euler_vec_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_euler_vec(\"y1; -y0\", 0, [1, 0], 1, 40)", "traj =");
+    expect_error_contains(interp, "ode_euler_vec(\"y1; sin(\", 0, [1, 0], 1, 40)",
+                          "ode_euler_vec");
+}
+
+TEST(ReplCommandsTest, ode_rk4_vec_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 1, 40)", "traj =");
+    expect_error_contains(interp, "ode_rk4_vec(\"y1; sin(\", 0, [1, 0], 1, 40)",
+                          "ode_rk4_vec");
+}
+
+TEST(ReplCommandsTest, ode_backward_euler_vec_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_backward_euler_vec(\"-y0\", 0, [1], 1, 40)", "traj =");
+    expect_error_contains(interp, "ode_backward_euler_vec(\"sin(\", 0, [1], 1, 40)",
+                          "ode_backward_euler_vec");
+}
+
+TEST(ReplCommandsTest, ode_rk45_vec_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_rk45_vec(\"y1; -y0\", 0, [1, 0], 1, 1e-6, 1e-9)",
+                    "traj =");
+    expect_error_contains(interp, "ode_rk45_vec(\"y1; sin(\", 0, [1, 0], 1, 1e-6, 1e-9)",
+                          "ode_rk45_vec");
+}
+
+TEST(ReplCommandsTest, ode_verlet_vec_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 40)",
+                    "traj =");
+    expect_error_contains(interp, "ode_verlet_vec(\"sin(\", 0, [0, 0], [0, 5], 1, 40)",
+                          "ode_verlet_vec");
+}
+
+TEST(ReplCommandsTest, ode_dae_index1_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_dae_index1(\"-y0\", \"z0 - 2*y0\", 0, [1], [2], 1, 40)",
+                    "traj =");
+    expect_error_contains(interp,
+                          "ode_dae_index1(\"-y0\", \"z0 - 2*y0\", 0, [1], [2], 1, 1.5)",
+                          "non-negative integer steps");
+}

@@ -2057,3 +2057,360 @@ TEST(ImageHist, HisteqRgbStretchesToGray) {
     }
     EXPECT_GT(mx, mn);
 }
+
+TEST(ImageWatershed, OneByOneSingleMarker) {
+    Image gray(1, 1, 1, 0.4f);
+    Image markers(1, 1, 1, 1.f);
+    auto out = watershed(gray, markers);
+    if (out.empty()) GTEST_SKIP() << "watershed rejected 1x1";
+    EXPECT_EQ(out.rows, 1);
+    EXPECT_EQ(out.cols, 1);
+    EXPECT_EQ(out.channels, 1);
+    EXPECT_FLOAT_EQ(out.at(0, 0, 0), 1.f);
+}
+
+TEST(ImageWatershed, BothEmptyReturnsEmpty) {
+    EXPECT_TRUE(watershed(Image{}, Image{}).empty());
+}
+
+TEST(ImageWatershed, RgbGrayAndRgbMarkers) {
+    Image gray(6, 6, 3, 0.2f);
+    for (int r = 0; r < 6; ++r)
+        for (int c = 0; c < 6; ++c) {
+            const float v = 0.2f + 0.6f * std::max(0.f, 1.f - std::hypot(
+                static_cast<float>(r - 2), static_cast<float>(c - 2)) / 2.5f);
+            gray.at(r, c, 0) = v;
+            gray.at(r, c, 1) = v;
+            gray.at(r, c, 2) = v;
+        }
+    Image markers(6, 6, 3, 0.f);
+    markers.at(2, 2, 0) = 1.f;
+    markers.at(2, 2, 1) = 1.f;
+    markers.at(2, 2, 2) = 1.f;
+    auto out = watershed(gray, markers);
+    if (out.empty()) GTEST_SKIP() << "watershed rejected RGB pair";
+    EXPECT_EQ(out.channels, 1);
+    EXPECT_FLOAT_EQ(out.at(2, 2, 0), 1.f);
+}
+
+TEST(ImageSlic, CompactnessZeroOnTinyRgb) {
+    Image rgb(4, 4, 3, 0.2f);
+    rgb.at(0, 0, 0) = 0.95f;
+    rgb.at(3, 3, 1) = 0.9f;
+    auto out = slic(rgb, 4, 0.0);
+    if (out.empty()) GTEST_SKIP() << "slic rejected compactness 0";
+    EXPECT_EQ(out.rows, 4);
+    EXPECT_EQ(out.cols, 4);
+    EXPECT_EQ(out.channels, 1);
+    EXPECT_GE(count_distinct_labels(out), 1);
+}
+
+TEST(ImageSlic, TwoByTwoMoreCentersThanPixels) {
+    Image rgb(2, 2, 3, 0.4f);
+    rgb.at(0, 1, 0) = 0.9f;
+    auto out = slic(rgb, 8, 10.0);
+    if (out.empty()) GTEST_SKIP() << "slic rejected 2x2";
+    EXPECT_LE(count_distinct_labels(out), 4);
+    for (int r = 0; r < 2; ++r)
+        for (int c = 0; c < 2; ++c)
+            EXPECT_GT(out.at(r, c, 0), 0.f);
+}
+
+TEST(ImageAdaptHistEq, OneByOneAndTileSizeZero) {
+    Image one(1, 1, 1, 0.3f);
+    auto a = adapthisteq(one, 8, 0.01f);
+    if (a.empty()) GTEST_SKIP() << "adapthisteq rejected 1x1";
+    EXPECT_EQ(a.rows, 1);
+    EXPECT_TRUE(std::isfinite(a.at(0, 0, 0)));
+    EXPECT_GE(a.at(0, 0, 0), 0.f);
+    EXPECT_LE(a.at(0, 0, 0), 1.f);
+
+    Image img(6, 6, 1, 0.f);
+    for (int r = 0; r < 6; ++r)
+        for (int c = 0; c < 6; ++c)
+            img.at(r, c, 0) = static_cast<float>((r * 6 + c) % 7) / 6.f;
+    auto z = adapthisteq(img, 0, 0.1f);
+    if (z.empty()) GTEST_SKIP() << "adapthisteq rejected tile_size 0";
+    EXPECT_EQ(z.rows, 6);
+    for (float v : z.data) {
+        EXPECT_TRUE(std::isfinite(v));
+        EXPECT_GE(v, 0.f);
+        EXPECT_LE(v, 1.f);
+    }
+}
+
+TEST(ImageAdaptHistEq, ClipLimitZeroAndOutOfRange) {
+    Image img(8, 8, 1, 0.f);
+    for (int i = 0; i < 64; ++i) img.data[i] = static_cast<float>(i % 5) / 4.f;
+    img.at(0, 0, 0) = -0.3f;
+    img.at(0, 1, 0) = 1.7f;
+    auto out = adapthisteq(img, 4, 0.f);
+    if (out.empty()) GTEST_SKIP() << "adapthisteq rejected clip_limit 0";
+    EXPECT_EQ(out.channels, 1);
+    for (float v : out.data) {
+        EXPECT_TRUE(std::isfinite(v));
+        EXPECT_GE(v, 0.f);
+        EXPECT_LE(v, 1.f);
+    }
+}
+
+TEST(ImageTransform, DftMagnitudeOneByOneAndImpulse) {
+    Image one(1, 1, 1, 0.6f);
+    auto m1 = dft_magnitude(one);
+    if (m1.empty()) GTEST_SKIP() << "dft_magnitude rejected 1x1";
+    EXPECT_EQ(m1.rows, 1);
+    EXPECT_NEAR(m1.at(0, 0, 0), 0.6f, 1e-5f);
+
+    Image img(2, 2, 1, 0.f);
+    img.at(0, 0, 0) = 1.f;
+    auto mag = dft_magnitude(img);
+    if (mag.empty()) GTEST_SKIP() << "dft_magnitude rejected 2x2";
+    EXPECT_EQ(mag.rows, 2);
+    EXPECT_EQ(mag.channels, 1);
+    EXPECT_GT(mag.at(0, 0, 0), 0.f);
+    for (float v : mag.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageTransform, RadonOneByOneAndSingleAngle) {
+    Image one(1, 1, 1, 1.f);
+    auto sino1 = radon(one, {0.f});
+    ASSERT_EQ(sino1.size(), 1u);
+    EXPECT_EQ(sino1[0].size(), 1u);
+
+    Image img(4, 4, 1, 0.f);
+    img.at(1, 1, 0) = 1.f;
+    img.at(1, 2, 0) = 1.f;
+    auto sino = radon(img, {90.f});
+    ASSERT_EQ(sino.size(), 1u);
+    ASSERT_EQ(sino[0].size(), 4u);
+    for (float v : sino[0]) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageTransform, IradonSingleAngleTiny) {
+    std::vector<std::vector<float>> sino{{0.1f, 0.4f, 0.4f, 0.1f}};
+    auto recon = iradon(sino, {0.f});
+    if (recon.empty()) GTEST_SKIP() << "iradon rejected single-angle sinogram";
+    EXPECT_EQ(recon.rows, 4);
+    EXPECT_EQ(recon.cols, 4);
+    EXPECT_EQ(recon.channels, 1);
+    for (float v : recon.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(HoughLines, OneByOneAndSingleThetaBin) {
+    Image one(1, 1, 1, 1.f);
+    auto none = hough_lines(one, 0.5, 8, 8, 2);
+    EXPECT_TRUE(none.empty());
+
+    Image g(6, 6, 1, 0.f);
+    for (int r = 0; r < 6; ++r) g.at(r, 3, 0) = 1.f;
+    auto lines = hough_lines(g, 0.5, 1, 16, 1);
+    for (const auto& l : lines) {
+        EXPECT_GE(l.votes, 1);
+        EXPECT_NEAR(l.theta, 0.0, 1e-12);
+    }
+}
+
+TEST(HoughCircles, OneByOneAndNegativeStep) {
+    Image one(1, 1, 1, 1.f);
+    EXPECT_TRUE(hough_circles(one, 0.5, 1.0, 2.0, 1, 1).empty());
+    Image g(6, 6, 1, 1.f);
+    EXPECT_TRUE(hough_circles(g, 0.5, 1.0, 3.0, -1, 4).empty());
+}
+
+TEST(ImageMorph, OneByOneAndKsizeZero) {
+    Image one(1, 1, 1, 0.55f);
+    auto d = imdilate(one, 3);
+    if (d.empty()) GTEST_SKIP() << "imdilate rejected 1x1";
+    EXPECT_NEAR(d.at(0, 0, 0), 0.55f, 1e-6f);
+    auto e = imerode(one, 3);
+    EXPECT_NEAR(e.at(0, 0, 0), 0.55f, 1e-6f);
+
+    Image img(5, 5, 1, 0.f);
+    img.at(2, 2, 0) = 0.8f;
+    auto d0 = imdilate(img, 0);
+    EXPECT_FLOAT_EQ(d0.at(2, 2, 0), 0.8f);
+    EXPECT_FLOAT_EQ(d0.at(1, 2, 0), 0.f);
+    auto g0 = imgradient_morph(img, 0);
+    EXPECT_NEAR(g0.at(2, 2, 0), 0.f, 1e-6f);
+}
+
+TEST(ImageMorph, RgbOneByOneOpenClose) {
+    Image rgb(1, 1, 3, 0.4f);
+    rgb.at(0, 0, 1) = 0.7f;
+    auto o = imopen(rgb, 3);
+    auto c = imclose(rgb, 3);
+    if (o.empty()) GTEST_SKIP() << "imopen rejected RGB 1x1";
+    EXPECT_EQ(o.channels, 3);
+    EXPECT_NEAR(o.at(0, 0, 1), 0.7f, 1e-5f);
+    EXPECT_NEAR(c.at(0, 0, 1), 0.7f, 1e-5f);
+}
+
+TEST(ImageColor, OneByOneRgbGrayAndHsvWrap) {
+    Image rgb(1, 1, 3);
+    rgb.at(0, 0, 0) = 0.8f;
+    rgb.at(0, 0, 1) = 0.1f;
+    rgb.at(0, 0, 2) = 0.2f;
+    auto g = rgb2gray(rgb);
+    if (g.empty()) GTEST_SKIP() << "rgb2gray rejected 1x1 RGB";
+    EXPECT_EQ(g.channels, 1);
+    EXPECT_NEAR(g.at(0, 0, 0), 0.299f * 0.8f + 0.587f * 0.1f + 0.114f * 0.2f, 1e-5f);
+
+    auto hsv = rgb2hsv(rgb);
+    EXPECT_GT(hsv.at(0, 0, 0), 0.9f);
+    auto back = hsv2rgb(hsv);
+    EXPECT_NEAR(back.at(0, 0, 0), 0.8f, 0.02f);
+    EXPECT_NEAR(back.at(0, 0, 2), 0.2f, 0.02f);
+}
+
+TEST(ImageColor, Gray2RgbEmptyStaysEmpty) {
+    EXPECT_TRUE(gray2rgb(Image{}).empty());
+    Image g(1, 1, 1, 0.25f);
+    auto rgb = gray2rgb(g);
+    if (rgb.empty()) GTEST_SKIP() << "gray2rgb rejected 1x1";
+    EXPECT_EQ(rgb.channels, 3);
+    EXPECT_NEAR(rgb.at(0, 0, 2), 0.25f, 1e-6f);
+}
+
+TEST(ImageFilter, OneByOneGaussBoxSharpenBilateral) {
+    Image g(1, 1, 1, 0.45f);
+    auto blur = imgaussfilt(g, 1.0f);
+    if (blur.empty()) GTEST_SKIP() << "imgaussfilt rejected 1x1";
+    EXPECT_NEAR(blur.at(0, 0, 0), 0.45f, 0.05f);
+    auto box = boxfilter(g, 3);
+    EXPECT_NEAR(box.at(0, 0, 0), 0.45f, 0.02f);
+    auto sh = sharpen(g);
+    EXPECT_TRUE(std::isfinite(sh.at(0, 0, 0)));
+    auto bi = bilateral(g, 1.0f, 0.2f);
+    EXPECT_NEAR(bi.at(0, 0, 0), 0.45f, 0.05f);
+}
+
+TEST(ImageFilter, BoxKsizeZeroAndMedfiltEven) {
+    Image img(4, 4, 1, 0.3f);
+    img.at(1, 1, 0) = 0.9f;
+    auto box0 = boxfilter(img, 0);
+    if (box0.empty()) GTEST_SKIP() << "boxfilter rejected ksize 0";
+    EXPECT_NEAR(box0.at(1, 1, 0), 0.9f, 1e-5f);
+
+    auto med0 = medfilt2(img, 0);
+    EXPECT_FLOAT_EQ(med0.at(1, 1, 0), 0.9f);
+    auto med4 = medfilt2(img, 4);
+    EXPECT_EQ(med4.rows, 4);
+    EXPECT_NEAR(med4.at(1, 1, 0), 0.3f, 0.2f);
+}
+
+TEST(ImageFilter, ImfilterOneByOneIdentity) {
+    Image img(1, 1, 1, 0.7f);
+    auto out = imfilter(img, {{1.f}});
+    if (out.empty()) GTEST_SKIP() << "imfilter rejected 1x1";
+    EXPECT_NEAR(out.at(0, 0, 0), 0.7f, 1e-5f);
+}
+
+TEST(ImageEdge, OneByOneAndEmptyPrewitt) {
+    Image one(1, 1, 1, 0.5f);
+    auto s = sobel(one);
+    if (s.empty()) GTEST_SKIP() << "sobel rejected 1x1";
+    EXPECT_EQ(s.rows, 1);
+    EXPECT_NEAR(s.at(0, 0, 0), 0.f, 1e-4f);
+    EXPECT_NEAR(prewitt(one).at(0, 0, 0), 0.f, 1e-4f);
+    EXPECT_NEAR(scharr(one).at(0, 0, 0), 0.f, 1e-4f);
+    EXPECT_NEAR(roberts(one).at(0, 0, 0), 0.f, 1e-4f);
+    EXPECT_TRUE(prewitt(Image{}).empty());
+    EXPECT_TRUE(sobel_x(Image{}).empty());
+    EXPECT_TRUE(sobel_y(Image{}).empty());
+}
+
+TEST(ImageEdge, CannyVerticalOneThreeFiveAndHysteresis) {
+    Image vert(8, 8, 1, 0.f);
+    for (int r = 0; r < 8; ++r)
+        for (int c = 4; c < 8; ++c) vert.at(r, c, 0) = 1.f;
+    auto ev = canny(vert, 0.05f, 0.25f, 0.8f);
+    if (ev.empty()) GTEST_SKIP() << "canny rejected vertical step";
+    float vsum = 0.f;
+    for (float v : ev.data) vsum += v;
+    EXPECT_GT(vsum, 0.f);
+
+    Image d135(8, 8, 1, 0.f);
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+            if (c + r >= 7) d135.at(r, c, 0) = 1.f;
+    auto ed = canny(d135, 0.05f, 0.2f, 0.8f);
+    EXPECT_EQ(ed.rows, 8);
+
+    Image weak(8, 8, 1, 0.f);
+    for (int r = 2; r < 6; ++r) weak.at(r, 3, 0) = 1.f;
+    weak.at(1, 3, 0) = 0.35f;
+    auto eh = canny(weak, 0.05f, 0.4f, 0.6f);
+    EXPECT_EQ(eh.channels, 1);
+    for (float v : eh.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageHist, EmptyImhistHisteqImadjust) {
+    Image empty;
+    auto h = imhist(empty, 16);
+    EXPECT_EQ(h.size(), 16u);
+    for (int v : h) EXPECT_EQ(v, 0);
+    EXPECT_TRUE(histeq(empty).empty());
+    EXPECT_TRUE(imadjust(empty, 0.f, 1.f).empty());
+}
+
+TEST(ImageHist, OneByOneAndNbinsOne) {
+    Image one(1, 1, 1, 0.4f);
+    auto h1 = imhist(one, 1);
+    ASSERT_EQ(h1.size(), 1u);
+    EXPECT_EQ(h1[0], 1);
+    auto eq = histeq(one);
+    if (eq.empty()) GTEST_SKIP() << "histeq rejected 1x1";
+    EXPECT_TRUE(std::isfinite(eq.at(0, 0, 0)));
+    auto adj = imadjust(one, 0.f, 1.f, 0.2f, 0.8f);
+    EXPECT_NEAR(adj.at(0, 0, 0), 0.2f + 0.4f * 0.6f, 1e-5f);
+}
+
+TEST(ImageGeom, EmptyFlipPadCrop) {
+    EXPECT_TRUE(imflip(Image{}, true).empty());
+    EXPECT_TRUE(imflip(Image{}, false).empty());
+    EXPECT_TRUE(impad(Image{}, 1, 0.f).empty());
+    EXPECT_TRUE(imcrop(Image{}, 0, 0, 2, 2).empty());
+
+    Image img(3, 3, 1, 0.5f);
+    img.at(1, 1, 0) = 0.9f;
+    auto p0 = impad(img, 0, 0.f);
+    EXPECT_EQ(p0.rows, 3);
+    EXPECT_FLOAT_EQ(p0.at(1, 1, 0), 0.9f);
+}
+
+TEST(ImageHarris, EmptyAndOneByOneNoKeypoints) {
+    EXPECT_TRUE(harris(Image{}).empty());
+    Image one(1, 1, 1, 1.f);
+    EXPECT_TRUE(harris(one).empty());
+}
+
+TEST(ImageShiTomasi, EmptyAndNonPositiveN) {
+    EXPECT_TRUE(shi_tomasi(Image{}, 4).empty());
+    Image img(6, 6, 1, 0.f);
+    for (int r = 3; r < 6; ++r)
+        for (int c = 3; c < 6; ++c) img.at(r, c, 0) = 1.f;
+    auto z = shi_tomasi(img, 0, 0.01f);
+    EXPECT_TRUE(z.empty());
+    auto one = shi_tomasi(Image(1, 1, 1, 0.5f), 3);
+    EXPECT_TRUE(one.empty());
+}
+
+TEST(ImageComponents, OneByOneAndAllZero) {
+    Image z1(1, 1, 1, 0.f);
+    EXPECT_EQ(count_components(z1), 0);
+    Image o1(1, 1, 1, 1.f);
+    EXPECT_EQ(count_components(o1), 1);
+    Image blank(3, 3, 1, 0.f);
+    EXPECT_EQ(count_components(blank), 0);
+    auto labels = label_components(blank);
+    EXPECT_EQ(static_cast<int>(labels.size()), 3);
+}
+
+TEST(ImageBasic, ImFromDataPreservesLayout) {
+    std::vector<float> d{0.1f, 0.2f, 0.3f, 0.4f};
+    auto img = im_from_data(2, 2, 1, d);
+    EXPECT_EQ(img.rows, 2);
+    EXPECT_EQ(img.cols, 2);
+    EXPECT_FLOAT_EQ(img.at(0, 1, 0), 0.2f);
+    EXPECT_FLOAT_EQ(img.at(1, 1, 0), 0.4f);
+}

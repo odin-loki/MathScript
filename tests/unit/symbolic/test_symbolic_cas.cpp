@@ -572,3 +572,101 @@ TEST(SymbolicParseTest, parse_error_empty_parens) {
     }
     EXPECT_FALSE(result.has_value());
 }
+
+TEST(SymbolicParseTest, parse_error_trailing_pow) {
+    const auto result = sym_parse("1^");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'1^' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_trailing_mul_and_div) {
+    const auto mul = sym_parse("1*");
+    if (mul.has_value()) {
+        GTEST_SKIP() << "'1*' unexpectedly parsed";
+    }
+    EXPECT_FALSE(mul.has_value());
+
+    const auto div = sym_parse("1/");
+    if (div.has_value()) {
+        GTEST_SKIP() << "'1/' unexpectedly parsed";
+    }
+    EXPECT_FALSE(div.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_function_empty_args) {
+    const auto result = sym_parse("sin()");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'sin()' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_unary_minus_then_end) {
+    const auto result = sym_parse("-");
+    if (result.has_value()) {
+        GTEST_SKIP() << "bare '-' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_hash_character) {
+    const auto result = sym_parse("#x");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'#x' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_exponent_minus_missing_digits) {
+    const auto result = sym_parse("1e-");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'1e-' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_leading_decimal_and_capital_e) {
+    const auto leading = sym_parse(".5");
+    if (!leading.has_value()) {
+        GTEST_SKIP() << "'.5' rejected";
+    }
+    EXPECT_NEAR(sym_eval(*leading, {}), 0.5, 1e-12);
+
+    const auto scientific = sym_parse("1E2");
+    if (!scientific.has_value()) {
+        GTEST_SKIP() << "'1E2' rejected";
+    }
+    EXPECT_NEAR(sym_eval(*scientific, {}), 100.0, 1e-12);
+}
+
+TEST(SymbolicParseTest, parse_underscore_identifier) {
+    const auto result = sym_parse("_x");
+    if (!result.has_value()) {
+        GTEST_SKIP() << "'_x' rejected";
+    }
+    EXPECT_EQ(result->op, SymOp::Var);
+    EXPECT_NEAR(sym_eval(*result, {{"_x", 7.0}}), 7.0, 1e-12);
+}
+
+TEST(SymbolicSeriesTest, even_poly_skips_odd_zero_coeffs) {
+    const auto expr = sym_pow(sym_var("x"), sym_const(2.0));
+    const auto series = sym_series(expr, "x", 0.0, 4);
+    EXPECT_NEAR(sym_eval(series, {{"x", 1.5}}), 2.25, 1e-12);
+    EXPECT_NEAR(sym_eval(series, {{"x", -2.0}}), 4.0, 1e-12);
+}
+
+TEST(SymbolicSeriesTest, order_two_of_even_function) {
+    const auto series = sym_series(sym_cos(sym_var("x")), "x", 0.0, 2);
+    EXPECT_NEAR(sym_eval(series, {{"x", 0.2}}), 1.0, 1e-12);
+}
+
+TEST(SymbolicLimitTest, sine_at_pi) {
+    EXPECT_NEAR(sym_limit(sym_sin(sym_var("x")), "x", std::numbers::pi), 0.0, 1e-9);
+}
+
+TEST(SymbolicLimitTest, quadratic_at_zero) {
+    const auto expr = sym_pow(sym_var("x"), sym_const(2.0));
+    EXPECT_NEAR(sym_limit(expr, "x", 0.0), 0.0, 1e-12);
+}

@@ -138,3 +138,53 @@ TEST(SymTest, substitute_with_expression) {
     const auto replaced = sym_substitute(expr, "x", sym_add(sym_var("t"), sym_const(1.0)));
     EXPECT_NEAR(sym_eval(replaced, {{"t", 2.0}}), 9.0, 1e-12);
 }
+
+TEST(SymTest, substitute_in_deriv_preserves_name) {
+    const auto expr = sym_deriv(sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_var("y")), "x");
+    const auto replaced = sym_substitute(expr, "y", sym_const(5.0));
+    EXPECT_EQ(replaced.op, SymOp::Deriv);
+    EXPECT_EQ(replaced.name, "x");
+    EXPECT_NEAR(sym_eval(replaced, {{"x", 3.0}}), 6.0, 1e-12);
+}
+
+TEST(SymTest, substitute_in_tan_log_exp) {
+    const auto expr = sym_add(sym_add(sym_tan(sym_var("x")), sym_log(sym_var("x"))),
+                              sym_exp(sym_var("x")));
+    const auto replaced = sym_substitute(expr, "x", sym_const(1.0));
+    EXPECT_NEAR(sym_eval(replaced, {}), std::tan(1.0) + std::log(1.0) + std::exp(1.0), 1e-12);
+}
+
+TEST(SymTest, substitute_in_neg_div_sub) {
+    const auto expr = sym_neg(sym_div(sym_sub(sym_var("x"), sym_const(1.0)), sym_const(2.0)));
+    const auto replaced = sym_substitute(expr, "x", sym_const(5.0));
+    EXPECT_NEAR(sym_eval(replaced, {}), -2.0, 1e-12);
+}
+
+TEST(SymTest, substitute_unused_in_nested_pow) {
+    const auto expr = sym_pow(sym_add(sym_var("x"), sym_const(1.0)), sym_const(3.0));
+    const auto replaced = sym_substitute(expr, "y", sym_const(99.0));
+    EXPECT_NEAR(sym_eval(replaced, {{"x", 2.0}}), 27.0, 1e-12);
+}
+
+TEST(SymTest, substitute_replacement_not_rescanned) {
+    const auto expr = sym_add(sym_var("x"), sym_const(1.0));
+    const auto replaced = sym_substitute(expr, "x", sym_var("x"));
+    EXPECT_NEAR(sym_eval(replaced, {{"x", 4.0}}), 5.0, 1e-12);
+}
+
+TEST(SymTest, simplify_log_exp_of_sum) {
+    const auto expr = sym_simplify(sym_log(sym_exp(sym_add(sym_var("x"), sym_const(0.0)))));
+    EXPECT_EQ(expr.op, SymOp::Var);
+    EXPECT_NEAR(sym_eval(expr, {{"x", 2.5}}), 2.5, 1e-12);
+}
+
+TEST(SymTest, eval_pow_of_nested_add) {
+    const auto expr = sym_pow(sym_add(sym_var("x"), sym_const(1.0)), sym_const(3.0));
+    EXPECT_NEAR(sym_eval(expr, {{"x", 2.0}}), 27.0, 1e-12);
+}
+
+TEST(SymTest, substitute_in_cos_sin_sqrt) {
+    const auto expr = sym_add(sym_cos(sym_var("x")), sym_mul(sym_sin(sym_var("x")), sym_sqrt(sym_var("x"))));
+    const auto replaced = sym_substitute(expr, "x", sym_const(0.25));
+    EXPECT_NEAR(sym_eval(replaced, {}), std::cos(0.25) + std::sin(0.25) * 0.5, 1e-12);
+}

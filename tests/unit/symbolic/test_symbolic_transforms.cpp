@@ -420,3 +420,161 @@ TEST(SymbolicTransformsTest, unsupported_hankel_returns_deriv_sentinel) {
     EXPECT_EQ(unsupported_ihankel.op, SymOp::Deriv);
     EXPECT_EQ(unsupported_ihankel.name, "k");
 }
+
+TEST(SymbolicTransformsTest, laplace_add_sub_neg_and_right_const) {
+    const auto time_expr = sym_add(
+        sym_sub(sym_neg(sym_var("t")), sym_const(1.0)),
+        sym_mul(sym_var("t"), sym_const(2.0)));
+    const auto forward = sym_simplify(sym_laplace(time_expr, "t", "s"));
+    EXPECT_NE(forward.op, SymOp::Deriv);
+    EXPECT_NEAR(sym_eval(forward, {{"s", 2.0}}), -0.25 - 0.5 + 0.5, 1e-9);
+}
+
+TEST(SymbolicTransformsTest, laplace_scaled_var_const_on_right) {
+    const auto time_expr = sym_sin(sym_mul(sym_var("t"), sym_const(3.0)));
+    const auto expected = sym_div(
+        sym_const(3.0),
+        sym_add(sym_pow(sym_var("s"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))));
+    expect_laplace_pair(time_expr, expected, {{"s", 4.0}});
+}
+
+TEST(SymbolicTransformsTest, laplace_other_var_and_large_power_sentinel) {
+    const auto other = sym_laplace(sym_var("y"), "t", "s");
+    EXPECT_TRUE(is_deriv_sentinel(sym_var("y"), other, "t"));
+
+    const auto large = sym_pow(sym_var("t"), sym_const(9.0));
+    EXPECT_TRUE(is_deriv_sentinel(large, sym_laplace(large, "t", "s"), "t"));
+}
+
+TEST(SymbolicTransformsTest, ilaplace_zero_and_nonzero_const) {
+    EXPECT_NEAR(sym_eval(sym_ilaplace(sym_const(0.0), "s", "t"), {}), 0.0, 1e-12);
+
+    const auto nonzero = sym_ilaplace(sym_const(3.0), "s", "t");
+    EXPECT_TRUE(is_deriv_sentinel(sym_const(3.0), nonzero, "s"));
+}
+
+TEST(SymbolicTransformsTest, ilaplace_factorial_over_s_power) {
+    const auto s_expr = sym_div(sym_const(6.0), sym_pow(sym_var("s"), sym_const(4.0)));
+    const auto expected = sym_pow(sym_var("t"), sym_const(3.0));
+    expect_ilaplace_pair(s_expr, expected, {{"t", 1.5}});
+}
+
+TEST(SymbolicTransformsTest, ilaplace_s2_plus_const_sine) {
+    const auto s_expr = sym_div(
+        sym_const(3.0),
+        sym_add(sym_pow(sym_var("s"), sym_const(2.0)), sym_const(9.0)));
+    const auto expected = sym_sin(sym_mul(sym_const(3.0), sym_var("t")));
+    expect_ilaplace_pair(s_expr, expected, {{"t", 0.2}});
+}
+
+TEST(SymbolicTransformsTest, ilaplace_linearity) {
+    const auto s_expr = sym_add(
+        sym_neg(sym_div(sym_const(1.0), sym_pow(sym_var("s"), sym_const(2.0)))),
+        sym_mul(sym_const(2.0), sym_div(sym_const(1.0), sym_sub(sym_var("s"), sym_const(1.0)))));
+    const auto inverse = sym_simplify(sym_ilaplace(s_expr, "s", "t"));
+    EXPECT_NEAR(sym_eval(inverse, {{"t", 0.5}}), -0.5 + 2.0 * std::exp(0.5), 1e-9);
+}
+
+TEST(SymbolicTransformsTest, fourier_bare_neg_t) {
+    const SymExpr time = sym_exp(sym_neg(sym_var("t")));
+    const SymExpr spectrum = sym_simplify(sym_fourier(time, "t", "omega"));
+    EXPECT_NEAR(sym_eval(spectrum, {{"omega", 1.0}}), 2.0 / 2.0, 1e-9);
+}
+
+TEST(SymbolicTransformsTest, fourier_sub_zero_minus_scaled) {
+    const SymExpr time = sym_exp(sym_sub(sym_const(0.0), sym_mul(sym_const(2.0), sym_var("t"))));
+    const SymExpr spectrum = sym_simplify(sym_fourier(time, "t", "omega"));
+    EXPECT_NEAR(sym_eval(spectrum, {{"omega", 1.0}}), 4.0 / 5.0, 1e-9);
+}
+
+TEST(SymbolicTransformsTest, ifourier_unsupported_and_const_a2) {
+    const SymExpr bad = sym_sin(sym_var("omega"));
+    EXPECT_TRUE(is_deriv_sentinel(bad, sym_ifourier(bad, "omega", "t"), "omega"));
+
+    const SymExpr spectrum = sym_div(
+        sym_const(4.0),
+        sym_add(sym_const(4.0), sym_pow(sym_var("omega"), sym_const(2.0))));
+    const SymExpr time = sym_simplify(sym_ifourier(spectrum, "omega", "t"));
+    EXPECT_NEAR(sym_eval(time, {{"t", 0.5}}), std::exp(-1.0), 1e-9);
+}
+
+TEST(SymbolicTransformsTest, ztransform_const_on_right_of_geometric) {
+    const SymExpr seq = sym_mul(sym_pow(sym_const(0.5), sym_var("n")), sym_const(3.0));
+    const SymExpr zdomain = sym_simplify(sym_ztransform(seq, "n", "z"));
+    EXPECT_NEAR(sym_eval(zdomain, {{"z", 2.0}}), 3.0 * 2.0 / (2.0 - 0.5), 1e-9);
+}
+
+TEST(SymbolicTransformsTest, ztransform_and_iztransform_unsupported) {
+    const SymExpr seq = sym_sin(sym_var("n"));
+    EXPECT_TRUE(is_deriv_sentinel(seq, sym_ztransform(seq, "n", "z"), "n"));
+
+    const SymExpr zdom = sym_log(sym_var("z"));
+    EXPECT_TRUE(is_deriv_sentinel(zdom, sym_iztransform(zdom, "z", "n"), "z"));
+}
+
+TEST(SymbolicTransformsTest, iztransform_scaled_on_right) {
+    const SymExpr zdomain = sym_mul(
+        sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(0.25))),
+        sym_const(2.0));
+    const SymExpr seq = sym_simplify(sym_iztransform(zdomain, "z", "n"));
+    EXPECT_NEAR(sym_eval(seq, {{"n", 2.0}}), 2.0 * std::pow(0.25, 2.0), 1e-9);
+}
+
+TEST(SymbolicTransformsTest, mellin_bare_t_and_swapped_one_plus_t) {
+    const auto bare = sym_var("t");
+    const auto expected_bare = sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(1.0)));
+    expect_mellin_pair(bare, expected_bare, {{"s", 2.0}});
+
+    const auto swapped = sym_div(sym_const(1.0), sym_add(sym_var("t"), sym_const(1.0)));
+    const auto expected_pi = sym_div(
+        sym_const(std::numbers::pi),
+        sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var("s"))));
+    expect_mellin_pair(swapped, expected_pi, {{"s", 0.5}});
+}
+
+TEST(SymbolicTransformsTest, mellin_t_times_exp_and_linearity) {
+    const auto time_expr = sym_mul(
+        sym_var("t"),
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))));
+    const auto expected = sym_div(
+        sym_const(1.0),
+        sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(1.0))));
+    expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
+
+    const auto linear = sym_add(sym_neg(sym_const(2.0)), sym_var("t"));
+    const auto forward = sym_simplify(sym_mellin(linear, "t", "s"));
+    EXPECT_NE(forward.op, SymOp::Deriv);
+}
+
+TEST(SymbolicTransformsTest, imellin_zero_and_pi_over_sin) {
+    EXPECT_NEAR(sym_eval(sym_imellin(sym_const(0.0), "s", "t"), {}), 0.0, 1e-12);
+
+    const auto s_expr = sym_div(
+        sym_const(std::numbers::pi),
+        sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var("s"))));
+    const auto expected = sym_div(sym_const(1.0), sym_add(sym_const(1.0), sym_var("t")));
+    expect_imellin_pair(s_expr, expected, {{"t", 3.0}});
+}
+
+TEST(SymbolicTransformsTest, hankel_add_neg_and_const_sentinel) {
+    const auto r_expr = sym_add(
+        sym_neg(sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))))),
+        sym_mul(sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r")))), sym_const(3.0)));
+    const auto forward = sym_simplify(sym_hankel(r_expr, "r", "k"));
+    EXPECT_NE(forward.op, SymOp::Deriv);
+
+    EXPECT_TRUE(is_deriv_sentinel(sym_const(1.0), sym_hankel(sym_const(1.0), "r", "k"), "r"));
+    EXPECT_TRUE(is_deriv_sentinel(sym_var("r"), sym_hankel(sym_var("r"), "r", "k"), "r"));
+}
+
+TEST(SymbolicTransformsTest, ihankel_zero_and_linearity) {
+    EXPECT_NEAR(sym_eval(sym_ihankel(sym_const(0.0), "k", "r"), {}), 0.0, 1e-12);
+
+    const auto k_expr = sym_neg(sym_div(
+        sym_const(2.0),
+        sym_pow(
+            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
+            sym_const(1.5))));
+    const auto inverse = sym_simplify(sym_ihankel(k_expr, "k", "r"));
+    EXPECT_NEAR(sym_eval(inverse, {{"r", 1.0}}), -std::exp(-2.0), 1e-9);
+}

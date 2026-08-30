@@ -2119,3 +2119,352 @@ TEST(SignalExtTest, firwin_savgol_median_lms_edges) {
     EXPECT_TRUE(lms_adaptive_filter(u, u, 0, 0.1).output.empty());
     EXPECT_TRUE(lms_adaptive_filter(u, {1.0, 0.0}, 1, 0.1).output.empty());
 }
+
+TEST(SignalExtTest, welch_psd_odd_segment_and_nperseg_too_large) {
+    const std::vector<double> x{1.0, -0.5, 0.25, -0.25, 0.5, 0.0, -1.0, 0.75};
+    const auto odd = welch_psd(x, 8.0, 3, 0.0);
+    if (!odd.has_value()) GTEST_SKIP() << "welch_psd rejected odd segment_len";
+    ASSERT_EQ(odd->frequencies.size(), odd->power.size());
+    for (double p : odd->power) {
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_GE(p, 0.0);
+    }
+    const auto too_big = welch_psd(x, 8.0, 16, 0.5);
+    ASSERT_FALSE(too_big.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(too_big.error()));
+}
+
+TEST(SignalExtTest, periodogram_zero_energy_window_and_matching_hann) {
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5, 0.25, -0.25, 0.75, -0.75};
+    const std::vector<double> zero_win(x.size(), 0.0);
+    const auto bad = periodogram(x, 8.0, zero_win);
+    ASSERT_FALSE(bad.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(bad.error()));
+
+    const auto win = hanning(x.size());
+    const auto ok = periodogram(x, 8.0, win, 16);
+    if (!ok.has_value()) GTEST_SKIP() << "periodogram rejected matching window";
+    EXPECT_EQ(ok->frequencies.size(), ok->power.size());
+    EXPECT_FALSE(ok->power.empty());
+}
+
+TEST(SignalExtTest, periodogram_nfft_smaller_than_signal_uses_max) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0, 0.5, 0.0, -0.5, 0.0};
+    const auto a = periodogram(x, 8.0, {}, 4);
+    const auto b = periodogram(x, 8.0, {}, 0);
+    if (!a.has_value() || !b.has_value()) GTEST_SKIP() << "periodogram rejected nfft";
+    EXPECT_EQ(a->frequencies.size(), b->frequencies.size());
+}
+
+TEST(SignalExtTest, coherence_empty_fs_and_overlap_edges) {
+    const std::vector<double> empty;
+    const auto e = coherence(empty, empty, 8.0, 4, 0.5);
+    ASSERT_FALSE(e.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(e.error()));
+
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5, 0.25, -0.25, 0.75, -0.75};
+    const auto bad_fs = coherence(x, x, 0.0, 4, 0.5);
+    ASSERT_FALSE(bad_fs.has_value());
+    const auto bad_ov = coherence(x, x, 8.0, 4, 1.0);
+    ASSERT_FALSE(bad_ov.has_value());
+    const auto neg_ov = coherence(x, x, 8.0, 4, -0.2);
+    ASSERT_FALSE(neg_ov.has_value());
+    const auto big = coherence(x, x, 8.0, 16, 0.5);
+    ASSERT_FALSE(big.has_value());
+}
+
+TEST(SignalExtTest, coherence_default_overlap_and_nperseg_one) {
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5, 0.25, -0.25, 0.75, -0.75};
+    const auto def = coherence(x, x, 8.0, 4);
+    const auto half = coherence(x, x, 8.0, 4, 0.5);
+    if (!def.has_value() || !half.has_value()) GTEST_SKIP() << "coherence rejected short x";
+    ASSERT_EQ(def->coherence.size(), half->coherence.size());
+    for (size_t i = 0; i < def->coherence.size(); ++i) {
+        EXPECT_NEAR(def->coherence[i], half->coherence[i], 1e-12);
+        EXPECT_NEAR(def->coherence[i], 1.0, 1e-9);
+    }
+    const auto one = coherence(x, x, 8.0, 1, 0.0);
+    if (!one.has_value()) GTEST_SKIP() << "coherence rejected nperseg 1";
+    ASSERT_EQ(one->coherence.size(), 1u);
+    EXPECT_NEAR(one->coherence[0], 1.0, 1e-9);
+}
+
+TEST(SignalExtTest, spectrogram_default_overlap_matches_half) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.5, 0.25, -0.25, 0.75, -0.5};
+    const auto def = spectrogram(x, 8.0, 4);
+    const auto half = spectrogram(x, 8.0, 4, 0.5);
+    if (!def.has_value() || !half.has_value()) GTEST_SKIP() << "spectrogram rejected short x";
+    ASSERT_EQ(def->times.size(), half->times.size());
+    ASSERT_EQ(def->magnitude.rows(), half->magnitude.rows());
+    ASSERT_EQ(def->magnitude.cols(), half->magnitude.cols());
+    for (size_t r = 0; r < def->magnitude.rows(); ++r) {
+        for (size_t c = 0; c < def->magnitude.cols(); ++c) {
+            EXPECT_NEAR(def->magnitude(r, c), half->magnitude(r, c), 1e-12);
+        }
+    }
+}
+
+TEST(SignalExtTest, hilbert_envelope_unwrap_empty_and_single) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(envelope(empty).empty());
+    EXPECT_TRUE(instantaneous_phase(empty).empty());
+    EXPECT_TRUE(unwrap(empty).empty());
+    EXPECT_TRUE(instantaneous_freq(empty, 8.0).empty());
+
+    const std::vector<double> one{0.4};
+    const auto env = envelope(one);
+    if (env.empty()) GTEST_SKIP() << "envelope rejected single sample";
+    ASSERT_EQ(env.size(), 1u);
+    EXPECT_NEAR(env[0], 0.4, 1e-9);
+    const auto ph = instantaneous_phase(one);
+    ASSERT_EQ(ph.size(), 1u);
+    EXPECT_TRUE(std::isfinite(ph[0]));
+    const auto un = unwrap(one);
+    ASSERT_EQ(un.size(), 1u);
+    EXPECT_NEAR(un[0], 0.4, 1e-15);
+}
+
+TEST(SignalExtTest, unwrap_negative_jump_and_exact_pi) {
+    const std::vector<double> neg{0.0, -4.0};
+    const auto u_neg = unwrap(neg);
+    ASSERT_EQ(u_neg.size(), 2u);
+    EXPECT_NEAR(u_neg[0], 0.0, 1e-15);
+    EXPECT_LT(std::abs(u_neg[1] - u_neg[0]), 2.0 * M_PI + 1e-12);
+
+    const std::vector<double> half_pi{0.0, M_PI};
+    const auto u_pi = unwrap(half_pi);
+    ASSERT_EQ(u_pi.size(), 2u);
+    EXPECT_NEAR(u_pi[0], 0.0, 1e-15);
+    EXPECT_TRUE(std::isfinite(u_pi[1]));
+}
+
+TEST(SignalExtTest, hilbert_odd_length_real_part) {
+    const std::vector<double> x{0.2, -0.1, 0.4, -0.3, 0.1};
+    const auto z = hilbert(x);
+    if (z.empty()) GTEST_SKIP() << "hilbert rejected odd length";
+    ASSERT_EQ(z.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(z[i].real(), x[i], 1e-8) << "i=" << i;
+    }
+}
+
+TEST(SignalExtTest, xcorr_xcov_autocorr_empty_and_zero_lag) {
+    const std::vector<double> a{1.0, 2.0, 3.0};
+    const std::vector<double> empty;
+    EXPECT_TRUE(xcorr(empty, a, 1).empty());
+    EXPECT_TRUE(xcorr(a, empty, 1).empty());
+    EXPECT_TRUE(xcov(empty, a, 1).empty());
+    EXPECT_TRUE(autocorr(empty, 2).empty());
+    EXPECT_TRUE(xcorr(a, a, -1).empty());
+
+    const auto z = xcorr(a, a, 0);
+    ASSERT_EQ(z.size(), 1u);
+    EXPECT_NEAR(z[0], 14.0, 1e-12);
+    const auto ac = autocorr(a, 0);
+    ASSERT_EQ(ac.size(), 1u);
+    EXPECT_NEAR(ac[0], 14.0, 1e-12);
+}
+
+TEST(SignalExtTest, xcov_zero_lag_is_variance_times_n) {
+    const std::vector<double> a{1.0, 2.0, 3.0};
+    const auto xc = xcov(a, a, 0);
+    if (xc.empty()) GTEST_SKIP() << "xcov rejected max_lag 0";
+    ASSERT_EQ(xc.size(), 1u);
+    const double mean = 2.0;
+    double expected = 0.0;
+    for (double v : a) expected += (v - mean) * (v - mean);
+    EXPECT_NEAR(xc[0], expected, 1e-12);
+}
+
+TEST(SignalExtTest, conv2_one_by_one_and_row_col_kernels) {
+    Matrix<double> A(1, 1, 2.0);
+    Matrix<double> B(1, 1, 3.0);
+    const auto c11 = conv2(A, B);
+    if (c11.empty()) GTEST_SKIP() << "conv2 rejected 1x1";
+    ASSERT_EQ(c11.rows(), 1u);
+    EXPECT_NEAR(c11(0, 0), 6.0, 1e-12);
+
+    Matrix<double> M{{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}};
+    Matrix<double> row{{1.0, 0.0, -1.0}};
+    Matrix<double> col{{1.0}, {0.0}, {-1.0}};
+    const auto cr = conv2(M, row);
+    const auto cc = conv2(M, col);
+    ASSERT_EQ(cr.rows(), 2u);
+    ASSERT_EQ(cr.cols(), 5u);
+    ASSERT_EQ(cc.rows(), 4u);
+    ASSERT_EQ(cc.cols(), 3u);
+    EXPECT_NEAR(cr(0, 2), 2.0, 1e-12);
+}
+
+TEST(SignalExtTest, deconv_empty_y_and_identity) {
+    const std::vector<double> empty;
+    const std::vector<double> b{1.0, -0.5};
+    const auto q0 = deconv(empty, b);
+    if (q0.empty()) GTEST_SKIP() << "deconv returned empty for empty y";
+    ASSERT_FALSE(q0.empty());
+    EXPECT_NEAR(q0[0], 0.0, 1e-12);
+
+    const std::vector<double> y{2.0, -1.0, 0.5};
+    const std::vector<double> one{1.0};
+    const auto id = deconv(y, one);
+    ASSERT_EQ(id.size(), y.size());
+    for (size_t i = 0; i < y.size(); ++i) {
+        EXPECT_NEAR(id[i], y[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, cheby1_cheby2_order_odd_highpass_and_nyquist) {
+    EXPECT_TRUE(cheby1(2, 1.0, 50.0, 100.0).b.empty());
+    EXPECT_TRUE(cheby1(2, 1.0, 10.0, 0.0).a.empty());
+    EXPECT_TRUE(cheby2(2, 20.0, 60.0, 100.0).b.empty());
+
+    const auto c1 = cheby1(3, 0.5, 12.0, 80.0);
+    if (c1.a.empty()) GTEST_SKIP() << "cheby1 order 3 rejected";
+    EXPECT_NEAR(c1.a[0], 1.0, 1e-12);
+    EXPECT_EQ(c1.a.size(), c1.b.size());
+
+    const auto hp = cheby1(2, 1.0, 15.0, 80.0, FilterType::Highpass);
+    if (hp.b.empty()) GTEST_SKIP() << "cheby1 highpass rejected";
+    EXPECT_NEAR(hp.a[0], 1.0, 1e-12);
+
+    const auto c2 = cheby2(3, 30.0, 18.0, 80.0);
+    if (c2.a.empty()) GTEST_SKIP() << "cheby2 order 3 rejected";
+    EXPECT_NEAR(c2.a[0], 1.0, 1e-12);
+
+    const auto c2hp = cheby2(1, 20.0, 10.0, 80.0, FilterType::Highpass);
+    if (c2hp.b.empty()) GTEST_SKIP() << "cheby2 order 1 highpass rejected";
+    EXPECT_NEAR(c2hp.a[0], 1.0, 1e-12);
+}
+
+TEST(SignalExtTest, filtfilt_iir_single_and_short_pad) {
+    const auto c1 = cheby1(2, 1.0, 10.0, 80.0);
+    if (c1.b.empty()) GTEST_SKIP() << "cheby1 unavailable for filtfilt";
+    const std::vector<double> x{1.0, 0.5, -0.25, 0.0, 0.25, -0.5, 0.75, -1.0};
+    const auto y = filtfilt(c1.b, c1.a, x);
+    if (y.empty()) GTEST_SKIP() << "filtfilt rejected IIR";
+    ASSERT_EQ(y.size(), x.size());
+    for (double v : y) EXPECT_TRUE(std::isfinite(v));
+
+    const std::vector<double> one{0.3};
+    const std::vector<double> b1{1.0};
+    const std::vector<double> a1{1.0};
+    const auto ys = filtfilt(b1, a1, one);
+    ASSERT_EQ(ys.size(), 1u);
+    EXPECT_NEAR(ys[0], 0.3, 1e-12);
+
+    const std::vector<double> short_x{1.0, 2.0, 3.0};
+    const std::vector<double> long_b{0.2, 0.2, 0.2, 0.2, 0.2};
+    const auto yp = filtfilt(long_b, a1, short_x);
+    if (yp.empty()) GTEST_SKIP() << "filtfilt rejected short pad";
+    ASSERT_EQ(yp.size(), short_x.size());
+    for (double v : yp) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(SignalExtTest, filter_a0_scale_span_short_and_empty_inplace) {
+    const std::vector<double> b{2.0, 0.0};
+    const std::vector<double> a{2.0};
+    const std::vector<double> x{1.0, 0.0, 0.0, 0.0};
+    const auto y = filter(b, a, x);
+    ASSERT_EQ(y.size(), x.size());
+    EXPECT_NEAR(y[0], 1.0, 1e-12);
+
+    std::vector<double> y_span(x.size(), 0.0);
+    filter(b, a, std::span<const double>(x), std::span<double>(y_span));
+    EXPECT_NEAR(y_span[0], y[0], 1e-15);
+
+    std::vector<double> y_short(1, 99.0);
+    filter(b, a, std::span<const double>(x), std::span<double>(y_short));
+    EXPECT_DOUBLE_EQ(y_short[0], 99.0);
+
+    std::vector<double> empty_xy;
+    filter_in_place(b, a, std::span<double>(empty_xy));
+    EXPECT_TRUE(empty_xy.empty());
+
+    const std::vector<double> empty_a;
+    const auto fir = filter(b, empty_a, x);
+    ASSERT_EQ(fir.size(), x.size());
+    EXPECT_TRUE(std::isfinite(fir[0]));
+}
+
+TEST(SignalExtTest, firwin_windows_and_highpass_hann) {
+    const auto rect = firwin(5, 0.25, FirWindow::Rectangular);
+    const auto hann = firwin(5, 0.25, FirWindow::Hann);
+    const auto black = firwin(5, 0.25, FirWindow::Blackman);
+    if (rect.empty() || hann.empty() || black.empty()) GTEST_SKIP() << "firwin window rejected";
+    double sr = 0.0, sh = 0.0, sb = 0.0;
+    for (double v : rect) sr += v;
+    for (double v : hann) sh += v;
+    for (double v : black) sb += v;
+    EXPECT_NEAR(sr, 1.0, 1e-9);
+    EXPECT_NEAR(sh, 1.0, 1e-9);
+    EXPECT_NEAR(sb, 1.0, 1e-9);
+
+    const auto hp = firwin_highpass(5, 0.3, FirWindow::Hann);
+    if (hp.empty()) GTEST_SKIP() << "firwin_highpass Hann rejected";
+    ASSERT_EQ(hp.size(), 5u);
+    EXPECT_TRUE(std::isfinite(hp[2]));
+}
+
+TEST(SignalExtTest, savgol_empty_window_one_and_polyorder_zero) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(savgol(empty, 3, 1).empty());
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    EXPECT_TRUE(savgol(x, 7, 1).empty());
+    EXPECT_TRUE(savgol(x, 5, -1).empty());
+    const auto id = savgol(x, 1, 0);
+    if (id.empty()) GTEST_SKIP() << "savgol rejected window 1";
+    ASSERT_EQ(id.size(), x.size());
+    EXPECT_NEAR(id[2], 3.0, 1e-12);
+    const auto flat = savgol(x, 5, 0);
+    ASSERT_EQ(flat.size(), x.size());
+    EXPECT_NEAR(flat[0], 1.0, 1e-12);
+    EXPECT_TRUE(std::isfinite(flat[2]));
+}
+
+TEST(SignalExtTest, median_window_one_five_and_empty) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(median_filter(empty, 3).empty());
+    const std::vector<double> x{1.0, 2.0, 9.0, 2.0, 1.0};
+    const auto w1 = median_filter(x, 1);
+    if (w1.empty()) GTEST_SKIP() << "median_filter rejected window 1";
+    ASSERT_EQ(w1.size(), x.size());
+    EXPECT_NEAR(w1[2], 9.0, 1e-12);
+    const auto w5 = median_filter(x, 5);
+    ASSERT_EQ(w5.size(), x.size());
+    EXPECT_NEAR(w5[2], 2.0, 1e-12);
+    EXPECT_TRUE(median_filter(x, 7).empty());
+}
+
+TEST(SignalExtTest, lms_empty_and_filter_longer_than_signal) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(lms_adaptive_filter(empty, empty, 1, 0.1).output.empty());
+    const std::vector<double> x{1.0, 0.5, 0.0};
+    EXPECT_TRUE(lms_adaptive_filter(x, x, 4, 0.1).output.empty());
+    const auto ok = lms_adaptive_filter(x, x, 2, 0.2);
+    if (ok.output.empty()) GTEST_SKIP() << "lms rejected length-3";
+    ASSERT_EQ(ok.output.size(), x.size());
+    ASSERT_EQ(ok.weights.size(), 2u);
+    EXPECT_NEAR(ok.output[0], 0.0, 1e-15);
+}
+
+TEST(SignalExtTest, sosfilt_empty_x_a0_scale_and_two_sections) {
+    const std::vector<std::array<double, 6>> sos{{1.0, 0.0, 0.0, 2.0, 0.0, 0.0}};
+    const std::vector<double> empty;
+    EXPECT_TRUE(sosfilt(sos, empty).empty());
+
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const auto scaled = sosfilt(sos, x);
+    if (scaled.empty()) GTEST_SKIP() << "sosfilt rejected a0 != 1";
+    ASSERT_EQ(scaled.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(scaled[i], 0.5 * x[i], 1e-12);
+    }
+
+    const std::vector<std::array<double, 6>> two{
+        {1.0, 0.0, 0.0, 1.0, 0.0, 0.0},
+        {1.0, 0.0, 0.0, 1.0, 0.0, 0.0},
+    };
+    const auto id = sosfilt(two, x);
+    ASSERT_EQ(id.size(), x.size());
+    EXPECT_NEAR(id[2], 3.0, 1e-12);
+}

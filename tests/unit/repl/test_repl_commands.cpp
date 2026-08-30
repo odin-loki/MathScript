@@ -20916,3 +20916,44 @@ TEST(ReplCommandsTest, jacobi_sn_noassign) {
     expect_error_contains(interp, "jacobi_sn(0.5, missing)", "expected jacobi_sn(u,k)");
 }
 
+TEST(ReplCommandsTest, bfgs_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(bfgs("(x0-3)*(x0-3)", [0]))cmd");
+    expect_error_contains(interp, "bfgs()", "expected bfgs(\"formula\", x0[, tol[, max_iter]])");
+}
+
+TEST(ReplCommandsTest, nelder_mead_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(nelder_mead("(x0-3)*(x0-3)", [8]))cmd");
+    expect_error_contains(interp, "nelder_mead()",
+                          "expected nelder_mead(\"formula\", x0[, tol[, max_iter]])");
+}
+
+TEST(ReplCommandsTest, lbfgs_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(lbfgs("(x0-3)*(x0-3)", [0]))cmd");
+    expect_error_contains(interp, "lbfgs()",
+                          "expected lbfgs(\"formula\", x0[, m[, tol[, max_iter]]])");
+}
+
+TEST(ReplCommandsTest, cmaes_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(cmaes("x0*x0+x1*x1", [2, 3], 0.5, 50, 42))cmd");
+    expect_error_contains(interp, "cmaes()",
+                          "expected cmaes(\"formula\", x0, sigma0, max_iter[, seed])");
+}
+
+TEST(ReplCommandsTest, golden_section_noassign) {
+    Interpreter interp;
+    expect_contains(interp, R"cmd(golden_section("(x0-3)*(x0-3)", 0, 10))cmd", "x_opt");
+    expect_error_contains(interp, "golden_section()",
+                          "expected golden_section(\"formula\", a, b[, tol])");
+}
+
+TEST(ReplCommandsTest, levenberg_marquardt_noassign) {
+    Interpreter interp;
+    expect_ok(interp, R"cmd(levenberg_marquardt("x0-3", [0]))cmd");
+    expect_error_contains(interp, "levenberg_marquardt()",
+                          "expected levenberg_marquardt(\"r0;r1;...\", x0[, max_iter[, tol]])");
+}
+
