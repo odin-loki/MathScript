@@ -321,3 +321,42 @@ TEST(CfdUpwindFvm, CellWiseVelocityLastFace) {
         EXPECT_NEAR(ui, 0.0, 1e-15);
     }
 }
+
+TEST(CfdInitialCondition, DefaultAmplitudeAndOffGridZeros) {
+    const auto grid = grid1d(0.0, 1.0, 20);
+    const auto u_def = square_pulse(grid, 0.5, 0.2);
+    ASSERT_EQ(u_def.size(), grid.n);
+    int nonzero = 0;
+    for (double ui : u_def) {
+        if (ui > 0.0) {
+            ++nonzero;
+            EXPECT_NEAR(ui, 1.0, 1e-12);
+        }
+    }
+    EXPECT_GT(nonzero, 0);
+
+    const auto u_off = square_pulse(grid, 50.0, 0.2, 4.0);
+    ASSERT_EQ(u_off.size(), grid.n);
+    for (double ui : u_off) {
+        EXPECT_NEAR(ui, 0.0, 1e-15);
+    }
+}
+
+TEST(CfdRunAdvection, CellWiseVelocityMassConserved) {
+    const auto grid = grid1d(0.0, 1.0, 16);
+    const auto u0 = square_pulse(grid, 0.4, 0.2, 1.0);
+    const std::vector<double> v(grid.n, 0.4);
+    const auto result = run_advection(u0, v, 0.1, 0.01, grid.dx, BoundaryCondition::Periodic);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_NEAR(pulse_mass(result.u.back(), grid.dx), pulse_mass(u0, grid.dx), 1e-9);
+}
+
+TEST(CfdUpwindFvm, CflEqualsOneAccepted) {
+    const std::vector<double> u = {0.0, 1.0, 0.0, 0.0};
+    const std::vector<double> v = {1.0};
+    const auto u1 = upwind_fvm_advection(u, v, 0.1, 0.1, BoundaryCondition::Periodic);
+    ASSERT_EQ(u1.size(), u.size());
+    EXPECT_NEAR(u1[1], 0.0, 1e-12);
+    EXPECT_NEAR(u1[2], 1.0, 1e-12);
+    EXPECT_NEAR(integrated_mass(u1, 0.1), integrated_mass(u, 0.1), 1e-12);
+}

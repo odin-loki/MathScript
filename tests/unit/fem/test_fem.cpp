@@ -885,3 +885,66 @@ TEST(FemSolve, non_column_rhs_and_singular_zero_matrix) {
     ASSERT_FALSE(u.has_value());
     EXPECT_TRUE(std::holds_alternative<SingularMatrix>(u.error()));
 }
+
+TEST(FemDirichlet, empty_nodes_noop) {
+    ColMatrix<double> K(2, 2, 0.0);
+    K(0, 0) = 1.0;
+    K(1, 1) = 1.0;
+    ColMatrix<double> f(2, 1, 3.0);
+    const std::vector<std::size_t> empty_nodes;
+    const std::vector<double> empty_values;
+    const auto r = apply_dirichlet(K, f, empty_nodes, empty_values);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NEAR(K(0, 0), 1.0, 1e-14);
+    EXPECT_NEAR(f(0, 0), 3.0, 1e-14);
+}
+
+TEST(FemSolve, identity_one_by_one) {
+    ColMatrix<double> K(1, 1, 1.0);
+    ColMatrix<double> f(1, 1, 2.0);
+    const auto u = solve_fem(K, f);
+    ASSERT_TRUE(u.has_value());
+    EXPECT_NEAR((*u)(0, 0), 2.0, 1e-14);
+}
+
+TEST(FemSolve3D, nonsquare_and_wide_rhs) {
+    ColMatrix<double> K(2, 3, 0.0);
+    ColMatrix<double> f_wide(2, 2, 1.0);
+    EXPECT_FALSE(solve_fem_3d(K, f_wide).has_value());
+    ColMatrix<double> Ksq(2, 2, 0.0);
+    ColMatrix<double> f_col(3, 1, 0.0);
+    EXPECT_FALSE(solve_fem_3d(Ksq, f_col).has_value());
+}
+
+TEST(FemLagrangeBasis, degree_three_rejected) {
+    LagrangeBasis basis;
+    basis.degree = 3;
+    EXPECT_FALSE(basis.evaluate(0.5).has_value());
+    EXPECT_FALSE(basis.derivative(0.5).has_value());
+}
+
+TEST(FemStiffness2D, middle_node_out_of_range) {
+    Mesh2D mesh;
+    mesh.nodes = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    mesh.triangles = {{{0, 9, 2}}};
+    EXPECT_FALSE(assemble_stiffness_2d(mesh).has_value());
+}
+
+TEST(FemStiffness3D, middle_node_out_of_range) {
+    Mesh3D mesh;
+    mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    mesh.tetrahedra = {{{0, 8, 2, 3}}};
+    EXPECT_FALSE(assemble_stiffness_3d(mesh).has_value());
+}
+
+TEST(FemSolve3D, empty_and_singular_zero) {
+    ColMatrix<double> K_empty(0, 0);
+    ColMatrix<double> f_empty(0, 1);
+    EXPECT_FALSE(solve_fem_3d(K_empty, f_empty).has_value());
+
+    ColMatrix<double> K_zero(2, 2, 0.0);
+    ColMatrix<double> f(2, 1, 1.0);
+    const auto u = solve_fem_3d(K_zero, f);
+    ASSERT_FALSE(u.has_value());
+    EXPECT_TRUE(std::holds_alternative<SingularMatrix>(u.error()));
+}

@@ -18360,3 +18360,10 @@ TEST(ReplCommandsTest, special_pseudo_voigt_noassign) {
     expect_error_contains(interp, "special_pseudo_voigt(0, 1, 0.5, missing)",
                           "expected special_pseudo_voigt(x,sigma,gamma,eta)");
 }
+
+TEST(ReplCommandsTest, ellip_d_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "x = ellip_d(0.5)");
+    ASSERT_GT(interp.state().scalars.count("x"), 0u);
+    EXPECT_NEAR(interp.state().scalars.at("x"), ms::ellip_d(0.5), 1e-8);
+}

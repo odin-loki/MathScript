@@ -194,3 +194,15 @@ TEST(ReplCommandsTest, diffgeo_sphere_gauss_bonnet_residual_noassign) {
     Interpreter interp;
     expect_ok(interp, "diffgeo_sphere_gauss_bonnet_residual()");
 }
+
+TEST(ReplCommandsTest, diffgeo_helix_torsion_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "t = diffgeo_helix_torsion(0.5)");
+    ASSERT_GT(interp.state().scalars.count("t"), 0u);
+}
+
+TEST(ReplCommandsTest, diffgeo_helix_torsion_3arg_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "t3 = diffgeo_helix_torsion(0.5, 1, 1)");
+    ASSERT_GT(interp.state().scalars.count("t3"), 0u);
+}

@@ -604,3 +604,29 @@ TEST(CplxCauchyPV, DegenerateIntervalIsZero) {
 TEST(CplxHarmonicConjugate, EmptyIsEmpty) {
     EXPECT_TRUE(harmonic_conjugate({}).empty());
 }
+
+TEST(CplxCauchyIntegral, EmptyContourIsZero) {
+    const std::vector<C> empty_contour;
+    auto f = [](C z) { return z * z + C(1.0); };
+    const C val = cauchy_integral(f, C(0.1, -0.2), empty_contour, 40);
+    EXPECT_NEAR(val.real(), 0.0, 1e-15);
+    EXPECT_NEAR(val.imag(), 0.0, 1e-15);
+}
+
+TEST(CplxGreenFunction, NegativeRadiusIsZero) {
+    const C z(0.2, 0.1);
+    const C z0(-0.15, 0.25);
+    EXPECT_EQ(green_function_disk(z, z0, -1.0), 0.0);
+    EXPECT_EQ(green_function_disk(z, z0, -2.5), 0.0);
+}
+
+TEST(CplxCauchyPV, OddNptsStillAgrees) {
+    auto f = [](double x) { (void)x; return 1.0; };
+    const double pv_odd = cauchy_principal_value(f, -1.0, 0.0, 1.0, 1);
+    const double pv_even = cauchy_principal_value(f, -1.0, 0.0, 1.0, 2);
+    EXPECT_TRUE(std::isfinite(pv_odd));
+    EXPECT_TRUE(std::isfinite(pv_even));
+    EXPECT_NEAR(pv_odd, 0.0, 1e-6);
+    EXPECT_NEAR(pv_even, 0.0, 1e-6);
+    EXPECT_NEAR(pv_odd, pv_even, 1e-8);
+}

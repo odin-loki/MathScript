@@ -822,3 +822,29 @@ TEST(BlahutArimoto, DegenerateEmptyRow) {
     EXPECT_NEAR(res.capacity, 0.0, 1e-12);
     EXPECT_TRUE(res.input_distribution.empty());
 }
+
+TEST(InfoEntropy, EmptyPmfAndAllZeros) {
+    std::vector<double> empty;
+    EXPECT_NEAR(entropy(empty, 2.0), 0.0, 1e-12);
+    EXPECT_NEAR(cross_entropy(empty, empty, 2.0), 0.0, 1e-12);
+    std::vector<double> zeros{0.0, 0.0, 0.0};
+    EXPECT_NEAR(entropy(zeros, 2.0), 0.0, 1e-12);
+    EXPECT_NEAR(normalized_entropy(zeros), 0.0, 1e-12);
+}
+
+TEST(InfoDivergence, EmptyPmfKlJsTvHellinger) {
+    std::vector<double> empty;
+    EXPECT_NEAR(kl_divergence(empty, empty, 2.0), 0.0, 1e-12);
+    EXPECT_NEAR(js_divergence(empty, empty, 2.0), 0.0, 1e-12);
+    EXPECT_NEAR(tv_distance(empty, empty), 0.0, 1e-12);
+    EXPECT_NEAR(hellinger_dist(empty, empty), 0.0, 1e-12);
+}
+
+TEST(InfoDivergence, ZerosSkippedInKl) {
+    std::vector<double> p_certain{1.0, 0.0};
+    std::vector<double> q_uniform{0.5, 0.5};
+    EXPECT_NEAR(kl_divergence(p_certain, q_uniform, 2.0), std::log2(2.0), 1e-12);
+    std::vector<double> p_half{0.5, 0.5};
+    std::vector<double> q_spike{1.0, 0.0};
+    EXPECT_NEAR(kl_divergence(p_half, q_spike, 2.0), 0.5 * std::log2(0.5), 1e-12);
+}

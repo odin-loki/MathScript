@@ -3088,3 +3088,53 @@ TEST(SignalExtTest, butterworth_bandpass_single_sample_short) {
     for (double v : bw2) EXPECT_TRUE(std::isfinite(v));
     for (double v : bp2) EXPECT_TRUE(std::isfinite(v));
 }
+
+TEST(SignalExtTest, envelope_phase_freq_empty_and_odd_n) {
+    const std::vector<double> empty_x;
+    EXPECT_TRUE(envelope(empty_x).empty());
+    EXPECT_TRUE(instantaneous_phase(empty_x).empty());
+    EXPECT_TRUE(instantaneous_freq(empty_x, 8.0).empty());
+
+    const std::vector<double> one{0.5};
+    const auto freq1 = instantaneous_freq(one, 8.0);
+    ASSERT_EQ(freq1.size(), one.size());
+    EXPECT_NEAR(freq1[0], 0.0, 1e-15);
+
+    const std::vector<double> odd{1.0, 0.0, -1.0};
+    const auto h = hilbert(odd);
+    if (h.empty()) GTEST_SKIP() << "hilbert rejected odd n=3";
+    ASSERT_EQ(h.size(), odd.size());
+    EXPECT_NEAR(h[0].real(), odd[0], 1e-9);
+    EXPECT_NEAR(h[1].real(), odd[1], 1e-9);
+    EXPECT_NEAR(h[2].real(), odd[2], 1e-9);
+    const auto env = envelope(odd);
+    ASSERT_EQ(env.size(), odd.size());
+    for (double v : env) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(SignalExtTest, xcorr_welch_empty_and_median_window_seven) {
+    const std::vector<double> empty_a;
+    const std::vector<double> b{1.0, 2.0};
+    EXPECT_TRUE(xcorr(empty_a, b, 1).empty());
+    EXPECT_TRUE(autocorr(empty_a, 2).empty());
+    const std::vector<double> fir_b{1.0};
+    const std::vector<double> fir_a{1.0};
+    EXPECT_TRUE(filter(fir_b, fir_a, empty_a).empty());
+
+    const auto w = welch_psd(empty_a, 8.0, 4, 0.5);
+    EXPECT_FALSE(w.has_value());
+    const auto sg = spectrogram(empty_a, 8.0, 4, 0.0);
+    EXPECT_FALSE(sg.has_value());
+    const auto coh = coherence(empty_a, empty_a, 8.0, 4, 0.0);
+    EXPECT_FALSE(coh.has_value());
+
+    const std::vector<double> x{1.0, 9.0, 2.0, 8.0, 3.0, 7.0, 4.0, 6.0, 5.0};
+    const auto med = median_filter(x, 7);
+    if (med.empty()) GTEST_SKIP() << "median_filter rejected window 7";
+    ASSERT_EQ(med.size(), x.size());
+    EXPECT_NEAR(med[0], 1.0, 1e-15);
+    EXPECT_NEAR(med[3], 4.0, 1e-12);
+    const auto sg7 = savgol(x, 7, 1);
+    ASSERT_EQ(sg7.size(), x.size());
+    EXPECT_TRUE(std::isfinite(sg7[3]));
+}

@@ -372,3 +372,26 @@ TEST(SpecialExtTest, jacobi_gegenbauer_whittaker_pcf_domain) {
     const double u0 = pcf_u(-1.0, 0.0);
     EXPECT_TRUE(std::isfinite(u0));
 }
+
+TEST(SpecialExtTest, sph_bessel_y_n0_and_recurrence) {
+    EXPECT_NEAR(sph_bessel_y(0, 0.5), -std::cos(0.5) / 0.5, 1e-14);
+    EXPECT_TRUE(std::isnan(sph_bessel_y(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(sph_bessel_y(0, 0.0)));
+    const double y2 = sph_bessel_y(2, 1.0);
+    EXPECT_TRUE(std::isfinite(y2));
+}
+
+TEST(SpecialExtTest, pcf_vw_at_origin) {
+    const double v0 = pcf_v(0.0, 0.0);
+    const double w0 = pcf_w(0.0, 0.0);
+    EXPECT_TRUE(std::isfinite(v0));
+    EXPECT_TRUE(std::isfinite(w0));
+    EXPECT_NEAR(pcf_w(0.0, 0.0), pcf_u(0.0, 0.0), 1e-12);
+}
+
+TEST(SpecialExtTest, voigt_gaussian_limit_peak) {
+    const double sigma = 1.0;
+    const double peak = voigt(0.0, sigma, 0.0);
+    EXPECT_NEAR(peak, 1.0 / (sigma * std::sqrt(2.0 * std::numbers::pi)), 1e-8);
+    EXPECT_NEAR(voigt(1.0, sigma, 0.0), voigt(-1.0, sigma, 0.0), 1e-12);
+}

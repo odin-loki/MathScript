@@ -153,3 +153,63 @@ TEST(LoadBalancerTest, gpu_policy_two_gpus_picks_device) {
     EXPECT_GE(decision.cuda_device, 0);
     EXPECT_LT(decision.cuda_device, topo.total_gpus);
 }
+
+TEST(LoadBalancerTest, auto_huge_workload_no_cuda_stays_cpu) {
+    const auto topo = synthetic_topology(12, 0);
+    const auto decision = balance(1ull << 20, ExecPolicy::AUTO, topo);
+    EXPECT_EQ(decision.backend, Backend::CPU);
+    EXPECT_EQ(decision.cpu_threads, 12u);
+    EXPECT_EQ(decision.cuda_device, -1);
+}
+
+TEST(LoadBalancerTest, gpu_policy_zero_gpus_device_negative) {
+    const auto topo = synthetic_topology(2, 0);
+    EXPECT_EQ(topo.total_gpus, 0);
+    const auto decision = balance(4096, ExecPolicy::GPU, topo);
+    EXPECT_EQ(decision.cuda_device, -1);
+    EXPECT_EQ(decision.cpu_threads, 2u);
+    if (has_cuda()) {
+        EXPECT_EQ(decision.backend, Backend::CUDA);
+    } else {
+        EXPECT_EQ(decision.backend, Backend::CPU);
+    }
+}
+
+TEST(LoadBalancerTest, gpu_one_gpu_synthetic_skips_picker) {
+    const auto topo = synthetic_topology(3, 1);
+    EXPECT_EQ(topo.total_gpus, 1);
+    const auto decision = balance(2048, ExecPolicy::GPU, topo);
+    EXPECT_EQ(decision.cpu_threads, 3u);
+    if (has_cuda()) {
+        EXPECT_EQ(decision.backend, Backend::CUDA);
+        EXPECT_EQ(decision.cuda_device, 0);
+    } else {
+        EXPECT_EQ(decision.backend, Backend::CPU);
+    }
+}
+
+TEST(LoadBalancerTest, gpu_two_gpu_synthetic_picker_or_cpu) {
+    const auto topo = synthetic_topology(4, 2);
+    EXPECT_GT(topo.total_gpus, 1);
+    const auto decision = balance(1024, ExecPolicy::GPU, topo);
+    EXPECT_EQ(decision.cpu_threads, 4u);
+    if (has_cuda()) {
+        EXPECT_EQ(decision.backend, Backend::CUDA);
+        EXPECT_GE(decision.cuda_device, 0);
+        EXPECT_LT(decision.cuda_device, topo.total_gpus);
+    } else {
+        EXPECT_EQ(decision.backend, Backend::CPU);
+    }
+}
+
+TEST(LoadBalancerTest, gpu_empty_topology_n_zero) {
+    SystemTopology topo;
+    topo.total_gpus = 0;
+    EXPECT_TRUE(topo.cpu_threads.empty());
+    const auto decision = balance(0, ExecPolicy::GPU, topo);
+    EXPECT_EQ(decision.cpu_threads, 0u);
+    EXPECT_EQ(decision.cuda_device, -1);
+    if (!has_cuda()) {
+        EXPECT_EQ(decision.backend, Backend::CPU);
+    }
+}

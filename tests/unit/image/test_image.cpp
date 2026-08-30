@@ -2414,3 +2414,28 @@ TEST(ImageBasic, ImFromDataPreservesLayout) {
     EXPECT_FLOAT_EQ(img.at(0, 1, 0), 0.2f);
     EXPECT_FLOAT_EQ(img.at(1, 1, 0), 0.4f);
 }
+
+TEST(ImageBasic, ZeroDimensionConstructIsEmpty) {
+    Image zero_rows(0, 4, 1);
+    EXPECT_TRUE(zero_rows.empty());
+    EXPECT_EQ(zero_rows.rows, 0);
+    Image zero_cols(3, 0, 1);
+    EXPECT_TRUE(zero_cols.empty());
+    EXPECT_EQ(zero_cols.cols, 0);
+    Image zero_ch(2, 2, 0);
+    EXPECT_TRUE(zero_ch.empty());
+}
+
+TEST(ImageBasic, ImFromDataEmptyAndOneByOne) {
+    std::vector<float> empty_data;
+    auto empty_img = im_from_data(0, 0, 1, empty_data);
+    EXPECT_TRUE(empty_img.empty());
+    auto mismatch = im_from_data(2, 2, 1, empty_data);
+    EXPECT_TRUE(mismatch.empty());
+    std::vector<float> px{0.42f};
+    auto one = im_from_data(1, 1, 1, px);
+    EXPECT_EQ(one.rows, 1);
+    EXPECT_EQ(one.cols, 1);
+    EXPECT_EQ(one.channels, 1);
+    EXPECT_FLOAT_EQ(one.at(0, 0, 0), 0.42f);
+}

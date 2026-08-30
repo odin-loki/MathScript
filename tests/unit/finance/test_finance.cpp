@@ -2536,3 +2536,58 @@ TEST(FinanceSabr, ZeroAlphaOtmIntrinsicAndInvalidNaN) {
     const double inf = std::numeric_limits<double>::infinity();
     EXPECT_TRUE(std::isnan(sabr_call(inf, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
 }
+
+TEST(FinanceSabr, NonfiniteRateAndVolOfVolReturnNaN) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 100.0, 1.0, nan, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, nan)));
+}
+
+TEST(FinanceSabr, RhoMinusOneFiniteSmile) {
+    const double call = sabr_call(100.0, 90.0, 1.0, 0.0, 0.20, 0.5, -1.0, 0.4);
+    const double put = sabr_put(100.0, 90.0, 1.0, 0.0, 0.20, 0.5, -1.0, 0.4);
+    EXPECT_TRUE(std::isfinite(call));
+    EXPECT_TRUE(std::isfinite(put));
+}
+
+TEST(FinanceSabr, BetaZeroCevCallPut) {
+    const double call = sabr_call(100.0, 110.0, 1.0, 0.05, 0.20, 0.0, -0.3, 0.4);
+    const double put = sabr_put(100.0, 110.0, 1.0, 0.05, 0.20, 0.0, -0.3, 0.4);
+    EXPECT_TRUE(std::isfinite(call));
+    EXPECT_TRUE(std::isfinite(put));
+    EXPECT_GE(call, 0.0);
+    EXPECT_GE(put, 0.0);
+}
+
+TEST(FinanceSabrPut, NonfiniteParamsReturnNaN) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, nan, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, 1.0, nan, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 100.0, 1.0, 0.05, 0.2, 0.5, nan, 0.4)));
+}
+
+TEST(FinanceSabr, RhoBelowMinusOneAndNanExpiry) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 100.0, 1.0, 0.05, 0.2, 0.5, -1.5, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, nan, 0.05, 0.2, 0.5, -0.3, 0.4)));
+}
+
+TEST(FinanceMerton, ZeroMaxIterAndNonPositiveTol) {
+    MertonResult zero_iter = merton_implied_asset_params(50.0, 0.3, 100.0, 0.05, 1.0, 0, 1e-8);
+    EXPECT_FALSE(zero_iter.converged);
+    EXPECT_TRUE(std::isnan(zero_iter.distance_to_default));
+    MertonResult zero_tol = merton_implied_asset_params(50.0, 0.3, 100.0, 0.05, 1.0, 100, 0.0);
+    EXPECT_FALSE(zero_tol.converged);
+    EXPECT_TRUE(std::isnan(zero_tol.distance_to_default));
+}
+
+TEST(FinancePortfolioOpt, MinVarianceOnesNullspaceErrors) {
+    std::vector<double> indefinite_cov{1.0, 0.0, 0.0, -1.0};
+    const auto w = min_variance_portfolio(indefinite_cov, 2);
+    EXPECT_FALSE(w.has_value());
+}
+
+TEST(FinanceTVM, IrrZeroDerivativeErrors) {
+    std::vector<double> flat_cf{1.0, 0.0, 0.0};
+    EXPECT_FALSE(irr(flat_cf, 0.1).has_value());
+}

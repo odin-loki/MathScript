@@ -4117,3 +4117,9 @@ TEST(ReplCommandsTest, geo_intersect_ray_sphere_noassign) {
     expect_error_contains(interp, "geo_intersect_ray_sphere(0, 0, 0, 1, 0, 0, 2, 0, 0, missing)",
                           "expected numeric arguments");
 }
+
+TEST(ReplCommandsTest, geo_hermite_x_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "hx = geo_hermite_x(0, 0, 1, 0, 1, 0, 1, 0, 0.5)");
+    ASSERT_GT(interp.state().scalars.count("hx"), 0u);
+}

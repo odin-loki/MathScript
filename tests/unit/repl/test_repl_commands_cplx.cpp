@@ -812,3 +812,9 @@ TEST(ReplCommandsTest, cplx_line_integral_one_noassign) {
     Interpreter interp;
     expect_contains(interp, "cplx_line_integral_one()", "1");
 }
+
+TEST(ReplCommandsTest, cplx_cauchy_integral_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "z = cplx_cauchy_integral(0, 0)");
+    ASSERT_GT(interp.state().scalars.count("z"), 0u);
+}

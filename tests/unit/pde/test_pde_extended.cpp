@@ -1530,3 +1530,14 @@ TEST(PdeExtTest, reaction_diffusion_1d_empty_input) {
     const std::vector<double> empty;
     EXPECT_TRUE(pde_reaction_diffusion_1d(empty, 0.1, 1.0, 0.1, 0.01, 5).u.empty());
 }
+
+TEST(PdeExtTest, heat_1d_cn_empty_input) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(pde_heat_1d_cn(empty, 0.1, 0.1, 0.01, 5).u.empty());
+}
+
+TEST(PdeExtTest, wave_2d_empty_velocity) {
+    auto u0 = make_grid(5, 5, 0.0);
+    const std::vector<std::vector<double>> empty_v0;
+    EXPECT_TRUE(pde_wave_2d(u0, empty_v0, 1.0, 0.1, 0.1, 0.01, 5).u.empty());
+}

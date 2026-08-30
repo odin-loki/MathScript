@@ -69,3 +69,89 @@ TEST(IterativeExtTest, RankTest_CustomTolerance) {
     EXPECT_EQ(static_cast<size_t>(*r_default), 2u);
     EXPECT_EQ(static_cast<size_t>(*r_tol), 1u);
 }
+
+TEST(IterativeExtTest, JacobiTest_EmptyAndMismatch) {
+    DMatrix empty_A(0, 0);
+    DMatrix rhs_one{{1.0}};
+    EXPECT_FALSE(jacobi(empty_A, rhs_one).has_value());
+
+    DMatrix rect{{1.0, 2.0}};
+    DMatrix b_rect{{1.0}};
+    EXPECT_FALSE(jacobi(rect, b_rect).has_value());
+}
+
+TEST(IterativeExtTest, MinresTest_EmptyAndMismatch) {
+    DMatrix empty_A(0, 0);
+    DMatrix rhs_one{{1.0}};
+    EXPECT_FALSE(minres(empty_A, rhs_one).has_value());
+
+    DMatrix rect{{1.0, 2.0, 3.0}};
+    DMatrix b_rect{{1.0}};
+    EXPECT_FALSE(minres(rect, b_rect).has_value());
+}
+
+TEST(IterativeExtTest, QmrTest_EmptyAndMismatch) {
+    DMatrix empty_A(0, 0);
+    DMatrix rhs_one{{1.0}};
+    EXPECT_FALSE(qmr(empty_A, rhs_one).has_value());
+
+    DMatrix tall_A{{1.0}, {2.0}};
+    DMatrix short_b{{1.0}};
+    EXPECT_FALSE(qmr(tall_A, short_b).has_value());
+}
+
+TEST(IterativeExtTest, LsqrTest_EmptyAndMismatch) {
+    DMatrix empty_A(0, 0);
+    DMatrix rhs_one{{1.0}};
+    EXPECT_FALSE(lsqr(empty_A, rhs_one).has_value());
+
+    DMatrix A{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix tall_b{{1.0}, {2.0}, {3.0}};
+    EXPECT_FALSE(lsqr(A, tall_b).has_value());
+}
+
+TEST(IterativeExtTest, GmresTest_EmptyAndMismatch) {
+    DMatrix empty_A(0, 0);
+    DMatrix rhs_one{{1.0}};
+    EXPECT_FALSE(gmres(empty_A, rhs_one).has_value());
+
+    DMatrix ident{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix tall_b{{1.0}, {2.0}, {3.0}};
+    EXPECT_FALSE(gmres(ident, tall_b).has_value());
+}
+
+TEST(IterativeExtTest, CgTest_EmptyMatrix) {
+    DMatrix empty_A(0, 0);
+    DMatrix rhs_one{{1.0}};
+    EXPECT_FALSE(cg(empty_A, rhs_one).has_value());
+}
+
+TEST(IterativeExtTest, BicgstabTest_EmptyMatrix) {
+    DMatrix empty_A(0, 0);
+    DMatrix rhs_one{{1.0}};
+    EXPECT_FALSE(bicgstab(empty_A, rhs_one).has_value());
+}
+
+TEST(IterativeExtTest, TfqmrTest_DimMismatch) {
+    DMatrix A{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix tall_b{{1.0}, {2.0}, {3.0}};
+    EXPECT_FALSE(tfqmr(A, tall_b).has_value());
+}
+
+TEST(IterativeExtTest, LsmrTest_DimMismatch) {
+    DMatrix A{{1.0, 0.0}, {0.0, 1.0}};
+    DMatrix tall_b{{1.0}, {2.0}, {3.0}};
+    EXPECT_FALSE(lsmr(A, tall_b).has_value());
+}
+
+TEST(IterativeExtTest, JacobiTest_ZeroDiagonal) {
+    DMatrix A{{0.0, 1.0}, {1.0, 0.0}};
+    DMatrix b{{1.0}, {1.0}};
+    EXPECT_FALSE(jacobi(A, b).has_value());
+}
+
+TEST(IterativeExtTest, JacobiTest_MaxIterExceeded) {
+    DMatrix A{{4.0, 1.0, 0.0}, {1.0, 4.0, 1.0}, {0.0, 1.0, 4.0}};
+    DMatrix b{{1.0}, {2.0}, {3.0}};
+    EXPECT_FALSE(jacobi(A, b, 1, 1e-15).has_value());
+}

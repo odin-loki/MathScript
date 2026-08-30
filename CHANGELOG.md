@@ -9,6 +9,7 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (coverage ≥ 90% for the tag, fuzz-24h, benches, compliance, JIT). Pre-release `v1.0.0-rc.1` is published.
 
 - Tests: extra control/signal/symbolic/BLAS/FEM/ODE/finance/poly/special/stats/core/CFD unit coverage plus leftover no-assignment REPL printers (unary math, bigint, optimizers, CFD 3D, cplx, gria, geo, ML, quantum).
+- Tests: extra crypto/image/info/graph/geo/compress/ML/combo/numthy/PDE/dispatch/iterative unit coverage plus scalar-assignment REPL printers for eval_scalar_call (sin/cos/bigint/mpi/cuda/ellip_d/gria/geo hermite).
 - CPU SIMD kernels report `Kernel::Avx512` when `MS_ENABLE_AVX512` and the CPU has AVX-512F; vector loops stay 4-wide xsimd (AVX2 compile) to avoid SIGILL. Dedicated `avx512_dgemm` remains the wide GEMM path.
 - CI memory job is AddressSanitizer + UBSan (`sanitizer-linux`). Valgrind is no longer a CI gate.
 

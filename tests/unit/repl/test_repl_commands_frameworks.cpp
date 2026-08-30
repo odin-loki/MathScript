@@ -4009,3 +4009,15 @@ TEST(ReplCommandsTest, gria_lfsr_is_maximal_noassign) {
     expect_contains(interp, "gria_lfsr_is_maximal(6, 3)", "true");
     expect_error_contains(interp, "gria_lfsr_is_maximal(6, 0)", "expected positive integer n");
 }
+
+TEST(ReplCommandsTest, gria_langton_lambda_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "lam = gria_langton_lambda(110)");
+    ASSERT_GT(interp.state().scalars.count("lam"), 0u);
+}
+
+TEST(ReplCommandsTest, gria_alpha_ca_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "a = gria_alpha_ca(110, 8, 30)");
+    ASSERT_GT(interp.state().scalars.count("a"), 0u);
+}

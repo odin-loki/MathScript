@@ -912,3 +912,23 @@ TEST(CompressLZ77, LookaheadOneNoMatch) {
     }
     EXPECT_EQ(dec, data);
 }
+
+TEST(CompressLZ77, ZeroWindowLiteralOnly) {
+    Bytes data = {10, 20, 30, 10};
+    std::vector<LZ77Token> tokens = lz77_encode(data, 0, 15);
+    ASSERT_EQ(tokens.size(), 4u);
+    for (const auto& tok : tokens) {
+        EXPECT_EQ(tok.offset, 0);
+        EXPECT_EQ(tok.length, 0);
+    }
+    Bytes decoded = lz77_decode(tokens);
+    EXPECT_EQ(decoded, data);
+}
+
+TEST(CompressLZ77, WindowOneRepeatRoundtrip) {
+    Bytes data = {7, 7, 7, 7};
+    std::vector<LZ77Token> tokens = lz77_encode(data, 1, 15);
+    Bytes decoded = lz77_decode(tokens);
+    EXPECT_EQ(decoded, data);
+    EXPECT_LE(tokens.size(), data.size());
+}

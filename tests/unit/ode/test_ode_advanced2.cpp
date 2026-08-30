@@ -1506,3 +1506,40 @@ TEST(OdeAdvanced2, EulerRk4ZeroSteps_AndDdeGridInterpolate) {
     ASSERT_FALSE(dde.y.empty());
     EXPECT_TRUE(std::isfinite(dde.y.back()));
 }
+
+TEST(OdeAdvanced2, EulerVecRk4Vec_EmptyY0_PositiveSteps) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>(y.size(), 0.0);
+    };
+    const std::vector<double> empty_y0;
+    const auto eu = ode_euler_vec(f, 0.0, empty_y0, 1.0, 4);
+    ASSERT_EQ(eu.t.size(), 5u);
+    ASSERT_EQ(eu.y.size(), 5u);
+    EXPECT_TRUE(eu.y.front().empty());
+    EXPECT_TRUE(eu.y.back().empty());
+
+    const auto rk = ode_rk4_vec(f, 0.0, empty_y0, 1.0, 3);
+    ASSERT_EQ(rk.t.size(), 4u);
+    ASSERT_EQ(rk.y.size(), 4u);
+    EXPECT_TRUE(rk.y.front().empty());
+}
+
+TEST(OdeAdvanced2, MidpointRk2_OneStep_AndRosenbrock23ScalarZero) {
+    const auto decay = [](double, double y) { return -y; };
+    const auto mid = ode_midpoint(decay, 0.0, 1.0, 1.0, 1);
+    ASSERT_EQ(mid.t.size(), 2u);
+    ASSERT_EQ(mid.y.size(), 2u);
+    EXPECT_NEAR(mid.y.front(), 1.0, 1e-15);
+    EXPECT_TRUE(std::isfinite(mid.y.back()));
+
+    const auto rk2 = ode_rk2(decay, 0.0, 1.0, 1.0, 1);
+    ASSERT_EQ(rk2.t.size(), 2u);
+    EXPECT_NEAR(rk2.y.front(), 1.0, 1e-15);
+    EXPECT_TRUE(std::isfinite(rk2.y.back()));
+
+    const auto rb = ode_rosenbrock23(decay, 0.0, 1.5, 1.0, 0);
+    ASSERT_EQ(rb.t.size(), 1u);
+    ASSERT_EQ(rb.y.size(), 1u);
+    EXPECT_NEAR(rb.t.front(), 0.0, 1e-15);
+    EXPECT_NEAR(rb.y.front(), 1.5, 1e-15);
+}

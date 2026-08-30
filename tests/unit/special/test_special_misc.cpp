@@ -346,3 +346,18 @@ TEST(SpecialMiscTest, remaining_trigamma_beta_inc_outside) {
     EXPECT_DOUBLE_EQ(beta_inc_reg(1.5, 2.0, 3.0), 1.0);
     EXPECT_DOUBLE_EQ(beta_inc(-0.2, 2.0, 3.0), 0.0);
 }
+
+TEST(SpecialMiscTest, remaining_painleve14_early_returns) {
+    EXPECT_DOUBLE_EQ(painleve1(-0.2, 2.5, 0.0), 2.5);
+    EXPECT_DOUBLE_EQ(painleve1(0.0, 1.75, 0.1), 1.75);
+    EXPECT_DOUBLE_EQ(painleve2(-0.3, 0.8, 0.0, 0.2), 0.8);
+    EXPECT_DOUBLE_EQ(painleve3(0.05, 1.25, 0.0, 0.1, 0.2), 1.25);
+    EXPECT_DOUBLE_EQ(painleve4(0.08, 0.6, 0.0, 0.1, 0.2), 0.6);
+}
+
+TEST(SpecialMiscTest, remaining_trigamma_zeta2_and_poly_neg) {
+    EXPECT_NEAR(trigamma(1.0), std::atan(1.0) * 4.0 * std::atan(1.0) * 4.0 / 6.0, 1e-5);
+    expect_finite(trigamma(2.5));
+    EXPECT_TRUE(std::isnan(polygamma(-2, 1.5)));
+    EXPECT_DOUBLE_EQ(beta_inc(1.5, 2.0, 3.0), beta_func(2.0, 3.0));
+}

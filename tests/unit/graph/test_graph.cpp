@@ -2307,3 +2307,22 @@ TEST(GraphCentrality, EigenvectorEmpty) {
     Graph G(0, false);
     EXPECT_TRUE(eigenvector_centrality(G).empty());
 }
+
+TEST(GraphCentrality, KatzEmpty) {
+    Graph empty(0, false);
+    std::vector<double> katz_scores = katz_centrality(empty, 0.1, 1.0);
+    EXPECT_TRUE(katz_scores.empty());
+}
+
+TEST(GraphCentrality, EigenvectorIsolatedVertex) {
+    Graph isolated(1, false);
+    std::vector<double> ev_scores = eigenvector_centrality(isolated);
+    ASSERT_EQ(ev_scores.size(), 1u);
+    EXPECT_NEAR(ev_scores[0], 0.0, 1e-15);
+}
+
+TEST(GraphCentrality, PageRankEmpty) {
+    Graph empty(0, false);
+    std::vector<double> ranks = pagerank(empty, 0.85, 20);
+    EXPECT_TRUE(ranks.empty());
+}

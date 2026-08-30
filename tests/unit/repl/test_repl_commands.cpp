@@ -20984,3 +20984,231 @@ TEST(ReplCommandsTest, conjugate_gradient_noassign) {
                           "expected conjugate_gradient(\"formula\", x0[, tol[, max_iter]])");
 }
 
+TEST(ReplCommandsTest, sin_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = sin(0)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cos_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "c = cos(0)");
+    EXPECT_NEAR(interp.state().scalars.at("c"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, tan_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "t = tan(0)");
+    EXPECT_NEAR(interp.state().scalars.at("t"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, asin_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "as = asin(0)");
+    EXPECT_NEAR(interp.state().scalars.at("as"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, acos_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "ac = acos(1)");
+    EXPECT_NEAR(interp.state().scalars.at("ac"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, atan_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "at = atan(0)");
+    EXPECT_NEAR(interp.state().scalars.at("at"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, sinh_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sh = sinh(0)");
+    EXPECT_NEAR(interp.state().scalars.at("sh"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cosh_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "ch = cosh(0)");
+    EXPECT_NEAR(interp.state().scalars.at("ch"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, tanh_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "th = tanh(0)");
+    EXPECT_NEAR(interp.state().scalars.at("th"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, sqrt_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sq = sqrt(4)");
+    EXPECT_NEAR(interp.state().scalars.at("sq"), 2.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, abs_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "ab = abs(-2)");
+    EXPECT_NEAR(interp.state().scalars.at("ab"), 2.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, exp_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "e = exp(0)");
+    EXPECT_NEAR(interp.state().scalars.at("e"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, log_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "lg = log(1)");
+    EXPECT_NEAR(interp.state().scalars.at("lg"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, log10_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "l10 = log10(10)");
+    EXPECT_NEAR(interp.state().scalars.at("l10"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, floor_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "fl = floor(1.5)");
+    EXPECT_NEAR(interp.state().scalars.at("fl"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, ceil_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cl = ceil(1.5)");
+    EXPECT_NEAR(interp.state().scalars.at("cl"), 2.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, pow_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "pw = pow(2,3)");
+    EXPECT_NEAR(interp.state().scalars.at("pw"), 8.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, min_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "mn = min(1,2)");
+    EXPECT_NEAR(interp.state().scalars.at("mn"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, max_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "mx = max(1,2)");
+    EXPECT_NEAR(interp.state().scalars.at("mx"), 2.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, atan2_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "a2 = atan2(0,1)");
+    EXPECT_NEAR(interp.state().scalars.at("a2"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, bigint_is_even_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "ev = bigint_is_even(4)");
+    EXPECT_NEAR(interp.state().scalars.at("ev"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, bigint_is_odd_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "od = bigint_is_odd(3)");
+    EXPECT_NEAR(interp.state().scalars.at("od"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, bigint_isqrt_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "iq = bigint_isqrt(9)");
+    EXPECT_NEAR(interp.state().scalars.at("iq"), 3.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, bigint_is_prime_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "pr = bigint_is_prime(7)");
+    EXPECT_NEAR(interp.state().scalars.at("pr"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, bigint_lcm_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "lc = bigint_lcm(4,6)");
+    EXPECT_NEAR(interp.state().scalars.at("lc"), 12.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, bigint_pow_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "bp = bigint_pow(2,5)");
+    EXPECT_NEAR(interp.state().scalars.at("bp"), 32.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, mpi_allreduce_sum_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "ms = mpi_allreduce_sum(1)");
+    EXPECT_NEAR(interp.state().scalars.at("ms"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, mpi_allreduce_max_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "mm = mpi_allreduce_max(2)");
+    EXPECT_NEAR(interp.state().scalars.at("mm"), 2.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, mpi_allreduce_min_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "mi = mpi_allreduce_min(3)");
+    EXPECT_NEAR(interp.state().scalars.at("mi"), 3.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, mpi_bcast_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "mb = mpi_bcast(1)");
+    EXPECT_NEAR(interp.state().scalars.at("mb"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_allreduce_sum_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cs = cuda_allreduce_sum(1)");
+    EXPECT_NEAR(interp.state().scalars.at("cs"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_allreduce_max_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cm = cuda_allreduce_max(2)");
+    EXPECT_NEAR(interp.state().scalars.at("cm"), 2.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_allreduce_min_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cn = cuda_allreduce_min(0)");
+    EXPECT_NEAR(interp.state().scalars.at("cn"), 0.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_allreduce_prod_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cp = cuda_allreduce_prod(1)");
+    EXPECT_NEAR(interp.state().scalars.at("cp"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_allreduce_avg_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "ca = cuda_allreduce_avg(1)");
+    EXPECT_NEAR(interp.state().scalars.at("ca"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_broadcast_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cb = cuda_broadcast(1)");
+    EXPECT_NEAR(interp.state().scalars.at("cb"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_reduce_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cr = cuda_reduce(1)");
+    EXPECT_NEAR(interp.state().scalars.at("cr"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, cuda_allgather_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "cg = cuda_allgather(1)");
+    EXPECT_NEAR(interp.state().scalars.at("cg"), 1.0, 1e-12);
+}
+

@@ -292,3 +292,30 @@ TEST(CoreExtTest, sym_eval_nested_funcs_and_default_ctor) {
     EXPECT_NEAR(product.eval(), 6.0, 1e-12);
     EXPECT_NE(product.to_string().find("*"), std::string::npos);
 }
+
+TEST(CoreExtTest, sym_eval_scientific_plus_and_nested_trig) {
+    EXPECT_DOUBLE_EQ(Sym("1e+2").eval(), 100.0);
+    EXPECT_NEAR(Sym("cos(sin(0))").eval(), std::cos(0.0), 1e-12);
+    EXPECT_NEAR(Sym("tanh(log(1))").eval(), 0.0, 1e-12);
+    EXPECT_NEAR(Sym("sqrt(exp(0))").eval(), 1.0, 1e-12);
+}
+
+TEST(CoreExtTest, sym_to_string_numeric_and_wrapped_ops) {
+    const Sym a(2.5);
+    EXPECT_EQ(a.to_string(), "2.5");
+    const Sym sum = a + Sym(1.5);
+    EXPECT_NEAR(sum.eval(), 4.0, 1e-12);
+    EXPECT_NE(sum.to_string().find("+"), std::string::npos);
+    const Sym quot = Sym(8.0) / Sym(2.0);
+    EXPECT_NEAR(quot.eval(), 4.0, 1e-12);
+    EXPECT_NE(quot.to_string().find("/"), std::string::npos);
+}
+
+TEST(CoreExtTest, sym_eval_trailing_junk_and_log_zero) {
+    EXPECT_DOUBLE_EQ(Sym("1+2 x").eval(), 0.0);
+    EXPECT_DOUBLE_EQ(Sym("log(0)").eval(), 0.0);
+    EXPECT_NEAR(Sym("sqrt(0)").eval(), 0.0, 1e-12);
+    EXPECT_DOUBLE_EQ(Sym("1*+").eval(), 0.0);
+    const std::map<std::string, double> env{{"alpha", 3.0}};
+    EXPECT_DOUBLE_EQ(Sym("alpha+1").eval(env), 4.0);
+}

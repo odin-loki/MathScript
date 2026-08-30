@@ -1222,3 +1222,30 @@ TEST(PolyExtTest, sylvester_zero_P_Q_and_eval_empty) {
     EXPECT_TRUE(poly_eval_at(empty_p, std::span<const double>(none)).empty());
     EXPECT_NEAR(poly_cheb_eval(empty_p, 0.5), 0.0, 1e-15);
 }
+
+TEST(PolyExtTest, add_mul_deriv_gcd_empty_and_resultant) {
+    const std::vector<double> empty_p;
+    const std::vector<double> lin{1.0, 2.0};
+    const auto sum = poly_add(empty_p, lin);
+    expect_poly_near(sum, lin);
+    EXPECT_TRUE(poly_mul(empty_p, lin).empty());
+    expect_poly_near(poly_deriv(empty_p), {0.0});
+
+    const auto g = poly_gcd(empty_p, lin);
+    ASSERT_FALSE(g.empty());
+    for (double v : g) EXPECT_TRUE(std::isfinite(v));
+    EXPECT_NEAR(poly_resultant(empty_p, lin), 0.0, 1e-12);
+}
+
+TEST(PolyExtTest, cheb_eval_t0_expand_linear_and_root_count_reversed) {
+    const std::vector<double> t0{1.0};
+    EXPECT_NEAR(poly_cheb_eval(t0, 0.3), 1.0, 1e-12);
+
+    const auto c1 = poly_cheb_expand([](double x) { return x; }, 1);
+    ASSERT_EQ(c1.size(), 2u);
+    EXPECT_NEAR(poly_cheb_eval(c1, 0.5), 0.5, 1e-9);
+    EXPECT_NEAR(poly_cheb_eval(c1, -0.25), -0.25, 1e-9);
+
+    const std::vector<double> p{2.0, -3.0, 1.0};
+    EXPECT_EQ(poly_root_count(p, 3.0, 0.0), -2);
+}

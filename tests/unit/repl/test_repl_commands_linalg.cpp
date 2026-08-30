@@ -11342,3 +11342,19 @@ TEST(ReplCommandsTest, bidiag_noassign) {
     expect_ok(interp, "bidiag([1, 2; 3, 4])");
     expect_error_contains(interp, "bidiag(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, det_unknown_matrix) {
+    Interpreter interp;
+    expect_error_contains(interp, "det(no_such_matrix)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, det_row_vector_dimension_mismatch) {
+    Interpreter interp;
+    expect_ok(interp, "r = [1, 2, 3]");
+    expect_error_contains(interp, "det(r)", "dimension mismatch");
+}
+
+TEST(ReplCommandsTest, trace_unknown_matrix) {
+    Interpreter interp;
+    expect_error_contains(interp, "trace(no_such_matrix)", "unknown matrix");
+}

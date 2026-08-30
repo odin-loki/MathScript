@@ -907,3 +907,16 @@ TEST(ComboSpecial, StirlingEdgeCases) {
     EXPECT_EQ(ms::combo::stirling2(3, 0), 0u);
     EXPECT_EQ(ms::combo::stirling2(3, 5), 0u);
 }
+
+TEST(ComboEnum, FactorialAndPow2CapsRefuseOversized) {
+    const auto oversize_perms = ms::combo::all_permutations(kMaxEnumFactorialN + 1);
+    const auto oversize_derange = ms::combo::derangements(kMaxEnumFactorialN + 1);
+    const auto oversize_sets = ms::combo::set_partitions(kMaxEnumFactorialN + 1);
+    const auto oversize_subsets = ms::combo::all_subsets(kMaxEnumPow2N + 1);
+    const auto oversize_gray = ms::combo::gray_code(kMaxEnumPow2N + 1);
+    EXPECT_TRUE(oversize_perms.empty());
+    EXPECT_TRUE(oversize_derange.empty());
+    EXPECT_TRUE(oversize_sets.empty());
+    EXPECT_TRUE(oversize_subsets.empty());
+    EXPECT_TRUE(oversize_gray.empty());
+}

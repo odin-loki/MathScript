@@ -1874,3 +1874,25 @@ TEST(ControlPID, TuneIntegratorPlant) {
     EXPECT_NEAR(gains.Ki, bw * bw / 10.0, 1e-10);
     EXPECT_NEAR(gains.Kd, 1.0 / 10.0, 1e-10);
 }
+
+TEST(ControlBode, ZeroPointCountEmptyGrid) {
+    auto sys = tf({1.0}, {1.0, 1.0});
+    auto bd = bode(sys, 0.1, 10.0, 0);
+    EXPECT_TRUE(bd.w.empty());
+    EXPECT_TRUE(bd.magnitude.empty());
+    EXPECT_TRUE(bd.phase.empty());
+    auto pts = nyquist(sys, 0.1, 10.0, 0);
+    EXPECT_TRUE(pts.empty());
+}
+
+TEST(ControlTF, ZeroNumeratorZerosAndDcGain) {
+    std::vector<double> zero_num{0.0};
+    std::vector<double> den{1.0, 1.0};
+    auto sys = tf(zero_num, den);
+    auto z = zeros(sys);
+    EXPECT_TRUE(z.empty());
+    EXPECT_NEAR(dcgain(sys), 0.0, 1e-15);
+    auto p = poles(sys);
+    ASSERT_EQ(p.size(), 1u);
+    EXPECT_NEAR(p[0].real(), -1.0, 1e-12);
+}

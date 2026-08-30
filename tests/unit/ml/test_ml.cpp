@@ -2479,3 +2479,40 @@ TEST(MLDBSCAN, EmptyFit) {
     db.fit({});
     EXPECT_TRUE(db.labels_.empty());
 }
+
+TEST(MLDBSCAN, IsolatedPointsAreNoise) {
+    Mat X = {{0.0, 0.0}, {10.0, 0.0}, {0.0, 10.0}};
+    DBSCAN db(0.5, 2);
+    db.fit(X);
+    std::vector<double> labels = db.labels_;
+    ASSERT_EQ(labels.size(), 3u);
+    EXPECT_EQ(labels[0], -1.0);
+    EXPECT_EQ(labels[1], -1.0);
+    EXPECT_EQ(labels[2], -1.0);
+}
+
+TEST(MLLinReg, EmptyPredictAfterFit) {
+    Mat X = {{1.0}, {2.0}, {3.0}};
+    Vec y = {3.0, 5.0, 7.0};
+    LinearRegression lr;
+    lr.fit(X, y);
+    Mat empty_query;
+    Vec pred = lr.predict(empty_query);
+    EXPECT_TRUE(pred.empty());
+}
+
+TEST(MLLoss, CategoricalCrossentropyPerfectOneHot) {
+    Mat pred = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}};
+    Mat truth = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}};
+    double loss = categorical_crossentropy(pred, truth);
+    double expected = -std::log(1.0 + 1e-12);
+    EXPECT_NEAR(loss, expected, 1e-12);
+}
+
+TEST(MLLoss, CategoricalCrossentropyNearZeroPrediction) {
+    Mat pred = {{1e-20, 0.5, 0.5}};
+    Mat truth = {{1.0, 0.0, 0.0}};
+    double loss = categorical_crossentropy(pred, truth);
+    double expected = -std::log(1e-20 + 1e-12);
+    EXPECT_NEAR(loss, expected, 1e-8);
+}

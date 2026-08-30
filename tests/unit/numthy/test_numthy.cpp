@@ -997,3 +997,29 @@ TEST(NumthyLucas, KEqualsTwoPell) {
     EXPECT_EQ(u, 2);   // U_2 = P
     EXPECT_EQ(v, 6);   // V_2 = P^2 - 2Q = 4 + 2
 }
+
+TEST(NumthyLucas, DiscriminantIdentityPell) {
+    const int64_t P = 2;
+    const int64_t Q = -1;
+    const int64_t D = P * P - 4 * Q;
+    const std::vector<int64_t> ks = {3, 4, 5, 6};
+    for (int64_t k : ks) {
+        auto [u, v] = lucas_sequence(k, P, Q);
+        int64_t qn = 1;
+        for (int64_t i = 0; i < k; ++i) {
+            qn *= Q;
+        }
+        EXPECT_EQ(v * v - D * u * u, 4 * qn) << "k=" << k;
+    }
+}
+
+TEST(NumthyMult, LiouvilleSquaresAndZero) {
+    const std::vector<uint64_t> even_omega = {0, 4, 9, 16, 36};
+    const std::vector<uint64_t> odd_omega = {8, 27, 32};
+    for (uint64_t n : even_omega) {
+        EXPECT_EQ(liouville(n), 1) << "n=" << n;
+    }
+    for (uint64_t n : odd_omega) {
+        EXPECT_EQ(liouville(n), -1) << "n=" << n;
+    }
+}

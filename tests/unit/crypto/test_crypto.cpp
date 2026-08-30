@@ -1311,3 +1311,42 @@ TEST(CryptoX25519, ShortPeerPublicKeyReturnsZero) {
     const auto shared = x25519_shared_secret(priv, short_peer);
     EXPECT_EQ(shared, (std::array<uint8_t, x25519_key_size>{}));
 }
+
+TEST(CryptoFromHex, OddLengthAndInvalidSecondNibble) {
+    EXPECT_TRUE(from_hex("a").empty());
+    EXPECT_TRUE(from_hex("0z").empty());
+    EXPECT_TRUE(from_hex("z0").empty());
+    EXPECT_TRUE(from_hex("12 34").empty());
+}
+
+TEST(CryptoHmacSha256, EmptyKeyEmptyDataKnownDigest) {
+    std::vector<uint8_t> empty_key;
+    std::vector<uint8_t> empty_data;
+    expect_hex(hmac_sha256(empty_key, empty_data),
+               "b613679a0814d9ec772f95d778c35fc5ff1697c493715653c6c712144292c5ad");
+}
+
+TEST(CryptoAes128Gcm, ShortIvTamperedTagFailsOpen) {
+    std::vector<uint8_t> key(aes128_key_size, 0x11);
+    std::vector<uint8_t> short_iv{0x01, 0x02, 0x03, 0x04};
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> plain{0xaa, 0xbb};
+    const auto seal = aes128_gcm_encrypt(key, short_iv, empty_aad, plain);
+    ASSERT_EQ(seal.ciphertext.size(), plain.size());
+    std::vector<uint8_t> good_tag(seal.tag.begin(), seal.tag.end());
+    EXPECT_EQ(aes128_gcm_decrypt(key, short_iv, empty_aad, seal.ciphertext, good_tag), plain);
+    std::vector<uint8_t> bad_tag = good_tag;
+    bad_tag.back() ^= 0x80;
+    EXPECT_TRUE(aes128_gcm_decrypt(key, short_iv, empty_aad, seal.ciphertext, bad_tag).empty());
+}
+
+TEST(CryptoEd25519, EmptySeedReturnsZeroKeys) {
+    std::vector<uint8_t> empty_seed;
+    std::vector<uint8_t> empty_msg;
+    const auto kp = ed25519_keypair(empty_seed);
+    EXPECT_EQ(kp.public_key, (std::array<uint8_t, ed25519_public_key_size>{}));
+    EXPECT_EQ(kp.secret_key, (std::array<uint8_t, ed25519_secret_key_size>{}));
+    const auto sig = ed25519_sign(empty_seed, empty_msg);
+    EXPECT_EQ(sig, (std::array<uint8_t, ed25519_signature_size>{}));
+    EXPECT_FALSE(ed25519_verify(kp.public_key, empty_msg, sig));
+}

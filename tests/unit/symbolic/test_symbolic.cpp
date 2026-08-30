@@ -481,3 +481,27 @@ TEST(SymbolicCasTest, integrate_bare_trig_and_hankel_div_miss) {
     EXPECT_EQ(hankel_miss.op, SymOp::Deriv);
     EXPECT_EQ(hankel_miss.name, "r");
 }
+
+TEST(SymbolicCasTest, integrate_const_other_var_pow_and_reciprocal_miss) {
+    const auto c = sym_integrate(sym_const(3.0), "x");
+    EXPECT_NEAR(sym_eval(c, {{"x", 2.0}}), 6.0, 1e-12);
+
+    const auto other = sym_integrate(sym_var("y"), "x");
+    EXPECT_NEAR(sym_eval(other, {{"x", 2.0}, {"y", 4.0}}), 8.0, 1e-12);
+
+    const auto pow3 = sym_integrate(sym_pow(sym_var("x"), sym_const(3.0)), "x");
+    EXPECT_NEAR(sym_eval(pow3, {{"x", 2.0}}), 4.0, 1e-12);
+
+    const auto recip = sym_integrate(sym_pow(sym_var("x"), sym_const(-1.0)), "x");
+    EXPECT_EQ(recip.op, SymOp::Deriv);
+    EXPECT_EQ(recip.name, "x");
+}
+
+TEST(SymbolicCasTest, dsolve_independent_rhs_and_imellin_c_over_s) {
+    const auto sol = sym_dsolve(sym_const(2.0), "x", "y");
+    EXPECT_NEAR(sym_eval(sol, {{"x", 3.0}, {"C", 1.0}}), 7.0, 1e-12);
+
+    auto five = sym_const(5.0);
+    const auto im = sym_imellin(sym_div(std::move(five), sym_var("s")), "s", "t");
+    EXPECT_NEAR(sym_eval(im, {}), 5.0, 1e-12);
+}

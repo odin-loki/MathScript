@@ -742,3 +742,38 @@ TEST(StatsGapsTest, AnovaAcfArfit_SingletonAndN1) {
     ASSERT_EQ(pc.size(), 2u);
     EXPECT_NEAR(pc[0], 1.0, 1e-12);
 }
+
+TEST(StatsGapsTest, Wilcoxon_AllZeroDiffsAndMismatch) {
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> y = {1.0, 2.0, 3.0};
+    const auto zeros = wilcoxon_signed_rank(x, y);
+    EXPECT_NEAR(zeros.w_stat, 0.0, 1e-12);
+    EXPECT_NEAR(zeros.z_stat, 0.0, 1e-12);
+    EXPECT_NEAR(zeros.p_value, 1.0, 1e-12);
+    EXPECT_EQ(zeros.n_eff, 0);
+
+    const std::vector<double> y_short = {1.0};
+    const auto mismatch = wilcoxon_signed_rank(x, y_short);
+    EXPECT_EQ(mismatch.n_eff, 0);
+    EXPECT_NEAR(mismatch.p_value, 1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, ShapiroWilk_N2AndConstant) {
+    const std::vector<double> two = {1.0, 2.0};
+    const auto tiny = shapiro_wilk(two);
+    EXPECT_NEAR(tiny.w_stat, 1.0, 1e-12);
+    EXPECT_NEAR(tiny.p_value, 1.0, 1e-12);
+
+    const std::vector<double> flat = {4.0, 4.0, 4.0, 4.0};
+    const auto constant = shapiro_wilk(flat);
+    EXPECT_NEAR(constant.w_stat, 1.0, 1e-12);
+    EXPECT_NEAR(constant.p_value, 1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Vif_JaggedRowAndSingleColumn) {
+    const std::vector<std::vector<double>> jagged = {{1.0, 2.0}, {3.0}};
+    EXPECT_NEAR(variance_inflation_factor(jagged, 0), 0.0, 1e-12);
+
+    const std::vector<std::vector<double>> one_col = {{1.0}, {2.0}, {3.0}};
+    EXPECT_NEAR(vif(one_col, 0), 1.0, 1e-12);
+}

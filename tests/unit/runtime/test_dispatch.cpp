@@ -208,3 +208,68 @@ TEST(DispatchTest, execute_cuda_backend_decision) {
     d.cuda_device = 0;
     execute(d);
 }
+
+TEST(DispatchTest, gpu_policy_empty_topology) {
+    SystemTopology topo;
+    topo.total_gpus = 0;
+    EXPECT_TRUE(topo.cpu_threads.empty());
+    const auto d = decide(1024, ExecPolicy::GPU, topo);
+    EXPECT_EQ(d.policy, ExecPolicy::GPU);
+    EXPECT_EQ(d.n_threads, 0u);
+    EXPECT_EQ(d.cuda_device, -1);
+    EXPECT_EQ(d.backend, has_cuda() ? Backend::CUDA : Backend::CPU);
+}
+
+TEST(DispatchTest, gpu_policy_n_zero) {
+    SystemTopology topo;
+    topo.cpu_threads = {{0, 1}};
+    topo.total_gpus = 1;
+    const auto d = decide(0, ExecPolicy::GPU, topo);
+    EXPECT_EQ(d.policy, ExecPolicy::GPU);
+    EXPECT_EQ(d.n_threads, 0u);
+    EXPECT_EQ(d.cuda_device, 0);
+    EXPECT_EQ(d.backend, has_cuda() ? Backend::CUDA : Backend::CPU);
+}
+
+TEST(DispatchTest, auto_n_zero_empty_topology) {
+    SystemTopology topo;
+    topo.total_gpus = 0;
+    EXPECT_TRUE(topo.cpu_threads.empty());
+    const auto d = decide(0, ExecPolicy::AUTO, topo);
+    EXPECT_EQ(d.policy, ExecPolicy::CPU);
+    EXPECT_EQ(d.backend, Backend::CPU);
+    EXPECT_EQ(d.n_threads, 0u);
+    EXPECT_EQ(d.cuda_device, -1);
+}
+
+TEST(DispatchTest, cpu_n_zero_empty_topology) {
+    SystemTopology topo;
+    topo.total_gpus = 0;
+    EXPECT_TRUE(topo.cpu_threads.empty());
+    const auto d = decide(0, ExecPolicy::CPU, topo);
+    EXPECT_EQ(d.policy, ExecPolicy::CPU);
+    EXPECT_EQ(d.backend, Backend::CPU);
+    EXPECT_EQ(d.n_threads, 0u);
+    EXPECT_EQ(d.cuda_device, -1);
+}
+
+TEST(DispatchTest, execute_after_gpu_empty_topo) {
+    SystemTopology topo;
+    topo.total_gpus = 0;
+    const auto d = decide(0, ExecPolicy::GPU, topo);
+    execute(d);
+    EXPECT_EQ(d.policy, ExecPolicy::GPU);
+    EXPECT_EQ(d.n_threads, 0u);
+    EXPECT_EQ(d.cuda_device, -1);
+}
+
+TEST(DispatchTest, gpu_policy_empty_cpu_threads_two_gpus) {
+    SystemTopology topo;
+    topo.total_gpus = 2;
+    EXPECT_TRUE(topo.cpu_threads.empty());
+    const auto d = decide(0, ExecPolicy::GPU, topo);
+    EXPECT_EQ(d.policy, ExecPolicy::GPU);
+    EXPECT_EQ(d.n_threads, 0u);
+    EXPECT_EQ(d.cuda_device, 0);
+    EXPECT_EQ(d.backend, has_cuda() ? Backend::CUDA : Backend::CPU);
+}

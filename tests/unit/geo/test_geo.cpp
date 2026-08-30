@@ -1564,3 +1564,39 @@ TEST(GeoPolyDiff, CornerBiteUsesHullFallback) {
     EXPECT_GE(ms::geo::area(d), 12.0 - 1e-6);
     expect_convex_ccw(d);
 }
+
+TEST(GeoCurves, HermiteEndpoints) {
+    Point2D p0{0.0, 1.0};
+    Vec2D m0{1.0, 0.0};
+    Point2D p1{2.0, 3.0};
+    Vec2D m1{0.0, 1.0};
+    Point2D at_start = hermite_curve(p0, m0, p1, m1, 0.0);
+    Point2D at_end = hermite_curve(p0, m0, p1, m1, 1.0);
+    EXPECT_NEAR(at_start.x, p0.x, 1e-12);
+    EXPECT_NEAR(at_start.y, p0.y, 1e-12);
+    EXPECT_NEAR(at_end.x, p1.x, 1e-12);
+    EXPECT_NEAR(at_end.y, p1.y, 1e-12);
+}
+
+TEST(GeoCurves, HermiteZeroTangentsLinear) {
+    Point2D p0{0.0, 0.0};
+    Point2D p1{4.0, 8.0};
+    Vec2D zero_m0{0.0, 0.0};
+    Vec2D zero_m1{0.0, 0.0};
+    Point2D mid = hermite_curve(p0, zero_m0, p1, zero_m1, 0.5);
+    EXPECT_NEAR(mid.x, 2.0, 1e-12);
+    EXPECT_NEAR(mid.y, 4.0, 1e-12);
+}
+
+TEST(GeoIntersect, RaySphereTangentAndInterior) {
+    Sphere3D unit{{0.0, 0.0, 0.0}, 1.0};
+    Ray3D tangent_ray{{-2.0, 1.0, 0.0}, {1.0, 0.0, 0.0}};
+    double t_tangent = -1.0;
+    EXPECT_TRUE(intersect_ray_sphere(tangent_ray, unit, &t_tangent));
+    EXPECT_NEAR(t_tangent, 2.0, 1e-10);
+
+    Ray3D interior_ray{{0.0, 0.0, 0.0}, {0.0, 0.0, 1.0}};
+    double t_far = -1.0;
+    EXPECT_TRUE(intersect_ray_sphere(interior_ray, unit, &t_far));
+    EXPECT_NEAR(t_far, 1.0, 1e-10);
+}
