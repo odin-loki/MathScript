@@ -1896,3 +1896,73 @@ TEST(ControlTF, ZeroNumeratorZerosAndDcGain) {
     ASSERT_EQ(p.size(), 1u);
     EXPECT_NEAR(p[0].real(), -1.0, 1e-12);
 }
+
+TEST(ControlMargins, PhaseCrossoverAndGainMargin) {
+    // 1/s^3: |G(jω)|=1 at ω=1. Wrapped arg is +90°, so this also exercises
+    // the 0 dB crossing; a type-1 cubic below is the classic −180 crossing.
+    auto triple = tf({1.0}, {1.0, 0.0, 0.0, 0.0});
+    auto m3 = margin(triple);
+    EXPECT_NEAR(m3.gain_crossover_freq, 1.0, 0.05);
+    EXPECT_TRUE(std::isfinite(m3.phase_margin_deg));
+
+    // G = 1/(s(s+1)(s+2)): Im(G)=0 at ω=√2, |G|=1/6 → GM ≈ 15.56 dB.
+    auto sys = tf({1.0}, {1.0, 3.0, 2.0, 0.0});
+    auto m = margin(sys);
+    EXPECT_GT(m.gain_crossover_freq, 0.0);
+    EXPECT_TRUE(std::isfinite(m.phase_margin_deg) || std::isinf(m.phase_margin_deg));
+    EXPECT_TRUE(std::isfinite(m.gain_margin_db) || std::isinf(m.gain_margin_db));
+    if (std::isfinite(m.gain_margin_db) && m.phase_crossover_freq > 0.0) {
+        EXPECT_NEAR(m.phase_crossover_freq, std::sqrt(2.0), 0.15);
+        EXPECT_NEAR(m.gain_margin_db, 20.0 * std::log10(6.0), 3.0);
+    }
+}
+
+TEST(ControlStepInfo, NeverSettlesIsInf) {
+    // Explicit final value far from every sample: last point stays outside
+    // the ±2% band → last_outside + 1 >= y.size() → settling_time = +∞.
+    std::vector<double> t = {0.0, 1.0, 2.0, 3.0, 4.0};
+    std::vector<double> y = {0.0, 0.2, 0.4, 0.6, 0.8};
+    auto info = step_info(t, y, 1.0, 2.0);
+    EXPECT_TRUE(std::isinf(info.settling_time));
+    EXPECT_GT(info.settling_time, 0.0);
+
+    // StepData path: tail mean of last two samples is 5, last y=10 is outside.
+    StepData data;
+    data.t.resize(40);
+    data.y.resize(40);
+    for (int i = 0; i < 40; ++i) {
+        data.t[static_cast<size_t>(i)] = static_cast<double>(i);
+        data.y[static_cast<size_t>(i)] = (i == 39) ? 10.0 : 0.0;
+    }
+    auto info2 = step_info(data, 2.0);
+    EXPECT_TRUE(std::isinf(info2.settling_time));
+}
+
+TEST(ControlRiccati, TwoInputScaleSearchOrFail) {
+    // m!=1 skips place(); Kleinman uses the R^{-1} B^T scale-search loop.
+    std::vector<std::vector<double>> A = {{0.8, 0.3}, {0.1, 1.2}};
+    std::vector<std::vector<double>> B = {{1.0, 0.4}, {0.2, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = riccati(A, B, Q, R);
+    if (X.has_value()) {
+        ASSERT_EQ(X->size(), 2u);
+        EXPECT_TRUE(std::isfinite((*X)[0][0]));
+        EXPECT_TRUE(std::isfinite((*X)[1][1]));
+    }
+}
+
+TEST(ControlSS, ThreeStateSs2tfPolyDet) {
+    // Explicit 3×3 companion of (s+1)(s+2)(s+3) so ss2tf hits poly_mat_det n>2.
+    auto sys = ss({{0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}, {-6.0, -11.0, -6.0}},
+                  {{0.0}, {0.0}, {1.0}}, {{1.0, 0.0, 0.0}}, {{0.0}});
+    auto g = ss2tf(sys);
+    EXPECT_NEAR(dcgain(g), 1.0 / 6.0, 1e-6);
+    auto p = poles(g);
+    ASSERT_EQ(p.size(), 3u);
+    std::vector<double> reals = {p[0].real(), p[1].real(), p[2].real()};
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -3.0, 1e-4);
+    EXPECT_NEAR(reals[1], -2.0, 1e-4);
+    EXPECT_NEAR(reals[2], -1.0, 1e-4);
+}

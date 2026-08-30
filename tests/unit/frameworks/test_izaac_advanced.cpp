@@ -1459,3 +1459,60 @@ TEST(IzaacAdvanced, Fuzz_MutateDoesNotModifyInputBuffer) {
     (void)ms::izaac::fuzz::mutate(std::span<const uint8_t>(input), rng, 16);
     EXPECT_EQ(input, input_copy);
 }
+
+// ---------------------------------------------------------------------------
+// VRF – verify, seed_session(VRFKey, nonce)
+// ---------------------------------------------------------------------------
+
+TEST(IzaacAdvanced, Verify_AcceptsValidProofRejectsTampered) {
+    const ms::izaac::VRFKey key = ms::izaac::keygen();
+    const std::array<uint8_t, 5> msg = {0x76, 0x65, 0x72, 0x69, 0x66};
+    const ms::izaac::VRFProof proof =
+        ms::izaac::prove(key, std::span<const uint8_t>(msg));
+
+    EXPECT_TRUE(ms::izaac::verify(key.public_key, std::span<const uint8_t>(msg), proof));
+
+    ms::izaac::VRFProof tampered_output = proof;
+    tampered_output.output[0] ^= 0x01;
+    EXPECT_FALSE(
+        ms::izaac::verify(key.public_key, std::span<const uint8_t>(msg), tampered_output));
+
+    ms::izaac::VRFProof tampered_tail = proof;
+    tampered_tail.proof[64] ^= 0x01;
+    EXPECT_FALSE(
+        ms::izaac::verify(key.public_key, std::span<const uint8_t>(msg), tampered_tail));
+}
+
+TEST(IzaacAdvanced, SeedSession_FromVRFKeyNonceActivates) {
+    ms::izaac::clear_session();
+    EXPECT_FALSE(ms::izaac::session_active());
+
+    const ms::Matrix<double> zeros = ms::izaac::rand_matrix(2, 2);
+    EXPECT_EQ(zeros.rows(), 2u);
+    EXPECT_EQ(zeros.cols(), 2u);
+    EXPECT_DOUBLE_EQ(zeros(0, 0), 0.0);
+    EXPECT_DOUBLE_EQ(zeros(1, 1), 0.0);
+
+    const ms::izaac::VRFKey key = ms::izaac::keygen();
+    const std::array<uint8_t, 3> nonce = {0x11, 0x22, 0x33};
+    ms::izaac::seed_session(key, std::span<const uint8_t>(nonce));
+    EXPECT_TRUE(ms::izaac::session_active());
+
+    const ms::izaac::VRFProof proof =
+        ms::izaac::prove(key, std::span<const uint8_t>(nonce));
+    ms::izaac::CSPRNG rng_from_proof(proof);
+    EXPECT_TRUE(std::isfinite(rng_from_proof.next_f64()));
+
+    const ms::Matrix<double> sampled = ms::izaac::rand_matrix(2, 3);
+    EXPECT_EQ(sampled.rows(), 2u);
+    EXPECT_EQ(sampled.cols(), 3u);
+    for (size_t r = 0; r < sampled.rows(); ++r) {
+        for (size_t c = 0; c < sampled.cols(); ++c) {
+            EXPECT_GE(sampled(r, c), 0.0);
+            EXPECT_LT(sampled(r, c), 1.0);
+        }
+    }
+
+    ms::izaac::clear_session();
+    EXPECT_FALSE(ms::izaac::session_active());
+}

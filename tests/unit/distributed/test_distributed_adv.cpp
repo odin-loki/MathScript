@@ -394,3 +394,53 @@ TEST(DistributedAdv, CombineGather_EmptyShards) {
                     std::holds_alternative<DomainError>(g.error()));
     }
 }
+
+TEST(DistributedAdv, Iterative_EmptySquare_ColumnRhs) {
+    auto ctx = init(0, nullptr);
+    const ColMatrix<double> A(0, 0);
+    const ColMatrix<double> b(0, 1);
+    const auto dA = scatter(A, ctx).value();
+    const auto db = scatter(b, ctx).value();
+
+    EXPECT_EQ(dA.global_rows, 0u);
+    EXPECT_EQ(dA.global_cols, 0u);
+    EXPECT_EQ(db.global_cols, 1u);
+
+    const auto jac = dist_jacobi(dA, db, ctx);
+    const auto cg = dist_cg(dA, db, ctx);
+    const auto gmres = dist_gmres(dA, db, ctx);
+    if (jac.has_value()) {
+        EXPECT_EQ(jac->rows(), 0u);
+    }
+    if (cg.has_value()) {
+        EXPECT_EQ(cg->rows(), 0u);
+    }
+    if (gmres.has_value()) {
+        EXPECT_EQ(gmres->rows(), 0u);
+    }
+    finalize(ctx);
+}
+
+TEST(DistributedAdv, Iterative_1x1_JacobiCgGmres) {
+    auto ctx = init(0, nullptr);
+    const ColMatrix<double> A{{4.0}};
+    const ColMatrix<double> b{{8.0}};
+    const auto dA = scatter(A, ctx).value();
+    const auto db = scatter(b, ctx).value();
+
+    const auto jac = dist_jacobi(dA, db, ctx);
+    ASSERT_TRUE(jac.has_value());
+    ASSERT_EQ(jac->rows(), 1u);
+    EXPECT_NEAR((*jac)(0, 0), 2.0, 1e-8);
+
+    const auto cg = dist_cg(dA, db, ctx);
+    ASSERT_TRUE(cg.has_value());
+    ASSERT_EQ(cg->rows(), 1u);
+    EXPECT_NEAR((*cg)(0, 0), 2.0, 1e-8);
+
+    const auto gmres = dist_gmres(dA, db, ctx);
+    ASSERT_TRUE(gmres.has_value());
+    ASSERT_EQ(gmres->rows(), 1u);
+    EXPECT_NEAR((*gmres)(0, 0), 2.0, 1e-8);
+    finalize(ctx);
+}

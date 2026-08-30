@@ -91,3 +91,42 @@ TEST(PlotConsoleTest, invalid_series_no_data) {
     const auto text = format_plot_preview(plot);
     EXPECT_NE(text.find("(no plot)"), std::string::npos);
 }
+
+TEST(PlotConsoleTest, heatmap_empty_grid_shows_declared_dims) {
+    PlotSeries plot;
+    plot.valid = true;
+    plot.kind = PlotSeries::Kind::Heatmap;
+    plot.matrix_rows = 4;
+    plot.matrix_cols = 5;
+
+    const auto text = format_plot_preview(plot);
+    EXPECT_NE(text.find("matrix plot (4x5)"), std::string::npos);
+}
+
+TEST(PlotConsoleTest, oversize_heatmap_and_scatter_truncate) {
+    PlotSeries heat;
+    heat.valid = true;
+    heat.kind = PlotSeries::Kind::Heatmap;
+    heat.grid = Matrix<double>(12, 2, 0.0);
+    heat.grid(0, 0) = -1.0;
+    heat.grid(11, 1) = 8.0;
+    heat.matrix_rows = 12;
+    heat.matrix_cols = 2;
+
+    const auto heat_text = format_plot_preview(heat);
+    EXPECT_NE(heat_text.find("data (12x2)"), std::string::npos);
+    EXPECT_NE(heat_text.find("range [-1.0000, 8.0000]"), std::string::npos);
+    EXPECT_NE(heat_text.find("  ...\n"), std::string::npos);
+
+    PlotSeries scatter;
+    scatter.valid = true;
+    scatter.kind = PlotSeries::Kind::Scatter;
+    scatter.x = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+    scatter.y = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+
+    const auto scatter_text = format_plot_preview(scatter);
+    EXPECT_NE(scatter_text.find("scatter (8 points)"), std::string::npos);
+    EXPECT_NE(scatter_text.find("5 -> 6"), std::string::npos);
+    EXPECT_EQ(scatter_text.find("7 -> 8"), std::string::npos);
+    EXPECT_NE(scatter_text.find("  ...\n"), std::string::npos);
+}
