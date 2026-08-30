@@ -477,3 +477,50 @@ TEST(SpecialEdgeTest, hypergeo_jacobi_and_tricomi_fallbacks) {
     expect_finite(whittaker_w(0.25, 0.35, 4.0));
     expect_finite(hypergeo_1f1n(1, 1.0, 0.3));
 }
+
+TEST(SpecialEdgeTest, painleve56_early_return_thresholds) {
+    EXPECT_DOUBLE_EQ(painleve5(0.199, 2.0, 0.1, 0.01, 0.02, 0.03, 0.04), 2.0);
+    EXPECT_DOUBLE_EQ(painleve6(2.099, 0.75, 0.1, 0.05, 0.1, 0.2, 0.3), 0.75);
+}
+
+TEST(SpecialEdgeTest, theta2_theta4_invalid_nome) {
+    EXPECT_TRUE(std::isnan(theta2(-0.1, 1.5)));
+    EXPECT_TRUE(std::isnan(theta4(0.2, 1.0)));
+    EXPECT_TRUE(std::isnan(theta1_prime(-0.2, -1.0)));
+}
+
+TEST(SpecialEdgeTest, jacobi_u_zero_and_negative_modulus) {
+    EXPECT_NEAR(jacobi_sn(0.0, 0.6), 0.0, 1e-12);
+    EXPECT_NEAR(jacobi_cn(0.0, 0.6), 1.0, 1e-12);
+    EXPECT_NEAR(jacobi_dn(0.0, 0.6), 1.0, 1e-12);
+    EXPECT_NEAR(jacobi_cd(0.0, 0.6), 1.0, 1e-12);
+    EXPECT_TRUE(std::isnan(ellip_k(-1.2)));
+    EXPECT_TRUE(std::isnan(ellip_d(1.0)));
+}
+
+TEST(SpecialEdgeTest, sph_bessel_header_domain_and_parity) {
+    EXPECT_TRUE(std::isnan(sph_bessel_j(-1, 0.5)));
+    EXPECT_TRUE(std::isnan(sph_bessel_y(-2, 1.0)));
+    EXPECT_NEAR(sph_bessel_j(2, -1.2), sph_bessel_j(2, 1.2), 1e-12);
+    EXPECT_NEAR(sph_bessel_j(1, -1.2), -sph_bessel_j(1, 1.2), 1e-12);
+}
+
+TEST(SpecialEdgeTest, fox_h_and_kummer_integer_b_except_identity) {
+    EXPECT_DOUBLE_EQ(fox_h(1.0, 2.0, -1.0), 0.0);
+    EXPECT_NEAR(kummer_u(1.0, 2.0, 0.25), 4.0, 1e-12);
+    EXPECT_TRUE(std::isnan(kummer_u(1.0, 3.0, 0.5)));
+}
+
+TEST(SpecialEdgeTest, mathieu_negative_n_and_spheroidal_m) {
+    EXPECT_TRUE(std::isnan(mathieu_a(-3, 0.1)));
+    EXPECT_TRUE(std::isnan(mathieu_b(-4, 0.1)));
+    EXPECT_TRUE(std::isnan(spheroidal_lambda(0, -1, 0.5)));
+    EXPECT_TRUE(std::isnan(spheroidal_s1(0, -1, 0.5, 0.2)));
+}
+
+TEST(SpecialEdgeTest, chebyshev_indexed_k_unused_and_out_of_interval) {
+    EXPECT_NEAR(chebyshev_tn(4, 0, 0.3), chebyshev_t(4, 0.3), 1e-15);
+    EXPECT_NEAR(chebyshev_un(4, -7, 0.3), chebyshev_u(4, 0.3), 1e-15);
+    EXPECT_TRUE(std::isnan(chebyshev_tn(1, 5, -1.2)));
+    EXPECT_TRUE(std::isnan(chebyshev_un(1, 5, 1.2)));
+}

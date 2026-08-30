@@ -71,3 +71,77 @@ TEST(SolveTest, dimension_mismatch_matrix_and_rhs) {
     DMatrix B{{1, 2}, {3, 4}, {5, 6}};
     EXPECT_FALSE(solve(A, B).has_value());
 }
+
+TEST(SolveTest, one_by_one) {
+    DMatrix A{{4}};
+    DMatrix b{{12}};
+    auto x = solve(A, b);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_NEAR((*x)(0, 0), 3.0, 1e-12);
+}
+
+TEST(SolveTest, one_by_one_singular) {
+    DMatrix A{{0}};
+    DMatrix b{{1}};
+    EXPECT_FALSE(solve(A, b).has_value());
+}
+
+TEST(SolveTest, non_square_and_empty_mismatch) {
+    DMatrix A32{{1, 2}, {3, 4}, {5, 6}};
+    DMatrix b3{{1}, {2}, {3}};
+    EXPECT_FALSE(solve(A32, b3).has_value());
+    DMatrix A01(0, 1);
+    DMatrix b0(0, 1);
+    EXPECT_FALSE(solve(A01, b0).has_value());
+    DMatrix I = eye<double>(3);
+    DMatrix b2{{1}, {2}};
+    EXPECT_FALSE(solve(I, b2).has_value());
+}
+
+TEST(SolveTest, zero_by_zero_square) {
+    DMatrix A(0, 0);
+    DMatrix b(0, 1);
+    auto x = solve(A, b);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_EQ(x->rows(), 0u);
+    EXPECT_EQ(x->cols(), 1u);
+}
+
+TEST(SolveTest, float_2x2_and_singular) {
+    ColMatrix<float> A{{2.f, 1.f}, {1.f, 3.f}};
+    ColMatrix<float> b{{4.f}, {7.f}};
+    auto x = solve(A, b);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_NEAR((*x)(0, 0), 1.f, 1e-5);
+    EXPECT_NEAR((*x)(1, 0), 2.f, 1e-5);
+
+    ColMatrix<float> S{{1.f, 2.f}, {2.f, 4.f}};
+    ColMatrix<float> sb{{1.f}, {2.f}};
+    EXPECT_FALSE(solve(S, sb).has_value());
+}
+
+TEST(SolveTest, float_dimension_mismatch) {
+    ColMatrix<float> A{{1.f, 2.f}, {3.f, 4.f}};
+    ColMatrix<float> b{{1.f}, {2.f}, {3.f}};
+    EXPECT_FALSE(solve(A, b).has_value());
+    ColMatrix<float> R{{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}};
+    ColMatrix<float> br{{1.f}, {2.f}};
+    EXPECT_FALSE(solve(R, br).has_value());
+}
+
+TEST(SolveTest, identity_multiple_rhs) {
+    DMatrix I = eye<double>(2);
+    DMatrix B{{1, 0, 3}, {0, 1, -1}};
+    auto X = solve(I, B);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_NEAR((*X)(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR((*X)(1, 1), 1.0, 1e-12);
+    EXPECT_NEAR((*X)(0, 2), 3.0, 1e-12);
+    EXPECT_NEAR((*X)(1, 2), -1.0, 1e-12);
+}
+
+TEST(SolveTest, singular_3x3) {
+    DMatrix A{{1, 2, 3}, {2, 4, 6}, {1, 1, 1}};
+    DMatrix b{{1}, {2}, {3}};
+    EXPECT_FALSE(solve(A, b).has_value());
+}

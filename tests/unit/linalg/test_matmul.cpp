@@ -292,3 +292,151 @@ TEST(MatmulTest, auto_policy_dimension_mismatch) {
     auto result = matmul(A, B, static_cast<int>(ExecPolicy::AUTO));
     EXPECT_FALSE(result.has_value());
 }
+
+TEST(MatmulTest, rectangular_2x3_by_3x4_all_policies) {
+    DMatrix A{{1, 2, 3}, {4, 5, 6}};
+    DMatrix B{{1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 1, 1}};
+    auto cpu = matmul(A, B, static_cast<int>(ExecPolicy::CPU));
+    auto gpu = matmul(A, B, static_cast<int>(ExecPolicy::GPU));
+    auto aut = matmul(A, B, static_cast<int>(ExecPolicy::AUTO));
+    ASSERT_TRUE(cpu.has_value());
+    ASSERT_TRUE(gpu.has_value());
+    ASSERT_TRUE(aut.has_value());
+    EXPECT_EQ(cpu->rows(), 2u);
+    EXPECT_EQ(cpu->cols(), 4u);
+    EXPECT_DOUBLE_EQ((*cpu)(0, 0), 1);
+    EXPECT_DOUBLE_EQ((*cpu)(0, 1), 2);
+    EXPECT_DOUBLE_EQ((*cpu)(0, 2), 3);
+    EXPECT_DOUBLE_EQ((*cpu)(0, 3), 6);
+    EXPECT_DOUBLE_EQ((*cpu)(1, 0), 4);
+    EXPECT_DOUBLE_EQ((*cpu)(1, 3), 15);
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 4; ++j) {
+            EXPECT_DOUBLE_EQ((*gpu)(i, j), (*cpu)(i, j));
+            EXPECT_DOUBLE_EQ((*aut)(i, j), (*cpu)(i, j));
+        }
+    }
+}
+
+TEST(MatmulTest, row_major_dimension_mismatch_all_policies) {
+    RMatrix A{{1, 2}};
+    RMatrix B{{1, 2}, {3, 4}, {5, 6}};
+    EXPECT_FALSE(matmul(A, B).has_value());
+    EXPECT_FALSE(matmul(A, B, static_cast<int>(ExecPolicy::CPU)).has_value());
+    EXPECT_FALSE(matmul(A, B, static_cast<int>(ExecPolicy::GPU)).has_value());
+    EXPECT_FALSE(matmul(A, B, static_cast<int>(ExecPolicy::AUTO)).has_value());
+}
+
+TEST(MatmulTest, float_empty_rect_and_mismatch) {
+    ColMatrix<float> A(0, 2);
+    ColMatrix<float> B(2, 3);
+    auto C = matmul(A, B);
+    ASSERT_TRUE(C.has_value());
+    EXPECT_EQ(C->rows(), 0u);
+    EXPECT_EQ(C->cols(), 3u);
+
+    ColMatrix<float> At{{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}};
+    ColMatrix<float> Bt{{1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f}};
+    auto R = matmul(At, Bt, static_cast<int>(ExecPolicy::CPU));
+    ASSERT_TRUE(R.has_value());
+    EXPECT_FLOAT_EQ((*R)(0, 0), 4.f);
+    EXPECT_FLOAT_EQ((*R)(1, 1), 11.f);
+
+    ColMatrix<float> badA{{1.f, 2.f}};
+    ColMatrix<float> badB{{1.f, 2.f}};
+    EXPECT_FALSE(matmul(badA, badB).has_value());
+    EXPECT_FALSE(matmul(badA, badB, static_cast<int>(ExecPolicy::GPU)).has_value());
+}
+
+TEST(MatmulTest, empty_mismatch_and_auto_zero_rows) {
+    DMatrix A(2, 0);
+    DMatrix B(1, 3);
+    EXPECT_FALSE(matmul(A, B).has_value());
+    EXPECT_FALSE(matmul(A, B, static_cast<int>(ExecPolicy::CPU)).has_value());
+    DMatrix A00(0, 0);
+    DMatrix B10(1, 0);
+    EXPECT_FALSE(matmul(A00, B10, static_cast<int>(ExecPolicy::AUTO)).has_value());
+
+    DMatrix Zr(0, 2);
+    DMatrix Br(2, 1);
+    auto C = matmul(Zr, Br, static_cast<int>(ExecPolicy::AUTO));
+    ASSERT_TRUE(C.has_value());
+    EXPECT_EQ(C->rows(), 0u);
+    EXPECT_EQ(C->cols(), 1u);
+
+    DMatrix Zc(3, 0);
+    DMatrix Bc(0, 2);
+    auto C2 = matmul(Zc, Bc, static_cast<int>(ExecPolicy::CPU));
+    ASSERT_TRUE(C2.has_value());
+    EXPECT_EQ(C2->rows(), 3u);
+    EXPECT_EQ(C2->cols(), 2u);
+}
+
+TEST(MatmulTest, row_major_empty_inner_and_auto_rect) {
+    RMatrix A(2, 0);
+    RMatrix B(0, 3);
+    auto C = matmul(A, B, static_cast<int>(ExecPolicy::GPU));
+    ASSERT_TRUE(C.has_value());
+    EXPECT_EQ(C->rows(), 2u);
+    EXPECT_EQ(C->cols(), 3u);
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_DOUBLE_EQ((*C)(i, j), 0.0);
+        }
+    }
+
+    RMatrix Ar{{1, 2, 3}, {4, 5, 6}};
+    RMatrix Br{{1}, {0}, {1}};
+    auto R = matmul(Ar, Br, static_cast<int>(ExecPolicy::AUTO));
+    ASSERT_TRUE(R.has_value());
+    EXPECT_DOUBLE_EQ((*R)(0, 0), 4);
+    EXPECT_DOUBLE_EQ((*R)(1, 0), 10);
+}
+
+TEST(MatmulTest, gpu_policy_rect_and_empty_inner) {
+    DMatrix A{{1, 0}, {0, 1}, {1, 1}};
+    DMatrix B{{2, 3}, {4, 5}};
+    auto C = matmul(A, B, static_cast<int>(ExecPolicy::GPU));
+    ASSERT_TRUE(C.has_value());
+    EXPECT_EQ(C->rows(), 3u);
+    EXPECT_EQ(C->cols(), 2u);
+    EXPECT_DOUBLE_EQ((*C)(0, 0), 2);
+    EXPECT_DOUBLE_EQ((*C)(1, 1), 5);
+    EXPECT_DOUBLE_EQ((*C)(2, 0), 6);
+    EXPECT_DOUBLE_EQ((*C)(2, 1), 8);
+
+    DMatrix Z(4, 0);
+    DMatrix W(0, 1);
+    auto E = matmul(Z, W, static_cast<int>(ExecPolicy::GPU));
+    ASSERT_TRUE(E.has_value());
+    EXPECT_EQ(E->rows(), 4u);
+    EXPECT_EQ(E->cols(), 1u);
+    EXPECT_DOUBLE_EQ((*E)(0, 0), 0.0);
+}
+
+TEST(MatmulTest, tall_4x2_by_2x3) {
+    DMatrix A{{1, 0}, {0, 1}, {1, 1}, {2, 0}};
+    DMatrix B{{1, 2, 3}, {4, 5, 6}};
+    auto C = matmul(A, B, static_cast<int>(ExecPolicy::AUTO));
+    ASSERT_TRUE(C.has_value());
+    EXPECT_EQ(C->rows(), 4u);
+    EXPECT_EQ(C->cols(), 3u);
+    EXPECT_DOUBLE_EQ((*C)(0, 0), 1);
+    EXPECT_DOUBLE_EQ((*C)(1, 1), 5);
+    EXPECT_DOUBLE_EQ((*C)(2, 2), 9);
+    EXPECT_DOUBLE_EQ((*C)(3, 0), 2);
+}
+
+TEST(MatmulTest, float_all_policies_2x2) {
+    ColMatrix<float> A{{1.f, 2.f}, {3.f, 4.f}};
+    ColMatrix<float> B{{5.f, 6.f}, {7.f, 8.f}};
+    auto cpu = matmul(A, B, static_cast<int>(ExecPolicy::CPU));
+    auto gpu = matmul(A, B, static_cast<int>(ExecPolicy::GPU));
+    auto aut = matmul(A, B, static_cast<int>(ExecPolicy::AUTO));
+    ASSERT_TRUE(cpu.has_value());
+    ASSERT_TRUE(gpu.has_value());
+    ASSERT_TRUE(aut.has_value());
+    EXPECT_FLOAT_EQ((*cpu)(0, 0), 19.f);
+    EXPECT_FLOAT_EQ((*gpu)(1, 1), 50.f);
+    EXPECT_FLOAT_EQ((*aut)(0, 1), 22.f);
+}

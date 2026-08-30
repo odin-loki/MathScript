@@ -3479,3 +3479,27 @@ TEST(ReplCommandsTest, finance_information_ratio_noassign) {
     expect_contains(interp, "finance_information_ratio(ret, bench)", "1.70");
     expect_error_contains(interp, "finance_information_ratio(missing, bench)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, finance_max_sharpe_portfolio_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cov3 = [0.10, 0.02, 0.01; 0.02, 0.08, 0.03; 0.01, 0.03, 0.06]");
+    expect_ok(interp, "mu3 = [0.08; 0.12; 0.10]");
+    expect_contains(interp, "finance_max_sharpe_portfolio(cov3, mu3, 0.02)",
+                    "max_sharpe_portfolio =");
+    expect_error_contains(interp, "finance_max_sharpe_portfolio([1, 2], mu3, 0.02)",
+                          "expected square matrix");
+}
+
+TEST(ReplCommandsTest, finance_bs_call_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bs_call(100, 100, 1, 0.05, 0.2)", "10.45");
+    expect_error_contains(interp, "finance_bs_call(100, 100, 1, 0.05, missing)",
+                          "finance_bs_call");
+}
+
+TEST(ReplCommandsTest, finance_bond_price_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bond_price(0.05, 0.05, 10, 100)", "100");
+    expect_error_contains(interp, "finance_bond_price(0.05, 0.05, missing)",
+                          "finance_bond_price");
+}

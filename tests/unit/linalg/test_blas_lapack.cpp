@@ -2471,3 +2471,97 @@ TEST(BlasDgemmTest, multiply_2x2) {
     EXPECT_NEAR(C[2], 22.0, 1e-12);  // (0,1)
     EXPECT_NEAR(C[3], 50.0, 1e-12);  // (1,1)
 }
+
+TEST(BlasDgemmTest, one_by_one) {
+    const std::vector<double> A{7.0};
+    const std::vector<double> B{3.0};
+    std::vector<double> C{1.0};
+    cpu::blas::dgemm('N', 'N', 1, 1, 1, 1.0, A.data(), 1, B.data(), 1, 0.0, C.data(), 1);
+    EXPECT_NEAR(C[0], 21.0, 1e-12);
+}
+
+TEST(BlasDgemmTest, transpose_a) {
+    constexpr int N = 2;
+    const std::vector<double> A{1, 3, 2, 4};
+    const std::vector<double> B{5, 7, 6, 8};
+    std::vector<double> C(4, 0.0);
+    cpu::blas::dgemm('T', 'N', N, N, N, 1.0, A.data(), N, B.data(), N, 0.0, C.data(), N);
+    EXPECT_NEAR(C[0], 26.0, 1e-12);
+    EXPECT_NEAR(C[1], 38.0, 1e-12);
+    EXPECT_NEAR(C[2], 30.0, 1e-12);
+    EXPECT_NEAR(C[3], 44.0, 1e-12);
+}
+
+TEST(BlasDgemmTest, transpose_b) {
+    constexpr int N = 2;
+    const std::vector<double> A{1, 3, 2, 4};
+    const std::vector<double> B{5, 7, 6, 8};
+    std::vector<double> C(4, 0.0);
+    cpu::blas::dgemm('N', 'T', N, N, N, 1.0, A.data(), N, B.data(), N, 0.0, C.data(), N);
+    EXPECT_NEAR(C[0], 17.0, 1e-12);
+    EXPECT_NEAR(C[1], 39.0, 1e-12);
+    EXPECT_NEAR(C[2], 23.0, 1e-12);
+    EXPECT_NEAR(C[3], 53.0, 1e-12);
+}
+
+TEST(BlasDgemmTest, both_transpose) {
+    constexpr int N = 2;
+    const std::vector<double> A{1, 3, 2, 4};
+    const std::vector<double> B{5, 7, 6, 8};
+    std::vector<double> C(4, 0.0);
+    cpu::blas::dgemm('T', 'T', N, N, N, 1.0, A.data(), N, B.data(), N, 0.0, C.data(), N);
+    EXPECT_NEAR(C[0], 23.0, 1e-12);
+    EXPECT_NEAR(C[1], 34.0, 1e-12);
+    EXPECT_NEAR(C[2], 31.0, 1e-12);
+    EXPECT_NEAR(C[3], 46.0, 1e-12);
+}
+
+TEST(BlasDgemmTest, rectangular_and_beta) {
+    const std::vector<double> A{1, 4, 2, 5, 3, 6};
+    const std::vector<double> B{1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1};
+    std::vector<double> C{10, 20, 30, 40, 50, 60, 70, 80};
+    cpu::blas::dgemm('N', 'N', 2, 4, 3, 1.0, A.data(), 2, B.data(), 3, 0.5, C.data(), 2);
+    EXPECT_NEAR(C[0], 1.0 + 5.0, 1e-12);
+    EXPECT_NEAR(C[1], 4.0 + 10.0, 1e-12);
+    EXPECT_NEAR(C[6], 6.0 + 35.0, 1e-12);
+    EXPECT_NEAR(C[7], 15.0 + 40.0, 1e-12);
+}
+
+TEST(BlasDgemmTest, empty_k_and_zero_m) {
+    const std::vector<double> A{1, 2, 3, 4};
+    const std::vector<double> B{5, 6, 7, 8};
+    std::vector<double> C{9, 10, 11, 12};
+    cpu::blas::dgemm('N', 'N', 2, 2, 0, 1.0, A.data(), 2, B.data(), 2, 0.0, C.data(), 2);
+    for (double v : C) {
+        EXPECT_DOUBLE_EQ(v, 0.0);
+    }
+    std::vector<double> C2{1, 2, 3, 4};
+    cpu::blas::dgemm('N', 'N', 0, 2, 2, 1.0, A.data(), 2, B.data(), 2, 0.0, C2.data(), 2);
+    EXPECT_DOUBLE_EQ(C2[0], 1.0);
+}
+
+TEST(BlasDgemmTest, lowercase_trans_and_alpha_zero_beta) {
+    constexpr int N = 2;
+    const std::vector<double> A{1, 3, 2, 4};
+    const std::vector<double> B{5, 7, 6, 8};
+    std::vector<double> C{1, 2, 3, 4};
+    cpu::blas::dgemm('n', 'n', N, N, N, 0.0, A.data(), N, B.data(), N, 2.0, C.data(), N);
+    EXPECT_NEAR(C[0], 2.0, 1e-12);
+    EXPECT_NEAR(C[1], 4.0, 1e-12);
+    EXPECT_NEAR(C[2], 6.0, 1e-12);
+    EXPECT_NEAR(C[3], 8.0, 1e-12);
+
+    std::vector<double> Ct(4, 0.0);
+    cpu::blas::dgemm('t', 'n', N, N, N, 1.0, A.data(), N, B.data(), N, 0.0, Ct.data(), N);
+    EXPECT_NEAR(Ct[0], 26.0, 1e-12);
+}
+
+TEST(BlasDgemmTest, null_and_negative_k_noop) {
+    const std::vector<double> A{1, 2, 3, 4};
+    const std::vector<double> B{5, 6, 7, 8};
+    std::vector<double> C{9, 10, 11, 12};
+    cpu::blas::dgemm('N', 'N', 2, 2, -1, 1.0, A.data(), 2, B.data(), 2, 0.0, C.data(), 2);
+    EXPECT_DOUBLE_EQ(C[0], 9.0);
+    cpu::blas::dgemm('N', 'N', 2, 2, 2, 1.0, nullptr, 2, B.data(), 2, 0.0, C.data(), 2);
+    EXPECT_DOUBLE_EQ(C[0], 9.0);
+}

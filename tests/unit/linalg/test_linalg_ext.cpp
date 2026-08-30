@@ -534,3 +534,270 @@ TEST(SylvesterTest, solve_2x2_and_precond_zero_diag) {
     const DMatrix M = precond_ssor(Z, 2.0);
     EXPECT_NEAR(M(0, 0), 0.0, 1e-15);
 }
+
+TEST(SylvesterTest, rejects_non_square_and_c_shape) {
+    DMatrix Arect{{1, 2, 3}, {4, 5, 6}};
+    DMatrix Bsq{{1, 0}, {0, 1}};
+    DMatrix C{{1, 2}, {3, 4}};
+    EXPECT_FALSE(solve_sylvester(Arect, Bsq, C).has_value());
+    DMatrix Asq{{2, 0}, {0, 3}};
+    DMatrix Brect{{1, 2}};
+    EXPECT_FALSE(solve_sylvester(Asq, Brect, C).has_value());
+    DMatrix Cbad{{1}, {2}};
+    EXPECT_FALSE(solve_sylvester(Asq, Bsq, Cbad).has_value());
+}
+
+TEST(SylvesterTest, one_by_one_and_shared_eigenvalue) {
+    DMatrix A{{2}};
+    DMatrix B{{3}};
+    DMatrix C{{10}};
+    const auto X = solve_sylvester(A, B, C);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_NEAR((*X)(0, 0), 2.0, 1e-10);
+
+    DMatrix Am1{{1}};
+    DMatrix Bm1{{-1}};
+    DMatrix C1{{1}};
+    EXPECT_FALSE(solve_sylvester(Am1, Bm1, C1).has_value());
+}
+
+TEST(PrecondTest, identity_empty_one_by_one_rect) {
+    DMatrix I = eye<double>(2);
+    const auto dI = precond_diag(I);
+    ASSERT_EQ(dI.size(), 2u);
+    EXPECT_NEAR(dI[0], 1.0, 1e-15);
+    EXPECT_NEAR(dI[1], 1.0, 1e-15);
+    const DMatrix MI = precond_ssor(I, 1.0);
+    EXPECT_NEAR(MI(0, 0), 1.0, 1e-15);
+    EXPECT_NEAR(MI(1, 1), 1.0, 1e-15);
+
+    DMatrix Z(0, 0);
+    EXPECT_TRUE(precond_diag(Z).empty());
+    const DMatrix MZ = precond_ssor(Z, 1.0);
+    EXPECT_EQ(MZ.rows(), 0u);
+    EXPECT_EQ(MZ.cols(), 0u);
+
+    DMatrix A11{{4}};
+    const auto d1 = precond_diag(A11);
+    ASSERT_EQ(d1.size(), 1u);
+    EXPECT_NEAR(d1[0], 0.25, 1e-15);
+    const DMatrix M1 = precond_ssor(A11, 2.0);
+    EXPECT_NEAR(M1(0, 0), 2.0, 1e-15);
+
+    DMatrix R{{2, 0, 1}, {0, 4, 0}};
+    const auto dR = precond_diag(R);
+    ASSERT_EQ(dR.size(), 2u);
+    EXPECT_NEAR(dR[0], 0.5, 1e-15);
+    EXPECT_NEAR(dR[1], 0.25, 1e-15);
+}
+
+TEST(LsqTest, one_by_one_square_and_empty) {
+    DMatrix A11{{2}};
+    DMatrix b11{{6}};
+    const auto x1 = lsq(A11, b11);
+    ASSERT_TRUE(x1.has_value());
+    EXPECT_NEAR((*x1)(0, 0), 3.0, 1e-10);
+
+    DMatrix A{{2, 1}, {1, 3}};
+    DMatrix B{{4, 1}, {7, 2}};
+    const auto X = lsq(A, B);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_NEAR((*X)(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR((*X)(1, 0), 2.0, 1e-9);
+
+    DMatrix Aempty(0, 1);
+    DMatrix bempty(0, 1);
+    EXPECT_FALSE(lsq(Aempty, bempty).has_value());
+}
+
+TEST(AuxTest, rank_cond_pinv_empty_and_one_by_one) {
+    DMatrix A11{{5}};
+    EXPECT_EQ(rank(A11).value(), 1);
+    EXPECT_EQ(matrix_rank(A11), 1);
+    EXPECT_NEAR(cond(A11).value(), 1.0, 1e-12);
+    const auto P = pinv(A11);
+    ASSERT_TRUE(P.has_value());
+    EXPECT_NEAR((*P)(0, 0), 0.2, 1e-12);
+
+    DMatrix Z(0, 0);
+    EXPECT_FALSE(rank(Z).has_value());
+    EXPECT_EQ(matrix_rank(Z), 0);
+    EXPECT_FALSE(cond(Z).has_value());
+    EXPECT_FALSE(pinv(Z).has_value());
+
+    DMatrix I = eye<double>(2);
+    const auto PinvI = pinv(I);
+    ASSERT_TRUE(PinvI.has_value());
+    EXPECT_NEAR((*PinvI)(0, 0), 1.0, 1e-10);
+    EXPECT_NEAR((*PinvI)(1, 1), 1.0, 1e-10);
+}
+
+TEST(AuxTest, null_orth_empty_and_rank_deficient) {
+    DMatrix A0c(2, 0);
+    const auto N0 = null(A0c);
+    ASSERT_TRUE(N0.has_value());
+    EXPECT_EQ(N0->rows(), 0u);
+    EXPECT_EQ(N0->cols(), 0u);
+
+    DMatrix A0r(0, 2);
+    const auto Q0 = orth(A0r);
+    ASSERT_TRUE(Q0.has_value());
+    EXPECT_EQ(Q0->rows(), 0u);
+    EXPECT_EQ(Q0->cols(), 0u);
+
+    DMatrix A11{{3}};
+    const auto Q1 = orth(A11);
+    ASSERT_TRUE(Q1.has_value());
+    EXPECT_EQ(Q1->cols(), 1u);
+
+    DMatrix rank1{{1, 2}, {2, 4}};
+    const auto N = null(rank1);
+    ASSERT_TRUE(N.has_value());
+    EXPECT_EQ(N->cols(), 1u);
+    const auto Qr = orth(rank1, 1e-8);
+    ASSERT_TRUE(Qr.has_value());
+    EXPECT_EQ(Qr->cols(), 1u);
+}
+
+TEST(LdlTest, rejects_and_one_by_one) {
+    DMatrix rect{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_FALSE(ldl(rect).has_value());
+    DMatrix nonsym{{1, 2}, {0, 3}};
+    EXPECT_FALSE(ldl(nonsym).has_value());
+    DMatrix sing{{0, 0}, {0, 0}};
+    EXPECT_FALSE(ldl(sing).has_value());
+
+    DMatrix A11{{4}};
+    const auto f = ldl(A11);
+    ASSERT_TRUE(f.has_value());
+    EXPECT_NEAR(f->D(0, 0), 4.0, 1e-12);
+    EXPECT_NEAR(f->L(0, 0), 1.0, 1e-12);
+}
+
+TEST(EigTest, rejects_non_square_nonsym_and_one_by_one) {
+    DMatrix rect{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_FALSE(eig(rect).has_value());
+    EXPECT_FALSE(eig_sym(rect).has_value());
+    DMatrix nonsym{{1, 2}, {0, 3}};
+    EXPECT_FALSE(eig_sym(nonsym).has_value());
+
+    DMatrix A11{{7}};
+    const auto es = eig_sym(A11);
+    ASSERT_TRUE(es.has_value());
+    EXPECT_NEAR(es->values(0, 0), 7.0, 1e-12);
+    const auto eg = eig(A11);
+    ASSERT_TRUE(eg.has_value());
+    EXPECT_NEAR(eg->values(0, 0), 7.0, 1e-12);
+}
+
+TEST(SvdTest, empty_one_by_one_and_rank) {
+    DMatrix Z(0, 2);
+    EXPECT_FALSE(svd(Z).has_value());
+    DMatrix Zc(3, 0);
+    EXPECT_FALSE(svd(Zc).has_value());
+
+    DMatrix A11{{4}};
+    const auto s = svd(A11);
+    ASSERT_TRUE(s.has_value());
+    EXPECT_NEAR(s->S(0, 0), 4.0, 1e-12);
+
+    DMatrix rank1{{1, 2}, {2, 4}};
+    EXPECT_EQ(rank(rank1, 1e-8).value(), 1);
+}
+
+TEST(MatrixFuncTest, rejects_rect_and_one_by_one) {
+    DMatrix rect{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_FALSE(logm(rect).has_value());
+    EXPECT_FALSE(sqrtm(rect).has_value());
+    EXPECT_FALSE(sinm(rect).has_value());
+    EXPECT_FALSE(cosm(rect).has_value());
+    std::function<double(double)> id = [](double x) { return x; };
+    EXPECT_FALSE(funm(rect, id).has_value());
+
+    DMatrix A11{{4}};
+    const auto r = sqrtm(A11);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NEAR((*r)(0, 0), 2.0, 1e-10);
+    DMatrix I1{{1}};
+    const auto L = logm(I1);
+    ASSERT_TRUE(L.has_value());
+    EXPECT_NEAR((*L)(0, 0), 0.0, 1e-10);
+}
+
+TEST(DecompTest, hess_schur_bidiag_edges) {
+    DMatrix rect{{1, 2, 3}, {4, 5, 6}};
+    EXPECT_FALSE(hess(rect).has_value());
+    EXPECT_FALSE(schur(rect).has_value());
+
+    DMatrix A11{{5}};
+    const auto H = hess(A11);
+    ASSERT_TRUE(H.has_value());
+    EXPECT_NEAR((*H)(0, 0), 5.0, 1e-12);
+    const auto S = schur(A11);
+    ASSERT_TRUE(S.has_value());
+    EXPECT_NEAR(S->T(0, 0), 5.0, 1e-8);
+    const auto bd = bidiag(A11);
+    ASSERT_TRUE(bd.has_value());
+    EXPECT_NEAR(bd->B(0, 0), 5.0, 1e-8);
+
+    DMatrix empty(0, 2);
+    const auto bde = bidiag(empty);
+    ASSERT_TRUE(bde.has_value());
+    EXPECT_EQ(bde->B.rows(), 0u);
+    EXPECT_EQ(bde->B.cols(), 2u);
+}
+
+TEST(IterativeTest, mismatch_nonsym_and_one_by_one) {
+    DMatrix A{{3, 1}, {1, 2}};
+    DMatrix bbad(3, 1);
+    EXPECT_FALSE(cg(A, bbad).has_value());
+    EXPECT_FALSE(jacobi(A, bbad).has_value());
+    EXPECT_FALSE(bicgstab(A, bbad).has_value());
+    EXPECT_FALSE(gmres(A, bbad).has_value());
+    EXPECT_FALSE(minres(A, bbad).has_value());
+    EXPECT_FALSE(qmr(A, bbad).has_value());
+    EXPECT_FALSE(lsqr(A, bbad).has_value());
+    EXPECT_FALSE(lsmr(A, bbad).has_value());
+    EXPECT_FALSE(tfqmr(A, bbad).has_value());
+
+    DMatrix nonsym{{1, 2}, {3, 4}};
+    DMatrix b{{1}, {1}};
+    EXPECT_FALSE(cg(nonsym, b).has_value());
+
+    DMatrix A11{{2}};
+    DMatrix b11{{8}};
+    const auto x = jacobi(A11, b11);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_NEAR((*x)(0, 0), 4.0, 1e-10);
+    const auto xc = cg(A11, b11);
+    ASSERT_TRUE(xc.has_value());
+    EXPECT_NEAR((*xc)(0, 0), 4.0, 1e-10);
+}
+
+TEST(ConstructionTest, empty_and_one_by_one_helpers) {
+    std::vector<double> empty_v;
+    const DMatrix D0 = diag(empty_v);
+    EXPECT_EQ(D0.rows(), 0u);
+    EXPECT_EQ(D0.cols(), 0u);
+    EXPECT_TRUE(diag(D0).empty());
+
+    std::vector<double> one_v{9.0};
+    const DMatrix D1 = diag(one_v);
+    EXPECT_EQ(D1.rows(), 1u);
+    EXPECT_NEAR(D1(0, 0), 9.0, 1e-15);
+
+    DMatrix Z(0, 2);
+    const DMatrix K = kron(Z, eye<double>(2));
+    EXPECT_EQ(K.rows(), 0u);
+    EXPECT_EQ(K.cols(), 4u);
+    const DMatrix R = repmat(Z, 2, 3);
+    EXPECT_EQ(R.rows(), 0u);
+    EXPECT_EQ(R.cols(), 6u);
+
+    const auto Rd = rand<double>(0, 0, 7u);
+    EXPECT_EQ(Rd.rows(), 0u);
+    const auto Rn = randn<double>(1, 1, 7u);
+    EXPECT_TRUE(std::isfinite(Rn(0, 0)));
+    EXPECT_NEAR(tril(D1)(0, 0), 9.0, 1e-15);
+    EXPECT_NEAR(triu(D1, 1)(0, 0), 0.0, 1e-15);
+}

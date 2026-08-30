@@ -225,3 +225,124 @@ TEST(SpecialMiscTest, remaining_heun_painleve) {
     expect_finite(painleve5(0.3, 0.2, 0.0, 0.01, 0.02, 0.03, 0.04));
     expect_finite(painleve6(1.6, 0.2, 0.0, 0.05, 0.1, 0.2, 0.3));
 }
+
+TEST(SpecialMiscTest, remaining_painleve56_early_returns) {
+    EXPECT_DOUBLE_EQ(painleve5(0.2, 3.0, 0.0, 0.01, 0.02, 0.03, 0.04), 3.0);
+    EXPECT_DOUBLE_EQ(painleve5(0.05, 1.25, 0.0, 0.1, 0.2, 0.3, 0.4), 1.25);
+    EXPECT_DOUBLE_EQ(painleve6(2.1, 1.5, 0.0, 0.05, 0.1, 0.2, 0.3), 1.5);
+    EXPECT_DOUBLE_EQ(painleve6(0.0, 4.0, 0.0, 0.1, 0.2, 0.3, 0.4), 4.0);
+}
+
+TEST(SpecialMiscTest, remaining_theta_nome_and_sigma_origin) {
+    EXPECT_TRUE(std::isnan(theta2(0.3, 1.0)));
+    EXPECT_TRUE(std::isnan(theta4(0.3, -1.0)));
+    EXPECT_TRUE(std::isnan(theta1_prime(0.3, 1.2)));
+    EXPECT_TRUE(std::isnan(jacobi_theta(3, 0.2, -0.5)));
+    EXPECT_DOUBLE_EQ(weierstrass_sigma(0.0, 1.0, 0.1), 0.0);
+    EXPECT_TRUE(std::isinf(weierstrass_p(1e-13, 1.0, 0.1)));
+    EXPECT_TRUE(std::isnan(weierstrass_pprime(1e-13, 1.0, 0.1)));
+    EXPECT_TRUE(std::isinf(weierstrass_zeta(1e-13, 1.0, 0.1)));
+}
+
+TEST(SpecialMiscTest, remaining_elliptic_negative_k_and_jacobi_u0) {
+    EXPECT_TRUE(std::isnan(ellip_k(-1.0)));
+    EXPECT_TRUE(std::isnan(ellip_e(-1.1)));
+    EXPECT_TRUE(std::isnan(ellip_d(-1.0)));
+    EXPECT_TRUE(std::isnan(ellip_pi(0.2, -1.0)));
+    EXPECT_TRUE(std::isnan(ellip_f(0.3, -1.0)));
+    EXPECT_TRUE(std::isnan(ellip_e_inc(0.3, -1.0)));
+    const double k = 0.4;
+    EXPECT_DOUBLE_EQ(jacobi_sc(0.0, k), 0.0);
+    EXPECT_DOUBLE_EQ(jacobi_sd(0.0, k), 0.0);
+    EXPECT_TRUE(std::isnan(jacobi_ds(0.0, k)));
+    EXPECT_TRUE(std::isnan(jacobi_cs(0.0, k)));
+    EXPECT_TRUE(std::isnan(jacobi_nc(0.0, k)));
+}
+
+TEST(SpecialMiscTest, remaining_alias_poly_and_legendre_domain) {
+    EXPECT_TRUE(std::isnan(struve_l(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(struve_k(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(struve_hn(-1, 0.8)));
+    EXPECT_TRUE(std::isnan(struve_yn(-1, 0.8)));
+    EXPECT_TRUE(std::isnan(chebyshev_tn(2, 0, 1.5)));
+    EXPECT_TRUE(std::isnan(chebyshev_un(2, -3, -1.5)));
+    EXPECT_DOUBLE_EQ(hermite_hf(-1, 0.2), 0.0);
+    EXPECT_DOUBLE_EQ(hermite_hn(-1, 0.2), 0.0);
+    EXPECT_DOUBLE_EQ(laguerre_ln(-5, 2, 0.3), 0.0);
+    EXPECT_TRUE(std::isnan(legendre_q(-1, 0.5)));
+    EXPECT_DOUBLE_EQ(legendre_pn(2, 1, 1.5), 0.0);
+    EXPECT_TRUE(std::isnan(assoc_legendre_p(2, 1, 1.5)));
+    EXPECT_TRUE(std::isnan(assoc_legendre_p(2, 0, -1.5)));
+    EXPECT_TRUE(std::isnan(jacobi_p(-1, 0.1, 0.2, 0.3)));
+}
+
+TEST(SpecialMiscTest, remaining_bessel_alias_and_zero_guards) {
+    EXPECT_DOUBLE_EQ(bessel_j(-3, 1.0), 0.0);
+    EXPECT_TRUE(std::isnan(bessel_y(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(bessel_h(1, -0.5)));
+    EXPECT_TRUE(std::isnan(bessel_hy(1, -0.5)));
+    EXPECT_TRUE(std::isnan(bessel_lu(1, -0.5)));
+    EXPECT_TRUE(std::isnan(bessel_k(0, 0.0)));
+    EXPECT_TRUE(std::isnan(bessel_zero_jnu(1, 0)));
+    EXPECT_TRUE(std::isnan(bessel_zero_ynu(2, -1)));
+}
+
+TEST(SpecialMiscTest, remaining_fox_hurwitz_lerch_polylog_guards) {
+    EXPECT_DOUBLE_EQ(fox_h(0.5, 1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(fox_h(0.5, 1.0, -0.2), 0.0);
+    EXPECT_DOUBLE_EQ(meijer_g(0.5, 1.0, 0.0), 0.0);
+    EXPECT_TRUE(std::isnan(zeta_hurwitz(1.0, 0.5)));
+    EXPECT_TRUE(std::isnan(lerch_phi(0.3, 2.0, 0.0)));
+    EXPECT_TRUE(std::isnan(lerch_phi(-1.0, 2.0, 0.5)));
+    EXPECT_TRUE(std::isnan(polylog(2, -1.0)));
+    EXPECT_TRUE(std::isnan(hypergeo_2f1(0.2, 0.3, 1.5, -1.0)));
+}
+
+TEST(SpecialMiscTest, remaining_mathieu_wave_negative_indices) {
+    EXPECT_TRUE(std::isnan(mathieu_ce(-1, 0.2, 0.0)));
+    EXPECT_TRUE(std::isnan(mathieu_se(-1, 0.2, 0.0)));
+    EXPECT_TRUE(std::isnan(mathieu_mc(-2, 0.2, 0.0)));
+    EXPECT_TRUE(std::isnan(mathieu_ms(-2, 0.2, 0.0)));
+    EXPECT_TRUE(std::isnan(spheroidal_lambda(2, -1, 1.0)));
+    EXPECT_TRUE(std::isnan(spheroidal_s1(2, -1, 1.0, 0.4)));
+    EXPECT_TRUE(std::isnan(spheroidal_s2(3, -1, 1.0, 0.4)));
+}
+
+TEST(SpecialMiscTest, remaining_kelvin_spherical_zero_and_neg) {
+    EXPECT_TRUE(std::isnan(kelvin_ker(1, 0.0)));
+    EXPECT_TRUE(std::isnan(kelvin_kei(0, 0.0)));
+    EXPECT_TRUE(std::isnan(kelvin_ker(2, -0.1)));
+    EXPECT_TRUE(std::isnan(spherical_yn(-1, 1.0)));
+    EXPECT_TRUE(std::isnan(spherical_kn(0, 0.0)));
+    EXPECT_TRUE(std::isnan(spherical_kn(2, 0.0)));
+}
+
+TEST(SpecialMiscTest, remaining_sph_bessel_and_harm_domain) {
+    EXPECT_TRUE(std::isnan(sph_bessel_j(-2, 1.0)));
+    EXPECT_TRUE(std::isnan(sph_bessel_y(0, -0.5)));
+    EXPECT_TRUE(std::isnan(sph_bessel_y(2, 0.0)));
+    EXPECT_DOUBLE_EQ(sph_bessel_j(0, 0.0), 1.0);
+    EXPECT_DOUBLE_EQ(sph_bessel_j(3, 0.0), 0.0);
+    EXPECT_TRUE(std::isnan(sph_harm(-1, 0, 0.4, 0.2)));
+    const auto y_neg = sph_harm_y(-1, 0, 0.5, 0.3);
+    EXPECT_TRUE(std::isnan(y_neg.real()));
+    EXPECT_TRUE(std::isnan(y_neg.imag()));
+}
+
+TEST(SpecialMiscTest, remaining_hypergeo_indexed_and_kummer_id) {
+    expect_finite(hypergeo_0f1n(0, 1.5, 0.2));
+    expect_finite(hypergeo_1f1n(0, 1.0, 0.3));
+    expect_finite(hypergeo_0f1n(-1, 2.5, 0.2));
+    EXPECT_NEAR(kummer_u(2.0, 3.0, 4.0), 1.0 / 16.0, 1e-12);
+    EXPECT_NEAR(kummer_u(0.5, 1.5, 4.0), 0.5, 1e-12);
+    EXPECT_TRUE(std::isnan(kummer_u(0.5, 1.5, -0.2)));
+}
+
+TEST(SpecialMiscTest, remaining_trigamma_beta_inc_outside) {
+    EXPECT_TRUE(std::isnan(trigamma(0.0)));
+    EXPECT_TRUE(std::isnan(polygamma(0, -1.0)));
+    EXPECT_TRUE(std::isnan(polygamma(3, 0.0)));
+    EXPECT_DOUBLE_EQ(beta_inc_reg(-0.5, 2.0, 3.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_inc_reg(1.5, 2.0, 3.0), 1.0);
+    EXPECT_DOUBLE_EQ(beta_inc(-0.2, 2.0, 3.0), 0.0);
+}

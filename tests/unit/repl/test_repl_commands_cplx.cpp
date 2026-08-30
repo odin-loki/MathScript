@@ -802,3 +802,13 @@ TEST(ReplCommandsTest, cplx_green_function_disk_noassign) {
     expect_error_contains(interp, "cplx_green_function_disk(0.5, 0, 0, missing)",
                           "cplx_green_function_disk");
 }
+
+TEST(ReplCommandsTest, cplx_contour_integral_oneoverz_im_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cplx_contour_integral_oneoverz_im()", "6");
+}
+
+TEST(ReplCommandsTest, cplx_line_integral_one_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cplx_line_integral_one()", "1");
+}

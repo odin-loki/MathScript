@@ -235,3 +235,52 @@ TEST(SpecialExtTest, bernoulli_euler_beyond_table) {
     EXPECT_NEAR(bernoulli_number(20), 0.0, 1e-15);
     EXPECT_NEAR(euler_number(20), 0.0, 1e-15);
 }
+
+TEST(SpecialExtTest, kummer_u_exact_identity) {
+    EXPECT_NEAR(kummer_u(2.0, 3.0, 4.0), std::pow(4.0, -2.0), 1e-12);
+    EXPECT_NEAR(kummer_u(1.0, 2.0, 5.0), 0.2, 1e-12);
+}
+
+TEST(SpecialExtTest, ellip_k_e_at_zero_modulus) {
+    EXPECT_NEAR(ellip_k(0.0), std::numbers::pi / 2.0, 1e-12);
+    EXPECT_NEAR(ellip_e(0.0), std::numbers::pi / 2.0, 1e-12);
+}
+
+TEST(SpecialExtTest, weierstrass_sigma_origin) {
+    EXPECT_NEAR(weierstrass_sigma(0.0, 2.0, 3.0), 0.0, 1e-15);
+    EXPECT_NEAR(weierstrass_sigma(1e-4, 0.0, 0.0), 1e-4, 1e-12);
+}
+
+TEST(SpecialExtTest, beta_inc_outside_unit_interval) {
+    EXPECT_NEAR(beta_inc_reg(-0.1, 2.0, 3.0), 0.0, 1e-15);
+    EXPECT_NEAR(beta_inc_reg(1.2, 2.0, 3.0), 1.0, 1e-15);
+    EXPECT_NEAR(beta_inc(1.2, 2.0, 3.0), beta_func(2.0, 3.0), 1e-12);
+}
+
+TEST(SpecialExtTest, hypergeo_indexed_n_zero) {
+    EXPECT_NEAR(hypergeo_0f1n(0, 1.5, 0.0), 1.0, 1e-15);
+    EXPECT_NEAR(hypergeo_1f1n(0, 2.0, 0.0), 1.0, 1e-15);
+}
+
+TEST(SpecialExtTest, pochhammer_and_falling_n_one) {
+    EXPECT_NEAR(pochhammer(7.0, 1), 7.0, 1e-15);
+    EXPECT_NEAR(falling_factorial(7.0, 1), 7.0, 1e-15);
+}
+
+TEST(SpecialExtTest, gamma_pole_and_rgamma_cancel) {
+    EXPECT_TRUE(std::isinf(gamma_func(0.0)));
+    EXPECT_EQ(rgamma(0.0), 0.0);
+    EXPECT_TRUE(std::isinf(log_gamma(0.0)));
+}
+
+TEST(SpecialExtTest, jacobi_sn_cn_dn_at_origin) {
+    EXPECT_NEAR(jacobi_sn(0.0, 0.7), 0.0, 1e-14);
+    EXPECT_NEAR(jacobi_cn(0.0, 0.7), 1.0, 1e-14);
+    EXPECT_NEAR(jacobi_dn(0.0, 0.7), 1.0, 1e-14);
+    EXPECT_NEAR(jacobi_am(0.0, 0.7), 0.0, 1e-14);
+}
+
+TEST(SpecialExtTest, sph_bessel_j0_limit) {
+    EXPECT_NEAR(sph_bessel_j(0, 0.0), 1.0, 1e-15);
+    EXPECT_NEAR(sph_bessel_j(0, 0.5), std::sin(0.5) / 0.5, 1e-14);
+}
