@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <map>
 #include <numeric>
+#include <span>
 #include <utility>
 #include "ms/poly/poly.hpp"
 
@@ -967,4 +968,137 @@ TEST(PolyFit, RecoversQuadratic) {
     for (size_t i = 0; i < xs.size(); ++i) {
         EXPECT_NEAR(eval_at(c, xs[i]), ys[i], 1e-8) << "i=" << i;
     }
+}
+
+TEST(PolyFit, DegreeZeroIsMean) {
+    const std::vector<double> xs{0.0, 1.0, 2.0, 3.0};
+    const std::vector<double> ys{2.0, 4.0, 6.0, 8.0};
+    const auto c = poly_fit(xs, ys, 0);
+    ASSERT_FALSE(c.empty());
+    EXPECT_NEAR(c[0], 5.0, 1e-9);
+}
+
+TEST(PolyFit, EmptyXsDegreeZero) {
+    const std::vector<double> xs;
+    const std::vector<double> ys;
+    const auto c = poly_fit(xs, ys, 0);
+    ASSERT_EQ(c.size(), 1u);
+    EXPECT_NEAR(c[0], 0.0, 1e-15);
+}
+
+TEST(PolyExtTest, empty_pow_monic_reverse_shift_scale) {
+    const auto pz = poly_pow({}, 3);
+    ASSERT_TRUE(pz.has_value());
+    expect_poly_near(*pz, {0.0});
+
+    expect_poly_near(poly_monic({}), {0.0});
+    expect_poly_near(poly_reverse({}), {0.0});
+    expect_poly_near(poly_shift({}, 2.0), {0.0});
+    expect_poly_near(poly_scale({}, 3.0), {0.0});
+}
+
+TEST(PolyExtTest, empty_lcm_sylvester_discriminant_squarefree) {
+    expect_poly_near(poly_lcm({}, {1.0, 1.0}), {0.0});
+    expect_poly_near(poly_lcm({1.0, 1.0}, {}), {0.0});
+    expect_poly_near(poly_lcm({0.0}, {1.0, 2.0}), {0.0});
+
+    const auto S = poly_sylvester({}, {1.0});
+    EXPECT_EQ(S.rows(), 1u);
+    EXPECT_EQ(S.cols(), 1u);
+
+    EXPECT_NEAR(poly_discriminant({5.0}), 0.0, 1e-15);
+    EXPECT_NEAR(poly_discriminant({}), 0.0, 1e-15);
+
+    expect_poly_near(poly_squarefree({}), {0.0});
+    expect_poly_near(poly_squarefree({4.0}), {4.0});
+}
+
+TEST(PolyExtTest, gcd_two_constants_is_one) {
+    const auto g = poly_gcd({6.0}, {15.0});
+    ASSERT_FALSE(g.empty());
+    EXPECT_NEAR(g[0], 1.0, 1e-12);
+}
+
+TEST(PolyExtTest, bernstein_invalid_indices) {
+    EXPECT_NEAR(bernstein(-1, 0, 0.5), 0.0, 1e-15);
+    EXPECT_NEAR(bernstein(3, -1, 0.5), 0.0, 1e-15);
+    EXPECT_NEAR(bernstein(2, 3, 0.4), 0.0, 1e-15);
+}
+
+TEST(PolyExtTest, roots_empty_constant_and_linear) {
+    EXPECT_TRUE(poly_roots({}).empty());
+    EXPECT_TRUE(poly_roots({7.0}).empty());
+    const auto r = poly_roots({-6.0, 2.0});
+    ASSERT_EQ(r.size(), 1u);
+    EXPECT_NEAR(r[0].real(), 3.0, 1e-12);
+    EXPECT_NEAR(r[0].imag(), 0.0, 1e-12);
+}
+
+TEST(PolyExtTest, div_quot_and_mod_remainder) {
+    // x^2 - 2 = (x - 1)(x + 1) + (-1);  { -2, 0, 1 } / { -1, 1 }
+    const std::vector<double> num{-2.0, 0.0, 1.0};
+    const std::vector<double> den{-1.0, 1.0};
+    const auto q = poly_div_quot(num, den);
+    const auto r = poly_mod(num, den);
+    ASSERT_FALSE(q.empty());
+    ASSERT_FALSE(r.empty());
+    const auto recon = poly_add(poly_mul(q, den), r);
+    expect_poly_near(recon, num, 1e-10);
+
+    const auto q_low = poly_div_quot({1.0}, {1.0, 1.0});
+    expect_poly_near(q_low, {0.0});
+    const auto r_low = poly_mod({3.0, 4.0}, {1.0, 2.0, 3.0});
+    expect_poly_near(r_low, {3.0, 4.0});
+}
+
+TEST(PolyExtTest, integ_empty_and_compose_empty) {
+    const auto ip = poly_integ({}, 5.0);
+    expect_poly_near(ip, {5.0});
+    expect_poly_near(poly_compose({}, {1.0, 1.0}), {0.0});
+    const auto pq = poly_compose({1.0, 2.0}, {0.0, 1.0});
+    expect_poly_near(pq, {1.0, 2.0});
+}
+
+TEST(PolyExtTest, eval_at_named_span_and_empty) {
+    const std::vector<double> coeffs{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> xs{0.0, 1.0, -1.0, 2.0};
+    const auto vals = poly_eval_at(coeffs, std::span<const double>(xs));
+    ASSERT_EQ(vals.size(), 4u);
+    EXPECT_NEAR(vals[0], 1.0, 1e-12);
+    EXPECT_NEAR(vals[1], 10.0, 1e-12);
+    const std::vector<double> none;
+    EXPECT_TRUE(poly_eval_at(coeffs, std::span<const double>(none)).empty());
+}
+
+TEST(PolyExtTest, cheb_expand_neg_zero_and_root_count) {
+    EXPECT_TRUE(poly_cheb_expand([](double) { return 1.0; }, -1).empty());
+    const auto c0 = poly_cheb_expand([](double x) { return x + 3.0; }, 0);
+    ASSERT_EQ(c0.size(), 1u);
+    EXPECT_NEAR(c0[0], 3.0, 1e-9);
+
+    const std::vector<double> p{2.0, -3.0, 1.0}; // (x-1)(x-2)
+    EXPECT_EQ(poly_root_count(p, 0.0, 3.0), 2);
+    EXPECT_EQ(poly_root_count(p, 3.0, 4.0), 0);
+}
+
+TEST(PolyPartialFractions, ConstantDenomIsQuotient) {
+    const std::vector<double> num{2.0, 4.0};
+    const std::vector<double> den{2.0};
+    const auto res = poly_partial_fractions(num, den);
+    expect_poly_near(res.quotient, {1.0, 2.0}, 1e-12);
+    EXPECT_TRUE(res.terms.empty());
+}
+
+TEST(PolyPartialFractions, EmptyNumeratorProper) {
+    const auto res = poly_partial_fractions({}, {-1.0, 1.0});
+    EXPECT_TRUE(res.quotient.empty());
+}
+
+TEST(PolyExtTest, lagrange_two_points_line) {
+    const std::vector<double> xs{0.0, 1.0};
+    const std::vector<double> ys{3.0, 5.0};
+    const auto c = poly_lagrange(xs, ys);
+    ASSERT_GE(c.size(), 1u);
+    EXPECT_NEAR(eval_at(c, 0.0), 3.0, 1e-8);
+    EXPECT_NEAR(eval_at(c, 1.0), 5.0, 1e-8);
 }

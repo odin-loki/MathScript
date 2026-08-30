@@ -1371,3 +1371,170 @@ TEST(ControlPlace, UncontrollableErrors) {
     auto K = place(A, B, desired);
     EXPECT_FALSE(K.has_value());
 }
+
+TEST(ControlTF, CubicPolesDurandKerner) {
+    auto sys = tf({1.0}, {1.0, 6.0, 11.0, 6.0});
+    auto p = poles(sys);
+    ASSERT_EQ(p.size(), 3u);
+    std::vector<double> reals = {p[0].real(), p[1].real(), p[2].real()};
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], -3.0, 1e-4);
+    EXPECT_NEAR(reals[1], -2.0, 1e-4);
+    EXPECT_NEAR(reals[2], -1.0, 1e-4);
+}
+
+TEST(ControlSS, ConstantTf2ssDummyState) {
+    auto sys = tf2ss(tf({4.0}, {2.0}));
+    EXPECT_EQ(sys.n, 1);
+    ASSERT_FALSE(sys.D.empty());
+    ASSERT_FALSE(sys.D[0].empty());
+    EXPECT_NEAR(sys.D[0][0], 2.0, 1e-12);
+}
+
+TEST(ControlSS, EmptyStateSs2tfUsesD) {
+    auto sys = ss({}, {}, {}, {{2.5}});
+    EXPECT_EQ(sys.n, 0);
+    auto g = ss2tf(sys);
+    ASSERT_FALSE(g.num.empty());
+    EXPECT_NEAR(g.num[0], 2.5, 1e-12);
+    ASSERT_FALSE(g.den.empty());
+    EXPECT_NEAR(g.den[0], 1.0, 1e-12);
+}
+
+TEST(ControlSS, ThirdOrderSs2tfDcGain) {
+    auto plant = tf({2.0}, {1.0, 6.0, 11.0, 6.0});
+    auto back = ss2tf(tf2ss(plant));
+    EXPECT_NEAR(dcgain(back), dcgain(plant), 1e-6);
+}
+
+TEST(ControlSS, OneByOneDimensions) {
+    auto sys = ss({{-2.0}}, {{1.0}}, {{3.0}}, {{0.5}});
+    EXPECT_EQ(sys.n, 1);
+    EXPECT_EQ(sys.m, 1);
+    EXPECT_EQ(sys.p, 1);
+}
+
+TEST(ControlLyap, EmptySystemReturnsEmpty) {
+    std::vector<std::vector<double>> A;
+    std::vector<std::vector<double>> Q;
+    auto X = lyap(A, Q);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_TRUE(X->empty());
+    auto Xd = dlyap(A, Q);
+    ASSERT_TRUE(Xd.has_value());
+    EXPECT_TRUE(Xd->empty());
+}
+
+TEST(ControlLyap, TwoByTwoDiagonalClosedForm) {
+    std::vector<std::vector<double>> A = {{-1.0, 0.0}, {0.0, -2.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = lyap(A, Q);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_NEAR((*X)[0][0], 0.5, 1e-8);
+    EXPECT_NEAR((*X)[1][1], 0.25, 1e-8);
+}
+
+TEST(ControlDare, TwoByTwoStablePlant) {
+    std::vector<std::vector<double>> A = {{0.5, 0.0}, {0.0, 0.4}};
+    std::vector<std::vector<double>> B = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = dare(A, B, Q, R);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_EQ(X->size(), 2u);
+    EXPECT_GT((*X)[0][0], 0.0);
+    EXPECT_GT((*X)[1][1], 0.0);
+}
+
+TEST(ControlRiccati, MultiInputUsesGainSearch) {
+    std::vector<std::vector<double>> A = {{-1.0, 0.1}, {0.0, -2.0}};
+    std::vector<std::vector<double>> B = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = riccati(A, B, Q, R);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_EQ(X->size(), 2u);
+    EXPECT_GT((*X)[0][0], 0.0);
+}
+
+TEST(ControlRiccati, ZeroBReturnsNoStabilisingGain) {
+    std::vector<std::vector<double>> A = {{0.0, 0.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> B = {{0.0, 0.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> Q = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> R = {{1.0, 0.0}, {0.0, 1.0}};
+    auto X = riccati(A, B, Q, R);
+    EXPECT_FALSE(X.has_value());
+}
+
+TEST(ControlPlace, ScalarOneByOne) {
+    std::vector<std::vector<double>> A = {{0.0}};
+    std::vector<std::vector<double>> B = {{1.0}};
+    std::vector<double> desired = {-4.0};
+    auto K = place(A, B, desired);
+    ASSERT_TRUE(K.has_value());
+    ASSERT_EQ(K->size(), 1u);
+    EXPECT_NEAR((*K)[0], 4.0, 1e-8);
+}
+
+TEST(ControlBode, TwoPointCustomGrid) {
+    auto sys = tf({1.0}, {1.0, 1.0});
+    auto bd = bode(sys, 0.1, 10.0, 2);
+    EXPECT_EQ(bd.w.size(), 2u);
+    EXPECT_EQ(bd.magnitude.size(), 2u);
+    EXPECT_EQ(bd.phase.size(), 2u);
+    EXPECT_NEAR(bd.w[0], 0.1, 1e-12);
+    EXPECT_NEAR(bd.w[1], 10.0, 1e-12);
+}
+
+TEST(ControlPID, HighBandwidthGainsScale) {
+    auto plant = tf({1.0}, {1.0, 1.0});
+    auto slow = pidtune(plant, 1.0);
+    auto fast = pidtune(plant, 10.0);
+    EXPECT_GT(fast.Kp, 0.0);
+    EXPECT_GT(fast.Ki, slow.Ki);
+}
+
+TEST(ControlCtrbObsv, ScalarRanks) {
+    std::vector<std::vector<double>> A = {{-2.0}};
+    std::vector<std::vector<double>> B = {{1.0}};
+    std::vector<std::vector<double>> C = {{1.0}};
+    auto Co = ctrb(A, B);
+    ASSERT_EQ(Co.size(), 1u);
+    ASSERT_EQ(Co[0].size(), 1u);
+    EXPECT_NEAR(Co[0][0], 1.0, 1e-12);
+    auto Ob = obsv(A, C);
+    ASSERT_EQ(Ob.size(), 1u);
+    EXPECT_NEAR(Ob[0][0], 1.0, 1e-12);
+    EXPECT_TRUE(is_controllable(A, B));
+    EXPECT_TRUE(is_observable(A, C));
+}
+
+TEST(ControlCtrbObsv, ZeroInputUncontrollable) {
+    std::vector<std::vector<double>> A = {{-1.0}};
+    std::vector<std::vector<double>> B = {{0.0}};
+    EXPECT_FALSE(is_controllable(A, B));
+}
+
+TEST(ControlCtrbObsv, TwoInputMatrixWidth) {
+    std::vector<std::vector<double>> A = {{0.0, 1.0}, {0.0, 0.0}};
+    std::vector<std::vector<double>> B = {{1.0, 0.0}, {0.0, 1.0}};
+    auto Co = ctrb(A, B);
+    ASSERT_EQ(Co.size(), 2u);
+    ASSERT_EQ(Co[0].size(), 4u);
+    EXPECT_TRUE(is_controllable(A, B));
+}
+
+TEST(ControlStepInfo, FallingStepRiseTime) {
+    std::vector<double> t = {0.0, 1.0, 2.0};
+    std::vector<double> y = {1.0, 0.5, 0.0};
+    auto info = step_info(t, y, 0.0, 2.0);
+    EXPECT_TRUE(std::isfinite(info.rise_time));
+    EXPECT_GT(info.rise_time, 0.0);
+}
+
+TEST(ControlStepInfo, AlreadyInBandSettlesAtStart) {
+    std::vector<double> t = {0.0, 1.0, 2.0};
+    std::vector<double> y = {0.99, 1.0, 1.0};
+    auto info = step_info(t, y, 1.0, 5.0);
+    EXPECT_NEAR(info.settling_time, 0.0, 1e-12);
+}

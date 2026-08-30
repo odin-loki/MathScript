@@ -581,3 +581,209 @@ TEST(FemSolve3D, poisson_sin_pi) {
             0.35);
     }
 }
+
+TEST(FemLagrangeBasis, nonzero_degree_rejected) {
+    LagrangeBasis basis;
+    basis.degree = 2;
+    EXPECT_FALSE(basis.evaluate(0.5).has_value());
+    EXPECT_FALSE(basis.derivative(0.25).has_value());
+}
+
+TEST(FemMesh1D, single_element) {
+    const auto mesh_r = mesh1d(0.0, 1.0, 1);
+    ASSERT_TRUE(mesh_r.has_value());
+    EXPECT_EQ(mesh_r->nodes.size(), 2u);
+    EXPECT_EQ(mesh_r->connectivity.size(), 1u);
+    auto K = assemble_stiffness_1d(*mesh_r);
+    ASSERT_TRUE(K.has_value());
+    EXPECT_EQ(K->rows(), 2u);
+}
+
+TEST(FemMesh2D, single_cell) {
+    const auto mesh_r = mesh2d_rectangular(0.0, 0.0, 1.0, 1.0, 1, 1);
+    ASSERT_TRUE(mesh_r.has_value());
+    EXPECT_EQ(mesh_r->nodes.size(), 4u);
+    EXPECT_EQ(mesh_r->triangles.size(), 2u);
+    auto K = assemble_stiffness_2d(*mesh_r);
+    ASSERT_TRUE(K.has_value());
+}
+
+TEST(FemMesh3D, single_cell) {
+    const auto mesh_r = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1, 1, 1);
+    ASSERT_TRUE(mesh_r.has_value());
+    EXPECT_EQ(mesh_r->nodes.size(), 8u);
+    EXPECT_FALSE(mesh_r->tetrahedra.empty());
+    auto K = assemble_stiffness_3d(*mesh_r);
+    ASSERT_TRUE(K.has_value());
+}
+
+TEST(FemStiffness1D, empty_mesh_errors) {
+    Mesh1D empty;
+    EXPECT_FALSE(assemble_stiffness_1d(empty).has_value());
+    Mesh1D nodes_only;
+    nodes_only.nodes = {0.0, 1.0};
+    EXPECT_FALSE(assemble_stiffness_1d(nodes_only).has_value());
+}
+
+TEST(FemStiffness1D, invalid_connectivity) {
+    Mesh1D mesh;
+    mesh.nodes = {0.0, 1.0};
+    mesh.connectivity = {{{0, 5}}};
+    EXPECT_FALSE(assemble_stiffness_1d(mesh).has_value());
+}
+
+TEST(FemStiffness1D, nonpositive_length) {
+    Mesh1D mesh;
+    mesh.nodes = {0.0, 1.0};
+    mesh.connectivity = {{{1, 0}}};
+    EXPECT_FALSE(assemble_stiffness_1d(mesh).has_value());
+}
+
+TEST(FemLoad1D, empty_mesh_errors) {
+    Mesh1D empty;
+    EXPECT_FALSE(assemble_load_1d(empty, [](double) { return 1.0; }).has_value());
+}
+
+TEST(FemLoad1D, nonpositive_length) {
+    Mesh1D mesh;
+    mesh.nodes = {0.0, 1.0};
+    mesh.connectivity = {{{1, 0}}};
+    EXPECT_FALSE(assemble_load_1d(mesh, [](double) { return 1.0; }).has_value());
+}
+
+TEST(FemStiffness2D, empty_mesh_errors) {
+    Mesh2D empty;
+    EXPECT_FALSE(assemble_stiffness_2d(empty).has_value());
+    Mesh2D nodes_only;
+    nodes_only.nodes = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    EXPECT_FALSE(assemble_stiffness_2d(nodes_only).has_value());
+}
+
+TEST(FemStiffness2D, invalid_connectivity) {
+    Mesh2D mesh;
+    mesh.nodes = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    mesh.triangles = {{{0, 1, 9}}};
+    EXPECT_FALSE(assemble_stiffness_2d(mesh).has_value());
+}
+
+TEST(FemStiffness2D, degenerate_triangle) {
+    Mesh2D mesh;
+    mesh.nodes = {{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}};
+    mesh.triangles = {{{0, 1, 2}}};
+    EXPECT_FALSE(assemble_stiffness_2d(mesh).has_value());
+}
+
+TEST(FemLoad2D, empty_mesh_errors) {
+    Mesh2D empty;
+    EXPECT_FALSE(assemble_load_2d(empty, [](double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemLoad2D, degenerate_triangle) {
+    Mesh2D mesh;
+    mesh.nodes = {{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}};
+    mesh.triangles = {{{0, 1, 2}}};
+    EXPECT_FALSE(assemble_load_2d(mesh, [](double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemStiffness3D, empty_mesh_errors) {
+    Mesh3D empty;
+    EXPECT_FALSE(assemble_stiffness_3d(empty).has_value());
+    Mesh3D nodes_only;
+    nodes_only.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    EXPECT_FALSE(assemble_stiffness_3d(nodes_only).has_value());
+}
+
+TEST(FemStiffness3D, invalid_connectivity) {
+    Mesh3D mesh;
+    mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    mesh.tetrahedra = {{{0, 1, 2, 9}}};
+    EXPECT_FALSE(assemble_stiffness_3d(mesh).has_value());
+}
+
+TEST(FemStiffness3D, degenerate_tetrahedron) {
+    Mesh3D mesh;
+    mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0.5, 0.5, 0}};
+    mesh.tetrahedra = {{{0, 1, 2, 3}}};
+    EXPECT_FALSE(assemble_stiffness_3d(mesh).has_value());
+}
+
+TEST(FemLoad3D, empty_mesh_errors) {
+    Mesh3D empty;
+    EXPECT_FALSE(assemble_load_3d(empty, [](double, double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemLoad3D, invalid_connectivity) {
+    Mesh3D mesh;
+    mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    mesh.tetrahedra = {{{0, 1, 2, 9}}};
+    EXPECT_FALSE(assemble_load_3d(mesh, [](double, double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemLoad3D, degenerate_tetrahedron) {
+    Mesh3D mesh;
+    mesh.nodes = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0.5, 0.5, 0}};
+    mesh.tetrahedra = {{{0, 1, 2, 3}}};
+    EXPECT_FALSE(assemble_load_3d(mesh, [](double, double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemDirichlet, rejects_nonsquare_K) {
+    ColMatrix<double> K(2, 3, 0.0);
+    ColMatrix<double> f(2, 1, 0.0);
+    EXPECT_FALSE(apply_dirichlet(K, f, {0}, {0.0}).has_value());
+}
+
+TEST(FemDirichlet, rejects_f_shape) {
+    ColMatrix<double> K(2, 2, 0.0);
+    ColMatrix<double> f(2, 2, 0.0);
+    EXPECT_FALSE(apply_dirichlet(K, f, {0}, {1.0}).has_value());
+}
+
+TEST(FemDirichlet, rejects_size_mismatch) {
+    ColMatrix<double> K(2, 2, 0.0);
+    ColMatrix<double> f(2, 1, 0.0);
+    EXPECT_FALSE(apply_dirichlet(K, f, {0, 1}, {1.0}).has_value());
+}
+
+TEST(FemDirichlet, rejects_out_of_range) {
+    ColMatrix<double> K(2, 2, 0.0);
+    ColMatrix<double> f(2, 1, 0.0);
+    EXPECT_FALSE(apply_dirichlet(K, f, {5}, {1.0}).has_value());
+}
+
+TEST(FemSolve, rejects_nonsquare) {
+    ColMatrix<double> K(2, 3, 0.0);
+    ColMatrix<double> f(2, 1, 0.0);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemSolve, rejects_f_mismatch) {
+    ColMatrix<double> K(2, 2, 0.0);
+    K(0, 0) = 1.0;
+    K(1, 1) = 1.0;
+    ColMatrix<double> f(3, 1, 0.0);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemSolve, empty_system_errors) {
+    ColMatrix<double> K(0, 0);
+    ColMatrix<double> f(0, 1);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemSolve, singular_tridiagonal) {
+    ColMatrix<double> K(2, 2, 0.0);
+    ColMatrix<double> f(2, 1, 1.0);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemSolve, singular_one_by_one) {
+    ColMatrix<double> K(1, 1, 0.0);
+    ColMatrix<double> f(1, 1, 1.0);
+    EXPECT_FALSE(solve_fem(K, f).has_value());
+}
+
+TEST(FemSolve3D, rejects_mismatch) {
+    ColMatrix<double> K(2, 2, 0.0);
+    ColMatrix<double> f(1, 1, 0.0);
+    EXPECT_FALSE(solve_fem_3d(K, f).has_value());
+}

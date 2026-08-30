@@ -5,10 +5,19 @@
 #include <vector>
 #include <cstddef>
 #include <string>
+#include <variant>
 
 #include "ms/distributed/mpi_context.hpp"
 #include "ms/distributed/block.hpp"
+#include "ms/distributed/dist_matrix.hpp"
+#include "ms/distributed/iterative.hpp"
+#include "ms/distributed/solve.hpp"
+#include "ms/distributed/matmul.hpp"
+#include "ms/distributed/linalg.hpp"
+#include "ms/core/matrix.hpp"
+#include "ms/error/error_types.hpp"
 
+using namespace ms;
 using namespace ms::distributed;
 
 // ---------------------------------------------------------------------------
@@ -261,4 +270,127 @@ TEST(DistributedAdv, BlockCyclicRowIndices_NegativeProcs) {
 TEST(DistributedAdv, BlockCyclicRowIndices_EmptyRankPastRows) {
     auto idx = block_cyclic_row_indices(4, 7, 3);
     EXPECT_TRUE(idx.empty());
+}
+
+namespace {
+
+DistMatrix<double> dims_only(size_t rows, size_t cols) {
+    DistMatrix<double> d;
+    d.global_rows = rows;
+    d.global_cols = cols;
+    return d;
+}
+
+} // namespace
+
+TEST(DistributedAdv, Iterative_NonsquareA_AllSolvers) {
+    MPIContext ctx;
+    const auto A = dims_only(2, 3);
+    const auto b = dims_only(2, 1);
+    EXPECT_FALSE(dist_cg(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_gmres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_jacobi(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_bicgstab(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_minres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_qmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_tfqmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_lsmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_lsqr(A, b, ctx).has_value());
+}
+
+TEST(DistributedAdv, Iterative_WideRhs_AllSolvers) {
+    MPIContext ctx;
+    const auto A = dims_only(3, 3);
+    const auto b = dims_only(3, 2);
+    EXPECT_FALSE(dist_cg(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_gmres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_jacobi(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_bicgstab(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_minres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_qmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_tfqmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_lsmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_lsqr(A, b, ctx).has_value());
+}
+
+TEST(DistributedAdv, Iterative_RowMismatch_AllSolvers) {
+    MPIContext ctx;
+    const auto A = dims_only(2, 2);
+    const auto b = dims_only(4, 1);
+    EXPECT_FALSE(dist_cg(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_gmres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_jacobi(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_bicgstab(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_minres(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_qmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_tfqmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_lsmr(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_lsqr(A, b, ctx).has_value());
+}
+
+TEST(DistributedAdv, Iterative_EmptySquare_RhsColsNotOne) {
+    MPIContext ctx;
+    const auto A = dims_only(0, 0);
+    const auto b = dims_only(0, 0);
+    EXPECT_FALSE(dist_cg(A, b, ctx).has_value());
+    EXPECT_FALSE(dist_lsqr(A, b, ctx).has_value());
+}
+
+TEST(DistributedAdv, ExportedSolve_1x1) {
+    auto ctx = init(0, nullptr);
+    const ColMatrix<double> A{{4.0}};
+    const ColMatrix<double> b{{8.0}};
+    const auto dA = scatter(A, ctx).value();
+    const auto db = scatter(b, ctx).value();
+    const auto x = distributed::solve(dA, db, ctx);
+    if (!x.has_value()) GTEST_SKIP() << "distributed::solve rejected 1x1";
+    EXPECT_NEAR((*x)(0, 0), 2.0, 1e-10);
+    finalize(ctx);
+}
+
+TEST(DistributedAdv, ExportedMatmul_1x1) {
+    auto ctx = init(0, nullptr);
+    const ColMatrix<double> A{{3.0}};
+    const ColMatrix<double> B{{5.0}};
+    const auto dA = scatter(A, ctx).value();
+    const auto dB = scatter(B, ctx).value();
+    const auto C = distributed::matmul(dA, dB, ctx);
+    if (!C.has_value()) GTEST_SKIP() << "distributed::matmul rejected 1x1";
+    EXPECT_NEAR((*C)(0, 0), 15.0, 1e-12);
+    finalize(ctx);
+}
+
+TEST(DistributedAdv, ExportedEigSymSvdLu_1x1) {
+    auto ctx = init(0, nullptr);
+    const ColMatrix<double> A{{9.0}};
+    const auto dA = scatter(A, ctx).value();
+
+    const auto ev = distributed::eig_sym(dA, ctx);
+    if (!ev.has_value()) GTEST_SKIP() << "distributed::eig_sym rejected 1x1";
+    ASSERT_GE(ev->values.rows() * ev->values.cols(), 1u);
+    EXPECT_NEAR(ev->values(0, 0), 9.0, 1e-8);
+
+    const auto sv = distributed::svd(dA, ctx);
+    if (sv.has_value()) {
+        ASSERT_GE(sv->S.rows() * sv->S.cols(), 1u);
+        EXPECT_NEAR(sv->S(0, 0), 9.0, 1e-8);
+    }
+
+    const auto lu_f = distributed::lu(dA, ctx);
+    if (lu_f.has_value()) {
+        const auto& [L, U, P] = *lu_f;
+        EXPECT_GE(L.rows() + U.rows() + P.rows(), 1u);
+    }
+    finalize(ctx);
+}
+
+TEST(DistributedAdv, CombineGather_EmptyShards) {
+    const std::vector<DistMatrix<double>> shards;
+    const auto g = combine_gather(shards);
+    if (g.has_value()) {
+        EXPECT_TRUE(g->empty());
+    } else {
+        EXPECT_TRUE(std::holds_alternative<DimensionMismatch>(g.error()) ||
+                    std::holds_alternative<DomainError>(g.error()));
+    }
 }

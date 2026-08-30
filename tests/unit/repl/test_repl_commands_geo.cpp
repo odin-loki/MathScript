@@ -4086,3 +4086,9 @@ TEST(ReplCommandsTest, geo_clip_polygon_noassign) {
     expect_ok(interp, "bad = [0, 0, 0; 1, 0, 0]");
     expect_error_contains(interp, "geo_clip_polygon(bad, win)", "Nx2");
 }
+
+TEST(ReplCommandsTest, geo_dist2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_dist2d(0, 0, 3, 4)", "5");
+    expect_error_contains(interp, "geo_dist2d(0, 0, 3, missing)", "geo_dist2d");
+}

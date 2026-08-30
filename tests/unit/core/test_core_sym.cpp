@@ -188,3 +188,44 @@ TEST(SymTest, substitute_in_cos_sin_sqrt) {
     const auto replaced = sym_substitute(expr, "x", sym_const(0.25));
     EXPECT_NEAR(sym_eval(replaced, {}), std::cos(0.25) + std::sin(0.25) * 0.5, 1e-12);
 }
+
+TEST(SymTest, substitute_in_add_mul_and_unused_trig) {
+    const auto expr = sym_mul(sym_add(sym_var("x"), sym_var("y")), sym_tan(sym_var("y")));
+    const auto replaced = sym_substitute(expr, "x", sym_const(1.0));
+    EXPECT_NEAR(sym_eval(replaced, {{"y", 0.3}}), (1.0 + 0.3) * std::tan(0.3), 1e-12);
+}
+
+TEST(SymTest, eval_all_unaries_at_quarter) {
+    const std::map<std::string, double> env{{"x", 0.25}};
+    EXPECT_NEAR(sym_eval(sym_sin(sym_var("x")), env), std::sin(0.25), 1e-12);
+    EXPECT_NEAR(sym_eval(sym_cos(sym_var("x")), env), std::cos(0.25), 1e-12);
+    EXPECT_NEAR(sym_eval(sym_tan(sym_var("x")), env), std::tan(0.25), 1e-12);
+    EXPECT_NEAR(sym_eval(sym_exp(sym_var("x")), env), std::exp(0.25), 1e-12);
+    EXPECT_NEAR(sym_eval(sym_log(sym_var("x")), env), std::log(0.25), 1e-12);
+    EXPECT_NEAR(sym_eval(sym_sqrt(sym_var("x")), env), 0.5, 1e-12);
+}
+
+TEST(SymTest, to_string_contains_ops_for_mixed_tree) {
+    const auto expr = sym_div(sym_sub(sym_pow(sym_var("x"), sym_const(2.0)), sym_const(1.0)),
+                              sym_add(sym_var("x"), sym_const(1.0)));
+    const auto text = sym_to_string(expr);
+    EXPECT_NE(text.find("x"), std::string::npos);
+    EXPECT_FALSE(text.empty());
+}
+
+TEST(SymTest, eval_deriv_node_of_square) {
+    const auto d = sym_deriv(sym_mul(sym_var("x"), sym_var("x")), "x");
+    EXPECT_NEAR(sym_eval(d, {{"x", 5.0}}), 10.0, 1e-12);
+}
+
+TEST(SymTest, substitute_const_into_neg_and_log) {
+    const auto expr = sym_neg(sym_log(sym_var("x")));
+    const auto replaced = sym_substitute(expr, "x", sym_const(std::exp(1.0)));
+    EXPECT_NEAR(sym_eval(replaced, {}), -1.0, 1e-12);
+}
+
+TEST(SymTest, simplify_pow_one_base_is_one) {
+    const auto folded = sym_simplify(sym_pow(sym_const(1.0), sym_var("x")));
+    EXPECT_EQ(folded.op, SymOp::Const);
+    EXPECT_NEAR(sym_eval(folded, {{"x", 9.0}}), 1.0, 1e-12);
+}

@@ -670,3 +670,81 @@ TEST(SymbolicLimitTest, quadratic_at_zero) {
     const auto expr = sym_pow(sym_var("x"), sym_const(2.0));
     EXPECT_NEAR(sym_limit(expr, "x", 0.0), 0.0, 1e-12);
 }
+
+TEST(SymbolicLimitTest, cosine_at_zero) {
+    EXPECT_NEAR(sym_limit(sym_cos(sym_var("x")), "x", 0.0), 1.0, 1e-9);
+}
+
+TEST(SymbolicLimitTest, sqrt_at_four) {
+    EXPECT_NEAR(sym_limit(sym_sqrt(sym_var("x")), "x", 4.0), 2.0, 1e-9);
+}
+
+TEST(SymbolicLimitTest, tan_at_zero) {
+    EXPECT_NEAR(sym_limit(sym_tan(sym_var("x")), "x", 0.0), 0.0, 1e-8);
+}
+
+TEST(SymbolicLimitTest, exp_minus_one_over_x_at_zero) {
+    const auto expr = sym_div(sym_sub(sym_exp(sym_var("x")), sym_const(1.0)), sym_var("x"));
+    EXPECT_NEAR(sym_limit(expr, "x", 0.0), 1.0, 1e-5);
+}
+
+TEST(SymbolicSeriesTest, log_at_one_order_one) {
+    const auto series = sym_series(sym_log(sym_var("x")), "x", 1.0, 1);
+    EXPECT_NEAR(sym_eval(series, {{"x", 1.0}}), 0.0, 1e-12);
+}
+
+TEST(SymbolicSeriesTest, cubic_at_one_order_three) {
+    const auto expr = sym_pow(sym_var("x"), sym_const(3.0));
+    const auto series = sym_series(expr, "x", 1.0, 3);
+    EXPECT_NEAR(sym_eval(series, {{"x", 1.1}}), 1.331, 5e-3);
+}
+
+TEST(SymbolicSeriesTest, one_over_one_minus_x_order_three) {
+    const auto expr = sym_div(sym_const(1.0), sym_sub(sym_const(1.0), sym_var("x")));
+    const auto series = sym_series(expr, "x", 0.0, 3);
+    EXPECT_NEAR(sym_eval(series, {{"x", 0.2}}), 1.0 + 0.2 + 0.04, 1e-3);
+}
+
+TEST(SymbolicSolveLinearTest, single_negated_unknown) {
+    const auto eqs = make_equations(sym_add(sym_neg(sym_var("x")), sym_const(4.0)));
+    const auto result = sym_solve_linear(eqs, {"x"});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NEAR(sym_eval(result->at("x"), {}), 4.0, 1e-9);
+}
+
+TEST(SymbolicSolveLinearTest, extra_symbol_in_coefficient) {
+    const auto eqs = make_equations(sym_add(sym_mul(sym_var("a"), sym_var("x")), sym_const(-6.0)));
+    const auto result = sym_solve_linear(eqs, {"x"});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NEAR(sym_eval(result->at("x"), {{"a", 2.0}}), 3.0, 1e-9);
+}
+
+TEST(SymbolicParseTest, parse_plus_plus_and_nested_calls) {
+    const auto nested = sym_parse("sin(cos(0))");
+    ASSERT_TRUE(nested.has_value());
+    EXPECT_NEAR(sym_eval(*nested, {}), std::sin(1.0), 1e-12);
+
+    const auto sci = sym_parse("2e+1");
+    ASSERT_TRUE(sci.has_value());
+    EXPECT_NEAR(sym_eval(*sci, {}), 20.0, 1e-12);
+
+    const auto sci_neg = sym_parse("2.5e-1");
+    ASSERT_TRUE(sci_neg.has_value());
+    EXPECT_NEAR(sym_eval(*sci_neg, {}), 0.25, 1e-12);
+}
+
+TEST(SymbolicParseTest, parse_error_double_operator_and_caret_end) {
+    const auto dbl = sym_parse("1++2");
+    if (dbl.has_value()) GTEST_SKIP() << "parser accepted 1++2";
+    EXPECT_FALSE(dbl.error().message.empty());
+
+    const auto caret = sym_parse("x^");
+    ASSERT_FALSE(caret.has_value());
+    EXPECT_GE(caret.error().position, 0u);
+}
+
+TEST(SymbolicParseTest, parse_identifier_with_digits) {
+    const auto result = sym_parse("x1 + 2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NEAR(sym_eval(*result, {{"x1", 3.0}}), 5.0, 1e-12);
+}

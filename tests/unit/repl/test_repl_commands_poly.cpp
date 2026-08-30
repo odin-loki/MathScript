@@ -4762,3 +4762,10 @@ TEST(ReplCommandsTest, poly_resultant_noassign) {
     expect_contains(interp, "poly_resultant([6; -5; 1], [10; -7; 1])", "0");
     expect_error_contains(interp, "poly_resultant(no_such_matrix, [1; 1])", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, poly_bernstein_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_bernstein(3, 1, 0.5)", "0.375");
+    expect_error_contains(interp, "poly_bernstein(1.5, 1, 0.5)", "non-negative integer n");
+    expect_error_contains(interp, "poly_bernstein(3, 1, missing)", "poly_bernstein(n,i,x)");
+}

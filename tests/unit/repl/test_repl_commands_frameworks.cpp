@@ -3890,3 +3890,103 @@ TEST(ReplCommandsTest, session_object_clear_noassign) {
     expect_error_contains(interp, "session_object_clear(tb, extra)",
                           "expected session_object_clear(handle)");
 }
+
+TEST(ReplCommandsTest, cellmemory_step_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cellmemory_new(cm, 1, 2)");
+    expect_contains(interp, "cellmemory_step(cm, [1])", "state =");
+    expect_error_contains(interp, "cellmemory_step(cm)",
+                          "expected cellmemory_step(handle, input_matrix)");
+}
+
+TEST(ReplCommandsTest, cellmemory_recall_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cellmemory_new(cm, 1, 2)");
+    expect_contains(interp, "cellmemory_recall(cm, 1)", "recall =");
+    expect_error_contains(interp, "cellmemory_recall(cm)",
+                          "expected cellmemory_recall(handle, time_scale)");
+}
+
+TEST(ReplCommandsTest, cellmemory_consolidate_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cellmemory_new(cm, 1, 2)");
+    expect_contains(interp, "cellmemory_consolidate(cm)", "consolidated");
+    expect_error_contains(interp, "cellmemory_consolidate(cm, 1)",
+                          "expected cellmemory_consolidate(handle)");
+}
+
+TEST(ReplCommandsTest, cellmemory_memory_dim_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cellmemory_new(cm, 1, 2)");
+    expect_contains(interp, "cellmemory_memory_dim(cm)", "2");
+    expect_error_contains(interp, "cellmemory_memory_dim(cm, 1)",
+                          "expected cellmemory_memory_dim(handle)");
+}
+
+TEST(ReplCommandsTest, cellmemory_time_scales_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cellmemory_new(cm, 1, 2)");
+    expect_contains(interp, "cellmemory_time_scales(cm)", "[");
+    expect_error_contains(interp, "cellmemory_time_scales(cm, 1)",
+                          "expected cellmemory_time_scales(handle)");
+}
+
+TEST(ReplCommandsTest, cluster_replicate_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "cluster_new(cl, 3, 42)");
+    expect_ok(interp, "cluster_replicate(cl, 0, \"cmd\")");
+    expect_error_contains(interp, "cluster_replicate(cl)",
+                          "expected cluster_replicate(handle, leader_id, \"command\")");
+}
+
+TEST(ReplCommandsTest, difmodel_update_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "difmodel_new(dm, 1, 1, 2, 0.1)");
+    expect_contains(interp, "difmodel_update(dm, [1], [0])", "ok");
+    expect_error_contains(interp, "difmodel_update(dm, [1])",
+                          "expected difmodel_update(handle, x_matrix, y_matrix)");
+}
+
+TEST(ReplCommandsTest, difmodel_predict_interval_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "difmodel_new(dm, 1, 1, 2, 0.1)");
+    expect_contains(interp, "difmodel_predict_interval(dm, [1])", "mean =");
+    expect_contains(interp, "difmodel_predict_interval(dm, [1])", "lower =");
+    expect_contains(interp, "difmodel_predict_interval(dm, [1])", "upper =");
+    expect_error_contains(interp, "difmodel_predict_interval(dm)",
+                          "expected difmodel_predict_interval(handle, x_matrix)");
+}
+
+TEST(ReplCommandsTest, difmodel_ood_score_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "difmodel_new(dm, 1, 1, 2, 0.1)");
+    expect_ok(interp, "difmodel_ood_score(dm, [1])");
+    expect_error_contains(interp, "difmodel_ood_score(dm)",
+                          "expected difmodel_ood_score(handle, x_matrix)");
+}
+
+TEST(ReplCommandsTest, difmodel_gh_gate_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "difmodel_new(dm, 1, 1, 2, 0.1)");
+    expect_ok(interp, "difmodel_gh_gate(dm, [1])");
+    expect_error_contains(interp, "difmodel_gh_gate(dm)",
+                          "expected difmodel_gh_gate(handle, x_matrix)");
+}
+
+TEST(ReplCommandsTest, gria_gf2n_mul_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gria_gf2n_mul(1, 2, 7)");
+    expect_error_contains(interp, "gria_gf2n_mul(1, 2)", "expected gria_gf2n_mul(a, b, poly)");
+}
+
+TEST(ReplCommandsTest, gria_gf2n_pow_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gria_gf2n_pow(2, 3, 7)");
+    expect_error_contains(interp, "gria_gf2n_pow(2, 3)", "expected gria_gf2n_pow(a, b, poly)");
+}
+
+TEST(ReplCommandsTest, gria_gf2n_inv_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "gria_gf2n_inv(3, 7)");
+    expect_error_contains(interp, "gria_gf2n_inv(3)", "expected gria_gf2n_inv(a, poly)");
+}

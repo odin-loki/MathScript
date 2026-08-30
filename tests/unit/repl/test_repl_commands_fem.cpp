@@ -4743,3 +4743,10 @@ TEST(ReplCommandsTest, fem_solve_31) {
     expect_ok(interp, "u2 = fem_solve(K2, f2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
+
+TEST(ReplCommandsTest, fem_poisson3d_senary_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "fem_poisson3d(2, 2, 2, 0, 0, 0)", "u =");
+    expect_error_contains(interp, "fem_poisson3d(1.5, 2, 2, 0, 0, 0)",
+                          "expected non-negative integer nx, ny, and nz");
+}

@@ -3503,3 +3503,118 @@ TEST(ReplCommandsTest, finance_bond_price_noassign) {
     expect_error_contains(interp, "finance_bond_price(0.05, 0.05, missing)",
                           "finance_bond_price");
 }
+
+TEST(ReplCommandsTest, finance_compound_4arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_compound(100, 0.1, 1, 4)", "110.38");
+    expect_error_contains(interp, "finance_compound(100, 0.1, 1, missing)",
+                          "expected finance_compound(principal,rate,n_periods,compounds_per_period)");
+    expect_error_contains(interp, "finance_compound(100, 0.1, 1.5, 4)",
+                          "expected non-negative integer periods n_periods");
+    expect_error_contains(interp, "finance_compound(100, 0.1, 1, 0)",
+                          "expected positive integer compounds_per_period");
+}
+
+TEST(ReplCommandsTest, finance_compound_3arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_compound(100, 0.1, 3)", "133.1");
+    expect_error_contains(interp, "finance_compound(100, 0.1, missing)",
+                          "expected finance_compound(principal,rate,n_periods)");
+    expect_error_contains(interp, "finance_compound(100, 0.1, 1.5)",
+                          "expected non-negative integer periods n_periods");
+}
+
+TEST(ReplCommandsTest, finance_pv_4arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_pv(0, 5, -10, 0)", "50");
+    expect_error_contains(interp, "finance_pv(0, 5, -10, missing)",
+                          "expected finance_pv(rate,n,pmt,fv)");
+    expect_error_contains(interp, "finance_pv(0, 1.5, -10, 0)",
+                          "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, finance_pv_3arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_pv(0, 5, -10)", "50");
+    expect_error_contains(interp, "finance_pv(0, 5, missing)",
+                          "expected finance_pv(rate,n,pmt)");
+    expect_error_contains(interp, "finance_pv(0, 1.5, -10)",
+                          "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, finance_fv_annuity_4arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_fv_annuity(0, 5, -10, 0)", "50");
+    expect_error_contains(interp, "finance_fv_annuity(0, 5, -10, missing)",
+                          "expected finance_fv_annuity(rate,n,pmt,pv0)");
+    expect_error_contains(interp, "finance_fv_annuity(0, 1.5, -10, 0)",
+                          "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, finance_fv_annuity_3arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_fv_annuity(0, 5, -10)", "50");
+    expect_error_contains(interp, "finance_fv_annuity(0, 5, missing)",
+                          "expected finance_fv_annuity(rate,n,pmt)");
+    expect_error_contains(interp, "finance_fv_annuity(0, 1.5, -10)",
+                          "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, finance_pmt_annuity_4arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_pmt_annuity(0, 5, -50, 0)", "10");
+    expect_error_contains(interp, "finance_pmt_annuity(0, 5, -50, missing)",
+                          "expected finance_pmt_annuity(rate,n,pv0,fv)");
+    expect_error_contains(interp, "finance_pmt_annuity(0, 1.5, -50, 0)",
+                          "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, finance_pmt_annuity_3arg_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_pmt_annuity(0, 5, -50)", "10");
+    expect_error_contains(interp, "finance_pmt_annuity(0, 5, missing)",
+                          "expected finance_pmt_annuity(rate,n,pv0)");
+    expect_error_contains(interp, "finance_pmt_annuity(0, 1.5, -50)",
+                          "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, finance_bond_convexity_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bond_convexity(0, 0.05, 5)", "27.210884");
+    expect_error_contains(interp, "finance_bond_convexity(0, 0.05, missing)",
+                          "expected finance_bond_convexity(c,y,n)");
+    expect_error_contains(interp, "finance_bond_convexity(0, 0.05, 1.5)",
+                          "expected non-negative integer periods n");
+}
+
+TEST(ReplCommandsTest, finance_bond_ytm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bond_ytm(85.952837, 0.05, 10)", "0.07");
+    expect_error_contains(interp, "finance_bond_ytm(85.952837, 0.05, missing)",
+                          "expected finance_bond_ytm(price,c,n)");
+    expect_error_contains(interp, "finance_bond_ytm(85.952837, 0.05, 1.5)",
+                          "expected non-negative integer periods n");
+}
+
+TEST(ReplCommandsTest, finance_bond_modified_duration_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bond_modified_duration(0, 0.05, 5)", "4.761905");
+    expect_error_contains(interp, "finance_bond_modified_duration(0, 0.05, missing)",
+                          "expected finance_bond_modified_duration(c,y,n)");
+    expect_error_contains(interp, "finance_bond_modified_duration(0, 0.05, 1.5)",
+                          "expected non-negative integer periods n");
+}
+
+TEST(ReplCommandsTest, finance_continuous_compound_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_continuous_compound(100, 0.1, 1)", "110.517");
+    expect_error_contains(interp, "finance_continuous_compound(100, 0.1, missing)",
+                          "expected finance_continuous_compound(principal,rate,t)");
+}
+
+TEST(ReplCommandsTest, finance_capm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_capm(0.05, 1.2, 0.10)", "0.11");
+    expect_error_contains(interp, "finance_capm(0.05, 1.2, missing)",
+                          "expected finance_capm(risk_free,beta,market_return)");
+}

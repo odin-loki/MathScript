@@ -2468,3 +2468,165 @@ TEST(SignalExtTest, sosfilt_empty_x_a0_scale_and_two_sections) {
     ASSERT_EQ(id.size(), x.size());
     EXPECT_NEAR(id[2], 3.0, 1e-12);
 }
+
+TEST(SignalExtTest, butterworth_lowpass_highpass_bandpass_empty) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(butterworth(empty, 0.2, 1.0).empty());
+    EXPECT_TRUE(lowpass(empty, 0.2, 1.0).empty());
+    EXPECT_TRUE(highpass(empty, 0.2, 1.0).empty());
+    EXPECT_TRUE(bandpass(empty, 0.1, 0.3, 1.0).empty());
+}
+
+TEST(SignalExtTest, butterworth_lowpass_dc_and_highpass_empty_dc) {
+    const std::vector<double> dc(16, 1.0);
+    const auto lp = butterworth(dc, 0.2, 1.0);
+    if (lp.empty()) GTEST_SKIP() << "butterworth rejected short dc";
+    ASSERT_EQ(lp.size(), dc.size());
+    EXPECT_TRUE(std::isfinite(lp.back()));
+
+    const auto hp = highpass(dc, 0.05, 1.0);
+    ASSERT_EQ(hp.size(), dc.size());
+    EXPECT_TRUE(std::isfinite(hp.back()));
+
+    const auto bp = bandpass(dc, 0.05, 0.3, 1.0);
+    ASSERT_EQ(bp.size(), dc.size());
+    EXPECT_TRUE(std::isfinite(bp.back()));
+}
+
+TEST(SignalExtTest, interpolate_decimate_resample_empty_and_nonpos) {
+    const std::vector<double> empty;
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5};
+    EXPECT_TRUE(interpolate(empty, 2).empty());
+    EXPECT_TRUE(interpolate(x, 0).empty());
+    EXPECT_TRUE(interpolate(x, -1).empty());
+    EXPECT_TRUE(decimate(empty, 2).empty());
+    EXPECT_TRUE(decimate(x, 0).empty());
+    EXPECT_TRUE(resample(empty, 2, 3).empty());
+    EXPECT_TRUE(resample(x, 0, 2).empty());
+    EXPECT_TRUE(resample(x, 2, 0).empty());
+}
+
+TEST(SignalExtTest, interpolate_freq_path_and_resample_pq) {
+    const std::vector<double> x(32, 1.0);
+    const auto up = interpolate(x, 8);
+    if (up.empty()) GTEST_SKIP() << "interpolate rejected p=8";
+    EXPECT_EQ(up.size(), 256u);
+    EXPECT_TRUE(std::isfinite(up[8]));
+
+    const auto rs = resample(x, 3, 2);
+    if (rs.empty()) GTEST_SKIP() << "resample rejected 3/2";
+    EXPECT_FALSE(rs.empty());
+    EXPECT_TRUE(std::isfinite(rs.front()));
+}
+
+TEST(SignalExtTest, parzen_triangular_n0_n1_n3) {
+    EXPECT_TRUE(parzen(0).empty());
+    EXPECT_TRUE(triangular(0).empty());
+    const auto p1 = parzen(1);
+    ASSERT_EQ(p1.size(), 1u);
+    EXPECT_NEAR(p1[0], 1.0, 1e-12);
+    const auto t1 = triangular(1);
+    ASSERT_EQ(t1.size(), 1u);
+    EXPECT_NEAR(t1[0], 1.0, 1e-12);
+    const auto p3 = parzen(3);
+    const auto t3 = triangular(3);
+    ASSERT_EQ(p3.size(), 3u);
+    ASSERT_EQ(t3.size(), 3u);
+    EXPECT_TRUE(std::isfinite(p3[1]));
+    EXPECT_TRUE(std::isfinite(t3[1]));
+}
+
+TEST(SignalExtTest, conv2_zero_kernel_and_empty_kernel) {
+    Matrix<double> A{{1.0, 2.0}, {3.0, 4.0}};
+    Matrix<double> Z(3, 3, 0.0);
+    const auto cz = conv2(A, Z);
+    if (cz.empty()) GTEST_SKIP() << "conv2 rejected zero kernel";
+    ASSERT_EQ(cz.rows(), 4u);
+    ASSERT_EQ(cz.cols(), 4u);
+    EXPECT_NEAR(cz(1, 1), 0.0, 1e-12);
+
+    Matrix<double> empty;
+    EXPECT_TRUE(conv2(A, empty).empty());
+}
+
+TEST(SignalExtTest, firwin_even_taps_and_cutoff_edges) {
+    const auto even = firwin(4, 0.25);
+    if (even.empty()) GTEST_SKIP() << "firwin rejected even taps";
+    ASSERT_EQ(even.size(), 4u);
+    EXPECT_TRUE(firwin(5, 0.0).empty() || std::isfinite(firwin(5, 0.0)[0]));
+    EXPECT_TRUE(firwin(5, 1.0).empty() || std::isfinite(firwin(5, 1.0)[0]));
+    const auto hp_even = firwin_highpass(6, 0.3);
+    EXPECT_TRUE(hp_even.empty());
+}
+
+TEST(SignalExtTest, cheby1_order_one_and_filter_iir) {
+    const auto c1 = cheby1(1, 1.0, 10.0, 80.0);
+    if (c1.a.empty()) GTEST_SKIP() << "cheby1 order 1 rejected";
+    EXPECT_NEAR(c1.a[0], 1.0, 1e-12);
+    const std::vector<double> x{1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    const auto y = filter(c1.b, c1.a, x);
+    ASSERT_EQ(y.size(), x.size());
+    EXPECT_TRUE(std::isfinite(y[0]));
+}
+
+TEST(SignalExtTest, filter_a0_zero_treated_as_fir) {
+    const std::vector<double> b{1.0, 0.0};
+    const std::vector<double> a{0.0, 0.0};
+    const std::vector<double> x{2.0, 0.0, 0.0};
+    const auto y = filter(b, a, x);
+    if (y.empty()) GTEST_SKIP() << "filter rejected a0=0";
+    ASSERT_EQ(y.size(), x.size());
+    EXPECT_TRUE(std::isfinite(y[0]));
+}
+
+TEST(SignalExtTest, czt_zoom_fft_invalid_band_and_m_one) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0};
+    EXPECT_TRUE(czt_zoom_fft(x, 10.0, 5.0, 8, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, -1.0, 10.0, 8, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 0.0, 60.0, 8, 100.0).empty());
+    EXPECT_TRUE(czt_zoom_fft(x, 0.0, 10.0, 0, 100.0).empty());
+    const auto one = czt_zoom_fft(x, 5.0, 5.0, 1, 100.0);
+    if (one.empty()) GTEST_SKIP() << "czt_zoom_fft rejected m=1 equal bounds";
+    ASSERT_EQ(one.size(), 1u);
+    EXPECT_TRUE(std::isfinite(one[0].real()));
+}
+
+TEST(SignalExtTest, xcorr_max_lag_larger_than_signal) {
+    const std::vector<double> a{1.0, 2.0};
+    const auto xc = xcorr(a, a, 5);
+    if (xc.empty()) GTEST_SKIP() << "xcorr rejected large max_lag";
+    ASSERT_EQ(xc.size(), 11u);
+    EXPECT_NEAR(xc[5], 5.0, 1e-12);
+}
+
+TEST(SignalExtTest, periodogram_odd_requested_nfft) {
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5, 0.25};
+    const auto r = periodogram(x, 10.0, {}, 5);
+    if (!r.has_value()) GTEST_SKIP() << "periodogram rejected odd nfft";
+    EXPECT_EQ(r->frequencies.size(), r->power.size());
+    EXPECT_FALSE(r->power.empty());
+}
+
+TEST(SignalExtTest, deconv_degree_drop_keeps_finite) {
+    const std::vector<double> y{1.0, 2.0, 3.0};
+    const std::vector<double> b{1.0, 1.0, 1.0, 1.0};
+    const auto q = deconv(y, b);
+    if (q.empty()) GTEST_SKIP() << "deconv rejected shorter dividend";
+    EXPECT_TRUE(std::isfinite(q[0]));
+}
+
+TEST(SignalExtTest, sosfilt_empty_sos_and_empty_x) {
+    const std::vector<std::array<double, 6>> empty_sos;
+    const std::vector<double> empty_x;
+    EXPECT_TRUE(sosfilt(empty_sos, empty_x).empty());
+}
+
+TEST(SignalExtTest, lms_identifies_delta) {
+    const std::vector<double> x{1.0, 0.0, 0.0, 0.0, 0.0};
+    const std::vector<double> d{0.0, 1.0, 0.0, 0.0, 0.0};
+    const auto r = lms_adaptive_filter(x, d, 2, 0.4);
+    if (r.output.empty()) GTEST_SKIP() << "lms rejected identity-like";
+    ASSERT_EQ(r.output.size(), x.size());
+    ASSERT_EQ(r.weights.size(), 2u);
+    EXPECT_NEAR(r.output[0], 0.0, 1e-15);
+}

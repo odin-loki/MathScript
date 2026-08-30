@@ -2313,3 +2313,99 @@ TEST(FinanceHistoricalVaR, ConfidenceClampsIndex) {
     EXPECT_NEAR(historical_var(returns, 1.0), 0.10, 1e-12);
     EXPECT_NEAR(historical_cvar(returns, 1.0), 0.10, 1e-12);
 }
+
+TEST(FinanceBond, ZeroPeriodsEqualsFace) {
+    EXPECT_NEAR(bond_price(0.05, 0.04, 0, 100.0), 100.0, 1e-12);
+    EXPECT_NEAR(bond_duration(0.05, 0.04, 0, 100.0), 0.0, 1e-12);
+    EXPECT_NEAR(bond_modified_duration(0.05, 0.04, 0, 100.0), 0.0, 1e-12);
+    EXPECT_NEAR(bond_convexity(0.05, 0.04, 0, 100.0), 0.0, 1e-12);
+}
+
+TEST(FinanceBond, OnePeriodClosedForm) {
+    double c = 0.06, y = 0.05, fv = 100.0;
+    double expected = fv * (c + 1.0) / (1.0 + y);
+    EXPECT_NEAR(bond_price(c, y, 1, fv), expected, 1e-12);
+    EXPECT_NEAR(bond_duration(c, y, 1, fv), 1.0, 1e-10);
+}
+
+TEST(FinanceBond, NegativePeriodsStillFinite) {
+    double p = bond_price(0.05, 0.04, -1, 100.0);
+    EXPECT_TRUE(std::isfinite(p));
+    EXPECT_NEAR(p, 100.0 * 1.04, 1e-10);
+}
+
+TEST(FinanceBond, YtmZeroPeriodsUnmatchedPrice) {
+    auto y = bond_ytm(50.0, 0.05, 0, 100.0);
+    ASSERT_TRUE(y.has_value());
+    EXPECT_TRUE(std::isfinite(*y));
+}
+
+TEST(FinanceTVM, PvZeroAndOnePeriod) {
+    EXPECT_NEAR(pv(0.1, 0, 10.0, 50.0), -50.0, 1e-12);
+    EXPECT_NEAR(pv(0.1, 1, 0.0, 110.0), -100.0, 1e-12);
+}
+
+TEST(FinanceTVM, PvNegativePeriodsFinite) {
+    double v = pv(0.1, -1, 10.0, 0.0);
+    EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(FinanceTVM, IrrZeroMaxIterErrors) {
+    std::vector<double> cf = {-100.0, 110.0};
+    EXPECT_FALSE(irr(cf, 0.1, 0).has_value());
+}
+
+TEST(FinanceTVM, IrrSingleCashflowErrors) {
+    std::vector<double> cf = {100.0};
+    EXPECT_FALSE(irr(cf, 0.1).has_value());
+}
+
+TEST(FinanceAnnuity, ZeroPeriods) {
+    EXPECT_NEAR(fv_annuity(0.05, 0, 10.0, 80.0), -80.0, 1e-12);
+    EXPECT_NEAR(pv(0.0, 0, 10.0, 25.0), -25.0, 1e-12);
+}
+
+TEST(FinanceAnnuity, OnePeriod) {
+    double rate = 0.1, pv0 = 100.0, fv = 0.0;
+    double pmt = pmt_annuity(rate, 1, pv0, fv);
+    EXPECT_NEAR(pmt, -(pv0 * (1.0 + rate) + fv), 1e-12);
+    EXPECT_NEAR(fv_annuity(rate, 1, pmt, pv0), 0.0, 1e-10);
+}
+
+TEST(FinanceAnnuity, NegativePeriodsFinite) {
+    EXPECT_TRUE(std::isfinite(fv_annuity(0.05, -1, 10.0, 50.0)));
+    EXPECT_TRUE(std::isfinite(pmt_annuity(0.05, -1, 50.0, 0.0)));
+}
+
+TEST(FinanceRisk, CapmEdges) {
+    EXPECT_NEAR(capm(0.03, 0.0, 0.10), 0.03, 1e-15);
+    EXPECT_NEAR(capm(0.03, 1.0, 0.10), 0.10, 1e-15);
+    EXPECT_NEAR(capm(0.02, -0.5, 0.08), 0.02 + -0.5 * 0.06, 1e-15);
+}
+
+TEST(FinanceSabr, ForwardAtmUsesHaganAtmBranch) {
+    double S = 100.0, K = 100.0, T = 1.0, r = 0.0;
+    double c = sabr_call(S, K, T, r, 0.20, 0.5, -0.3, 0.4);
+    double p = sabr_put(S, K, T, r, 0.20, 0.5, -0.3, 0.4);
+    EXPECT_GT(c, 0.0);
+    EXPECT_GT(p, 0.0);
+    EXPECT_NEAR(c - p, S - K * std::exp(-r * T), 1e-8);
+}
+
+TEST(FinanceSabr, ZeroAlphaIntrinsic) {
+    double S = 110.0, K = 100.0, T = 1.0, r = 0.05;
+    EXPECT_NEAR(sabr_call(S, K, T, r, 0.0, 0.5, -0.3, 0.4),
+                std::max(S - K * std::exp(-r * T), 0.0), 1e-12);
+    EXPECT_NEAR(sabr_put(S, K, T, r, 0.0, 0.5, -0.3, 0.4),
+                std::max(K * std::exp(-r * T) - S, 0.0), 1e-12);
+}
+
+TEST(FinanceBarrier, UpInCallAndDownInPut) {
+    double S = 100.0, K = 100.0, T = 1.0, r = 0.05, sigma = 0.2;
+    double up_in = barrier_option(S, K, 120.0, T, r, sigma, true, true, true);
+    double down_in = barrier_option(S, K, 80.0, T, r, sigma, false, true, false);
+    EXPECT_GE(up_in, 0.0);
+    EXPECT_GE(down_in, 0.0);
+    EXPECT_TRUE(std::isfinite(up_in));
+    EXPECT_TRUE(std::isfinite(down_in));
+}

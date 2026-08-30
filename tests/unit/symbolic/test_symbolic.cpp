@@ -1,6 +1,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include <map>
+#include <numbers>
 
 #include "ms/symbolic/symbolic.hpp"
 
