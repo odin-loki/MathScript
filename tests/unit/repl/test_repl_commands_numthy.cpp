@@ -3478,3 +3478,186 @@ TEST(ReplCommandsTest, bigint_fib_noassign) {
     expect_contains(interp, "bigint_fib(10)", "55");
     expect_error_contains(interp, "bigint_fib(-1)", "non-negative integer");
 }
+
+TEST(ReplCommandsTest, bigint_factorial_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "bigint_factorial(5)", "120");
+    expect_error_contains(interp, "bigint_factorial(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_prime_nth_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_prime_nth(6)", "13");
+    expect_error_contains(interp, "numthy_prime_nth(0)", "integer n >= 1");
+}
+
+TEST(ReplCommandsTest, numthy_von_mangoldt_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_von_mangoldt(8)", "0.693");
+    expect_error_contains(interp, "numthy_von_mangoldt(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_partition_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_partition(5)", "7");
+    expect_error_contains(interp, "numthy_partition(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_num_divisors_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_num_divisors(12)", "6");
+    expect_error_contains(interp, "numthy_num_divisors(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_factor_count_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_factor_count(12)", "3");
+    expect_error_contains(interp, "numthy_factor_count(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_sum_divisors_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_sum_divisors(12)", "28");
+    expect_error_contains(interp, "numthy_sum_divisors(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_isprime_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_isprime(17)", "1");
+    expect_error_contains(interp, "numthy_isprime(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_is_carmichael_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_is_carmichael(561)", "1");
+    expect_error_contains(interp, "numthy_is_carmichael(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_euler_phi_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_euler_phi(12)", "4");
+    expect_error_contains(interp, "numthy_euler_phi(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_carmichael_lambda_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_carmichael_lambda(15)", "4");
+    expect_error_contains(interp, "numthy_carmichael_lambda(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_mobius_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_mobius(6)", "1");
+    expect_error_contains(interp, "numthy_mobius(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_nextprime_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_nextprime(10)", "11");
+    expect_error_contains(interp, "numthy_nextprime(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_prevprime_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_prevprime(10)", "7");
+    expect_error_contains(interp, "numthy_prevprime(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_liouville_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_liouville(12)", "-1");
+    expect_error_contains(interp, "numthy_liouville(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_prime_pi_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_prime_pi(10)", "4");
+    expect_error_contains(interp, "numthy_prime_pi(-1)", "non-negative integer");
+}
+
+TEST(ReplCommandsTest, numthy_continued_fraction_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_continued_fraction(3.14159, 5)", "cf =");
+    expect_error_contains(interp, "numthy_continued_fraction(3.14159, missing)",
+                          "expected numthy_continued_fraction");
+}
+
+TEST(ReplCommandsTest, numthy_gcd_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_gcd(48, 18)", "6");
+    expect_error_contains(interp, "numthy_gcd(48, missing)", "expected numthy_gcd");
+}
+
+TEST(ReplCommandsTest, numthy_lcm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_lcm(4, 6)", "12");
+    expect_error_contains(interp, "numthy_lcm(4, missing)", "expected numthy_lcm");
+}
+
+TEST(ReplCommandsTest, numthy_jordan_totient_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_jordan_totient(2, 6)", "12");
+    expect_error_contains(interp, "numthy_jordan_totient(2, missing)",
+                          "expected numthy_jordan_totient");
+}
+
+TEST(ReplCommandsTest, numthy_legendre_symbol_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_legendre_symbol(2, 7)", "1");
+    expect_error_contains(interp, "numthy_legendre_symbol(2, missing)",
+                          "expected numthy_legendre_symbol");
+}
+
+TEST(ReplCommandsTest, numthy_jacobi_symbol_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_jacobi_symbol(2, 7)", "1");
+    expect_error_contains(interp, "numthy_jacobi_symbol(2, missing)",
+                          "expected numthy_jacobi_symbol");
+}
+
+TEST(ReplCommandsTest, numthy_kronecker_symbol_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_kronecker_symbol(2, 7)", "1");
+    expect_error_contains(interp, "numthy_kronecker_symbol(2, missing)",
+                          "expected numthy_kronecker_symbol");
+}
+
+TEST(ReplCommandsTest, numthy_tonelli_shanks_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_tonelli_shanks(2, 7)", "4");
+    expect_error_contains(interp, "numthy_tonelli_shanks(2, missing)",
+                          "expected numthy_tonelli_shanks");
+}
+
+TEST(ReplCommandsTest, numthy_mod_inv_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_mod_inv(3, 7)", "5");
+    expect_error_contains(interp, "numthy_mod_inv(3, missing)", "expected numthy_mod_inv");
+}
+
+TEST(ReplCommandsTest, numthy_multiplicative_order_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_multiplicative_order(3, 7)", "6");
+    expect_error_contains(interp, "numthy_multiplicative_order(3, missing)",
+                          "expected numthy_multiplicative_order");
+}
+
+TEST(ReplCommandsTest, numthy_extended_gcd_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_extended_gcd(35, 15)", "5");
+    expect_error_contains(interp, "numthy_extended_gcd(35, missing)",
+                          "expected numthy_extended_gcd");
+}
+
+TEST(ReplCommandsTest, numthy_is_primitive_root_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_is_primitive_root(2, 11)", "1");
+    expect_error_contains(interp, "numthy_is_primitive_root(2, missing)",
+                          "expected numthy_is_primitive_root");
+}
+
+TEST(ReplCommandsTest, numthy_crt_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "numthy_crt([2; 3; 2], [3; 5; 7])", "23");
+    expect_error_contains(interp, "numthy_crt(no_such_matrix, [3; 5; 7])", "unknown matrix");
+}

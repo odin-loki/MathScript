@@ -10273,3 +10273,39 @@ TEST(ReplCommandsTest, ml_vec_norm_noassign) {
     expect_contains(interp, "ml_vec_norm([3; 4])", "5");
     expect_error_contains(interp, "ml_vec_norm(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, ml_accuracy_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ml_accuracy([1,0,1,1], [1,0,0,1])", "0.75");
+    expect_error_contains(interp, "ml_accuracy(no_such_matrix, [1,0,0,1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ml_rmse_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ml_rmse([1; 2; 3], [1; 2; 4])", "0.577");
+    expect_error_contains(interp, "ml_rmse(no_such_matrix, [1; 2; 4])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ml_mse_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ml_mse([1; 2; 3], [1; 2; 4])", "0.333");
+    expect_error_contains(interp, "ml_mse(no_such_matrix, [1; 2; 4])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ml_r2_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ml_r2([1; 2; 3], [1; 2; 4])");
+    expect_error_contains(interp, "ml_r2(no_such_matrix, [1; 2; 4])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ml_f1_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ml_f1([1; 0; 1], [1; 0; 0])", "0.666");
+    expect_error_contains(interp, "ml_f1(no_such_matrix, [1; 0; 0])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, ml_mae_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ml_mae([1; 2; 3], [1; 3; 3])", "0.333333");
+    expect_error_contains(interp, "ml_mae(no_such_matrix, [1; 3; 3])", "unknown matrix");
+}

@@ -190,3 +190,48 @@ TEST(SpecialExtTest, bernoulli_euler_out_of_table) {
     EXPECT_NEAR(bernoulli_number(-1), 0.0, 1e-15);
     EXPECT_NEAR(euler_number(-1), 0.0, 1e-15);
 }
+
+TEST(SpecialExtTest, gamma_inc_reg_x_nonpositive) {
+    EXPECT_NEAR(gamma_inc_reg(2.0, 0.0), 0.0, 1e-15);
+    EXPECT_NEAR(gamma_inc_reg(2.0, -1.0), 0.0, 1e-15);
+    EXPECT_NEAR(gamma_inc(2.0, 0.0), 0.0, 1e-15);
+}
+
+TEST(SpecialExtTest, beta_inc_reg_endpoints) {
+    EXPECT_NEAR(beta_inc_reg(0.0, 2.0, 3.0), 0.0, 1e-15);
+    EXPECT_NEAR(beta_inc_reg(1.0, 2.0, 3.0), 1.0, 1e-15);
+    EXPECT_NEAR(beta_inc(0.0, 2.0, 3.0), 0.0, 1e-15);
+    EXPECT_NEAR(beta_inc(1.0, 2.0, 3.0), beta_func(2.0, 3.0), 1e-12);
+}
+
+TEST(SpecialExtTest, polygamma_higher_order_and_nonpositive_x) {
+    EXPECT_NEAR(polygamma(1, 1.0), trigamma(1.0), 1e-12);
+    EXPECT_NEAR(polygamma(2, 1.0), -2.0 * 1.2020569031595942, 1e-4);
+    EXPECT_TRUE(std::isnan(polygamma(1, 0.0)));
+    EXPECT_TRUE(std::isnan(trigamma(-1.0)));
+}
+
+TEST(SpecialExtTest, lambert_w_principal_at_branch_point) {
+    const double minus_inv_e = -std::exp(-1.0);
+    EXPECT_NEAR(lambert_w(0, minus_inv_e), -1.0, 1e-12);
+}
+
+TEST(SpecialExtTest, debye_moderate_x) {
+    const double d = debye(2, 2.0);
+    EXPECT_TRUE(std::isfinite(d));
+    EXPECT_GT(d, 0.0);
+    EXPECT_LT(d, 1.0);
+}
+
+TEST(SpecialExtTest, rgamma_half_integer) {
+    EXPECT_NEAR(rgamma(0.5), 1.0 / std::sqrt(std::numbers::pi), 1e-12);
+}
+
+TEST(SpecialExtTest, hypergeo_2f1_at_origin) {
+    EXPECT_NEAR(hypergeo_2f1(1.0, 2.0, 3.0, 0.0), 1.0, 1e-15);
+}
+
+TEST(SpecialExtTest, bernoulli_euler_beyond_table) {
+    EXPECT_NEAR(bernoulli_number(20), 0.0, 1e-15);
+    EXPECT_NEAR(euler_number(20), 0.0, 1e-15);
+}

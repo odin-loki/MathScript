@@ -4756,3 +4756,9 @@ TEST(ReplCommandsTest, poly_compose_noassign) {
     expect_contains(interp, "poly_compose([1; 1], [0; 2])", "composed =");
     expect_error_contains(interp, "poly_compose(no_such_matrix, [0; 2])", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, poly_resultant_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "poly_resultant([6; -5; 1], [10; -7; 1])", "0");
+    expect_error_contains(interp, "poly_resultant(no_such_matrix, [1; 1])", "unknown matrix");
+}

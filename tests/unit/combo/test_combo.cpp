@@ -758,3 +758,152 @@ TEST(ComboEnum, OversizedListingsAreEmpty) {
     EXPECT_TRUE(gray_code(17).empty());
     EXPECT_TRUE(set_partitions(9).empty());
 }
+
+TEST(ComboEnum, NegativeNSetPartitionsAndAllSubsetsAreEmpty) {
+    EXPECT_TRUE(ms::combo::set_partitions(-1).empty());
+    EXPECT_TRUE(ms::combo::set_partitions(-5).empty());
+    EXPECT_TRUE(ms::combo::all_subsets(-1).empty());
+    EXPECT_TRUE(ms::combo::all_subsets(-3).empty());
+}
+
+TEST(ComboEnum, EmptyInputHelpers) {
+    std::vector<int> empty_perm;
+    EXPECT_FALSE(ms::combo::next_perm(empty_perm));
+    EXPECT_FALSE(ms::combo::prev_perm(empty_perm));
+    EXPECT_EQ(ms::combo::rank_permutation(empty_perm), 0u);
+    EXPECT_TRUE(ms::combo::unrank_permutation(0, 0).empty());
+
+    std::vector<int> empty_comb;
+    EXPECT_FALSE(ms::combo::next_comb(empty_comb, 5));
+    EXPECT_FALSE(ms::combo::prev_comb(empty_comb, 5));
+    EXPECT_EQ(ms::combo::rank_combination(empty_comb, 5), 0u);
+    EXPECT_TRUE(ms::combo::unrank_combination(5, 0, 0).empty());
+
+    auto perms0 = ms::combo::all_permutations(0);
+    ASSERT_EQ(perms0.size(), 1u);
+    EXPECT_TRUE(perms0[0].empty());
+
+    auto subs0 = ms::combo::all_subsets(0);
+    ASSERT_EQ(subs0.size(), 1u);
+    EXPECT_TRUE(subs0[0].empty());
+
+    auto comps0 = ms::combo::all_compositions(0);
+    ASSERT_EQ(comps0.size(), 1u);
+    EXPECT_TRUE(comps0[0].empty());
+
+    auto parts0 = ms::combo::all_partitions(0);
+    ASSERT_EQ(parts0.size(), 1u);
+    EXPECT_TRUE(parts0[0].empty());
+
+    auto der0 = ms::combo::derangements(0);
+    ASSERT_EQ(der0.size(), 1u);
+    EXPECT_TRUE(der0[0].empty());
+
+    EXPECT_TRUE(ms::combo::all_permutations(-1).empty());
+    EXPECT_TRUE(ms::combo::derangements(-1).empty());
+}
+
+TEST(ComboCounting, CombinationsAliasAndGuards) {
+    EXPECT_EQ(ms::combo::combinations(5, 2), ms::combo::binomial(5, 2));
+    EXPECT_EQ(ms::combo::combinations(10, 3), 120u);
+    EXPECT_EQ(ms::combo::combinations(5, 6), 0u);
+    EXPECT_EQ(ms::combo::permutations(3, 5), 0u);
+    EXPECT_EQ(ms::combo::multinomial(4, {1, 1}), 0u);
+    EXPECT_EQ(ms::combo::factorial(21), UINT64_MAX);
+}
+
+TEST(ComboEnum, AllCompositionsCapsAndMaxParts) {
+    EXPECT_TRUE(ms::combo::all_compositions(-1).empty());
+    EXPECT_TRUE(ms::combo::all_compositions(kMaxEnumPow2N + 1).empty());
+    EXPECT_TRUE(ms::combo::all_compositions(4, 0).empty());
+
+    auto one_part = ms::combo::all_compositions(4, 1);
+    EXPECT_EQ(one_part, (std::vector<std::vector<int>>{{4}}));
+
+    auto two_parts = ms::combo::all_compositions(4, 2);
+    EXPECT_EQ(two_parts.size(), 4u);
+    EXPECT_EQ(two_parts, (std::vector<std::vector<int>>{{1, 3}, {2, 2}, {3, 1}, {4}}));
+
+    auto unrestricted = ms::combo::all_compositions(3);
+    EXPECT_EQ(unrestricted.size(), 4u);
+}
+
+TEST(ComboEnum, AllPartitionsNegativeAndOversized) {
+    EXPECT_TRUE(ms::combo::all_partitions(-1).empty());
+    EXPECT_TRUE(ms::combo::all_partitions(kMaxEnumPartitionN + 1).empty());
+}
+
+TEST(ComboNecklaces, CapsAndOversized) {
+    auto at_n = ms::combo::necklaces(kMaxEnumNecklaceN, 2);
+    EXPECT_FALSE(at_n.empty());
+    EXPECT_EQ(at_n.size(), 108u);
+
+    auto at_k = ms::combo::necklaces(2, kMaxEnumAlphabetK);
+    EXPECT_FALSE(at_k.empty());
+    EXPECT_EQ(at_k.size(), 21u);
+
+    EXPECT_TRUE(ms::combo::necklaces(kMaxEnumNecklaceN + 1, 2).empty());
+    EXPECT_TRUE(ms::combo::necklaces(2, kMaxEnumAlphabetK + 1).empty());
+    EXPECT_TRUE(ms::combo::necklaces(-1, 2).empty());
+    EXPECT_TRUE(ms::combo::necklaces(3, 0).empty());
+}
+
+TEST(ComboBracelets, CapsAndOversized) {
+    auto at_n = ms::combo::bracelets(kMaxEnumNecklaceN, 2);
+    EXPECT_FALSE(at_n.empty());
+    EXPECT_LE(at_n.size(), ms::combo::necklaces(kMaxEnumNecklaceN, 2).size());
+
+    auto at_k = ms::combo::bracelets(2, kMaxEnumAlphabetK);
+    EXPECT_FALSE(at_k.empty());
+    EXPECT_EQ(at_k.size(), ms::combo::necklaces(2, kMaxEnumAlphabetK).size());
+
+    EXPECT_TRUE(ms::combo::bracelets(kMaxEnumNecklaceN + 1, 2).empty());
+    EXPECT_TRUE(ms::combo::bracelets(2, kMaxEnumAlphabetK + 1).empty());
+}
+
+TEST(ComboLyndonWords, CapsAndOversized) {
+    auto at_n = ms::combo::lyndon_words(kMaxEnumNecklaceN, 2);
+    EXPECT_FALSE(at_n.empty());
+    EXPECT_EQ(at_n.size(), 99u);
+
+    auto at_k = ms::combo::lyndon_words(2, kMaxEnumAlphabetK);
+    EXPECT_FALSE(at_k.empty());
+
+    EXPECT_TRUE(ms::combo::lyndon_words(kMaxEnumNecklaceN + 1, 2).empty());
+    EXPECT_TRUE(ms::combo::lyndon_words(2, kMaxEnumAlphabetK + 1).empty());
+    EXPECT_TRUE(ms::combo::lyndon_words(-1, 2).empty());
+    EXPECT_TRUE(ms::combo::lyndon_words(3, 0).empty());
+}
+
+TEST(ComboMotzkinPaths, AtCapVsOversized) {
+    auto at_cap = ms::combo::motzkin_paths(12);
+    EXPECT_EQ(at_cap.size(), ms::combo::motzkin_num(12));
+    EXPECT_FALSE(at_cap.empty());
+    EXPECT_TRUE(ms::combo::motzkin_paths(13).empty());
+    EXPECT_TRUE(ms::combo::motzkin_paths(-1).empty());
+}
+
+TEST(ComboDyckPaths, AtCapVsOversized) {
+    auto at_cap = ms::combo::dyck_paths(10);
+    EXPECT_EQ(at_cap.size(), ms::combo::catalan_num(10));
+    EXPECT_FALSE(at_cap.empty());
+    EXPECT_TRUE(ms::combo::dyck_paths(11).empty());
+    EXPECT_TRUE(ms::combo::dyck_paths(-1).empty());
+}
+
+TEST(ComboDeBruijnSequence, CapsAndOversized) {
+    EXPECT_TRUE(ms::combo::de_bruijn_sequence(kMaxEnumAlphabetK + 1, 2).empty());
+    EXPECT_TRUE(ms::combo::de_bruijn_sequence(2, kMaxEnumNecklaceN + 1).empty());
+    auto at_k = ms::combo::de_bruijn_sequence(kMaxEnumAlphabetK, 2);
+    EXPECT_EQ(at_k.size(), 36u);
+}
+
+TEST(ComboSpecial, StirlingEdgeCases) {
+    EXPECT_EQ(ms::combo::stirling1(0, 0), 1u);
+    EXPECT_EQ(ms::combo::stirling1(0, 1), 0u);
+    EXPECT_EQ(ms::combo::stirling1(3, 0), 0u);
+    EXPECT_EQ(ms::combo::stirling1(3, 5), 0u);
+    EXPECT_EQ(ms::combo::stirling2(0, 1), 0u);
+    EXPECT_EQ(ms::combo::stirling2(3, 0), 0u);
+    EXPECT_EQ(ms::combo::stirling2(3, 5), 0u);
+}

@@ -2508,3 +2508,11 @@ TEST(ReplCommandsTest, topo_persistence_diagram_noassign) {
     expect_error_contains(interp, "topo_persistence_diagram(no_such_matrix, births)",
                           "unknown matrix");
 }
+
+TEST(ReplCommandsTest, topo_betti_curve_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "Dcol = [0, 1, 2; 1, 0, 1; 2, 1, 0]");
+    expect_ok(interp, "thr = [0.5; 1.5; 2.5]");
+    expect_error_contains(interp, "topo_betti_curve(Dcol, thr, 1)", "expected");
+    expect_error_contains(interp, "topo_betti_curve(no_such_matrix, thr, 1)", "unknown matrix");
+}

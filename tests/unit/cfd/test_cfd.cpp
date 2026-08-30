@@ -229,3 +229,37 @@ TEST(CfdRunAdvection, LastStepClampedToHorizon) {
     ASSERT_FALSE(result.u.empty());
     EXPECT_NEAR(result.t.back(), 0.25, 1e-12);
 }
+
+TEST(CfdUpwindFvm, EmptyFieldOrVelocity) {
+    std::vector<double> empty;
+    std::vector<double> u = {1.0, 0.0};
+    std::vector<double> v = {0.5};
+    EXPECT_TRUE(upwind_fvm_advection(empty, v, 0.01, 0.1).empty());
+    EXPECT_TRUE(upwind_fvm_advection(u, empty, 0.01, 0.1).empty());
+}
+
+TEST(CfdUpwindFvm, NonPositiveDtOrDx) {
+    std::vector<double> u = {1.0, 0.0, 0.0};
+    std::vector<double> v = {0.5};
+    EXPECT_TRUE(upwind_fvm_advection(u, v, 0.0, 0.1).empty());
+    EXPECT_TRUE(upwind_fvm_advection(u, v, 0.01, 0.0).empty());
+}
+
+TEST(CfdUpwindFvm, VelocityLengthMismatch) {
+    std::vector<double> u = {1.0, 0.0};
+    std::vector<double> v = {0.5, 0.4, 0.3};
+    EXPECT_TRUE(upwind_fvm_advection(u, v, 0.01, 0.1).empty());
+}
+
+TEST(CfdRunAdvection, EmptyField) {
+    std::vector<double> empty;
+    std::vector<double> v = {1.0};
+    const auto result = run_advection(empty, v, 1.0, 0.1, 0.1);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(CfdInitialCondition, EmptyGridPulseIsEmpty) {
+    const auto grid = grid1d(1.0, 0.0, 10);
+    const auto u = square_pulse(grid, 0.5, 0.2, 1.0);
+    EXPECT_TRUE(u.empty());
+}

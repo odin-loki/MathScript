@@ -992,3 +992,124 @@ TEST(QuantumMeasure, ExpectationDmPauliZ) {
     auto rho = density_matrix(ket_basis(2, 0));
     EXPECT_NEAR(expectation_dm(rho, pauli_z()), 1.0, 1e-10);
 }
+
+// ---- Remaining untested library APIs / edge cases ----
+
+TEST(QuantumState, SuperpositionNormalised) {
+    std::vector<double> amps = {1.0, 1.0};
+    auto plus = ket_superposition(amps);
+    ASSERT_EQ(plus.size(), 2u);
+    EXPECT_NEAR(std::abs(plus[0]), 1.0 / std::sqrt(2.0), 1e-12);
+    EXPECT_NEAR(std::abs(plus[1]), 1.0 / std::sqrt(2.0), 1e-12);
+}
+
+TEST(QuantumState, SuperpositionEmpty) {
+    std::vector<double> amps;
+    EXPECT_TRUE(ket_superposition(amps).empty());
+}
+
+TEST(QuantumState, ZeroNormaliseUnchanged) {
+    Ket z = {C(0.0), C(0.0)};
+    auto out = ket_normalise(z);
+    EXPECT_NEAR(std::abs(out[0]), 0.0, 1e-15);
+    EXPECT_NEAR(std::abs(out[1]), 0.0, 1e-15);
+}
+
+TEST(QuantumState, BasisOutOfRange) {
+    auto psi = ket_basis(2, 5);
+    ASSERT_EQ(psi.size(), 2u);
+    EXPECT_NEAR(std::abs(psi[0]), 0.0, 1e-15);
+    EXPECT_NEAR(std::abs(psi[1]), 0.0, 1e-15);
+}
+
+TEST(QuantumOuter, KetBraProduct) {
+    auto k0 = ket_basis(2, 0);
+    auto k1 = ket_basis(2, 1);
+    auto rho = outer(k0, k1);
+    ASSERT_EQ(rho.size(), 2u);
+    EXPECT_NEAR(std::abs(rho[0][1]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(rho[0][0]), 0.0, 1e-12);
+    EXPECT_NEAR(std::abs(rho[1][0]), 0.0, 1e-12);
+    EXPECT_NEAR(std::abs(rho[1][1]), 0.0, 1e-12);
+}
+
+TEST(QuantumGates, PauliPlusMinus) {
+    auto Pp = pauli_plus();
+    auto Pm = pauli_minus();
+    auto k0 = ket_basis(2, 0);
+    auto k1 = ket_basis(2, 1);
+    auto up = op_apply(Pp, k1);
+    auto down = op_apply(Pm, k0);
+    EXPECT_NEAR(std::abs(up[0]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(up[1]), 0.0, 1e-12);
+    EXPECT_NEAR(std::abs(down[1]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(down[0]), 0.0, 1e-12);
+}
+
+TEST(QuantumGates, Swap01And10) {
+    auto S = swap_gate();
+    auto out = op_apply(S, ket_basis(4, 1));
+    ASSERT_EQ(out.size(), 4u);
+    EXPECT_NEAR(std::abs(out[2]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(out[1]), 0.0, 1e-12);
+}
+
+TEST(QuantumGates, PhasePiFlipsOne) {
+    auto P = phase_gate(M_PI);
+    auto out = op_apply(P, ket_basis(2, 1));
+    EXPECT_NEAR(out[1].real(), -1.0, 1e-12);
+    EXPECT_NEAR(out[1].imag(), 0.0, 1e-12);
+}
+
+TEST(QuantumGates, RotationXPiMapsZeroToOne) {
+    auto Rx = rotation_x(M_PI);
+    auto out = op_apply(Rx, ket_basis(2, 0));
+    EXPECT_NEAR(std::abs(out[1]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(out[0]), 0.0, 1e-12);
+}
+
+TEST(QuantumGates, RotationYAndZPi) {
+    auto Ry = rotation_y(M_PI);
+    auto Rz = rotation_z(M_PI);
+    auto yout = op_apply(Ry, ket_basis(2, 0));
+    EXPECT_NEAR(std::abs(yout[1]), 1.0, 1e-12);
+    auto zout = op_apply(Rz, ket_basis(2, 0));
+    EXPECT_NEAR(std::abs(zout[0]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(zout[1]), 0.0, 1e-12);
+}
+
+TEST(QuantumGates, IdentityDim4) {
+    auto I = identity(4);
+    ASSERT_EQ(I.size(), 4u);
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            EXPECT_NEAR(I[i][j].real(), i == j ? 1.0 : 0.0, 1e-15);
+}
+
+TEST(QuantumTensor, ProductStates) {
+    auto psi = tensor_product_states(ket_basis(2, 0), ket_basis(2, 1));
+    ASSERT_EQ(psi.size(), 4u);
+    EXPECT_NEAR(std::abs(psi[1]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(psi[0]), 0.0, 1e-12);
+}
+
+TEST(QuantumStates, FockIsBasis) {
+    auto f = fock_state(2, 5);
+    auto b = ket_basis(6, 2);
+    ASSERT_EQ(f.size(), b.size());
+    for (size_t i = 0; i < f.size(); ++i)
+        EXPECT_NEAR(std::abs(f[i] - b[i]), 0.0, 1e-15);
+}
+
+TEST(QuantumStates, GHZTwoQubitsIsBell) {
+    auto ghz = ghz_state(2);
+    auto bell = bell_states()[0];
+    EXPECT_NEAR(ket_overlap_prob(ghz, bell), 1.0, 1e-12);
+}
+
+TEST(QuantumQFT, OneQubitIsHadamardOnZero) {
+    auto Q = qft_gate(1);
+    auto out = op_apply(Q, ket_basis(2, 0));
+    EXPECT_NEAR(std::abs(out[0]), 1.0 / std::sqrt(2.0), 1e-12);
+    EXPECT_NEAR(std::abs(out[1]), 1.0 / std::sqrt(2.0), 1e-12);
+}

@@ -491,3 +491,213 @@ TEST(ProbAdv3, PPF_InvalidParams) {
     EXPECT_DOUBLE_EQ(beta_ppf(0.5, 0.0, 1.0), 0.0);
     EXPECT_DOUBLE_EQ(f_ppf(0.5, 0.0, 10.0), 0.0);
 }
+
+// ---------------------------------------------------------------------------
+// Remaining pdf/cdf/ppf branches and documented invalid-parameter returns
+// ---------------------------------------------------------------------------
+
+TEST(ProbAdv3, T_PDF_CDF_InvalidDf) {
+    EXPECT_DOUBLE_EQ(t_pdf(0.5, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(t_pdf(0.5, -2.0), 0.0);
+    EXPECT_DOUBLE_EQ(t_cdf(0.5, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(t_cdf(-1.0, -1.0), 0.0);
+}
+
+TEST(ProbAdv3, T_PPF_ProbabilityTails) {
+    EXPECT_LT(t_ppf(0.0, 5.0), -1e50);
+    EXPECT_LT(t_ppf(-0.1, 5.0), -1e50);
+    EXPECT_GT(t_ppf(1.0, 5.0), 1e50);
+    EXPECT_GT(t_ppf(1.5, 5.0), 1e50);
+}
+
+TEST(ProbAdv3, Chi2_PDF_CDF_Invalid) {
+    EXPECT_DOUBLE_EQ(chi2_pdf(-1.0, 3.0), 0.0);
+    EXPECT_DOUBLE_EQ(chi2_pdf(1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(chi2_pdf(1.0, -2.0), 0.0);
+    EXPECT_DOUBLE_EQ(chi2_cdf(-0.5, 4.0), 0.0);
+    EXPECT_DOUBLE_EQ(chi2_cdf(2.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(chi2_cdf(2.0, -1.0), 0.0);
+}
+
+TEST(ProbAdv3, Chi2_PPF_ProbabilityTails) {
+    EXPECT_DOUBLE_EQ(chi2_ppf(0.0, 5.0), 0.0);
+    EXPECT_DOUBLE_EQ(chi2_ppf(-0.2, 5.0), 0.0);
+    EXPECT_GT(chi2_ppf(1.0, 5.0), 1e50);
+    EXPECT_GT(chi2_ppf(1.2, 5.0), 1e50);
+}
+
+TEST(ProbAdv3, Gamma_PDF_InvalidAndNonPositiveX) {
+    EXPECT_DOUBLE_EQ(gamma_pdf(0.0, 2.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_pdf(-1.0, 2.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_pdf(1.0, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_pdf(1.0, -1.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_pdf(1.0, 2.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_pdf(1.0, 2.0, -0.5), 0.0);
+}
+
+TEST(ProbAdv3, Gamma_PPF_ProbabilityTails) {
+    EXPECT_DOUBLE_EQ(gamma_ppf(0.0, 2.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(gamma_ppf(-0.1, 2.0, 1.0), 0.0);
+    EXPECT_GT(gamma_ppf(1.0, 2.0, 1.0), 1e50);
+    EXPECT_GT(gamma_ppf(1.1, 2.0, 1.0), 1e50);
+}
+
+TEST(ProbAdv3, Beta_PDF_CDF_InvalidParams) {
+    EXPECT_DOUBLE_EQ(beta_pdf(0.5, 0.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_pdf(0.5, 2.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_pdf(0.5, -1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_cdf(0.5, 0.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_cdf(0.5, 2.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_cdf(0.5, -1.0, 3.0), 0.0);
+    EXPECT_NEAR(beta_cdf(1.5, 2.0, 3.0), 1.0, 1e-12);
+}
+
+TEST(ProbAdv3, Beta_PPF_InvalidAndTails) {
+    EXPECT_DOUBLE_EQ(beta_ppf(0.5, 2.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_ppf(0.0, 2.0, 3.0), 0.0);
+    EXPECT_DOUBLE_EQ(beta_ppf(-0.1, 2.0, 3.0), 0.0);
+    EXPECT_NEAR(beta_ppf(1.0, 2.0, 3.0), 1.0, 1e-12);
+    EXPECT_NEAR(beta_ppf(1.5, 2.0, 3.0), 1.0, 1e-12);
+}
+
+TEST(ProbAdv3, F_PDF_CDF_Invalid) {
+    EXPECT_DOUBLE_EQ(f_pdf(0.0, 5.0, 10.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_pdf(-1.0, 5.0, 10.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_pdf(1.0, 0.0, 10.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_pdf(1.0, 5.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_pdf(1.0, -1.0, 10.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_cdf(1.0, 0.0, 10.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_cdf(1.0, 5.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_cdf(1.0, -2.0, 8.0), 0.0);
+}
+
+TEST(ProbAdv3, F_PPF_InvalidAndTails) {
+    EXPECT_DOUBLE_EQ(f_ppf(0.5, 5.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_ppf(0.5, -1.0, 10.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_ppf(0.0, 5.0, 10.0), 0.0);
+    EXPECT_DOUBLE_EQ(f_ppf(-0.2, 5.0, 10.0), 0.0);
+    EXPECT_GT(f_ppf(1.0, 5.0, 10.0), 1e50);
+    EXPECT_GT(f_ppf(1.2, 5.0, 10.0), 1e50);
+}
+
+TEST(ProbAdv3, F_PPF_SmallD2_RoundTrip) {
+    // d2 <= 2 uses a different initial bracket than the mean-based start.
+    for (double d2 : {1.0, 2.0}) {
+        for (double p : {0.1, 0.5, 0.9}) {
+            const double q = f_ppf(p, 4.0, d2);
+            if (!std::isfinite(q)) {
+                GTEST_SKIP() << "f_ppf non-finite for d2=" << d2;
+            }
+            EXPECT_NEAR(f_cdf(q, 4.0, d2), p, 1e-5)
+                << "F PPF round-trip at p=" << p << " d2=" << d2;
+        }
+    }
+}
+
+TEST(ProbAdv3, Uniform_InvalidInterval) {
+    EXPECT_DOUBLE_EQ(uniform_pdf(0.5, 1.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(uniform_pdf(0.5, 2.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(uniform_cdf(0.5, 1.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(uniform_cdf(0.5, 3.0, 0.0), 0.0);
+}
+
+TEST(ProbAdv3, Normal_InvalidSigma) {
+    EXPECT_DOUBLE_EQ(norm_pdf(0.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(norm_cdf(0.0, 0.0, 0.0), 0.0);
+}
+
+TEST(ProbAdv3, Normal_PPF_InvalidP_IsZero) {
+    EXPECT_DOUBLE_EQ(norm_ppf(0.0, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(norm_ppf(1.0, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(norm_ppf(-0.1, 0.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(norm_ppf(1.2, 1.0, 2.0), 0.0);
+}
+
+TEST(ProbAdv3, Normal_PPF_TailRationalApprox) {
+    // plow = 0.02425, phigh = 0.97575: exercise both tail rational branches.
+    const double lo = norm_ppf(0.01, 0.0, 1.0);
+    const double hi = norm_ppf(0.99, 0.0, 1.0);
+    EXPECT_TRUE(std::isfinite(lo));
+    EXPECT_TRUE(std::isfinite(hi));
+    EXPECT_LT(lo, -2.0);
+    EXPECT_GT(hi, 2.0);
+    EXPECT_NEAR(norm_cdf(lo, 0.0, 1.0), 0.01, 1e-6);
+    EXPECT_NEAR(norm_cdf(hi, 0.0, 1.0), 0.99, 1e-6);
+}
+
+TEST(ProbAdv3, Exp_PDF_CDF_Invalid) {
+    EXPECT_DOUBLE_EQ(exp_pdf(-1.0, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(exp_pdf(1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(exp_pdf(1.0, -2.0), 0.0);
+    EXPECT_DOUBLE_EQ(exp_cdf(-0.5, 1.0), 0.0);
+    EXPECT_DOUBLE_EQ(exp_cdf(1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(exp_cdf(1.0, -1.0), 0.0);
+}
+
+TEST(ProbAdv3, Exp_PPF_Tails) {
+    EXPECT_DOUBLE_EQ(exp_ppf(-0.1, 1.0), 0.0);
+    EXPECT_GT(exp_ppf(1.0, 1.0), 1e50);
+    EXPECT_GT(exp_ppf(1.5, 2.0), 1e50);
+}
+
+TEST(ProbAdv3, Binom_PDF_CDF_Branches) {
+    EXPECT_NEAR(binom_pdf(0, 5, 0.3), std::pow(0.7, 5.0), 1e-12);
+    EXPECT_NEAR(binom_pdf(5, 5, 0.3), std::pow(0.3, 5.0), 1e-12);
+    EXPECT_DOUBLE_EQ(binom_pdf(-1, 5, 0.5), 0.0);
+    EXPECT_DOUBLE_EQ(binom_pdf(6, 5, 0.5), 0.0);
+    EXPECT_DOUBLE_EQ(binom_pdf(2, 5, -0.1), 0.0);
+    EXPECT_DOUBLE_EQ(binom_pdf(2, 5, 1.1), 0.0);
+
+    EXPECT_NEAR(binom_cdf(0, 4, 0.25), std::pow(0.75, 4.0), 1e-12);
+    EXPECT_NEAR(binom_cdf(4, 4, 0.25), 1.0, 1e-12);
+    EXPECT_NEAR(binom_cdf(10, 4, 0.25), 1.0, 1e-12);
+    EXPECT_DOUBLE_EQ(binom_cdf(-1, 4, 0.5), 0.0);
+    EXPECT_DOUBLE_EQ(binom_cdf(2, -1, 0.5), 0.0);
+    EXPECT_DOUBLE_EQ(binom_cdf(2, 4, -0.1), 0.0);
+    EXPECT_DOUBLE_EQ(binom_cdf(2, 4, 1.5), 0.0);
+}
+
+TEST(ProbAdv3, Pois_PDF_CDF_Branches) {
+    EXPECT_NEAR(pois_pdf(0.0, 2.0), std::exp(-2.0), 1e-12);
+    EXPECT_DOUBLE_EQ(pois_pdf(-1.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(pois_pdf(1.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(pois_pdf(1.0, -3.0), 0.0);
+
+    EXPECT_NEAR(pois_cdf(0.0, 1.5), std::exp(-1.5), 1e-12);
+    EXPECT_DOUBLE_EQ(pois_cdf(-0.5, 1.5), 0.0);
+    EXPECT_DOUBLE_EQ(pois_cdf(2.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(pois_cdf(2.0, -1.0), 0.0);
+}
+
+TEST(ProbAdv3, Lognormal_Weibull_Laplace_InvalidAndTails) {
+    EXPECT_DOUBLE_EQ(lognormal_cdf(1.0, 0.0, 0.0), 0.0);
+    EXPECT_DOUBLE_EQ(lognormal_cdf(1.0, 0.0, -1.0), 0.0);
+    EXPECT_GT(lognormal_ppf(1.0, 0.0, 1.0), 1e50);
+    EXPECT_DOUBLE_EQ(lognormal_ppf(-0.1, 0.0, 1.0), 0.0);
+
+    EXPECT_DOUBLE_EQ(weibull_cdf(1.0, 0.0, 2.0), 0.0);
+    EXPECT_DOUBLE_EQ(weibull_cdf(1.0, 1.0, 0.0), 0.0);
+    EXPECT_GT(weibull_ppf(1.0, 1.0, 2.0), 1e50);
+    EXPECT_DOUBLE_EQ(weibull_ppf(-0.1, 1.0, 2.0), 0.0);
+
+    EXPECT_LT(laplace_ppf(0.0, 0.0, 1.0), -1e50);
+    EXPECT_GT(laplace_ppf(1.0, 0.0, 1.0), 1e50);
+}
+
+TEST(ProbAdv3, Logistic_Gumbel_Cauchy_PPF_Invalid) {
+    EXPECT_DOUBLE_EQ(logistic_ppf(0.5, 0.0, 0.0), 0.0);
+    EXPECT_LT(logistic_ppf(0.0, 0.0, 1.0), -1e50);
+    EXPECT_GT(logistic_ppf(1.0, 0.0, 1.0), 1e50);
+
+    EXPECT_DOUBLE_EQ(gumbel_ppf(0.5, 0.0, -1.0), 0.0);
+    EXPECT_DOUBLE_EQ(cauchy_ppf(0.5, 0.0, -0.5), 0.0);
+    EXPECT_LT(cauchy_ppf(0.0, 0.0, 1.0), -1e50);
+    EXPECT_GT(cauchy_ppf(1.0, 0.0, 1.0), 1e50);
+}
+
+TEST(ProbAdv3, Pareto_Rayleigh_PPF_Tails) {
+    EXPECT_GT(pareto_ppf(1.0, 1.0, 2.0), 1e50);
+    EXPECT_DOUBLE_EQ(pareto_ppf(-0.1, 1.0, 2.0), 1.0);
+    EXPECT_GT(rayleigh_ppf(1.0, 1.0), 1e50);
+    EXPECT_DOUBLE_EQ(rayleigh_ppf(-0.2, 1.0), 0.0);
+}

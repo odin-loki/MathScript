@@ -6570,3 +6570,45 @@ TEST(ReplCommandsTest, control_bode_phase_noassign) {
     expect_ok(interp, "control_bode_phase(num, den, 1)");
     expect_error_contains(interp, "control_bode_phase(missing, den, 1)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, control_phase_margin_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "control_phase_margin([1], [1, 1])");
+    expect_error_contains(interp, "control_phase_margin(missing, [1, 1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_gain_margin_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "control_gain_margin([1], [1, 1])", "inf");
+    expect_error_contains(interp, "control_gain_margin(missing, [1, 1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_impulse_final_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "control_impulse_final([1], [1, 1])");
+    expect_error_contains(interp, "control_impulse_final(missing, [1, 1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_is_controllable_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "control_is_controllable([0, 1; 0, 0], [0; 1])");
+    expect_error_contains(interp, "control_is_controllable(missing, [0; 1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_is_observable_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "control_is_observable([0, 1; 0, 0], [1, 0])");
+    expect_error_contains(interp, "control_is_observable(missing, [1, 0])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_pidtune_ki_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "control_pidtune_ki([1], [1, 1])");
+    expect_error_contains(interp, "control_pidtune_ki(missing, [1, 1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, control_pidtune_kd_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "control_pidtune_kd([1], [1, 1])");
+    expect_error_contains(interp, "control_pidtune_kd(missing, [1, 1])", "unknown matrix");
+}

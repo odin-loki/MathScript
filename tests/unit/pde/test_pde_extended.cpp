@@ -1409,3 +1409,124 @@ TEST(PdeExtTest, wave_1d_standing_wave_matches_cosine) {
     for (std::size_t i = 0; i < n; ++i)
         EXPECT_NEAR(result.u.back()[i], u0[i] * factor, 0.05);
 }
+
+TEST(PdeExtTest, heat_2d_empty_ragged_or_nonpositive) {
+    const std::vector<std::vector<double>> empty;
+    EXPECT_TRUE(pde_heat_2d(empty, 0.1, 0.1, 0.1, 0.001, 5).u.empty());
+    const std::vector<std::vector<double>> ragged = {{1.0, 2.0}, {3.0}};
+    EXPECT_TRUE(pde_heat_2d(ragged, 0.1, 0.1, 0.1, 0.001, 5).u.empty());
+    auto u0 = make_grid(5, 5, 1.0);
+    EXPECT_TRUE(pde_heat_2d(u0, 0.1, 0.0, 0.1, 0.001, 5).u.empty());
+    EXPECT_TRUE(pde_heat_2d(u0, 0.1, 0.1, 0.0, 0.001, 5).u.empty());
+    EXPECT_TRUE(pde_heat_2d(u0, 0.1, 0.1, 0.1, 0.0, 5).u.empty());
+}
+
+TEST(PdeExtTest, wave_1d_empty_mismatch_or_nonpositive) {
+    const std::vector<double> empty;
+    const std::vector<double> v0(5, 0.0);
+    EXPECT_TRUE(pde_wave_1d(empty, empty, 1.0, 0.1, 0.01, 5).u.empty());
+    const std::vector<double> u0(5, 0.0);
+    const std::vector<double> v_short(4, 0.0);
+    EXPECT_TRUE(pde_wave_1d(u0, v_short, 1.0, 0.1, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_wave_1d(u0, v0, 1.0, 0.0, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_wave_1d(u0, v0, 1.0, 0.1, 0.0, 5).u.empty());
+}
+
+TEST(PdeExtTest, advection_1d_empty_or_nonpositive) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(pde_advection_1d(empty, 1.0, 0.1, 0.01, 5).u.empty());
+    const std::vector<double> u0(5, 1.0);
+    EXPECT_TRUE(pde_advection_1d(u0, 1.0, 0.0, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_advection_1d(u0, 1.0, 0.1, 0.0, 5).u.empty());
+}
+
+TEST(PdeExtTest, lax_wendroff_nonpositive) {
+    const std::vector<double> u0(5, 1.0);
+    EXPECT_TRUE(pde_advection_1d_lax_wendroff(u0, 1.0, 0.0, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_advection_1d_lax_wendroff(u0, 1.0, 0.1, 0.0, 5).u.empty());
+}
+
+TEST(PdeExtTest, poisson_2d_empty_ragged_or_invalid) {
+    const std::vector<std::vector<double>> empty;
+    EXPECT_TRUE(pde_poisson_2d(empty, 0.1, 0.1, 10, 1e-6).u.empty());
+    const std::vector<std::vector<double>> ragged = {{1.0, 2.0}, {3.0}};
+    EXPECT_TRUE(pde_poisson_2d(ragged, 0.1, 0.1, 10, 1e-6).u.empty());
+    auto f = make_grid(5, 5, 1.0);
+    EXPECT_TRUE(pde_poisson_2d(f, 0.1, 0.1, 0, 1e-6).u.empty());
+    EXPECT_TRUE(pde_poisson_2d(f, 0.0, 0.1, 10, 1e-6).u.empty());
+    EXPECT_TRUE(pde_poisson_2d(f, 0.1, 0.0, 10, 1e-6).u.empty());
+    EXPECT_TRUE(pde_poisson_2d(f, 0.1, 0.1, 10, 0.0).u.empty());
+}
+
+TEST(PdeExtTest, laplace_2d_ragged_or_small_ny) {
+    const std::vector<std::vector<double>> ragged = {{1.0, 1.0, 1.0}, {1.0}};
+    EXPECT_TRUE(pde_laplace_2d(3, 2, ragged).u.empty());
+    auto boundary = make_grid(2, 5, 1.0);
+    EXPECT_TRUE(pde_laplace_2d(5, 2, boundary).u.empty());
+}
+
+TEST(PdeExtTest, helmholtz_2d_empty_or_ragged) {
+    const std::vector<std::vector<double>> empty;
+    EXPECT_TRUE(pde_helmholtz_2d(empty, 1.0, 0.1, 0.1).u.empty());
+    const std::vector<std::vector<double>> ragged_f = {{1.0, 2.0}, {3.0}};
+    EXPECT_TRUE(pde_helmholtz_2d(ragged_f, 1.0, 0.1, 0.1).u.empty());
+    auto f = make_grid(7, 7, 1.0);
+    const std::vector<std::vector<double>> ragged_g = {{0.0, 0.0}, {0.0}};
+    EXPECT_TRUE(pde_helmholtz_2d(f, 1.0, 0.1, 0.1, ragged_g).u.empty());
+}
+
+TEST(PdeExtTest, burgers_1d_empty_or_invalid) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(pde_burgers_1d(empty, 0.01, 0.1, 0.001, 5).u.empty());
+    const std::vector<double> u0(5, 1.0);
+    EXPECT_TRUE(pde_burgers_1d(u0, 0.01, 0.0, 0.001, 5).u.empty());
+    EXPECT_TRUE(pde_burgers_1d(u0, 0.01, 0.1, 0.0, 5).u.empty());
+    EXPECT_TRUE(pde_burgers_1d(u0, -0.01, 0.1, 0.001, 5).u.empty());
+}
+
+TEST(PdeExtTest, burgers_1d_negative_velocity_upwind) {
+    std::vector<double> u0 = {0.0, -0.5, -1.0, -0.5, 0.0};
+    const auto result = pde_burgers_1d(u0, 0.01, 0.1, 0.001, 20);
+    ASSERT_FALSE(result.u.empty());
+    for (const auto& snap : result.u) {
+        EXPECT_NEAR(snap.front(), 0.0, 1e-12);
+        EXPECT_NEAR(snap.back(), 0.0, 1e-12);
+        for (double v : snap) {
+            EXPECT_TRUE(std::isfinite(v));
+        }
+    }
+}
+
+TEST(PdeExtTest, heat_1d_empty_input) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(pde_heat_1d(empty, 0.1, 0.1, 0.001, 5).u.empty());
+}
+
+TEST(PdeExtTest, wave_2d_empty_ragged_or_nonpositive) {
+    const std::vector<std::vector<double>> empty;
+    auto v0 = make_grid(5, 5, 0.0);
+    EXPECT_TRUE(pde_wave_2d(empty, v0, 1.0, 0.1, 0.1, 0.01, 5).u.empty());
+    const std::vector<std::vector<double>> ragged = {{1.0, 0.0}, {0.0}};
+    EXPECT_TRUE(pde_wave_2d(ragged, ragged, 1.0, 0.1, 0.1, 0.01, 5).u.empty());
+    auto u0 = make_grid(5, 5, 0.0);
+    EXPECT_TRUE(pde_wave_2d(u0, v0, 1.0, 0.0, 0.1, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_wave_2d(u0, v0, 1.0, 0.1, 0.0, 0.01, 5).u.empty());
+    EXPECT_TRUE(pde_wave_2d(u0, v0, 1.0, 0.1, 0.1, 0.0, 5).u.empty());
+}
+
+TEST(PdeExtTest, heat_2d_cn_adi_empty_or_ragged) {
+    const std::vector<std::vector<double>> empty;
+    EXPECT_TRUE(pde_heat_2d_cn_adi(empty, 0.1, 0.1, 0.1, 0.01, 5).u.empty());
+    const std::vector<std::vector<double>> ragged = {{1.0, 2.0}, {3.0}};
+    EXPECT_TRUE(pde_heat_2d_cn_adi(ragged, 0.1, 0.1, 0.1, 0.01, 5).u.empty());
+}
+
+TEST(PdeExtTest, poisson_1d_empty_input) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(pde_poisson_1d(empty, 0.1, 0.0, 0.0).u.empty());
+}
+
+TEST(PdeExtTest, reaction_diffusion_1d_empty_input) {
+    const std::vector<double> empty;
+    EXPECT_TRUE(pde_reaction_diffusion_1d(empty, 0.1, 1.0, 0.1, 0.01, 5).u.empty());
+}

@@ -2240,3 +2240,70 @@ TEST(GraphSpectral, AdjacencySpectrumIsolatedVertex) {
     ASSERT_EQ(spec.size(), 1u);
     EXPECT_NEAR(spec[0], 0.0, 1e-12);
 }
+
+// ---- Remaining untested library APIs / edge cases ----
+
+TEST(GraphBasic, NeighborsAndFromEdgeListUndirected) {
+    auto G = from_edge_list(3, {{0, 1, 2.5}, {1, 2, 3.5}}, /*directed=*/false);
+    EXPECT_FALSE(G.is_directed());
+    EXPECT_EQ(G.n_vertices(), 3);
+    EXPECT_EQ(G.n_edges(), 2);
+    const auto& n0 = G.neighbors(0);
+    ASSERT_EQ(n0.size(), 1u);
+    EXPECT_EQ(n0[0].first, 1);
+    EXPECT_NEAR(n0[0].second, 2.5, 1e-12);
+    const auto& n1 = G.neighbors(1);
+    EXPECT_EQ(n1.size(), 2u);
+}
+
+TEST(GraphShortestPath, DijkstraEmpty) {
+    Graph G(0, false);
+    auto [dist, parent] = dijkstra(G, 0);
+    EXPECT_TRUE(dist.empty());
+    EXPECT_TRUE(parent.empty());
+}
+
+TEST(GraphShortestPath, FloydWarshallEmpty) {
+    Graph G(0, false);
+    EXPECT_TRUE(floyd_warshall(G).empty());
+}
+
+TEST(GraphTransitiveClosure, EmptyGraph) {
+    Graph G(0, false);
+    EXPECT_TRUE(transitive_closure(G).empty());
+}
+
+TEST(GraphConnectivity, EmptyIsConnected) {
+    Graph G(0, false);
+    EXPECT_TRUE(is_connected(G));
+}
+
+TEST(GraphProperties, DiameterAndRadiusEmpty) {
+    Graph G(0, false);
+    EXPECT_EQ(diameter(G), 0);
+    EXPECT_EQ(radius(G), 0);
+}
+
+TEST(GraphKCore, NegativeKKeepsAllVertices) {
+    Graph G(3, false);
+    G.add_edge(0, 1);
+    G.add_edge(1, 2);
+    G.add_edge(2, 0);
+    auto sub = k_core_subgraph(G, -1);
+    EXPECT_EQ(sub.n_vertices(), 3);
+    EXPECT_EQ(sub.n_edges(), 3);
+}
+
+TEST(GraphCentrality, DegreeEmptyAndIsolated) {
+    Graph empty(0, false);
+    EXPECT_TRUE(degree_centrality(empty).empty());
+    Graph iso(1, false);
+    auto dc = degree_centrality(iso);
+    ASSERT_EQ(dc.size(), 1u);
+    EXPECT_NEAR(dc[0], 0.0, 1e-12);
+}
+
+TEST(GraphCentrality, EigenvectorEmpty) {
+    Graph G(0, false);
+    EXPECT_TRUE(eigenvector_centrality(G).empty());
+}

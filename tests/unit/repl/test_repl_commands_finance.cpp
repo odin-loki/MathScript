@@ -3455,3 +3455,27 @@ TEST(ReplCommandsTest, finance_geo_asian_put_noassign) {
     expect_error_contains(interp, "finance_geo_asian_put(100, 100, 1, 0.05, 0.2, missing)",
                           "finance_geo_asian_put");
 }
+
+TEST(ReplCommandsTest, finance_portfolio_return_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_portfolio_return([0.6; 0.4], [0.1; 0.05])", "0.08");
+    expect_error_contains(interp, "finance_portfolio_return(no_such_matrix, [0.1; 0.05])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, finance_portfolio_variance_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_portfolio_variance([0.5; 0.5], [0.04, 0.01; 0.01, 0.09])",
+                    "0.0375");
+    expect_error_contains(interp,
+                          "finance_portfolio_variance(no_such_matrix, [0.04, 0.01; 0.01, 0.09])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, finance_information_ratio_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ret = [0.10; 0.12; 0.08; 0.11; 0.09]");
+    expect_ok(interp, "bench = [0.05; 0.08; 0.06; 0.10; 0.07]");
+    expect_contains(interp, "finance_information_ratio(ret, bench)", "1.70");
+    expect_error_contains(interp, "finance_information_ratio(missing, bench)", "unknown matrix");
+}

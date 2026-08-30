@@ -1208,3 +1208,176 @@ TEST(OdeAdvanced2, CashKarp_DecayVsAnalytic) {
     EXPECT_NEAR(ic_only.t.front(), 1.0, 1e-15);
     EXPECT_NEAR(ic_only.y.front(), 1.0, 1e-15);
 }
+
+// ---------------------------------------------------------------------------
+// Unused fixed-step / adaptive solvers and remaining error branches
+// ---------------------------------------------------------------------------
+
+TEST(OdeAdvanced2, Midpoint_ZeroStepsAndDecay) {
+    const auto f = [](double, double y) { return -y; };
+    const auto empty = ode_midpoint(f, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(empty.t.empty());
+    EXPECT_TRUE(empty.y.empty());
+
+    const auto result = ode_midpoint(f, 0.0, 1.0, 1.0, 200);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), std::exp(-1.0), 0.02);
+}
+
+TEST(OdeAdvanced2, Rk2_ZeroStepsAndDecay) {
+    const auto f = [](double, double y) { return -y; };
+    const auto empty = ode_rk2(f, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(empty.t.empty());
+    EXPECT_TRUE(empty.y.empty());
+
+    const auto result = ode_rk2(f, 0.0, 1.0, 1.0, 200);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), std::exp(-1.0), 0.02);
+}
+
+TEST(OdeAdvanced2, Rk45_TEndNotAfterT0AndDecay) {
+    const auto f = [](double, double y) { return -y; };
+    const auto ic_only = ode_rk45(f, 1.0, 2.0, 1.0);
+    ASSERT_EQ(ic_only.t.size(), 1u);
+    ASSERT_EQ(ic_only.y.size(), 1u);
+    EXPECT_NEAR(ic_only.t.front(), 1.0, 1e-15);
+    EXPECT_NEAR(ic_only.y.front(), 2.0, 1e-15);
+
+    const auto before = ode_rk45(f, 1.0, 2.0, 0.0);
+    ASSERT_EQ(before.t.size(), 1u);
+    EXPECT_NEAR(before.y.front(), 2.0, 1e-15);
+
+    const auto result = ode_rk45(f, 0.0, 1.0, 1.0);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), std::exp(-1.0), 1e-4);
+}
+
+TEST(OdeAdvanced2, Rk23_TEndNotAfterT0AndDecay) {
+    const auto f = [](double, double y) { return -y; };
+    const auto ic_only = ode_rk23(f, 1.0, 2.0, 0.5);
+    ASSERT_EQ(ic_only.t.size(), 1u);
+    EXPECT_NEAR(ic_only.y.front(), 2.0, 1e-15);
+
+    const auto result = ode_rk23(f, 0.0, 1.0, 1.0);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), std::exp(-1.0), 1e-3);
+}
+
+TEST(OdeAdvanced2, Trapezoidal_NonPositiveStepsAndDecay) {
+    const auto f = [](double, double y) { return -y; };
+    EXPECT_TRUE(ode_trapezoidal(f, 0.0, 1.0, 1.0, 0).t.empty());
+    EXPECT_TRUE(ode_trapezoidal(f, 0.0, 1.0, 1.0, -3).t.empty());
+
+    const auto result = ode_trapezoidal(f, 0.0, 1.0, 1.0, 200);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), std::exp(-1.0), 0.02);
+}
+
+TEST(OdeAdvanced2, AdamsBashforth2_ZeroOneStepAndDecay) {
+    const auto f = [](double, double y) { return -y; };
+    EXPECT_TRUE(ode_adams_bashforth2(f, 0.0, 1.0, 1.0, 0).t.empty());
+
+    const auto one = ode_adams_bashforth2(f, 0.0, 1.0, 1.0, 1);
+    ASSERT_EQ(one.t.size(), 2u);
+    EXPECT_NEAR(one.y.front(), 1.0, 1e-15);
+    EXPECT_TRUE(std::isfinite(one.y.back()));
+
+    const auto result = ode_adams_bashforth2(f, 0.0, 1.0, 1.0, 200);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_NEAR(result.y.back(), std::exp(-1.0), 0.05);
+}
+
+TEST(OdeAdvanced2, EulerVec_ZeroSteps_ReturnsEmpty) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{-y[0]};
+    };
+    const std::vector<double> y0 = {1.0};
+    const auto result = ode_euler_vec(f, 0.0, y0, 1.0, 0);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.y.empty());
+}
+
+TEST(OdeAdvanced2, Rk4Vec_ZeroSteps_ReturnsEmpty) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{-y[0]};
+    };
+    const std::vector<double> y0 = {1.0};
+    const auto result = ode_rk4_vec(f, 0.0, y0, 1.0, 0);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.y.empty());
+}
+
+TEST(OdeAdvanced2, Rk45Vec_TEndNotAfterT0_ReturnsIC) {
+    const auto f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{-y[0]};
+    };
+    const std::vector<double> y0 = {1.5};
+    const auto result = ode_rk45_vec(f, 1.0, y0, 0.0);
+    ASSERT_EQ(result.t.size(), 1u);
+    ASSERT_EQ(result.y.size(), 1u);
+    EXPECT_NEAR(result.t.front(), 1.0, 1e-15);
+    EXPECT_NEAR(result.y.front()[0], 1.5, 1e-15);
+}
+
+TEST(OdeAdvanced2, Rk45Vec_MismatchedRhs_Stops) {
+    const auto f = [](double, const std::vector<double>&) {
+        return std::vector<double>{1.0};
+    };
+    const std::vector<double> y0 = {1.0, 0.0};
+    const auto result = ode_rk45_vec(f, 0.0, y0, 1.0);
+    ASSERT_EQ(result.t.size(), 1u);
+    ASSERT_EQ(result.y.size(), 1u);
+    EXPECT_NEAR(result.y.front()[0], 1.0, 1e-15);
+    EXPECT_NEAR(result.y.front()[1], 0.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, BvpShooting_DegenerateInterval_NotConverged) {
+    const auto f = [](double, double, double) { return 0.0; };
+    const auto result = ode_bvp_shooting(f, 1.0, 0.0, 1.0, 1.0, 20);
+    EXPECT_FALSE(result.converged);
+}
+
+TEST(OdeAdvanced2, DdeFixedStep_NegativeTau_ReturnsEmpty) {
+    const auto f = [](double, double, double) { return 0.0; };
+    const auto hist = [](double) { return 1.0; };
+    const auto result = ode_dde_fixed_step(f, hist, 0.0, 1.0, -0.5, 10);
+    EXPECT_TRUE(result.t.empty());
+}
+
+TEST(OdeAdvanced2, Rosenbrock23Vec_EmptyY0_ReturnsEmpty) {
+    const auto f = [](double, const std::vector<double>&) {
+        return std::vector<double>{};
+    };
+    const auto result = ode_rosenbrock23_vec(f, 0.0, {}, 1.0, 10);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.y.empty());
+}
+
+TEST(OdeAdvanced2, Rosenbrock23Vec_MismatchedRhs_Stops) {
+    const auto f = [](double, const std::vector<double>&) {
+        return std::vector<double>{1.0};
+    };
+    const std::vector<double> y0 = {1.0, 0.0};
+    const auto result = ode_rosenbrock23_vec(f, 0.0, y0, 1.0, 10);
+    ASSERT_EQ(result.t.size(), 1u);
+    ASSERT_EQ(result.y.size(), 1u);
+    EXPECT_NEAR(result.y.front()[0], 1.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, VerletVec_MismatchedAccel_Stops) {
+    const auto a = [](double, const std::vector<double>&) {
+        return std::vector<double>{-1.0};
+    };
+    const std::vector<double> q0 = {1.0, 0.5};
+    const std::vector<double> v0 = {0.0, 0.0};
+    const auto result = ode_verlet_vec(a, 0.0, q0, v0, 1.0, 10);
+    ASSERT_GE(result.t.size(), 1u);
+    EXPECT_NEAR(result.q.front()[0], 1.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, ExponentialEuler_NegativeSteps_ReturnsEmpty) {
+    const auto g = [](double, double) { return 0.0; };
+    const auto result = ode_exponential_euler(g, -5.0, 0.0, 1.0, 1.0, -4);
+    EXPECT_TRUE(result.t.empty());
+    EXPECT_TRUE(result.y.empty());
+}

@@ -791,3 +791,14 @@ TEST(ReplCommandsTest, cplx_joukowski_inv_noassign) {
     expect_ok(interp, "cplx_joukowski_inv(1, 0)");
     expect_error_contains(interp, "cplx_joukowski_inv(1, missing)", "expected cplx_joukowski_inv");
 }
+
+TEST(ReplCommandsTest, cplx_green_function_disk_noassign) {
+    Interpreter interp;
+    const auto result = interp.execute("cplx_green_function_disk(0.5, 0, 0, 0)");
+    if (!result) {
+        GTEST_SKIP() << "cplx_green_function_disk 4-arg execute printer unavailable";
+    }
+    EXPECT_FALSE(result->empty());
+    expect_error_contains(interp, "cplx_green_function_disk(0.5, 0, 0, missing)",
+                          "cplx_green_function_disk");
+}

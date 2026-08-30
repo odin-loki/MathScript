@@ -4815,3 +4815,22 @@ TEST(ReplCommandsTest, stats_variance_inflation_factor_noassign) {
     expect_ok(interp, "stats_variance_inflation_factor([1, 1; 1, -1; 1, 1; 1, -1; 1, 1; 1, -1], 0)");
     expect_error_contains(interp, "stats_variance_inflation_factor(missing, 0)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, stats_correlation_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_correlation([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])");
+    expect_error_contains(interp, "stats_correlation(missing, [1; 2])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_weighted_mean_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_weighted_mean([1; 2; 3], [1; 1; 1])");
+    expect_error_contains(interp, "stats_weighted_mean(missing, [1; 1; 1])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, stats_weighted_variance_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "stats_weighted_variance([2; 4; 6; 8; 10], [1; 1; 1; 1; 1])");
+    expect_error_contains(interp, "stats_weighted_variance(missing, [1; 1; 1; 1; 1])",
+                          "unknown matrix");
+}

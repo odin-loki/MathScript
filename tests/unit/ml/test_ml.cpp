@@ -2393,3 +2393,89 @@ TEST(MLSVM, LinearBiasTermFinite) {
     EXPECT_TRUE(std::isfinite(svm.b));
     EXPECT_FALSE(svm.support_vectors.empty());
 }
+
+// ---- Remaining untested library APIs / edge cases ----
+
+TEST(MLMatUtils, EmptyTranspose) {
+    Mat empty;
+    auto At=mat_T(empty);
+    EXPECT_TRUE(At.empty());
+}
+
+TEST(MLAutodiff, AddSubDivUnary) {
+    Var a(3.0), b(2.0);
+    EXPECT_NEAR((a+b).val(), 5.0, 1e-12);
+    EXPECT_NEAR((a-b).val(), 1.0, 1e-12);
+    EXPECT_NEAR((a/b).val(), 1.5, 1e-12);
+    EXPECT_NEAR((-a).val(), -3.0, 1e-12);
+    auto f=[](const std::vector<Var>& v)->Var{
+        return (v[0]+v[1])/v[1]+(-v[0]);
+    };
+    // f(x,y)=(x+y)/y - x = x/y + 1 - x;  df/dx=1/y-1, df/dy=-x/y^2
+    Vec g=grad(f,{2.0,4.0});
+    EXPECT_NEAR(g[0], 0.25-1.0, 1e-6);
+    EXPECT_NEAR(g[1], -2.0/16.0, 1e-6);
+}
+
+TEST(MLPreprocess, StandardScalerFitThenTransform) {
+    Mat X={{1,2},{3,4},{5,6}};
+    StandardScaler sc;
+    sc.fit(X);
+    auto Z=sc.transform(X);
+    ASSERT_EQ(Z.size(), 3u);
+    double m0=0; for (auto& r:Z) m0+=r[0]; m0/=3;
+    EXPECT_NEAR(m0, 0.0, 1e-10);
+}
+
+TEST(MLPreprocess, MinMaxScalerFitThenTransform) {
+    Mat X={{0,10},{5,20},{10,30}};
+    MinMaxScaler sc;
+    sc.fit(X);
+    auto Z=sc.transform({{0,10},{10,30}});
+    ASSERT_EQ(Z.size(), 2u);
+    EXPECT_NEAR(Z[0][0], 0.0, 1e-10);
+    EXPECT_NEAR(Z[1][0], 1.0, 1e-10);
+}
+
+TEST(MLDecisionTree, MseRegression) {
+    Mat X={{0},{1},{2},{3},{4},{5}};
+    Vec y={0,2,4,6,8,10};
+    DecisionTree dt(4, "mse");
+    dt.fit(X,y);
+    auto pred=dt.predict(X);
+    EXPECT_LT(mse_loss(pred,y), 1.0);
+    EXPECT_GT(dt.score(X,y), 0.9);
+}
+
+TEST(MLIsolationForest, EmptyFitDefaultScore) {
+    IsolationForest iso(10, 8, 1);
+    iso.fit({});
+    Vec probe={0.0, 0.0};
+    EXPECT_NEAR(iso.anomaly_score(probe), 0.5, 1e-12);
+    Mat Xq={{1.0, 2.0}};
+    auto scores=iso.anomaly_scores(Xq);
+    ASSERT_EQ(scores.size(), 1u);
+    EXPECT_NEAR(scores[0], 0.5, 1e-12);
+}
+
+TEST(MLLDA, EmptyFitClearsState) {
+    LDA lda;
+    lda.fit({}, {});
+    EXPECT_TRUE(lda.classes.empty());
+    EXPECT_TRUE(lda.mean.empty());
+}
+
+TEST(MLKNN, EmptyQuery) {
+    Mat X={{0,0},{1,1}};
+    Vec y={0,1};
+    KNN knn(1);
+    knn.fit(X,y);
+    auto p=knn.predict({});
+    EXPECT_TRUE(p.empty());
+}
+
+TEST(MLDBSCAN, EmptyFit) {
+    DBSCAN db(0.5, 2);
+    db.fit({});
+    EXPECT_TRUE(db.labels_.empty());
+}

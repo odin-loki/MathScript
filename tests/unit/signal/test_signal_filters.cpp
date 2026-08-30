@@ -2204,3 +2204,155 @@ TEST(SignalConvolveTest, LargeCorrelateFftPath) {
         EXPECT_NEAR(out[i], ref[i], 1e-10) << "correlate mismatch at i=" << i;
     }
 }
+
+TEST(SignalResampleTest, upsample_n_one_is_identity) {
+    const std::vector<double> x{1.0, -2.0, 3.5};
+    const auto up = upsample(x, 1);
+    ASSERT_EQ(up.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(up[i], x[i]);
+    }
+}
+
+TEST(SignalResampleTest, downsample_n_one_is_identity) {
+    const std::vector<double> x{1.0, -2.0, 3.5};
+    const auto down = downsample(x, 1);
+    ASSERT_EQ(down.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(down[i], x[i]);
+    }
+}
+
+TEST(SignalResampleTest, downsample_n_larger_than_length) {
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    const auto down = downsample(x, 5);
+    ASSERT_EQ(down.size(), 1u);
+    EXPECT_DOUBLE_EQ(down[0], 1.0);
+}
+
+TEST(SignalResampleTest, resample_negative_q) {
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    EXPECT_TRUE(resample(x, 2, -1).empty());
+    EXPECT_TRUE(resample(x, -3, -2).empty());
+}
+
+TEST(SignalResampleTest, resample_p_and_q_one) {
+    const std::vector<double> x{1.0, -0.5, 0.25, 0.75};
+    const auto out = resample(x, 1, 1);
+    ASSERT_EQ(out.size(), x.size());
+    EXPECT_FALSE(out.empty());
+    for (double v : out) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(SignalResampleTest, decimate_q_one_preserves_length) {
+    const std::vector<double> x{1.0, -0.5, 0.25, 0.75, 0.0, -1.0};
+    const auto dec = decimate(x, 1);
+    EXPECT_EQ(dec.size(), x.size());
+    for (double v : dec) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(SavGolTest, polyorder_zero_is_uniform_moving_average) {
+    const std::vector<double> x{2.0, -1.0, 4.0, 0.0, 1.0};
+    const auto y = savgol(x, 3, 0);
+    ASSERT_EQ(y.size(), x.size());
+    EXPECT_DOUBLE_EQ(y[0], x[0]);
+    EXPECT_DOUBLE_EQ(y[4], x[4]);
+    EXPECT_NEAR(y[1], (x[0] + x[1] + x[2]) / 3.0, 1e-12);
+    EXPECT_NEAR(y[2], (x[1] + x[2] + x[3]) / 3.0, 1e-12);
+    EXPECT_NEAR(y[3], (x[2] + x[3] + x[4]) / 3.0, 1e-12);
+}
+
+TEST(SavGolTest, window_equals_signal_length) {
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0, 5.0};
+    const auto y = savgol(x, 5, 2);
+    ASSERT_EQ(y.size(), x.size());
+    EXPECT_DOUBLE_EQ(y[0], x[0]);
+    EXPECT_DOUBLE_EQ(y[1], x[1]);
+    EXPECT_DOUBLE_EQ(y[3], x[3]);
+    EXPECT_DOUBLE_EQ(y[4], x[4]);
+    EXPECT_TRUE(std::isfinite(y[2]));
+}
+
+TEST(SavGolTest, window_length_one_is_identity) {
+    const std::vector<double> x{4.0, -1.5, 0.25};
+    const auto y = savgol(x, 1, 0);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(SignalFilterApplyTest, filtfilt_single_sample) {
+    const std::vector<double> x{2.5};
+    const auto y = filtfilt({1.0}, {1.0}, x);
+    ASSERT_EQ(y.size(), 1u);
+    EXPECT_NEAR(y[0], 2.5, 1e-12);
+}
+
+TEST(SignalFilterApplyTest, filtfilt_short_signal_clamps_pad) {
+    const std::vector<double> b{0.2, 0.2, 0.2, 0.2, 0.2};
+    const std::vector<double> a{1.0};
+    const std::vector<double> x{1.0, -1.0};
+    const auto y = filtfilt(b, a, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (double v : y) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(SignalFilterApplyTest, filtfilt_empty_a_is_fir) {
+    const std::vector<double> b{0.5, 0.5};
+    const std::vector<double> a;
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const auto y = filtfilt(b, a, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (double v : y) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(SignalCheby2Test, first_order_lowpass_and_highpass) {
+    const auto lp = cheby2(1, 40.0, 100.0, 1000.0, FilterType::Lowpass);
+    const auto hp = cheby2(1, 40.0, 100.0, 1000.0, FilterType::Highpass);
+    ASSERT_EQ(lp.a.size(), 2u);
+    ASSERT_EQ(lp.b.size(), 2u);
+    ASSERT_EQ(hp.a.size(), 2u);
+    ASSERT_EQ(hp.b.size(), 2u);
+    EXPECT_NEAR(lp.a[0], 1.0, 1e-12);
+    EXPECT_NEAR(hp.a[0], 1.0, 1e-12);
+    EXPECT_GT(freqz_mag_dc(lp.b, lp.a), freqz_mag_nyquist(lp.b, lp.a));
+    EXPECT_LT(freqz_mag_dc(hp.b, hp.a), freqz_mag_nyquist(hp.b, hp.a));
+}
+
+TEST(SignalCheby2Test, cutoff_at_nyquist_returns_empty) {
+    EXPECT_TRUE(cheby2(2, 40.0, 500.0, 1000.0).b.empty());
+    EXPECT_TRUE(cheby2(-2, 40.0, 100.0, 1000.0).b.empty());
+}
+
+TEST(SignalSosfiltTest, zero_a0_treated_as_unity) {
+    const std::vector<double> x{1.0, -2.0, 3.0};
+    const std::vector<std::array<double, 6>> sos{{1.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+    const auto y = sosfilt(sos, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_DOUBLE_EQ(y[i], x[i]);
+    }
+}
+
+TEST(SignalSosfiltTest, three_section_cascade) {
+    const std::vector<double> x{1.0, -0.5, 0.25, 2.0};
+    const std::vector<std::array<double, 6>> sos{
+        {2.0, 0.0, 0.0, 1.0, 0.0, 0.0},
+        {0.5, 0.0, 0.0, 1.0, 0.0, 0.0},
+        {1.0, 0.0, 0.0, 1.0, 0.0, 0.0},
+    };
+    const auto y = sosfilt(sos, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(y[i], x[i], 1e-12);
+    }
+}

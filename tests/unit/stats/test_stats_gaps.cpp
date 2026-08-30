@@ -419,3 +419,152 @@ TEST(StatsGapsTest, BootstrapMean_DeterministicSeedAndEmpty) {
     EXPECT_NEAR(bootstrap_mean(data, 300, 99), bootstrap_mean(data, 300, 99), 1e-15);
     EXPECT_NEAR(bootstrap_mean(std::vector<double>{}, 100, 1), 0.0, 1e-12);
 }
+
+TEST(StatsGapsTest, Iqr_TooSmallReturnsZero) {
+    const std::vector<double> three = {1.0, 2.0, 3.0};
+    const std::vector<double> empty;
+    EXPECT_NEAR(iqr(three), 0.0, 1e-12);
+    EXPECT_NEAR(iqr(empty), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Iqr_KnownNinePoints) {
+    const std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+    EXPECT_NEAR(iqr(data), percentile(data, 75.0) - percentile(data, 25.0), 1e-12);
+}
+
+TEST(StatsGapsTest, TrimmedMean_EmptyAndOverTrim) {
+    const std::vector<double> empty;
+    EXPECT_NEAR(trimmed_mean(empty, 0.1), 0.0, 1e-12);
+    const std::vector<double> data = {1.0, 2.0, 3.0, 4.0};
+    EXPECT_NEAR(trimmed_mean(data, 0.5), median(data), 1e-12);
+    EXPECT_NEAR(trimmed_mean(data, 0.0), mean(data), 1e-12);
+}
+
+TEST(StatsGapsTest, WeightedVariance_PopulationForm) {
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> w = {1.0, 1.0, 1.0};
+    const double pop = weighted_variance(x, w, false);
+    EXPECT_NEAR(pop, 2.0 / 3.0, 1e-12);
+    EXPECT_NEAR(weighted_variance(x, w, true), 1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, WeightedMean_ZeroWeightsAndEmpty) {
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> zero_w = {0.0, 0.0, 0.0};
+    const std::vector<double> empty;
+    EXPECT_NEAR(weighted_mean(x, zero_w), 0.0, 1e-12);
+    EXPECT_NEAR(weighted_mean(empty, empty), 0.0, 1e-12);
+    EXPECT_NEAR(weighted_variance(x, zero_w, true), 0.0, 1e-12);
+    EXPECT_NEAR(weighted_correlation(x, x, zero_w), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, WeightedCorrelation_ZeroVariance) {
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> y = {5.0, 5.0, 5.0};
+    const std::vector<double> w = {1.0, 1.0, 1.0};
+    EXPECT_NEAR(weighted_correlation(x, y, w), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Chi2Gof_ZeroExpectedSkipped) {
+    const std::vector<double> obs = {1.0, 2.0, 3.0};
+    const std::vector<double> exp = {1.0, 0.0, 2.0};
+    EXPECT_NEAR(chi2_gof(obs, exp), 0.5, 1e-12);
+}
+
+TEST(StatsGapsTest, Kendall_TiesAreIgnored) {
+    // Pair (0,1) is tied in x and skipped; remaining pairs are both concordant.
+    // denom is still C(3,2)=3, so tau = 2/3.
+    const std::vector<double> x = {1.0, 1.0, 2.0};
+    const std::vector<double> y = {3.0, 4.0, 5.0};
+    EXPECT_NEAR(kendall(x, y), 2.0 / 3.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Arfit_InvalidOrder) {
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> empty;
+    EXPECT_TRUE(arfit(x, 0).empty());
+    EXPECT_TRUE(arfit(x, 3).empty());
+    EXPECT_TRUE(arfit(empty, 1).empty());
+}
+
+TEST(StatsGapsTest, Pacf_EmptyAndNonPositiveLag) {
+    const std::vector<double> empty;
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    EXPECT_TRUE(pacf(empty, 2).empty());
+    EXPECT_TRUE(pacf(x, 0).empty());
+    EXPECT_TRUE(pacf(x, -1).empty());
+}
+
+TEST(StatsGapsTest, MultipleRegression_EmptyFirstRow) {
+    const std::vector<std::vector<double>> X = {{}};
+    const std::vector<double> y = {1.0};
+    EXPECT_TRUE(multiple_regression(X, y).empty());
+}
+
+TEST(StatsGapsTest, BootstrapCI_PairEmptyAndConstant) {
+    const std::vector<double> empty;
+    const auto empty_ci = bootstrap_ci(empty, 0.95, 50, 1);
+    EXPECT_NEAR(empty_ci.first, 0.0, 1e-12);
+    EXPECT_NEAR(empty_ci.second, 0.0, 1e-12);
+
+    const std::vector<double> data = {4.0, 4.0, 4.0, 4.0};
+    const auto ci = bootstrap_ci(data, 0.95, 80, 7);
+    EXPECT_NEAR(ci.first, 4.0, 1e-12);
+    EXPECT_NEAR(ci.second, 4.0, 1e-12);
+}
+
+TEST(StatsGapsTest, BootstrapCI_StatFnEmptyAndNResamplesZero) {
+    const std::vector<double> empty;
+    auto mean_stat = [](std::span<const double> v) { return mean(v); };
+    const auto r0 = bootstrap_ci(empty, mean_stat, 100, 0.95, 1);
+    EXPECT_NEAR(r0.point_estimate, 0.0, 1e-12);
+    EXPECT_NEAR(r0.lower, 0.0, 1e-12);
+
+    const std::vector<double> data = {1.0, 2.0, 3.0};
+    const auto r1 = bootstrap_ci(data, mean_stat, 0, 0.95, 1);
+    EXPECT_NEAR(r1.point_estimate, 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, PartialCorrelation_ControlsForZ) {
+    const std::vector<double> x = {1.0, 2.0, 3.0, 4.0, 5.0};
+    const std::vector<double> y = {2.0, 4.0, 6.0, 8.0, 10.0};
+    const std::vector<double> z = {0.0, 1.0, 0.0, 1.0, 0.0};
+    const double r = partial_correlation(x, y, z);
+    EXPECT_NEAR(r, 1.0, 0.05);
+    const std::vector<double> empty;
+    EXPECT_NEAR(partial_correlation(empty, empty, empty), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Vif_OrthogonalAndOutOfRange) {
+    const std::vector<std::vector<double>> X = {
+        {1.0, 1.0}, {1.0, -1.0}, {1.0, 1.0}, {1.0, -1.0}};
+    EXPECT_NEAR(vif(X, 1), variance_inflation_factor(X, 1), 1e-12);
+    EXPECT_LT(vif(X, 1), 1.2);
+    EXPECT_NEAR(variance_inflation_factor(X, 5), 0.0, 1e-12);
+    const std::vector<std::vector<double>> empty;
+    EXPECT_NEAR(variance_inflation_factor(empty, 0), 1.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Kde_EmptySamplesAndBadBandwidth) {
+    const std::vector<double> empty;
+    const std::vector<double> grid = {-1.0, 0.0, 1.0};
+    const std::vector<double> samples = {0.0, 1.0};
+    EXPECT_TRUE(kde(empty, grid, 1.0).empty());
+    EXPECT_TRUE(kde(samples, grid, 0.0).empty());
+    EXPECT_TRUE(kde(samples, empty, 1.0).empty());
+}
+
+TEST(StatsGapsTest, LinearRegression_MismatchAndConstantX) {
+    const std::vector<double> x = {1.0, 2.0, 3.0};
+    const std::vector<double> y_short = {1.0, 2.0};
+    EXPECT_NEAR(linear_regression(x, y_short).slope, 0.0, 1e-12);
+    const std::vector<double> x_flat = {2.0, 2.0, 2.0};
+    const std::vector<double> y = {1.0, 2.0, 3.0};
+    EXPECT_NEAR(linear_regression(x_flat, y).slope, 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Spearman_TwoPointsAndTiesIgnoredPath) {
+    const std::vector<double> x = {1.0, 2.0};
+    const std::vector<double> y = {3.0, 1.0};
+    EXPECT_NEAR(spearman(x, y), -1.0, 1e-12);
+}

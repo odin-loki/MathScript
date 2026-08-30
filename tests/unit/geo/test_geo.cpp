@@ -1399,3 +1399,168 @@ TEST(GeoCurves, CatmullRomEndpoints) {
     EXPECT_NEAR(p1.x, 0.0, 1e-9);
     EXPECT_NEAR(p1.y, 1.0, 1e-9);
 }
+
+TEST(GeoVec, ScaleDotNormaliseAndDistSq) {
+    Vec2D a{3.0, 4.0};
+    Vec2D b = 2.0 * a;
+    EXPECT_NEAR(b.x, 6.0, 1e-12);
+    EXPECT_NEAR(b.y, 8.0, 1e-12);
+    Vec2D d = a - Vec2D{1.0, 1.0};
+    EXPECT_NEAR(d.x, 2.0, 1e-12);
+    EXPECT_NEAR(d.y, 3.0, 1e-12);
+    EXPECT_NEAR(ms::geo::dot(a, Vec2D{4.0, -3.0}), 0.0, 1e-12);
+    auto n = ms::geo::normalise(a);
+    EXPECT_NEAR(n.x, 0.6, 1e-12);
+    EXPECT_NEAR(n.y, 0.8, 1e-12);
+    auto z = ms::geo::normalise(Vec2D{0.0, 0.0});
+    EXPECT_NEAR(z.x, 0.0, 1e-15);
+    EXPECT_NEAR(z.y, 0.0, 1e-15);
+    Point2D p{0.0, 0.0};
+    Point2D q{3.0, 4.0};
+    EXPECT_NEAR(ms::geo::dist_sq(p, q), 25.0, 1e-12);
+    EXPECT_NEAR(ms::geo::vec2(p, q).x, 3.0, 1e-12);
+
+    Vec3D u{0.0, 3.0, 4.0};
+    Vec3D s = 0.5 * u;
+    EXPECT_NEAR(s.y, 1.5, 1e-12);
+    EXPECT_NEAR(s.z, 2.0, 1e-12);
+    Vec3D w = u + Vec3D{1.0, 0.0, 0.0};
+    EXPECT_NEAR(w.x, 1.0, 1e-12);
+    auto n3 = ms::geo::normalise(u);
+    EXPECT_NEAR(n3.y, 0.6, 1e-12);
+    EXPECT_NEAR(n3.z, 0.8, 1e-12);
+    auto z3 = ms::geo::normalise(Vec3D{0.0, 0.0, 0.0});
+    EXPECT_NEAR(z3.x, 0.0, 1e-15);
+    EXPECT_NEAR(ms::geo::dot(u, Vec3D{1.0, 0.0, 0.0}), 0.0, 1e-12);
+    EXPECT_NEAR(ms::geo::length(u), 5.0, 1e-12);
+}
+
+TEST(GeoHull, UpperAndLowerHullOfSquare) {
+    std::vector<Point2D> pts = {{0, 0}, {2, 0}, {2, 2}, {0, 2}, {1, 1}};
+    auto up = ms::geo::upper_hull(pts);
+    auto lo = ms::geo::lower_hull(pts);
+    EXPECT_GE(up.size(), 2u);
+    EXPECT_GE(lo.size(), 2u);
+    EXPECT_NEAR(up.front().x, 2.0, 1e-12);
+    EXPECT_NEAR(lo.front().x, 0.0, 1e-12);
+}
+
+TEST(GeoHull, DegenerateFewerThanThreeReturnsInput) {
+    std::vector<Point2D> empty;
+    EXPECT_TRUE(ms::geo::convex_hull_2d(empty).empty());
+    std::vector<Point2D> one{{1.5, 2.5}};
+    auto h1 = ms::geo::convex_hull_2d(one);
+    ASSERT_EQ(h1.size(), 1u);
+    EXPECT_NEAR(h1[0].x, 1.5, 1e-12);
+    std::vector<Point2D> two{{0, 0}, {1, 1}};
+    auto h2 = ms::geo::convex_hull_2d(two);
+    EXPECT_EQ(h2.size(), 2u);
+}
+
+TEST(GeoKDTree3D, KnnRangeAndPoints) {
+    std::vector<Point3D> pts = {{0, 0, 0}, {1, 0, 0}, {2, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    KDTree3D kd(pts);
+    auto nbrs = kd.knn({0.1, 0.0, 0.0}, 2);
+    EXPECT_EQ(nbrs.size(), 2u);
+    auto near = kd.range({0.0, 0.0, 0.0}, 0.5);
+    EXPECT_GE(near.size(), 1u);
+    EXPECT_EQ(kd.points().size(), 5u);
+}
+
+TEST(GeoIntersect, ParallelSegmentsAndMisses) {
+    Segment2D a{{0, 0}, {1, 0}};
+    Segment2D parallel{{0, 1}, {1, 1}};
+    EXPECT_FALSE(ms::geo::intersect_seg_seg(a, parallel));
+    Segment2D disjoint{{2, 0}, {3, 1}};
+    EXPECT_FALSE(ms::geo::intersect_seg_seg(a, disjoint));
+
+    Ray3D miss_sphere{{0, 0, -5}, {0, 1, 0}};
+    Sphere3D sphere{{0, 0, 0}, 1.0};
+    EXPECT_FALSE(ms::geo::intersect_ray_sphere(miss_sphere, sphere));
+
+    Ray3D miss_box{{0, 5, 0}, {1, 0, 0}};
+    AABB3D box{{-1, -1, -1}, {1, 1, 1}};
+    EXPECT_FALSE(ms::geo::intersect_ray_aabb(miss_box, box));
+
+    Ray3D axis_miss{{5, 0, 0}, {0, 1, 0}};
+    EXPECT_FALSE(ms::geo::intersect_ray_aabb(axis_miss, box));
+}
+
+TEST(GeoDist, DegenerateSegmentAndEmptyPolygon) {
+    Segment2D deg{{2, 3}, {2, 3}};
+    EXPECT_NEAR(ms::geo::dist_point_segment({2, 4}, deg), 1.0, 1e-12);
+    Segment2D s{{0, 0}, {4, 0}};
+    EXPECT_NEAR(ms::geo::dist_point_segment({5, 0}, s), 1.0, 1e-12);
+
+    Polygon2D empty;
+    EXPECT_NEAR(ms::geo::area(empty), 0.0, 1e-12);
+    EXPECT_NEAR(ms::geo::signed_area(empty), 0.0, 1e-12);
+    EXPECT_NEAR(ms::geo::perimeter(empty), 0.0, 1e-12);
+    EXPECT_FALSE(ms::geo::point_in_polygon({0, 0}, empty));
+}
+
+TEST(GeoBezier, DerivLinearAndQuadratic) {
+    std::vector<Point2D> line = {{0, 0}, {2, 0}};
+    auto d0 = ms::geo::bezier_deriv(line, 0.0);
+    auto d1 = ms::geo::bezier_deriv(line, 1.0);
+    EXPECT_NEAR(d0.x, 2.0, 1e-12);
+    EXPECT_NEAR(d0.y, 0.0, 1e-12);
+    EXPECT_NEAR(d1.x, 2.0, 1e-12);
+
+    std::vector<Point2D> quad = {{0, 0}, {1, 2}, {2, 0}};
+    auto dm = ms::geo::bezier_deriv(quad, 0.5);
+    EXPECT_NEAR(dm.x, 2.0, 1e-12);
+    EXPECT_NEAR(dm.y, 0.0, 1e-12);
+}
+
+TEST(GeoCurves, CatmullRomEmptyAndSingle) {
+    std::vector<Point2D> empty;
+    auto z = ms::geo::catmull_rom(empty, 0.5);
+    EXPECT_NEAR(z.x, 0.0, 1e-12);
+    EXPECT_NEAR(z.y, 0.0, 1e-12);
+
+    std::vector<Point2D> one{{3.0, 4.0}};
+    auto p = ms::geo::catmull_rom(one, 0.7);
+    EXPECT_NEAR(p.x, 3.0, 1e-12);
+    EXPECT_NEAR(p.y, 4.0, 1e-12);
+}
+
+TEST(GeoMeasure, MomentOfInertiaAndTriangle3D) {
+    Polygon2D sq = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    EXPECT_NEAR(ms::geo::moment_of_inertia(sq), 8.0 / 3.0, 1e-9);
+
+    Triangle3D tri{{0, 0, 0}, {2, 0, 0}, {0, 2, 0}};
+    EXPECT_NEAR(ms::geo::area(tri), 2.0, 1e-12);
+
+    Triangle3D deg{{0, 0, 0}, {1, 0, 0}, {2, 0, 0}};
+    EXPECT_NEAR(ms::geo::area(deg), 0.0, 1e-12);
+
+    EXPECT_NEAR(ms::geo::area(Point2D{0, 0}, Point2D{1, 0}, Point2D{2, 0}), 0.0, 1e-12);
+}
+
+TEST(GeoPolyDiff, DegenerateBReturnsA) {
+    Polygon2D a = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    Polygon2D b_seg = {{0, 0}, {1, 0}};
+    auto d = ms::geo::poly_diff(a, b_seg);
+    ASSERT_GE(d.size(), 3u);
+    expect_same_point_set(d, a);
+
+    Polygon2D b_pt = {{0.5, 0.5}};
+    auto d2 = ms::geo::poly_diff(a, b_pt);
+    expect_same_point_set(d2, a);
+}
+
+TEST(GeoPolyDiff, BothEmptyReturnsEmpty) {
+    Polygon2D empty_a;
+    Polygon2D empty_b;
+    EXPECT_TRUE(ms::geo::poly_diff(empty_a, empty_b).empty());
+}
+
+TEST(GeoPolyDiff, CornerBiteUsesHullFallback) {
+    Polygon2D a = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    Polygon2D b = {{2, 2}, {4, 2}, {4, 4}, {2, 4}};
+    auto d = ms::geo::poly_diff(a, b);
+    ASSERT_GE(d.size(), 3u);
+    EXPECT_GE(ms::geo::area(d), 12.0 - 1e-6);
+    expect_convex_ccw(d);
+}

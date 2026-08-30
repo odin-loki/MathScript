@@ -2215,3 +2215,101 @@ TEST(FinanceOptions, ExpiredDigitalBarrierBlack76) {
     EXPECT_NEAR(barrier_option(110.0, 100.0, 90.0, 0.0, 0.05, 0.2, true, false, false),
                 10.0, 1e-12);
 }
+
+TEST(FinanceBS, ImpliedVolPut) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double market_price = bs_put(S, K, T, r, sigma);
+    auto iv = bs_implied_vol(market_price, S, K, T, r, false);
+    ASSERT_TRUE(iv.has_value());
+    EXPECT_NEAR(iv.value(), sigma, 1e-6);
+}
+
+TEST(FinanceBS, ImpliedVolDoesNotConverge) {
+    EXPECT_FALSE(bs_implied_vol(0.0, 100.0, 100.0, 1.0, 0.05, true).has_value());
+    EXPECT_FALSE(bs_implied_vol(1e6, 100.0, 100.0, 1.0, 0.05, true).has_value());
+}
+
+TEST(FinanceRisk, EmptyNamedSpansAreZero) {
+    std::vector<double> empty;
+    EXPECT_NEAR(var(empty, 0.95), 0.0, 1e-15);
+    EXPECT_NEAR(cvar(empty, 0.95), 0.0, 1e-15);
+    EXPECT_NEAR(historical_var(empty, 0.95), 0.0, 1e-15);
+    EXPECT_NEAR(historical_cvar(empty, 0.95), 0.0, 1e-15);
+}
+
+TEST(FinanceRisk, ConstantReturnsZeroVol) {
+    std::vector<double> constant = {0.02, 0.02, 0.02, 0.02};
+    EXPECT_NEAR(var(constant, 0.95), 0.0, 1e-12);
+    EXPECT_NEAR(cvar(constant, 0.95), 0.0, 1e-12);
+}
+
+TEST(FinanceTVM, EmptyNpvAndIrr) {
+    std::vector<double> empty;
+    EXPECT_NEAR(npv(0.1, empty), 0.0, 1e-15);
+    auto irr_empty = irr(empty);
+    ASSERT_TRUE(irr_empty.has_value());
+    EXPECT_NEAR(irr_empty.value(), 0.1, 1e-15);
+}
+
+TEST(FinancePortfolio, EmptyWeights) {
+    std::vector<double> w;
+    std::vector<double> ret;
+    std::vector<double> cov;
+    EXPECT_NEAR(portfolio_return(w, ret), 0.0, 1e-15);
+    EXPECT_NEAR(portfolio_variance(w, cov), 0.0, 1e-15);
+}
+
+TEST(FinanceBarrier, AlreadyKnockedDownOutIsZero) {
+    double S = 80, K = 100, B = 90, T = 1.0, r = 0.05, sigma = 0.2;
+    EXPECT_NEAR(barrier_option(S, K, B, T, r, sigma, true, false, false), 0.0, 1e-12);
+    EXPECT_NEAR(barrier_option(S, K, B, T, r, sigma, true, true, false),
+                bs_call(S, K, T, r, sigma), 1e-10);
+}
+
+TEST(FinanceBarrier, AlreadyKnockedUpOutIsZero) {
+    double S = 120, K = 100, B = 110, T = 1.0, r = 0.05, sigma = 0.2;
+    EXPECT_NEAR(barrier_option(S, K, B, T, r, sigma, false, false, true), 0.0, 1e-12);
+    EXPECT_NEAR(barrier_option(S, K, B, T, r, sigma, false, true, true),
+                bs_put(S, K, T, r, sigma), 1e-10);
+}
+
+TEST(FinanceDigital, ExpiredPutIntrinsic) {
+    EXPECT_NEAR(digital_option(90.0, 100.0, 0.0, 0.05, 0.2, false, 3.0), 3.0, 1e-12);
+    EXPECT_NEAR(digital_option(110.0, 100.0, 0.0, 0.05, 0.2, false, 3.0), 0.0, 1e-12);
+}
+
+TEST(FinanceBlack76, ExpiredPutIntrinsic) {
+    EXPECT_NEAR(black76(90.0, 100.0, 0.0, 0.05, 0.2, false), 10.0, 1e-12);
+    EXPECT_NEAR(black76(110.0, 100.0, 0.0, 0.05, 0.2, false), 0.0, 1e-12);
+}
+
+TEST(FinanceGeoAsian, PutZeroFixingsClampsToOne) {
+    double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2;
+    double base = geo_asian_put(S, K, T, r, sigma, 1);
+    EXPECT_NEAR(geo_asian_put(S, K, T, r, sigma, 0), base, 1e-12);
+    EXPECT_NEAR(geo_asian_put(S, K, T, r, sigma, -3), base, 1e-12);
+}
+
+TEST(FinanceBlackLitterman, DefaultOmegaNoViewsReturnsPrior) {
+    std::vector<double> empty_P;
+    std::vector<double> empty_Q;
+    auto post = bl_posterior_returns_default_omega(kBLPi2, kBLCov2, kBLTau, empty_P, empty_Q, 2, 0);
+    ASSERT_TRUE(post.has_value());
+    EXPECT_NEAR(post->at(0), kBLPi2[0], 1e-12);
+    EXPECT_NEAR(post->at(1), kBLPi2[1], 1e-12);
+}
+
+TEST(FinanceTVM, CompoundZeroPeriods) {
+    EXPECT_NEAR(compound(100.0, 0.1, 0), 100.0, 1e-12);
+}
+
+TEST(FinanceRisk, MaxDrawdownSinglePoint) {
+    std::vector<double> equity = {50.0};
+    EXPECT_NEAR(max_drawdown(equity), 0.0, 1e-15);
+}
+
+TEST(FinanceHistoricalVaR, ConfidenceClampsIndex) {
+    std::vector<double> returns = {-0.10, -0.05, 0.0, 0.05};
+    EXPECT_NEAR(historical_var(returns, 1.0), 0.10, 1e-12);
+    EXPECT_NEAR(historical_cvar(returns, 1.0), 0.10, 1e-12);
+}

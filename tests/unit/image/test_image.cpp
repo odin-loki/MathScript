@@ -1390,3 +1390,530 @@ TEST(ImageTransform, RadonEmptyTheta) {
     auto sino = radon(img, {});
     EXPECT_TRUE(sino.empty());
 }
+
+TEST(ImageColor, EmptyInputDefensive) {
+    Image empty;
+    EXPECT_TRUE(rgb2gray(empty).empty());
+    EXPECT_TRUE(gray2rgb(empty).empty());
+    EXPECT_TRUE(rgb2hsv(empty).empty());
+    EXPECT_TRUE(hsv2rgb(empty).empty());
+}
+
+TEST(ImageColor, Gray2Rgb2GrayRoundtrip) {
+    Image g(8, 8, 1, 0.4f);
+    auto rgb = gray2rgb(g);
+    EXPECT_EQ(rgb.channels, 3);
+    auto back = rgb2gray(rgb);
+    EXPECT_EQ(back.channels, 1);
+    EXPECT_NEAR(back.at(3, 3, 0), 0.4f, 0.01f);
+}
+
+TEST(ImageColor, HSV_BlackGrayAndNegativeHue) {
+    Image black(1, 1, 3, 0.f);
+    auto hsv_k = rgb2hsv(black);
+    EXPECT_NEAR(hsv_k.at(0, 0, 1), 0.f, 1e-6f);
+    EXPECT_NEAR(hsv_k.at(0, 0, 2), 0.f, 1e-6f);
+
+    Image gray(1, 1, 3, 0.5f);
+    auto hsv_g = rgb2hsv(gray);
+    EXPECT_NEAR(hsv_g.at(0, 0, 1), 0.f, 1e-5f);
+
+    Image mag(1, 1, 3);
+    mag.at(0, 0, 0) = 0.8f;
+    mag.at(0, 0, 1) = 0.1f;
+    mag.at(0, 0, 2) = 0.4f;
+    auto hsv_m = rgb2hsv(mag);
+    EXPECT_GT(hsv_m.at(0, 0, 0), 0.8f);
+    auto back = hsv2rgb(hsv_m);
+    EXPECT_NEAR(back.at(0, 0, 0), 0.8f, 0.02f);
+    EXPECT_NEAR(back.at(0, 0, 2), 0.4f, 0.02f);
+}
+
+TEST(ImageColor, HSV2RGB_HueZeroAndSixty) {
+    Image hsv(1, 2, 3, 0.f);
+    hsv.at(0, 0, 0) = 0.f;
+    hsv.at(0, 0, 1) = 1.f;
+    hsv.at(0, 0, 2) = 1.f;
+    hsv.at(0, 1, 0) = 60.f / 360.f;
+    hsv.at(0, 1, 1) = 1.f;
+    hsv.at(0, 1, 2) = 1.f;
+    auto rgb = hsv2rgb(hsv);
+    EXPECT_NEAR(rgb.at(0, 0, 0), 1.f, 0.02f);
+    EXPECT_NEAR(rgb.at(0, 0, 1), 0.f, 0.02f);
+    EXPECT_NEAR(rgb.at(0, 1, 0), 1.f, 0.02f);
+    EXPECT_NEAR(rgb.at(0, 1, 1), 1.f, 0.02f);
+}
+
+TEST(ImageGeom, Rotate180And270) {
+    Image img(2, 3, 1, 0.f);
+    img.at(0, 0, 0) = 1.f;
+    auto r180 = imrotate90(imrotate90(img));
+    EXPECT_EQ(r180.rows, 2);
+    EXPECT_EQ(r180.cols, 3);
+    EXPECT_FLOAT_EQ(r180.at(1, 2, 0), 1.f);
+    auto r270 = imrotate90(r180);
+    EXPECT_EQ(r270.rows, 3);
+    EXPECT_EQ(r270.cols, 2);
+    EXPECT_FLOAT_EQ(r270.at(0, 1, 0), 1.f);
+}
+
+TEST(ImageGeom, EmptyRotateAndCropEmptyRegion) {
+    EXPECT_TRUE(imrotate90(Image{}).empty());
+    Image img(4, 4, 1, 0.5f);
+    auto crop = imcrop(img, 2, 2, 2, 2);
+    EXPECT_TRUE(crop.empty());
+}
+
+TEST(ImageGeom, ResizeOneByOneAndRgb) {
+    Image img(8, 8, 3, 0.2f);
+    img.at(0, 0, 0) = 1.f;
+    auto tiny = imresize(img, 1, 1);
+    EXPECT_EQ(tiny.rows, 1);
+    EXPECT_EQ(tiny.cols, 1);
+    EXPECT_EQ(tiny.channels, 3);
+    EXPECT_TRUE(std::isfinite(tiny.at(0, 0, 0)));
+    auto half = imresize(img, 4, 4);
+    EXPECT_EQ(half.channels, 3);
+    EXPECT_EQ(half.rows, 4);
+}
+
+TEST(ImageGeom, RgbCropFlipPadRotate) {
+    Image img(8, 8, 3, 0.15f);
+    img.at(0, 0, 1) = 0.9f;
+    auto crop = imcrop(img, 0, 0, 4, 4);
+    EXPECT_EQ(crop.channels, 3);
+    EXPECT_NEAR(crop.at(0, 0, 1), 0.9f, 1e-6f);
+    auto fl = imflip(img, true);
+    EXPECT_NEAR(fl.at(0, 7, 1), 0.9f, 1e-6f);
+    auto rot = imrotate90(img);
+    EXPECT_EQ(rot.rows, 8);
+    EXPECT_EQ(rot.channels, 3);
+    auto pad = impad(img, 1, 0.f);
+    EXPECT_EQ(pad.rows, 10);
+    EXPECT_EQ(pad.channels, 3);
+    EXPECT_FLOAT_EQ(pad.at(0, 0, 0), 0.f);
+}
+
+TEST(ImageFilter, EmptyBoxAndSharpen) {
+    Image empty;
+    EXPECT_TRUE(boxfilter(empty, 3).empty());
+    EXPECT_TRUE(sharpen(empty).empty());
+}
+
+TEST(ImageFilter, BoxFilterKsizeLargerThanImage) {
+    Image img(3, 3, 1, 0.5f);
+    auto box = boxfilter(img, 7);
+    EXPECT_EQ(box.rows, 3);
+    EXPECT_NEAR(box.at(1, 1, 0), 0.5f, 0.02f);
+}
+
+TEST(ImageFilter, BoxFilterKsizeOneAndRgb) {
+    Image g(8, 8, 1, 0.3f);
+    g.at(2, 2, 0) = 0.9f;
+    auto id = boxfilter(g, 1);
+    EXPECT_NEAR(id.at(2, 2, 0), 0.9f, 1e-5f);
+    Image rgb(8, 8, 3, 0.25f);
+    rgb.at(4, 4, 0) = 1.f;
+    rgb.at(4, 4, 1) = 0.f;
+    rgb.at(4, 4, 2) = 0.5f;
+    auto box = boxfilter(rgb, 3);
+    EXPECT_EQ(box.channels, 3);
+    EXPECT_NEAR(box.at(0, 0, 0), 0.25f, 0.05f);
+    EXPECT_GT(box.at(4, 4, 0), 0.25f);
+}
+
+TEST(ImageFilter, SharpenRgbAndSpike) {
+    Image rgb(8, 8, 3, 0.4f);
+    rgb.at(4, 4, 0) = 1.f;
+    auto s = sharpen(rgb);
+    EXPECT_EQ(s.channels, 3);
+    EXPECT_GT(s.at(4, 4, 0), rgb.at(4, 4, 0));
+}
+
+TEST(ImageFilter, BilateralRgbAndRangeSkip) {
+    Image rgb(8, 8, 3, 0.f);
+    rgb.at(4, 4, 0) = 1.f;
+    rgb.at(4, 4, 1) = 1.f;
+    rgb.at(4, 4, 2) = 1.f;
+    auto out = bilateral(rgb, 1.0f, 0.01f);
+    EXPECT_EQ(out.channels, 3);
+    for (float v : out.data) EXPECT_TRUE(std::isfinite(v));
+    EXPECT_GT(out.at(4, 4, 0), 0.5f);
+}
+
+TEST(ImageFilter, GaussianRgb) {
+    Image rgb(8, 8, 3, 0.f);
+    rgb.at(4, 4, 0) = 1.f;
+    rgb.at(4, 4, 1) = 0.6f;
+    rgb.at(4, 4, 2) = 0.2f;
+    auto blurred = imgaussfilt(rgb, 1.0f);
+    EXPECT_EQ(blurred.channels, 3);
+    EXPECT_LT(blurred.at(4, 4, 0), 1.f);
+    EXPECT_GT(blurred.at(4, 4, 0), 0.05f);
+}
+
+TEST(ImageFilter, Medfilt2RgbAndLargeKsize) {
+    Image rgb(8, 8, 3, 0.f);
+    rgb.at(4, 4, 0) = 1.f;
+    rgb.at(4, 4, 1) = 1.f;
+    rgb.at(4, 4, 2) = 1.f;
+    auto med3 = medfilt2(rgb, 3);
+    EXPECT_EQ(med3.channels, 3);
+    EXPECT_NEAR(med3.at(4, 4, 0), 0.f, 0.15f);
+    Image g(8, 8, 1, 0.2f);
+    g.at(3, 3, 0) = 1.f;
+    auto med7 = medfilt2(g, 7);
+    EXPECT_NEAR(med7.at(3, 3, 0), 0.2f, 0.15f);
+}
+
+TEST(ImageFilter, ImfilterRowAndColKernel) {
+    Image img(8, 8, 1, 0.f);
+    img.at(4, 4, 0) = 1.f;
+    auto row = imfilter(img, {{0.25f, 0.5f, 0.25f}});
+    EXPECT_NEAR(row.at(4, 4, 0), 0.5f, 0.05f);
+    auto col = imfilter(img, {{0.25f}, {0.5f}, {0.25f}});
+    EXPECT_NEAR(col.at(4, 4, 0), 0.5f, 0.05f);
+}
+
+TEST(ImageFilter, ImfilterZeroAndNonseparable) {
+    Image img(8, 8, 1, 0.f);
+    img.at(3, 3, 0) = 1.f;
+    auto z = imfilter(img, {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}});
+    EXPECT_NEAR(z.at(3, 3, 0), 0.f, 1e-6f);
+    auto ns = imfilter(img, {{1, 2, 3}, {4, 5, 6}, {7, 8, 0}});
+    EXPECT_TRUE(std::isfinite(ns.at(3, 3, 0)));
+    auto gen = imfilter(img, {{1, 0, 0, 2}, {0, 3, 4, 0}});
+    EXPECT_TRUE(std::isfinite(gen.at(3, 3, 0)));
+}
+
+TEST(ImageFilter, ImfilterRgbNonseparable) {
+    Image rgb(8, 8, 3, 0.1f);
+    rgb.at(4, 4, 0) = 1.f;
+    rgb.at(4, 4, 1) = 0.5f;
+    rgb.at(4, 4, 2) = 0.2f;
+    auto ns = imfilter(rgb, {{1, 2, 3}, {4, 5, 6}, {7, 8, 0}});
+    EXPECT_EQ(ns.channels, 3);
+    auto gen = imfilter(rgb, {{1, 0, 2}, {0, 3, 0}});
+    EXPECT_EQ(gen.channels, 3);
+    for (float v : ns.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageEdge, EmptyLaplacianAndLog) {
+    Image empty;
+    EXPECT_TRUE(laplacian(empty).empty());
+    EXPECT_TRUE(laplacian_of_gaussian(empty, 1.0f).empty());
+    EXPECT_TRUE(sobel(empty).empty());
+    EXPECT_TRUE(scharr(empty).empty());
+    EXPECT_TRUE(roberts(empty).empty());
+}
+
+TEST(ImageEdge, RgbSobelPrewittScharrLaplacian) {
+    Image rgb(8, 8, 3, 0.f);
+    for (int r = 0; r < 8; ++r) for (int c = 4; c < 8; ++c) {
+        rgb.at(r, c, 0) = 1.f;
+        rgb.at(r, c, 1) = 1.f;
+        rgb.at(r, c, 2) = 1.f;
+    }
+    auto s = sobel(rgb);
+    EXPECT_EQ(s.channels, 1);
+    EXPECT_GT(s.at(4, 3, 0), 0.f);
+    EXPECT_GT(std::abs(sobel_x(rgb).at(4, 3, 0)), 0.f);
+    auto gy = sobel_y(rgb);
+    EXPECT_EQ(gy.channels, 1);
+    EXPECT_GT(prewitt(rgb).at(4, 3, 0), 0.f);
+    EXPECT_GT(scharr(rgb).at(4, 3, 0), 0.f);
+    auto lap = laplacian(rgb);
+    EXPECT_EQ(lap.channels, 1);
+    auto log = laplacian_of_gaussian(rgb, 0.8f);
+    EXPECT_EQ(log.rows, 8);
+    for (float v : log.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageEdge, CannyHorizontalDiagonalAndRgb) {
+    Image hor(8, 8, 1, 0.f);
+    for (int r = 4; r < 8; ++r) for (int c = 0; c < 8; ++c) hor.at(r, c, 0) = 1.f;
+    auto eh = canny(hor, 0.1f, 0.3f, 1.0f);
+    EXPECT_EQ(eh.rows, 8);
+    float hsum = 0.f;
+    for (float v : eh.data) hsum += v;
+    EXPECT_GT(hsum, 0.f);
+
+    Image diag(8, 8, 1, 0.f);
+    for (int r = 0; r < 8; ++r) for (int c = 0; c < 8; ++c)
+        if (c >= r) diag.at(r, c, 0) = 1.f;
+    auto ed = canny(diag, 0.05f, 0.2f, 1.0f);
+    EXPECT_EQ(ed.cols, 8);
+
+    Image rgb(8, 8, 3, 0.f);
+    for (int r = 0; r < 8; ++r) for (int c = 4; c < 8; ++c) {
+        rgb.at(r, c, 0) = 1.f;
+        rgb.at(r, c, 1) = 1.f;
+        rgb.at(r, c, 2) = 1.f;
+    }
+    auto er = canny(rgb, 0.1f, 0.3f, 1.0f);
+    EXPECT_EQ(er.channels, 1);
+}
+
+TEST(ImageMorph, EmptyAndKsizeOne) {
+    Image empty;
+    EXPECT_TRUE(imdilate(empty, 3).empty());
+    EXPECT_TRUE(imerode(empty, 3).empty());
+    EXPECT_TRUE(imopen(empty, 3).empty());
+    EXPECT_TRUE(imclose(empty, 3).empty());
+    Image img(8, 8, 1, 0.f);
+    img.at(3, 3, 0) = 0.7f;
+    auto d1 = imdilate(img, 1);
+    EXPECT_FLOAT_EQ(d1.at(3, 3, 0), 0.7f);
+    auto e1 = imerode(img, 1);
+    EXPECT_FLOAT_EQ(e1.at(3, 3, 0), 0.7f);
+}
+
+TEST(ImageMorph, RgbAndKsizeFive) {
+    Image rgb(8, 8, 3, 0.f);
+    rgb.at(4, 4, 0) = 1.f;
+    rgb.at(4, 4, 1) = 0.8f;
+    rgb.at(4, 4, 2) = 0.6f;
+    auto d = imdilate(rgb, 3);
+    EXPECT_EQ(d.channels, 3);
+    EXPECT_GT(d.at(3, 3, 0), 0.f);
+    auto o = imopen(rgb, 3);
+    auto cl = imclose(rgb, 3);
+    auto th = imtophat(rgb, 3);
+    auto bh = imbothat(rgb, 3);
+    auto gr = imgradient_morph(rgb, 3);
+    EXPECT_EQ(o.channels, 3);
+    EXPECT_EQ(cl.channels, 3);
+    EXPECT_GE(th.at(4, 4, 0), 0.f);
+    EXPECT_GE(bh.at(0, 0, 0), 0.f);
+    EXPECT_GE(gr.at(4, 4, 0), 0.f);
+    Image g(8, 8, 1, 0.f);
+    for (int r = 2; r < 6; ++r) for (int c = 2; c < 6; ++c) g.at(r, c, 0) = 1.f;
+    auto d5 = imdilate(g, 5);
+    EXPECT_GT(d5.at(1, 1, 0), 0.f);
+}
+
+TEST(ImageThresh, OtsuRgbUniformAndClamp) {
+    Image rgb(8, 8, 3, 0.1f);
+    for (int r = 0; r < 8; ++r) for (int c = 4; c < 8; ++c) {
+        rgb.at(r, c, 0) = 0.9f;
+        rgb.at(r, c, 1) = 0.9f;
+        rgb.at(r, c, 2) = 0.9f;
+    }
+    auto t = threshold_otsu(rgb);
+    EXPECT_EQ(t.channels, 1);
+    EXPECT_EQ(t.rows, 8);
+    EXPECT_FLOAT_EQ(t.at(0, 6, 0), 1.f);
+    for (float v : t.data) {
+        EXPECT_TRUE(v == 0.f || v == 1.f);
+    }
+
+    Image uni(8, 8, 1, 0.3f);
+    auto tu = threshold_otsu(uni);
+    EXPECT_FLOAT_EQ(tu.at(0, 0, 0), 0.f);
+
+    Image clamp(4, 4, 1, 0.f);
+    clamp.at(0, 0, 0) = -0.5f;
+    clamp.at(0, 1, 0) = 2.f;
+    auto tc = threshold_otsu(clamp);
+    EXPECT_EQ(tc.channels, 1);
+    for (float v : tc.data) {
+        EXPECT_TRUE(v == 0.f || v == 1.f);
+    }
+}
+
+TEST(ImageThresh, BinaryRgbAndEmpty) {
+    Image rgb(4, 4, 3, 0.2f);
+    rgb.at(0, 0, 0) = 0.9f;
+    rgb.at(0, 0, 1) = 0.9f;
+    rgb.at(0, 0, 2) = 0.9f;
+    auto t = threshold_binary(rgb, 0.5f);
+    EXPECT_FLOAT_EQ(t.at(0, 0, 0), 1.f);
+    EXPECT_FLOAT_EQ(t.at(1, 1, 0), 0.f);
+    EXPECT_TRUE(threshold_binary(Image{}, 0.5f).empty());
+    EXPECT_TRUE(threshold_otsu(Image{}).empty());
+}
+
+TEST(ImageHist, RgbImhistHisteqAndAdjustClamp) {
+    Image rgb(8, 8, 3, 0.25f);
+    rgb.at(0, 0, 0) = 1.f;
+    rgb.at(0, 0, 1) = 1.f;
+    rgb.at(0, 0, 2) = 1.f;
+    auto h = imhist(rgb, 16);
+    EXPECT_EQ(h.size(), 16u);
+    int total = 0;
+    for (int v : h) total += v;
+    EXPECT_EQ(total, 64);
+    auto eq = histeq(rgb);
+    EXPECT_EQ(eq.channels, 1);
+    EXPECT_EQ(eq.rows, 8);
+
+    Image g(2, 2, 1, 0.f);
+    g.at(0, 0, 0) = 0.1f;
+    g.at(0, 1, 0) = 0.9f;
+    auto adj = imadjust(g, 0.3f, 0.7f, 0.f, 1.f);
+    EXPECT_FLOAT_EQ(adj.at(0, 0, 0), 0.f);
+    EXPECT_FLOAT_EQ(adj.at(0, 1, 0), 1.f);
+    Image rgb2(2, 2, 3, 0.4f);
+    auto adj3 = imadjust(rgb2, 0.f, 1.f, 0.f, 0.5f);
+    EXPECT_EQ(adj3.channels, 3);
+    EXPECT_NEAR(adj3.at(0, 0, 0), 0.2f, 0.02f);
+}
+
+TEST(ImageHist, ImhistClampsOutOfRange) {
+    Image img(2, 2, 1, 0.f);
+    img.at(0, 0, 0) = -0.2f;
+    img.at(0, 1, 0) = 1.5f;
+    auto h = imhist(img, 8);
+    EXPECT_EQ(h.size(), 8u);
+    int total = 0;
+    for (int v : h) total += v;
+    EXPECT_EQ(total, 4);
+}
+
+TEST(ImageTransform, DftRgbAndEmpty) {
+    Image rgb(4, 4, 3, 0.3f);
+    rgb.at(0, 0, 0) = 1.f;
+    auto mag = dft_magnitude(rgb);
+    EXPECT_EQ(mag.rows, 4);
+    EXPECT_EQ(mag.channels, 1);
+    for (float v : mag.data) EXPECT_TRUE(std::isfinite(v));
+    EXPECT_TRUE(dft_magnitude(Image{}).empty());
+}
+
+TEST(ImageTransform, RadonRgbAndEmptyImage) {
+    Image rgb(8, 8, 3, 0.f);
+    for (int r = 3; r < 5; ++r) for (int c = 3; c < 5; ++c) {
+        rgb.at(r, c, 0) = 1.f;
+        rgb.at(r, c, 1) = 1.f;
+        rgb.at(r, c, 2) = 1.f;
+    }
+    auto sino = radon(rgb, {0.f, 90.f});
+    EXPECT_EQ(sino.size(), 2u);
+    EXPECT_EQ(sino[0].size(), 8u);
+    auto empty_sino = radon(Image{}, {0.f});
+    EXPECT_EQ(empty_sino.size(), 1u);
+    EXPECT_TRUE(empty_sino[0].empty());
+}
+
+TEST(ImageTransform, IradonEmptyRowOrTheta) {
+    auto a = iradon({{}}, {0.f});
+    EXPECT_TRUE(a.empty());
+    auto b = iradon({{1.f, 2.f, 3.f, 4.f}}, {});
+    EXPECT_TRUE(b.empty());
+    auto c = iradon({{0.5f, 0.5f, 0.5f, 0.5f}, {}}, {0.f, 90.f});
+    EXPECT_EQ(c.rows, 4);
+    EXPECT_EQ(c.cols, 4);
+    for (float v : c.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(ImageTransform, IradonSamplesClampAtCorners) {
+    std::vector<std::vector<float>> sino(2, std::vector<float>(8, 0.25f));
+    sino[0][0] = 1.f;
+    sino[0][7] = 0.75f;
+    auto recon = iradon(sino, {0.f, 90.f});
+    EXPECT_EQ(recon.rows, 8);
+    for (float v : recon.data) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(HoughLines, RgbAndSingleRhoBin) {
+    Image rgb(8, 8, 3, 0.f);
+    for (int c = 0; c < 8; ++c) {
+        rgb.at(4, c, 0) = 1.f;
+        rgb.at(4, c, 1) = 1.f;
+        rgb.at(4, c, 2) = 1.f;
+    }
+    auto lines = hough_lines(rgb, 0.5, 36, 24, 1);
+    EXPECT_FALSE(lines.empty());
+
+    Image g(8, 8, 1, 0.f);
+    for (int c = 0; c < 8; ++c) g.at(4, c, 0) = 1.f;
+    auto one = hough_lines(g, 0.5, 18, 1, 1);
+    for (const auto& l : one) EXPECT_DOUBLE_EQ(l.rho, 0.0);
+}
+
+TEST(HoughCircles, RgbAndEmptyRadiusRange) {
+    Image rgb(8, 8, 3, 0.f);
+    const int cx = 4, cy = 4, rad = 2;
+    int n = std::max(8, (int)std::lround(2 * M_PI * rad));
+    for (int i = 0; i < n; ++i) {
+        double th = 2.0 * M_PI * i / n;
+        int x = (int)std::lround(cx + rad * std::cos(th));
+        int y = (int)std::lround(cy + rad * std::sin(th));
+        if (x >= 0 && x < 8 && y >= 0 && y < 8) {
+            rgb.at(y, x, 0) = 1.f;
+            rgb.at(y, x, 1) = 1.f;
+            rgb.at(y, x, 2) = 1.f;
+        }
+    }
+    auto circles = hough_circles(rgb, 0.5, 1, 3, 1, 4);
+    for (const auto& c : circles) EXPECT_GE(c.votes, 4);
+
+    Image g(8, 8, 1, 1.f);
+    auto empty_r = hough_circles(g, 0.5, 1.2, 1.6, 1, 4);
+    EXPECT_TRUE(empty_r.empty());
+}
+
+TEST(ImageHarris, RgbInput) {
+    Image rgb(8, 8, 3, 0.f);
+    for (int r = 4; r < 8; ++r) for (int c = 4; c < 8; ++c) {
+        rgb.at(r, c, 0) = 1.f;
+        rgb.at(r, c, 1) = 1.f;
+        rgb.at(r, c, 2) = 1.f;
+    }
+    auto kps = harris(rgb, 0.04f, 0.01f);
+    EXPECT_GE(kps.size(), 0u);
+}
+
+TEST(ImageShiTomasi, RgbInput) {
+    Image rgb(8, 8, 3, 0.f);
+    for (int r = 4; r < 8; ++r) for (int c = 0; c < 8; ++c) {
+        rgb.at(r, c, 0) = 1.f;
+        rgb.at(r, c, 1) = 1.f;
+        rgb.at(r, c, 2) = 1.f;
+    }
+    for (int r = 0; r < 4; ++r) for (int c = 4; c < 8; ++c) {
+        rgb.at(r, c, 0) = 1.f;
+        rgb.at(r, c, 1) = 1.f;
+        rgb.at(r, c, 2) = 1.f;
+    }
+    auto kps = shi_tomasi(rgb, 4, 0.01f);
+    EXPECT_LE(kps.size(), 4u);
+}
+
+TEST(ImageWatershed, RgbMarkers) {
+    Image gray(8, 8, 1, 0.2f);
+    for (int r = 0; r < 8; ++r) for (int c = 0; c < 8; ++c)
+        gray.at(r, c, 0) = 0.2f + 0.6f * std::max(0.f, 1.f - std::hypot((float)(r - 2), (float)(c - 2)) / 3.f)
+                                 + 0.6f * std::max(0.f, 1.f - std::hypot((float)(r - 5), (float)(c - 6)) / 3.f);
+    Image markers(8, 8, 3, 0.f);
+    markers.at(2, 2, 0) = 1.f;
+    markers.at(2, 2, 1) = 1.f;
+    markers.at(2, 2, 2) = 1.f;
+    markers.at(5, 6, 0) = 1.f;
+    markers.at(5, 6, 1) = 1.f;
+    markers.at(5, 6, 2) = 1.f;
+    auto out = watershed(gray, markers);
+    EXPECT_EQ(out.channels, 1);
+    EXPECT_FLOAT_EQ(out.at(2, 2, 0), 1.f);
+    EXPECT_FLOAT_EQ(out.at(5, 6, 0), 1.f);
+}
+
+TEST(ImageSlic, OneByOneAndDarkPixels) {
+    Image one(1, 1, 3, 0.5f);
+    auto a = slic(one, 1);
+    EXPECT_EQ(a.rows, 1);
+    EXPECT_FLOAT_EQ(a.at(0, 0, 0), 1.f);
+    Image dark(8, 8, 3, 0.02f);
+    dark.at(2, 2, 0) = 0.03f;
+    auto b = slic(dark, 4, 10.0);
+    EXPECT_EQ(b.channels, 1);
+    EXPECT_GE(count_distinct_labels(b), 1);
+}
+
+TEST(ImageComponents, LabelEmptyAndBilinearFarClamp) {
+    auto labels = label_components(Image{});
+    EXPECT_TRUE(labels.empty());
+    Image img(2, 2, 1, 0.f);
+    img.at(1, 1, 0) = 0.6f;
+    EXPECT_NEAR(bilinear_sample(img, 1.f, 1.f, 0), 0.6f, 1e-6f);
+}

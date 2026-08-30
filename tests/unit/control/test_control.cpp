@@ -1287,3 +1287,87 @@ TEST(ControlBode, DefaultFrequencyGrid) {
     EXPECT_EQ(bd.w.size(), 200u);
     EXPECT_EQ(bd.magnitude.size(), 200u);
 }
+
+TEST(ControlKalman, PredictEmptyState) {
+    KalmanState state{{}, {}};
+    std::vector<std::vector<double>> A = {{1.0}};
+    std::vector<std::vector<double>> Q = {{0.1}};
+    auto out = kalman_predict(state, A, Q);
+    EXPECT_TRUE(out.x.empty());
+    EXPECT_TRUE(out.P.empty());
+}
+
+TEST(ControlKalman, PredictQMismatch) {
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> A = {{1.0, 0.0}, {0.0, 1.0}};
+    std::vector<std::vector<double>> Q = {{0.1}};
+    auto out = kalman_predict(state, A, Q);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlKalman, UpdateEmptyH) {
+    KalmanState state{{1.0, 2.0}, {{1.0, 0.0}, {0.0, 1.0}}};
+    std::vector<std::vector<double>> H;
+    std::vector<std::vector<double>> R = {{1.0}};
+    auto out = kalman_update(state, {1.0}, H, R);
+    EXPECT_EQ(out.x, state.x);
+    EXPECT_EQ(out.P, state.P);
+}
+
+TEST(ControlTF, FirstOrderPole) {
+    auto sys = tf({1.0}, {1.0, 3.0});
+    auto p = poles(sys);
+    ASSERT_EQ(p.size(), 1u);
+    EXPECT_NEAR(p[0].real(), -3.0, 1e-10);
+    EXPECT_NEAR(p[0].imag(), 0.0, 1e-10);
+}
+
+TEST(ControlTF, ConstantHasNoZeros) {
+    auto sys = tf({5.0}, {1.0, 1.0});
+    auto z = zeros(sys);
+    EXPECT_TRUE(z.empty());
+}
+
+TEST(ControlSS, UnobservableDecoupled) {
+    std::vector<std::vector<double>> A = {{1.0, 0.0}, {0.0, 2.0}};
+    std::vector<std::vector<double>> C = {{1.0, 0.0}};
+    EXPECT_FALSE(is_observable(A, C));
+}
+
+TEST(ControlSS, EmptyBInputDimension) {
+    auto sys = ss({{0.0}}, {}, {{1.0}}, {{0.0}});
+    EXPECT_EQ(sys.n, 1);
+    EXPECT_EQ(sys.m, 0);
+    EXPECT_EQ(sys.p, 1);
+}
+
+TEST(ControlDiscretize, TransferFunctionZOHRoundTrip) {
+    const auto plant = tf({1.0}, {1.0, 1.0});
+    const double Ts = 0.1;
+    const auto back = d2c(c2d(plant, Ts, DiscretizationMethod::ZOH), Ts,
+                          DiscretizationMethod::ZOH);
+    EXPECT_NEAR(dcgain(back), dcgain(plant), 1e-3);
+}
+
+TEST(ControlTF, NyquistAndImpulseDefaults) {
+    auto sys = tf({1.0}, {1.0, 1.0});
+    auto pts = nyquist(sys);
+    EXPECT_EQ(pts.size(), 300u);
+    auto imp = impulse_response(sys);
+    EXPECT_EQ(imp.t.size(), 500u);
+    EXPECT_EQ(imp.y.size(), 500u);
+}
+
+TEST(ControlLyap, DiscreteSingularReturnsError) {
+    auto X = dlyap({{1.0}}, {{1.0}});
+    EXPECT_FALSE(X.has_value());
+}
+
+TEST(ControlPlace, UncontrollableErrors) {
+    std::vector<std::vector<double>> A = {{1.0, 0.0}, {0.0, 2.0}};
+    std::vector<std::vector<double>> B = {{1.0}, {0.0}};
+    std::vector<double> desired = {-1.0, -2.0};
+    auto K = place(A, B, desired);
+    EXPECT_FALSE(K.has_value());
+}

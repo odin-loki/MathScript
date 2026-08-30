@@ -828,3 +828,37 @@ TEST(ReplCommandsTest, info_blahut_arimoto_noassign) {
     expect_contains(interp, "info_blahut_arimoto([1, 0; 0, 1])", "1");
     expect_error_contains(interp, "info_blahut_arimoto(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, info_kl_divergence_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_kl_divergence([0.4, 0.6], [0.5, 0.5])", "0.029");
+    expect_error_contains(interp, "info_kl_divergence(no_such_matrix, [0.5, 0.5])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_cross_entropy_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_cross_entropy([0.5, 0.5], [0.25, 0.75])", "1.");
+    expect_error_contains(interp, "info_cross_entropy(no_such_matrix, [0.25, 0.75])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_js_divergence_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_js_divergence([1, 0], [0, 1])", "1");
+    expect_error_contains(interp, "info_js_divergence(no_such_matrix, [0, 1])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_tv_distance_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_tv_distance([0.5; 0.5], [1; 0])", "0.5");
+    expect_error_contains(interp, "info_tv_distance(no_such_matrix, [1; 0])", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, info_hellinger_dist_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "info_hellinger_dist([1; 0], [0; 1])", "1");
+    expect_error_contains(interp, "info_hellinger_dist(no_such_matrix, [0; 1])",
+                          "unknown matrix");
+}

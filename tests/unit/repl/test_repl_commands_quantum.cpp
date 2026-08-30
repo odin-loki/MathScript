@@ -5633,3 +5633,37 @@ TEST(ReplCommandsTest, quantum_outer_noassign) {
     expect_contains(interp, "quantum_outer(a, b)", "outer =");
     expect_error_contains(interp, "quantum_outer(missing, b)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, quantum_fidelity_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_fidelity([1, 0; 0, 0], [1, 0; 0, 0])", "1");
+    expect_error_contains(interp, "quantum_fidelity(no_such_matrix, [1, 0; 0, 0])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_trace_distance_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_trace_distance([1, 0; 0, 0], [1, 0; 0, 0])", "0");
+    expect_error_contains(interp, "quantum_trace_distance(no_such_matrix, [1, 0; 0, 0])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_expectation_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_expectation([1; 0], [1, 0; 0, -1])", "1");
+    expect_error_contains(interp, "quantum_expectation(no_such_matrix, [1, 0; 0, -1])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_expectation_dm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_expectation_dm([1, 0; 0, 0], [1, 0; 0, -1])", "1");
+    expect_error_contains(interp, "quantum_expectation_dm(no_such_matrix, [1, 0; 0, -1])",
+                          "unknown matrix");
+}
+
+TEST(ReplCommandsTest, quantum_inner_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "quantum_inner([1; 0], [1; 0])", "1");
+    expect_error_contains(interp, "quantum_inner(no_such_matrix, [1; 0])", "unknown matrix");
+}

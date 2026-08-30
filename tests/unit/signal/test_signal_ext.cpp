@@ -1896,3 +1896,107 @@ TEST(SignalExtTest, correlate_empty_returns_empty) {
     EXPECT_TRUE(correlate({}, {1.0}).empty());
     EXPECT_TRUE(correlate({1.0}, {}).empty());
 }
+
+TEST(SignalExtTest, welch_psd_invalid_empty_signal) {
+    const auto result = welch_psd({}, 1000.0, 8, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, welch_psd_invalid_fs_nonpositive) {
+    const std::vector<double> x{1.0, -0.5, 0.25, -0.125, 0.5, 0.0, -1.0, 0.75};
+    const auto zero_fs = welch_psd(x, 0.0, 4, 0.5);
+    const auto neg_fs = welch_psd(x, -10.0, 4, 0.5);
+    ASSERT_FALSE(zero_fs.has_value());
+    ASSERT_FALSE(neg_fs.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(zero_fs.error()));
+    EXPECT_TRUE(std::holds_alternative<DomainError>(neg_fs.error()));
+}
+
+TEST(SignalExtTest, welch_psd_single_sample_segment) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.5};
+    const auto result = welch_psd(x, 8.0, 1, 0.0);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->frequencies.size(), 1u);
+    ASSERT_EQ(result->power.size(), 1u);
+    EXPECT_NEAR(result->frequencies[0], 0.0, 1e-12);
+    EXPECT_TRUE(std::isfinite(result->power[0]));
+}
+
+TEST(SignalExtTest, welch_psd_near_unity_overlap_uses_unit_hop) {
+    const std::vector<double> x{1.0, 0.5, -0.25, 0.75, 0.0, -0.5, 0.25, -1.0};
+    const auto result = welch_psd(x, 8.0, 4, 0.99);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->frequencies.size(), result->power.size());
+    EXPECT_FALSE(result->power.empty());
+    for (double p : result->power) {
+        EXPECT_TRUE(std::isfinite(p));
+        EXPECT_GE(p, 0.0);
+    }
+}
+
+TEST(SignalExtTest, welch_psd_default_overlap_frac) {
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5, 0.25, -0.25, 0.75, -0.75};
+    const auto with_default = welch_psd(x, 8.0, 4);
+    const auto explicit_half = welch_psd(x, 8.0, 4, 0.5);
+    ASSERT_TRUE(with_default.has_value());
+    ASSERT_TRUE(explicit_half.has_value());
+    ASSERT_EQ(with_default->power.size(), explicit_half->power.size());
+    for (size_t i = 0; i < with_default->power.size(); ++i) {
+        EXPECT_NEAR(with_default->power[i], explicit_half->power[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, spectrogram_invalid_empty_signal) {
+    const auto result = spectrogram({}, 1000.0, 8, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, spectrogram_invalid_fs_nonpositive) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.5, 0.25, -0.25, 0.75, -0.5};
+    const auto result = spectrogram(x, 0.0, 4, 0.5);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, spectrogram_invalid_overlap_negative) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.5, 0.25, -0.25, 0.75, -0.5};
+    const auto result = spectrogram(x, 8.0, 4, -0.1);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<DomainError>(result.error()));
+}
+
+TEST(SignalExtTest, spectrogram_single_sample_segment) {
+    const std::vector<double> x{1.0, -0.5, 0.25};
+    const auto result = spectrogram(x, 4.0, 1, 0.0);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->times.size(), x.size());
+    EXPECT_EQ(result->magnitude.rows(), x.size());
+    EXPECT_EQ(result->magnitude.cols(), result->frequencies.size());
+    EXPECT_NEAR(result->frequencies.front(), 0.0, 1e-12);
+}
+
+TEST(SignalExtTest, instantaneous_freq_single_sample_is_zero) {
+    const std::vector<double> x{0.75};
+    const auto freq = instantaneous_freq(x, 1000.0);
+    ASSERT_EQ(freq.size(), 1u);
+    EXPECT_NEAR(freq[0], 0.0, 1e-15);
+}
+
+TEST(SignalExtTest, instantaneous_freq_two_samples_repeats_last) {
+    const std::vector<double> x{1.0, 0.0};
+    const auto freq = instantaneous_freq(x, 8.0);
+    ASSERT_EQ(freq.size(), 2u);
+    EXPECT_TRUE(std::isfinite(freq[0]));
+    EXPECT_NEAR(freq[1], freq[0], 1e-12);
+}
+
+TEST(SignalExtTest, instantaneous_freq_zero_fs_is_zero) {
+    const std::vector<double> x{1.0, 0.0, -1.0, 0.0};
+    const auto freq = instantaneous_freq(x, 0.0);
+    ASSERT_EQ(freq.size(), x.size());
+    for (double v : freq) {
+        EXPECT_NEAR(v, 0.0, 1e-15);
+    }
+}

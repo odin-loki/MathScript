@@ -761,3 +761,64 @@ TEST(InfoTsallis, QTwoUniform) {
     // (1 - n*(1/n)^2) / (2-1) = 1 - 1/n
     EXPECT_NEAR(tsallis_entropy(p, 2.0), 0.75, 1e-12);
 }
+
+// ---- Remaining untested library APIs / edge cases ----
+
+TEST(InfoEntropy, EmptyAndNats) {
+    const std::vector<double> empty;
+    EXPECT_NEAR(entropy(empty, 2.0), 0.0, 1e-12);
+    const std::vector<double> p = {0.5, 0.5};
+    EXPECT_NEAR(entropy(p, std::exp(1.0)), std::log(2.0), 1e-12);
+}
+
+TEST(InfoJointEntropy, OneByTwo) {
+    const std::vector<double> pxy = {0.3, 0.7};
+    const double expected = -0.3 * std::log2(0.3) - 0.7 * std::log2(0.7);
+    EXPECT_NEAR(joint_entropy(pxy, 1, 2, 2.0), expected, 1e-12);
+}
+
+TEST(InfoCrossEntropy, NatsEqualDistributions) {
+    const std::vector<double> p = {0.5, 0.5};
+    EXPECT_NEAR(cross_entropy(p, p, std::exp(1.0)), std::log(2.0), 1e-12);
+}
+
+TEST(TransferEntropy, DegenerateBinsAndLag) {
+    const std::vector<double> x = {1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> y = {2.0, 3.0, 4.0, 5.0};
+    EXPECT_NEAR(transfer_entropy(x, y, 0, 1), 0.0, 1e-12);
+    EXPECT_NEAR(transfer_entropy(x, y, 8, 0), 0.0, 1e-12);
+    EXPECT_NEAR(transfer_entropy(x, y, -1, 1), 0.0, 1e-12);
+}
+
+TEST(InfoLZ, SingleSymbol) {
+    const std::vector<int> seq = {1};
+    EXPECT_NEAR(lz_complexity(seq), std::log2(2.0), 1e-12);
+}
+
+TEST(InfoDiffEntropy, UniformSwappedBounds) {
+    EXPECT_NEAR(differential_entropy_uniform(3.0, 1.0), std::log(2.0), 1e-12);
+}
+
+TEST(InfoChannel, BSCOutOfRange) {
+    EXPECT_NEAR(channel_capacity_bsc(-0.1), 1.0, 1e-12);
+    EXPECT_NEAR(channel_capacity_bsc(1.0), 0.0, 1e-12);
+    EXPECT_NEAR(channel_capacity_bsc(1.5), 0.0, 1e-12);
+}
+
+TEST(InfoSourceCoding, EmptyRate) {
+    const std::vector<double> empty;
+    EXPECT_NEAR(source_coding_rate(empty), 0.0, 1e-12);
+}
+
+TEST(InfoEfficiency, SingleOutcome) {
+    const std::vector<double> p = {1.0};
+    EXPECT_NEAR(efficiency(p), 1.0, 1e-12);
+}
+
+TEST(BlahutArimoto, DegenerateEmptyRow) {
+    const std::vector<std::vector<double>> W = {{}};
+    EXPECT_NEAR(blahut_arimoto(W), 0.0, 1e-12);
+    ChannelCapacityResult res = channel_capacity(W);
+    EXPECT_NEAR(res.capacity, 0.0, 1e-12);
+    EXPECT_TRUE(res.input_distribution.empty());
+}
