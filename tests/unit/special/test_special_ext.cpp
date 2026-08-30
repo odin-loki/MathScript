@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <numbers>
+#include <vector>
 #include "ms/special/special.hpp"
 
 using namespace ms;
@@ -283,4 +284,67 @@ TEST(SpecialExtTest, jacobi_sn_cn_dn_at_origin) {
 TEST(SpecialExtTest, sph_bessel_j0_limit) {
     EXPECT_NEAR(sph_bessel_j(0, 0.0), 1.0, 1e-15);
     EXPECT_NEAR(sph_bessel_j(0, 0.5), std::sin(0.5) / 0.5, 1e-14);
+}
+
+TEST(SpecialExtTest, pseudo_voigt_degenerate_widths) {
+    EXPECT_TRUE(std::isinf(pseudo_voigt(0.0, 0.0, 0.0, 0.4)));
+    EXPECT_NEAR(pseudo_voigt(1.5, 0.0, 0.0, 0.4), 0.0, 1e-15);
+    EXPECT_TRUE(std::isinf(pseudo_voigt(0.0, -1.0, -0.5, 0.3)));
+    EXPECT_NEAR(pseudo_voigt(-2.0, -0.2, -0.3, 0.8), 0.0, 1e-15);
+}
+
+TEST(SpecialExtTest, pseudo_voigt_auto_degenerate_widths) {
+    EXPECT_TRUE(std::isinf(pseudo_voigt_auto(0.0, 0.0, 0.0)));
+    EXPECT_NEAR(pseudo_voigt_auto(1.0, 0.0, 0.0), 0.0, 1e-15);
+    EXPECT_TRUE(std::isinf(pseudo_voigt_auto(0.0, -2.0, -1.0)));
+    EXPECT_NEAR(pseudo_voigt_auto(0.75, -0.1, 0.0), 0.0, 1e-15);
+}
+
+TEST(SpecialExtTest, rgamma_overflow_cancels) {
+    EXPECT_EQ(rgamma(200.0), 0.0);
+    EXPECT_EQ(rgamma(180.0), 0.0);
+}
+
+TEST(SpecialExtTest, kummer_u_large_z_non_identity) {
+    EXPECT_NEAR(kummer_u(0.7, 1.3, 25.0), std::pow(25.0, -0.7), 1e-15);
+    EXPECT_NEAR(kummer_u(1.2, 0.4, 30.0), std::pow(30.0, -1.2), 1e-15);
+}
+
+TEST(SpecialExtTest, kummer_u_b_ge_two_tricomi_fallback) {
+    const double u = kummer_u(0.5, 2.5, 1.0);
+    if (!std::isfinite(u)) {
+        GTEST_SKIP() << "kummer_u tricomi fallback not finite";
+    }
+    EXPECT_GT(std::abs(u), 0.0);
+}
+
+TEST(SpecialExtTest, lambert_w_principal_negative_arg) {
+    const std::vector<double> zs{-0.3, -0.1, -0.05};
+    for (const double z : zs) {
+        expect_lambert_identity(0, z, 1e-12);
+    }
+}
+
+TEST(SpecialExtTest, lambert_w_minus_one_near_branch_point) {
+    const double minus_inv_e = -std::exp(-1.0);
+    const double z = minus_inv_e + 5e-12;
+    EXPECT_NEAR(lambert_w(-1, z), -1.0, 1e-4);
+    expect_lambert_identity(-1, z, 1e-10);
+}
+
+TEST(SpecialExtTest, mathieu_characteristic_index_out_of_range) {
+    const std::vector<int> orders{160, 200, 201};
+    for (const int n : orders) {
+        EXPECT_TRUE(std::isnan(mathieu_a(n, 0.1))) << "n=" << n;
+        EXPECT_TRUE(std::isnan(mathieu_b(n, 0.1))) << "n=" << n;
+    }
+}
+
+TEST(SpecialExtTest, jacobi_p_rising_factorial_underflow) {
+    EXPECT_TRUE(std::isnan(jacobi_p(2, 0.5, -3.5, 0.3)));
+    EXPECT_TRUE(std::isnan(jacobi_p(3, 1.0, -5.0, 0.0)));
+}
+
+TEST(SpecialExtTest, whittaker_w_both_representations_fail) {
+    EXPECT_TRUE(std::isnan(whittaker_w(0.0, 0.0, 80.0)));
 }

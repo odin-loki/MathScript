@@ -568,3 +568,126 @@ TEST(StatsGapsTest, Spearman_TwoPointsAndTiesIgnoredPath) {
     const std::vector<double> y = {3.0, 1.0};
     EXPECT_NEAR(spearman(x, y), -1.0, 1e-12);
 }
+
+TEST(StatsGapsTest, PartialCorrelation_PerfectControlDenomZero) {
+    const std::vector<double> x = {1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> y = {2.0, 1.0, 4.0, 3.0};
+    const std::vector<double> z = {1.0, 2.0, 3.0, 4.0};
+    EXPECT_NEAR(partial_correlation(x, y, z), 0.0, 1e-12);
+    const std::vector<double> y_short = {1.0, 2.0};
+    EXPECT_NEAR(partial_correlation(x, y_short, z), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Anova_EmptyGroupAmongTwoValid) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 2.0, 3.0},
+        {},
+        {10.0, 11.0, 12.0},
+    };
+    const auto r = one_way_anova(groups);
+    EXPECT_GT(r.f_stat, 1.0);
+    EXPECT_EQ(r.df_between, 1);
+    EXPECT_EQ(r.df_within, 4);
+}
+
+TEST(StatsGapsTest, Anova_ConstantGroupsZeroWithin) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 1.0, 1.0},
+        {2.0, 2.0, 2.0},
+    };
+    const auto r = one_way_anova(groups);
+    EXPECT_NEAR(r.f_stat, 0.0, 1e-12);
+    EXPECT_NEAR(r.p_value, 0.0, 1e-12);
+    EXPECT_EQ(r.df_between, 1);
+    EXPECT_EQ(r.df_within, 4);
+}
+
+TEST(StatsGapsTest, MannWhitney_AllTiesZeroVariance) {
+    const std::vector<double> a = {1.0, 1.0, 1.0};
+    const std::vector<double> b = {1.0, 1.0, 1.0};
+    const auto r = mann_whitney_u(a, b);
+    EXPECT_NEAR(r.u_stat, 4.5, 1e-12);
+    EXPECT_NEAR(r.p_value, 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Levene_EmptyGroupSkipped) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 2.0, 3.0, 4.0},
+        {},
+        {5.0, 6.0, 7.0, 8.0},
+    };
+    const auto r = levene_test(groups);
+    EXPECT_NEAR(r.f_stat, 0.0, 1e-12);
+    EXPECT_NEAR(r.p_value, 1.0, 1e-12);
+    EXPECT_EQ(r.df_between, 1);
+    EXPECT_EQ(r.df_within, 6);
+}
+
+TEST(StatsGapsTest, Bartlett_EmptyGroupAndSingleton) {
+    const std::vector<std::vector<double>> with_empty = {
+        {1.0, 2.0, 3.0, 4.0},
+        {},
+        {1.0, 10.0, 100.0, 1000.0},
+    };
+    const auto skip_empty = bartlett_test(with_empty);
+    EXPECT_EQ(skip_empty.df, 1);
+    EXPECT_GT(skip_empty.chi2_stat, 0.0);
+    EXPECT_GE(skip_empty.p_value, 0.0);
+    EXPECT_LE(skip_empty.p_value, 1.0);
+
+    const std::vector<std::vector<double>> singleton = {
+        {1.0, 2.0, 3.0, 4.0},
+        {5.0},
+    };
+    const auto r = bartlett_test(singleton);
+    EXPECT_NEAR(r.chi2_stat, 0.0, 1e-12);
+    EXPECT_NEAR(r.p_value, 1.0, 1e-12);
+    EXPECT_EQ(r.df, 0);
+}
+
+TEST(StatsGapsTest, Fligner_ConstantGroupsZeroScoreVar) {
+    const std::vector<std::vector<double>> groups = {
+        {1.0, 1.0, 1.0},
+        {2.0, 2.0, 2.0},
+    };
+    const auto r = fligner_test(groups);
+    EXPECT_NEAR(r.chi2_stat, 0.0, 1e-12);
+    EXPECT_NEAR(r.p_value, 1.0, 1e-12);
+    EXPECT_EQ(r.df, 0);
+}
+
+TEST(StatsGapsTest, BootstrapCI_SingleResampleEqualIndices) {
+    const std::vector<double> data = {1.0, 2.0, 3.0, 4.0};
+    auto mean_stat = [](std::span<const double> v) { return mean(v); };
+    const auto r = bootstrap_ci(data, mean_stat, 1, 0.95, 7);
+    EXPECT_NEAR(r.point_estimate, mean(data), 1e-12);
+    EXPECT_NEAR(r.lower, r.upper, 1e-12);
+    EXPECT_NEAR(r.std_error, 0.0, 1e-12);
+
+    const auto pair_ci = bootstrap_ci(data, 0.95, 1, 7);
+    EXPECT_NEAR(pair_ci.first, pair_ci.second, 1e-12);
+}
+
+TEST(StatsGapsTest, Arfit_ConstantSeriesSingularPivot) {
+    const std::vector<double> x = {4.0, 4.0, 4.0, 4.0, 4.0};
+    const auto phi = arfit(x, 2);
+    ASSERT_EQ(phi.size(), 2u);
+    EXPECT_NEAR(phi[0], 0.0, 1e-12);
+    EXPECT_NEAR(phi[1], 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, Kde_SingleSampleHugeBandwidth) {
+    const std::vector<double> samples = {0.0};
+    const std::vector<double> grid = {0.0};
+    const auto dens = kde(samples, grid, 1e13);
+    ASSERT_EQ(dens.size(), 1u);
+    EXPECT_GT(dens[0], 0.0);
+    EXPECT_LT(dens[0], 1e-12);
+}
+
+TEST(StatsGapsTest, RankCorr_SinglePointAndNaN) {
+    const std::vector<double> x = {1.0};
+    const std::vector<double> y = {2.0};
+    EXPECT_TRUE(std::isnan(spearman(x, y)));
+    EXPECT_NEAR(kendall(x, y), 0.0, 1e-12);
+}

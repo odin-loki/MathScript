@@ -18161,3 +18161,195 @@ TEST(ReplCommandsTest, kelvin_bei_noassign) {
     expect_ok(interp, "kelvin_bei(0, 1)");
     expect_error_contains(interp, "kelvin_bei(0, missing)", "expected kelvin_bei(nu,x)");
 }
+
+TEST(ReplCommandsTest, spherical_jn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "spherical_jn(0, 1)");
+    expect_error_contains(interp, "spherical_jn(0, missing)", "expected spherical_jn(n,x)");
+}
+
+TEST(ReplCommandsTest, spherical_yn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "spherical_yn(0, 1)");
+    expect_error_contains(interp, "spherical_yn(0, missing)", "expected spherical_yn(n,x)");
+}
+
+TEST(ReplCommandsTest, bessel_h_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_h(0, 1)");
+    expect_error_contains(interp, "bessel_h(0, missing)", "expected bessel_h(nu,x)");
+}
+
+TEST(ReplCommandsTest, bessel_hy_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_hy(1, 0.5)");
+    expect_error_contains(interp, "bessel_hy(1, missing)", "expected bessel_hy(nu,x)");
+}
+
+TEST(ReplCommandsTest, bessel_l_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_l(1, 0.5)");
+    expect_error_contains(interp, "bessel_l(1, missing)", "expected bessel_l(nu,x)");
+}
+
+TEST(ReplCommandsTest, bessel_lu_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_lu(1, 0.5)");
+    expect_error_contains(interp, "bessel_lu(1, missing)", "expected bessel_lu(nu,x)");
+}
+
+TEST(ReplCommandsTest, hermite_hn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hermite_hn(2, 0.5)");
+    expect_error_contains(interp, "hermite_hn(2, missing)", "expected hermite_hn(n,x)");
+}
+
+TEST(ReplCommandsTest, bessel_y_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_y(0, 1)");
+    expect_error_contains(interp, "bessel_y(0, missing)", "expected bessel_y(nu,x)");
+}
+
+TEST(ReplCommandsTest, bessel_k_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_k(0, 1)");
+    expect_error_contains(interp, "bessel_k(0, missing)", "expected bessel_k(nu,x)");
+}
+
+TEST(ReplCommandsTest, legendre_q_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "legendre_q(2, 0.3)");
+    expect_error_contains(interp, "legendre_q(2, missing)", "expected legendre_q(n,x)");
+}
+
+TEST(ReplCommandsTest, kelvin_ber_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "kelvin_ber(0, 1)");
+    expect_error_contains(interp, "kelvin_ber(0, missing)", "expected kelvin_ber(nu,x)");
+}
+
+TEST(ReplCommandsTest, bessel_zero_jnu_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_zero_jnu(0, 1)");
+    expect_error_contains(interp, "bessel_zero_jnu(0, missing)", "expected bessel_zero_jnu(nu,n)");
+}
+
+TEST(ReplCommandsTest, struve_hn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "struve_hn(1, 1)");
+    expect_error_contains(interp, "struve_hn(1, missing)", "expected struve_hn(nu,x)");
+}
+
+TEST(ReplCommandsTest, struve_yn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "struve_yn(1, 1)");
+    expect_error_contains(interp, "struve_yn(1, missing)", "expected struve_yn(nu,x)");
+}
+
+TEST(ReplCommandsTest, bessel_zero_ynu_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_zero_ynu(0, 1)");
+    expect_error_contains(interp, "bessel_zero_ynu(0, missing)", "expected bessel_zero_ynu(nu,n)");
+}
+
+TEST(ReplCommandsTest, jacobi_nc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_nc(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_nc(0.5, missing)", "expected jacobi_nc(u,k)");
+}
+
+TEST(ReplCommandsTest, theta3_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "theta3(0.5, 0.3)");
+    expect_error_contains(interp, "theta3(0.5, missing)", "expected theta3(z,q)");
+}
+
+TEST(ReplCommandsTest, polylog_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "polylog(2, 0.5)");
+    expect_error_contains(interp, "polylog(2, missing)", "expected polylog(n,z)");
+}
+
+TEST(ReplCommandsTest, legendre_p_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "legendre_p(2, 0.5)");
+    expect_error_contains(interp, "legendre_p(2, missing)", "expected legendre_p(n,x)");
+}
+
+TEST(ReplCommandsTest, kummer_m_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "kummer_m(1, 2, 0.5)");
+    expect_error_contains(interp, "kummer_m(1, 2, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, kummer_u_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "kummer_u(1, 2, 0.5)");
+    expect_error_contains(interp, "kummer_u(1, 2, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, whittaker_m_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "whittaker_m(0, 0.5, 1)");
+    expect_error_contains(interp, "whittaker_m(0, 0.5, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, whittaker_w_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "whittaker_w(0, 0.5, 1)");
+    expect_error_contains(interp, "whittaker_w(0, 0.5, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, tricomi_u_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "tricomi_u(1, 2, 0.5)");
+    expect_error_contains(interp, "tricomi_u(1, 2, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, meijer_g_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "meijer_g(1, 2, 0.5)");
+    expect_error_contains(interp, "meijer_g(1, 2, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, fox_h_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "fox_h(1, 2, 0.5)");
+    expect_error_contains(interp, "fox_h(1, 2, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, hypergeo_0f1n_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hypergeo_0f1n(2, 1.5, 0.2)");
+    expect_error_contains(interp, "hypergeo_0f1n(2, 1.5, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, hypergeo_1f1n_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hypergeo_1f1n(1, 1, 0.3)");
+    expect_error_contains(interp, "hypergeo_1f1n(1, 1, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, mathieu_ce_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "mathieu_ce(1, 0.1, 0.5)");
+    expect_error_contains(interp, "mathieu_ce(1, 0.1, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, painleve1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "painleve1(0.5, 0, 0)");
+    expect_error_contains(interp, "painleve1(0.5, 0, missing)", "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, assoc_legendre_p_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "assoc_legendre_p(2, 1, 0.5)");
+    expect_error_contains(interp, "assoc_legendre_p(2, 1, missing)", "expected assoc_legendre_p(l,m,x)");
+}
+
+TEST(ReplCommandsTest, laguerre_la_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "laguerre_la(2, 1, 0.5)");
+    expect_error_contains(interp, "laguerre_la(2, 1, missing)", "expected laguerre_la(n,a,x)");
+}

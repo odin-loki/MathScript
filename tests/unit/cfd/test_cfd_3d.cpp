@@ -416,3 +416,53 @@ TEST(CfdRunAdvection3D, CflViolation) {
     std::vector<double> vz = {0.0};
     EXPECT_TRUE(run_advection_3d(u0, vx, vy, vz, 0.2, 0.1, 0.1, 0.1, 0.1).u.empty());
 }
+
+TEST(CfdUpwindFvm3D, ZeroFluxNegativeVz) {
+    const std::vector<std::vector<std::vector<double>>> u0 = {
+        {{0.0, 1.0}, {0.0, 1.0}},
+        {{0.0, 1.0}, {0.0, 1.0}},
+    };
+    std::vector<double> vx = {0.0};
+    std::vector<double> vy = {0.0};
+    std::vector<double> vz = {-0.3};
+    const auto u1 = upwind_fvm_advection_3d(
+        u0, vx, vy, vz, 0.05, 0.2, 0.2, 0.2,
+        BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_3d(u1, 0.2, 0.2, 0.2), integrated_mass_3d(u0, 0.2, 0.2, 0.2),
+                1e-12);
+}
+
+TEST(CfdUpwindFvm3D, ZeroFluxNegativeVxVy) {
+    const std::vector<std::vector<std::vector<double>>> u0 = {
+        {{0.0, 1.0}, {0.0, 1.0}},
+        {{0.0, 1.0}, {0.0, 1.0}},
+    };
+    std::vector<double> vx = {-0.2};
+    std::vector<double> vy = {-0.2};
+    std::vector<double> vz = {0.0};
+    const auto u1 = upwind_fvm_advection_3d(
+        u0, vx, vy, vz, 0.05, 0.2, 0.2, 0.2,
+        BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_3d(u1, 0.2, 0.2, 0.2), integrated_mass_3d(u0, 0.2, 0.2, 0.2),
+                1e-12);
+}
+
+TEST(CfdUpwindFvm3D, EmptyField) {
+    std::vector<double> v = {0.1};
+    const std::vector<std::vector<std::vector<double>>> empty;
+    EXPECT_TRUE(upwind_fvm_advection_3d(empty, v, v, v, 0.01, 0.2, 0.2, 0.2).empty());
+}
+
+TEST(CfdUpwindFvm3D, VelocityLengthNotEqualCellCount) {
+    const std::vector<std::vector<std::vector<double>>> u0 = {
+        {{1.0, 0.0}, {0.0, 1.0}},
+        {{0.0, 1.0}, {1.0, 0.0}},
+    };
+    std::vector<double> v = {0.1};
+    std::vector<double> bad(3, 0.1);
+    EXPECT_TRUE(upwind_fvm_advection_3d(u0, bad, v, v, 0.01, 0.2, 0.2, 0.2).empty());
+    EXPECT_TRUE(upwind_fvm_advection_3d(u0, v, bad, v, 0.01, 0.2, 0.2, 0.2).empty());
+    EXPECT_TRUE(upwind_fvm_advection_3d(u0, v, v, bad, 0.01, 0.2, 0.2, 0.2).empty());
+}

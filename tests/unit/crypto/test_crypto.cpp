@@ -1168,3 +1168,146 @@ TEST(CryptoEd25519, VerifyInvalidSizes) {
     std::vector<uint8_t> short_pub{0x00};
     EXPECT_FALSE(ed25519_verify(short_pub, empty_msg, sig));
 }
+
+TEST(CryptoAes128, CbcDecryptZeroPadLenReturnsEmpty) {
+    std::vector<uint8_t> key(aes128_key_size, 0x11);
+    std::vector<uint8_t> iv(aes_block_size, 0x22);
+    std::vector<uint8_t> empty_plain;
+    const auto ciphertext = aes128_cbc_encrypt(key, iv, empty_plain);
+    ASSERT_EQ(ciphertext.size(), 16u);
+    // Empty plaintext PKCS#7-pads to 16 bytes of 0x10. Flipping the last IV
+    // byte by 0x10 makes the decrypted last byte 0, which is rejected.
+    std::vector<uint8_t> bad_iv = iv;
+    bad_iv.back() ^= 0x10;
+    EXPECT_TRUE(aes128_cbc_decrypt(key, bad_iv, ciphertext).empty());
+}
+
+TEST(CryptoAes128, CbcDecryptPadLenTooLargeReturnsEmpty) {
+    std::vector<uint8_t> key(aes128_key_size, 0x11);
+    std::vector<uint8_t> iv(aes_block_size, 0x22);
+    std::vector<uint8_t> empty_plain;
+    const auto ciphertext = aes128_cbc_encrypt(key, iv, empty_plain);
+    ASSERT_EQ(ciphertext.size(), 16u);
+    // 0x10 XOR 0x01 = 0x11 (> 16) in the last decrypted byte.
+    std::vector<uint8_t> bad_iv = iv;
+    bad_iv.back() ^= 0x01;
+    EXPECT_TRUE(aes128_cbc_decrypt(key, bad_iv, ciphertext).empty());
+}
+
+TEST(CryptoAes128, CbcDecryptMismatchedPaddingReturnsEmpty) {
+    std::vector<uint8_t> key(aes128_key_size, 0x11);
+    std::vector<uint8_t> iv(aes_block_size, 0x22);
+    std::vector<uint8_t> empty_plain;
+    const auto ciphertext = aes128_cbc_encrypt(key, iv, empty_plain);
+    ASSERT_EQ(ciphertext.size(), 16u);
+    std::vector<uint8_t> bad_iv = iv;
+    bad_iv.front() ^= 0x01;
+    EXPECT_TRUE(aes128_cbc_decrypt(key, bad_iv, ciphertext).empty());
+}
+
+TEST(CryptoAes256, CbcDecryptMismatchedPaddingReturnsEmpty) {
+    std::vector<uint8_t> key(aes256_key_size, 0x33);
+    std::vector<uint8_t> iv(aes_block_size, 0x44);
+    std::vector<uint8_t> empty_plain;
+    const auto ciphertext = aes256_cbc_encrypt(key, iv, empty_plain);
+    ASSERT_EQ(ciphertext.size(), 16u);
+    std::vector<uint8_t> bad_iv = iv;
+    bad_iv.front() ^= 0x01;
+    EXPECT_TRUE(aes256_cbc_decrypt(key, bad_iv, ciphertext).empty());
+}
+
+TEST(CryptoAes256, CbcDecryptShortIvReturnsEmpty) {
+    std::vector<uint8_t> key(aes256_key_size, 0x11);
+    std::vector<uint8_t> short_iv{0x00};
+    std::vector<uint8_t> cipher(aes_block_size, 0x22);
+    EXPECT_TRUE(aes256_cbc_decrypt(key, short_iv, cipher).empty());
+}
+
+TEST(CryptoAes128Gcm, DecryptInvalidKeyReturnsEmpty) {
+    std::vector<uint8_t> short_key{0x00};
+    std::vector<uint8_t> iv(aes_gcm_iv_size, 0x00);
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> empty_ct;
+    std::vector<uint8_t> tag(aes_gcm_tag_size, 0x00);
+    EXPECT_TRUE(aes128_gcm_decrypt(short_key, iv, empty_aad, empty_ct, tag).empty());
+}
+
+TEST(CryptoAes128Gcm, DecryptEmptyTagReturnsEmpty) {
+    std::vector<uint8_t> key(aes128_key_size, 0x00);
+    std::vector<uint8_t> iv(aes_gcm_iv_size, 0x00);
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> empty_ct;
+    std::vector<uint8_t> empty_tag;
+    EXPECT_TRUE(aes128_gcm_decrypt(key, iv, empty_aad, empty_ct, empty_tag).empty());
+}
+
+TEST(CryptoAes128Gcm, LongIvTamperedTagFailsOpen) {
+    std::vector<uint8_t> key(aes128_key_size, 0x55);
+    std::vector<uint8_t> long_iv(16, 0x66);
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> plain{0x01, 0x02, 0x03};
+    const auto seal = aes128_gcm_encrypt(key, long_iv, empty_aad, plain);
+    std::vector<uint8_t> bad_tag(seal.tag.begin(), seal.tag.end());
+    bad_tag[0] ^= 0x01;
+    EXPECT_TRUE(aes128_gcm_decrypt(key, long_iv, empty_aad, seal.ciphertext, bad_tag).empty());
+}
+
+TEST(CryptoAes256Gcm, TamperedAadFailsOpen) {
+    std::vector<uint8_t> key(aes256_key_size, 0x00);
+    std::vector<uint8_t> iv(aes_gcm_iv_size, 0x00);
+    std::vector<uint8_t> aad{0xfe, 0xed};
+    std::vector<uint8_t> other_aad{0xba, 0xad};
+    std::vector<uint8_t> plain{0x01, 0x02};
+    const auto seal = aes256_gcm_encrypt(key, iv, aad, plain);
+    std::vector<uint8_t> tag(seal.tag.begin(), seal.tag.end());
+    EXPECT_TRUE(aes256_gcm_decrypt(key, iv, other_aad, seal.ciphertext, tag).empty());
+}
+
+TEST(CryptoChaCha20Poly1305, TamperedAadFailsOpen) {
+    std::array<uint8_t, 32> key{};
+    std::array<uint8_t, 12> nonce{};
+    std::vector<uint8_t> aad{0x50, 0x51};
+    std::vector<uint8_t> other_aad{0x60, 0x61};
+    std::vector<uint8_t> plain{0xaa, 0xbb};
+    const auto seal = chacha20_poly1305_encrypt(key, nonce, aad, plain);
+    std::vector<uint8_t> tag(seal.tag.begin(), seal.tag.end());
+    EXPECT_TRUE(chacha20_poly1305_decrypt(key, nonce, other_aad, seal.ciphertext, tag).empty());
+}
+
+TEST(CryptoChaCha20Poly1305, DecryptEmptyTagReturnsEmpty) {
+    std::array<uint8_t, 32> key{};
+    std::array<uint8_t, 12> nonce{};
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> empty_ct;
+    std::vector<uint8_t> empty_tag;
+    EXPECT_TRUE(chacha20_poly1305_decrypt(key, nonce, empty_aad, empty_ct, empty_tag).empty());
+}
+
+TEST(CryptoHmacSha512, KeyLongerThanBlock) {
+    std::vector<uint8_t> long_key(129, 0xaa);
+    std::vector<uint8_t> data{0x64, 0x61, 0x74, 0x61};
+    const auto mac = hmac_sha512(long_key, data);
+    EXPECT_EQ(mac.size(), sha512_digest_size);
+}
+
+TEST(CryptoHkdfSha512, EmptySaltSucceeds) {
+    std::vector<uint8_t> ikm(22, 0x0b);
+    std::vector<uint8_t> empty_salt;
+    std::vector<uint8_t> empty_info;
+    const auto okm = hkdf_sha512(ikm, empty_salt, empty_info, 42);
+    EXPECT_EQ(okm.size(), 42u);
+}
+
+TEST(CryptoFromHex, UppercaseNibbles) {
+    const auto lower = from_hex("deadbeef");
+    const auto upper = from_hex("DEADBEEF");
+    EXPECT_EQ(upper, lower);
+    EXPECT_EQ(upper.size(), 4u);
+}
+
+TEST(CryptoX25519, ShortPeerPublicKeyReturnsZero) {
+    std::vector<uint8_t> priv(x25519_key_size, 0x07);
+    std::vector<uint8_t> short_peer{0x09};
+    const auto shared = x25519_shared_secret(priv, short_peer);
+    EXPECT_EQ(shared, (std::array<uint8_t, x25519_key_size>{}));
+}

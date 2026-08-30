@@ -329,3 +329,64 @@ TEST(CfdRunAdvection2D, CflViolation) {
     std::vector<double> vy = {0.0};
     EXPECT_TRUE(run_advection_2d(u0, vx, vy, 0.2, 0.1, 0.1, 0.1).u.empty());
 }
+
+TEST(CfdUpwindFvm2D, ZeroFluxNegativeVx) {
+    const std::vector<std::vector<double>> u0 = {
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+    };
+    std::vector<double> vx = {-0.4};
+    std::vector<double> vy = {0.0};
+    const auto u1 = upwind_fvm_advection_2d(
+        u0, vx, vy, 0.05, 0.2, 0.2, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(u1, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+}
+
+TEST(CfdUpwindFvm2D, ZeroFluxNegativeVy) {
+    const std::vector<std::vector<double>> u0 = {
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+    };
+    std::vector<double> vx = {0.0};
+    std::vector<double> vy = {-0.4};
+    const auto u1 = upwind_fvm_advection_2d(
+        u0, vx, vy, 0.05, 0.2, 0.2, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(u1, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+}
+
+TEST(CfdUpwindFvm2D, MixedBcZeroFluxXPeriodicY) {
+    const std::vector<std::vector<double>> u0 = {
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+    };
+    std::vector<double> vx = {0.3};
+    std::vector<double> vy = {0.2};
+    const auto u1 = upwind_fvm_advection_2d(
+        u0, vx, vy, 0.05, 0.2, 0.2, BoundaryCondition::ZeroFlux, BoundaryCondition::Periodic);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(u1, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+}
+
+TEST(CfdUpwindFvm2D, MixedBcNegativeVxVy) {
+    const std::vector<std::vector<double>> u0 = {
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+    };
+    std::vector<double> vx = {-0.3};
+    std::vector<double> vy = {-0.2};
+    const auto u1 = upwind_fvm_advection_2d(
+        u0, vx, vy, 0.05, 0.2, 0.2, BoundaryCondition::Periodic, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(u1, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+
+    const auto u2 = upwind_fvm_advection_2d(
+        u0, vx, vy, 0.05, 0.2, 0.2, BoundaryCondition::ZeroFlux, BoundaryCondition::Periodic);
+    ASSERT_EQ(u2.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(u2, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+}
