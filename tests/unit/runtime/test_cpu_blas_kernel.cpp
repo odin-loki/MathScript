@@ -278,3 +278,126 @@ TEST(BLASKernel, DGEMV_BetaZero_ClearsOutput) {
     EXPECT_NEAR(y[0], 4.0, 1e-12);
     EXPECT_NEAR(y[1], 6.0, 1e-12);
 }
+
+TEST(BLASKernel, DDOT_Nullptr_ReturnsZero) {
+    const std::vector<double> x{1.0, 2.0};
+    EXPECT_DOUBLE_EQ(blas::ddot(2, nullptr, 1, x.data(), 1), 0.0);
+    EXPECT_DOUBLE_EQ(blas::ddot(2, x.data(), 1, nullptr, 1), 0.0);
+}
+
+TEST(BLASKernel, DAXPY_NonPositiveOrNull_NoOp) {
+    std::vector<double> y{1.0, 2.0};
+    const std::vector<double> x{3.0, 4.0};
+    blas::daxpy(0, 1.0, x.data(), 1, y.data(), 1);
+    EXPECT_NEAR(y[0], 1.0, 1e-12);
+    blas::daxpy(-1, 1.0, x.data(), 1, y.data(), 1);
+    EXPECT_NEAR(y[0], 1.0, 1e-12);
+    blas::daxpy(2, 1.0, nullptr, 1, y.data(), 1);
+    EXPECT_NEAR(y[0], 1.0, 1e-12);
+    blas::daxpy(2, 1.0, x.data(), 1, nullptr, 1);
+    EXPECT_NEAR(y[0], 1.0, 1e-12);
+}
+
+TEST(BLASKernel, DGEMV_LowercaseAndBetaOne_NoScale) {
+    const int m = 2;
+    const int n = 2;
+    const std::vector<double> A{1.0, 2.0, 3.0, 4.0};
+    const std::vector<double> x{1.0, 0.0};
+    std::vector<double> y{1.0, 1.0};
+    std::vector<double> ref = y;
+    blas::dgemv('n', m, n, 1.0, A.data(), m, x.data(), 1, 1.0, y.data(), 1);
+    reference_dgemv_n(m, n, 1.0, A.data(), m, x.data(), 1, 1.0, ref.data(), 1);
+    EXPECT_NEAR(y[0], ref[0], 1e-12);
+    EXPECT_NEAR(y[1], ref[1], 1e-12);
+}
+
+TEST(BLASKernel, DGEMV_BetaZero_NonUnitIncy) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 1.0};
+    std::vector<double> y{9.0, 88.0, 8.0, 88.0};
+    blas::dgemv('N', 2, 2, 1.0, A.data(), 2, x.data(), 1, 0.0, y.data(), 2);
+    EXPECT_NEAR(y[0], 3.0, 1e-12);
+    EXPECT_NEAR(y[1], 88.0, 1e-12);
+    EXPECT_NEAR(y[2], 7.0, 1e-12);
+    EXPECT_NEAR(y[3], 88.0, 1e-12);
+}
+
+TEST(BLASKernel, DGEMV_BetaTwo_UnitAndNonUnitIncy) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 1.0};
+    std::vector<double> y_unit{1.0, 2.0};
+    blas::dgemv('N', 2, 2, 1.0, A.data(), 2, x.data(), 1, 2.0, y_unit.data(), 1);
+    EXPECT_NEAR(y_unit[0], 5.0, 1e-12);
+    EXPECT_NEAR(y_unit[1], 11.0, 1e-12);
+
+    std::vector<double> y_strided{1.0, 99.0, 2.0, 99.0};
+    const std::vector<double> x_strided{1.0, 77.0, 1.0};
+    blas::dgemv('N', 2, 2, 1.0, A.data(), 2, x_strided.data(), 2, 2.0, y_strided.data(), 2);
+    EXPECT_NEAR(y_strided[0], 5.0, 1e-12);
+    EXPECT_NEAR(y_strided[1], 99.0, 1e-12);
+    EXPECT_NEAR(y_strided[2], 11.0, 1e-12);
+    EXPECT_NEAR(y_strided[3], 99.0, 1e-12);
+}
+
+TEST(BLASKernel, DGEMV_AlphaZero_PreservesScaledY) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 1.0};
+    std::vector<double> y_n{10.0, 20.0};
+    blas::dgemv('N', 2, 2, 0.0, A.data(), 2, x.data(), 1, 1.0, y_n.data(), 1);
+    EXPECT_NEAR(y_n[0], 10.0, 1e-12);
+    EXPECT_NEAR(y_n[1], 20.0, 1e-12);
+
+    std::vector<double> y_t{7.0, 8.0};
+    blas::dgemv('T', 2, 2, 0.0, A.data(), 2, x.data(), 1, 1.0, y_t.data(), 1);
+    EXPECT_NEAR(y_t[0], 7.0, 1e-12);
+    EXPECT_NEAR(y_t[1], 8.0, 1e-12);
+}
+
+TEST(BLASKernel, DGEMV_SkipZeroX_AndNonUnitStride) {
+    const std::vector<double> A{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+    const std::vector<double> x{1.0, 0.0, 2.0};
+    std::vector<double> y{99.0, 88.0};
+    blas::dgemv('N', 2, 3, 1.0, A.data(), 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_NEAR(y[0], 11.0, 1e-12);
+    EXPECT_NEAR(y[1], 14.0, 1e-12);
+
+    const std::vector<double> x_strided{1.0, 99.0, 0.0, 99.0, 2.0};
+    std::vector<double> y_strided{10.0, 88.0, 20.0, 88.0};
+    blas::dgemv('N', 2, 3, 1.0, A.data(), 2, x_strided.data(), 2, 0.0, y_strided.data(), 2);
+    EXPECT_NEAR(y_strided[0], 11.0, 1e-12);
+    EXPECT_NEAR(y_strided[1], 88.0, 1e-12);
+    EXPECT_NEAR(y_strided[2], 14.0, 1e-12);
+    EXPECT_NEAR(y_strided[3], 88.0, 1e-12);
+}
+
+TEST(BLASKernel, DGEMV_Transpose_NonUnitStride) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 99.0, 1.0};
+    std::vector<double> y{10.0, 88.0, 20.0, 88.0};
+    std::vector<double> x_unit{1.0, 1.0};
+    std::vector<double> ref{0.0, 0.0};
+    blas::dgemv('t', 2, 2, 1.0, A.data(), 2, x.data(), 2, 0.0, y.data(), 2);
+    reference_dgemv_t(2, 2, 1.0, A.data(), 2, x_unit.data(), 1, 0.0, ref.data(), 1);
+    EXPECT_NEAR(y[0], ref[0], 1e-12);
+    EXPECT_NEAR(y[2], ref[1], 1e-12);
+    EXPECT_NEAR(y[1], 88.0, 1e-12);
+    EXPECT_NEAR(y[3], 88.0, 1e-12);
+}
+
+TEST(BLASKernel, DGEMV_NonPositiveOrNull_NoOp) {
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> x{1.0, 1.0};
+    std::vector<double> y{9.0, 8.0};
+    blas::dgemv('N', 0, 2, 1.0, A.data(), 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_NEAR(y[0], 9.0, 1e-12);
+    blas::dgemv('N', 2, 0, 1.0, A.data(), 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_NEAR(y[0], 9.0, 1e-12);
+    blas::dgemv('N', 2, -1, 1.0, A.data(), 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_NEAR(y[0], 9.0, 1e-12);
+    blas::dgemv('N', 2, 2, 1.0, nullptr, 2, x.data(), 1, 0.0, y.data(), 1);
+    EXPECT_NEAR(y[0], 9.0, 1e-12);
+    blas::dgemv('N', 2, 2, 1.0, A.data(), 2, nullptr, 1, 0.0, y.data(), 1);
+    EXPECT_NEAR(y[0], 9.0, 1e-12);
+    blas::dgemv('N', 2, 2, 1.0, A.data(), 2, x.data(), 1, 0.0, nullptr, 1);
+    EXPECT_NEAR(y[0], 9.0, 1e-12);
+}

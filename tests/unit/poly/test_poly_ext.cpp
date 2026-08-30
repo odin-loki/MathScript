@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <numeric>
 #include <span>
@@ -1339,5 +1340,120 @@ TEST(PolyFit, EmptyAndCollinearHitsSingularDiag) {
     ASSERT_EQ(c.size(), 3u);
     for (double v : c) {
         EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(PolyFit, DegreeOneAndUnderdeterminedSingular) {
+    const std::vector<double> xs{0.0, 1.0, 2.0, 3.0};
+    const std::vector<double> ys{1.0, 3.0, 5.0, 7.0};
+    const auto line = poly_fit(xs, ys, 1);
+    expect_poly_near(line, {1.0, 2.0}, 1e-9);
+
+    const std::vector<double> two_x{0.0, 1.0};
+    const std::vector<double> two_y{1.0, 2.0};
+    const auto under = poly_fit(two_x, two_y, 4);
+    ASSERT_EQ(under.size(), 5u);
+    for (double v : under) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}
+
+TEST(PolyPartialFractions, TwoRealPolesAndRepeatedReal) {
+    // 1 / ((x-1)(x-2)) = 1/(x-1) - 1/(x-2)
+    const std::vector<double> num{1.0};
+    const std::vector<double> den{2.0, -3.0, 1.0};
+    const auto two = poly_partial_fractions(num, den);
+    EXPECT_TRUE(two.quotient.empty());
+    ASSERT_EQ(two.terms.size(), 2u);
+    std::vector<double> residues;
+    for (const auto& term : two.terms) {
+        EXPECT_FALSE(term.is_quadratic);
+        EXPECT_EQ(term.k, 1);
+        residues.push_back(term.A);
+        EXPECT_TRUE(std::abs(term.r - 1.0) < 1e-4 || std::abs(term.r - 2.0) < 1e-4);
+    }
+    EXPECT_NEAR(std::abs(residues[0]), 1.0, 1e-4);
+    EXPECT_NEAR(std::abs(residues[1]), 1.0, 1e-4);
+    EXPECT_LT(residues[0] * residues[1], 0.0);
+
+    // 1 / (x-1)^2
+    const std::vector<double> repeated_den{1.0, -2.0, 1.0};
+    const auto rep = poly_partial_fractions(num, repeated_den);
+    EXPECT_TRUE(rep.quotient.empty());
+    ASSERT_GE(rep.terms.size(), 1u);
+    int max_k = 0;
+    for (const auto& term : rep.terms) {
+        EXPECT_FALSE(term.is_quadratic);
+        EXPECT_NEAR(term.r, 1.0, 1e-3);
+        EXPECT_TRUE(std::isfinite(term.A));
+        max_k = std::max(max_k, term.k);
+    }
+    EXPECT_GE(max_k, 1);
+}
+
+TEST(PolyPartialFractions, MixedRealAndQuadratic) {
+    // 1 / ((x-1)(x^2+1)) = x^3 - x^2 + x - 1
+    const std::vector<double> num{1.0};
+    const std::vector<double> den{-1.0, 1.0, -1.0, 1.0};
+    const auto res = poly_partial_fractions(num, den);
+    EXPECT_TRUE(res.quotient.empty());
+    ASSERT_FALSE(res.terms.empty());
+    int n_real = 0;
+    int n_quad = 0;
+    for (const auto& term : res.terms) {
+        EXPECT_TRUE(std::isfinite(term.A));
+        EXPECT_TRUE(std::isfinite(term.B));
+        EXPECT_TRUE(std::isfinite(term.C));
+        if (term.is_quadratic) {
+            ++n_quad;
+            EXPECT_NEAR(term.p, 0.0, 5e-3);
+            EXPECT_NEAR(term.q, 1.0, 5e-3);
+        } else {
+            ++n_real;
+            EXPECT_NEAR(term.r, 1.0, 1e-3);
+        }
+    }
+    EXPECT_EQ(n_real, 1);
+    EXPECT_EQ(n_quad, 1);
+}
+
+TEST(PolyExtTest, roots_trailing_zeros_strip_to_quadratic) {
+    const std::vector<double> padded{2.0, -3.0, 1.0, 0.0, 0.0};
+    const auto r = poly_roots(padded);
+    ASSERT_EQ(r.size(), 2u);
+    std::vector<double> reals;
+    for (const auto& z : r) {
+        EXPECT_NEAR(z.imag(), 0.0, 1e-8);
+        reals.push_back(z.real());
+    }
+    std::sort(reals.begin(), reals.end());
+    EXPECT_NEAR(reals[0], 1.0, 1e-8);
+    EXPECT_NEAR(reals[1], 2.0, 1e-8);
+}
+
+TEST(PolyExtTest, cheb_expand_custom_interval_and_null_fn) {
+    const auto c = poly_cheb_expand([](double x) { return 2.0 * x + 1.0; }, 1, 0.0, 2.0);
+    ASSERT_EQ(c.size(), 2u);
+    const double t = (2.0 * 1.5 - 2.0) / 2.0;
+    EXPECT_NEAR(poly_cheb_eval(c, t), 4.0, 1e-8);
+
+    std::function<double(double)> none;
+    EXPECT_TRUE(poly_cheb_expand(none, 3).empty());
+}
+
+TEST(PolyExtTest, roots_degree6_companion_all_real) {
+    // (x-1)...(x-6) forces companion QR / 2x2 deflation on a larger Hessenberg.
+    const std::vector<double> six{
+        -720.0, 1764.0, -1624.0, 735.0, -175.0, 21.0, -1.0};
+    const auto r = poly_roots(six);
+    ASSERT_EQ(r.size(), 6u);
+    std::vector<double> reals;
+    for (const auto& z : r) {
+        EXPECT_NEAR(z.imag(), 0.0, 2e-3);
+        reals.push_back(z.real());
+    }
+    std::sort(reals.begin(), reals.end());
+    for (int k = 0; k < 6; ++k) {
+        EXPECT_NEAR(reals[static_cast<size_t>(k)], static_cast<double>(k + 1), 5e-3);
     }
 }

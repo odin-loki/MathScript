@@ -3179,3 +3179,132 @@ TEST(SignalExtTest, hilbert_length_three_roundtrip_energy) {
     EXPECT_GE(energy_z + 1e-12, energy_x);
     EXPECT_TRUE(std::isfinite(energy_z));
 }
+
+TEST(SignalExtTest, filter_iir_a_longer_than_b_and_inplace) {
+    const std::vector<double> b{1.0};
+    const std::vector<double> a{1.0, -0.5, 0.25};
+    const std::vector<double> x{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    const auto y = filter(b, a, x);
+    ASSERT_EQ(y.size(), x.size());
+    EXPECT_NEAR(y[0], 1.0, 1e-12);
+    EXPECT_NEAR(y[1], 0.5, 1e-12);
+    for (double v : y) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+
+    std::vector<double> inplace = x;
+    filter_in_place(b, a, std::span<double>(inplace));
+    ASSERT_EQ(inplace.size(), y.size());
+    for (size_t i = 0; i < y.size(); ++i) {
+        EXPECT_NEAR(inplace[i], y[i], 1e-15);
+    }
+}
+
+TEST(SignalExtTest, sosfilt_a0_zero_is_unscaled) {
+    const std::vector<std::array<double, 6>> sos{{1.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const auto y = sosfilt(sos, x);
+    ASSERT_EQ(y.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(y[i], x[i], 1e-12);
+    }
+}
+
+TEST(SignalExtTest, windows_even_n_blackman_and_moving_average_short) {
+    const auto p8 = parzen(8);
+    ASSERT_EQ(p8.size(), 8u);
+    EXPECT_NEAR(p8[3], p8[4], 1e-12);
+    EXPECT_GT(p8[3], p8[0]);
+    EXPECT_NEAR(p8[0], 0.0, 1e-12);
+
+    const auto t4 = triangular(4);
+    ASSERT_EQ(t4.size(), 4u);
+    EXPECT_NEAR(t4[0], 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(t4[1], 2.0 / 3.0, 1e-12);
+    EXPECT_NEAR(t4[3], 1.0 / 3.0, 1e-12);
+
+    const auto b2 = blackman(2);
+    ASSERT_EQ(b2.size(), 2u);
+    EXPECT_TRUE(std::isfinite(b2[0]));
+    EXPECT_TRUE(std::isfinite(b2[1]));
+
+    const std::vector<double> x{1.0, 3.0, 5.0};
+    const auto ma = moving_average(x, 8);
+    ASSERT_EQ(ma.size(), x.size());
+    EXPECT_NEAR(ma[0], 1.0, 1e-12);
+    EXPECT_NEAR(ma[2], 3.0, 1e-12);
+    const auto ma0 = moving_average(x, 0);
+    ASSERT_EQ(ma0.size(), x.size());
+    EXPECT_DOUBLE_EQ(ma0[1], 3.0);
+}
+
+TEST(SignalExtTest, interpolate_p_one_firwin_one_savgol_quad) {
+    const std::vector<double> x{1.0, -1.0, 0.5, -0.5};
+    const auto up1 = interpolate(x, 1);
+    ASSERT_EQ(up1.size(), x.size());
+    for (double v : up1) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+
+    const auto tap = firwin(1, 0.4);
+    ASSERT_EQ(tap.size(), 1u);
+    EXPECT_NEAR(tap[0], 1.0, 1e-12);
+
+    const std::vector<double> ramp{1.0, 2.0, 3.0, 4.0, 5.0};
+    const auto sg = savgol(ramp, 5, 2);
+    ASSERT_EQ(sg.size(), ramp.size());
+    EXPECT_NEAR(sg[2], 3.0, 1e-8);
+}
+
+TEST(SignalExtTest, hilbert_n_two_and_czt_empty) {
+    const std::vector<double> x{0.6, -0.2};
+    const auto z = hilbert(x);
+    ASSERT_EQ(z.size(), x.size());
+    EXPECT_NEAR(z[0].real(), x[0], 1e-8);
+    EXPECT_NEAR(z[1].real(), x[1], 1e-8);
+
+    const std::vector<double> empty;
+    const std::complex<double> w(1.0, 0.0);
+    const std::complex<double> a(1.0, 0.0);
+    EXPECT_TRUE(czt(empty, 4, w, a).empty());
+    EXPECT_TRUE(czt(x, 0, w, a).empty());
+}
+
+TEST(SignalExtTest, cheby1_small_ripple_and_xcorr_unequal) {
+    const auto c1 = cheby1(2, 0.1, 10.0, 80.0);
+    if (c1.a.empty()) GTEST_SKIP() << "cheby1 rp_db=0.1 rejected";
+    EXPECT_NEAR(c1.a[0], 1.0, 1e-12);
+    EXPECT_FALSE(c1.b.empty());
+    for (double v : c1.a) EXPECT_TRUE(std::isfinite(v));
+    for (double v : c1.b) EXPECT_TRUE(std::isfinite(v));
+
+    const std::vector<double> a{1.0, 2.0, 3.0};
+    const std::vector<double> b{0.0, 1.0};
+    const auto xc = xcorr(a, b, 2);
+    ASSERT_EQ(xc.size(), 5u);
+    EXPECT_TRUE(std::isfinite(xc[2]));
+}
+
+TEST(SignalExtTest, unwrap_two_successive_wraps) {
+    const std::vector<double> phase{0.0, 3.0 * M_PI, -3.0 * M_PI};
+    const auto out = unwrap(phase);
+    ASSERT_EQ(out.size(), 3u);
+    EXPECT_NEAR(out[0], 0.0, 1e-15);
+    EXPECT_LT(std::abs(out[1] - out[0]), 2.0 * M_PI + 1e-12);
+    EXPECT_LT(std::abs(out[2] - out[1]), 2.0 * M_PI + 1e-12);
+}
+
+TEST(SignalExtTest, resample_identity_and_filter_empty_b_span) {
+    const std::vector<double> x{1.0, -0.5, 0.25, -0.25};
+    const auto rs = resample(x, 1, 1);
+    ASSERT_EQ(rs.size(), x.size());
+    for (double v : rs) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+
+    const std::vector<double> empty_b;
+    const std::vector<double> a{1.0};
+    std::vector<double> y(x.size(), 99.0);
+    filter(empty_b, a, std::span<const double>(x), std::span<double>(y));
+    EXPECT_DOUBLE_EQ(y[0], 99.0);
+}

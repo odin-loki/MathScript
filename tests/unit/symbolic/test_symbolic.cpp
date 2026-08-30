@@ -576,3 +576,284 @@ TEST(SymbolicCasTest, hankel_sqrt_const_first_and_ihankel_mul_numer) {
         "k", "r");
     EXPECT_NEAR(sym_eval(decay, {{"r", 4.0}}), 1.0 / 5.0, 1e-12);
 }
+
+TEST(SymbolicCasTest, dsolve_power_affine_zero_and_unsupported) {
+    // y' = y^2 -> ((1-2)*(x+C))^(1/(1-2)) = -1/(x+C)
+    const auto power = sym_dsolve(sym_pow(sym_var("y"), sym_const(2.0)), "x", "y");
+    EXPECT_NEAR(sym_eval(power, {{"x", 0.0}, {"C", 1.0}}), -1.0, 1e-12);
+
+    // a = 0 affine: 0*y + 5 -> 5*x + C
+    const auto a_zero = sym_dsolve(
+        sym_add(sym_mul(sym_const(0.0), sym_var("y")), sym_const(5.0)), "x", "y");
+    EXPECT_NEAR(sym_eval(a_zero, {{"x", 2.0}, {"C", 1.0}}), 11.0, 1e-12);
+
+    // y' = -y -> C*exp(-x)
+    const auto neg_y = sym_dsolve(sym_neg(sym_var("y")), "x", "y");
+    EXPECT_NEAR(sym_eval(neg_y, {{"x", 0.0}, {"C", 2.0}}), 2.0, 1e-12);
+
+    // y' = y - 3 -> 3 + C*exp(x)
+    const auto sub_aff = sym_dsolve(sym_sub(sym_var("y"), sym_const(3.0)), "x", "y");
+    EXPECT_NEAR(sym_eval(sub_aff, {{"x", 0.0}, {"C", 1.0}}), 4.0, 1e-12);
+
+    const auto miss = sym_dsolve(sym_mul(sym_var("y"), sym_sin(sym_var("y"))), "x", "y");
+    EXPECT_EQ(miss.op, SymOp::Deriv);
+    EXPECT_EQ(miss.name, "x");
+
+    const auto unint = sym_dsolve(sym_tan(sym_var("x")), "x", "y");
+    EXPECT_EQ(unint.op, SymOp::Deriv);
+    EXPECT_EQ(unint.name, "x");
+}
+
+TEST(SymbolicCasTest, laplace_linearity_sin_power_and_sentinels) {
+    const auto c = sym_laplace(sym_const(4.0), "t", "s");
+    EXPECT_NEAR(sym_eval(c, {{"s", 2.0}}), 2.0, 1e-12);
+
+    const auto t = sym_laplace(sym_var("t"), "t", "s");
+    EXPECT_NEAR(sym_eval(t, {{"s", 2.0}}), 0.25, 1e-12);
+
+    // sin(t*3): match_scaled_var const-on-right.
+    const auto sine = sym_laplace(sym_sin(sym_mul(sym_var("t"), sym_const(3.0))), "t", "s");
+    EXPECT_NEAR(sym_eval(sine, {{"s", 4.0}}), 3.0 / (16.0 + 9.0), 1e-12);
+
+    const auto t2 = sym_laplace(sym_pow(sym_var("t"), sym_const(2.0)), "t", "s");
+    EXPECT_NEAR(sym_eval(t2, {{"s", 2.0}}), 2.0 / 8.0, 1e-12);
+
+    const auto lin = sym_laplace(
+        sym_sub(sym_add(sym_const(1.0), sym_neg(sym_var("t"))),
+                sym_mul(sym_const(2.0), sym_var("t"))),
+        "t", "s");
+    EXPECT_NEAR(sym_eval(lin, {{"s", 2.0}}), 0.5 - 0.25 - 2.0 * 0.25, 1e-12);
+
+    const auto other = sym_laplace(sym_var("x"), "t", "s");
+    EXPECT_EQ(other.op, SymOp::Deriv);
+    EXPECT_EQ(other.name, "t");
+
+    const auto too_big = sym_laplace(sym_pow(sym_var("t"), sym_const(9.0)), "t", "s");
+    EXPECT_EQ(too_big.op, SymOp::Deriv);
+    EXPECT_EQ(too_big.name, "t");
+}
+
+TEST(SymbolicCasTest, ilaplace_exp_power_zero_and_sentinels) {
+    const auto exp_a = sym_ilaplace(
+        sym_div(sym_const(1.0), sym_sub(sym_var("s"), sym_const(3.0))), "s", "t");
+    EXPECT_NEAR(sym_eval(exp_a, {{"t", 0.5}}), std::exp(1.5), 1e-12);
+
+    const auto ramp = sym_ilaplace(
+        sym_div(sym_const(1.0), sym_pow(sym_var("s"), sym_const(2.0))), "s", "t");
+    EXPECT_NEAR(sym_eval(ramp, {{"t", 4.0}}), 4.0, 1e-12);
+
+    const auto t3 = sym_ilaplace(
+        sym_div(sym_const(6.0), sym_pow(sym_var("s"), sym_const(4.0))), "s", "t");
+    EXPECT_NEAR(sym_eval(t3, {{"t", 2.0}}), 8.0, 1e-12);
+
+    EXPECT_NEAR(sym_eval(sym_ilaplace(sym_const(0.0), "s", "t"), {}), 0.0, 1e-12);
+
+    const auto scaled = sym_ilaplace(
+        sym_mul(sym_const(2.0),
+                sym_div(sym_const(1.0), sym_pow(sym_var("s"), sym_const(2.0)))),
+        "s", "t");
+    EXPECT_NEAR(sym_eval(scaled, {{"t", 3.0}}), 6.0, 1e-12);
+
+    const auto miss_c = sym_ilaplace(sym_const(4.0), "s", "t");
+    EXPECT_EQ(miss_c.op, SymOp::Deriv);
+    EXPECT_EQ(miss_c.name, "s");
+}
+
+TEST(SymbolicCasTest, mellin_t_power_bare_t_exp_and_imellin_pairs) {
+    const auto c = sym_mellin(sym_const(3.0), "t", "s");
+    EXPECT_NEAR(sym_eval(c, {{"s", 3.0}}), 1.0, 1e-12);
+
+    const auto t = sym_mellin(sym_var("t"), "t", "s");
+    EXPECT_NEAR(sym_eval(t, {{"s", 1.0}}), 0.5, 1e-12);
+
+    const auto ta = sym_mellin(sym_pow(sym_var("t"), sym_const(2.0)), "t", "s");
+    EXPECT_NEAR(sym_eval(ta, {{"s", 1.0}}), 1.0 / 3.0, 1e-12);
+
+    // Bare t * exp(-2 t) and exp(-2 t) * t: n=1 both operand orders.
+    const auto t_exp = sym_mellin(
+        sym_mul(sym_var("t"), sym_exp(sym_mul(sym_const(-2.0), sym_var("t")))), "t", "s");
+    EXPECT_NEAR(sym_eval(t_exp, {{"s", 1.0}}), 1.0 / 4.0, 1e-12);
+
+    const auto exp_t = sym_mellin(
+        sym_mul(sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))), sym_var("t")),
+        "t", "s");
+    EXPECT_NEAR(sym_eval(exp_t, {{"s", 1.0}}), 1.0 / 4.0, 1e-12);
+
+    const auto exp_pow = sym_mellin(
+        sym_mul(sym_exp(sym_mul(sym_const(-2.0), sym_var("t"))),
+                sym_pow(sym_var("t"), sym_const(2.0))),
+        "t", "s");
+    EXPECT_NEAR(sym_eval(exp_pow, {{"s", 1.0}}), 2.0 / 8.0, 1e-12);
+
+    const auto other = sym_mellin(sym_var("x"), "t", "s");
+    EXPECT_EQ(other.op, SymOp::Deriv);
+    EXPECT_EQ(other.name, "t");
+
+    const auto pi_sin = sym_imellin(
+        sym_div(sym_const(std::numbers::pi),
+                sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var("s")))),
+        "s", "t");
+    EXPECT_NEAR(sym_eval(pi_sin, {{"t", 3.0}}), 0.25, 1e-12);
+
+    const auto power = sym_imellin(
+        sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(2.0))), "s", "t");
+    EXPECT_NEAR(sym_eval(power, {{"t", 2.0}}), 4.0, 1e-12);
+
+    const auto t2exp = sym_imellin(
+        sym_div(sym_const(2.0),
+                sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0)))),
+        "s", "t");
+    EXPECT_NEAR(sym_eval(t2exp, {{"t", 1.0}}), std::exp(-3.0), 1e-12);
+}
+
+TEST(SymbolicCasTest, hankel_exp_rpow_and_ihankel_n_nonzero) {
+    const auto decay = sym_hankel(
+        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r")))), "r", "k");
+    EXPECT_NEAR(sym_eval(decay, {{"k", 0.0}}), 0.25, 1e-12);
+
+    const auto r_exp = sym_hankel(
+        sym_mul(sym_var("r"), sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))))),
+        "r", "k");
+    const double n1_scale = 8.0 / std::sqrt(std::numbers::pi);
+    EXPECT_NEAR(sym_eval(r_exp, {{"k", 0.0}}), n1_scale / 16.0, 1e-9);
+
+    const auto lin = sym_hankel(
+        sym_add(sym_neg(sym_exp(sym_mul(sym_const(-2.0), sym_var("r")))),
+                sym_mul(sym_const(2.0),
+                        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r")))))),
+        "r", "k");
+    EXPECT_NEAR(sym_eval(lin, {{"k", 0.0}}), 0.25, 1e-12);
+
+    const auto miss_c = sym_hankel(sym_const(1.0), "r", "k");
+    EXPECT_EQ(miss_c.op, SymOp::Deriv);
+    EXPECT_EQ(miss_c.name, "r");
+
+    // n=1 inverse: scale*a / (k^2+a^2)^2 with scale = 4/sqrt(pi), a = 2.
+    const double a = 2.0;
+    const double scale = 4.0 / std::sqrt(std::numbers::pi);
+    const auto inv = sym_ihankel(
+        sym_div(
+            sym_mul(sym_const(scale), sym_const(a)),
+            sym_pow(
+                sym_add(sym_pow(sym_var("k"), sym_const(2.0)),
+                        sym_pow(sym_const(a), sym_const(2.0))),
+                sym_const(2.0))),
+        "k", "r");
+    EXPECT_NEAR(sym_eval(inv, {{"r", 1.0}}), std::exp(-2.0), 1e-9);
+
+    EXPECT_NEAR(sym_eval(sym_ihankel(sym_const(0.0), "k", "r"), {}), 0.0, 1e-12);
+
+    const auto miss_ih = sym_ihankel(sym_const(3.0), "k", "r");
+    EXPECT_EQ(miss_ih.op, SymOp::Deriv);
+    EXPECT_EQ(miss_ih.name, "k");
+}
+
+TEST(SymbolicCasTest, fourier_bare_neg_quad_left_and_sentinels) {
+    const auto bare = sym_fourier(sym_exp(sym_neg(sym_var("t"))), "t", "w");
+    EXPECT_NEAR(sym_eval(bare, {{"w", 1.0}}), 2.0 / 2.0, 1e-9);
+
+    const auto quad_left = sym_fourier(
+        sym_exp(sym_neg(sym_mul(sym_const(1.5), sym_pow(sym_var("t"), sym_const(2.0))))),
+        "t", "w");
+    const double scale = std::sqrt(std::numbers::pi / 1.5);
+    EXPECT_NEAR(
+        sym_eval(quad_left, {{"w", 1.0}}), scale * std::exp(-1.0 / (4.0 * 1.5)), 1e-9);
+
+    const auto miss = sym_fourier(sym_sin(sym_var("t")), "t", "w");
+    EXPECT_EQ(miss.op, SymOp::Deriv);
+    EXPECT_EQ(miss.name, "t");
+}
+
+TEST(SymbolicCasTest, ifourier_pow_a2_gauss_right_and_z_pairs) {
+    const auto rational = sym_ifourier(
+        sym_div(sym_const(6.0),
+                sym_add(sym_pow(sym_const(3.0), sym_const(2.0)),
+                        sym_pow(sym_var("w"), sym_const(2.0)))),
+        "w", "t");
+    EXPECT_NEAR(sym_eval(rational, {{"t", 0.5}}), std::exp(-1.5), 1e-9);
+
+    const double a = std::numbers::pi / 4.0;
+    const auto time = sym_ifourier(
+        sym_mul(sym_exp(sym_neg(sym_div(sym_pow(sym_var("w"), sym_const(2.0)),
+                                        sym_const(4.0 * a)))),
+                sym_const(2.0)),
+        "w", "t");
+    EXPECT_NEAR(sym_eval(time, {{"t", 0.0}}), 1.0, 1e-9);
+
+    const auto miss = sym_ifourier(
+        sym_div(sym_const(1.0),
+                sym_add(sym_const(1.0), sym_pow(sym_var("w"), sym_const(2.0)))),
+        "w", "t");
+    EXPECT_EQ(miss.op, SymOp::Deriv);
+    EXPECT_EQ(miss.name, "w");
+
+    const auto geom = sym_ztransform(sym_pow(sym_const(0.5), sym_var("n")), "n", "z");
+    EXPECT_NEAR(sym_eval(geom, {{"z", 2.0}}), 2.0 / 1.5, 1e-12);
+
+    const auto scaled = sym_ztransform(
+        sym_mul(sym_const(3.0), sym_pow(sym_const(0.25), sym_var("n"))), "n", "z");
+    EXPECT_NEAR(sym_eval(scaled, {{"z", 1.0}}), 3.0 / 0.75, 1e-12);
+
+    const auto right_c = sym_ztransform(
+        sym_mul(sym_pow(sym_const(0.5), sym_var("n")), sym_const(4.0)), "n", "z");
+    // Matcher folds 4*0.5 into base a=2, so Z = z/(z-2).
+    EXPECT_NEAR(sym_eval(right_c, {{"z", 3.0}}), 3.0, 1e-12);
+
+    const auto ones = sym_ztransform(sym_const(1.0), "n", "z");
+    EXPECT_NEAR(sym_eval(ones, {{"z", 2.0}}), 2.0, 1e-12);
+
+    const auto z_miss = sym_ztransform(sym_var("n"), "n", "z");
+    EXPECT_EQ(z_miss.op, SymOp::Deriv);
+    EXPECT_EQ(z_miss.name, "n");
+
+    const auto inv = sym_iztransform(
+        sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(0.5))), "z", "n");
+    EXPECT_NEAR(sym_eval(inv, {{"n", 3.0}}), 0.125, 1e-12);
+
+    const auto inv_sc = sym_iztransform(
+        sym_mul(sym_const(2.0),
+                sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(0.5)))),
+        "z", "n");
+    EXPECT_NEAR(sym_eval(inv_sc, {{"n", 2.0}}), 0.5, 1e-12);
+
+    const auto inv_right = sym_iztransform(
+        sym_mul(sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(0.5))),
+                sym_const(3.0)),
+        "z", "n");
+    EXPECT_NEAR(sym_eval(inv_right, {{"n", 1.0}}), 1.5, 1e-12);
+
+    const auto unit = sym_iztransform(
+        sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(1.0))), "z", "n");
+    EXPECT_NEAR(sym_eval(unit, {}), 1.0, 1e-12);
+
+    const auto iz_miss = sym_iztransform(
+        sym_div(sym_const(1.0), sym_sub(sym_var("z"), sym_const(1.0))), "z", "n");
+    EXPECT_EQ(iz_miss.op, SymOp::Deriv);
+    EXPECT_EQ(iz_miss.name, "z");
+}
+
+TEST(SymbolicCasTest, integrate_linearity_and_matcher_misses) {
+    const auto sum = sym_integrate(
+        sym_add(sym_const(1.0), sym_sub(sym_var("x"), sym_neg(sym_const(2.0)))), "x");
+    EXPECT_NEAR(sym_eval(sum, {{"x", 2.0}}), 8.0, 1e-12);
+
+    const auto scaled = sym_integrate(sym_mul(sym_const(3.0), sym_var("x")), "x");
+    EXPECT_NEAR(sym_eval(scaled, {{"x", 2.0}}), 6.0, 1e-12);
+
+    const auto right_c = sym_integrate(sym_mul(sym_var("x"), sym_const(4.0)), "x");
+    EXPECT_NEAR(sym_eval(right_c, {{"x", 2.0}}), 8.0, 1e-12);
+
+    const auto chain = sym_integrate(sym_sin(sym_mul(sym_const(2.0), sym_var("x"))), "x");
+    EXPECT_EQ(chain.op, SymOp::Deriv);
+    EXPECT_EQ(chain.name, "x");
+
+    const auto mellin_miss = sym_mellin(
+        sym_div(sym_const(1.0), sym_add(sym_const(2.0), sym_var("t"))), "t", "s");
+    EXPECT_EQ(mellin_miss.op, SymOp::Deriv);
+    EXPECT_EQ(mellin_miss.name, "t");
+
+    const auto ih_miss = sym_ihankel(
+        sym_div(sym_exp(sym_var("k")), sym_var("k")), "k", "r");
+    EXPECT_EQ(ih_miss.op, SymOp::Deriv);
+    EXPECT_EQ(ih_miss.name, "k");
+}

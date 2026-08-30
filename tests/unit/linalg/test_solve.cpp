@@ -240,3 +240,63 @@ TEST(SolveTest, rhs_row_mismatch) {
     EXPECT_EQ(mismatch.got_rows, A.rows());
     EXPECT_EQ(mismatch.got_cols, b.rows());
 }
+
+TEST(SolveTest, float_multiple_rhs_lu_path) {
+    ColMatrix<float> A{{2.f, 1.f}, {1.f, 3.f}};
+    ColMatrix<float> B{{4.f, 1.f}, {7.f, 5.f}};
+    auto X = solve(A, B);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_NEAR((*X)(0, 0), 1.f, 1e-5);
+    EXPECT_NEAR((*X)(1, 0), 2.f, 1e-5);
+    EXPECT_NEAR((*X)(0, 1), -0.4f, 1e-5);
+    EXPECT_NEAR((*X)(1, 1), 1.8f, 1e-5);
+}
+
+TEST(SolveTest, float_zero_by_zero_and_rhs_mismatch) {
+    ColMatrix<float> A00(0, 0);
+    ColMatrix<float> b0(0, 1);
+    auto x = solve(A00, b0);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_EQ(x->rows(), 0u);
+    EXPECT_EQ(x->cols(), 1u);
+
+    ColMatrix<float> I{{1.f, 0.f}, {0.f, 1.f}};
+    ColMatrix<float> b_bad{{1.f}, {2.f}, {3.f}};
+    auto mismatch = solve(I, b_bad);
+    ASSERT_FALSE(mismatch.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(mismatch.error()));
+}
+
+TEST(SolveTest, det_trace_column_vector_dimension_mismatch) {
+    DMatrix col{{1.0}, {2.0}, {3.0}};
+    const auto d = det(col);
+    ASSERT_FALSE(d.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(d.error()));
+    EXPECT_FALSE(std::holds_alternative<DomainError>(d.error()));
+    const std::string det_msg = format_error(d.error());
+    EXPECT_NE(det_msg.find("dimension mismatch"), std::string::npos);
+    EXPECT_EQ(det_msg.find("square"), std::string::npos);
+
+    const auto t = trace(col);
+    ASSERT_FALSE(t.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(t.error()));
+    EXPECT_FALSE(std::holds_alternative<DomainError>(t.error()));
+    const std::string tr_msg = format_error(t.error());
+    EXPECT_NE(tr_msg.find("dimension mismatch"), std::string::npos);
+    EXPECT_EQ(tr_msg.find("square"), std::string::npos);
+}
+
+TEST(SolveTest, float_identity_and_near_singular) {
+    ColMatrix<float> I{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}};
+    ColMatrix<float> b{{1.f}, {2.f}, {3.f}};
+    auto x = solve(I, b);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_NEAR((*x)(0, 0), 1.f, 1e-6);
+    EXPECT_NEAR((*x)(2, 0), 3.f, 1e-6);
+
+    ColMatrix<float> S{{1.f, 1.f}, {1.f, 1.f}};
+    ColMatrix<float> sb{{1.f}, {1.f}};
+    auto sing = solve(S, sb);
+    ASSERT_FALSE(sing.has_value());
+    ASSERT_TRUE(std::holds_alternative<SingularMatrix>(sing.error()));
+}

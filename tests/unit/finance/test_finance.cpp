@@ -2635,3 +2635,69 @@ TEST(FinanceSabr, AtmBetaZeroHitsHaganExpansion) {
     EXPECT_GT(put, 0.0);
     EXPECT_NEAR(call - put, S - K * std::exp(-r * T), 1e-8);
 }
+
+TEST(FinanceSabr, NonpositiveSpotStrikeNuAndBetaRejected) {
+    EXPECT_TRUE(std::isnan(sabr_call(0.0, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 0.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 100.0, 1.0, 0.05, 0.2, -0.1, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, -0.1)));
+    EXPECT_TRUE(std::isnan(sabr_put(0.0, 100.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 0.0, 1.0, 0.05, 0.2, 0.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, 1.0, 0.05, 0.2, -0.1, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, 1.0, 0.05, 0.2, 0.5, 1.5, 0.4)));
+}
+
+TEST(FinanceSabr, AtmBetaOneHitsHaganExpansion) {
+    const double S = 100.0;
+    const double r = 0.04;
+    const double T = 0.75;
+    const double K = S * std::exp(r * T);
+    const double call = sabr_call(S, K, T, r, 0.25, 1.0, 0.2, 0.3);
+    const double put = sabr_put(S, K, T, r, 0.25, 1.0, 0.2, 0.3);
+    EXPECT_TRUE(std::isfinite(call));
+    EXPECT_TRUE(std::isfinite(put));
+    EXPECT_GT(call, 0.0);
+    EXPECT_GT(put, 0.0);
+    EXPECT_NEAR(call - put, S - K * std::exp(-r * T), 1e-8);
+}
+
+TEST(FinanceMerton, DistanceGuardsNonfiniteAndNonpositiveHorizon) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    MertonResult bad_t = merton_distance_to_default(120.0, 0.25, 80.0, 0.05, 0.0);
+    EXPECT_FALSE(bad_t.converged);
+    EXPECT_TRUE(std::isnan(bad_t.distance_to_default));
+    MertonResult bad_r = merton_distance_to_default(120.0, 0.25, 80.0, nan, 1.0);
+    EXPECT_FALSE(bad_r.converged);
+    MertonResult bad_d = merton_distance_to_default(120.0, 0.25, 0.0, 0.05, 1.0);
+    EXPECT_FALSE(bad_d.converged);
+    MertonResult bad_sig = merton_distance_to_default(120.0, nan, 80.0, 0.05, 1.0);
+    EXPECT_FALSE(bad_sig.converged);
+
+    MertonResult bad_imp_t = merton_implied_asset_params(50.0, 0.3, 100.0, 0.05, -1.0);
+    EXPECT_FALSE(bad_imp_t.converged);
+    EXPECT_TRUE(std::isnan(bad_imp_t.implied_asset_value));
+    MertonResult bad_imp_r = merton_implied_asset_params(50.0, 0.3, 100.0, nan, 1.0);
+    EXPECT_FALSE(bad_imp_r.converged);
+    MertonResult bad_imp_d = merton_implied_asset_params(50.0, 0.3, 0.0, 0.05, 1.0);
+    EXPECT_FALSE(bad_imp_d.converged);
+}
+
+TEST(FinanceBond, TwoPeriodConvexityAndYtmRoundTrip) {
+    const double y = 0.05;
+    const double fv = 100.0;
+    const double conv0 = bond_convexity(0.0, y, 2, fv);
+    EXPECT_NEAR(conv0, 6.0 / ((1.0 + y) * (1.0 + y)), 1e-12);
+
+    const double c = 0.06;
+    const double price = bond_price(c, y, 2, fv);
+    const auto ytm = bond_ytm(price, c, 2, fv);
+    ASSERT_TRUE(ytm.has_value());
+    EXPECT_NEAR(*ytm, y, 1e-8);
+    EXPECT_NEAR(bond_modified_duration(c, y, 2, fv), bond_duration(c, y, 2, fv) / (1.0 + y), 1e-12);
+}
+
+TEST(FinanceBS, NegativeExpiryIntrinsicAndTinyTImpliedVol) {
+    EXPECT_NEAR(bs_call(110.0, 100.0, -0.5, 0.05, 0.2), 10.0, 1e-12);
+    EXPECT_NEAR(bs_put(90.0, 100.0, -0.5, 0.05, 0.2), 10.0, 1e-12);
+    EXPECT_LT(bs_delta(100.0, 100.0, 1.0, 0.05, 0.2, false), 0.0);
+}

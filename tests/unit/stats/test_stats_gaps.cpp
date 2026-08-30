@@ -902,3 +902,136 @@ TEST(StatsGapsTest, PacfMultipleRegression_N1MismatchAndSingular) {
         EXPECT_TRUE(std::isfinite(v));
     }
 }
+
+TEST(StatsGapsTest, TtestSkewKurtosis_EmptyN1Constant) {
+    const std::vector<double> empty;
+    const std::vector<double> one = {5.0};
+    const std::vector<double> two_flat = {3.0, 3.0};
+    const std::vector<double> three_flat = {2.0, 2.0, 2.0};
+    const std::vector<double> four_flat = {4.0, 4.0, 4.0, 4.0};
+    EXPECT_NEAR(ttest(empty, 0.0), 0.0, 1e-12);
+    EXPECT_NEAR(ttest(one, 0.0), 0.0, 1e-12);
+    EXPECT_NEAR(ttest(two_flat, 1.0), 0.0, 1e-12);
+    EXPECT_NEAR(skewness(two_flat), 0.0, 1e-12);
+    EXPECT_NEAR(skewness(three_flat), 0.0, 1e-12);
+    EXPECT_NEAR(kurtosis(three_flat), 0.0, 1e-12);
+    EXPECT_NEAR(kurtosis(four_flat), 0.0, 1e-12);
+    EXPECT_NEAR(ztest(one, 0.0, 0.0), 0.0, 1e-12);
+    EXPECT_NEAR(ztest(empty, 0.0, 1.0), 0.0, 1e-12);
+    EXPECT_NEAR(two_sample_ttest(two_flat, four_flat), 0.0, 1e-12);
+}
+
+TEST(StatsGapsTest, WeightedVariance_SampleDenomNonPositive) {
+    const std::vector<double> x = {1.0, 2.0};
+    const std::vector<double> one_nonzero = {1.0, 0.0};
+    EXPECT_NEAR(weighted_variance(x, one_nonzero, true), 0.0, 1e-12);
+
+    const std::vector<double> vals = {1.0, 2.0, 3.0};
+    const std::vector<double> neg_w = {1.0, -1.0, 1.0};
+    EXPECT_TRUE(std::isnan(weighted_mean(vals, neg_w)));
+    EXPECT_TRUE(std::isnan(weighted_variance(vals, neg_w, true)));
+    EXPECT_TRUE(std::isnan(weighted_correlation(vals, vals, neg_w)));
+}
+
+TEST(StatsGapsTest, Vif_ConstantColumnAndPerfectCollinear) {
+    const std::vector<std::vector<double>> constant_col = {
+        {1.0, 2.0}, {1.0, 3.0}, {1.0, 4.0}};
+    EXPECT_NEAR(variance_inflation_factor(constant_col, 0), 1.0, 1e-12);
+
+    const std::vector<std::vector<double>> collinear = {
+        {1.0, 2.0}, {2.0, 4.0}, {3.0, 6.0}, {4.0, 8.0}};
+    const double v = vif(collinear, 1);
+    EXPECT_TRUE(std::isinf(v) || v > 1e6);
+}
+
+TEST(StatsGapsTest, HypothesisGuards_FewerThanTwoGroups) {
+    const auto anova_none = one_way_anova({});
+    EXPECT_NEAR(anova_none.f_stat, 0.0, 1e-12);
+    EXPECT_EQ(anova_none.df_between, 0);
+    const auto anova_one = one_way_anova({{1.0, 2.0, 3.0}});
+    EXPECT_NEAR(anova_one.f_stat, 0.0, 1e-12);
+
+    const auto kw_one = kruskal_wallis({{1.0, 2.0, 3.0}});
+    EXPECT_NEAR(kw_one.h_stat, 0.0, 1e-12);
+    EXPECT_EQ(kw_one.df, 0);
+
+    const auto fr_one_block = friedman({{1.0, 2.0, 3.0}});
+    EXPECT_NEAR(fr_one_block.chi2_stat, 0.0, 1e-12);
+    const auto fr_one_treat = friedman({{1.0}, {2.0}});
+    EXPECT_NEAR(fr_one_treat.chi2_stat, 0.0, 1e-12);
+    EXPECT_EQ(fr_one_treat.df, 0);
+
+    const auto bart_one = bartlett_test({{1.0, 2.0, 3.0}});
+    EXPECT_NEAR(bart_one.chi2_stat, 0.0, 1e-12);
+    EXPECT_EQ(bart_one.df, 0);
+    const auto flig_one = fligner_test({{1.0, 2.0, 3.0}});
+    EXPECT_NEAR(flig_one.chi2_stat, 0.0, 1e-12);
+    EXPECT_EQ(flig_one.df, 0);
+}
+
+TEST(StatsGapsTest, Ks2SampleWilcoxonShapiro_IdenticalTiesAndN12) {
+    const std::vector<double> same = {1.0, 2.0, 3.0, 4.0};
+    const auto ks_same = ks_test_2sample(same, same);
+    EXPECT_NEAR(ks_same.d_stat, 0.0, 1e-12);
+    EXPECT_NEAR(ks_same.p_value, 1.0, 1e-12);
+
+    const std::vector<double> x = {3.0, 5.0, 7.0, 9.0};
+    const std::vector<double> y = {1.0, 4.0, 6.0, 10.0};
+    const auto w = wilcoxon_signed_rank(x, y);
+    EXPECT_GE(w.n_eff, 1);
+    EXPECT_TRUE(std::isfinite(w.w_stat));
+    EXPECT_TRUE(std::isfinite(w.z_stat));
+    EXPECT_GE(w.p_value, 0.0);
+    EXPECT_LE(w.p_value, 1.0);
+
+    const std::vector<double> twelve = {
+        1.0, 2.0, 2.5, 3.0, 3.2, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0};
+    const auto sw = shapiro_wilk(twelve);
+    EXPECT_GT(sw.w_stat, 0.0);
+    EXPECT_LE(sw.w_stat, 1.0);
+    EXPECT_GE(sw.p_value, 0.0);
+    EXPECT_LE(sw.p_value, 1.0);
+}
+
+TEST(StatsGapsTest, MannWhitneyBartlettFligner_HappyAndEmptySkip) {
+    const std::vector<double> low = {1.0, 2.0, 3.0};
+    const std::vector<double> high = {10.0, 11.0, 12.0};
+    const auto mw = mann_whitney_u(low, high);
+    EXPECT_NEAR(mw.u_stat, 0.0, 1e-12);
+    EXPECT_GE(mw.p_value, 0.0);
+    EXPECT_LE(mw.p_value, 1.0);
+
+    const std::vector<std::vector<double>> with_empty = {
+        {1.0, 2.0, 3.0, 4.0},
+        {},
+        {2.0, 3.0, 4.0, 8.0},
+    };
+    const auto bart = bartlett_test(with_empty);
+    EXPECT_EQ(bart.df, 1);
+    EXPECT_GE(bart.p_value, 0.0);
+    EXPECT_LE(bart.p_value, 1.0);
+    const auto flig = fligner_test(with_empty);
+    EXPECT_EQ(flig.df, 1);
+    EXPECT_GE(flig.chi2_stat, 0.0);
+    EXPECT_GE(flig.p_value, 0.0);
+    EXPECT_LE(flig.p_value, 1.0);
+}
+
+TEST(StatsGapsTest, Arfit_PivotSwapOnAr2) {
+    std::vector<double> x(40);
+    x[0] = 1.0;
+    x[1] = 0.5;
+    for (size_t i = 2; i < x.size(); ++i) {
+        x[i] = 0.4 * x[i - 1] - 0.3 * x[i - 2];
+    }
+    const auto phi = arfit(x, 2);
+    ASSERT_EQ(phi.size(), 2u);
+    EXPECT_NEAR(phi[0], 0.4, 0.15);
+    EXPECT_NEAR(phi[1], -0.3, 0.15);
+
+    const auto pc = pacf(x, 3);
+    ASSERT_EQ(pc.size(), 4u);
+    EXPECT_NEAR(pc[0], 1.0, 1e-12);
+    EXPECT_TRUE(std::isfinite(pc[2]));
+    EXPECT_TRUE(std::isfinite(pc[3]));
+}

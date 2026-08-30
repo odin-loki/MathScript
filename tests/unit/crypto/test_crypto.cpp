@@ -1390,3 +1390,134 @@ TEST(CryptoChaCha20Poly1305, EmptyPlaintextWithShortAad) {
     const auto opened = chacha20_poly1305_decrypt(key, nonce, aad, seal.ciphertext, tag);
     EXPECT_TRUE(opened.empty());
 }
+
+TEST(CryptoChaCha20, MultiBlockPartialLastChunk) {
+    std::array<uint8_t, 32> key{};
+    key[0] = 0x55;
+    std::array<uint8_t, 12> nonce{};
+    nonce[1] = 0x66;
+    std::vector<uint8_t> plain(70);
+    for (std::size_t i = 0; i < plain.size(); ++i) {
+        plain[i] = static_cast<uint8_t>(i * 3u);
+    }
+    const auto cipher = chacha20_encrypt(key, nonce, 1u, plain);
+    ASSERT_EQ(cipher.size(), plain.size());
+    const auto back = chacha20_encrypt(key, nonce, 1u, cipher);
+    EXPECT_EQ(back, plain);
+}
+
+TEST(CryptoChaCha20Poly1305, LeftoverAadFilledByCiphertext) {
+    std::array<uint8_t, 32> key{};
+    key[2] = 0x77;
+    std::array<uint8_t, 12> nonce{};
+    nonce[3] = 0x88;
+    std::vector<uint8_t> aad(10, 0xa1);
+    std::vector<uint8_t> plain(20);
+    for (std::size_t i = 0; i < plain.size(); ++i) {
+        plain[i] = static_cast<uint8_t>(0x40 + i);
+    }
+    const auto seal = chacha20_poly1305_encrypt(key, nonce, aad, plain);
+    ASSERT_EQ(seal.ciphertext.size(), plain.size());
+    std::vector<uint8_t> tag(seal.tag.begin(), seal.tag.end());
+    EXPECT_EQ(chacha20_poly1305_decrypt(key, nonce, aad, seal.ciphertext, tag), plain);
+}
+
+TEST(CryptoAes128, DecryptBlockInvalidInputsReturnEmpty) {
+    std::vector<uint8_t> short_key{0x00};
+    std::vector<uint8_t> short_block{0x00};
+    std::vector<uint8_t> key(aes128_key_size, 0x11);
+    std::vector<uint8_t> block(aes_block_size, 0x22);
+    EXPECT_TRUE(aes128_decrypt_block(short_key, block).empty());
+    EXPECT_TRUE(aes128_decrypt_block(key, short_block).empty());
+}
+
+TEST(CryptoAes256, DecryptBlockInvalidInputsReturnEmpty) {
+    std::vector<uint8_t> short_key{0x00};
+    std::vector<uint8_t> short_block{0x00};
+    std::vector<uint8_t> key(aes256_key_size, 0x33);
+    std::vector<uint8_t> block(aes_block_size, 0x44);
+    EXPECT_TRUE(aes256_decrypt_block(short_key, block).empty());
+    EXPECT_TRUE(aes256_decrypt_block(key, short_block).empty());
+}
+
+TEST(CryptoAes128, CbcDecryptNonBlockMultipleReturnsEmpty) {
+    std::vector<uint8_t> key(aes128_key_size, 0x11);
+    std::vector<uint8_t> iv(aes_block_size, 0x22);
+    std::vector<uint8_t> odd(17, 0x33);
+    EXPECT_TRUE(aes128_cbc_decrypt(key, iv, odd).empty());
+}
+
+TEST(CryptoAes256, CbcDecryptZeroPadLenReturnsEmpty) {
+    std::vector<uint8_t> key(aes256_key_size, 0x33);
+    std::vector<uint8_t> iv(aes_block_size, 0x44);
+    std::vector<uint8_t> empty_plain;
+    const auto ciphertext = aes256_cbc_encrypt(key, iv, empty_plain);
+    ASSERT_EQ(ciphertext.size(), 16u);
+    std::vector<uint8_t> bad_iv = iv;
+    bad_iv.back() ^= 0x10;
+    EXPECT_TRUE(aes256_cbc_decrypt(key, bad_iv, ciphertext).empty());
+}
+
+TEST(CryptoAes256Gcm, ShortAndLongIvRoundtrip) {
+    std::vector<uint8_t> key(aes256_key_size, 0x21);
+    std::vector<uint8_t> short_iv{0x01, 0x02, 0x03, 0x04};
+    std::vector<uint8_t> long_iv(20, 0x09);
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> plain{0xaa, 0xbb, 0xcc};
+
+    const auto short_seal = aes256_gcm_encrypt(key, short_iv, empty_aad, plain);
+    std::vector<uint8_t> short_tag(short_seal.tag.begin(), short_seal.tag.end());
+    EXPECT_EQ(aes256_gcm_decrypt(key, short_iv, empty_aad, short_seal.ciphertext, short_tag),
+              plain);
+
+    const auto long_seal = aes256_gcm_encrypt(key, long_iv, empty_aad, plain);
+    std::vector<uint8_t> long_tag(long_seal.tag.begin(), long_seal.tag.end());
+    EXPECT_EQ(aes256_gcm_decrypt(key, long_iv, empty_aad, long_seal.ciphertext, long_tag),
+              plain);
+}
+
+TEST(CryptoHkdfSha256, MultiBlockWithInfo) {
+    std::vector<uint8_t> ikm(22, 0x0b);
+    std::vector<uint8_t> salt(13, 0x00);
+    for (std::size_t i = 0; i < salt.size(); ++i) {
+        salt[i] = static_cast<uint8_t>(i);
+    }
+    std::vector<uint8_t> info{0xf0, 0xf1, 0xf2, 0xf3};
+    const auto okm = hkdf_sha256(ikm, salt, info, 40);
+    EXPECT_EQ(okm.size(), 40u);
+    EXPECT_NE(okm[0], okm[32]);
+}
+
+TEST(CryptoHkdfSha512, MultiBlockWithInfo) {
+    std::vector<uint8_t> ikm(22, 0x0b);
+    std::vector<uint8_t> salt(16, 0x11);
+    std::vector<uint8_t> info{0xaa, 0xbb};
+    const auto okm = hkdf_sha512(ikm, salt, info, 80);
+    EXPECT_EQ(okm.size(), 80u);
+    EXPECT_NE(okm[0], okm[64]);
+}
+
+TEST(CryptoPbkdf2HmacSha256, MultiBlockDerivedKey) {
+    std::vector<uint8_t> password{0x70, 0x61, 0x73, 0x73};
+    std::vector<uint8_t> salt{0x73, 0x61, 0x6c, 0x74};
+    const auto dk = pbkdf2_hmac_sha256(password, salt, 2, 40);
+    EXPECT_EQ(dk.size(), 40u);
+}
+
+TEST(CryptoPbkdf2HmacSha512, MultiBlockDerivedKey) {
+    std::vector<uint8_t> password{0x70, 0x61, 0x73, 0x73};
+    std::vector<uint8_t> salt{0x73, 0x61, 0x6c, 0x74};
+    const auto dk = pbkdf2_hmac_sha512(password, salt, 2, 80);
+    EXPECT_EQ(dk.size(), 80u);
+}
+
+TEST(CryptoEd25519, SignWithSecretKeyMatchesSeed) {
+    const auto seed = from_hex(
+        "4ccd089b28ff96da9db6c34625656d257b553f767e5fd51be2158b16afd9a400");
+    const auto kp = ed25519_keypair(seed);
+    std::vector<uint8_t> msg{0x72};
+    const auto from_seed = ed25519_sign(seed, msg);
+    const auto from_secret = ed25519_sign(kp.secret_key, msg);
+    EXPECT_EQ(from_seed, from_secret);
+    EXPECT_TRUE(ed25519_verify(kp.public_key, msg, from_secret));
+}

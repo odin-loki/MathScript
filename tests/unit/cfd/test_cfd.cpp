@@ -454,3 +454,181 @@ TEST(CfdUpwindFvm, ScalarVelocityVsLengthMismatch) {
     EXPECT_NEAR(integrated_mass_3d(s3, 0.2, 0.2, 0.2), integrated_mass_3d(u3, 0.2, 0.2, 0.2), 1e-12);
     EXPECT_TRUE(upwind_fvm_advection_3d(u3, mismatch, v0, v0, 0.05, 0.2, 0.2, 0.2).empty());
 }
+
+TEST(CfdGrid2D3D, InvalidAndValidSpacing) {
+    const auto g2 = grid2d(0.0, 1.0, 0.0, 2.0, 4, 8);
+    EXPECT_EQ(g2.nx, 4u);
+    EXPECT_EQ(g2.ny, 8u);
+    EXPECT_NEAR(g2.dx, 0.25, 1e-12);
+    EXPECT_NEAR(g2.dy, 0.25, 1e-12);
+
+    const auto bad2 = grid2d(0.0, 1.0, 1.0, 1.0, 4, 4);
+    EXPECT_EQ(bad2.nx, 0u);
+    EXPECT_TRUE(bad2.x.empty());
+    const auto few2 = grid2d(0.0, 1.0, 0.0, 1.0, 1, 4);
+    EXPECT_EQ(few2.nx, 0u);
+
+    const auto g3 = grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 4, 4, 4);
+    EXPECT_EQ(g3.nx, 4u);
+    EXPECT_EQ(g3.nz, 4u);
+    const auto bad3 = grid3d(0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 4, 4, 4);
+    EXPECT_EQ(bad3.nx, 0u);
+    const auto few3 = grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 4, 4, 1);
+    EXPECT_EQ(few3.nz, 0u);
+}
+
+TEST(CfdSquarePulse2D3D, EmptyGridAndNonPositiveWidth) {
+    const auto empty2 = grid2d(1.0, 0.0, 0.0, 1.0, 8, 8);
+    EXPECT_TRUE(square_pulse_2d(empty2, 0.5, 0.5, 0.2, 0.2, 1.0).empty()
+                || square_pulse_2d(empty2, 0.5, 0.5, 0.2, 0.2, 1.0)[0].empty());
+
+    const auto g2 = grid2d(0.0, 1.0, 0.0, 1.0, 8, 8);
+    const auto z2 = square_pulse_2d(g2, 0.5, 0.5, 0.0, 0.2, 2.0);
+    ASSERT_EQ(z2.size(), g2.ny);
+    for (const auto& row : z2) {
+        for (double ui : row) {
+            EXPECT_NEAR(ui, 0.0, 1e-15);
+        }
+    }
+
+    const auto empty3 = grid3d(1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 4, 4, 4);
+    const auto p3 = square_pulse_3d(empty3, 0.5, 0.5, 0.5, 0.2, 0.2, 0.2, 1.0);
+    EXPECT_TRUE(p3.empty() || p3[0].empty());
+
+    const auto g3 = grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 6, 6, 6);
+    const auto z3 = square_pulse_3d(g3, 0.5, 0.5, 0.5, 0.2, 0.2, 0.0, 1.0);
+    ASSERT_EQ(z3.size(), g3.nz);
+    for (const auto& layer : z3) {
+        for (const auto& row : layer) {
+            for (double ui : row) {
+                EXPECT_NEAR(ui, 0.0, 1e-15);
+            }
+        }
+    }
+}
+
+TEST(CfdUpwindFvm2D, RaggedEmptyRowCflAndNegativeY) {
+    const std::vector<std::vector<double>> empty_row{{}};
+    const std::vector<double> vx{0.2};
+    const std::vector<double> vy{0.0};
+    EXPECT_TRUE(upwind_fvm_advection_2d(empty_row, vx, vy, 0.01, 0.2, 0.2).empty());
+    const std::vector<std::vector<double>> ragged{{1.0, 0.0}, {1.0}};
+    EXPECT_TRUE(upwind_fvm_advection_2d(ragged, vx, vy, 0.01, 0.2, 0.2).empty());
+
+    const std::vector<std::vector<double>> u0 = {
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+    };
+    const std::vector<double> fast{2.0};
+    EXPECT_TRUE(upwind_fvm_advection_2d(u0, fast, vy, 0.2, 0.1, 0.1).empty());
+
+    const std::vector<double> vx0{0.0};
+    const std::vector<double> vy_neg{-0.3};
+    const auto stepped = upwind_fvm_advection_2d(
+        u0, vx0, vy_neg, 0.05, 0.2, 0.2,
+        BoundaryCondition::Periodic, BoundaryCondition::Periodic);
+    ASSERT_EQ(stepped.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(stepped, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+
+    const auto zf = upwind_fvm_advection_2d(
+        u0, vx0, vy_neg, 0.05, 0.2, 0.2,
+        BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(zf.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(zf, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+}
+
+TEST(CfdUpwindFvm3D, RaggedEmptyCflAndNegativeYZ) {
+    const std::vector<std::vector<std::vector<double>>> empty_row{
+        {std::vector<double>{}},
+    };
+    const std::vector<double> v{0.2};
+    EXPECT_TRUE(upwind_fvm_advection_3d(empty_row, v, v, v, 0.01, 0.2, 0.2, 0.2).empty());
+    const std::vector<std::vector<std::vector<double>>> ragged = {
+        {{1.0, 0.0}, {0.0, 1.0}},
+        {{1.0, 0.0}},
+    };
+    EXPECT_TRUE(upwind_fvm_advection_3d(ragged, v, v, v, 0.01, 0.2, 0.2, 0.2).empty());
+
+    std::vector<std::vector<std::vector<double>>> u0(
+        2, std::vector<std::vector<double>>(2, std::vector<double>(2, 0.0)));
+    u0[0][0][0] = 1.0;
+    const std::vector<double> fast{2.0};
+    const std::vector<double> z0{0.0};
+    EXPECT_TRUE(upwind_fvm_advection_3d(u0, fast, z0, z0, 0.2, 0.1, 0.1, 0.1).empty());
+
+    const std::vector<double> vy_neg{-0.2};
+    const std::vector<double> vz_neg{-0.2};
+    const auto stepped = upwind_fvm_advection_3d(
+        u0, z0, vy_neg, vz_neg, 0.05, 0.2, 0.2, 0.2,
+        BoundaryCondition::Periodic, BoundaryCondition::Periodic, BoundaryCondition::Periodic);
+    ASSERT_EQ(stepped.size(), 2u);
+    EXPECT_NEAR(integrated_mass_3d(stepped, 0.2, 0.2, 0.2),
+                integrated_mass_3d(u0, 0.2, 0.2, 0.2), 1e-12);
+
+    const auto zf = upwind_fvm_advection_3d(
+        u0, z0, vy_neg, vz_neg, 0.05, 0.2, 0.2, 0.2,
+        BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(zf.size(), 2u);
+    EXPECT_NEAR(integrated_mass_3d(zf, 0.2, 0.2, 0.2),
+                integrated_mass_3d(u0, 0.2, 0.2, 0.2), 1e-12);
+}
+
+TEST(CfdIntegratedMass2D3D, EmptyRaggedAndNonPositiveDx) {
+    const std::vector<std::vector<double>> empty2;
+    const std::vector<std::vector<double>> ragged2{{1.0, 2.0}, {3.0}};
+    const std::vector<std::vector<double>> ok2{{1.0, 2.0}, {3.0, 4.0}};
+    EXPECT_NEAR(integrated_mass_2d(empty2, 0.2, 0.2), 0.0, 1e-15);
+    EXPECT_NEAR(integrated_mass_2d(ragged2, 0.2, 0.2), 0.0, 1e-15);
+    EXPECT_NEAR(integrated_mass_2d(ok2, 0.0, 0.2), 0.0, 1e-15);
+    EXPECT_NEAR(integrated_mass_2d(ok2, 0.2, 0.0), 0.0, 1e-15);
+
+    const std::vector<std::vector<std::vector<double>>> empty3;
+    const std::vector<std::vector<std::vector<double>>> ragged3 = {
+        {{1.0, 0.0}, {0.0}},
+        {{0.0, 1.0}, {1.0, 0.0}},
+    };
+    std::vector<std::vector<std::vector<double>>> ok3(
+        2, std::vector<std::vector<double>>(2, std::vector<double>(2, 1.0)));
+    EXPECT_NEAR(integrated_mass_3d(empty3, 0.2, 0.2, 0.2), 0.0, 1e-15);
+    EXPECT_NEAR(integrated_mass_3d(ragged3, 0.2, 0.2, 0.2), 0.0, 1e-15);
+    EXPECT_NEAR(integrated_mass_3d(ok3, 0.0, 0.2, 0.2), 0.0, 1e-15);
+}
+
+TEST(CfdRunAdvection2D3D, HorizonClampCflAndEmptyVelocity) {
+    const auto g2 = grid2d(0.0, 1.0, 0.0, 1.0, 8, 8);
+    const auto u2 = square_pulse_2d(g2, 0.4, 0.4, 0.2, 0.2, 1.0);
+    const std::vector<double> vx{0.4};
+    const std::vector<double> vy{0.0};
+    const auto r2 = run_advection_2d(u2, vx, vy, 0.25, 0.1, g2.dx, g2.dy);
+    ASSERT_FALSE(r2.u.empty());
+    EXPECT_NEAR(r2.t.back(), 0.25, 1e-12);
+    EXPECT_NEAR(integrated_mass_2d(r2.u.back(), g2.dx, g2.dy),
+                integrated_mass_2d(u2, g2.dx, g2.dy), 1e-9);
+
+    const std::vector<double> empty;
+    EXPECT_TRUE(run_advection_2d(u2, empty, vy, 0.1, 0.01, g2.dx, g2.dy).u.empty());
+    const std::vector<double> fast{2.0};
+    EXPECT_TRUE(run_advection_2d(u2, fast, vy, 0.2, 0.1, 0.1, 0.1).u.empty());
+
+    const auto g3 = grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 6, 6, 6);
+    const auto u3 = square_pulse_3d(g3, 0.4, 0.4, 0.4, 0.2, 0.2, 0.2, 1.0);
+    const std::vector<double> vz{0.0};
+    const auto r3 = run_advection_3d(u3, vx, vy, vz, 0.25, 0.1, g3.dx, g3.dy, g3.dz);
+    ASSERT_FALSE(r3.u.empty());
+    EXPECT_NEAR(r3.t.back(), 0.25, 1e-12);
+    EXPECT_TRUE(run_advection_3d(u3, empty, vy, vz, 0.1, 0.01, g3.dx, g3.dy, g3.dz).u.empty());
+    EXPECT_TRUE(run_advection_3d(u3, fast, vz, vz, 0.2, 0.1, 0.1, 0.1, 0.1).u.empty());
+}
+
+TEST(CfdUpwindFvm, OneCellPeriodicAndZeroFlux) {
+    const std::vector<double> u{1.0};
+    const std::vector<double> v{0.5};
+    const auto per = upwind_fvm_advection(u, v, 0.01, 0.1, BoundaryCondition::Periodic);
+    ASSERT_EQ(per.size(), 1u);
+    EXPECT_NEAR(per[0], 1.0, 1e-12);
+
+    const auto zf = upwind_fvm_advection(u, v, 0.01, 0.1, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(zf.size(), 1u);
+    EXPECT_NEAR(zf[0], 1.0, 1e-12);
+}

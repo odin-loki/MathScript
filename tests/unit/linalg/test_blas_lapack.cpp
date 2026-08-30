@@ -3078,3 +3078,169 @@ TEST(LapackDorgbrTest, dorgbr_p_right_tall_vs_wide_acols) {
         EXPECT_FALSE(std::isnan(C(0, 0)));
     }
 }
+
+TEST(LapackDormbrTest, p_right_square_tall_else_wide_acols) {
+    // m==n uses apply_p_right_tall; else apply_p_right_wide(min,max)
+    // with a_cols = (lda >= n) ? min(k, n) : n.
+    {
+        const int n = 4;
+        ColMatrix<double> A(static_cast<std::size_t>(n), static_cast<std::size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    0.09 * static_cast<double>(i + 1) + 0.03 * static_cast<double>(j + 2);
+            }
+        }
+        std::vector<double> D(static_cast<std::size_t>(n));
+        std::vector<double> E(static_cast<std::size_t>(n - 1));
+        std::vector<double> tauq(static_cast<std::size_t>(n));
+        std::vector<double> taup(static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgebrd(n, n, A.data(), n, D.data(), E.data(), tauq.data(), taup.data()), 0);
+        ColMatrix<double> Cn(n, n, 0.55);
+        ASSERT_EQ(cpu::lapack::dormbr('P', 'R', 'N', n, n, n, A.data(), n, taup.data(), Cn.data(), n), 0);
+        EXPECT_FALSE(std::isnan(Cn(0, 0)));
+        ColMatrix<double> Ct(n, n, 0.35);
+        ASSERT_EQ(cpu::lapack::dormbr('P', 'R', 'T', n, n, n, A.data(), n, taup.data(), Ct.data(), n), 0);
+        EXPECT_FALSE(std::isnan(Ct(0, 0)));
+    }
+    {
+        // Tall factor lda=m=6, C is n-by-m (3x6): dormbr m=6,n=3 → wide(3,6), lda>=n.
+        const int m = 6;
+        const int n = 3;
+        ColMatrix<double> A(static_cast<std::size_t>(m), static_cast<std::size_t>(n));
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    0.05 * static_cast<double>(i + 1) - 0.08 * static_cast<double>(j + 1);
+            }
+        }
+        std::vector<double> D(static_cast<std::size_t>(n));
+        std::vector<double> E(static_cast<std::size_t>(n - 1));
+        std::vector<double> tauq(static_cast<std::size_t>(n));
+        std::vector<double> taup(static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgebrd(m, n, A.data(), m, D.data(), E.data(), tauq.data(), taup.data()), 0);
+        ColMatrix<double> C(n, m, 0.2);
+        ASSERT_EQ(cpu::lapack::dormbr('P', 'R', 'N', m, n, n, A.data(), m, taup.data(), C.data(), n), 0);
+        EXPECT_FALSE(std::isnan(C(0, 0)));
+        ColMatrix<double> CT(n, m, 0.3);
+        ASSERT_EQ(cpu::lapack::dormbr('P', 'R', 'T', m, n, n, A.data(), m, taup.data(), CT.data(), n), 0);
+        EXPECT_FALSE(std::isnan(CT(0, 0)));
+    }
+    {
+        // Wide factor lda=3 < n=7: a_cols = n.
+        const int m = 3;
+        const int n = 7;
+        ColMatrix<double> A(static_cast<std::size_t>(m), static_cast<std::size_t>(n));
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    0.04 * static_cast<double>(i + 3) + 0.07 * static_cast<double>(j);
+            }
+        }
+        std::vector<double> D(static_cast<std::size_t>(n));
+        std::vector<double> E(static_cast<std::size_t>(n - 1));
+        std::vector<double> tauq(static_cast<std::size_t>(n));
+        std::vector<double> taup(static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgebrd(m, n, A.data(), m, D.data(), E.data(), tauq.data(), taup.data()), 0);
+        ColMatrix<double> C(m, n, 0.15);
+        ASSERT_EQ(cpu::lapack::dormbr('P', 'R', 'T', m, n, m, A.data(), m, taup.data(), C.data(), m), 0);
+        EXPECT_FALSE(std::isnan(C(0, 0)));
+    }
+    {
+        // k=1 → apply_p_right_* count = min(k,*)-1 <= 0, C unchanged.
+        const int n = 2;
+        ColMatrix<double> A{{2.0, 1.0}, {0.0, 3.0}};
+        std::vector<double> D(static_cast<std::size_t>(n));
+        std::vector<double> E(static_cast<std::size_t>(n - 1));
+        std::vector<double> tauq(static_cast<std::size_t>(n));
+        std::vector<double> taup(static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgebrd(n, n, A.data(), n, D.data(), E.data(), tauq.data(), taup.data()), 0);
+        ColMatrix<double> C(n, n, 0.77);
+        ASSERT_EQ(cpu::lapack::dormbr('P', 'R', 'N', n, n, 1, A.data(), n, taup.data(), C.data(), n), 0);
+        EXPECT_NEAR(C(0, 0), 0.77, 1e-15);
+        EXPECT_NEAR(C(1, 1), 0.77, 1e-15);
+    }
+}
+
+TEST(LapackDormqrTest, remaining_side_trans_null_and_tau_zero) {
+    ColMatrix<double> A{{2.0, 1.0}, {0.5, 3.0}};
+    std::vector<double> tau(2);
+    ASSERT_EQ(cpu::lapack::dgeqrf(2, 2, A.data(), 2, tau.data()), 0);
+
+    ColMatrix<double> C{{1.0, 0.0}, {0.0, 1.0}};
+    const double c00 = C(0, 0);
+    cpu::lapack::dormqr('R', 'N', 2, 2, 2, A.data(), 2, tau.data(), C.data(), 2);
+    EXPECT_NEAR(C(0, 0), c00, 1e-15);
+
+    cpu::lapack::dormqr('L', 'X', 2, 2, 2, A.data(), 2, tau.data(), C.data(), 2);
+    EXPECT_NEAR(C(0, 0), c00, 1e-15);
+
+    cpu::lapack::dormqr('L', 'N', 0, 2, 2, A.data(), 2, tau.data(), C.data(), 2);
+    cpu::lapack::dormqr('L', 'N', 2, 0, 2, A.data(), 2, tau.data(), C.data(), 2);
+    cpu::lapack::dormqr('L', 'N', 2, 2, 0, A.data(), 2, tau.data(), C.data(), 2);
+    cpu::lapack::dormqr('L', 'N', 2, 2, 2, nullptr, 2, tau.data(), C.data(), 2);
+    cpu::lapack::dormqr('L', 'N', 2, 2, 2, A.data(), 2, nullptr, C.data(), 2);
+    cpu::lapack::dormqr('L', 'N', 2, 2, 2, A.data(), 2, tau.data(), nullptr, 2);
+
+    ColMatrix<double> B{{1.5}, {-0.25}};
+    cpu::lapack::dormqr('L', 'T', 2, 1, 2, A.data(), 2, tau.data(), B.data(), 2);
+    cpu::lapack::dormqr('l', 'n', 2, 1, 2, A.data(), 2, tau.data(), B.data(), 2);
+    EXPECT_NEAR(B(0, 0), 1.5, 1e-10);
+    EXPECT_NEAR(B(1, 0), -0.25, 1e-10);
+
+    std::vector<double> tau_zero{0.0, 0.0};
+    ColMatrix<double> Bz{{4.0}, {5.0}};
+    cpu::lapack::dormqr('L', 'T', 2, 1, 2, A.data(), 2, tau_zero.data(), Bz.data(), 2);
+    EXPECT_NEAR(Bz(0, 0), 4.0, 1e-15);
+    EXPECT_NEAR(Bz(1, 0), 5.0, 1e-15);
+}
+
+TEST(LapackGelsTest, dgels_null_and_nonpositive_dims) {
+    std::vector<double> A{1.0, 0.0, 0.0, 1.0};
+    std::vector<double> B{1.0, 2.0};
+    EXPECT_EQ(cpu::lapack::dgels(2, 0, 1, A.data(), 2, B.data(), 2), 0);
+    EXPECT_EQ(cpu::lapack::dgels(2, 2, 0, A.data(), 2, B.data(), 2), 0);
+    EXPECT_EQ(cpu::lapack::dgels(-1, 2, 1, A.data(), 2, B.data(), 2), 0);
+    EXPECT_EQ(cpu::lapack::dgels(2, -3, 1, A.data(), 2, B.data(), 2), 0);
+    EXPECT_EQ(cpu::lapack::dgels(2, 2, 1, nullptr, 2, B.data(), 2), 1);
+    EXPECT_EQ(cpu::lapack::dgels(2, 2, 1, A.data(), 2, nullptr, 2), 1);
+}
+
+TEST(BlasLevel3Test, dtrsm_unit_diag_null_and_nonpositive) {
+    ColMatrix<double> L{{1.0, 0.0}, {2.0, 1.0}};
+    ColMatrix<double> B{{3.0, 1.0}, {8.0, 4.0}};
+    expect_dtrsm_matches_reference('L', 'L', 'N', 'U', 2, 2, 1.0, L, B);
+    expect_dtrsm_matches_reference('L', 'U', 'N', 'U', 2, 2, 1.0, L, B);
+    expect_dtrsm_matches_reference('R', 'L', 'T', 'N', 2, 2, 1.0, L, B);
+    expect_dtrsm_matches_reference('l', 'l', 'n', 'n', 2, 2, 2.0, L, B);
+
+    std::vector<double> Bz{1.0, 2.0, 3.0, 4.0};
+    cpu::blas::dtrsm('L', 'L', 'N', 'N', 0, 2, 1.0, L.data(), 2, Bz.data(), 2);
+    cpu::blas::dtrsm('L', 'L', 'N', 'N', 2, 0, 1.0, L.data(), 2, Bz.data(), 2);
+    cpu::blas::dtrsm('L', 'L', 'N', 'N', 2, 2, 1.0, nullptr, 2, Bz.data(), 2);
+    cpu::blas::dtrsm('L', 'L', 'N', 'N', 2, 2, 1.0, L.data(), 2, nullptr, 2);
+    EXPECT_NEAR(Bz[0], 1.0, 1e-15);
+}
+
+TEST(BlasLevel3Test, dsyrk_zero_dims_null_alpha_and_k) {
+    std::vector<double> A{1.0, 2.0, 3.0, 4.0};
+    std::vector<double> C{5.0, 6.0, 7.0, 8.0};
+    cpu::blas::dsyrk('L', 'N', 0, 2, 1.0, A.data(), 2, 1.0, C.data(), 2);
+    cpu::blas::dsyrk('L', 'N', 2, -1, 1.0, A.data(), 2, 1.0, C.data(), 2);
+    cpu::blas::dsyrk('L', 'N', 2, 2, 1.0, nullptr, 2, 1.0, C.data(), 2);
+    cpu::blas::dsyrk('L', 'N', 2, 2, 1.0, A.data(), 2, 1.0, nullptr, 2);
+    EXPECT_NEAR(C[0], 5.0, 1e-15);
+
+    cpu::blas::dsyrk('L', 'N', 2, 0, 1.0, A.data(), 2, 0.5, C.data(), 2);
+    EXPECT_NEAR(C[0], 2.5, 1e-12);
+
+    std::vector<double> C2{1.0, 2.0, 3.0, 4.0};
+    cpu::blas::dsyrk('U', 'T', 2, 2, 0.0, A.data(), 2, 2.0, C2.data(), 2);
+    EXPECT_NEAR(C2[0], 2.0, 1e-12);
+    EXPECT_NEAR(C2[2], 6.0, 1e-12);
+
+    std::vector<double> Cl{1.0, 0.0, 0.0, 1.0};
+    cpu::blas::dsyrk('l', 'n', 2, 2, 0.0, A.data(), 2, 3.0, Cl.data(), 2);
+    EXPECT_NEAR(Cl[0], 3.0, 1e-12);
+    EXPECT_NEAR(Cl[3], 3.0, 1e-12);
+}

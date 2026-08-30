@@ -1005,3 +1005,92 @@ TEST(FemLagrangeBasis, degree_two_unused_xi_rejected) {
     EXPECT_FALSE(basis.derivative(-0.25).has_value());
     EXPECT_FALSE(basis.derivative(1.25).has_value());
 }
+
+TEST(FemMesh2D, equal_axis_bounds_rejected) {
+    EXPECT_FALSE(mesh2d_rectangular(1.0, 0.0, 1.0, 1.0, 2, 2).has_value());
+    EXPECT_FALSE(mesh2d_rectangular(0.0, 2.0, 1.0, 2.0, 2, 2).has_value());
+}
+
+TEST(FemMesh3D, equal_axis_bounds_rejected) {
+    EXPECT_FALSE(mesh3d_box(0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1, 1, 1).has_value());
+    EXPECT_FALSE(mesh3d_box(0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1, 1, 1).has_value());
+    EXPECT_FALSE(mesh3d_box(0.0, 0.0, 2.0, 1.0, 1.0, 2.0, 1, 1, 1).has_value());
+}
+
+TEST(FemLagrangeBasis, negative_degree_rejected) {
+    LagrangeBasis basis;
+    basis.degree = -1;
+    EXPECT_FALSE(basis.evaluate(0.5).has_value());
+    EXPECT_FALSE(basis.derivative(0.5).has_value());
+}
+
+TEST(FemAssemble, clockwise_triangle_and_inverted_tet) {
+    Mesh2D cw;
+    cw.nodes = {{0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}};
+    cw.triangles = {{{0, 1, 2}}};
+    const auto K2 = assemble_stiffness_2d(cw);
+    ASSERT_TRUE(K2.has_value());
+    EXPECT_TRUE(std::isfinite((*K2)(0, 0)));
+    EXPECT_NEAR((*K2)(0, 1), (*K2)(1, 0), 1e-12);
+    const auto f2 = assemble_load_2d(cw, [](double, double) { return 2.0; });
+    ASSERT_TRUE(f2.has_value());
+    EXPECT_NEAR((*f2)(0, 0) + (*f2)(1, 0) + (*f2)(2, 0), 1.0, 1e-12);
+
+    Mesh3D inv;
+    inv.nodes = {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    inv.tetrahedra = {{{0, 2, 1, 3}}};
+    const auto K3 = assemble_stiffness_3d(inv);
+    ASSERT_TRUE(K3.has_value());
+    EXPECT_GT((*K3)(0, 0), 0.0);
+    const auto f3 = assemble_load_3d(inv, [](double, double, double) { return 1.0; });
+    ASSERT_TRUE(f3.has_value());
+    double vol = 0.0;
+    for (std::size_t i = 0; i < f3->rows(); ++i) {
+        vol += (*f3)(i, 0);
+    }
+    EXPECT_NEAR(vol, 1.0 / 6.0, 1e-10);
+}
+
+TEST(FemStiffness1D, second_element_invalid_after_valid) {
+    Mesh1D mesh;
+    mesh.nodes = {0.0, 1.0, 2.0};
+    mesh.connectivity = {{{0, 1}, {0, 9}}};
+    EXPECT_FALSE(assemble_stiffness_1d(mesh).has_value());
+}
+
+TEST(FemLoad1D, second_element_nonpositive_after_valid) {
+    Mesh1D mesh;
+    mesh.nodes = {0.0, 1.0, 2.0};
+    mesh.connectivity = {{{0, 1}, {2, 1}}};
+    EXPECT_FALSE(assemble_load_1d(mesh, [](double) { return 1.0; }).has_value());
+}
+
+TEST(FemDirichlet, one_by_one_sets_value) {
+    ColMatrix<double> K(1, 1, 4.0);
+    ColMatrix<double> f(1, 1, 7.0);
+    const std::vector<std::size_t> nodes{0};
+    const std::vector<double> values{3.0};
+    const auto r = apply_dirichlet(K, f, nodes, values);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NEAR(K(0, 0), 1.0, 1e-14);
+    EXPECT_NEAR(f(0, 0), 3.0, 1e-14);
+}
+
+TEST(FemAssemble, two_cell_3d_constant_load) {
+    const auto mesh_r = mesh3d_box(0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 1, 1, 2);
+    ASSERT_TRUE(mesh_r.has_value());
+    const auto load = assemble_load_3d(*mesh_r, [](double, double, double) { return 1.0; });
+    ASSERT_TRUE(load.has_value());
+    double total = 0.0;
+    for (std::size_t i = 0; i < load->rows(); ++i) {
+        total += (*load)(i, 0);
+    }
+    EXPECT_NEAR(total, 2.0, 1e-10);
+}
+
+TEST(FemStiffness2D, second_triangle_middle_node_out_of_range) {
+    Mesh2D mesh;
+    mesh.nodes = {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}};
+    mesh.triangles = {{{0, 1, 2}, {0, 8, 2}}};
+    EXPECT_FALSE(assemble_stiffness_2d(mesh).has_value());
+}

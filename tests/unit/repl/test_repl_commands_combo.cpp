@@ -2535,3 +2535,49 @@ TEST(ReplCommandsTest, combo_double_factorial_scalar_assign) {
     expect_ok(interp, "s = combo_double_factorial(5)");
     EXPECT_NEAR(interp.state().scalars.at("s"), 15.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, combo_catalan_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_catalan(-1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, combo_bell_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_bell(-1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, combo_nchoosek_k_gt_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_nchoosek(3, 5)", "expected 0 <= k <= n");
+}
+
+TEST(ReplCommandsTest, combo_binomial_k_gt_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_binomial(3, 5)", "expected 0 <= k <= n");
+}
+
+TEST(ReplCommandsTest, combo_eulerian_k_gt_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_eulerian(3, 5)", "expected 0 <= k <= n");
+}
+
+TEST(ReplCommandsTest, combo_stirling2_k_gt_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_stirling2(2, 5)", "expected 0 <= k <= n");
+}
+
+TEST(ReplCommandsTest, combo_stirling1_k_gt_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_stirling1(2, 5)", "expected 0 <= k <= n");
+}
+
+TEST(ReplCommandsTest, combo_permutations_bad_k_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_permutations(2, 5)", "expected 0 <= k <= n");
+}
+
+TEST(ReplCommandsTest, combo_combinations_with_rep_negative_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = combo_combinations_with_rep(-1, 2)",
+                          "expected non-negative integer n and k");
+}

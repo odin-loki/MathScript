@@ -3713,3 +3713,58 @@ TEST(ReplCommandsTest, numthy_euler_phi_scalar_assign) {
     expect_ok(interp, "s = numthy_euler_phi(10)");
     EXPECT_NEAR(interp.state().scalars.at("s"), 4.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, numthy_prime_nth_zero_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_prime_nth(0)", "expected integer n >= 1");
+}
+
+TEST(ReplCommandsTest, numthy_primitive_root_composite_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_primitive_root(4)", "expected prime p");
+}
+
+TEST(ReplCommandsTest, numthy_primitive_root_too_small_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_primitive_root(1)", "expected prime p >= 2");
+}
+
+TEST(ReplCommandsTest, numthy_is_carmichael_negative_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_is_carmichael(-1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, numthy_carmichael_lambda_negative_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_carmichael_lambda(-1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, numthy_factor_count_negative_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_factor_count(-1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, numthy_sum_divisors_negative_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_sum_divisors(-1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, numthy_von_mangoldt_negative_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_von_mangoldt(-1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, numthy_legendre_noninteger_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_legendre_symbol(1.5, 5)", "expected integer arguments");
+}
+
+TEST(ReplCommandsTest, numthy_jacobi_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_jacobi_symbol(2, -1)", "expected positive odd n");
+}
+
+TEST(ReplCommandsTest, numthy_is_primitive_root_noninteger_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = numthy_is_primitive_root(1.5, 7)", "expected integer arguments");
+}

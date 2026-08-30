@@ -1608,3 +1608,153 @@ TEST(OdeAdvanced2, AdamsBashforth2_EmptySteps) {
     EXPECT_TRUE(empty.t.empty());
     EXPECT_TRUE(empty.y.empty());
 }
+
+TEST(OdeAdvanced2, Rk23_ZeroRhsGrowsStep_AndCashKarpBeforeT0) {
+    const auto zero = [](double, double) { return 0.0; };
+    const auto rk = ode_rk23(zero, 0.0, 2.0, 1.0);
+    ASSERT_GE(rk.t.size(), 2u);
+    EXPECT_NEAR(rk.y.back(), 2.0, 1e-12);
+
+    const auto ck = ode_cashkarp(zero, 1.0, 3.0, 0.0);
+    ASSERT_EQ(ck.t.size(), 1u);
+    EXPECT_NEAR(ck.t.front(), 1.0, 1e-15);
+    EXPECT_NEAR(ck.y.front(), 3.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, AdamsBashforth2Vec_OneStepBootstrap) {
+    const OdeFuncVec f = [](double, const std::vector<double>& y) {
+        return std::vector<double>{-y[0]};
+    };
+    const std::vector<double> y0{1.0};
+    const auto one = ode_adams_bashforth2_vec(f, 0.0, y0, 1.0, 1);
+    ASSERT_EQ(one.t.size(), 2u);
+    ASSERT_EQ(one.y.size(), 2u);
+    EXPECT_NEAR(one.y.front()[0], 1.0, 1e-15);
+    EXPECT_TRUE(std::isfinite(one.y.back()[0]));
+}
+
+TEST(OdeAdvanced2, Rosenbrock23Vec_SecondStageMismatchAndSingularJ) {
+    int calls = 0;
+    const OdeFuncVec mismatch = [&calls](double, const std::vector<double>& y) {
+        ++calls;
+        if (calls <= 1 + static_cast<int>(y.size())) {
+            return std::vector<double>(y.size(), 0.0);
+        }
+        return std::vector<double>{};
+    };
+    const std::vector<double> y0{1.0, 0.0};
+    const auto stopped = ode_rosenbrock23_vec(mismatch, 0.0, y0, 1.0, 4);
+    ASSERT_EQ(stopped.t.size(), 1u);
+    EXPECT_NEAR(stopped.y.front()[0], 1.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, Rosenbrock23Vec_JacobianProbeSizeMismatch) {
+    int calls = 0;
+    const OdeFuncVec f = [&calls](double, const std::vector<double>& y) {
+        ++calls;
+        if (calls == 1) {
+            return std::vector<double>(y.size(), -y[0]);
+        }
+        if (calls == 2) {
+            return std::vector<double>{};
+        }
+        return std::vector<double>(y.size(), -y[0]);
+    };
+    const auto result = ode_rosenbrock23_vec(f, 0.0, {1.0}, 1.0, 1);
+    ASSERT_GE(result.t.size(), 1u);
+    EXPECT_NEAR(result.y.front()[0], 1.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, VerletVec_SecondAccelMismatch) {
+    int calls = 0;
+    const OdeAccelFuncVec a = [&calls](double, const std::vector<double>& q) {
+        ++calls;
+        if (calls == 1) {
+            return std::vector<double>(q.size(), -q[0]);
+        }
+        return std::vector<double>{-1.0};
+    };
+    const std::vector<double> q0{1.0, 0.5};
+    const std::vector<double> v0{0.0, 0.0};
+    const auto result = ode_verlet_vec(a, 0.0, q0, v0, 1.0, 4);
+    ASSERT_GE(result.t.size(), 1u);
+    EXPECT_NEAR(result.q.front()[0], 1.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, BackwardEulerVec_MismatchedRhsStops) {
+    const OdeFuncVec f = [](double, const std::vector<double>&) {
+        return std::vector<double>{1.0};
+    };
+    const std::vector<double> y0{1.0, 0.0};
+    const auto result = ode_backward_euler_vec(f, 0.0, y0, 1.0, 4);
+    ASSERT_GE(result.t.size(), 1u);
+    EXPECT_NEAR(result.y.front()[0], 1.0, 1e-15);
+    EXPECT_NEAR(result.y.front()[1], 0.0, 1e-15);
+}
+
+TEST(OdeAdvanced2, Dde_SmallTauInterpolatesGrid) {
+    const auto f = [](double, double y, double yd) { return -y + 0.5 * yd; };
+    const auto hist = [](double) { return 1.0; };
+    const auto result = ode_dde_fixed_step(f, hist, 0.0, 1.0, 0.05, 20);
+    ASSERT_FALSE(result.y.empty());
+    EXPECT_TRUE(std::isfinite(result.y.back()));
+    EXPECT_GT(result.t.size(), 2u);
+}
+
+TEST(OdeAdvanced2, Bdf2_OneStepBootstrapAndExpEulerLambdaZero) {
+    const auto decay = [](double, double y) { return -y; };
+    const auto bdf = ode_bdf2(decay, 0.0, 1.0, 1.0, 1);
+    ASSERT_EQ(bdf.t.size(), 2u);
+    EXPECT_NEAR(bdf.y.front(), 1.0, 1e-15);
+    EXPECT_TRUE(std::isfinite(bdf.y.back()));
+
+    const auto g = [](double, double) { return 1.0; };
+    const auto etd = ode_exponential_euler(g, 0.0, 0.0, 0.0, 1.0, 10);
+    ASSERT_FALSE(etd.y.empty());
+    EXPECT_NEAR(etd.y.back(), 1.0, 1e-12);
+}
+
+TEST(OdeAdvanced2, Rk45Vec_K7MismatchAndDaeEmptyZ0) {
+    int calls = 0;
+    const OdeFuncVec f = [&calls](double, const std::vector<double>& y) {
+        ++calls;
+        if (calls <= 6) {
+            return std::vector<double>(y.size(), 0.0);
+        }
+        return std::vector<double>{};
+    };
+    const std::vector<double> y0{1.0, 0.0};
+    const auto rk = ode_rk45_vec(f, 0.0, y0, 1.0);
+    ASSERT_EQ(rk.t.size(), 1u);
+    EXPECT_NEAR(rk.y.front()[0], 1.0, 1e-15);
+
+    const DaeDiffFunc df = [](double, const std::vector<double>&,
+                               const std::vector<double>& z) {
+        return std::vector<double>{z[0]};
+    };
+    const DaeAlgFunc g = [](double t, const std::vector<double>&,
+                             const std::vector<double>&) {
+        return std::vector<double>{std::cos(t)};
+    };
+    const auto dae = ode_dae_index1(df, g, 0.0, {0.0}, {}, 1.0, 8);
+    EXPECT_TRUE(dae.t.empty());
+    EXPECT_FALSE(dae.converged);
+}
+
+TEST(OdeAdvanced2, DaeIndex1_JacobianProbeSizeMismatch) {
+    int g_calls = 0;
+    const DaeDiffFunc f = [](double, const std::vector<double>&,
+                              const std::vector<double>& z) {
+        return std::vector<double>{z[0]};
+    };
+    const DaeAlgFunc g = [&g_calls](double t, const std::vector<double>&,
+                                    const std::vector<double>& z) {
+        ++g_calls;
+        if (g_calls == 2) {
+            return std::vector<double>{};
+        }
+        return std::vector<double>{z[0] - std::cos(t)};
+    };
+    const auto result = ode_dae_index1(f, g, 0.0, {0.0}, {1.0}, 1.0, 4);
+    EXPECT_FALSE(result.converged);
+}

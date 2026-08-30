@@ -18421,3 +18421,59 @@ TEST(ReplCommandsTest, special_airy_ai_scalar_assign) {
     expect_ok(interp, "s = special_airy_ai(0)");
     EXPECT_NEAR(interp.state().scalars.at("s"), ms::airy_ai(0.0), 1e-8);
 }
+
+TEST(ReplCommandsTest, special_polygamma_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = special_polygamma(-1, 1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, special_pochhammer_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = special_pochhammer(2.5, -1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, special_falling_factorial_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = special_falling_factorial(5, -1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, chebyshev_t_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = chebyshev_t(-1, 0.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, hermite_h_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = hermite_h(-1, 0.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, chebyshev_v_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = chebyshev_v(-1, 0.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, polylog_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = polylog(-1, 0.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, debye_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = debye(-1, 1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, sph_bessel_j_negative_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = sph_bessel_j(-1, 1)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, bessel_j_negative_nu_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_j(-1, 1)", "expected non-negative integer nu");
+}
+
+TEST(ReplCommandsTest, bessel_zero_jnu_bad_n_scalar_assign) {
+    Interpreter interp;
+    expect_error_contains(interp, "s = bessel_zero_jnu(0, 0)",
+                          "expected non-negative integer nu and positive integer n");
+}
