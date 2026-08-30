@@ -1245,3 +1245,45 @@ TEST(ControlRiccati, SatisfiesContinuousARE) {
             residual[i][j] -= XBRBtx[i][j];
     EXPECT_NEAR(mat_max_abs(residual), 0.0, 1e-5);
 }
+
+TEST(ControlDiscretize, TransferFunctionEulerRoundTrip) {
+    const auto plant = tf({1.0}, {1.0, 1.0});
+    const double Ts = 0.05;
+    const auto back = d2c(c2d(plant, Ts, DiscretizationMethod::Euler), Ts,
+                          DiscretizationMethod::Euler);
+    EXPECT_NEAR(dcgain(back), dcgain(plant), 1e-3);
+}
+
+TEST(ControlStepInfo, CustomSettlingTolAndLengthMismatch) {
+    std::vector<double> t, y;
+    for (int i = 0; i < 200; ++i) {
+        t.push_back(0.05 * i);
+        y.push_back(1.0 - std::exp(-t.back()));
+    }
+    auto tight = step_info(t, y, 1.0, 2.0);
+    auto loose = step_info(t, y, 1.0, 10.0);
+    EXPECT_LT(loose.settling_time, tight.settling_time);
+
+    auto bad = step_info({0.0, 1.0}, {0.0}, 1.0);
+    EXPECT_TRUE(std::isnan(bad.rise_time));
+}
+
+TEST(ControlLyap, SingularSystemReturnsError) {
+    auto X = lyap({{0.0}}, {{1.0}});
+    EXPECT_FALSE(X.has_value());
+}
+
+TEST(ControlPID, PIDTuneDefaultBandwidth) {
+    auto plant = tf({1.0}, {1.0, 1.0});
+    auto gains = pidtune(plant);
+    EXPECT_GT(gains.Kp, 0.0);
+    EXPECT_GT(gains.Ki, 0.0);
+    EXPECT_GT(gains.Kd, 0.0);
+}
+
+TEST(ControlBode, DefaultFrequencyGrid) {
+    auto sys = tf({1.0}, {1.0, 1.0});
+    auto bd = bode(sys);
+    EXPECT_EQ(bd.w.size(), 200u);
+    EXPECT_EQ(bd.magnitude.size(), 200u);
+}

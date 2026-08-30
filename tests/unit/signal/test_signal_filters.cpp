@@ -1974,6 +1974,26 @@ TEST(SignalSosfiltScipyTest, single_section_via_filter_in_place_matches_sosfilt)
     }
 }
 
+TEST(SignalFilterDf2tTest, span_output_too_short_is_noop) {
+    const std::vector<double> b{1.0};
+    const std::vector<double> a{1.0};
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    std::vector<double> y(2, 99.0);
+    filter(b, a, std::span<const double>(x), std::span<double>(y));
+    EXPECT_NEAR(y[0], 99.0, 1e-15);
+    EXPECT_NEAR(y[1], 99.0, 1e-15);
+}
+
+TEST(SignalFilterInPlaceTest, empty_input_or_b_is_noop) {
+    std::vector<double> empty;
+    filter_in_place({1.0}, {1.0}, std::span<double>(empty));
+    EXPECT_TRUE(empty.empty());
+    std::vector<double> x{1.0, 2.0};
+    filter_in_place({}, {1.0}, std::span<double>(x));
+    EXPECT_NEAR(x[0], 1.0, 1e-15);
+    EXPECT_NEAR(x[1], 2.0, 1e-15);
+}
+
 // ---- cheby1 IIR design ----
 
 static double iir_dc_gain(const IirCoeffs& c) {

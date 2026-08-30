@@ -5561,3 +5561,11 @@ TEST(ReplCommandsTest, quantum_concurrence_noassign) {
                     "0");
     expect_error_contains(interp, "quantum_concurrence(no_such_matrix)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, quantum_tensor_product_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "I2 = quantum_identity_n(2)");
+    expect_ok(interp, "X = quantum_pauli_x()");
+    expect_contains(interp, "quantum_tensor_product(I2, X)", "op =");
+    expect_error_contains(interp, "quantum_tensor_product(missing, X)", "unknown matrix");
+}

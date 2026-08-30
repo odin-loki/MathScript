@@ -2170,3 +2170,48 @@ TEST(FinanceAnnuity, PositiveRateRoundTrip) {
     double pmt = pmt_annuity(rate, n, pv0, fv);
     EXPECT_NEAR(fv_annuity(rate, n, pmt, pv0), 0.0, 1e-8);
 }
+
+TEST(FinanceTVM, PresentValueAnnuity) {
+    EXPECT_NEAR(pv(0.1, 1, 110.0, 0.0), -100.0, 1e-10);
+    EXPECT_NEAR(pv(0.0, 5, 10.0, 50.0), -100.0, 1e-12);
+}
+
+TEST(FinanceTVM, CompoundQuarterly) {
+    EXPECT_NEAR(compound(100.0, 0.08, 1, 4), 100.0 * std::pow(1.02, 4.0), 1e-12);
+}
+
+TEST(FinanceHeston, InvalidParamsReturnNaN) {
+    EXPECT_TRUE(std::isnan(heston_call(100.0, 100.0, 1.0, 0.05, 0.04, 0.0, 0.04, 0.3, -0.5)));
+    EXPECT_TRUE(std::isnan(heston_put(-1.0, 100.0, 1.0, 0.05, 0.04, 2.0, 0.04, 0.3, -0.5)));
+}
+
+TEST(FinanceSabr, InvalidParamsReturnNaN) {
+    EXPECT_TRUE(std::isnan(sabr_call(100.0, 100.0, 1.0, 0.05, 0.2, 1.5, -0.3, 0.4)));
+    EXPECT_TRUE(std::isnan(sabr_put(100.0, 100.0, 1.0, 0.05, 0.2, 0.5, 2.0, 0.4)));
+}
+
+TEST(FinanceMerton, InvalidInputsDoNotConverge) {
+    MertonResult bad_v = merton_distance_to_default(0.0, 0.2, 100.0, 0.05, 1.0);
+    EXPECT_FALSE(bad_v.converged);
+    EXPECT_TRUE(std::isnan(bad_v.distance_to_default));
+    MertonResult bad_e = merton_implied_asset_params(0.0, 0.3, 100.0, 0.05, 1.0);
+    EXPECT_FALSE(bad_e.converged);
+}
+
+TEST(FinanceBS, ExpiredReturnsIntrinsic) {
+    EXPECT_NEAR(bs_call(110.0, 100.0, 0.0, 0.05, 0.2), 10.0, 1e-12);
+    EXPECT_NEAR(bs_put(90.0, 100.0, 0.0, 0.05, 0.2), 10.0, 1e-12);
+}
+
+TEST(FinanceRisk, EmptyReturnsAreZero) {
+    EXPECT_NEAR(var({}, 0.95), 0.0, 1e-15);
+    EXPECT_NEAR(cvar({}, 0.95), 0.0, 1e-15);
+    EXPECT_NEAR(historical_var({}, 0.95), 0.0, 1e-15);
+}
+
+TEST(FinanceOptions, ExpiredDigitalBarrierBlack76) {
+    EXPECT_NEAR(digital_option(110.0, 100.0, 0.0, 0.05, 0.2, true, 5.0), 5.0, 1e-12);
+    EXPECT_NEAR(black76(110.0, 100.0, 0.0, 0.05, 0.2, true), 10.0, 1e-12);
+    EXPECT_NEAR(barrier_option(110.0, 100.0, 90.0, 0.0, 0.05, 0.2, true, false, false),
+                10.0, 1e-12);
+}

@@ -6446,3 +6446,9 @@ TEST(ReplCommandsTest, control_dare_execute_no_assign) {
     expect_error_contains(interp, "control_dare([0.5], [1], [1, 0; 0, 1], [1])",
                           "same size as A");
 }
+
+TEST(ReplCommandsTest, control_place_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "control_place([0, 1; 0, 0], [0; 1], [-2; -3])", "K =");
+    expect_error_contains(interp, "control_place(missing, [0; 1], [-2; -3])", "unknown matrix");
+}

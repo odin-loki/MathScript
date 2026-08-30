@@ -20659,3 +20659,21 @@ TEST(ReplCommandsTest, eta_dirichlet_2_execute_noassign) {
     expect_ok(interp, "eta_dirichlet(2)");
 }
 
+TEST(ReplCommandsTest, heun_b_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "heun_b(0.1, 0.2, 0.3, 0.4, 0.2)");
+    expect_error_contains(interp, "heun_b(0.1, 0.2, 0.3, 0.4, missing)", "numeric");
+}
+
+TEST(ReplCommandsTest, heun_d_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "heun_d(0.1, 0.2, 0.3, 0.4, 0.2)");
+    expect_error_contains(interp, "heun_d(0.1, 0.2, 0.3, 0.4, missing)", "numeric");
+}
+
+TEST(ReplCommandsTest, heun_t_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "heun_t(0.1, 0.2, 0.3, 0.4, 0.2)");
+    expect_error_contains(interp, "heun_t(0.1, 0.2, 0.3, 0.4, missing)", "numeric");
+}
+

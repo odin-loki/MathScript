@@ -119,3 +119,37 @@ TEST(CfdIntegratedMass3D, ScalesWithCellVolume) {
     };
     EXPECT_NEAR(integrated_mass_3d(u, 0.5, 0.25, 0.2), 0.2, 1e-12);
 }
+
+TEST(CfdGrid3D, InvalidDomainOrResolutionReturnsEmpty) {
+    const auto too_few = grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 8, 8, 1);
+    EXPECT_EQ(too_few.nz, 0u);
+    EXPECT_TRUE(too_few.z.empty());
+    const auto inverted = grid3d(0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 4, 4, 4);
+    EXPECT_EQ(inverted.nx, 0u);
+}
+
+TEST(CfdInitialCondition3D, NonPositiveWidthReturnsZeros) {
+    const auto grid = grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 6, 6, 6);
+    const auto u = square_pulse_3d(grid, 0.5, 0.5, 0.5, 0.2, 0.2, 0.0, 2.0);
+    ASSERT_EQ(u.size(), grid.nz);
+    for (const auto& layer : u) {
+        for (const auto& row : layer) {
+            for (double ui : row) {
+                EXPECT_NEAR(ui, 0.0, 1e-15);
+            }
+        }
+    }
+}
+
+TEST(CfdIntegratedMass3D, EmptyOrNonPositiveSpacing) {
+    EXPECT_NEAR(integrated_mass_3d({}, 0.1, 0.1, 0.1), 0.0, 1e-15);
+    const std::vector<std::vector<std::vector<double>>> u = {{{1.0}}};
+    EXPECT_NEAR(integrated_mass_3d(u, 0.1, 0.1, 0.0), 0.0, 1e-15);
+}
+
+TEST(CfdRunAdvection3D, InvalidInputReturnsEmpty) {
+    const std::vector<std::vector<std::vector<double>>> u0 = {{{1.0, 1.0}, {1.0, 1.0}}};
+    const std::vector<double> v = {1.0};
+    const auto result = run_advection_3d(u0, v, v, v, 0.0, 0.1, 0.1, 0.1, 0.1);
+    EXPECT_TRUE(result.u.empty());
+}

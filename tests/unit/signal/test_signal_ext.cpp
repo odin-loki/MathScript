@@ -1875,3 +1875,24 @@ TEST(SignalExtTest, unwrap_already_continuous_is_identity) {
         EXPECT_NEAR(out[i], phase[i], 1e-15);
     }
 }
+
+TEST(SignalExtTest, unwrap_custom_discont_skips_small_jumps) {
+    const std::vector<double> phase = {0.0, 2.5};
+    const auto out = unwrap(phase, 10.0);
+    ASSERT_EQ(out.size(), 2u);
+    EXPECT_NEAR(out[0], 0.0, 1e-15);
+    EXPECT_NEAR(out[1], 2.5, 1e-15);
+}
+
+TEST(SignalExtTest, periodogram_explicit_nfft) {
+    const auto x = sinusoid(32, 1000.0, 50.0);
+    const auto result = periodogram(x, 1000.0, {}, 64);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->frequencies.empty());
+    EXPECT_EQ(result->frequencies.size(), result->power.size());
+}
+
+TEST(SignalExtTest, correlate_empty_returns_empty) {
+    EXPECT_TRUE(correlate({}, {1.0}).empty());
+    EXPECT_TRUE(correlate({1.0}, {}).empty());
+}

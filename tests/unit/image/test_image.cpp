@@ -1286,3 +1286,107 @@ TEST(ImageSlic, SuperpixelCountBoundedByPixels) {
         for (int c = 0; c < 4; ++c)
             EXPECT_GT(out.at(r, c, 0), 0.f);
 }
+
+TEST(ImageBasic, ConstAtAccess) {
+    Image img(2, 2, 1, 0.25f);
+    const Image& cref = img;
+    EXPECT_FLOAT_EQ(cref.at(0, 0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(cref.at(1, 1, 0), 0.25f);
+}
+
+TEST(ImageColor, HSV_GreenAndBlueMax) {
+    Image gmax(1, 1, 3);
+    gmax.at(0, 0, 0) = 0.2f;
+    gmax.at(0, 0, 1) = 0.8f;
+    gmax.at(0, 0, 2) = 0.4f;
+    auto hsv_g = rgb2hsv(gmax);
+    EXPECT_NEAR(hsv_g.at(0, 0, 0), 140.f / 360.f, 0.02f);
+    auto back_g = hsv2rgb(hsv_g);
+    EXPECT_NEAR(back_g.at(0, 0, 1), 0.8f, 0.02f);
+
+    Image bmax(1, 1, 3);
+    bmax.at(0, 0, 0) = 0.2f;
+    bmax.at(0, 0, 1) = 0.4f;
+    bmax.at(0, 0, 2) = 0.8f;
+    auto hsv_b = rgb2hsv(bmax);
+    EXPECT_NEAR(hsv_b.at(0, 0, 0), 220.f / 360.f, 0.02f);
+    auto back_b = hsv2rgb(hsv_b);
+    EXPECT_NEAR(back_b.at(0, 0, 2), 0.8f, 0.02f);
+}
+
+TEST(ImageColor, HSV2RGB_HueSectors) {
+    Image hsv(1, 4, 3, 0.f);
+    const float hues[] = {120.f / 360.f, 180.f / 360.f, 240.f / 360.f, 300.f / 360.f};
+    for (int c = 0; c < 4; ++c) {
+        hsv.at(0, c, 0) = hues[c];
+        hsv.at(0, c, 1) = 1.f;
+        hsv.at(0, c, 2) = 1.f;
+    }
+    auto rgb = hsv2rgb(hsv);
+    EXPECT_NEAR(rgb.at(0, 0, 1), 1.f, 0.02f);  // green
+    EXPECT_NEAR(rgb.at(0, 1, 1), 1.f, 0.02f);  // cyan G
+    EXPECT_NEAR(rgb.at(0, 1, 2), 1.f, 0.02f);  // cyan B
+    EXPECT_NEAR(rgb.at(0, 2, 2), 1.f, 0.02f);  // blue
+    EXPECT_NEAR(rgb.at(0, 3, 0), 1.f, 0.02f);  // hi=5 (300°) R
+}
+
+TEST(ImageGeom, ResizeEmptyOrNonPositive) {
+    Image empty;
+    auto z = imresize(empty, 2, 2);
+    EXPECT_TRUE(z.empty());
+    Image img(3, 3, 1, 0.5f);
+    EXPECT_TRUE(imresize(img, 0, 4).empty());
+    EXPECT_TRUE(imresize(img, 4, 0).empty());
+}
+
+TEST(ImageGeom, CropClampsBounds) {
+    Image img(4, 4, 1, 0.5f);
+    img.at(0, 0, 0) = 1.f;
+    auto crop = imcrop(img, -2, -2, 20, 20);
+    EXPECT_EQ(crop.rows, 4);
+    EXPECT_EQ(crop.cols, 4);
+    EXPECT_FLOAT_EQ(crop.at(0, 0, 0), 1.f);
+}
+
+TEST(ImageFilter, EmptyInputOrKernel) {
+    Image empty;
+    EXPECT_TRUE(imfilter(empty, {{1.f}}).empty());
+    Image img(3, 3, 1, 0.4f);
+    auto same = imfilter(img, {});
+    EXPECT_EQ(same.rows, 3);
+    EXPECT_FLOAT_EQ(same.at(1, 1, 0), 0.4f);
+    EXPECT_TRUE(imgaussfilt(empty, 1.0f).empty());
+    EXPECT_TRUE(bilateral(empty, 1.0f, 0.1f).empty());
+}
+
+TEST(ImageFilter, Medfilt2EmptyAndKsizeOne) {
+    Image empty;
+    EXPECT_TRUE(medfilt2(empty, 3).empty());
+    Image img(3, 3, 1, 0.f);
+    img.at(1, 1, 0) = 1.f;
+    auto copy = medfilt2(img, 1);
+    EXPECT_FLOAT_EQ(copy.at(1, 1, 0), 1.f);
+}
+
+TEST(HoughCircles, DegenerateRMinGreaterThanRMax) {
+    Image img(8, 8, 1, 1.f);
+    auto circles = hough_circles(img, 0.5, 10.0, 4.0);
+    EXPECT_TRUE(circles.empty());
+}
+
+TEST(ImageComponents, BilinearSampleClampsNegative) {
+    Image img(2, 2, 1, 0.f);
+    img.at(0, 0, 0) = 0.75f;
+    EXPECT_NEAR(bilinear_sample(img, -1.f, -1.f, 0), 0.75f, 1e-6f);
+}
+
+TEST(ImageComponents, EmptyHasZeroComponents) {
+    Image empty;
+    EXPECT_EQ(count_components(empty), 0);
+}
+
+TEST(ImageTransform, RadonEmptyTheta) {
+    Image img(4, 4, 1, 1.f);
+    auto sino = radon(img, {});
+    EXPECT_TRUE(sino.empty());
+}

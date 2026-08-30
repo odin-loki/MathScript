@@ -4001,3 +4001,88 @@ TEST(ReplCommandsTest, geo_dist_point_plane_noassign) {
     expect_error_contains(interp, "geo_dist_point_plane(0, 0, 1, 0, 0, 1, not_a_number)",
                          "geo_dist_point_plane");
 }
+
+TEST(ReplCommandsTest, geo_dist_point_line2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_dist_point_line2d(0, 0, 1, 1, -1)", "0.707");
+    expect_error_contains(interp, "geo_dist_point_line2d(0, 0, 1, 1, missing)",
+                         "geo_dist_point_line2d");
+}
+
+TEST(ReplCommandsTest, geo_dist3d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_dist3d(0, 0, 0, 3, 4, 12)", "13");
+    expect_error_contains(interp, "geo_dist3d(0, 0, 0, 3, 4, missing)", "geo_dist3d");
+}
+
+TEST(ReplCommandsTest, geo_triangle_area_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_triangle_area(0, 0, 4, 0, 0, 3)", "6");
+    expect_error_contains(interp, "geo_triangle_area(0, 0, 4, 0, 0, missing)",
+                         "geo_triangle_area");
+}
+
+TEST(ReplCommandsTest, geo_dist_point_seg2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_dist_point_seg2d(2, 3, 0, 0, 4, 0)", "3");
+    expect_error_contains(interp, "geo_dist_point_seg2d(2, 3, 0, 0, 4, missing)",
+                         "geo_dist_point_seg2d");
+}
+
+TEST(ReplCommandsTest, geo_overlap_circles_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_overlap_circles(0, 0, 1, 0, 0, 1)", "1");
+    expect_contains(interp, "geo_overlap_circles(0, 0, 1, 3, 0, 1)", "0");
+    expect_error_contains(interp, "geo_overlap_circles(0, 0, 1, 3, 0, missing)",
+                         "geo_overlap_circles");
+}
+
+TEST(ReplCommandsTest, geo_point_in_aabb_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "geo_point_in_aabb(1, 1, 0, 0, 2, 2)", "1");
+    expect_error_contains(interp, "geo_point_in_aabb(1, 1, 0, 0, 2, missing)",
+                         "geo_point_in_aabb");
+}
+
+TEST(ReplCommandsTest, geo_poly_union_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 0; 2, 0; 2, 2; 0, 2]");
+    expect_ok(interp, "B = [1, 1; 3, 1; 3, 3; 1, 3]");
+    expect_contains(interp, "geo_poly_union(A, B)", "poly =");
+    expect_ok(interp, "bad = [0, 0, 0; 1, 0, 0]");
+    expect_error_contains(interp, "geo_poly_union(bad, A)", "Nx2");
+}
+
+TEST(ReplCommandsTest, geo_poly_intersect_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 0; 2, 0; 2, 2; 0, 2]");
+    expect_ok(interp, "B = [1, 1; 3, 1; 3, 3; 1, 3]");
+    expect_contains(interp, "geo_poly_intersect(A, B)", "poly =");
+    expect_error_contains(interp, "geo_poly_intersect(missing, A)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_poly_diff_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 0; 2, 0; 2, 2; 0, 2]");
+    expect_ok(interp, "B = [1, 1; 3, 1; 3, 3; 1, 3]");
+    expect_contains(interp, "geo_poly_diff(A, B)", "poly =");
+    expect_error_contains(interp, "geo_poly_diff(missing, A)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_minkowski_sum_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 0; 1, 0; 1, 1; 0, 1]");
+    expect_ok(interp, "B = [0, 0; 1, 0; 1, 1; 0, 1]");
+    expect_contains(interp, "geo_minkowski_sum(A, B)", "sum =");
+    expect_ok(interp, "bad = [0; 1; 2]");
+    expect_error_contains(interp, "geo_minkowski_sum(bad, A)", "Nx2");
+}
+
+TEST(ReplCommandsTest, geo_clip_polygon_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "subj = [0, 0; 2, 0; 2, 2; 0, 2]");
+    expect_ok(interp, "win = [0.5, 0.5; 1.5, 0.5; 1.5, 1.5; 0.5, 1.5]");
+    expect_contains(interp, "geo_clip_polygon(subj, win)", "clipped =");
+    expect_ok(interp, "bad = [0, 0, 0; 1, 0, 0]");
+    expect_error_contains(interp, "geo_clip_polygon(bad, win)", "Nx2");
+}

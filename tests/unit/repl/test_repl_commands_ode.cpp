@@ -1928,3 +1928,113 @@ TEST(ReplCommandsTest, trapezoidal_pagerank_33) {
     expect_ok(interp, "pr = graph_pagerank(A)");
     EXPECT_EQ(interp.state().matrices.at("pr").rows(), 5u);
 }
+
+TEST(ReplCommandsTest, ode_euler_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_euler(\"y\", 0, 1, 1, 5)", "traj =");
+    expect_error_contains(interp, "ode_euler(\"y +\", 0, 1, 1, 5)", "ode_euler");
+}
+
+TEST(ReplCommandsTest, ode_rk4_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_rk4(\"y\", 0, 1, 1, 5)", "traj =");
+    expect_error_contains(interp, "ode_rk4(\"y +\", 0, 1, 1, 5)", "ode_rk4");
+}
+
+TEST(ReplCommandsTest, ode_rk2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_rk2(\"y\", 0, 1, 1, 200)", "traj =");
+    expect_error_contains(interp, "ode_rk2(\"y +\", 0, 1, 1, 200)", "ode_rk2");
+}
+
+TEST(ReplCommandsTest, ode_midpoint_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_midpoint(\"y\", 0, 1, 1, 5)", "traj =");
+    expect_error_contains(interp, "ode_midpoint(\"y +\", 0, 1, 1, 5)", "ode_midpoint");
+}
+
+TEST(ReplCommandsTest, ode_backward_euler_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_backward_euler(\"y\", 0, 1, 1, 5)", "traj =");
+    expect_error_contains(interp, "ode_backward_euler(\"y +\", 0, 1, 1, 5)",
+                          "ode_backward_euler");
+}
+
+TEST(ReplCommandsTest, ode_bdf2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_bdf2(\"y\", 0, 1, 1, 5)", "traj =");
+    expect_error_contains(interp, "ode_bdf2(\"y +\", 0, 1, 1, 5)", "ode_bdf2");
+}
+
+TEST(ReplCommandsTest, ode_trapezoidal_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_trapezoidal(\"-y\", 0, 1, 1, 200)", "traj =");
+    expect_error_contains(interp, "ode_trapezoidal(\"sin(\", 0, 1, 1, 200)", "ode_trapezoidal");
+}
+
+TEST(ReplCommandsTest, ode_rosenbrock23_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_rosenbrock23(\"-10*y\", 0, 1, 1, 200)", "traj =");
+    expect_error_contains(interp, "ode_rosenbrock23(\"bad(@)\", 0, 1, 1, 100)",
+                          "ode_rosenbrock23");
+}
+
+TEST(ReplCommandsTest, ode_adams_bashforth2_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_adams_bashforth2(\"-y\", 0, 1, 1, 10)", "traj =");
+    expect_error_contains(interp, "ode_adams_bashforth2(\"y +\", 0, 1, 1, 10)",
+                          "ode_adams_bashforth2");
+}
+
+TEST(ReplCommandsTest, ode_rk45_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9)", "traj =");
+    expect_error_contains(interp, "ode_rk45(\"y +\", 0, 1, 1, 1e-6, 1e-9)", "ode_rk45");
+}
+
+TEST(ReplCommandsTest, ode_cashkarp_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_cashkarp(\"y\", 0, 1, 1, 1e-6, 1e-9)", "traj =");
+    expect_error_contains(interp, "ode_cashkarp(\"y +\", 0, 1, 1, 1e-6, 1e-9)", "ode_cashkarp");
+}
+
+TEST(ReplCommandsTest, ode_rk23_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_rk23(\"y\", 0, 1, 1, 1e-4, 1e-7)", "traj =");
+    expect_error_contains(interp, "ode_rk23(\"y +\", 0, 1, 1, 1e-4, 1e-7)", "ode_rk23");
+}
+
+TEST(ReplCommandsTest, ode_exponential_euler_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_exponential_euler(\"0\", -5, 0, 1, 1, 200)", "traj =");
+    expect_error_contains(interp, "ode_exponential_euler(\"sin(\", -5, 0, 1, 1, 200)",
+                          "ode_exponential_euler");
+}
+
+TEST(ReplCommandsTest, ode_verlet_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)", "traj =");
+    expect_error_contains(interp, "ode_verlet(\"sin(\", 0, 0, 0, 1, 100)", "ode_verlet");
+}
+
+TEST(ReplCommandsTest, ode_bvp_shooting_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_bvp_shooting(\"-y\", 0, 0, 1.570796, 1, 400)", "traj =");
+    expect_error_contains(interp, "ode_bvp_shooting(\"sin(\", 0, 0, 1.570796, 1, 400)",
+                          "ode_bvp_shooting");
+}
+
+TEST(ReplCommandsTest, ode_dde_fixed_step_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_dde_fixed_step(\"-y + ydelay\", \"1\", 0, 2, 0.5, 40)",
+                    "traj =");
+    expect_error_contains(interp, "ode_dde_fixed_step(\"-y + ydelay\", \"1\", 0, 2, 0.5, 1.5)",
+                          "non-negative integer steps");
+}
+
+TEST(ReplCommandsTest, ode_event_detect_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "ode_event_detect(\"1\", \"y\", 0, -5, 10, 100)", "traj =");
+    expect_error_contains(interp, "ode_event_detect(\"1\", \"y\", 0, -5, 10, 1.5)",
+                          "non-negative integer steps");
+}

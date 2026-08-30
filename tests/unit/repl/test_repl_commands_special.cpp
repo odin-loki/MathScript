@@ -17565,3 +17565,57 @@ TEST(ReplCommandsTest, zeta_noassign) {
     Interpreter interp;
     expect_ok(interp, "zeta(2)");
 }
+
+TEST(ReplCommandsTest, sph_harm_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "sph_harm(1, 1, 0.5, 1)", "Y =");
+    expect_error_contains(interp, "sph_harm(1.5, 1, 0.5, 1)", "integer l and m");
+}
+
+TEST(ReplCommandsTest, hypergeo_2f1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hypergeo_2f1(1, 1, 2, 0.5)");
+    expect_error_contains(interp, "hypergeo_2f1(1, b, 2, 0.5)", "numeric");
+}
+
+TEST(ReplCommandsTest, jacobi_p_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_p(2, 0.5, 0.5, 0.3)");
+    expect_error_contains(interp, "jacobi_p(1, a, b, 0.3)", "numeric");
+}
+
+TEST(ReplCommandsTest, spheroidal_s1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "spheroidal_s1(1, 0, 0.1, 0.5)");
+    expect_error_contains(interp, "spheroidal_s1(1, 0, 0.1, missing)", "spheroidal_s1");
+}
+
+TEST(ReplCommandsTest, spheroidal_s2_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "spheroidal_s2(1, 0, 0.1, 0.5)");
+    expect_error_contains(interp, "spheroidal_s2(1, 0, 0.1, missing)", "spheroidal_s2");
+}
+
+TEST(ReplCommandsTest, painleve2_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "painleve2(0.5, 0.0, -0.5, 0.0)");
+    expect_error_contains(interp, "painleve2(0.5, 0.0, -0.5, missing)", "painleve2");
+}
+
+TEST(ReplCommandsTest, painleve3_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "painleve3(0.5, 0.5, -0.1, 0.5, 0.3)");
+    expect_error_contains(interp, "painleve3(0.5, 0.5, -0.1, 0.5, missing)", "painleve3");
+}
+
+TEST(ReplCommandsTest, painleve4_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "painleve4(0.5, 0.8, -0.05, 0.2, 0.4)");
+    expect_error_contains(interp, "painleve4(0.5, 0.8, -0.05, 0.2, missing)", "painleve4");
+}
+
+TEST(ReplCommandsTest, heun_g_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.0)");
+    expect_error_contains(interp, "heun_g(a, 1, 2, 3, 4, 5, 6)", "heun_g");
+}

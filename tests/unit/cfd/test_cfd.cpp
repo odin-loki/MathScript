@@ -186,3 +186,46 @@ TEST(CfdIntegratedMass, ScalesWithDx) {
     EXPECT_NEAR(integrated_mass(u, 0.5), 3.0, 1e-12);
     EXPECT_NEAR(integrated_mass(u, 2.0), 12.0, 1e-12);
 }
+
+TEST(CfdGrid1D, TooFewNodesReturnsEmpty) {
+    const auto grid = grid1d(0.0, 1.0, 1);
+    EXPECT_EQ(grid.n, 0u);
+    EXPECT_TRUE(grid.x.empty());
+}
+
+TEST(CfdInitialCondition, NonPositiveWidthReturnsZeros) {
+    const auto grid = grid1d(0.0, 1.0, 10);
+    const auto u = square_pulse(grid, 0.5, 0.0, 3.0);
+    ASSERT_EQ(u.size(), grid.n);
+    for (double ui : u) {
+        EXPECT_NEAR(ui, 0.0, 1e-15);
+    }
+}
+
+TEST(CfdVelocityField, ZeroLength) {
+    const auto v = constant_velocity(0, 1.5);
+    EXPECT_TRUE(v.empty());
+}
+
+TEST(CfdIntegratedMass, EmptyOrNonPositiveDx) {
+    const std::vector<double> empty;
+    const std::vector<double> two{1.0, 2.0};
+    EXPECT_NEAR(integrated_mass(empty, 0.1), 0.0, 1e-15);
+    EXPECT_NEAR(integrated_mass(two, 0.0), 0.0, 1e-15);
+}
+
+TEST(CfdRunAdvection, NonPositiveHorizonReturnsEmpty) {
+    const std::vector<double> u0 = {1.0, 0.0};
+    const std::vector<double> v = {1.0};
+    const auto result = run_advection(u0, v, 0.0, 0.1, 0.1);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(CfdRunAdvection, LastStepClampedToHorizon) {
+    const auto grid = grid1d(0.0, 1.0, 20);
+    const auto u0 = square_pulse(grid, 0.3, 0.2, 1.0);
+    const auto v = constant_velocity(grid.n, 0.5);
+    const auto result = run_advection(u0, v, 0.25, 0.1, grid.dx);
+    ASSERT_FALSE(result.u.empty());
+    EXPECT_NEAR(result.t.back(), 0.25, 1e-12);
+}

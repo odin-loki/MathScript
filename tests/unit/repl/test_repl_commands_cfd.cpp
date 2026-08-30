@@ -3307,3 +3307,10 @@ TEST(ReplCommandsTest, cfd_grid2d_square_pulse_2d_31) {
     expect_ok(interp, "u0 = cfd_square_pulse_2d(g2, 0.5, 0.5, 0.4, 0.4)");
     ASSERT_GT(interp.state().matrices.count("u0"), 0u);
 }
+
+TEST(ReplCommandsTest, cfd_advection2d_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "cfd_advection2d(8, 8, 1, 0, 0.1, 0.01)", "u =");
+    expect_error_contains(interp, "cfd_advection2d(1.5, 8, 1, 0, 0.1, 0.01)",
+                          "non-negative integer nx and ny");
+}

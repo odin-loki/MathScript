@@ -86,3 +86,49 @@ TEST(CfdIntegratedMass2D, ScalesWithCellArea) {
     };
     EXPECT_NEAR(integrated_mass_2d(u, 0.5, 0.25), 0.5, 1e-12);
 }
+
+TEST(CfdGrid2D, InvalidDomainOrResolutionReturnsEmpty) {
+    const auto too_few = grid2d(0.0, 1.0, 0.0, 1.0, 1, 10);
+    EXPECT_EQ(too_few.nx, 0u);
+    EXPECT_TRUE(too_few.x.empty());
+    const auto inverted = grid2d(1.0, 0.0, 0.0, 1.0, 8, 8);
+    EXPECT_EQ(inverted.ny, 0u);
+}
+
+TEST(CfdInitialCondition2D, NonPositiveWidthReturnsZeros) {
+    const auto grid = grid2d(0.0, 1.0, 0.0, 1.0, 8, 8);
+    const auto u = square_pulse_2d(grid, 0.5, 0.5, 0.0, 0.2, 2.0);
+    ASSERT_EQ(u.size(), grid.ny);
+    for (const auto& row : u) {
+        for (double ui : row) {
+            EXPECT_NEAR(ui, 0.0, 1e-15);
+        }
+    }
+}
+
+TEST(CfdIntegratedMass2D, EmptyOrNonPositiveSpacing) {
+    EXPECT_NEAR(integrated_mass_2d({}, 0.1, 0.1), 0.0, 1e-15);
+    const std::vector<std::vector<double>> u = {{1.0, 1.0}, {1.0, 1.0}};
+    EXPECT_NEAR(integrated_mass_2d(u, 0.0, 0.1), 0.0, 1e-15);
+}
+
+TEST(CfdRunAdvection2D, InvalidInputReturnsEmpty) {
+    const std::vector<std::vector<double>> u0 = {{1.0, 1.0}, {1.0, 1.0}};
+    const std::vector<double> v = {1.0};
+    const auto result = run_advection_2d(u0, v, v, 0.0, 0.1, 0.1, 0.1);
+    EXPECT_TRUE(result.u.empty());
+}
+
+TEST(CfdUpwindFvm2D, ZeroFluxAccepted) {
+    const std::vector<std::vector<double>> u0 = {
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},
+    };
+    const std::vector<double> vx = {0.4};
+    const std::vector<double> vy = {0.0};
+    const auto u1 = upwind_fvm_advection_2d(
+        u0, vx, vy, 0.05, 0.2, 0.2, BoundaryCondition::ZeroFlux, BoundaryCondition::ZeroFlux);
+    ASSERT_EQ(u1.size(), u0.size());
+    EXPECT_NEAR(integrated_mass_2d(u1, 0.2, 0.2), integrated_mass_2d(u0, 0.2, 0.2), 1e-12);
+}

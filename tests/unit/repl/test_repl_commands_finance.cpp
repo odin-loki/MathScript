@@ -3393,3 +3393,51 @@ TEST(ReplCommandsTest, finance_historical_cvar_noassign) {
     expect_error_contains(interp, "finance_historical_cvar(no_such_matrix, 0.95)",
                           "unknown matrix");
 }
+
+TEST(ReplCommandsTest, finance_bachelier_put_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bachelier_put(100, 100, 1.5, 0.04, 0.25)", "0.115");
+    expect_error_contains(interp, "finance_bachelier_put(100, 100, 1.5, 0.04, missing)",
+                          "finance_bachelier_put");
+}
+
+TEST(ReplCommandsTest, finance_vasicek_bond_price_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_vasicek_bond_price(0.05, 0.5, 0.05, 0.02, 1.0)", "0.951");
+    expect_error_contains(interp, "finance_vasicek_bond_price(0.05, 0.5, 0.05, 0.02, missing)",
+                          "finance_vasicek_bond_price");
+}
+
+TEST(ReplCommandsTest, finance_cir_bond_price_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_cir_bond_price(0.05, 0.5, 0.05, 0.05, 1.0)", "0.951");
+    expect_error_contains(interp, "finance_cir_bond_price(0.05, 0.5, 0.05, 0.05, missing)",
+                          "finance_cir_bond_price");
+}
+
+TEST(ReplCommandsTest, finance_bs_put_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bs_put(100, 100, 1, 0.05, 0.2)", "5.57");
+    expect_error_contains(interp, "finance_bs_put(100, 100, 1, 0.05, missing)", "finance_bs_put");
+}
+
+TEST(ReplCommandsTest, finance_bs_gamma_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bs_gamma(100, 100, 1, 0.05, 0.2)", "0.018762");
+    expect_error_contains(interp, "finance_bs_gamma(100, 100, 1, 0.05, missing)",
+                          "finance_bs_gamma");
+}
+
+TEST(ReplCommandsTest, finance_bs_vega_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bs_vega(100, 100, 1, 0.05, 0.2)", "37.524");
+    expect_error_contains(interp, "finance_bs_vega(100, 100, 1, 0.05, missing)",
+                          "finance_bs_vega");
+}
+
+TEST(ReplCommandsTest, finance_bachelier_call_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "finance_bachelier_call(100, 100, 1.5, 0.04, 0.25)", "0.115");
+    expect_error_contains(interp, "finance_bachelier_call(100, 100, 1.5, 0.04, missing)",
+                          "finance_bachelier_call");
+}

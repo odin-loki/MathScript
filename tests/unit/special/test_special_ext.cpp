@@ -164,3 +164,29 @@ TEST(SpecialExtTest, debye_domain_errors) {
     EXPECT_TRUE(std::isnan(debye(1, 0.0)));
     EXPECT_TRUE(std::isnan(debye(2, -0.5)));
 }
+
+TEST(SpecialExtTest, erfinv_erfcinv_domain) {
+    EXPECT_TRUE(std::isnan(erfinv(1.5)));
+    EXPECT_TRUE(std::isnan(erfinv(-1.5)));
+    EXPECT_TRUE(std::isinf(erfinv(1.0)));
+    EXPECT_TRUE(std::isinf(erfinv(-1.0)));
+    EXPECT_TRUE(std::isnan(erfcinv(0.0)));
+    EXPECT_TRUE(std::isnan(erfcinv(2.0)));
+}
+
+TEST(SpecialExtTest, factorial_and_polygamma_domain) {
+    EXPECT_TRUE(std::isnan(pochhammer(2.0, -1)));
+    EXPECT_TRUE(std::isnan(falling_factorial(5.0, -1)));
+    EXPECT_TRUE(std::isnan(digamma(0.0)));
+    EXPECT_TRUE(std::isnan(polygamma(-1, 2.0)));
+}
+
+TEST(SpecialExtTest, gamma_inc_upper_nonpositive_x) {
+    EXPECT_NEAR(gamma_inc_reg_upper(2.0, 0.0), 1.0, 1e-15);
+    EXPECT_NEAR(gamma_inc_reg_upper(2.0, -1.0), 1.0, 1e-15);
+}
+
+TEST(SpecialExtTest, bernoulli_euler_out_of_table) {
+    EXPECT_NEAR(bernoulli_number(-1), 0.0, 1e-15);
+    EXPECT_NEAR(euler_number(-1), 0.0, 1e-15);
+}
