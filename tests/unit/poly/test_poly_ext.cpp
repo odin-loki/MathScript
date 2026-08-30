@@ -1322,3 +1322,22 @@ TEST(PolyPartialFractions, TripleComplexPairOrUnknownsMismatch) {
         EXPECT_TRUE(any_quad);
     }
 }
+
+TEST(PolyFit, EmptyAndCollinearHitsSingularDiag) {
+    const std::vector<double> empty_xs;
+    const std::vector<double> empty_ys;
+    const auto c_empty = poly_fit(empty_xs, empty_ys, 2);
+    ASSERT_EQ(c_empty.size(), 3u);
+    EXPECT_NEAR(c_empty[0], 0.0, 1e-15);
+    EXPECT_NEAR(c_empty[1], 0.0, 1e-15);
+    EXPECT_NEAR(c_empty[2], 0.0, 1e-15);
+
+    // Repeated x: Vandermonde is rank-1 so Gaussian skip/zero-diag back-sub.
+    const std::vector<double> xs{1.0, 1.0, 1.0};
+    const std::vector<double> ys{2.0, 3.0, 4.0};
+    const auto c = poly_fit(xs, ys, 2);
+    ASSERT_EQ(c.size(), 3u);
+    for (double v : c) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}

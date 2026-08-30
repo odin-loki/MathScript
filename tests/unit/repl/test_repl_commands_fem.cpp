@@ -4750,3 +4750,9 @@ TEST(ReplCommandsTest, fem_poisson3d_senary_noassign) {
     expect_error_contains(interp, "fem_poisson3d(1.5, 2, 2, 0, 0, 0)",
                           "expected non-negative integer nx, ny, and nz");
 }
+
+TEST(ReplCommandsTest, fem_poisson3d_senary_parse_fail_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "fem_poisson3d(missing, 2, 2, 0, 0, 0)",
+                          "expected fem_poisson3d(nx, ny, nz)");
+}

@@ -405,3 +405,19 @@ TEST(SpecialExtTest, bessel_i_negative_x_parity) {
     EXPECT_NEAR(bessel_i(0, -0.5), bessel_i(0, 0.5), 1e-12);
     EXPECT_NEAR(bessel_i(1, -0.5), -bessel_i(1, 0.5), 1e-12);
 }
+
+TEST(SpecialExtTest, bessel_zero_jnu_first_positive) {
+    EXPECT_NEAR(bessel_zero_jnu(0, 1), 2.4048255576957724, 1e-4);
+    EXPECT_NEAR(bessel_j(0, bessel_zero_jnu(0, 1)), 0.0, 1e-8);
+    const double yz = bessel_zero_ynu(0, 1);
+    if (std::isfinite(yz)) {
+        EXPECT_GT(yz, 0.0);
+        EXPECT_NEAR(yz, 0.893576974377206, 1e-3);
+    }
+}
+
+TEST(SpecialExtTest, bessel_j_origin_and_nu1) {
+    EXPECT_NEAR(bessel_j(0, 0.0), 1.0, 1e-15);
+    EXPECT_NEAR(bessel_j(1, 0.0), 0.0, 1e-15);
+    EXPECT_NEAR(bessel_j(2, 0.5), 0.03060402345867667, 1e-6);
+}

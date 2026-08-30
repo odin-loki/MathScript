@@ -848,3 +848,57 @@ TEST(StatsGapsTest, BootstrapCI_InvertedLevelAndKdeFar) {
     ASSERT_EQ(dens.size(), 1u);
     EXPECT_NEAR(dens[0], 0.0, 1e-12);
 }
+
+TEST(StatsGapsTest, MannWhitneyLevene_EmptyN1AndMismatch) {
+    const std::vector<double> empty;
+    const std::vector<double> one_a = {1.0};
+    const std::vector<double> one_b = {2.0};
+    const auto mw_empty = mann_whitney_u(empty, one_b);
+    EXPECT_NEAR(mw_empty.u_stat, 0.0, 1e-12);
+    EXPECT_NEAR(mw_empty.p_value, 0.0, 1e-12);
+    const auto mw_empty_b = mann_whitney_u(one_a, empty);
+    EXPECT_NEAR(mw_empty_b.u_stat, 0.0, 1e-12);
+
+    const auto mw_n1 = mann_whitney_u(one_a, one_b);
+    EXPECT_NEAR(mw_n1.u_stat, 0.0, 1e-12);
+    EXPECT_NEAR(mw_n1.p_value, 1.0, 1e-12);
+
+    const auto lev_empty = levene_test({});
+    EXPECT_NEAR(lev_empty.f_stat, 0.0, 1e-12);
+    EXPECT_EQ(lev_empty.df_between, 0);
+    const auto lev_n1 = levene_test({{1.0}, {2.0}});
+    EXPECT_NEAR(lev_n1.f_stat, 0.0, 1e-12);
+    EXPECT_EQ(lev_n1.df_between, 0);
+    EXPECT_EQ(lev_n1.df_within, 0);
+}
+
+TEST(StatsGapsTest, PacfMultipleRegression_N1MismatchAndSingular) {
+    const std::vector<double> one = {4.0};
+    const auto pc = pacf(one, 4);
+    ASSERT_EQ(pc.size(), 5u);
+    EXPECT_NEAR(pc[0], 1.0, 1e-12);
+    EXPECT_NEAR(pc[1], 0.0, 1e-12);
+    EXPECT_NEAR(pc[4], 0.0, 1e-12);
+
+    const std::vector<std::vector<double>> n1 = {{5.0}};
+    const std::vector<double> y1 = {10.0};
+    const auto b1 = multiple_regression(n1, y1);
+    ASSERT_EQ(b1.size(), 1u);
+    EXPECT_NEAR(b1[0], 2.0, 1e-12);
+
+    const std::vector<std::vector<double>> under = {{1.0, 2.0}};
+    const auto b_under = multiple_regression(under, std::vector<double>{3.0});
+    ASSERT_EQ(b_under.size(), 2u);
+    for (double v : b_under) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+
+    const std::vector<std::vector<double>> singular = {
+        {1.0, 2.0}, {2.0, 4.0}, {3.0, 6.0}};
+    const std::vector<double> ys = {1.0, 2.0, 3.0};
+    const auto b_sing = multiple_regression(singular, ys);
+    ASSERT_EQ(b_sing.size(), 2u);
+    for (double v : b_sing) {
+        EXPECT_TRUE(std::isfinite(v));
+    }
+}

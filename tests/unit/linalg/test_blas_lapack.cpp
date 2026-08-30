@@ -3020,3 +3020,61 @@ TEST(LapackDormbrTest, dormbr_p_right_square_vs_wide_acols) {
         EXPECT_FALSE(std::isnan(C(0, 0)));
     }
 }
+
+TEST(BlasDgemmTest, nn_zero_b_column_skips_axpy) {
+    // Stay on dgemm_nn_rank1 (AVX512 needs m>=4, n>=8, k>=4). Column 1 of B is 0.
+    constexpr int m = 2;
+    constexpr int n = 3;
+    constexpr int k = 2;
+    const std::vector<double> A{1.0, 3.0, 2.0, 4.0};
+    const std::vector<double> B{1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    std::vector<double> C{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+    cpu::blas::dgemm('N', 'N', m, n, k, 1.0, A.data(), m, B.data(), k, 3.0, C.data(), m);
+    EXPECT_NEAR(C[0], 4.0, 1e-12);
+    EXPECT_NEAR(C[1], 9.0, 1e-12);
+    EXPECT_NEAR(C[2], 9.0, 1e-12);
+    EXPECT_NEAR(C[3], 12.0, 1e-12);
+    EXPECT_NEAR(C[4], 17.0, 1e-12);
+    EXPECT_NEAR(C[5], 22.0, 1e-12);
+}
+
+TEST(LapackDorgbrTest, dorgbr_p_right_tall_vs_wide_acols) {
+    {
+        const int m = 5;
+        const int n = 3;
+        ColMatrix<double> A(static_cast<std::size_t>(m), static_cast<std::size_t>(n));
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    0.07 * static_cast<double>(i + 1) + 0.11 * static_cast<double>(j + 1);
+            }
+        }
+        std::vector<double> D(static_cast<std::size_t>(n));
+        std::vector<double> E(static_cast<std::size_t>(n - 1));
+        std::vector<double> tauq(static_cast<std::size_t>(n));
+        std::vector<double> taup(static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgebrd(m, n, A.data(), m, D.data(), E.data(), tauq.data(), taup.data()), 0);
+        ColMatrix<double> P(static_cast<std::size_t>(n), static_cast<std::size_t>(n));
+        cpu::lapack::dorgbr('P', n, n, n, A.data(), m, taup.data(), P.data(), n);
+        expect_orthogonal_columns(P);
+    }
+    {
+        const int m = 3;
+        const int n = 5;
+        ColMatrix<double> A(static_cast<std::size_t>(m), static_cast<std::size_t>(n));
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    0.06 * static_cast<double>(i + 2) - 0.04 * static_cast<double>(j);
+            }
+        }
+        std::vector<double> D(static_cast<std::size_t>(n));
+        std::vector<double> E(static_cast<std::size_t>(n - 1));
+        std::vector<double> tauq(static_cast<std::size_t>(n));
+        std::vector<double> taup(static_cast<std::size_t>(n));
+        ASSERT_EQ(cpu::lapack::dgebrd(m, n, A.data(), m, D.data(), E.data(), tauq.data(), taup.data()), 0);
+        ColMatrix<double> C(m, n, 0.4);
+        ASSERT_EQ(cpu::lapack::dormbr('P', 'R', 'N', m, n, m, A.data(), m, taup.data(), C.data(), m), 0);
+        EXPECT_FALSE(std::isnan(C(0, 0)));
+    }
+}

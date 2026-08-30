@@ -5520,3 +5520,13 @@ TEST(ReplCommandsTest, graph_dijkstra_dist_noassign) {
     expect_error_contains(interp, "graph_dijkstra_dist(A, missing, 1)",
                          "expected graph_dijkstra_dist(A, source, target)");
 }
+
+TEST(ReplCommandsTest, graph_dfs_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
+    expect_contains(interp, "graph_dfs(A, 0)", "order =");
+    expect_error_contains(interp, "graph_dfs(A, 1.5)",
+                          "non-negative integer source");
+    expect_error_contains(interp, "graph_dfs(A, -1)",
+                          "non-negative integer source");
+}

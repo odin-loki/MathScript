@@ -420,3 +420,37 @@ TEST(CfdUpwindFvm, TwoDThreeDCellWiseLastFace) {
     EXPECT_NEAR(integrated_mass_3d(s3, 0.2, 0.2, 0.2), integrated_mass_3d(u3, 0.2, 0.2, 0.2), 1e-12);
     EXPECT_TRUE(upwind_fvm_advection_3d({}, vx3, v03, v03, 0.01, 0.2, 0.2, 0.2).empty());
 }
+
+TEST(CfdUpwindFvm, ScalarVelocityVsLengthMismatch) {
+    const std::vector<double> u{0.0, 1.0, 0.0, 0.0};
+    const std::vector<double> scalar_v{0.5};
+    const auto stepped = upwind_fvm_advection(u, scalar_v, 0.05, 0.2, BoundaryCondition::Periodic);
+    ASSERT_EQ(stepped.size(), u.size());
+    EXPECT_NEAR(integrated_mass(stepped, 0.2), integrated_mass(u, 0.2), 1e-12);
+
+    const std::vector<double> mismatch{0.1, 0.2, 0.3};
+    EXPECT_TRUE(upwind_fvm_advection(u, mismatch, 0.05, 0.2).empty());
+
+    const std::vector<std::vector<double>> u2 = {
+        {1.0, 0.0},
+        {0.0, 1.0},
+    };
+    const std::vector<double> vx_s{0.3};
+    const std::vector<double> vy_s{0.0};
+    const auto s2 = upwind_fvm_advection_2d(
+        u2, vx_s, vy_s, 0.05, 0.2, 0.2, BoundaryCondition::Periodic, BoundaryCondition::Periodic);
+    ASSERT_EQ(s2.size(), 2u);
+    EXPECT_NEAR(integrated_mass_2d(s2, 0.2, 0.2), integrated_mass_2d(u2, 0.2, 0.2), 1e-12);
+    EXPECT_TRUE(upwind_fvm_advection_2d(u2, mismatch, vy_s, 0.05, 0.2, 0.2).empty());
+
+    std::vector<std::vector<std::vector<double>>> u3(
+        2, std::vector<std::vector<double>>(2, std::vector<double>(2, 0.0)));
+    u3[0][0][0] = 1.0;
+    const std::vector<double> v0{0.0};
+    const auto s3 = upwind_fvm_advection_3d(
+        u3, vx_s, v0, v0, 0.05, 0.2, 0.2, 0.2,
+        BoundaryCondition::Periodic, BoundaryCondition::Periodic, BoundaryCondition::Periodic);
+    ASSERT_EQ(s3.size(), 2u);
+    EXPECT_NEAR(integrated_mass_3d(s3, 0.2, 0.2, 0.2), integrated_mass_3d(u3, 0.2, 0.2, 0.2), 1e-12);
+    EXPECT_TRUE(upwind_fvm_advection_3d(u3, mismatch, v0, v0, 0.05, 0.2, 0.2, 0.2).empty());
+}

@@ -475,4 +475,50 @@ TEST(DistMatrixAdv, ScatterGather_FloatPrecision_Values) {
     finalize(ctx);
 }
 
+TEST(DistMatrixAdv, combine_gather_inconsistent_shards) {
+    DistMatrix<double> a;
+    a.global_rows = 4;
+    a.global_cols = 2;
+    a.distribution = Distribution::Block;
+    a.owner_rank = 0;
+    a.local = make_matrix(2, 2);
+
+    DistMatrix<double> rows_mismatch = a;
+    rows_mismatch.global_rows = 8;
+    const auto r_rows = combine_gather(std::vector<DistMatrix<double>>{a, rows_mismatch});
+    ASSERT_FALSE(r_rows.has_value());
+
+    DistMatrix<double> dist_mismatch = a;
+    dist_mismatch.distribution = Distribution::BlockCyclic;
+    const auto r_dist = combine_gather(std::vector<DistMatrix<double>>{a, dist_mismatch});
+    ASSERT_FALSE(r_dist.has_value());
+}
+
+TEST(DistMatrixAdv, scatter_non_block_copies_global) {
+    auto ctx = init(0, nullptr);
+    auto global = make_matrix(5, 3, 7.0);
+    auto dist = scatter(global, ctx, Distribution::BlockCyclic).value();
+    EXPECT_EQ(dist.distribution, Distribution::BlockCyclic);
+    EXPECT_EQ(dist.global_rows, global.rows());
+    EXPECT_EQ(dist.global_cols, global.cols());
+    ASSERT_EQ(dist.row_map.size(), dist.local.rows());
+    ASSERT_EQ(dist.local.cols(), global.cols());
+    for (size_t i = 0; i < dist.row_map.size(); ++i) {
+        ASSERT_LT(dist.row_map[i], global.rows());
+        for (size_t j = 0; j < global.cols(); ++j) {
+            EXPECT_DOUBLE_EQ(dist.local(i, j), global(dist.row_map[i], j));
+        }
+    }
+
+    auto rebuilt = gather(dist, ctx).value();
+    ASSERT_EQ(rebuilt.rows(), global.rows());
+    ASSERT_EQ(rebuilt.cols(), global.cols());
+    for (size_t i = 0; i < global.rows(); ++i) {
+        for (size_t j = 0; j < global.cols(); ++j) {
+            EXPECT_DOUBLE_EQ(rebuilt(i, j), global(i, j));
+        }
+    }
+    finalize(ctx);
+}
+
 

@@ -221,3 +221,22 @@ TEST(SolveTest, det_trace_row_vector_dimension_mismatch) {
     EXPECT_NE(tr_msg.find("dimension mismatch"), std::string::npos);
     EXPECT_EQ(tr_msg.find("square"), std::string::npos);
 }
+
+TEST(SolveTest, singular_zero_matrix) {
+    DMatrix A{{0.0, 0.0}, {0.0, 0.0}};
+    DMatrix b{{1.0}, {2.0}};
+    auto result = solve(A, b);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_TRUE(std::holds_alternative<SingularMatrix>(result.error()));
+}
+
+TEST(SolveTest, rhs_row_mismatch) {
+    DMatrix A{{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    DMatrix b{{1.0}, {2.0}};
+    auto result = solve(A, b);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_TRUE(std::holds_alternative<DimensionMismatch>(result.error()));
+    const auto mismatch = std::get<DimensionMismatch>(result.error());
+    EXPECT_EQ(mismatch.got_rows, A.rows());
+    EXPECT_EQ(mismatch.got_cols, b.rows());
+}

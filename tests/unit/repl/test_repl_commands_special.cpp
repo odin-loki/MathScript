@@ -18397,3 +18397,27 @@ TEST(ReplCommandsTest, euler_number_scalar_assign) {
     expect_ok(interp, "s = euler_number(0)");
     EXPECT_NEAR(interp.state().scalars.at("s"), 1.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, special_digamma_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = special_digamma(1)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), ms::digamma(1.0), 1e-8);
+}
+
+TEST(ReplCommandsTest, special_trigamma_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = special_trigamma(1)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), ms::trigamma(1.0), 1e-8);
+}
+
+TEST(ReplCommandsTest, special_log_gamma_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = special_log_gamma(1)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 0.0, 1e-8);
+}
+
+TEST(ReplCommandsTest, special_airy_ai_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = special_airy_ai(0)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), ms::airy_ai(0.0), 1e-8);
+}

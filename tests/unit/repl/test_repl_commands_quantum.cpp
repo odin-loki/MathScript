@@ -5720,3 +5720,4 @@ TEST(ReplCommandsTest, quantum_partial_trace_noassign) {
         "quantum_partial_trace([1, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0; 0, 0, 0, 0], 2, 2, 2)",
         "expected positive integer d1, d2 and subsystem 0 or 1");
 }
+

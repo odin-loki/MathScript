@@ -125,5 +125,9 @@ template Result<Matrix<double>> matmul(
     const Matrix<double, StorageOrder::RowMajor>&,
     const Matrix<double, StorageOrder::RowMajor>&,
     int);
+template Result<Matrix<double>> matmul(
+    const Matrix<double>&,
+    const Matrix<double, StorageOrder::RowMajor>&,
+    int);
 
 } // namespace ms

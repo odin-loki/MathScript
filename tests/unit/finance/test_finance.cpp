@@ -2615,3 +2615,23 @@ TEST(FinanceMerton, UnconvergedButPositiveAssetKeepsMetrics) {
     EXPECT_GE(result.probability_of_default, 0.0);
     EXPECT_LE(result.probability_of_default, 1.0);
 }
+
+TEST(FinanceBond, ConvexitySinglePeriod) {
+    const double y = 0.04;
+    EXPECT_NEAR(bond_convexity(0.05, y, 1, 100.0), 2.0 / ((1.0 + y) * (1.0 + y)), 1e-12);
+    EXPECT_NEAR(bond_convexity(0.0, y, 1, 100.0), 2.0 / ((1.0 + y) * (1.0 + y)), 1e-12);
+}
+
+TEST(FinanceSabr, AtmBetaZeroHitsHaganExpansion) {
+    const double S = 100.0;
+    const double r = 0.05;
+    const double T = 1.0;
+    const double K = S * std::exp(r * T);
+    const double call = sabr_call(S, K, T, r, 0.20, 0.0, -0.3, 0.4);
+    const double put = sabr_put(S, K, T, r, 0.20, 0.0, -0.3, 0.4);
+    EXPECT_TRUE(std::isfinite(call));
+    EXPECT_TRUE(std::isfinite(put));
+    EXPECT_GT(call, 0.0);
+    EXPECT_GT(put, 0.0);
+    EXPECT_NEAR(call - put, S - K * std::exp(-r * T), 1e-8);
+}

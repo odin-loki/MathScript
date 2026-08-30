@@ -4021,3 +4021,17 @@ TEST(ReplCommandsTest, gria_alpha_ca_scalar_assign) {
     expect_ok(interp, "a = gria_alpha_ca(110, 8, 30)");
     ASSERT_GT(interp.state().scalars.count("a"), 0u);
 }
+
+TEST(ReplCommandsTest, gria_gf2n_mul_unsigned_args_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "gria_gf2n_mul(1.5, 2, 7)",
+                          "expected unsigned integer arguments");
+    expect_error_contains(interp, "gria_gf2n_pow(1.5, 2, 7)",
+                          "expected unsigned integer arguments");
+}
+
+TEST(ReplCommandsTest, gria_gf2n_inv_unsigned_args_noassign) {
+    Interpreter interp;
+    expect_error_contains(interp, "gria_gf2n_inv(1.5, 7)",
+                          "expected unsigned integer arguments");
+}

@@ -1592,3 +1592,19 @@ TEST(OdeAdvanced2, DaeIndex1_StageK3AndK4SizeMismatch_NotConverged) {
     EXPECT_FALSE(run_fail_after(2).converged);
     EXPECT_FALSE(run_fail_after(3).converged);
 }
+
+TEST(OdeAdvanced2, Rk23_TendEqualsT0_EmptySteps) {
+    const auto decay = [](double, double y) { return -y; };
+    const auto ic = ode_rk23(decay, 0.5, 1.5, 0.5);
+    ASSERT_EQ(ic.t.size(), 1u);
+    ASSERT_EQ(ic.y.size(), 1u);
+    EXPECT_NEAR(ic.t.front(), 0.5, 1e-15);
+    EXPECT_NEAR(ic.y.front(), 1.5, 1e-15);
+}
+
+TEST(OdeAdvanced2, AdamsBashforth2_EmptySteps) {
+    const auto decay = [](double, double y) { return -y; };
+    const auto empty = ode_adams_bashforth2(decay, 0.0, 1.0, 1.0, 0);
+    EXPECT_TRUE(empty.t.empty());
+    EXPECT_TRUE(empty.y.empty());
+}

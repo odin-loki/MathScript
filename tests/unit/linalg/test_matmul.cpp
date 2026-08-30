@@ -508,3 +508,24 @@ TEST(MatmulTest, row_major_transpose_like_gpu_copy) {
     EXPECT_DOUBLE_EQ((*AtA)(1, 1), 29);
     EXPECT_DOUBLE_EQ((*AtA)(2, 2), 45);
 }
+
+TEST(MatmulTest, col_times_row_major_copies) {
+    using RowM = Matrix<double, StorageOrder::RowMajor>;
+    const DMatrix A{{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}};
+    const RowM B{{7.0, 8.0}, {9.0, 10.0}, {11.0, 12.0}};
+    auto C = matmul(A, B);
+    ASSERT_TRUE(C.has_value());
+    EXPECT_EQ(C->rows(), 2u);
+    EXPECT_EQ(C->cols(), 2u);
+    EXPECT_DOUBLE_EQ((*C)(0, 0), 58.0);
+    EXPECT_DOUBLE_EQ((*C)(0, 1), 64.0);
+    EXPECT_DOUBLE_EQ((*C)(1, 0), 139.0);
+    EXPECT_DOUBLE_EQ((*C)(1, 1), 154.0);
+}
+
+TEST(MatmulTest, inner_dim_mismatch) {
+    DMatrix A{{1.0, 2.0}, {3.0, 4.0}};
+    DMatrix B{{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}, {7.0, 8.0, 9.0}};
+    auto result = matmul(A, B);
+    ASSERT_FALSE(result.has_value());
+}

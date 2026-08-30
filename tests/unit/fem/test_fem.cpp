@@ -977,3 +977,31 @@ TEST(FemLagrangeBasis, degree_zero_rejected) {
     EXPECT_FALSE(basis.evaluate(0.0).has_value());
     EXPECT_FALSE(basis.derivative(0.0).has_value());
 }
+
+TEST(FemAssemble, empty_meshes_reject_stiffness_and_load) {
+    Mesh1D empty1;
+    EXPECT_FALSE(assemble_stiffness_1d(empty1).has_value());
+    EXPECT_FALSE(assemble_load_1d(empty1, [](double) { return 1.0; }).has_value());
+
+    Mesh1D one_node;
+    one_node.nodes = {0.0};
+    EXPECT_FALSE(assemble_stiffness_1d(one_node).has_value());
+    EXPECT_FALSE(assemble_load_1d(one_node, [](double) { return 1.0; }).has_value());
+
+    Mesh2D empty2;
+    EXPECT_FALSE(assemble_stiffness_2d(empty2).has_value());
+    EXPECT_FALSE(assemble_load_2d(empty2, [](double, double) { return 1.0; }).has_value());
+
+    Mesh3D empty3;
+    EXPECT_FALSE(assemble_stiffness_3d(empty3).has_value());
+    EXPECT_FALSE(assemble_load_3d(empty3, [](double, double, double) { return 1.0; }).has_value());
+}
+
+TEST(FemLagrangeBasis, degree_two_unused_xi_rejected) {
+    LagrangeBasis basis;
+    basis.degree = 2;
+    EXPECT_FALSE(basis.evaluate(-0.25).has_value());
+    EXPECT_FALSE(basis.evaluate(1.25).has_value());
+    EXPECT_FALSE(basis.derivative(-0.25).has_value());
+    EXPECT_FALSE(basis.derivative(1.25).has_value());
+}

@@ -2510,3 +2510,28 @@ TEST(ReplCommandsTest, combo_involutions_scalar_assign) {
     expect_ok(interp, "s = combo_involutions(3)");
     EXPECT_NEAR(interp.state().scalars.at("s"), 4.0, 1e-12);
 }
+
+TEST(ReplCommandsTest, combo_bell_num_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = combo_bell_num(4)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 15.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, combo_motzkin_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = combo_motzkin(3)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 4.0, 1e-12);
+    expect_error_contains(interp, "s = combo_motzkin(-1)", "combo_motzkin");
+}
+
+TEST(ReplCommandsTest, combo_subfactorial_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = combo_subfactorial(3)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 2.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, combo_double_factorial_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = combo_double_factorial(5)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 15.0, 1e-12);
+}

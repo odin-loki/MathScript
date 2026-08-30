@@ -3683,3 +3683,33 @@ TEST(ReplCommandsTest, numthy_pell_solve_scalar_expr_noassign) {
     expect_ok(interp, "numthy_pell_solve(D)");
     expect_error_contains(interp, "numthy_pell_solve(not_a_scalar)", "expected numthy_pell_solve(D)");
 }
+
+TEST(ReplCommandsTest, numthy_isprime_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = numthy_isprime(7)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, numthy_partition_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = numthy_partition(5)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 7.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, numthy_mobius_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = numthy_mobius(6)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 1.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, numthy_nextprime_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = numthy_nextprime(8)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 11.0, 1e-12);
+}
+
+TEST(ReplCommandsTest, numthy_euler_phi_scalar_assign) {
+    Interpreter interp;
+    expect_ok(interp, "s = numthy_euler_phi(10)");
+    EXPECT_NEAR(interp.state().scalars.at("s"), 4.0, 1e-12);
+}
