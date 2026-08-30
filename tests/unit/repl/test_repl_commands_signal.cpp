@@ -5764,3 +5764,59 @@ TEST(ReplCommandsTest, signal_instantaneous_freq_noassign) {
     expect_ok(interp, "M = [1, 2; 3, 4]");
     expect_error_contains(interp, "signal_instantaneous_freq(M, 8.0)", "coefficient vector");
 }
+
+TEST(ReplCommandsTest, signal_butterworth_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_butterworth([1; 0; -1; 0], 0.25, 1.0)", "filtered =");
+    expect_error_contains(interp, "signal_butterworth(missing, 0.25, 1.0)", "unknown matrix");
+    expect_error_contains(interp, "signal_butterworth([1; 0; -1; 0], notnum, 1.0)",
+                          "expected signal_butterworth(x, cutoff, fs)");
+}
+
+TEST(ReplCommandsTest, signal_highpass_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_highpass([1; 0; -1; 0], 0.25, 1.0)", "filtered =");
+    expect_error_contains(interp, "signal_highpass(missing, 0.25, 1.0)", "unknown matrix");
+    expect_error_contains(interp, "signal_highpass([1; 0; -1; 0], notnum, 1.0)",
+                          "expected signal_highpass(x, cutoff, fs)");
+}
+
+TEST(ReplCommandsTest, signal_hamming_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_hamming(8)", "op =");
+    expect_error_contains(interp, "signal_hamming(1.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, signal_hanning_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_hanning(8)", "op =");
+    expect_error_contains(interp, "signal_hanning(1.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, signal_blackman_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_blackman(8)", "op =");
+    expect_error_contains(interp, "signal_blackman(1.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, signal_parzen_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_parzen(8)", "op =");
+    expect_error_contains(interp, "signal_parzen(1.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, signal_triangular_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "signal_triangular(8)", "op =");
+    expect_error_contains(interp, "signal_triangular(1.5)", "expected non-negative integer n");
+}
+
+TEST(ReplCommandsTest, signal_coherence_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 0; -1; 0; 1; 0; -1; 0]");
+    expect_contains(interp, "signal_coherence(x, x, 8.0, 8)", "coherence =");
+    expect_error_contains(interp, "signal_coherence(x, x, 8.0, 1.5)",
+                          "expected positive integer nperseg");
+    expect_error_contains(interp, "signal_coherence(x, x, notnum, 8)",
+                          "expected signal_coherence(x, y, fs, nperseg)");
+}

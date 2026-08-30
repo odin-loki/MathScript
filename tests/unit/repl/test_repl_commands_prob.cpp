@@ -5023,3 +5023,102 @@ TEST(ReplCommandsTest, prob_rayleigh_ppf_noassign) {
     expect_ok(interp, "prob_rayleigh_ppf(0.5, 1)");
     expect_error_contains(interp, "prob_rayleigh_ppf(0.5, missing)", "prob_rayleigh_ppf");
 }
+
+TEST(ReplCommandsTest, prob_norm_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_norm_cdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_norm_cdf(0, 0, missing)", "expected prob_norm_cdf(x,mu,sigma)");
+}
+
+TEST(ReplCommandsTest, prob_norm_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_norm_pdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_norm_pdf(0, 0, missing)", "expected prob_norm_pdf(x,mu,sigma)");
+}
+
+TEST(ReplCommandsTest, prob_norm_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_norm_ppf(0.5, 0, 1)");
+    expect_error_contains(interp, "prob_norm_ppf(0.5, 0, missing)",
+                          "expected prob_norm_ppf(p,mu,sigma)");
+}
+
+TEST(ReplCommandsTest, prob_binom_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_binom_pdf(2, 4, 0.5)");
+    expect_error_contains(interp, "prob_binom_pdf(2, 4, missing)",
+                          "expected prob_binom_pdf(k, n, p)");
+    expect_error_contains(interp, "prob_binom_pdf(1.5, 4, 0.5)", "expected integer k and n");
+}
+
+TEST(ReplCommandsTest, prob_binom_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_binom_cdf(2, 4, 0.5)");
+    expect_error_contains(interp, "prob_binom_cdf(2, 4, missing)",
+                          "expected prob_binom_cdf(k, n, p)");
+    expect_error_contains(interp, "prob_binom_cdf(1.5, 4, 0.5)", "expected integer k and n");
+}
+
+TEST(ReplCommandsTest, prob_exp_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_exp_cdf(1, 1)");
+    expect_error_contains(interp, "prob_exp_cdf(1, missing)", "expected prob_exp_cdf(x,lambda)");
+}
+
+TEST(ReplCommandsTest, prob_exp_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_exp_pdf(1, 1)");
+    expect_error_contains(interp, "prob_exp_pdf(1, missing)", "expected prob_exp_pdf(x,lambda)");
+}
+
+TEST(ReplCommandsTest, prob_exp_ppf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_exp_ppf(0.5, 1)");
+    expect_error_contains(interp, "prob_exp_ppf(0.5, missing)", "expected prob_exp_ppf(p,lambda)");
+}
+
+TEST(ReplCommandsTest, prob_pois_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_pois_pdf(2, 2)");
+    expect_error_contains(interp, "prob_pois_pdf(2, missing)", "expected prob_pois_pdf(k,lambda)");
+}
+
+TEST(ReplCommandsTest, prob_pois_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_pois_cdf(2, 2)");
+    expect_error_contains(interp, "prob_pois_cdf(2, missing)", "expected prob_pois_cdf(k,lambda)");
+}
+
+TEST(ReplCommandsTest, prob_uniform_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_uniform_cdf(3, 0, 10)");
+    expect_error_contains(interp, "prob_uniform_cdf(3, 0, missing)",
+                          "expected prob_uniform_cdf(x, a, b)");
+}
+
+TEST(ReplCommandsTest, prob_uniform_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_uniform_pdf(1.5, 1, 2)");
+    expect_error_contains(interp, "prob_uniform_pdf(1.5, 1, missing)",
+                          "expected prob_uniform_pdf(x,a,b)");
+}
+
+TEST(ReplCommandsTest, prob_gamma_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_gamma_pdf(2, 3, 1)");
+    expect_error_contains(interp, "prob_gamma_pdf(2, 3, missing)",
+                          "expected prob_gamma_pdf(x, shape, scale)");
+}
+
+TEST(ReplCommandsTest, prob_t_pdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_t_pdf(1, 5)");
+    expect_error_contains(interp, "prob_t_pdf(1, missing)", "expected prob_t_pdf(x,df)");
+}
+
+TEST(ReplCommandsTest, prob_laplace_cdf_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "prob_laplace_cdf(0, 0, 1)");
+    expect_error_contains(interp, "prob_laplace_cdf(0, 0, missing)",
+                          "expected prob_laplace_cdf(x,mu,b)");
+}

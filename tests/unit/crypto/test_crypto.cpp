@@ -1011,3 +1011,160 @@ TEST(CryptoAes128Gcm, TamperedCiphertextFailsOpen) {
                            std::span<const uint8_t>(seal.tag.data(), seal.tag.size()));
     EXPECT_TRUE(opened.empty());
 }
+
+TEST(CryptoSha256, EmptySpanVector) {
+    std::vector<uint8_t> empty_input;
+    expect_hex(sha256(empty_input),
+               "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    EXPECT_EQ(sha256_hex(empty_input),
+              "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+}
+
+TEST(CryptoSha512, EmptySpanVector) {
+    std::vector<uint8_t> empty_input;
+    expect_hex(sha512(empty_input),
+               "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"
+               "47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e");
+    EXPECT_EQ(sha512_hex(empty_input).size(), 128u);
+}
+
+TEST(CryptoHmacSha256, EmptyKeyAndData) {
+    std::vector<uint8_t> empty_key;
+    std::vector<uint8_t> empty_data;
+    const auto mac = hmac_sha256(empty_key, empty_data);
+    EXPECT_EQ(mac.size(), sha256_digest_size);
+    EXPECT_EQ(hmac_sha256_hex(empty_key, empty_data), to_hex(mac));
+}
+
+TEST(CryptoHmacSha512, EmptyKeyAndData) {
+    std::vector<uint8_t> empty_key;
+    std::vector<uint8_t> empty_data;
+    const auto mac = hmac_sha512(empty_key, empty_data);
+    EXPECT_EQ(mac.size(), sha512_digest_size);
+    EXPECT_EQ(hmac_sha512_hex(empty_key, empty_data), to_hex(mac));
+}
+
+TEST(CryptoHkdfSha256, EmptyIkm) {
+    std::vector<uint8_t> empty_ikm;
+    std::vector<uint8_t> empty_salt;
+    std::vector<uint8_t> empty_info;
+    const auto okm = hkdf_sha256(empty_ikm, empty_salt, empty_info, 16);
+    EXPECT_EQ(okm.size(), 16u);
+}
+
+TEST(CryptoHkdfSha256, OutputLengthTooLarge) {
+    std::vector<uint8_t> ikm(1, 0x0b);
+    std::vector<uint8_t> empty_salt;
+    std::vector<uint8_t> empty_info;
+    EXPECT_TRUE(hkdf_sha256(ikm, empty_salt, empty_info, 255 * sha256_digest_size + 1).empty());
+}
+
+TEST(CryptoHkdfSha512, OutputLengthTooLarge) {
+    std::vector<uint8_t> ikm(1, 0x0b);
+    std::vector<uint8_t> empty_salt;
+    std::vector<uint8_t> empty_info;
+    EXPECT_TRUE(hkdf_sha512(ikm, empty_salt, empty_info, 255 * sha512_digest_size + 1).empty());
+}
+
+TEST(CryptoPbkdf2HmacSha256, ZeroIterations) {
+    std::vector<uint8_t> password{0x70};
+    std::vector<uint8_t> salt{0x73};
+    EXPECT_TRUE(pbkdf2_hmac_sha256(password, salt, 0, 16).empty());
+}
+
+TEST(CryptoPbkdf2HmacSha512, ZeroIterations) {
+    std::vector<uint8_t> password{0x70};
+    std::vector<uint8_t> salt{0x73};
+    EXPECT_TRUE(pbkdf2_hmac_sha512(password, salt, 0, 16).empty());
+}
+
+TEST(CryptoFromHex, Empty) {
+    EXPECT_TRUE(from_hex("").empty());
+}
+
+TEST(CryptoAes256, EncryptBlockInvalidInputsReturnEmpty) {
+    std::vector<uint8_t> short_key{0x00};
+    std::vector<uint8_t> short_block{0x00};
+    std::vector<uint8_t> key(aes256_key_size, 0x11);
+    std::vector<uint8_t> block(aes_block_size, 0x22);
+    EXPECT_TRUE(aes256_encrypt_block(short_key, block).empty());
+    EXPECT_TRUE(aes256_encrypt_block(key, short_block).empty());
+}
+
+TEST(CryptoAes128, CbcInvalidKeyOrIv) {
+    std::vector<uint8_t> short_key{0x00};
+    std::vector<uint8_t> short_iv{0x00};
+    std::vector<uint8_t> key(aes128_key_size, 0x11);
+    std::vector<uint8_t> iv(aes_block_size, 0x22);
+    std::vector<uint8_t> empty_plain;
+    std::vector<uint8_t> empty_cipher;
+    EXPECT_TRUE(aes128_cbc_encrypt(short_key, iv, empty_plain).empty());
+    EXPECT_TRUE(aes128_cbc_encrypt(key, short_iv, empty_plain).empty());
+    EXPECT_TRUE(aes128_cbc_decrypt(short_key, iv, empty_cipher).empty());
+    EXPECT_TRUE(aes128_cbc_decrypt(key, short_iv, empty_cipher).empty());
+    EXPECT_TRUE(aes128_cbc_decrypt(key, iv, empty_cipher).empty());
+}
+
+TEST(CryptoAes256, CbcInvalidKeyOrIv) {
+    std::vector<uint8_t> short_key{0x00};
+    std::vector<uint8_t> short_iv{0x00};
+    std::vector<uint8_t> key(aes256_key_size, 0x11);
+    std::vector<uint8_t> iv(aes_block_size, 0x22);
+    std::vector<uint8_t> empty_plain;
+    std::vector<uint8_t> empty_cipher;
+    EXPECT_TRUE(aes256_cbc_encrypt(short_key, iv, empty_plain).empty());
+    EXPECT_TRUE(aes256_cbc_encrypt(key, short_iv, empty_plain).empty());
+    EXPECT_TRUE(aes256_cbc_decrypt(short_key, iv, empty_cipher).empty());
+    EXPECT_TRUE(aes256_cbc_decrypt(key, iv, empty_cipher).empty());
+}
+
+TEST(CryptoAes128Gcm, DecryptInvalidTagSize) {
+    std::vector<uint8_t> key(aes128_key_size, 0x00);
+    std::vector<uint8_t> iv(aes_gcm_iv_size, 0x00);
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> empty_ct;
+    std::vector<uint8_t> short_tag{0x00};
+    EXPECT_TRUE(aes128_gcm_decrypt(key, iv, empty_aad, empty_ct, short_tag).empty());
+}
+
+TEST(CryptoAes256Gcm, DecryptInvalidKeyOrTag) {
+    std::vector<uint8_t> short_key{0x00};
+    std::vector<uint8_t> key(aes256_key_size, 0x00);
+    std::vector<uint8_t> iv(aes_gcm_iv_size, 0x00);
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> empty_ct;
+    std::vector<uint8_t> short_tag{0x00};
+    std::vector<uint8_t> tag(aes_gcm_tag_size, 0x00);
+    EXPECT_TRUE(aes256_gcm_decrypt(short_key, iv, empty_aad, empty_ct, tag).empty());
+    EXPECT_TRUE(aes256_gcm_decrypt(key, iv, empty_aad, empty_ct, short_tag).empty());
+}
+
+TEST(CryptoChaCha20Poly1305, DecryptInvalidTagSize) {
+    std::array<uint8_t, 32> key{};
+    std::array<uint8_t, 12> nonce{};
+    std::vector<uint8_t> empty_aad;
+    std::vector<uint8_t> empty_ct;
+    std::vector<uint8_t> short_tag{0x00};
+    EXPECT_TRUE(chacha20_poly1305_decrypt(key, nonce, empty_aad, empty_ct, short_tag).empty());
+}
+
+TEST(CryptoX25519, EmptyPrivateKey) {
+    std::vector<uint8_t> empty_priv;
+    std::vector<uint8_t> empty_peer;
+    const auto kp = x25519_keypair(empty_priv);
+    EXPECT_EQ(kp.public_key, (std::array<uint8_t, x25519_key_size>{}));
+    const auto shared = x25519_shared_secret(empty_priv, empty_peer);
+    EXPECT_EQ(shared, (std::array<uint8_t, x25519_key_size>{}));
+}
+
+TEST(CryptoEd25519, VerifyInvalidSizes) {
+    std::vector<uint8_t> empty_pub;
+    std::vector<uint8_t> empty_msg;
+    std::vector<uint8_t> short_sig{0x00};
+    EXPECT_FALSE(ed25519_verify(empty_pub, empty_msg, short_sig));
+    std::vector<uint8_t> pub(ed25519_public_key_size, 0x00);
+    std::vector<uint8_t> sig(ed25519_signature_size, 0x00);
+    EXPECT_FALSE(ed25519_verify(pub, empty_msg, short_sig));
+    std::vector<uint8_t> short_pub{0x00};
+    EXPECT_FALSE(ed25519_verify(short_pub, empty_msg, sig));
+}

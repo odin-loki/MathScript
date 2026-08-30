@@ -78,3 +78,78 @@ TEST(LoadBalancerTest, gpu_policy_records_device) {
         EXPECT_EQ(decision.backend, Backend::CPU);
     }
 }
+
+TEST(LoadBalancerTest, two_arg_matches_three_arg_detected_topo) {
+    const auto topo = detect_topology();
+    const auto two_arg = balance(256, ExecPolicy::CPU);
+    const auto three_arg = balance(256, ExecPolicy::CPU, topo);
+    EXPECT_EQ(two_arg.backend, three_arg.backend);
+    EXPECT_EQ(two_arg.cpu_threads, three_arg.cpu_threads);
+    EXPECT_EQ(two_arg.cuda_device, three_arg.cuda_device);
+}
+
+TEST(LoadBalancerTest, two_arg_auto_large_workload) {
+    const auto decision = balance(70000, ExecPolicy::AUTO);
+    if (has_cuda()) {
+        EXPECT_EQ(decision.backend, Backend::CUDA);
+        EXPECT_GE(decision.cuda_device, 0);
+    } else {
+        EXPECT_EQ(decision.backend, Backend::CPU);
+        EXPECT_GE(decision.cpu_threads, 1u);
+    }
+}
+
+TEST(LoadBalancerTest, two_arg_gpu_policy) {
+    const auto decision = balance(4096, ExecPolicy::GPU);
+    if (has_cuda()) {
+        EXPECT_EQ(decision.backend, Backend::CUDA);
+        EXPECT_GE(decision.cuda_device, 0);
+    } else {
+        EXPECT_EQ(decision.backend, Backend::CPU);
+    }
+}
+
+TEST(LoadBalancerTest, auto_large_with_explicit_topology) {
+    const auto topo = synthetic_topology(8, 2);
+    const auto decision = balance(70000, ExecPolicy::AUTO, topo);
+    EXPECT_EQ(decision.cpu_threads, 8u);
+    if (has_cuda()) {
+        EXPECT_EQ(decision.backend, Backend::CUDA);
+        EXPECT_GE(decision.cuda_device, 0);
+        EXPECT_LT(decision.cuda_device, 2);
+    } else {
+        EXPECT_EQ(decision.backend, Backend::CPU);
+    }
+}
+
+TEST(LoadBalancerTest, empty_topology_zero_threads) {
+    SystemTopology topo;
+    topo.total_gpus = 0;
+    const auto decision = balance(64, ExecPolicy::CPU, topo);
+    EXPECT_EQ(decision.backend, Backend::CPU);
+    EXPECT_EQ(decision.cpu_threads, 0u);
+    EXPECT_EQ(decision.cuda_device, -1);
+}
+
+TEST(LoadBalancerTest, zero_thread_cpu_threads_empty) {
+    SystemTopology topo;
+    topo.cpu_cores = {{0, 1}};
+    topo.total_gpus = 0;
+    EXPECT_TRUE(topo.cpu_threads.empty());
+    EXPECT_EQ(topo.total_threads(), 0u);
+    const auto decision = balance(128, ExecPolicy::AUTO, topo);
+    EXPECT_EQ(decision.cpu_threads, 0u);
+    EXPECT_EQ(decision.backend, Backend::CPU);
+}
+
+TEST(LoadBalancerTest, gpu_policy_two_gpus_picks_device) {
+    const auto topo = synthetic_topology(4, 2);
+    EXPECT_GT(topo.total_gpus, 1);
+    const auto decision = balance(1024, ExecPolicy::GPU, topo);
+    if (!has_cuda()) {
+        GTEST_SKIP() << "CUDA unavailable; multi-GPU picker not under test";
+    }
+    EXPECT_EQ(decision.backend, Backend::CUDA);
+    EXPECT_GE(decision.cuda_device, 0);
+    EXPECT_LT(decision.cuda_device, topo.total_gpus);
+}

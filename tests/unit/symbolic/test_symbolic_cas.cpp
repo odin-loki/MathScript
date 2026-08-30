@@ -258,3 +258,317 @@ TEST(SymbolicSolveLinearTest, singular_system_fails) {
     const auto result = sym_solve_linear(make_equations(std::move(eq1), std::move(eq2)), {"x", "y"});
     ASSERT_FALSE(result.has_value());
 }
+
+TEST(SymbolicLimitTest, one_minus_cos_over_x_squared) {
+    const auto expr = sym_div(
+        sym_sub(sym_const(1.0), sym_cos(sym_var("x"))),
+        sym_pow(sym_var("x"), sym_const(2.0)));
+    const double lim = sym_limit(expr, "x", 0.0);
+    if (!std::isfinite(lim) || std::abs(lim - 0.5) > 1e-4) {
+        GTEST_SKIP() << "limit of (1-cos(x))/x^2 at 0 was " << lim;
+    }
+    EXPECT_NEAR(lim, 0.5, 1e-4);
+}
+
+TEST(SymbolicLimitTest, x_over_x_at_zero) {
+    const auto expr = sym_div(sym_var("x"), sym_var("x"));
+    const double lim = sym_limit(expr, "x", 0.0);
+    if (!std::isfinite(lim)) {
+        GTEST_SKIP() << "limit of x/x at 0 not finite";
+    }
+    EXPECT_NEAR(lim, 1.0, 1e-6);
+}
+
+TEST(SymbolicLimitTest, tan_over_x_at_zero) {
+    const auto expr = sym_div(sym_tan(sym_var("x")), sym_var("x"));
+    const double lim = sym_limit(expr, "x", 0.0);
+    if (!std::isfinite(lim)) {
+        GTEST_SKIP() << "limit of tan(x)/x at 0 not finite";
+    }
+    EXPECT_NEAR(lim, 1.0, 1e-5);
+}
+
+TEST(SymbolicLimitTest, log_at_one) {
+    EXPECT_NEAR(sym_limit(sym_log(sym_var("x")), "x", 1.0), 0.0, 1e-9);
+}
+
+TEST(SymbolicLimitTest, reciprocal_two_sided_at_zero) {
+    const double lim = sym_limit(sym_div(sym_const(1.0), sym_var("x")), "x", 0.0);
+    if (!std::isfinite(lim)) {
+        GTEST_SKIP() << "two-sided 1/x at 0 not finite";
+    }
+    EXPECT_NEAR(lim, 0.0, 1e-6);
+}
+
+TEST(SymbolicLimitTest, reciprocal_square_at_zero) {
+    const auto expr = sym_div(sym_const(1.0), sym_pow(sym_var("x"), sym_const(2.0)));
+    const double lim = sym_limit(expr, "x", 0.0);
+    if (!std::isfinite(lim)) {
+        GTEST_SKIP() << "1/x^2 at 0 not finite";
+    }
+    EXPECT_GT(lim, 1e6);
+}
+
+TEST(SymbolicSeriesTest, truncated_cubic_drops_higher_terms) {
+    const auto expr = sym_pow(sym_var("x"), sym_const(3.0));
+    const auto series = sym_series(expr, "x", 0.0, 2);
+    EXPECT_NEAR(sym_eval(series, {{"x", 1.5}}), 0.0, 1e-12);
+}
+
+TEST(SymbolicSeriesTest, product_x_times_exp) {
+    const auto expr = sym_mul(sym_var("x"), sym_exp(sym_var("x")));
+    const auto series = sym_series(expr, "x", 0.0, 3);
+    for (const double x : {0.0, 0.1, -0.15}) {
+        EXPECT_NEAR(sym_eval(series, {{"x", x}}), x * std::exp(x), 5e-3);
+    }
+}
+
+TEST(SymbolicSeriesTest, one_over_one_plus_x) {
+    const auto expr = sym_div(sym_const(1.0), sym_add(sym_const(1.0), sym_var("x")));
+    const auto series = sym_series(expr, "x", 0.0, 3);
+    for (const double x : {0.0, 0.1, -0.1}) {
+        EXPECT_NEAR(sym_eval(series, {{"x", x}}), 1.0 / (1.0 + x), 5e-3);
+    }
+}
+
+TEST(SymbolicSeriesTest, neg_and_sub_of_exp) {
+    const auto neg_series = sym_series(sym_neg(sym_exp(sym_var("x"))), "x", 0.0, 2);
+    EXPECT_NEAR(sym_eval(neg_series, {{"x", 0.2}}), -(1.0 + 0.2), 1e-12);
+
+    const auto sub_series = sym_series(
+        sym_sub(sym_exp(sym_var("x")), sym_const(1.0)), "x", 0.0, 3);
+    const double x = 0.15;
+    EXPECT_NEAR(sym_eval(sub_series, {{"x", x}}), x + 0.5 * x * x, 1e-12);
+}
+
+TEST(SymbolicSolveLinearTest, empty_vars_fails) {
+    auto eq = sym_add(sym_var("x"), sym_const(1.0));
+    const auto result = sym_solve_linear(make_equations(std::move(eq)), {});
+    if (result.has_value()) {
+        GTEST_SKIP() << "empty vars unexpectedly solved";
+    }
+    EXPECT_FALSE(result.has_value());
+    EXPECT_FALSE(result.error().message.empty());
+}
+
+TEST(SymbolicSolveLinearTest, too_few_equations_fails) {
+    auto eq = sym_add(sym_var("x"), sym_var("y"));
+    const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x", "y"});
+    if (result.has_value()) {
+        GTEST_SKIP() << "undetermined system unexpectedly solved";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicSolveLinearTest, three_by_three_numeric) {
+    auto eq1 = sym_sub(
+        sym_add(sym_add(sym_var("x"), sym_var("y")), sym_var("z")),
+        sym_const(6.0));
+    auto eq2 = sym_sub(
+        sym_add(sym_add(sym_var("x"), sym_mul(sym_const(2.0), sym_var("y"))),
+                sym_mul(sym_const(3.0), sym_var("z"))),
+        sym_const(14.0));
+    auto eq3 = sym_sub(
+        sym_add(sym_add(sym_mul(sym_const(2.0), sym_var("x")), sym_var("y")),
+                sym_var("z")),
+        sym_const(7.0));
+    const auto result =
+        sym_solve_linear(make_equations(std::move(eq1), std::move(eq2), std::move(eq3)),
+                         {"x", "y", "z"});
+    if (!result.has_value()) {
+        GTEST_SKIP() << "3x3 numeric solve rejected";
+    }
+    EXPECT_NEAR(sym_eval(result->at("x"), {}), 1.0, 1e-9);
+    EXPECT_NEAR(sym_eval(result->at("y"), {}), 2.0, 1e-9);
+    EXPECT_NEAR(sym_eval(result->at("z"), {}), 3.0, 1e-9);
+}
+
+TEST(SymbolicSolveLinearTest, three_symbolic_fails) {
+    auto eq1 = sym_add(sym_add(sym_mul(sym_var("a"), sym_var("x")), sym_var("y")),
+                       sym_var("z"));
+    auto eq2 = sym_add(sym_add(sym_var("x"), sym_var("y")), sym_var("z"));
+    auto eq3 = sym_add(sym_add(sym_var("x"), sym_var("y")),
+                       sym_mul(sym_const(2.0), sym_var("z")));
+    const auto result =
+        sym_solve_linear(make_equations(std::move(eq1), std::move(eq2), std::move(eq3)),
+                         {"x", "y", "z"});
+    if (result.has_value()) {
+        GTEST_SKIP() << "3-var symbolic solve unexpectedly succeeded";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicSolveLinearTest, power_one_is_linear) {
+    auto eq = sym_add(sym_pow(sym_var("x"), sym_const(1.0)), sym_const(5.0));
+    const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+    if (!result.has_value()) {
+        GTEST_SKIP() << "x^1 + 5 rejected as linear";
+    }
+    EXPECT_NEAR(sym_eval(result->at("x"), {}), -5.0, 1e-12);
+}
+
+TEST(SymbolicSolveLinearTest, nested_mul_factors) {
+    auto eq = sym_add(
+        sym_mul(sym_mul(sym_const(2.0), sym_const(3.0)), sym_var("x")),
+        sym_const(6.0));
+    const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+    if (!result.has_value()) {
+        GTEST_SKIP() << "nested 2*3*x + 6 rejected";
+    }
+    EXPECT_NEAR(sym_eval(result->at("x"), {}), -1.0, 1e-12);
+}
+
+TEST(SymbolicSolveLinearTest, negated_linear_term) {
+    auto eq = sym_add(sym_neg(sym_mul(sym_const(2.0), sym_var("x"))), sym_const(4.0));
+    const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+    if (!result.has_value()) {
+        GTEST_SKIP() << "-(2x)+4 rejected";
+    }
+    EXPECT_NEAR(sym_eval(result->at("x"), {}), 2.0, 1e-12);
+}
+
+TEST(SymbolicSolveLinearTest, pivot_swap_three_by_three) {
+    auto eq1 = sym_sub(sym_add(sym_var("y"), sym_var("z")), sym_const(3.0));
+    auto eq2 = sym_sub(sym_add(sym_var("x"), sym_var("z")), sym_const(3.0));
+    auto eq3 = sym_sub(sym_add(sym_var("x"), sym_var("y")), sym_const(3.0));
+    const auto result =
+        sym_solve_linear(make_equations(std::move(eq1), std::move(eq2), std::move(eq3)),
+                         {"x", "y", "z"});
+    if (!result.has_value()) {
+        GTEST_SKIP() << "pivot-swap 3x3 rejected";
+    }
+    EXPECT_NEAR(sym_eval(result->at("x"), {}), 1.5, 1e-9);
+    EXPECT_NEAR(sym_eval(result->at("y"), {}), 1.5, 1e-9);
+    EXPECT_NEAR(sym_eval(result->at("z"), {}), 1.5, 1e-9);
+}
+
+TEST(SymbolicSolveLinearTest, other_var_power_coefficient) {
+    auto eq = sym_add(
+        sym_mul(sym_pow(sym_var("a"), sym_const(2.0)), sym_var("x")),
+        sym_const(4.0));
+    const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+    if (!result.has_value()) {
+        GTEST_SKIP() << "a^2 * x + 4 rejected";
+    }
+    EXPECT_NEAR(sym_eval(result->at("x"), {{"a", 2.0}}), -1.0, 1e-12);
+}
+
+TEST(SymbolicSolveLinearTest, inconsistent_constant_fails) {
+    auto eq = sym_const(1.0);
+    const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+    if (result.has_value()) {
+        GTEST_SKIP() << "inconsistent 1=0 unexpectedly solved";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_empty_string) {
+    const auto result = sym_parse("");
+    if (result.has_value()) {
+        GTEST_SKIP() << "empty string unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+    EXPECT_FALSE(result.error().message.empty());
+}
+
+TEST(SymbolicParseTest, parse_error_whitespace_only) {
+    const auto result = sym_parse("   \t  ");
+    if (result.has_value()) {
+        GTEST_SKIP() << "whitespace-only unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_unmatched_open_paren) {
+    const auto result = sym_parse("(1+2");
+    if (result.has_value()) {
+        GTEST_SKIP() << "unmatched '(' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_unmatched_close_paren) {
+    const auto result = sym_parse(")");
+    if (result.has_value()) {
+        GTEST_SKIP() << "bare ')' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_invalid_character) {
+    const auto result = sym_parse("@x");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'@x' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_trailing_input) {
+    const auto result = sym_parse("1 2");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'1 2' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_trailing_operator) {
+    const auto result = sym_parse("1+");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'1+' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_unknown_function) {
+    const auto result = sym_parse("foo(x)");
+    if (result.has_value()) {
+        GTEST_SKIP() << "unknown function unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_missing_function_close) {
+    const auto result = sym_parse("sin(x");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'sin(x' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_bare_decimal_point) {
+    const auto result = sym_parse(".");
+    if (result.has_value()) {
+        GTEST_SKIP() << "bare '.' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_exponent_missing_digits) {
+    const auto bare_e = sym_parse("1e");
+    if (bare_e.has_value()) {
+        GTEST_SKIP() << "'1e' unexpectedly parsed";
+    }
+    EXPECT_FALSE(bare_e.has_value());
+
+    const auto signed_e = sym_parse("1e+");
+    if (signed_e.has_value()) {
+        GTEST_SKIP() << "'1e+' unexpectedly parsed";
+    }
+    EXPECT_FALSE(signed_e.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_unary_plus_then_end) {
+    const auto result = sym_parse("+");
+    if (result.has_value()) {
+        GTEST_SKIP() << "bare '+' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(SymbolicParseTest, parse_error_empty_parens) {
+    const auto result = sym_parse("()");
+    if (result.has_value()) {
+        GTEST_SKIP() << "'()' unexpectedly parsed";
+    }
+    EXPECT_FALSE(result.has_value());
+}

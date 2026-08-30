@@ -5184,3 +5184,10 @@ TEST(ReplCommandsTest, imgaussfilt_noassign) {
     expect_contains(interp, "imgaussfilt(G, 1)", "filtered =");
     expect_error_contains(interp, "imgaussfilt(no_such_matrix, 1)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, boxfilter_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "M = ones(5, 5)");
+    expect_contains(interp, "boxfilter(M, 3)", "filtered =");
+    expect_error_contains(interp, "boxfilter(no_such_matrix, 3)", "unknown matrix");
+}

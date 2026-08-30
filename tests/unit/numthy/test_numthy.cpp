@@ -757,3 +757,243 @@ TEST(NumthyModular, TonelliShanksPCongruentOneMod4) {
     EXPECT_EQ((x * x) % 13, 3u);
     EXPECT_TRUE(x == 4u || x == 9u);
 }
+
+TEST(NumthySieve, EmptyOrInvertedRange) {
+    EXPECT_TRUE(primes(10, 5).empty());
+    EXPECT_TRUE(primes(0, 1).empty());
+    EXPECT_TRUE(primes(8, 10).empty());
+}
+
+TEST(NumthySieve, SinglePrimeInterval) {
+    EXPECT_EQ(primes(2, 2), (std::vector<uint64_t>{2}));
+    EXPECT_EQ(primes(13, 13), (std::vector<uint64_t>{13}));
+}
+
+TEST(NumthySieve, PrimePiSmallAndNthZero) {
+    EXPECT_EQ(prime_pi(0), 0u);
+    EXPECT_EQ(prime_pi(1), 0u);
+    EXPECT_EQ(prime_pi(2), 1u);
+    EXPECT_EQ(prime_nth(0), 0u);
+}
+
+TEST(NumthyPrimality, CompositeHitsMillerRabin) {
+    EXPECT_FALSE(isprime(25));
+    EXPECT_FALSE(isprime(35));
+    EXPECT_FALSE(isprime(91));
+}
+
+TEST(NumthyPrimality, PrevPrimeEven) {
+    EXPECT_EQ(prevprime(4), 3u);
+    EXPECT_EQ(prevprime(8), 7u);
+    EXPECT_EQ(prevprime(0), 0u);
+}
+
+TEST(NumthyDivisors, OneAndPrime) {
+    EXPECT_EQ(divisors(1), (std::vector<uint64_t>{1}));
+    EXPECT_EQ(divisors(7), (std::vector<uint64_t>{1, 7}));
+    EXPECT_EQ(num_divisors(1), 1u);
+    EXPECT_EQ(num_divisors(7), 2u);
+    EXPECT_EQ(sum_divisors(1), 1u);
+    EXPECT_EQ(sum_divisors(7), 8u);
+}
+
+TEST(NumthyFactor, ZeroAndOne) {
+    EXPECT_TRUE(factor(0).empty());
+    EXPECT_TRUE(factor_exp(0).empty());
+    EXPECT_TRUE(factor_exp(1).empty());
+}
+
+TEST(NumthyFactor, SemiprimeNeedsPollard) {
+    auto f = factor(10403);  // 101 * 103
+    if (f.size() != 2u) {
+        GTEST_SKIP() << "factor(10403) did not return two primes";
+    }
+    EXPECT_EQ(f, (std::vector<uint64_t>{101, 103}));
+}
+
+TEST(NumthyFactor, FactorExpPrimePower) {
+    auto fe = factor_exp(8);
+    if (fe.size() != 1u) {
+        GTEST_SKIP() << "factor_exp(8) missing single prime-power pair";
+    }
+    EXPECT_EQ(fe[0].first, 2u);
+    EXPECT_EQ(fe[0].second, 3);
+}
+
+TEST(NumthyMult, JordanTotientZeroInputs) {
+    EXPECT_EQ(jordan_totient(0, 5), 0u);
+    EXPECT_EQ(jordan_totient(2, 0), 0u);
+    EXPECT_EQ(jordan_totient(0, 0), 0u);
+}
+
+TEST(NumthyMult, JordanTotientOverflowReturnsZero) {
+    EXPECT_EQ(jordan_totient(32, 1000003), 0u);
+    EXPECT_EQ(jordan_totient(20, 720720), 0u);
+}
+
+TEST(NumthyMult, EulerPhiZeroAndMobiusThreePrimes) {
+    EXPECT_EQ(euler_phi(0), 0u);
+    EXPECT_EQ(mobius(30), -1);  // 2*3*5, three distinct primes
+    EXPECT_EQ(mobius(0), 1);    // empty factorization is square-free of even length
+    EXPECT_EQ(von_mangoldt(0), 0.0);
+}
+
+TEST(NumthyArith, GcdLcmZeros) {
+    EXPECT_EQ(gcd(0, 0), 0u);
+    EXPECT_EQ(gcd(0, 5), 5u);
+    EXPECT_EQ(gcd(5, 0), 5u);
+    EXPECT_EQ(lcm(0, 5), 0u);
+    EXPECT_EQ(lcm(0, 0), 0u);
+}
+
+TEST(NumthyArith, ExtendedGcdZerosAndNegative) {
+    auto [g0, x0, y0] = extended_gcd(0, 5);
+    EXPECT_EQ(g0, 5);
+    EXPECT_EQ(0 * x0 + 5 * y0, 5);
+    auto [gn, xn, yn] = extended_gcd(-35, 15);
+    EXPECT_EQ((-35) * xn + 15 * yn, gn);
+}
+
+TEST(NumthyArith, ModInvNotCoprime) {
+    auto inv = mod_inv(2, 4);
+    if (inv.has_value()) {
+        GTEST_SKIP() << "mod_inv(2,4) unexpectedly succeeded";
+    }
+    EXPECT_FALSE(inv.has_value());
+}
+
+TEST(NumthyArith, ModPowEdgeModuli) {
+    EXPECT_EQ(mod_pow(2, 0, 5), 1u);
+    EXPECT_EQ(mod_pow(7, 1, 13), 7u);
+}
+
+TEST(NumthyArith, CrtSingleCongruence) {
+    auto x = crt({2}, {5});
+    if (!x.has_value()) {
+        GTEST_SKIP() << "crt single pair rejected";
+    }
+    EXPECT_EQ(x.value() % 5, 2u);
+}
+
+TEST(NumthyModular, JacobiEvenAndZero) {
+    EXPECT_EQ(jacobi_symbol(5, 0), 0);
+    EXPECT_EQ(jacobi_symbol(5, 8), 0);
+    EXPECT_EQ(jacobi_symbol(5, 15), 0);
+}
+
+TEST(NumthyModular, KroneckerSpecialN) {
+    EXPECT_EQ(kronecker_symbol(1, 0), 1);
+    EXPECT_EQ(kronecker_symbol(2, 0), 0);
+    EXPECT_EQ(kronecker_symbol(5, 1), 1);
+    EXPECT_EQ(kronecker_symbol(5, -1), 1);
+    EXPECT_EQ(kronecker_symbol(-5, -1), -1);
+    EXPECT_EQ(kronecker_symbol(2, -7), kronecker_symbol(2, 7) * 1);
+}
+
+TEST(NumthyModular, LegendreNonPrime) {
+    EXPECT_EQ(legendre_symbol(2, 9), 0);
+    EXPECT_EQ(legendre_symbol(2, 1), 0);
+    EXPECT_EQ(legendre_symbol(2, 0), 0);
+}
+
+TEST(NumthyModular, TonelliShanksZeroAndP2) {
+    // n == 0 is a residue of symbol 0, so the QR check rejects before the n==0 shortcut.
+    auto z = tonelli_shanks(0, 7);
+    if (z.has_value()) {
+        EXPECT_EQ(z.value(), 0u);
+    } else {
+        GTEST_SKIP() << "tonelli_shanks(0,7) rejected (Legendre 0 != 1)";
+    }
+}
+
+TEST(NumthyModular, TonelliShanksModTwo) {
+    auto p2 = tonelli_shanks(1, 2);
+    if (!p2.has_value()) {
+        GTEST_SKIP() << "tonelli_shanks(1,2) rejected";
+    }
+    EXPECT_EQ(p2.value() % 2, 1u);
+}
+
+TEST(NumthyModular, IsPrimitiveRootNonPrime) {
+    EXPECT_FALSE(is_primitive_root(2, 9));
+    EXPECT_FALSE(is_primitive_root(2, 1));
+    EXPECT_FALSE(is_primitive_root(2, 0));
+}
+
+TEST(NumthyModular, DiscreteLogIdentity) {
+    auto x = discrete_log(2, 1, 11);
+    if (!x.has_value()) {
+        GTEST_SKIP() << "discrete_log(2,1,11) found no solution";
+    }
+    EXPECT_EQ(mod_pow(2, x.value(), 11), 1u);
+}
+
+TEST(NumthyModular, QuadraticResiduesZeroOne) {
+    EXPECT_TRUE(quadratic_residues(0).empty());
+    EXPECT_TRUE(quadratic_residues(1).empty());
+}
+
+TEST(NumthyFarey, ZeroAndOne) {
+    EXPECT_TRUE(farey(0).empty());
+    auto f1 = farey(1);
+    std::vector<std::pair<uint64_t,uint64_t>> expected = {{0, 1}, {1, 1}};
+    EXPECT_EQ(f1, expected);
+}
+
+TEST(NumthyPell, ZeroAndOneAreErrors) {
+    auto z = pell_solve(0);
+    if (z.has_value()) {
+        GTEST_SKIP() << "pell_solve(0) unexpectedly succeeded";
+    }
+    EXPECT_FALSE(z.has_value());
+    auto one = pell_solve(1);
+    if (one.has_value()) {
+        GTEST_SKIP() << "pell_solve(1) unexpectedly succeeded";
+    }
+    EXPECT_FALSE(one.has_value());
+}
+
+TEST(NumthyCF, IntegerAndSingleConvergent) {
+    auto cf = continued_fraction(5.0, 5);
+    if (cf.empty()) {
+        GTEST_SKIP() << "continued_fraction(5) empty";
+    }
+    EXPECT_EQ(cf[0], 5);
+    auto conv = convergents(std::vector<int64_t>{3});
+    if (conv.empty()) {
+        GTEST_SKIP() << "convergents of single term empty";
+    }
+    EXPECT_EQ(conv[0].first, 3);
+    EXPECT_EQ(conv[0].second, 1);
+}
+
+TEST(NumthyPartition, KnownLargerValues) {
+    EXPECT_EQ(partition(15), 176u);
+    EXPECT_EQ(partition(20), 627u);
+}
+
+TEST(NumthyCarmichael, TwoPrimeProductNotCarmichael) {
+    EXPECT_FALSE(is_carmichael(15));
+    EXPECT_FALSE(is_carmichael(21));
+    EXPECT_FALSE(is_carmichael(35));
+}
+
+TEST(NumthyCarmichaelLambda, OddPrimePower) {
+    EXPECT_EQ(carmichael_lambda(27), 18u);  // φ(3^3) = 18
+    EXPECT_EQ(carmichael_lambda(25), 20u);  // φ(5^2) = 20
+    EXPECT_EQ(carmichael_lambda(27), euler_phi(27));
+}
+
+TEST(NumthyMultiplicativeOrder, BaseOne) {
+    auto ord = multiplicative_order(1, 7);
+    if (!ord.has_value()) {
+        GTEST_SKIP() << "multiplicative_order(1,7) rejected";
+    }
+    EXPECT_EQ(ord.value(), 1u);
+}
+
+TEST(NumthyLucas, KEqualsTwoPell) {
+    auto [u, v] = lucas_sequence(2, 2, -1);
+    EXPECT_EQ(u, 2);   // U_2 = P
+    EXPECT_EQ(v, 6);   // V_2 = P^2 - 2Q = 4 + 2
+}

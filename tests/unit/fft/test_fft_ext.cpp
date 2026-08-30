@@ -257,3 +257,15 @@ TEST(FftExtTest, empty_input_dct2) {
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(result->empty());
 }
+
+TEST(FftExtTest, empty_input_idct2_dst2_idst2) {
+    const auto idct = idct2({});
+    ASSERT_TRUE(idct.has_value());
+    EXPECT_TRUE(idct->empty());
+    const auto dst = dst2({});
+    ASSERT_TRUE(dst.has_value());
+    EXPECT_TRUE(dst->empty());
+    const auto idst = idst2({});
+    ASSERT_TRUE(idst.has_value());
+    EXPECT_TRUE(idst->empty());
+}

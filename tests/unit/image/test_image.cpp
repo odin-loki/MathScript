@@ -1917,3 +1917,143 @@ TEST(ImageComponents, LabelEmptyAndBilinearFarClamp) {
     img.at(1, 1, 0) = 0.6f;
     EXPECT_NEAR(bilinear_sample(img, 1.f, 1.f, 0), 0.6f, 1e-6f);
 }
+
+TEST(ImageGeom, Rotate360IdentityAndRgb180) {
+    Image img(2, 3, 1, 0.f);
+    img.at(0, 0, 0) = 1.f;
+    img.at(0, 2, 0) = 0.5f;
+    auto r360 = imrotate90(imrotate90(imrotate90(imrotate90(img))));
+    EXPECT_EQ(r360.rows, 2);
+    EXPECT_EQ(r360.cols, 3);
+    EXPECT_FLOAT_EQ(r360.at(0, 0, 0), 1.f);
+    EXPECT_FLOAT_EQ(r360.at(0, 2, 0), 0.5f);
+
+    Image rgb(2, 3, 3, 0.f);
+    rgb.at(0, 0, 0) = 1.f;
+    rgb.at(0, 0, 1) = 0.4f;
+    rgb.at(0, 0, 2) = 0.2f;
+    auto r180 = imrotate90(imrotate90(rgb));
+    EXPECT_EQ(r180.rows, 2);
+    EXPECT_EQ(r180.cols, 3);
+    EXPECT_EQ(r180.channels, 3);
+    EXPECT_FLOAT_EQ(r180.at(1, 2, 0), 1.f);
+    EXPECT_FLOAT_EQ(r180.at(1, 2, 1), 0.4f);
+    EXPECT_FLOAT_EQ(r180.at(1, 2, 2), 0.2f);
+
+    auto r270 = imrotate90(r180);
+    EXPECT_EQ(r270.rows, 3);
+    EXPECT_EQ(r270.cols, 2);
+    EXPECT_FLOAT_EQ(r270.at(0, 1, 0), 1.f);
+}
+
+TEST(ImageColor, OneChannelGray2RgbAndGrayHsv) {
+    Image g(3, 3, 1, 0.35f);
+    g.at(1, 1, 0) = 0.8f;
+    auto rgb = gray2rgb(g);
+    EXPECT_EQ(rgb.channels, 3);
+    EXPECT_NEAR(rgb.at(1, 1, 0), 0.8f, 1e-6f);
+    EXPECT_NEAR(rgb.at(1, 1, 1), 0.8f, 1e-6f);
+    EXPECT_NEAR(rgb.at(1, 1, 2), 0.8f, 1e-6f);
+    auto back = rgb2gray(rgb);
+    EXPECT_EQ(back.channels, 1);
+    EXPECT_NEAR(back.at(1, 1, 0), 0.8f, 1e-5f);
+    EXPECT_NEAR(back.at(0, 0, 0), 0.35f, 1e-5f);
+
+    Image gray3(1, 1, 3, 0.4f);
+    auto hsv = rgb2hsv(gray3);
+    EXPECT_NEAR(hsv.at(0, 0, 1), 0.f, 1e-5f);
+    EXPECT_NEAR(hsv.at(0, 0, 2), 0.4f, 1e-5f);
+    auto round = hsv2rgb(hsv);
+    EXPECT_NEAR(round.at(0, 0, 0), 0.4f, 0.02f);
+    EXPECT_NEAR(round.at(0, 0, 1), 0.4f, 0.02f);
+    EXPECT_NEAR(round.at(0, 0, 2), 0.4f, 0.02f);
+}
+
+TEST(ImageMorph, EvenKsizeDefaultAndEmptyVariants) {
+    Image img(8, 8, 1, 0.f);
+    img.at(4, 4, 0) = 1.f;
+    auto d2 = imdilate(img, 2);
+    auto d3 = imdilate(img, 3);
+    EXPECT_NEAR(d2.at(3, 3, 0), d3.at(3, 3, 0), 1e-6f);
+    EXPECT_GT(d2.at(3, 4, 0), 0.f);
+
+    auto ddef = imdilate(img);
+    EXPECT_GT(ddef.at(3, 4, 0), 0.f);
+    auto e0 = imerode(img, 0);
+    EXPECT_FLOAT_EQ(e0.at(4, 4, 0), 1.f);
+
+    auto o5 = imopen(img, 5);
+    auto c5 = imclose(img, 5);
+    auto th = imtophat(img, 5);
+    auto bh = imbothat(img, 5);
+    auto gr = imgradient_morph(img, 5);
+    EXPECT_LE(o5.at(4, 4, 0), 1.f + 1e-6f);
+    EXPECT_GE(c5.at(4, 4, 0), 0.f);
+    EXPECT_GE(th.at(4, 4, 0), 0.f);
+    EXPECT_GE(bh.at(0, 0, 0), 0.f);
+    EXPECT_GE(gr.at(4, 4, 0), 0.f);
+
+    Image empty;
+    EXPECT_TRUE(imtophat(empty, 3).empty());
+    EXPECT_TRUE(imbothat(empty, 3).empty());
+    EXPECT_TRUE(imgradient_morph(empty, 3).empty());
+}
+
+TEST(ImageThresh, OtsuOneByOneAndBimodal) {
+    Image one(1, 1, 1, 0.8f);
+    auto t1 = threshold_otsu(one);
+    EXPECT_EQ(t1.rows, 1);
+    EXPECT_EQ(t1.cols, 1);
+    EXPECT_TRUE(t1.at(0, 0, 0) == 0.f || t1.at(0, 0, 0) == 1.f);
+
+    Image ramp(8, 8, 1, 0.f);
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+            ramp.at(r, c, 0) = static_cast<float>(r * 8 + c) / 63.f;
+    auto t = threshold_otsu(ramp);
+    EXPECT_FLOAT_EQ(t.at(0, 0, 0), 0.f);
+    EXPECT_FLOAT_EQ(t.at(7, 7, 0), 1.f);
+    int n0 = 0, n1 = 0;
+    for (float v : t.data) {
+        EXPECT_TRUE(v == 0.f || v == 1.f);
+        n0 += (v == 0.f);
+        n1 += (v == 1.f);
+    }
+    EXPECT_GT(n0, 0);
+    EXPECT_GT(n1, 0);
+}
+
+TEST(ImageEdge, CannyEmptyAndTiny) {
+    auto e = canny(Image{}, 0.1f, 0.3f, 1.0f);
+    EXPECT_TRUE(e.empty());
+
+    Image tiny(1, 1, 1, 0.5f);
+    auto t = canny(tiny, 0.1f, 0.3f, 1.0f);
+    EXPECT_EQ(t.rows, 1);
+    EXPECT_EQ(t.cols, 1);
+    EXPECT_EQ(t.channels, 1);
+    EXPECT_FLOAT_EQ(t.at(0, 0, 0), 0.f);
+}
+
+TEST(ImageHist, HisteqRgbStretchesToGray) {
+    Image rgb(8, 8, 3, 0.2f);
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c) {
+            const float v = static_cast<float>(r * 8 + c) / 63.f * 0.3f + 0.1f;
+            rgb.at(r, c, 0) = v;
+            rgb.at(r, c, 1) = v * 0.9f;
+            rgb.at(r, c, 2) = v * 0.8f;
+        }
+    auto eq = histeq(rgb);
+    EXPECT_EQ(eq.channels, 1);
+    EXPECT_EQ(eq.rows, 8);
+    EXPECT_EQ(eq.cols, 8);
+    float mn = 1.f, mx = 0.f;
+    for (float v : eq.data) {
+        mn = std::min(mn, v);
+        mx = std::max(mx, v);
+        EXPECT_GE(v, 0.f);
+        EXPECT_LE(v, 1.f);
+    }
+    EXPECT_GT(mx, mn);
+}

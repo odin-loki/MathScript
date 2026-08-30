@@ -191,3 +191,74 @@ TEST(DistributedAdv, BlockRowExtent_Uneven) {
     auto e2 = block_row_extent(7, 2, 3);
     EXPECT_EQ(e2.count, 2u);
 }
+
+TEST(DistributedAdv, Init_ActivatesSingleRank) {
+    std::vector<char*> argv;
+    auto ctx = init(static_cast<int>(argv.size()), argv.data());
+    EXPECT_TRUE(ctx.active);
+    EXPECT_EQ(rank(ctx), 0);
+    EXPECT_EQ(size(ctx), 1);
+    EXPECT_FALSE(backend_name(ctx).empty());
+    EXPECT_NEAR(allreduce_sum(ctx, 2.5), 2.5, 1e-10);
+    EXPECT_NEAR(bcast(ctx, -4.0), -4.0, 1e-10);
+    barrier(ctx);
+    finalize(ctx);
+    EXPECT_FALSE(ctx.active);
+}
+
+TEST(DistributedAdv, EmptyRankContext) {
+    MPIContext ctx;
+    ctx.rank = 0;
+    ctx.size = 0;
+    EXPECT_EQ(rank(ctx), 0);
+    EXPECT_EQ(size(ctx), 0);
+    EXPECT_NEAR(allreduce_sum(ctx, 1.0), 1.0, 1e-10);
+    EXPECT_NEAR(allreduce_max(ctx, -2.0), -2.0, 1e-10);
+    EXPECT_NEAR(allreduce_min(ctx, 8.0), 8.0, 1e-10);
+    EXPECT_NEAR(bcast(ctx, 0.25), 0.25, 1e-10);
+    barrier(ctx);
+}
+
+TEST(DistributedAdv, BlockRowExtent_EmptyGlobalRows) {
+    auto ext = block_row_extent(0, 0, 4);
+    EXPECT_EQ(ext.start, 0u);
+    EXPECT_EQ(ext.count, 0u);
+}
+
+TEST(DistributedAdv, BlockRowExtent_ZeroProcs) {
+    auto ext = block_row_extent(10, 0, 0);
+    EXPECT_EQ(ext.start, 0u);
+    EXPECT_EQ(ext.count, 0u);
+}
+
+TEST(DistributedAdv, BlockRowExtent_NegativeProcs) {
+    auto ext = block_row_extent(10, 0, -1);
+    EXPECT_EQ(ext.start, 0u);
+    EXPECT_EQ(ext.count, 0u);
+}
+
+TEST(DistributedAdv, BlockRowExtent_RankPastNprocs) {
+    auto ext = block_row_extent(10, 5, 2);
+    EXPECT_EQ(ext.start, 25u);
+    EXPECT_EQ(ext.count, 5u);
+}
+
+TEST(DistributedAdv, BlockCyclicRowIndices_EmptyGlobalRows) {
+    auto idx = block_cyclic_row_indices(0, 0, 3);
+    EXPECT_TRUE(idx.empty());
+}
+
+TEST(DistributedAdv, BlockCyclicRowIndices_ZeroProcs) {
+    auto idx = block_cyclic_row_indices(8, 0, 0);
+    EXPECT_TRUE(idx.empty());
+}
+
+TEST(DistributedAdv, BlockCyclicRowIndices_NegativeProcs) {
+    auto idx = block_cyclic_row_indices(8, 1, -2);
+    EXPECT_TRUE(idx.empty());
+}
+
+TEST(DistributedAdv, BlockCyclicRowIndices_EmptyRankPastRows) {
+    auto idx = block_cyclic_row_indices(4, 7, 3);
+    EXPECT_TRUE(idx.empty());
+}

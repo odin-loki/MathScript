@@ -20820,3 +20820,99 @@ TEST(ReplCommandsTest, sym_expand_noassign) {
     expect_error_contains(interp, "sym_expand(x+x)", "expected");
 }
 
+TEST(ReplCommandsTest, hypergeo_0f1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "hypergeo_0f1(2, 1)");
+    expect_error_contains(interp, "hypergeo_0f1(2, missing)", "expected hypergeo_0f1(b,z)");
+}
+
+TEST(ReplCommandsTest, weierstrass_zeta_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "weierstrass_zeta(0.5, 1, 0)");
+    expect_error_contains(interp, "weierstrass_zeta(0.5, 1, missing)",
+                          "expected weierstrass_zeta(z,g2,g3)");
+}
+
+TEST(ReplCommandsTest, weierstrass_p_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "weierstrass_p(0.5, 1, 0)");
+    expect_error_contains(interp, "weierstrass_p(0.5, 1, missing)",
+                          "expected weierstrass_p(z,g2,g3)");
+}
+
+TEST(ReplCommandsTest, weierstrass_pprime_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "weierstrass_pprime(0.5, 1, 0)");
+    expect_error_contains(interp, "weierstrass_pprime(0.5, 1, missing)",
+                          "expected weierstrass_pprime(z,g2,g3)");
+}
+
+TEST(ReplCommandsTest, beta_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "beta(2, 3)");
+    expect_error_contains(interp, "beta(2, missing)", "expected numeric arguments beta(a,b)");
+}
+
+TEST(ReplCommandsTest, zeta_hurwitz_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "zeta_hurwitz(2, 0.3)");
+    expect_error_contains(interp, "zeta_hurwitz(2, missing)", "expected zeta_hurwitz(s,a)");
+}
+
+TEST(ReplCommandsTest, chebyshev_t_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "chebyshev_t(2, 0.5)");
+    expect_error_contains(interp, "chebyshev_t(2, missing)", "expected chebyshev_t(n,x)");
+}
+
+TEST(ReplCommandsTest, jacobi_sc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_sc(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_sc(0.5, missing)", "expected jacobi_sc(u,k)");
+}
+
+TEST(ReplCommandsTest, jacobi_cn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_cn(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_cn(0.5, missing)", "expected jacobi_cn(u,k)");
+}
+
+TEST(ReplCommandsTest, ellip_pi_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "ellip_pi(0.5, 0.5)");
+    expect_error_contains(interp, "ellip_pi(0.5, missing)", "expected ellip_pi(n,k)");
+}
+
+TEST(ReplCommandsTest, fft_goertzel_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "x = [1; 0; -1; 0]");
+    expect_contains(interp, "fft_goertzel(x, 0.25, 1.0)", "goertzel =");
+    expect_error_contains(interp, "fft_goertzel(missing, 0.25, 1.0)", "unknown matrix");
+    expect_error_contains(interp, "fft_goertzel(x, notnum, 1.0)",
+                          "expected fft_goertzel(x, f, fs)");
+}
+
+TEST(ReplCommandsTest, bessel_j_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "bessel_j(0, 1)");
+    expect_error_contains(interp, "bessel_j(0, missing)", "expected bessel_j(nu,x)");
+}
+
+TEST(ReplCommandsTest, struve_h_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "struve_h(1, 0.5)");
+    expect_error_contains(interp, "struve_h(1, missing)", "expected struve_h(nu,x)");
+}
+
+TEST(ReplCommandsTest, theta1_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "theta1(0.5, 0.3)");
+    expect_error_contains(interp, "theta1(0.5, missing)", "expected theta1(z,q)");
+}
+
+TEST(ReplCommandsTest, jacobi_sn_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "jacobi_sn(0.5, 0.5)");
+    expect_error_contains(interp, "jacobi_sn(0.5, missing)", "expected jacobi_sn(u,k)");
+}
+

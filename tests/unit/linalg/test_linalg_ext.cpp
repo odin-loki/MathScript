@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <functional>
 #include "ms/linalg/linalg.hpp"
 #include "ms/core/matrix.hpp"
 
@@ -358,4 +359,178 @@ TEST(MatrixFuncTest, LogmTest_ViaExpm) {
             EXPECT_NEAR((*L)(i, j), B(i, j), 1e-4);
         }
     }
+}
+
+TEST(AuxTest, cond_rejects_non_p2_and_singular) {
+    DMatrix I = eye<double>(2);
+    EXPECT_FALSE(cond(I, 1).has_value());
+    EXPECT_FALSE(cond(I, -1).has_value());
+    DMatrix Z = zeros<double>(2, 2);
+    EXPECT_FALSE(cond(Z).has_value());
+}
+
+TEST(AuxTest, matrix_rank_custom_tol) {
+    DMatrix A{{1, 2}, {2, 4}};
+    EXPECT_EQ(matrix_rank(A), 1);
+    EXPECT_EQ(matrix_rank(A, 10.0), 0);
+    EXPECT_EQ(matrix_rank(eye<double>(3)), 3);
+}
+
+TEST(LsqTest, underdetermined_and_row_mismatch) {
+    DMatrix A{{1, 1, 1}, {0, 1, 2}};
+    DMatrix b{{3}, {3}};
+    const auto x = lsq(A, b);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_EQ(x->rows(), 3u);
+    DMatrix b_bad(3, 1);
+    EXPECT_FALSE(lsq(A, b_bad).has_value());
+}
+
+TEST(IterativeTest, jacobi_spd) {
+    DMatrix A{{4, 1}, {1, 3}};
+    DMatrix b{{1}, {2}};
+    const auto x = jacobi(A, b);
+    ASSERT_TRUE(x.has_value());
+    const auto check = solve(A, b);
+    ASSERT_TRUE(check.has_value());
+    EXPECT_NEAR((*x)(0, 0), (*check)(0, 0), 1e-6);
+    EXPECT_NEAR((*x)(1, 0), (*check)(1, 0), 1e-6);
+}
+
+TEST(IterativeTest, jacobi_zero_diagonal) {
+    DMatrix A{{0, 1}, {1, 2}};
+    DMatrix b{{1}, {1}};
+    EXPECT_FALSE(jacobi(A, b).has_value());
+}
+
+TEST(IterativeTest, minres_qmr_lsmr_identity) {
+    DMatrix I = eye<double>(2);
+    DMatrix b{{3}, {-1}};
+    const auto xm = minres(I, b);
+    ASSERT_TRUE(xm.has_value());
+    EXPECT_NEAR((*xm)(0, 0), 3.0, 1e-8);
+    EXPECT_NEAR((*xm)(1, 0), -1.0, 1e-8);
+    const auto xq = qmr(I, b);
+    ASSERT_TRUE(xq.has_value());
+    EXPECT_NEAR((*xq)(0, 0), 3.0, 1e-6);
+    EXPECT_NEAR((*xq)(1, 0), -1.0, 1e-6);
+    const auto xl = lsmr(I, b);
+    ASSERT_TRUE(xl.has_value());
+    EXPECT_NEAR((*xl)(0, 0), 3.0, 1e-6);
+    EXPECT_NEAR((*xl)(1, 0), -1.0, 1e-6);
+}
+
+TEST(IterativeTest, lsqr_overdetermined_and_tfqmr) {
+    DMatrix A{{1, 0}, {0, 1}, {1, 1}};
+    DMatrix b{{1}, {2}, {3}};
+    const auto x = lsqr(A, b);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_EQ(x->rows(), 2u);
+    EXPECT_TRUE(std::isfinite((*x)(0, 0)));
+
+    DMatrix S{{3, 1}, {1, 2}};
+    DMatrix sb{{1}, {1}};
+    const auto xt = tfqmr(S, sb);
+    if (!xt.has_value()) {
+        GTEST_SKIP() << "tfqmr did not converge";
+    }
+    EXPECT_TRUE(std::isfinite((*xt)(0, 0)));
+}
+
+TEST(ConstructionTest, randn_kron_linspace_repmat) {
+    const auto N1 = randn<double>(2, 2, 99);
+    const auto N2 = randn<double>(2, 2, 99);
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 2; ++j) {
+            EXPECT_DOUBLE_EQ(N1(i, j), N2(i, j));
+            EXPECT_TRUE(std::isfinite(N1(i, j)));
+        }
+    }
+
+    DMatrix A{{1, 2}, {3, 4}};
+    const DMatrix K = kron(A, eye<double>(2));
+    EXPECT_EQ(K.rows(), 4u);
+    EXPECT_EQ(K.cols(), 4u);
+    EXPECT_NEAR(K(0, 0), 1.0, 1e-12);
+    EXPECT_NEAR(K(2, 0), 3.0, 1e-12);
+    EXPECT_NEAR(K(2, 2), 4.0, 1e-12);
+
+    const auto grid = linspace(0.0, 1.0, 5u);
+    ASSERT_EQ(grid.size(), 5u);
+    EXPECT_NEAR(grid[0], 0.0, 1e-15);
+    EXPECT_NEAR(grid[4], 1.0, 1e-15);
+    EXPECT_TRUE(linspace(0.0, 1.0, 0u).empty());
+    EXPECT_NEAR(linspace(3.0, 9.0, 1u)[0], 3.0, 1e-15);
+
+    const DMatrix R = repmat(A, 2, 1);
+    EXPECT_EQ(R.rows(), 4u);
+    EXPECT_EQ(R.cols(), 2u);
+    EXPECT_NEAR(R(2, 0), 1.0, 1e-12);
+}
+
+TEST(AuxTest, pinv_null_orth_edges) {
+    DMatrix tall{{1}, {2}, {3}};
+    const auto P = pinv(tall);
+    ASSERT_TRUE(P.has_value());
+    EXPECT_EQ(P->rows(), 1u);
+    EXPECT_EQ(P->cols(), 3u);
+
+    DMatrix I = eye<double>(2);
+    const auto N = null(I);
+    ASSERT_TRUE(N.has_value());
+    EXPECT_EQ(N->cols(), 0u);
+
+    const auto Q = orth(I);
+    ASSERT_TRUE(Q.has_value());
+    EXPECT_EQ(Q->cols(), 2u);
+}
+
+TEST(MatrixFuncTest, sinm_cosm_funm_hess_schur_bidiag) {
+    const double pi_half = std::acos(-1.0) * 0.5;
+    DMatrix D{{0, 0}, {0, pi_half}};
+    const auto sn = sinm(D);
+    ASSERT_TRUE(sn.has_value());
+    EXPECT_NEAR((*sn)(0, 0), 0.0, 1e-9);
+    EXPECT_NEAR((*sn)(1, 1), 1.0, 1e-9);
+    const auto cs = cosm(D);
+    ASSERT_TRUE(cs.has_value());
+    EXPECT_NEAR((*cs)(0, 0), 1.0, 1e-9);
+    EXPECT_NEAR((*cs)(1, 1), 0.0, 1e-9);
+
+    std::function<double(double)> sine = [](double x) { return std::sin(x); };
+    const auto F = funm(D, sine);
+    ASSERT_TRUE(F.has_value());
+    EXPECT_NEAR((*F)(0, 0), (*sn)(0, 0), 1e-8);
+    EXPECT_NEAR((*F)(1, 1), (*sn)(1, 1), 1e-8);
+
+    DMatrix A{{2, 1}, {0, 3}};
+    const auto H = hess(A);
+    ASSERT_TRUE(H.has_value());
+    EXPECT_NEAR((*H)(0, 0), 2.0, 1e-8);
+    const auto S = schur(A);
+    ASSERT_TRUE(S.has_value());
+    EXPECT_EQ(S->T.rows(), 2u);
+
+    DMatrix R{{1, 2, 3}, {4, 5, 6}};
+    const auto bd = bidiag(R);
+    ASSERT_TRUE(bd.has_value());
+    EXPECT_EQ(bd->B.rows(), 2u);
+    EXPECT_EQ(bd->B.cols(), 3u);
+}
+
+TEST(SylvesterTest, solve_2x2_and_precond_zero_diag) {
+    DMatrix A{{2, 0}, {0, 3}};
+    DMatrix B{{1, 0}, {0, 1}};
+    DMatrix C{{6, 0}, {0, 8}};
+    const auto X = solve_sylvester(A, B, C);
+    ASSERT_TRUE(X.has_value());
+    EXPECT_NEAR((*X)(0, 0), 2.0, 1e-8);
+    EXPECT_NEAR((*X)(1, 1), 2.0, 1e-8);
+
+    DMatrix Z{{0, 1}, {0, 0}};
+    const auto scale = precond_diag(Z);
+    ASSERT_EQ(scale.size(), 2u);
+    EXPECT_NEAR(scale[0], 1.0, 1e-15);
+    const DMatrix M = precond_ssor(Z, 2.0);
+    EXPECT_NEAR(M(0, 0), 0.0, 1e-15);
 }

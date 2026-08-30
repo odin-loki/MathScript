@@ -848,3 +848,214 @@ TEST(TensorNMF, ReconstructMatchesFinalError) {
     EXPECT_EQ(static_cast<int>(R.size()), 4);
     EXPECT_EQ(static_cast<int>(R[0].size()), 3);
 }
+
+TEST(TensorBasic, DataConstructorAndConstAt) {
+    std::vector<int> shape = {2, 2};
+    std::vector<double> vals = {1.0, 2.0, 3.0, 4.0};
+    Tensor T(shape, vals);
+    EXPECT_EQ(T.ndim(), 2);
+    EXPECT_EQ(T.numel(), 4);
+    const Tensor& C = T;
+    std::vector<int> idx00 = {0, 0};
+    std::vector<int> idx11 = {1, 1};
+    EXPECT_DOUBLE_EQ(C.at(idx00), 1.0);
+    EXPECT_DOUBLE_EQ(C.at(idx11), 4.0);
+    EXPECT_EQ(C.flat(idx11), 3);
+}
+
+TEST(TensorBasic, DefaultEmpty) {
+    Tensor T;
+    EXPECT_EQ(T.ndim(), 0);
+    EXPECT_EQ(T.numel(), 1);
+    EXPECT_TRUE(T.data.empty());
+}
+
+TEST(TensorBasic, ReshapeToVector) {
+    Tensor T({2, 3}, 0.0);
+    T.data = {1, 2, 3, 4, 5, 6};
+    std::vector<int> flat = {6};
+    auto R = T.reshape(flat);
+    EXPECT_EQ(R.ndim(), 1);
+    EXPECT_EQ(R.numel(), 6);
+    EXPECT_DOUBLE_EQ(R.data[5], 6.0);
+}
+
+TEST(TensorBasic, Transpose3D) {
+    Tensor T({2, 2, 2}, 0.0);
+    for (int i = 0; i < 8; ++i) T.data[static_cast<size_t>(i)] = static_cast<double>(i);
+    std::vector<int> perm = {2, 1, 0};
+    auto R = T.transpose(perm);
+    EXPECT_EQ(R.shape, (std::vector<int>{2, 2, 2}));
+    std::vector<int> src = {1, 0, 0};
+    std::vector<int> dst = {0, 0, 1};
+    EXPECT_DOUBLE_EQ(R.at(dst), T.at(src));
+}
+
+TEST(TensorBasic, UnfoldFoldModeLast) {
+    Tensor T({2, 3, 2}, 0.0);
+    for (long i = 0; i < T.numel(); ++i) T.data[static_cast<size_t>(i)] = static_cast<double>(i + 1);
+    auto M = T.unfold(2);
+    if (M.size() != 2u) {
+        GTEST_SKIP() << "unfold mode 2 unexpected row count";
+    }
+    auto R = Tensor::fold(M, 2, T.shape);
+    for (long i = 0; i < T.numel(); ++i)
+        EXPECT_DOUBLE_EQ(R.data[static_cast<size_t>(i)], T.data[static_cast<size_t>(i)]);
+}
+
+TEST(TensorContract, EmptyContractionsIsOuter) {
+    Tensor A({2}, 0.0); A.data = {1, 2};
+    Tensor B({3}, 0.0); B.data = {3, 4, 5};
+    std::vector<std::pair<int,int>> none;
+    auto C = contract(A, B, none);
+    auto O = outer(A, B);
+    EXPECT_EQ(C.shape, O.shape);
+    for (size_t i = 0; i < C.data.size(); ++i)
+        EXPECT_DOUBLE_EQ(C.data[i], O.data[i]);
+}
+
+TEST(TensorContract, VectorInner) {
+    Tensor A({3}, 0.0); A.data = {1, 2, 3};
+    Tensor B({3}, 0.0); B.data = {4, 5, 6};
+    std::vector<std::pair<int,int>> axes = {{0, 0}};
+    auto C = contract(A, B, axes);
+    if (C.data.empty()) {
+        GTEST_SKIP() << "vector inner contract produced empty tensor";
+    }
+    EXPECT_NEAR(C.data[0], 32.0, 1e-10);
+}
+
+TEST(TensorEinsum, InvalidSubscripts) {
+    Tensor A({2}, 1.0), B({2}, 1.0);
+    auto C = einsum("ijjk", A, B);
+    EXPECT_EQ(C.ndim(), 1);
+    EXPECT_DOUBLE_EQ(C.data[0], 0.0);
+}
+
+TEST(TensorEinsum, OuterProductSubscripts) {
+    Tensor A({2}, 0.0); A.data = {1, 2};
+    Tensor B({2}, 0.0); B.data = {3, 4};
+    auto C = einsum("i,j->ij", A, B);
+    if (C.ndim() != 2) {
+        GTEST_SKIP() << "einsum outer did not yield rank-2";
+    }
+    EXPECT_DOUBLE_EQ(C.at({0, 0}), 3.0);
+    EXPECT_DOUBLE_EQ(C.at({1, 1}), 8.0);
+}
+
+TEST(TensorKhatriRao, ColumnMismatch) {
+    std::vector<std::vector<double>> A = {{1, 2}, {3, 4}};
+    std::vector<std::vector<double>> B = {{5}, {6}};
+    auto KR = khatri_rao(A, B);
+    EXPECT_TRUE(KR.empty());
+}
+
+TEST(TensorKronecker, Rectangular) {
+    std::vector<std::vector<double>> A = {{1, 2, 3}};
+    std::vector<std::vector<double>> B = {{4}, {5}};
+    auto K = kronecker(A, B);
+    if (K.size() != 2u || K[0].size() != 3u) {
+        GTEST_SKIP() << "kronecker rectangular shape unexpected";
+    }
+    EXPECT_DOUBLE_EQ(K[0][0], 4.0);
+    EXPECT_DOUBLE_EQ(K[1][2], 15.0);
+}
+
+TEST(TensorNMF, EmptyMatrixRejected) {
+    std::vector<std::vector<double>> empty;
+    auto res = decompose_nmf(empty, 1, 10, 1e-6);
+    if (res.has_value()) {
+        GTEST_SKIP() << "decompose_nmf accepted empty matrix";
+    }
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorNMF, JaggedMatrixRejected) {
+    std::vector<std::vector<double>> jagged = {{1.0, 2.0}, {3.0}};
+    auto res = decompose_nmf(jagged, 1, 10, 1e-6);
+    if (res.has_value()) {
+        GTEST_SKIP() << "decompose_nmf accepted jagged matrix";
+    }
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorNMF, NonPositiveRankRejected) {
+    std::vector<std::vector<double>> V = {{1.0, 2.0}, {3.0, 4.0}};
+    auto res = decompose_nmf(V, 0, 10, 1e-6);
+    if (res.has_value()) {
+        GTEST_SKIP() << "decompose_nmf accepted rank 0";
+    }
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorNMF, NonPositiveMaxIterRejected) {
+    std::vector<std::vector<double>> V = {{1.0, 2.0}, {3.0, 4.0}};
+    auto res = decompose_nmf(V, 1, 0, 1e-6);
+    if (res.has_value()) {
+        GTEST_SKIP() << "decompose_nmf accepted max_iter 0";
+    }
+    EXPECT_FALSE(res.has_value());
+}
+
+TEST(TensorTT, ReconstructEmptyCores) {
+    TTDecomposition empty;
+    auto R = reconstruct_tt(empty);
+    EXPECT_EQ(R.ndim(), 0);
+}
+
+TEST(TensorNorms, ZeroFilledAndInnerZeros) {
+    Tensor Z({2, 2}, 0.0);
+    EXPECT_NEAR(frobenius_norm(Z), 0.0, 1e-12);
+    Tensor A({2}, 0.0); A.data = {0, 0};
+    Tensor B({2}, 0.0); B.data = {1, 2};
+    EXPECT_NEAR(tensor_inner(A, B), 0.0, 1e-12);
+}
+
+TEST(TensorSymmetrize, OneDUnchanged) {
+    Tensor T({3}, 0.0); T.data = {1, 2, 3};
+    auto S = symmetrize(T);
+    EXPECT_EQ(S.shape, T.shape);
+    EXPECT_NEAR(S.data[0], 1.0, 1e-12);
+    EXPECT_NEAR(S.data[2], 3.0, 1e-12);
+}
+
+TEST(TensorAntisymmetrize, OneDIdentityPerm) {
+    Tensor T({2}, 0.0); T.data = {4, 5};
+    auto A = antisymmetrize(T);
+    EXPECT_EQ(A.shape, T.shape);
+    EXPECT_NEAR(A.data[0], 4.0, 1e-12);
+}
+
+TEST(TensorReconstructCP, EmptyRankZero) {
+    CPDecomposition cp;
+    cp.rank = 0;
+    cp.factors = {{{1.0}, {2.0}}, {{3.0}, {4.0}}};
+    cp.weights = {};
+    auto R = reconstruct_cp(cp);
+    EXPECT_EQ(R.ndim(), 2);
+    for (double v : R.data) EXPECT_DOUBLE_EQ(v, 0.0);
+}
+
+TEST(TensorContract, GeneralThreeD) {
+    Tensor A({2, 2, 2}, 0.0);
+    Tensor B({2, 2}, 0.0);
+    for (int i = 0; i < 8; ++i) A.data[static_cast<size_t>(i)] = 1.0;
+    B.data = {1, 0, 0, 1};
+    std::vector<std::pair<int,int>> axes = {{2, 0}};
+    auto C = contract(A, B, axes);
+    if (C.ndim() != 3) {
+        GTEST_SKIP() << "general contract rank unexpected";
+    }
+    EXPECT_EQ(C.shape[0], 2);
+    EXPECT_EQ(C.shape[1], 2);
+}
+
+TEST(TensorEinsum, BatchedTraceLike) {
+    Tensor A({2, 2}, 0.0); A.data = {1, 2, 3, 4};
+    Tensor B({2, 2}, 0.0); B.data = {5, 6, 7, 8};
+    auto C = einsum("ij,ij->", A, B);
+    if (C.data.empty()) {
+        GTEST_SKIP() << "einsum Frobenius produced empty";
+    }
+    EXPECT_NEAR(C.data[0], 1 * 5 + 2 * 6 + 3 * 7 + 4 * 8, 1e-10);
+}

@@ -1055,3 +1055,100 @@ TEST(ReplCommandsTest, sym_solve_linear_noassign) {
     expect_error_contains(interp, "sym_solve_linear(\"2*x+4\", x)",
                           "quoted semicolon-separated identifier");
 }
+
+TEST(ReplCommandsTest, sym_expand_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_expand(\"x+x\")");
+    expect_error_contains(interp, "sym_expand(x+x)", "expected");
+}
+
+TEST(ReplCommandsTest, sym_simplify_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_simplify(\"x+x\")");
+    expect_error_contains(interp, "sym_simplify(x+x)", "expected");
+}
+
+TEST(ReplCommandsTest, sym_laplace_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_laplace(\"1\", \"t\", \"s\")");
+    expect_error_contains(interp, "sym_laplace(\"1\", t, \"s\")", "expected sym_laplace");
+}
+
+TEST(ReplCommandsTest, sym_ilaplace_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ilaplace(\"1/s\", \"s\", \"t\")");
+    expect_error_contains(interp, "sym_ilaplace(\"1/s\", s, \"t\")", "expected sym_ilaplace");
+}
+
+TEST(ReplCommandsTest, sym_mellin_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_mellin(\"1\", \"t\", \"s\")");
+    expect_error_contains(interp, "sym_mellin(\"1\", t, \"s\")", "expected sym_mellin");
+}
+
+TEST(ReplCommandsTest, sym_imellin_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_imellin(\"1\", \"s\", \"t\")");
+    expect_error_contains(interp, "sym_imellin(\"1\", s, \"t\")", "expected sym_imellin");
+}
+
+TEST(ReplCommandsTest, sym_hankel_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_hankel(\"1\", \"r\", \"k\")");
+    expect_error_contains(interp, "sym_hankel(\"1\", r, \"k\")", "expected sym_hankel");
+}
+
+TEST(ReplCommandsTest, sym_ihankel_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ihankel(\"1\", \"k\", \"r\")");
+    expect_error_contains(interp, "sym_ihankel(\"1\", k, \"r\")", "expected sym_ihankel");
+}
+
+TEST(ReplCommandsTest, sym_fourier_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_fourier(\"1\", \"t\", \"w\")");
+    expect_error_contains(interp, "sym_fourier(\"1\", t, \"w\")", "expected sym_fourier");
+}
+
+TEST(ReplCommandsTest, sym_ifourier_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ifourier(\"1\", \"w\", \"t\")");
+    expect_error_contains(interp, "sym_ifourier(\"1\", w, \"t\")", "expected sym_ifourier");
+}
+
+TEST(ReplCommandsTest, sym_ztransform_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_ztransform(\"1\", \"n\", \"z\")");
+    expect_error_contains(interp, "sym_ztransform(\"1\", n, \"z\")", "expected sym_ztransform");
+}
+
+TEST(ReplCommandsTest, sym_iztransform_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_iztransform(\"1\", \"z\", \"n\")");
+    expect_error_contains(interp, "sym_iztransform(\"1\", z, \"n\")", "expected sym_iztransform");
+}
+
+TEST(ReplCommandsTest, sym_dsolve_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_dsolve(\"1\", \"x\", \"y\")");
+    expect_error_contains(interp, "sym_dsolve(\"1\", x, \"y\")", "expected sym_dsolve");
+}
+
+TEST(ReplCommandsTest, sym_substitute_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_substitute(\"x+1\", \"x\", \"2\")");
+    expect_error_contains(interp, "sym_substitute(\"x+1\", x, \"2\")", "expected sym_substitute");
+}
+
+TEST(ReplCommandsTest, sym_limit_execute_no_assign) {
+    Interpreter interp;
+    expect_contains(interp, "sym_limit(\"x+1\", \"x\", 2)", "3");
+    expect_error_contains(interp, "sym_limit(\"x+1\", x, 2)", "expected sym_limit");
+}
+
+TEST(ReplCommandsTest, sym_series_execute_no_assign) {
+    Interpreter interp;
+    expect_ok(interp, "sym_series(\"exp(x)\", \"x\", 0, 2)");
+    expect_error_contains(interp, "sym_series(\"exp(x)\", x, 0, 2)", "expected sym_series");
+}
+

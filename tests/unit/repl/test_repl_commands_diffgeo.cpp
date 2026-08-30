@@ -170,3 +170,27 @@ TEST(ReplCommandsTest, diffgeo_einstein_scalar_sphere_noassign) {
     expect_error_contains(interp, "diffgeo_einstein_scalar_sphere(1.0, missing)",
                           "expected diffgeo_einstein_scalar_sphere");
 }
+
+TEST(ReplCommandsTest, diffgeo_surface_normal_sphere_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "diffgeo_surface_normal_sphere(0.5, 0.3)", "state =");
+    expect_error_contains(interp, "diffgeo_surface_normal_sphere(0.5, missing)",
+                          "expected numeric arguments");
+}
+
+TEST(ReplCommandsTest, diffgeo_gaussian_curvature_sphere_noassign) {
+    Interpreter interp;
+    expect_contains(interp, "diffgeo_gaussian_curvature_sphere(0.3, 0.7)", "0.999");
+    expect_error_contains(interp, "diffgeo_gaussian_curvature_sphere(0.3, missing)",
+                          "expected diffgeo_gaussian_curvature_sphere");
+}
+
+TEST(ReplCommandsTest, diffgeo_sphere_gauss_bonnet_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "diffgeo_sphere_gauss_bonnet()");
+}
+
+TEST(ReplCommandsTest, diffgeo_sphere_gauss_bonnet_residual_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "diffgeo_sphere_gauss_bonnet_residual()");
+}

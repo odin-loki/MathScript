@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include "ms/cplx/cplx.hpp"
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <utility>
@@ -562,4 +563,44 @@ TEST(CplxLaurent, OneOverZPlusZ) {
     EXPECT_NEAR(std::abs(coeffs[1]), 0.0, 0.15);
     EXPECT_NEAR(coeffs[2].real(), 1.0, 0.15);
     EXPECT_NEAR(coeffs[2].imag(), 0.0, 0.15);
+}
+
+TEST(CplxWinding, EmptyOrOpenPathIsZero) {
+    EXPECT_EQ(winding_number({}, C(0.0)), 0);
+    EXPECT_EQ(winding_number({C(1.0)}, C(0.0)), 0);
+}
+
+TEST(CplxBlaschke, EmptyZerosIsOne) {
+    const auto b = blaschke_product(C(0.3, 0.1), {});
+    EXPECT_NEAR(b.real(), 1.0, 1e-12);
+    EXPECT_NEAR(b.imag(), 0.0, 1e-12);
+}
+
+TEST(CplxJoukowskiInv, RoundTripNearUnit) {
+    const C z(1.5, 0.2);
+    const C w = joukowski(z, 1.0);
+    const auto roots = joukowski_inv(w, 1.0);
+    ASSERT_FALSE(roots.empty());
+    double best = 1e9;
+    for (const auto& r : roots) {
+        best = std::min(best, std::abs(r - z));
+    }
+    EXPECT_LT(best, 1e-8);
+}
+
+TEST(CplxContour, EmptyPathIsZero) {
+    auto f = [](C z) { return z; };
+    const auto val = contour_integral(f, {}, 10);
+    EXPECT_NEAR(val.real(), 0.0, 1e-15);
+    EXPECT_NEAR(val.imag(), 0.0, 1e-15);
+}
+
+TEST(CplxCauchyPV, DegenerateIntervalIsZero) {
+    auto f = [](double x) { return x; };
+    EXPECT_NEAR(cauchy_principal_value(f, 1.0, 0.0, 1.0, 50), 0.0, 1e-15);
+    EXPECT_NEAR(cauchy_principal_value(f, 2.0, 0.0, 1.0, 50), 0.0, 1e-15);
+}
+
+TEST(CplxHarmonicConjugate, EmptyIsEmpty) {
+    EXPECT_TRUE(harmonic_conjugate({}).empty());
 }

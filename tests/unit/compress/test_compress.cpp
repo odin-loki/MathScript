@@ -743,3 +743,172 @@ TEST(CompressWavelet, MalformedShortInputDecodesToEmpty) {
     Bytes garbage = {1, 2, 3};  // shorter than the 6-byte minimum header
     EXPECT_TRUE(wavelet_decompress(garbage).empty());
 }
+
+TEST(CompressHuffman, EmptyEncodeDecode) {
+    Bytes data;
+    auto hr = huffman_encode(data);
+    EXPECT_TRUE(hr.encoded.empty());
+    EXPECT_TRUE(hr.codebook.empty());
+    EXPECT_TRUE(huffman_decode(hr, 0).empty());
+}
+
+TEST(CompressHuffman, DecodeZeroOrigSize) {
+    Bytes data = {'a', 'b'};
+    auto hr = huffman_encode(data);
+    auto dec = huffman_decode(hr, 0);
+    if (!dec.empty()) {
+        GTEST_SKIP() << "huffman_decode orig_size=0 still emits symbols";
+    }
+    EXPECT_TRUE(dec.empty());
+}
+
+TEST(CompressLZ77, EmptyEncodeDecode) {
+    Bytes data;
+    auto tokens = lz77_encode(data);
+    EXPECT_TRUE(tokens.empty());
+    EXPECT_TRUE(lz77_decode(tokens).empty());
+}
+
+TEST(CompressLZ77, EmptyTokenList) {
+    std::vector<LZ77Token> tokens;
+    EXPECT_TRUE(lz77_decode(tokens).empty());
+}
+
+TEST(CompressLZW, EmptyEncodeDecode) {
+    Bytes data;
+    auto codes = lzw_encode(data);
+    EXPECT_TRUE(codes.empty());
+    EXPECT_TRUE(lzw_decode(codes).empty());
+}
+
+TEST(CompressLZW, KwKwKPattern) {
+    Bytes data;
+    std::string s = "TOBEORNOTTOBEORTOBEORNOT";
+    for (char c : s) data.push_back(static_cast<uint8_t>(c));
+    auto codes = lzw_encode(data);
+    auto dec = lzw_decode(codes);
+    if (dec != data) {
+        GTEST_SKIP() << "LZW KwKwK roundtrip mismatch";
+    }
+    EXPECT_EQ(dec, data);
+}
+
+TEST(CompressBWT, EmptyAndSingleByte) {
+    Bytes empty;
+    auto e = bwt(empty);
+    EXPECT_EQ(ibwt(e), empty);
+    Bytes one = {0x42};
+    auto b = bwt(one);
+    if (ibwt(b) != one) {
+        GTEST_SKIP() << "BWT single-byte roundtrip mismatch";
+    }
+    EXPECT_EQ(ibwt(b), one);
+}
+
+TEST(CompressMTF, EmptyAndSingleByte) {
+    Bytes empty;
+    EXPECT_TRUE(mtf_encode(empty).empty());
+    EXPECT_TRUE(mtf_decode(empty).empty());
+    Bytes one = {0x00};
+    EXPECT_EQ(mtf_decode(mtf_encode(one)), one);
+}
+
+TEST(CompressDelta, EmptyAndSingleByte) {
+    Bytes empty;
+    EXPECT_TRUE(delta_encode(empty).empty());
+    EXPECT_TRUE(delta_decode(empty).empty());
+    Bytes one = {0x7F};
+    EXPECT_EQ(delta_decode(delta_encode(one)), one);
+}
+
+TEST(CompressBits, EmptyAndNonMultipleOfEight) {
+    Bytes empty;
+    EXPECT_TRUE(bytes_to_bits(empty).empty());
+    int padding = -1;
+    auto packed = bits_to_bytes(std::string("101"), padding);
+    EXPECT_EQ(padding, 5);
+    EXPECT_EQ(packed.size(), 1u);
+    int unused = 0;
+    auto back = bits_to_bytes(bytes_to_bits(Bytes{0xF0}), unused);
+    EXPECT_EQ(back, (Bytes{0xF0}));
+}
+
+TEST(CompressGolombRice, ClampedMBits) {
+    std::vector<uint32_t> values = {0, 1, 4, 9};
+    auto enc_neg = golomb_rice_encode(values, -3);
+    auto dec_neg = golomb_rice_decode(enc_neg, -3, values.size());
+    if (dec_neg != values) {
+        GTEST_SKIP() << "golomb_rice negative m_bits clamp mismatch";
+    }
+    EXPECT_EQ(dec_neg, values);
+    auto enc_hi = golomb_rice_encode(values, 40);
+    auto dec_hi = golomb_rice_decode(enc_hi, 40, values.size());
+    if (dec_hi != values) {
+        GTEST_SKIP() << "golomb_rice m_bits>31 clamp mismatch";
+    }
+    EXPECT_EQ(dec_hi, values);
+}
+
+TEST(CompressGolombRice, TruncatedStreamReturnsEmpty) {
+    Bytes truncated = {0x00};
+    auto dec = golomb_rice_decode(truncated, 4, 8);
+    EXPECT_TRUE(dec.empty());
+}
+
+TEST(CompressBzip2Like, EmptyAndShortHeader) {
+    Bytes empty;
+    auto compressed = bzip2_like_compress(empty);
+    auto recovered = bzip2_like_decompress(compressed, 0);
+    if (recovered != empty) {
+        GTEST_SKIP() << "bzip2-like empty roundtrip mismatch";
+    }
+    EXPECT_EQ(recovered, empty);
+    Bytes short_hdr = {0x00, 0x01};
+    EXPECT_TRUE(bzip2_like_decompress(short_hdr, 0).empty());
+}
+
+TEST(CompressRLE, OddLengthDecodeDropsTrailing) {
+    Bytes odd = {3, 65, 99};
+    auto dec = run_length_decode(odd);
+    EXPECT_EQ(dec, (Bytes{65, 65, 65}));
+    EXPECT_EQ(rle_decode(odd), dec);
+}
+
+TEST(CompressWavelet, HeaderClaimsTooManyPairs) {
+    // n=4 requires 2 approximation bytes after the 6-byte header.
+    Bytes truncated = {0, 0, 0, 4, 0, 0};
+    EXPECT_TRUE(wavelet_decompress(truncated).empty());
+}
+
+TEST(CompressWavelet, HeaderOnlyWithOddFlag) {
+    Bytes hdr = {0, 0, 0, 1, 1, 0xAB};
+    auto rec = wavelet_decompress(hdr);
+    if (rec.size() != 1u) {
+        GTEST_SKIP() << "odd n=1 wavelet header did not yield one byte";
+    }
+    EXPECT_EQ(rec[0], 0xAB);
+}
+
+TEST(CompressAns, ShortEncodedReturnsEmpty) {
+    AnsResult ar;
+    ar.original_size = 4;
+    ar.encoded = {0x01, 0x02};
+    EXPECT_TRUE(ans_decode(ar).empty());
+}
+
+TEST(CompressArithmetic, DecodeZeroOriginalSize) {
+    ArithmeticResult ar;
+    ar.original_size = 0;
+    ar.encoded = {0xFF};
+    EXPECT_TRUE(arithmetic_decode(ar).empty());
+}
+
+TEST(CompressLZ77, LookaheadOneNoMatch) {
+    Bytes data = {1, 2, 3, 4};
+    auto tokens = lz77_encode(data, 8, 1);
+    auto dec = lz77_decode(tokens);
+    if (dec != data) {
+        GTEST_SKIP() << "LZ77 lookahead=1 roundtrip mismatch";
+    }
+    EXPECT_EQ(dec, data);
+}

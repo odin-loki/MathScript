@@ -18067,3 +18067,97 @@ TEST(ReplCommandsTest, euler_number_noassign) {
     expect_ok(interp, "euler_number(4)");
     expect_error_contains(interp, "euler_number(missing)", "euler_number");
 }
+
+TEST(ReplCommandsTest, special_erfinv_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_erfinv(0.5)");
+    expect_error_contains(interp, "special_erfinv(missing)", "expected numeric argument");
+}
+
+TEST(ReplCommandsTest, special_erfcinv_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_erfcinv(0.3)");
+    expect_error_contains(interp, "special_erfcinv(missing)", "expected numeric argument");
+}
+
+TEST(ReplCommandsTest, special_log_gamma_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_log_gamma(5)");
+    expect_error_contains(interp, "special_log_gamma(missing)", "expected numeric argument");
+}
+
+TEST(ReplCommandsTest, special_digamma_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_digamma(1)");
+    expect_error_contains(interp, "special_digamma(missing)", "expected numeric argument");
+}
+
+TEST(ReplCommandsTest, special_trigamma_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_trigamma(1)");
+    expect_error_contains(interp, "special_trigamma(missing)", "expected numeric argument");
+}
+
+TEST(ReplCommandsTest, special_airy_ai_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_airy_ai(0)");
+    expect_error_contains(interp, "special_airy_ai(missing)", "expected numeric argument");
+}
+
+TEST(ReplCommandsTest, special_airy_bi_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_airy_bi(0)");
+    expect_error_contains(interp, "special_airy_bi(missing)", "expected numeric argument");
+}
+
+TEST(ReplCommandsTest, special_gamma_inc_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_gamma_inc(1, 1)");
+    expect_error_contains(interp, "special_gamma_inc(1, missing)", "expected special_gamma_inc(a,x)");
+}
+
+TEST(ReplCommandsTest, special_polygamma_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_polygamma(1, 1)");
+    expect_error_contains(interp, "special_polygamma(1, missing)", "expected special_polygamma(n,x)");
+}
+
+TEST(ReplCommandsTest, special_gamma_inc_reg_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_gamma_inc_reg(1, 1)");
+    expect_error_contains(interp, "special_gamma_inc_reg(1, missing)",
+                          "expected special_gamma_inc_reg(a,x)");
+}
+
+TEST(ReplCommandsTest, special_gamma_inc_reg_upper_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_gamma_inc_reg_upper(1, 1)");
+    expect_error_contains(interp, "special_gamma_inc_reg_upper(1, missing)",
+                          "expected special_gamma_inc_reg_upper(a,x)");
+}
+
+TEST(ReplCommandsTest, special_voigt_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_voigt(0, 1, 0)");
+    expect_error_contains(interp, "special_voigt(0, 1, missing)",
+                          "expected special_voigt(x,sigma,gamma)");
+}
+
+TEST(ReplCommandsTest, special_beta_inc_reg_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "special_beta_inc_reg(0.3, 1, 1)");
+    expect_error_contains(interp, "special_beta_inc_reg(0.3, 1, missing)",
+                          "expected special_beta_inc_reg(x,a,b)");
+}
+
+TEST(ReplCommandsTest, spherical_in_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "spherical_in(0, 1)");
+    expect_error_contains(interp, "spherical_in(0, missing)", "expected spherical_in(n,x)");
+}
+
+TEST(ReplCommandsTest, kelvin_bei_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "kelvin_bei(0, 1)");
+    expect_error_contains(interp, "kelvin_bei(0, missing)", "expected kelvin_bei(nu,x)");
+}

@@ -2000,3 +2000,122 @@ TEST(SignalExtTest, instantaneous_freq_zero_fs_is_zero) {
         EXPECT_NEAR(v, 0.0, 1e-15);
     }
 }
+
+TEST(SignalExtTest, upsample_downsample_identity_and_empty) {
+    const std::vector<double> x{1.0, 2.0, 3.0};
+    const auto up = upsample(x, 2);
+    ASSERT_EQ(up.size(), 6u);
+    EXPECT_DOUBLE_EQ(up[0], 1.0);
+    EXPECT_DOUBLE_EQ(up[1], 0.0);
+    EXPECT_DOUBLE_EQ(up[2], 2.0);
+    EXPECT_TRUE(upsample(x, 0).empty());
+    EXPECT_TRUE(upsample(std::vector<double>{}, 3).empty());
+    EXPECT_TRUE(downsample(std::vector<double>{}, 2).empty());
+    EXPECT_TRUE(downsample(x, 0).empty());
+    const auto down = downsample(x, 2);
+    ASSERT_EQ(down.size(), 2u);
+    EXPECT_DOUBLE_EQ(down[0], 1.0);
+    EXPECT_DOUBLE_EQ(down[1], 3.0);
+    const auto id = downsample(upsample(x, 1), 1);
+    ASSERT_EQ(id.size(), x.size());
+    EXPECT_DOUBLE_EQ(id[1], 2.0);
+}
+
+TEST(SignalExtTest, cheby1_cheby2_invalid_and_lowpass) {
+    EXPECT_TRUE(cheby1(0, 1.0, 10.0, 100.0).b.empty());
+    EXPECT_TRUE(cheby1(2, -1.0, 10.0, 100.0).a.empty());
+    EXPECT_TRUE(cheby2(-1, 20.0, 10.0, 100.0).a.empty());
+    EXPECT_TRUE(cheby2(2, 20.0, 0.0, 100.0).b.empty());
+
+    const auto c1 = cheby1(2, 1.0, 10.0, 100.0);
+    ASSERT_FALSE(c1.a.empty());
+    EXPECT_NEAR(c1.a[0], 1.0, 1e-12);
+    const auto c2 = cheby2(2, 40.0, 20.0, 100.0, FilterType::Highpass);
+    ASSERT_FALSE(c2.b.empty());
+    EXPECT_NEAR(c2.a[0], 1.0, 1e-12);
+
+    const std::vector<double> dc(32, 1.0);
+    const auto y = filter(c1.b, c1.a, dc);
+    ASSERT_EQ(y.size(), dc.size());
+    EXPECT_TRUE(std::isfinite(y.back()));
+}
+
+TEST(SignalExtTest, filter_span_and_in_place_match) {
+    const std::vector<double> b{0.25, 0.5, 0.25};
+    const std::vector<double> a{1.0};
+    const std::vector<double> x{1.0, 0.0, 0.0, 0.0, 0.0};
+    const auto y = filter(b, a, x);
+    std::vector<double> y_span(x.size(), -1.0);
+    filter(b, a, std::span<const double>(x), std::span<double>(y_span));
+    ASSERT_EQ(y.size(), y_span.size());
+    for (size_t i = 0; i < y.size(); ++i) {
+        EXPECT_NEAR(y[i], y_span[i], 1e-15);
+    }
+    std::vector<double> inplace = x;
+    filter_in_place(b, a, std::span<double>(inplace));
+    for (size_t i = 0; i < y.size(); ++i) {
+        EXPECT_NEAR(y[i], inplace[i], 1e-15);
+    }
+    EXPECT_TRUE(filter(b, a, {}).empty());
+    EXPECT_TRUE(filter({}, a, x).empty());
+}
+
+TEST(SignalExtTest, filtfilt_and_sosfilt_identity) {
+    const std::vector<double> b{1.0};
+    const std::vector<double> a{1.0};
+    const std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+    const auto z = filtfilt(b, a, x);
+    ASSERT_EQ(z.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(z[i], x[i], 1e-12);
+    }
+    EXPECT_TRUE(filtfilt(b, a, {}).empty());
+    EXPECT_TRUE(filtfilt({}, a, x).empty());
+
+    const std::vector<std::array<double, 6>> sos{{1.0, 0.0, 0.0, 1.0, 0.0, 0.0}};
+    const auto s = sosfilt(sos, x);
+    ASSERT_EQ(s.size(), x.size());
+    for (size_t i = 0; i < x.size(); ++i) {
+        EXPECT_NEAR(s[i], x[i], 1e-12);
+    }
+    const auto passthrough = sosfilt({}, x);
+    ASSERT_EQ(passthrough.size(), x.size());
+    EXPECT_DOUBLE_EQ(passthrough[2], 3.0);
+}
+
+TEST(SignalExtTest, firwin_savgol_median_lms_edges) {
+    const auto lp = firwin(5, 0.2);
+    ASSERT_EQ(lp.size(), 5u);
+    double sum = 0.0;
+    for (double v : lp) {
+        sum += v;
+    }
+    EXPECT_NEAR(sum, 1.0, 1e-9);
+    EXPECT_TRUE(firwin(0, 0.2).empty());
+    EXPECT_TRUE(firwin_highpass(4, 0.3).empty());
+    EXPECT_TRUE(firwin_highpass(0, 0.3).empty());
+    const auto hp = firwin_highpass(5, 0.3);
+    ASSERT_EQ(hp.size(), 5u);
+    EXPECT_TRUE(std::isfinite(hp[2]));
+
+    const std::vector<double> ramp{1.0, 2.0, 3.0, 4.0, 5.0};
+    const auto sg = savgol(ramp, 5, 1);
+    ASSERT_EQ(sg.size(), ramp.size());
+    EXPECT_NEAR(sg[2], 3.0, 1e-8);
+    EXPECT_TRUE(savgol(ramp, 4, 1).empty());
+    EXPECT_TRUE(savgol(ramp, 5, 5).empty());
+
+    const std::vector<double> spike{1.0, 1.0, 10.0, 1.0, 1.0};
+    const auto med = median_filter(spike, 3);
+    ASSERT_EQ(med.size(), spike.size());
+    EXPECT_NEAR(med[2], 1.0, 1e-12);
+    EXPECT_TRUE(median_filter(spike, 2).empty());
+    EXPECT_TRUE(median_filter(spike, 0).empty());
+
+    const std::vector<double> u{1.0, 0.0, 0.0, 0.0};
+    const auto lms = lms_adaptive_filter(u, u, 1, 0.5);
+    ASSERT_EQ(lms.output.size(), u.size());
+    EXPECT_NEAR(lms.output[0], 0.0, 1e-15);
+    EXPECT_TRUE(lms_adaptive_filter(u, u, 0, 0.1).output.empty());
+    EXPECT_TRUE(lms_adaptive_filter(u, {1.0, 0.0}, 1, 0.1).output.empty());
+}
