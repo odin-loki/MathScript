@@ -404,12 +404,120 @@ struct PCA {
     Mat inverse_transform(const Mat& Z) const;
 };
 
+/// Barnes-Hut t-SNE — t-distributed Stochastic Neighbor Embedding
+/// (van der Maaten & Hinton 2008; van der Maaten 2014) with the repulsive
+/// term approximated by a 2^d space-partitioning tree.
+///
+/// Pipeline:
+///   1. Exact k-nearest-neighbours in the input space with
+///      k = min(n-1, n_neighbors), n_neighbors defaulting to
+///      floor(3*perplexity). The search is a deterministic O(n^2 * d) scan
+///      (no approximate index), so repeated runs on the same data produce
+///      bitwise-identical neighbour lists; ties are broken by the smaller
+///      sample index.
+///   2. Per-point bisection on the precision beta_i = 1/(2*sigma_i^2) so the
+///      Shannon entropy of the conditional distribution P_(.|i) over those k
+///      neighbours equals log(perplexity), to a tolerance of 1e-5 nats within
+///      at most 200 bisection steps. The bisection runs on min-shifted
+///      squared distances, which leaves P_(.|i) unchanged but makes the
+///      normaliser >= 1 for every beta, so no branch can divide by zero.
+///   3. Symmetrisation P_ij = (P_(j|i) + P_(i|j)) / (2n), held in a sparse
+///      row-offset / column-index / value structure. The stored entries sum
+///      to 1 by construction and are never renormalised.
+///   4. Gradient descent on KL(P || Q) with Q_ij proportional to
+///      (1 + ||y_i - y_j||^2)^-1. The attractive term is summed exactly over
+///      the sparse P entries; the repulsive term and the normaliser
+///      Z = sum_(k != l) (1 + ||y_k - y_l||^2)^-1 are accumulated with a
+///      2^d tree (quadtree for n_components == 2, octree for 3) using the
+///      standard acceptance criterion cell_width / distance < theta, where
+///      cell_width is the longest edge of the cell and distance is the
+///      Euclidean distance from y_i to the cell's centre of mass. Adaptive
+///      per-coordinate gains (Jacobs' rule), momentum 0.5 -> 0.8 at
+///      iteration 250, and early exaggeration over iterations [0, 250).
+///
+/// Degenerate input (every case returns a value; nothing here can fail):
+///   n == 0             -> {} (empty matrix)
+///   n == 1             -> a single row of exact zeros
+///   n_components <= 0  -> n rows of width 0
+///   perplexity >= n    -> the entropy target is unreachable; beta_i collapses
+///                         toward 0 and P_(.|i) becomes uniform over the
+///                         k = n-1 available neighbours
+///   perplexity <= 1    -> the target is 0 nats; beta_i grows until P_(.|i) is
+///                         one-hot on the nearest neighbour (uniform over the
+///                         tied minima). No overflow: beta is bounded by
+///                         2^200 and the shifted distances are >= 0
+///   duplicate points   -> zero distances are exact, never NaN or infinity;
+///                         coincident embedding points share a tree bucket at
+///                         the depth cap and are then evaluated pair by pair
+///   ragged rows        -> distances use the shortest common prefix
+///   n_components > 3   -> the tree is bypassed and the repulsive term is
+///                         computed exactly in O(n^2) per iteration (a 2^d
+///                         tree with d > 3 has too many children per node to
+///                         pay for itself)
+///   theta <= 0         -> exact O(n^2) repulsion, the mathematically exact
+///                         limit of the approximation
+///   lr, perplexity or early_exaggeration non-finite or <= 0 -> replaced by
+///                         200.0, 1.0 and 1.0 respectively
+///
+/// Complexity: O(n^2 * d_in) once for the neighbour search, then
+/// O(max_iter * (n log n + n * k)) for the optimisation when the tree is
+/// used, or O(max_iter * n^2 * n_components) in the exact modes. Memory is
+/// O(n * k) for the sparse affinities plus O(n) tree nodes.
+///
+/// @param n_components        embedding dimension (2 or 3 in practice).
+/// @param max_iter            gradient-descent iterations.
+/// @param perplexity          target perplexity; effectively the number of
+///                            neighbours each point is attracted to.
+/// @param lr                  learning rate. Following van der Maaten's
+///                            reference implementation the reported gradient
+///                            is the KL gradient divided by 4, the constant
+///                            being absorbed into lr — which is why 200 is
+///                            the usual default.
+/// @param seed                seed for the deterministic SplitMix64 +
+///                            Box-Muller initialiser. Reproducible across
+///                            platforms and standard libraries; the
+///                            distributions in <random> are deliberately not
+///                            used because their output sequences are
+///                            implementation-defined.
+/// @param theta               Barnes-Hut accuracy parameter, clamped to
+///                            [0, 1]. 0 is exact; larger is faster and
+///                            coarser. 0.5 is the standard setting.
+/// @param n_neighbors         explicit k; 0 selects floor(3 * perplexity).
+/// @param early_exaggeration  multiplier applied to the attractive term for
+///                            the first 250 iterations, which spreads the
+///                            clusters apart before the layout is refined.
 struct TSNE {
     int n_components, max_iter; double perplexity, lr; unsigned seed;
+    double theta = 0.5;
+    int n_neighbors = 0;                 // 0 -> auto: floor(3 * perplexity)
+    double early_exaggeration = 12.0;
+
     explicit TSNE(int n = 2, double p = 30.0, double l = 200.0, int mi = 250,
                   unsigned s = 42)
         : n_components(n), max_iter(mi), perplexity(p), lr(l), seed(s) {}
+
+    /// Fits the embedding and returns it as an n x n_components matrix whose
+    /// columns are mean-centred (the centring is re-applied after every
+    /// iteration, so it also holds when max_iter <= 0). Deterministic for a
+    /// fixed (X, seed) and configuration.
     Mat fit_transform(const Mat& X) const;
+
+    /// As above, and additionally fills `kl_trace` with the objective
+    /// KL(P || Q) measured on the *unexaggerated* P. One entry is recorded
+    /// before the update of every 50th iteration (0, 50, 100, ...) plus one
+    /// final entry for the returned embedding, so the trace holds
+    /// ceil(max_iter / 50) + 1 values for max_iter >= 0. `kl_trace` is
+    /// cleared first. Each measurement costs O(n^2 * n_components) because
+    /// the normaliser Z is evaluated exactly, independently of `theta`.
+    Mat fit_transform(const Mat& X, Vec& kl_trace) const;
+
+    /// KL(P || Q) of an arbitrary embedding `Y` under the high-dimensional
+    /// affinities this configuration builds for `X`. Z is summed exactly, so
+    /// the value never depends on `theta`. Returns 0.0 when
+    /// Y.size() != X.size(), when n < 2, when n_components <= 0, or when any
+    /// row of Y is narrower than n_components.
+    /// Complexity O(n^2 * d_in) for the affinities plus O(n^2 * n_components).
+    double kl_divergence(const Mat& X, const Mat& Y) const;
 };
 
 // ========================== Autodiff (reverse mode) ==========================

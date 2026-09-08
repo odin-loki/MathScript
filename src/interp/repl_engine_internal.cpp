@@ -6336,6 +6336,68 @@ Result<Matrix<double>> eval_graph_maximum_matching(const Matrix<double>& adj_m) 
     return out;
 }
 
+Result<Matrix<double>> eval_graph_max_weight_matching(const Matrix<double>& adj_m,
+                                                      bool maxcardinality) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_max_weight_matching");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto edges = graph::max_weight_matching(*G, maxcardinality);
+    Matrix<double> out(edges.size(), 2);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        out(i, 0) = static_cast<double>(edges[i].first);
+        out(i, 1) = static_cast<double>(edges[i].second);
+    }
+    return out;
+}
+
+Result<double> eval_graph_max_weight_matching_value(const Matrix<double>& adj_m,
+                                                    bool maxcardinality) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_max_weight_matching_value");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return graph::max_weight_matching_value(*G, maxcardinality);
+}
+
+Result<Matrix<double>> eval_graph_planar_embedding(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_planar_embedding");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    auto emb = graph::planar_embedding(*G);
+    if (!emb) {
+        return std::unexpected(emb.error());
+    }
+    // Ragged rows (vertex degree varies), so pad to the widest with -1.
+    size_t width = 0;
+    for (const auto& row : *emb) {
+        width = std::max(width, row.size());
+    }
+    Matrix<double> out(emb->size(), width, -1.0);
+    for (size_t i = 0; i < emb->size(); ++i) {
+        for (size_t j = 0; j < (*emb)[i].size(); ++j) {
+            out(i, j) = static_cast<double>((*emb)[i][j]);
+        }
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_graph_kuratowski_subgraph(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_kuratowski_subgraph");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto edges = graph::kuratowski_subgraph(*G);
+    Matrix<double> out(edges.size(), 3);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        out(i, 0) = static_cast<double>(edges[i].from);
+        out(i, 1) = static_cast<double>(edges[i].to);
+        out(i, 2) = edges[i].weight;
+    }
+    return out;
+}
+
 Result<Matrix<double>> eval_graph_transitive_closure(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency(adj_m, "graph_transitive_closure");
     if (!G) {
@@ -12015,6 +12077,14 @@ Result<double> eval_graph_is_tree(const Matrix<double>& adj_m) {
 
 Result<double> eval_graph_is_planar(const Matrix<double>& adj_m) {
     auto G = graph_from_adjacency_undirected(adj_m, "graph_is_planar");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return graph::is_planar(*G) ? 1.0 : 0.0;
+}
+
+Result<double> eval_graph_is_planar_heuristic(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_is_planar_heuristic");
     if (!G) {
         return std::unexpected(G.error());
     }

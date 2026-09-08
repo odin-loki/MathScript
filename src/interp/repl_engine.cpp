@@ -1329,6 +1329,33 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "matching =\n";
         print_matrix(out, *mm);
+    } else if (fn == "graph_max_weight_matching") {
+        auto mm = eval_graph_max_weight_matching(matrix, false);
+        if (!mm) {
+            return std::unexpected(mm.error());
+        }
+        out << "matching =\n";
+        print_matrix(out, *mm);
+    } else if (fn == "graph_max_weight_matching_value") {
+        auto value = eval_graph_max_weight_matching_value(matrix, false);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        out << *value << "\n";
+    } else if (fn == "graph_planar_embedding") {
+        auto emb = eval_graph_planar_embedding(matrix);
+        if (!emb) {
+            return std::unexpected(emb.error());
+        }
+        out << "embedding =\n";
+        print_matrix(out, *emb);
+    } else if (fn == "graph_kuratowski_subgraph") {
+        auto ks = eval_graph_kuratowski_subgraph(matrix);
+        if (!ks) {
+            return std::unexpected(ks.error());
+        }
+        out << "kuratowski =\n";
+        print_matrix(out, *ks);
     } else if (fn == "graph_transitive_closure") {
         auto reach = eval_graph_transitive_closure(matrix);
         if (!reach) {
@@ -1825,6 +1852,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "graph_normalised_laplacian" || callee == "graph_eccentricity" ||
         callee == "graph_articulation_points" ||
         callee == "graph_bridges" || callee == "graph_maximum_matching" ||
+        callee == "graph_max_weight_matching" || callee == "graph_planar_embedding" ||
+        callee == "graph_kuratowski_subgraph" ||
         callee == "graph_transitive_closure" ||
         callee == "finance_min_variance_portfolio" ||
         callee == "fft_rfft" || callee == "fft_dft" ||
@@ -2494,6 +2523,8 @@ bool is_scalar_matrix_call_callee(const std::string& callee) {
            callee == "graph_is_dag" || callee == "graph_is_connected" ||
            callee == "graph_is_strongly_connected" ||
            callee == "graph_is_tree" || callee == "graph_is_planar" ||
+           callee == "graph_is_planar_heuristic" ||
+           callee == "graph_max_weight_matching_value" ||
            callee == "poly_discriminant" ||
            callee == "stats_mean" || callee == "stats_median" ||
            callee == "stats_stddev" || callee == "stats_skewness" ||
@@ -4954,6 +4985,10 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
         value = eval_graph_is_tree(*matrix);
     } else if (assign.callee == "graph_is_planar") {
         value = eval_graph_is_planar(*matrix);
+    } else if (assign.callee == "graph_is_planar_heuristic") {
+        value = eval_graph_is_planar_heuristic(*matrix);
+    } else if (assign.callee == "graph_max_weight_matching_value") {
+        value = eval_graph_max_weight_matching_value(*matrix, false);
     }
     if (!value) {
         return std::unexpected(value.error());
@@ -9710,6 +9745,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_articulation_points(A) articulation points of undirected graph as Nx1 column\n"
             "  name = graph_bridges(A) bridge edges of undirected graph as Mx3 [from,to,weight]\n"
             "  name = graph_maximum_matching(A) maximum cardinality matching as Mx2 [u,v] edge list\n"
+            "  name = graph_max_weight_matching(A[,maxcard]) maximum WEIGHT matching (Edmonds blossom) as Mx2 [u,v]\n"
+            "  name = graph_max_weight_matching_value(A) total weight of the maximum-weight matching\n"
+            "  name = graph_planar_embedding(A) combinatorial embedding, row v = cyclic neighbour order (-1 padded)\n"
+            "  name = graph_kuratowski_subgraph(A) K5/K3,3 subdivision edges as Mx3 [u,v,w]; empty when planar\n"
             "  name = graph_biconnected_components(A) biconnected components as Kx(3*M) edge triples\n"
             "  name = graph_bipartite_match(A,left_size) maximum bipartite matching size\n"
             "  name = graph_transitive_closure(A) boolean reachability matrix of directed graph\n"
@@ -9718,7 +9757,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_is_bipartite(A) 1 if undirected graph is bipartite else 0\n"
             "  name = graph_is_connected(A) 1 if undirected graph is connected else 0\n"
             "  name = graph_is_tree(A) 1 if undirected graph is a tree else 0\n"
-            "  name = graph_is_planar(A) 1 if undirected graph passes K5/K3,3 planar heuristic else 0\n"
+            "  name = graph_is_planar(A) 1 if the undirected graph is planar else 0 (exact test)\n"
+            "  name = graph_is_planar_heuristic(A) 1 if it passes the older K5/K3,3 planar heuristic else 0\n"
             "  name = graph_is_dag(A) 1 if directed graph is a DAG else 0\n"
             "  name = graph_topological_sort(A) topological order of DAG as Nx1 column\n"
             "  name = graph_greedy_colour(A) greedy vertex colours of undirected graph as Nx1 column\n"
@@ -21294,6 +21334,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             out << *value << "\n";
         } else if (fn == "graph_is_planar") {
             auto value = eval_graph_is_planar(*matrix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            out << *value << "\n";
+        } else if (fn == "graph_is_planar_heuristic") {
+            auto value = eval_graph_is_planar_heuristic(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }

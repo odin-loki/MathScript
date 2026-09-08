@@ -10,6 +10,7 @@
 #include <set>
 #include <functional>
 #include <cstddef>
+#include <cstdint>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -1824,73 +1825,675 @@ Mat PCA::inverse_transform(const Mat& Z) const {
     return Xr;
 }
 
-// ========================== t-SNE (simplified Barnes-Hut stub) ==========================
+// ========================== t-SNE (Barnes-Hut) ==========================
 
-Mat TSNE::fit_transform(const Mat& X) const {
-    int n=to_i(X.size());
-    // Compute pairwise affinities
-    std::vector<std::vector<double>> P(n, std::vector<double>(n,0));
-    for (int i=0;i<n;++i) {
-        double sigmai=1.0;
-        // Binary search for sigma matching perplexity
-        double lo=0.01,hi=100.0;
-        for (int bs=0;bs<50;++bs) {
-            double sig=(lo+hi)/2;
-            double sum=0;
-            for (int j=0;j<n;++j) if (j!=i) {
-                double d2=0; for (size_t d=0;d<X[i].size();++d) d2+=(X[i][d]-X[j][d])*(X[i][d]-X[j][d]);
-                sum+=std::exp(-d2/(2*sig*sig));
+// Tuning constants for the Barnes-Hut t-SNE below. The schedule constants
+// (exaggeration/momentum switch at 250, gains 0.2/0.8 floored at 0.01,
+// momentum 0.5 -> 0.8) are van der Maaten's reference values.
+static constexpr int    TSNE_EXAGGERATION_ITERS   = 250;
+static constexpr int    TSNE_MOMENTUM_SWITCH_ITER = 250;
+static constexpr double TSNE_INITIAL_MOMENTUM     = 0.5;
+static constexpr double TSNE_FINAL_MOMENTUM       = 0.8;
+static constexpr double TSNE_GAIN_ADD             = 0.2;
+static constexpr double TSNE_GAIN_MUL             = 0.8;
+static constexpr double TSNE_MIN_GAIN             = 0.01;
+static constexpr double TSNE_INIT_SCALE           = 1e-4;
+static constexpr double TSNE_PERPLEXITY_TOL       = 1e-5;
+static constexpr int    TSNE_MAX_BISECTION_ITERS  = 200;
+static constexpr double TSNE_NEIGHBOR_FACTOR      = 3.0;
+static constexpr int    TSNE_MAX_TREE_DEPTH       = 50;
+static constexpr int    TSNE_MAX_TREE_DIM         = 3;
+static constexpr double TSNE_BBOX_PAD             = 1e-5;
+static constexpr int    TSNE_KL_EVAL_INTERVAL     = 50;
+static constexpr double TSNE_EPS                  = 1e-12;
+static constexpr double TSNE_DEFAULT_LR           = 200.0;
+
+// Squared Euclidean distance clamped to the shorter of the two rows, so a
+// ragged input matrix cannot read past the end of a row. (The file-scope
+// sq_eucl_dist() above indexes b[i] for i < a.size() and is unsafe here.)
+static double tsne_sq_dist(const Vec& a, const Vec& b) {
+    const size_t m = std::min(a.size(), b.size());
+    double s = 0.0;
+    for (size_t t = 0; t < m; ++t) { const double d = a[t] - b[t]; s += d * d; }
+    return s;
+}
+
+// Sign as an int, so the gain rule compares two small integers instead of
+// two doubles. Matches van der Maaten's sign(): exact zeros compare equal.
+static int tsne_sign(double x) noexcept {
+    return (x > 0.0) ? 1 : ((x < 0.0) ? -1 : 0);
+}
+
+// SplitMix64 (Vigna), the same idiom as src/frameworks/izaac/izaac.cpp.
+// Chosen over <random> because std::normal_distribution and even
+// std::uniform_real_distribution are not specified to produce identical
+// sequences across standard-library implementations, so a seeded embedding
+// would differ between libstdc++ and MSVC's STL. This is pure 64-bit integer
+// arithmetic with defined wrap-around, hence bit-exact everywhere.
+static std::uint64_t tsne_splitmix64(std::uint64_t& state) noexcept {
+    state += 0x9E3779B97F4A7C15ULL;
+    std::uint64_t z = state;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
+// Uniform on [0, 1) with a full 53-bit mantissa (the top 53 bits of the word).
+static double tsne_uniform01(std::uint64_t& state) noexcept {
+    const std::uint64_t bits = tsne_splitmix64(state) >> 11;
+    return static_cast<double>(bits) * (1.0 / 9007199254740992.0);  // 2^-53
+}
+
+// One standard normal per call via the basic (non-polar) Box-Muller
+// transform. A fresh pair of uniforms is drawn per scalar and the sine branch
+// discarded on purpose: caching the second variate would make each draw
+// depend on how many scalars had been drawn before it, which is exactly the
+// kind of hidden state that breaks reproducibility.
+static double tsne_normal(std::uint64_t& state) noexcept {
+    double u1 = tsne_uniform01(state);
+    if (u1 < 1e-300) u1 = 1e-300;  // guard log(0); probability ~ 2^-53 * 1e-300
+    const double u2 = tsne_uniform01(state);
+    const double r = std::sqrt(-2.0 * std::log(u1));
+    return r * std::cos(2.0 * M_PI * u2);
+}
+
+// Subtracts the column means in place, so the embedding never drifts.
+static void tsne_zero_mean(Mat& Y, int dim) {
+    if (Y.empty() || dim <= 0) return;
+    Vec mean(static_cast<size_t>(dim), 0.0);
+    for (const auto& row : Y)
+        for (int a = 0; a < dim; ++a) mean[static_cast<size_t>(a)] += row[static_cast<size_t>(a)];
+    const double inv = 1.0 / static_cast<double>(Y.size());
+    for (int a = 0; a < dim; ++a) mean[static_cast<size_t>(a)] *= inv;
+    for (auto& row : Y)
+        for (int a = 0; a < dim; ++a) row[static_cast<size_t>(a)] -= mean[static_cast<size_t>(a)];
+}
+
+namespace {
+
+// Compressed-row storage of the symmetric high-dimensional affinities.
+// row_ptr has size n+1; the entries of row i are [row_ptr[i], row_ptr[i+1]).
+// Column indices within a row are strictly ascending and the diagonal is
+// never stored. The stored values sum to 1.
+struct TsneSparseP {
+    std::vector<int> row_ptr;
+    std::vector<int> col;
+    std::vector<double> val;
+};
+
+// A 2^dim space-partitioning tree (quadtree at dim == 2, octree at dim == 3)
+// over the current embedding. Nodes live in parallel std::vectors and refer to
+// each other by index, so growth never invalidates anything: the 2^dim
+// children of an internal node occupy the contiguous block
+// [first_child_[node], first_child_[node] + 2^dim).
+//
+// A node is one of:
+//   empty     count_ == 0, first_child_ < 0, bucket_ empty
+//   leaf      first_child_ < 0, bucket_ holds every point index in the cell
+//   internal  first_child_ >= 0, bucket_ empty
+// A leaf normally holds one point. Coincident points (or points closer than
+// 2^-50 of the root width) cannot be separated by subdivision, so at depth
+// TSNE_MAX_TREE_DEPTH a leaf stops splitting and keeps them all; the
+// traversal then evaluates that bucket exactly, pair by pair, which is both
+// correct and the right complexity for genuinely duplicated data.
+class TsneTree {
+public:
+    TsneTree(const Mat& Y, int dim);
+
+    // Adds point i's repulsive contribution into neg_f (length dim, NOT
+    // cleared here) and its share of the normaliser into sum_q. theta_sq is
+    // theta*theta.
+    void accumulate(const Mat& Y, int i, double theta_sq, Vec& neg_f,
+                    double& sum_q) const;
+
+private:
+    int dim_ = 0;
+    int n_children_ = 0;
+    std::vector<double> center_;            // n_nodes * dim_
+    std::vector<double> half_;              // n_nodes * dim_, half extent per axis
+    std::vector<double> com_sum_;           // n_nodes * dim_, running SUM of coords
+    std::vector<double> count_;             // n_nodes
+    std::vector<int> first_child_;          // n_nodes, -1 while a leaf
+    std::vector<std::vector<int>> bucket_;  // n_nodes, non-empty only on leaves
+
+    size_t base(int node) const {
+        return static_cast<size_t>(node) * static_cast<size_t>(dim_);
+    }
+    int new_node(const Vec& center, const Vec& half);
+    void subdivide(int node);
+    int child_of(const Mat& Y, int node, int p) const;
+    void insert(const Mat& Y, int node, int p, int depth);
+    void descend(const Mat& Y, int i, int node, double theta_sq, Vec& diff,
+                 Vec& neg_f, double& sum_q) const;
+};
+
+int TsneTree::new_node(const Vec& center, const Vec& half) {
+    for (int a = 0; a < dim_; ++a) {
+        center_.push_back(center[static_cast<size_t>(a)]);
+        half_.push_back(half[static_cast<size_t>(a)]);
+        com_sum_.push_back(0.0);
+    }
+    count_.push_back(0.0);
+    first_child_.push_back(-1);
+    bucket_.push_back(std::vector<int>());
+    return to_i(count_.size()) - 1;
+}
+
+// Creates all 2^dim children back to back, so child c of `node` is at index
+// first_child_[node] + c and no per-node child array is needed. The parent's
+// centre and half-extent are copied into locals first because new_node()
+// reallocates the very vectors they live in.
+void TsneTree::subdivide(int node) {
+    Vec pc(static_cast<size_t>(dim_), 0.0), ph(static_cast<size_t>(dim_), 0.0);
+    for (int a = 0; a < dim_; ++a) {
+        pc[static_cast<size_t>(a)] = center_[base(node) + static_cast<size_t>(a)];
+        ph[static_cast<size_t>(a)] = 0.5 * half_[base(node) + static_cast<size_t>(a)];
+    }
+    Vec cc(static_cast<size_t>(dim_), 0.0);
+    int first = -1;
+    for (int c = 0; c < n_children_; ++c) {
+        for (int a = 0; a < dim_; ++a) {
+            const bool up = ((c >> a) & 1) != 0;
+            cc[static_cast<size_t>(a)] = up ? pc[static_cast<size_t>(a)] + ph[static_cast<size_t>(a)]
+                                            : pc[static_cast<size_t>(a)] - ph[static_cast<size_t>(a)];
+        }
+        const int idx = new_node(cc, ph);
+        if (c == 0) first = idx;
+    }
+    first_child_[static_cast<size_t>(node)] = first;  // re-indexed after the growth
+}
+
+// Bit a of the octant index is set when the coordinate is strictly greater
+// than the cell centre, which is consistent with how the child centres above
+// are placed and sends points exactly on a boundary to the low child.
+int TsneTree::child_of(const Mat& Y, int node, int p) const {
+    int c = 0;
+    for (int a = 0; a < dim_; ++a) {
+        if (Y[static_cast<size_t>(p)][static_cast<size_t>(a)] >
+            center_[base(node) + static_cast<size_t>(a)])
+            c |= (1 << a);
+    }
+    return first_child_[static_cast<size_t>(node)] + c;
+}
+
+void TsneTree::insert(const Mat& Y, int node, int p, int depth) {
+    // Aggregates are updated once per node on the way down, so a point that is
+    // later relocated into a child is not counted twice: the relocation only
+    // touches the children's aggregates.
+    count_[static_cast<size_t>(node)] += 1.0;
+    for (int a = 0; a < dim_; ++a)
+        com_sum_[base(node) + static_cast<size_t>(a)] +=
+            Y[static_cast<size_t>(p)][static_cast<size_t>(a)];
+
+    if (first_child_[static_cast<size_t>(node)] < 0) {  // leaf
+        if (bucket_[static_cast<size_t>(node)].empty() || depth >= TSNE_MAX_TREE_DEPTH) {
+            bucket_[static_cast<size_t>(node)].push_back(p);
+            return;
+        }
+        std::vector<int> old;
+        old.swap(bucket_[static_cast<size_t>(node)]);
+        subdivide(node);  // every vector above may reallocate here
+        for (const int q : old) insert(Y, child_of(Y, node, q), q, depth + 1);
+    }
+    insert(Y, child_of(Y, node, p), p, depth + 1);
+}
+
+TsneTree::TsneTree(const Mat& Y, int dim) : dim_(dim), n_children_(1 << dim) {
+    const int n = to_i(Y.size());
+    if (n <= 0 || dim <= 0) return;
+
+    Vec lo(static_cast<size_t>(dim), 0.0), hi(static_cast<size_t>(dim), 0.0);
+    for (int a = 0; a < dim; ++a) {
+        lo[static_cast<size_t>(a)] = Y[0][static_cast<size_t>(a)];
+        hi[static_cast<size_t>(a)] = Y[0][static_cast<size_t>(a)];
+    }
+    for (int i = 1; i < n; ++i) {
+        for (int a = 0; a < dim; ++a) {
+            const double v = Y[static_cast<size_t>(i)][static_cast<size_t>(a)];
+            lo[static_cast<size_t>(a)] = std::min(lo[static_cast<size_t>(a)], v);
+            hi[static_cast<size_t>(a)] = std::max(hi[static_cast<size_t>(a)], v);
+        }
+    }
+    Vec center(static_cast<size_t>(dim), 0.0), half(static_cast<size_t>(dim), 0.0);
+    for (int a = 0; a < dim; ++a) {
+        center[static_cast<size_t>(a)] =
+            0.5 * (lo[static_cast<size_t>(a)] + hi[static_cast<size_t>(a)]);
+        // The pad keeps every half extent strictly positive even when all the
+        // points share a coordinate, so the acceptance test below is always
+        // meaningful and every point is strictly inside the root cell.
+        half[static_cast<size_t>(a)] =
+            0.5 * (hi[static_cast<size_t>(a)] - lo[static_cast<size_t>(a)]) + TSNE_BBOX_PAD;
+    }
+    const int root = new_node(center, half);
+    for (int i = 0; i < n; ++i) insert(Y, root, i, 0);
+}
+
+void TsneTree::descend(const Mat& Y, int i, int node, double theta_sq, Vec& diff,
+                       Vec& neg_f, double& sum_q) const {
+    if (count_[static_cast<size_t>(node)] <= 0.0) return;
+
+    if (first_child_[static_cast<size_t>(node)] < 0) {  // leaf: exact, pair by pair
+        for (const int j : bucket_[static_cast<size_t>(node)]) {
+            if (j == i) continue;  // the self term is not part of Q
+            double d2 = 0.0;
+            for (int a = 0; a < dim_; ++a) {
+                const double t = Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                                 Y[static_cast<size_t>(j)][static_cast<size_t>(a)];
+                diff[static_cast<size_t>(a)] = t;
+                d2 += t * t;
             }
-            double H=0;
-            for (int j=0;j<n;++j) if (j!=i) {
-                double d2=0; for (size_t d=0;d<X[i].size();++d) d2+=(X[i][d]-X[j][d])*(X[i][d]-X[j][d]);
-                double pij=std::exp(-d2/(2*sig*sig))/(sum+1e-12);
-                if (pij>1e-12) H-=pij*std::log(pij);
+            const double w = 1.0 / (1.0 + d2);
+            sum_q += w;
+            const double mult = w * w;
+            for (int a = 0; a < dim_; ++a)
+                neg_f[static_cast<size_t>(a)] += mult * diff[static_cast<size_t>(a)];
+        }
+        return;
+    }
+
+    double d2 = 0.0;
+    const double inv_cnt = 1.0 / count_[static_cast<size_t>(node)];
+    for (int a = 0; a < dim_; ++a) {
+        const double t = Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                         com_sum_[base(node) + static_cast<size_t>(a)] * inv_cnt;
+        diff[static_cast<size_t>(a)] = t;
+        d2 += t * t;
+    }
+    double cell_width = 0.0;  // the longest EDGE of the cell, i.e. twice the half extent
+    for (int a = 0; a < dim_; ++a)
+        cell_width = std::max(cell_width, 2.0 * half_[base(node) + static_cast<size_t>(a)]);
+
+    // cell_width / sqrt(d2) < theta, squared to avoid the sqrt and the
+    // division. cell_width is always > 0, so theta == 0 never accepts and the
+    // traversal degenerates to the exact pairwise sum.
+    if (cell_width * cell_width < theta_sq * d2) {
+        const double w = 1.0 / (1.0 + d2);
+        const double cnt = count_[static_cast<size_t>(node)];
+        sum_q += cnt * w;
+        const double mult = cnt * w * w;
+        for (int a = 0; a < dim_; ++a)
+            neg_f[static_cast<size_t>(a)] += mult * diff[static_cast<size_t>(a)];
+        return;
+    }
+    // d2 == 0 (the query point sits exactly on the centre of mass) fails the
+    // test above and recurses; the leaves then resolve it exactly. Nothing
+    // ever divides by d2. Children are visited in ascending octant order,
+    // which is part of the determinism contract because floating-point
+    // addition is not associative.
+    for (int c = 0; c < n_children_; ++c)
+        descend(Y, i, first_child_[static_cast<size_t>(node)] + c, theta_sq, diff, neg_f, sum_q);
+}
+
+void TsneTree::accumulate(const Mat& Y, int i, double theta_sq, Vec& neg_f,
+                          double& sum_q) const {
+    if (count_.empty() || dim_ <= 0) return;
+    Vec diff(static_cast<size_t>(dim_), 0.0);
+    descend(Y, i, 0, theta_sq, diff, neg_f, sum_q);
+}
+
+}  // namespace
+
+// Builds the symmetric sparse affinities P from X. Requires n >= 2.
+static TsneSparseP tsne_build_affinities(const Mat& X, double perplexity,
+                                         int n_neighbors) {
+    TsneSparseP P;
+    const int n = to_i(X.size());
+    P.row_ptr.assign(static_cast<size_t>(n) + 1, 0);
+    if (n < 2) return P;
+
+    // The auto rule is floor(3 * perplexity), saturated at n before the cast:
+    // perplexity is only clamped to be finite and positive, so 3 * perplexity
+    // can exceed INT_MAX and converting that to int would be undefined.
+    int k_req = n_neighbors;
+    if (k_req <= 0) {
+        const double kf = std::floor(TSNE_NEIGHBOR_FACTOR * perplexity);
+        k_req = (kf >= static_cast<double>(n)) ? n : to_i(kf);
+    }
+    if (k_req < 1) k_req = 1;
+    const int k = std::min(k_req, n - 1);  // k >= 1 because n >= 2
+
+    // Exact O(n^2 * d) neighbour search. A k-d or VP tree would be faster
+    // asymptotically but its build order affects tie handling; this scan
+    // breaks ties on (distance, index), a total order, so std::partial_sort's
+    // instability is irrelevant and the neighbour lists are reproducible.
+    std::vector<std::vector<int>> nb(static_cast<size_t>(n));
+    std::vector<Vec> nd(static_cast<size_t>(n));
+    std::vector<std::pair<double, int>> cand;
+    cand.reserve(static_cast<size_t>(n - 1));
+    for (int i = 0; i < n; ++i) {
+        cand.clear();
+        for (int j = 0; j < n; ++j) {
+            if (j == i) continue;
+            cand.push_back({tsne_sq_dist(X[static_cast<size_t>(i)], X[static_cast<size_t>(j)]), j});
+        }
+        std::partial_sort(cand.begin(), cand.begin() + k, cand.end(),
+                          [](const std::pair<double, int>& a,
+                             const std::pair<double, int>& b) {
+                              if (a.first != b.first) return a.first < b.first;
+                              return a.second < b.second;
+                          });
+        nb[static_cast<size_t>(i)].resize(static_cast<size_t>(k));
+        nd[static_cast<size_t>(i)].resize(static_cast<size_t>(k));
+        for (int t = 0; t < k; ++t) {
+            nb[static_cast<size_t>(i)][static_cast<size_t>(t)] = cand[static_cast<size_t>(t)].second;
+            nd[static_cast<size_t>(i)][static_cast<size_t>(t)] = cand[static_cast<size_t>(t)].first;
+        }
+    }
+
+    // Per-point bisection on beta_i = 1 / (2 sigma_i^2) so that the entropy of
+    // P_(.|i) hits log(perplexity) nats.
+    const double target = std::log(perplexity);
+    std::vector<Vec> pv(static_cast<size_t>(n), Vec(static_cast<size_t>(k), 0.0));
+    Vec e(static_cast<size_t>(k), 0.0), w(static_cast<size_t>(k), 0.0);
+    for (int i = 0; i < n; ++i) {
+        // Min-shift the squared distances. P_(.|i) is invariant under
+        // subtracting a constant from every squared distance, so this is exact
+        // rather than an approximation, and it is what makes the search
+        // unconditionally NaN-free: e[0] == 0, so S = sum_t exp(-beta e[t])
+        // >= 1 for every beta >= 0. log(S) is therefore always finite and
+        // T / S never divides by zero.
+        const double dmin = nd[static_cast<size_t>(i)][0];  // kNN list is sorted
+        for (int t = 0; t < k; ++t)
+            e[static_cast<size_t>(t)] = nd[static_cast<size_t>(i)][static_cast<size_t>(t)] - dmin;
+
+        double beta = 1.0, lo = 0.0, hi = 0.0;
+        bool have_lo = false, have_hi = false;
+        for (int it = 0; it < TSNE_MAX_BISECTION_ITERS; ++it) {
+            double s = 0.0, tsum = 0.0;
+            for (int t = 0; t < k; ++t) {
+                const double wt = std::exp(-beta * e[static_cast<size_t>(t)]);
+                s += wt;
+                tsum += e[static_cast<size_t>(t)] * wt;
             }
-            if (H>std::log(perplexity)) lo=sig; else hi=sig;
-            sigmai=sig;
+            // With p_t = exp(-beta e_t) / S,
+            //   H = -sum p_t log p_t = beta * sum p_t e_t + log S.
+            const double h = std::log(s) + beta * tsum / s;
+            const double diff = h - target;
+            if (std::abs(diff) < TSNE_PERPLEXITY_TOL) break;
+            if (diff > 0.0) {  // too flat -> sharpen -> larger beta
+                lo = beta;
+                have_lo = true;
+                beta = have_hi ? 0.5 * (lo + hi) : beta * 2.0;
+            } else {  // too peaked -> flatten -> smaller beta
+                hi = beta;
+                have_hi = true;
+                beta = have_lo ? 0.5 * (lo + hi) : beta * 0.5;
+            }
         }
-        double sum=0;
-        for (int j=0;j<n;++j) if (j!=i) {
-            double d2=0; for (size_t d=0;d<X[i].size();++d) d2+=(X[i][d]-X[j][d])*(X[i][d]-X[j][d]);
-            P[i][j]=std::exp(-d2/(2*sigmai*sigmai)); sum+=P[i][j];
+        // The bracket only ever doubles or only ever halves in the degenerate
+        // cases (all e[t] == 0, perplexity >= n, or perplexity <= 1), so after
+        // the cap beta lies in [2^-200, 2^200] — both ordinary doubles — and
+        // P_(.|i) ends up uniform or one-hot rather than NaN.
+        double s = 0.0;
+        for (int t = 0; t < k; ++t) {
+            w[static_cast<size_t>(t)] = std::exp(-beta * e[static_cast<size_t>(t)]);
+            s += w[static_cast<size_t>(t)];
         }
-        for (int j=0;j<n;++j) P[i][j]/=(sum+1e-12);
+        for (int t = 0; t < k; ++t)
+            pv[static_cast<size_t>(i)][static_cast<size_t>(t)] =
+                w[static_cast<size_t>(t)] / s;  // s >= 1, no epsilon needed
     }
-    // Symmetrise
-    for (int i=0;i<n;++i) for (int j=0;j<n;++j) {
-        P[i][j]=(P[i][j]+P[j][i])/(2*n);
-    }
-    // Initialise Y randomly
-    std::mt19937 rng(seed); std::normal_distribution<double> nd(0,0.0001);
-    Mat Y(n, Vec(n_components));
-    for (auto& row:Y) for (auto& v:row) v=nd(rng);
-    Mat Y_prev=Y, gains(n, Vec(n_components,1.0));
-    double mom=0.5;
-    for (int iter=0;iter<max_iter;++iter) {
-        if (iter==250) mom=0.8;
-        // Compute Q
-        double qsum=0;
-        std::vector<std::vector<double>> Q(n,std::vector<double>(n,0));
-        for (int i=0;i<n;++i) for (int j=i+1;j<n;++j) {
-            double d2=0; for (int d=0;d<n_components;++d) d2+=(Y[i][d]-Y[j][d])*(Y[i][d]-Y[j][d]);
-            Q[i][j]=Q[j][i]=1.0/(1.0+d2); qsum+=2*Q[i][j];
+
+    // Symmetrise into CRS: P_ij = (P_(j|i) + P_(i|j)) / (2n).
+    std::vector<std::vector<std::pair<int, double>>> acc(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) acc[static_cast<size_t>(i)].reserve(static_cast<size_t>(2 * k));
+    for (int i = 0; i < n; ++i) {
+        for (int t = 0; t < k; ++t) {
+            const int j = nb[static_cast<size_t>(i)][static_cast<size_t>(t)];
+            const double v = pv[static_cast<size_t>(i)][static_cast<size_t>(t)];
+            acc[static_cast<size_t>(i)].push_back({j, v});  // P_(j|i) into entry (i,j)
+            acc[static_cast<size_t>(j)].push_back({i, v});  // P_(j|i) into entry (j,i)
         }
-        for (int i=0;i<n;++i) for (int j=0;j<n;++j) Q[i][j]/=(qsum+1e-12);
-        // Gradient
-        Mat dY(n, Vec(n_components,0));
-        for (int i=0;i<n;++i) for (int j=0;j<n;++j) if (j!=i) {
-            double d2=0; for (int d=0;d<n_components;++d) d2+=(Y[i][d]-Y[j][d])*(Y[i][d]-Y[j][d]);
-            double fac=4*(P[i][j]-Q[i][j])/(1.0+d2);
-            for (int d=0;d<n_components;++d) dY[i][d]+=fac*(Y[i][d]-Y[j][d]);
-        }
-        // Update
-        Mat Ynew(n, Vec(n_components));
-        for (int i=0;i<n;++i) for (int d=0;d<n_components;++d)
-            Ynew[i][d]=Y[i][d]-lr*dY[i][d]+mom*(Y[i][d]-Y_prev[i][d]);
-        Y_prev=Y; Y=Ynew;
     }
+    const double inv_2n = 1.0 / (2.0 * static_cast<double>(n));
+    P.col.reserve(static_cast<size_t>(n) * static_cast<size_t>(2 * k));
+    P.val.reserve(static_cast<size_t>(n) * static_cast<size_t>(2 * k));
+    for (int i = 0; i < n; ++i) {
+        auto& row = acc[static_cast<size_t>(i)];
+        // (column, value) is a total order, so std::sort's instability cannot
+        // change the result; at most two entries share a column and double
+        // addition is commutative, so the merge is order-independent too.
+        std::sort(row.begin(), row.end());
+        size_t t = 0;
+        while (t < row.size()) {
+            const int c = row[t].first;
+            double v = 0.0;
+            while (t < row.size() && row[t].first == c) { v += row[t].second; ++t; }
+            P.col.push_back(c);
+            P.val.push_back(v * inv_2n);
+        }
+        P.row_ptr[static_cast<size_t>(i) + 1] = to_i(P.col.size());
+    }
+    // sum(P.val) == 1 by construction: each of the n rows of P_(.|i) sums to 1
+    // and is deposited twice, giving 2n / (2n). Do NOT renormalise.
+    // The diagonal is never present: i is not in knn(i), and acc[j] only ever
+    // receives i from j's own list, where i != j.
+    return P;
+}
+
+// KL(P || Q) for the embedding Y. Pairs absent from P contribute
+// 0 * log(0 / q) = 0 and are correctly skipped; this is the standard sparse-P
+// form of the objective. Z is summed exactly (O(n^2 * dim)) so the reported
+// value is independent of theta and comparable across configurations.
+static double tsne_kl(const TsneSparseP& P, const Mat& Y, int dim) {
+    const int n = to_i(Y.size());
+    if (n < 2 || dim <= 0) return 0.0;
+    double z = 0.0;
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            if (j == i) continue;
+            double d2 = 0.0;
+            for (int a = 0; a < dim; ++a) {
+                const double t = Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                                 Y[static_cast<size_t>(j)][static_cast<size_t>(a)];
+                d2 += t * t;
+            }
+            z += 1.0 / (1.0 + d2);
+        }
+    }
+    if (z < TSNE_EPS) z = TSNE_EPS;
+    double kl = 0.0;
+    for (int i = 0; i < n; ++i) {
+        for (int ei = P.row_ptr[static_cast<size_t>(i)];
+             ei < P.row_ptr[static_cast<size_t>(i) + 1]; ++ei) {
+            const double p = P.val[static_cast<size_t>(ei)];
+            if (p <= 0.0) continue;
+            const int j = P.col[static_cast<size_t>(ei)];
+            double d2 = 0.0;
+            for (int a = 0; a < dim; ++a) {
+                const double t = Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                                 Y[static_cast<size_t>(j)][static_cast<size_t>(a)];
+                d2 += t * t;
+            }
+            const double q = (1.0 / (1.0 + d2)) / z;
+            kl += p * std::log(p / std::max(q, TSNE_EPS));
+        }
+    }
+    return kl;
+}
+
+// Exact O(n^2) repulsion, used when the tree is bypassed (dim > 3 or
+// theta == 0). Accumulates over ORDERED pairs, exactly like the tree, so the
+// two paths produce the same Z and are directly comparable.
+static void tsne_exact_repulsion(const Mat& Y, int dim, Mat& neg_f, double& sum_q) {
+    const int n = to_i(Y.size());
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            if (j == i) continue;
+            double d2 = 0.0;
+            for (int a = 0; a < dim; ++a) {
+                const double t = Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                                 Y[static_cast<size_t>(j)][static_cast<size_t>(a)];
+                d2 += t * t;
+            }
+            const double w = 1.0 / (1.0 + d2);
+            sum_q += w;
+            const double mult = w * w;
+            for (int a = 0; a < dim; ++a)
+                neg_f[static_cast<size_t>(i)][static_cast<size_t>(a)] +=
+                    mult * (Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                            Y[static_cast<size_t>(j)][static_cast<size_t>(a)]);
+        }
+    }
+}
+
+// Determinism contract. Every source of run-to-run variation is removed:
+//   * kNN ties are broken by the (distance, index) total order, so
+//     std::partial_sort's instability cannot matter;
+//   * symmetrisation sorts by the (column, value) total order and merges at
+//     most two entries per key, and double addition is commutative;
+//   * CRS columns are strictly ascending, fixing the attractive summation
+//     order; tree children are visited in ascending octant order, fixing the
+//     repulsive one;
+//   * initialisation uses SplitMix64 + Box-Muller through a per-call local
+//     std::uint64_t seeded solely from cfg.seed — no <random> distributions
+//     and no static, global or thread-local state, so two TSNE objects with
+//     the same seed in the same process give bitwise-identical output;
+//   * no threads and no parallel reductions.
+static Mat tsne_run(const TSNE& cfg, const Mat& X, Vec* kl_trace) {
+    const int n = to_i(X.size());
+    const int dim = cfg.n_components;
+
+    if (n == 0) return {};
+    if (dim <= 0) return Mat(static_cast<size_t>(n), Vec());
+    if (n == 1) {
+        if (kl_trace) kl_trace->push_back(0.0);
+        return Mat(1, Vec(static_cast<size_t>(dim), 0.0));
+    }
+
+    // Every parameter is clamped defensively; this class degrades on bad input
+    // rather than reporting an error, matching PCA/KMeans/spectral_clustering.
+    const double perp =
+        (cfg.perplexity > 0.0 && std::isfinite(cfg.perplexity)) ? cfg.perplexity : 1.0;
+    const double lr = (cfg.lr > 0.0 && std::isfinite(cfg.lr)) ? cfg.lr : TSNE_DEFAULT_LR;
+    const double exag =
+        (cfg.early_exaggeration > 0.0 && std::isfinite(cfg.early_exaggeration))
+            ? cfg.early_exaggeration
+            : 1.0;
+    // Clamped to [0, 1]: above 1 a cell can be summarised while the query
+    // point is still inside it, which would add a spurious self-repulsion.
+    double theta = cfg.theta;
+    if (!(theta >= 0.0)) theta = 0.0;  // also catches NaN
+    if (theta > 1.0) theta = 1.0;
+    const double theta_sq = theta * theta;
+    const bool use_tree = (dim <= TSNE_MAX_TREE_DIM) && (theta > 0.0);
+
+    const TsneSparseP P = tsne_build_affinities(X, perp, cfg.n_neighbors);
+
+    Mat Y(static_cast<size_t>(n), Vec(static_cast<size_t>(dim), 0.0));
+    std::uint64_t st = static_cast<std::uint64_t>(cfg.seed);
+    // Row-major fill order is part of the contract: changing it changes the
+    // embedding for a fixed seed.
+    for (int i = 0; i < n; ++i)
+        for (int a = 0; a < dim; ++a)
+            Y[static_cast<size_t>(i)][static_cast<size_t>(a)] = TSNE_INIT_SCALE * tsne_normal(st);
+    tsne_zero_mean(Y, dim);
+
+    Mat pos_f(static_cast<size_t>(n), Vec(static_cast<size_t>(dim), 0.0));
+    Mat neg_f(static_cast<size_t>(n), Vec(static_cast<size_t>(dim), 0.0));
+    Mat grad(static_cast<size_t>(n), Vec(static_cast<size_t>(dim), 0.0));
+    Mat upd(static_cast<size_t>(n), Vec(static_cast<size_t>(dim), 0.0));    // velocity
+    Mat gains(static_cast<size_t>(n), Vec(static_cast<size_t>(dim), 1.0));  // Jacobs' gains
+
+    for (int it = 0; it < cfg.max_iter; ++it) {
+        if (kl_trace && (it % TSNE_KL_EVAL_INTERVAL == 0))
+            kl_trace->push_back(tsne_kl(P, Y, dim));
+
+        // Iterations [0, 250) are exaggerated and use momentum 0.5; from 250 on
+        // neither applies. Exaggeration multiplies the attractive term instead
+        // of mutating P.val, which is arithmetically identical (the repulsive
+        // term and Z do not involve P) and keeps the unexaggerated P available
+        // for the KL evaluation above.
+        const double e_mult = (it < TSNE_EXAGGERATION_ITERS) ? exag : 1.0;
+        const double momentum = (it < TSNE_MOMENTUM_SWITCH_ITER) ? TSNE_INITIAL_MOMENTUM
+                                                                 : TSNE_FINAL_MOMENTUM;
+
+        for (int i = 0; i < n; ++i) {
+            Vec& pf = pos_f[static_cast<size_t>(i)];
+            std::fill(pf.begin(), pf.end(), 0.0);
+            for (int ei = P.row_ptr[static_cast<size_t>(i)];
+                 ei < P.row_ptr[static_cast<size_t>(i) + 1]; ++ei) {
+                const int j = P.col[static_cast<size_t>(ei)];
+                double d2 = 0.0;
+                for (int a = 0; a < dim; ++a) {
+                    const double t = Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                                     Y[static_cast<size_t>(j)][static_cast<size_t>(a)];
+                    d2 += t * t;
+                }
+                const double w = P.val[static_cast<size_t>(ei)] / (1.0 + d2);
+                for (int a = 0; a < dim; ++a)
+                    pf[static_cast<size_t>(a)] +=
+                        w * (Y[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                             Y[static_cast<size_t>(j)][static_cast<size_t>(a)]);
+            }
+        }
+
+        for (int i = 0; i < n; ++i)
+            std::fill(neg_f[static_cast<size_t>(i)].begin(),
+                      neg_f[static_cast<size_t>(i)].end(), 0.0);
+        double sum_q = 0.0;
+        if (use_tree) {
+            // Rebuilt from scratch each iteration: Y moves every iteration, so
+            // incremental maintenance is not possible. O(n log n) construction
+            // is not the dominant cost.
+            const TsneTree tree(Y, dim);
+            for (int i = 0; i < n; ++i)
+                tree.accumulate(Y, i, theta_sq, neg_f[static_cast<size_t>(i)], sum_q);
+        } else {
+            tsne_exact_repulsion(Y, dim, neg_f, sum_q);
+        }
+
+        // The true gradient of KL(P || Q) is
+        //   4 * (sum_j p_ij w_ij (y_i - y_j) - Z^-1 sum_j w_ij^2 (y_i - y_j)).
+        // The factor 4 is folded into lr, exactly as in van der Maaten's
+        // reference Barnes-Hut implementation, which is why the default
+        // lr = 200 is what it is. Reinstating the 4 without dividing the
+        // default lr by 4 would quadruple every step.
+        const double z = (sum_q > TSNE_EPS) ? sum_q : TSNE_EPS;
+        for (int i = 0; i < n; ++i)
+            for (int a = 0; a < dim; ++a)
+                grad[static_cast<size_t>(i)][static_cast<size_t>(a)] =
+                    e_mult * pos_f[static_cast<size_t>(i)][static_cast<size_t>(a)] -
+                    neg_f[static_cast<size_t>(i)][static_cast<size_t>(a)] / z;
+
+        for (int i = 0; i < n; ++i) {
+            for (int a = 0; a < dim; ++a) {
+                const size_t si = static_cast<size_t>(i), sa = static_cast<size_t>(a);
+                // Jacobs' rule. The velocity normally runs against the
+                // gradient, so opposite signs mean the step is still heading
+                // downhill and the gain is raised; equal signs mean the last
+                // step overshot and reversed, so the gain is decayed.
+                gains[si][sa] = (tsne_sign(grad[si][sa]) != tsne_sign(upd[si][sa]))
+                                    ? gains[si][sa] + TSNE_GAIN_ADD
+                                    : gains[si][sa] * TSNE_GAIN_MUL;
+                if (gains[si][sa] < TSNE_MIN_GAIN) gains[si][sa] = TSNE_MIN_GAIN;
+                upd[si][sa] = momentum * upd[si][sa] - lr * gains[si][sa] * grad[si][sa];
+                Y[si][sa] += upd[si][sa];
+            }
+        }
+
+        tsne_zero_mean(Y, dim);
+    }
+
+    if (kl_trace) kl_trace->push_back(tsne_kl(P, Y, dim));
     return Y;
+}
+
+Mat TSNE::fit_transform(const Mat& X) const { return tsne_run(*this, X, nullptr); }
+
+Mat TSNE::fit_transform(const Mat& X, Vec& kl_trace) const {
+    kl_trace.clear();
+    return tsne_run(*this, X, &kl_trace);
+}
+
+double TSNE::kl_divergence(const Mat& X, const Mat& Y) const {
+    if (n_components <= 0 || X.size() != Y.size() || X.size() < 2) return 0.0;
+    const size_t need = static_cast<size_t>(n_components);
+    for (const auto& row : Y)
+        if (row.size() < need) return 0.0;
+    const double perp = (perplexity > 0.0 && std::isfinite(perplexity)) ? perplexity : 1.0;
+    const TsneSparseP P = tsne_build_affinities(X, perp, n_neighbors);
+    return tsne_kl(P, Y, n_components);
 }
 
 // ========================== Autodiff ==========================

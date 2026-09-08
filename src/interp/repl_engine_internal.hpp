@@ -1065,6 +1065,16 @@ Result<Matrix<double>> eval_graph_bridges(const Matrix<double>& adj_m);
 
 Result<Matrix<double>> eval_graph_maximum_matching(const Matrix<double>& adj_m);
 
+Result<Matrix<double>> eval_graph_max_weight_matching(const Matrix<double>& adj_m,
+                                                      bool maxcardinality);
+
+Result<double> eval_graph_max_weight_matching_value(const Matrix<double>& adj_m,
+                                                    bool maxcardinality);
+
+Result<Matrix<double>> eval_graph_planar_embedding(const Matrix<double>& adj_m);
+
+Result<Matrix<double>> eval_graph_kuratowski_subgraph(const Matrix<double>& adj_m);
+
 Result<Matrix<double>> eval_graph_transitive_closure(const Matrix<double>& adj_m);
 
 Result<Matrix<double>> eval_quantum_commutator(const Matrix<double>& A_m,
@@ -1895,6 +1905,8 @@ Result<Matrix<double>> eval_poly_compose(const Matrix<double>& p_m, const Matrix
 Result<Matrix<double>> eval_graph_bfs(const Matrix<double>& adj_m, int source);
 
 Result<double> eval_graph_is_tree(const Matrix<double>& adj_m);
+
+Result<double> eval_graph_is_planar_heuristic(const Matrix<double>& adj_m);
 
 Result<double> eval_graph_is_planar(const Matrix<double>& adj_m);
 

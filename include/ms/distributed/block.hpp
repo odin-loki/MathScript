@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <utility>
+#include <vector>
 
 namespace ms::distributed {
 
