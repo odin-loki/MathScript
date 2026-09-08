@@ -351,7 +351,53 @@ Tensor einsum(const std::string& subscripts, const Tensor& A, const Tensor& B) {
         contractions.emplace_back(i, static_cast<int>(posB));
     }
 
-    return contract(A, B, contractions);
+    const Tensor raw = contract(A, B, contractions);
+
+    // contract() fixes its output axis order as [free axes of A in order, then
+    // free axes of B in order]. The output subscript sC was parsed but used
+    // ONLY as a membership test -- its ORDER was discarded -- so any request
+    // whose output axes are not in that canonical order came back transposed
+    // with no indication. "ij,jk->ki" returned the same tensor as
+    // "ij,jk->ik". Recover the label sequence contract() actually produced and
+    // permute to match sC.
+    std::string produced;
+    produced.reserve(sA.size() + sB.size());
+    for (int i = 0; i < static_cast<int>(to_i(sA.size())); ++i) {
+        const char c = sA[static_cast<size_t>(i)];
+        bool contracted = false;
+        for (const auto& [ia, ib] : contractions) {
+            (void)ib;
+            if (ia == i) { contracted = true; break; }
+        }
+        if (!contracted) produced.push_back(c);
+    }
+    for (int j = 0; j < static_cast<int>(to_i(sB.size())); ++j) {
+        const char c = sB[static_cast<size_t>(j)];
+        bool contracted = false;
+        for (const auto& [ia, ib] : contractions) {
+            (void)ia;
+            if (ib == j) { contracted = true; break; }
+        }
+        if (!contracted) produced.push_back(c);
+    }
+
+    // Only permute when the requested order is a genuine rearrangement of what
+    // contract() produced; anything else (repeated labels, a label that appears
+    // in neither operand) is outside what this parser handles, so leave the
+    // canonical result rather than inventing a permutation.
+    if (produced.size() != sC.size() || produced == sC) {
+        return raw;
+    }
+    std::vector<int> perm;
+    perm.reserve(sC.size());
+    for (char want : sC) {
+        const auto pos = produced.find(want);
+        if (pos == std::string::npos) {
+            return raw;
+        }
+        perm.push_back(static_cast<int>(pos));
+    }
+    return raw.transpose(perm);
 }
 
 // ========================== Khatri-Rao / Kronecker ==========================

@@ -91,9 +91,15 @@ Result<std::vector<double>> idst2(const std::vector<double>& x);
 /// @note Use this instead of `fft`/`rfft` when only one (or a few) bins are
 ///       needed: O(n) per bin vs O(n log n) for a full FFT plus indexing.
 ///       For more than ~log2(n) bins, a full FFT is more efficient overall.
-/// @accuracy Matches the corresponding full-FFT bin to within ordinary
-///           floating-point round-off (double precision), since both
-///           evaluate the same DFT sum via numerically equivalent recurrences.
+/// @accuracy Evaluates the exact length-n DFT bin
+///           X(k) = sum_t x[t] exp(-2*pi*i*k*t/n) with n = x.size() and
+///           k = round(f/fs*n), to ordinary double round-off. That equals
+///           `dft(x)[k]` for every n. It equals `fft(x)[k]` only when x.size()
+///           is already a power of two, because `fft` zero-pads to
+///           next_power_of_two(x.size()) and padding moves the frequency grid:
+///           for x = {1,2,3,4,5}, goertzel gives bin 1 as -2.5 + 3.440955i
+///           (the true 5-point value) while fft's bin 1 is that of an 8-point
+///           transform.
 std::complex<double> goertzel(std::span<const double> x, double f, double fs);
 
 } // namespace ms

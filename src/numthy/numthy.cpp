@@ -526,9 +526,17 @@ int primitive_root(int p) {
 }
 
 Result<uint64_t> tonelli_shanks(uint64_t n, uint64_t p) {
+    // n == 0 is a square root problem with the answer 0, but legendre_symbol
+    // returns 0 (not 1) for n congruent to 0, so the guard below rejected it and
+    // the `if (n == 0)` line that followed was dead code. Test it first.
+    if (p == 0) {
+        return std::unexpected(Error{DomainError{"tonelli_shanks", "modulus must be positive"}});
+    }
+    if (n % p == 0) {
+        return 0ULL;
+    }
     if (legendre_symbol(static_cast<int64_t>(n), p) != 1)
         return std::unexpected(Error{DomainError{"tonelli_shanks", "n is not a QR mod p"}});
-    if (n == 0) return 0ULL;
     if (p == 2) return n % 2;
     if (p % 4 == 3) {
         return powmod(n, (p + 1) / 4, p);
