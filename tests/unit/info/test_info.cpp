@@ -736,19 +736,37 @@ TEST(InfoChainRule, MutualInfoEqualsHYMinusHYGivenX) {
                 entropy(py, 2.0) - conditional_entropy(pxy, 2, 2, 2.0), 1e-12);
 }
 
-TEST(InfoSampleEntropy, ConstantSeriesClosedForm) {
-    // All Chebyshev distances are 0, so A/B = C(n-m-1,2)/C(n-m,2) = (n-m-2)/(n-m).
+TEST(InfoSampleEntropy, ConstantSeriesIsZero) {
+    // Every Chebyshev distance is 0, so every pair matches at BOTH lengths and
+    // A == B, giving -log(1) = 0.
+    //
+    // This previously expected -log((n-m-2)/(n-m)), which is exactly the
+    // artifact of counting A over n-m-1 templates and B over n-m: SampEn is
+    // defined with both counts over the same n-m templates, since the
+    // length-(m+1) vector starting at i needs only index i+m <= n-1.
     const std::vector<double> x(12, 3.0);
-    const int m = 2;
-    const double n = 12.0;
-    EXPECT_NEAR(sample_entropy(x, m, 0.2),
-                -std::log((n - m - 2.0) / (n - m)), 1e-12);
+    EXPECT_NEAR(sample_entropy(x, 2, 0.2), 0.0, 1e-12);
 }
 
 TEST(InfoSampleEntropy, HandComputedRatio) {
-    // windows of length 1: three matches; length 2: one match => -log(1/3)
-    const std::vector<double> x = {0.0, 0.0, 0.1, 0.1};
-    EXPECT_NEAR(sample_entropy(x, 1, 0.2), std::log(3.0), 1e-12);
+    // x = {0, 0, 0, 5}, m = 1, r = 0.5, so n - m = 3 templates (i = 0, 1, 2).
+    //   length 1: (0,0), (0,0), (0,0)                       -> B = 3
+    //   length 2: (0,0)~(0,0) matches; both pairs involving
+    //             (x2,x3) = (0,5) are 5 apart                -> A = 1
+    // SampEn = -log(A/B) = log(3).
+    const std::vector<double> x = {0.0, 0.0, 0.0, 5.0};
+    EXPECT_NEAR(sample_entropy(x, 1, 0.5), std::log(3.0), 1e-12);
+}
+
+TEST(InfoSampleEntropy, PerfectlyRegularSeriesAreZero) {
+    // A period-2 square wave: every template has an exact counterpart at both
+    // lengths, so the entropy is 0 rather than the small positive number the
+    // population mismatch used to produce.
+    std::vector<double> square(200);
+    for (std::size_t i = 0; i < square.size(); ++i) {
+        square[i] = (i % 2 == 0) ? 0.0 : 1.0;
+    }
+    EXPECT_NEAR(sample_entropy(square, 2, 0.2), 0.0, 1e-12);
 }
 
 TEST(InfoSampleEntropy, TooShortReturnsZero) {

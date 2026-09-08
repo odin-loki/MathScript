@@ -453,9 +453,19 @@ std::vector<LZ77Token> lz77_encode(const Bytes& data, int window, int lookahead)
             while (pos+len<n && data[start+len]==data[pos+len] && len<lookahead) ++len;
             if (len>best_len){best_len=len;best_off=(int)(pos-start);}
         }
-        uint8_t nc=pos+best_len<n?data[pos+best_len]:0;
+        // next_char must always be a REAL literal. Emitting a filler 0 when the
+        // match ran to the end of the input made the value 0 mean both "the byte
+        // 0x00" and "no literal", an ambiguity the decoder resolved by dropping
+        // the byte whenever length > 0 -- so any input containing 0x00 after a
+        // match round-tripped one byte short. Shortening a match that reaches
+        // the end by one byte keeps the format identical and makes every
+        // next_char meaningful.
+        if (best_len > 0 && pos + static_cast<size_t>(best_len) >= n) {
+            --best_len;
+        }
+        const uint8_t nc = data[pos + static_cast<size_t>(best_len)];
         tokens.push_back({(uint16_t)best_off,(uint16_t)best_len,nc});
-        pos+=best_len+1;
+        pos+=static_cast<size_t>(best_len)+1;
     }
     return tokens;
 }
@@ -469,7 +479,10 @@ Bytes lz77_decode(const std::vector<LZ77Token>& tokens) {
             size_t start=out.size()-t.offset;
             for (uint16_t i=0;i<t.length;++i) out.push_back(out[start+i]);
         }
-        if (t.next_char||t.length==0) out.push_back(t.next_char);
+        // lz77_encode guarantees next_char is always a real literal, so it is
+        // always emitted. The old `if (t.next_char || t.length == 0)` guard
+        // silently discarded a literal 0x00 that followed a match.
+        out.push_back(t.next_char);
     }
     return out;
 }

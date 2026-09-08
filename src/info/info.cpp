@@ -241,15 +241,26 @@ double source_coding_rate(std::span<const double> p) {
 
 double lz_complexity(std::span<const int> seq) {
     if (seq.empty()) return 0.0;
-    size_t n = seq.size();
-    size_t c = 1; // complexity counter
-    size_t i = 0, k = 1, l = 1;
-    size_t kmax = 1, k_init = 1;
+    const size_t n = seq.size();
+    size_t c = 1;  // number of productions
+    size_t k = 1;  // start of the phrase being built
+    size_t l = 1;  // its length
 
     while (k + l <= n) {
-        // Check if seq[k..k+l-1] exists in seq[0..k-1]
+        // Lempel-Ziv (1976) exhaustive-history complexity: the copy may OVERLAP
+        // the position being reproduced, so the search window ends at k+l-2, not
+        // at k-1. That overlap is exactly what lets a periodic tail be
+        // reproduced by a single production -- without it, a sequence like
+        // 0101010101 was charged a new phrase for every period and scored as
+        // though it were random.
+        // The copy must START strictly before k (it is drawn from the already
+        // produced history), but it may EXTEND past k -- that overlap is what
+        // lets a periodic tail be reproduced by a single production. The
+        // original bound `start + l <= k` forbade the overlap; letting start run
+        // to k+l-2 goes too far the other way and lets a phrase match itself,
+        // which collapses every sequence to the same complexity.
         bool found = false;
-        for (size_t start = 0; start + l <= k; ++start) {
+        for (size_t start = 0; start < k; ++start) {
             bool match = true;
             for (size_t j = 0; j < l; ++j) {
                 if (seq[start + j] != seq[k + j]) { match = false; break; }
@@ -263,7 +274,11 @@ double lz_complexity(std::span<const int> seq) {
             k += l;
             l = 1;
         }
-        (void)i; (void)kmax; (void)k_init;
+    }
+    // The loop exits with a partial phrase still in hand whenever l > 1; the
+    // classic Kaspar-Schuster formulation counts it as one more production.
+    if (l != 1) {
+        ++c;
     }
     // Normalised complexity
     return static_cast<double>(c) / (static_cast<double>(n) / std::log2(static_cast<double>(n) + 1));
@@ -289,24 +304,37 @@ double differential_entropy_uniform(double a, double b) {
 }
 
 double sample_entropy(std::span<const double> x, int m, double r) {
-    // ApEn / SampEn: count template matches
-    size_t n = x.size();
-    if (n < static_cast<size_t>(m + 1)) return 0.0;
+    // SampEn = -log(A / B), where A and B count matching template pairs of
+    // length m+1 and m taken over the SAME population of n - m templates. The
+    // count loop used to run to n - len, giving B a population of n - m and A
+    // only n - m - 1, so A/B < 1 even when every pair matched and a perfectly
+    // regular series reported a strictly positive entropy. Both the length-m and
+    // length-(m+1) vectors starting at i < n - m are constructible, since the
+    // longest needs index i + m <= n - 1.
+    const size_t n = x.size();
+    if (m < 1 || n < static_cast<size_t>(m) + 1) return 0.0;
+    const size_t templates = n - static_cast<size_t>(m);
     auto count_matches = [&](int len) -> double {
         double cnt = 0.0;
-        for (size_t i = 0; i < n - len; ++i) {
-            for (size_t j = i + 1; j < n - len; ++j) {
+        for (size_t i = 0; i < templates; ++i) {
+            for (size_t j = i + 1; j < templates; ++j) {
                 double d = 0.0;
                 for (int k = 0; k < len; ++k)
-                    d = std::max(d, std::abs(x[i + k] - x[j + k]));
+                    d = std::max(d, std::abs(x[i + static_cast<size_t>(k)] -
+                                             x[j + static_cast<size_t>(k)]));
                 if (d < r) cnt += 1.0;
             }
         }
         return cnt;
     };
-    double A = count_matches(m + 1);
-    double B = count_matches(m);
-    if (B <= 0.0) return 0.0;
+    const double A = count_matches(m + 1);
+    const double B = count_matches(m);
+    if (B <= 0.0 || A <= 0.0) {
+        // No matches at either length: SampEn is undefined (log of 0 or 0/0).
+        // Keep the module's defensive convention and report 0 rather than an
+        // infinity that would poison downstream arithmetic.
+        return 0.0;
+    }
     return -std::log(A / B);
 }
 
