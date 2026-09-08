@@ -473,8 +473,61 @@ Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<d
 }
 
 Result<std::vector<std::complex<double>>> dft(std::span<const double> data) {
-    std::vector<double> copy(data.begin(), data.end());
-    return fft(copy);
+    // The DISCRETE FOURIER TRANSFORM of the input at its OWN length. This used
+    // to forward to fft(), which zero-pads to the next power of two, so a
+    // length-3 signal came back as 4 bins of a padded signal: fft_dft([1,2,3])
+    // gave [6, -2-2i, 2, -2+2i] where the true 3-point DFT is
+    // [6, -1.5+0.866i, -1.5-0.866i]. Padding changes the frequency grid, so the
+    // padded bins are not a subset of the unpadded ones and no caller could
+    // recover the transform they asked for.
+    //
+    // Evaluated directly in O(n^2). Callers wanting the fast power-of-two path
+    // (with its padding) can still call fft() explicitly.
+    const std::size_t n = data.size();
+    if (n == 0) {
+        return std::vector<std::complex<double>>{};
+    }
+    std::vector<std::complex<double>> out(n);
+    const double two_pi = 2.0 * 3.14159265358979323846;
+    for (std::size_t k = 0; k < n; ++k) {
+        double re = 0.0;
+        double im = 0.0;
+        for (std::size_t t = 0; t < n; ++t) {
+            const double angle =
+                -two_pi * static_cast<double>(k) * static_cast<double>(t) / static_cast<double>(n);
+            re += data[t] * std::cos(angle);
+            im += data[t] * std::sin(angle);
+        }
+        out[k] = std::complex<double>(re, im);
+    }
+    return out;
+}
+
+Result<std::vector<std::complex<double>>> idft(
+    const std::vector<std::complex<double>>& spectrum) {
+    // Inverse of dft(): the true n-point inverse transform at the spectrum's own
+    // length, so dft/idft round-trip for ANY n, not only powers of two. ifft()
+    // cannot serve here because it zero-pads to the next power of two.
+    const std::size_t n = spectrum.size();
+    if (n == 0) {
+        return std::vector<std::complex<double>>{};
+    }
+    std::vector<std::complex<double>> out(n);
+    const double two_pi = 2.0 * 3.14159265358979323846;
+    for (std::size_t t = 0; t < n; ++t) {
+        double re = 0.0;
+        double im = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            const double angle =
+                two_pi * static_cast<double>(k) * static_cast<double>(t) / static_cast<double>(n);
+            const double c = std::cos(angle);
+            const double sn = std::sin(angle);
+            re += spectrum[k].real() * c - spectrum[k].imag() * sn;
+            im += spectrum[k].real() * sn + spectrum[k].imag() * c;
+        }
+        out[t] = std::complex<double>(re / static_cast<double>(n), im / static_cast<double>(n));
+    }
+    return out;
 }
 
 Result<std::vector<std::complex<double>>> rfft(const std::vector<double>& x) {
@@ -502,8 +555,16 @@ Result<std::vector<double>> irfft(const std::vector<std::complex<double>>& x, si
     if (x.empty() || n == 0) {
         return std::vector<double>{};
     }
+    // The caller asks for n samples and must get n. The half-spectrum transform
+    // works on a power-of-two length, so the result was returned at
+    // next_power_of_two(n) instead: irfft(rfft([1..5]), 5) handed back 8
+    // samples, the first five correct and three trailing zeros.
     const size_t full_len = next_power_of_two(n);
-    return irfft_half_transform(x, full_len);
+    auto full = irfft_half_transform(x, full_len);
+    if (full.size() > n) {
+        full.resize(n);
+    }
+    return full;
 }
 
 std::vector<std::complex<double>> fftshift(const std::vector<std::complex<double>>& x) {

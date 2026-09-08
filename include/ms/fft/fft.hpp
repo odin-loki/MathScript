@@ -19,7 +19,16 @@ Result<std::vector<std::complex<double>>> fft2(const std::vector<std::complex<do
 Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<double>>& data);
 Result<std::vector<std::complex<double>>> ifft2(const std::vector<std::complex<double>>& data,
                                                 size_t rows, size_t cols);
+/// Discrete Fourier transform of @p data at its OWN length, evaluated directly
+/// in O(n^2). Unlike fft(), which zero-pads to the next power of two and so
+/// returns bins on a different frequency grid, dft(x) has exactly x.size() bins.
 Result<std::vector<std::complex<double>>> dft(std::span<const double> data);
+
+/// Inverse of dft(): the n-point inverse transform at the spectrum's own length,
+/// so dft/idft round-trip for any n. (ifft() cannot serve as dft's inverse
+/// because it zero-pads to a power of two.)
+Result<std::vector<std::complex<double>>> idft(
+    const std::vector<std::complex<double>>& spectrum);
 
 Result<std::vector<std::complex<double>>> rfft(const std::vector<double>& x);
 // Reuses `out` and `fft_work` across calls; `fft_work` must hold at least n/2 complexes

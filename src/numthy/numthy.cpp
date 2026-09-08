@@ -139,13 +139,31 @@ uint64_t prime_nth(uint64_t n) {
 }
 
 // --- Pollard rho factorisation ---
-static uint64_t pollard_rho(uint64_t n) {
+//
+// The polynomial offset `c` is a PARAMETER. It used to be hard-coded to 1, so
+// every one of factor_recursive's twenty "retries" re-ran the identical
+// deterministic walk and returned the identical answer; the loop could only
+// ever burn iterations before falling through to O(sqrt(n)) trial division.
+// Varying c changes the pseudo-random sequence, which is the entire mechanism
+// by which a retry is supposed to succeed where the previous attempt failed.
+//
+// Also guards the cycle: if x and y meet without a factor, the walk has closed
+// and no amount of further iteration will help, so report failure and let the
+// caller try another c.
+static uint64_t pollard_rho(uint64_t n, uint64_t c) {
     if (n % 2 == 0) return 2;
-    uint64_t x = 2, y = 2, c = 1, d = 1;
+    if (n <= 3) return 0;
+    const uint64_t offset = (c % (n - 1)) + 1;
+    uint64_t x = 2;
+    uint64_t y = 2;
+    uint64_t d = 1;
     while (d == 1) {
-        x = (mulmod(x, x, n) + c) % n;
-        y = (mulmod(y, y, n) + c) % n;
-        y = (mulmod(y, y, n) + c) % n;
+        x = (mulmod(x, x, n) + offset) % n;
+        y = (mulmod(y, y, n) + offset) % n;
+        y = (mulmod(y, y, n) + offset) % n;
+        if (x == y) {
+            return 0;  // cycle closed with no factor; caller should vary c
+        }
         d = std::gcd(x > y ? x - y : y - x, n);
     }
     return (d != n) ? d : 0; // 0 = retry needed
@@ -165,7 +183,7 @@ static void factor_recursive(uint64_t n, std::vector<uint64_t>& factors) {
     uint64_t d = 0;
     uint64_t c = 1;
     while (d == 0 || d == n) {
-        d = pollard_rho(n);
+        d = pollard_rho(n, c);
         ++c;
         if (c > 20) {
             // fallback trial
