@@ -67,7 +67,11 @@ Result<BigInt> BigInt::parse(const std::string& s, int base) {
     if (!str.empty() && str[0] == '-') { is_neg = true; str = str.substr(1); }
     if (!str.empty() && str[0] == '+') str = str.substr(1);
     BigInt result(0LL);
-    if (str.empty()) return result;
+    // "" and a lone sign are not numerals. The defensive BigInt(string) constructor
+    // turns malformed input into zero on purpose; parse() is the checked entry point
+    // and has to say so, as APFloat::parse already does for an empty significand.
+    if (str.empty())
+        return std::unexpected(DomainError{"BigInt::parse", "empty significand"});
 
     BigInt bbase(static_cast<long long>(base));
     for (char c : str) {

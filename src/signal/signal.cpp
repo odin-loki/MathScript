@@ -196,74 +196,11 @@ Result<void> rfft_windowed_segment(const std::vector<double>& signal, size_t sta
     return rfft(segment_buf, spec_buf, fft_work);
 }
 
-Result<std::vector<std::complex<double>>> rfft_windowed_segment(
-    const std::vector<double>& signal, size_t start, size_t segment_len,
-    const std::vector<double>& window) {
-    std::vector<double> segment;
-    std::vector<std::complex<double>> spec;
-    std::vector<std::complex<double>> fft_work;
-    const auto status =
-        rfft_windowed_segment(signal, start, segment_len, window, segment, spec, fft_work);
-    if (!status) {
-        return std::unexpected(status.error());
-    }
-    return spec;
-}
-
-std::vector<std::complex<double>> fft_recursive(std::vector<std::complex<double>> x) {
-    const size_t n = x.size();
-    if (n <= 1) {
-        return x;
-    }
-    if (n % 2 != 0) {
-        std::vector<std::complex<double>> out(n);
-        for (size_t k = 0; k < n; ++k) {
-            std::complex<double> sum(0.0, 0.0);
-            for (size_t t = 0; t < n; ++t) {
-                const double angle = -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n);
-                sum += x[t] * std::complex<double>(std::cos(angle), std::sin(angle));
-            }
-            out[k] = sum;
-        }
-        return out;
-    }
-
-    std::vector<std::complex<double>> even(n / 2);
-    std::vector<std::complex<double>> odd(n / 2);
-    for (size_t i = 0; i < n / 2; ++i) {
-        even[i] = x[2 * i];
-        odd[i] = x[2 * i + 1];
-    }
-
-    even = fft_recursive(std::move(even));
-    odd = fft_recursive(std::move(odd));
-
-    std::vector<std::complex<double>> out(n);
-    for (size_t k = 0; k < n / 2; ++k) {
-        const double angle = -2.0 * M_PI * static_cast<double>(k) / static_cast<double>(n);
-        const std::complex<double> w(std::cos(angle), std::sin(angle));
-        const std::complex<double> t = w * odd[k];
-        out[k] = even[k] + t;
-        out[k + n / 2] = even[k] - t;
-    }
-    return out;
-}
-
-std::vector<std::complex<double>> complex_ifft(const std::vector<std::complex<double>>& x) {
-    if (x.empty()) {
-        return {};
-    }
-    std::vector<std::complex<double>> conj(x.size());
-    for (size_t i = 0; i < x.size(); ++i) {
-        conj[i] = std::conj(x[i]);
-    }
-    auto spectrum = fft_recursive(std::move(conj));
-    const double inv_n = 1.0 / static_cast<double>(x.size());
-    for (size_t i = 0; i < spectrum.size(); ++i) {
-        spectrum[i] = std::conj(spectrum[i]) * inv_n;
-    }
-    return spectrum;
-}
+// The out-of-place fft_recursive/complex_ifft pair that used to live here was dead:
+// the module's only complex inverse call resolves to ms::complex_ifft from
+// <ms/fft/fft.hpp>, and nothing else referenced them. Worse, being in an unnamed
+// namespace inside ms they were reachable as ms::complex_ifft too, so they sat in
+// the overload set of the call that was meant for the fft module's version.
 
 void fft_recursive_inplace(std::complex<double>* x, size_t n, std::complex<double>* scratch) {
     if (n <= 1) {
@@ -658,54 +595,10 @@ std::vector<double> decimate_filtered(const std::vector<double>& x, int q, FftLo
     return downsample(filtered, q);
 }
 
-// Single-pass rational resample: merged anti-imaging/anti-aliasing cutoff then downsample.
-std::vector<double> resample_combined(const std::vector<double>& x, int p, int q) {
-    const size_t n = x.size();
-    const size_t up_len = n * static_cast<size_t>(p);
-    const double cutoff_interp = 0.8 / (2.0 * static_cast<double>(p));
-    const double cutoff_decim = 0.8 / (2.0 * static_cast<double>(q));
-    const double cutoff = std::min(cutoff_interp, cutoff_decim);
-    const double fs = 1.0;
-    const double gain = static_cast<double>(p);
-
-    const size_t in_fft = next_power_of_two(n);
-    const size_t out_fft = next_power_of_two(up_len);
-
-    std::vector<double> padded(in_fft, 0.0);
-    std::copy(x.begin(), x.end(), padded.begin());
-
-    const auto spec_in = fft(padded);
-    if (!spec_in) {
-        return {};
-    }
-
-    std::vector<std::complex<double>> spec_out(out_fft);
-    for (size_t k = 0; k < out_fft; ++k) {
-        spec_out[k] = (*spec_in)[k % in_fft];
-    }
-    apply_fft_lowpass_mask(spec_out, cutoff, fs);
-
-    const auto restored = ifft(spec_out);
-    if (!restored) {
-        return {};
-    }
-
-    std::vector<double> upsampled(up_len);
-    std::copy(restored->begin(), restored->begin() + static_cast<ptrdiff_t>(up_len), upsampled.begin());
-    for (double& v : upsampled) {
-        v *= gain;
-    }
-    return downsample(upsampled, q);
-}
-
-bool resample_use_combined(int p, int q, size_t x_len) {
-    (void)p;
-    (void)q;
-    (void)x_len;
-    // Two-stage interpolate+decimate matches reference filters; single-pass cutoff merge
-    // can diverge when p != q.
-    return false;
-}
+// The single-pass "combined" rational resample was removed. Its guard,
+// resample_use_combined, returned false unconditionally -- the merged cutoff can
+// diverge when p != q, so the two-stage interpolate-then-decimate path is the only
+// one that matches reference filters -- which made the whole routine unreachable.
 
 } // namespace
 
@@ -757,9 +650,8 @@ std::vector<double> resample(const std::vector<double>& x, int p, int q) {
     if (x.empty() || p <= 0 || q <= 0) {
         return {};
     }
-    if (resample_use_combined(p, q, x.size())) {
-        return resample_combined(x, p, q);
-    }
+    // Two-stage: interpolate by p (anti-imaging), then decimate by q (anti-aliasing).
+    // Merging the two cutoffs into one pass can diverge when p != q, so it is not done.
     FftLowpassBuffers work;
     return decimate_filtered(interpolate(x, p), q, work);
 }

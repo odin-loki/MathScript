@@ -38,6 +38,9 @@ uint64_t lcm(uint64_t a, uint64_t b);
 // Returns {g, x, y} s.t. a*x + b*y = g
 std::tuple<int64_t,int64_t,int64_t> extended_gcd(int64_t a, int64_t b);
 Result<uint64_t> mod_inv(uint64_t a, uint64_t m);   // modular inverse
+/// @brief base^exp mod `mod` by binary exponentiation.
+/// @note A modulus of 0 or 1 returns 0: there is no residue class modulo 0, and every
+///   value is 0 modulo 1. Modulus 0 used to reach `base %= mod` and raise SIGFPE.
 uint64_t mod_pow(uint64_t base, uint64_t exp, uint64_t mod);
 
 // --- Modular arithmetic ---

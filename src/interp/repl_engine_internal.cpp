@@ -7605,6 +7605,9 @@ Result<Matrix<double>> eval_ml_mat_mul(const Matrix<double>& A_m, const Matrix<d
     if (!B) {
         return std::unexpected(B.error());
     }
+    if (A_m.cols() != B_m.rows()) {
+        return std::unexpected(DimensionMismatch{A_m.cols(), B_m.rows()});
+    }
     return nested_to_matrix(ml::mat_mul(*A, *B));
 }
 

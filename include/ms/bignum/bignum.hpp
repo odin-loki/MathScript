@@ -24,9 +24,11 @@ public:
     /// Parse `s` in `base` (2–36). On failure (bad base or digit) constructs zero.
     explicit BigInt(const std::string& s, int base);
 
-    /// Parse `s` in `base` (2–36). Returns DomainError on bad base or digit.
+    /// Parse `s` in `base` (2–36). Returns DomainError on a bad base, an invalid digit,
+    /// or an empty significand ("" and a lone sign are not numerals). The constructor
+    /// above is the defensive form that yields zero instead.
     static Result<BigInt> parse(const std::string& s, int base);
-    /// Parse a base-10 string. Returns DomainError on invalid digits.
+    /// Parse a base-10 string, with the same reporting as the base overload.
     static Result<BigInt> parse(const std::string& s);
 
     // Comparison

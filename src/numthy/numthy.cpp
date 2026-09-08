@@ -47,6 +47,11 @@ static uint64_t mulmod(uint64_t a, uint64_t b, uint64_t m) {
 }
 
 static uint64_t powmod(uint64_t base, uint64_t exp, uint64_t mod) {
+    // Every caller inside this module passes a modulus of at least 2, but mod_pow is
+    // public and hands the argument straight through: a modulus of 0 reached the
+    // `base %= mod` below and raised SIGFPE (integer division by zero). There is no
+    // residue class modulo 0, and everything is 0 modulo 1, so both answer 0.
+    if (mod <= 1) return 0;
     uint64_t result = 1;
     base %= mod;
     while (exp > 0) {

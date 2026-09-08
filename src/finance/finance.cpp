@@ -612,11 +612,21 @@ double cvar(std::span<const double> returns, double alpha) {
     return -es;
 }
 
+// (1 - confidence) is a tail fraction, so it has to be clamped to [0, 1] BEFORE it is
+// scaled and converted: a confidence outside (0, 1) makes the product negative or larger
+// than the sample, and converting a negative double to size_t is undefined behaviour that
+// in practice yields a value near 2^64.
+static double tail_fraction(double confidence) {
+    const double tail = 1.0 - confidence;
+    if (!(tail > 0.0)) return 0.0;  // also catches NaN
+    return tail < 1.0 ? tail : 1.0;
+}
+
 double historical_var(std::span<const double> returns, double confidence) {
     if (returns.empty()) return 0.0;
     std::vector<double> sorted(returns.begin(), returns.end());
     std::sort(sorted.begin(), sorted.end());
-    size_t idx = static_cast<size_t>((1.0 - confidence) * sorted.size());
+    size_t idx = static_cast<size_t>(tail_fraction(confidence) * static_cast<double>(sorted.size()));
     if (idx >= sorted.size()) idx = sorted.size() - 1;
     return -sorted[idx];
 }
@@ -625,7 +635,8 @@ double historical_cvar(std::span<const double> returns, double confidence) {
     if (returns.empty()) return 0.0;
     std::vector<double> sorted(returns.begin(), returns.end());
     std::sort(sorted.begin(), sorted.end());
-    size_t cutoff = static_cast<size_t>((1.0 - confidence) * sorted.size());
+    size_t cutoff = static_cast<size_t>(tail_fraction(confidence) * static_cast<double>(sorted.size()));
+    if (cutoff > sorted.size()) cutoff = sorted.size();
     if (cutoff == 0) return -sorted[0];
     double sum = 0.0;
     for (size_t i = 0; i < cutoff; ++i) sum += sorted[i];

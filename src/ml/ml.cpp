@@ -57,24 +57,39 @@ Mat mat_T(const Mat& A) {
     for (int i=0;i<m;++i) for (int j=0;j<n;++j) B[j][i]=A[i][j];
     return B;
 }
+// The inner index runs over A's columns and is used to subscript B's ROWS, so a B with
+// fewer rows than A has columns read past the end of B -- ml_mat_mul(X, X) for any
+// non-square X reached this and segfaulted. Empty operands dereferenced A[0]/B[0] before
+// that. Both are shape errors with no product to return, so they yield an empty result.
 Mat mat_mul(const Mat& A, const Mat& B) {
+    if (A.empty() || B.empty() || A[0].empty() || B[0].empty()) return {};
     int m=to_i(A.size()), k=to_i(A[0].size()), n=to_i(B[0].size());
+    if (to_i(B.size()) != k) return {};
+    for (const auto& row : A) if (to_i(row.size()) != k) return {};
+    for (const auto& row : B) if (to_i(row.size()) != n) return {};
     Mat C(m, Vec(n,0));
     for (int i=0;i<m;++i) for (int l=0;l<k;++l) for (int j=0;j<n;++j)
         C[i][j]+=A[i][l]*B[l][j];
     return C;
 }
+// n came from x, not from A's rows, so a shorter row read past its end.
 Vec mat_vec(const Mat& A, const Vec& x) {
     int m=to_i(A.size()), n=to_i(x.size());
     Vec y(m,0);
-    for (int i=0;i<m;++i) for (int j=0;j<n;++j) y[i]+=A[i][j]*x[j];
+    for (int i=0;i<m;++i) {
+        const int cols = std::min(n, to_i(A[i].size()));
+        for (int j=0;j<cols;++j) y[i]+=A[i][j]*x[j];
+    }
     return y;
 }
+// b was indexed with a's length.
 Vec vec_add(const Vec& a, const Vec& b) {
-    Vec c(a.size()); for (size_t i=0;i<a.size();++i) c[i]=a[i]+b[i]; return c;
+    const size_t n = std::min(a.size(), b.size());
+    Vec c(n); for (size_t i=0;i<n;++i) c[i]=a[i]+b[i]; return c;
 }
 Vec vec_sub(const Vec& a, const Vec& b) {
-    Vec c(a.size()); for (size_t i=0;i<a.size();++i) c[i]=a[i]-b[i]; return c;
+    const size_t n = std::min(a.size(), b.size());
+    Vec c(n); for (size_t i=0;i<n;++i) c[i]=a[i]-b[i]; return c;
 }
 Vec vec_scale(double s, const Vec& v) {
     Vec c(v.size()); for (size_t i=0;i<v.size();++i) c[i]=s*v[i]; return c;

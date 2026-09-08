@@ -2161,13 +2161,6 @@ bool is_named_var(const SymExpr& expr, const std::string& name) {
     return expr.op == SymOp::Var && expr.name == name;
 }
 
-std::optional<double> as_const(const SymExpr& expr) {
-    if (expr.op == SymOp::Const) {
-        return expr.value;
-    }
-    return std::nullopt;
-}
-
 std::optional<double> extract_positive_scale_of_var(const SymExpr& expr, const std::string& var) {
     if (is_named_var(expr, var)) {
         return 1.0;

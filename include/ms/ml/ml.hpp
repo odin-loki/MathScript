@@ -15,8 +15,14 @@ using Vec = std::vector<double>;
 Mat mat_zeros(int r, int c);
 Mat mat_eye(int n);
 Mat mat_T(const Mat& A);
+/// @brief A*B. Returns an EMPTY Mat when the shapes do not conform (B's row count must
+///   equal A's column count) or either operand is empty or ragged: the inner index runs
+///   over A's columns while subscripting B's rows, so a mismatch would read past B.
 Mat mat_mul(const Mat& A, const Mat& B);
+/// @brief A*x, over min(x.size(), row length) columns of each row, so a short row or a
+///   short x truncates instead of reading past the end.
 Vec mat_vec(const Mat& A, const Vec& x);
+/// @brief Element-wise sum/difference over min(a.size(), b.size()) entries.
 Vec vec_add(const Vec& a, const Vec& b);
 Vec vec_sub(const Vec& a, const Vec& b);
 Vec vec_scale(double s, const Vec& v);
