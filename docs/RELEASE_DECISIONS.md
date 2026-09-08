@@ -28,6 +28,8 @@ Everything below shipped. Each entry names what replaced the stub.
 | `cech_complex` `max_dim` clamped to 2 | The MEB of any point subset now comes from the bordered Cayley–Menger system, so dimensions up to `kMaxCechDim` are built |
 | `crypto::random_bytes` "MVP: std::random_device" | `getrandom(2)` with a `/dev/urandom` fallback, `BCryptGenRandom` on Windows, `arc4random_buf` on BSD/macOS |
 | `mathscript-server` heartbeat loop | A real SPMD compute node: `--script` / `-e` / `--serve`, one `Interpreter` per rank, rank-0 stdout |
+| Convex-only `poly_union` / `poly_intersect` / `poly_diff` — "MVP boolean helper, not a general simple-polygon clipper" | `poly_boolean` with `poly_union_general` / `poly_intersect_general` / `poly_diff_general` / `poly_symmetric_diff_general`: edge-split, midpoint classification, and contour tracing over arbitrary simple polygons, exact for concave operands, disconnected results and results with holes. The convex helpers keep their documented hull over-approximation |
+| Blocked Schur-Parlett — "NOT implemented", so `logm`/`sinm`/`cosm` could not serve a repeated or clustered eigenvalue | Davies-Higham blocking: eigenvalues are grouped, the Schur form is reordered by Givens swaps, each diagonal block is evaluated by its Taylor series about the group mean, and the off-diagonal blocks come from triangular Sylvester solves. `logm`, `sinm` and `cosm` pass their analytic Taylor coefficients; `funm_taylor` takes them from the caller. Plain `funm`, handed `f` alone, cannot know the derivatives `f(A)` depends on there and reports the case |
 
 ## Still out of scope
 
