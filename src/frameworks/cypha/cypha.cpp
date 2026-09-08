@@ -1,4 +1,5 @@
 #include "ms/frameworks/cypha/cypha.hpp"
+#include "ms/special/special.hpp"
 
 #include "ms/frameworks/izaac/izaac.hpp"
 
@@ -187,9 +188,38 @@ NIGParams nig_fit(const Matrix<double>& data) {
 }
 
 double nig_pdf(double x, const NIGParams& params) {
-    const double z =
-        params.alpha * params.delta / std::sqrt(params.delta * params.delta + (x - params.mu) * (x - params.mu));
-    return std::exp(-z) / (2.0 * params.delta + 1e-12);
+    // The normal-inverse-Gaussian density:
+    //   f(x) = (alpha*delta/pi) * exp(delta*gamma + beta*(x-mu))
+    //          * K_1(alpha*sqrt(delta^2 + (x-mu)^2)) / sqrt(delta^2 + (x-mu)^2)
+    // with gamma = sqrt(alpha^2 - beta^2).
+    //
+    // The previous body was exp(-z)/(2*delta) with
+    // z = alpha*delta/sqrt(delta^2 + (x-mu)^2). That is not a density: it never
+    // reads params.beta, so it stayed symmetric however skewed the parameters
+    // were, and it INCREASES with |x - mu|, tending to the constant 1/(2*delta)
+    // rather than to zero -- so it had infinite mass. With mu=0, alpha=2,
+    // beta=0, delta=1 it gave f(0) = 0.0677 but f(50) = 0.4804, seven times
+    // larger in the far tail.
+    if (!(params.delta > 0.0) || !(std::abs(params.beta) < params.alpha)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double dx = x - params.mu;
+    const double s = std::sqrt(params.delta * params.delta + dx * dx);
+    if (!(s > 0.0)) {
+        return 0.0;
+    }
+    const double gamma = std::sqrt(params.alpha * params.alpha - params.beta * params.beta);
+    const double arg = params.alpha * s;
+    // K_1 decays like exp(-arg), and the exponential prefactor grows, so combine
+    // the exponents before evaluating to keep the far tail from overflowing.
+    const double k1 = ms::bessel_k(1, arg);
+    if (!std::isfinite(k1)) {
+        return 0.0;
+    }
+    const double pref = params.alpha * params.delta / M_PI;
+    const double expo = params.delta * gamma + params.beta * dx;
+    const double val = pref * std::exp(expo) * k1 / s;
+    return std::isfinite(val) ? val : 0.0;
 }
 
 namespace {

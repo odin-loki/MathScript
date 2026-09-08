@@ -208,11 +208,30 @@ double alpha_ca(uint8_t rule, size_t steps, size_t width) {
         step_into(state, rule, next);
         state.swap(next);
     }
-    return compute_alpha<double>(bits, [](std::span<const double> input) {
+    // compute_alpha measures 1 - H(transform(x))/H(x), the fraction of entropy a
+    // map destroys. The transform passed here used to be `v > 0.5 ? 1.0 : 0.0`
+    // on data whose entries are already exactly 0.0 or 1.0 -- the identity map --
+    // so H(out) == H(in) bit for bit and alpha was identically 0 for every rule,
+    // chaotic (30, 110) and trivial (0, 204) alike.
+    //
+    // The quantity that actually characterises a rule is the entropy its OWN
+    // update destroys, so the transform is one application of the rule to each
+    // row of the recorded history. Rule 204 is the identity and loses nothing;
+    // rule 0 maps every neighbourhood to 0 and loses everything.
+    return compute_alpha<double>(bits, [rule, width](std::span<const double> input) {
         std::vector<double> out;
         out.reserve(input.size());
-        for (double v : input) {
-            out.push_back(v > 0.5 ? 1.0 : 0.0);
+        std::vector<uint8_t> row(width, 0);
+        std::vector<uint8_t> stepped(width, 0);
+        const size_t rows = width == 0 ? 0 : input.size() / width;
+        for (size_t r = 0; r < rows; ++r) {
+            for (size_t c = 0; c < width; ++c) {
+                row[c] = input[r * width + c] > 0.5 ? uint8_t{1} : uint8_t{0};
+            }
+            step_into(row, rule, stepped);
+            for (size_t c = 0; c < width; ++c) {
+                out.push_back(static_cast<double>(stepped[c]));
+            }
         }
         return out;
     });
@@ -284,16 +303,29 @@ uint64_t step(uint64_t state, uint64_t poly) {
 }
 
 double alpha_lfsr(uint64_t poly, size_t steps) {
+    // The transform used to be std::reverse. ms::gria::entropy is a histogram
+    // over values, so it is permutation-invariant: reversing a sequence cannot
+    // change its entropy, and alpha was identically 0 for every polynomial.
+    //
+    // The meaningful quantity is the entropy the LFSR's own state update
+    // destroys, so the sequence recorded is the STATE trajectory and the
+    // transform is one step of the register. A maximal-length polynomial makes
+    // the update a bijection on the non-zero states and loses nothing; a
+    // degenerate one (poly = 0 shifts a bit off the end every step) collapses
+    // the state space and loses a measurable fraction.
     uint64_t state = 1;
     std::vector<double> seq;
     seq.reserve(steps);
     for (size_t i = 0; i < steps; ++i) {
-        seq.push_back(static_cast<double>(state & 1ULL));
+        seq.push_back(static_cast<double>(state));
         state = step(state, poly);
     }
-    return compute_alpha<double>(seq, [](std::span<const double> input) {
-        std::vector<double> out = {input.begin(), input.end()};
-        std::reverse(out.begin(), out.end());
+    return compute_alpha<double>(seq, [poly](std::span<const double> input) {
+        std::vector<double> out;
+        out.reserve(input.size());
+        for (double v : input) {
+            out.push_back(static_cast<double>(step(static_cast<uint64_t>(v), poly)));
+        }
         return out;
     });
 }
