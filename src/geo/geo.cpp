@@ -2,6 +2,7 @@
 #include "ms/geo/geo.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <queue>
 #include <stack>
@@ -1311,6 +1312,610 @@ Polygon2D poly_diff(const Polygon2D& a, const Polygon2D& b) {
 
     if (candidates.size() < 3) return {};
     return convex_hull_2d(std::move(candidates));
+}
+
+// ---- Marching cubes / marching squares ----
+
+// Local corner offsets of the 8 cube vertices, in Lorensen-Cline order.
+static constexpr int kCornerOffset[8][3] = {
+    {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
+    {0,0,1}, {1,0,1}, {1,1,1}, {0,1,1}
+};
+
+// For each of the 12 local edges: the offset of its lower-index grid endpoint plus the axis
+// (0=x, 1=y, 2=z) it runs along. Canonicalising a local edge to a global grid edge this way
+// makes neighbouring cells interpolate from the identical endpoint pair, so they produce
+// bit-identical crossing points and share one vertex in the indexed mesh.
+static constexpr int kEdgeBase[12][4] = {
+    {0,0,0,0}, {1,0,0,1}, {0,1,0,0}, {0,0,0,1},
+    {0,0,1,0}, {1,0,1,1}, {0,1,1,0}, {0,0,1,1},
+    {0,0,0,2}, {1,0,0,2}, {1,1,0,2}, {0,1,0,2}
+};
+
+// 256-entry edge table: bit e of kEdgeTable[cube_index] is set when local edge e is crossed by
+// the isosurface, i.e. when its two corners fall on opposite sides of the iso level.
+static constexpr int kEdgeTable[256] = {
+    0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
+    0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
+    0x190, 0x099, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c,
+    0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90,
+    0x230, 0x339, 0x033, 0x13a, 0x636, 0x73f, 0x435, 0x53c,
+    0xa3c, 0xb35, 0x83f, 0x936, 0xe3a, 0xf33, 0xc39, 0xd30,
+    0x3a0, 0x2a9, 0x1a3, 0x0aa, 0x7a6, 0x6af, 0x5a5, 0x4ac,
+    0xbac, 0xaa5, 0x9af, 0x8a6, 0xfaa, 0xea3, 0xda9, 0xca0,
+    0x460, 0x569, 0x663, 0x76a, 0x066, 0x16f, 0x265, 0x36c,
+    0xc6c, 0xd65, 0xe6f, 0xf66, 0x86a, 0x963, 0xa69, 0xb60,
+    0x5f0, 0x4f9, 0x7f3, 0x6fa, 0x1f6, 0x0ff, 0x3f5, 0x2fc,
+    0xdfc, 0xcf5, 0xfff, 0xef6, 0x9fa, 0x8f3, 0xbf9, 0xaf0,
+    0x650, 0x759, 0x453, 0x55a, 0x256, 0x35f, 0x055, 0x15c,
+    0xe5c, 0xf55, 0xc5f, 0xd56, 0xa5a, 0xb53, 0x859, 0x950,
+    0x7c0, 0x6c9, 0x5c3, 0x4ca, 0x3c6, 0x2cf, 0x1c5, 0x0cc,
+    0xfcc, 0xec5, 0xdcf, 0xcc6, 0xbca, 0xac3, 0x9c9, 0x8c0,
+    0x8c0, 0x9c9, 0xac3, 0xbca, 0xcc6, 0xdcf, 0xec5, 0xfcc,
+    0x0cc, 0x1c5, 0x2cf, 0x3c6, 0x4ca, 0x5c3, 0x6c9, 0x7c0,
+    0x950, 0x859, 0xb53, 0xa5a, 0xd56, 0xc5f, 0xf55, 0xe5c,
+    0x15c, 0x055, 0x35f, 0x256, 0x55a, 0x453, 0x759, 0x650,
+    0xaf0, 0xbf9, 0x8f3, 0x9fa, 0xef6, 0xfff, 0xcf5, 0xdfc,
+    0x2fc, 0x3f5, 0x0ff, 0x1f6, 0x6fa, 0x7f3, 0x4f9, 0x5f0,
+    0xb60, 0xa69, 0x963, 0x86a, 0xf66, 0xe6f, 0xd65, 0xc6c,
+    0x36c, 0x265, 0x16f, 0x066, 0x76a, 0x663, 0x569, 0x460,
+    0xca0, 0xda9, 0xea3, 0xfaa, 0x8a6, 0x9af, 0xaa5, 0xbac,
+    0x4ac, 0x5a5, 0x6af, 0x7a6, 0x0aa, 0x1a3, 0x2a9, 0x3a0,
+    0xd30, 0xc39, 0xf33, 0xe3a, 0x936, 0x83f, 0xb35, 0xa3c,
+    0x53c, 0x435, 0x73f, 0x636, 0x13a, 0x033, 0x339, 0x230,
+    0xe90, 0xf99, 0xc93, 0xd9a, 0xa96, 0xb9f, 0x895, 0x99c,
+    0x69c, 0x795, 0x49f, 0x596, 0x29a, 0x393, 0x099, 0x190,
+    0xf00, 0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c,
+    0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x000
+};
+
+// 256 x 16 triangle table (Lorensen-Cline). Each row lists local edge indices in groups of
+// three, terminated by -1. Rows are emitted with their last two entries swapped (see
+// marching_cubes_core) so the resulting normals point out of the sub-level set.
+static constexpr int kTriTable[256][16] = {
+    {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  1,  9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  8,  3,  9,  8,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  3,  1,  2, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  2, 10,  0,  2,  9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  8,  3,  2, 10,  8, 10,  9,  8, -1, -1, -1, -1, -1, -1, -1},
+    { 3, 11,  2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0, 11,  2,  8, 11,  0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  9,  0,  2,  3, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1, 11,  2,  1,  9, 11,  9,  8, 11, -1, -1, -1, -1, -1, -1, -1},
+    { 3, 10,  1, 11, 10,  3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0, 10,  1,  0,  8, 10,  8, 11, 10, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  9,  0,  3, 11,  9, 11, 10,  9, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  8, 10, 10,  8, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  7,  8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  3,  0,  7,  3,  4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  1,  9,  8,  4,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  1,  9,  4,  7,  1,  7,  3,  1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2, 10,  8,  4,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  4,  7,  3,  0,  4,  1,  2, 10, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  2, 10,  9,  0,  2,  8,  4,  7, -1, -1, -1, -1, -1, -1, -1},
+    { 2, 10,  9,  2,  9,  7,  2,  7,  3,  7,  9,  4, -1, -1, -1, -1},
+    { 8,  4,  7,  3, 11,  2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {11,  4,  7, 11,  2,  4,  2,  0,  4, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  0,  1,  8,  4,  7,  2,  3, 11, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  7, 11,  9,  4, 11,  9, 11,  2,  9,  2,  1, -1, -1, -1, -1},
+    { 3, 10,  1,  3, 11, 10,  7,  8,  4, -1, -1, -1, -1, -1, -1, -1},
+    { 1, 11, 10,  1,  4, 11,  1,  0,  4,  7, 11,  4, -1, -1, -1, -1},
+    { 4,  7,  8,  9,  0, 11,  9, 11, 10, 11,  0,  3, -1, -1, -1, -1},
+    { 4,  7, 11,  4, 11,  9,  9, 11, 10, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  5,  4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  5,  4,  0,  8,  3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  5,  4,  1,  5,  0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  5,  4,  8,  3,  5,  3,  1,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2, 10,  9,  5,  4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  0,  8,  1,  2, 10,  4,  9,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 5,  2, 10,  5,  4,  2,  4,  0,  2, -1, -1, -1, -1, -1, -1, -1},
+    { 2, 10,  5,  3,  2,  5,  3,  5,  4,  3,  4,  8, -1, -1, -1, -1},
+    { 9,  5,  4,  2,  3, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0, 11,  2,  0,  8, 11,  4,  9,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  5,  4,  0,  1,  5,  2,  3, 11, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  1,  5,  2,  5,  8,  2,  8, 11,  4,  8,  5, -1, -1, -1, -1},
+    {10,  3, 11, 10,  1,  3,  9,  5,  4, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  9,  5,  0,  8,  1,  8, 10,  1,  8, 11, 10, -1, -1, -1, -1},
+    { 5,  4,  0,  5,  0, 11,  5, 11, 10, 11,  0,  3, -1, -1, -1, -1},
+    { 5,  4,  8,  5,  8, 10, 10,  8, 11, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  7,  8,  5,  7,  9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  3,  0,  9,  5,  3,  5,  7,  3, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  7,  8,  0,  1,  7,  1,  5,  7, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  5,  3,  3,  5,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  7,  8,  9,  5,  7, 10,  1,  2, -1, -1, -1, -1, -1, -1, -1},
+    {10,  1,  2,  9,  5,  0,  5,  3,  0,  5,  7,  3, -1, -1, -1, -1},
+    { 8,  0,  2,  8,  2,  5,  8,  5,  7, 10,  5,  2, -1, -1, -1, -1},
+    { 2, 10,  5,  2,  5,  3,  3,  5,  7, -1, -1, -1, -1, -1, -1, -1},
+    { 7,  9,  5,  7,  8,  9,  3, 11,  2, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  5,  7,  9,  7,  2,  9,  2,  0,  2,  7, 11, -1, -1, -1, -1},
+    { 2,  3, 11,  0,  1,  8,  1,  7,  8,  1,  5,  7, -1, -1, -1, -1},
+    {11,  2,  1, 11,  1,  7,  7,  1,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  5,  8,  8,  5,  7, 10,  1,  3, 10,  3, 11, -1, -1, -1, -1},
+    { 5,  7,  0,  5,  0,  9,  7, 11,  0,  1,  0, 10, 11, 10,  0, -1},
+    {11, 10,  0, 11,  0,  3, 10,  5,  0,  8,  0,  7,  5,  7,  0, -1},
+    {11, 10,  5,  7, 11,  5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {10,  6,  5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  3,  5, 10,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  0,  1,  5, 10,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  8,  3,  1,  9,  8,  5, 10,  6, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  6,  5,  2,  6,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  6,  5,  1,  2,  6,  3,  0,  8, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  6,  5,  9,  0,  6,  0,  2,  6, -1, -1, -1, -1, -1, -1, -1},
+    { 5,  9,  8,  5,  8,  2,  5,  2,  6,  3,  2,  8, -1, -1, -1, -1},
+    { 2,  3, 11, 10,  6,  5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {11,  0,  8, 11,  2,  0, 10,  6,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  1,  9,  2,  3, 11,  5, 10,  6, -1, -1, -1, -1, -1, -1, -1},
+    { 5, 10,  6,  1,  9,  2,  9, 11,  2,  9,  8, 11, -1, -1, -1, -1},
+    { 6,  3, 11,  6,  5,  3,  5,  1,  3, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8, 11,  0, 11,  5,  0,  5,  1,  5, 11,  6, -1, -1, -1, -1},
+    { 3, 11,  6,  0,  3,  6,  0,  6,  5,  0,  5,  9, -1, -1, -1, -1},
+    { 6,  5,  9,  6,  9, 11, 11,  9,  8, -1, -1, -1, -1, -1, -1, -1},
+    { 5, 10,  6,  4,  7,  8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  3,  0,  4,  7,  3,  6,  5, 10, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  9,  0,  5, 10,  6,  8,  4,  7, -1, -1, -1, -1, -1, -1, -1},
+    {10,  6,  5,  1,  9,  7,  1,  7,  3,  7,  9,  4, -1, -1, -1, -1},
+    { 6,  1,  2,  6,  5,  1,  4,  7,  8, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2,  5,  5,  2,  6,  3,  0,  4,  3,  4,  7, -1, -1, -1, -1},
+    { 8,  4,  7,  9,  0,  5,  0,  6,  5,  0,  2,  6, -1, -1, -1, -1},
+    { 7,  3,  9,  7,  9,  4,  3,  2,  9,  5,  9,  6,  2,  6,  9, -1},
+    { 3, 11,  2,  7,  8,  4, 10,  6,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 5, 10,  6,  4,  7,  2,  4,  2,  0,  2,  7, 11, -1, -1, -1, -1},
+    { 0,  1,  9,  4,  7,  8,  2,  3, 11,  5, 10,  6, -1, -1, -1, -1},
+    { 9,  2,  1,  9, 11,  2,  9,  4, 11,  7, 11,  4,  5, 10,  6, -1},
+    { 8,  4,  7,  3, 11,  5,  3,  5,  1,  5, 11,  6, -1, -1, -1, -1},
+    { 5,  1, 11,  5, 11,  6,  1,  0, 11,  7, 11,  4,  0,  4, 11, -1},
+    { 0,  5,  9,  0,  6,  5,  0,  3,  6, 11,  6,  3,  8,  4,  7, -1},
+    { 6,  5,  9,  6,  9, 11,  4,  7,  9,  7, 11,  9, -1, -1, -1, -1},
+    {10,  4,  9,  6,  4, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4, 10,  6,  4,  9, 10,  0,  8,  3, -1, -1, -1, -1, -1, -1, -1},
+    {10,  0,  1, 10,  6,  0,  6,  4,  0, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  3,  1,  8,  1,  6,  8,  6,  4,  6,  1, 10, -1, -1, -1, -1},
+    { 1,  4,  9,  1,  2,  4,  2,  6,  4, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  0,  8,  1,  2,  9,  2,  4,  9,  2,  6,  4, -1, -1, -1, -1},
+    { 0,  2,  4,  4,  2,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  3,  2,  8,  2,  4,  4,  2,  6, -1, -1, -1, -1, -1, -1, -1},
+    {10,  4,  9, 10,  6,  4, 11,  2,  3, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  2,  2,  8, 11,  4,  9, 10,  4, 10,  6, -1, -1, -1, -1},
+    { 3, 11,  2,  0,  1,  6,  0,  6,  4,  6,  1, 10, -1, -1, -1, -1},
+    { 6,  4,  1,  6,  1, 10,  4,  8,  1,  2,  1, 11,  8, 11,  1, -1},
+    { 9,  6,  4,  9,  3,  6,  9,  1,  3, 11,  6,  3, -1, -1, -1, -1},
+    { 8, 11,  1,  8,  1,  0, 11,  6,  1,  9,  1,  4,  6,  4,  1, -1},
+    { 3, 11,  6,  3,  6,  0,  0,  6,  4, -1, -1, -1, -1, -1, -1, -1},
+    { 6,  4,  8, 11,  6,  8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 7, 10,  6,  7,  8, 10,  8,  9, 10, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  7,  3,  0, 10,  7,  0,  9, 10,  6,  7, 10, -1, -1, -1, -1},
+    {10,  6,  7,  1, 10,  7,  1,  7,  8,  1,  8,  0, -1, -1, -1, -1},
+    {10,  6,  7, 10,  7,  1,  1,  7,  3, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2,  6,  1,  6,  8,  1,  8,  9,  8,  6,  7, -1, -1, -1, -1},
+    { 2,  6,  9,  2,  9,  1,  6,  7,  9,  0,  9,  3,  7,  3,  9, -1},
+    { 7,  8,  0,  7,  0,  6,  6,  0,  2, -1, -1, -1, -1, -1, -1, -1},
+    { 7,  3,  2,  6,  7,  2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  3, 11, 10,  6,  8, 10,  8,  9,  8,  6,  7, -1, -1, -1, -1},
+    { 2,  0,  7,  2,  7, 11,  0,  9,  7,  6,  7, 10,  9, 10,  7, -1},
+    { 1,  8,  0,  1,  7,  8,  1, 10,  7,  6,  7, 10,  2,  3, 11, -1},
+    {11,  2,  1, 11,  1,  7, 10,  6,  1,  6,  7,  1, -1, -1, -1, -1},
+    { 8,  9,  6,  8,  6,  7,  9,  1,  6, 11,  6,  3,  1,  3,  6, -1},
+    { 0,  9,  1, 11,  6,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 7,  8,  0,  7,  0,  6,  3, 11,  0, 11,  6,  0, -1, -1, -1, -1},
+    { 7, 11,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 7,  6, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  0,  8, 11,  7,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  1,  9, 11,  7,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  1,  9,  8,  3,  1, 11,  7,  6, -1, -1, -1, -1, -1, -1, -1},
+    {10,  1,  2,  6, 11,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2, 10,  3,  0,  8,  6, 11,  7, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  9,  0,  2, 10,  9,  6, 11,  7, -1, -1, -1, -1, -1, -1, -1},
+    { 6, 11,  7,  2, 10,  3, 10,  8,  3, 10,  9,  8, -1, -1, -1, -1},
+    { 7,  2,  3,  6,  2,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 7,  0,  8,  7,  6,  0,  6,  2,  0, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  7,  6,  2,  3,  7,  0,  1,  9, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  6,  2,  1,  8,  6,  1,  9,  8,  8,  7,  6, -1, -1, -1, -1},
+    {10,  7,  6, 10,  1,  7,  1,  3,  7, -1, -1, -1, -1, -1, -1, -1},
+    {10,  7,  6,  1,  7, 10,  1,  8,  7,  1,  0,  8, -1, -1, -1, -1},
+    { 0,  3,  7,  0,  7, 10,  0, 10,  9,  6, 10,  7, -1, -1, -1, -1},
+    { 7,  6, 10,  7, 10,  8,  8, 10,  9, -1, -1, -1, -1, -1, -1, -1},
+    { 6,  8,  4, 11,  8,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  6, 11,  3,  0,  6,  0,  4,  6, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  6, 11,  8,  4,  6,  9,  0,  1, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  4,  6,  9,  6,  3,  9,  3,  1, 11,  3,  6, -1, -1, -1, -1},
+    { 6,  8,  4,  6, 11,  8,  2, 10,  1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2, 10,  3,  0, 11,  0,  6, 11,  0,  4,  6, -1, -1, -1, -1},
+    { 4, 11,  8,  4,  6, 11,  0,  2,  9,  2, 10,  9, -1, -1, -1, -1},
+    {10,  9,  3, 10,  3,  2,  9,  4,  3, 11,  3,  6,  4,  6,  3, -1},
+    { 8,  2,  3,  8,  4,  2,  4,  6,  2, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  4,  2,  4,  6,  2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  9,  0,  2,  3,  4,  2,  4,  6,  4,  3,  8, -1, -1, -1, -1},
+    { 1,  9,  4,  1,  4,  2,  2,  4,  6, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  1,  3,  8,  6,  1,  8,  4,  6,  6, 10,  1, -1, -1, -1, -1},
+    {10,  1,  0, 10,  0,  6,  6,  0,  4, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  6,  3,  4,  3,  8,  6, 10,  3,  0,  3,  9, 10,  9,  3, -1},
+    {10,  9,  4,  6, 10,  4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  9,  5,  7,  6, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  3,  4,  9,  5, 11,  7,  6, -1, -1, -1, -1, -1, -1, -1},
+    { 5,  0,  1,  5,  4,  0,  7,  6, 11, -1, -1, -1, -1, -1, -1, -1},
+    {11,  7,  6,  8,  3,  4,  3,  5,  4,  3,  1,  5, -1, -1, -1, -1},
+    { 9,  5,  4, 10,  1,  2,  7,  6, 11, -1, -1, -1, -1, -1, -1, -1},
+    { 6, 11,  7,  1,  2, 10,  0,  8,  3,  4,  9,  5, -1, -1, -1, -1},
+    { 7,  6, 11,  5,  4, 10,  4,  2, 10,  4,  0,  2, -1, -1, -1, -1},
+    { 3,  4,  8,  3,  5,  4,  3,  2,  5, 10,  5,  2, 11,  7,  6, -1},
+    { 7,  2,  3,  7,  6,  2,  5,  4,  9, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  5,  4,  0,  8,  6,  0,  6,  2,  6,  8,  7, -1, -1, -1, -1},
+    { 3,  6,  2,  3,  7,  6,  1,  5,  0,  5,  4,  0, -1, -1, -1, -1},
+    { 6,  2,  8,  6,  8,  7,  2,  1,  8,  4,  8,  5,  1,  5,  8, -1},
+    { 9,  5,  4, 10,  1,  6,  1,  7,  6,  1,  3,  7, -1, -1, -1, -1},
+    { 1,  6, 10,  1,  7,  6,  1,  0,  7,  8,  7,  0,  9,  5,  4, -1},
+    { 4,  0, 10,  4, 10,  5,  0,  3, 10,  6, 10,  7,  3,  7, 10, -1},
+    { 7,  6, 10,  7, 10,  8,  5,  4, 10,  4,  8, 10, -1, -1, -1, -1},
+    { 6,  9,  5,  6, 11,  9, 11,  8,  9, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  6, 11,  0,  6,  3,  0,  5,  6,  0,  9,  5, -1, -1, -1, -1},
+    { 0, 11,  8,  0,  5, 11,  0,  1,  5,  5,  6, 11, -1, -1, -1, -1},
+    { 6, 11,  3,  6,  3,  5,  5,  3,  1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2, 10,  9,  5, 11,  9, 11,  8, 11,  5,  6, -1, -1, -1, -1},
+    { 0, 11,  3,  0,  6, 11,  0,  9,  6,  5,  6,  9,  1,  2, 10, -1},
+    {11,  8,  5, 11,  5,  6,  8,  0,  5, 10,  5,  2,  0,  2,  5, -1},
+    { 6, 11,  3,  6,  3,  5,  2, 10,  3, 10,  5,  3, -1, -1, -1, -1},
+    { 5,  8,  9,  5,  2,  8,  5,  6,  2,  3,  8,  2, -1, -1, -1, -1},
+    { 9,  5,  6,  9,  6,  0,  0,  6,  2, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  5,  8,  1,  8,  0,  5,  6,  8,  3,  8,  2,  6,  2,  8, -1},
+    { 1,  5,  6,  2,  1,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  3,  6,  1,  6, 10,  3,  8,  6,  5,  6,  9,  8,  9,  6, -1},
+    {10,  1,  0, 10,  0,  6,  9,  5,  0,  5,  6,  0, -1, -1, -1, -1},
+    { 0,  3,  8,  5,  6, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {10,  5,  6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {11,  5, 10,  7,  5, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {11,  5, 10, 11,  7,  5,  8,  3,  0, -1, -1, -1, -1, -1, -1, -1},
+    { 5, 11,  7,  5, 10, 11,  1,  9,  0, -1, -1, -1, -1, -1, -1, -1},
+    {10,  7,  5, 10, 11,  7,  9,  8,  1,  8,  3,  1, -1, -1, -1, -1},
+    {11,  1,  2, 11,  7,  1,  7,  5,  1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  3,  1,  2,  7,  1,  7,  5,  7,  2, 11, -1, -1, -1, -1},
+    { 9,  7,  5,  9,  2,  7,  9,  0,  2,  2, 11,  7, -1, -1, -1, -1},
+    { 7,  5,  2,  7,  2, 11,  5,  9,  2,  3,  2,  8,  9,  8,  2, -1},
+    { 2,  5, 10,  2,  3,  5,  3,  7,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  2,  0,  8,  5,  2,  8,  7,  5, 10,  2,  5, -1, -1, -1, -1},
+    { 9,  0,  1,  5, 10,  3,  5,  3,  7,  3, 10,  2, -1, -1, -1, -1},
+    { 9,  8,  2,  9,  2,  1,  8,  7,  2, 10,  2,  5,  7,  5,  2, -1},
+    { 1,  3,  5,  3,  7,  5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  7,  0,  7,  1,  1,  7,  5, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  0,  3,  9,  3,  5,  5,  3,  7, -1, -1, -1, -1, -1, -1, -1},
+    { 9,  8,  7,  5,  9,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 5,  8,  4,  5, 10,  8, 10, 11,  8, -1, -1, -1, -1, -1, -1, -1},
+    { 5,  0,  4,  5, 11,  0,  5, 10, 11, 11,  3,  0, -1, -1, -1, -1},
+    { 0,  1,  9,  8,  4, 10,  8, 10, 11, 10,  4,  5, -1, -1, -1, -1},
+    {10, 11,  4, 10,  4,  5, 11,  3,  4,  9,  4,  1,  3,  1,  4, -1},
+    { 2,  5,  1,  2,  8,  5,  2, 11,  8,  4,  5,  8, -1, -1, -1, -1},
+    { 0,  4, 11,  0, 11,  3,  4,  5, 11,  2, 11,  1,  5,  1, 11, -1},
+    { 0,  2,  5,  0,  5,  9,  2, 11,  5,  4,  5,  8, 11,  8,  5, -1},
+    { 9,  4,  5,  2, 11,  3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  5, 10,  3,  5,  2,  3,  4,  5,  3,  8,  4, -1, -1, -1, -1},
+    { 5, 10,  2,  5,  2,  4,  4,  2,  0, -1, -1, -1, -1, -1, -1, -1},
+    { 3, 10,  2,  3,  5, 10,  3,  8,  5,  4,  5,  8,  0,  1,  9, -1},
+    { 5, 10,  2,  5,  2,  4,  1,  9,  2,  9,  4,  2, -1, -1, -1, -1},
+    { 8,  4,  5,  8,  5,  3,  3,  5,  1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  4,  5,  1,  0,  5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 8,  4,  5,  8,  5,  3,  9,  0,  5,  0,  3,  5, -1, -1, -1, -1},
+    { 9,  4,  5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4, 11,  7,  4,  9, 11,  9, 10, 11, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  8,  3,  4,  9,  7,  9, 11,  7,  9, 10, 11, -1, -1, -1, -1},
+    { 1, 10, 11,  1, 11,  4,  1,  4,  0,  7,  4, 11, -1, -1, -1, -1},
+    { 3,  1,  4,  3,  4,  8,  1, 10,  4,  7,  4, 11, 10, 11,  4, -1},
+    { 4, 11,  7,  9, 11,  4,  9,  2, 11,  9,  1,  2, -1, -1, -1, -1},
+    { 9,  7,  4,  9, 11,  7,  9,  1, 11,  2, 11,  1,  0,  8,  3, -1},
+    {11,  7,  4, 11,  4,  2,  2,  4,  0, -1, -1, -1, -1, -1, -1, -1},
+    {11,  7,  4, 11,  4,  2,  8,  3,  4,  3,  2,  4, -1, -1, -1, -1},
+    { 2,  9, 10,  2,  7,  9,  2,  3,  7,  7,  4,  9, -1, -1, -1, -1},
+    { 9, 10,  7,  9,  7,  4, 10,  2,  7,  8,  7,  0,  2,  0,  7, -1},
+    { 3,  7, 10,  3, 10,  2,  7,  4, 10,  1, 10,  0,  4,  0, 10, -1},
+    { 1, 10,  2,  8,  7,  4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  9,  1,  4,  1,  7,  7,  1,  3, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  9,  1,  4,  1,  7,  0,  8,  1,  8,  7,  1, -1, -1, -1, -1},
+    { 4,  0,  3,  7,  4,  3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 4,  8,  7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 9, 10,  8, 10, 11,  8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  0,  9,  3,  9, 11, 11,  9, 10, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  1, 10,  0, 10,  8,  8, 10, 11, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  1, 10, 11,  3, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  2, 11,  1, 11,  9,  9, 11,  8, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  0,  9,  3,  9, 11,  1,  2,  9,  2, 11,  9, -1, -1, -1, -1},
+    { 0,  2, 11,  8,  0, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 3,  2, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  3,  8,  2,  8, 10, 10,  8,  9, -1, -1, -1, -1, -1, -1, -1},
+    { 9, 10,  2,  0,  9,  2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 2,  3,  8,  2,  8, 10,  0,  1,  8,  1, 10,  8, -1, -1, -1, -1},
+    { 1, 10,  2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 1,  3,  8,  9,  1,  8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  9,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    { 0,  3,  8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}
+};
+
+// 2D: corner offsets and the canonical base/axis of each of the 4 cell edges.
+static constexpr int kCornerOffset2[4][2] = { {0,0}, {1,0}, {1,1}, {0,1} };
+static constexpr int kEdgeBase2[4][3] = { {0,0,0}, {1,0,1}, {0,1,0}, {0,0,1} };
+
+// The 16 marching-squares cases as directed edge pairs (from, to), -1 terminated. Directions
+// put the sub-level set {f < iso} on the left of each segment. The two diagonally ambiguous
+// cases (5 and 10) are resolved at run time by the asymptotic decider and are left empty here.
+static constexpr int kSegTable[16][5] = {
+    {-1, -1, -1, -1, -1},  //  0  none below
+    { 0,  3, -1, -1, -1},  //  1  corner 0
+    { 1,  0, -1, -1, -1},  //  2  corner 1
+    { 1,  3, -1, -1, -1},  //  3  corners 0,1
+    { 2,  1, -1, -1, -1},  //  4  corner 2
+    {-1, -1, -1, -1, -1},  //  5  corners 0,2  (ambiguous)
+    { 2,  0, -1, -1, -1},  //  6  corners 1,2
+    { 2,  3, -1, -1, -1},  //  7  corners 0,1,2
+    { 3,  2, -1, -1, -1},  //  8  corner 3
+    { 0,  2, -1, -1, -1},  //  9  corners 0,3
+    {-1, -1, -1, -1, -1},  // 10  corners 1,3  (ambiguous)
+    { 1,  2, -1, -1, -1},  // 11  corners 0,1,3
+    { 3,  1, -1, -1, -1},  // 12  corners 2,3
+    { 0,  1, -1, -1, -1},  // 13  corners 0,2,3
+    { 3,  0, -1, -1, -1},  // 14  corners 1,2,3
+    {-1, -1, -1, -1, -1}   // 15  all below
+};
+
+// The two resolutions of each ambiguous case, as two directed edge pairs.
+static constexpr int kSeg5Separated[4]  = {0, 3, 2, 1};
+static constexpr int kSeg5Joined[4]     = {0, 1, 2, 3};
+static constexpr int kSeg10Separated[4] = {1, 0, 3, 2};
+static constexpr int kSeg10Joined[4]    = {3, 0, 1, 2};
+
+// Linear crossing point along one cell edge. Only called for a genuinely cut edge, where one
+// endpoint is strictly below the level and the other is not, so the denominator cannot be zero
+// and t naturally lands in [0,1]; the guard and the clamp are belt and braces against a
+// non-finite denominator surviving the caller's finiteness screen. The !(t >= 0.0) form also
+// rejects NaN.
+static Point3D interp_edge3(double iso, Point3D p0, Point3D p1, double v0, double v1) {
+    const double denom = v1 - v0;
+    double t = 0.5;
+    if (std::abs(denom) > 0.0) t = (iso - v0) / denom;
+    if (!(t >= 0.0)) t = 0.0;
+    if (t > 1.0) t = 1.0;
+    return { p0.x + t * (p1.x - p0.x),
+             p0.y + t * (p1.y - p0.y),
+             p0.z + t * (p1.z - p0.z) };
+}
+
+static Point2D interp_edge2(double iso, Point2D p0, Point2D p1, double v0, double v1) {
+    const double denom = v1 - v0;
+    double t = 0.5;
+    if (std::abs(denom) > 0.0) t = (iso - v0) / denom;
+    if (!(t >= 0.0)) t = 0.0;
+    if (t > 1.0) t = 1.0;
+    return { p0.x + t * (p1.x - p0.x), p0.y + t * (p1.y - p0.y) };
+}
+
+// Shared core: builds the de-duplicated vertex array and the index triples. Both public
+// marching-cubes entry points go through this, so the soup and the indexed mesh are guaranteed
+// to carry identical vertex positions in identical triangle order.
+static TriMesh3D marching_cubes_core(const std::vector<double>& field,
+                                     int nx, int ny, int nz, double iso,
+                                     Point3D origin, Vec3D spacing) {
+    TriMesh3D mesh;
+    if (nx < 2 || ny < 2 || nz < 2) return mesh;
+    const std::size_t total = static_cast<std::size_t>(nx) *
+                              static_cast<std::size_t>(ny) *
+                              static_cast<std::size_t>(nz);
+    if (field.size() != total) return mesh;
+
+    const std::size_t snx = static_cast<std::size_t>(nx);
+    const std::size_t sny = static_cast<std::size_t>(ny);
+
+    auto sample = [&](int i, int j, int k) {
+        return field[static_cast<std::size_t>(i) +
+                     snx * (static_cast<std::size_t>(j) +
+                            sny * static_cast<std::size_t>(k))];
+    };
+    auto position = [&](int i, int j, int k) {
+        return Point3D{ origin.x + i * spacing.x,
+                        origin.y + j * spacing.y,
+                        origin.z + k * spacing.z };
+    };
+
+    // vertex_of_edge[3 * node_index + axis] is the index in mesh.vertices of the crossing point
+    // on the grid edge leaving node (i,j,k) along `axis`, or -1 when it has not been cut yet.
+    // This is what welds the shared edges of neighbouring cells onto one vertex.
+    std::vector<int> vertex_of_edge(3 * total, -1);
+
+    auto vertex_for = [&](int i, int j, int k, int axis) {
+        const std::size_t key =
+            3 * (static_cast<std::size_t>(i) +
+                 snx * (static_cast<std::size_t>(j) +
+                        sny * static_cast<std::size_t>(k))) +
+            static_cast<std::size_t>(axis);
+        if (vertex_of_edge[key] >= 0) return vertex_of_edge[key];
+        const int di = (axis == 0) ? 1 : 0;
+        const int dj = (axis == 1) ? 1 : 0;
+        const int dk = (axis == 2) ? 1 : 0;
+        const Point3D p = interp_edge3(iso, position(i, j, k),
+                                       position(i + di, j + dj, k + dk),
+                                       sample(i, j, k),
+                                       sample(i + di, j + dj, k + dk));
+        const int id = static_cast<int>(mesh.vertices.size());
+        mesh.vertices.push_back(p);
+        vertex_of_edge[key] = id;
+        return id;
+    };
+
+    for (int k = 0; k < nz - 1; ++k) {
+        for (int j = 0; j < ny - 1; ++j) {
+            for (int i = 0; i < nx - 1; ++i) {
+                double vals[8] = {};
+                bool finite = true;
+                for (int c = 0; c < 8; ++c) {
+                    vals[c] = sample(i + kCornerOffset[c][0],
+                                     j + kCornerOffset[c][1],
+                                     k + kCornerOffset[c][2]);
+                    if (!std::isfinite(vals[c])) finite = false;
+                }
+                if (!finite) continue;   // corrupted cell contributes nothing
+
+                int cube_index = 0;
+                for (int c = 0; c < 8; ++c)
+                    if (vals[c] < iso) cube_index |= (1 << c);
+
+                const int cut = kEdgeTable[cube_index];
+                if (cut == 0) continue;  // wholly inside or wholly outside
+
+                int edge_vertex[12] = {};
+                for (int e = 0; e < 12; ++e) {
+                    edge_vertex[e] = -1;
+                    if ((cut & (1 << e)) == 0) continue;
+                    edge_vertex[e] = vertex_for(i + kEdgeBase[e][0],
+                                                j + kEdgeBase[e][1],
+                                                k + kEdgeBase[e][2],
+                                                kEdgeBase[e][3]);
+                }
+                // Last two entries swapped: the published table winds triangles with the normal
+                // pointing into the sub-level set, and this module's convention is outward.
+                for (int t = 0; kTriTable[cube_index][t] != -1; t += 3) {
+                    mesh.triangles.push_back({ edge_vertex[kTriTable[cube_index][t]],
+                                               edge_vertex[kTriTable[cube_index][t + 2]],
+                                               edge_vertex[kTriTable[cube_index][t + 1]] });
+                }
+            }
+        }
+    }
+    return mesh;
+}
+
+std::vector<Triangle3D> marching_cubes(const std::vector<double>& field,
+                                       int nx, int ny, int nz, double iso,
+                                       Point3D origin, Vec3D spacing) {
+    const TriMesh3D mesh = marching_cubes_core(field, nx, ny, nz, iso, origin, spacing);
+    std::vector<Triangle3D> soup;
+    soup.reserve(mesh.triangles.size());
+    for (const auto& t : mesh.triangles)
+        soup.push_back({ mesh.vertices[static_cast<std::size_t>(t.a)],
+                         mesh.vertices[static_cast<std::size_t>(t.b)],
+                         mesh.vertices[static_cast<std::size_t>(t.c)] });
+    return soup;
+}
+
+TriMesh3D marching_cubes_mesh(const std::vector<double>& field,
+                              int nx, int ny, int nz, double iso,
+                              Point3D origin, Vec3D spacing) {
+    return marching_cubes_core(field, nx, ny, nz, iso, origin, spacing);
+}
+
+std::vector<Segment2D> marching_squares(const std::vector<double>& field,
+                                        int nx, int ny, double iso,
+                                        Point2D origin, Vec2D spacing) {
+    std::vector<Segment2D> out;
+    if (nx < 2 || ny < 2) return out;
+    const std::size_t total = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny);
+    if (field.size() != total) return out;
+
+    const std::size_t snx = static_cast<std::size_t>(nx);
+    auto sample = [&](int i, int j) {
+        return field[static_cast<std::size_t>(i) + snx * static_cast<std::size_t>(j)];
+    };
+    auto position = [&](int i, int j) {
+        return Point2D{ origin.x + i * spacing.x, origin.y + j * spacing.y };
+    };
+
+    for (int j = 0; j < ny - 1; ++j) {
+        for (int i = 0; i < nx - 1; ++i) {
+            double vals[4] = {};
+            bool finite = true;
+            for (int c = 0; c < 4; ++c) {
+                vals[c] = sample(i + kCornerOffset2[c][0], j + kCornerOffset2[c][1]);
+                if (!std::isfinite(vals[c])) finite = false;
+            }
+            if (!finite) continue;
+
+            int square_index = 0;
+            for (int c = 0; c < 4; ++c)
+                if (vals[c] < iso) square_index |= (1 << c);
+            if (square_index == 0 || square_index == 15) continue;
+
+            // Crossing points are always interpolated from the lexicographically lower grid node
+            // of the edge (kEdgeBase2), so the cell on the other side of a shared edge computes
+            // the identical point and the contour has no gaps.
+            Point2D edge_point[4] = {};
+            for (int e = 0; e < 4; ++e) {
+                const int a = e;
+                const int b = (e + 1) % 4;
+                if ((vals[a] < iso) == (vals[b] < iso)) continue;
+                const int bi = i + kEdgeBase2[e][0];
+                const int bj = j + kEdgeBase2[e][1];
+                const int axis = kEdgeBase2[e][2];
+                const int di = (axis == 0) ? 1 : 0;
+                const int dj = (axis == 1) ? 1 : 0;
+                edge_point[e] = interp_edge2(iso, position(bi, bj),
+                                             position(bi + di, bj + dj),
+                                             sample(bi, bj), sample(bi + di, bj + dj));
+            }
+
+            if (square_index == 5 || square_index == 10) {
+                // Asymptotic decider: the saddle value of the cell's bilinear interpolant.
+                const double denom = vals[0] - vals[1] + vals[2] - vals[3];
+                double saddle = 0.25 * (vals[0] + vals[1] + vals[2] + vals[3]);
+                if (std::abs(denom) > 0.0) {
+                    const double s = (vals[0] * vals[2] - vals[1] * vals[3]) / denom;
+                    if (std::isfinite(s)) saddle = s;
+                }
+                const bool joined = saddle < iso;
+                const int* pairs = (square_index == 5)
+                    ? (joined ? kSeg5Joined : kSeg5Separated)
+                    : (joined ? kSeg10Joined : kSeg10Separated);
+                for (int p = 0; p < 4; p += 2)
+                    out.push_back({ edge_point[pairs[p]], edge_point[pairs[p + 1]] });
+                continue;
+            }
+
+            for (int p = 0; kSegTable[square_index][p] != -1; p += 2)
+                out.push_back({ edge_point[kSegTable[square_index][p]],
+                                edge_point[kSegTable[square_index][p + 1]] });
+        }
+    }
+    return out;
+}
+
+// ---- Mesh measurements ----
+
+double mesh_surface_area(const std::vector<Triangle3D>& tris) {
+    double total = 0.0;
+    for (const auto& t : tris) total += area(t);
+    return total;
+}
+
+double mesh_surface_area(const TriMesh3D& mesh) {
+    double total = 0.0;
+    const int nv = static_cast<int>(mesh.vertices.size());
+    for (const auto& t : mesh.triangles) {
+        if (t.a < 0 || t.b < 0 || t.c < 0 || t.a >= nv || t.b >= nv || t.c >= nv) continue;
+        total += area(Triangle3D{ mesh.vertices[static_cast<std::size_t>(t.a)],
+                                  mesh.vertices[static_cast<std::size_t>(t.b)],
+                                  mesh.vertices[static_cast<std::size_t>(t.c)] });
+    }
+    return total;
+}
+
+double mesh_volume(const std::vector<Triangle3D>& tris) {
+    double six_v = 0.0;
+    for (const auto& t : tris) {
+        const Vec3D bc = cross(Vec3D{t.b.x, t.b.y, t.b.z}, Vec3D{t.c.x, t.c.y, t.c.z});
+        six_v += t.a.x * bc.x + t.a.y * bc.y + t.a.z * bc.z;
+    }
+    return six_v / 6.0;
+}
+
+double mesh_volume(const TriMesh3D& mesh) {
+    double six_v = 0.0;
+    const int nv = static_cast<int>(mesh.vertices.size());
+    for (const auto& t : mesh.triangles) {
+        if (t.a < 0 || t.b < 0 || t.c < 0 || t.a >= nv || t.b >= nv || t.c >= nv) continue;
+        const Point3D& pa = mesh.vertices[static_cast<std::size_t>(t.a)];
+        const Point3D& pb = mesh.vertices[static_cast<std::size_t>(t.b)];
+        const Point3D& pc = mesh.vertices[static_cast<std::size_t>(t.c)];
+        const Vec3D bc = cross(Vec3D{pb.x, pb.y, pb.z}, Vec3D{pc.x, pc.y, pc.z});
+        six_v += pa.x * bc.x + pa.y * bc.y + pa.z * bc.z;
+    }
+    return six_v / 6.0;
 }
 
 } // namespace geo

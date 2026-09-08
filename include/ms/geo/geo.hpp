@@ -352,5 +352,161 @@ Polygon2D poly_intersect(const Polygon2D& a, const Polygon2D& b);
 //       helper, not a general simple-polygon clipper with holes.
 Polygon2D poly_diff(const Polygon2D& a, const Polygon2D& b);
 
+// ========================== Isosurface Extraction ==========================
+
+// Indexed triangle mesh: a shared vertex array plus index triples into it. Produced by
+// `marching_cubes_mesh`, which merges the two (or more) cells that share a grid edge onto a
+// single vertex, so a closed isosurface comes out watertight (every triangle edge shared by
+// exactly two triangles) rather than as an unwelded triangle soup.
+struct TriMesh3D {
+    std::vector<Point3D> vertices;
+    std::vector<Triangle3Di> triangles;  // indices into `vertices`
+};
+
+// Marching cubes (Lorensen & Cline 1987): extracts the isosurface f = iso from a scalar field
+// sampled on a regular 3D grid, as a triangle soup.
+//
+// The field is a flat array of nx*ny*nz samples indexed x-fastest,
+//     field[i + nx * (j + ny * k)]   is the sample at grid node (i, j, k),
+// which sits at world position origin + (i*spacing.x, j*spacing.y, k*spacing.z). The grid is
+// swept cell by cell ((nx-1)*(ny-1)*(nz-1) cells); each cell's 8 corners are classified with
+// the strict test `value < iso` into an 8-bit case index using the standard corner numbering
+//     0=(0,0,0) 1=(1,0,0) 2=(1,1,0) 3=(0,1,0) 4=(0,0,1) 5=(1,0,1) 6=(1,1,1) 7=(0,1,1)
+// (bit c set means corner c is below the iso level). The 256-entry edge table then names the
+// cut edges of the standard 12-edge numbering
+//     0:0-1 1:1-2 2:2-3 3:3-0  4:4-5 5:5-6 6:6-7 7:7-4  8:0-4 9:1-5 10:2-6 11:3-7
+// and the 256-row triangle table names the triangles as edge triples. The crossing point on a
+// cut edge is placed by linear interpolation of the two endpoint samples,
+//     t = (iso - v0) / (v1 - v0),   p = p0 + t * (p1 - p0),
+// always evaluated from the lexicographically lower grid endpoint of the edge, so two cells
+// sharing an edge compute bit-identical crossing points and the surface has no cracks.
+//
+// The extracted surface is the boundary of the open sub-level set {f < iso} ("the solid"), and
+// triangles are wound so that cross(b - a, c - a) points OUT of that solid, i.e. towards
+// increasing field. A sample exactly equal to `iso` counts as above the level (outside), which
+// is what makes an iso level at or below the field minimum, or strictly above its maximum,
+// yield an empty result rather than a degenerate sheet.
+//
+// @param field nx*ny*nz samples, x-fastest. A size other than nx*ny*nz returns empty.
+// @param nx, ny, nz grid dimensions. Fewer than 2 in any dimension means there is no cell to
+//        march at all and returns an empty result (this includes the empty field).
+// @param iso the level to extract. An iso level at or below min(field), or strictly above
+//        max(field), leaves every cell uncut and returns an empty result.
+// @param origin, spacing world placement of grid node (0,0,0) and the node pitch along each
+//        axis. Zero or negative spacing is not rejected; it simply degenerates or mirrors the
+//        output geometry the same way it degenerates the grid.
+// @return the isosurface as an unindexed triangle soup, in cell-sweep order (k, then j, then
+//         i). Empty when no cell is cut.
+// @note Cells containing a non-finite sample (NaN or infinity) are skipped entirely, so a
+//       corrupted region of the field punches a hole in the surface instead of poisoning the
+//       output with non-finite coordinates.
+// @note Zero-area triangles can appear where a sample sits exactly on the iso level (two cut
+//       edges then interpolate to the same grid node). They are kept rather than filtered, so
+//       the triangle count stays a pure function of the case table; they contribute nothing to
+//       `mesh_surface_area` or `mesh_volume`.
+// @note Faces of the sampled box are NOT capped: an isosurface that reaches the outer boundary
+//       comes out as an open sheet there. See the precondition on `mesh_volume`.
+// @note These are the crack-free Lorensen-Cline tables, not Marching Cubes 33. Within a single
+//       cell they can pick a topology that the trilinear interpolant would not (the classic
+//       ambiguous-face objection); this affects interior topology on under-resolved features,
+//       never watertightness of the result.
+// Complexity: O(nx*ny*nz) time; O(nx*ny*nz) auxiliary memory (3 ints per grid node for the
+// edge-to-vertex map, i.e. about 1.5x the size of the input field), plus the output.
+std::vector<Triangle3D> marching_cubes(const std::vector<double>& field,
+                                       int nx, int ny, int nz, double iso,
+                                       Point3D origin = {0.0, 0.0, 0.0},
+                                       Vec3D spacing = {1.0, 1.0, 1.0});
+
+// Marching cubes producing an indexed mesh with de-duplicated vertices: identical algorithm,
+// identical vertex positions and identical triangle order as `marching_cubes`, but each grid
+// edge contributes exactly one shared vertex instead of one copy per incident triangle. For a
+// closed isosurface (one that does not reach the outer boundary of the sampled box) the result
+// is watertight and consistently oriented: every directed triangle edge appears exactly once
+// and its reverse exactly once, and V - E + F = 2 for a genus-0 component.
+//
+// @param field, nx, ny, nz, iso, origin, spacing as `marching_cubes`.
+// @return the indexed mesh; both `vertices` and `triangles` are empty when no cell is cut, and
+//         for the degenerate inputs listed on `marching_cubes`.
+// Complexity: O(nx*ny*nz), same auxiliary memory as `marching_cubes`.
+TriMesh3D marching_cubes_mesh(const std::vector<double>& field,
+                              int nx, int ny, int nz, double iso,
+                              Point3D origin = {0.0, 0.0, 0.0},
+                              Vec3D spacing = {1.0, 1.0, 1.0});
+
+// Marching squares: the 2D analogue of `marching_cubes`, extracting the contour f = iso from a
+// scalar field sampled on a regular 2D grid as a list of directed line segments.
+//
+// The field is a flat array of nx*ny samples indexed x-fastest, field[i + nx * j] at grid node
+// (i, j), placed at origin + (i*spacing.x, j*spacing.y). Each cell's 4 corners are classified
+// with the strict test `value < iso` into a 4-bit case index using the corner numbering
+// 0=(0,0) 1=(1,0) 2=(1,1) 3=(0,1) and the edge numbering 0:0-1 1:1-2 2:2-3 3:3-0, giving 16
+// cases; the crossing point on a cut edge is linearly interpolated exactly as in 3D, from the
+// lexicographically lower grid endpoint so neighbouring cells agree bit for bit.
+//
+// Segments are directed so that the sub-level region {f < iso} lies to the LEFT of a -> b: a
+// closed contour around a simply-connected region comes out counter-clockwise, so the shoelace
+// sum 0.5 * sum(a.x*b.y - b.x*a.y) over the returned segments is the positive enclosed area.
+//
+// Saddle-point disambiguation: the two diagonal cases (case 5, corners 0 and 2 below the level;
+// case 10, corners 1 and 3 below it) cut all four edges and admit two topologies -- the two
+// like-signed corners joined through the middle of the cell, or separated into two corner cuts.
+// They are resolved with the ASYMPTOTIC DECIDER (Nielson & Hamann 1991): the bilinear
+// interpolant over the cell has a single saddle point whose value is
+//     f_saddle = (f0*f2 - f1*f3) / (f0 - f1 + f2 - f3)
+// with f0..f3 the corner values in cyclic order. If f_saddle < iso the cell centre belongs to
+// the sub-level set, so the two below-level corners are JOINED through it; otherwise they are
+// SEPARATED. This is the topology of the actual bilinear interpolant, not a coin toss, and it
+// agrees with what the neighbouring cells see because edge crossings depend only on the shared
+// edge. When the denominator is exactly zero (the bilinear patch is degenerate and has no
+// saddle) the rule falls back to the cell-centre value, the mean of the four corners.
+//
+// @param field nx*ny samples, x-fastest. A size other than nx*ny returns empty.
+// @param nx, ny grid dimensions. Fewer than 2 in either dimension returns an empty result.
+// @param iso the level to extract; at or below min(field), or strictly above max(field),
+//        returns an empty result.
+// @param origin, spacing world placement of grid node (0,0) and the node pitch per axis.
+// @return the contour as directed segments, in cell-sweep order (j, then i). Empty when no cell
+//         is cut. Cells with a non-finite sample are skipped, as in 3D.
+// @note The boundary of the sampled box is not closed off, so a contour that runs off the edge
+//       of the grid comes out as an open chain there.
+// Complexity: O(nx*ny) time, O(1) auxiliary memory beyond the output (no vertex table is needed
+// because the segment list is not indexed).
+std::vector<Segment2D> marching_squares(const std::vector<double>& field,
+                                        int nx, int ny, double iso,
+                                        Point2D origin = {0.0, 0.0},
+                                        Vec2D spacing = {1.0, 1.0});
+
+// ========================== Mesh Measurements ==========================
+
+// Total surface area of a triangle mesh: the sum of `area(Triangle3D)` over every triangle.
+// Winding and orientation are irrelevant (triangle area is unsigned), so this is meaningful for
+// open sheets, closed surfaces and unstructured soups alike.
+//
+// @param tris / mesh the triangles. An empty mesh returns 0.0. In the indexed overload,
+//        triangles whose indices fall outside `vertices` are skipped rather than dereferenced.
+// Complexity: O(number of triangles).
+double mesh_surface_area(const std::vector<Triangle3D>& tris);
+double mesh_surface_area(const TriMesh3D& mesh);
+
+// Signed volume enclosed by a closed triangle mesh, via the divergence theorem: integrating
+// div(p/3) = 1 over the enclosed region turns into a surface integral that reduces, for a
+// triangulated boundary, to the sum of signed tetrahedron volumes from the origin,
+//     V = (1/6) * sum over triangles of  a . (b x c).
+// The origin cancels out for a closed surface, so the result does not depend on where the mesh
+// sits. With the outward orientation that `marching_cubes` produces (normal cross(b-a, c-a)
+// pointing out of the solid {f < iso}) the result is positive.
+//
+// @param tris / mesh a CLOSED, consistently oriented triangle mesh. An empty mesh returns 0.0.
+//        In the indexed overload, out-of-range index triples are skipped.
+// @return the enclosed volume, positive for an outward-oriented closed mesh and negative for an
+//         inward-oriented one.
+// @note Requires a closed surface as a precondition -- this is NOT checked. For an open sheet
+//       (for instance an isosurface that runs off the edge of the sampled box, which this module
+//       does not cap) the sum is the volume of the cone from the origin over the sheet: a finite
+//       number, but origin-dependent and not an enclosed volume.
+// Complexity: O(number of triangles).
+double mesh_volume(const std::vector<Triangle3D>& tris);
+double mesh_volume(const TriMesh3D& mesh);
+
 } // namespace geo
 } // namespace ms
