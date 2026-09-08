@@ -200,6 +200,30 @@ Result<Matrix<S, OA, Alloc>> minres(
     size_t max_iter = 1000,
     S tol = S(1e-10));
 
+/// @brief Quasi-Minimal Residual for a general square (possibly
+///        nonsymmetric) A, starting from x0 = 0.
+///
+/// @note  Freund & Nachtigal's QMR without look-ahead: unsymmetric (two-sided)
+///        Lanczos builds biorthogonal bases from A and A^T, and the resulting
+///        tridiagonal least-squares problem is smoothed by Givens rotations,
+///        so the residual norm behaves far more smoothly than BiCG's. Costs
+///        two matrix-vector products per iteration — one with A, one with A^T
+///        (formed on the fly, A is never transposed) — and stores a fixed
+///        handful of vectors regardless of iteration count. Unpreconditioned
+///        (M1 = M2 = I). In exact arithmetic the Lanczos process spans the
+///        whole Krylov space after n steps, so QMR terminates at k = n.
+/// @note  Look-ahead is deliberately not implemented, so a serious Lanczos
+///        breakdown (w^T v, q^T A p or the resulting beta vanishing — e.g. the
+///        skew-symmetric A = [[0,1],[-1,0]] with b = (1,1)) stops the
+///        iteration and is reported as ConvergenceFail rather than being
+///        stepped over. The recursively updated residual is only an estimate,
+///        so a convergence claim is always confirmed against the true
+///        residual ||b - A x|| before x is returned.
+/// @return x on convergence (relative residual ||b - A x|| <= tol*||b||, or
+///         <= 10*tol*||b|| once the loop has ended); the zero vector when b is
+///         zero; DimensionMismatch if A is not square or b's rows do not match
+///         it; ConvergenceFail with the final true residual on breakdown or
+///         when max_iter is exhausted.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> qmr(
     const Matrix<S, OA, Alloc>& A,
@@ -214,6 +238,27 @@ Result<Matrix<S, OA, Alloc>> lsqr(
     size_t max_iter = 1000,
     S tol = S(1e-10));
 
+/// @brief LSMR (Fong & Saunders): least-squares solver for min ||A x - b||
+///        over a general m x n A, starting from x0 = 0.
+///
+/// @note  Golub-Kahan bidiagonalisation, as in lsqr(), but with a second
+///        sequence of Givens rotations applied to R^T. The two solvers walk
+///        the same Krylov space and differ in what they minimise there: LSQR
+///        minimises ||r||, LSMR minimises ||A^T r|| — the normal-equation
+///        residual — and does so monotonically. That makes LSMR the better
+///        stopping citizen on inconsistent or ill-conditioned problems, where
+///        ||r|| flattens out long before A^T r does. Two products per
+///        iteration (one with A, one with A^T); A is never transposed.
+/// @note  A is not required to be square: any m x n shape is accepted as long
+///        as b has m rows, so overdetermined fits and underdetermined systems
+///        both work. Because x0 = 0 every iterate stays in range(A^T), so on a
+///        rank-deficient A the limit is the minimum-norm least-squares
+///        solution. Undamped (lambda = 0).
+/// @return x — always a value once the shape check passes, since the current
+///         iterate is by construction the best approximation found so far;
+///         this function never reports ConvergenceFail. The result is the zero
+///         vector (A.cols() x 1) when b is zero or b is orthogonal to
+///         range(A). DimensionMismatch if b's rows do not match A's.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> lsmr(
     const Matrix<S, OA, Alloc>& A,
@@ -221,6 +266,28 @@ Result<Matrix<S, OA, Alloc>> lsmr(
     size_t max_iter = 1000,
     S tol = S(1e-10));
 
+/// @brief Transpose-Free QMR (Freund 1993) for a general square A, starting
+///        from x0 = 0.
+///
+/// @note  Builds the CGS polynomial recurrence and smooths it with the same
+///        quasi-minimal-residual rotations QMR uses, so — unlike qmr() — only
+///        products with A are needed and A^T never appears. Each iteration is
+///        two matrix-vector products and advances the iteration index by two
+///        "half steps"; @p max_iter counts the outer iterations, so up to
+///        2*max_iter iterates are produced.
+/// @note  The scalar tau tracked by the recurrence is a quasi-residual: the
+///        only rigorous statement is ||b - A x_m|| <= tau_m * sqrt(m + 1), so
+///        a small tau does not by itself mean x is right. tau can even reach
+///        exactly zero in the very half step that first makes x correct (it
+///        does on A = I). This implementation therefore applies the x update
+///        before testing, treats tau <= tol*||b|| only as a screen, and
+///        confirms it with the true residual ||b - A x|| — one extra product
+///        per triggered check — before returning.
+/// @return x on convergence (true relative residual <= tol, or <= 10*tol once
+///         the loop has ended); the zero vector when b is zero;
+///         DimensionMismatch if A is not square or b's rows do not match it;
+///         ConvergenceFail with the half-step count and final residual on
+///         breakdown, stagnation, or exhausted iterations.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> tfqmr(
     const Matrix<S, OA, Alloc>& A,
@@ -228,11 +295,89 @@ Result<Matrix<S, OA, Alloc>> tfqmr(
     size_t max_iter = 1000,
     S tol = S(1e-10));
 
-// --- Preconditioners (return diagonal scaling vector) ---
+// --- Preconditioners ---
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 std::vector<S> precond_diag(const Matrix<S, OA, Alloc>& A);
 
+/// @brief The SSOR splitting matrix of A, formed explicitly:
+///        M = (D/omega + L) * (D/omega)^-1 * (D/omega + U), where D, L and U
+///        are the diagonal, strictly lower and strictly upper parts of A.
+///
+/// @note  The customary scalar factor 1/(omega*(2 - omega)) is deliberately
+///        NOT applied: it blows up at omega = 2, and a preconditioner is only
+///        defined up to a positive scalar anyway (in a preconditioned Krylov
+///        method the constant cancels out of alpha and beta, leaving the
+///        iterates unchanged). M is symmetric whenever A is, positive definite
+///        whenever A is SPD and 0 < omega < 2, and reduces to D itself when A
+///        is diagonal and omega = 1.
+/// @note  Operates on the leading min(rows, cols) x min(rows, cols) block, so
+///        a rectangular A is truncated rather than read out of bounds. A zero
+///        diagonal entry contributes nothing (its inverse is taken as 0) and
+///        omega == 0 falls back to omega = 1, so no input divides by zero.
+/// @return M, shaped n x n with n = min(rows, cols).
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Matrix<S, OA, Alloc> precond_ssor(const Matrix<S, OA, Alloc>& A, S omega = S(1.0));
+
+/// @brief Apply the inverse of the SSOR preconditioner to a vector without
+///        ever forming M = (D/omega + L) * (D/omega)^-1 * (D/omega + U).
+///
+/// @note  Runs three O(n^2) sweeps — a forward substitution with (D/omega + L),
+///        a diagonal scaling by (D/omega), then a back substitution with
+///        (D/omega + U) — which is what a preconditioned Krylov solver actually
+///        needs; precond_ssor() materialises the same operator densely when a
+///        caller wants to inspect it. Operates on the leading
+///        min(rows, cols) x min(rows, cols) block, so a rectangular A is
+///        accepted and truncated rather than read out of bounds.
+/// @return z with M*z == r, shaped (n, 1). Returns a zero vector if r does not
+///         have n rows. A zero diagonal entry (or omega == 0) degrades to a
+///         unit pivot instead of dividing by zero.
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> precond_ssor_apply(const Matrix<S, OA, Alloc>& A,
+                                        S omega,
+                                        const Matrix<S, OA, Alloc>& r);
+
+/// @brief ILU(0) incomplete LU factorisation: Gaussian elimination restricted
+///        to the sparsity pattern of A, so no fill-in is ever created.
+///
+/// @note  The factors are returned in one matrix in the usual compact layout:
+///        the strictly lower triangle holds L (whose diagonal is an implied 1)
+///        and the upper triangle including the diagonal holds U. Entries where
+///        A is structurally zero stay zero. Exact for matrices whose pattern
+///        admits no fill-in (tridiagonal, for instance), approximate otherwise.
+///        A zero pivot is skipped rather than divided by.
+/// @return The combined L\U factors, shaped n x n with n = min(rows, cols).
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> precond_ilu0(const Matrix<S, OA, Alloc>& A);
+
+/// @brief Solve (L*U) z = r for the compact factors produced by precond_ilu0().
+/// @note  Forward substitution against L's implied unit diagonal, then back
+///        substitution against U; a zero pivot in U degrades to a unit pivot.
+/// @return z, shaped (n, 1); a zero vector if r does not have n rows.
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Matrix<S, OA, Alloc> precond_ilu0_apply(const Matrix<S, OA, Alloc>& LU,
+                                        const Matrix<S, OA, Alloc>& r);
+
+/// @brief Preconditioned conjugate gradient for a symmetric positive definite
+///        A, with the preconditioner supplied as an operator z = M^-1 r.
+///
+/// @note  M_apply is taken as a std::function (the same convention funm() uses)
+///        so the preconditioner never has to be materialised; pair it with
+///        precond_ssor_apply() or precond_ilu0_apply(). A bare lambda will not
+///        deduce against a std::function parameter, so build the std::function
+///        first. M_apply must model an SPD operator: the iteration checks
+///        r^T z > 0 every step and reports a DomainError if it is violated.
+///        Passing the identity reproduces cg() iterate for iterate.
+/// @return x on convergence (absolute residual ||b - A x||_2 < tol, the same
+///         test cg() uses); DimensionMismatch if A is not square or b does not
+///         match; DomainError if A is not symmetric, M_apply is empty, returns
+///         the wrong shape, or is not positive definite; ConvergenceFail with
+///         the final residual if max_iter is exhausted.
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> pcg(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    const std::function<Matrix<S, OA, Alloc>(const Matrix<S, OA, Alloc>&)>& M_apply,
+    size_t max_iter = 1000,
+    S tol = S(1e-10));
 
 } // namespace ms

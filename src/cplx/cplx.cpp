@@ -101,18 +101,63 @@ std::vector<C> Mobius::fixed_points() const {
 Mobius mobius(C a, C b, C c, C d) { return {a, b, c, d}; }
 
 Mobius inversion(C center, double r) {
-    // z → r^2 / conj(z - center) + center (simplified as Möbius: map unit circle)
-    // Reflection in circle |z - c| = r: w = r^2/conj(z-c) + c
-    // Expressed as Möbius in terms of z (not conj), this is anti-Möbius
-    // Return identity for now as Möbius (proper inversion requires anti-holomorphic)
-    (void)center; (void)r;
-    return {C(1.0), C(0.0), C(0.0), C(1.0)};
+    // Reflection in |z - center| = r is  w = center + r^2 / conj(z - center),
+    // an anti-holomorphic map: it cannot be written as (a*z+b)/(c*z+d) in z.
+    // Substituting u = conj(z) removes the conjugation:
+    //   w = center + r^2 / (u - conj(center))
+    //     = (center*u + (r^2 - |center|^2)) / (u - conj(center)),
+    // an ordinary Möbius transformation of u. Its determinant is
+    //   a*d - b*c = -center*conj(center) - (r^2 - |center|^2) = -r^2,
+    // so the quadruple is non-degenerate exactly when r != 0, and r == 0 gives
+    // the constant map u -> center, which is the correct limiting behaviour.
+    // The caller must apply the result to conj(z); apply_inversion() below does
+    // that for you.
+    return {center, C(r * r - std::norm(center), 0.0), C(1.0, 0.0),
+            -std::conj(center)};
+}
+
+C apply_inversion(C z, C center, double r) {
+    // Degenerate circle: the whole sphere collapses onto the centre.
+    if (r == 0.0) return center;
+    // The point at infinity maps to the centre (Riemann-sphere completion);
+    // this is what makes the map an involution even through its own pole.
+    if (std::isinf(z.real()) || std::isinf(z.imag())) return center;
+    const C d = z - center;
+    // The centre is the pole: its image is the point at infinity.
+    if (d.real() == 0.0 && d.imag() == 0.0) {
+        const double unbounded = std::numeric_limits<double>::infinity();
+        return C(unbounded, unbounded);
+    }
+    // Only r^2 enters, so a negative radius denotes the same circle as |r|.
+    return center + r * r / std::conj(d);
+}
+
+C circle_reflect(C z, C center, double r) {
+    return apply_inversion(z, center, r);
+}
+
+C cross_ratio_c(C z1, C z2, C z3, C z4) {
+    // (z1, z2; z3, z4) = ((z1-z3)(z2-z4)) / ((z1-z4)(z2-z3))
+    const C num = (z1 - z3) * (z2 - z4);
+    const C den = (z1 - z4) * (z2 - z3);
+    if (den.real() == 0.0 && den.imag() == 0.0) {
+        if (num.real() == 0.0 && num.imag() == 0.0) {
+            // 0/0: coincident points on both sides, genuinely undefined.
+            const double undefined = std::numeric_limits<double>::quiet_NaN();
+            return C(undefined, undefined);
+        }
+        // The cross ratio is the point at infinity.
+        const double unbounded = std::numeric_limits<double>::infinity();
+        return C(unbounded, unbounded);
+    }
+    return num / den;
 }
 
 double cross_ratio(C z1, C z2, C z3, C z4) {
-    // (z1-z3)(z2-z4) / ((z1-z4)(z2-z3))
-    C cr = ((z1 - z3) * (z2 - z4)) / ((z1 - z4) * (z2 - z3));
-    return cr.real();
+    // The cross ratio is complex in general; this entry point reports only its
+    // real part, which is the whole value exactly when the four points are
+    // concyclic or collinear. See cross_ratio_c() for the full value.
+    return cross_ratio_c(z1, z2, z3, z4).real();
 }
 
 // ---- Joukowski ----

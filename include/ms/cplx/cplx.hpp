@@ -39,8 +39,136 @@ struct Mobius {
 
 // Standard Möbius transforms
 Mobius mobius(C a, C b, C c, C d);
-Mobius inversion(C center, double r);           // z → r^2/(conj(z)-conj(c)) + c
-double cross_ratio(C z1, C z2, C z3, C z4);     // real when 4 points cocircular
+/// Circle inversion (geometric reflection) in the circle |z - center| = r,
+/// returned as a Möbius transformation **of the conjugate of z**.
+///
+/// The geometric map is anti-holomorphic:
+///   sigma(z) = center + r^2 / conj(z - center)
+///            = r^2 / (conj(z) - conj(center)) + center.
+/// Because it conjugates, sigma reverses orientation and therefore CANNOT be
+/// written as (a*z + b)/(c*z + d) for any quadruple (a,b,c,d). Substituting
+/// u = conj(z) removes the conjugation, and what remains is an ordinary Möbius
+/// transformation of u:
+///   sigma = (center*u + (r^2 - |center|^2)) / (u - conj(center)),
+/// and this function returns exactly that quadruple:
+///   a = center,  b = r^2 - |center|^2,  c = 1,  d = -conj(center).
+/// Its determinant is a*d - b*c = -r^2, so the quadruple is a non-degenerate
+/// Möbius transformation exactly when r != 0.
+///
+/// CONTRACT - the result must be applied to conj(z), never to z:
+/// @code
+///   const Mobius m = inversion(center, r);
+///   const C w = m(std::conj(z));   // == apply_inversion(z, center, r)
+/// @endcode
+/// Applying it to z computes a different, holomorphic map and is almost
+/// certainly a caller bug. Prefer apply_inversion() / circle_reflect(), which
+/// conjugate internally and additionally guard the pole.
+///
+/// Properties (all exercised by tests/unit/cplx/test_cplx_inversion.cpp):
+///  - every point of the circle |z - center| = r is fixed;
+///  - |sigma(z) - center| * |z - center| == r^2, and sigma(z) - center lies on
+///    the same ray out of the centre as z - center;
+///  - sigma is an involution, sigma(sigma(z)) == z; equivalently, for all w
+///    conj(inversion(c,r).inverse()(w)) == inversion(c,r)(conj(w));
+///  - points strictly inside the circle map strictly outside, and vice versa.
+///
+/// @param center centre of the circle of inversion
+/// @param r radius of the circle. Only r*r enters, so inversion(c, -r) and
+///   inversion(c, r) are coefficient-for-coefficient identical. r == 0 yields
+///   the degenerate quadruple {c, -|c|^2, 1, -conj(c)} of determinant 0, which
+///   is the constant map u -> center for every u != conj(center) (the correct
+///   r -> 0 limit); at u == conj(center) it is 0/0. The direct entry point
+///   apply_inversion() has no such hole - see its own contract.
+/// @return the Möbius transformation of u = conj(z) described above
+/// @note No exceptions are thrown. As a bare coefficient quadruple the result
+///   cannot special-case its own pole u == conj(center); evaluating it there
+///   divides by zero. apply_inversion() guards that point explicitly.
+Mobius inversion(C center, double r);
+
+/// Circle inversion applied directly: the complete anti-holomorphic map
+///   z -> center + r^2 / conj(z - center),
+/// with the conjugation performed internally. This is the entry point callers
+/// should normally use; inversion() exposes the same map in Möbius-coefficient
+/// form, for composition with genuine (holomorphic) Möbius transformations.
+///
+/// Equivalent to inversion(center, r)(std::conj(z)) for every z that is not the
+/// pole, agreeing with it to within a few ulp.
+///
+/// Conventions on the extended complex plane (a total function - it never
+/// throws and never returns an undefined value for a finite in-domain input):
+///  - r == 0: the circle degenerates to a point and the whole sphere collapses
+///    onto it; returns center for every z, including z == center;
+///  - r < 0: |r| denotes the same circle, and only r*r enters, so
+///    apply_inversion(z, c, -r) == apply_inversion(z, c, r) exactly;
+///  - z == center (exact equality in both components) is the pole; the image is
+///    the point at infinity, returned as C(+infinity, +infinity). The testable
+///    invariant is std::abs(result) == +infinity; no directional meaning should
+///    be read into the components. This mirrors the module's existing sentinel
+///    convention (hyperbolic_distance returns +infinity and
+///    green_function_disk returns -infinity at their singularities) rather than
+///    producing a NaN;
+///  - a z with an infinite component is treated as the point at infinity and
+///    maps to center, which makes the involution total: applying the map twice
+///    returns the original point even through the pole;
+///  - a z containing NaN propagates NaN.
+///
+/// @param z the point to reflect
+/// @param center centre of the circle of inversion
+/// @param r radius of the circle of inversion (only r*r is used)
+/// @return the reflected point, or the documented sentinel in the degenerate
+///   cases above
+/// @note No exceptions are thrown.
+C apply_inversion(C z, C center, double r);
+
+/// Reflection of z in the circle |z - center| = r. An exact alias for
+/// apply_inversion(), provided because "reflection in a circle" is the more
+/// common name for the map in geometry: identical contract, identical
+/// degenerate conventions, bit-identical results.
+C circle_reflect(C z, C center, double r);
+
+/// Real part of the complex cross ratio of four points:
+///   (z1, z2; z3, z4) = ((z1-z3)*(z2-z4)) / ((z1-z4)*(z2-z3)).
+///
+/// The cross ratio is a genuinely COMPLEX quantity. It is real - and therefore
+/// equal to the value this function returns - exactly when the four points lie
+/// on one common circle or one common line; for four points in general
+/// position the imaginary part is non-zero and this function discards it.
+/// Use cross_ratio_c() whenever the full value is wanted, and read this
+/// function as "the concyclicity coordinate" rather than "the cross ratio".
+/// Example of the loss: (0, 1, i, -1) has cross ratio 1 - i, and this function
+/// returns 1.0.
+///
+/// The value is invariant under every Möbius transformation of the four
+/// arguments, and is 0 when z1 == z3 or z2 == z4.
+///
+/// @return cross_ratio_c(z1, z2, z3, z4).real(); +infinity when the cross ratio
+///   is the point at infinity and NaN when it is undefined - see cross_ratio_c
+/// @note The signature and the returned value for non-degenerate inputs are
+///   unchanged from previous releases; only the degenerate cases, which used to
+///   inherit whatever std::complex division produced, became deterministic.
+double cross_ratio(C z1, C z2, C z3, C z4);
+
+/// Complex cross ratio of four points:
+///   (z1, z2; z3, z4) = ((z1-z3)*(z2-z4)) / ((z1-z4)*(z2-z3)).
+///
+/// This is the full-information companion of cross_ratio(). It is the unique
+/// Möbius invariant of four ordered points: for any Möbius transformation m,
+/// cross_ratio_c(m(z1), m(z2), m(z3), m(z4)) == cross_ratio_c(z1, z2, z3, z4).
+/// Its imaginary part vanishes exactly when the four points are concyclic or
+/// collinear, which is the standard test for cocircularity.
+///
+/// Degenerate inputs (the denominator (z1-z4)*(z2-z3) is exactly zero):
+///  - if the numerator is non-zero the cross ratio is the point at infinity;
+///    returns C(+infinity, +infinity), matching apply_inversion()'s sentinel,
+///    so that std::abs(result) == +infinity;
+///  - if the numerator is also exactly zero the value is a true 0/0 and is
+///    genuinely undefined; returns C(NaN, NaN).
+/// Both branches are deterministic and identical on every platform, unlike the
+/// raw std::complex division they replace.
+///
+/// @return the complex cross ratio, or the documented sentinel above
+/// @note No exceptions are thrown.
+C cross_ratio_c(C z1, C z2, C z3, C z4);
 
 // --- Joukowski transform: z → z + c^2/z ---
 C joukowski(C z, double c = 1.0);

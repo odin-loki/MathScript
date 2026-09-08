@@ -5,6 +5,42 @@
 #include <cstring>
 #include <random>
 
+// ---- OS CSPRNG backends (see the header note on random_bytes) ----------------
+// Platform selection uses bare predefined macros, matching the idiom already used in
+// include/ms/memory/{numa,aligned}_allocator.hpp; there is no MS_OS_* layer in this tree.
+#if defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <bcrypt.h>  // must follow <windows.h>
+#  if defined(_MSC_VER)
+#    pragma comment(lib, "bcrypt.lib")
+#  endif
+#  define MS_CRYPTO_RNG_BCRYPT 1
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+      defined(__NetBSD__) || defined(__DragonFly__)
+#  include <stdlib.h>
+#  define MS_CRYPTO_RNG_ARC4RANDOM 1
+#elif defined(__linux__) || defined(__unix__)
+#  include <cerrno>
+#  include <fcntl.h>
+#  include <unistd.h>
+#  if defined(__linux__) && defined(__has_include)
+#    if __has_include(<sys/random.h>)
+#      include <sys/random.h>
+#      define MS_CRYPTO_RNG_GETRANDOM 1
+#    endif
+#  endif
+#  define MS_CRYPTO_RNG_DEV_URANDOM 1
+#  ifndef O_CLOEXEC
+#    define O_CLOEXEC 0
+#  endif
+#endif
+
 #if defined(_MSC_VER)
 #include <stdlib.h>
 #elif defined(__GNUC__) || defined(__clang__)
@@ -1997,11 +2033,130 @@ bool constant_time_eq(std::span<const uint8_t> a, std::span<const uint8_t> b) {
     return diff == 0;
 }
 
+namespace {
+
+#if defined(MS_CRYPTO_RNG_BCRYPT)
+// BCryptGenRandom takes a ULONG length; chunk so that a request larger than ULONG_MAX
+// cannot truncate. std::span::subspan keeps the offset arithmetic out of raw pointers.
+bool bcrypt_fill(std::span<std::uint8_t> out) noexcept {
+    constexpr std::size_t kChunk = static_cast<std::size_t>(1) << 20;
+    std::size_t off = 0;
+    while (off < out.size()) {
+        const std::size_t want = (out.size() - off < kChunk) ? (out.size() - off) : kChunk;
+        const NTSTATUS st = ::BCryptGenRandom(nullptr, out.subspan(off, want).data(),
+                                              static_cast<ULONG>(want),
+                                              BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (st < 0) {
+            return false;
+        }
+        off += want;
+    }
+    return true;
+}
+#endif
+
+#if defined(MS_CRYPTO_RNG_GETRANDOM)
+// getrandom(2) can return short (interrupted by a signal after producing some bytes)
+// and can fail with EINTR before any byte is produced; both are handled. ENOSYS (kernel
+// < 3.17) and EPERM (seccomp) return false so the /dev/urandom backend is tried next.
+bool getrandom_fill(std::span<std::uint8_t> out) noexcept {
+    std::size_t off = 0;
+    while (off < out.size()) {
+        const ssize_t got = ::getrandom(out.subspan(off).data(), out.size() - off, 0);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        if (got == 0) {
+            return false;
+        }
+        off += static_cast<std::size_t>(got);
+    }
+    return true;
+}
+#endif
+
+#if defined(MS_CRYPTO_RNG_DEV_URANDOM)
+// ::open/::read rather than std::ifstream: an ifstream would need a cast from
+// std::uint8_t* to char*, and this tree forbids reinterpret_cast outside [[ms::unsafe]].
+bool dev_urandom_fill(std::span<std::uint8_t> out) noexcept {
+    int fd = -1;
+    do {
+        fd = ::open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    } while (fd < 0 && errno == EINTR);
+    if (fd < 0) {
+        return false;
+    }
+    std::size_t off = 0;
+    bool ok = true;
+    while (off < out.size()) {
+        const ssize_t got = ::read(fd, out.subspan(off).data(), out.size() - off);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            ok = false;
+            break;
+        }
+        if (got == 0) {
+            // /dev/urandom never signals EOF, so a zero-length read means a broken
+            // source; looping on it would spin forever.
+            ok = false;
+            break;
+        }
+        off += static_cast<std::size_t>(got);
+    }
+    ::close(fd);
+    return ok;
+}
+#endif
+
+// Last resort only: identical to the pre-1.0 MVP path, kept so that a platform with no
+// reachable OS CSPRNG still produces bytes rather than an empty buffer.
+bool random_device_fill(std::span<std::uint8_t> out) {
+    std::random_device rd;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i] = static_cast<std::uint8_t>(rd());
+    }
+    return true;
+}
+
+} // namespace
+
+bool random_bytes_into(std::span<uint8_t> out) {
+    if (out.empty()) {
+        return true;
+    }
+#if defined(MS_CRYPTO_RNG_BCRYPT)
+    if (bcrypt_fill(out)) {
+        return true;
+    }
+#elif defined(MS_CRYPTO_RNG_ARC4RANDOM)
+    // arc4random_buf has no failure mode: it either returns or the process dies.
+    ::arc4random_buf(out.data(), out.size());
+    return true;
+#elif defined(MS_CRYPTO_RNG_GETRANDOM)
+    if (getrandom_fill(out)) {
+        return true;
+    }
+#endif
+#if defined(MS_CRYPTO_RNG_DEV_URANDOM)
+    if (dev_urandom_fill(out)) {
+        return true;
+    }
+#endif
+    return random_device_fill(out);
+}
+
 std::vector<uint8_t> random_bytes(std::size_t n) {
     std::vector<uint8_t> out(n);
-    std::random_device rd;
-    for (std::size_t i = 0; i < n; ++i) {
-        out[i] = static_cast<std::uint8_t>(rd());
+    if (n == 0) {
+        return out;
+    }
+    if (!random_bytes_into(std::span<uint8_t>(out.data(), out.size()))) {
+        return {};  // fail closed: never hand back short or predictable key material
     }
     return out;
 }

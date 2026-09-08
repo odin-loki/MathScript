@@ -163,8 +163,39 @@ bool ed25519_verify(std::span<const uint8_t> public_key, std::span<const uint8_t
 
 bool constant_time_eq(std::span<const uint8_t> a, std::span<const uint8_t> b);
 
-// MVP: std::random_device per byte — not HSM-grade; prefer OS CSPRNG for production secrets.
+// Cryptographically secure random bytes, drawn from the operating system CSPRNG.
+//
+// Backend, chosen at compile time by platform macro, first available wins:
+//   - Windows:      BCryptGenRandom(BCRYPT_USE_SYSTEM_PREFERRED_RNG) (bcrypt.lib)
+//   - macOS/BSD:    arc4random_buf (cannot fail, so there is no error path to handle)
+//   - Linux:        getrandom(2), falling back to a /dev/urandom read when the syscall
+//                   is unavailable (ENOSYS on kernels < 3.17) or blocked (EPERM under
+//                   seccomp)
+//   - other Unix:   /dev/urandom
+//   - last resort:  std::random_device, reached only when every path above failed
+// Short reads and EINTR are retried; large requests are chunked so that no length
+// conversion at the OS boundary can truncate. The implementation is exception-free and
+// allocation-free apart from the returned vector.
+//
+// @param n number of bytes requested
+// @return exactly n random bytes, or an EMPTY vector if the OS CSPRNG could not be
+//         read — the same fail-closed convention the rest of this module uses
+//         (from_hex, aes*_gcm_decrypt). A caller handling secrets must check
+//         result.size() == n; a short or empty result is never padded with predictable
+//         bytes. n == 0 returns an empty vector without touching the OS.
+// @note Suitable for keys, nonces, IVs and salts. It is still not an HSM: the bytes come
+//       from the kernel CSPRNG, not from dedicated tamper-resistant hardware, and
+//       nothing here pins or zeroises the returned buffer's pages.
 std::vector<uint8_t> random_bytes(std::size_t n);
+
+// As random_bytes, but fills a caller-owned buffer and reports success explicitly
+// rather than through the returned length. Same backends, same retry behaviour.
+//
+// @param out destination buffer; exactly out.size() bytes are written on success
+// @return true on success, false if every backend failed (in which case `out` holds
+//         partial or stale data and must not be used). Filling an empty span is a
+//         trivial success and performs no syscall.
+bool random_bytes_into(std::span<uint8_t> out);
 
 } // namespace crypto
 } // namespace ms
