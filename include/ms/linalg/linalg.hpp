@@ -203,24 +203,37 @@ Result<Matrix<S, OA, Alloc>> solve_sylvester(
 // A NON-SYMMETRIC A goes through the real Schur form A = Q*T*Q^T:
 //   * sqrtm uses the Bjorck-Hammarling triangular square-root recurrence,
 //     which stays well defined for repeated eigenvalues;
-//   * logm, sinm, cosm and funm use the (unblocked) Parlett recurrence, whose
-//     divisor is T(j,j) - T(i,i).
+//   * logm, sinm, cosm, funm and funm_taylor use the Parlett recurrence, whose
+//     divisor is T(j,j) - T(i,i), and two diagonal entries within
+//     1e-8*||T||_F make that divisor vanish. There f(A) depends on the
+//     DERIVATIVES of f -- the logarithm of the defective [[2,1],[0,2]] is
+//     [[ln 2, 1/2],[0, ln 2]], and that 1/2 is (d/dx) ln x at 2 -- so anything
+//     sampling f on the spectrum alone is missing information, not merely
+//     dividing by zero. logm, sinm, cosm and funm_taylor therefore switch to
+//     the BLOCKED Schur-Parlett (Davies-Higham): eigenvalues within
+//     0.1*||T||_F are grouped, T is reordered by Givens swaps so the groups sit
+//     contiguously, each diagonal block is evaluated by its Taylor series about
+//     the group mean, and the off-diagonal blocks come from triangular
+//     Sylvester solves. Those four accept repeated and clustered eigenvalues.
+//     Plain funm, handed f alone, does not have the derivatives and says so.
 // Consequently these inputs are REPORTED AS DomainError rather than served
 // with a plausible but wrong matrix:
 //   * a complex-conjugate eigenvalue pair (a 2x2 block of the real Schur
 //     form) -- a real-arithmetic evaluation cannot represent f on it;
-//   * for logm/sinm/cosm/funm, two diagonal entries of T closer than
-//     1e-8*||T||_F (repeated or merely clustered eigenvalues), unless the
-//     corresponding numerator is itself negligible. A blocked Schur-Parlett,
-//     which would remove this restriction, is NOT implemented;
+//   * for funm (the overload taking f alone), two diagonal entries of T closer
+//     than 1e-8*||T||_F -- use funm_taylor and supply the coefficients;
+//   * for logm/sinm/cosm/funm_taylor, a cluster whose Taylor series does not
+//     converge, or two clusters too close to separate;
 //   * for sqrtm, an eigenvalue below -16*n*eps*||T||_F (no real square root)
 //     -- the tolerance is loose enough that a positive semidefinite matrix
 //     whose smallest eigenvalue is negative only by round-off still works;
 //   * for logm, a non-positive eigenvalue (no real logarithm).
-// None of the five clamps, truncates or substitutes a value silently.
+// None of the six clamps, truncates or substitutes a value silently.
 // ---------------------------------------------------------------------------
 
-/// @brief Real matrix logarithm: exp(logm(A)) == A.
+/// @brief Real matrix logarithm: exp(logm(A)) == A. Repeated and clustered
+///        eigenvalues go through the blocked Schur-Parlett, so a defective A
+///        (e.g. [[2,1],[0,2]]) is served rather than rejected.
 /// @return DimensionMismatch if A is not square; DomainError on any input
 ///         outside the domain described above (in particular a symmetric A
 ///         that is not positive definite).
@@ -338,15 +351,17 @@ Result<Matrix<S, OA, Alloc>> orth(const Matrix<S, OA, Alloc>& A,
 // See the "DOMAIN OF VALIDITY" block above logm/sqrtm: all three go through
 // the same symmetric / Schur-Parlett split and reject the same inputs.
 
-/// @brief Matrix sine. Satisfies sinm(A)^2 + cosm(A)^2 == I.
+/// @brief Matrix sine. Satisfies sinm(A)^2 + cosm(A)^2 == I. Repeated and
+///        clustered eigenvalues go through the blocked Schur-Parlett.
 /// @return DimensionMismatch if A is not square; DomainError for a
-///         non-symmetric A with complex-conjugate or clustered eigenvalues.
+///         non-symmetric A with complex-conjugate eigenvalues.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> sinm(const Matrix<S, OA, Alloc>& A);
 
-/// @brief Matrix cosine. Satisfies sinm(A)^2 + cosm(A)^2 == I.
+/// @brief Matrix cosine. Satisfies sinm(A)^2 + cosm(A)^2 == I. Repeated and
+///        clustered eigenvalues go through the blocked Schur-Parlett.
 /// @return DimensionMismatch if A is not square; DomainError for a
-///         non-symmetric A with complex-conjugate or clustered eigenvalues.
+///         non-symmetric A with complex-conjugate eigenvalues.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> cosm(const Matrix<S, OA, Alloc>& A);
 
@@ -354,6 +369,9 @@ Result<Matrix<S, OA, Alloc>> cosm(const Matrix<S, OA, Alloc>& A);
 ///        orthogonal eigenbasis for a symmetric A, otherwise by the Parlett
 ///        recurrence on the real Schur factor (this is the "via Schur
 ///        decomposition" the name promises).
+/// @note   f alone does not determine f(A) at a repeated eigenvalue, so this
+///         overload reports that case rather than guessing; funm_taylor takes
+///         the Taylor coefficients and handles it.
 /// @return DimensionMismatch if A is not square; DomainError for an empty
 ///         function object, for an f that is not finite at some eigenvalue,
 ///         or for a non-symmetric A with complex-conjugate or clustered
@@ -361,6 +379,28 @@ Result<Matrix<S, OA, Alloc>> cosm(const Matrix<S, OA, Alloc>& A);
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> funm(const Matrix<S, OA, Alloc>& A,
                                    std::function<S(S)> func);
+
+/// @brief f(A) from f's Taylor coefficients, so that a repeated or clustered
+///        eigenvalue is handled rather than rejected.
+///
+/// f(A) at a repeated eigenvalue depends on the DERIVATIVES of f -- the
+/// logarithm of the defective [[2,1],[0,2]] is [[ln 2, 1/2],[0, ln 2]], and that
+/// 1/2 is (d/dx) ln x at 2 -- so no routine that only samples f on the spectrum
+/// can produce it. Supplying the coefficients closes that gap: `logm`, `sinm`
+/// and `cosm` already do it internally and accept defective matrices.
+///
+/// @param coefficients must return the k-th Taylor coefficient of f about x,
+///        i.e. f^(k)(x)/k!, with k == 0 giving f(x) itself. The coefficient
+///        rather than the bare derivative is asked for because the derivatives
+///        of many ordinary functions overflow long before their series
+///        converges.
+/// @return DimensionMismatch if A is not square; DomainError for an empty
+///         function object, for an f that is not finite at some eigenvalue, for
+///         a non-symmetric A with complex-conjugate eigenvalues, or when the
+///         Taylor series for a cluster does not converge.
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> funm_taylor(const Matrix<S, OA, Alloc>& A,
+                                          std::function<S(S, unsigned)> coefficients);
 
 // --- New iterative solvers ---
 template<typename S, StorageOrder OA, template<typename> class Alloc>

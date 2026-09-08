@@ -327,6 +327,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `imtophat` / `imbothat` / `imadjust` / `imhist` | Morphology + histogram |
 | `radon` / `iradon` / `gray2rgb` / `impad` | Radon + color/pad |
 | `sqrtm` / `logm` / `tril` / `triu` / `cosm` / `sinm` | Matrix functions |
+| `funm_taylor(A, coefficients)` | `f(A)` from `f`'s Taylor coefficients `f^(k)(x)/k!`; handles repeated / clustered eigenvalues, which plain `funm` cannot (`f` alone does not determine `f(A)` there) |
 | `graph_dijkstra` / `graph_bellman_ford` | Shortest paths → Nx2 [dist,parent] |
 | `info_permutation_entropy` / `info_transfer_entropy` | Time-series information measures |
 | `stats_partial_correlation` / `stats_weighted_mean` / `stats_trimmed_mean` / `stats_arfit` / `stats_multiple_regression` | Correlation / means / regression |
