@@ -352,6 +352,75 @@ Polygon2D poly_intersect(const Polygon2D& a, const Polygon2D& b);
 //       helper, not a general simple-polygon clipper with holes.
 Polygon2D poly_diff(const Polygon2D& a, const Polygon2D& b);
 
+// ================= General (non-convex) Polygon Booleans =================
+
+// A planar region as a list of closed contours. Outer boundaries ("shells") come back in
+// CCW order (positive `signed_area`); the boundaries of holes come back in CW order
+// (negative `signed_area`), so `poly_set_area` is just the sum of the signed areas and
+// `point_in_polygon_set` is a plain even-odd/nonzero test over every contour.
+using PolygonSet = std::vector<Polygon2D>;
+
+enum class BooleanOp {
+    Union,                // A u B
+    Intersection,         // A n B
+    Difference,           // A \ B
+    SymmetricDifference,  // (A \ B) u (B \ A)
+};
+
+// General two-polygon boolean for ARBITRARY simple polygons -- concave operands, results
+// that split into several disjoint pieces, and results containing holes are all handled.
+// This is the general clipper the convex MVP helpers (`poly_union`, `poly_intersect`,
+// `poly_diff`) explicitly are not: those return a convex hull over-approximation whenever
+// the true result is non-convex, whereas this returns the exact region.
+//
+// Algorithm (edge-split / classify / trace, the standard "boundary classification" boolean):
+//   1. Both operands are normalised to CCW so that "interior on the left" holds.
+//   2. Every edge of each operand is split at all of its intersections with the other
+//      operand's edges, giving a set of directed sub-edges neither of which crosses the
+//      other polygon's boundary in its interior.
+//   3. Each sub-edge is classified by its midpoint as outside / inside / boundary-coincident
+//      (same or opposite direction) with respect to the other operand, and kept, dropped, or
+//      reversed according to the operation:
+//        Union         keep A-outside, B-outside, and same-direction shared edges once.
+//        Intersection  keep A-inside, B-inside, and same-direction shared edges once.
+//        Difference    keep A-outside and B-inside reversed, plus opposite-direction shared
+//                      edges from A.
+//        SymDiff       keep A-outside, A-inside reversed, B-outside, B-inside reversed;
+//                      shared edges cancel and are dropped.
+//   4. The kept directed edges are welded at coincident endpoints and traced into closed
+//      contours. At a vertex where more than one kept edge leaves, the trace takes the first
+//      edge clockwise from the reversed incoming direction -- the planar-subdivision face
+//      rule -- which is what separates a shell from a hole that touches it at a point.
+//
+// @param a, b arbitrary simple polygons in any winding. Self-intersecting operands are out
+//        of scope (the interior is not well defined); operands with fewer than 3 vertices
+//        have no interior and are treated as the empty region.
+// @return the contours of the result, shells CCW and holes CW, in no particular order.
+//         An empty result (e.g. the intersection of disjoint operands) is an empty vector.
+//         Contours of negligible area (below a tolerance scaled to the operands' extent) are
+//         dropped, so touching-but-not-overlapping operands do not produce slivers.
+// @note Vertex coordinates are welded with a tolerance scaled to the operands' bounding-box
+//       extent (relative 1e-9), so operands whose features are finer than that relative to
+//       their own extent may have distinct vertices merged.
+PolygonSet poly_boolean(const Polygon2D& a, const Polygon2D& b, BooleanOp op);
+
+// Convenience wrappers over `poly_boolean`. Unlike `poly_union` / `poly_intersect` /
+// `poly_diff`, these are exact for concave operands and for results that are disconnected or
+// have holes.
+PolygonSet poly_union_general(const Polygon2D& a, const Polygon2D& b);
+PolygonSet poly_intersect_general(const Polygon2D& a, const Polygon2D& b);
+PolygonSet poly_diff_general(const Polygon2D& a, const Polygon2D& b);
+PolygonSet poly_symmetric_diff_general(const Polygon2D& a, const Polygon2D& b);
+
+// Total area of a `PolygonSet`: the sum of the contours' SIGNED areas, so CW hole contours
+// subtract. Always >= 0 for a set produced by `poly_boolean`.
+double poly_set_area(const PolygonSet& set);
+
+// Point membership in a `PolygonSet`, by the same nonzero-winding rule as `point_in_polygon`
+// summed over every contour: a point inside a shell but also inside one of its holes is
+// outside the set.
+bool point_in_polygon_set(Point2D p, const PolygonSet& set);
+
 // ========================== Isosurface Extraction ==========================
 
 // Indexed triangle mesh: a shared vertex array plus index triples into it. Produced by

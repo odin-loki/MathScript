@@ -19,6 +19,7 @@ stub has been closed; see that file for the before/after table.
 - CUDA: real NCCL communicator management and collectives behind `MS_HAS_NCCL`; the default build keeps its identity semantics.
 - ML: real Barnes-Hut t-SNE replacing the dense O(n^2) stub whose perplexity search never converged on a target entropy.
 - Frameworks: Axiom's `evaluation` / `selection` / `mutation` Syms carry real per-individual provenance instead of three constants.
+- Geo: `poly_boolean` and its `poly_union_general` / `poly_intersect_general` / `poly_diff_general` / `poly_symmetric_diff_general` wrappers are a general two-polygon clipper for arbitrary simple polygons: concave operands, results that split into several disjoint pieces, and results containing holes are all exact. The pre-existing `poly_union` / `poly_intersect` / `poly_diff` stay as the documented convex MVPs that return a convex-hull over-approximation. Exposed in the REPL as `geo_boolean_union` / `geo_boolean_intersect` / `geo_boolean_diff` / `geo_boolean_xor`, returning `(x, y, contour_index)` rows.
 - `mathscript-server` is a real SPMD compute node (`--script`, `-e`, `--serve`, one Interpreter per rank) rather than a heartbeat loop that ignored argv.
 
 ### Correctness fixes
@@ -36,6 +37,7 @@ Implementations that did not compute what their headers documented.
 - `izaac::verify` ignored the message and accepted forgeries made from the public key alone; `izaac::crypto::encrypt` derived its nonce from the key alone, giving a two-time pad. Both now use the Ed25519/SHA-512 and OS CSPRNG already in the tree.
 - `gria`'s `alpha_ca`/`alpha_lfsr` passed entropy-preserving transforms and were identically 0; `cypha::nig_pdf` increased with `|x - mu|` and had infinite mass.
 - `cfd`'s periodic face velocities disagreed at the wrap-around face, so a conservative scheme gained 28% mass in five steps.
+- `geo`'s segment-intersection helper behind the convex polygon booleans solved for the crossing parameter with the wrong sign (`a - c` where the derivation needs `c - a`), so it accepted only crossings at a negative parameter and emitted the mirrored point. The candidate points it feeds are always on an operand's own edge, so the hulled output never changed, but the computation was wrong.
 - `pois_pdf` overflowed to NaN for large means, `binom_cdf` was NaN at `p == 1`, `dft` returned a zero-padded transform (with `idft` added as its inverse), `irfft` returned the wrong length, `metric_inv` returned the identity for a singular metric, `pollard_rho`'s twenty retries were identical, `einsum` discarded its output subscript order, and `tonelli_shanks`'s zero case was unreachable.
 
 - `qmr` was BiCGSTAB, `tfqmr` was `return bicgstab(...)`, `lsmr` was `return lsqr(...)`, and `precond_ssor` returned only `diag(A)/omega`. All four are now the real algorithms, plus new `precond_ssor_apply`, `precond_ilu0`, `precond_ilu0_apply` and `pcg`.

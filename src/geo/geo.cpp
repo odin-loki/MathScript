@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <queue>
 #include <stack>
 #ifndef M_PI
@@ -1150,9 +1151,10 @@ static void collect_segment_intersections(std::vector<Point2D>& out,
         if (pt_on_seg(d, a, b, kEps)) out.push_back(d);
         return;
     }
-    Vec2D qp = vec2(c, a);
-    double t = cross2d(qp, s) / denom;
-    double u = cross2d(qp, r) / denom;
+    // a + t*r = c + u*s  =>  t = ((c - a) x s) / (r x s), u = ((c - a) x r) / (r x s).
+    Vec2D ac = vec2(a, c);
+    double t = cross2d(ac, s) / denom;
+    double u = cross2d(ac, r) / denom;
     if (t >= -kEps && t <= 1.0 + kEps && u >= -kEps && u <= 1.0 + kEps)
         out.push_back({a.x + t * r.x, a.y + t * r.y});
 }
@@ -1312,6 +1314,361 @@ Polygon2D poly_diff(const Polygon2D& a, const Polygon2D& b) {
 
     if (candidates.size() < 3) return {};
     return convex_hull_2d(std::move(candidates));
+}
+
+
+// ---- General (non-convex) polygon booleans ----
+//
+// Edge-split / classify / trace. Both operands are oriented CCW so "interior on the left"
+// holds; every edge is cut at its crossings with the other operand so that no sub-edge
+// straddles the other boundary; each sub-edge is then kept, dropped or reversed by the rule
+// for the requested operation; and the surviving directed edges are welded and traced into
+// closed contours. Tracing takes the first edge clockwise from the reversed incoming
+// direction at every branch, which is the planar-subdivision face rule and is what keeps a
+// shell and a hole that touch at a single vertex as two separate contours.
+
+namespace {
+
+// How a sub-edge sits relative to the other operand's boundary.
+enum class EdgeSide {
+    Outside,        // midpoint strictly outside
+    Inside,         // midpoint strictly inside
+    SharedForward,  // midpoint on the boundary, both edges run the same way
+    SharedReverse,  // midpoint on the boundary, the edges run opposite ways
+};
+
+struct BoolDirEdge {
+    Point2D a, b;
+};
+
+double boolean_scale(const Polygon2D& a, const Polygon2D& b) {
+    double lo_x = 0.0, hi_x = 0.0, lo_y = 0.0, hi_y = 0.0;
+    bool seen = false;
+    const auto sweep = [&](const Polygon2D& p) {
+        for (const auto& q : p) {
+            if (!seen) {
+                lo_x = hi_x = q.x;
+                lo_y = hi_y = q.y;
+                seen = true;
+                continue;
+            }
+            lo_x = std::min(lo_x, q.x);
+            hi_x = std::max(hi_x, q.x);
+            lo_y = std::min(lo_y, q.y);
+            hi_y = std::max(hi_y, q.y);
+        }
+    };
+    sweep(a);
+    sweep(b);
+    if (!seen) return 1.0;
+    return std::max({1.0, hi_x - lo_x, hi_y - lo_y, std::abs(lo_x), std::abs(hi_x),
+                     std::abs(lo_y), std::abs(hi_y)});
+}
+
+Polygon2D as_ccw(Polygon2D p) {
+    if (signed_area(p) < 0.0) std::reverse(p.begin(), p.end());
+    return p;
+}
+
+// Parameters along [p, q] at which the segment [r, s] touches it, appended to `ts`.
+// Collinear overlaps contribute the projections of r and s, so a shared stretch of boundary
+// is cut at both of its ends and classified as one sub-edge.
+void edge_split_params(std::vector<double>& ts, const Point2D& p, const Point2D& q,
+                       const Point2D& r, const Point2D& s, double eps) {
+    const Vec2D d = vec2(p, q);
+    const Vec2D e = vec2(r, s);
+    const double d_len2 = d.x * d.x + d.y * d.y;
+    if (d_len2 <= eps * eps) return;
+    const double denom = cross2d(d, e);
+    const double e_len2 = e.x * e.x + e.y * e.y;
+
+    if (std::abs(denom) <= eps * std::sqrt(d_len2 * std::max(e_len2, eps * eps))) {
+        // Parallel. Only a collinear overlap can contribute split points.
+        if (std::abs(cross2d(d, vec2(p, r))) > eps * std::sqrt(d_len2)) return;
+        for (const Point2D& x : {r, s}) {
+            const double t = (vec2(p, x).x * d.x + vec2(p, x).y * d.y) / d_len2;
+            if (t > 0.0 && t < 1.0) ts.push_back(t);
+        }
+        return;
+    }
+
+    // p + t*d = r + u*e  =>  t = ((r - p) x e) / (d x e), u = ((r - p) x d) / (d x e).
+    const Vec2D pr = vec2(p, r);
+    const double t = cross2d(pr, e) / denom;
+    const double u = cross2d(pr, d) / denom;
+    const double tol = eps / std::sqrt(d_len2);
+    const double utol = (e_len2 > 0.0) ? eps / std::sqrt(e_len2) : 0.0;
+    if (t > 0.0 && t < 1.0 && u >= -utol && u <= 1.0 + utol) ts.push_back(t);
+}
+
+// Split every edge of `subject` at its crossings with `other`, in order.
+std::vector<BoolDirEdge> split_against(const Polygon2D& subject, const Polygon2D& other,
+                                       double eps) {
+    std::vector<BoolDirEdge> out;
+    const std::size_t n = subject.size();
+    const std::size_t m = other.size();
+    out.reserve(n + m);
+    std::vector<double> ts;
+    for (std::size_t i = 0; i < n; ++i) {
+        const Point2D& p = subject[i];
+        const Point2D& q = subject[(i + 1) % n];
+        ts.clear();
+        for (std::size_t j = 0; j < m; ++j) {
+            edge_split_params(ts, p, q, other[j], other[(j + 1) % m], eps);
+        }
+        ts.push_back(0.0);
+        ts.push_back(1.0);
+        std::sort(ts.begin(), ts.end());
+        const Vec2D d = vec2(p, q);
+        const double len = length(d);
+        if (len <= eps) continue;
+        const double t_eps = eps / len;
+        Point2D prev = p;
+        double prev_t = 0.0;
+        for (std::size_t k = 1; k < ts.size(); ++k) {
+            const double t = std::min(1.0, std::max(0.0, ts[k]));
+            if (t - prev_t <= t_eps) continue;
+            const Point2D cur{p.x + t * d.x, p.y + t * d.y};
+            out.push_back({prev, cur});
+            prev = cur;
+            prev_t = t;
+        }
+    }
+    return out;
+}
+
+EdgeSide classify_edge(const BoolDirEdge& e, const Polygon2D& other, double eps) {
+    const Point2D mid{0.5 * (e.a.x + e.b.x), 0.5 * (e.a.y + e.b.y)};
+    const std::size_t m = other.size();
+    const Vec2D d = vec2(e.a, e.b);
+    for (std::size_t j = 0; j < m; ++j) {
+        const Point2D& r = other[j];
+        const Point2D& s = other[(j + 1) % m];
+        if (!pt_on_seg(mid, r, s, eps)) continue;
+        const Vec2D o = vec2(r, s);
+        return (dot(d, o) > 0.0) ? EdgeSide::SharedForward : EdgeSide::SharedReverse;
+    }
+    return point_in_polygon(mid, other) ? EdgeSide::Inside : EdgeSide::Outside;
+}
+
+// Welds coincident endpoints onto shared vertex ids using a quantised grid plus a
+// neighbourhood probe, so points that straddle a cell boundary still merge.
+class VertexWelder {
+  public:
+    explicit VertexWelder(double cell) : cell_(cell > 0.0 ? cell : 1e-12) {}
+
+    int intern(const Point2D& p) {
+        const long long cx = static_cast<long long>(std::floor(p.x / cell_));
+        const long long cy = static_cast<long long>(std::floor(p.y / cell_));
+        for (long long dx = -1; dx <= 1; ++dx) {
+            for (long long dy = -1; dy <= 1; ++dy) {
+                const auto it = cells_.find({cx + dx, cy + dy});
+                if (it == cells_.end()) continue;
+                for (int id : it->second) {
+                    if (std::abs(points_[static_cast<std::size_t>(id)].x - p.x) <= cell_ &&
+                        std::abs(points_[static_cast<std::size_t>(id)].y - p.y) <= cell_) {
+                        return id;
+                    }
+                }
+            }
+        }
+        const int id = static_cast<int>(points_.size());
+        points_.push_back(p);
+        cells_[{cx, cy}].push_back(id);
+        return id;
+    }
+
+    const std::vector<Point2D>& points() const { return points_; }
+
+  private:
+    double cell_;
+    std::vector<Point2D> points_;
+    std::map<std::pair<long long, long long>, std::vector<int>> cells_;
+};
+
+// Trace welded directed edges into closed contours.
+PolygonSet trace_contours(const std::vector<Point2D>& pts, std::vector<std::pair<int, int>> edges,
+                          double area_eps) {
+    const std::size_t ne = edges.size();
+    std::vector<char> used(ne, 0);
+    std::map<int, std::vector<std::size_t>> outgoing;
+    for (std::size_t i = 0; i < ne; ++i) {
+        if (edges[i].first == edges[i].second) {
+            used[i] = 1;  // zero-length after welding
+            continue;
+        }
+        outgoing[edges[i].first].push_back(i);
+    }
+
+    PolygonSet contours;
+    for (std::size_t seed = 0; seed < ne; ++seed) {
+        if (used[seed]) continue;
+        const int start = edges[seed].first;
+        std::size_t cur = seed;
+        Polygon2D contour;
+        bool closed = false;
+        for (std::size_t guard = 0; guard <= ne; ++guard) {
+            used[cur] = 1;
+            contour.push_back(pts[static_cast<std::size_t>(edges[cur].first)]);
+            const int node = edges[cur].second;
+            if (node == start) {
+                closed = true;
+                break;
+            }
+            const auto it = outgoing.find(node);
+            if (it == outgoing.end()) break;
+
+            // First edge clockwise from the reversed incoming direction. A delta of 0 is the
+            // exact reversal, which we rank last by mapping it to a full turn.
+            const Point2D& from = pts[static_cast<std::size_t>(edges[cur].first)];
+            const Point2D& at = pts[static_cast<std::size_t>(node)];
+            const double back = std::atan2(from.y - at.y, from.x - at.x);
+            std::size_t best = ne;
+            double best_delta = -1.0;
+            for (std::size_t cand : it->second) {
+                if (used[cand]) continue;
+                const Point2D& to = pts[static_cast<std::size_t>(edges[cand].second)];
+                const double ang = std::atan2(to.y - at.y, to.x - at.x);
+                double delta = back - ang;
+                while (delta <= 1e-12) delta += 2.0 * M_PI;
+                while (delta > 2.0 * M_PI) delta -= 2.0 * M_PI;
+                if (best == ne || delta < best_delta) {
+                    best = cand;
+                    best_delta = delta;
+                }
+            }
+            if (best == ne) break;
+            cur = best;
+        }
+        if (!closed || contour.size() < 3) continue;
+        if (std::abs(signed_area(contour)) <= area_eps) continue;
+        contours.push_back(std::move(contour));
+    }
+    return contours;
+}
+
+}  // namespace
+
+PolygonSet poly_boolean(const Polygon2D& a_in, const Polygon2D& b_in, BooleanOp op) {
+    const bool a_ok = a_in.size() >= 3 && std::abs(signed_area(a_in)) > 0.0;
+    const bool b_ok = b_in.size() >= 3 && std::abs(signed_area(b_in)) > 0.0;
+
+    // Degenerate operands have no interior, so the result follows from set algebra alone.
+    if (!a_ok || !b_ok) {
+        PolygonSet out;
+        const auto emit = [&out](const Polygon2D& p, bool ok) {
+            if (ok) out.push_back(as_ccw(p));
+        };
+        switch (op) {
+            case BooleanOp::Union:
+            case BooleanOp::SymmetricDifference:
+                emit(a_in, a_ok);
+                emit(b_in, b_ok);
+                break;
+            case BooleanOp::Intersection:
+                break;
+            case BooleanOp::Difference:
+                emit(a_in, a_ok);
+                break;
+        }
+        return out;
+    }
+
+    const Polygon2D a = as_ccw(a_in);
+    const Polygon2D b = as_ccw(b_in);
+    const double scale = boolean_scale(a, b);
+    const double eps = 1e-9 * scale;
+
+    const std::vector<BoolDirEdge> a_edges = split_against(a, b, eps);
+    const std::vector<BoolDirEdge> b_edges = split_against(b, a, eps);
+
+    std::vector<BoolDirEdge> kept;
+    kept.reserve(a_edges.size() + b_edges.size());
+
+    for (const auto& e : a_edges) {
+        const EdgeSide side = classify_edge(e, b, eps);
+        switch (op) {
+            case BooleanOp::Union:
+                if (side == EdgeSide::Outside || side == EdgeSide::SharedForward) kept.push_back(e);
+                break;
+            case BooleanOp::Intersection:
+                if (side == EdgeSide::Inside || side == EdgeSide::SharedForward) kept.push_back(e);
+                break;
+            case BooleanOp::Difference:
+                if (side == EdgeSide::Outside || side == EdgeSide::SharedReverse) kept.push_back(e);
+                break;
+            case BooleanOp::SymmetricDifference:
+                if (side == EdgeSide::Outside) kept.push_back(e);
+                else if (side == EdgeSide::Inside) kept.push_back({e.b, e.a});
+                break;
+        }
+    }
+    for (const auto& e : b_edges) {
+        const EdgeSide side = classify_edge(e, a, eps);
+        switch (op) {
+            case BooleanOp::Union:
+                if (side == EdgeSide::Outside) kept.push_back(e);
+                break;
+            case BooleanOp::Intersection:
+                if (side == EdgeSide::Inside) kept.push_back(e);
+                break;
+            case BooleanOp::Difference:
+                if (side == EdgeSide::Inside) kept.push_back({e.b, e.a});
+                break;
+            case BooleanOp::SymmetricDifference:
+                if (side == EdgeSide::Outside) kept.push_back(e);
+                else if (side == EdgeSide::Inside) kept.push_back({e.b, e.a});
+                break;
+        }
+    }
+
+    VertexWelder welder(eps);
+    std::vector<std::pair<int, int>> welded;
+    welded.reserve(kept.size());
+    for (const auto& e : kept) {
+        welded.emplace_back(welder.intern(e.a), welder.intern(e.b));
+    }
+    return trace_contours(welder.points(), std::move(welded), eps * scale);
+}
+
+PolygonSet poly_union_general(const Polygon2D& a, const Polygon2D& b) {
+    return poly_boolean(a, b, BooleanOp::Union);
+}
+
+PolygonSet poly_intersect_general(const Polygon2D& a, const Polygon2D& b) {
+    return poly_boolean(a, b, BooleanOp::Intersection);
+}
+
+PolygonSet poly_diff_general(const Polygon2D& a, const Polygon2D& b) {
+    return poly_boolean(a, b, BooleanOp::Difference);
+}
+
+PolygonSet poly_symmetric_diff_general(const Polygon2D& a, const Polygon2D& b) {
+    return poly_boolean(a, b, BooleanOp::SymmetricDifference);
+}
+
+double poly_set_area(const PolygonSet& set) {
+    double total = 0.0;
+    for (const auto& c : set) total += signed_area(c);
+    return total;
+}
+
+bool point_in_polygon_set(Point2D p, const PolygonSet& set) {
+    int winding = 0;
+    for (const auto& poly : set) {
+        const int n = static_cast<int>(poly.size());
+        for (int i = 0; i < n; ++i) {
+            const Point2D& u = poly[i];
+            const Point2D& v = poly[(i + 1) % n];
+            const double cr = (v.x - u.x) * (p.y - u.y) - (v.y - u.y) * (p.x - u.x);
+            if (u.y <= p.y) {
+                if (v.y > p.y && cr > 0.0) ++winding;
+            } else if (v.y <= p.y && cr < 0.0) {
+                --winding;
+            }
+        }
+    }
+    return winding != 0;
 }
 
 // ---- Marching cubes / marching squares ----

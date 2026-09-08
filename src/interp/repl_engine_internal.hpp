@@ -1174,6 +1174,15 @@ Result<Matrix<double>> eval_geo_convex_hull_3d(const Matrix<double>& P_m);
 Result<Matrix<double>> eval_geo_poly_boolean(const char* fn, const Matrix<double>& a_m,
                                              const Matrix<double>& b_m);
 
+// General (non-convex) two-polygon boolean. Returns an Nx3 matrix whose rows are
+// (x, y, contour_index): the result of a general boolean can be several disjoint contours
+// and can contain holes, so a plain Nx2 vertex list cannot represent it. Contours are
+// numbered from 0 in the order `geo::poly_boolean` produces them; shells are CCW and holes
+// are CW, so summing each contour's signed area gives the region's area directly. An empty
+// result (e.g. the intersection of disjoint operands) is a 0x3 matrix.
+Result<Matrix<double>> eval_geo_poly_boolean_general(const char* fn, const Matrix<double>& a_m,
+                                                     const Matrix<double>& b_m);
+
 Result<Matrix<double>> eval_geo_minkowski_sum(const Matrix<double>& a_m,
                                               const Matrix<double>& b_m);
 

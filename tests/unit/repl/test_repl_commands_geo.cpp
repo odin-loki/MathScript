@@ -581,6 +581,63 @@ TEST(ReplCommandsTest, geo_poly_boolean) {
     expect_error_contains(interp, "Ibad = geo_poly_intersect(missing, A)", "unknown matrix");
 }
 
+TEST(ReplCommandsTest, geo_boolean_general) {
+    Interpreter interp;
+    expect_contains(interp, "help", "geo_boolean_union(A,B)");
+    expect_contains(interp, "help", "geo_boolean_intersect(A,B)");
+    expect_contains(interp, "help", "geo_boolean_diff(A,B)");
+    expect_contains(interp, "help", "geo_boolean_xor(A,B)");
+
+    // Two 4x4 squares overlapping in a 2x2 corner: union 28, intersection 4, difference 12,
+    // and the symmetric difference is two disjoint pieces of 12 each.
+    expect_ok(interp, "A = [0, 0; 4, 0; 4, 4; 0, 4]");
+    expect_ok(interp, "B = [2, 2; 6, 2; 6, 6; 2, 6]");
+
+    expect_ok(interp, "U = geo_boolean_union(A, B)");
+    ASSERT_GT(interp.state().matrices.count("U"), 0u);
+    const auto& U = interp.state().matrices.at("U");
+    EXPECT_EQ(U.cols(), 3u) << "rows are (x, y, contour_index)";
+    EXPECT_EQ(U.rows(), 8u);
+    for (std::size_t r = 0; r < U.rows(); ++r) {
+        EXPECT_DOUBLE_EQ(U(r, 2), 0.0) << "the union here is a single contour";
+    }
+
+    expect_ok(interp, "X = geo_boolean_xor(A, B)");
+    const auto& X = interp.state().matrices.at("X");
+    ASSERT_EQ(X.cols(), 3u);
+    double max_contour = 0.0;
+    for (std::size_t r = 0; r < X.rows(); ++r) {
+        max_contour = std::max(max_contour, X(r, 2));
+    }
+    EXPECT_DOUBLE_EQ(max_contour, 1.0) << "the symmetric difference has two contours";
+
+    expect_ok(interp, "I = geo_boolean_intersect(A, B)");
+    EXPECT_EQ(interp.state().matrices.at("I").rows(), 4u);
+    expect_ok(interp, "D = geo_boolean_diff(A, B)");
+    EXPECT_EQ(interp.state().matrices.at("D").cols(), 3u);
+
+    // Disjoint operands: the intersection is empty, which is a 0x3 matrix, not an error.
+    expect_ok(interp, "C = [20, 20; 21, 20; 21, 21; 20, 21]");
+    expect_ok(interp, "E = geo_boolean_intersect(A, C)");
+    EXPECT_EQ(interp.state().matrices.at("E").rows(), 0u);
+    EXPECT_EQ(interp.state().matrices.at("E").cols(), 3u);
+
+    expect_ok(interp, "bad = [0, 0, 0; 1, 0, 0]");
+    expect_error_contains(interp, "Ubad = geo_boolean_union(bad, A)", "Nx2");
+    expect_error_contains(interp, "Ibad = geo_boolean_diff(missing, A)", "unknown matrix");
+}
+
+TEST(ReplCommandsTest, geo_boolean_general_noassign) {
+    Interpreter interp;
+    expect_ok(interp, "A = [0, 0; 4, 0; 4, 4; 0, 4]");
+    expect_ok(interp, "B = [2, 2; 6, 2; 6, 6; 2, 6]");
+    expect_contains(interp, "geo_boolean_union(A, B)", "contours =");
+    expect_contains(interp, "geo_boolean_intersect(A, B)", "contours =");
+    expect_contains(interp, "geo_boolean_diff(A, B)", "contours =");
+    expect_contains(interp, "geo_boolean_xor(A, B)", "contours =");
+    expect_error_contains(interp, "geo_boolean_union(missing, A)", "unknown matrix");
+}
+
 TEST(ReplCommandsTest, geo_minkowski_sum) {
     Interpreter interp;
     expect_contains(interp, "help", "geo_minkowski_sum(A,B)");

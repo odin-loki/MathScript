@@ -814,6 +814,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `signal_spectrogram(x, fs)` | STFT magnitude matrix |
 | `finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)` | Heston put via put-call parity |
 | `geo_poly_union` / `geo_poly_intersect` / `geo_poly_diff` | Convex polygon boolean ops |
+| `geo_boolean_union` / `geo_boolean_intersect` / `geo_boolean_diff` / `geo_boolean_xor` | General (non-convex) polygon booleans; Mx3 rows `(x, y, contour_index)`, shells CCW and holes CW |
 | `graph_k_core_decomposition(A)` / `graph_k_core_subgraph(A,k)` / `graph_chromatic_number(A)` | Graph core / coloring |
 | `signal_cheby2(order, rs_db, cutoff, fs)` | Chebyshev Type II IIR design; returns `[b; a]` rows |
 | `signal_periodogram(x, fs)` / `signal_welch_psd(x, fs, nperseg)` | PSD helpers; freq/power columns |

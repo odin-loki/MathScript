@@ -7090,6 +7090,48 @@ Result<Matrix<double>> eval_geo_poly_boolean(const char* fn, const Matrix<double
     return points2d_to_matrix(out);
 }
 
+Result<Matrix<double>> eval_geo_poly_boolean_general(const char* fn, const Matrix<double>& a_m,
+                                                     const Matrix<double>& b_m) {
+    auto a = matrix_to_points2d(a_m, fn);
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = matrix_to_points2d(b_m, fn);
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    const std::string_view name{fn};
+    geo::BooleanOp op{};
+    if (name == "geo_boolean_union") {
+        op = geo::BooleanOp::Union;
+    } else if (name == "geo_boolean_intersect") {
+        op = geo::BooleanOp::Intersection;
+    } else if (name == "geo_boolean_diff") {
+        op = geo::BooleanOp::Difference;
+    } else if (name == "geo_boolean_xor") {
+        op = geo::BooleanOp::SymmetricDifference;
+    } else {
+        return std::unexpected(DomainError{fn, "unknown geo general polygon boolean"});
+    }
+
+    const geo::PolygonSet set = geo::poly_boolean(*a, *b, op);
+    std::size_t rows = 0;
+    for (const auto& contour : set) {
+        rows += contour.size();
+    }
+    Matrix<double> out(rows, 3);
+    std::size_t r = 0;
+    for (std::size_t c = 0; c < set.size(); ++c) {
+        for (const auto& p : set[c]) {
+            out(r, 0) = p.x;
+            out(r, 1) = p.y;
+            out(r, 2) = static_cast<double>(c);
+            ++r;
+        }
+    }
+    return out;
+}
+
 Result<Matrix<double>> eval_geo_minkowski_sum(const Matrix<double>& a_m,
                                               const Matrix<double>& b_m) {
     auto a = matrix_to_points2d(a_m, "geo_minkowski_sum");
@@ -14394,7 +14436,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "signal_convolve" || callee == "signal_correlate" ||
            callee == "signal_sosfilt" || callee == "signal_conv2" ||
            callee == "geo_poly_union" || callee == "geo_poly_intersect" ||
-           callee == "geo_poly_diff" || callee == "geo_minkowski_sum" ||
+           callee == "geo_poly_diff" || callee == "geo_boolean_union" ||
+           callee == "geo_boolean_intersect" || callee == "geo_boolean_diff" ||
+           callee == "geo_boolean_xor" || callee == "geo_minkowski_sum" ||
            callee == "geo_clip_polygon";
 }
 
@@ -17782,6 +17826,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "poly_eval_at" || fn == "poly_sylvester" ||
             fn == "poly_mul" || fn == "poly_sub" || fn == "poly_compose" ||
             fn == "geo_poly_union" || fn == "geo_poly_intersect" || fn == "geo_poly_diff" ||
+            fn == "geo_boolean_union" || fn == "geo_boolean_intersect" ||
+            fn == "geo_boolean_diff" || fn == "geo_boolean_xor" ||
             fn == "geo_minkowski_sum" || fn == "geo_clip_polygon" ||
             fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "stats_friedman" || fn == "stats_ks_2sample" || fn == "stats_jarque_bera" || fn == "stats_ljung_box" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
             fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_levene" || fn == "stats_bartlett" || fn == "stats_fligner" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
