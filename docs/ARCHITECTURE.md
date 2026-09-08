@@ -169,7 +169,7 @@ On push/PR to `main`:
 
 1. **build-test-windows** — MSVC Release, full CTest, ZIP smoke
 2. **build-test-linux** — GCC 13, no-exceptions syntax gate, CTest, CPack, unsafe audit
-3. **coverage-linux** — 80% line coverage minimum (90% is the v1.0.0 tag goal)
+3. **coverage-linux** — 80% line coverage minimum (the 90% v1.0.0 tag goal is met; last measured 91.3% line / 97.7% function)
 4. **fuzz-linux** — 7 libFuzzer smokes
 5. **sanitizer-linux** — ASan/UBSan (full CTest via shared test bundle; leak detection off)
 6. **plugin-linux** — twenty compile-fail rules
