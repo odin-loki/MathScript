@@ -2,6 +2,7 @@
 #include "ms/quantum/quantum.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -319,78 +320,123 @@ int grover_optimal_iterations(int n_qubits, int n_marked) {
 
 namespace {
 
-// Jacobi diagonalisation for small Hermitian matrices (n <= 8).
-// When evecs is non-null, columns of *evecs accumulate eigenvectors.
+// Jacobi diagonalisation for Hermitian matrices of any order n.
+//
+// Each step annihilates one off-diagonal pair (p, q) by a unitary similarity
+// H <- G^H H G, where G is a diagonal phase matrix (making the pivot real and
+// positive) followed by a real Givens rotation.  Cyclic sweeps over every pair
+// converge quadratically, so the routine is accurate to round-off for the
+// dimensions a density matrix or a small Hamiltonian actually reaches -- there
+// is no n <= 8 restriction.
+//
+// On return the diagonal of H holds the eigenvalues (the off-diagonal entries
+// are zero to round-off).  When evecs is non-null, column j of *evecs is a
+// unit eigenvector for eigenvalue H[j][j], i.e. H_in = V diag(H) V^H.
 void hermitian_jacobi_diagonalize(DensityMatrix& H, int n, DensityMatrix* evecs = nullptr,
-                                  double tol = 1e-14, int max_sweeps = 100) {
+                                  double tol = 1e-14, int max_sweeps = 60) {
     if (evecs) {
         *evecs = identity(n);
     }
+    if (n <= 1) return;
 
     for (int sweep = 0; sweep < max_sweeps; ++sweep) {
-        int p = 0, q = 1;
-        double max_off = 0.0;
-        for (int i = 0; i < n; ++i)
+        double off = 0.0;
+        double frob = 0.0;
+        for (int i = 0; i < n; ++i) {
+            frob += std::norm(H[i][i]);
             for (int j = i + 1; j < n; ++j) {
-                double off = std::abs(H[i][j]);
-                if (off > max_off) {
-                    max_off = off;
-                    p = i;
-                    q = j;
+                const double m = std::norm(H[i][j]);
+                off += 2.0 * m;
+                frob += 2.0 * m;
+            }
+        }
+        const double scale = std::max(1.0, std::sqrt(frob));
+        if (std::sqrt(off) <= tol * scale) break;
+
+        for (int p = 0; p < n - 1; ++p) {
+            for (int q = p + 1; q < n; ++q) {
+                const C apq0 = H[p][q];
+                const double mag = std::abs(apq0);
+                // Negligible relative to the two diagonal entries it couples:
+                // annihilate it outright rather than rotating on round-off.
+                if (mag <= 1e-18 * (std::abs(H[p][p]) + std::abs(H[q][q]))) {
+                    H[p][q] = C(0.0, 0.0);
+                    H[q][p] = C(0.0, 0.0);
+                    continue;
                 }
-            }
-        if (max_off < tol) break;
 
-        C apq = H[p][q];
-        if (std::abs(apq) < tol) continue;
+                // Phase elimination.  With D = diag(.., dp, .., dq, ..) the
+                // similarity H <- D^H H D maps H[k][l] to conj(d_k) H[k][l] d_l,
+                // so choosing dp = exp(+i*arg(apq)/2), dq = exp(-i*arg(apq)/2)
+                // leaves H[p][q] = |apq| real and positive.  Eigenvectors
+                // accumulate as V <- V D.
+                const double half_phase = 0.5 * std::arg(apq0);
+                const C dp = std::exp(C(0.0, half_phase));
+                const C dq = std::exp(C(0.0, -half_phase));
+                for (int k = 0; k < n; ++k) {
+                    H[k][p] *= dp;
+                    H[p][k] *= std::conj(dp);
+                    H[k][q] *= dq;
+                    H[q][k] *= std::conj(dq);
+                }
+                if (evecs) {
+                    for (int k = 0; k < n; ++k) {
+                        (*evecs)[k][p] *= dp;
+                        (*evecs)[k][q] *= dq;
+                    }
+                }
 
-        // Phase elimination: D^H H D makes H[p][q] real and positive.
-        const double half_phase = 0.5 * std::arg(apq);
-        const C dp = std::exp(C(0.0, -half_phase));
-        const C dq = std::exp(C(0.0, half_phase));
-        for (int k = 0; k < n; ++k) {
-            H[k][p] *= std::conj(dp);
-            H[p][k] *= dp;
-            H[k][q] *= std::conj(dq);
-            H[q][k] *= dq;
-        }
-        if (evecs) {
-            for (int k = 0; k < n; ++k) {
-                (*evecs)[k][p] *= dp;
-                (*evecs)[k][q] *= dq;
-            }
-        }
-        apq = H[p][q];
+                // Real Givens rotation G (G[p][p]=c, G[p][q]=s, G[q][p]=-s,
+                // G[q][q]=c) with tan(2*phi) = 2*|apq| / (aqq - app), which
+                // zeroes the (now real) pivot.  H <- G^T H G, V <- V G.
+                const double app = H[p][p].real();
+                const double aqq = H[q][q].real();
+                const double apq = mag;
+                const double phi = 0.5 * std::atan2(2.0 * apq, aqq - app);
+                const double c = std::cos(phi);
+                const double s = std::sin(phi);
 
-        const double app = H[p][p].real();
-        const double aqq = H[q][q].real();
-        const double apq_r = apq.real();
-        const double phi = 0.5 * std::atan2(2.0 * apq_r, aqq - app);
-        const double c = std::cos(phi);
-        const double s = std::sin(phi);
+                for (int k = 0; k < n; ++k) {
+                    if (k == p || k == q) continue;
+                    const C hkp = H[k][p];
+                    const C hkq = H[k][q];
+                    const C vp = c * hkp - s * hkq;
+                    const C vq = s * hkp + c * hkq;
+                    // H stays Hermitian: the transposed slot takes the
+                    // conjugate, not the same value.
+                    H[k][p] = vp;
+                    H[p][k] = std::conj(vp);
+                    H[k][q] = vq;
+                    H[q][k] = std::conj(vq);
+                }
+                H[p][p] = C(c * c * app - 2.0 * s * c * apq + s * s * aqq, 0.0);
+                H[q][q] = C(s * s * app + 2.0 * s * c * apq + c * c * aqq, 0.0);
+                H[p][q] = C(0.0, 0.0);
+                H[q][p] = C(0.0, 0.0);
 
-        for (int k = 0; k < n; ++k) {
-            if (k == p || k == q) continue;
-            const C hkp = H[k][p];
-            const C hkq = H[k][q];
-            H[p][k] = H[k][p] = C(c * hkp.real() - s * hkq.real(), c * hkp.imag() - s * hkq.imag());
-            H[q][k] = H[k][q] = C(s * hkp.real() + c * hkq.real(), s * hkp.imag() + c * hkq.imag());
-        }
-        const double new_pp = c * c * app - 2.0 * s * c * apq_r + s * s * aqq;
-        const double new_qq = s * s * app + 2.0 * s * c * apq_r + c * c * aqq;
-        H[p][p] = C(new_pp, 0.0);
-        H[q][q] = C(new_qq, 0.0);
-        H[p][q] = H[q][p] = C(0.0, 0.0);
-
-        if (evecs) {
-            for (int k = 0; k < n; ++k) {
-                const C vp = (*evecs)[k][p];
-                const C vq = (*evecs)[k][q];
-                (*evecs)[k][p] = C(c * vp.real() - s * vq.real(), c * vp.imag() - s * vq.imag());
-                (*evecs)[k][q] = C(s * vp.real() + c * vq.real(), s * vp.imag() + c * vq.imag());
+                if (evecs) {
+                    for (int k = 0; k < n; ++k) {
+                        const C wp = (*evecs)[k][p];
+                        const C wq = (*evecs)[k][q];
+                        (*evecs)[k][p] = c * wp - s * wq;
+                        (*evecs)[k][q] = s * wp + c * wq;
+                    }
+                }
             }
         }
     }
+}
+
+// Average a matrix with its conjugate transpose.  Products such as
+// sqrt(rho) sigma sqrt(rho) are Hermitian in exact arithmetic; this removes the
+// round-off-sized skew part before the Jacobi solver sees them.
+DensityMatrix hermitian_part(const DensityMatrix& A) {
+    const int n = static_cast<int>(A.size());
+    DensityMatrix S(n, std::vector<C>(n, C(0.0)));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            S[i][j] = 0.5 * (A[i][j] + std::conj(A[j][i]));
+    return S;
 }
 
 std::vector<double> hermitian_eigenvalues(const DensityMatrix& rho) {
@@ -410,6 +456,48 @@ void hermitian_eigendecomposition(const DensityMatrix& H_in, int n,
     evals.resize(n);
     for (int i = 0; i < n; ++i)
         evals[i] = H[i][i].real();
+}
+
+// Positive-semidefinite square root of a Hermitian matrix:
+// A = U diag(lambda) U^H  ->  sqrt(A) = U diag(sqrt(max(lambda, 0))) U^H.
+// Eigenvalues that come out slightly negative through round-off are clamped to
+// zero, which is the correct projection for a density matrix.
+// Square roots of the eigenvalues of a Hermitian positive-semi-definite matrix,
+// with the round-off floor removed.  A Jacobi sweep resolves eigenvalues only to
+// O(n * eps * ||M||); the square root maps that noise up to O(sqrt(eps)) ~ 1e-8,
+// which would otherwise show up as a 1e-8 shortfall in the concurrence of a Bell
+// state.  Anything at or below the floor is therefore taken to be exactly zero.
+std::vector<double> psd_eigenvalue_roots(const DensityMatrix& M) {
+    const std::vector<double> mu = hermitian_eigenvalues(M);
+    double mu_max = 0.0;
+    for (double value : mu) mu_max = std::max(mu_max, std::abs(value));
+    const double floor_mu = 8.0 * static_cast<double>(mu.size()) *
+                            std::numeric_limits<double>::epsilon() * mu_max;
+
+    std::vector<double> roots(mu.size(), 0.0);
+    for (std::size_t i = 0; i < mu.size(); ++i)
+        if (mu[i] > floor_mu) roots[i] = std::sqrt(mu[i]);
+    return roots;
+}
+
+DensityMatrix hermitian_psd_sqrt(const DensityMatrix& A) {
+    const int n = static_cast<int>(A.size());
+    std::vector<double> evals;
+    DensityMatrix evecs;
+    hermitian_eigendecomposition(A, n, evals, evecs);
+
+    DensityMatrix S(n, std::vector<C>(n, C(0.0)));
+    for (int k = 0; k < n; ++k) {
+        const double root = std::sqrt(std::max(0.0, evals[k]));
+        if (root <= 0.0) continue;
+        for (int i = 0; i < n; ++i) {
+            const C uik = evecs[i][k];
+            if (std::norm(uik) < 1e-30) continue;
+            for (int j = 0; j < n; ++j)
+                S[i][j] += root * uik * std::conj(evecs[j][k]);
+        }
+    }
+    return S;
 }
 
 } // namespace
@@ -437,21 +525,15 @@ Ket ground_state(const DensityMatrix& H) {
 }
 
 // von Neumann entropy: S(rho) = -Tr(rho log rho) = -sum_i lambda_i log(lambda_i)
+// (natural logarithm), computed from the full Hermitian eigenspectrum of rho at
+// every dimension.  Eigenvalues at or below the round-off floor contribute
+// nothing (0 log 0 == 0 by continuity).
 double von_neumann_entropy(const DensityMatrix& rho) {
     const int n = static_cast<int>(rho.size());
     if (n <= 0) return 0.0;
 
     double S = 0.0;
-    if (n <= 8) {
-        for (double lambda : hermitian_eigenvalues(rho)) {
-            if (lambda > 1e-15) S -= lambda * std::log(lambda);
-        }
-        return S;
-    }
-
-    // Fallback for larger systems: diagonal approximation.
-    for (int i = 0; i < n; ++i) {
-        const double lambda = rho[i][i].real();
+    for (double lambda : hermitian_eigenvalues(hermitian_part(rho))) {
         if (lambda > 1e-15) S -= lambda * std::log(lambda);
     }
     return S;
@@ -466,32 +548,77 @@ double purity(const DensityMatrix& rho) {
 }
 
 double fidelity(const DensityMatrix& rho, const DensityMatrix& sigma) {
-    // F = Tr(sqrt(sqrt(rho) sigma sqrt(rho)))
-    // For pure states: F = |<psi|phi>|^2
-    // Approximate: Tr(rho sigma)
-    auto rs = matmul_dm(rho, sigma);
-    C tr = 0.0;
-    for (int i = 0; i < (int)rs.size(); ++i) tr += rs[i][i];
-    return std::sqrt(std::abs(tr.real()));
+    // Uhlmann fidelity, square-root convention:
+    //   F(rho, sigma) = Tr sqrt( sqrt(rho) sigma sqrt(rho) )
+    //                 = sum_i sqrt(mu_i),   mu_i = eig( sqrt(rho) sigma sqrt(rho) ).
+    // The bracketed matrix is Hermitian positive semi-definite, so its
+    // eigenvalues are real and non-negative and the sum of their square roots
+    // is exactly the trace norm of sqrt(rho) sqrt(sigma).
+    const int n = static_cast<int>(rho.size());
+    if (n <= 0 || static_cast<int>(sigma.size()) != n) return 0.0;
+
+    const DensityMatrix root_rho = hermitian_psd_sqrt(hermitian_part(rho));
+    const DensityMatrix inner_m =
+        hermitian_part(matmul_dm(root_rho, matmul_dm(sigma, root_rho)));
+
+    double F = 0.0;
+    for (double root : psd_eigenvalue_roots(inner_m)) F += root;
+    return F;
 }
 
 double trace_distance(const DensityMatrix& rho, const DensityMatrix& sigma) {
-    // T = (1/2) Tr|rho - sigma|
-    int n = static_cast<int>(rho.size());
-    double sum = 0.0;
+    // T = (1/2) Tr|rho - sigma|, the trace (nuclear) norm of the difference.
+    // D = rho - sigma is Hermitian, so |D| has the same eigenvectors as D with
+    // eigenvalues |lambda_i| and Tr|D| = sum_i |lambda_i|.  This is NOT the
+    // Frobenius norm: the two agree only when D has a single non-zero
+    // eigenvalue.
+    const int n = static_cast<int>(rho.size());
+    if (n <= 0 || static_cast<int>(sigma.size()) != n) return 0.0;
+
+    DensityMatrix diff(n, std::vector<C>(n, C(0.0)));
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-            sum += std::norm(rho[i][j] - sigma[i][j]);
-    return 0.5 * std::sqrt(sum); // approximate
+            diff[i][j] = rho[i][j] - sigma[i][j];
+
+    double sum = 0.0;
+    for (double lambda : hermitian_eigenvalues(hermitian_part(diff)))
+        sum += std::abs(lambda);
+    return 0.5 * sum;
 }
 
 double concurrence(const DensityMatrix& rho) {
-    // For 2-qubit state: C = max(0, λ1 - λ2 - λ3 - λ4)
-    // Approximate for diagonal rho
-    if (rho.size() != 4) return 0.0;
-    double off = 2.0 * std::abs(rho[0][3].real()); // 2|rho_{00,11}|
-    double diag = std::abs(rho[1][1].real()) + std::abs(rho[2][2].real());
-    return std::max(0.0, off - diag);
+    // Wootters' concurrence of a two-qubit state:
+    //   rho_tilde = (sigma_y (x) sigma_y) conj(rho) (sigma_y (x) sigma_y)
+    //   lambda_1 >= .. >= lambda_4 are the square roots of the eigenvalues of
+    //   rho * rho_tilde, and C = max(0, lambda_1 - lambda_2 - lambda_3 - lambda_4).
+    //
+    // rho * rho_tilde is not Hermitian, so instead diagonalise the similar
+    // matrix sqrt(rho) rho_tilde sqrt(rho): it is Hermitian positive
+    // semi-definite and has the same spectrum (X Y and Y X share eigenvalues,
+    // with X = sqrt(rho), Y = rho_tilde sqrt(rho)).
+    //
+    // Defined only for 4x4 (two-qubit) density matrices; anything else returns
+    // NaN rather than a fabricated 0, which would read as "separable".
+    if (rho.size() != 4) return std::numeric_limits<double>::quiet_NaN();
+    for (const auto& row : rho)
+        if (row.size() != 4) return std::numeric_limits<double>::quiet_NaN();
+
+    const DensityMatrix spin_flip = tensor_product(pauli_y(), pauli_y());
+    DensityMatrix rho_conj(4, std::vector<C>(4, C(0.0)));
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            rho_conj[i][j] = std::conj(rho[i][j]);
+
+    const DensityMatrix rho_tilde =
+        matmul_dm(spin_flip, matmul_dm(rho_conj, spin_flip));
+    const DensityMatrix root_rho = hermitian_psd_sqrt(hermitian_part(rho));
+    const DensityMatrix product =
+        hermitian_part(matmul_dm(root_rho, matmul_dm(rho_tilde, root_rho)));
+
+    std::vector<double> lambda = psd_eigenvalue_roots(product);
+    std::sort(lambda.begin(), lambda.end());  // ascending: lambda_1 is last
+
+    return std::max(0.0, lambda[3] - lambda[2] - lambda[1] - lambda[0]);
 }
 
 // ---- Partial trace ----
@@ -541,13 +668,21 @@ DensityMatrix gram_left(const DensityMatrix& M, int dim_a, int dim_b) {
     return G;
 }
 
-// Right Schmidt vector v = M† u / sigma for sigma > 0.
+// Right Schmidt vector for singular value sigma > 0.
+//
+// With M = U S V^dagger the reshaped coefficient matrix,
+//   |psi> = sum_ij M[i][j] |i>|j> = sum_k sigma_k (sum_i u_k[i]|i>) (x) (sum_j conj(v_k[j])|j>),
+// so the Schmidt vector on B is conj(v_k), NOT v_k -- equivalently it is the
+// eigenvector of rho_B = conj(M^dagger M), not of M^dagger M.  Hence
+// b_k = conj(M^dagger u_k) / sigma_k = (M^T conj(u_k)) / sigma_k.
+// For a real |psi> the conjugation is a no-op, which is why a real Bell state
+// reconstructs either way.
 Ket right_schmidt_vector(const DensityMatrix& M, const Ket& u, int dim_b, double sigma) {
     Ket v(dim_b, C(0.0));
     const int dim_a = static_cast<int>(M.size());
     for (int k = 0; k < dim_b; ++k)
         for (int i = 0; i < dim_a; ++i)
-            v[k] += std::conj(M[i][k]) * u[i];
+            v[k] += M[i][k] * std::conj(u[i]);
     if (sigma > 1e-15) {
         for (int k = 0; k < dim_b; ++k) v[k] /= sigma;
     }

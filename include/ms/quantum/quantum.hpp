@@ -89,10 +89,42 @@ Ket grover_search(int n_qubits, const std::vector<int>& marked_indices, int n_it
 int grover_optimal_iterations(int n_qubits, int n_marked);
 
 // ---- Entropy & information ----
+
+// von Neumann entropy S(rho) = -Tr(rho log rho) = -sum_i lambda_i log lambda_i,
+// in nats (natural logarithm), over the eigenvalues of rho.  Computed from the
+// full Hermitian eigendecomposition at every dimension -- there is no
+// dimension cap and no diagonal approximation.  S = 0 for a pure state and
+// log(d) for the maximally mixed state of dimension d.
 double von_neumann_entropy(const DensityMatrix& rho);
+
 double purity(const DensityMatrix& rho);  // Tr(rho^2)
+
+// Uhlmann fidelity in the square-root convention (Nielsen & Chuang / Uhlmann):
+//     F(rho, sigma) = Tr sqrt( sqrt(rho) sigma sqrt(rho) ).
+// Symmetric, F in [0, 1], with F(rho, rho) = 1 for mixed states as well as
+// pure ones, and F = 0 exactly when the supports are orthogonal.  For pure
+// states F = |<psi|phi>| -- the MODULUS of the overlap; the squared (Jozsa)
+// convention often written F_Jozsa = |<psi|phi>|^2 is the square of the value
+// returned here.  With this convention the Fuchs-van de Graaf inequalities
+//     1 - F <= trace_distance(rho, sigma) <= sqrt(1 - F^2)
+// hold against trace_distance() below.  Mismatched dimensions return 0.
 double fidelity(const DensityMatrix& rho, const DensityMatrix& sigma);
+
+// Trace distance T(rho, sigma) = (1/2) Tr|rho - sigma|, i.e. half the trace
+// (nuclear) norm -- half the sum of the absolute eigenvalues of rho - sigma,
+// not half the Frobenius norm.  T in [0, 1]; 0 for identical states, 1 for
+// states with orthogonal supports, and sqrt(1 - |<psi|phi>|^2) for pure states.
+// Mismatched dimensions return 0.
 double trace_distance(const DensityMatrix& rho, const DensityMatrix& sigma);
+
+// Wootters concurrence of a TWO-QUBIT state: with
+// rho_tilde = (sigma_y (x) sigma_y) conj(rho) (sigma_y (x) sigma_y) and
+// lambda_1 >= ... >= lambda_4 the square roots of the eigenvalues of
+// rho * rho_tilde,  C = max(0, lambda_1 - lambda_2 - lambda_3 - lambda_4).
+// C = 0 for separable states, 1 for any maximally entangled (Bell) state, and
+// 2|ad - bc| for a pure state a|00> + b|01> + c|10> + d|11>.
+// Defined only for 4x4 input; any other shape returns NaN (a 0 would be
+// indistinguishable from a genuine "separable" answer).
 double concurrence(const DensityMatrix& rho);   // for 2-qubit states
 
 // ---- Partial trace ----

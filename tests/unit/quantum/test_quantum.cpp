@@ -368,10 +368,11 @@ TEST(QuantumEntropy, PureStateNonDiagonalBasis) {
 }
 
 TEST(QuantumEntropy, MaximumEntropy) {
-    // Maximally mixed: rho = I/2 → S = log(2)
+    // Maximally mixed: rho = I/2 → S = log(2).  Exact to round-off, so the old
+    // 0.01 tolerance was far looser than the contract deserves.
     DensityMatrix rho = {{{0.5, 0}, {0, 0}}, {{0, 0}, {0.5, 0}}};
     double S = von_neumann_entropy(rho);
-    EXPECT_NEAR(S, std::log(2.0), 0.01);
+    EXPECT_NEAR(S, std::log(2.0), 1e-12);
 }
 
 // ---- Purity Tr(rho^2) ----
@@ -430,8 +431,21 @@ TEST(QuantumTrace, PartialTrace) {
 
 // ---- Fidelity ----
 TEST(QuantumFidelity, IdenticalStates) {
+    // F(rho, rho) = 1 is the defining normalisation and holds for MIXED states
+    // too -- a rank-one rho on its own is the one case sqrt(|Tr(rho sigma)|)
+    // also happened to get right, so the mixed cases carry the test.
     auto rho = density_matrix(ket_basis(2, 0));
-    EXPECT_NEAR(fidelity(rho, rho), 1.0, 1e-6);
+    EXPECT_NEAR(fidelity(rho, rho), 1.0, 1e-12);
+
+    DensityMatrix half = {{{0.5, 0}, {0, 0}}, {{0, 0}, {0.5, 0}}};
+    EXPECT_NEAR(fidelity(half, half), 1.0, 1e-12);
+
+    auto plus = op_apply(hadamard(), ket_basis(2, 0));
+    DensityMatrix mixed = density_matrix(plus);
+    for (auto& row : mixed)
+        for (auto& value : row) value *= 0.25;
+    for (int i = 0; i < 2; ++i) mixed[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] += C(0.375, 0.0);
+    EXPECT_NEAR(fidelity(mixed, mixed), 1.0, 1e-12);
 }
 
 // ---- Bell states (orthogonality) ----
@@ -924,17 +938,65 @@ TEST(QuantumSchmidt, BasisVectorsOrthonormal) {
 }
 
 TEST(QuantumSchmidt, ReconstructsOriginalState) {
-    auto psi = bell_states()[0];
-    auto decomp = schmidt_decomposition(psi, 2, 2);
+    // |psi> = sum_k sigma_k |a_k> (x) |b_k> must hold COMPONENTWISE, not just up
+    // to overlap probability, and it must hold for COMPLEX states: a real Bell
+    // state reconstructs even when the right Schmidt vectors are conjugated,
+    // because conjugation is a no-op there.  The 2x3 complex case below fails
+    // against a v_k / conj(v_k) mix-up; the Bell state alone never could.
+    struct Case { Ket psi; int da; int db; };
+    const std::vector<Case> cases = {
+        {bell_states()[0], 2, 2},
+        {ket_normalise(Ket{C(0.6, 0.0), C(0.0, 0.0), C(0.0, 0.0), C(0.0, 0.8)}), 2, 2},
+        {ket_normalise(Ket{C(0.3, 0.1), C(-0.5, 0.2), C(0.6, 0.0),
+                           C(0.1, -0.4), C(0.2, 0.5), C(-0.3, -0.2)}), 2, 3},
+    };
 
-    Ket reconstructed(4, C(0.0));
-    for (size_t k = 0; k < decomp.coefficients.size(); ++k) {
-        if (decomp.coefficients[k] < 1e-10) continue;
-        auto term = tensor_product_states(decomp.basis_a[k], decomp.basis_b[k]);
-        for (size_t i = 0; i < term.size(); ++i)
-            reconstructed[i] += decomp.coefficients[k] * term[i];
+    for (size_t c = 0; c < cases.size(); ++c) {
+        const Ket& psi = cases[c].psi;
+        auto decomp = schmidt_decomposition(psi, cases[c].da, cases[c].db);
+        ASSERT_FALSE(decomp.coefficients.empty()) << "case " << c;
+
+        Ket reconstructed(psi.size(), C(0.0));
+        double norm_sq = 0.0;
+        for (size_t k = 0; k < decomp.coefficients.size(); ++k) {
+            norm_sq += decomp.coefficients[k] * decomp.coefficients[k];
+            if (decomp.coefficients[k] < 1e-12) continue;
+            auto term = tensor_product_states(decomp.basis_a[k], decomp.basis_b[k]);
+            for (size_t i = 0; i < term.size(); ++i)
+                reconstructed[i] += decomp.coefficients[k] * term[i];
+        }
+        EXPECT_NEAR(norm_sq, 1.0, 1e-12) << "case " << c;
+        for (size_t i = 0; i < psi.size(); ++i)
+            EXPECT_NEAR(std::abs(reconstructed[i] - psi[i]), 0.0, 1e-10)
+                << "case " << c << " component " << i;
+        EXPECT_NEAR(ket_overlap_prob(psi, reconstructed), 1.0, 1e-12) << "case " << c;
     }
-    EXPECT_NEAR(ket_overlap_prob(psi, reconstructed), 1.0, 1e-8);
+}
+
+TEST(QuantumSchmidt, BasisVectorsDiagonaliseReducedStates) {
+    // |a_k> and |b_k> must be eigenvectors of rho_A and rho_B with the same
+    // eigenvalue sigma_k^2.  rho_B = conj(M^dagger M), so a right singular
+    // vector taken without conjugation is not an eigenvector of rho_B.
+    const Ket psi = ket_normalise(Ket{C(0.3, 0.1), C(-0.5, 0.2), C(0.6, 0.0),
+                                      C(0.1, -0.4), C(0.2, 0.5), C(-0.3, -0.2)});
+    const int da = 2, db = 3;
+    auto decomp = schmidt_decomposition(psi, da, db);
+    const auto rho = density_matrix(psi);
+    const auto rho_a = partial_trace(rho, da, db, 0);
+    const auto rho_b = partial_trace(rho, da, db, 1);
+
+    for (size_t k = 0; k < decomp.coefficients.size(); ++k) {
+        const double lambda = decomp.coefficients[k] * decomp.coefficients[k];
+        if (lambda < 1e-12) continue;
+        const auto ra = op_apply(rho_a, decomp.basis_a[k]);
+        for (size_t i = 0; i < ra.size(); ++i)
+            EXPECT_NEAR(std::abs(ra[i] - lambda * decomp.basis_a[k][i]), 0.0, 1e-10)
+                << "A k=" << k << " i=" << i;
+        const auto rb = op_apply(rho_b, decomp.basis_b[k]);
+        for (size_t i = 0; i < rb.size(); ++i)
+            EXPECT_NEAR(std::abs(rb[i] - lambda * decomp.basis_b[k][i]), 0.0, 1e-10)
+                << "B k=" << k << " i=" << i;
+    }
 }
 
 TEST(QuantumSchmidt, InvalidDimensionsReturnEmpty) {
@@ -955,16 +1017,28 @@ TEST(QuantumAlgebra, AnticommutatorXXIsTwiceIdentity) {
 }
 
 TEST(QuantumAlgebra, TraceDistanceIdenticalAndOrthogonal) {
+    // T between orthogonal pure states is exactly 1, not merely "> 0.4": the
+    // old EXPECT_GT was satisfied by half the Frobenius norm (0.707107).
     auto rho = density_matrix(ket_basis(2, 0));
     auto sigma = density_matrix(ket_basis(2, 1));
-    EXPECT_NEAR(trace_distance(rho, rho), 0.0, 1e-10);
-    EXPECT_GT(trace_distance(rho, sigma), 0.4);
+    EXPECT_NEAR(trace_distance(rho, rho), 0.0, 1e-12);
+    EXPECT_NEAR(trace_distance(rho, sigma), 1.0, 1e-12);
 }
 
 TEST(QuantumAlgebra, BellConcurrenceIsOne) {
-    auto rho = density_matrix(bell_states()[0]);
-    EXPECT_NEAR(concurrence(rho), 1.0, 1e-8);
-    EXPECT_NEAR(concurrence(density_matrix(ket_basis(2, 0))), 0.0, 1e-12);
+    // All four Bell states are maximally entangled -- the old check used only
+    // |Phi+>, the single Bell state the pre-Wootters shortcut got right.
+    const auto bells = bell_states();
+    for (std::size_t i = 0; i < bells.size(); ++i)
+        EXPECT_NEAR(concurrence(density_matrix(bells[i])), 1.0, 1e-9) << "bell " << i;
+
+    // Separability must be checked with a genuine TWO-QUBIT product state.  The
+    // old assertion passed a 2x2 single-qubit matrix, for which concurrence is
+    // undefined and the old body returned 0 by shape rejection, not by physics.
+    EXPECT_NEAR(concurrence(density_matrix(
+                    tensor_product_states(ket_basis(2, 0), ket_basis(2, 0)))),
+                0.0, 1e-9);
+    EXPECT_TRUE(std::isnan(concurrence(density_matrix(ket_basis(2, 0)))));
 }
 
 TEST(QuantumGates, PhaseAndRotationZeroAreIdentity) {
