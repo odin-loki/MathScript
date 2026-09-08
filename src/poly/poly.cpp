@@ -590,6 +590,88 @@ std::vector<std::complex<double>> hessenberg_eigenvalues(Matrix<double> H) {
     return evals;
 }
 
+
+// Aberth-Ehrlich simultaneous root iteration.
+//
+// The previous route -- Wilkinson single-shift QR on the companion matrix --
+// could not converge for an entire ordinary family of inputs. The companion
+// matrix of x^n + c is a cyclic permutation matrix, which is orthogonal, so a
+// QR step gives Q = C, R = I and RQ = C again: the iterate is a fixed point and
+// the Wilkinson shift is identically zero. After the iteration cap the old code
+// read the diagonal of the UNCONVERGED Hessenberg matrix and returned it, so
+// poly_roots(x^3 + 1) reported {0, 0, 0} with no error of any kind, and
+// poly_factor turned x^3 + 1 into x^3.
+//
+// Aberth-Ehrlich has no such fixed point: it is Newton's method on p corrected
+// by the field of the other n-1 approximations,
+//     w_i = (p/p')(z_i) / (1 - (p/p')(z_i) * sum_{j != i} 1/(z_i - z_j)),
+// started from points spread around a circle carrying the Cauchy root bound.
+// The starting angles are offset by a half step so a symmetric root set (again
+// x^n + c) is never approached along its own symmetry axis.
+std::vector<std::complex<double>> aberth_roots(const std::vector<double>& monic_coeffs) {
+    const std::size_t deg = monic_coeffs.size() - 1;
+    std::vector<std::complex<double>> z(deg);
+
+    // Cauchy bound: every root satisfies |x| <= 1 + max_k |a_k / a_n|.
+    double bound = 0.0;
+    for (std::size_t k = 0; k < deg; ++k) {
+        bound = std::max(bound, std::abs(monic_coeffs[k]));
+    }
+    const double radius = 1.0 + bound;
+
+    constexpr double kTwoPi = 6.283185307179586476925286766559;
+    for (std::size_t i = 0; i < deg; ++i) {
+        const double theta =
+            kTwoPi * (static_cast<double>(i) + 0.25) / static_cast<double>(deg) + 0.5;
+        z[i] = std::polar(radius * (0.5 + 0.5 * static_cast<double>(i % 3)) / 1.5, theta);
+    }
+
+    const auto eval = [&monic_coeffs, deg](const std::complex<double>& x) {
+        // Horner for p and p' together.
+        std::complex<double> val = monic_coeffs[deg];
+        std::complex<double> der = 0.0;
+        for (std::size_t k = deg; k-- > 0;) {
+            der = der * x + val;
+            val = val * x + monic_coeffs[k];
+        }
+        return std::pair<std::complex<double>, std::complex<double>>{val, der};
+    };
+
+    constexpr int kMaxSweeps = 500;
+    constexpr double kTiny = 1e-300;
+    for (int sweep = 0; sweep < kMaxSweeps; ++sweep) {
+        double motion = 0.0;
+        for (std::size_t i = 0; i < deg; ++i) {
+            const auto [val, der] = eval(z[i]);
+            if (std::abs(val) == 0.0) {
+                continue;  // exact root, leave it alone
+            }
+            std::complex<double> ratio =
+                (std::abs(der) < kTiny) ? std::complex<double>(radius, 0.0) : val / der;
+            std::complex<double> repulsion = 0.0;
+            for (std::size_t j = 0; j < deg; ++j) {
+                if (j == i) {
+                    continue;
+                }
+                const std::complex<double> diff = z[i] - z[j];
+                if (std::abs(diff) > kTiny) {
+                    repulsion += 1.0 / diff;
+                }
+            }
+            const std::complex<double> denom = 1.0 - ratio * repulsion;
+            const std::complex<double> step =
+                (std::abs(denom) < kTiny) ? ratio : ratio / denom;
+            z[i] -= step;
+            motion = std::max(motion, std::abs(step));
+        }
+        if (motion < 1e-15 * (1.0 + radius)) {
+            break;
+        }
+    }
+
+    return z;
+}
+
 } // namespace
 
 std::vector<std::complex<double>> poly_roots(const std::vector<double>& coeffs) {
@@ -610,17 +692,47 @@ std::vector<std::complex<double>> poly_roots(const std::vector<double>& coeffs) 
         return {(-b + sq) / (2.0 * a), (-b - sq) / (2.0 * a)};
     }
 
-    const auto monic = poly_monic(p);
-    const ColMatrix<double> C = poly_companion_matrix(monic);
+    // Factor out any exact roots at the origin first: p(x) = x^s * q(x). Aberth
+    // handles them, but peeling them keeps q's constant term nonzero, which is
+    // what makes the Cauchy bound meaningful.
+    std::size_t zero_roots = 0;
+    while (zero_roots + 1 < p.size() && p[zero_roots] == 0.0) {
+        ++zero_roots;
+    }
+    std::vector<double> q(p.begin() + static_cast<std::ptrdiff_t>(zero_roots), p.end());
 
-    // Companion matrices are already upper Hessenberg; Wilkinson-shifted QR
-    // (same core algorithm as ms::linalg::eig) yields their eigenvalues/roots.
-    return hessenberg_eigenvalues(C);
+    std::vector<std::complex<double>> out(zero_roots, std::complex<double>(0.0, 0.0));
+    if (q.size() >= 2) {
+        const auto monic = poly_monic(q);
+        auto found = aberth_roots(monic);
+        // A real polynomial has roots in conjugate pairs; snap negligible
+        // imaginary parts so a real root does not come back as 1e-17i.
+        double scale = 0.0;
+        for (const auto& r : found) {
+            scale = std::max(scale, std::abs(r));
+        }
+        const double imag_tol = 1e-10 * std::max(1.0, scale);
+        for (auto& r : found) {
+            if (std::abs(r.imag()) < imag_tol) {
+                r = std::complex<double>(r.real(), 0.0);
+            }
+        }
+        out.insert(out.end(), found.begin(), found.end());
+    }
+    return out;
 }
 
 std::vector<double> poly_fit(const std::vector<double>& xs,
                               const std::vector<double>& ys, int degree) {
-    // Vandermonde least-squares fit
+    // Vandermonde least-squares fit.
+    // The loop below indexes ys[i] for every i < xs.size(), so a size mismatch
+    // used to read out of bounds; a negative degree gave n <= 0. Reject both
+    // rather than returning something indistinguishable from a real fit.
+    if (xs.size() != ys.size() || degree < 0) {
+        return {};
+    }
+    // Empty xs with matching empty ys is NOT rejected: fitting no data returns
+    // degree+1 zero coefficients, which is the documented existing behaviour.
     const int m = static_cast<int>(xs.size());
     const int n = degree + 1;
     // Build V (m x n)
@@ -685,9 +797,57 @@ std::vector<double> poly_fit(const std::vector<double>& xs,
     return c;
 }
 
+namespace {
+// Defined with the other interpolation helpers below, in the same unnamed
+// namespace; declared here so poly_lagrange can reuse its duplicate-node guard.
+bool has_duplicate_nodes(const std::vector<double>& xs, double eps = 1e-12);
+}  // namespace
+
 std::vector<double> poly_lagrange(const std::vector<double>& xs,
                                    const std::vector<double>& ys) {
-    return poly_fit(xs, ys, static_cast<int>(xs.size()) - 1);
+    // Build the interpolant in the Lagrange basis directly.
+    //
+    // This used to be `poly_fit(xs, ys, xs.size() - 1)`, a least-squares solve
+    // of the NORMAL equations. Squaring an already exponentially ill-conditioned
+    // Vandermonde matrix destroys the interpolation property at modest node
+    // counts: with 14 equispaced nodes and alternating 0/1 data the returned
+    // polynomial missed its own nodes by up to 0.56 on unit-magnitude data,
+    // while the header's only promise -- and interp_newton's doc comment -- is
+    // that it interpolates.
+    //
+    // For each i, accumulate ys[i] * prod_{j != i} (x - xs[j]) / (xs[i] - xs[j]).
+    // O(n^2) polynomial operations, no matrix, and exact for separated nodes.
+    if (xs.size() != ys.size() || xs.empty()) {
+        return {};
+    }
+    if (has_duplicate_nodes(xs)) {
+        return {};  // matches interp_newton's documented convention
+    }
+
+    const std::size_t n = xs.size();
+    std::vector<double> result(n, 0.0);
+    for (std::size_t i = 0; i < n; ++i) {
+        // numer = prod_{j != i} (x - xs[j]), built by repeated linear multiply.
+        std::vector<double> numer{1.0};
+        double denom = 1.0;
+        for (std::size_t j = 0; j < n; ++j) {
+            if (j == i) {
+                continue;
+            }
+            std::vector<double> next(numer.size() + 1, 0.0);
+            for (std::size_t k = 0; k < numer.size(); ++k) {
+                next[k] -= numer[k] * xs[j];   // (-xs[j]) * numer
+                next[k + 1] += numer[k];       // x * numer
+            }
+            numer = std::move(next);
+            denom *= (xs[i] - xs[j]);
+        }
+        const double w = ys[i] / denom;
+        for (std::size_t k = 0; k < numer.size() && k < result.size(); ++k) {
+            result[k] += w * numer[k];
+        }
+    }
+    return result;
 }
 
 namespace {
@@ -712,7 +872,7 @@ std::vector<double> newton_form_to_coeffs(const std::vector<double>& top_row,
 
 // True if any two entries of xs coincide within eps (invalid for interpolation
 // with distinct nodes; division by zero in divided differences otherwise).
-bool has_duplicate_nodes(const std::vector<double>& xs, double eps = 1e-12) {
+bool has_duplicate_nodes(const std::vector<double>& xs, double eps) {
     for (size_t i = 0; i < xs.size(); ++i) {
         for (size_t j = i + 1; j < xs.size(); ++j) {
             if (std::abs(xs[i] - xs[j]) < eps) return true;
