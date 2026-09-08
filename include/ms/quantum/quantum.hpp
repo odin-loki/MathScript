@@ -139,6 +139,11 @@ double entanglement_entropy(const Ket& psi, int dim_a, int dim_b);
 // dim_a × dim_b coefficient matrix and take its complex SVD.  The Schmidt
 // coefficients (singular values) satisfy sum_i lambda_i^2 = 1 for a normalised
 // |psi>; their squares are the eigenvalues of either reduced density matrix.
+// dim_a coefficients are always returned; the ones beyond min(dim_a, dim_b),
+// and any that fall at the eigensolver's resolution floor, are exactly 0.
+// The singular values are obtained as square roots of the eigenvalues of
+// M M^dagger, so coefficients below roughly sqrt(eps) ~ 1e-8 are not resolvable
+// and are reported as exactly zero rather than as sqrt(round-off).
 struct SchmidtDecomposition {
     std::vector<double> coefficients;  // Schmidt coefficients (singular values), descending
     std::vector<Ket> basis_a;            // Left Schmidt vectors on subsystem A
@@ -146,7 +151,10 @@ struct SchmidtDecomposition {
 };
 
 SchmidtDecomposition schmidt_decomposition(const Ket& psi, int dim_a, int dim_b);
-// Number of Schmidt coefficients above tol (Schmidt rank / Schmidt number for pure states).
+// Number of Schmidt coefficients above tol (Schmidt rank / Schmidt number for
+// pure states).  Coefficients that are unresolvable (see above) are reported as
+// exactly zero, so any tol in (0, ~1e-8) gives the same count; a tol below that
+// window does NOT buy extra discrimination.
 int schmidt_rank(const Ket& psi, int dim_a, int dim_b, double tol = 1e-10);
 int schmidt_number(const Ket& psi, int dim_a, int dim_b, double tol = 1e-10);
 

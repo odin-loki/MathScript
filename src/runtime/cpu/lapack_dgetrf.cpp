@@ -25,6 +25,22 @@ int dgetrf(int m, int n, double* A, int lda, int* ipiv) {
         return 1;
     }
 
+    // Breakdown is judged against a SCALE-RELATIVE tolerance, not an absolute one.
+    // An absolute epsilon test declares perfectly conditioned matrices such as
+    // 1e-20 * I singular; the criterion below is invariant under a uniform
+    // rescaling of A and reduces to LAPACK's exact-zero test when A is all zeros.
+    double amax = 0.0;
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < m; ++i) {
+            amax = (std::max)(
+                amax,
+                std::abs(A[static_cast<std::size_t>(j) * static_cast<std::size_t>(lda) +
+                           static_cast<std::size_t>(i)]));
+        }
+    }
+    const double pivot_tol = std::numeric_limits<double>::epsilon() *
+                             static_cast<double>((std::max)(m, n)) * amax;
+
     const int k_end = (std::min)(m, n);
     for (int k = 0; k < k_end; ++k) {
         ipiv[k] = k;
@@ -39,7 +55,7 @@ int dgetrf(int m, int n, double* A, int lda, int* ipiv) {
             }
         }
 
-        if (max_val < std::numeric_limits<double>::epsilon()) {
+        if (max_val <= pivot_tol) {
             return k + 1;
         }
 
@@ -67,33 +83,65 @@ void dgetrs(char trans, int n, int nrhs, const double* A, int lda, const int* ip
     if (n <= 0 || nrhs <= 0 || A == nullptr || ipiv == nullptr || B == nullptr) {
         return;
     }
-    if (trans == 'T' || trans == 't') {
+
+    const bool no_trans = (trans == 'N' || trans == 'n');
+    const bool transposed = (trans == 'T' || trans == 't' || trans == 'C' || trans == 'c');
+    if (!no_trans && !transposed) {
+        // Unrecognised trans: leave B untouched rather than silently solving the
+        // wrong system.
         return;
     }
+
+    const std::size_t la = static_cast<std::size_t>(lda);
 
     for (int rhs = 0; rhs < nrhs; ++rhs) {
         double* x = B + static_cast<std::size_t>(rhs) * static_cast<std::size_t>(ldb);
 
-        for (int k = 0; k < n; ++k) {
-            if (ipiv[k] != k) {
-                std::swap(x[k], x[ipiv[k]]);
+        if (no_trans) {
+            // dgetrf produced P A = L U with P applied as the forward swap
+            // sequence below, so A x = b becomes L U x = P b.
+            for (int k = 0; k < n; ++k) {
+                if (ipiv[k] != k) {
+                    std::swap(x[k], x[ipiv[k]]);
+                }
             }
+
+            for (int k = 0; k < n - 1; ++k) {
+                for (int i = k + 1; i < n; ++i) {
+                    const double lik = A[static_cast<std::size_t>(k) * la + static_cast<std::size_t>(i)];
+                    x[i] -= lik * x[k];
+                }
+            }
+
+            for (int i = n - 1; i >= 0; --i) {
+                for (int j = i + 1; j < n; ++j) {
+                    x[i] -= A[static_cast<std::size_t>(j) * la + static_cast<std::size_t>(i)] * x[j];
+                }
+                x[i] /= A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(i)];
+            }
+            continue;
         }
 
-        for (int k = 0; k < n - 1; ++k) {
-            for (int i = k + 1; i < n; ++i) {
-                const double lik =
-                    A[static_cast<std::size_t>(k) * static_cast<std::size_t>(lda) + static_cast<std::size_t>(i)];
-                x[i] -= lik * x[k];
+        // A = P^T L U, hence A^T = U^T L^T P.  Solve U^T y = b (forward, non-unit
+        // diagonal), then L^T z = y (backward, unit diagonal), then x = P^T z,
+        // which undoes the forward swap sequence by replaying it in reverse.
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < i; ++j) {
+                x[i] -= A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(j)] * x[j];
             }
+            x[i] /= A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(i)];
         }
 
         for (int i = n - 1; i >= 0; --i) {
             for (int j = i + 1; j < n; ++j) {
-                x[i] -= A[static_cast<std::size_t>(j) * static_cast<std::size_t>(lda) + static_cast<std::size_t>(i)] *
-                        x[j];
+                x[i] -= A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(j)] * x[j];
             }
-            x[i] /= A[static_cast<std::size_t>(i) * static_cast<std::size_t>(lda) + static_cast<std::size_t>(i)];
+        }
+
+        for (int k = n - 1; k >= 0; --k) {
+            if (ipiv[k] != k) {
+                std::swap(x[k], x[ipiv[k]]);
+            }
         }
     }
 }

@@ -52,8 +52,11 @@ TEST(SpecialMiscTest, jacobi_ratios) {
     const double u = 0.5;
     const double k = 0.5;
     EXPECT_NEAR(jacobi_am(u, k), std::atan2(jacobi_sn(u, k), jacobi_cn(u, k)), 1e-3);
-    EXPECT_NEAR(jacobi_nd(u, k), jacobi_cn(u, k) / jacobi_dn(u, k), 1e-6);
-    EXPECT_NEAR(jacobi_nc(u, k), jacobi_cn(u, k) / jacobi_sn(u, k), 1e-6);
+    // AUDIT FIX: this asserted the DEFECT -- jacobi_nd returned cn/dn (i.e. cd) and jacobi_nc
+    // returned cn/sn (i.e. cs). In Glaisher notation n(u) is identically 1, so nd = 1/dn and
+    // nc = 1/cn.
+    EXPECT_NEAR(jacobi_nd(u, k), 1.0 / jacobi_dn(u, k), 1e-12);
+    EXPECT_NEAR(jacobi_nc(u, k), 1.0 / jacobi_cn(u, k), 1e-12);
 }
 
 TEST(SpecialMiscTest, kelvin_anger_weber_domain) {
@@ -61,8 +64,9 @@ TEST(SpecialMiscTest, kelvin_anger_weber_domain) {
     expect_finite(kelvin_bei(0, 0.8));
     expect_finite(kelvin_ker(0, 0.8));
     expect_finite(kelvin_kei(0, 0.8));
-    EXPECT_NEAR(kelvin_bei(2, 0.5), 0.0, 1e-15);
-    EXPECT_NEAR(kelvin_kei(2, 0.5), 0.0, 1e-15);
+    // AUDIT FIX: bei_nu and kei_nu are not identically zero for nu >= 1.
+    EXPECT_NE(kelvin_bei(2, 0.5), 0.0);
+    EXPECT_NE(kelvin_kei(2, 0.5), 0.0);
     EXPECT_TRUE(std::isnan(kelvin_ber(-1, 0.5)));
     EXPECT_TRUE(std::isnan(kelvin_bei(-1, 0.5)));
     EXPECT_TRUE(std::isnan(kelvin_ker(-1, 0.5)));
@@ -151,7 +155,8 @@ TEST(SpecialMiscTest, remaining_theta_weierstrass_zeta) {
     EXPECT_TRUE(std::isnan(weierstrass_pprime(0.0, 1.0, 0.1)));
     expect_finite(zeta(3.0));
     EXPECT_TRUE(std::isinf(zeta(1.0)));
-    EXPECT_TRUE(std::isnan(zeta(-1.0)));
+    // AUDIT FIX: zeta(-1) = -1/12, not a domain error.
+    EXPECT_NEAR(zeta(-1.0), -1.0 / 12.0, 1e-13);
     EXPECT_TRUE(std::isnan(zeta_hurwitz(0.5, 1.0)));
     expect_finite(lerch_phi(0.3, 2.0, 0.5));
     EXPECT_TRUE(std::isnan(lerch_phi(1.0, 2.0, 0.5)));
@@ -256,7 +261,8 @@ TEST(SpecialMiscTest, remaining_elliptic_negative_k_and_jacobi_u0) {
     EXPECT_DOUBLE_EQ(jacobi_sd(0.0, k), 0.0);
     EXPECT_TRUE(std::isnan(jacobi_ds(0.0, k)));
     EXPECT_TRUE(std::isnan(jacobi_cs(0.0, k)));
-    EXPECT_TRUE(std::isnan(jacobi_nc(0.0, k)));
+    // AUDIT FIX: nc(0,k) = 1/cn(0,k) = 1. It was NaN only because jacobi_nc computed cn/sn.
+    EXPECT_NEAR(jacobi_nc(0.0, k), 1.0, 1e-12);
 }
 
 TEST(SpecialMiscTest, remaining_alias_poly_and_legendre_domain) {

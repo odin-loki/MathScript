@@ -485,8 +485,9 @@ TEST(ReplCommandsTest, special_bessel_struve_kelvin_ext) {
     expect_ok(interp, "kn0 = spherical_kn(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("kn0"), kn_ref, 1e-3);
 
+    // L_0(1) = (2/pi) * sum_{m>=0} 1 / ((2m+1)!!)^2, summed independently.
     const double sl_ref = ms::struve_l(0, 1.0);
-    EXPECT_NEAR(sl_ref, 0.5686566270482879, 1e-6);
+    EXPECT_NEAR(sl_ref, 0.71024318593789071, 1e-9);
     expect_ok(interp, "sl = struve_l(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("sl"), sl_ref, 1e-9);
 
@@ -653,8 +654,11 @@ TEST(ReplCommandsTest, special_jacobi_struve) {
     expect_ok(interp, "sd = jacobi_sd(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("sd"), sd_ref, 1e-3);
 
+    // nc is 1/cn by definition. The previous assertion used cn/sn, which is cs
+    // (and is what jacobi_cs returns), so it only held while jacobi_nc was wrong.
     const double nc_ref = ms::jacobi_nc(u, k);
-    EXPECT_NEAR(nc_ref, cn_ref / sn_ref, 1e-6);
+    EXPECT_NEAR(nc_ref, 1.0 / cn_ref, 1e-12);
+    EXPECT_NEAR(ms::jacobi_cs(u, k), cn_ref / sn_ref, 1e-12);
     expect_ok(interp, "nc = jacobi_nc(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("nc"), nc_ref, 1e-3);
     expect_contains(interp, "jacobi_nc(0.5, 0.5)", "\n");

@@ -458,21 +458,25 @@ void hermitian_eigendecomposition(const DensityMatrix& H_in, int n,
         evals[i] = H[i][i].real();
 }
 
-// Positive-semidefinite square root of a Hermitian matrix:
-// A = U diag(lambda) U^H  ->  sqrt(A) = U diag(sqrt(max(lambda, 0))) U^H.
-// Eigenvalues that come out slightly negative through round-off are clamped to
-// zero, which is the correct projection for a density matrix.
+// Resolution floor for the eigenvalues of a Hermitian positive-semi-definite
+// matrix.  A Jacobi sweep resolves eigenvalues only to O(n * eps * ||M||), and
+// every consumer here takes a SQUARE ROOT of them, which maps that noise up to
+// O(sqrt(eps)) ~ 1e-8: it would otherwise show up as a 1e-8 shortfall in the
+// concurrence of a Bell state, or as a spurious 1e-8 Schmidt coefficient for a
+// product state.  Eigenvalues at or below this floor are therefore taken to be
+// exactly zero, so a root of theirs is exactly zero rather than sqrt(noise).
+double psd_resolution_floor(const std::vector<double>& evals) {
+    double max_abs = 0.0;
+    for (double value : evals) max_abs = std::max(max_abs, std::abs(value));
+    return 8.0 * static_cast<double>(evals.size()) *
+           std::numeric_limits<double>::epsilon() * max_abs;
+}
+
 // Square roots of the eigenvalues of a Hermitian positive-semi-definite matrix,
-// with the round-off floor removed.  A Jacobi sweep resolves eigenvalues only to
-// O(n * eps * ||M||); the square root maps that noise up to O(sqrt(eps)) ~ 1e-8,
-// which would otherwise show up as a 1e-8 shortfall in the concurrence of a Bell
-// state.  Anything at or below the floor is therefore taken to be exactly zero.
+// with the round-off floor above removed.
 std::vector<double> psd_eigenvalue_roots(const DensityMatrix& M) {
     const std::vector<double> mu = hermitian_eigenvalues(M);
-    double mu_max = 0.0;
-    for (double value : mu) mu_max = std::max(mu_max, std::abs(value));
-    const double floor_mu = 8.0 * static_cast<double>(mu.size()) *
-                            std::numeric_limits<double>::epsilon() * mu_max;
+    const double floor_mu = psd_resolution_floor(mu);
 
     std::vector<double> roots(mu.size(), 0.0);
     for (std::size_t i = 0; i < mu.size(); ++i)
@@ -480,6 +484,10 @@ std::vector<double> psd_eigenvalue_roots(const DensityMatrix& M) {
     return roots;
 }
 
+// Positive-semidefinite square root of a Hermitian matrix:
+// A = U diag(lambda) U^H  ->  sqrt(A) = U diag(sqrt(max(lambda, 0))) U^H.
+// Eigenvalues that come out slightly negative through round-off are clamped to
+// zero, which is the correct projection for a density matrix.
 DensityMatrix hermitian_psd_sqrt(const DensityMatrix& A) {
     const int n = static_cast<int>(A.size());
     std::vector<double> evals;
@@ -714,6 +722,14 @@ SchmidtDecomposition schmidt_decomposition(const Ket& psi, int dim_a, int dim_b)
     DensityMatrix evecs;
     hermitian_eigendecomposition(G, dim_a, evals, evecs);
 
+    // The Schmidt coefficients are the square roots of these eigenvalues, so an
+    // eigenvalue sitting at the solver's round-off floor (O(n * eps), which any
+    // exactly singular G produces -- every product state, and every eigenvalue
+    // beyond min(dim_a, dim_b)) would surface as a spurious coefficient of
+    // order sqrt(eps) ~ 1e-8 and be counted by schmidt_rank's 1e-10 default
+    // tolerance.  Snap those to exactly zero.
+    const double floor_ev = psd_resolution_floor(evals);
+
     // Sort eigenvalues (Schmidt coefficient squares) descending.
     std::vector<int> order(dim_a);
     for (int i = 0; i < dim_a; ++i) order[i] = i;
@@ -726,7 +742,7 @@ SchmidtDecomposition schmidt_decomposition(const Ket& psi, int dim_a, int dim_b)
     result.basis_b.reserve(static_cast<size_t>(dim_a));
 
     for (int idx : order) {
-        const double ev = std::max(0.0, evals[idx]);
+        const double ev = evals[idx] > floor_ev ? evals[idx] : 0.0;
         const double sigma = std::sqrt(ev);
         result.coefficients.push_back(sigma);
 

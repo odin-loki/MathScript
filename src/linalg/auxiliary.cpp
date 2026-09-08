@@ -173,9 +173,20 @@ Result<Matrix<S, OA, Alloc>> null(const Matrix<S, OA, Alloc>& A, S tol) {
         return Matrix<S, OA, Alloc>(0, 0, S(0));
     }
 
-    // Tall/square case: the SVD's V is n x n, so its trailing columns already
-    // span the whole null space and the singular values come straight from
-    // LAPACK rather than from a squared Gram matrix.
+    // Tall/square case: the SVD's V is n x n and its singular values come
+    // straight from LAPACK rather than from a squared Gram matrix, so the rank
+    // (and therefore the nullity) is read off sigma directly.
+    //
+    // The trailing columns of V cannot simply be handed back as the basis:
+    // svd() leaves the right singular vector of an exactly-zero singular value
+    // as a zero column (the LAPACK path never fills it, and the Gram fallback
+    // skips it explicitly at svd.cpp's `sigma < 1e-14` guard).  A zero column
+    // satisfies A*v == 0 vacuously, so it would pass every residual check while
+    // carrying no direction at all.  The basis is therefore built by
+    // orthonormal completion: span the ROW space with the reliable
+    // (sigma > cutoff) right singular vectors, then fill the orthogonal
+    // complement -- preferring the SVD's own trailing vectors whenever they are
+    // usable, and falling back to coordinate directions when they are not.
     if (m >= n) {
         auto svd_res = svd(A);
         if (svd_res) {
@@ -187,19 +198,134 @@ Result<Matrix<S, OA, Alloc>> null(const Matrix<S, OA, Alloc>& A, S tol) {
                     cutoff = S(1e-10) * static_cast<S>(std::max(m, n))
                            * static_cast<S>(sigma(0, 0));
                 }
-                std::vector<size_t> cols;
+                size_t rank_r = 0;
                 for (size_t i = 0; i < n; ++i) {
-                    if (static_cast<S>(sigma(i, 0)) <= cutoff) {
-                        cols.push_back(i);
+                    if (static_cast<S>(sigma(i, 0)) > cutoff) {
+                        ++rank_r;
                     }
                 }
-                if (cols.empty()) {
+                const size_t nullity = n - rank_r;
+                if (nullity == 0) {
                     return Matrix<S, OA, Alloc>(n, 0, S(0));
                 }
-                Matrix<S, OA, Alloc> N(n, cols.size(), S(0));
-                for (size_t j = 0; j < cols.size(); ++j) {
+
+                // basis holds an orthonormal set: first the row-space
+                // directions, then the accepted null-space directions.
+                std::vector<std::vector<S>> basis;
+                basis.reserve(n);
+                // Orthogonalise v against `basis` twice (classical
+                // Gram-Schmidt twice is as accurate as modified GS here) and
+                // return the residual norm.
+                auto reduce = [&basis, n](std::vector<S>& v) -> S {
+                    for (int pass = 0; pass < 2; ++pass) {
+                        for (const auto& q : basis) {
+                            S d = S(0);
+                            for (size_t i = 0; i < n; ++i) {
+                                d += q[i] * v[i];
+                            }
+                            for (size_t i = 0; i < n; ++i) {
+                                v[i] -= d * q[i];
+                            }
+                        }
+                    }
+                    S s = S(0);
                     for (size_t i = 0; i < n; ++i) {
-                        N(i, j) = static_cast<S>(V(i, cols[j]));
+                        s += v[i] * v[i];
+                    }
+                    return std::sqrt(s);
+                };
+                auto push_normalised = [&basis, n](std::vector<S>& v, S nrm) {
+                    for (size_t i = 0; i < n; ++i) {
+                        v[i] /= nrm;
+                    }
+                    basis.push_back(v);
+                };
+
+                // 1. Row space: the sigma > cutoff right singular vectors.
+                for (size_t i = 0; i < n && basis.size() < rank_r; ++i) {
+                    if (!(static_cast<S>(sigma(i, 0)) > cutoff)) {
+                        continue;
+                    }
+                    std::vector<S> v(n);
+                    for (size_t k = 0; k < n; ++k) {
+                        v[k] = static_cast<S>(V(k, i));
+                    }
+                    const S nrm = reduce(v);
+                    if (nrm > S(0.5)) {
+                        push_normalised(v, nrm);
+                    }
+                }
+                // Any singular vector that came back degenerate is replaced by
+                // the row of A that is furthest from the span built so far;
+                // rows of A live in the row space, so the span stays correct.
+                while (basis.size() < rank_r) {
+                    std::vector<S> best;
+                    S best_nrm = S(0);
+                    for (size_t i = 0; i < m; ++i) {
+                        std::vector<S> row(n);
+                        for (size_t k = 0; k < n; ++k) {
+                            row[k] = A(i, k);
+                        }
+                        const S nrm = reduce(row);
+                        if (nrm > best_nrm) {
+                            best_nrm = nrm;
+                            best = row;
+                        }
+                    }
+                    if (best.empty() || !(best_nrm > S(0))) {
+                        break;
+                    }
+                    push_normalised(best, best_nrm);
+                }
+
+                // 2. Null space: the remaining singular vectors when usable.
+                const size_t row_space = basis.size();
+                for (size_t i = 0; i < n && basis.size() < row_space + nullity; ++i) {
+                    if (static_cast<S>(sigma(i, 0)) > cutoff) {
+                        continue;
+                    }
+                    std::vector<S> v(n);
+                    for (size_t k = 0; k < n; ++k) {
+                        v[k] = static_cast<S>(V(k, i));
+                    }
+                    const S nrm = reduce(v);
+                    if (nrm > S(0.5)) {
+                        push_normalised(v, nrm);
+                    }
+                }
+                // 3. Complete with the coordinate direction that is furthest
+                //    from the current span (its residual is at least
+                //    sqrt((n - |basis|)/n), so this always terminates). A
+                //    candidate that is already essentially orthogonal to the
+                //    span is taken immediately -- it is just as good a basis
+                //    vector as the maximiser, and stopping early keeps the
+                //    common case (few, well-separated directions) at O(n^3).
+                while (basis.size() < row_space + nullity) {
+                    std::vector<S> best;
+                    S best_nrm = S(0);
+                    for (size_t j = 0; j < n; ++j) {
+                        std::vector<S> e(n, S(0));
+                        e[j] = S(1);
+                        const S nrm = reduce(e);
+                        if (nrm > best_nrm) {
+                            best_nrm = nrm;
+                            best = e;
+                        }
+                        if (best_nrm > S(0.9)) {
+                            break;
+                        }
+                    }
+                    if (best.empty() || !(best_nrm > S(0))) {
+                        break;
+                    }
+                    push_normalised(best, best_nrm);
+                }
+
+                const size_t got = basis.size() - row_space;
+                Matrix<S, OA, Alloc> N(n, got, S(0));
+                for (size_t j = 0; j < got; ++j) {
+                    for (size_t i = 0; i < n; ++i) {
+                        N(i, j) = basis[row_space + j][i];
                     }
                 }
                 return N;

@@ -33,7 +33,12 @@ TEST(IntegrationFem,  Fem3dQuantumEvolve) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     EXPECT_GT(interp.state().matrices.at("u3").rows(), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");

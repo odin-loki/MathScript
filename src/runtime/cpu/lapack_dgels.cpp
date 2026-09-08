@@ -36,6 +36,41 @@ void apply_reflector_left_rows(
     }
 }
 
+// C := C * H(i) for the reflector H(i) = I - tau * v * v^T stored in column i of A
+// with the dgeqrf convention (v[i] = 1 implicit, v[r] = A(r, i) for r > i).  Here
+// v lives in R^n, so the update touches columns i..n-1 of every row of C.
+void apply_reflector_right_cols(
+    int m,
+    int n,
+    int i,
+    const double* A,
+    int lda,
+    double tau,
+    double* C,
+    int ldc) {
+    if (tau == 0.0 || m <= 0) {
+        return;
+    }
+    const std::size_t la = static_cast<std::size_t>(lda);
+    const std::size_t lc = static_cast<std::size_t>(ldc);
+
+    for (int r = 0; r < m; ++r) {
+        double dot = C[static_cast<std::size_t>(r) + static_cast<std::size_t>(i) * lc];
+        for (int j = i + 1; j < n; ++j) {
+            dot += A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(j)] *
+                   C[static_cast<std::size_t>(r) + static_cast<std::size_t>(j) * lc];
+        }
+        if (dot == 0.0) {
+            continue;
+        }
+        C[static_cast<std::size_t>(r) + static_cast<std::size_t>(i) * lc] -= tau * dot;
+        for (int j = i + 1; j < n; ++j) {
+            C[static_cast<std::size_t>(r) + static_cast<std::size_t>(j) * lc] -=
+                tau * dot * A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(j)];
+        }
+    }
+}
+
 } // namespace
 
 void dormqr(
@@ -52,23 +87,45 @@ void dormqr(
     if (m <= 0 || n <= 0 || k <= 0 || A == nullptr || tau == nullptr || C == nullptr) {
         return;
     }
-    if (side != 'L' && side != 'l') {
+    const bool left = (side == 'L' || side == 'l');
+    const bool right = (side == 'R' || side == 'r');
+    if (!left && !right) {
         return;
     }
-    if (trans != 'T' && trans != 't' && trans != 'N' && trans != 'n') {
+    const bool transposed = (trans == 'T' || trans == 't');
+    if (!transposed && trans != 'N' && trans != 'n') {
         return;
     }
 
-    const int apply_count = (k < m) ? k : m;
-    if (trans == 'T' || trans == 't') {
-        for (int i = 0; i < apply_count; ++i) {
+    // Q = H(0) H(1) ... H(k-1).  Applying Q on either side means sweeping the
+    // reflectors in the order that reproduces that product; Q^T reverses it.
+    if (left) {
+        // C := op(Q) * C, Q is m-by-m.
+        const int apply_count = (k < m) ? k : m;
+        if (transposed) {
+            for (int i = 0; i < apply_count; ++i) {
+                apply_reflector_left_rows(m, i, n, A, lda, tau[i], C, ldc);
+            }
+            return;
+        }
+        for (int i = apply_count - 1; i >= 0; --i) {
             apply_reflector_left_rows(m, i, n, A, lda, tau[i], C, ldc);
         }
         return;
     }
 
-    for (int i = apply_count - 1; i >= 0; --i) {
-        apply_reflector_left_rows(m, i, n, A, lda, tau[i], C, ldc);
+    // C := C * op(Q), Q is n-by-n.
+    const int apply_count = (k < n) ? k : n;
+    if (transposed) {
+        // C * Q^T = C H(k-1) ... H(0)
+        for (int i = apply_count - 1; i >= 0; --i) {
+            apply_reflector_right_cols(m, n, i, A, lda, tau[i], C, ldc);
+        }
+        return;
+    }
+    // C * Q = C H(0) ... H(k-1)
+    for (int i = 0; i < apply_count; ++i) {
+        apply_reflector_right_cols(m, n, i, A, lda, tau[i], C, ldc);
     }
 }
 

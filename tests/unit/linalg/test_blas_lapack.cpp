@@ -128,126 +128,21 @@ ColMatrix<double> op_triangular(const ColMatrix<double>& A, char uplo, char tran
     return op;
 }
 
-void reference_dtrsm_left(
-    char uplo,
-    char trans,
-    char diag,
-    int m,
-    int n,
-    double alpha,
-    const ColMatrix<double>& A,
-    const ColMatrix<double>& B_in,
-    ColMatrix<double>& X_out) {
-    const ColMatrix<double> op = op_triangular(A, uplo, trans);
-    X_out = B_in;
-    for (int col = 0; col < n; ++col) {
-        if (is_lower(uplo) && is_no_transpose(trans)) {
-            for (int i = 0; i < m; ++i) {
-                double sum = alpha * B_in(static_cast<std::size_t>(i), static_cast<std::size_t>(col));
-                for (int k = 0; k < i; ++k) {
-                    sum -= op(static_cast<std::size_t>(i), static_cast<std::size_t>(k)) *
-                           X_out(static_cast<std::size_t>(k), static_cast<std::size_t>(col));
-                }
-                const double d = is_unit_diag(diag) ? 1.0 : op(static_cast<std::size_t>(i), static_cast<std::size_t>(i));
-                X_out(static_cast<std::size_t>(i), static_cast<std::size_t>(col)) = sum / d;
-            }
-        } else if (is_upper(uplo) && is_no_transpose(trans)) {
-            for (int i = m - 1; i >= 0; --i) {
-                double sum = alpha * B_in(static_cast<std::size_t>(i), static_cast<std::size_t>(col));
-                for (int k = i + 1; k < m; ++k) {
-                    sum -= op(static_cast<std::size_t>(i), static_cast<std::size_t>(k)) *
-                           X_out(static_cast<std::size_t>(k), static_cast<std::size_t>(col));
-                }
-                const double d = is_unit_diag(diag) ? 1.0 : op(static_cast<std::size_t>(i), static_cast<std::size_t>(i));
-                X_out(static_cast<std::size_t>(i), static_cast<std::size_t>(col)) = sum / d;
-            }
-        } else {
-            for (int i = 0; i < m; ++i) {
-                double sum = alpha * B_in(static_cast<std::size_t>(i), static_cast<std::size_t>(col));
-                for (int k = 0; k < i; ++k) {
-                    sum -= op(static_cast<std::size_t>(i), static_cast<std::size_t>(k)) *
-                           X_out(static_cast<std::size_t>(k), static_cast<std::size_t>(col));
-                }
-                const double d = is_unit_diag(diag) ? 1.0 : op(static_cast<std::size_t>(i), static_cast<std::size_t>(i));
-                X_out(static_cast<std::size_t>(i), static_cast<std::size_t>(col)) = sum / d;
-            }
+// op(A) as dtrsm actually references it: the named triangle only, with the
+// diagonal replaced by 1 when diag='U', transposed when transa != 'N'.
+ColMatrix<double> op_triangular_with_diag(const ColMatrix<double>& A, char uplo, char trans, char diag) {
+    ColMatrix<double> op = op_triangular(A, uplo, trans);
+    if (is_unit_diag(diag)) {
+        for (std::size_t i = 0; i < op.rows(); ++i) {
+            op(i, i) = 1.0;
         }
     }
+    return op;
 }
 
-void reference_dtrsm_generic(
-    char side,
-    char uplo,
-    char trans,
-    char diag,
-    int m,
-    int n,
-    double alpha,
-    const double* A,
-    int lda,
-    const double* B_in,
-    int ldb,
-    double* B_out) {
-    auto fetch_a = [&](int i, int k) {
-        if (is_no_transpose(trans)) {
-            return A[static_cast<std::size_t>(k) * static_cast<std::size_t>(lda) + static_cast<std::size_t>(i)];
-        }
-        return A[static_cast<std::size_t>(i) * static_cast<std::size_t>(lda) + static_cast<std::size_t>(k)];
-    };
-    auto diag_at = [&](int i) {
-        if (is_unit_diag(diag)) {
-            return 1.0;
-        }
-        return fetch_a(i, i);
-    };
-
-    for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < m; ++i) {
-            B_out[static_cast<std::size_t>(j) * static_cast<std::size_t>(ldb) + static_cast<std::size_t>(i)] =
-                B_in[static_cast<std::size_t>(j) * static_cast<std::size_t>(ldb) + static_cast<std::size_t>(i)];
-        }
-    }
-
-    if (is_left(side) && is_no_transpose(trans)) {
-        for (int j = 0; j < n; ++j) {
-            double* b_col = B_out + static_cast<std::size_t>(j) * static_cast<std::size_t>(ldb);
-            for (int i = m; i-- > 0;) {
-                double sum = alpha * b_col[i];
-                const int k_start = is_lower(uplo) ? 0 : i + 1;
-                const int k_end = is_lower(uplo) ? i : m;
-                for (int k = k_start; k < k_end; ++k) {
-                    if (k == i) {
-                        continue;
-                    }
-                    sum -= fetch_a(i, k) * b_col[k];
-                }
-                if (is_lower(uplo)) {
-                    sum -= fetch_a(i, i) * b_col[i];
-                    b_col[i] = sum / diag_at(i);
-                } else {
-                    b_col[i] = sum / diag_at(i);
-                }
-            }
-        }
-        return;
-    }
-
-    for (int j = 0; j < n; ++j) {
-        double* b_col = B_out + static_cast<std::size_t>(j) * static_cast<std::size_t>(ldb);
-        for (int i = 0; i < m; ++i) {
-            double sum = alpha * b_col[i];
-            for (int k = 0; k < m; ++k) {
-                if (k == i) {
-                    continue;
-                }
-                sum -= fetch_a(k, i) * b_col[k];
-            }
-            sum -= fetch_a(i, i) * b_col[i];
-            b_col[i] = sum / diag_at(i);
-        }
-    }
-}
-
+// Verify the DEFINING EQUATION rather than comparing against a second copy of the
+// implementation: dtrsm must produce the X with op(A) * X == alpha * B (side='L')
+// or X * op(A) == alpha * B (side='R').
 void expect_dtrsm_matches_reference(
     char side,
     char uplo,
@@ -259,22 +154,32 @@ void expect_dtrsm_matches_reference(
     const ColMatrix<double>& A,
     const ColMatrix<double>& B_in) {
     ColMatrix<double> got = B_in;
-    ColMatrix<double> ref = B_in;
     const int lda = static_cast<int>(A.rows());
     const int ldb = static_cast<int>(got.rows());
     cpu::blas::dtrsm(side, uplo, trans, diag, m, n, alpha, A.data(), lda, got.data(), ldb);
-    if (is_left(side) && is_lower(uplo) && is_no_transpose(trans)) {
-        reference_dtrsm_left(uplo, trans, diag, m, n, alpha, A, B_in, ref);
-    } else {
-        reference_dtrsm_generic(
-            side, uplo, trans, diag, m, n, alpha, A.data(), lda, B_in.data(), ldb, ref.data());
-    }
+
+    ASSERT_TRUE(is_lower(uplo) || is_upper(uplo)) << "uplo must name a triangle";
+    const int k = is_left(side) ? m : n;
+    const ColMatrix<double> op = op_triangular_with_diag(A, uplo, trans, diag);
+    ASSERT_GE(static_cast<int>(op.rows()), k);
+
     for (int j = 0; j < n; ++j) {
         for (int i = 0; i < m; ++i) {
-            EXPECT_NEAR(got(static_cast<std::size_t>(i), static_cast<std::size_t>(j)),
-                        ref(static_cast<std::size_t>(i), static_cast<std::size_t>(j)),
-                        1e-10)
-                << "side=" << side << " uplo=" << uplo << " trans=" << trans << " at (" << i << "," << j << ")";
+            double acc = 0.0;
+            if (is_left(side)) {
+                for (int p = 0; p < k; ++p) {
+                    acc += op(static_cast<std::size_t>(i), static_cast<std::size_t>(p)) *
+                           got(static_cast<std::size_t>(p), static_cast<std::size_t>(j));
+                }
+            } else {
+                for (int p = 0; p < k; ++p) {
+                    acc += got(static_cast<std::size_t>(i), static_cast<std::size_t>(p)) *
+                           op(static_cast<std::size_t>(p), static_cast<std::size_t>(j));
+                }
+            }
+            EXPECT_NEAR(acc, alpha * B_in(static_cast<std::size_t>(i), static_cast<std::size_t>(j)), 1e-12)
+                << "side=" << side << " uplo=" << uplo << " trans=" << trans << " diag=" << diag
+                << " at (" << i << "," << j << ")";
         }
     }
 }
@@ -3167,9 +3072,34 @@ TEST(LapackDormqrTest, remaining_side_trans_null_and_tau_zero) {
     std::vector<double> tau(2);
     ASSERT_EQ(cpu::lapack::dgeqrf(2, 2, A.data(), 2, tau.data()), 0);
 
-    ColMatrix<double> C{{1.0, 0.0}, {0.0, 1.0}};
-    const double c00 = C(0, 0);
+    // side='R' is a real right-multiplication by Q, not a no-op: build Q
+    // explicitly with side='L' on the identity and check C*Q against it.
+    ColMatrix<double> Q{{1.0, 0.0}, {0.0, 1.0}};
+    cpu::lapack::dormqr('L', 'N', 2, 2, 2, A.data(), 2, tau.data(), Q.data(), 2);
+
+    ColMatrix<double> C{{1.0, 2.0}, {3.0, 4.0}};
+    const ColMatrix<double> C_in = C;
     cpu::lapack::dormqr('R', 'N', 2, 2, 2, A.data(), 2, tau.data(), C.data(), 2);
+    for (std::size_t i = 0; i < 2; ++i) {
+        for (std::size_t j = 0; j < 2; ++j) {
+            double acc = 0.0;
+            for (std::size_t p = 0; p < 2; ++p) {
+                acc += C_in(i, p) * Q(p, j);
+            }
+            EXPECT_NEAR(C(i, j), acc, 1e-13) << "C*Q at (" << i << "," << j << ")";
+        }
+    }
+    // C*Q then C*Q^T must return the original matrix.
+    cpu::lapack::dormqr('R', 'T', 2, 2, 2, A.data(), 2, tau.data(), C.data(), 2);
+    for (std::size_t i = 0; i < 2; ++i) {
+        for (std::size_t j = 0; j < 2; ++j) {
+            EXPECT_NEAR(C(i, j), C_in(i, j), 1e-13);
+        }
+    }
+
+    // An unrecognised side or trans still leaves C untouched.
+    const double c00 = C(0, 0);
+    cpu::lapack::dormqr('X', 'N', 2, 2, 2, A.data(), 2, tau.data(), C.data(), 2);
     EXPECT_NEAR(C(0, 0), c00, 1e-15);
 
     cpu::lapack::dormqr('L', 'X', 2, 2, 2, A.data(), 2, tau.data(), C.data(), 2);

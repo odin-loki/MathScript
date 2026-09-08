@@ -10,6 +10,7 @@
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 namespace ms {
 
@@ -504,6 +505,20 @@ constexpr T tiny() {
 // Cast helpers
 // ---------------------------------------------------------------------------
 
+/// Value-preserving cast. Returns OverflowError when x is not representable in T.
+///
+/// Integer-to-integer conversions are checked with std::in_range, which compares
+/// mathematical values and therefore handles every signed/unsigned crossing and
+/// every width combination. Converting the bound to the source type first (the
+/// obvious-looking `x < static_cast<U>(T::min())`) is wrong whenever the bound is
+/// not representable in U: it wraps, and the comparison then rejects perfectly
+/// valid values (e.g. every non-negative uint32_t when narrowing to int32_t) or
+/// accepts invalid ones.
+///
+/// Floating-to-integer conversions truncate toward zero, as static_cast does, and
+/// the range test uses the exact power of two 2^digits(T) so that it stays exact
+/// in the source floating type (T::max() itself generally rounds up when
+/// converted to float/double, which would let 2^63 through for int64_t).
 template<typename T, typename U>
   requires detail::is_std_arithmetic_v<T> && detail::is_std_arithmetic_v<U>
 Result<T> narrow(U x) {
@@ -518,26 +533,37 @@ Result<T> narrow(U x) {
 
     if constexpr (std::is_integral_v<T>) {
         if constexpr (std::is_integral_v<U>) {
-            if (x < static_cast<U>(std::numeric_limits<T>::min()) ||
-                x > static_cast<U>(std::numeric_limits<T>::max())) {
+            if (!std::in_range<T>(x)) {
                 return detail::overflow<T>("narrow");
             }
+            return static_cast<T>(x);
         } else {
-            if (x < static_cast<U>(std::numeric_limits<T>::min()) ||
-                x > static_cast<U>(std::numeric_limits<T>::max())) {
-                return detail::overflow<T>("narrow");
+            const U truncated = std::trunc(x);
+            const U limit = std::ldexp(U{1}, std::numeric_limits<T>::digits);
+            if constexpr (std::is_signed_v<T>) {
+                // min(T) == -2^digits and max(T) == 2^digits - 1 exactly.
+                if (truncated < -limit || truncated >= limit) {
+                    return detail::overflow<T>("narrow");
+                }
+            } else {
+                // min(T) == 0 and max(T) == 2^digits - 1 exactly.
+                if (truncated < U{0} || truncated >= limit) {
+                    return detail::overflow<T>("narrow");
+                }
             }
+            return static_cast<T>(truncated);
         }
     } else {
-        if constexpr (std::is_integral_v<U>) {
-            if (static_cast<long double>(x) > static_cast<long double>(std::numeric_limits<T>::max()) ||
-                static_cast<long double>(x) < static_cast<long double>(std::numeric_limits<T>::lowest())) {
+        if constexpr (std::is_floating_point_v<U>) {
+            // Every integer type here fits in float and double, so only a
+            // floating-to-floating narrowing can overflow.
+            if (x > static_cast<U>(std::numeric_limits<T>::max()) ||
+                x < static_cast<U>(std::numeric_limits<T>::lowest())) {
                 return detail::overflow<T>("narrow");
             }
         }
+        return static_cast<T>(x);
     }
-
-    return static_cast<T>(x);
 }
 
 template<typename T, typename U>

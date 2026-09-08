@@ -38,7 +38,19 @@ template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>>
 solve(const Matrix<S, OA, Alloc>& A, const Matrix<S, OA, Alloc>& b);
 
-// Matrix exponential
+/// @brief Matrix exponential e^A.
+///
+/// @note  Scaling and squaring with a Pade approximant (Higham 2005): the
+///        order m is the smallest of 3/5/7/9/13 whose backward-error bound
+///        theta_m covers ||A||_1; above theta_13 the matrix is scaled by 2^-s,
+///        the order-13 approximant is evaluated, and the result is squared s
+///        times. There is no norm restriction and no accuracy caveat -- the
+///        relative error is at round-off level for any ||A||. A low-precision
+///        scalar type (float) caps the ladder at m = 7, whose coefficients fit
+///        a 24-bit significand, and scales further instead.
+/// @return DimensionMismatch if A is not square; DomainError if A has
+///         non-finite entries; SingularMatrix in the (pathological) case where
+///         the Pade denominator cannot be factorised.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>>
 expm(const Matrix<S, OA, Alloc>& A);

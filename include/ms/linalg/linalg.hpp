@@ -191,14 +191,69 @@ Result<Matrix<S, OA, Alloc>> solve_sylvester(
     const Matrix<S, OA, Alloc>& B,
     const Matrix<S, OA, Alloc>& C);
 
-// Matrix functions
+// ---------------------------------------------------------------------------
+// Matrix functions (logm, sqrtm, sinm, cosm, funm)
+//
+// DOMAIN OF VALIDITY -- read this before calling any of the five.
+//
+// A SYMMETRIC A is diagonalised by an orthogonal V (eig_sym) and f(A) is
+// evaluated exactly as V*diag(f(lambda))*V^T. No restriction beyond f being
+// finite on the spectrum.
+//
+// A NON-SYMMETRIC A goes through the real Schur form A = Q*T*Q^T:
+//   * sqrtm uses the Bjorck-Hammarling triangular square-root recurrence,
+//     which stays well defined for repeated eigenvalues;
+//   * logm, sinm, cosm and funm use the (unblocked) Parlett recurrence, whose
+//     divisor is T(j,j) - T(i,i).
+// Consequently these inputs are REPORTED AS DomainError rather than served
+// with a plausible but wrong matrix:
+//   * a complex-conjugate eigenvalue pair (a 2x2 block of the real Schur
+//     form) -- a real-arithmetic evaluation cannot represent f on it;
+//   * for logm/sinm/cosm/funm, two diagonal entries of T closer than
+//     1e-8*||T||_F (repeated or merely clustered eigenvalues), unless the
+//     corresponding numerator is itself negligible. A blocked Schur-Parlett,
+//     which would remove this restriction, is NOT implemented;
+//   * for sqrtm, an eigenvalue below -16*n*eps*||T||_F (no real square root)
+//     -- the tolerance is loose enough that a positive semidefinite matrix
+//     whose smallest eigenvalue is negative only by round-off still works;
+//   * for logm, a non-positive eigenvalue (no real logarithm).
+// None of the five clamps, truncates or substitutes a value silently.
+// ---------------------------------------------------------------------------
+
+/// @brief Real matrix logarithm: exp(logm(A)) == A.
+/// @return DimensionMismatch if A is not square; DomainError on any input
+///         outside the domain described above (in particular a symmetric A
+///         that is not positive definite).
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> logm(const Matrix<S, OA, Alloc>& A);
 
+/// @brief Principal real matrix square root: sqrtm(A)*sqrtm(A) == A.
+/// @return DimensionMismatch if A is not square; DomainError on any input
+///         outside the domain described above (negative eigenvalue, complex
+///         pair, or a defective zero eigenvalue that admits no square root).
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> sqrtm(const Matrix<S, OA, Alloc>& A);
 
-// Iterative solvers
+// ---------------------------------------------------------------------------
+// Iterative solvers (cg, jacobi, bicgstab, gmres, minres; also qmr/tfqmr/
+// lsqr/lsmr/pcg below)
+//
+// SHARED CONTRACT
+//   * @p b may have any number of columns. Each Krylov method here works on a
+//     single right-hand side, so a multi-column b is solved COLUMN BY COLUMN
+//     and the columns are assembled into an n x nrhs result -- the same shape
+//     and the same values solve() would give. A failure on any one column
+//     fails the whole call.
+//   * A convergence claim is always confirmed against the TRUE residual
+//     ||b - A x||, never against a recursively updated estimate alone; the
+//     iterate is returned only when that residual is within tol of ||b||
+//     (10*tol once the loop has ended). Otherwise the call returns
+//     ConvergenceFail{iterations, residual} -- including on a breakdown, so a
+//     NaN iterate can never be handed back as a success.
+//   * b == 0 short-circuits to the exact zero vector.
+//   * DimensionMismatch if A is not square or b's rows do not match it.
+// ---------------------------------------------------------------------------
+
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> cg(
     const Matrix<S, OA, Alloc>& A,
@@ -246,22 +301,63 @@ template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> pinv(const Matrix<S, OA, Alloc>& A,
                                    S tol = S(0));
 
+/// @brief Orthonormal basis of the null space of A, as an n x (n - rank)
+///        matrix N with A*N == 0 and N^T*N == I.
+///
+/// @note  @p tol is a cutoff in SINGULAR-VALUE units (the same convention
+///        rank(), pinv() and orth() use), not a relative or squared one: a
+///        singular value is treated as zero when sigma_i <= tol. Passing 0
+///        selects the default, 1e-10 * max(m,n) * sigma_max for m >= n --
+///        which makes the result invariant under a uniform rescaling of A.
+/// @note  For m >= n the rank comes from the SVD's singular values and the
+///        basis is built by orthonormal completion of the row space, so every
+///        returned column is a genuine unit vector even when the underlying
+///        SVD leaves the right singular vector of an exactly zero singular
+///        value unpopulated. For the wide case m < n the thin SVD's V (n x m)
+///        cannot span an (n - m)-dimensional null space, so the eigenvectors
+///        of A^T A are used instead; forming A^T A halves the available
+///        digits, so the default cutoff there is widened to
+///        sqrt(eps) * max(m,n) * sigma_max.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> null(const Matrix<S, OA, Alloc>& A,
                                    S tol = S(0));
 
+/// @brief Orthonormal basis of the column space of A, as an m x rank matrix Q
+///        with Q^T*Q == I and Q*Q^T*A == A.
+///
+/// @note  Computed from the SVD (the leading rank columns of U), because an
+///        unpivoted QR is not rank revealing and its leading columns are the
+///        wrong set whenever the deficiency is not in the trailing columns.
+/// @note  @p tol is a cutoff in singular-value units; 0 selects the default
+///        1e-10 * max(m,n) * sigma_max, matching rank(), pinv() and null().
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> orth(const Matrix<S, OA, Alloc>& A,
                                    S tol = S(0));
 
 // --- New matrix functions ---
+// See the "DOMAIN OF VALIDITY" block above logm/sqrtm: all three go through
+// the same symmetric / Schur-Parlett split and reject the same inputs.
+
+/// @brief Matrix sine. Satisfies sinm(A)^2 + cosm(A)^2 == I.
+/// @return DimensionMismatch if A is not square; DomainError for a
+///         non-symmetric A with complex-conjugate or clustered eigenvalues.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> sinm(const Matrix<S, OA, Alloc>& A);
 
+/// @brief Matrix cosine. Satisfies sinm(A)^2 + cosm(A)^2 == I.
+/// @return DimensionMismatch if A is not square; DomainError for a
+///         non-symmetric A with complex-conjugate or clustered eigenvalues.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> cosm(const Matrix<S, OA, Alloc>& A);
 
-// funm: apply scalar function via Schur decomposition
+/// @brief f(A) for a scalar f, evaluated on the eigenvalues: exactly via the
+///        orthogonal eigenbasis for a symmetric A, otherwise by the Parlett
+///        recurrence on the real Schur factor (this is the "via Schur
+///        decomposition" the name promises).
+/// @return DimensionMismatch if A is not square; DomainError for an empty
+///         function object, for an f that is not finite at some eigenvalue,
+///         or for a non-symmetric A with complex-conjugate or clustered
+///         eigenvalues.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> funm(const Matrix<S, OA, Alloc>& A,
                                    std::function<S(S)> func);
