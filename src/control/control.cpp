@@ -36,6 +36,11 @@ static std::vector<double> matvec(const std::vector<std::vector<double>>& A,
 }
 
 // Matrix-matrix multiply
+// Full Gauss-Jordan inverse with partial pivoting; defined further down with the
+// Kalman helpers. Declared here so the Riccati family can invert a general R.
+static std::vector<std::vector<double>> kalman_safe_inverse(
+    const std::vector<std::vector<double>>& M, bool& ok);
+
 static std::vector<std::vector<double>> matmul(
     const std::vector<std::vector<double>>& A,
     const std::vector<std::vector<double>>& B) {
@@ -714,20 +719,53 @@ StepData step_response(const TransferFunction& sys, double t_end, int n_pts) {
     data.y.resize(n_pts);
     double dt = t_end / (n_pts - 1);
 
-    // State vector x
+    // Exact zero-order-hold propagation, which is what the section heading has
+    // always claimed. This was forward Euler (x += dt * (A x + B u)) with a
+    // fixed dt and no stability guard: unconditionally unstable for any system
+    // whose fastest pole satisfies |1 + dt*lambda| > 1, so a stiff plant blew up
+    // or a lightly damped one drifted, silently and with no error return.
+    //
+    // c2d_zoh_ab builds Ad = e^{A dt} and Bd = integral_0^dt e^{A tau} B dtau
+    // from the augmented exponential exp([[A, B], [0, 0]] * dt), which is exact
+    // for a step input held constant across each sample and needs no inverse of
+    // A. x[k+1] = Ad x[k] + Bd u is then exact at every sample, whatever dt is.
+    std::vector<std::vector<double>> Ad;
+    std::vector<std::vector<double>> Bd;
     std::vector<double> x(n, 0.0);
+    const auto disc = c2d_zoh_ab(s.A, s.B, dt, Ad, Bd);
+
+    if (disc) {
+        for (int i = 0; i < n_pts; ++i) {
+            data.t[i] = i * dt;
+            double y = s.D[0][0];  // D*u with u = 1
+            for (int j = 0; j < n; ++j) y += s.C[0][j] * x[j];
+            data.y[i] = y;
+            std::vector<double> xn(static_cast<size_t>(n), 0.0);
+            for (int a = 0; a < n; ++a) {
+                double acc = Bd[static_cast<size_t>(a)][0];  // Bd * u, u = 1
+                for (int b = 0; b < n; ++b) {
+                    acc += Ad[static_cast<size_t>(a)][static_cast<size_t>(b)] *
+                           x[static_cast<size_t>(b)];
+                }
+                xn[static_cast<size_t>(a)] = acc;
+            }
+            x = std::move(xn);
+        }
+        return data;
+    }
+
+    // The exponential could not be formed (degenerate realisation): fall back to
+    // the previous explicit-Euler march rather than returning nothing.
     std::vector<double> xdot;
     xdot.reserve(static_cast<size_t>(n));
-    // Simple forward Euler integration: u(t) = 1 (step)
+    std::fill(x.begin(), x.end(), 0.0);
     for (int i = 0; i < n_pts; ++i) {
         data.t[i] = i * dt;
-        // y = C*x + D*u
-        double y = s.D[0][0]; // D*u, u=1
+        double y = s.D[0][0];
         for (int j = 0; j < n; ++j) y += s.C[0][j] * x[j];
         data.y[i] = y;
-        // dx = A*x + B*u
         matvec(s.A, x, xdot);
-        for (int j = 0; j < n; ++j) xdot[j] += s.B[j][0]; // B*1
+        for (int j = 0; j < n; ++j) xdot[j] += s.B[j][0];
         for (int j = 0; j < n; ++j) x[j] += dt * xdot[j];
     }
     return data;
@@ -741,12 +779,39 @@ StepData impulse_response(const TransferFunction& sys, double t_end, int n_pts) 
     data.y.resize(n_pts);
     double dt = t_end / (n_pts - 1);
 
-    // Impulse: x(0) = B*u(0) = B (apply B at t=0), then free response
+    // Impulse: x(0) = B, then the free response x(t) = e^{A t} x(0), propagated
+    // exactly by Ad = e^{A dt}. This was forward Euler, with the same
+    // unconditional instability as step_response.
     std::vector<double> x(n, 0.0);
     for (int j = 0; j < n; ++j) x[j] = s.B[j][0];
+
+    std::vector<std::vector<double>> Ad;
+    std::vector<std::vector<double>> Bd;
+    const auto disc = c2d_zoh_ab(s.A, s.B, dt, Ad, Bd);
+
+    if (disc) {
+        for (int i = 0; i < n_pts; ++i) {
+            data.t[i] = i * dt;
+            double y = 0.0;
+            for (int j = 0; j < n; ++j) y += s.C[0][j] * x[j];
+            data.y[i] = y;
+            std::vector<double> xn(static_cast<size_t>(n), 0.0);
+            for (int a = 0; a < n; ++a) {
+                double acc = 0.0;
+                for (int b = 0; b < n; ++b) {
+                    acc += Ad[static_cast<size_t>(a)][static_cast<size_t>(b)] *
+                           x[static_cast<size_t>(b)];
+                }
+                xn[static_cast<size_t>(a)] = acc;
+            }
+            x = std::move(xn);
+        }
+        return data;
+    }
+
     std::vector<double> xdot;
     xdot.reserve(static_cast<size_t>(n));
-
+    for (int j = 0; j < n; ++j) x[j] = s.B[j][0];
     for (int i = 0; i < n_pts; ++i) {
         data.t[i] = i * dt;
         double y = 0.0;
@@ -1011,9 +1076,17 @@ riccati(const std::vector<std::vector<double>>& A,
     int m = static_cast<int>(B[0].size());
     auto BT = transpose(B);
     int r_size = static_cast<int>(R.size());
-    std::vector<std::vector<double>> Rinv(r_size, std::vector<double>(r_size, 0.0));
-    for (int i = 0; i < r_size; ++i)
-        Rinv[i][i] = 1.0 / R[i][i];
+    // R^{-1} must be the real matrix inverse. Taking the element-wise
+    // reciprocal of the diagonal discards every off-diagonal entry of R, which
+    // equals R^{-1} only when R is diagonal -- and silently returns a wrong gain
+    // otherwise, with no check and no error. Cross-weighted control costs
+    // (non-diagonal R) are entirely ordinary in LQR/LQG.
+    bool r_ok = false;
+    std::vector<std::vector<double>> Rinv = kalman_safe_inverse(R, r_ok);
+    if (!r_ok) {
+        return std::unexpected(DomainError{"riccati", "R is singular"});
+    }
+    (void)r_size;
 
     std::vector<std::vector<double>> K(m, std::vector<double>(n, 0.0));
     bool have_k = false;
@@ -1081,8 +1154,17 @@ dare(const std::vector<std::vector<double>>& A,
     auto AT = transpose(A);
     auto BT = transpose(B);
     int r_sz = static_cast<int>(R.size());
-    std::vector<std::vector<double>> Rinv(r_sz, std::vector<double>(r_sz, 0.0));
-    for (int i = 0; i < r_sz; ++i) Rinv[i][i] = 1.0 / R[i][i];
+    // R^{-1} must be the real matrix inverse. Taking the element-wise
+    // reciprocal of the diagonal discards every off-diagonal entry of R, which
+    // equals R^{-1} only when R is diagonal -- and silently returns a wrong gain
+    // otherwise, with no check and no error. Cross-weighted control costs
+    // (non-diagonal R) are entirely ordinary in LQR/LQG.
+    bool r_ok = false;
+    std::vector<std::vector<double>> Rinv = kalman_safe_inverse(R, r_ok);
+    if (!r_ok) {
+        return std::unexpected(DomainError{"dare", "R is singular"});
+    }
+    (void)r_sz;
 
     // S = B R^{-1} B^T
     auto S = matmul(matmul(B, Rinv), BT);
@@ -1143,8 +1225,17 @@ lqr(const std::vector<std::vector<double>>& A,
     if (!X) return std::unexpected(X.error());
     // K = R^{-1} B^T X
     int r_sz = static_cast<int>(R.size());
-    std::vector<std::vector<double>> Rinv(r_sz, std::vector<double>(r_sz, 0.0));
-    for (int i = 0; i < r_sz; ++i) Rinv[i][i] = 1.0 / R[i][i];
+    // R^{-1} must be the real matrix inverse. Taking the element-wise
+    // reciprocal of the diagonal discards every off-diagonal entry of R, which
+    // equals R^{-1} only when R is diagonal -- and silently returns a wrong gain
+    // otherwise, with no check and no error. Cross-weighted control costs
+    // (non-diagonal R) are entirely ordinary in LQR/LQG.
+    bool r_ok = false;
+    std::vector<std::vector<double>> Rinv = kalman_safe_inverse(R, r_ok);
+    if (!r_ok) {
+        return std::unexpected(DomainError{"lqr", "R is singular"});
+    }
+    (void)r_sz;
     auto BT = transpose(B);
     return matmul(matmul(Rinv, BT), X.value());
 }
@@ -1161,8 +1252,17 @@ lqe(const std::vector<std::vector<double>>& A,
     if (!P) return std::unexpected(P.error());
 
     const int r_sz = static_cast<int>(R.size());
-    std::vector<std::vector<double>> Rinv(r_sz, std::vector<double>(r_sz, 0.0));
-    for (int i = 0; i < r_sz; ++i) Rinv[i][i] = 1.0 / R[i][i];
+    // R^{-1} must be the real matrix inverse. Taking the element-wise
+    // reciprocal of the diagonal discards every off-diagonal entry of R, which
+    // equals R^{-1} only when R is diagonal -- and silently returns a wrong gain
+    // otherwise, with no check and no error. Cross-weighted control costs
+    // (non-diagonal R) are entirely ordinary in LQR/LQG.
+    bool r_ok = false;
+    std::vector<std::vector<double>> Rinv = kalman_safe_inverse(R, r_ok);
+    if (!r_ok) {
+        return std::unexpected(DomainError{"lqe", "R is singular"});
+    }
+    (void)r_sz;
 
     LQEResult out;
     out.P = P.value();
