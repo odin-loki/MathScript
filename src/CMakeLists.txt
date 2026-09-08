@@ -99,6 +99,16 @@ if(MS_LINK_TESTS_SHARED AND NOT MSVC)
         endif()
     endforeach()
     target_link_libraries(ms_bundle PRIVATE ${_ms_bundle_whole})
+    # Several bundled libraries also appear as transitive PUBLIC dependencies of
+    # their siblings (every module links ms_core, for example). CMake rejects a
+    # link item that occurs both with the WHOLE_ARCHIVE feature and without one,
+    # so pin the feature per library instead of relying on first-occurrence.
+    foreach(_lib IN LISTS _MS_LIBS)
+        if(TARGET ${_lib})
+            set_property(TARGET ms_bundle PROPERTY
+                LINK_LIBRARY_OVERRIDE_${_lib} WHOLE_ARCHIVE)
+        endif()
+    endforeach()
     target_link_options(ms_bundle PRIVATE "LINKER:--allow-multiple-definition")
     target_include_directories(ms_bundle PUBLIC
         ${CMAKE_SOURCE_DIR}/include
