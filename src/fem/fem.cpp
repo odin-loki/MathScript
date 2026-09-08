@@ -430,6 +430,13 @@ bool invert3x3(
     return true;
 }
 
+Vec3 matvec(const double m[3][3], const Vec3& v) {
+    return {
+        m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z,
+        m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z,
+        m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z};
+}
+
 Vec3 matvec_transpose(const double m[3][3], const Vec3& v) {
     return {
         m[0][0] * v.x + m[1][0] * v.y + m[2][0] * v.z,
@@ -463,9 +470,16 @@ Result<void> add_tet_stiffness(
         Vec3{0.0, 1.0, 0.0},
         Vec3{0.0, 0.0, 1.0}};
 
+    // The chain rule gives grad_x(phi) = J^-T grad_xi(phi), where J has the edge
+    // vectors e1, e2, e3 as its COLUMNS. invert3x3(e1, e2, e3, .) inverts the
+    // matrix holding them as its ROWS -- that is J^T -- so j_inv is already
+    // J^-T and must be applied directly. Transposing it here applied J^-1
+    // instead, which is a different matrix unless J is symmetric: on a 3x3x3
+    // unit-cube mesh the Dirichlet energy of u = x came out 1.667 instead of 1,
+    // of u = z as 1.333, and of u = x + 2y + 3z as 35 instead of 14.
     std::array<Vec3, 4> grad_phys;
     for (int i = 0; i < 4; ++i) {
-        grad_phys[i] = matvec_transpose(j_inv, grad_ref[i]);
+        grad_phys[i] = matvec(j_inv, grad_ref[i]);
     }
 
     for (int i = 0; i < 4; ++i) {

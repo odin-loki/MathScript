@@ -1411,7 +1411,19 @@ OptimResult cmaes(FuncND f, std::vector<double> x0, double sigma0,
 
         const double f_spread =
             fitness[idx[static_cast<size_t>(mu - 1)]] - fitness[idx[0]];
-        if (f_best < tol || sigma < tol || f_spread < tol) {
+        // Convergence is judged on the SEARCH STATE, never on the objective
+        // value: the optimum is unknown, so `f_best < tol` is not a convergence
+        // test at all. It fired on the first iteration for every objective whose
+        // optimum is negative -- minimising sum (x_i - 3)^2 - 100 from (0,0)
+        // stopped at (0.47, 1.37) and reported success -- and could never fire
+        // for one whose optimum is large and positive.
+        //   sigma    : step size collapsed (CMA-ES "TolX")
+        //   f_spread : the selected parents are indistinguishable ("TolFun").
+        // TolFun stays ABSOLUTE, as in the reference implementations: the
+        // objective's additive offset is arbitrary, so scaling the threshold by
+        // |f_best| would make a large offset stop the search early -- with an
+        // offset of -1e6 a relative test halts around |x - x*| ~ 0.1.
+        if (sigma < tol || f_spread < tol) {
             converged = true;
             break;
         }
