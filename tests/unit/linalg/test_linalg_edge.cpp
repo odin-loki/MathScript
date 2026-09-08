@@ -393,9 +393,19 @@ TEST(LinalgEdgeTest, one_by_one_bidiag_norm_variants) {
     const auto ninf = norm(A, -1);
     ASSERT_TRUE(ninf.has_value());
     EXPECT_NEAR(*ninf, 3.0, 1e-12);
+    // p = 0 is the l0 count of nonzero entries. This assertion used to read
+    // EXPECT_NEAR(*n0, 0.0, ...), which pinned the old behaviour of silently
+    // returning a fabricated zero for every unsupported p.
     const auto n0 = norm(A, 0);
     ASSERT_TRUE(n0.has_value());
-    EXPECT_NEAR(*n0, 0.0, 1e-12);
+    EXPECT_NEAR(*n0, 1.0, 1e-12);
+
+    const auto nz = norm(zeros<double>(2, 2), 0);
+    ASSERT_TRUE(nz.has_value());
+    EXPECT_NEAR(*nz, 0.0, 1e-12);
+
+    // An unsupported p is now an error rather than a plausible-looking zero.
+    EXPECT_FALSE(norm(A, -3).has_value());
 }
 
 TEST(LinalgEdgeTest, one_by_one_kron_repmat_rand) {

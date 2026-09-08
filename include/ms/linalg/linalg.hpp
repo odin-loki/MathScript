@@ -6,9 +6,25 @@
 
 namespace ms {
 
+/// @brief Eigenvalues and right eigenvectors of a real square matrix.
+///
+/// @note  A real matrix can have complex-conjugate eigenvalue pairs, so the
+///        spectrum is carried in two real columns: @c values holds the real
+///        parts and @c values_imag the imaginary parts (all zero for a
+///        symmetric matrix, and for any matrix with a purely real spectrum).
+///        The eigenvectors use LAPACK dgeev's packing: for a conjugate pair
+///        occupying rows j and j+1 (values_imag(j,0) > 0 and
+///        values_imag(j+1,0) = -values_imag(j,0)), the eigenvector for
+///        lambda_j is vectors(:,j) + i*vectors(:,j+1) and the eigenvector for
+///        lambda_{j+1} is its complex conjugate. Every purely real eigenvalue
+///        owns one real column, normalised to unit 2-norm with its dominant
+///        entry positive; each packed complex pair is normalised so that
+///        ||Re v||^2 + ||Im v||^2 = 1. Entries are ordered by descending real
+///        part, with the two members of a pair kept adjacent.
 struct EigResult {
-    Matrix<double> values;
-    Matrix<double> vectors;
+    Matrix<double> values;       ///< n x 1, real parts of the eigenvalues
+    Matrix<double> vectors;      ///< n x n, right eigenvectors (packed, see above)
+    Matrix<double> values_imag;  ///< n x 1, imaginary parts of the eigenvalues
 };
 
 struct SvdResult {
@@ -70,15 +86,60 @@ Result<Matrix<S, OA, Alloc>> lsq(
     const Matrix<S, OA, Alloc>& b);
 
 // Decompositions
+/// @brief Symmetric LDL^T factorisation with threshold diagonal pivoting:
+///        P^T * A * P == L * D * L^T.
+///
+/// @note  L is unit lower triangular and D is returned as an n x 1 column of
+///        the 1x1 pivots (not as an n x n matrix). P is the symmetric
+///        interchange actually used: the natural pivot order is kept unless a
+///        diagonal pivot has lost roughly half of double precision relative to
+///        the largest remaining candidate, in which case rows and columns are
+///        swapped and the swap is recorded in P. P is the identity for every
+///        well-conditioned input, so the common case still satisfies
+///        A == L*D*L^T.
+/// @note  Only 1x1 pivots are produced. A symmetric matrix whose trailing
+///        block has no usable diagonal entry needs a 2x2 Bunch-Kaufman block
+///        pivot (the canonical example is [[0,1],[1,0]]); that case is
+///        reported as a DomainError rather than being mislabelled singular.
+/// @return DimensionMismatch if A is not square, DomainError if A is not
+///         symmetric or needs a 2x2 pivot, SingularMatrix if a trailing block
+///         is genuinely zero.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<LdlResult> ldl(const Matrix<S, OA, Alloc>& A);
 
+/// @brief Upper Hessenberg reduction by Householder similarity:
+///        H == Q^T * A * Q for an orthogonal Q, so H has exactly A's trace,
+///        determinant, characteristic polynomial and spectrum.
+///
+/// @note  Each reflector is applied from BOTH sides. A symmetric input comes
+///        back symmetric tridiagonal. Q is not part of this signature — use
+///        schur(), which performs the same reduction and returns its
+///        accumulated orthogonal factor.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<Matrix<S, OA, Alloc>> hess(const Matrix<S, OA, Alloc>& A);
 
+/// @brief Golub-Kahan bidiagonalisation: A == U * B * V^T with U (m x m) and
+///        V (n x n) orthogonal and B (m x n) upper bidiagonal — its only
+///        nonzeros are B(i,i) and B(i,i+1).
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<BidiagResult> bidiag(const Matrix<S, OA, Alloc>& A);
 
+/// @brief Eigenvalues and right eigenvectors of a general real square matrix.
+///
+/// @note  Computes the real Schur form (Householder Hessenberg reduction plus
+///        implicit Francis double-shift QR with deflation) and recovers the
+///        eigenvectors by back substitution on the quasi-triangular factor,
+///        then transforms them back with the Schur basis. Complex-conjugate
+///        pairs are reported exactly — see EigResult for the packing — rather
+///        than being flattened onto the real axis. A symmetric input is
+///        delegated to eig_sym().
+/// @note  For a defective matrix the eigenvectors belonging to a repeated
+///        eigenvalue cannot all be independent; the back substitution
+///        perturbs an exactly singular pivot by eps*||T|| (as LAPACK dtrevc
+///        does), so the returned columns stay finite but the duplicated ones
+///        carry no extra information.
+/// @return DimensionMismatch if A is not square; ConvergenceFail if the QR
+///         iteration exhausts its sweep budget.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<EigResult> eig(const Matrix<S, OA, Alloc>& A);
 
@@ -88,6 +149,19 @@ Result<EigResult> eig_sym(const Matrix<S, OA, Alloc>& A);
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A);
 
+/// @brief Real Schur decomposition: A == Q * T * Q^T with Q orthogonal and T
+///        quasi-upper-triangular.
+///
+/// @note  1x1 diagonal blocks of T carry real eigenvalues; a 2x2 block with a
+///        nonzero subdiagonal carries a complex-conjugate pair (never two
+///        adjacent nonzero subdiagonal entries). The reduction is a genuine
+///        Householder similarity and its orthogonal factor seeds Q, which is
+///        then updated by every implicit Francis double-shift sweep, so the
+///        identity A == Q*T*Q^T holds to round-off for any input.
+/// @return DimensionMismatch if A is not square; ConvergenceFail{sweeps,
+///         largest remaining subdiagonal} if the shifted QR iteration
+///         exhausts its budget, instead of a half-reduced T reported as
+///         success.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<SchurResult> schur(const Matrix<S, OA, Alloc>& A);
 
@@ -101,11 +175,11 @@ Result<SchurResult> schur(const Matrix<S, OA, Alloc>& A);
 ///       special case (B = A^T). It is O((n*m)^3) — much worse than a true
 ///       Bartels-Stewart Schur-based reduction (O(n^3 + m^3)) — so it is only
 ///       intended for small/moderate n, m; it was chosen over Bartels-Stewart
-///       here because this file's schur() runs unshifted QR iteration and
-///       is not guaranteed to fully triangularize matrices with complex
-///       (non-real) eigenvalues, whereas the Kronecker approach is correct
-///       for the fully general case (real or complex-conjugate eigenvalues)
-///       and much simpler to get right.
+///       here because schur() returns a REAL Schur form, whose 2x2 blocks for
+///       complex-conjugate eigenvalues a Bartels-Stewart solver would have to
+///       handle as coupled 2x2 Sylvester subproblems, whereas the Kronecker
+///       approach is correct for the fully general case (real or
+///       complex-conjugate eigenvalues) and much simpler to get right.
 /// @return X on success. Returns DimensionMismatch if A/B aren't square or C's
 ///         shape doesn't match (n x m), or the SingularMatrix/DomainError
 ///         propagated from solve() if the Sylvester operator K is singular

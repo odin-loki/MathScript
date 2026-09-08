@@ -420,68 +420,92 @@ Result<DistVec> dist_minres_impl(
         return DistVec(0, 1);
     }
 
+    // Mirrors ms::minres exactly (src/linalg/iterative.cpp, minres_single): the
+    // Paige-Saunders recurrence, with every inner product and norm replaced by
+    // its Allreduce-backed counterpart. The earlier version here carried the
+    // same defective direction-vector update the serial routine did -- it built
+    // w_new from the rotation sines rather than dividing the whole vector by
+    // gamma with the delta/oldeps coefficients on w(j-1) and w(j-2) -- so on
+    // A = [[4,1],[1,3]], b = [1,2] it returned (0.485, 2.183) where the exact
+    // solution is (1/11, 7/11) = (0.0909, 0.6364). Its test only passed because
+    // it compared against the serial routine while that was broken the same way.
     const size_t m_loc = b.rows();
     DistVec x(m_loc, 1, 0.0);
-    DistVec v = dist_copy(b);
-    double beta = dist_norm(ctx, v);
-    if (beta < 1e-14) {
-        return x;
-    }
-    for (size_t i = 0; i < m_loc; ++i) {
-        v(i, 0) /= beta;
-    }
 
-    DistVec v_prev(m_loc, 1, 0.0);
-    double c_old = 1.0;
-    double c_cur = 1.0;
-    double s_old = 0.0;
-    double s_cur = 0.0;
-    double eta = beta;
+    const double beta1 = dist_norm(ctx, b);
+    if (beta1 < 1e-14) {
+        return x;  // b == 0
+    }
+    const double target = tol * std::max(1.0, beta1);
+
+    DistVec r1 = dist_copy(b);
+    DistVec r2 = dist_copy(b);
+    DistVec y = dist_copy(b);
+
+    double oldb = 0.0;
+    double beta = beta1;
+    double dbar = 0.0;
+    double epsln = 0.0;
+    double phibar = beta1;
+    double cs = -1.0;
+    double sn = 0.0;
+
     DistVec w(m_loc, 1, 0.0);
-    DistVec w_prev(m_loc, 1, 0.0);
+    DistVec w2(m_loc, 1, 0.0);
 
-    for (size_t iter = 0; iter < max_iter; ++iter) {
+    size_t itn = 0;
+    for (; itn < max_iter; ++itn) {
+        DistVec v = dist_copy(y);
+        const double s_inv = 1.0 / beta;
+        for (size_t i = 0; i < m_loc; ++i) {
+            v(i, 0) *= s_inv;
+        }
         auto Av_res = dist_matvec(ctx, A, v, lay);
         if (!Av_res) {
             return std::unexpected(Av_res.error());
         }
-        const DistVec Av = std::move(*Av_res);
-        const double alpha = dist_dot(ctx, v, Av);
-
-        DistVec v_next = dist_axpy(-alpha, v, dist_axpy(-beta, v_prev, Av));
-        const double beta_next = dist_norm(ctx, v_next);
-        if (beta_next > 1e-14) {
-            for (size_t i = 0; i < m_loc; ++i) {
-                v_next(i, 0) /= beta_next;
-            }
+        y = std::move(*Av_res);
+        if (itn >= 1) {
+            y = dist_axpy(-(beta / oldb), r1, y);
         }
+        const double alfa = dist_dot(ctx, v, y);
+        y = dist_axpy(-(alfa / beta), r2, y);
+        r1 = dist_copy(r2);
+        r2 = dist_copy(y);
+        oldb = beta;
+        beta = dist_norm(ctx, r2);
 
-        const double delta = c_cur * alpha - c_old * s_cur * beta;
-        double gamma = std::sqrt(delta * delta + beta_next * beta_next);
+        const double oldeps = epsln;
+        const double delta = cs * dbar + sn * alfa;
+        const double gbar = sn * dbar - cs * alfa;
+        epsln = sn * beta;
+        dbar = -cs * beta;
+
+        double gamma = std::hypot(gbar, beta);
         if (gamma < 1e-14) {
             gamma = 1e-14;
         }
-        const double c_new = delta / gamma;
-        const double s_new = beta_next / gamma;
+        cs = gbar / gamma;
+        sn = beta / gamma;
+        const double phi = cs * phibar;
+        phibar = std::abs(sn) * phibar;
 
-        const DistVec w_new = dist_axpy(
-            -c_old * s_cur * beta / gamma, w_prev,
-            dist_axpy(-s_old * beta / gamma, w, dist_copy(v)));
-        x = dist_axpy(c_new * eta, w_new, x);
-        eta = -s_new * eta;
+        DistVec w1 = dist_copy(w2);
+        w2 = dist_copy(w);
+        DistVec w_new = dist_axpy(-oldeps, w1, dist_axpy(-delta, w2, v));
+        for (size_t i = 0; i < m_loc; ++i) {
+            w_new(i, 0) /= gamma;
+        }
+        w = dist_copy(w_new);
+        x = dist_axpy(phi, w, x);
 
-        w_prev = w;
-        w = w_new;
-        v_prev = v;
-        v = v_next;
-        beta = beta_next;
-        c_old = c_cur;
-        s_old = s_cur;
-        c_cur = c_new;
-        s_cur = s_new;
-
-        if (std::abs(eta) < tol) {
-            return x;
+        if (phibar <= target) {
+            ++itn;
+            break;
+        }
+        if (beta < 1e-14) {
+            ++itn;
+            break;  // Krylov space exhausted
         }
     }
 
@@ -490,10 +514,10 @@ Result<DistVec> dist_minres_impl(
         return std::unexpected(r_check.error());
     }
     const double res_norm = dist_norm(ctx, *r_check);
-    if (res_norm < tol * 10.0) {
+    if (std::isfinite(res_norm) && res_norm <= 10.0 * target) {
         return x;
     }
-    return std::unexpected(ConvergenceFail{max_iter, res_norm});
+    return std::unexpected(ConvergenceFail{itn, res_norm});
 }
 
 // ---------------------------------------------------------------------------

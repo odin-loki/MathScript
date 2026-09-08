@@ -58,12 +58,27 @@ TEST(HessDecomp, Output_AllFinite) {
 }
 
 TEST(HessDecomp, SubdiagonalBelowZero_For_Hessenberg) {
-    // True Hessenberg form: all elements below the first subdiagonal should be zero
+    // TIGHTENED: the zero pattern alone was satisfied by the old one-sided
+    // reduction, which was not a similarity at all. A Hessenberg reduction is
+    // H = Q^T A Q, so it must also preserve the trace (and, for a symmetric A,
+    // symmetry -- i.e. H is tridiagonal).
     auto A = make_sym3();
     auto result = hess(A);
-    if (!result.has_value()) { SUCCEED(); return; }
-    // For a 3x3 Hessenberg, H[2][0] should be ~0
-    EXPECT_NEAR((*result)(2, 0), 0.0, 1e-8);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NEAR((*result)(2, 0), 0.0, 1e-12);
+    double ta = 0.0;
+    double th = 0.0;
+    for (size_t i = 0; i < 3; ++i) {
+        ta += A(i, i);
+        th += (*result)(i, i);
+    }
+    EXPECT_NEAR(th, ta, 1e-12) << "hess must be a similarity transform";
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            EXPECT_NEAR((*result)(i, j), (*result)(j, i), 1e-12)
+                << "a symmetric input must reduce to symmetric tridiagonal form";
+        }
+    }
 }
 
 TEST(HessDecomp, Identity_StaysIdentity) {
@@ -121,15 +136,35 @@ TEST(BidiagDecomp, All_Finite) {
 }
 
 TEST(BidiagDecomp, B_Is_Bidiagonal) {
-    // B should have zeros below subdiagonal and above first superdiagonal
+    // TIGHTENED: this used to assert only B(2,0) and B(0,2) even though its
+    // own comment named B(1,0) and B(2,1) as entries that must vanish, which
+    // is exactly how it passed while bidiag() was returning a TRIDIAGONAL B.
+    // A bidiagonal B is nonzero only on the diagonal and first superdiagonal.
     auto A = make_sym3();
     auto result = bidiag(A);
     ASSERT_TRUE(result.has_value());
     const auto& B = result->B;
-    // B[2][0], B[1][0], B[2][1] should be ~0 (below diagonal)
-    EXPECT_NEAR(B(2, 0), 0.0, 1e-8) << "B should be bidiagonal";
-    // B[0][2] should be ~0 (above first superdiagonal)
-    EXPECT_NEAR(B(0, 2), 0.0, 1e-8) << "B should be bidiagonal";
+    for (size_t i = 0; i < B.rows(); ++i) {
+        for (size_t j = 0; j < B.cols(); ++j) {
+            if (j == i || j == i + 1) {
+                continue;
+            }
+            EXPECT_NEAR(B(i, j), 0.0, 1e-12)
+                << "B(" << i << "," << j << ") must be zero for a bidiagonal B";
+        }
+    }
+    // The factorisation itself must survive the shape fix: A = U B V^T.
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            double acc = 0.0;
+            for (size_t k = 0; k < 3; ++k) {
+                for (size_t l = 0; l < 3; ++l) {
+                    acc += result->U(i, k) * B(k, l) * result->V(j, l);
+                }
+            }
+            EXPECT_NEAR(acc, A(i, j), 1e-10) << "A != U B V^T at (" << i << "," << j << ")";
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -168,9 +203,27 @@ TEST(SchurDecomp, T_Is_Upper_Triangular_Or_Quasi) {
     ASSERT_TRUE(result.has_value());
     const auto& T = result->T;
     // Sub-diagonal of T should be ~0 (it's upper triangular for real symmetric)
-    EXPECT_NEAR(T(1, 0), 0.0, 1e-6) << "Schur T should be upper triangular for symmetric A";
-    EXPECT_NEAR(T(2, 0), 0.0, 1e-6);
-    EXPECT_NEAR(T(2, 1), 0.0, 1e-6);
+    EXPECT_NEAR(T(1, 0), 0.0, 1e-12) << "Schur T should be upper triangular for symmetric A";
+    EXPECT_NEAR(T(2, 0), 0.0, 1e-12);
+    EXPECT_NEAR(T(2, 1), 0.0, 1e-12);
+    // TIGHTENED: the zero pattern alone says nothing about whether T is
+    // similar to A. Assert the defining identity A = Q T Q^T and that Q is
+    // orthogonal, which the old implementation satisfied for no input.
+    const auto& Q = result->Q;
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            double rec = 0.0;
+            double qtq = 0.0;
+            for (size_t k = 0; k < 3; ++k) {
+                qtq += Q(k, i) * Q(k, j);
+                for (size_t l = 0; l < 3; ++l) {
+                    rec += Q(i, k) * T(k, l) * Q(j, l);
+                }
+            }
+            EXPECT_NEAR(rec, A(i, j), 1e-11) << "A != Q T Q^T at (" << i << "," << j << ")";
+            EXPECT_NEAR(qtq, (i == j) ? 1.0 : 0.0, 1e-12) << "Q not orthogonal";
+        }
+    }
 }
 
 TEST(SchurDecomp, Identity_SchurIsIdentity) {

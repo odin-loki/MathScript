@@ -53,7 +53,23 @@ template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<S>
 det(const Matrix<S, OA, Alloc>& A);
 
-// Matrix norm
+/// @brief Matrix / vector norm selected by @p p.
+///
+/// @note  The supported values, and exactly what each computes:
+///        - p =  2 (default): the ENTRYWISE 2-norm, i.e. the Frobenius norm
+///          sqrt(sum a_ij^2). For a vector this is the usual Euclidean norm.
+///          It is NOT the induced spectral norm sigma_max — use svd() for that.
+///        - p =  1: the ENTRYWISE 1-norm, sum |a_ij|. For a vector this is the
+///          usual 1-norm; for a matrix it is not the induced max-column-sum.
+///        - p >  2: the entrywise p-norm (sum |a_ij|^p)^(1/p).
+///        - p = -1: the INDUCED infinity norm, the largest absolute row sum.
+///          For a column vector this is max |v_i|.
+///        - p =  0: the l0 count of nonzero entries (as used in sparse
+///          recovery); not a norm, but a well-defined quantity.
+///        Every other p (that is, p <= -2) is a DomainError rather than a
+///        silently returned zero.
+/// @note  p = 2 and p > 2 scale by the largest entry before accumulating, so
+///        they do not overflow or underflow on extreme inputs.
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 Result<S>
 norm(const Matrix<S, OA, Alloc>& A, int p = 2);

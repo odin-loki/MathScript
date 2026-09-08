@@ -1,7 +1,9 @@
 #include "ms/linalg/linalg.hpp"
 #include "detail.hpp"
+#include <algorithm>
 #include <cmath>
 #include <functional>
+#include <vector>
 
 namespace ms {
 
@@ -67,29 +69,52 @@ Matrix<double> residual_vec(const Matrix<double>& A, const Matrix<double>& x,
     return axpy(-1.0, matvec(A, x), b);
 }
 
-} // namespace
-
-template<typename S, StorageOrder OA, template<typename> class Alloc>
-Result<Matrix<S, OA, Alloc>> cg(
-    const Matrix<S, OA, Alloc>& A,
-    const Matrix<S, OA, Alloc>& b,
-    size_t max_iter,
-    S tol) {
-    if (A.rows() != A.cols() || A.rows() != b.rows()) {
-        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+// Column j of B as an (n, 1) matrix.
+Matrix<double> column_of(const Matrix<double>& B, size_t j) {
+    Matrix<double> c(B.rows(), 1, 0.0);
+    for (size_t i = 0; i < B.rows(); ++i) {
+        c(i, 0) = B(i, j);
     }
-    if (!is_symmetric(A)) {
-        return std::unexpected(DomainError{"cg", "matrix not symmetric"});
-    }
+    return c;
+}
 
-    Matrix<double> x(b.rows(), b.cols(), 0.0);
+// Every Krylov method here works on ONE right-hand side. This runs the given
+// single-vector solver once per column of b and assembles the columns of the
+// result, so a multi-column b behaves the way solve() does instead of
+// returning zeros, stale values, or a silently narrowed matrix.
+template<typename Solver>
+Result<Matrix<double>> solve_per_column(const Matrix<double>& b, size_t nrows,
+                                        Solver&& solver) {
+    Matrix<double> X(nrows, b.cols(), 0.0);
+    for (size_t j = 0; j < b.cols(); ++j) {
+        auto xj = solver(column_of(b, j));
+        if (!xj) {
+            return std::unexpected(xj.error());
+        }
+        for (size_t i = 0; i < nrows; ++i) {
+            X(i, j) = (*xj)(i, 0);
+        }
+    }
+    return X;
+}
+
+Result<Matrix<double>> cg_single(const Matrix<double>& A, const Matrix<double>& b,
+                                 size_t max_iter, double tol) {
+    Matrix<double> x(b.rows(), 1, 0.0);
     Matrix<double> r = copy(b);
     Matrix<double> p = copy(r);
     double rsold = dotvec(r, r);
+    if (std::sqrt(rsold) < tol) {
+        return x;
+    }
 
     for (size_t k = 0; k < max_iter; ++k) {
         Matrix<double> Ap = matvec(A, p);
-        const double alpha = rsold / dotvec(p, Ap);
+        const double pAp = dotvec(p, Ap);
+        if (std::abs(pAp) < kTiny) {
+            return std::unexpected(ConvergenceFail{k, std::sqrt(rsold)});
+        }
+        const double alpha = rsold / pAp;
         x = axpy(alpha, p, x);
         r = axpy(-alpha, Ap, r);
         const double rsnew = dotvec(r, r);
@@ -103,30 +128,22 @@ Result<Matrix<S, OA, Alloc>> cg(
     return std::unexpected(ConvergenceFail{max_iter, std::sqrt(rsold)});
 }
 
-template<typename S, StorageOrder OA, template<typename> class Alloc>
-Result<Matrix<S, OA, Alloc>> jacobi(
-    const Matrix<S, OA, Alloc>& A,
-    const Matrix<S, OA, Alloc>& b,
-    size_t max_iter,
-    S tol) {
-    if (A.rows() != A.cols() || A.rows() != b.rows()) {
-        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
-    }
-
-    Matrix<double> x(b.rows(), b.cols(), 0.0);
-    double res_norm = std::sqrt(dotvec(b, b));
+Result<Matrix<double>> jacobi_single(const Matrix<double>& A, const Matrix<double>& b,
+                                     size_t max_iter, double tol) {
+    const size_t n = b.rows();
+    Matrix<double> x(n, 1, 0.0);
+    double res_norm = norm2(b);
 
     for (size_t k = 0; k < max_iter; ++k) {
         Matrix<double> Ax = matvec(A, x);
-        Matrix<double> x_new(b.rows(), b.cols());
-        for (size_t i = 0; i < b.rows(); ++i) {
-            if (std::abs(A(i, i)) < 1e-30) {
+        Matrix<double> x_new(n, 1, 0.0);
+        for (size_t i = 0; i < n; ++i) {
+            if (std::abs(A(i, i)) < kTiny) {
                 return std::unexpected(DomainError{"jacobi", "zero diagonal entry"});
             }
             x_new(i, 0) = (b(i, 0) - Ax(i, 0) + A(i, i) * x(i, 0)) / A(i, i);
         }
-        Matrix<double> r = axpy(-1.0, matvec(A, x_new), b);
-        res_norm = std::sqrt(dotvec(r, r));
+        res_norm = norm2(residual_vec(A, x_new, b));
         if (res_norm < tol) {
             return x_new;
         }
@@ -136,80 +153,93 @@ Result<Matrix<S, OA, Alloc>> jacobi(
     return std::unexpected(ConvergenceFail{max_iter, res_norm});
 }
 
-template<typename S, StorageOrder OA, template<typename> class Alloc>
-Result<Matrix<S, OA, Alloc>> bicgstab(
-    const Matrix<S, OA, Alloc>& A,
-    const Matrix<S, OA, Alloc>& b,
-    size_t max_iter,
-    S tol) {
-    if (A.rows() != A.cols() || A.rows() != b.rows()) {
-        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+Result<Matrix<double>> bicgstab_single(const Matrix<double>& A, const Matrix<double>& b,
+                                       size_t max_iter, double tol) {
+    const size_t n = b.rows();
+    Matrix<double> x(n, 1, 0.0);
+    const double bnorm = norm2(b);
+    if (bnorm < kTiny) {
+        return x;  // b == 0, so x == 0 exactly
     }
+    const double target = tol * std::max(1.0, bnorm);
 
-    Matrix<double> x(b.rows(), b.cols(), 0.0);
     Matrix<double> r = copy(b);
     Matrix<double> r0 = copy(r);
     Matrix<double> p = copy(r);
-    Matrix<double> v(b.rows(), b.cols(), 0.0);
+    Matrix<double> v(n, 1, 0.0);
 
     double rho = 1.0;
     double alpha = 1.0;
     double omega = 1.0;
 
-    for (size_t k = 0; k < max_iter; ++k) {
+    size_t k = 0;
+    for (; k < max_iter; ++k) {
         const double rho1 = dotvec(r0, r);
-        if (std::abs(rho1) < 1e-30) {
-            break;
+        if (std::abs(rho1) < kTiny) {
+            break;  // Lanczos breakdown; the residual check below decides
         }
         if (k == 0) {
             p = copy(r);
         } else {
+            if (std::abs(omega) < kTiny) {
+                break;
+            }
             const double beta = (rho1 / rho) * (alpha / omega);
             Matrix<double> ph = axpy(-omega, v, p);
             p = axpy(beta, ph, r);
         }
         v = matvec(A, p);
-        alpha = rho1 / dotvec(r0, v);
+        const double r0v = dotvec(r0, v);
+        if (std::abs(r0v) < kTiny) {
+            break;  // would divide by zero and manufacture NaNs
+        }
+        alpha = rho1 / r0v;
         Matrix<double> s = axpy(-alpha, v, r);
-        if (std::sqrt(dotvec(s, s)) < tol) {
+        if (norm2(s) < target) {
             x = axpy(alpha, p, x);
             break;
         }
         Matrix<double> t = matvec(A, s);
-        omega = dotvec(t, s) / dotvec(t, t);
+        const double tt = dotvec(t, t);
+        if (tt < kTiny) {
+            x = axpy(alpha, p, x);
+            break;
+        }
+        omega = dotvec(t, s) / tt;
         x = axpy(alpha, p, axpy(omega, s, x));
         r = axpy(-omega, t, s);
-        if (std::sqrt(dotvec(r, r)) < tol) {
+        if (norm2(r) < target) {
             break;
         }
         rho = rho1;
     }
 
-    return x;
+    // The recursively updated r (and a breakdown even more so) is not evidence
+    // that x solves the system: confirm against the true residual, and report
+    // failure the way cg/jacobi/gmres/minres/qmr in this file do.
+    const double res = norm2(residual_vec(A, x, b));
+    if (std::isfinite(res) && res <= 10.0 * target) {
+        return x;
+    }
+    return std::unexpected(ConvergenceFail{k, res});
 }
 
-template<typename S, StorageOrder OA, template<typename> class Alloc>
-Result<Matrix<S, OA, Alloc>> gmres(
-    const Matrix<S, OA, Alloc>& A,
-    const Matrix<S, OA, Alloc>& b,
-    size_t restart,
-    size_t max_iter,
-    S tol) {
-    if (A.rows() != A.cols() || A.rows() != b.rows()) {
-        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+Result<Matrix<double>> gmres_single(const Matrix<double>& A, const Matrix<double>& b,
+                                    size_t restart, size_t max_iter, double tol) {
+    if (restart == 0) {
+        restart = 1;
     }
-
-    Matrix<double> x(b.rows(), b.cols(), 0.0);
+    Matrix<double> x(b.rows(), 1, 0.0);
     Matrix<double> r = copy(b);
 
     for (size_t outer = 0; outer < max_iter; outer += restart) {
-        const double beta = std::sqrt(dotvec(r, r));
+        const double beta = norm2(r);
         if (beta < tol) {
             return x;
         }
 
         std::vector<Matrix<double>> V(restart + 1);
-        V[0] = Matrix<double>(b.rows(), 1);
+        V[0] = Matrix<double>(b.rows(), 1, 0.0);
         for (size_t i = 0; i < b.rows(); ++i) {
             V[0](i, 0) = r(i, 0) / beta;
         }
@@ -218,35 +248,32 @@ Result<Matrix<S, OA, Alloc>> gmres(
         g[0] = beta;
         std::vector<std::vector<double>> H(
             restart + 1, std::vector<double>(restart, 0.0));
-        // Store Givens rotation parameters
-        std::vector<double> cs(restart, 0.0);  // cosines
-        std::vector<double> sn(restart, 0.0);  // sines
+        std::vector<double> cs(restart, 0.0);
+        std::vector<double> sn(restart, 0.0);
 
         size_t j = 0;  // number of Arnoldi vectors built
-        size_t iter_limit = std::min(restart, max_iter - outer);
+        const size_t iter_limit = std::min(restart, max_iter - outer);
         for (size_t step = 0; step < iter_limit; ++step) {
             Matrix<double> w = matvec(A, V[step]);
             for (size_t i = 0; i <= step; ++i) {
                 H[i][step] = dotvec(V[i], w);
                 w = axpy(-H[i][step], V[i], w);
             }
-            H[step + 1][step] = std::sqrt(dotvec(w, w));
-            bool invariant = (H[step + 1][step] < 1e-14);
+            H[step + 1][step] = norm2(w);
+            const bool invariant = (H[step + 1][step] < 1e-14);
             if (!invariant && step + 1 < restart) {
-                V[step + 1] = Matrix<double>(b.rows(), 1);
+                V[step + 1] = Matrix<double>(b.rows(), 1, 0.0);
                 for (size_t i = 0; i < b.rows(); ++i) {
                     V[step + 1](i, 0) = w(i, 0) / H[step + 1][step];
                 }
             }
 
-            // Apply previous Givens rotations to column step
             for (size_t i = 0; i < step; ++i) {
                 const double h0 =  cs[i] * H[i][step] + sn[i] * H[i + 1][step];
                 const double h1 = -sn[i] * H[i][step] + cs[i] * H[i + 1][step];
                 H[i][step]     = h0;
                 H[i + 1][step] = h1;
             }
-            // Compute and apply new Givens rotation
             const double denom = std::sqrt(H[step][step] * H[step][step] +
                                            H[step + 1][step] * H[step + 1][step]);
             if (denom >= 1e-14) {
@@ -266,25 +293,194 @@ Result<Matrix<S, OA, Alloc>> gmres(
         }
 
         Matrix<double> y(j, 1, 0.0);
-        for (int i = static_cast<int>(j) - 1; i >= 0; --i) {
-            double sum = g[i];
-            for (size_t k = i + 1; k < j; ++k) {
-                sum -= H[i][k] * y(k, 0);
+        for (size_t ii = j; ii-- > 0;) {
+            double sum = g[ii];
+            for (size_t k = ii + 1; k < j; ++k) {
+                sum -= H[ii][k] * y(k, 0);
             }
-            y(i, 0) = sum / H[i][i];
+            if (std::abs(H[ii][ii]) < kTiny) {
+                return std::unexpected(ConvergenceFail{outer + j, norm2(r)});
+            }
+            y(ii, 0) = sum / H[ii][ii];
         }
 
         for (size_t i = 0; i < j; ++i) {
             x = axpy(y(i, 0), V[i], x);
         }
 
-        r = axpy(-1.0, matvec(A, x), b);
-        if (std::sqrt(dotvec(r, r)) < tol) {
+        r = residual_vec(A, x, b);
+        if (norm2(r) < tol) {
             return x;
         }
     }
 
-    return std::unexpected(ConvergenceFail{max_iter, std::sqrt(dotvec(r, r))});
+    return std::unexpected(ConvergenceFail{max_iter, norm2(r)});
+}
+
+// MINRES (Paige & Saunders 1975): Lanczos tridiagonalisation of the symmetric
+// A, whose tridiagonal least-squares problem is reduced by Givens rotations.
+//   oldeps = eps; delta = c*dbar + s*alpha; gbar = s*dbar - c*alpha;
+//   eps = s*beta_next; dbar = -c*beta_next; gamma = hypot(gbar, beta_next);
+//   c = gbar/gamma; s = beta_next/gamma; phi = c*phibar; phibar = s*phibar;
+//   w_new = (v - oldeps*w_prev - delta*w) / gamma;  x += phi*w_new
+// phibar is exactly ||b - A x_k||, so it is a genuine residual estimate; it is
+// still confirmed against the true residual before x is returned.
+Result<Matrix<double>> minres_single(const Matrix<double>& A, const Matrix<double>& b,
+                                     size_t max_iter, double tol) {
+    const size_t n = b.rows();
+    Matrix<double> x(n, 1, 0.0);
+
+    const double beta1 = norm2(b);
+    if (beta1 < kTiny) {
+        return x;  // b == 0
+    }
+    const double target = tol * std::max(1.0, beta1);
+
+    Matrix<double> r1 = copy(b);   // v_{j-1} scaled by beta_{j-1}
+    Matrix<double> r2 = copy(b);   // v_j scaled by beta_j
+    Matrix<double> y = copy(b);
+
+    double oldb = 0.0;
+    double beta = beta1;
+    double dbar = 0.0;
+    double epsln = 0.0;
+    double phibar = beta1;
+    double cs = -1.0;
+    double sn = 0.0;
+
+    Matrix<double> w(n, 1, 0.0);
+    Matrix<double> w2(n, 1, 0.0);
+
+    size_t itn = 0;
+    for (; itn < max_iter; ++itn) {
+        // --- Lanczos step: v = y/beta, y = A*v - (beta/oldb)*r1 - (alfa/beta)*r2
+        const double s_inv = 1.0 / beta;
+        Matrix<double> v = scale_vec(s_inv, y);
+        y = matvec(A, v);
+        if (itn >= 1) {
+            y = axpy(-(beta / oldb), r1, y);
+        }
+        const double alfa = dotvec(v, y);
+        y = axpy(-(alfa / beta), r2, y);
+        r1 = r2;
+        r2 = y;
+        oldb = beta;
+        beta = norm2(r2);
+
+        // --- Apply the previous rotation, then build the next one.
+        const double oldeps = epsln;
+        const double delta = cs * dbar + sn * alfa;
+        const double gbar  = sn * dbar - cs * alfa;
+        epsln =  sn * beta;
+        dbar  = -cs * beta;
+
+        double gamma = std::hypot(gbar, beta);
+        if (gamma < kTiny) {
+            gamma = kTiny;
+        }
+        cs = gbar / gamma;
+        sn = beta / gamma;
+        const double phi = cs * phibar;
+        phibar = std::abs(sn) * phibar;
+
+        // --- Direction update: the whole vector is divided by gamma, and the
+        //     delta/oldeps coefficients sit on w (j-1) and w2 (j-2).
+        Matrix<double> w1 = w2;
+        w2 = w;
+        Matrix<double> w_new = axpy(-oldeps, w1, axpy(-delta, w2, v));
+        w = scale_vec(1.0 / gamma, w_new);
+        x = axpy(phi, w, x);
+
+        if (phibar <= target) {
+            ++itn;
+            break;
+        }
+        if (beta < kTiny) {
+            ++itn;
+            break;  // Krylov space exhausted
+        }
+    }
+
+    const double res = norm2(residual_vec(A, x, b));
+    if (std::isfinite(res) && res <= 10.0 * target) {
+        return x;
+    }
+    return std::unexpected(ConvergenceFail{itn, res});
+}
+
+
+} // namespace
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> cg(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter,
+    S tol) {
+    if (A.rows() != A.cols() || A.rows() != b.rows()) {
+        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+    if (!is_symmetric(A)) {
+        return std::unexpected(DomainError{"cg", "matrix not symmetric"});
+    }
+    const Matrix<double> Ad = to_col_major(A);
+    const Matrix<double> bd = to_col_major(b);
+    const double dtol = static_cast<double>(tol);
+    return solve_per_column(bd, A.rows(), [&](const Matrix<double>& rhs) {
+        return cg_single(Ad, rhs, max_iter, dtol);
+    });
+}
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> jacobi(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter,
+    S tol) {
+    if (A.rows() != A.cols() || A.rows() != b.rows()) {
+        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+    const Matrix<double> Ad = to_col_major(A);
+    const Matrix<double> bd = to_col_major(b);
+    const double dtol = static_cast<double>(tol);
+    return solve_per_column(bd, A.rows(), [&](const Matrix<double>& rhs) {
+        return jacobi_single(Ad, rhs, max_iter, dtol);
+    });
+}
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> bicgstab(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t max_iter,
+    S tol) {
+    if (A.rows() != A.cols() || A.rows() != b.rows()) {
+        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+    const Matrix<double> Ad = to_col_major(A);
+    const Matrix<double> bd = to_col_major(b);
+    const double dtol = static_cast<double>(tol);
+    return solve_per_column(bd, A.rows(), [&](const Matrix<double>& rhs) {
+        return bicgstab_single(Ad, rhs, max_iter, dtol);
+    });
+}
+
+template<typename S, StorageOrder OA, template<typename> class Alloc>
+Result<Matrix<S, OA, Alloc>> gmres(
+    const Matrix<S, OA, Alloc>& A,
+    const Matrix<S, OA, Alloc>& b,
+    size_t restart,
+    size_t max_iter,
+    S tol) {
+    if (A.rows() != A.cols() || A.rows() != b.rows()) {
+        return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+    const Matrix<double> Ad = to_col_major(A);
+    const Matrix<double> bd = to_col_major(b);
+    const double dtol = static_cast<double>(tol);
+    return solve_per_column(bd, A.rows(), [&](const Matrix<double>& rhs) {
+        return gmres_single(Ad, rhs, restart, max_iter, dtol);
+    });
 }
 
 template auto cg<double>(const Matrix<double>&, const Matrix<double>&, size_t, double)
@@ -306,63 +502,12 @@ Result<Matrix<S, OA, Alloc>> minres(
     if (A.rows() != A.cols() || A.rows() != b.rows()) {
         return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
     }
-
-    const size_t n = b.rows();
-    Matrix<double> x(n, 1, 0.0);
-    Matrix<double> r = copy(b);
-
-    // Lanczos vectors
-    auto v = copy(r);
-    double beta = std::sqrt(dotvec(v, v));
-    if (beta < 1e-14) return x;
-    for (size_t i = 0; i < n; ++i) v(i, 0) /= beta;
-
-    Matrix<double> v_prev(n, 1, 0.0);
-    double c_old = 1.0, c_cur = 1.0;
-    double s_old = 0.0, s_cur = 0.0;
-    double eta = beta;
-    Matrix<double> w(n, 1, 0.0), w_prev(n, 1, 0.0);
-
-    for (size_t iter = 0; iter < max_iter; ++iter) {
-        // Lanczos step
-        auto Av = matvec(A, v);
-        double alpha = dotvec(v, Av);
-        auto v_next = axpy(-alpha, v, axpy(-beta, v_prev, Av));
-        double beta_next = std::sqrt(dotvec(v_next, v_next));
-        if (beta_next > 1e-14) {
-            for (size_t i = 0; i < n; ++i) v_next(i, 0) /= beta_next;
-        }
-
-        // Apply Givens rotations
-        double delta = c_cur * alpha - c_old * s_cur * beta;
-        double gamma = std::sqrt(delta * delta + beta_next * beta_next);
-        if (gamma < 1e-14) gamma = 1e-14;
-        double c_new = delta / gamma;
-        double s_new = beta_next / gamma;
-
-        // Update solution
-        auto w_new = axpy(-c_old * s_cur * beta / gamma, w_prev,
-                          axpy(-s_old * beta / gamma, w, copy(v)));
-        // Multiply by 1/gamma (already divided by gamma above)
-        x = axpy(c_new * eta, w_new, x);
-        eta = -s_new * eta;
-
-        // Shift for next iter
-        w_prev = w; w = w_new;
-        v_prev = v; v = v_next;
-        beta = beta_next;
-        c_old = c_cur; s_old = s_cur;
-        c_cur = c_new; s_cur = s_new;
-
-        // Residual estimate
-        double res = std::abs(eta);
-        if (res < tol) return x;
-    }
-
-    auto r_check = axpy(-1.0, matvec(A, x), b);
-    double res_norm = std::sqrt(dotvec(r_check, r_check));
-    if (res_norm < tol * 10.0) return x;
-    return std::unexpected(ConvergenceFail{max_iter, res_norm});
+    const Matrix<double> Ad = to_col_major(A);
+    const Matrix<double> bd = to_col_major(b);
+    const double dtol = static_cast<double>(tol);
+    return solve_per_column(bd, A.rows(), [&](const Matrix<double>& rhs) {
+        return minres_single(Ad, rhs, max_iter, dtol);
+    });
 }
 
 template auto minres<double>(const Matrix<double>&, const Matrix<double>&, size_t, double)

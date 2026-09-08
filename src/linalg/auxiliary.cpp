@@ -173,8 +173,43 @@ Result<Matrix<S, OA, Alloc>> null(const Matrix<S, OA, Alloc>& A, S tol) {
         return Matrix<S, OA, Alloc>(0, 0, S(0));
     }
 
-    // Null space of A: eigenvectors of A^T A with near-zero eigenvalue (sigma^2).
-    // Thin SVD V is n x min(m,n) and cannot span the full null space when m < n.
+    // Tall/square case: the SVD's V is n x n, so its trailing columns already
+    // span the whole null space and the singular values come straight from
+    // LAPACK rather than from a squared Gram matrix.
+    if (m >= n) {
+        auto svd_res = svd(A);
+        if (svd_res) {
+            const auto& sigma = svd_res->S;
+            const auto& V = svd_res->V;
+            if (V.rows() == n && V.cols() == n && sigma.rows() == n) {
+                S cutoff = tol;
+                if (cutoff == S(0)) {
+                    cutoff = S(1e-10) * static_cast<S>(std::max(m, n))
+                           * static_cast<S>(sigma(0, 0));
+                }
+                std::vector<size_t> cols;
+                for (size_t i = 0; i < n; ++i) {
+                    if (static_cast<S>(sigma(i, 0)) <= cutoff) {
+                        cols.push_back(i);
+                    }
+                }
+                if (cols.empty()) {
+                    return Matrix<S, OA, Alloc>(n, 0, S(0));
+                }
+                Matrix<S, OA, Alloc> N(n, cols.size(), S(0));
+                for (size_t j = 0; j < cols.size(); ++j) {
+                    for (size_t i = 0; i < n; ++i) {
+                        N(i, j) = static_cast<S>(V(i, cols[j]));
+                    }
+                }
+                return N;
+            }
+        }
+    }
+
+    // Wide case (m < n): the thin SVD's V is only n x m and cannot span an
+    // (n - m)-dimensional null space, so fall back to the eigenvectors of
+    // A^T A with a near-zero eigenvalue (sigma^2).
     auto gram = multiply(transpose_copy(A), A);
     auto eig_res = eig_sym(gram);
     if (!eig_res) {
@@ -185,15 +220,23 @@ Result<Matrix<S, OA, Alloc>> null(const Matrix<S, OA, Alloc>& A, S tol) {
     for (size_t i = 0; i < n; ++i) {
         emax = (std::max)(emax, static_cast<S>(eig_res->values(i, 0)));
     }
-    if (tol == S(0)) {
+    S cutoff = tol;
+    if (cutoff == S(0)) {
+        // Forming A^T A squares the condition number, so a singular value that
+        // is mathematically zero only comes back at the sqrt(eps) level; the
+        // default cutoff has to sit above that, unlike the SVD path above.
         const S sigma_max = std::sqrt((std::max)(emax, S(0)));
-        tol = S(1e-10) * static_cast<S>(std::max(m, n)) * sigma_max;
+        cutoff = std::sqrt(std::numeric_limits<S>::epsilon())
+               * static_cast<S>(std::max(m, n)) * sigma_max;
     }
-    const S tol_sq = tol * tol;
+    // Eigenvalues of A^T A are sigma^2, and `cutoff` is in singular-value
+    // units, so the comparison is against cutoff^2 -- with no second factor
+    // of sigma_max, which would make the test scale-dependent.
+    const S cutoff_sq = cutoff * cutoff;
 
     std::vector<size_t> null_cols;
     for (size_t i = 0; i < n; ++i) {
-        if (eig_res->values(i, 0) <= tol_sq * emax) {
+        if (static_cast<S>(eig_res->values(i, 0)) <= cutoff_sq) {
             null_cols.push_back(i);
         }
     }
@@ -204,8 +247,17 @@ Result<Matrix<S, OA, Alloc>> null(const Matrix<S, OA, Alloc>& A, S tol) {
     Matrix<S, OA, Alloc> N(n, null_cols.size(), S(0));
     for (size_t j = 0; j < null_cols.size(); ++j) {
         const size_t col = null_cols[j];
+        S nrm = S(0);
         for (size_t i = 0; i < n; ++i) {
-            N(i, j) = eig_res->vectors(i, col);
+            nrm += static_cast<S>(eig_res->vectors(i, col))
+                 * static_cast<S>(eig_res->vectors(i, col));
+        }
+        nrm = std::sqrt(nrm);
+        if (nrm == S(0)) {
+            nrm = S(1);
+        }
+        for (size_t i = 0; i < n; ++i) {
+            N(i, j) = static_cast<S>(eig_res->vectors(i, col)) / nrm;
         }
     }
     return N;
@@ -217,27 +269,31 @@ Result<Matrix<S, OA, Alloc>> orth(const Matrix<S, OA, Alloc>& A, S tol) {
     if (A.rows() == 0 || A.cols() == 0) {
         return Matrix<S, OA, Alloc>(A.rows(), 0, S(0));
     }
-    auto qr_res = qr(A);
-    if (!qr_res) return std::unexpected(qr_res.error());
-    const auto& Q = std::get<0>(*qr_res);
-    const auto& R = std::get<1>(*qr_res);
-    const size_t k = (std::min)(R.rows(), R.cols());
+    // An unpivoted QR is not rank revealing: taking the leading columns of its
+    // Q returns directions outside range(A) whenever the deficiency is not in
+    // the trailing columns. The SVD is, so use it (this is also what MATLAB's
+    // orth does, and it matches rank/pinv/cond in this file).
+    auto svd_res = svd(A);
+    if (!svd_res) {
+        return std::unexpected(svd_res.error());
+    }
+    const auto& U = svd_res->U;
+    const auto& sigma = svd_res->S;
     if (tol == S(0)) {
-        S rmax = S(0);
-        for (size_t i = 0; i < k; ++i) {
-            rmax = (std::max)(rmax, static_cast<S>(std::abs(R(i, i))));
-        }
-        tol = S(1e-10) * static_cast<S>(std::max(A.rows(), A.cols())) * rmax;
+        tol = S(1e-10) * static_cast<S>(std::max(A.rows(), A.cols()))
+            * static_cast<S>(sigma(0, 0));
     }
     size_t r = 0;
-    for (size_t i = 0; i < k; ++i) {
-        if (std::abs(R(i, i)) > tol) ++r;
+    for (size_t i = 0; i < sigma.rows() && i < U.cols(); ++i) {
+        if (static_cast<S>(sigma(i, 0)) > tol) {
+            ++r;
+        }
     }
-    const size_t m = Q.rows();
+    const size_t m = U.rows();
     Matrix<S, OA, Alloc> Qout(m, r, S(0));
     for (size_t j = 0; j < r; ++j) {
         for (size_t i = 0; i < m; ++i) {
-            Qout(i, j) = Q(i, j);
+            Qout(i, j) = static_cast<S>(U(i, j));
         }
     }
     return Qout;
