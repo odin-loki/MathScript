@@ -1,5 +1,6 @@
 // MathScript Unsafe Registry - collects [[ms::unsafe]] / MS_UNSAFE audit sites
 
+#include <charconv>
 #include "unsafe_registry.hpp"
 
 #include <algorithm>
@@ -120,7 +121,15 @@ std::vector<UnsafeSite> parse_jsonl_sites(const std::string& path) {
             if (key_pos == std::string::npos) {
                 return 0;
             }
-            return std::stoi(line.substr(key_pos + needle.size()));
+            // std::stoi throws on a non-numeric or oversized value, and this library is
+            // built with -fno-exceptions, so a malformed registry line aborted the process.
+            const std::string tail = line.substr(key_pos + needle.size());
+            const char* first = tail.data();
+            const char* last = first + tail.size();
+            while (first != last && (*first == ' ' || *first == '\t')) ++first;
+            int value = 0;
+            const auto conv = std::from_chars(first, last, value);
+            return conv.ec == std::errc{} ? value : 0;
         };
 
         UnsafeSite site;

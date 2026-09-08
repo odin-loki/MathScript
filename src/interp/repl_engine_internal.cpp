@@ -55,6 +55,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
+#include <limits>
 #include <cmath>
 #include <complex>
 #include <cerrno>
@@ -14847,7 +14849,19 @@ bool try_parse_bigint_unary_call(const std::string& line, std::string& name, std
     }
     name = match[1].str();
     fn = lower(match[2].str());
-    n = std::stoi(match[3].str());
+    // The regex only guarantees an optional sign and digits, not that they fit an int:
+    // std::stoi throws std::out_of_range on a long run of them, and this library is built
+    // with -fno-exceptions, so that call aborted the process.
+    const std::string digits_text = match[3].str();
+    long long parsed = 0;
+    const char* first = digits_text.data();
+    const char* last = first + digits_text.size();
+    const auto conv = std::from_chars(first, last, parsed);
+    if (conv.ec != std::errc{} || conv.ptr != last || parsed < 0 ||
+        parsed > static_cast<long long>(std::numeric_limits<int>::max())) {
+        return false;
+    }
+    n = static_cast<int>(parsed);
     return is_identifier(name) && n >= 0;
 }
 

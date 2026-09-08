@@ -20,6 +20,9 @@ public:
 
     BigInt() : digits(1, 0) {}
     BigInt(long long v);
+    /// Defensive decimal parse: a non-digit anywhere in the significand yields zero
+    /// (it used to reach std::stoul, which throws -- and under -fno-exceptions aborted).
+    /// Use parse() to see the reason instead.
     explicit BigInt(const std::string& s);
     /// Parse `s` in `base` (2–36). On failure (bad base or digit) constructs zero.
     explicit BigInt(const std::string& s, int base);

@@ -39,19 +39,30 @@ BigInt::BigInt(long long v) {
     while (uv > 0) { digits.push_back(uv % BASE); uv /= BASE; }
 }
 
+// Defensive decimal constructor: unparsable input yields zero, per the header. It used
+// std::stoul on each 9-digit chunk, which THROWS std::invalid_argument on a non-numeric
+// chunk -- and this library is built with -fno-exceptions, so BigInt("x") called
+// std::terminate and aborted the process instead of constructing zero. The digits are
+// accumulated by hand now, and any non-digit character abandons the whole parse.
 BigInt::BigInt(const std::string& s) {
     std::string str = s;
     negative = false;
     if (!str.empty() && str[0] == '-') { negative = true; str = str.substr(1); }
     if (!str.empty() && str[0] == '+') str = str.substr(1);
     digits.clear();
+    for (char c : str) {
+        if (c < '0' || c > '9') { str.clear(); break; }
+    }
     digits.reserve((str.size() + 8) / 9);
-    // Parse from right in chunks of 9
+    // Parse from the right in chunks of 9 decimal digits (BASE == 1e9).
     int i = (int)str.size();
     while (i > 0) {
         int start = std::max(0, i-9);
-        std::string chunk = str.substr(start, i-start);
-        digits.push_back((uint32_t)std::stoul(chunk));
+        uint32_t chunk = 0;
+        for (int k = start; k < i; ++k) {
+            chunk = chunk * 10u + static_cast<uint32_t>(str[static_cast<size_t>(k)] - '0');
+        }
+        digits.push_back(chunk);
         i = start;
     }
     if (digits.empty()) digits.push_back(0);
@@ -611,7 +622,7 @@ int ap_digit_count(const BigInt& a) {
 }
 
 // a * 10^n in O(n/9 + limbs). Replaces BigInt::shift10, which round-trips through
-// std::to_string/std::stoul and is undefined for n < 0.
+// std::to_string and the string constructor and is undefined for n < 0.
 BigInt ap_shift10(const BigInt& a, int n) {
     if (n <= 0 || a.is_zero()) return a;
     const std::size_t limbs = static_cast<std::size_t>(n) / 9u;
@@ -973,8 +984,9 @@ Result<APFloat> APFloat::parse(const std::string& s, int precision) {
         exp_field < -static_cast<long long>(APFloat::EXP10_LIMIT))
         return std::unexpected(DomainError{"APFloat::parse", "exponent out of range"});
 
-    // digits_str is validated all-digits, which is the only safe way to reach
-    // BigInt(const std::string&) -- it calls std::stoul, which throws otherwise.
+    // digits_str is validated all-digits; BigInt(const std::string&) now abandons the
+    // parse and yields zero on a non-digit rather than aborting, but feeding it validated
+    // input keeps this path's meaning explicit.
     const std::string digits_str = ip + fp;
     BigInt m(digits_str);
     m.negative = neg && !m.is_zero();
