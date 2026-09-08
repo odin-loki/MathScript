@@ -1265,7 +1265,17 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
 static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
                                                const Matrix<double>& matrix) {
     std::ostringstream out;
-    if (fn == "graph_katz_centrality") {
+    if (fn == "sparse_to_dense") {
+        // is_valid_matrix_call_arity accepts sparse_to_dense(A) with arity 1, and the
+        // assigned form works, so without this branch the printing form fell through to
+        // the "unknown function" tail of a function the arity table says exists.
+        auto dense = eval_sparse_to_dense(matrix);
+        if (!dense) {
+            return std::unexpected(dense.error());
+        }
+        out << "dense =\n";
+        print_matrix(out, *dense);
+    } else if (fn == "graph_katz_centrality") {
         auto kc = eval_graph_katz_centrality(matrix);
         if (!kc) {
             return std::unexpected(kc.error());
@@ -17273,6 +17283,241 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 auto arg_b_m = resolve_arg(call_args->at(1));
                 if (!arg_b_m) {
                     return std::unexpected(arg_b_m.error());
+                }
+                // Printing (no-assignment) forms of the two-matrix ML predictors,
+                // transforms and the anticommutator. is_matrix_dual_matrix_call_callee
+                // already claimed these, so without a branch here the call fell out of
+                // this chain and was retried as a single matrix named "X, model",
+                // reporting "unknown matrix" for a call that works when assigned.
+                if (fn == "ml_linear_fit") {
+                    auto value = eval_ml_linear_fit(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "model =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_linear_predict") {
+                    auto value = eval_ml_linear_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_ridge_predict") {
+                    auto value = eval_ml_ridge_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_logistic_fit") {
+                    auto value = eval_ml_logistic_fit(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "model =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_logistic_predict") {
+                    auto value = eval_ml_logistic_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_lasso_predict") {
+                    auto value = eval_ml_lasso_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_elastic_net_predict") {
+                    auto value = eval_ml_elastic_net_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_knn_predict") {
+                    auto value = eval_ml_knn_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_naive_bayes_predict") {
+                    auto value = eval_ml_naive_bayes_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_lda_predict") {
+                    auto value = eval_ml_lda_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_lda_transform") {
+                    auto value = eval_ml_lda_transform(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "Z =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_qda_predict") {
+                    auto value = eval_ml_qda_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_svm_predict") {
+                    auto value = eval_ml_svm_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_decision_tree_predict") {
+                    auto value = eval_ml_decision_tree_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_random_forest_predict") {
+                    auto value = eval_ml_random_forest_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_adaboost_predict") {
+                    auto value = eval_ml_adaboost_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_gradient_boosting_predict") {
+                    auto value = eval_ml_gradient_boosting_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_kmeans_predict") {
+                    auto value = eval_ml_kmeans_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "labels =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_pca_transform") {
+                    auto value = eval_ml_pca_transform(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "Z =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_gmm_predict") {
+                    auto value = eval_ml_gmm_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "labels =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_gmm_predict_proba") {
+                    auto value = eval_ml_gmm_predict_proba(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "proba =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_isolation_forest_score") {
+                    auto value = eval_ml_isolation_forest_score(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "score =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "quantum_anticommutator") {
+                    auto value = eval_quantum_anticommutator(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "anticomm =\n";
+                    print_matrix(out, *value);
+                    return out.str();
                 }
                 if (fn == "control_lyap") {
                     auto value = eval_control_lyap(*arg_a_m, *arg_b_m);

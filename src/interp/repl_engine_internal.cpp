@@ -14424,6 +14424,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "poly_interp_newton" || callee == "quantum_tensor_product" ||
            callee == "ml_mat_mul" ||
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
+           callee == "ml_kmeans_predict" || callee == "ml_pca_transform" ||
+           callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" ||
+           callee == "ml_isolation_forest_score" ||
            callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
            callee == "ml_logistic_predict" ||
            callee == "ml_lasso_predict" || callee == "ml_elastic_net_predict" ||
