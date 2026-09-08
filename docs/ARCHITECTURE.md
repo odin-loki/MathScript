@@ -159,7 +159,7 @@ Tests are grouped by **mathematical domain** (`linalg`, `fft`, `special`, …), 
 | `tests/fuzz/` | Seven libFuzzer targets + corpora; `test_fuzz_stress` always built |
 | `tests/performance/<domain>/` | 28 `bench_*` executables when `MS_BUILD_BENCHMARKS=ON` |
 
-CTest catalogue: **816** suites (Windows MSVC, CUDA off). Suite count is the number of test executables after configure. Wave-numbered pipelines were collapsed to one file per unique command set.
+CTest catalogue: **831** suites (Linux GCC 13, CUDA off). Suite count is the number of test executables after configure. Wave-numbered pipelines were collapsed to one file per unique command set.
 
 REPL matrix handlers live in `src/interp/matrix_calls/<domain>/`.
 

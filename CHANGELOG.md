@@ -6,7 +6,35 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 ## [Unreleased]
 
-CMake project version **1.0.0**. The git tag `v1.0.0` is not cut; it still follows the gates in [`docs/RELEASE.md`](docs/RELEASE.md) (coverage ≥ 90% for the tag, fuzz-24h, benches, compliance, JIT). Pre-release `v1.0.0-rc.1` is published.
+### Features completed
+
+Every entry that `docs/RELEASE_DECISIONS.md` listed as a deliberately-deferred
+stub has been closed; see that file for the before/after table.
+
+- Graph: `max_weight_matching` / `max_weight_matching_value` (Edmonds' primal-dual blossom, verified against exhaustive brute force on random graphs), and exact planarity via `is_planar` (Left-Right criterion) with `planar_embedding` and `kuratowski_subgraph`. The old heuristic remains as `is_planar_k5_k33_check`.
+- Geo: `marching_cubes` / `marching_cubes_mesh` (full 256-case Lorensen-Cline tables), `marching_squares`, `mesh_surface_area`, `mesh_volume`. Sphere area and volume reproduce 4*pi*r^2 and 4/3*pi*r^3 to 0.17% and 0.30% on a 48^3 grid.
+- Image: `graph_cut_segment` / `grabcut_segment` / `min_cut_value`; `fast_corners`, `orb_detect_and_compute`, `sift_detect_and_compute` and descriptor matching. SURF is deliberately not implemented.
+- Bignum: `APFloat` and `APComplex` with a full arbitrary-precision transcendental set. pi, e and ln2 reproduce their standard expansions to 40+ digits.
+- Distributed: a `dist_ops` communication layer, SUMMA matmul, and row-distributed Krylov solvers replacing the gather-to-one-rank path (which remains the documented fallback).
+- CUDA: real NCCL communicator management and collectives behind `MS_HAS_NCCL`; the default build keeps its identity semantics.
+- ML: real Barnes-Hut t-SNE replacing the dense O(n^2) stub whose perplexity search never converged on a target entropy.
+- Frameworks: Axiom's `evaluation` / `selection` / `mutation` Syms carry real per-individual provenance instead of three constants.
+- `mathscript-server` is a real SPMD compute node (`--script`, `-e`, `--serve`, one Interpreter per rank) rather than a heartbeat loop that ignored argv.
+
+### Correctness fixes
+
+Implementations that did not compute what their headers documented.
+
+- `qmr` was BiCGSTAB, `tfqmr` was `return bicgstab(...)`, `lsmr` was `return lsqr(...)`, and `precond_ssor` returned only `diag(A)/omega`. All four are now the real algorithms, plus new `precond_ssor_apply`, `precond_ilu0`, `precond_ilu0_apply` and `pcg`.
+- `cplx::inversion` returned the identity Mobius; it now returns the anti-Mobius acting on `conj(z)`, with `apply_inversion` and `cross_ratio_c` added.
+- `topo::cech_complex` clamped `max_dim` to 2; minimum enclosing balls now come from the bordered Cayley-Menger system, so higher dimensions are built.
+- `crypto::random_bytes` drew from `std::random_device` per byte; it now uses `getrandom(2)`, `BCryptGenRandom` or `arc4random_buf`.
+- `sym_dsolve` was separable-only; `sym_dsolve_ode` adds linear, Bernoulli, exact and homogeneous classification with numeric verification of every candidate, and `sym_dsolve_linear2` handles second-order constant-coefficient equations.
+- Quantum: `fidelity` computed `sqrt(|Re Tr(rho sigma)|)` rather than the Uhlmann fidelity, `trace_distance` computed the Frobenius rather than the trace norm, `concurrence` used an ad-hoc diagonal formula rather than Wootters', and `schmidt_decomposition` left the right Schmidt vectors unconjugated. All verified against exact ground truth.
+- `MS_LINK_TESTS_SHARED` failed to configure at all under CMake 3.28 (`ms_core` appeared both with and without the `WHOLE_ARCHIVE` link feature). This is the configuration `coverage-linux` and `sanitizer-linux` use.
+- Several existing tests passed only because their tolerance was looser than the contract deserved, or because the input hit the one degenerate case the buggy code got right. Those are tightened where found.
+
+### Earlier entries
 
 - Tests: extra control/signal/symbolic/BLAS/FEM/ODE/finance/poly/special/stats/core/CFD unit coverage plus leftover no-assignment REPL printers (unary math, bigint, optimizers, CFD 3D, cplx, gria, geo, ML, quantum).
 - Tests: extra crypto/image/info/graph/geo/compress/ML/combo/numthy/PDE/dispatch/iterative unit coverage plus scalar-assignment REPL printers for eval_scalar_call (sin/cos/bigint/mpi/cuda/ellip_d/gria/geo hermite).

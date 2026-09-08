@@ -16,7 +16,7 @@ Executables: `mathscriptc`, `mathscript-repl`, `mathscript-server`. Optional Qt 
 | [Contributing](docs/CONTRIBUTING.md) | Build, test, coverage, fuzz, plugin, packaging |
 | [Performance](docs/PERFORMANCE.md) | Benchmarks, baselines, known complexity trade-offs |
 | [Release](docs/RELEASE.md) | 1.0.0 tag criteria and remaining gates |
-| [1.0 scope](docs/RELEASE_DECISIONS.md) | Stubs and post-1.0 deferrals (decided, not remaining) |
+| [1.0 scope](docs/RELEASE_DECISIONS.md) | What the deferred-stub list became, and what is still out of scope |
 | [Unsafe surface](UNSAFE_REVIEW.md) | Approved `MS_UNSAFE` sites |
 | [Wave history](docs/WAVES.md) | How the library was built, wave by wave |
 
@@ -48,7 +48,7 @@ CPU BLAS/LAPACK kernels live in `linalg` and are declared in `include/ms/cpu/bla
 ## Status
 
 - **Version:** CMake project version **1.0.0**. The `v1.0.0` git tag is not cut; remaining gates are in [`docs/RELEASE.md`](docs/RELEASE.md).
-- **Tests:** **816** CTest suites, 100% passed on Windows MSVC Release (CUDA off, ~36 s at `-j 32`). Tests live under `tests/{unit,numerical,integration,performance}/<domain>/`. CI enforces **90%** line coverage. REPL matrix calls dispatch through a name-keyed handler registry (`src/interp/matrix_calls/<domain>/`).
+- **Tests:** **831** CTest suites, 100% passed on Linux GCC 13 Release (CUDA off). Tests live under `tests/{unit,numerical,integration,performance}/<domain>/`. CI enforces **90%** line coverage. REPL matrix calls dispatch through a name-keyed handler registry (`src/interp/matrix_calls/<domain>/`).
 - **Benchmarks:** 28 Google Benchmark targets passed locally with `--benchmark_min_time=0.001s`. CI regression uses 10% tolerance vs `linux-gcc13.json`.
 - **CI:** Windows MSVC and Linux GCC 13; coverage; libFuzzer smoke (7 targets); AddressSanitizer + UBSan; 28-bench regression (10% tolerance); Clang plugin; vendor checksums; optional JIT and plugin jobs.
 
