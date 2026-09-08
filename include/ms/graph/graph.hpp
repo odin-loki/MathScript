@@ -118,7 +118,107 @@ std::vector<int> eccentricity(const Graph& G);
 int    diameter(const Graph& G);   // longest shortest path
 int    radius(const Graph& G);
 bool   is_tree(const Graph& G);
+// Necessary-but-not-sufficient planarity SCREEN: the Euler-formula bound
+// E <= 3V - 6 that every simple planar graph with V >= 3 satisfies. Kept
+// bit-for-bit unchanged for backwards compatibility -- it is what the REPL's
+// graph_is_planar binding has always called, and what the existing
+// GraphProperties.PlanarHeuristic* tests assert.
+//
+// It is a HEURISTIC, and it is wrong in both directions:
+//   - False POSITIVES: it accepts K3,3 (9 <= 12), the Petersen graph
+//     (15 <= 24), the Wagner graph V8 (12 <= 18) and every sparse
+//     subdivision of a Kuratowski graph -- all of which are non-planar.
+//   - False NEGATIVES: the bound is only valid for V >= 3, so it reports
+//     false for n == 0 and n == 1, and for any 2-vertex graph carrying an
+//     edge (1 <= 0 is false), all of which are trivially planar.
+//   - It counts G.n_edges(), i.e. add_edge calls, so self-loops and parallel
+//     edges inflate E even though neither can affect planarity.
+//
+// USE is_planar(G) FOR THE EXACT ANSWER; this function remains only as the
+// cheap O(1) screen it always was.
 bool   is_planar_k5_k33_check(const Graph& G);  // heuristic
+
+// Exact planarity test: true iff G can be drawn in the plane with no two
+// edges crossing. Implements the Left-Right planarity criterion (de
+// Fraysseix / Ossona de Mendez / Rosenstiehl, in Brandes' formulation): one
+// DFS orients the graph and computes lowpoints and per-edge nesting depths, a
+// second DFS over the nesting-depth-ordered adjacency lists maintains a stack
+// of conflict pairs of return-edge intervals, and G is planar exactly when no
+// two return edges are forced onto the same side of a DFS tree path.
+//
+// Conventions:
+//   - The test runs on the UNDERLYING SIMPLE UNDIRECTED graph: directed edges
+//     are symmetrised (same convention as louvain / k_core_decomposition),
+//     self-loops are dropped, parallel edges collapse to one. Nothing is lost
+//     -- a loop or a parallel twin can always be drawn alongside its partner
+//     -- so G is planar iff its simple underlying graph is.
+//   - Neighbour ids outside [0, n_vertices()) are skipped defensively.
+//   - Disconnected graphs are handled directly (one DFS root per component,
+//     lowest-numbered vertex first); G is planar iff every component is.
+//   - n == 0, n == 1 and edgeless graphs are planar (vacuously). NOTE this
+//     differs from is_planar_k5_k33_check, which reports false for them.
+// @param G input graph
+// @return true iff G is planar
+// @note O(V + E): building the simple edge list dominates, after which the
+//       E > 3V - 6 (V > 2) Euler rejection makes the three DFS passes O(V).
+bool is_planar(const Graph& G);
+
+// Combinatorial planar embedding (rotation system) of G, produced by the same
+// Left-Right run as is_planar. Returns, for each vertex v, the neighbours of v
+// in clockwise cyclic order around v. The list is a CYCLE: which neighbour
+// appears first is an implementation detail, but the cyclic order and the
+// orientation are consistent across every vertex, which is what makes the
+// rotation system an embedding.
+//
+// Face tracing: starting from a directed half-edge (v,w), the next half-edge
+// of the same face is (w,x) where x is the CYCLIC PREDECESSOR of v in
+// result[w] (i.e. v's counter-clockwise neighbour around w). Following that
+// rule from every one of the 2E directed half-edges partitions them into
+// faces. A rotation system carries no information tying one component to
+// another, so faces are traced PER COMPONENT: each connected component that
+// has at least one edge satisfies Euler's formula V_i - E_i + F_i == 2 on its
+// own, and the total face count is therefore
+//     F == 2 * C_e - V_e + E
+// where C_e counts the components carrying at least one edge and V_e counts
+// the vertices those components contain. (Two disjoint triangles give F == 4,
+// not the 3 a plane DRAWING would show -- a drawing merges the components'
+// outer faces, a rotation system cannot know they were merged. Isolated
+// vertices have no half-edges and so contribute no face at all.)
+//
+// Conventions: same simple-underlying-graph normalisation as is_planar, so
+// self-loops and parallel edges never appear in the returned lists, directed
+// input is symmetrised, and an isolated vertex gets an empty list. The
+// returned vector always has exactly G.n_vertices() entries (empty for
+// n == 0).
+// @param G input graph
+// @return per-vertex clockwise neighbour cycle, or a DomainError when G is
+//         not planar (there is no embedding to return)
+// @note O(V + E), the same single Left-Right run as is_planar plus the
+//       embedding pass.
+Result<std::vector<std::vector<int>>> planar_embedding(const Graph& G);
+
+// Kuratowski subgraph: when G is NOT planar, the edges of a subdivision of K5
+// or of K3,3 contained in G -- the concrete certificate of non-planarity that
+// Kuratowski's theorem promises. Empty when G IS planar.
+//
+// Found by edge-minimisation: starting from G's simple underlying edge set (in
+// ascending (u,v) order), each edge in turn is deleted and the rest re-tested;
+// an edge whose deletion makes the graph planar is essential and put back, an
+// edge whose deletion leaves it non-planar is left out. What survives is an
+// edge-minimal non-planar graph, which by Kuratowski's theorem is exactly a
+// subdivision of K5 or K3,3: E - V == 5 with five degree-4 branch vertices
+// (K5 case), or E - V == 3 with six degree-3 branch vertices (K3,3 case), all
+// other vertices having degree 2 (V counting only vertices the returned edges
+// actually touch).
+//
+// Conventions: same simple-underlying-graph normalisation as is_planar.
+// Returned edges have from < to, carry the same (parallel-collapsed) weight
+// canonical simple-edge extraction assigns, and are sorted ascending by
+// (from, to) -- the shape and ordering bridges() already uses.
+// @param G input graph
+// @return edges of a K5 or K3,3 subdivision; empty iff is_planar(G)
+// @note O(E * (V + E)): one planarity test per candidate edge.
+std::vector<Edge> kuratowski_subgraph(const Graph& G);
 
 // K-core decomposition of an undirected graph via the standard Batagelj-
 // Zaversnik bucket-queue degree-peeling algorithm (O(V+E)). The core number
@@ -186,6 +286,62 @@ Result<int> bipartite_match(const Graph& G, int left_size);
 // @return list of matched undirected edges (cardinality-maximal)
 // @note O(V^3) time via BFS blossom shrinking; intended for moderate n
 std::vector<std::pair<int, int>> maximum_matching(const Graph& G);
+
+// Maximum-WEIGHT matching in a general (non-bipartite) undirected graph, via
+// Edmonds' primal-dual blossom algorithm in Galil's O(V^3) formulation (a
+// stage per augmentation, an S/T-labelled alternating forest, blossom
+// shrinking, dual adjustment by the least of four candidate deltas, and
+// blossom expansion). Where maximum_matching maximises the NUMBER of matched
+// edges, this maximises the SUM of their weights.
+//
+// Conventions, matching maximum_matching's where they overlap:
+//   - Directed edges are treated as undirected (same convention as bridges /
+//     biconnected_components / maximum_matching).
+//   - Self-loops are ignored: a loop can never join two distinct vertices.
+//   - Parallel edges between the same pair collapse to the single HEAVIEST
+//     copy -- an optimal matching would never prefer a lighter parallel twin.
+//   - Neighbour ids outside [0, n_vertices()) are skipped defensively.
+//   - Isolated vertices simply stay unmatched.
+//   - Matched edges are returned as (u,v) pairs with u < v, sorted ascending
+//     by u then by v -- the same shape and ordering maximum_matching returns.
+//     Empty for n == 0, for an edgeless graph, and whenever no edge improves
+//     the total.
+//
+// Weight handling:
+//   - Negative-weight edges are never matched when maxcardinality is false
+//     (leaving both endpoints free is strictly better), so an all-negative
+//     graph yields an EMPTY matching, not a maximal one.
+//   - Zero-weight edges neither help nor hurt; whether one appears is fixed
+//     by the search order and never changes the reported total.
+//   - With every weight 1.0 (Graph::add_edge's default) the total weight IS
+//     the cardinality, so the result has the same SIZE as maximum_matching(G)
+//     -- though possibly a different edge set, since ties are broken by
+//     search order rather than by any documented rule.
+//
+// @param G input graph
+// @param maxcardinality when true, search only among matchings of MAXIMUM
+//        CARDINALITY and return the heaviest of those: the size equals
+//        maximum_matching(G).size() exactly, even when reaching it forces
+//        negative-weight edges in and lowers the total. When false (the
+//        default) cardinality is free and only total weight is maximised.
+// @return matched undirected edges as (u,v) pairs, u < v, ascending
+// @note O(V^3) time; O(V + E) space, with an O(V^2) worst case for the
+//       per-blossom least-slack edge lists. Intended for moderate n, exactly
+//       like maximum_matching. Exact for integer-valued weights (every dual
+//       stays integral in the doubled formulation); for general real weights
+//       a relative tolerance of 1e-9 * max(1, max|w|) decides edge slack.
+std::vector<std::pair<int, int>> max_weight_matching(const Graph& G,
+                                                     bool maxcardinality = false);
+
+// Total weight of max_weight_matching(G, maxcardinality): the sum of the
+// parallel-collapsed weights of the edges that function returns. 0.0 for an
+// empty matching, including n == 0 and edgeless graphs.
+// @param G input graph
+// @param maxcardinality see max_weight_matching
+// @return sum of matched edge weights (may be negative when maxcardinality
+//         is true and the graph's maximum-cardinality matchings all cost)
+// @note Runs the same O(V^3) search; it is not a cheaper query.
+double max_weight_matching_value(const Graph& G, bool maxcardinality = false);
 
 // --- Coloring (greedy) ---
 std::vector<int> greedy_colour(const Graph& G);
