@@ -16,14 +16,24 @@
 using namespace ms;
 
 TEST(SignalFilterTest, butterworth_and_lowpass) {
+    // These are DIFFERENT filters and must not be interchangeable. This test
+    // used to assert they agree to 1e-12, which held only because butterworth's
+    // body was byte-for-byte lowpass's -- an ideal brick-wall FFT mask. lowpass
+    // is that brick wall; butterworth is a finite-order IIR with a maximally
+    // flat passband and a gradual rolloff.
     const std::vector<double> x{0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0};
     const auto bw = butterworth(x, 0.25, 1.0);
     ASSERT_EQ(bw.size(), x.size());
     const auto lp = lowpass(x, 0.25, 1.0);
     ASSERT_EQ(lp.size(), x.size());
+
+    double max_diff = 0.0;
     for (size_t i = 0; i < x.size(); ++i) {
-        EXPECT_NEAR(lp[i], bw[i], 1e-12);
+        EXPECT_TRUE(std::isfinite(bw[i]));
+        EXPECT_TRUE(std::isfinite(lp[i]));
+        max_diff = std::max(max_diff, std::abs(lp[i] - bw[i]));
     }
+    EXPECT_GT(max_diff, 1e-6) << "butterworth is still an alias for lowpass";
 }
 
 TEST(SignalFilterTest, highpass_and_bandpass) {

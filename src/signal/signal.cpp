@@ -400,9 +400,8 @@ std::vector<double> demean(const std::vector<double>& x) {
 
 } // namespace
 
-std::vector<double> butterworth(const std::vector<double>& x, double cutoff, double fs) {
-    return fft_lowpass(x, cutoff, fs);
-}
+// butterworth() is defined further down, once the analog-prototype and
+// bilinear-transform machinery it needs is in scope.
 
 std::vector<double> lowpass(const std::vector<double>& x, double cutoff, double fs) {
     return fft_lowpass(x, cutoff, fs);
@@ -634,6 +633,19 @@ std::vector<double> interpolate_freq(const std::vector<double>& x, int p) {
 
 bool interpolate_use_freq(size_t x_len, int p) {
     if (p < static_cast<int>(kInterpolateFreqCrossover)) {
+        return false;
+    }
+    // interpolate_freq() periodises the input spectrum as
+    //   spec_out[k] = spec_in[k % in_fft],  in_fft = next_pow2(n),
+    //                                       out_fft = next_pow2(n*p)
+    // which zero-stuffs by out_fft / in_fft, not by p. Those coincide only when
+    // p is a power of two (then next_pow2(n*p) == next_pow2(n) * p exactly).
+    // For p = 9, 10, 11, ... the fast path returned a differently-stuffed,
+    // truncated, mis-scaled signal: a 32-sample ramp 0..31 interpolated by 8
+    // peaks at 34.1 (correct) but by 9 at 10.4 and by 10 at 12.8. Restrict the
+    // path to the case it is actually valid for; everything else takes the
+    // reference stuffed path, which is correct for any p.
+    if ((p & (p - 1)) != 0) {
         return false;
     }
     const size_t out_len = x_len * static_cast<size_t>(p);
@@ -1458,6 +1470,21 @@ std::vector<double> poly_from_zeros_zinv(const std::vector<std::complex<double>>
     return poly_from_poles_zinv(zeros);
 }
 
+// Butterworth analog lowpass prototype: `order` poles equally spaced on the left
+// half of the unit circle, no finite zeros, unit gain. This is what makes the
+// magnitude response maximally flat, |H(w)|^2 = 1 / (1 + (w/wc)^(2n)).
+Zpk buttap(int order) {
+    Zpk sys;
+    sys.k = 1.0;
+    sys.p.reserve(static_cast<std::size_t>(order));
+    for (int k = 1; k <= order; ++k) {
+        const double theta =
+            M_PI * static_cast<double>(2 * k + order - 1) / static_cast<double>(2 * order);
+        sys.p.emplace_back(std::polar(1.0, theta));
+    }
+    return sys;
+}
+
 Zpk cheb1ap(int order, double rp_db) {
     const double epsilon = std::sqrt(std::pow(10.0, 0.1 * rp_db) - 1.0);
     const double mu = std::asinh(1.0 / epsilon) / static_cast<double>(order);
@@ -1647,6 +1674,63 @@ IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs, FilterType t
         }
     }
     return coeffs;
+}
+
+IirCoeffs butter(int order, double cutoff, double fs, FilterType type) {
+    if (order < 1 || !valid_cutoff(cutoff, fs, type)) {
+        return {};
+    }
+
+    const double wn = cutoff / (fs / 2.0);
+    const double warped = 4.0 * std::tan(M_PI * wn / 2.0);
+
+    Zpk sys = buttap(order);
+    if (type == FilterType::Highpass) {
+        sys = lp2hp_zpk(sys, warped);
+    } else {
+        sys = lp2lp_zpk(sys, warped);
+    }
+    sys = bilinear_zpk(sys, 2.0);
+
+    IirCoeffs coeffs;
+    coeffs.a = poly_from_poles_zinv(sys.p);
+    coeffs.b = poly_from_zeros_zinv(sys.z);
+    if (std::abs(sys.k - 1.0) > 1e-15) {
+        for (double& v : coeffs.b) {
+            v *= sys.k;
+        }
+    }
+    if (!coeffs.a.empty() && std::abs(coeffs.a[0]) > 1e-15) {
+        const double scale = coeffs.a[0];
+        for (double& v : coeffs.b) {
+            v /= scale;
+        }
+        for (double& v : coeffs.a) {
+            v /= scale;
+        }
+    }
+    return coeffs;
+}
+
+std::vector<double> butterworth(const std::vector<double>& x, double cutoff, double fs, int order) {
+    // This used to be `return fft_lowpass(x, cutoff, fs);` -- byte-for-byte the
+    // body of ms::lowpass, an ideal brick-wall FFT mask. A brick wall has none
+    // of the properties the name promises: no maximally-flat passband, infinite
+    // rolloff instead of -6n dB/octave, and Gibbs ringing from the rectangular
+    // mask. An existing test asserted butterworth == lowpass to 1e-12, which
+    // blessed the aliasing rather than checking any response.
+    //
+    // It now designs a real Butterworth IIR through the same analog-prototype
+    // plus bilinear-transform pipeline cheby1/cheby2 already use, and applies it
+    // with filtfilt for zero phase.
+    if (x.empty() || order < 1) {
+        return x;
+    }
+    const IirCoeffs c = butter(order, cutoff, fs, FilterType::Lowpass);
+    if (c.b.empty() || c.a.empty()) {
+        return x;  // invalid cutoff: degrade rather than fabricate
+    }
+    return filtfilt(c.b, c.a, x);
 }
 
 IirCoeffs cheby2(int order, double rs_db, double cutoff, double fs, FilterType type) {

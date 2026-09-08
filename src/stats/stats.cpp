@@ -468,25 +468,44 @@ double trimmed_mean(std::span<const double> data, double frac) {
 double spearman(std::span<const double> x, std::span<const double> y) {
     if (x.size() != y.size() || x.empty()) return 0.0;
     const size_t n = x.size();
-    // Rank x and y
-    const auto rank_vec = [&](std::span<const double> v) {
-        std::vector<size_t> idx(n);
-        std::iota(idx.begin(), idx.end(), 0u);
-        std::sort(idx.begin(), idx.end(),
-                  [&](size_t a, size_t b) { return v[a] < v[b]; });
-        std::vector<double> ranks(n);
-        for (size_t i = 0; i < n; ++i) ranks[idx[i]] = static_cast<double>(i + 1);
-        return ranks;
-    };
-    auto rx = rank_vec(x);
-    auto ry = rank_vec(y);
-    double d2 = 0.0;
+    // Spearman's rho is Pearson's r computed on ranks. This used to assign
+    // distinct ranks 1..n by sort position, with NO tie handling, and then apply
+    // the d^2 shortcut 1 - 6*sum(d^2)/(n(n^2-1)). That shortcut is only
+    // algebraically equal to Pearson-on-ranks when every rank is distinct, and
+    // the arbitrary rank assignment made the result depend on the sort's
+    // tie-breaking order. Every other rank routine in this file
+    // (mann_whitney_u, kruskal_wallis, friedman, fligner_test,
+    // wilcoxon_signed_rank) already uses average_ranks; spearman was the outlier.
+    const std::vector<double> rx = average_ranks(std::vector<double>(x.begin(), x.end()));
+    const std::vector<double> ry = average_ranks(std::vector<double>(y.begin(), y.end()));
+
+    const double nd = static_cast<double>(n);
+    double mx = 0.0;
+    double my = 0.0;
     for (size_t i = 0; i < n; ++i) {
-        double d = rx[i] - ry[i];
-        d2 += d * d;
+        mx += rx[i];
+        my += ry[i];
     }
-    double nd = static_cast<double>(n);
-    return 1.0 - 6.0 * d2 / (nd * (nd * nd - 1.0));
+    mx /= nd;
+    my /= nd;
+
+    double sxy = 0.0;
+    double sxx = 0.0;
+    double syy = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        const double dx = rx[i] - mx;
+        const double dy = ry[i] - my;
+        sxy += dx * dy;
+        sxx += dx * dx;
+        syy += dy * dy;
+    }
+    // Constant ranks in either input (n == 1, or every value tied): the
+    // correlation is undefined. Report NaN rather than a number, which is what
+    // the previous 0/0 shortcut produced and what callers already rely on.
+    if (sxx <= 0.0 || syy <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return sxy / std::sqrt(sxx * syy);
 }
 
 double kendall(std::span<const double> x, std::span<const double> y) {
@@ -501,8 +520,34 @@ double kendall(std::span<const double> x, std::span<const double> y) {
             else if (sx * sy < 0.0) ++discordant;
         }
     }
-    double nd = static_cast<double>(n);
-    double denom = nd * (nd - 1.0) / 2.0;
+    // tau-b, not tau-a. The loop already skips pairs tied in either variable, so
+    // dividing by the untied n(n-1)/2 (tau-a) understates the coefficient
+    // whenever ties are present and makes +/-1 unreachable -- a perfectly
+    // monotone relationship with one tied pair could not report 1.0. tau-b
+    // normalises by sqrt((n0 - n1)(n0 - n2)) with n1, n2 the tie corrections of
+    // x and y, which restores the [-1, 1] range.
+    const auto tie_correction = [n](std::span<const double> v) {
+        std::vector<double> sorted(v.begin(), v.end());
+        std::sort(sorted.begin(), sorted.end());
+        double total = 0.0;
+        size_t i = 0;
+        while (i < n) {
+            size_t j = i + 1;
+            while (j < n && sorted[j] == sorted[i]) {
+                ++j;
+            }
+            const double t = static_cast<double>(j - i);
+            total += t * (t - 1.0) / 2.0;
+            i = j;
+        }
+        return total;
+    };
+
+    const double nd = static_cast<double>(n);
+    const double n0 = nd * (nd - 1.0) / 2.0;
+    const double n1 = tie_correction(x);
+    const double n2 = tie_correction(y);
+    const double denom = std::sqrt((n0 - n1) * (n0 - n2));
     return (denom > 0.0) ? static_cast<double>(concordant - discordant) / denom : 0.0;
 }
 
@@ -758,7 +803,10 @@ FriedmanResult friedman(const std::vector<std::vector<double>>& data) {
     const double n_d = static_cast<double>(n);
     const double k_d = static_cast<double>(k);
     double chi2 = (12.0 / (n_d * k_d * (k_d + 1.0))) * sum_sq - 3.0 * n_d * (k_d + 1.0);
-    const double tie_denom = n_d * k_d * (k_d * k_d * k_d - k_d);
+    // Friedman's tie correction divides by n*(k^3 - k), not n*k*(k^3 - k): the
+    // extra factor of k diluted the correction k-fold. The sibling
+    // kruskal_wallis above uses the analogous N^3 - N correctly.
+    const double tie_denom = n_d * (k_d * k_d * k_d - k_d);
     if (tie_cubed_sum > 0.0 && tie_denom > 0.0) {
         const double correction = 1.0 - tie_cubed_sum / tie_denom;
         if (correction <= 0.0) {
@@ -1215,10 +1263,20 @@ double variance_inflation_factor(const std::vector<std::vector<double>>& X, size
         y[i] = X[i][j];
     }
 
+    // The auxiliary regression needs an INTERCEPT. multiple_regression solves
+    // the raw normal equations on exactly the columns it is handed, so fitting
+    // without a constant column while measuring R^2 against a mean-centred total
+    // sum of squares mixes two different models: the result is not the
+    // coefficient of determination of any regression and can go negative,
+    // yielding VIF < 1, which the definition 1/(1 - R^2) makes impossible.
+    // Perfectly collinear designs that do not pass through the origin -- whose
+    // true VIF is infinite -- came back as 0.0129, 1.2235 and 1.0513, i.e.
+    // "no multicollinearity", the exact opposite of the truth.
     std::vector<std::vector<double>> X_other(
-        m, std::vector<double>(p - 1, 0.0));
+        m, std::vector<double>(p, 0.0));
     for (size_t i = 0; i < m; ++i) {
-        size_t col = 0;
+        X_other[i][0] = 1.0;  // intercept
+        size_t col = 1;
         for (size_t k = 0; k < p; ++k) {
             if (k == j) {
                 continue;
@@ -1228,7 +1286,7 @@ double variance_inflation_factor(const std::vector<std::vector<double>>& X, size
     }
 
     const auto beta = multiple_regression(X_other, y);
-    if (beta.size() != p - 1) {
+    if (beta.size() != p) {
         return 1.0;
     }
 
@@ -1253,7 +1311,12 @@ double variance_inflation_factor(const std::vector<std::vector<double>>& X, size
     if (r_squared >= 1.0 - 1e-14) {
         return std::numeric_limits<double>::infinity();
     }
-    return 1.0 / (1.0 - r_squared);
+    // With an intercept in the fit, OLS gives R^2 in [0, 1] and hence VIF >= 1.
+    // multiple_regression still zeroes a coefficient when it meets a singular
+    // pivot, which can push R^2 slightly negative on a rank-deficient design, so
+    // clamp rather than report a VIF below 1 -- a value the definition cannot
+    // produce and which reads as "less than no multicollinearity".
+    return std::max(1.0, 1.0 / (1.0 - r_squared));
 }
 
 double vif(const std::vector<std::vector<double>>& X, size_t j) {

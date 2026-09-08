@@ -400,8 +400,10 @@ TEST(StatsExtTest, friedman_no_ties_matches_uncorrected_formula) {
 // Rank sums: R1=1+1+1+3=6, R2=2+2.5+3+1=8.5, R3=3+2.5+2+2=9.5 (sum=24, as before)
 // Uncorrected chi2 = 0.25*(36+72.25+90.25) - 48 = 0.25*198.5 - 48 = 49.625 - 48 = 1.625
 // Tie correction: one tie group of size t=2 in one block, so sum(t^3-t) = 8-2 = 6.
-// C = 1 - 6/(n*k*(k^3-k)) = 1 - 6/(4*3*24) = 1 - 6/288 = 1 - 1/48 = 47/48
-// Corrected chi2 = 1.625 / (47/48) = 1.625 * 48/47 = 78/47 (~1.65957...)
+// C = 1 - 6/(n*(k^3-k)) = 1 - 6/(4*24) = 1 - 6/96 = 1 - 1/16 = 15/16
+// Corrected chi2 = 1.625 / (15/16) = 1.625 * 16/15 = 26/15 (~1.73333...)
+// (The divisor was n*k*(k^3-k) before, an extra factor of k that diluted the
+//  correction threefold here; Friedman's correction is n*(k^3-k).)
 TEST(StatsExtTest, friedman_tie_correction_inflates_statistic) {
     const std::vector<std::vector<double>> data = {
         {10.0, 20.0, 30.0},
@@ -411,9 +413,9 @@ TEST(StatsExtTest, friedman_tie_correction_inflates_statistic) {
     };
     const auto result = friedman(data);
     EXPECT_EQ(result.df, 2);
-    EXPECT_NEAR(result.chi2_stat, 78.0 / 47.0, 1e-9);
+    EXPECT_NEAR(result.chi2_stat, 26.0 / 15.0, 1e-9);
     EXPECT_GT(result.chi2_stat, 1.625);  // corrected value must exceed the naive/uncorrected one
-    EXPECT_NEAR(result.p_value, std::exp(-(78.0 / 47.0) / 2.0), 1e-9);
+    EXPECT_NEAR(result.p_value, std::exp(-(26.0 / 15.0) / 2.0), 1e-9);
 }
 
 // Perfectly balanced (cyclic) ranks across 3 blocks x 3 treatments: every treatment gets each

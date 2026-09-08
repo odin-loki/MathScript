@@ -471,12 +471,14 @@ TEST(StatsGapsTest, Chi2Gof_ZeroExpectedSkipped) {
     EXPECT_NEAR(chi2_gof(obs, exp), 0.5, 1e-12);
 }
 
-TEST(StatsGapsTest, Kendall_TiesAreIgnored) {
-    // Pair (0,1) is tied in x and skipped; remaining pairs are both concordant.
-    // denom is still C(3,2)=3, so tau = 2/3.
+TEST(StatsGapsTest, Kendall_TiesUseTheTauBDenominator) {
+    // Pair (0,1) is tied in x and skipped when counting; the remaining two pairs
+    // are both concordant, so C - D = 2. Dividing by the untied C(3,2) = 3 is
+    // tau-a, which cannot reach 1 when ties are present. tau-b normalises by
+    // sqrt((n0 - n1)(n0 - n2)) = sqrt((3 - 1)(3 - 0)) = sqrt(6), giving 2/sqrt(6).
     const std::vector<double> x = {1.0, 1.0, 2.0};
     const std::vector<double> y = {3.0, 4.0, 5.0};
-    EXPECT_NEAR(kendall(x, y), 2.0 / 3.0, 1e-12);
+    EXPECT_NEAR(kendall(x, y), 2.0 / std::sqrt(6.0), 1e-12);
 }
 
 TEST(StatsGapsTest, Arfit_InvalidOrder) {
