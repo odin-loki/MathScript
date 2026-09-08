@@ -25,6 +25,19 @@ stub has been closed; see that file for the before/after table.
 
 Implementations that did not compute what their headers documented.
 
+- `poly_roots` returned all-zero roots for the whole family `x^n +/- c` (the companion matrix is orthogonal, so a single-shift QR step is a fixed point, and the unconverged diagonal was returned with no error); now Aberth-Ehrlich, with `poly_lagrange` rebuilt as real Lagrange interpolation and `poly_fit` rejecting a size mismatch.
+- `fem`'s 3D stiffness applied `J^-1` where the chain rule needs `J^-T`, so the Dirichlet energy of `u = x + 2y + 3z` on the unit cube was 35 instead of 14.
+- `cmaes` stopped on the raw objective value, so any problem with a negative optimum halted after one iteration and reported success.
+- `interpolate`'s frequency fast path zero-stuffed by `out_fft/in_fft` rather than by `p`, so every non-power-of-two `p >= 8` was mis-scaled; `butterworth` was byte-for-byte `lowpass` and is now a real Butterworth IIR.
+- `spearman` ignored ties, `kendall` reported tau-a, `friedman`'s tie divisor carried an extra factor of `k`, and `variance_inflation_factor` fitted without an intercept (reporting VIF < 1, which the definition cannot produce).
+- `lz77` was lossy: a literal `0x00` following a match was discarded. `sample_entropy` counted its two template populations at different sizes; `lz_complexity` forbade overlapped copies.
+- `heston_call`/`heston_put` had a wrong `D` coefficient and `u` convention (0.4-3.3% price error); `bond_ytm` bisected a hard-coded `[0, 1]` and silently clamped yields outside it.
+- `step_response`/`impulse_response` were forward Euler under a "matrix exponential" heading; `riccati`/`dare`/`lqr`/`lqe` used the element-wise reciprocal of `R`'s diagonal as `R^-1`.
+- `izaac::verify` ignored the message and accepted forgeries made from the public key alone; `izaac::crypto::encrypt` derived its nonce from the key alone, giving a two-time pad. Both now use the Ed25519/SHA-512 and OS CSPRNG already in the tree.
+- `gria`'s `alpha_ca`/`alpha_lfsr` passed entropy-preserving transforms and were identically 0; `cypha::nig_pdf` increased with `|x - mu|` and had infinite mass.
+- `cfd`'s periodic face velocities disagreed at the wrap-around face, so a conservative scheme gained 28% mass in five steps.
+- `pois_pdf` overflowed to NaN for large means, `binom_cdf` was NaN at `p == 1`, `dft` returned a zero-padded transform (with `idft` added as its inverse), `irfft` returned the wrong length, `metric_inv` returned the identity for a singular metric, `pollard_rho`'s twenty retries were identical, `einsum` discarded its output subscript order, and `tonelli_shanks`'s zero case was unreachable.
+
 - `qmr` was BiCGSTAB, `tfqmr` was `return bicgstab(...)`, `lsmr` was `return lsqr(...)`, and `precond_ssor` returned only `diag(A)/omega`. All four are now the real algorithms, plus new `precond_ssor_apply`, `precond_ilu0`, `precond_ilu0_apply` and `pcg`.
 - `cplx::inversion` returned the identity Mobius; it now returns the anti-Mobius acting on `conj(z)`, with `apply_inversion` and `cross_ratio_c` added.
 - `topo::cech_complex` clamped `max_dim` to 2; minimum enclosing balls now come from the bordered Cayley-Menger system, so higher dimensions are built.
