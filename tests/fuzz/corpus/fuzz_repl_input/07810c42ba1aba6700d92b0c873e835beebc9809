@@ -1,0 +1,1 @@
+meded = stats_median([12; 3; 4; 5])

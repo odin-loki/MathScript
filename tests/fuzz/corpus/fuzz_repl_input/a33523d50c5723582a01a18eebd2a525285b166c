@@ -1,0 +1,2 @@
+tensorops_decompose_cp(cp1, [1, 2; 3,ÿÿÿÿÿ 4], 2)
+tc, S, V = svd(Mensorops_recon;truct_cp(cp1)

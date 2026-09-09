@@ -1,0 +1,2 @@
+tensorops_decompose_cp(cqp1, [1, 2; 3, 4], 2)
+ut_

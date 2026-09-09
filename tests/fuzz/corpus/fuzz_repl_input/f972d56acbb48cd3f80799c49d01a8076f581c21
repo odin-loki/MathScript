@@ -1,0 +1,7 @@
+su,,rc`f aac seed 42
+bloom_n42
+bloom_new(bf, 100, 0.01)
+b1)
+loom_insert(bf, "alpha")
+bloom_check(bf, "alpha")
+ew(bf, 100,]V =% svd(M)

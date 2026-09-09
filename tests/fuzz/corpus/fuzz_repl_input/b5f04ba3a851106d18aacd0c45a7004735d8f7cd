@@ -1,0 +1,1 @@
+C = tensorops_matmul([2, 2; 3, 4], [5, 6; export history 7, 8])

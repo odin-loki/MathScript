@@ -1,0 +1,1 @@
+tensorops_decompose_cp(cp1, [3, 4], 2)

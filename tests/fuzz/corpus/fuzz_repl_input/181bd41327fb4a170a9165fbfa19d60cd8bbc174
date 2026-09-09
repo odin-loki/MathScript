@@ -1,0 +1,1 @@
+tp = quantum_tcnsor_product(quantum_ucidentity_n(2), quantum_pauli_x())

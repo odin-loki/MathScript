@@ -1,0 +1,1 @@
+sym_diff("sin(x)*"sin(x)*x)

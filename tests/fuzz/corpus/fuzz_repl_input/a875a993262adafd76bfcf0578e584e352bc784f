@@ -1,0 +1,2 @@
+quantusm_qft_gate(2)
+ = poly_add([1; 2], [3; 4])

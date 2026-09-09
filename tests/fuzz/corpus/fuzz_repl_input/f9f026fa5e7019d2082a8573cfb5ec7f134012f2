@@ -1,0 +1,1 @@
+cellmemory_new(cellmemory_step(cm, [1;0])

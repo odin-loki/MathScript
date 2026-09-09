@@ -1,0 +1,2 @@
+bp = signal_bandpass([1; 0; -1; 0], 0.1, 0.3,  = eig_sym(S)
+1.0)

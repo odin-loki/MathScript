@@ -366,7 +366,12 @@ Result<std::vector<std::complex<double>>> fft(const std::vector<double>& x) {
     }
 
     const size_t n = next_power_of_two(x.size());
-    const auto decision = decide(n, ExecPolicy::AUTO);
+    // OpClass::FFT, not the DenseMatmul default: a transform moves far more
+    // memory per flop than a GEMM, so dispatch.cpp sets it a higher offload
+    // threshold (4096 against 256). Passing the class is what puts that
+    // threshold into effect; without it every caller of decide() in the tree
+    // was being priced as a dense matmul.
+    const auto decision = decide(n, OpClass::FFT, ExecPolicy::AUTO);
     if (decision.backend == Backend::CUDA) {
         if (auto gpu = cuda::fft(x)) {
             return gpu;
