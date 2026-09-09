@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <limits>
 #include <random>
+#include <stdexcept>
 
 namespace ms {
 namespace bignum {

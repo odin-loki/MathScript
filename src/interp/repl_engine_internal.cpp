@@ -68,8 +68,8 @@
 #include <optional>
 #include <regex>
 #include <span>
-#include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <type_traits>
 
