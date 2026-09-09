@@ -125,6 +125,16 @@ for target in "${TARGETS[@]}"; do
         find "${OUT_DIR}/${target}" -maxdepth 1 \
             \( -name 'crash-*' -o -name 'oom-*' -o -name 'leak-*' -o -name 'timeout-*' \) \
             -printf '      %p\n' 2>/dev/null || true
+        # A sanitizer abort can kill the process between libFuzzer announcing the
+        # artifact and the file reaching disk: an observed ASan heap-buffer-overflow
+        # logged "Test unit written to ./crash-98c0..." and left nothing behind.
+        # That is why a target fails on its exit code and not only on an artifact,
+        # and why the input has to be recoverable from the log.
+        if [[ "${artifacts}" == "0" ]]; then
+            echo "      no artifact file was written; recover the input from the log:"
+            echo "        grep 'Base64:' ${OUT_DIR}/${target}/run.log | tail -1 \\"
+            echo "          | sed 's/.*Base64: //' | base64 -d > input.bin"
+        fi
     else
         printf '  %-18s ok   (%s execs)\n' "${target}" "${execs}"
     fi
