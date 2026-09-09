@@ -964,6 +964,7 @@ limit is documented on the declaration; this is the summary.
 | `combo::stirling1` / `stirling2` / `eulerian_number` | n ≤ 21 / 26 / 21 | `UINT64_MAX` |
 | `combo::rank_permutation` | input must be a permutation of `0..n-1` | `0` |
 | `combo::all_permutations` / `all_subsets` / `all_partitions` / `restricted_partitions` / necklace listings | n ≤ 8 / 16 / 40 / 40 / 10, alphabet k ≤ 6 | empty, `DomainError` from the REPL |
+| `info::joint_entropy` / `conditional_entropy` / `mutual_info` | `rows`×`cols` ≤ the joint PMF's element count | `0.0`, `DomainError` from the REPL |
 | `numthy::primes` | span < 2×10⁸ | empty |
 | `numthy::prime_pi` | n < 2×10⁸ | `UINT64_MAX` |
 | `numthy::partition` | n ≤ 416 | `UINT64_MAX` |

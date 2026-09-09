@@ -105,6 +105,14 @@ one parsing the unsafe-site registry) were replaced with `std::from_chars`.
 
 - REPL constructors (`ones`/`zeros`/`eye`/`rand`/`randn`/`linspace`/`repmat`/`kron`) refuse dimensions above 262144 elements before allocating (libFuzzer `ones(9999)` OOM).
 - Combo listing enumerators (`derangements`, `all_permutations`, `all_subsets`, `gray_code`, partitions, necklaces, …) refuse oversized n so libFuzzer cannot OOM on `combo_derangements(11)`.
+- `info_joint_entropy`, `info_conditional_entropy` and `info::mutual_info` read past the end of
+  the joint PMF whenever the caller's `rows`×`cols` claimed more elements than the matrix held.
+  All three index `pxy[i*cols + j]` and nothing checked the claim against the data, so
+  `info_joint_entropy([0.25, 0.25; 0.25, 0.25], 6, 2)` read 12 doubles out of a 4-double buffer
+  — an AddressSanitizer heap-buffer-overflow, found by a libFuzzer session over the REPL.
+  Bounded in the library, which now returns `0.0` rather than read past the span whatever the
+  caller does, and rejected at the REPL with a `DomainError`, since a shape that does not match
+  the matrix is a user error. The crashing input is in the checked-in corpus.
 - `restricted_partitions` was the one member of that family the cap never reached: `all_partitions`
   stops at `kMaxEnumPartitionN`, but its restricted sibling took any n at all and enumerated every
   partition of n into k parts. The 24h libFuzzer run found `combo_restricted_partitions(442, 5)`,

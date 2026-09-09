@@ -3425,6 +3425,11 @@ Result<double> eval_info_joint_entropy(const Matrix<double>& joint_m, int rows, 
             flat.push_back(joint_m(i, j));
         }
     }
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > flat.size()) {
+        return std::unexpected(DomainError{
+            "info_joint_entropy", "rows*cols exceeds the joint PMF matrix"});
+    }
     return info::joint_entropy(flat, rows, cols, 2.0);
 }
 
@@ -3439,6 +3444,11 @@ Result<double> eval_info_conditional_entropy(const Matrix<double>& joint_m, int 
         for (size_t j = 0; j < joint_m.cols(); ++j) {
             flat.push_back(joint_m(i, j));
         }
+    }
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > flat.size()) {
+        return std::unexpected(DomainError{
+            "info_conditional_entropy", "rows*cols exceeds the joint PMF matrix"});
     }
     return info::conditional_entropy(flat, rows, cols, 2.0);
 }

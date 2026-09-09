@@ -36,6 +36,14 @@ double normalized_entropy(std::span<const double> p) {
 
 double joint_entropy(std::span<const double> pxy, int rows, int cols,
                      double base) {
+    // rows*cols is the caller's claim about the shape of pxy; it is not
+    // checked anywhere upstream in general, and a joint PMF that is smaller
+    // than the claim would be read past its end (libFuzzer:
+    // info_joint_entropy on a 2x2 with rows=6, cols=2).
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > pxy.size()) {
+        return 0.0;
+    }
     const double log_base_val = std::log(base);
     const int cols_i = cols;
     double h = 0.0;
@@ -49,6 +57,14 @@ double joint_entropy(std::span<const double> pxy, int rows, int cols,
 
 double conditional_entropy(std::span<const double> pxy, int rows, int cols,
                            double base) {
+    // rows*cols is the caller's claim about the shape of pxy; it is not
+    // checked anywhere upstream in general, and a joint PMF that is smaller
+    // than the claim would be read past its end (libFuzzer:
+    // info_joint_entropy on a 2x2 with rows=6, cols=2).
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > pxy.size()) {
+        return 0.0;
+    }
     // H(Y|X) = H(X,Y) - H(X)
     std::vector<double> px(rows, 0.0);
     for (int i = 0; i < rows; ++i)
@@ -59,6 +75,14 @@ double conditional_entropy(std::span<const double> pxy, int rows, int cols,
 
 double mutual_info(std::span<const double> pxy, int rows, int cols,
                    double base) {
+    // rows*cols is the caller's claim about the shape of pxy; it is not
+    // checked anywhere upstream in general, and a joint PMF that is smaller
+    // than the claim would be read past its end (libFuzzer:
+    // info_joint_entropy on a 2x2 with rows=6, cols=2).
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > pxy.size()) {
+        return 0.0;
+    }
     // I(X;Y) = H(X) + H(Y) - H(X,Y)
     std::vector<double> px(rows, 0.0), py(cols, 0.0);
     for (int i = 0; i < rows; ++i)
