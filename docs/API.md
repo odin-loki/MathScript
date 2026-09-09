@@ -945,3 +945,36 @@ Higher-level research frameworks built on the core library (GP search, temporal 
 | `frameworks/cypha/cypha.hpp` | `DifModel` mixture-of-experts with NIG uncertainty; `nig_fit`/`nig_pdf`/`nig_cdf`/`nig_sample`, `predict`, `predict_interval`, `ood_score`, `gh_gate`; `nig_mean`/`nig_variance` (closed-form NIG moments, O(1) alternative to numerical integration or Monte Carlo via `nig_sample`) |
 | `frameworks/gria/gria.hpp` | Information-theoretic `entropy`/`compute_alpha`/`matrix_alpha`/`is_critical`/`classify`, GF(2^n), cellular automata (`ca::step`, `ca::langton_lambda`, `ca::hamming_distance`, `ca::divergence_trajectory`), LFSR utilities |
 | `frameworks/izaac/izaac.hpp` | VRF `CSPRNG` (xoshiro256**), session seeding, `rand_matrix`/`randn_matrix`, `mc::estimate_pi`, `estimate_pi`; `bloom::BloomFilter`, `ratelimit::TokenBucket`, `diffpriv::laplace_mechanism`/`gaussian_mechanism`/`exponential_mechanism` (discrete DP selection), `backtest::simulate_gbm_path`/`run_backtest`; `crypto::encrypt`/`decrypt` (`CipherText` CSPRNG keystream XOR + keyed tag, demo/internal use only), `mpc::split_secret`/`reconstruct_secret` (`Share`, Shamir k-of-n over prime field `PRIME`); `consensus::Cluster` (in-memory Raft-style election/replication simulation: `run_election`, `replicate`, `current_leader`; demo/testing only, not networked production consensus); `fuzz::mutate` (deterministic CSPRNG-seeded bounded byte-buffer mutation for fuzz-corpus seed expansion) |
+
+## Input bounds
+
+A few entry points take an argument that sets the size of what they build, or the index
+they reach. Every one of them is bounded, because an unvalidated value is either an
+allocation nothing can satisfy or an out-of-range access — and this library is built with
+`-fno-exceptions`, so a failed allocation ends the process rather than reporting. Each
+limit is documented on the declaration; this is the summary.
+
+| Entry point | Bound | Past it |
+|-------------|-------|---------|
+| `combo::factorial` / `double_factorial` / `subfactorial` | n ≤ 20 / 33 / 20 | `UINT64_MAX` |
+| `combo::catalan_num` / `bell_num` / `motzkin_num` / `involutions` | n ≤ 36 / 25 / 45 / 31 | `UINT64_MAX` |
+| `combo::stirling1` / `stirling2` / `eulerian_number` | n ≤ 21 / 26 / 21 | `UINT64_MAX` |
+| `combo::rank_permutation` | input must be a permutation of `0..n-1` | `0` |
+| `numthy::primes` | span < 2×10⁸ | empty |
+| `numthy::prime_pi` | n < 2×10⁸ | `UINT64_MAX` |
+| `numthy::partition` | n ≤ 416 | `UINT64_MAX` |
+| `numthy::mod_pow` | modulus ≥ 2 | `0` |
+| `quantum::qft_gate` / `grover_search` | 1 ≤ n_qubits ≤ 12 (a 2ⁿ × 2ⁿ matrix) | empty |
+| `quantum::ghz_state` / `w_state` | 1 ≤ n_qubits ≤ 20 (a 2ⁿ vector) | empty |
+| `quantum::partial_trace` | `d1 * d2` must equal `rho.size()` | empty |
+| `percentile(v, p)` | p clamped to [0, 100] | min / max |
+| `trimmed_mean(v, frac)` | frac clamped to [0, 1] | median |
+| `finance::historical_var` / `historical_cvar` | confidence clamped to (0, 1) | worst / whole-sample mean |
+| `Interpreter::execute` | line ≤ 8192 bytes | `DomainError` |
+| `sym_parse` | nesting ≤ 256, ≤ 10000 nodes | `SymParseError` |
+| REPL `crypto_random_bytes(n)` | n ≤ 1 MiB (the result is printed as hex) | `DomainError` |
+| REPL `tensorops_decompose_cp(h, T, rank)` | rank ≤ `T`'s element count | `DomainError` |
+
+`numthy::prime_nth` and `numthy::sum_divisors` are deliberately *not* capped: their cost is
+proportional to the argument rather than to an allocation, so they are slow but bounded for
+a large input, and the interpreter's cancel flag interrupts them.
