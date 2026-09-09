@@ -25,7 +25,12 @@ int exit_code(int status) {
 
 int run_server(const std::string& args) {
 #ifdef _WIN32
-    const std::string cmd = std::string("\"") + MATHSCRIPT_SERVER_PATH + "\" " + args + " <nul >nul 2>&1";
+    // cmd.exe strips the outermost pair of quotes when the line both begins with
+    // a quote and contains more of them, which mangles an argument like
+    // -e "x = 6" -- the two cases here that carry quotes were the only two of
+    // seventeen that failed on Windows. Wrapping the whole line in one further
+    // pair is the documented way to keep the inner quoting intact.
+    const std::string cmd = std::string("\"\"") + MATHSCRIPT_SERVER_PATH + "\" " + args + " <nul >nul 2>&1\"";
 #else
     const std::string cmd = std::string("\"") + MATHSCRIPT_SERVER_PATH + "\" " + args + " </dev/null >/dev/null 2>&1";
 #endif
@@ -40,8 +45,14 @@ std::string capture_server(const std::string& args, const std::string& stdin_pat
 #else
     const std::string in_redirect = stdin_path.empty() ? " </dev/null" : (" <" + stdin_path);
 #endif
+#ifdef _WIN32
+    // Same cmd.exe quote stripping as in run_server.
+    const std::string cmd = std::string("\"\"") + MATHSCRIPT_SERVER_PATH + "\" " + args
+        + in_redirect + " >" + out_path + " 2>&1\"";
+#else
     const std::string cmd = std::string("\"") + MATHSCRIPT_SERVER_PATH + "\" " + args
         + in_redirect + " >" + out_path + " 2>&1";
+#endif
     (void)std::system(cmd.c_str());
 
     std::ifstream in(out_path);

@@ -478,7 +478,18 @@ thread_local ScalarFnCache g_scalar_fn_cache;
 thread_local std::vector<double> g_scalar_call_arg_buf;
 
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args);
+// Keep a callee out of its caller's frame. Used to stop the fat scratch buffers
+// of a call expression from being charged to every level of an operator chain.
+#if defined(_MSC_VER)
+#define MS_NOINLINE __declspec(noinline)
+#else
+#define MS_NOINLINE __attribute__((noinline))
+#endif
+
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text);
+MS_NOINLINE Result<double> eval_scalar_call_expr(
+    const SessionState& state, std::string_view expr,
+    const std::pair<std::string_view, std::string_view>& call);
 Result<void> require_session_rng(const char* fn);
 
 double matrix_max_value(const Matrix<double>& m) {
@@ -18362,7 +18373,29 @@ Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const
     return Interpreter::eval_scalar_call(fn_lower, g_scalar_call_arg_buf);
 }
 
+// A chain like x+x+...+x recurses once per operator, so the depth this evaluator
+// reaches is set by the input rather than by anything it controls. Whether that
+// fits was previously a property of the platform: it survived Linux's 8 MB and
+// segfaulted on the 1 MB a Windows thread gets. Refusing beyond a fixed depth
+// makes the answer the same everywhere -- a reported error rather than a crash --
+// and the limit is set well above the longest chain anyone writes by hand and
+// well below what the smallest supported stack holds.
+constexpr int kMaxScalarExprDepth = 1024;
+
+thread_local int g_scalar_expr_depth = 0;
+
+struct ScalarDepthGuard {
+    ScalarDepthGuard() { ++g_scalar_expr_depth; }
+    ~ScalarDepthGuard() { --g_scalar_expr_depth; }
+    ScalarDepthGuard(const ScalarDepthGuard&) = delete;
+    ScalarDepthGuard& operator=(const ScalarDepthGuard&) = delete;
+};
+
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text) {
+    const ScalarDepthGuard depth_guard;
+    if (g_scalar_expr_depth > kMaxScalarExprDepth) {
+        return std::unexpected(DomainError{"eval", "expression nested too deeply"});
+    }
     std::string_view expr = strip_outer_parens_view(expr_text);
     if (expr.empty()) {
         return std::unexpected(DomainError{"eval", "empty expression"});
@@ -18384,8 +18417,43 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
     }
 
     if (const auto call = parse_scalar_unary_call_view(expr)) {
+        return eval_scalar_call_expr(state, expr, *call);
+    }
+
+    ScalarOperand single;
+    if (parse_scalar_operand_view(expr, single)) {
+        return resolve_scalar_operand(state, single);
+    }
+
+    const auto op_pos = find_scalar_binop_view(expr);
+    if (!op_pos) {
+        return std::unexpected(DomainError{"eval", "invalid scalar expression"});
+    }
+
+    auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
+    if (!left) {
+        return std::unexpected(left.error());
+    }
+    auto right = eval_scalar_expr_impl(state, trim_view(expr.substr(op_pos->first + 1)));
+    if (!right) {
+        return std::unexpected(right.error());
+    }
+    return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+}
+
+// Evaluating a call needs 16 string_views and 16 doubles of scratch, about half
+// a kilobyte. It lives in its own frame because eval_scalar_expr_impl recurses
+// once per operator in a chain -- x+x+...+x with 500 terms is 500 frames deep --
+// so anything sitting in that frame is multiplied by the length of the chain the
+// platform can take. With the scratch inline, 500 terms needed a quarter of a
+// megabyte of stack: fine on Linux's 8 MB, fatal on the 1 MB a Windows thread
+// gets, where MSVC's larger frames pushed it over and segfaulted CI.
+MS_NOINLINE Result<double> eval_scalar_call_expr(
+    const SessionState& state, std::string_view expr,
+    const std::pair<std::string_view, std::string_view>& call) {
+    {
         std::string_view arg_views[16];
-        const size_t arg_count = split_scalar_call_args_view(call->second, arg_views, 16);
+        const size_t arg_count = split_scalar_call_args_view(call.second, arg_views, 16);
         if (arg_count == 0) {
             return std::unexpected(DomainError{"eval", "invalid scalar expression"});
         }
@@ -18417,28 +18485,8 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
             }
             arg_values[i] = *arg;
         }
-        return eval_scalar_call_cached(call->first, std::span(arg_values.data(), arg_count));
+        return eval_scalar_call_cached(call.first, std::span(arg_values.data(), arg_count));
     }
-
-    ScalarOperand single;
-    if (parse_scalar_operand_view(expr, single)) {
-        return resolve_scalar_operand(state, single);
-    }
-
-    const auto op_pos = find_scalar_binop_view(expr);
-    if (!op_pos) {
-        return std::unexpected(DomainError{"eval", "invalid scalar expression"});
-    }
-
-    auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
-    if (!left) {
-        return std::unexpected(left.error());
-    }
-    auto right = eval_scalar_expr_impl(state, trim_view(expr.substr(op_pos->first + 1)));
-    if (!right) {
-        return std::unexpected(right.error());
-    }
-    return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
 }
 
 Result<double> eval_scalar_expr(const SessionState& state, const std::string& expr_text) {
