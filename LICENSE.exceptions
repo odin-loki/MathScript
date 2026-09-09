@@ -1,0 +1,46 @@
+# Additional permission under GNU AGPL version 3 section 7
+
+Copyright (C) 2026 Odin Loch
+
+## Why this exists
+
+MathScript is licensed under AGPL-3.0-or-later. When built with `MS_ENABLE_CUDA=ON`
+it links against the NVIDIA CUDA runtime and the cuBLAS, cuSOLVER and NCCL
+libraries, which are distributed under NVIDIA's proprietary end-user licence and
+are not compatible with the AGPL.
+
+The "System Libraries" exclusion in GPLv3 section 1 is arguable for the CUDA
+driver, which ships with the operating system's hardware support, and weak for
+cuBLAS, cuSOLVER and NCCL, which do not. Without an explicit grant, distributing
+a CUDA-enabled binary would infringe this project's own licence. As sole
+copyright holder, Odin Loch grants that permission here.
+
+## The grant
+
+As an additional permission under section 7 of the GNU Affero General Public
+License version 3, you have permission to link or combine any covered work with
+the NVIDIA CUDA Toolkit libraries -- including but not limited to the CUDA
+runtime, cuBLAS, cuSOLVER, cuFFT, cuRAND, cuSPARSE and NCCL -- and to convey the
+resulting work. The terms of the AGPL continue to apply to the covered work
+itself.
+
+If you modify this work, you may extend this permission to your version, but you
+are not obliged to. If you do not wish to extend it, delete this statement from
+your version.
+
+## What this permission does not do
+
+- It does not relicense the covered work. Everything outside the NVIDIA
+  libraries remains under AGPL-3.0-or-later, including the AGPL section 13
+  obligation to offer source to users interacting with the work over a network.
+- It does not grant any right in NVIDIA's software. Their EULA governs your use
+  of the CUDA libraries independently of this permission.
+- It does not extend to any other proprietary library. A combination with
+  something other than the NVIDIA CUDA libraries is not covered here.
+
+## Scope
+
+The permission applies to the whole covered work when built with CUDA support.
+Files that participate directly in that link -- `src/cuda/` and its headers under
+`include/ms/cuda/` -- name this file in their SPDX `LicenseRef` header so the
+grant is discoverable from the source rather than only from the repository root.
