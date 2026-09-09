@@ -27,6 +27,11 @@
 
 #include "repl/repl_test_helpers.hpp"
 
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 using namespace ms::interp;
 
 TEST(ReplCommandsTest, diffgeo_sphere_curvatures) {

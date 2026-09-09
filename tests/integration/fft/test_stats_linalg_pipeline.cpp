@@ -15,6 +15,11 @@
 #include "ms/signal/signal.hpp"
 #include "ms/fft/fft.hpp"
 
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 using namespace ms;
 using DMatrix = Matrix<double>;
 

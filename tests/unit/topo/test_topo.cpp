@@ -2,6 +2,7 @@
 #include "ms/geo/geo.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <set>
 #include <vector>
