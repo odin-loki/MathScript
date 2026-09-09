@@ -1,7 +1,7 @@
 # MathScript unsafe baseline — one reviewed site per line (file:line:match)
 # Regenerate: bash scripts/unsafe_delta.sh --write-baseline [REPORT_PATH]
-# Source report: /home/user/MathScript/build-test/unsafe_report.txt
-src/crypto/crypto.cpp:1119:    return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
+# Source report: build/unsafe_report.txt
+src/crypto/crypto.cpp:1120:    return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
 src/cuda/fft.cpp:145:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
 src/cuda/fft.cpp:146:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
 src/cuda/fft.cpp:85:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
