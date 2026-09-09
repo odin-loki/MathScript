@@ -9230,14 +9230,29 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!A_m) {
                     return std::unexpected(A_m.error());
                 }
-                double i = 0.0;
-                double j = 0.0;
-                if (!parse_number(trim_copy((*call_args)[1]), i) ||
-                    !parse_number(trim_copy((*call_args)[2]), j)) {
-                    return std::unexpected(
-                        DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                // The indices may be expressions over the session's scalars,
+                // not just literals: `mat_at(A, i, i)` has to work.
+                auto index_arg = [this](const std::string& text) -> Result<double> {
+                    double literal = 0.0;
+                    if (parse_number(text, literal)) {
+                        return literal;
+                    }
+                    auto expr = eval_scalar_expr(state_, text);
+                    if (!expr) {
+                        return std::unexpected(
+                            DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                    }
+                    return *expr;
+                };
+                auto i = index_arg(trim_copy((*call_args)[1]));
+                if (!i) {
+                    return std::unexpected(i.error());
                 }
-                auto value = eval_mat_at(*A_m, i, j);
+                auto j = index_arg(trim_copy((*call_args)[2]));
+                if (!j) {
+                    return std::unexpected(j.error());
+                }
+                auto value = eval_mat_at(*A_m, *i, *j);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -16857,13 +16872,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::to_string(*value) + "\n";
                 }
                 if (fn == "mat_at") {
-                    double i = 0.0;
-                    double j = 0.0;
-                    if (!parse_number(trim_copy(call_args->at(1)), i) ||
-                        !parse_number(trim_copy(call_args->at(2)), j)) {
-                        return std::unexpected(
-                            DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                    auto index_arg = [this](const std::string& text) -> Result<double> {
+                        double literal = 0.0;
+                        if (parse_number(text, literal)) {
+                            return literal;
+                        }
+                        auto expr = eval_scalar_expr(state_, text);
+                        if (!expr) {
+                            return std::unexpected(
+                                DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                        }
+                        return *expr;
+                    };
+                    auto i_arg = index_arg(trim_copy(call_args->at(1)));
+                    if (!i_arg) {
+                        return std::unexpected(i_arg.error());
                     }
+                    auto j_arg = index_arg(trim_copy(call_args->at(2)));
+                    if (!j_arg) {
+                        return std::unexpected(j_arg.error());
+                    }
+                    const double i = *i_arg;
+                    const double j = *j_arg;
                     auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                         auto matrix = parse_matrix(text);
                         if (!matrix) {
