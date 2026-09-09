@@ -94,13 +94,17 @@ Vec vec_sub(const Vec& a, const Vec& b) {
 Vec vec_scale(double s, const Vec& v) {
     Vec c(v.size()); for (size_t i=0;i<v.size();++i) c[i]=s*v[i]; return c;
 }
+// b was indexed with a's length: ElasticNet::predict passes the coefficient vector and a
+// feature row, and a model fitted on a different feature count read past the row.
 double vec_dot(const Vec& a, const Vec& b) {
-    double s=0; for (size_t i=0;i<a.size();++i) s+=a[i]*b[i]; return s;
+    const size_t n = std::min(a.size(), b.size());
+    double s=0; for (size_t i=0;i<n;++i) s+=a[i]*b[i]; return s;
 }
 double vec_norm(const Vec& v) { return std::sqrt(vec_dot(v,v)); }
 
 static double sq_eucl_dist(const Vec& a, const Vec& b) {
-    double s=0; for (size_t i=0;i<a.size();++i) { double d=a[i]-b[i]; s+=d*d; }
+    const size_t n = std::min(a.size(), b.size());
+    double s=0; for (size_t i=0;i<n;++i) { double d=a[i]-b[i]; s+=d*d; }
     return s;
 }
 static double eucl_dist(const Vec& a, const Vec& b) {

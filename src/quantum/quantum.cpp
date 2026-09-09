@@ -634,6 +634,22 @@ double concurrence(const DensityMatrix& rho) {
 DensityMatrix partial_trace(const DensityMatrix& rho, int d1, int d2, int subsystem) {
     // subsystem: 0 → trace out system B (d2), return d1 × d1
     //            1 → trace out system A (d1), return d2 × d2
+    //
+    // The loops below index rho[i*d2 + k], so a factorisation that does not match rho's
+    // size reads past it. entanglement_entropy reaches here precisely when the subsystem
+    // dimensions are invalid, so the check has to be here rather than at the call site.
+    if (d1 <= 0 || d2 <= 0) {
+        return {};
+    }
+    const std::size_t need = static_cast<std::size_t>(d1) * static_cast<std::size_t>(d2);
+    if (rho.size() != need) {
+        return {};
+    }
+    for (const auto& row : rho) {
+        if (row.size() != need) {
+            return {};
+        }
+    }
     if (subsystem == 0) {
         // Trace out B: rhoA[i][j] = sum_k rho[i*d2+k][j*d2+k]
         DensityMatrix rhoA(d1, std::vector<C>(d1, C(0.0)));
@@ -776,9 +792,13 @@ double entanglement_entropy(const Ket& psi, int dim_a, int dim_b) {
     if (!decomp.coefficients.empty())
         return entropy_from_schmidt_coefficients(decomp.coefficients);
 
-    // Fallback for invalid subsystem dimensions.
+    // Fallback for invalid subsystem dimensions. partial_trace returns an empty matrix
+    // when dim_a * dim_b does not match the state, which von_neumann_entropy reports as 0.
     auto rho = density_matrix(psi);
     auto rhoA = partial_trace(rho, dim_a, dim_b, 0);
+    if (rhoA.empty()) {
+        return 0.0;
+    }
     return von_neumann_entropy(rhoA);
 }
 

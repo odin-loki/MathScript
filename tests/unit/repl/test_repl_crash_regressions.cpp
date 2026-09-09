@@ -13,6 +13,7 @@
 #include "ms/interp/repl_engine.hpp"
 #include "ms/ml/ml.hpp"
 #include "ms/numthy/numthy.hpp"
+#include "ms/quantum/quantum.hpp"
 
 using namespace ms::interp;
 
@@ -118,4 +119,56 @@ TEST(ReplCrashRegressions, BigIntStringConstructorOnNonNumericInput) {
     EXPECT_TRUE(interp.execute("bigint_gcd(\"x\", \"x\")").has_value() ||
                 true);  // must not abort; either answer is acceptable
     EXPECT_TRUE(interp.execute("bigint_gcd(\"12\", \"18\")").has_value());
+}
+
+TEST(ReplCrashRegressions, VecDotWithMismatchedLengths) {
+    // ElasticNet::predict passes the model's coefficient vector and a feature row to
+    // vec_dot, which indexed the second with the FIRST one's length. A model fitted on a
+    // different feature count read past the row -- AddressSanitizer caught it as an
+    // eight-byte read past the end.
+    EXPECT_DOUBLE_EQ(ms::ml::vec_dot({1.0, 2.0, 3.0}, {1.0}), 1.0);
+    EXPECT_DOUBLE_EQ(ms::ml::vec_dot({1.0}, {1.0, 2.0, 3.0}), 1.0);
+    EXPECT_DOUBLE_EQ(ms::ml::vec_dot({}, {1.0, 2.0}), 0.0);
+    // Equal lengths are unchanged.
+    EXPECT_DOUBLE_EQ(ms::ml::vec_dot({1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}), 32.0);
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("X2 = [1, 1; 2, 1; 3, 1; 4, 1]").has_value());
+    ASSERT_TRUE(interp.execute("y2 = [2; 4; 6; 8]").has_value());
+    ASSERT_TRUE(interp.execute("en = ml_elastic_net_fit(X2, y2, 0.1, 0.5)").has_value());
+    // A feature matrix with a different column count than the model was fitted on.
+    ASSERT_TRUE(interp.execute("X3 = [1, 1, 1; 2, 1, 1; 3, 1, 1]").has_value());
+    const auto r = interp.execute("ml_elastic_net_predict(X3, en)");
+    (void)r;  // either answer is acceptable; it must not read past the row
+    EXPECT_TRUE(interp.execute("det([1, 2; 3, 4])").has_value()) << "session still usable";
+}
+
+TEST(ReplCrashRegressions, PartialTraceWithDimensionsThatDoNotFactorTheState) {
+    using ms::quantum::DensityMatrix;
+    using C = std::complex<double>;
+    // rho[i*d2 + k] is indexed with no check that d1*d2 == rho.size().
+    // entanglement_entropy's fallback path reaches partial_trace exactly when the
+    // subsystem dimensions are invalid, so this is how a fuzzed REPL line got there.
+    DensityMatrix rho(4, std::vector<C>(4, C(0.0)));
+    for (int i = 0; i < 4; ++i) rho[i][i] = C(0.25);
+
+    EXPECT_TRUE(ms::quantum::partial_trace(rho, 3, 3, 0).empty()) << "9 != 4";
+    EXPECT_TRUE(ms::quantum::partial_trace(rho, 2, 3, 0).empty()) << "6 != 4";
+    EXPECT_TRUE(ms::quantum::partial_trace(rho, 0, 4, 0).empty());
+    EXPECT_TRUE(ms::quantum::partial_trace(rho, -1, 4, 1).empty());
+
+    // The valid factorisation still works: tracing out either qubit of the maximally
+    // mixed two-qubit state leaves the maximally mixed one-qubit state.
+    const auto a = ms::quantum::partial_trace(rho, 2, 2, 0);
+    ASSERT_EQ(a.size(), 2u);
+    EXPECT_NEAR(a[0][0].real(), 0.5, 1e-12);
+    EXPECT_NEAR(a[1][1].real(), 0.5, 1e-12);
+    const auto b = ms::quantum::partial_trace(rho, 2, 2, 1);
+    ASSERT_EQ(b.size(), 2u);
+    EXPECT_NEAR(b[0][0].real(), 0.5, 1e-12);
+
+    // And the entropy fallback reports 0 rather than crashing.
+    const ms::quantum::Ket psi{C(1.0), C(0.0), C(0.0), C(0.0)};
+    EXPECT_TRUE(std::isfinite(ms::quantum::entanglement_entropy(psi, 3, 3)));
+    EXPECT_TRUE(std::isfinite(ms::quantum::entanglement_entropy(psi, 2, 2)));
 }

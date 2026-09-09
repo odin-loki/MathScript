@@ -128,7 +128,11 @@ double trace_distance(const DensityMatrix& rho, const DensityMatrix& sigma);
 double concurrence(const DensityMatrix& rho);   // for 2-qubit states
 
 // ---- Partial trace ----
-// Trace out subsystem of dimension d2 from (d1*d2) x (d1*d2) density matrix
+// Trace out a subsystem of a (d1*d2) x (d1*d2) density matrix: subsystem 0 traces out B
+// (the d2 factor) and returns d1 x d1, subsystem 1 traces out A and returns d2 x d2.
+// @note rho must be exactly (d1*d2) square. Any other shape, or a non-positive dimension,
+//   returns an EMPTY matrix: the loops index rho[i*d2 + k], so a factorisation that does
+//   not match rho's size used to read past it.
 DensityMatrix partial_trace(const DensityMatrix& rho, int d1, int d2, int subsystem);
 
 // ---- Entanglement entropy ----
