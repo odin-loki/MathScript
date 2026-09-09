@@ -390,6 +390,9 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `info_normalized_entropy` / `info_channel_capacity_input` | Normalized entropy / capacity-achieving input |
 | `poly_cheb_expand(p,n[,a,b])` | Chebyshev expansion of polynomial |
 | `erfi` / `erfcx` / `dawson` / `special_gamma_inc` / `special_beta_inc` / `beta` | Error / incomplete specials |
+| `erf` / `erfc` / `gamma` / `zeta` / `fresnel_c` / `fresnel_s` | Scalar specials, usable both as a bare call and on the right of an assignment |
+| `mat_rows(A)` / `mat_cols(A)` / `mat_numel(A)` / `mat_at(A,i,j)` | Matrix shape and element access as scalars (0-based indices) |
+| `mat_row(A,i)` / `mat_col(A,j)` / `mat_reshape(A,r,c)` / `mat_submatrix(A,r0,c0,r,c)` | Row, column, reshape and block extraction |
 | `legendre_q` / `hermite_he` / `laguerre_la` / `chebyshev_v` / `chebyshev_w` / `sph_harm` | Orthogonal / spherical harmonics |
 | `hypergeo_0f1` / `hypergeo_1f1` / `hypergeo_2f1` / `whittaker_m` / `whittaker_w` / `kummer_m` | Hypergeometric / Whittaker |
 | `mathieu_se` / `mathieu_b` / `mathieu_mc` / `mathieu_ms` / `heun_c` / `heun_d` / `heun_b` / `heun_t` / `painleve2` | Mathieu / Heun / Painlevé II |
@@ -974,6 +977,7 @@ limit is documented on the declaration; this is the summary.
 | `sym_parse` | nesting ≤ 256, ≤ 10000 nodes | `SymParseError` |
 | REPL `crypto_random_bytes(n)` | n ≤ 1 MiB (the result is printed as hex) | `DomainError` |
 | REPL `tensorops_decompose_cp(h, T, rank)` | rank ≤ `T`'s element count | `DomainError` |
+| REPL `mat_at` / `mat_row` / `mat_col` / `mat_reshape` / `mat_submatrix` | index or extent an exact integer in [0, 10⁷], and inside the matrix | `DomainError` |
 
 `numthy::prime_nth` and `numthy::sum_divisors` are deliberately *not* capped: their cost is
 proportional to the argument rather than to an allocation, so they are slow but bounded for

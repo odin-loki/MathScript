@@ -18611,3 +18611,75 @@ TEST(ReplCommandsTest, legendre_p_negative_n_scalar_assign) {
     Interpreter interp;
     expect_error_contains(interp, "s = legendre_p(-1, 0.5)", "expected non-negative integer n");
 }
+
+// erfc, gamma, zeta, fresnel_c and fresnel_s printed a value in the bare-call
+// form but were missing from the scalar-expression evaluator, so the assignment
+// form rejected them as unknown -- gamma and zeta even while the REPL's own
+// function index documented them. Pin both forms against the library.
+TEST(ReplCommandsTest, erfc_scalar_assign_matches_library) {
+    Interpreter interp;
+    expect_ok(interp, "y = erfc(0.5)");
+    EXPECT_NEAR(interp.state().scalars.at("y"), ms::erfc(0.5), 1e-12);
+}
+TEST(ReplCommandsTest, gamma_scalar_assign_matches_library) {
+    Interpreter interp;
+    expect_ok(interp, "y = gamma(4.0)");
+    // Gamma(4) = 3! = 6.
+    EXPECT_NEAR(interp.state().scalars.at("y"), 6.0, 1e-9);
+}
+TEST(ReplCommandsTest, zeta_scalar_assign_matches_library) {
+    Interpreter interp;
+    expect_ok(interp, "y = zeta(2.0)");
+    // zeta(2) = pi^2 / 6.
+    EXPECT_NEAR(interp.state().scalars.at("y"), M_PI * M_PI / 6.0, 1e-9);
+}
+TEST(ReplCommandsTest, fresnel_scalar_assign_matches_library) {
+    Interpreter interp;
+    expect_ok(interp, "c = fresnel_c(1.0)");
+    expect_ok(interp, "s = fresnel_s(1.0)");
+    EXPECT_NEAR(interp.state().scalars.at("c"), ms::fresnel_c(1.0), 1e-12);
+    EXPECT_NEAR(interp.state().scalars.at("s"), ms::fresnel_s(1.0), 1e-12);
+}
+TEST(ReplCommandsTest, special_scalars_agree_between_call_and_assign_forms) {
+    Interpreter interp;
+    // The bare-call form prints the same number the assignment form binds.
+    expect_contains(interp, "gamma(4.0)", "6");
+    expect_contains(interp, "zeta(2.0)", "1.64493");
+    expect_contains(interp, "erfc(0.5)", "0.4795");
+}
+
+// The libm scalar set had sinh but not asinh, log10 but not log2, and sqrt but
+// not cbrt, so ordinary calculator expressions failed as unknown functions.
+TEST(ReplCommandsTest, libm_scalar_calls_round_out_the_set) {
+    Interpreter interp;
+    expect_ok(interp, "a = log2(8.0)");
+    expect_ok(interp, "b = exp2(3.0)");
+    expect_ok(interp, "c = cbrt(27.0)");
+    expect_ok(interp, "d = asinh(0.0)");
+    expect_ok(interp, "e = acosh(1.0)");
+    expect_ok(interp, "f = atanh(0.0)");
+    expect_ok(interp, "g = round(2.5)");
+    expect_ok(interp, "h = trunc(-2.7)");
+    expect_ok(interp, "i = expm1(0.0)");
+    expect_ok(interp, "j = log1p(0.0)");
+    expect_ok(interp, "k = hypot(3.0, 4.0)");
+    expect_ok(interp, "l = fmod(7.0, 3.0)");
+
+    const auto& s = interp.state().scalars;
+    EXPECT_NEAR(s.at("a"), 3.0, 1e-12);
+    EXPECT_NEAR(s.at("b"), 8.0, 1e-12);
+    EXPECT_NEAR(s.at("c"), 3.0, 1e-12);
+    EXPECT_NEAR(s.at("d"), 0.0, 1e-12);
+    EXPECT_NEAR(s.at("e"), 0.0, 1e-12);
+    EXPECT_NEAR(s.at("f"), 0.0, 1e-12);
+    EXPECT_NEAR(s.at("g"), 3.0, 1e-12);
+    EXPECT_NEAR(s.at("h"), -2.0, 1e-12);
+    EXPECT_NEAR(s.at("i"), 0.0, 1e-12);
+    EXPECT_NEAR(s.at("j"), 0.0, 1e-12);
+    EXPECT_NEAR(s.at("k"), 5.0, 1e-12);
+    EXPECT_NEAR(s.at("l"), 1.0, 1e-12);
+
+    // They compose with the existing expression grammar.
+    expect_ok(interp, "m = log2(hypot(3, 4) * 2 + 6)");
+    EXPECT_NEAR(s.at("m"), 4.0, 1e-12);
+}

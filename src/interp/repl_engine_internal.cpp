@@ -6777,6 +6777,149 @@ Matrix<double> points2d_to_matrix(const std::vector<geo::Point2D>& pts) {
     return out;
 }
 
+namespace {
+
+// A REPL index arrives as a double, because that is the only numeric type the
+// session has. Accept it only when it is an exact non-negative integer that is
+// actually inside the matrix -- a fractional or out-of-range index is a user
+// error, never a silently truncated read.
+// Any index this large is out of range for every matrix the REPL can hold, and
+// stopping here keeps the size_t conversion below well defined: converting a
+// double that does not fit in size_t is undefined behaviour.
+constexpr double kMaxAccessorExtent = 1e7;
+
+Result<size_t> checked_index(const char* fn, const char* what, double value, size_t bound) {
+    if (!std::isfinite(value) || std::trunc(value) != value || value < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected a non-negative integer ") + what});
+    }
+    if (value > kMaxAccessorExtent) {
+        return std::unexpected(DomainError{fn, std::string(what) + " is too large"});
+    }
+    const auto index = static_cast<size_t>(value);
+    if (index >= bound) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + std::to_string(index) + " is out of range (matrix has " +
+                    std::to_string(bound) + ")"});
+    }
+    return index;
+}
+
+}  // namespace
+
+Result<double> eval_mat_at(const Matrix<double>& A, double i, double j) {
+    auto row = checked_index("mat_at", "row index", i, A.rows());
+    if (!row) {
+        return std::unexpected(row.error());
+    }
+    auto col = checked_index("mat_at", "column index", j, A.cols());
+    if (!col) {
+        return std::unexpected(col.error());
+    }
+    return A(*row, *col);
+}
+
+Result<Matrix<double>> eval_mat_row(const Matrix<double>& A, double i) {
+    auto row = checked_index("mat_row", "row index", i, A.rows());
+    if (!row) {
+        return std::unexpected(row.error());
+    }
+    Matrix<double> out(1, A.cols());
+    for (size_t c = 0; c < A.cols(); ++c) {
+        out(0, c) = A(*row, c);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_mat_col(const Matrix<double>& A, double j) {
+    auto col = checked_index("mat_col", "column index", j, A.cols());
+    if (!col) {
+        return std::unexpected(col.error());
+    }
+    Matrix<double> out(A.rows(), 1);
+    for (size_t r = 0; r < A.rows(); ++r) {
+        out(r, 0) = A(r, *col);
+    }
+    return out;
+}
+
+namespace {
+
+// A count (a row/column total, not an index) must be an exact non-negative
+// integer; zero is allowed so an empty block stays expressible.
+// Bounded by kMaxAccessorExtent for the same reason as an index, and because a
+// count past it would ask for an allocation the -fno-exceptions build aborts on
+// rather than reports.
+Result<size_t> checked_count(const char* fn, const char* what, double value) {
+    if (!std::isfinite(value) || std::trunc(value) != value || value < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected a non-negative integer ") + what});
+    }
+    if (value > kMaxAccessorExtent) {
+        return std::unexpected(DomainError{fn, std::string(what) + " is too large"});
+    }
+    return static_cast<size_t>(value);
+}
+
+}  // namespace
+
+Result<Matrix<double>> eval_mat_reshape(const Matrix<double>& A, double rows, double cols) {
+    auto r = checked_count("mat_reshape", "row count", rows);
+    if (!r) {
+        return std::unexpected(r.error());
+    }
+    auto c = checked_count("mat_reshape", "column count", cols);
+    if (!c) {
+        return std::unexpected(c.error());
+    }
+    const size_t total = A.rows() * A.cols();
+    // Both extents are bounded by kMaxAccessorExtent, so this product cannot
+    // overflow; the check below is the honest shape mismatch, not a guard.
+    if (*r * *c != total) {
+        return std::unexpected(DomainError{
+            "mat_reshape", "element count " + std::to_string(total) + " does not fit " +
+                               std::to_string(*r) + "x" + std::to_string(*c)});
+    }
+    Matrix<double> out(*r, *c);
+    for (size_t k = 0; k < total; ++k) {
+        out(k / *c, k % *c) = A(k / A.cols(), k % A.cols());
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_mat_submatrix(const Matrix<double>& A, double r0, double c0,
+                                          double rows, double cols) {
+    auto row0 = checked_count("mat_submatrix", "row offset", r0);
+    if (!row0) {
+        return std::unexpected(row0.error());
+    }
+    auto col0 = checked_count("mat_submatrix", "column offset", c0);
+    if (!col0) {
+        return std::unexpected(col0.error());
+    }
+    auto nr = checked_count("mat_submatrix", "row count", rows);
+    if (!nr) {
+        return std::unexpected(nr.error());
+    }
+    auto nc = checked_count("mat_submatrix", "column count", cols);
+    if (!nc) {
+        return std::unexpected(nc.error());
+    }
+    if (*nr > A.rows() || *row0 > A.rows() - *nr || *nc > A.cols() ||
+        *col0 > A.cols() - *nc) {
+        return std::unexpected(DomainError{
+            "mat_submatrix", "block runs past the end of a " + std::to_string(A.rows()) + "x" +
+                                 std::to_string(A.cols()) + " matrix"});
+    }
+    Matrix<double> out(*nr, *nc);
+    for (size_t i = 0; i < *nr; ++i) {
+        for (size_t j = 0; j < *nc; ++j) {
+            out(i, j) = A(*row0 + i, *col0 + j);
+        }
+    }
+    return out;
+}
+
 Result<double> eval_geo_kdtree_nearest(const Matrix<double>& P_m, double qx, double qy) {
     auto pts = matrix_to_points2d(P_m, "geo_kdtree_nearest");
     if (!pts) {
@@ -17719,6 +17862,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_lsqr" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "matrix_rank" ||
+            fn == "mat_rows" || fn == "mat_cols" || fn == "mat_numel" ||
+            fn == "mat_at" || fn == "mat_row" || fn == "mat_col" ||
+            fn == "mat_reshape" || fn == "mat_submatrix" ||
             fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
             fn == "qr" || fn == "svd" || fn == "eig_sym" || fn == "eig" || fn == "ldl" ||

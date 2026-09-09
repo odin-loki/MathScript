@@ -1129,6 +1129,27 @@ Result<Matrix<double>> eval_geo_delaunay_2d(const Matrix<double>& P_m);
 
 Matrix<double> points2d_to_matrix(const std::vector<geo::Point2D>& pts);
 
+/// Element access for the REPL's matrix session variables. `i` and `j` are
+/// 0-based, matching `Matrix::operator()`, and must be exact non-negative
+/// integers inside the matrix; anything else is a DomainError rather than an
+/// out-of-bounds read.
+Result<double> eval_mat_at(const Matrix<double>& A, double i, double j);
+
+/// One row of `A` as a 1xN matrix. `i` is 0-based, as in `eval_mat_at`.
+Result<Matrix<double>> eval_mat_row(const Matrix<double>& A, double i);
+
+/// One column of `A` as an Nx1 matrix. `j` is 0-based, as in `eval_mat_at`.
+Result<Matrix<double>> eval_mat_col(const Matrix<double>& A, double j);
+
+/// `A`'s elements re-laid out as `rows` x `cols`, reading and writing in row
+/// order. The element count has to match exactly.
+Result<Matrix<double>> eval_mat_reshape(const Matrix<double>& A, double rows, double cols);
+
+/// The `rows` x `cols` block of `A` whose top-left corner is `(r0, c0)`, all
+/// 0-based. The whole block has to lie inside `A`.
+Result<Matrix<double>> eval_mat_submatrix(const Matrix<double>& A, double r0, double c0,
+                                          double rows, double cols);
+
 Result<double> eval_geo_kdtree_nearest(const Matrix<double>& P_m, double qx, double qy);
 
 Result<double> eval_geo_kdtree_3d_nearest(const Matrix<double>& P_m, double qx, double qy,

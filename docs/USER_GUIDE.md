@@ -57,7 +57,11 @@ ms> y = x / 2
 ms> z = sin(0)
 ```
 
-Scalar expressions support `+`, `-`, `*`, `/`, parentheses, unary minus, and libm-style calls such as `sin`, `cos`, `sqrt`, and `pow`:
+Scalar expressions support `+`, `-`, `*`, `/`, parentheses, unary minus, and the libm
+scalar calls: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`,
+`asinh`, `acosh`, `atanh`, `sqrt`, `cbrt`, `abs`, `exp`, `exp2`, `expm1`, `log`,
+`log2`, `log10`, `log1p`, `floor`, `ceil`, `round`, `trunc`, and the two-argument
+`pow`, `min`, `max`, `atan2`, `hypot`, `fmod`:
 
 ```
 ms> c = sqrt(b)
@@ -77,6 +81,27 @@ Matrices use square brackets. **Rows** are separated by semicolons (`;`); **colu
 
 All rows must have the same width; mismatched rows produce an error.
 
+### Looking inside a matrix
+
+`mat_rows`, `mat_cols` and `mat_numel` give the shape as a scalar, `mat_at` reads a
+single element, and `mat_row`, `mat_col`, `mat_reshape` and `mat_submatrix` return
+matrices. Indices are 0-based, and one that is fractional, negative, or past the end
+is an error rather than a read past the end of the matrix:
+
+```
+ms> A = [1, 2, 3; 4, 5, 6]
+ms> mat_rows(A)
+2
+ms> v = mat_at(A, 1, 2)
+v = 6.000000
+ms> r = mat_row(A, 0)          # 1x3
+ms> c = mat_col(A, 2)          # 2x1
+ms> B = mat_reshape(A, 3, 2)   # same six elements, read in row order
+ms> S = mat_submatrix(A, 0, 1, 2, 2)   # the 2x2 block starting at (0,1)
+ms> mat_at(A, 2, 0)
+error: mat_at: row index 2 is out of range (matrix has 2)
+```
+
 ### Function calls and results
 
 Most library functions are invoked as `name(arg1, arg2, …)`. Many can be used either as bare calls (printing a formatted result) or on the right-hand side of an assignment:
@@ -88,6 +113,24 @@ ms> U, S, V = svd(A)
 ```
 
 Multi-target assignments (`L, U = lu(M)`, `Q, R = qr(M)`) store each output matrix under its variable name.
+
+A bare name or expression prints its value, so you can look at a variable, or try a
+calculation, without assigning it somewhere first:
+
+```
+ms> x
+2.500000
+ms> A
+A =
+  [1.000000, 2.000000]
+  [3.000000, 4.000000]
+ms> 1 + 2
+3.000000
+ms> sqrt(2)
+1.414214
+ms> x / 2 + 1
+2.250000
+```
 
 Bare function calls and assignments print their result to stdout when non-empty. Use `vars` to inspect what is in the session without re-printing values:
 

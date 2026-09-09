@@ -286,3 +286,43 @@ TEST(ReplNoAssign, QuantumAnticommutatorPrintsWithoutAssignment) {
     // {X, Z} = XZ + ZX = 0 for the Pauli matrices.
     expect_contains(interp, "quantum_anticommutator(Xg, Zg)", "anticomm =");
 }
+
+// A bare name or expression is the last form the dispatcher tries, after every
+// command and every assignment form has declined the line. Before this existed
+// the only way to see a value was to assign it somewhere else first: `x`,
+// `1 + 2` and `sqrt(2)` all came back as "could not parse".
+TEST(ReplNoAssign, BareExpressionPrintsItsValue) {
+    Interpreter interp;
+    expect_ok(interp, "x = 2.5");
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+
+    // A bare scalar name prints the bound value.
+    expect_contains(interp, "x", "2.500000");
+    // A bare matrix name prints the matrix under its own name.
+    expect_contains(interp, "A", "A =");
+    expect_contains(interp, "A", "[1.000000, 2.000000]");
+
+    // Literal arithmetic, calls, and expressions over bound names all evaluate.
+    expect_contains(interp, "1 + 2", "3.000000");
+    expect_contains(interp, "sqrt(2)", "1.414214");
+    expect_contains(interp, "x / 2 + 1", "2.250000");
+    expect_contains(interp, "-x", "-2.500000");
+    expect_contains(interp, "pow(x, 2)", "6.250000");
+}
+
+// The fallback must stay a fallback: a line that is not an expression still
+// reports the parse error, and a command name is still a command.
+TEST(ReplNoAssign, BareExpressionDoesNotShadowCommandsOrErrors) {
+    Interpreter interp;
+
+    // Bare `load` / `save` are incomplete commands, not variables.
+    expect_error_contains(interp, "load", "could not parse: load");
+    expect_error_contains(interp, "save", "could not parse: save");
+    // An unbound name is not silently zero.
+    expect_error(interp, "no_such_variable_here");
+    // Nor is a line that is not an expression at all.
+    expect_error_contains(interp, "1 2 3 ;;", "could not parse");
+    // `vars` still lists the session rather than being read as a name.
+    expect_ok(interp, "q = 7");
+    expect_contains(interp, "vars", "q = 7");
+}

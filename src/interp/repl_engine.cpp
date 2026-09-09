@@ -2514,12 +2514,22 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "sparse_to_dense") {
         return arity == 1;
     }
+    if (callee == "mat_row" || callee == "mat_col") {
+        return arity == 2;
+    }
+    if (callee == "mat_reshape") {
+        return arity == 3;
+    }
+    if (callee == "mat_submatrix") {
+        return arity == 5;
+    }
     return false;
 }
 
 bool is_scalar_matrix_call_callee(const std::string& callee) {
     return callee == "det" || callee == "trace" || callee == "norm" || callee == "rank" ||
            callee == "matrix_rank" ||
+           callee == "mat_rows" || callee == "mat_cols" || callee == "mat_numel" ||
            callee == "cond" || callee == "geo_convex_hull_area" || callee == "geo_polygon_area" ||
            callee == "geo_polygon_perimeter" || callee == "geo_signed_area" ||
            callee == "geo_moment_of_inertia" || callee == "geo_centroid_x" ||
@@ -2797,6 +2807,36 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "log10") {
             return std::log10(arg);
         }
+        if (fn == "log2") {
+            return std::log2(arg);
+        }
+        if (fn == "exp2") {
+            return std::exp2(arg);
+        }
+        if (fn == "expm1") {
+            return std::expm1(arg);
+        }
+        if (fn == "log1p") {
+            return std::log1p(arg);
+        }
+        if (fn == "cbrt") {
+            return std::cbrt(arg);
+        }
+        if (fn == "asinh") {
+            return std::asinh(arg);
+        }
+        if (fn == "acosh") {
+            return std::acosh(arg);
+        }
+        if (fn == "atanh") {
+            return std::atanh(arg);
+        }
+        if (fn == "round") {
+            return std::round(arg);
+        }
+        if (fn == "trunc") {
+            return std::trunc(arg);
+        }
         if (fn == "floor") {
             return std::floor(arg);
         }
@@ -2805,6 +2845,21 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "erf") {
             return ms::erf(arg);
+        }
+        if (fn == "erfc") {
+            return ms::erfc(arg);
+        }
+        if (fn == "gamma") {
+            return gamma_func(arg);
+        }
+        if (fn == "zeta") {
+            return zeta(arg);
+        }
+        if (fn == "fresnel_c") {
+            return fresnel_c(arg);
+        }
+        if (fn == "fresnel_s") {
+            return fresnel_s(arg);
         }
         if (fn == "erfi") {
             return erfi(arg);
@@ -3153,6 +3208,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "max") {
             return std::fmax(args[0], args[1]);
+        }
+        if (fn == "hypot") {
+            return std::hypot(args[0], args[1]);
+        }
+        if (fn == "fmod") {
+            return std::fmod(args[0], args[1]);
         }
         if (fn == "atan2") {
             return std::atan2(args[0], args[1]);
@@ -4875,6 +4936,12 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
             }
         }
         value = static_cast<double>(matrix_rank(*matrix, tol));
+    } else if (assign.callee == "mat_rows") {
+        value = static_cast<double>(matrix->rows());
+    } else if (assign.callee == "mat_cols") {
+        value = static_cast<double>(matrix->cols());
+    } else if (assign.callee == "mat_numel") {
+        value = static_cast<double>(matrix->rows() * matrix->cols());
     } else if (assign.callee == "cond") {
         value = cond(*matrix);
     } else if (assign.callee == "geo_convex_hull_area") {
@@ -9153,6 +9220,29 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 }
                 return assign_scalar(lhs, *value);
             }
+            if (callee == "mat_at") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(
+                        DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                }
+                auto A_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!A_m) {
+                    return std::unexpected(A_m.error());
+                }
+                double i = 0.0;
+                double j = 0.0;
+                if (!parse_number(trim_copy((*call_args)[1]), i) ||
+                    !parse_number(trim_copy((*call_args)[2]), j)) {
+                    return std::unexpected(
+                        DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                }
+                auto value = eval_mat_at(*A_m, i, j);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
             if (callee == "geo_kdtree_nearest") {
                 const auto call_args = split_call_args(rhs);
                 if (!call_args || call_args->size() != 3) {
@@ -9570,7 +9660,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = [1, 2; 3, 4]     matrix assignment\n"
             "  name = 3.14              scalar assignment\n"
             "  name = x + 2             scalar expression (+, -, *, /; () precedence)\n"
+            "  A   x   1 + 2   sqrt(2)  a bare name or expression prints its value\n"
             "  name = sin(x) pow(x,2)   scalar calls (sin, cos, sqrt, pow, min, max, ...)\n"
+            "  sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh\n"
+            "  sqrt cbrt abs exp exp2 expm1 log log2 log10 log1p floor ceil round trunc\n"
+            "  pow(x,y) min(x,y) max(x,y) atan2(y,x) hypot(x,y) fmod(x,y)   libm scalar calls\n"
             "  name = matmul(A, B)      matrix multiply assignment\n"
             "  name = solve(A, B)       linear solve assignment\n"
             "  name = lsq(A, B)         least-squares solve assignment\n"
@@ -9608,6 +9702,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cuda_nccl_comm_size()  NCCL communicator size (stub: 1)\n"
             "  cuda_nccl_device_count()  NCCL-visible GPU count (stub: 0)\n"
             "  name = transpose(A)      transpose assignment\n"
+            "  name = mat_rows(A) / mat_cols(A) / mat_numel(A)  shape of A as a scalar\n"
+            "  name = mat_at(A,i,j)     one element of A as a scalar (0-based)\n"
+            "  name = mat_row(A,i) / mat_col(A,j)  one row as 1xN / one column as Nx1 (0-based)\n"
+            "  name = mat_reshape(A,rows,cols)  same elements, new shape (row order)\n"
+            "  name = mat_submatrix(A,r0,c0,rows,cols)  the rows x cols block at (r0,c0)\n"
             "  name = chol(A)           Cholesky factor assignment\n"
             "  name = expm(A) sqrtm(A) logm(A)  matrix exponential / square root / logarithm\n"
             "  name = tril(A[, k]) triu(A[, k])  lower/upper triangular extraction\n"
@@ -10707,7 +10806,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_helix_torsion(t[,a[,b]]), diffgeo_sphere_gauss_bonnet([n]), diffgeo_sphere_gauss_bonnet_residual([n]), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
-            "  erf(x), gamma(x), bessel_j0(x), bessel_j1(x), bessel_y0(x), bessel_y1(x), bessel_j(nu,x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_yn(n,x), spherical_in(n,x), spherical_kn(n,x), bessel_h(nu,x), bessel_hy(nu,x), bessel_l(nu,x), bessel_lu(nu,x), hermite_hn(n,x), bessel_zero_jnu(nu,n)\n"
+            "  erf(x), erfc(x), gamma(x), fresnel_c(x), fresnel_s(x), bessel_j0(x), bessel_j1(x), bessel_y0(x), bessel_y1(x), bessel_j(nu,x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_yn(n,x), spherical_in(n,x), spherical_kn(n,x), bessel_h(nu,x), bessel_hy(nu,x), bessel_l(nu,x), bessel_lu(nu,x), hermite_hn(n,x), bessel_zero_jnu(nu,n)\n"
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), struve_hn(nu,x), struve_yn(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
             "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_d(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), theta1_prime(z,q), jacobi_theta(n,z,tau), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
@@ -16671,7 +16770,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (fn == "info_joint_entropy" || fn == "info_conditional_entropy" ||
             fn == "info_sample_entropy" || fn == "finance_treynor" ||
             fn == "geo_point_in_polygon" ||
-            fn == "geo_kdtree_nearest" ||
+            fn == "geo_kdtree_nearest" || fn == "mat_at" ||
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
             fn == "topo_vietoris_rips_betti0" || fn == "topo_betti_curve" ||
             fn == "control_bode_mag_db" || fn == "control_bode_phase" ||
@@ -16752,6 +16851,31 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         return std::unexpected(poly_m.error());
                     }
                     auto value = eval_geo_point_in_polygon(px, py, *poly_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return std::to_string(*value) + "\n";
+                }
+                if (fn == "mat_at") {
+                    double i = 0.0;
+                    double j = 0.0;
+                    if (!parse_number(trim_copy(call_args->at(1)), i) ||
+                        !parse_number(trim_copy(call_args->at(2)), j)) {
+                        return std::unexpected(
+                            DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                    }
+                    auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                        auto matrix = parse_matrix(text);
+                        if (!matrix) {
+                            matrix = resolve_matrix(text);
+                        }
+                        return matrix;
+                    };
+                    auto A_m = resolve_arg(call_args->at(0));
+                    if (!A_m) {
+                        return std::unexpected(A_m.error());
+                    }
+                    auto value = eval_mat_at(*A_m, i, j);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
@@ -21254,6 +21378,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         } else {
             matrix = resolve_matrix(arg);
             if (!matrix) {
+                // The argument names no matrix, so this was never a call on one.
+                // `zeros(3)` and `eye(2)` build a matrix out of numbers, and
+                // `sqrt(2)`, `sin(0.5)` and `pow(x, 2)` are scalar expressions;
+                // all of them merely share the f(arg) shape. Serve them here
+                // rather than reporting a matrix the user never mentioned.
+                MatrixCallAssign matrix_call{};
+                if (try_parse_matrix_call_assignment("_ = " + cmd, matrix_call)) {
+                    auto built = dispatch_matrix_call(*this, matrix_call);
+                    if (!built) {
+                        return std::unexpected(built.error());
+                    }
+                    state_.matrices["_"] = *built;
+                    std::ostringstream built_out;
+                    built_out << "_ =\n";
+                    print_matrix(built_out, *built);
+                    return built_out.str();
+                }
+                if (auto value = eval_scalar_expr(state_, cmd)) {
+                    std::ostringstream scalar_out;
+                    scalar_out << std::fixed << std::setprecision(6) << *value << "\n";
+                    return scalar_out.str();
+                }
                 return std::unexpected(matrix.error());
             }
         }
@@ -21285,6 +21431,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             out << *result << "\n";
         } else if (fn == "matrix_rank") {
             out << matrix_rank(*matrix) << "\n";
+        } else if (fn == "mat_rows") {
+            out << matrix->rows() << "\n";
+        } else if (fn == "mat_cols") {
+            out << matrix->cols() << "\n";
+        } else if (fn == "mat_numel") {
+            out << (matrix->rows() * matrix->cols()) << "\n";
         } else if (fn == "cond") {
             auto result = cond(*matrix);
             if (!result) {
@@ -21850,6 +22002,47 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return format_unary_matrix_fn_tail(fn, *matrix);
         }
         return out.str();
+    }
+
+    // A matrix call written without a target prints its result under `_`. The
+    // registry already knows every matrix-returning callee and the arities it
+    // accepts, so this covers the whole set at once rather than the hand-listed
+    // subset the branches above cover. Like the bare expression below it, this
+    // only ever sees lines every earlier form has declined.
+    {
+        MatrixCallAssign matrix_call{};
+        if (try_parse_matrix_call_assignment("_ = " + cmd, matrix_call)) {
+            auto result = dispatch_matrix_call(*this, matrix_call);
+            if (!result) {
+                return std::unexpected(result.error());
+            }
+            state_.matrices["_"] = *result;
+            std::ostringstream out;
+            out << "_ =\n";
+            print_matrix(out, *result);
+            return out.str();
+        }
+    }
+
+    // Bare expression. `A`, `x`, `1 + 2`, `sqrt(2)` and `x + 1` print their value
+    // instead of being rejected; every REPL user expects to be able to look at a
+    // variable without assigning it somewhere first. This is the last thing tried,
+    // after every command form and every assignment form has declined the line, so
+    // it can never shadow one of them. A line that is not an expression either
+    // still falls through to the parse error below.
+    {
+        const auto matrix_it = state_.matrices.find(cmd);
+        if (matrix_it != state_.matrices.end()) {
+            std::ostringstream out;
+            out << cmd << " =\n";
+            print_matrix(out, matrix_it->second);
+            return out.str();
+        }
+        if (auto value = eval_scalar_expr(state_, cmd)) {
+            std::ostringstream out;
+            out << std::fixed << std::setprecision(6) << *value << "\n";
+            return out.str();
+        }
     }
 
     return std::unexpected(DomainError{"repl", "could not parse: " + cmd});
