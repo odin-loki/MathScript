@@ -9543,6 +9543,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     if (cancel_requested()) {
         return std::string{};
     }
+    // Command dispatch runs the line through a long chain of std::regex matches, and
+    // libstdc++'s regex executor recurses once per input character through repetition
+    // operators: a six-figure line overflows the stack inside _M_dfs before any of this
+    // interpreter's own code sees it. The script and session readers already refuse a line
+    // longer than kMaxScriptLine; this is the same cap on the direct entry point, which
+    // every embedder and the REPL loop both use.
+    if (line.size() > kMaxScriptLine) {
+        return std::unexpected(DomainError{"repl", "command line too long"});
+    }
     std::string cmd = trim(line);
     if (cmd.empty()) {
         return std::string{};

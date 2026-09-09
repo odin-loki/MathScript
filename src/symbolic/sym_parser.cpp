@@ -35,8 +35,41 @@ public:
     }
 
 private:
+    // A recursive-descent parser recurses once per nesting level, so an input like
+    // sin(sin(sin(...))) or x+x+x+... turns unbounded input depth into unbounded stack
+    // use: sym_parse of 10000 nested calls, or 100000 chained additions, overflowed the
+    // stack and crashed with SIGSEGV. The limit is far above any expression a person
+    // writes and well below the depth that exhausts a default 8 MB stack.
+    static constexpr int kMaxDepth = 256;
+
+    // parse_add and parse_mul LOOP over their operands rather than recursing, so a chain
+    // like x+x+x+... does not hit kMaxDepth -- but it still builds a left spine one node
+    // deep per term, and ~SymExpr walks that spine recursively through its unique_ptr
+    // children. 100000 chained additions therefore overflowed the stack on destruction
+    // rather than during the parse. Bounding the node count bounds that spine too.
+    static constexpr int kMaxNodes = 10000;
+
     const std::string& text_;
     size_t pos_ = 0;
+    int depth_ = 0;
+    int nodes_ = 0;
+
+    // Called for every node the parse produces.
+    bool budget_exhausted() { return ++nodes_ > kMaxNodes; }
+
+    // Increments on construction and decrements on destruction, so every return path out
+    // of a parse function unwinds the count.
+    class DepthGuard {
+      public:
+        explicit DepthGuard(SymParser& p) : parser_(p) { ++parser_.depth_; }
+        ~DepthGuard() { --parser_.depth_; }
+        DepthGuard(const DepthGuard&) = delete;
+        DepthGuard& operator=(const DepthGuard&) = delete;
+        bool too_deep() const { return parser_.depth_ > kMaxDepth; }
+
+      private:
+        SymParser& parser_;
+    };
 
     bool at_end() const { return pos_ >= text_.size(); }
 
@@ -70,7 +103,13 @@ private:
         return {};
     }
 
-    std::expected<SymExpr, SymParseError> parse_expr() { return parse_add(); }
+    std::expected<SymExpr, SymParseError> parse_expr() {
+        DepthGuard guard(*this);
+        if (guard.too_deep()) {
+            return std::unexpected(make_error("expression nested too deeply"));
+        }
+        return parse_add();
+    }
 
     std::expected<SymExpr, SymParseError> parse_add() {
         auto left = parse_mul();
@@ -84,6 +123,9 @@ private:
                 break;
             }
             ++pos_;
+            if (budget_exhausted()) {
+                return std::unexpected(make_error("expression has too many terms"));
+            }
             auto right = parse_mul();
             if (!right) {
                 return std::unexpected(right.error());
@@ -109,6 +151,9 @@ private:
                 break;
             }
             ++pos_;
+            if (budget_exhausted()) {
+                return std::unexpected(make_error("expression has too many terms"));
+            }
             auto right = parse_pow();
             if (!right) {
                 return std::unexpected(right.error());
@@ -123,6 +168,9 @@ private:
     }
 
     std::expected<SymExpr, SymParseError> parse_pow() {
+        if (budget_exhausted()) {
+            return std::unexpected(make_error("expression has too many terms"));
+        }
         auto left = parse_unary();
         if (!left) {
             return std::unexpected(left.error());
@@ -130,6 +178,9 @@ private:
         skip_ws();
         if (peek() == '^') {
             ++pos_;
+            if (budget_exhausted()) {
+                return std::unexpected(make_error("expression has too many terms"));
+            }
             auto right = parse_pow();
             if (!right) {
                 return std::unexpected(right.error());
@@ -140,6 +191,10 @@ private:
     }
 
     std::expected<SymExpr, SymParseError> parse_unary() {
+        DepthGuard guard(*this);
+        if (guard.too_deep()) {
+            return std::unexpected(make_error("expression nested too deeply"));
+        }
         skip_ws();
         if (peek() == '+') {
             ++pos_;
@@ -249,6 +304,13 @@ private:
     }
 
     std::expected<SymExpr, SymParseError> parse_primary() {
+        DepthGuard guard(*this);
+        if (guard.too_deep()) {
+            return std::unexpected(make_error("expression nested too deeply"));
+        }
+        if (budget_exhausted()) {
+            return std::unexpected(make_error("expression has too many terms"));
+        }
         skip_ws();
         if (peek() == '(') {
             ++pos_;
