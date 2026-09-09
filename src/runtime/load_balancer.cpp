@@ -4,7 +4,7 @@
 namespace ms {
 
 LoadBalanceDecision balance(size_t workload, ExecPolicy policy) {
-    return balance(workload, policy, detect_topology());
+    return balance(workload, policy, cached_topology());
 }
 
 LoadBalanceDecision balance(

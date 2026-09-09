@@ -55,7 +55,7 @@ const char* gria_hint_key(OpClass op) {
 }
 
 DispatchDecision decide(size_t n, ExecPolicy policy) {
-    return decide(n, OpClass::DenseMatmul, policy, detect_topology());
+    return decide(n, OpClass::DenseMatmul, policy, cached_topology());
 }
 
 DispatchDecision decide(size_t n, ExecPolicy policy, const SystemTopology& topo) {
@@ -63,7 +63,7 @@ DispatchDecision decide(size_t n, ExecPolicy policy, const SystemTopology& topo)
 }
 
 DispatchDecision decide(size_t n, OpClass op, ExecPolicy policy) {
-    return decide(n, op, policy, detect_topology());
+    return decide(n, op, policy, cached_topology());
 }
 
 DispatchDecision decide(size_t n, OpClass op, ExecPolicy policy, const SystemTopology& topo) {

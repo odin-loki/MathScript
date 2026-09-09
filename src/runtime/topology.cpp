@@ -205,7 +205,12 @@ void synthesize_fallback(SystemTopology& topo) {
 
 } // namespace
 
-SystemTopology detect_topology() {
+namespace {
+
+// The actual probe. Opens /sys/devices/system/cpu/online, a couple of files per
+// online CPU, and the NUMA cpulists: roughly 30 microseconds on a small machine
+// and more as the CPU count grows.
+SystemTopology probe_topology_now() {
     SystemTopology topo;
     topo.total_gpus = 0;
 
@@ -223,6 +228,23 @@ SystemTopology detect_topology() {
         }
     }
     return topo;
+}
+
+} // namespace
+
+const SystemTopology& cached_topology() {
+    // The machine's CPU and NUMA layout does not change while the process runs,
+    // so the sysfs walk is done once. This matters because it sits on a hot
+    // path: decide() consults the topology on every dispatched operation, so an
+    // uncached probe put its full cost on each one -- an fft() of 256 points
+    // spent more time reading sysfs than transforming. Initialisation of a
+    // function-local static is thread-safe.
+    static const SystemTopology cached = probe_topology_now();
+    return cached;
+}
+
+SystemTopology detect_topology() {
+    return cached_topology();
 }
 
 int nearest_numa_node(size_t core_id, const SystemTopology& topo) {

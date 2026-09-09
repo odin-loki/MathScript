@@ -59,7 +59,15 @@ struct SystemTopology {
 // documented fallback: one synthetic socket "0" holding hardware_concurrency()
 // logical CPUs, the same count of physical cores, and a single NUMA node 0, with
 // SystemTopology::detected set to false.
+//
+// The probe runs once per process and the result is reused; the machine's CPU
+// and NUMA layout cannot change underneath a running process. Returns a copy --
+// prefer cached_topology() on a hot path, which hands back a reference.
 SystemTopology detect_topology();
+
+// The same probed topology, by reference and without the copy. Use this where a
+// topology is consulted per operation, such as dispatch decisions.
+const SystemTopology& cached_topology();
 
 // NUMA node hosting the given logical CPU. Returns the first known node (0 when
 // the topology carries none) if core_id is not present in the CPU-to-node map.
