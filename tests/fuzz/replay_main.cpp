@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -75,11 +76,16 @@ void mutate(std::vector<uint8_t>& buf, std::mt19937& rng,
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <corpus-dir> [mutations]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <corpus-dir> [mutations] [seed]\n", argv[0]);
         return 2;
     }
     const std::string dir = argv[1];
     const long mutations = argc > 2 ? std::atol(argv[2]) : 20000;
+    // The CTest suites leave the seed alone so a failure there is reproducible.
+    // A longer session passes one, which is how the same net covers more shapes
+    // without making the regression suite non-deterministic.
+    const unsigned seed = argc > 3 ? static_cast<unsigned>(std::strtoul(argv[3], nullptr, 10))
+                                   : 0x5EEDu;
 
     auto corpus = load_corpus(dir);
     if (corpus.empty()) {
@@ -93,7 +99,7 @@ int main(int argc, char** argv) {
         LLVMFuzzerTestOneInput(seed.data(), seed.size());
     }
 
-    std::mt19937 rng(0x5EEDu);
+    std::mt19937 rng(seed);
     for (long i = 0; i < mutations; ++i) {
         std::vector<uint8_t> buf = corpus[rng() % corpus.size()];
         mutate(buf, rng, corpus);

@@ -7352,8 +7352,8 @@ Waves 1 through 217 incrementally implemented this plan; each wave's specific ad
 **Current status:**
 - Phase 10 hardening substantially underway (see `docs/RELEASE.md`'s tag-criteria list for gate details)
 - CMake version field is 1.0.0; **v1.0.0 tag not cut** pending release gates (Linux GCC build, Wave 320 verification)
-- ~91% line coverage (90% tag gate, 80% CI gate); AddressSanitizer + UBSan; libFuzzer smoke (7 targets)
-- **872 CTest suites, all passing** on Linux GCC 13 Release with CUDA off (the catalogue that `docs/RELEASE.md` gates on; other configurations enable or exclude different suites)
+- ~92% line coverage (90% tag gate, 80% CI gate); AddressSanitizer + UBSan; libFuzzer smoke (7 targets)
+- **873 CTest suites, all passing** on Linux GCC 13 Release with CUDA off (the catalogue that `docs/RELEASE.md` gates on; other configurations enable or exclude different suites)
 - Wave 207: full documentation overhaul (README/ARCHITECTURE/API/USER_GUIDE/CONTRIBUTING/RELEASE/CHANGELOG/master-plan all rewritten or refreshed), plus 8 spec-vs-implementation gaps closed (special spherical harmonics, signal coherence, stats partial correlation/VIF, ML PR-AUC, finance historical VaR, graph min arborescence, poly_roots rewritten via companion-matrix eigenvalues, quantum Schmidt decomposition)
 - Wave 208: 8 more gaps closed in previously-untouched modules (optim conjugate gradient, control step_info, image hough_circles, tensorops NMF, graph k-core decomposition, signal Chirp Z-Transform, ML IsolationForest, geo polygon triangulation)
 - Wave 209: 8 more gaps closed (numthy Carmichael lambda, combo Eulerian numbers, bignum modular inverse, diffgeo torsion, compress Golomb-Rice coding, ODE exponential Euler/ETD1, topo witness complex, symbolic sym_expand)
