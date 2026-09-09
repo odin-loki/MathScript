@@ -172,3 +172,43 @@ TEST(ReplCrashRegressions, PartialTraceWithDimensionsThatDoNotFactorTheState) {
     EXPECT_TRUE(std::isfinite(ms::quantum::entanglement_entropy(psi, 3, 3)));
     EXPECT_TRUE(std::isfinite(ms::quantum::entanglement_entropy(psi, 2, 2)));
 }
+
+TEST(ReplCrashRegressions, ModelDecodersCheckTheirHeaderRowWidth) {
+    // Each ml_*_from_matrix reads its header row at fixed columns, but six of them had an
+    // entry guard narrower than the columns they go on to read: ml_gmm_from_matrix asked
+    // for one column and read three, ml_svm_from_matrix asked for three and read eight,
+    // and naive_bayes / lda / qda checked no width at all. A model matrix narrower than
+    // the header read past the row -- AddressSanitizer caught the GMM one on a 4x1.
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("X = [1, 1; 2, 1; 3, 1; 4, 1]").has_value());
+    ASSERT_TRUE(interp.execute("NARROW = [1; 2; 3; 4]").has_value());        // 4x1
+    ASSERT_TRUE(interp.execute("NARROW2 = [1, 2; 3, 4; 5, 6; 7, 8]").has_value());  // 4x2
+    ASSERT_TRUE(interp.execute("WIDE = [4, 1, 0; 1, 3, 1; 0, 1, 2]").has_value());  // 3x3
+
+    for (const char* cmd : {
+             "ml_gmm_predict(X, NARROW)", "ml_gmm_predict(X, NARROW2)",
+             "ml_gmm_predict_proba(X, NARROW)", "ml_gmm_predict(X, WIDE)",
+             "ml_knn_predict(X, NARROW)", "ml_knn_predict(X, NARROW2)",
+             "ml_naive_bayes_predict(X, NARROW)", "ml_lda_predict(X, NARROW)",
+             "ml_lda_transform(X, NARROW2)", "ml_qda_predict(X, NARROW)",
+             "ml_svm_predict(X, NARROW)", "ml_svm_predict(X, WIDE)",
+             "ml_pca_transform(X, NARROW)", "ml_kmeans_predict(X, NARROW)",
+             "ml_isolation_forest_score(X, NARROW)",
+             "ml_decision_tree_predict(X, NARROW)", "ml_random_forest_predict(X, NARROW)",
+             "ml_adaboost_predict(X, NARROW)", "ml_gradient_boosting_predict(X, NARROW)",
+         }) {
+        const auto r = interp.execute(cmd);
+        // A malformed model is reported; what matters is that the header row is not read
+        // past the end of the matrix on the way to finding that out.
+        (void)r;
+        SUCCEED();
+    }
+    EXPECT_TRUE(interp.execute("det([1, 2; 3, 4])").has_value()) << "session still usable";
+
+    // A well-formed model still round-trips.
+    ASSERT_TRUE(interp.execute("gmm = ml_gmm_fit(X, 2)").has_value());
+    EXPECT_TRUE(interp.execute("ml_gmm_predict(X, gmm)").has_value());
+    ASSERT_TRUE(interp.execute("y = [1; 0; 1; 0]").has_value());
+    ASSERT_TRUE(interp.execute("svm = ml_svm_fit(X, y)").has_value());
+    EXPECT_TRUE(interp.execute("ml_svm_predict(X, svm)").has_value());
+}

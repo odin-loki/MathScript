@@ -1124,7 +1124,9 @@ Matrix<double> ml_standard_scaler_to_matrix(const ml::StandardScaler& sc) {
 }
 
 Result<ml::GaussianMixture> ml_gmm_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 3 || model.cols() < 1) {
+    // The header row is read at columns 0, 1 and 2 below, so the guard has to cover all
+    // three: it asked for one column, and a narrower model matrix read past the row.
+    if (model.rows() < 3 || model.cols() < 3) {
         return std::unexpected(DomainError{fn, "expected GMM model matrix"});
     }
     const int K = static_cast<int>(model(0, 0));
@@ -1625,7 +1627,8 @@ Matrix<double> ml_knn_to_matrix(const ml::KNN& knn) {
 }
 
 Result<ml::KNN> ml_knn_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 2 || model.cols() < 2) {
+    // The header row is read at columns 0, 1 and 2 below.
+    if (model.rows() < 2 || model.cols() < 3) {
         return std::unexpected(
             DomainError{fn, "expected KNN model with header row and training data"});
     }
@@ -1699,7 +1702,8 @@ Matrix<double> ml_naive_bayes_to_matrix(const ml::NaiveBayes& nb) {
 }
 
 Result<ml::NaiveBayes> ml_naive_bayes_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 5) {
+    // The header row is read at columns 0 and 1 below, and nothing checked the width.
+    if (model.rows() < 5 || model.cols() < 2) {
         return std::unexpected(DomainError{fn, "expected NaiveBayes model matrix"});
     }
     const int C = static_cast<int>(model(0, 0));
@@ -1787,7 +1791,8 @@ Matrix<double> ml_lda_to_matrix(const ml::LDA& lda) {
 }
 
 Result<ml::LDA> ml_lda_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 6) {
+    // The header row is read at columns 0 through 3 below, and nothing checked the width.
+    if (model.rows() < 6 || model.cols() < 4) {
         return std::unexpected(DomainError{fn, "expected LDA model matrix"});
     }
     const int C = static_cast<int>(model(0, 0));
@@ -1918,7 +1923,8 @@ Matrix<double> ml_qda_to_matrix(const ml::QDA& qda) {
 }
 
 Result<ml::QDA> ml_qda_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 6) {
+    // The header row is read at columns 0, 1 and 2 below, and nothing checked the width.
+    if (model.rows() < 6 || model.cols() < 3) {
         return std::unexpected(DomainError{fn, "expected QDA model matrix"});
     }
     const int C = static_cast<int>(model(0, 0));
@@ -2008,7 +2014,8 @@ Matrix<double> ml_svm_to_matrix(const ml::SVM& svm) {
 }
 
 Result<ml::SVM> ml_svm_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 2 || model.cols() < 3) {
+    // The header row is read at columns 0 through 7 below; the guard asked for three.
+    if (model.rows() < 2 || model.cols() < 8) {
         return std::unexpected(
             DomainError{fn, "expected SVM model with header row and support vectors"});
     }
