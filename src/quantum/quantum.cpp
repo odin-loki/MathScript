@@ -252,7 +252,18 @@ DensityMatrix anticommutator(const DensityMatrix& A, const DensityMatrix& B) {
 
 // ---- QFT gate ----
 
+// A qubit count sets the dimension to 2^n, so an unvalidated n is an unbounded
+// allocation -- and `1 << n` is undefined for n >= 31 before that. qft_gate(24) asked for
+// a 2^24 x 2^24 dense matrix and reached 10 GB of resident memory before the OOM killer
+// took the process, found by fuzzing the REPL. Functions that build a 2^n x 2^n MATRIX
+// need 16 * 4^n bytes (n = 12 is already 268 MB); functions that build a 2^n Ket need
+// 16 * 2^n (n = 20 is 16 MB). Both refuse past their limit and return an empty result,
+// which is the convention grover_search already used for n <= 0.
+constexpr int kMaxGateQubits = 12;
+constexpr int kMaxStateQubits = 20;
+
 DensityMatrix qft_gate(int n_qubits) {
+    if (n_qubits <= 0 || n_qubits > kMaxGateQubits) return {};
     int N = 1 << n_qubits;
     DensityMatrix Q(N, std::vector<::ms::quantum::C>(N));
     double inv_sqN = 1.0 / std::sqrt(N);
@@ -279,7 +290,8 @@ DensityMatrix kronecker_power(const DensityMatrix& op, int n) {
 } // namespace
 
 Ket grover_search(int n_qubits, const std::vector<int>& marked_indices, int n_iterations) {
-    if (n_qubits <= 0) return {};
+    // kronecker_power(hadamard(), n_qubits) below is 2^n x 2^n.
+    if (n_qubits <= 0 || n_qubits > kMaxGateQubits) return {};
     const int N = 1 << n_qubits;
 
     // Uniform superposition H^{\otimes n}|0> == closed-form 1/sqrt(N) for every entry.
@@ -818,6 +830,7 @@ std::vector<Ket> bell_states() {
 }
 
 Ket ghz_state(int n_qubits) {
+    if (n_qubits <= 0 || n_qubits > kMaxStateQubits) return {};
     int dim = 1 << n_qubits;
     Ket psi(dim, C(0.0));
     double h = 1.0 / std::sqrt(2.0);
@@ -827,6 +840,7 @@ Ket ghz_state(int n_qubits) {
 }
 
 Ket w_state(int n_qubits) {
+    if (n_qubits <= 0 || n_qubits > kMaxStateQubits) return {};
     int dim = 1 << n_qubits;
     Ket psi(dim, C(0.0));
     double amp = 1.0 / std::sqrt(n_qubits);

@@ -59,6 +59,10 @@ DensityMatrix commutator(const DensityMatrix& A, const DensityMatrix& B);
 DensityMatrix anticommutator(const DensityMatrix& A, const DensityMatrix& B);
 
 // ---- Quantum Fourier transform gate (2^n × 2^n) ----
+/// @brief The 2^n x 2^n quantum Fourier transform matrix.
+/// @note n must be in [1, 12]: the result is 16 * 4^n bytes (268 MB at n = 12), and
+///   `1 << n` is undefined past 30. Anything else returns an EMPTY matrix -- qft_gate(24)
+///   used to allocate its way to 10 GB before the OOM killer intervened.
 DensityMatrix qft_gate(int n_qubits);
 
 // ---- Grover's search algorithm ----
@@ -81,6 +85,8 @@ DensityMatrix qft_gate(int n_qubits);
 // @note Explicit dense N x N matrices are constructed internally (same
 //       explicit-matrix scalability envelope as qft_gate), so this is only
 //       practical for small n_qubits.
+/// @note n_qubits must be in [1, 12]: this builds the 2^n x 2^n diffusion operator.
+///   Outside that range the result is an empty Ket.
 Ket grover_search(int n_qubits, const std::vector<int>& marked_indices, int n_iterations);
 
 // Helper: theoretically optimal number of Grover iterations to maximise the
@@ -164,6 +170,8 @@ int schmidt_number(const Ket& psi, int dim_a, int dim_b, double tol = 1e-10);
 
 // ---- Quantum states ----
 std::vector<Ket> bell_states();
+/// @note n_qubits must be in [1, 20]: these build a 2^n amplitude vector (16 MB at
+///   n = 20). Outside that range the result is an empty Ket.
 Ket ghz_state(int n_qubits);
 Ket w_state(int n_qubits);
 Ket coherent_state(C alpha, int n_max = 30);

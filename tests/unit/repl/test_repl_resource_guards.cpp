@@ -16,6 +16,7 @@
 #include "ms/combo/combo.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include "ms/numthy/numthy.hpp"
+#include "ms/quantum/quantum.hpp"
 #include "ms/stats/stats.hpp"
 
 using namespace ms::interp;
@@ -133,4 +134,55 @@ TEST(ReplResourceGuards, RandomBytesAndTensorRankAreBounded) {
     ASSERT_TRUE(interp.execute("T = [1, 2; 3, 4]").has_value());
     EXPECT_FALSE(interp.execute("tensorops_decompose_cp(cp1, T, 3000000000)").has_value());
     EXPECT_TRUE(interp.execute("tensorops_decompose_cp(cp2, T, 2)").has_value());
+}
+
+TEST(ReplResourceGuards, QubitCountsAreBounded) {
+    // A qubit count sets the dimension to 2^n, so an unvalidated n is an unbounded
+    // allocation. quantum_qft_gate(24) asked for a 2^24 x 2^24 dense matrix and reached
+    // 10 GB of resident memory before the OOM killer took the process -- found by fuzzing
+    // the REPL, not by any hand-written case. `1 << n` is also undefined past 30.
+    EXPECT_TRUE(ms::quantum::qft_gate(24).empty());
+    EXPECT_TRUE(ms::quantum::qft_gate(13).empty());
+    EXPECT_TRUE(ms::quantum::qft_gate(64).empty());
+    EXPECT_TRUE(ms::quantum::qft_gate(0).empty());
+    EXPECT_TRUE(ms::quantum::qft_gate(-1).empty());
+
+    EXPECT_TRUE(ms::quantum::ghz_state(21).empty());
+    EXPECT_TRUE(ms::quantum::w_state(31).empty());
+    EXPECT_TRUE(ms::quantum::grover_search(13, {0}, 1).empty());
+
+    // The usable range is unchanged. QFT on 2 qubits is 4x4 with every entry of modulus
+    // 1/2, and its first row is all 1/2.
+    const auto q2 = ms::quantum::qft_gate(2);
+    ASSERT_EQ(q2.size(), 4u);
+    ASSERT_EQ(q2[0].size(), 4u);
+    for (const auto& row : q2) {
+        for (const auto& z : row) {
+            EXPECT_NEAR(std::abs(z), 0.5, 1e-12);
+        }
+    }
+    for (int k = 0; k < 4; ++k) {
+        EXPECT_NEAR(q2[0][k].real(), 0.5, 1e-12);
+        EXPECT_NEAR(q2[0][k].imag(), 0.0, 1e-12);
+    }
+
+    // GHZ on 3 qubits is (|000> + |111>)/sqrt(2).
+    const auto ghz = ms::quantum::ghz_state(3);
+    ASSERT_EQ(ghz.size(), 8u);
+    EXPECT_NEAR(ghz[0].real(), 1.0 / std::sqrt(2.0), 1e-12);
+    EXPECT_NEAR(ghz[7].real(), 1.0 / std::sqrt(2.0), 1e-12);
+    EXPECT_NEAR(ghz[3].real(), 0.0, 1e-12);
+
+    // W on 3 qubits puts equal amplitude on the three one-hot basis states.
+    const auto w = ms::quantum::w_state(3);
+    ASSERT_EQ(w.size(), 8u);
+    for (const int i : {1, 2, 4}) {
+        EXPECT_NEAR(w[static_cast<std::size_t>(i)].real(), 1.0 / std::sqrt(3.0), 1e-12);
+    }
+    EXPECT_NEAR(w[0].real(), 0.0, 1e-12);
+
+    Interpreter interp;
+    EXPECT_TRUE(interp.execute("quantum_qft_gate(24)").has_value());
+    EXPECT_TRUE(interp.execute("quantum_qft_gate(3)").has_value());
+    EXPECT_TRUE(interp.execute("det([1, 2; 3, 4])").has_value()) << "session still usable";
 }
