@@ -1,14 +1,14 @@
 # MathScript 1.0.0 release
 
-CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux, AddressSanitizer + UBSan, and packaging smoke. Remaining for the tag is the 24 h fuzz marathon; the **90%** coverage goal is now met (CI gate is **80%**, last measured **91.3%** line / **97.7%** function over the full 861-suite run). What the deferred-stub list became, and the little that is still out of scope, is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
+CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux, AddressSanitizer + UBSan, and packaging smoke. Remaining for the tag is the 24 h fuzz marathon; the **90%** coverage goal is now met (CI gate is **80%**, last measured **91.3%** line / **97.7%** function over the full 872-suite run). What the deferred-stub list became, and the little that is still out of scope, is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
 
 ## Tag criteria
 
 1. **CI green** on `main` with no `continue-on-error`. Linux GCC 13 `-fno-exceptions` syntax gate on `build-test-linux` must pass.
-2. **Tests** — full CTest passing. Current catalogue: **861** suites (Linux GCC 13, CUDA off), grouped by mathematical domain.
+2. **Tests** — full CTest passing. Current catalogue: **872** suites (Linux GCC 13, CUDA off), grouped by mathematical domain.
 3. **Coverage** — CI gate **80%** (`coverage-linux`). Measured **91.3%** line and **97.7%** function coverage of library `src/`, excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars, over the full suite with `MS_BUILD_INTEGRATION=ON`. The **90%** `v1.0.0` tag goal is met.
-4. **ASan + UBSan** clean (`sanitizer-linux`; overflows and UB fail the job). Leak detection stays off (`detect_leaks=0`) for process-exit pool/AD graphs. Full **861** suites run on `build-test-linux` and `build-test-windows`.
-5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`).
+4. **ASan + UBSan** clean (`sanitizer-linux`; overflows and UB fail the job). Leak detection stays off (`detect_leaks=0`) for process-exit pool/AD graphs. Last local run: **299/299 passing with zero sanitizer reports** — the sanitizer tree is configured `MS_BUILD_INTEGRATION=OFF`, so it carries the unit suites only, not the full catalogue. Full **872** suites run on `build-test-linux` and `build-test-windows`.
+5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`). Last local run: 7 targets × 5 seeds × 200 000 mutations = **7 000 000 inputs, zero failures**. The checked-in corpora are also replayed on every build by the `replay_fuzz_*` CTest suites, so a regression is caught without a libFuzzer runtime.
 6. **Unsafe surface** — `UNSAFE_REVIEW.md` matches `scripts/unsafe_report.sh`; no new unreviewed sites.
 7. **Packaging** — smoke scripts plus extra CPack generators when tools are present. `scripts/package_smoke.sh` installs the prefix and runs `cpack -G TGZ`. `scripts/package_smoke.ps1` installs the prefix and runs `cpack -G ZIP`. CI also runs DEB/RPM (Linux) and NSIS/WiX (Windows) when those tools exist.
 8. **Benchmarks** — within **10%** of `linux-gcc13.json` (`benchmark-linux` on GitHub-hosted ubuntu-24.04, AVX-512 off).
