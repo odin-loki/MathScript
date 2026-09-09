@@ -111,9 +111,20 @@ uint64_t prevprime(uint64_t n) {
     return isprime(c) ? c : 0;
 }
 
+// The sieve materialises one bit per candidate plus the primes it finds, both sized by the
+// caller's range. primes(2, 1e18) asked for a 1e18-bit array; the allocation fails, and
+// this library is built with -fno-exceptions, so the std::bad_alloc became std::terminate
+// and aborted the process. A span this wide cannot succeed on any machine, so it is
+// refused rather than attempted.
+constexpr uint64_t kMaxSieveSpan = 200'000'000;
+
+// Largest n with p(n) <= UINT64_MAX (p(417) overflows).
+constexpr uint32_t kMaxPartitionN = 416;
+
 std::vector<uint64_t> primes(uint64_t lo, uint64_t hi) {
     if (hi < lo || hi < 2) return {};
     if (lo < 2) lo = 2;
+    if (hi - lo >= kMaxSieveSpan) return {};
     // Segmented sieve
     std::vector<bool> sieve(hi - lo + 1, true);
     if (lo == 1) sieve[0] = false;
@@ -132,6 +143,10 @@ std::vector<uint64_t> primes(uint64_t lo, uint64_t hi) {
 }
 
 uint64_t prime_pi(uint64_t n) {
+    // Counting by materialising the list needs a sieve over [2, n]; beyond what that can
+    // hold there is no answer to give, so report the sentinel instead of the 0 an empty
+    // sieve would produce.
+    if (n >= kMaxSieveSpan) return UINT64_MAX;
     auto ps = primes(2, n);
     return static_cast<uint64_t>(ps.size());
 }
@@ -819,6 +834,9 @@ std::pair<int64_t, int64_t> lucas_sequence(int64_t k, int64_t P, int64_t Q) {
 }
 
 uint64_t partition(uint32_t n) {
+    // p(417) exceeds uint64_t, and the DP table below is sized by n, so partition(3e9)
+    // asked for a 24 GB vector -- a std::bad_alloc, which under -fno-exceptions aborts.
+    if (n > kMaxPartitionN) return UINT64_MAX;
     // Dynamic programming via Euler's pentagonal theorem
     std::vector<uint64_t> p(n + 1, 0);
     p[0] = 1;

@@ -98,6 +98,31 @@ Result<Matrix<double>> solve_per_column(const Matrix<double>& b, size_t nrows,
     return X;
 }
 
+// The four solvers that do not go through solve_per_column above (qmr, tfqmr, lsqr, lsmr)
+// build their work vectors from b's full shape while every matrix-vector product they take
+// produces a single column. A multi-column b therefore made axpy() read past the shorter
+// operand: lsmr(A, B) with a 3x3 B overran a three-element buffer (caught by
+// AddressSanitizer). They now split b the same way the others do.
+template<typename S, StorageOrder OA, template<typename> class Alloc, typename Solver>
+Result<Matrix<S, OA, Alloc>> per_column_solve(const Matrix<S, OA, Alloc>& b, size_t out_rows,
+                                              Solver&& solve_one) {
+    Matrix<S, OA, Alloc> X(out_rows, b.cols(), S(0));
+    for (size_t j = 0; j < b.cols(); ++j) {
+        Matrix<S, OA, Alloc> rhs(b.rows(), 1);
+        for (size_t i = 0; i < b.rows(); ++i) {
+            rhs(i, 0) = b(i, j);
+        }
+        auto xj = solve_one(rhs);
+        if (!xj) {
+            return std::unexpected(xj.error());
+        }
+        for (size_t i = 0; i < out_rows; ++i) {
+            X(i, j) = (*xj)(i, 0);
+        }
+    }
+    return X;
+}
+
 Result<Matrix<double>> cg_single(const Matrix<double>& A, const Matrix<double>& b,
                                  size_t max_iter, double tol) {
     Matrix<double> x(b.rows(), 1, 0.0);
@@ -528,6 +553,11 @@ Result<Matrix<S, OA, Alloc>> qmr(
     if (A.rows() != A.cols() || A.rows() != b.rows()) {
         return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
     }
+    if (b.cols() != 1) {
+        return per_column_solve(b, b.rows(), [&](const Matrix<S, OA, Alloc>& rhs) {
+            return qmr(A, rhs, max_iter, tol);
+        });
+    }
     const size_t n = b.rows();
     Matrix<double> x(n, 1, 0.0);
 
@@ -642,6 +672,11 @@ Result<Matrix<S, OA, Alloc>> lsqr(
     if (A.rows() != b.rows()) {
         return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
     }
+    if (b.cols() != 1) {
+        return per_column_solve(b, A.cols(), [&](const Matrix<S, OA, Alloc>& rhs) {
+            return lsqr(A, rhs, max_iter, tol);
+        });
+    }
     const size_t m = A.rows(), n_cols = A.cols();
     Matrix<double> x(n_cols, 1, 0.0);
     Matrix<double> u = copy(b);
@@ -710,6 +745,11 @@ Result<Matrix<S, OA, Alloc>> lsmr(
     S tol) {
     if (A.rows() != b.rows()) {
         return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+    if (b.cols() != 1) {
+        return per_column_solve(b, A.cols(), [&](const Matrix<S, OA, Alloc>& rhs) {
+            return lsmr(A, rhs, max_iter, tol);
+        });
     }
     const size_t n_cols = A.cols();
     Matrix<double> x(n_cols, 1, 0.0);
@@ -842,6 +882,11 @@ Result<Matrix<S, OA, Alloc>> tfqmr(
     S tol) {
     if (A.rows() != A.cols() || A.rows() != b.rows()) {
         return std::unexpected(DimensionMismatch{A.rows(), b.rows()});
+    }
+    if (b.cols() != 1) {
+        return per_column_solve(b, b.rows(), [&](const Matrix<S, OA, Alloc>& rhs) {
+            return tfqmr(A, rhs, max_iter, tol);
+        });
     }
     const size_t n = b.rows();
     Matrix<double> x(n, 1, 0.0);

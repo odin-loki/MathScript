@@ -11,9 +11,16 @@ namespace numthy {
 bool isprime(uint64_t n);
 uint64_t nextprime(uint64_t n);
 uint64_t prevprime(uint64_t n);          // returns 0 if none
-std::vector<uint64_t> primes(uint64_t lo, uint64_t hi);  // sieve
-uint64_t prime_pi(uint64_t n);           // count of primes <= n
-uint64_t prime_nth(uint64_t n);          // nth prime (1-indexed)
+/// @brief Primes in [lo, hi] by sieve. The sieve holds one bit per candidate, so a span of
+///   2e8 or more is refused with an empty result rather than attempted: primes(2, 1e18)
+///   used to request a 1e18-bit array, and the allocation failure aborts the process under
+///   -fno-exceptions.
+std::vector<uint64_t> primes(uint64_t lo, uint64_t hi);
+/// @brief Count of primes <= n. Returns UINT64_MAX for an n the sieve above cannot span.
+uint64_t prime_pi(uint64_t n);
+/// @brief The n-th prime, 1-indexed. O(n) primality tests, so a large n is slow (but
+///   bounded, and interruptible through the interpreter's cancel flag).
+uint64_t prime_nth(uint64_t n);
 
 // --- Factorisation ---
 std::vector<uint64_t> factor(uint64_t n);          // prime factors, sorted
@@ -90,7 +97,10 @@ std::vector<std::pair<uint64_t,uint64_t>> stern_brocot(uint64_t n);
 Result<std::pair<uint64_t,uint64_t>> pell_solve(uint64_t D);
 
 // --- Partition function ---
-uint64_t partition(uint32_t n);   // number of integer partitions of n
+/// @brief Number of integer partitions of n. n > 416 returns UINT64_MAX: p(417) does not
+///   fit in uint64_t, and the DP table is sized by n, so a large n was also an
+///   unsatisfiable allocation.
+uint64_t partition(uint32_t n);
 
 // Carmichael function λ(n): the smallest positive integer m such that a^m ≡ 1 (mod n) for
 // every integer a coprime to n. Equivalently the exponent of the multiplicative group

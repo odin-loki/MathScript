@@ -143,12 +143,24 @@ double mode(std::span<const double> data) {
     return best;
 }
 
+// A fraction in [0, 1] scaled by a count and converted to an index. The clamp has to
+// happen BEFORE the conversion: converting a negative or out-of-range double to size_t is
+// undefined behaviour, and in practice produces a value near 2^64.
+static size_t index_from_fraction(double fraction, size_t count) {
+    if (count == 0) return 0;
+    if (!(fraction > 0.0)) return 0;  // also catches NaN
+    if (fraction >= 1.0) return count - 1;
+    const size_t idx = static_cast<size_t>(fraction * static_cast<double>(count - 1));
+    return idx < count ? idx : count - 1;
+}
+
 double percentile(std::span<const double> data, double p) {
     if (data.empty()) {
         return 0.0;
     }
-    const size_t idx = static_cast<size_t>(
-        (p / 100.0) * static_cast<double>(data.size() - 1));
+    // p is a percentage: outside [0, 100] it used to scale straight into the index, so
+    // percentile(v, 3e9) indexed ~3e7 elements past the end and segfaulted.
+    const size_t idx = index_from_fraction(p / 100.0, data.size());
     std::vector<double> scratch(data.begin(), data.end());
     std::nth_element(scratch.begin(), scratch.begin() + static_cast<std::ptrdiff_t>(idx),
                      scratch.end());
@@ -450,7 +462,10 @@ double trimmed_mean(std::span<const double> data, double frac) {
     if (data.empty()) return 0.0;
     std::vector<double> scratch(data.begin(), data.end());
     const size_t n = scratch.size();
-    size_t trim = static_cast<size_t>(frac * static_cast<double>(n));
+    // Same conversion hazard: a negative frac is undefined as a size_t, and 2*trim on the
+    // resulting huge value wraps, so the guard below could not be relied on.
+    const double clamped = (frac > 0.0) ? (frac < 1.0 ? frac : 1.0) : 0.0;
+    const size_t trim = static_cast<size_t>(clamped * static_cast<double>(n));
     if (2 * trim >= n) return median(data);
     std::nth_element(scratch.begin(),
                      scratch.begin() + static_cast<std::ptrdiff_t>(trim),

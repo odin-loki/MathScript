@@ -15,8 +15,8 @@ inline constexpr int kMaxEnumAlphabetK = 6;
 
 // --- Factorials ---
 uint64_t factorial(uint32_t n);             // n!
-uint64_t double_factorial(uint32_t n);      // n!!
-uint64_t subfactorial(uint32_t n);          // D(n) — derangements count
+uint64_t double_factorial(uint32_t n);      // n!!; n > 33 returns UINT64_MAX
+uint64_t subfactorial(uint32_t n);          // D(n) — derangements count; n > 20 returns UINT64_MAX
 
 // --- Counting ---
 uint64_t binomial(uint32_t n, uint32_t k);  // C(n,k)
@@ -53,26 +53,30 @@ std::vector<std::vector<int>> restricted_partitions(int n, int k);
 // Derangements of 0..n-1
 std::vector<std::vector<int>> derangements(int n);
 
-// Catalan number C_n = C(2n,n)/(n+1)
+// Catalan number C_n = C(2n,n)/(n+1). n > 36 returns UINT64_MAX (not representable).
 uint64_t catalan_num(uint32_t n);
 
-// Stirling numbers
+// Stirling numbers. n beyond the last representable value returns UINT64_MAX (21 for the
+// first kind, 26 for the second), which also bounds the O(n*k) table they build.
 uint64_t stirling1(uint32_t n, uint32_t k);  // unsigned, first kind |s(n,k)|
 uint64_t stirling2(uint32_t n, uint32_t k);  // second kind S(n,k)
 
-// Eulerian numbers A(n,k): permutations of {1..n} with exactly k ascents
+// Eulerian numbers A(n,k): permutations of {1..n} with exactly k ascents.
+// n > 21 returns UINT64_MAX (not representable).
 uint64_t eulerian_number(uint32_t n, uint32_t k);
 
-// Bell numbers B_n
+// Bell numbers B_n. n > 25 returns UINT64_MAX: B_26 does not fit, and the Bell triangle
+// this builds is O(n^2) work and O(n) memory, so a large n was also unbounded work.
 uint64_t bell_num(uint32_t n);
 
-// Motzkin numbers M_n
+// Motzkin numbers M_n. n > 45 returns UINT64_MAX (not representable, and O(n^2) to reach).
 uint64_t motzkin_num(uint32_t n);
 
 // Set partitions of {0..n-1} (enumeration analogue of bell_num)
 std::vector<std::vector<std::vector<int>>> set_partitions(int n);
 
-// Involution count I(n): permutations that are their own inverse
+// Involution count I(n): permutations that are their own inverse.
+// n > 31 returns UINT64_MAX (not representable).
 uint64_t involutions(uint32_t n);
 
 // All Dyck paths of semilength n (balanced '(' ')' strings; count = catalan_num(n))

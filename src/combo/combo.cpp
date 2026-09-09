@@ -7,6 +7,23 @@
 namespace ms {
 namespace combo {
 
+// Largest argument whose exact value still fits in uint64_t. Beyond these the answer is
+// not representable, and the O(n) or O(n^2) recurrence that would compute it is also
+// unbounded work on unvalidated input: bell_num(3e9) built a Bell triangle with three
+// billion rows, and stirling2(3e9, 3e9) asked for a three-billion-square table, which
+// under -fno-exceptions turns a std::bad_alloc into std::terminate. Every one of these
+// returns factorial's existing UINT64_MAX overflow sentinel instead. The limits were
+// computed by running each recurrence in __int128 until it exceeded UINT64_MAX.
+constexpr uint32_t kMaxSubfactorialN     = 20;
+constexpr uint32_t kMaxDoubleFactorialN  = 33;
+constexpr uint32_t kMaxCatalanN          = 36;
+constexpr uint32_t kMaxStirling1N        = 21;
+constexpr uint32_t kMaxStirling2N        = 26;
+constexpr uint32_t kMaxEulerianN         = 21;
+constexpr uint32_t kMaxBellN             = 25;
+constexpr uint32_t kMaxMotzkinN          = 45;
+constexpr uint32_t kMaxInvolutionsN      = 31;
+
 uint64_t factorial(uint32_t n) {
     if (n > 20) return UINT64_MAX; // overflow sentinel
     uint64_t r = 1;
@@ -15,6 +32,7 @@ uint64_t factorial(uint32_t n) {
 }
 
 uint64_t double_factorial(uint32_t n) {
+    if (n > kMaxDoubleFactorialN) return UINT64_MAX;
     if (n == 0 || n == 1) return 1;
     uint64_t r = 1;
     for (uint32_t i = n; i >= 2; i -= 2) r *= i;
@@ -22,6 +40,7 @@ uint64_t double_factorial(uint32_t n) {
 }
 
 uint64_t subfactorial(uint32_t n) {
+    if (n > kMaxSubfactorialN) return UINT64_MAX;
     if (n == 0) return 1;
     if (n == 1) return 0;
     // D(n) = (n-1) * (D(n-1) + D(n-2))
@@ -279,10 +298,12 @@ std::vector<std::vector<int>> derangements(int n) {
 }
 
 uint64_t catalan_num(uint32_t n) {
+    if (n > kMaxCatalanN) return UINT64_MAX;
     return binomial(2 * n, n) / (n + 1);
 }
 
 uint64_t stirling1(uint32_t n, uint32_t k) {
+    if (n > kMaxStirling1N) return UINT64_MAX;
     if (n == 0 && k == 0) return 1;
     if (n == 0 || k == 0) return 0;
     if (k > n) return 0;
@@ -296,6 +317,7 @@ uint64_t stirling1(uint32_t n, uint32_t k) {
 }
 
 uint64_t stirling2(uint32_t n, uint32_t k) {
+    if (n > kMaxStirling2N) return UINT64_MAX;
     if (n == 0 && k == 0) return 1;
     if (n == 0 || k == 0) return 0;
     if (k > n) return 0;
@@ -308,6 +330,7 @@ uint64_t stirling2(uint32_t n, uint32_t k) {
 }
 
 uint64_t eulerian_number(uint32_t n, uint32_t k) {
+    if (n > kMaxEulerianN) return UINT64_MAX;
     if (n == 0) return k == 0 ? 1 : 0;
     if (k >= n) return 0;
     if (k == 0) return 1;
@@ -324,6 +347,7 @@ uint64_t eulerian_number(uint32_t n, uint32_t k) {
 
 uint64_t bell_num(uint32_t n) {
     // Bell triangle method
+    if (n > kMaxBellN) return UINT64_MAX;
     if (n == 0) return 1;
     std::vector<uint64_t> row = {1};
     for (uint32_t i = 1; i <= n; ++i) {
@@ -338,6 +362,7 @@ uint64_t bell_num(uint32_t n) {
 
 uint64_t motzkin_num(uint32_t n) {
     // M(n) = M(n-1) + sum_{k=0}^{n-2} M(k)*M(n-2-k)
+    if (n > kMaxMotzkinN) return UINT64_MAX;
     if (n == 0 || n == 1) return 1;
     std::vector<uint64_t> m(n + 1, 0);
     m[0] = 1; m[1] = 1;
@@ -374,6 +399,7 @@ std::vector<std::vector<std::vector<int>>> set_partitions(int n) {
 }
 
 uint64_t involutions(uint32_t n) {
+    if (n > kMaxInvolutionsN) return UINT64_MAX;
     if (n == 0 || n == 1) return 1;
     uint64_t prev2 = 1, prev1 = 1;
     for (uint32_t i = 2; i <= n; ++i) {

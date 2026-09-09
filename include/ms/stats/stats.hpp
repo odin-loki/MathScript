@@ -15,6 +15,10 @@ double median(std::span<const double> data);
 double min_value(std::span<const double> data);
 double max_value(std::span<const double> data);
 double mode(std::span<const double> data);
+/// @brief The p-th percentile by nearest-rank on the sorted sample.
+/// @note p is a PERCENTAGE. It is clamped to [0, 100] -- p <= 0 (and NaN) gives the
+///   minimum, p >= 100 the maximum -- rather than scaling into an out-of-range index, which
+///   is what percentile(v, 3e9) used to do.
 double percentile(std::span<const double> data, double p);
 double skewness(std::span<const double> data);
 double kurtosis(std::span<const double> data);
@@ -25,6 +29,8 @@ double rms(std::span<const double> data);
 // consistency with the normal distribution standard deviation.
 double mad(const std::vector<double>& x, bool scale = true);
 double iqr(std::span<const double> data);     // interquartile range
+/// @brief Mean after discarding `frac` of the sample from each tail. `frac` is clamped to
+///   [0, 1]; a trim that would remove everything returns the median.
 double trimmed_mean(std::span<const double> data, double frac);
 
 // Weighted mean: sum(w_i * x_i) / sum(w_i). Weights must be non-negative; negative

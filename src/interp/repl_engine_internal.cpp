@@ -9020,6 +9020,14 @@ Result<std::string> eval_crypto_random_bytes(const std::string& n_arg) {
     if (n_d < 0.0 || n_d != static_cast<double>(n)) {
         return std::unexpected(DomainError{fn, "expected non-negative integer byte count"});
     }
+    // The result is printed as hex, so it costs three bytes of process memory per byte
+    // asked for. crypto_random_bytes(3e9) allocated its way into a std::bad_alloc, which
+    // under -fno-exceptions aborts; a count no terminal could consume is refused instead.
+    constexpr std::size_t kMaxRandomBytes = 1u << 20;
+    if (n > kMaxRandomBytes) {
+        return std::unexpected(DomainError{
+            fn, "byte count above the 1048576 limit for a printed result"});
+    }
     return crypto::to_hex(crypto::random_bytes(n)) + "\n";
 }
 

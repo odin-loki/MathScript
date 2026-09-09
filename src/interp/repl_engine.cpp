@@ -958,6 +958,15 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             std::floor(rank_d) != rank_d) {
             return std::unexpected(DomainError{fn, "expected positive integer rank"});
         }
+        // Each factor matrix is (dimension x rank), so an unbounded rank is an unbounded
+        // allocation: rank 3e9 on a 4x1 tensor threw std::length_error, which under
+        // -fno-exceptions aborts. No CP decomposition is informative past the element
+        // count, so that is the ceiling.
+        const double max_rank = static_cast<double>(tensor->numel());
+        if (rank_d > max_rank) {
+            return std::unexpected(DomainError{
+                fn, "rank exceeds the tensor's element count"});
+        }
         int max_iter = 200;
         double tol = 1e-6;
         if (call_args->size() == 5) {
