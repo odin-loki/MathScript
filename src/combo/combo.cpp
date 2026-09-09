@@ -125,8 +125,19 @@ bool prev_comb(std::vector<int>& v, int n) {
     return true;
 }
 
+// v is expected to be a permutation of 0..n-1, and `used[v[i]]` indexes an n-element
+// vector with it. Nothing checked that: a REPL caller can hand over any integers, and an
+// entry outside the range (or a repeat) read and wrote past `used`. A vector that is not a
+// permutation has no rank, so it gets 0.
 uint64_t rank_permutation(const std::vector<int>& v) {
     int n = static_cast<int>(v.size());
+    std::vector<bool> seen(static_cast<std::size_t>(n), false);
+    for (int x : v) {
+        if (x < 0 || x >= n || seen[static_cast<std::size_t>(x)]) {
+            return 0;
+        }
+        seen[static_cast<std::size_t>(x)] = true;
+    }
     uint64_t rank = 0;
     std::vector<bool> used(n, false);
     for (int i = 0; i < n; ++i) {

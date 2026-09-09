@@ -13,6 +13,7 @@
 #include "ms/interp/repl_engine.hpp"
 #include "ms/ml/ml.hpp"
 #include "ms/numthy/numthy.hpp"
+#include "ms/combo/combo.hpp"
 #include "ms/quantum/quantum.hpp"
 
 using namespace ms::interp;
@@ -211,4 +212,46 @@ TEST(ReplCrashRegressions, ModelDecodersCheckTheirHeaderRowWidth) {
     ASSERT_TRUE(interp.execute("y = [1; 0; 1; 0]").has_value());
     ASSERT_TRUE(interp.execute("svm = ml_svm_fit(X, y)").has_value());
     EXPECT_TRUE(interp.execute("ml_svm_predict(X, svm)").has_value());
+}
+
+TEST(ReplCrashRegressions, RankPermutationRejectsNonPermutations) {
+    // used[v[i]] indexes an n-element vector with a caller-supplied entry. Nothing
+    // checked that v is a permutation of 0..n-1, so an out-of-range entry read and wrote
+    // past it -- a fuzzed REPL line found this through combo_rank_permutation.
+    EXPECT_EQ(ms::combo::rank_permutation({0, 1, 2}), 0u);   // the identity ranks 0
+    EXPECT_EQ(ms::combo::rank_permutation({2, 1, 0}), 5u);   // the last of 3! = 6
+    EXPECT_EQ(ms::combo::rank_permutation({1, 0}), 1u);
+    EXPECT_EQ(ms::combo::rank_permutation({}), 0u);
+
+    // Not permutations: out of range, negative, and repeated.
+    EXPECT_EQ(ms::combo::rank_permutation({0, 1, 9}), 0u);
+    EXPECT_EQ(ms::combo::rank_permutation({-1, 0, 1}), 0u);
+    EXPECT_EQ(ms::combo::rank_permutation({0, 0, 0}), 0u);
+    EXPECT_EQ(ms::combo::rank_permutation({5}), 0u);
+    EXPECT_EQ(ms::combo::rank_permutation({1000000}), 0u);
+
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("BAD = [0; 1; 9]").has_value());
+    EXPECT_TRUE(interp.execute("combo_rank_permutation(BAD)").has_value());
+    ASSERT_TRUE(interp.execute("BIG = [1000000; 0]").has_value());
+    EXPECT_TRUE(interp.execute("combo_rank_permutation(BIG)").has_value());
+    EXPECT_TRUE(interp.execute("det([1, 2; 3, 4])").has_value()) << "session still usable";
+}
+
+TEST(ReplCrashRegressions, PcaTransformWithAWiderFeatureRowThanTheModel) {
+    // xc[j] = X[i][j] - mean_[j] ran over the input ROW's length, so a model fitted on
+    // fewer features than the row presents read past mean_.
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("X2 = [1, 2; 3, 4; 5, 7; 2, 1]").has_value());
+    ASSERT_TRUE(interp.execute("pca = ml_pca_fit(X2, 1)").has_value());
+    // Four features where the model knows two.
+    ASSERT_TRUE(interp.execute("X4 = [1, 2, 3, 4; 5, 6, 7, 8; 1, 1, 1, 1]").has_value());
+    const auto r = interp.execute("ml_pca_transform(X4, pca)");
+    (void)r;  // either answer is fine; it must not read past the model's mean vector
+    // The matching width still works and returns one component per row.
+    const auto ok = interp.execute("Z = ml_pca_transform(X2, pca)");
+    ASSERT_TRUE(ok.has_value());
+    ASSERT_GT(interp.state().matrices.count("Z"), 0u);
+    EXPECT_EQ(interp.state().matrices.at("Z").rows(), 4u);
+    EXPECT_EQ(interp.state().matrices.at("Z").cols(), 1u);
 }

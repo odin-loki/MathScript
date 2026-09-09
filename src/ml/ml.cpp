@@ -1826,8 +1826,11 @@ Mat PCA::transform(const Mat& X) const {
     int n=to_i(X.size()), k=to_i(components.size());
     Mat Z(n, Vec(k,0));
     for (int i=0;i<n;++i) {
-        Vec xc(X[i].size());
-        for (size_t j=0;j<X[i].size();++j) xc[j]=X[i][j]-mean_[j];
+        // mean_ was indexed with the input ROW's length: a model fitted on fewer features
+        // than the row presents read past mean_.
+        const size_t p = std::min(X[i].size(), mean_.size());
+        Vec xc(p);
+        for (size_t j=0;j<p;++j) xc[j]=X[i][j]-mean_[j];
         for (int r=0;r<k;++r) Z[i][r]=vec_dot(components[r],xc);
     }
     return Z;

@@ -34,6 +34,10 @@ bool next_comb(std::vector<int>& v, int n);
 bool prev_comb(std::vector<int>& v, int n);
 
 // Ranking / unranking
+/// @brief Lexicographic rank of `v` among the permutations of 0..v.size()-1.
+/// @note `v` must BE such a permutation. Anything else -- an out-of-range entry or a
+///   repeat -- has no rank and returns 0; it used to index the internal used-marker
+///   vector with the entry and read past it.
 uint64_t rank_permutation(const std::vector<int>& v);
 std::vector<int> unrank_permutation(int n, uint64_t rank);
 uint64_t rank_combination(const std::vector<int>& v, int n);
