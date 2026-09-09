@@ -978,6 +978,7 @@ limit is documented on the declaration; this is the summary.
 | REPL `crypto_random_bytes(n)` | n ≤ 1 MiB (the result is printed as hex) | `DomainError` |
 | REPL `tensorops_decompose_cp(h, T, rank)` | rank ≤ `T`'s element count | `DomainError` |
 | REPL `mat_at` / `mat_row` / `mat_col` / `mat_reshape` / `mat_submatrix` | index or extent an exact integer in [0, 10⁷], and inside the matrix | `DomainError` |
+| REPL `ml_random_forest_fit` / `ml_adaboost_fit` / `ml_gradient_boosting_fit` / `ml_isolation_forest_fit` / `ml_decision_tree_fit` | ensemble ≤ 10000, depth ≤ 512, forest sample ≤ 10⁶ | `DomainError` |
 
 `numthy::prime_nth` and `numthy::sum_divisors` are deliberately *not* capped: their cost is
 proportional to the argument rather than to an allocation, so they are slow but bounded for

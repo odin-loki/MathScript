@@ -1314,6 +1314,15 @@ Result<std::string> parse_ml_linkage(const std::string& text, const char* fn) {
         DomainError{fn, "expected linkage ward|single|average|complete"});
 }
 
+// A tree ensemble's size is a plain count from the command line, and nothing
+// bounded it: `ml_random_forest_fit(X, y, 3000000000)` grew trees until the
+// process was killed, and `ml_isolation_forest_fit(X, 1e18)` asked for an
+// allocation the -fno-exceptions build aborts on rather than reports. These
+// caps are far above any useful ensemble and keep the failure a reported error.
+constexpr size_t kMaxEnsembleSize = 10000;
+constexpr size_t kMaxTreeDepth = 512;
+constexpr size_t kMaxForestSampleSize = 1000000;
+
 Result<Matrix<double>> eval_ml_isolation_forest_fit(const Matrix<double>& X_m, size_t n_trees,
                                                      size_t sample_size, unsigned seed) {
     auto X = matrix_to_ml_mat(X_m, "ml_isolation_forest_fit");
@@ -1329,6 +1338,14 @@ Result<Matrix<double>> eval_ml_isolation_forest_fit(const Matrix<double>& X_m, s
     if (sample_size < 1) {
         return std::unexpected(
             DomainError{"ml_isolation_forest_fit", "expected sample_size >= 1"});
+    }
+    if (n_trees > kMaxEnsembleSize) {
+        return std::unexpected(DomainError{"ml_isolation_forest_fit",
+                                           "n_trees exceeds the supported maximum of 10000"});
+    }
+    if (sample_size > kMaxForestSampleSize) {
+        return std::unexpected(DomainError{
+            "ml_isolation_forest_fit", "sample_size exceeds the supported maximum of 1000000"});
     }
     ml::IsolationForest iso(n_trees, sample_size, seed);
     iso.fit(*X);
@@ -2422,6 +2439,10 @@ Result<Matrix<double>> eval_ml_decision_tree_fit(const Matrix<double>& X_m, cons
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
     }
+    if (max_depth > static_cast<int>(kMaxTreeDepth)) {
+        return std::unexpected(
+            DomainError{"ml_decision_tree_fit", "max_depth exceeds the supported maximum of 512"});
+    }
     ml::DecisionTree tree(max_depth);
     tree.fit(*X, *y);
     return ml_decision_tree_to_matrix(tree);
@@ -2452,6 +2473,11 @@ Result<Matrix<double>> eval_ml_random_forest_fit(const Matrix<double>& X_m, cons
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    if (n_trees > kMaxEnsembleSize || max_depth > kMaxTreeDepth) {
+        return std::unexpected(DomainError{
+            "ml_random_forest_fit",
+            "n_trees exceeds the supported maximum of 10000, or max_depth of 512"});
     }
     ml::RandomForest rf;
     rf.config.n_trees = n_trees;
@@ -2486,6 +2512,11 @@ Result<Matrix<double>> eval_ml_adaboost_fit(const Matrix<double>& X_m, const Mat
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    if (n_estimators > kMaxEnsembleSize || max_depth > kMaxTreeDepth) {
+        return std::unexpected(DomainError{
+            "ml_adaboost_fit",
+            "n_estimators exceeds the supported maximum of 10000, or max_depth of 512"});
     }
     ml::AdaBoost ab;
     ab.config.n_estimators = n_estimators;
@@ -2522,6 +2553,11 @@ Result<Matrix<double>> eval_ml_gradient_boosting_fit(const Matrix<double>& X_m,
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    if (n_estimators > kMaxEnsembleSize || max_depth > kMaxTreeDepth) {
+        return std::unexpected(DomainError{
+            "ml_gradient_boosting_fit",
+            "n_estimators exceeds the supported maximum of 10000, or max_depth of 512"});
     }
     ml::GradientBoosting gb;
     gb.config.n_trees = n_estimators;

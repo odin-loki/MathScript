@@ -186,3 +186,26 @@ TEST(ReplResourceGuards, QubitCountsAreBounded) {
     EXPECT_TRUE(interp.execute("quantum_qft_gate(3)").has_value());
     EXPECT_TRUE(interp.execute("det([1, 2; 3, 4])").has_value()) << "session still usable";
 }
+
+// A tree ensemble's size arrived from the command line unbounded:
+// ml_random_forest_fit(X, y, 3000000000) grew trees until the process was
+// killed, and ml_isolation_forest_fit(X, 1e18) asked for an allocation that
+// aborts rather than reports under -fno-exceptions.
+TEST(ReplResourceGuards, TreeEnsembleSizesAreBounded) {
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("V4 = [1; 2; 3; 4]").has_value());
+    ASSERT_TRUE(interp.execute("Y4 = [0; 1; 0; 1]").has_value());
+
+    for (const char* cmd : {"m = ml_random_forest_fit(V4, Y4, 3000000000)",
+                            "m = ml_adaboost_fit(V4, Y4, 3000000000)",
+                            "m = ml_gradient_boosting_fit(V4, Y4, 3000000000)",
+                            "m = ml_isolation_forest_fit(V4, 3000000000)",
+                            "m = ml_isolation_forest_fit(V4, 1e18)",
+                            "m = ml_decision_tree_fit(V4, Y4, 3000000000)"}) {
+        EXPECT_FALSE(interp.execute(cmd).has_value()) << cmd;
+    }
+
+    // Ordinary sizes still fit.
+    EXPECT_TRUE(interp.execute("ok = ml_random_forest_fit(V4, Y4, 4, 2)").has_value());
+    EXPECT_TRUE(interp.execute("ok2 = ml_isolation_forest_fit(V4, 4, 2, 42)").has_value());
+}
