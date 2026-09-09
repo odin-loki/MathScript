@@ -91,25 +91,38 @@ endif()
 
 add_library(mathscript INTERFACE)
 if(MS_LINK_TESTS_SHARED AND NOT MSVC)
-    add_library(ms_bundle SHARED ms_bundle.cpp)
-    set(_ms_bundle_whole)
+    # Build the bundle from the module objects directly rather than by linking the
+    # archives with WHOLE_ARCHIVE.
+    #
+    # The previous form did the latter and needed --allow-multiple-definition to
+    # link at all. That flag was not hiding two different implementations of one
+    # symbol -- it was hiding the fact that every archive reached the link line
+    # TWICE, once as an explicit WHOLE_ARCHIVE item and again as a transitive
+    # PUBLIC dependency of a sibling (every module links ms_core). With
+    # LINK_LIBRARY_OVERRIDE pinning WHOLE_ARCHIVE onto both occurrences, each
+    # object was pulled in twice and every symbol in the tree was defined twice:
+    # 20 reported duplicates, all byte-identical copies of themselves.
+    #
+    # Suppressing that also suppressed the diagnostic, so a genuine duplicate --
+    # two different functions with one mangled name, where the linker's arbitrary
+    # choice would change behaviour -- would have linked just as quietly.
+    #
+    # $<TARGET_OBJECTS:> names each module's objects exactly once, so there is
+    # nothing to deduplicate and the flag is gone. The libraries are still linked,
+    # for their INTERFACE include directories and their external dependencies, but
+    # as ordinary items that contribute no objects of their own.
+    set(_ms_bundle_objs)
     foreach(_lib IN LISTS _MS_LIBS)
         if(TARGET ${_lib})
-            list(APPEND _ms_bundle_whole "$<LINK_LIBRARY:WHOLE_ARCHIVE,${_lib}>")
+            list(APPEND _ms_bundle_objs "$<TARGET_OBJECTS:${_lib}>")
         endif()
     endforeach()
-    target_link_libraries(ms_bundle PRIVATE ${_ms_bundle_whole})
-    # Several bundled libraries also appear as transitive PUBLIC dependencies of
-    # their siblings (every module links ms_core, for example). CMake rejects a
-    # link item that occurs both with the WHOLE_ARCHIVE feature and without one,
-    # so pin the feature per library instead of relying on first-occurrence.
+    add_library(ms_bundle SHARED ms_bundle.cpp ${_ms_bundle_objs})
     foreach(_lib IN LISTS _MS_LIBS)
         if(TARGET ${_lib})
-            set_property(TARGET ms_bundle PROPERTY
-                LINK_LIBRARY_OVERRIDE_${_lib} WHOLE_ARCHIVE)
+            target_link_libraries(ms_bundle PRIVATE $<LINK_ONLY:${_lib}>)
         endif()
     endforeach()
-    target_link_options(ms_bundle PRIVATE "LINKER:--allow-multiple-definition")
     target_include_directories(ms_bundle PUBLIC
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_BINARY_DIR}/include
