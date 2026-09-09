@@ -1613,7 +1613,9 @@ Result<Matrix<double>> eval_ml_elastic_net_predict(const Matrix<double>& X_m,
 Matrix<double> ml_knn_to_matrix(const ml::KNN& knn) {
     const size_t n = knn.X_train.size();
     const size_t p = n > 0 ? knn.X_train[0].size() : 0;
-    Matrix<double> out(n + 1, p + 1);
+    // The header row below writes columns 0, 1 and 2, so p + 1 columns are not
+    // enough for a model with fewer than two features.
+    Matrix<double> out(n + 1, std::max(p + 1, size_t{3}));
     out(0, 0) = static_cast<double>(knn.k);
     out(0, 1) = static_cast<double>(p);
     out(0, 2) = static_cast<double>(n);
@@ -1636,7 +1638,7 @@ Result<ml::KNN> ml_knn_from_matrix(const Matrix<double>& model, const char* fn) 
     const int p = static_cast<int>(model(0, 1));
     const int n = static_cast<int>(model(0, 2));
     if (k < 1 || p < 1 || n < 1 || model.rows() != static_cast<size_t>(n + 1) ||
-        model.cols() != static_cast<size_t>(p + 1)) {
+        model.cols() < static_cast<size_t>(p + 1)) {
         return std::unexpected(DomainError{fn, "invalid KNN model layout"});
     }
     ml::KNN knn(k);
@@ -1687,7 +1689,9 @@ Result<Matrix<double>> eval_ml_knn_predict(const Matrix<double>& X_m,
 Matrix<double> ml_naive_bayes_to_matrix(const ml::NaiveBayes& nb) {
     const size_t C = nb.classes.size();
     const size_t p = C > 0 && !nb.mean.empty() ? nb.mean[0].size() : 0;
-    Matrix<double> out(1 + 4 * C, std::max(p, size_t{1}));
+    // The header row below writes columns 0 and 1, so a one-feature model still
+    // needs two columns: max(p, 1) wrote past the end of a p == 1 matrix.
+    Matrix<double> out(1 + 4 * C, std::max(p, size_t{2}));
     out(0, 0) = static_cast<double>(C);
     out(0, 1) = static_cast<double>(p);
     for (size_t c = 0; c < C; ++c) {
@@ -1709,7 +1713,7 @@ Result<ml::NaiveBayes> ml_naive_bayes_from_matrix(const Matrix<double>& model, c
     const int C = static_cast<int>(model(0, 0));
     const int p = static_cast<int>(model(0, 1));
     if (C < 1 || p < 1 || model.rows() != static_cast<size_t>(1 + 4 * C) ||
-        model.cols() != static_cast<size_t>(p)) {
+        model.cols() < static_cast<size_t>(p)) {
         return std::unexpected(DomainError{fn, "invalid NaiveBayes model layout"});
     }
     ml::NaiveBayes nb;
@@ -1762,8 +1766,14 @@ Result<Matrix<double>> eval_ml_naive_bayes_predict(const Matrix<double>& X_m,
 }
 
 Matrix<double> ml_lda_to_matrix(const ml::LDA& lda) {
-    const size_t C = lda.classes.size();
-    const size_t p = C > 0 && !lda.mean.empty() ? lda.mean[0].size() : 0;
+    // LDA::fit gives up on a single-class problem after it has already filled
+    // `classes`, leaving the per-class arrays empty. Sizing the loop below by
+    // classes.size() alone then indexed empty vectors, so take the size every
+    // array agrees on: an incomplete model packs as a header with no classes,
+    // which ml_lda_from_matrix rejects.
+    const size_t C = std::min({lda.classes.size(), lda.mean.size(), lda.discrim_coef.size(),
+                               lda.discrim_const.size()});
+    const size_t p = C > 0 ? lda.mean[0].size() : 0;
     const size_t n_comp = lda.projection.size();
     const size_t n_cols = std::max(p, size_t{4});
     Matrix<double> out(1 + 4 * C + n_comp + 1, n_cols);
@@ -1784,7 +1794,7 @@ Matrix<double> ml_lda_to_matrix(const ml::LDA& lda) {
             out(1 + 4 * C + r, j) = lda.projection[r][j];
         }
     }
-    for (size_t j = 0; j < p; ++j) {
+    for (size_t j = 0; j < p && j < lda.overall_mean.size(); ++j) {
         out(1 + 4 * C + n_comp, j) = lda.overall_mean[j];
     }
     return out;
@@ -1848,6 +1858,10 @@ Result<Matrix<double>> eval_ml_lda_fit(const Matrix<double>& X_m, const Matrix<d
     }
     ml::LDA lda(1e-6, n_components);
     lda.fit(*X, *y);
+    if (lda.discrim_coef.empty()) {
+        return std::unexpected(DomainError{
+            "ml_lda_fit", "expected at least two distinct class labels in y"});
+    }
     return ml_lda_to_matrix(lda);
 }
 
@@ -1899,8 +1913,12 @@ Result<Matrix<double>> eval_ml_lda_transform(const Matrix<double>& X_m,
 }
 
 Matrix<double> ml_qda_to_matrix(const ml::QDA& qda) {
-    const size_t C = qda.classes.size();
-    const size_t p = C > 0 && !qda.mean.empty() ? qda.mean[0].size() : 0;
+    // Sized by the array with the fewest entries, for the reason spelled out in
+    // ml_lda_to_matrix: a fit that gave up part way leaves these disagreeing.
+    const size_t C = std::min({qda.classes.size(), qda.mean.size(), qda.linear_coef.size(),
+                               qda.discrim_const.size(), qda.class_prior.size(),
+                               qda.quad_coef.size()});
+    const size_t p = C > 0 ? qda.mean[0].size() : 0;
     const size_t pp = p * p;
     const size_t n_cols = std::max({p, pp, size_t{3}});
     Matrix<double> out(1 + 5 * C, n_cols);

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ms/bignum/bignum.hpp"
+#include "ms/error/error_types.hpp"
 #include "ms/finance/finance.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include "ms/ml/ml.hpp"
@@ -254,4 +255,57 @@ TEST(ReplCrashRegressions, PcaTransformWithAWiderFeatureRowThanTheModel) {
     ASSERT_GT(interp.state().matrices.count("Z"), 0u);
     EXPECT_EQ(interp.state().matrices.at("Z").rows(), 4u);
     EXPECT_EQ(interp.state().matrices.at("Z").cols(), 1u);
+}
+
+TEST(ReplCrashRegressions, NaiveBayesModelWithOneFeature) {
+    // The packed model's header row writes columns 0 and 1, but the matrix was sized
+    // max(n_features, 1) columns wide. A single-feature model was therefore one column
+    // wide and the header write ran off the end of the buffer, corrupting the heap --
+    // glibc aborted later, on an unrelated free.
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("X1 = [0]").has_value());
+    ASSERT_TRUE(interp.execute("y1 = [0]").has_value());
+    const auto fitted = interp.execute("nb = ml_naive_bayes_fit(X1, y1)");
+    ASSERT_TRUE(fitted.has_value());
+    const auto& model = interp.state().matrices.at("nb");
+    EXPECT_EQ(model.rows(), 5u);
+    EXPECT_GE(model.cols(), 2u);
+    EXPECT_EQ(model(0, 0), 1.0);  // one class
+    EXPECT_EQ(model(0, 1), 1.0);  // one feature
+    // The model still round-trips through predict.
+    ASSERT_TRUE(interp.execute("p1 = ml_naive_bayes_predict(X1, nb)").has_value());
+    EXPECT_EQ(interp.state().matrices.at("p1").rows(), 1u);
+}
+
+TEST(ReplCrashRegressions, KnnModelWithOneFeature) {
+    // Same defect in the KNN packer, whose header row writes columns 0, 1 and 2 into a
+    // matrix sized n_features + 1 columns wide.
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("X1 = [1; 2; 3]").has_value());
+    ASSERT_TRUE(interp.execute("y1 = [0; 1; 1]").has_value());
+    ASSERT_TRUE(interp.execute("knn = ml_knn_fit(X1, y1, 1)").has_value());
+    const auto& model = interp.state().matrices.at("knn");
+    EXPECT_GE(model.cols(), 3u);
+    EXPECT_EQ(model(0, 1), 1.0);  // one feature
+    EXPECT_EQ(model(0, 2), 3.0);  // three training rows
+    ASSERT_TRUE(interp.execute("pk = ml_knn_predict(X1, knn)").has_value());
+    EXPECT_EQ(interp.state().matrices.at("pk").rows(), 3u);
+}
+
+TEST(ReplCrashRegressions, LdaFitWithASingleClass) {
+    // LDA::fit gives up on a single-class problem, but only after filling `classes`:
+    // the per-class arrays stay empty. The packer sized its loop by classes.size() and
+    // then indexed the empty discrim_const, reading off the end of the vector.
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("X1 = [0]").has_value());
+    ASSERT_TRUE(interp.execute("y1 = [0]").has_value());
+    const auto r = interp.execute("lda = ml_lda_fit(X1, y1)");
+    ASSERT_FALSE(r.has_value());
+    EXPECT_NE(ms::format_error(r.error()).find("two distinct class labels"), std::string::npos);
+    // Two classes still fit and predict.
+    ASSERT_TRUE(interp.execute("X2 = [0, 0; 1, 1; 0, 1; 1, 0]").has_value());
+    ASSERT_TRUE(interp.execute("y2 = [0; 1; 0; 1]").has_value());
+    ASSERT_TRUE(interp.execute("lda2 = ml_lda_fit(X2, y2)").has_value());
+    ASSERT_TRUE(interp.execute("pl = ml_lda_predict(X2, lda2)").has_value());
+    EXPECT_EQ(interp.state().matrices.at("pl").rows(), 4u);
 }
