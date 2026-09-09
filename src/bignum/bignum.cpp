@@ -411,30 +411,94 @@ BigInt bigint_fibonacci(int n) {
     return b;
 }
 
+namespace {
+
+// One Miller-Rabin round. Returns false only when `a` proves n composite.
+bool miller_rabin_round(const BigInt& a, const BigInt& d, int r, const BigInt& n,
+                        const BigInt& nm1) {
+    BigInt x = bigint_pow_mod(a, d, n);
+    if (x.is_one() || x == nm1) {
+        return true;
+    }
+    for (int j = 0; j < r - 1; ++j) {
+        x = x * x % n;
+        if (x == nm1) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Uniform in [0, bound), built from whole base-1e9 digits through BigInt's own
+// arithmetic so the result is normalised by construction.
+BigInt random_below(const BigInt& bound, std::mt19937_64& rng) {
+    const BigInt base(static_cast<long long>(BigInt::BASE));
+    BigInt r(0LL);
+    // One extra digit of headroom so the modulo below is close to uniform rather
+    // than biased toward the low end of the range.
+    for (std::size_t i = 0; i < bound.digits.size() + 1; ++i) {
+        r = r * base + BigInt(static_cast<long long>(rng() % BigInt::BASE));
+    }
+    return r % bound;
+}
+
+} // namespace
+
 bool bigint_is_prime(const BigInt& n, int rounds) {
+    if (n.negative) return false;
     if (n<=BigInt(1LL)) return false;
     if (n<=BigInt(3LL)) return true;
     if ((n%BigInt(2LL)).is_zero()) return false;
-    // Miller-Rabin
-    // Write n-1 = 2^r * d
+
+    // Trial division first: rejects most composites without a modular
+    // exponentiation, and makes the witness range below safe by guaranteeing
+    // n > 53.
+    static const long long kSmallPrimes[] = {3,  5,  7,  11, 13, 17, 19,
+                                             23, 29, 31, 37, 41, 43, 47, 53};
+    for (const long long p : kSmallPrimes) {
+        const BigInt bp(p);
+        if (n == bp) return true;
+        if ((n % bp).is_zero()) return false;
+    }
+
+    // Write n-1 = 2^r * d with d odd.
     BigInt nm1=n-BigInt(1LL);
     BigInt d=nm1; int r=0;
     while ((d%BigInt(2LL)).is_zero()){d=d/BigInt(2LL);++r;}
-    std::mt19937_64 rng(42);
-    long long nll=nm1.to_ll();
-    if (nll<=2) nll=3;
-    for (int i=0;i<rounds;++i) {
-        long long ull = 2 + (long long)(rng()%(std::abs(nll)-2));
-        BigInt a((long long)ull);
-        if (a>=n) a=BigInt(2LL);
-        BigInt x=bigint_pow_mod(a,d,n);
-        if (x.is_one()||x==nm1) continue;
-        bool composite=true;
-        for (int j=0;j<r-1;++j) {
-            x=x*x%n;
-            if (x==nm1){composite=false;break;}
+
+    // The first twelve primes as bases decide primality outright for every
+    // n below 3.317e24 -- no probability involved. This covers the whole 64-bit
+    // range and some way past it, which is where almost every caller lives.
+    static const long long kDeterministicBases[] = {2,  3,  5,  7,  11, 13,
+                                                    17, 19, 23, 29, 31, 37};
+    for (const long long b : kDeterministicBases) {
+        const BigInt a(b);
+        if (a >= nm1) break;
+        if (!miller_rabin_round(a, d, r, n, nm1)) {
+            return false;
         }
-        if (composite) return false;
+    }
+    static const BigInt kDeterministicLimit("3317044064679887385961981");
+    if (n < kDeterministicLimit) {
+        return true;
+    }
+
+    // Above that bound the fixed bases are no longer a proof, so add random
+    // witnesses. The old code drew these from nm1.to_ll(), which silently
+    // truncates a value wider than three base-1e9 digits: for exactly the inputs
+    // an arbitrary-precision primality test exists to handle, the witness range
+    // was derived from a truncated number, then passed through std::abs (undefined
+    // for LLONG_MIN) and used as a modulus that could be zero. It was also seeded
+    // with a constant, so the witness set was public and composites that pass were
+    // constructible by anyone reading this file.
+    std::random_device rd;
+    std::mt19937_64 rng((static_cast<std::uint64_t>(rd()) << 32) ^ rd());
+    const BigInt span = nm1 - BigInt(2LL);  // n > 53 here, so span >= 1
+    for (int i = 0; i < rounds; ++i) {
+        const BigInt a = random_below(span, rng) + BigInt(2LL);  // [2, n-2]
+        if (!miller_rabin_round(a, d, r, n, nm1)) {
+            return false;
+        }
     }
     return true;
 }

@@ -1,0 +1,63 @@
+name: Formal verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  cbmc:
+    name: CBMC bounded model checking
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CBMC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cbmc
+      - name: Verify
+        run: bash verification/run.sh
+
+  esbmc:
+    name: ESBMC bounded model checking
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # ESBMC is not in the Ubuntu archive, so it comes from the project's own
+      # release. The runner has unrestricted egress, which the development
+      # container did not -- see verification/README.md.
+      - name: Install ESBMC
+        run: |
+          set -euo pipefail
+          url="$(curl -fsSL https://api.github.com/repos/esbmc/esbmc/releases/latest \
+                 | jq -r '.assets[] | select(.name | test("linux";"i")) | .browser_download_url' \
+                 | head -1)"
+          if [ -z "${url}" ] || [ "${url}" = "null" ]; then
+            echo "no linux asset on the latest ESBMC release" >&2
+            exit 1
+          fi
+          echo "fetching ${url}"
+          mkdir -p "${HOME}/esbmc"
+          case "${url}" in
+            *.tar.gz|*.tgz) curl -fsSL "${url}" | tar xz -C "${HOME}/esbmc" ;;
+            *.zip)          curl -fsSL "${url}" -o /tmp/esbmc.zip && unzip -q /tmp/esbmc.zip -d "${HOME}/esbmc" ;;
+            *)              curl -fsSL "${url}" -o "${HOME}/esbmc/esbmc" && chmod +x "${HOME}/esbmc/esbmc" ;;
+          esac
+          bin="$(find "${HOME}/esbmc" -type f -name esbmc -perm -u+x | head -1)"
+          if [ -z "${bin}" ]; then
+            echo "esbmc binary not found in the downloaded asset" >&2
+            find "${HOME}/esbmc" -maxdepth 3 -type f | head -20 >&2
+            exit 1
+          fi
+          echo "$(dirname "${bin}")" >> "${GITHUB_PATH}"
+
+      - name: Version
+        run: esbmc --version
+
+      - name: Verify
+        run: bash verification/run.sh
