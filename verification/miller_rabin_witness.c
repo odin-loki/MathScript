@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>
+#include "assume.h"
 
 long long nondet_ll(void);
 unsigned long long nondet_ull(void);
@@ -29,13 +30,13 @@ int main(void) {
 
 #ifdef CHECK_OLD
     /* Defect 2: std::abs(LLONG_MIN) is undefined -- the negation overflows. */
-    __CPROVER_assume(nll == LLONG_MIN);
+    MS_ASSUME(nll == LLONG_MIN);
     long long w = old_witness(nll, r);
     (void)w;
 #else
     /* Defect 3: when |nll| == 2 the modulus is zero. to_ll() truncation makes
      * this reachable from a wide BigInt, not only from a literal 2. */
-    __CPROVER_assume(nll == 2 || nll == -2);
+    MS_ASSUME(nll == 2 || nll == -2);
     long long a = nll < 0 ? -nll : nll;
     if (nll <= 2) { a = 3; }               /* the guard as written */
     /* The guard only rewrites nll when it is <= 2, so nll == -2 reaches abs()

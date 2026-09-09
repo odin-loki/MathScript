@@ -5,6 +5,7 @@
  * one combination this host happens to have. */
 #include <assert.h>
 #include <stdint.h>
+#include "assume.h"
 
 /* Declared so CBMC gives them the right type; an undeclared nondet_uint64_t is
  * assumed to return int and the harness then reports its own conversion. */
@@ -36,13 +37,13 @@ int main(void) {
     int osxsave = nondet_int();
     uint64_t xcr0 = nondet_uint64_t();
 
-    __CPROVER_assume(cpu_sse2 == 0 || cpu_sse2 == 1);
-    __CPROVER_assume(cpu_sse41 == 0 || cpu_sse41 == 1);
-    __CPROVER_assume(cpu_avx == 0 || cpu_avx == 1);
-    __CPROVER_assume(cpu_fma == 0 || cpu_fma == 1);
-    __CPROVER_assume(cpu_avx2 == 0 || cpu_avx2 == 1);
-    __CPROVER_assume(cpu_avx512 == 0 || cpu_avx512 == 1);
-    __CPROVER_assume(osxsave == 0 || osxsave == 1);
+    MS_ASSUME(cpu_sse2 == 0 || cpu_sse2 == 1);
+    MS_ASSUME(cpu_sse41 == 0 || cpu_sse41 == 1);
+    MS_ASSUME(cpu_avx == 0 || cpu_avx == 1);
+    MS_ASSUME(cpu_fma == 0 || cpu_fma == 1);
+    MS_ASSUME(cpu_avx2 == 0 || cpu_avx2 == 1);
+    MS_ASSUME(cpu_avx512 == 0 || cpu_avx512 == 1);
+    MS_ASSUME(osxsave == 0 || osxsave == 1);
 
     feats f = detect(cpu_sse2, cpu_sse41, cpu_avx, cpu_fma, cpu_avx2, cpu_avx512,
                      osxsave, xcr0);

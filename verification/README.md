@@ -13,20 +13,34 @@ cbmc verification/isa_gating.c --unwind 2 --bounds-check --conversion-check
 
 ## Tool
 
-**CBMC 5.95.1** (`apt install cbmc`).
+**ESBMC 8.5.0** and **CBMC 5.95.1**. Every harness is run under both, and both
+must succeed.
 
-The engineering plan asked for **ESBMC**. ESBMC is not installable in the
-container this work was done in: it is not in the Ubuntu archive, and its GitHub
-release assets are unreachable from here — the egress proxy passes release
-*downloads* but returns 403 on `github.com` pages, so the asset name cannot be
-discovered, and every plausible URL probed returns 404. Building it from source
-needs LLVM plus solver backends and does not complete in this environment.
+Two tools rather than one because they disagree usefully. ESBMC caught a defect
+in the harnesses themselves that CBMC could not: `__CPROVER_assume` is CBMC's
+spelling, and ESBMC treats it as an ordinary undefined call, so the assumption is
+silently DROPPED rather than rejected. `miller_rabin_witness.c` therefore passed
+under CBMC and reported an arithmetic overflow under ESBMC -- correctly, because
+under ESBMC the input was unconstrained. The harnesses now use
+`__VERIFIER_assume` via `MS_ASSUME` in `assume.h`, which both tools implement
+with the same meaning.
 
-CBMC is the closest available substitute: the same bounded-model-checking
-approach over the same C fragment, and ESBMC's own frontend descends from it.
-`.github/workflows/verify.yml` runs **both**, so ESBMC covers these harnesses on
-CI where it can be installed properly. The harnesses are plain C99 and are
-written to be tool-agnostic.
+That is worth stating plainly: for a while these harnesses were verifying
+something weaker than they appeared to, and only a second tool exposed it.
+
+Installing them:
+
+```bash
+apt-get install cbmc
+curl -fsSL -o esbmc.zip \
+  https://github.com/esbmc/esbmc/releases/download/v8.5/esbmc-linux.zip
+unzip -q esbmc.zip && install -m755 release/bin/esbmc /usr/local/bin/esbmc
+```
+
+The asset is `esbmc-linux.zip`, not a tarball, and `esbmc-linux-armv8.zip` next to
+it is the ARM build -- selecting on the substring "linux" alone picks the wrong
+one and fails with `Exec format error`, which is exactly what the first CI run of
+`.github/workflows/verify.yml` did.
 
 ## What is checked, and what was found
 

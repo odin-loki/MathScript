@@ -34,8 +34,11 @@ jobs:
       - name: Install ESBMC
         run: |
           set -euo pipefail
+          # Select on the exact x86_64 asset. Matching "linux" alone also matches
+          # esbmc-linux-armv8.zip, which downloads happily and then dies with
+          # "Exec format error" on an x86_64 runner.
           url="$(curl -fsSL https://api.github.com/repos/esbmc/esbmc/releases/latest \
-                 | jq -r '.assets[] | select(.name | test("linux";"i")) | .browser_download_url' \
+                 | jq -r '.assets[] | select(.name | test("^esbmc-linux\\.(zip|tar\\.gz)$")) | .browser_download_url' \
                  | head -1)"
           if [ -z "${url}" ] || [ "${url}" = "null" ]; then
             echo "no linux asset on the latest ESBMC release" >&2
