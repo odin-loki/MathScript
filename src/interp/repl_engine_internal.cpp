@@ -13567,6 +13567,10 @@ Result<Matrix<double>> eval_combo_restricted_partitions(int n, int k) {
         return std::unexpected(
             DomainError{"combo_restricted_partitions", "expected non-negative integer k"});
     }
+    if (n > combo::kMaxEnumPartitionN) {
+        return std::unexpected(
+            DomainError{"combo_restricted_partitions", "n too large (max 40)"});
+    }
     return combo_enum_rows_to_matrix(combo::restricted_partitions(n, k));
 }
 

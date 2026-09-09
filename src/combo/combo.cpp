@@ -275,7 +275,7 @@ static void restricted_partitions_helper(int n, int max_part, int parts_left,
 }
 
 std::vector<std::vector<int>> restricted_partitions(int n, int k) {
-    if (n < 0) return {};
+    if (n < 0 || n > kMaxEnumPartitionN) return {};
     if (n == 0) return k == 0 ? std::vector<std::vector<int>>{std::vector<int>{}} : std::vector<std::vector<int>>{};
     if (k <= 0) return {};
     if (k > n) return {};

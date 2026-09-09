@@ -105,6 +105,11 @@ one parsing the unsafe-site registry) were replaced with `std::from_chars`.
 
 - REPL constructors (`ones`/`zeros`/`eye`/`rand`/`randn`/`linspace`/`repmat`/`kron`) refuse dimensions above 262144 elements before allocating (libFuzzer `ones(9999)` OOM).
 - Combo listing enumerators (`derangements`, `all_permutations`, `all_subsets`, `gray_code`, partitions, necklaces, …) refuse oversized n so libFuzzer cannot OOM on `combo_derangements(11)`.
+- `restricted_partitions` was the one member of that family the cap never reached: `all_partitions`
+  stops at `kMaxEnumPartitionN`, but its restricted sibling took any n at all and enumerated every
+  partition of n into k parts. The 24h libFuzzer run found `combo_restricted_partitions(442, 5)`,
+  which reached 13.5 million allocations and 2398 MB of resident memory before the OOM. Now bounded
+  by the same constant in `combo` and refused with a `DomainError` at the REPL, like `all_partitions`.
 - Tests: extra library coverage (image/signal/control/cfd/finance/special/ml/info/quantum/graph/combo/geo/stats/ode/pde/prob/linalg) plus remaining dual-matrix and scalar no-assignment REPL printers.
 - Tests: extra library coverage (numthy/compress/crypto/tensorops/symbolic/image/signal/linalg/matmul/dispatch) plus remaining no-assignment REPL printers (special/core/image/diffgeo/prob/signal).
 - Tests: extra symbolic/image/signal unit coverage plus no-assignment REPL printers (optim, frameworks session objects, vector ODEs including `ode_adams_bashforth2_vec`).
