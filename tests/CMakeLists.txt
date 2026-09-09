@@ -130,6 +130,27 @@ if(MS_BUILD_INTEGRATION)
     add_subdirectory(integration)
 endif()
 
+# Corpus replay: build each libFuzzer target against a plain main() that replays its
+# checked-in corpus plus a fixed set of deterministic mutations. This needs no libFuzzer
+# runtime, so it runs in the ordinary test suite rather than only in the 24-hour job --
+# a corpus entry is a previously interesting input, and replaying one costs milliseconds.
+foreach(_fuzz_target
+        fuzz_special_fns fuzz_matrix_ops fuzz_repl_input fuzz_sym_parser
+        fuzz_poly_ops fuzz_bignum fuzz_mpi_message)
+    add_executable(replay_${_fuzz_target} fuzz/${_fuzz_target}.cpp fuzz/replay_main.cpp)
+    target_link_libraries(replay_${_fuzz_target} PRIVATE mathscript)
+    target_include_directories(replay_${_fuzz_target} PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/include
+    )
+    if(MS_ENABLE_COVERAGE AND NOT MSVC)
+        target_compile_options(replay_${_fuzz_target} PRIVATE -fexceptions)
+    endif()
+    add_test(NAME replay_${_fuzz_target}
+             COMMAND replay_${_fuzz_target}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/${_fuzz_target}" 20000)
+endforeach()
+
 if(MS_BUILD_FUZZ)
     add_subdirectory(fuzz)
 endif()

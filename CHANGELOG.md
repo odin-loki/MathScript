@@ -22,6 +22,18 @@ stub has been closed; see that file for the before/after table.
 - Geo: `poly_boolean` and its `poly_union_general` / `poly_intersect_general` / `poly_diff_general` / `poly_symmetric_diff_general` wrappers are a general two-polygon clipper for arbitrary simple polygons: concave operands, results that split into several disjoint pieces, and results containing holes are all exact. The pre-existing `poly_union` / `poly_intersect` / `poly_diff` stay as the documented convex MVPs that return a convex-hull over-approximation. Exposed in the REPL as `geo_boolean_union` / `geo_boolean_intersect` / `geo_boolean_diff` / `geo_boolean_xor`, returning `(x, y, contour_index)` rows.
 - `mathscript-server` is a real SPMD compute node (`--script`, `-e`, `--serve`, one Interpreter per rank) rather than a heartbeat loop that ignored argv.
 
+### Testing
+
+- The seven libFuzzer targets' checked-in corpora are now replayed by ordinary CTest
+  suites (`replay_fuzz_*`), each seeding from the corpus and applying 20000 deterministic
+  mutations on top. They need no libFuzzer runtime, run in under two seconds in total, and
+  cover the entry points that previously only the 24-hour job reached -- the
+  `quantum::partial_trace` out-of-bounds read in this release was found exactly this way.
+- A malformed-input sweep calls every name the REPL dispatcher recognises with wrong
+  arities, wrong shapes, degenerate and oversized numeric arguments, string arguments, and
+  non-finite matrices, checking that each returns a formattable error rather than crashing
+  and that the session survives. It found five of the crashes fixed below.
+
 ### Correctness fixes
 
 Implementations that did not compute what their headers documented.
