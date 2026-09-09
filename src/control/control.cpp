@@ -263,7 +263,24 @@ TransferFunction tf2ss_tf(const StateSpace& sys) {
     return TransferFunction{std::move(num), std::move(char_poly)};
 }
 
-StateSpace tf2ss(const TransferFunction& sys) {
+StateSpace tf2ss(const TransferFunction& raw) {
+    // Coefficients are in descending order, so den[0] is the LEADING one and everything
+    // below divides by it. A leading zero does not change the polynomial but does make
+    // that division inf or NaN -- control_impulse_final([1],[0,1]) produced A = -inf and
+    // then hung in the matrix exponential's scaling loop. Strip them first, as every
+    // control toolbox does, so [0, 1] is simply the constant polynomial 1.
+    TransferFunction sys = raw;
+    while (sys.den.size() > 1 && sys.den.front() == 0.0) {
+        sys.den.erase(sys.den.begin());
+    }
+    while (sys.num.size() > 1 && sys.num.front() == 0.0) {
+        sys.num.erase(sys.num.begin());
+    }
+    if (sys.den.empty() || sys.den[0] == 0.0 || sys.num.empty()) {
+        // An identically-zero denominator is not a transfer function; there is nothing to
+        // realise, so hand back the zero system rather than dividing by it.
+        return StateSpace{{{0.0}}, {{0.0}}, {{0.0}}, {{0.0}}};
+    }
     int n = static_cast<int>(sys.den.size()) - 1;
     if (n <= 0) {
         double g = sys.num[0] / sys.den[0];
@@ -361,9 +378,19 @@ static Result<std::vector<std::vector<double>>> mat_inv(
 static Result<Matrix<double>> expm_scaled(const Matrix<double>& A) {
     const size_t n = A.rows();
     double norm = 0.0;
-    for (size_t i = 0; i < n; ++i)
-        for (size_t j = 0; j < n; ++j)
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            // The scaling loop below halves the norm until it drops below 1/2. An
+            // infinite norm never does -- inf * 0.5 is inf -- so the loop spun forever.
+            // A NaN exits it immediately but then poisons every term. Either way there is
+            // no exponential to return, so say so.
+            if (!std::isfinite(A(i, j))) {
+                return std::unexpected(
+                    DomainError{"control_expm", "matrix has a non-finite entry"});
+            }
             norm = std::max(norm, std::abs(A(i, j)));
+        }
+    }
     int s = 0;
     while (norm > 0.5) {
         norm *= 0.5;

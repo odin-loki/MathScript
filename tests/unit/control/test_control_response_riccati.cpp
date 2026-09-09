@@ -176,3 +176,53 @@ TEST(ControlRiccati, DiagonalRStillAgreesWithTheOldShortcut) {
         }
     }
 }
+
+TEST(ControlTf2ss, LeadingZeroDenominatorDoesNotProduceAnInfiniteRealisation) {
+    // Coefficients are in descending order, so den[0] is the LEADING one and the whole
+    // realisation divides by it. A leading zero does not change the polynomial -- [0, 1]
+    // is the constant 1 -- but dividing by it gave A = -inf, and the matrix exponential's
+    // scaling loop then halved an infinite norm forever: control_impulse_final([1],[0,1])
+    // never returned. Found by fuzzing the REPL entry point.
+    const ms::control::TransferFunction lead_zero{{1.0}, {0.0, 1.0}};
+    const auto ss = ms::control::tf2ss(lead_zero);
+    for (const auto& row : ss.A) {
+        for (const double v : row) EXPECT_TRUE(std::isfinite(v));
+    }
+    for (const auto& row : ss.B) {
+        for (const double v : row) EXPECT_TRUE(std::isfinite(v));
+    }
+    // 1/(0*s + 1) is the unit gain, so it is all feedthrough.
+    ASSERT_FALSE(ss.D.empty());
+    EXPECT_NEAR(ss.D[0][0], 1.0, 1e-12);
+    EXPECT_NEAR(ms::control::dcgain(lead_zero), 1.0, 1e-12);
+
+    // Several leading zeros, and zeros in the numerator too.
+    const ms::control::TransferFunction many{{0.0, 0.0, 2.0}, {0.0, 0.0, 1.0, 1.0}};
+    const auto ss2 = ms::control::tf2ss(many);
+    for (const auto& row : ss2.A) {
+        for (const double v : row) EXPECT_TRUE(std::isfinite(v));
+    }
+    // 2/(s + 1): DC gain 2.
+    EXPECT_NEAR(ms::control::dcgain(many), 2.0, 1e-9);
+
+    // An identically zero denominator is not a transfer function; the realisation is the
+    // zero system rather than a division by zero.
+    const ms::control::TransferFunction degenerate{{1.0}, {0.0, 0.0}};
+    const auto ss3 = ms::control::tf2ss(degenerate);
+    for (const auto& row : ss3.A) {
+        for (const double v : row) EXPECT_TRUE(std::isfinite(v));
+    }
+
+    // The responses now return instead of spinning.
+    const auto imp = ms::control::impulse_response(lead_zero);
+    EXPECT_FALSE(imp.y.empty());
+    for (const double v : imp.y) EXPECT_TRUE(std::isfinite(v));
+    const auto step = ms::control::step_response(lead_zero);
+    ASSERT_FALSE(step.y.empty());
+    EXPECT_NEAR(step.y.back(), 1.0, 1e-9);
+
+    // An ordinary system is unaffected: 1/(s+1) still has DC gain 1 and settles there.
+    const ms::control::TransferFunction lag{{1.0}, {1.0, 1.0}};
+    EXPECT_NEAR(ms::control::dcgain(lag), 1.0, 1e-12);
+    EXPECT_NEAR(ms::control::step_response(lag).y.back(), 1.0, 1e-3);
+}
