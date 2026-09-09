@@ -18,6 +18,11 @@
 
 #include "ms/signal/signal.hpp"
 
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace {
 
 std::vector<double> ramp(std::size_t n) {
