@@ -105,6 +105,30 @@ def benchmarks() -> dict[str, str]:
     return info
 
 
+def ratchet() -> dict[str, str]:
+    """The committed coverage floor, which is a separate mechanism from the gate.
+
+    MS_COVERAGE_*_MIN is a fixed minimum read from ci.yml; the ratchet compares
+    against the previous measurement. Reporting only the first made two of the
+    three metrics look ungoverned when they are not.
+    """
+    path = ROOT / "tests" / "coverage_baseline.json"
+    out = {"lines": UNKNOWN, "functions": UNKNOWN, "branches": UNKNOWN,
+           "tolerance": UNKNOWN}
+    if not path.is_file():
+        return out
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return out
+    for key, value in (data.get("metrics") or {}).items():
+        if key in out:
+            out[key] = f"{value}%"
+    if data.get("tolerance") is not None:
+        out["tolerance"] = str(data["tolerance"])
+    return out
+
+
 def unsafe_sites() -> str:
     baseline = ROOT / "tests" / "compliance" / "unsafe_baseline.txt"
     if not baseline.is_file():
@@ -142,6 +166,7 @@ def source_lines() -> str:
 def render(build_dir: pathlib.Path) -> str:
     cov = coverage(build_dir)
     gates = ci_gates()
+    floor = ratchet()
     bench = benchmarks()
     git = git_facts()
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -173,14 +198,23 @@ Measured over the denominator declared in `scripts/coverage_exclusions.txt`.
 Only paths that *cannot* execute on a CI runner are excluded, and each run
 prints how many lines they hid.
 
-| | Measured | CI gate |
-|---|---|---|
-| Lines | {cov['lines']} | {pct(gates['MS_COVERAGE_MIN'])} |
-| Functions | {cov['functions']} | {pct(gates['MS_COVERAGE_FUNC_MIN'])} |
-| Branches | {cov['branches']} | {pct(gates['MS_COVERAGE_BRANCH_MIN'])} |
+| | Measured | CI gate | Ratchet floor |
+|---|---|---|---|
+| Lines | {cov['lines']} | {pct(gates['MS_COVERAGE_MIN'])} | {floor['lines']} |
+| Functions | {cov['functions']} | {pct(gates['MS_COVERAGE_FUNC_MIN'])} | {floor['functions']} |
+| Branches | {cov['branches']} | {pct(gates['MS_COVERAGE_BRANCH_MIN'])} | {floor['branches']} |
 
-The gate and the measurement are separate columns on purpose. The README once
-claimed CI enforced 90% while `ci.yml` set 80%, and nothing reconciled them.
+Three columns, three different things. The measurement is what this build reported.
+The CI gate is the fixed minimum `ci.yml` sets. The ratchet floor is the previous
+committed measurement, which `scripts/coverage_ratchet.py` fails on a drop below by
+more than {floor['tolerance']} points.
+
+They are separate on purpose. The README once claimed CI enforced 90% while
+`ci.yml` set 80%, and nothing reconciled them.
+
+Read the branch row before quoting the line row. This tree's largest files are
+dispatch chains, and a dispatch chain reaches high line coverage with one branch of
+each test taken.
 
 ## Benchmarks
 
