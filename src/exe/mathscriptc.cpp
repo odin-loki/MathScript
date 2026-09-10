@@ -59,9 +59,20 @@ bool run_script_file(const std::string& path) {
                 std::cout << *result;
             }
         } else {
+            // Flush what the earlier lines printed before writing this. `std::cerr` is
+            // unit-buffered and `std::cout` is not, so without this the diagnostic for
+            // line 9 can reach a shared destination ahead of the output of line 3 -- and
+            // a transcript whose lines are in the wrong order is not a transcript.
+            std::cout.flush();
             std::cerr << "error: " << ms::format_error(result.error()) << '\n';
             all_ok = false;
         }
+        // Redirected to a file, `std::cout` is fully buffered, so a script runner that
+        // flushes only at exit loses *everything* it printed if it dies partway --
+        // which is how a crash in one command came back as a file with no output at all
+        // and no line number to look at. One flush per line costs nothing at this
+        // volume and makes the file that survives a death say how far it got.
+        std::cout.flush();
     }
     return all_ok;
 }

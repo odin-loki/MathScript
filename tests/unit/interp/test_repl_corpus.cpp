@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -200,11 +201,48 @@ TEST(ReplCorpus, EveryTranscriptMatches) {
         // Windows did with the combined symbolic transcript, and the message said only
         // that line 1 was missing.
         if (got_out.empty() && got_err.empty() && status != 0) {
+            // Say which of the two possible stories this is, rather than asserting one.
+            //
+            // `mathscriptc` reaches a non-zero exit only after writing to stderr -- the
+            // four argument errors and the "cannot open file" all print first, and a
+            // failing line prints "error: ..." -- and it flushes stdout after every
+            // line. So it cannot itself produce this. Two things outside it can:
+            //
+            //   1. the process died, losing whatever was in flight; the redirect files
+            //      exist and are empty (or hold a partial transcript, in which case we
+            //      would not be here);
+            //   2. the shell never ran it -- it could not create a redirect file, or
+            //      could not launch the program -- and returned its own status; the
+            //      redirect files may not exist at all, and the shell's own complaint
+            //      went to a stderr nobody captured.
+            //
+            // Whether the files exist separates the two, so report it. Then run the
+            // same command again with nothing redirected: its output lands on this
+            // process's own streams, which the test runner captures, so if there is a
+            // message it becomes visible instead of being swallowed by a redirect that
+            // may be the problem.
+            const bool out_exists = fs::exists(actual_out);
+            const bool err_exists = fs::exists(actual_err);
+            const std::string bare =
+                "\"" + std::string(MATHSCRIPTC_PATH) + "\" \"" + script.generic_string() + "\"";
+            std::cout << "--- re-running " << stem << ".ms unredirected ---" << std::endl;
+            const int bare_status = system_exit_code(bare);
+            std::cout << "--- unredirected exit status " << bare_status << " ---" << std::endl;
+
             ADD_FAILURE() << stem << ".ms produced no output on either stream and exited "
                           << status << ". mathscriptc cannot do that through any normal "
-                          << "path -- it writes to stderr before returning non-zero -- so "
-                          << "the process almost certainly died before flushing. This is a "
-                          << "crash to find, not a transcript to re-record.";
+                          << "path -- it writes to stderr before returning non-zero, and "
+                          << "flushes stdout after every line -- so either it died or the "
+                          << "shell never ran it.\n"
+                          << "  redirect files: " << actual_out.generic_string() << " "
+                          << (out_exists ? "exists" : "MISSING") << ", "
+                          << actual_err.generic_string() << " "
+                          << (err_exists ? "exists" : "MISSING") << "\n"
+                          << "  a MISSING file means the shell could not create the "
+                          << "redirect, so the status is the shell's and not the "
+                          << "program's\n"
+                          << "  re-run with no redirection exited " << bare_status
+                          << "; anything it printed is above this failure";
             continue;
         }
         EXPECT_EQ(got_out, want_out)
