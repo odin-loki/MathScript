@@ -116,6 +116,7 @@ file(GLOB_RECURSE _MS_UNIT_SOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     "unit/*.cpp")
 list(SORT _MS_UNIT_SOURCES)
 set(_MS_UNIT_SKIP
+    unit/plugin/test_unsafe_registry.cpp
     unit/repl/test_repl_commands.cpp
     unit/interp/test_mathscriptc_cli.cpp
     unit/interp/test_repl_cli.cpp
@@ -141,6 +142,19 @@ foreach(_src ${_MS_UNIT_SOURCES})
     get_filename_component(_stem ${_src} NAME_WE)
     add_ms_test(${_stem} ${_src})
 endforeach()
+
+# The unsafe registry needs src/plugin on the include path and the registry library
+# on the link line, neither of which add_ms_test provides -- but it needs no LLVM,
+# so it is built and run in every configuration rather than only where the AST
+# plugin is available. That gate is the reason 282 lines of audit bookkeeping had
+# never been tested.
+add_executable(test_unsafe_registry unit/plugin/test_unsafe_registry.cpp)
+target_link_libraries(test_unsafe_registry PRIVATE ms_plugin_registry GTest::gtest_main)
+target_include_directories(test_unsafe_registry PRIVATE ${CMAKE_SOURCE_DIR}/src/plugin)
+if(MS_ENABLE_COVERAGE AND NOT MSVC)
+    target_compile_options(test_unsafe_registry PRIVATE -fexceptions)
+endif()
+add_test(NAME test_unsafe_registry COMMAND test_unsafe_registry)
 
 add_ms_test(test_fuzz_stress fuzz/fuzz_stress.cpp)
 
