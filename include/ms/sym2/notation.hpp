@@ -66,7 +66,11 @@ struct NotationOptions {
         Cross,         ///< `\times`, `×`.
     };
 
-    /// LaTeX: `\[ ... \]` and display-style fractions, rather than inline.
+    /// LaTeX: display-style fractions -- `\dfrac` rather than `\frac`. It does *not*
+    /// wrap the result in `\[ ... \]`; that comes from `latex_document`, which does it
+    /// unconditionally. (This comment used to claim otherwise, and a parser written
+    /// from the comment rather than from the code would have accepted a language the
+    /// printer does not emit.)
     bool display = false;
     /// LaTeX: `\left( ... \right)` rather than bare `(`, so delimiters grow with their
     /// content. Off by default because it doubles the length of every grouping and the
@@ -80,8 +84,11 @@ struct NotationOptions {
     /// LaTeX: the environment a matrix goes in -- `pmatrix`, `bmatrix`, `vmatrix`,
     /// `Vmatrix`, `matrix`.
     std::string matrix_environment = "pmatrix";
-    /// `x^(1/2)` as `\sqrt{x}`. `x^(1/3)` as `\sqrt[3]{x}`. Off gives `x^{1/2}`, which
-    /// is the same expression and is what a caller feeding a parser wants.
+    /// `x^(1/2)` as `\sqrt{x}`. `x^(1/3)` as `\sqrt[3]{x}`. Off gives
+    /// `x^{\frac{1}{2}}` -- the same expression with the exponent spelled the way every
+    /// other quotient in this notation is spelled, which is what a caller feeding a
+    /// parser wants. (Not `x^{1/2}`, as this comment said before anyone read the
+    /// output.)
     bool roots_as_radicals = true;
     /// Source emission: the name every free symbol is read from, e.g. `"v"` gives
     /// `v[0]`... Empty means emit the symbol's own name as an identifier.

@@ -23,7 +23,15 @@ std::string format_error(const Error& error) {
         } else if constexpr (std::is_same_v<T, ConvergenceFail>) {
             return "convergence failed";
         } else if constexpr (std::is_same_v<T, ParseError>) {
-            return std::string(e.msg);
+            // The position is the reason this type exists rather than SymbolicError,
+            // and dropping it here made every caller carrying one report as if it had
+            // none. Zero for both is how a caller says it does not know where.
+            if (e.line == 0 && e.col == 0) {
+                return e.msg;
+            }
+            std::ostringstream out;
+            out << "line " << e.line << ", column " << e.col << ": " << e.msg;
+            return out.str();
         } else if constexpr (std::is_same_v<T, ValueOutOfRange>) {
             std::ostringstream out;
             out << e.param << " value " << e.value
