@@ -2764,6 +2764,11 @@ bool is_scalar_expression_rhs(const std::string& rhs);
 
 Result<double> resolve_scalar_operand(const SessionState& state, const ScalarOperand& operand);
 
+/// Reports an argument outside a libm function's real domain, rather than letting the
+/// call return a NaN that reads as a value. `ms::sym2::evaluate` declines the same
+/// arguments, so this is what keeps the REPL and the symbolic core agreeing.
+Result<void> check_scalar_domain(std::string_view fn, double arg);
+
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args);
 
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text);

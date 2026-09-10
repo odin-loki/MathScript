@@ -2829,11 +2829,54 @@ std::vector<std::string> Interpreter::list_scalar_expr_variables(const std::stri
     return vars;
 }
 
+namespace {
+
+/// Whether a scalar-evaluation error means "this line is not mine" rather than
+/// "this line is mine and here is what is wrong with it".
+///
+/// The distinction decides which of two competing readings of a line gets to report.
+/// `sqrt(-1)` is a scalar call with a domain error, and the matrix reading's "unknown
+/// matrix: -1" would send the reader looking for a variable. `zeros(-1, 2)` is a
+/// matrix call, and the scalar reading's "unknown scalar function: zeros" would hide
+/// the size limit that actually rejected it. Only the scalar path's own two declines
+/// mean it never had an opinion.
+bool scalar_error_says_nothing(const Error& error) {
+    const auto* domain = std::get_if<DomainError>(&error);
+    // "unknown scalar: X" is the scalar reader failing to resolve a name, which says
+    // nothing about the line beyond "not something I can read". `det(Unknown)` is a
+    // matrix call over a name that does not exist, and reporting it as an unknown
+    // *scalar* names the wrong kind -- the same defect this precedence exists to fix,
+    // pointing the other way.
+    return domain != nullptr && (domain->reason == "invalid scalar expression" ||
+                                 domain->reason.rfind("unknown scalar function", 0) == 0 ||
+                                 domain->reason.rfind("unknown scalar:", 0) == 0);
+}
+
+bool scalar_error_is_a_decline(const Error& error) {
+    if (scalar_error_says_nothing(error)) {
+        return true;
+    }
+    // "is a matrix, not a scalar" is the scalar reader recognising that the line is
+    // not its kind, which is a decline however specifically it is worded. Counted as
+    // a diagnosis it beat `mat_row: expected a non-negative integer row index`,
+    // replacing the answer with a remark about the argument that was fine.
+    const auto* domain = std::get_if<DomainError>(&error);
+    return domain != nullptr &&
+           domain->reason.find("is a matrix, not a scalar") != std::string::npos;
+}
+
+} // namespace
+
 Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                              const std::vector<double>& args) {
     const std::string fn = lower(name);
     if (args.size() == 1) {
         const double arg = args[0];
+        // The same guard the cached evaluator applies. Two evaluators for one language
+        // that disagree about sqrt(-1) is the defect, whichever of them is right.
+        if (auto domain = detail::check_scalar_domain(fn, arg); !domain) {
+            return std::unexpected(domain.error());
+        }
         if (fn == "sin") {
             return std::sin(arg);
         }
@@ -21784,21 +21827,43 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 // `sqrt(2)`, `sin(0.5)` and `pow(x, 2)` are scalar expressions;
                 // all of them merely share the f(arg) shape. Serve them here
                 // rather than reporting a matrix the user never mentioned.
+                // Three readings of one line compete here, and the question is which
+                // of them gets to report when they all fail. `f(x)` is the shape of a
+                // call on a matrix, of a matrix constructor, and of a scalar function,
+                // and nothing but the argument tells them apart.
+                std::optional<Error> built_error;
                 MatrixCallAssign matrix_call{};
                 if (try_parse_matrix_call_assignment("_ = " + cmd, matrix_call)) {
                     auto built = dispatch_matrix_call(*this, matrix_call);
-                    if (!built) {
-                        return std::unexpected(built.error());
+                    if (built) {
+                        state_.scalars.erase("_");
+                        state_.matrices["_"] = *built;
+                        std::ostringstream built_out;
+                        built_out << "_ =\n";
+                        print_matrix(built_out, *built);
+                        return built_out.str();
                     }
-                    state_.scalars.erase("_");
-                    state_.matrices["_"] = *built;
-                    std::ostringstream built_out;
-                    built_out << "_ =\n";
-                    print_matrix(built_out, *built);
-                    return built_out.str();
+                    built_error = built.error();
                 }
-                if (auto value = eval_scalar_expr(state_, cmd)) {
+                auto value = eval_scalar_expr(state_, cmd);
+                if (value) {
                     return format_scalar(*value) + "\n";
+                }
+
+                // In order of how much each reading actually established.
+                //
+                // The scalar reading wins when it diagnosed the line rather than
+                // declining it: `sqrt(-1)` is a domain error, and "unknown matrix: -1"
+                // would send the reader looking for a variable. A bare word is the
+                // exception, for the reason given at the bare-expression fallback.
+                if (!is_identifier(cmd) && !scalar_error_is_a_decline(value.error())) {
+                    return std::unexpected(value.error());
+                }
+                // Then the matrix call that got as far as dispatching: `zeros(-1, 2)`
+                // is a constructor rejecting its own arguments, and that beats the
+                // outer failure to resolve "-1, 2" as the name of a matrix.
+                if (built_error) {
+                    return std::unexpected(*built_error);
                 }
                 return std::unexpected(matrix.error());
             }
@@ -22409,19 +22474,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     // accepts, so this covers the whole set at once rather than the hand-listed
     // subset the branches above cover. Like the bare expression below it, this
     // only ever sees lines every earlier form has declined.
+    std::optional<Error> matrix_call_error;
     {
         MatrixCallAssign matrix_call{};
         if (try_parse_matrix_call_assignment("_ = " + cmd, matrix_call)) {
             auto result = dispatch_matrix_call(*this, matrix_call);
             if (!result) {
-                return std::unexpected(result.error());
-            }
+                // Not returned yet. `sqrt(-1)` parses as a matrix call as readily as
+                // `sqrt(A)` does -- the shape is the same and only the argument differs
+                // -- so this branch failing means the line may simply not be a matrix
+                // call, and saying "unknown matrix: -1" claims a line that belongs to
+                // the scalar path. The error is kept and only reported if nothing else
+                // can read the line either.
+                matrix_call_error = result.error();
+            } else {
             state_.scalars.erase("_");
             state_.matrices["_"] = *result;
             std::ostringstream out;
             out << "_ =\n";
             print_matrix(out, *result);
             return out.str();
+            }
         }
     }
 
@@ -22443,22 +22516,37 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (value) {
             return format_scalar(*value) + "\n";
         }
-        // A line that is unambiguously an expression -- it carries a top-level operator
-        // or is a call -- and failed to evaluate has a real diagnosis, and that is the
-        // useful thing to report: `1 / 0` said "could not parse: 1 / 0", which sends
-        // the reader looking for a typo that is not there.
+        // A bare word is the one line shape the REPL genuinely cannot classify. `load`
+        // is an incomplete command; `no_such_variable` is a name that does not exist;
+        // they are spelled identically. Reporting either as an unknown *scalar*
+        // asserts a category this code does not know -- the same defect as telling
+        // someone their matrix is an unknown scalar -- so a bare word keeps the parse
+        // error, which claims nothing.
         //
-        // A bare word is different, and the difference is that the REPL genuinely
-        // cannot tell which of two things it is. `load` is an incomplete command;
-        // `no_such_variable` is a name that does not exist; they are the same line
-        // shape. Reporting either as an unknown *scalar* asserts a category this code
-        // does not know -- the same defect as telling someone their matrix is an
-        // unknown scalar -- so a bare word keeps the parse error, which claims nothing.
-        if (contains_scalar_operator(cmd) || parse_scalar_call(cmd).has_value()) {
+        // Anything else is an expression, and its diagnosis is the useful thing to
+        // report. `1 / 0` used to say "could not parse: 1 / 0", which sends the reader
+        // looking for a typo that is not there, and `sqrt(-1)` used to say "unknown
+        // matrix: -1", which sends them looking for a variable.
+        //
+        // The test for that is `is_identifier`, not "does it contain an operator or
+        // parse as a call": `sqrt(-1)` is a call whose argument is a negative literal,
+        // which the call parser declines, so the narrower test let exactly the case
+        // this comment is about fall through.
+        // A different question from the one above. There, several readings competed and
+        // a decline meant "let another reading answer". Here nothing else could read
+        // the line at all, so the most specific thing available is what to say --
+        // including "'C' is a matrix, not a scalar", which is the whole answer for
+        // `C + D` and reads far better than "could not parse".
+        if (!is_identifier(cmd) && !scalar_error_says_nothing(value.error())) {
             return std::unexpected(value.error());
         }
     }
 
+    // A matrix-call reading of the line failed and nothing else could read it either,
+    // so that reading was the right one after all and its diagnosis is the useful one.
+    if (matrix_call_error) {
+        return std::unexpected(*matrix_call_error);
+    }
     return std::unexpected(DomainError{"repl", "could not parse: " + cmd});
 }
 

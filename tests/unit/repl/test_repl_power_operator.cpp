@@ -119,4 +119,49 @@ TEST(ReplPowerOperator, TheSymbolicParserAgrees) {
     expect_contains(interp, "sym_eval(\"-x^2\", \"x=2\")", "-4");
 }
 
+// A libm function given an argument outside its real domain reported a NaN, and a NaN
+// that reaches the display prints as a value: `sqrt(-1)` printed `-nan`. It is the
+// audits' own category, and `ms::sym2::evaluate` already declined the same arguments,
+// so the REPL and the symbolic core disagreed about one expression.
+//
+// It also made the golden transcript unportable, which is how it was found: glibc
+// spells it `-nan` and MSVC spells it `-nan(ind)`, so the corpus was pinning a libc
+// detail rather than anything about MathScript. Fixing the defect removed the platform
+// dependence; weakening the transcript would have kept both.
+TEST(ReplScalarDomain, AnArgumentOutsideTheDomainIsReported) {
+    Interpreter interp;
+    expect_error_contains(interp, "sqrt(-1)", "non-negative");
+    expect_error_contains(interp, "log(-1)", "positive");
+    expect_error_contains(interp, "log(0)", "positive");
+    expect_error_contains(interp, "log2(0)", "positive");
+    expect_error_contains(interp, "log10(0)", "positive");
+    expect_error_contains(interp, "asin(2)", "[-1, 1]");
+    expect_error_contains(interp, "acos(-2)", "[-1, 1]");
+    expect_error_contains(interp, "acosh(0.5)", "at least 1");
+    expect_error_contains(interp, "atanh(1)", "(-1, 1)");
+    expect_error_contains(interp, "log1p(-1)", "greater than -1");
+    // The message names the function, not the shape of the line. `sqrt(-1)` used to
+    // report "unknown matrix: -1", which sends the reader looking for a variable.
+    const auto reported = interp.execute("sqrt(-1)");
+    ASSERT_FALSE(reported.has_value());
+    const std::string text = ms::format_error(reported.error());
+    EXPECT_NE(text.find("sqrt"), std::string::npos) << text;
+    EXPECT_EQ(text.find("matrix"), std::string::npos) << text;
+}
+
+// The arguments that are in the domain still work, including the boundaries.
+TEST(ReplScalarDomain, TheDomainItselfIsUntouched) {
+    Interpreter interp;
+    EXPECT_NEAR(scalar(interp, "sqrt(0)"), 0.0, 1e-12);
+    EXPECT_NEAR(scalar(interp, "sqrt(4)"), 2.0, 1e-12);
+    EXPECT_NEAR(scalar(interp, "log(1)"), 0.0, 1e-12);
+    EXPECT_NEAR(scalar(interp, "asin(1)"), std::asin(1.0), 1e-12);
+    EXPECT_NEAR(scalar(interp, "acos(-1)"), std::acos(-1.0), 1e-12);
+    EXPECT_NEAR(scalar(interp, "acosh(1)"), 0.0, 1e-12);
+    EXPECT_NEAR(scalar(interp, "atanh(0)"), 0.0, 1e-12);
+    // And a matrix call over a name that does not exist still names a matrix, which is
+    // the competing reading this precedence had to keep intact.
+    expect_error_contains(interp, "det(Unknown)", "unknown matrix");
+}
+
 } // namespace

@@ -272,6 +272,39 @@ not `x`. `c88f0ef`'s message says `x` -- the guard it describes is correct and t
 name in the prose is not. `docs/API.md` now states the binding on the row a user
 reads.
 
+### What the corpus found on Windows
+
+The first CI run of the §8.3 transcripts failed the Windows job, and the cause was
+better than the symptom. `dispatch_errors.out` had recorded `-nan` twice, from
+`log(-1)` and `sqrt(-1)`. glibc spells it `-nan` and MSVC spells it `-nan(ind)`, so
+the transcript was pinning a libc detail rather than anything about MathScript.
+
+The weak fix would have been to drop the two lines. The defect underneath is one of
+the audits' own: **a NaN reaching the display is a marker that prints as a value.**
+`ms::sym2::evaluate` already declined both arguments, so the REPL and the symbolic
+core disagreed about the same expression. `check_scalar_domain` now reports for
+`sqrt`, `log`, `log2`, `log10`, `log1p`, `asin`, `acos`, `acosh` and `atanh`, in both
+of the REPL's scalar evaluators. Fixing it removed the platform dependence; deleting
+the lines would have kept both problems.
+
+Making the reports reachable took a second fix, and it is the more interesting one.
+`sqrt(-1)` reported **"unknown matrix: -1"**. The line has the shape `f(x)`, which is
+also the shape of a call on a matrix and of a matrix constructor, and three readings
+compete for it. Whichever fails last was reporting, so the useful diagnosis lost to
+one about a variable the user never mentioned. They are now ordered by how much each
+reading actually established:
+
+1. the scalar reading when it *diagnosed* the line rather than declining it,
+2. then a matrix call that got as far as dispatching and rejected its own arguments,
+3. then the outer failure to resolve an argument as a matrix name.
+
+Distinguishing a diagnosis from a decline is the whole of it, and it took three
+attempts to get right — each wrong version traded one misleading message for another.
+`invalid scalar expression`, `unknown scalar function: X` and `unknown scalar: X` all
+mean "not my kind of line"; `'C' is a matrix, not a scalar` means that too when
+another reading is available, and is the whole answer when none is. That last
+distinction is why the rule is two predicates rather than one.
+
 ### 8.1, the number the plan asked for
 
 Measured on an instrumented Debug build with `MS_BUILD_INTEGRATION=ON`, 336/336 CTest

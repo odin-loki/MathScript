@@ -18696,9 +18696,44 @@ Result<double> resolve_scalar_operand(const SessionState& state, const ScalarOpe
     return it->second;
 }
 
+/// Reports an argument outside a libm function's real domain, instead of letting the
+/// call return a NaN.
+///
+/// `sqrt(-1)` printed `-nan` and `log(-1)` printed `-nan`. That is the audits' own
+/// category -- a marker that reads as a value -- and `ms::sym2::evaluate` already
+/// declines both, so the REPL and the symbolic core disagreed about the same
+/// expression. It also made the golden transcript unportable: glibc spells it `-nan`
+/// and MSVC spells it `-nan(ind)`, so the corpus was pinning a libc detail rather than
+/// anything about MathScript.
+///
+/// Only the functions whose domain is a real restriction are listed. `exp` overflowing
+/// to infinity is not a domain error, and `0.0/0.0` is division's business.
+Result<void> check_scalar_domain(std::string_view fn, double arg) {
+    const auto out_of_domain = [&fn](const char* requirement) {
+        return std::unexpected(DomainError{std::string(fn), requirement});
+    };
+    if (iequals(fn, "sqrt")) {
+        if (arg < 0.0) return out_of_domain("expected a non-negative argument");
+    } else if (iequals(fn, "log") || iequals(fn, "log2") || iequals(fn, "log10")) {
+        if (arg <= 0.0) return out_of_domain("expected a positive argument");
+    } else if (iequals(fn, "log1p")) {
+        if (arg <= -1.0) return out_of_domain("expected an argument greater than -1");
+    } else if (iequals(fn, "asin") || iequals(fn, "acos")) {
+        if (arg < -1.0 || arg > 1.0) return out_of_domain("expected an argument in [-1, 1]");
+    } else if (iequals(fn, "acosh")) {
+        if (arg < 1.0) return out_of_domain("expected an argument of at least 1");
+    } else if (iequals(fn, "atanh")) {
+        if (arg <= -1.0 || arg >= 1.0) return out_of_domain("expected an argument in (-1, 1)");
+    }
+    return {};
+}
+
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args) {
     if (args.size() == 1) {
         const double arg = args[0];
+        if (auto domain = check_scalar_domain(fn_name, arg); !domain) {
+            return std::unexpected(domain.error());
+        }
         if (iequals(fn_name, "sin")) {
             return std::sin(arg);
         }
