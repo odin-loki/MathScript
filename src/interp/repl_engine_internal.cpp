@@ -14263,9 +14263,20 @@ Result<Matrix<double>> eval_bzip2_decompress_vec(const Matrix<double>& c_m) {
         return std::unexpected(
             DomainError{"bzip2_decompress_vec", "expected at least 4-byte compressed vector"});
     }
-    const int pi = (static_cast<int>(bytes[0]) << 24) | (static_cast<int>(bytes[1]) << 16) |
-                   (static_cast<int>(bytes[2]) << 8) | static_cast<int>(bytes[3]);
-    return bytes_to_matrix_col(compress::bzip2_like_decompress(bytes, pi));
+    const compress::Bytes decompressed = compress::bzip2_like_decompress(bytes);
+    // An empty result means one of two things, and the user needs to be told which.
+    // Compressing nothing produces a specific short stream, and that is the only input
+    // for which nothing is the answer; every other empty result is the decompressor
+    // saying it could not read what it was given. Returning a 0x0 matrix for both would
+    // hand back an answer to a question that was never understood -- and before the
+    // bounds fix underneath this, `bzip2_decompress_vec(ones(2, 2))` did not return at
+    // all: it ended the process inside `ibwt`.
+    if (decompressed.empty() && bytes != compress::bzip2_like_compress({})) {
+        return std::unexpected(DomainError{
+            "bzip2_decompress_vec",
+            "input is not a stream produced by bzip2_compress_vec"});
+    }
+    return bytes_to_matrix_col(decompressed);
 }
 
 Result<Matrix<double>> eval_control_place(const Matrix<double>& A_m,

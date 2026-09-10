@@ -590,7 +590,7 @@ TEST(CompressBzip2Like, Roundtrip) {
     std::string s="abracadabra";
     for (char c:s) data.push_back((uint8_t)c);
     auto compressed=bzip2_like_compress(data);
-    auto recovered=bzip2_like_decompress(compressed,0);
+    auto recovered=bzip2_like_decompress(compressed);
     EXPECT_EQ(recovered, data);
 }
 
@@ -601,7 +601,48 @@ TEST(CompressBzip2Like, PrimaryIndexHeader) {
     int pi=(compressed[0]<<24)|(compressed[1]<<16)|(compressed[2]<<8)|compressed[3];
     EXPECT_GE(pi, 0);
     EXPECT_LT(pi, (int)data.size()+1);
-    EXPECT_EQ(bzip2_like_decompress(compressed, pi), data);
+    EXPECT_EQ(bzip2_like_decompress(compressed), data);
+}
+
+// A stream nobody produced. Four bytes of 0x01 is a legal-looking header naming
+// rotation 16843009 of a body that has no rotations at all, and it reached
+// `out.reserve(m - 1)` in `ibwt` with m = 0 -- reserve(SIZE_MAX), which ends the
+// process. `bzip2_decompress_vec(ones(2, 2))` in the REPL is exactly these four bytes,
+// so an ordinary typo aborted the interpreter.
+//
+// The property asserted is that the function RETURNS. That reads as a weak assertion
+// and is the whole point: the defect was that it did not.
+TEST(CompressBzip2Like, RefusesAStreamItDidNotProduce) {
+    EXPECT_TRUE(bzip2_like_decompress(Bytes{1, 1, 1, 1}).empty());
+    EXPECT_TRUE(bzip2_like_decompress(Bytes{0xFF, 0xFF, 0xFF, 0xFF}).empty());
+    EXPECT_TRUE(bzip2_like_decompress(Bytes{0, 0, 0, 0}).empty());
+    // A real stream with its header replaced: the body is a BWT, but the index names
+    // no rotation of it, so there is nothing to invert.
+    Bytes compressed = bzip2_like_compress(Bytes{'a', 'b', 'r', 'a', 'c'});
+    ASSERT_GE(compressed.size(), 4u);
+    compressed[0] = 0x7F;
+    EXPECT_TRUE(bzip2_like_decompress(compressed).empty());
+}
+
+// `ibwt` indexes `Fs` and `T_inv` with the primary index directly, so one outside
+// [0, size) is an out-of-bounds read rather than a wrong answer -- and it arrives from
+// a stream header, which is to say from someone else's data.
+TEST(CompressBWT, IbwtRefusesAnIndexThatNamesNoRotation) {
+    Bytes data = {'b', 'a', 'n', 'a', 'n', 'a'};
+    BWTResult good = bwt(data);
+    ASSERT_EQ(ibwt(good), data);
+
+    BWTResult past_end = good;
+    past_end.primary_index = static_cast<int>(good.data.size());
+    EXPECT_TRUE(ibwt(past_end).empty());
+
+    BWTResult negative = good;
+    negative.primary_index = -1;
+    EXPECT_TRUE(ibwt(negative).empty());
+
+    BWTResult empty_body;
+    empty_body.primary_index = 0;
+    EXPECT_TRUE(ibwt(empty_body).empty());
 }
 
 // ---- Haar Wavelet (lossy) ----
@@ -860,13 +901,13 @@ TEST(CompressGolombRice, TruncatedStreamReturnsEmpty) {
 TEST(CompressBzip2Like, EmptyAndShortHeader) {
     Bytes empty;
     auto compressed = bzip2_like_compress(empty);
-    auto recovered = bzip2_like_decompress(compressed, 0);
+    auto recovered = bzip2_like_decompress(compressed);
     if (recovered != empty) {
         GTEST_SKIP() << "bzip2-like empty roundtrip mismatch";
     }
     EXPECT_EQ(recovered, empty);
     Bytes short_hdr = {0x00, 0x01};
-    EXPECT_TRUE(bzip2_like_decompress(short_hdr, 0).empty());
+    EXPECT_TRUE(bzip2_like_decompress(short_hdr).empty());
 }
 
 TEST(CompressRLE, OddLengthDecodeDropsTrailing) {

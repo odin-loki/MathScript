@@ -558,6 +558,19 @@ BWTResult bwt(const Bytes& data) {
 Bytes ibwt(const BWTResult& res) {
     const Bytes& L = res.data;
     int m = (int)L.size();  // n+1 (includes sentinel row)
+    // Neither of these is a wrong answer waiting to happen; both are memory safety.
+    //
+    // `bwt` always emits the sentinel row, so a genuine BWT is never empty. An empty
+    // one reached `out.reserve(m - 1)` with m = 0, and reserve(SIZE_MAX) throws
+    // std::length_error -- which, in a library built without exceptions, ends the
+    // process. `bzip2_like_decompress` fed it exactly that from a four-byte input.
+    //
+    // The primary index names one of the m rotations. Outside [0, m) it names nothing,
+    // and the loop below indexes `Fs` and `T_inv` with it directly, so an out-of-range
+    // value is an out-of-bounds read rather than a bad result. It arrives from a
+    // stream's own header, which is to say from the caller's data.
+    if (m <= 0) return {};
+    if (res.primary_index < 0 || res.primary_index >= m) return {};
     // Sorted L = F column
     Bytes Fs = L;
     std::sort(Fs.begin(), Fs.end());
@@ -583,7 +596,7 @@ Bytes ibwt(const BWTResult& res) {
     for (int i = 0; i < m; i++) T_inv[T[i]] = i;
 
     Bytes out;
-    out.reserve(m - 1);
+    out.reserve(static_cast<size_t>(m - 1));
     int r = res.primary_index;
     for (int i = 0; i < m; i++) {
         if (Fs[r] != 0) out.push_back(Fs[r]);  // skip sentinel character
@@ -746,12 +759,18 @@ Bytes bzip2_like_compress(const Bytes& data) {
     out.insert(out.end(),rle.begin(),rle.end());
     return out;
 }
-Bytes bzip2_like_decompress(const Bytes& data, int) {
+Bytes bzip2_like_decompress(const Bytes& data) {
     if (data.size()<4) return {};
     int pi=(data[0]<<24)|(data[1]<<16)|(data[2]<<8)|data[3];
     Bytes rle(data.begin()+4,data.end());
     auto mtf=rle_decode(rle);
     auto bwt_data=mtf_decode(mtf);
+    // The header is the caller's data, so `pi` is arbitrary until this says otherwise.
+    // `ibwt` refuses an index that names no rotation, but refusing it here is what lets
+    // the difference between "this stream decodes to nothing" and "this is not one of
+    // our streams" survive: only the empty-input encoding reaches ibwt with an empty
+    // BWT and a legal index.
+    if (bwt_data.empty() || pi < 0 || pi >= static_cast<int>(bwt_data.size())) return {};
     return ibwt({bwt_data,pi});
 }
 

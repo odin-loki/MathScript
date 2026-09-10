@@ -98,7 +98,16 @@ std::vector<uint32_t> golomb_rice_decode(const Bytes& encoded, int m_bits, size_
 // ========================== Combined pipelines ==========================
 // BWT + MTF + RLE (like bzip2 core)
 Bytes bzip2_like_compress(const Bytes& data);
-Bytes bzip2_like_decompress(const Bytes& data, int bwt_primary);
+/// The primary index is carried in the stream's own four-byte header, so it is not a
+/// parameter. It used to be one and was ignored: every caller computed it from the same
+/// header the function reads for itself, and the argument was dropped on the floor. A
+/// parameter that is accepted and ignored lets a caller pass the wrong value and still
+/// get the right answer, which is the same as letting it pass the right value and get
+/// the wrong one -- neither the caller nor a test can tell which is happening.
+///
+/// Returns an empty result for anything that is not a stream `bzip2_like_compress`
+/// produced, including one whose header names a rotation the data does not have.
+Bytes bzip2_like_decompress(const Bytes& data);
 
 // ========================== Haar Wavelet (lossy) ==========================
 /// Single-level Haar Discrete Wavelet Transform compressor with hard
