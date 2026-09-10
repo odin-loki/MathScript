@@ -76,8 +76,33 @@ fi
 #             hides nothing about whether the data is current.
 LCOV_IGNORE="unused,mismatch"
 
+# lcov 2.x renamed the branch-coverage RC option from lcov_branch_coverage to
+# branch_coverage. It still accepts the old name, warns that it is deprecated --
+# and then collects no branch data at all, so every run reported
+#
+#   branches...: no data found
+#
+# while this script's own header claimed branch coverage was being measured. The
+# gate below is honest about it (a requested MS_COVERAGE_BRANCH_MIN fails as "not
+# measured" rather than passing vacuously), so nothing was silently green; the
+# measurement simply never happened, and the branch gate was unusable by anyone who
+# tried to set it.
+#
+# It matters here more than it would elsewhere. This tree's largest files are
+# dispatch chains, and a dispatch chain reaches high line coverage with one branch
+# of each test taken: measured properly, branch coverage is 33 points below line
+# coverage.
+#
+# Both names are kept because lcov 1.x does not know the new one.
+LCOV_MAJOR="$(lcov --version 2>/dev/null | sed -n 's/.*LCOV version \([0-9]*\).*/\1/p')"
+if [[ "${LCOV_MAJOR:-1}" -ge 2 ]]; then
+    BRANCH_RC="branch_coverage=1"
+else
+    BRANCH_RC="lcov_branch_coverage=1"
+fi
+
 lcov --quiet --capture --directory "${BUILD_DIR}" --output-file "${INFO_RAW}" \
-    --rc lcov_branch_coverage=1 --ignore-errors "${LCOV_IGNORE}"
+    --rc "${BRANCH_RC}" --ignore-errors "${LCOV_IGNORE}"
 
 lines_in() {
     lcov --summary "$1" 2>/dev/null \
@@ -86,8 +111,10 @@ lines_in() {
 
 RAW_LINES="$(lines_in "${INFO_RAW}")"
 
+# The RC has to be repeated here: without it --remove writes an output file with
+# the branch records dropped, so the exclusions would silently undo the capture.
 lcov --quiet --remove "${INFO_RAW}" "${EXCLUDE_GLOBS[@]}" \
-    --ignore-errors "${LCOV_IGNORE}" \
+    --rc "${BRANCH_RC}" --ignore-errors "${LCOV_IGNORE}" \
     --output-file "${INFO}"
 
 KEPT_LINES="$(lines_in "${INFO}")"
@@ -102,10 +129,10 @@ fi
 echo
 
 echo "=== Coverage summary ==="
-lcov --rc lcov_branch_coverage=1 --summary "${INFO}" 2>&1 \
+lcov --rc "${BRANCH_RC}" --summary "${INFO}" 2>&1 \
     | tee "${BUILD_DIR}/coverage-summary.txt"
 
-SUMMARY="$(lcov --rc lcov_branch_coverage=1 --summary "${INFO}" 2>&1)"
+SUMMARY="$(lcov --rc "${BRANCH_RC}" --summary "${INFO}" 2>&1)"
 
 pct_of() {
     echo "${SUMMARY}" | sed -n "s/.*$1\.*: *\([0-9.]*\)%.*/\1/p" | head -1

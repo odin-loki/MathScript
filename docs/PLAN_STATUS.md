@@ -185,7 +185,7 @@ strongest evidence available that the parser is reading the guards correctly.
 
 | Item | Status | Note |
 |---|---|---|
-| 8.1 Baseline on real hardware | Open | needs an instrumented run over the corrected denominator |
+| 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% branches |
 | 8.2 `src/plugin` tests | Open | 1,189 LOC, zero tests |
 | 8.3 REPL golden corpus | Open | |
 | 8.4 Mutation testing | Open | |
@@ -194,6 +194,47 @@ strongest evidence available that the parser is reading the guards correctly.
 | 8.7 Remaining gaps | Open | |
 | 8.8 Group 573 integration targets | Done | 573 executables → 31 |
 | 8.9 Lock it in | Partial | four source-only gates in CI; the coverage ratchet is not built |
+
+### 8.1, the number the plan asked for
+
+Measured on an instrumented Debug build with `MS_BUILD_INTEGRATION=ON`, 336/336 CTest
+suites passing, over the denominator declared in `coverage_exclusions.txt`:
+
+| | Measured |
+|---|---|
+| Lines | **91.2%** (76,687 of 84,077) |
+| Functions | **98.3%** (5,492 of 5,588) |
+| Branches | **57.3%** (82,082 of 143,192) |
+
+The exclusions hide 7,698 of 91,775 instrumented lines — 8% — and the run prints that
+figure, because a list nobody sees is a list that grows. What remains excluded is
+`/usr/*`, `vendor/`, GoogleTest, the tests themselves, `src/cuda` and `src/gui`; in
+this configuration three of those patterns matched nothing at all, which the run
+reports rather than passing over in silence.
+
+The plan said to expect the line figure to fall as the exclusions came off. It barely
+moved — 92.0% to 91.2% — despite a substantially larger denominator. The likely
+reason is that the 1,377 generated dispatch tests of §3.3 landed on the same branch
+and exercise precisely the `matrix_calls` code the old exclusions removed. That is an
+explanation rather than a measurement: the two changes were not isolated from each
+other. What is measured is that `matrix_calls` handlers dominate the lowest-coverage
+entries in `coverage-ranked.txt`, so the newly-included code is still the weakest in
+the tree.
+
+**The branch figure is the one that matters, and it had never been measured.**
+`coverage_report.sh` asked lcov for branch data under `lcov_branch_coverage`; lcov 2.x
+renamed that to `branch_coverage`, still accepts the old name, still warns that it is
+deprecated, and then collects nothing. Every run reported `branches...: no data found`
+while the script's own header claimed branch coverage was being measured. Nothing was
+silently green — a requested `MS_COVERAGE_BRANCH_MIN` fails as "not measured" rather
+than passing vacuously — but the measurement never happened and the branch gate was
+unusable by anyone who set it.
+
+That header comment was right about why it mattered: this tree's largest files are
+dispatch chains, and a dispatch chain reaches high line coverage with one branch of
+each test taken. 91.2% line coverage against 57.3% branch coverage is that prediction
+confirmed. **The line figure means considerably less on this codebase than it sounds
+like.**
 
 ### 8.8, and the collision it exposed
 

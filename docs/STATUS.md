@@ -1,6 +1,6 @@
 # Status
 
-**Generated** by `scripts/gen_status.py` at 2026-09-10 00:05 UTC from commit `60a9674`.
+**Generated** by `scripts/gen_status.py` at 2026-09-10 02:04 UTC from commit `84071bb`.
 Do not edit by hand; run the script.
 
 Every figure here is read from a build artefact. Anything the script could not
@@ -12,8 +12,8 @@ published claims were checkable in five minutes and wrong.
 
 | | |
 |---|---|
-| CTest suites | 875 |
-| Source lines (`src` + `include`, excluding vendor) | 151,124 |
+| CTest suites | 336 |
+| Source lines (`src` + `include`, excluding vendor) | 153,290 |
 
 ## Coverage
 
@@ -23,9 +23,9 @@ prints how many lines they hid.
 
 | | Measured | CI gate |
 |---|---|---|
-| Lines | not measured | 80% |
-| Functions | not measured | not measured |
-| Branches | not measured | not measured |
+| Lines | 91.2% | 80% |
+| Functions | 98.3% | not measured |
+| Branches | 57.3% | not measured |
 
 The gate and the measurement are separate columns on purpose. The README once
 claimed CI enforced 90% while `ci.yml` set 80%, and nothing reconciled them.

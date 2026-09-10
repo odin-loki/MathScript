@@ -13,17 +13,47 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
    Test *names* are now checked for uniqueness within each executable (`scripts/check_test_names.py`) because
    71 pairs collided during the grouping and 29 of them had different bodies: without that check the count
    would have stayed put while the tests silently stopped running.
-3. **Coverage** — CI gate **80%** (`coverage-linux`). **The previously published 92.0% line / 97.9% function
-   figures are withdrawn.** They were measured over a denominator that excluded 37,738 lines — 25% of `src/` —
-   because `scripts/coverage_exclusions.txt` was not present in this tree, so the exclusions were open-ended
-   rather than limited to paths that cannot execute on a CI runner. The number covered 75% of the repository
-   and was reported as if it covered all of it.
+3. **Coverage** — CI gate **80%** (`coverage-linux`). Measured over the corrected denominator:
+   **91.2% lines** (76,687 of 84,077) and **98.3% functions** (5,492 of 5,588), on an instrumented Debug build
+   with `MS_BUILD_INTEGRATION=ON`, 336/336 CTest suites passing. The **90%** tag goal is met.
 
-   `scripts/coverage_report.sh` now measures against the declared exclusion list and prints how many lines it
-   hid. **The honest figure has not yet been measured**, and until an instrumented run over the corrected
-   denominator completes, this criterion is open and the 90% tag goal is not claimed. Expect the number to fall;
-   that is the exclusions coming off. `docs/STATUS.md` is generated from the artefacts and writes
-   "not measured" rather than carrying a stale value forward.
+   **The previously published 92.0% line / 97.9% function figures are withdrawn**, and the new number is not a
+   correction of them so much as a different measurement. They were taken over a denominator that excluded
+   `matrix_calls`, `plugin` and `ms_bundle` — about a quarter of `src/` — because
+   `scripts/coverage_exclusions.txt` was not present in this tree and the exclusions were open-ended rather than
+   limited to paths that cannot execute on a CI runner. That number covered 75% of the repository and was
+   reported as if it covered all of it.
+
+   The exclusions now hide **7,698 of 91,775 instrumented lines (8%)**, and `coverage_report.sh` prints that
+   figure on every run, because a list nobody sees is a list that grows. What remains excluded is `/usr/*`,
+   `vendor/`, GoogleTest, the tests themselves, `src/cuda` and `src/gui` — and in this configuration three of
+   those patterns matched nothing at all, which the run reports rather than passing over.
+
+   Two honest caveats. The figure barely moved despite a substantially larger denominator, which is not what
+   was predicted; the likely reason is that the 1,377 generated dispatch tests on this branch exercise the
+   `matrix_calls` code the old exclusions removed. That is an explanation, not a measurement — the two changes
+   landed together and were not isolated from each other. What *is* measured is that `matrix_calls` handlers
+   dominate the lowest-coverage entries in `build-cov/coverage-ranked.txt`, so the newly-included code remains
+   the weakest in the tree. The old figure's denominator was never recorded in comparable units, so no ratio
+   between the two numbers is quoted here.
+
+   Branch coverage is measured separately — see criterion 3a, and read it before quoting the 91.2%.
+3a. **Branch coverage** — **57.3%** (82,082 of 143,192 branches), over the same corrected denominator.
+   No CI gate is set for it yet.
+
+   This is 34 points below line coverage, and it had never been measured. `coverage_report.sh` asked lcov for
+   branch data under `lcov_branch_coverage`, which lcov 2.x renamed to `branch_coverage`; the old name is still
+   accepted, still warns that it is deprecated, and then collects nothing — so every run reported
+   `branches...: no data found` while the script's header claimed branch coverage was being measured. The gate
+   itself was honest (a requested `MS_COVERAGE_BRANCH_MIN` fails as "not measured" rather than passing
+   vacuously), so nothing was ever silently green; the measurement simply never happened, and the branch gate
+   was unusable by anyone who tried to set it.
+
+   The gap is the point rather than an embarrassment. This tree's largest files are dispatch chains, and a
+   dispatch chain reaches high line coverage with one branch of each test taken — which is exactly what the
+   script's own header comment predicted and what nothing was able to confirm. **91.2% line coverage on this
+   codebase means considerably less than it sounds like**, and 57.3% is the number that says where the work is.
+
 4. **ASan + UBSan** clean (`sanitizer-linux`; overflows and UB fail the job). Leak detection stays off (`detect_leaks=0`) for process-exit pool/AD graphs. Last local run: **300/300 passing with zero sanitizer reports** — the sanitizer tree is configured `MS_BUILD_INTEGRATION=OFF`, so it carries the unit suites only, not the full catalogue. Full **873** suites run on `build-test-linux` and `build-test-windows`.
 5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`). Last local run: real libFuzzer under Clang 18, 7 targets × 10 min seeded from the checked-in corpora = **353 193 095 executions, zero crashes**. The corpus-replay harness (7 targets × 5 seeds × 200 000 mutations = 7 000 000 inputs) is also clean, and the corpora are replayed on every build by the `replay_fuzz_*` CTest suites, so a regression is caught even where no libFuzzer runtime is installed.
 
