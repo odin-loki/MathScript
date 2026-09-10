@@ -13,9 +13,11 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <vector>
 
 #include "ms/combo/combo.hpp"
+#include "ms/error/error_types.hpp"
 #include "ms/interp/repl_engine.hpp"
 #include "ms/numthy/numthy.hpp"
 #include "ms/quantum/quantum.hpp"
@@ -92,11 +94,17 @@ TEST(ReplResourceGuards, CountingFunctionsReportOverflowInsteadOfWrapping) {
     EXPECT_EQ(stirling2(4, 2), 7u);
     EXPECT_EQ(stirling1(4, 2), 11u);
 
-    // And the REPL forms return rather than hanging.
+    // And the REPL forms return rather than hanging. They used to return the sentinel
+    // itself, printed as 18446744073709551615; now they say what it means. Either way
+    // the point of this assertion is that the call comes back at all.
     Interpreter interp;
     for (const char* cmd : {"combo_bell(3000000000)", "combo_bell_num(1e18)",
                             "combo_motzkin(3000000000)", "combo_subfactorial(1e18)"}) {
-        EXPECT_TRUE(interp.execute(cmd).has_value()) << cmd;
+        const auto result = interp.execute(cmd);
+        ASSERT_FALSE(result.has_value()) << cmd;
+        const std::string message = ms::format_error(result.error());
+        EXPECT_NE(message.find("does not fit in 64 bits"), std::string::npos)
+            << cmd << " error: " << message;
     }
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/distributed/dist_matrix.hpp"
+#include "ms/core/format.hpp"
 #include <functional>
 #include "ms/distributed/iterative.hpp"
 #include "ms/distributed/matmul.hpp"
@@ -4405,7 +4406,12 @@ Result<double> eval_combo_multinomial(double n_d, const Matrix<double>& ks_m) {
         }
         ks.push_back(static_cast<uint32_t>(k));
     }
-    return static_cast<double>(combo::multinomial(static_cast<uint32_t>(n_d), ks));
+    const uint64_t count = combo::multinomial(static_cast<uint32_t>(n_d), ks);
+    if (count == UINT64_MAX) {
+        return std::unexpected(
+            DomainError{"combo_multinomial", "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(count);
 }
 
 Result<Matrix<double>> eval_numthy_factor_vec(int n) {
@@ -4992,7 +4998,12 @@ Result<double> eval_combo_rank_permutation(const Matrix<double>& v_m) {
         }
         v.push_back(static_cast<int>(entry));
     }
-    return static_cast<double>(combo::rank_permutation(v));
+    const uint64_t rank = combo::rank_permutation(v);
+    if (rank == UINT64_MAX) {
+        return std::unexpected(
+            DomainError{"combo_rank_permutation", "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(rank);
 }
 
 Result<Matrix<double>> eval_combo_unrank_permutation(int n, uint64_t rank) {
@@ -5001,6 +5012,10 @@ Result<Matrix<double>> eval_combo_unrank_permutation(int n, uint64_t rank) {
             DomainError{"combo_unrank_permutation", "expected non-negative integer n"});
     }
     const auto v = combo::unrank_permutation(n, rank);
+    if (v.empty() && n != 0) {
+        return std::unexpected(
+            DomainError{"combo_unrank_permutation", "no permutation with that rank"});
+    }
     Matrix<double> out(v.size(), 1);
     for (size_t i = 0; i < v.size(); ++i) {
         out(i, 0) = static_cast<double>(v[i]);
@@ -5100,7 +5115,12 @@ Result<double> eval_combo_rank_combination(const Matrix<double>& v_m, int n) {
         return std::unexpected(
             DomainError{"combo_rank_combination", "expected non-negative integer n"});
     }
-    return static_cast<double>(combo::rank_combination(v, n));
+    const uint64_t rank = combo::rank_combination(v, n);
+    if (rank == UINT64_MAX) {
+        return std::unexpected(
+            DomainError{"combo_rank_combination", "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(rank);
 }
 
 Result<Matrix<double>> eval_lz77_encode_vec(const Matrix<double>& m, int window = 255,
@@ -5191,6 +5211,10 @@ Result<Matrix<double>> eval_combo_unrank_combination(int n, int k, uint64_t rank
             DomainError{"combo_unrank_combination", "expected non-negative integer n and k"});
     }
     const auto v = combo::unrank_combination(n, k, rank);
+    if (v.empty() && k != 0) {
+        return std::unexpected(
+            DomainError{"combo_unrank_combination", "no combination with that rank"});
+    }
     Matrix<double> out(v.size(), 1);
     for (size_t i = 0; i < v.size(); ++i) {
         out(i, 0) = static_cast<double>(v[i]);
@@ -6903,8 +6927,8 @@ Result<size_t> checked_index(const char* fn, const char* what, double value, siz
     const auto index = static_cast<size_t>(value);
     if (index >= bound) {
         return std::unexpected(DomainError{
-            fn, std::string(what) + " " + std::to_string(index) + " is out of range (matrix has " +
-                    std::to_string(bound) + ")"});
+            fn, std::string(what) + " " + format_scalar(index) + " is out of range (matrix has " +
+                    format_scalar(bound) + ")"});
     }
     return index;
 }
@@ -6981,8 +7005,8 @@ Result<Matrix<double>> eval_mat_reshape(const Matrix<double>& A, double rows, do
     // overflow; the check below is the honest shape mismatch, not a guard.
     if (*r * *c != total) {
         return std::unexpected(DomainError{
-            "mat_reshape", "element count " + std::to_string(total) + " does not fit " +
-                               std::to_string(*r) + "x" + std::to_string(*c)});
+            "mat_reshape", "element count " + format_scalar(total) + " does not fit " +
+                               format_scalar(*r) + "x" + format_scalar(*c)});
     }
     Matrix<double> out(*r, *c);
     for (size_t k = 0; k < total; ++k) {
@@ -7012,8 +7036,8 @@ Result<Matrix<double>> eval_mat_submatrix(const Matrix<double>& A, double r0, do
     if (*nr > A.rows() || *row0 > A.rows() - *nr || *nc > A.cols() ||
         *col0 > A.cols() - *nc) {
         return std::unexpected(DomainError{
-            "mat_submatrix", "block runs past the end of a " + std::to_string(A.rows()) + "x" +
-                                 std::to_string(A.cols()) + " matrix"});
+            "mat_submatrix", "block runs past the end of a " + format_scalar(A.rows()) + "x" +
+                                 format_scalar(A.cols()) + " matrix"});
     }
     Matrix<double> out(*nr, *nc);
     for (size_t i = 0; i < *nr; ++i) {
@@ -9747,7 +9771,7 @@ Result<std::string> eval_cplx_cauchy_principal_value_call(const std::string& for
     cplx::RealFunc f = [expr_ptr](double x) {
         return sym_eval(*expr_ptr, {{"x", x}});
     };
-    return std::to_string(
+    return format_scalar(
                cplx::cauchy_principal_value(f, a, c, b, n_pts_i)) +
            "\n";
 }
@@ -15238,7 +15262,7 @@ Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std
     if (!parse_number(value_text, value)) {
         return std::unexpected(DomainError{"sym_eval", "expected numeric value in var=value binding"});
     }
-    return std::to_string(sym_eval(*expr, {{var, value}})) + "\n";
+    return format_scalar(sym_eval(*expr, {{var, value}})) + "\n";
 }
 
 Result<std::string> eval_sym_expand_string(const std::string& expr_arg) {
@@ -15332,7 +15356,7 @@ Result<std::string> eval_sym_limit_strings(const std::string& expr_arg, const st
         return std::unexpected(DomainError{
             "sym_limit", "limit does not exist or could not be determined numerically"});
     }
-    return std::to_string(value) + "\n";
+    return format_scalar(value) + "\n";
 }
 
 Result<std::string> eval_sym_series_strings(const std::string& expr_arg, const std::string& var_arg,
@@ -15794,7 +15818,7 @@ Result<std::vector<double>> parse_bracket_vector_literal(const std::string& text
 std::map<std::string, double> build_optim_env(const std::vector<double>& x) {
     std::map<std::string, double> env;
     for (size_t i = 0; i < x.size(); ++i) {
-        env["x" + std::to_string(i)] = x[i];
+        env["x" + format_scalar(i)] = x[i];
     }
     return env;
 }
@@ -16538,7 +16562,7 @@ std::map<std::string, double> build_vec_ode_env(double t, const std::vector<doub
     std::map<std::string, double> env;
     env["t"] = t;
     for (size_t i = 0; i < y.size(); ++i) {
-        env["y" + std::to_string(i)] = y[i];
+        env["y" + format_scalar(i)] = y[i];
     }
     return env;
 }
@@ -16547,7 +16571,7 @@ std::map<std::string, double> build_vec_accel_env(double t, const std::vector<do
     std::map<std::string, double> env;
     env["t"] = t;
     for (size_t i = 0; i < q.size(); ++i) {
-        env["q" + std::to_string(i)] = q[i];
+        env["q" + format_scalar(i)] = q[i];
     }
     return env;
 }
@@ -16859,7 +16883,7 @@ std::map<std::string, double> build_dae_env(double t, const std::vector<double>&
                                             const std::vector<double>& z) {
     auto env = build_vec_ode_env(t, y);
     for (size_t i = 0; i < z.size(); ++i) {
-        env["z" + std::to_string(i)] = z[i];
+        env["z" + format_scalar(i)] = z[i];
     }
     return env;
 }

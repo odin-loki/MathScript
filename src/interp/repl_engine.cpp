@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/distributed/dist_matrix.hpp"
+#include "ms/core/format.hpp"
 #include <functional>
 #include "ms/distributed/iterative.hpp"
 #include "ms/distributed/matmul.hpp"
@@ -82,6 +83,34 @@
 
 namespace ms::interp {
 using namespace detail;
+
+namespace {
+
+// The counting routines in src/combo signal "this does not fit in 64 bits" by
+// returning UINT64_MAX -- factorial past n = 20, Bell past 25, Motzkin past 45, and
+// so on. Their headers document it as an overflow sentinel, but the REPL used to hand
+// the number straight to the user: combo_factorial(25) printed
+// 18446744073709551615 where 25! is about 1.55e25. That reads as an answer.
+//
+// Same shape as the symbolic no-closed-form sentinel: a marker that means "no result"
+// and looks exactly like a result once it reaches the surface.
+constexpr std::uint64_t kComboOverflow = UINT64_MAX;
+
+Result<double> combo_count_value(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(DomainError{fn, "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(count);
+}
+
+Result<std::string> combo_count_text(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(DomainError{fn, "result does not fit in 64 bits"});
+    }
+    return format_scalar(count) + "\n";
+}
+
+} // namespace
 
 // Wave 256: unary matrix display tail (MSVC C1061).
 static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
@@ -256,7 +285,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bloom_check) {
             return std::unexpected(bloom_check.error());
         }
-        return std::to_string(bloom->bit_count()) + "\n";
+        return format_scalar(bloom->bit_count()) + "\n";
     }
 
     if (fn == "bloom_hash_count") {
@@ -274,7 +303,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bloom_check) {
             return std::unexpected(bloom_check.error());
         }
-        return std::to_string(bloom->hash_count()) + "\n";
+        return format_scalar(bloom->hash_count()) + "\n";
     }
 
     if (fn == "tokenbucket_new") {
@@ -348,7 +377,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!parse_number(trim_copy(call_args->at(1)), now_seconds)) {
             return std::unexpected(DomainError{fn, "expected numeric now_seconds"});
         }
-        return std::to_string(bucket->available_tokens(now_seconds)) + "\n";
+        return format_scalar(bucket->available_tokens(now_seconds)) + "\n";
     }
 
     if (fn == "tokenbucket_capacity") {
@@ -366,7 +395,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bucket_check) {
             return std::unexpected(bucket_check.error());
         }
-        return std::to_string(bucket->capacity()) + "\n";
+        return format_scalar(bucket->capacity()) + "\n";
     }
 
     if (fn == "tokenbucket_refill_rate") {
@@ -384,7 +413,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bucket_check) {
             return std::unexpected(bucket_check.error());
         }
-        return std::to_string(bucket->refill_rate_per_sec()) + "\n";
+        return format_scalar(bucket->refill_rate_per_sec()) + "\n";
     }
 
     if (fn == "cellmemory_input_dim") {
@@ -402,7 +431,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!memory_check) {
             return std::unexpected(memory_check.error());
         }
-        return std::to_string(memory->input_dim()) + "\n";
+        return format_scalar(memory->input_dim()) + "\n";
     }
 
     if (fn == "cellmemory_memory_dim") {
@@ -420,7 +449,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!memory_check) {
             return std::unexpected(memory_check.error());
         }
-        return std::to_string(memory->memory_dim()) + "\n";
+        return format_scalar(memory->memory_dim()) + "\n";
     }
 
     if (fn == "cellmemory_time_scales") {
@@ -787,7 +816,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!result) {
             return std::unexpected(result.error());
         }
-        return std::to_string(*result) + "\n";
+        return format_scalar(*result) + "\n";
     }
 
     if (fn == "difmodel_gh_gate") {
@@ -855,7 +884,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!cluster_check) {
             return std::unexpected(cluster_check.error());
         }
-        return std::to_string(cluster->run_election()) + "\n";
+        return format_scalar(cluster->run_election()) + "\n";
     }
 
     if (fn == "cluster_replicate") {
@@ -902,7 +931,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!cluster_check) {
             return std::unexpected(cluster_check.error());
         }
-        return std::to_string(cluster->current_leader()) + "\n";
+        return format_scalar(cluster->current_leader()) + "\n";
     }
 
     if (fn == "cluster_status") {
@@ -1773,7 +1802,7 @@ bool Interpreter::try_parse_scalar_assignment(const std::string& line, std::stri
 
 Result<std::string> Interpreter::assign_scalar(const std::string& name, double value) {
     state_.scalars[name] = value;
-    return name + " = " + std::to_string(value) + "\n";
+    return name + " = " + format_scalar(value) + "\n";
 }
 
 bool Interpreter::try_parse_scalar_binary_assignment(const std::string& line, ScalarBinaryAssign& assign) {
@@ -2883,56 +2912,56 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"combo_factorial", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::factorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::factorial(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_catalan") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_catalan", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::catalan_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::catalan_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_bell") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_bell", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::bell_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::bell_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_bell_num") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_bell_num", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::bell_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::bell_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_motzkin") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_motzkin", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::motzkin_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::motzkin_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_subfactorial") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_subfactorial", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::subfactorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::subfactorial(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_double_factorial") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_double_factorial", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::double_factorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::double_factorial(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_involutions") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_involutions", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::involutions(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::involutions(static_cast<uint32_t>(arg)));
         }
         if (fn == "info_channel_capacity_bsc") {
             return info::channel_capacity_bsc(arg);
@@ -3226,8 +3255,8 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_nchoosek", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::binomial(static_cast<uint32_t>(n),
-                                                       static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                        static_cast<uint32_t>(k)));
         }
         if (fn == "combo_binomial") {
             const int n = static_cast<int>(args[0]);
@@ -3235,8 +3264,8 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_binomial", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::binomial(static_cast<uint32_t>(n),
-                                                       static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                        static_cast<uint32_t>(k)));
         }
         if (fn == "combo_eulerian") {
             const int n = static_cast<int>(args[0]);
@@ -3244,7 +3273,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_eulerian", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::eulerian_number(static_cast<uint32_t>(n),
+            return combo_count_value(fn, combo::eulerian_number(static_cast<uint32_t>(n),
                                                               static_cast<uint32_t>(k)));
         }
         if (fn == "diffgeo_gaussian_curvature_sphere") {
@@ -3268,7 +3297,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_stirling2", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::stirling2(static_cast<uint32_t>(n),
+            return combo_count_value(fn, combo::stirling2(static_cast<uint32_t>(n),
                                                         static_cast<uint32_t>(k)));
         }
         if (fn == "combo_stirling1") {
@@ -3277,7 +3306,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_stirling1", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::stirling1(static_cast<uint32_t>(n),
+            return combo_count_value(fn, combo::stirling1(static_cast<uint32_t>(n),
                                                         static_cast<uint32_t>(k)));
         }
         if (fn == "combo_permutations") {
@@ -3286,8 +3315,8 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_permutations", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::permutations(static_cast<uint32_t>(n),
-                                                          static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::permutations(static_cast<uint32_t>(n),
+                                                            static_cast<uint32_t>(k)));
         }
         if (fn == "combo_combinations_with_rep") {
             const int n = static_cast<int>(args[0]);
@@ -3298,8 +3327,8 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                     DomainError{"combo_combinations_with_rep",
                                 "expected non-negative integer n and k"});
             }
-            return static_cast<double>(combo::combinations_with_rep(static_cast<uint32_t>(n),
-                                                                    static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::combinations_with_rep(
+                                            static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
         if (fn == "numthy_legendre_symbol") {
             if (std::floor(args[0]) != args[0] || std::floor(args[1]) != args[1]) {
@@ -5388,18 +5417,22 @@ Result<Matrix<double>> Interpreter::resolve_matrix(const std::string& name) cons
 }
 
 void print_matrix(std::ostream& out, const Matrix<double>& m) {
-    out << std::fixed << std::setprecision(6);
+    // Per-element through the shared formatter rather than a stream manipulator, so
+    // that a matrix and a scalar spell the same value the same way. std::fixed with
+    // six decimals rendered anything below 5e-7 as 0.000000, which is how a session
+    // could print a matrix of zeros for data that was not zero.
     for (size_t i = 0; i < m.rows(); ++i) {
         out << "  [";
         for (size_t j = 0; j < m.cols(); ++j) {
             if (j > 0) {
                 out << ", ";
             }
-            out << m(i, j);
+            out << format_scalar(m(i, j));
         }
         out << "]\n";
     }
 }
+
 
 Result<std::string> format_cuda_lu_result(const ColMatrix<double>& matrix) {
     auto result = cuda::lu(matrix);
@@ -5438,7 +5471,7 @@ std::string matrix_to_line(const Matrix<double>& m) {
             if (j > 0) {
                 out << ", ";
             }
-            out << m(i, j);
+            out << format_exact(m(i, j));
         }
     }
     out << "]";
@@ -5512,7 +5545,7 @@ void write_double_list(std::ostream& out, const char* label, const std::vector<d
         if (i > 0) {
             out << ',';
         }
-        out << values[i];
+        out << format_exact(values[i]);
     }
     out << '\n';
 }
@@ -5605,7 +5638,7 @@ Result<std::string> Interpreter::set_plot(const Matrix<double>& xs, const Matrix
     state_.plot.grid = Matrix<double>{};
     state_.plot.valid = true;
     const char* label = kind == PlotSeries::Kind::Scatter ? "scatter" : "plot";
-    return std::string{label} + " updated (" + std::to_string(state_.plot.y.size()) + " points)\n" +
+    return std::string{label} + " updated (" + format_scalar(state_.plot.y.size()) + " points)\n" +
            format_plot_preview(state_.plot);
 }
 
@@ -5621,7 +5654,7 @@ Result<std::string> Interpreter::set_plot_heatmap(const Matrix<double>& m) {
     state_.plot.nnz = 0;
     state_.plot.grid = m;
     state_.plot.valid = true;
-    return "imshow updated (" + std::to_string(m.rows()) + "x" + std::to_string(m.cols()) + ")\n" +
+    return "imshow updated (" + format_scalar(m.rows()) + "x" + format_scalar(m.cols()) + ")\n" +
            format_plot_preview(state_.plot);
 }
 
@@ -5642,7 +5675,7 @@ Result<std::string> Interpreter::set_plot_spy(const Matrix<double>& m) {
     state_.plot.nnz = count;
     state_.plot.grid = m;
     state_.plot.valid = true;
-    return "spy updated (" + std::to_string(count) + " nonzeros)\n" + format_plot_preview(state_.plot);
+    return "spy updated (" + format_scalar(count) + " nonzeros)\n" + format_plot_preview(state_.plot);
 }
 
 Result<std::string> Interpreter::set_plot_surf(const Matrix<double>& z) {
@@ -5657,7 +5690,7 @@ Result<std::string> Interpreter::set_plot_surf(const Matrix<double>& z) {
     state_.plot.nnz = 0;
     state_.plot.grid = z;
     state_.plot.valid = true;
-    return "surf updated (" + std::to_string(z.rows()) + "x" + std::to_string(z.cols()) +
+    return "surf updated (" + format_scalar(z.rows()) + "x" + format_scalar(z.cols()) +
            " grid)\n" + format_plot_preview(state_.plot);
 }
 
@@ -5678,7 +5711,7 @@ Result<std::string> Interpreter::set_plot_surf(const Matrix<double>& x, const Ma
     state_.plot.nnz = 0;
     state_.plot.grid = z;
     state_.plot.valid = true;
-    return "surf updated (" + std::to_string(z.rows()) + "x" + std::to_string(z.cols()) +
+    return "surf updated (" + format_scalar(z.rows()) + "x" + format_scalar(z.cols()) +
            " mesh)\n" + format_plot_preview(state_.plot);
 }
 
@@ -5691,7 +5724,7 @@ Result<std::string> Interpreter::set_plot_bars(std::vector<double> x, std::vecto
     state_.plot.kind = PlotSeries::Kind::Bar;
     state_.plot.grid = Matrix<double>{};
     state_.plot.valid = true;
-    return "histogram updated (" + std::to_string(state_.plot.y.size()) + " bins)\n" +
+    return "histogram updated (" + format_scalar(state_.plot.y.size()) + " bins)\n" +
            format_plot_preview(state_.plot);
 }
 
@@ -5711,7 +5744,7 @@ Result<void> Interpreter::save_session(const std::string& path) const {
     }
     out << "# MathScript session\n";
     for (const auto& [name, value] : state_.scalars) {
-        out << "scalar " << name << " = " << value << "\n";
+        out << "scalar " << name << " = " << format_exact(value) << "\n";
     }
     for (const auto& [name, matrix] : state_.matrices) {
         out << "matrix " << name << " = " << matrix_to_line(matrix) << "\n";
@@ -10966,7 +10999,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     if (lcmd == "vars") {
         std::ostringstream out;
         for (const auto& [name, value] : state_.scalars) {
-            out << name << " = " << value << "\n";
+            out << name << " = " << format_scalar(value) << "\n";
         }
         for (const auto& [name, matrix] : state_.matrices) {
             out << name << " (" << matrix.rows() << "x" << matrix.cols() << ")\n";
@@ -11230,7 +11263,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "geo_intersect_ray_tri") {
             const auto call_args = split_call_args(cmd);
@@ -11252,7 +11285,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "geo_intersect_ray_sphere") {
             const auto call_args = split_call_args(cmd);
@@ -11274,7 +11307,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "cmaes") {
             const auto call_args = split_call_args(cmd);
@@ -11366,7 +11399,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "finance_max_sharpe_portfolio") {
             const auto call_args = split_call_args(cmd);
@@ -11836,7 +11869,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     bins = static_cast<size_t>(bins_d);
                 }
-                return std::to_string(gria::entropy(*data, bins)) + "\n";
+                return format_scalar(gria::entropy(*data, bins)) + "\n";
             }
             if (fn == "gria_matrix_alpha") {
                 if (!call_args || call_args->size() != 2) {
@@ -11851,7 +11884,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!fx_m) {
                     return std::unexpected(fx_m.error());
                 }
-                return std::to_string(gria::matrix_alpha(*x_m, *fx_m)) + "\n";
+                return format_scalar(gria::matrix_alpha(*x_m, *fx_m)) + "\n";
             }
             if (fn == "gria_is_critical") {
                 if (!call_args || (call_args->size() != 1 && call_args->size() != 2)) {
@@ -11893,9 +11926,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
                 }
                 if (fn == "gria_gf2n_mul") {
-                    return std::to_string(gria::gf2n::mul(a, b, poly)) + "\n";
+                    return format_scalar(gria::gf2n::mul(a, b, poly)) + "\n";
                 }
-                return std::to_string(gria::gf2n::pow(a, b, poly)) + "\n";
+                return format_scalar(gria::gf2n::pow(a, b, poly)) + "\n";
             }
             if (fn == "gria_gf2n_inv") {
                 if (!call_args || call_args->size() != 2) {
@@ -11908,7 +11941,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     !parse_uint64(trim_copy(call_args->at(1)), poly)) {
                     return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
                 }
-                return std::to_string(gria::gf2n::inv(a, poly)) + "\n";
+                return format_scalar(gria::gf2n::inv(a, poly)) + "\n";
             }
             if (fn == "gria_lfsr_step") {
                 if (!call_args || call_args->size() != 2) {
@@ -11921,7 +11954,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     !parse_uint64(trim_copy(call_args->at(1)), poly)) {
                     return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
                 }
-                return std::to_string(gria::lfsr::step(state, poly)) + "\n";
+                return format_scalar(gria::lfsr::step(state, poly)) + "\n";
             }
             if (fn == "gria_alpha_lfsr") {
                 if (!call_args || call_args->size() != 2) {
@@ -11937,7 +11970,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     std::floor(steps_d) != steps_d) {
                     return std::unexpected(DomainError{fn, "expected positive integer steps"});
                 }
-                return std::to_string(
+                return format_scalar(
                            gria::lfsr::alpha_lfsr(poly, static_cast<size_t>(steps_d))) +
                        "\n";
             }
@@ -11987,9 +12020,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 const cypha::NIGParams params{.mu = mu, .alpha = alpha, .beta = beta, .delta = delta};
                 if (fn == "cypha_nig_pdf") {
-                    return std::to_string(cypha::nig_pdf(x, params)) + "\n";
+                    return format_scalar(cypha::nig_pdf(x, params)) + "\n";
                 }
-                return std::to_string(cypha::nig_cdf(x, params)) + "\n";
+                return format_scalar(cypha::nig_cdf(x, params)) + "\n";
             }
             if (fn == "cypha_nig_mean" || fn == "cypha_nig_variance") {
                 if (!call_args || call_args->size() != 4) {
@@ -12008,9 +12041,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 const cypha::NIGParams params{.mu = mu, .alpha = alpha, .beta = beta, .delta = delta};
                 if (fn == "cypha_nig_mean") {
-                    return std::to_string(cypha::nig_mean(params)) + "\n";
+                    return format_scalar(cypha::nig_mean(params)) + "\n";
                 }
-                return std::to_string(cypha::nig_variance(params)) + "\n";
+                return format_scalar(cypha::nig_variance(params)) + "\n";
             }
             if (fn == "cypha_nig_sample") {
                 if (!call_args || call_args->size() != 5) {
@@ -12090,7 +12123,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!h_m) {
                     return std::unexpected(h_m.error());
                 }
-                return std::to_string(cellai::energy(*w_m, *v_m, *h_m)) + "\n";
+                return format_scalar(cellai::energy(*w_m, *v_m, *h_m)) + "\n";
             }
             if (fn == "cellai_boltzmann_weights") {
                 if (!call_args || (call_args->size() != 1 && call_args->size() != 2)) {
@@ -12140,7 +12173,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!rng_check) {
                     return std::unexpected(rng_check.error());
                 }
-                return std::to_string(
+                return format_scalar(
                            izaac::mc::estimate_pi(static_cast<size_t>(samples_d),
                                                   *izaac::g_session_rng)) +
                        "\n";
@@ -12162,7 +12195,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!rng_check) {
                     return std::unexpected(rng_check.error());
                 }
-                return std::to_string(
+                return format_scalar(
                            izaac::diffpriv::laplace_mechanism(
                                true_value, epsilon, sensitivity, *izaac::g_session_rng)) +
                        "\n";
@@ -12187,7 +12220,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!rng_check) {
                     return std::unexpected(rng_check.error());
                 }
-                return std::to_string(
+                return format_scalar(
                            izaac::diffpriv::gaussian_mechanism(
                                true_value, epsilon, delta, sensitivity, *izaac::g_session_rng)) +
                        "\n";
@@ -12294,7 +12327,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Segment2D s1{{x1, y1}, {x2, y2}};
             const geo::Segment2D s2{{x3, y3}, {x4, y4}};
-            return std::to_string(geo::intersect_seg_seg(s1, s2) ? 1.0 : 0.0) + "\n";
+            return format_scalar(geo::intersect_seg_seg(s1, s2) ? 1.0 : 0.0) + "\n";
         }
         if (fn == "cplx_cross_ratio") {
             double z1re = 0.0;
@@ -12317,7 +12350,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const cplx::C z2{z2re, z2im};
             const cplx::C z3{z3re, z3im};
             const cplx::C z4{z4re, z4im};
-            return std::to_string(cplx::cross_ratio(z1, z2, z3, z4)) + "\n";
+            return format_scalar(cplx::cross_ratio(z1, z2, z3, z4)) + "\n";
         }
         if (fn == "finance_sabr_call") {
             double S = 0.0;
@@ -12338,7 +12371,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_sabr_call",
                     "expected finance_sabr_call(S,K,T,r,alpha,beta,rho,nu)"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::sabr_call(S, K, T, r, alpha, beta, rho, nu)) +
                    "\n";
         }
@@ -12361,7 +12394,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_sabr_put",
                     "expected finance_sabr_put(S,K,T,r,alpha,beta,rho,nu)"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::sabr_put(S, K, T, r, alpha, beta, rho, nu)) +
                    "\n";
         }
@@ -12400,7 +12433,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_trinomial_option",
                     "expected integer is_american (0=European, 1=American)"});
             }
-            return std::to_string(finance::trinomial_option(S, K, T, r, sigma, n_steps,
+            return format_scalar(finance::trinomial_option(S, K, T, r, sigma, n_steps,
                                                             is_call != 0, is_american != 0)) +
                    "\n";
         }
@@ -12437,11 +12470,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
             }
             if (fn == "finance_mc_asian_call") {
-                return std::to_string(finance::mc_asian_call(S, K, T, r, sigma, n_paths, n_steps,
+                return format_scalar(finance::mc_asian_call(S, K, T, r, sigma, n_paths, n_steps,
                                                               seed)) +
                        "\n";
             }
-            return std::to_string(
+            return format_scalar(
                        finance::mc_asian_put(S, K, T, r, sigma, n_paths, n_steps, seed)) +
                    "\n";
         }
@@ -12478,11 +12511,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
             }
             if (fn == "finance_mc_lookback_fixed_call") {
-                return std::to_string(finance::mc_lookback_fixed_call(
+                return format_scalar(finance::mc_lookback_fixed_call(
                            S, K, T, r, sigma, n_paths, n_steps, seed)) +
                        "\n";
             }
-            return std::to_string(finance::mc_lookback_fixed_put(S, K, T, r, sigma, n_paths,
+            return format_scalar(finance::mc_lookback_fixed_put(S, K, T, r, sigma, n_paths,
                                                                   n_steps, seed)) +
                    "\n";
         }
@@ -12514,7 +12547,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point3D p{px, py, pz};
             const geo::Segment3D s{{x1, y1, z1}, {x2, y2, z2}};
-            return std::to_string(geo::dist_point_segment3(p, s)) + "\n";
+            return format_scalar(geo::dist_point_segment3(p, s)) + "\n";
         }
         if (fn == "finance_heston_call") {
             double S = 0.0;
@@ -12536,7 +12569,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_heston_call",
                     "expected finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho)"});
             }
-            return std::to_string(finance::heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
+            return format_scalar(finance::heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
                    "\n";
         }
         if (fn == "finance_heston_put") {
@@ -12559,7 +12592,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_heston_put",
                     "expected finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)"});
             }
-            return std::to_string(finance::heston_put(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
+            return format_scalar(finance::heston_put(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
                    "\n";
         }
         if (fn == "finance_barrier_option") {
@@ -12598,7 +12631,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_barrier_option", "expected integer up (0=down, 1=up)"});
             }
-            return std::to_string(finance::barrier_option(S, K, B, T, r, sigma, call != 0,
+            return format_scalar(finance::barrier_option(S, K, B, T, r, sigma, call != 0,
                                                            knock_in != 0, up != 0)) +
                    "\n";
         }
@@ -12627,7 +12660,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point3D p{px, py, pz};
             const geo::Plane3D pl{{nx, ny, nz}, d};
-            return std::to_string(geo::dist_point_plane(p, pl)) + "\n";
+            return format_scalar(geo::dist_point_plane(p, pl)) + "\n";
         }
         if (fn == "heun_g") {
             double a = 0.0;
@@ -12644,7 +12677,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"heun_g", "expected heun_g(a,q,alpha,beta,gamma,delta,z)"});
             }
-            return std::to_string(heun_g(a, q, alpha, beta, gamma, delta, z)) + "\n";
+            return format_scalar(heun_g(a, q, alpha, beta, gamma, delta, z)) + "\n";
         }
         if (fn == "painleve5" || fn == "painleve6") {
             double x = 0.0;
@@ -12664,9 +12697,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     fn, "expected " + fn + "(x,y0,yp0,alpha,beta,gamma,delta)"});
             }
             if (fn == "painleve5") {
-                return std::to_string(painleve5(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
+                return format_scalar(painleve5(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
             }
-            return std::to_string(painleve6(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
+            return format_scalar(painleve6(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
         }
         if (fn == "finance_digital_option") {
             double S = 0.0;
@@ -12690,7 +12723,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_digital_option", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::digital_option(S, K, T, r, sigma, call != 0, payout)) +
                    "\n";
         }
@@ -12721,7 +12754,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_american_option", "expected non-negative integer steps"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::american_option(S, K, T, r, sigma, call != 0, steps)) +
                    "\n";
         }
@@ -12751,11 +12784,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
             }
             if (fn == "finance_mc_european_call") {
-                return std::to_string(
+                return format_scalar(
                            finance::mc_european_call(S, K, T, r, sigma, n_paths, seed)) +
                        "\n";
             }
-            return std::to_string(finance::mc_european_put(S, K, T, r, sigma, n_paths, seed)) +
+            return format_scalar(finance::mc_european_put(S, K, T, r, sigma, n_paths, seed)) +
                    "\n";
         }
         if (fn == "finance_mc_lookback_floating_call" ||
@@ -12791,11 +12824,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
             }
             if (fn == "finance_mc_lookback_floating_call") {
-                return std::to_string(finance::mc_lookback_floating_call(
+                return format_scalar(finance::mc_lookback_floating_call(
                            S, T, r, sigma, n_paths, n_steps, seed)) +
                        "\n";
             }
-            return std::to_string(finance::mc_lookback_floating_put(S, T, r, sigma, n_paths,
+            return format_scalar(finance::mc_lookback_floating_put(S, T, r, sigma, n_paths,
                                                                      n_steps, seed)) +
                    "\n";
         }
@@ -12917,7 +12950,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_call", "expected finance_bs_call(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_call(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_call(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_merton_distance_to_default") {
             double V = 0.0;
@@ -12937,7 +12970,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "finance_bs_put") {
             double S = 0.0;
@@ -12951,7 +12984,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_put", "expected finance_bs_put(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_put(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_put(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bs_gamma") {
             double S = 0.0;
@@ -12965,7 +12998,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_gamma", "expected finance_bs_gamma(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_gamma(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_gamma(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bs_vega") {
             double S = 0.0;
@@ -12979,7 +13012,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_vega", "expected finance_bs_vega(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_vega(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_vega(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bachelier_call") {
             double F = 0.0;
@@ -12994,7 +13027,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_bachelier_call",
                     "expected finance_bachelier_call(F,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bachelier_call(F, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bachelier_call(F, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bachelier_put") {
             double F = 0.0;
@@ -13008,7 +13041,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_bachelier_put", "expected finance_bachelier_put(F,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bachelier_put(F, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bachelier_put(F, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_vasicek_bond_price") {
             double rate = 0.0;
@@ -13024,7 +13057,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_vasicek_bond_price",
                     "expected finance_vasicek_bond_price(r,a,b,sigma,tau)"});
             }
-            return std::to_string(finance::vasicek_bond_price(rate, a, b, sigma, tau)) + "\n";
+            return format_scalar(finance::vasicek_bond_price(rate, a, b, sigma, tau)) + "\n";
         }
         if (fn == "finance_cir_bond_price") {
             double rate = 0.0;
@@ -13040,7 +13073,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_cir_bond_price",
                     "expected finance_cir_bond_price(r,a,b,sigma,tau)"});
             }
-            return std::to_string(finance::cir_bond_price(rate, a, b, sigma, tau)) + "\n";
+            return format_scalar(finance::cir_bond_price(rate, a, b, sigma, tau)) + "\n";
         }
         if (fn == "geo_dist_point_line2d") {
             double px = 0.0;
@@ -13057,7 +13090,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p{px, py};
             const geo::Line2D l{a, b, c};
-            return std::to_string(geo::dist_point_line(p, l)) + "\n";
+            return format_scalar(geo::dist_point_line(p, l)) + "\n";
         }
         if (fn == "diffgeo_christoffel_sphere") {
             double k_d = 0.0;
@@ -13078,7 +13111,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "pde_heat_1d" || fn == "pde_heat_1d_cn" || fn == "pde_advection_1d" ||
             fn == "pde_advection_1d_lax_wendroff" || fn == "pde_poisson_2d" ||
@@ -13355,12 +13388,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric arguments"});
             }
             if (fn == "heun_b") {
-                return std::to_string(heun_b(q, alpha, beta, gamma, z)) + "\n";
+                return format_scalar(heun_b(q, alpha, beta, gamma, z)) + "\n";
             }
             if (fn == "heun_d") {
-                return std::to_string(heun_d(q, alpha, beta, gamma, z)) + "\n";
+                return format_scalar(heun_d(q, alpha, beta, gamma, z)) + "\n";
             }
-            return std::to_string(heun_t(q, alpha, beta, gamma, z)) + "\n";
+            return format_scalar(heun_t(q, alpha, beta, gamma, z)) + "\n";
         }
         if (fn == "painleve3" || fn == "painleve4") {
             double x = 0.0;
@@ -13376,9 +13409,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{fn, "expected " + fn + "(x,y0,yp0,alpha,beta)"});
             }
             if (fn == "painleve3") {
-                return std::to_string(painleve3(x, y0, yp0, alpha, beta)) + "\n";
+                return format_scalar(painleve3(x, y0, yp0, alpha, beta)) + "\n";
             }
-            return std::to_string(painleve4(x, y0, yp0, alpha, beta)) + "\n";
+            return format_scalar(painleve4(x, y0, yp0, alpha, beta)) + "\n";
         }
     }
 
@@ -13642,7 +13675,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point3D p0{x1, y1, z1};
             const geo::Point3D p1{x2, y2, z2};
-            return std::to_string(geo::dist(p0, p1)) + "\n";
+            return format_scalar(geo::dist(p0, p1)) + "\n";
         }
         if (fn == "geo_triangle_area") {
             double x1 = 0.0;
@@ -13662,7 +13695,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const geo::Point2D p0{x1, y1};
             const geo::Point2D p1{x2, y2};
             const geo::Point2D p2{x3, y3};
-            return std::to_string(geo::area(p0, p1, p2)) + "\n";
+            return format_scalar(geo::area(p0, p1, p2)) + "\n";
         }
         if (fn == "cplx_mobius_re") {
             double a = 0.0;
@@ -13683,7 +13716,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "geo_dist_point_seg2d") {
             double px = 0.0;
@@ -13702,7 +13735,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p{px, py};
             const geo::Segment2D s{{x1, y1}, {x2, y2}};
-            return std::to_string(geo::dist_point_segment(p, s)) + "\n";
+            return format_scalar(geo::dist_point_segment(p, s)) + "\n";
         }
         if (fn == "geo_overlap_circles") {
             double x1 = 0.0;
@@ -13721,7 +13754,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Circle2D a{{x1, y1}, r1};
             const geo::Circle2D b{{x2, y2}, r2};
-            return std::to_string(geo::overlap_circle_circle(a, b) ? 1.0 : 0.0) + "\n";
+            return format_scalar(geo::overlap_circle_circle(a, b) ? 1.0 : 0.0) + "\n";
         }
         if (fn == "geo_point_in_aabb") {
             double px = 0.0;
@@ -13741,7 +13774,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p{px, py};
             const geo::AABB2D box{{minx, miny}, {maxx, maxy}};
-            return std::to_string(geo::point_in_aabb(p, box) ? 1.0 : 0.0) + "\n";
+            return format_scalar(geo::point_in_aabb(p, box) ? 1.0 : 0.0) + "\n";
         }
         if (fn == "finance_binomial_call") {
             double S = 0.0;
@@ -13763,7 +13796,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_binomial_call", "expected non-negative integer steps"});
             }
-            return std::to_string(finance::binomial_call(S, K, T, r, sigma, steps)) + "\n";
+            return format_scalar(finance::binomial_call(S, K, T, r, sigma, steps)) + "\n";
         }
         if (fn == "finance_binomial_put") {
             double S = 0.0;
@@ -13785,7 +13818,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_binomial_put", "expected non-negative integer steps"});
             }
-            return std::to_string(finance::binomial_put(S, K, T, r, sigma, steps)) + "\n";
+            return format_scalar(finance::binomial_put(S, K, T, r, sigma, steps)) + "\n";
         }
         if (fn == "finance_geo_asian_call") {
             double S = 0.0;
@@ -13807,7 +13840,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_geo_asian_call", "expected non-negative integer n_fixings"});
             }
-            return std::to_string(finance::geo_asian_call(S, K, T, r, sigma, n_fixings)) + "\n";
+            return format_scalar(finance::geo_asian_call(S, K, T, r, sigma, n_fixings)) + "\n";
         }
         if (fn == "finance_geo_asian_put") {
             double S = 0.0;
@@ -13829,7 +13862,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_geo_asian_put", "expected non-negative integer n_fixings"});
             }
-            return std::to_string(finance::geo_asian_put(S, K, T, r, sigma, n_fixings)) + "\n";
+            return format_scalar(finance::geo_asian_put(S, K, T, r, sigma, n_fixings)) + "\n";
         }
         if (fn == "finance_bs_delta") {
             double S = 0.0;
@@ -13850,7 +13883,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_delta", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::bs_delta(S, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::bs_delta(S, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "finance_black76") {
             double F = 0.0;
@@ -13871,7 +13904,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_black76", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::black76(F, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::black76(F, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "finance_bs_implied_vol") {
             double price = 0.0;
@@ -13892,7 +13925,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!iv) {
                 return std::unexpected(iv.error());
             }
-            return std::to_string(*iv) + "\n";
+            return format_scalar(*iv) + "\n";
         }
         if (fn == "finance_bs_theta") {
             double S = 0.0;
@@ -13913,7 +13946,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_theta", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::bs_theta(S, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::bs_theta(S, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "finance_bs_rho") {
             double S = 0.0;
@@ -13934,7 +13967,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_rho", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::bs_rho(S, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::bs_rho(S, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "pde_heat_2d" || fn == "pde_heat_2d_cn_adi" || fn == "pde_wave_1d" ||
             fn == "pde_reaction_diffusion_1d") {
@@ -14084,7 +14117,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"heun_c", "expected heun_c(q,alpha,beta,gamma,delta,z)"});
             }
-            return std::to_string(heun_c(q, alpha, beta, gamma, delta, z)) + "\n";
+            return format_scalar(heun_c(q, alpha, beta, gamma, delta, z)) + "\n";
         }
     }
 
@@ -14149,7 +14182,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (call_args->size() < 2 || call_args->size() > 4) {
                     return std::unexpected(DomainError{
@@ -14196,7 +14229,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
         }
     }
@@ -14228,7 +14261,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p0{x1, y1};
             const geo::Point2D p1{x2, y2};
-            return std::to_string(geo::dist(p0, p1)) + "\n";
+            return format_scalar(geo::dist(p0, p1)) + "\n";
         }
         if (fn == "geo_dist_sq2d") {
             double x1 = 0.0;
@@ -14242,7 +14275,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p0{x1, y1};
             const geo::Point2D p1{x2, y2};
-            return std::to_string(geo::dist_sq(p0, p1)) + "\n";
+            return format_scalar(geo::dist_sq(p0, p1)) + "\n";
         }
         if (fn == "geo_cross2d") {
             double x1 = 0.0;
@@ -14256,7 +14289,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Vec2D a{x1, y1};
             const geo::Vec2D b{x2, y2};
-            return std::to_string(geo::cross2d(a, b)) + "\n";
+            return format_scalar(geo::cross2d(a, b)) + "\n";
         }
         if (fn == "finance_forward_rate") {
             double r1 = 0.0;
@@ -14268,7 +14301,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_forward_rate", "expected finance_forward_rate(r1,t1,r2,t2)"});
             }
-            return std::to_string(finance::forward_rate(r1, t1, r2, t2)) + "\n";
+            return format_scalar(finance::forward_rate(r1, t1, r2, t2)) + "\n";
         }
         if (fn == "cplx_hyperbolic_distance") {
             double z1re = 0.0;
@@ -14283,7 +14316,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "cplx_hyperbolic_distance",
                     "expected cplx_hyperbolic_distance(z1re,z1im,z2re,z2im)"});
             }
-            return std::to_string(
+            return format_scalar(
                        cplx::hyperbolic_distance(cplx::C{z1re, z1im}, cplx::C{z2re, z2im})) +
                    "\n";
         }
@@ -14303,7 +14336,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pv", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pv(rate, n, pmt, fv)) + "\n";
+            return format_scalar(finance::pv(rate, n, pmt, fv)) + "\n";
         }
         if (fn == "sph_harm") {
             double l_d = 0.0;
@@ -14348,7 +14381,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_price", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_price(c, y, n, fv)) + "\n";
+            return format_scalar(finance::bond_price(c, y, n, fv)) + "\n";
         }
         if (fn == "finance_compound") {
             double principal = 0.0;
@@ -14373,7 +14406,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_compound", "expected positive integer compounds_per_period"});
             }
-            return std::to_string(finance::compound(principal, rate, n, cpp)) + "\n";
+            return format_scalar(finance::compound(principal, rate, n, cpp)) + "\n";
         }
         if (fn == "finance_fv_annuity") {
             double rate = 0.0;
@@ -14391,7 +14424,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_fv_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::fv_annuity(rate, n, pmt, pv0)) + "\n";
+            return format_scalar(finance::fv_annuity(rate, n, pmt, pv0)) + "\n";
         }
         if (fn == "finance_pmt_annuity") {
             double rate = 0.0;
@@ -14409,7 +14442,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pmt_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pmt_annuity(rate, n, pv0, fv)) + "\n";
+            return format_scalar(finance::pmt_annuity(rate, n, pv0, fv)) + "\n";
         }
         if (fn == "hypergeo_2f1" || fn == "jacobi_p") {
             double a = 0.0;
@@ -14421,9 +14454,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric arguments"});
             }
             if (fn == "hypergeo_2f1") {
-                return std::to_string(hypergeo_2f1(a, b, c, d)) + "\n";
+                return format_scalar(hypergeo_2f1(a, b, c, d)) + "\n";
             }
-            return std::to_string(jacobi_p(static_cast<int>(a), b, c, d)) + "\n";
+            return format_scalar(jacobi_p(static_cast<int>(a), b, c, d)) + "\n";
         }
         if (fn == "signal_bandpass") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14629,7 +14662,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected spheroidal_s1(n,m,c,x)"});
             }
-            return std::to_string(
+            return format_scalar(
                        spheroidal_s1(static_cast<int>(n), static_cast<int>(m), c, x)) +
                    "\n";
         }
@@ -14644,7 +14677,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected spheroidal_s2(n,m,c,x)"});
             }
-            return std::to_string(
+            return format_scalar(
                        spheroidal_s2(static_cast<int>(n), static_cast<int>(m), c, x)) +
                    "\n";
         }
@@ -14659,7 +14692,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"painleve2", "expected painleve2(x,y0,yp0,alpha)"});
             }
-            return std::to_string(painleve2(x, y0, yp0, alpha)) + "\n";
+            return format_scalar(painleve2(x, y0, yp0, alpha)) + "\n";
         }
         if (fn == "special_pseudo_voigt") {
             double x = 0.0;
@@ -14673,7 +14706,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "special_pseudo_voigt", "expected special_pseudo_voigt(x,sigma,gamma,eta)"});
             }
-            return std::to_string(pseudo_voigt(x, sigma, gamma, eta)) + "\n";
+            return format_scalar(pseudo_voigt(x, sigma, gamma, eta)) + "\n";
         }
     }
 
@@ -14830,7 +14863,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const auto [dist, parent] = graph::dijkstra(*G, source);
             (void)parent;
-            return std::to_string(dist[static_cast<size_t>(target)]) + "\n";
+            return format_scalar(dist[static_cast<size_t>(target)]) + "\n";
         }
         if (fn == "graph_bellman_ford_dist") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14868,7 +14901,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const auto& [dist, parent] = *result;
             (void)parent;
-            return std::to_string(dist[static_cast<size_t>(target)]) + "\n";
+            return format_scalar(dist[static_cast<size_t>(target)]) + "\n";
         }
         if (fn == "graph_max_flow") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14895,7 +14928,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "graph_min_cut") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14922,7 +14955,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "boxfilter" || fn == "medfilt2" || fn == "imgaussfilt") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -15157,7 +15190,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_binom_pdf", "expected integer k and n"});
             }
-            return std::to_string(binom_pdf(k, n, p)) + "\n";
+            return format_scalar(binom_pdf(k, n, p)) + "\n";
         }
         if (fn == "fem_poisson3d") {
             double nx_d = 0.0;
@@ -15203,7 +15236,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_binom_cdf", "expected integer k and n"});
             }
-            return std::to_string(binom_cdf(k, n, p)) + "\n";
+            return format_scalar(binom_cdf(k, n, p)) + "\n";
         }
         if (fn == "prob_uniform_cdf") {
             double x = 0.0;
@@ -15215,7 +15248,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_uniform_cdf", "expected prob_uniform_cdf(x, a, b)"});
             }
-            return std::to_string(uniform_cdf(x, a, b)) + "\n";
+            return format_scalar(uniform_cdf(x, a, b)) + "\n";
         }
         if (fn == "prob_gamma_pdf") {
             double x = 0.0;
@@ -15227,7 +15260,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gamma_pdf", "expected prob_gamma_pdf(x, shape, scale)"});
             }
-            return std::to_string(gamma_pdf(x, shape, scale)) + "\n";
+            return format_scalar(gamma_pdf(x, shape, scale)) + "\n";
         }
         if (fn == "gamma_cdf") {
             double x = 0.0;
@@ -15239,7 +15272,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"gamma_cdf", "expected gamma_cdf(x, shape, scale)"});
             }
-            return std::to_string(gamma_cdf(x, shape, scale)) + "\n";
+            return format_scalar(gamma_cdf(x, shape, scale)) + "\n";
         }
         if (fn == "beta_pdf") {
             double x = 0.0;
@@ -15251,7 +15284,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"beta_pdf", "expected beta_pdf(x, alpha, beta)"});
             }
-            return std::to_string(beta_pdf(x, alpha, beta_param)) + "\n";
+            return format_scalar(beta_pdf(x, alpha, beta_param)) + "\n";
         }
         if (fn == "beta_cdf") {
             double x = 0.0;
@@ -15263,7 +15296,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"beta_cdf", "expected beta_cdf(x, alpha, beta)"});
             }
-            return std::to_string(beta_cdf(x, alpha, beta_param)) + "\n";
+            return format_scalar(beta_cdf(x, alpha, beta_param)) + "\n";
         }
         if (fn == "f_pdf") {
             double x = 0.0;
@@ -15274,7 +15307,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), d2)) {
                 return std::unexpected(DomainError{"f_pdf", "expected f_pdf(x, d1, d2)"});
             }
-            return std::to_string(f_pdf(x, d1, d2)) + "\n";
+            return format_scalar(f_pdf(x, d1, d2)) + "\n";
         }
         if (fn == "f_cdf") {
             double x = 0.0;
@@ -15285,7 +15318,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), d2)) {
                 return std::unexpected(DomainError{"f_cdf", "expected f_cdf(x, d1, d2)"});
             }
-            return std::to_string(f_cdf(x, d1, d2)) + "\n";
+            return format_scalar(f_cdf(x, d1, d2)) + "\n";
         }
         if (fn == "kummer_m" || fn == "kummer_u" || fn == "whittaker_m" || fn == "whittaker_w" ||
             fn == "tricomi_u" || fn == "meijer_g" || fn == "fox_h" || fn == "hypergeo_0f1n" ||
@@ -15299,45 +15332,45 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric arguments"});
             }
             if (fn == "kummer_m") {
-                return std::to_string(kummer_m(a, b, c)) + "\n";
+                return format_scalar(kummer_m(a, b, c)) + "\n";
             }
             if (fn == "kummer_u") {
-                return std::to_string(kummer_u(a, b, c)) + "\n";
+                return format_scalar(kummer_u(a, b, c)) + "\n";
             }
             if (fn == "whittaker_m") {
-                return std::to_string(whittaker_m(a, b, c)) + "\n";
+                return format_scalar(whittaker_m(a, b, c)) + "\n";
             }
             if (fn == "whittaker_w") {
-                return std::to_string(whittaker_w(a, b, c)) + "\n";
+                return format_scalar(whittaker_w(a, b, c)) + "\n";
             }
             if (fn == "tricomi_u") {
-                return std::to_string(tricomi_u(a, b, c)) + "\n";
+                return format_scalar(tricomi_u(a, b, c)) + "\n";
             }
             if (fn == "meijer_g") {
-                return std::to_string(meijer_g(a, b, c)) + "\n";
+                return format_scalar(meijer_g(a, b, c)) + "\n";
             }
             if (fn == "fox_h") {
-                return std::to_string(fox_h(a, b, c)) + "\n";
+                return format_scalar(fox_h(a, b, c)) + "\n";
             }
             if (fn == "hypergeo_0f1n") {
-                return std::to_string(hypergeo_0f1n(static_cast<int>(a), b, c)) + "\n";
+                return format_scalar(hypergeo_0f1n(static_cast<int>(a), b, c)) + "\n";
             }
             if (fn == "hypergeo_1f1n") {
-                return std::to_string(hypergeo_1f1n(static_cast<int>(a), b, c)) + "\n";
+                return format_scalar(hypergeo_1f1n(static_cast<int>(a), b, c)) + "\n";
             }
             if (fn == "mathieu_ce") {
-                return std::to_string(mathieu_ce(static_cast<int>(a), b, c)) + "\n";
+                return format_scalar(mathieu_ce(static_cast<int>(a), b, c)) + "\n";
             }
             if (fn == "mathieu_se") {
-                return std::to_string(mathieu_se(static_cast<int>(a), b, c)) + "\n";
+                return format_scalar(mathieu_se(static_cast<int>(a), b, c)) + "\n";
             }
             if (fn == "mathieu_mc") {
-                return std::to_string(mathieu_mc(static_cast<int>(a), b, c)) + "\n";
+                return format_scalar(mathieu_mc(static_cast<int>(a), b, c)) + "\n";
             }
             if (fn == "mathieu_ms") {
-                return std::to_string(mathieu_ms(static_cast<int>(a), b, c)) + "\n";
+                return format_scalar(mathieu_ms(static_cast<int>(a), b, c)) + "\n";
             }
-            return std::to_string(painleve1(a, b, c)) + "\n";
+            return format_scalar(painleve1(a, b, c)) + "\n";
         }
         if (fn == "spheroidal_lambda") {
             double n = 0.0;
@@ -15348,7 +15381,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected spheroidal_lambda(n,m,c)"});
             }
-            return std::to_string(
+            return format_scalar(
                        spheroidal_lambda(static_cast<int>(n), static_cast<int>(m), c)) +
                    "\n";
         }
@@ -15361,7 +15394,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected assoc_legendre_p(l,m,x)"});
             }
-            return std::to_string(
+            return format_scalar(
                        assoc_legendre_p(static_cast<int>(l), static_cast<int>(m), x)) +
                    "\n";
         }
@@ -15373,7 +15406,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected legendre_pn(n,m,x)"});
             }
-            return std::to_string(
+            return format_scalar(
                        legendre_pn(static_cast<int>(n), static_cast<int>(m), x)) +
                    "\n";
         }
@@ -15385,7 +15418,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), a)) {
                 return std::unexpected(DomainError{fn, "expected lerch_phi(z,s,a)"});
             }
-            return std::to_string(lerch_phi(z, s, a)) + "\n";
+            return format_scalar(lerch_phi(z, s, a)) + "\n";
         }
         if (fn == "laguerre_ln") {
             double n = 0.0;
@@ -15395,7 +15428,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected laguerre_ln(n,k,x)"});
             }
-            return std::to_string(
+            return format_scalar(
                        laguerre_ln(static_cast<int>(n), static_cast<int>(k), x)) +
                    "\n";
         }
@@ -15407,7 +15440,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_tn(n,k,x)"});
             }
-            return std::to_string(
+            return format_scalar(
                        chebyshev_tn(static_cast<int>(n), static_cast<int>(k), x)) +
                    "\n";
         }
@@ -15419,7 +15452,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_un(n,k,x)"});
             }
-            return std::to_string(
+            return format_scalar(
                        chebyshev_un(static_cast<int>(n), static_cast<int>(k), x)) +
                    "\n";
         }
@@ -15432,7 +15465,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected gegenbauer_c(n,lambda,x)"});
             }
-            return std::to_string(gegenbauer_c(static_cast<int>(n), lambda, x)) + "\n";
+            return format_scalar(gegenbauer_c(static_cast<int>(n), lambda, x)) + "\n";
         }
         if (fn == "laguerre_la") {
             double n = 0.0;
@@ -15443,7 +15476,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected laguerre_la(n,a,x)"});
             }
-            return std::to_string(laguerre_la(static_cast<int>(n), alpha, x)) + "\n";
+            return format_scalar(laguerre_la(static_cast<int>(n), alpha, x)) + "\n";
         }
         if (fn == "finance_bond_price") {
             double c = 0.0;
@@ -15459,7 +15492,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_price", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_price(c, y, n)) + "\n";
+            return format_scalar(finance::bond_price(c, y, n)) + "\n";
         }
         if (fn == "cplx_poisson_kernel") {
             double theta = 0.0;
@@ -15471,7 +15504,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "cplx_poisson_kernel", "expected cplx_poisson_kernel(theta,phi,r)"});
             }
-            return std::to_string(cplx::poisson_kernel(theta, phi, r)) + "\n";
+            return format_scalar(cplx::poisson_kernel(theta, phi, r)) + "\n";
         }
         if (fn == "cplx_green_function_disk" || fn == "green_function_disk") {
             double zre = 0.0;
@@ -15494,7 +15527,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "cplx_cauchy_principal_value") {
             auto value = eval_cplx_cauchy_principal_value_call(
@@ -15515,7 +15548,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_mod_pow", "expected numthy_mod_pow(base,exp,mod)"});
             }
-            return std::to_string(numthy::mod_pow(static_cast<uint64_t>(base_d),
+            return format_scalar(numthy::mod_pow(static_cast<uint64_t>(base_d),
                                                     static_cast<uint64_t>(exp_d),
                                                     static_cast<uint64_t>(mod_d))) +
                    "\n";
@@ -15534,7 +15567,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!x) {
                 return std::unexpected(x.error());
             }
-            return std::to_string(*x) + "\n";
+            return format_scalar(*x) + "\n";
         }
         if (fn == "finance_bond_duration") {
             double c = 0.0;
@@ -15550,7 +15583,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_duration", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_duration(c, y, n)) + "\n";
+            return format_scalar(finance::bond_duration(c, y, n)) + "\n";
         }
         if (fn == "prob_norm_cdf") {
             double x = 0.0;
@@ -15561,7 +15594,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_norm_cdf", "expected prob_norm_cdf(x,mu,sigma)"});
             }
-            return std::to_string(norm_cdf(x, mu, sigma)) + "\n";
+            return format_scalar(norm_cdf(x, mu, sigma)) + "\n";
         }
         if (fn == "jacobi_theta") {
             double n_d = 0.0;
@@ -15576,7 +15609,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (n_d != n) {
                 return std::unexpected(DomainError{"jacobi_theta", "expected integer n"});
             }
-            return std::to_string(jacobi_theta(n, z, tau)) + "\n";
+            return format_scalar(jacobi_theta(n, z, tau)) + "\n";
         }
         if (fn == "prob_norm_pdf") {
             double x = 0.0;
@@ -15587,7 +15620,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_norm_pdf", "expected prob_norm_pdf(x,mu,sigma)"});
             }
-            return std::to_string(norm_pdf(x, mu, sigma)) + "\n";
+            return format_scalar(norm_pdf(x, mu, sigma)) + "\n";
         }
         if (fn == "prob_norm_ppf") {
             double p = 0.0;
@@ -15598,7 +15631,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_norm_ppf", "expected prob_norm_ppf(p,mu,sigma)"});
             }
-            return std::to_string(norm_ppf(p, mu, sigma)) + "\n";
+            return format_scalar(norm_ppf(p, mu, sigma)) + "\n";
         }
         if (fn == "special_beta_inc_reg") {
             double x = 0.0;
@@ -15609,7 +15642,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_beta_inc_reg", "expected special_beta_inc_reg(x,a,b)"});
             }
-            return std::to_string(beta_inc_reg(x, a, b)) + "\n";
+            return format_scalar(beta_inc_reg(x, a, b)) + "\n";
         }
         if (fn == "special_beta_inc") {
             double x = 0.0;
@@ -15620,7 +15653,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_beta_inc", "expected special_beta_inc(x,a,b)"});
             }
-            return std::to_string(beta_inc(x, a, b)) + "\n";
+            return format_scalar(beta_inc(x, a, b)) + "\n";
         }
         if (fn == "special_voigt") {
             double x = 0.0;
@@ -15632,7 +15665,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_voigt", "expected special_voigt(x,sigma,gamma)"});
             }
-            return std::to_string(voigt(x, sigma, gamma)) + "\n";
+            return format_scalar(voigt(x, sigma, gamma)) + "\n";
         }
         if (fn == "special_pseudo_voigt_auto") {
             double x = 0.0;
@@ -15644,7 +15677,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "special_pseudo_voigt_auto", "expected special_pseudo_voigt_auto(x,sigma,gamma)"});
             }
-            return std::to_string(pseudo_voigt_auto(x, sigma, gamma)) + "\n";
+            return format_scalar(pseudo_voigt_auto(x, sigma, gamma)) + "\n";
         }
         if (fn == "weierstrass_p") {
             double z = 0.0;
@@ -15655,7 +15688,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_p", "expected weierstrass_p(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_p(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_p(z, g2, g3)) + "\n";
         }
         if (fn == "weierstrass_pprime") {
             double z = 0.0;
@@ -15666,7 +15699,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_pprime", "expected weierstrass_pprime(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_pprime(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_pprime(z, g2, g3)) + "\n";
         }
         if (fn == "weierstrass_zeta") {
             double z = 0.0;
@@ -15677,7 +15710,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_zeta", "expected weierstrass_zeta(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_zeta(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_zeta(z, g2, g3)) + "\n";
         }
         if (fn == "weierstrass_sigma") {
             double z = 0.0;
@@ -15688,7 +15721,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_sigma", "expected weierstrass_sigma(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_sigma(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_sigma(z, g2, g3)) + "\n";
         }
         if (fn == "prob_uniform_pdf") {
             double x = 0.0;
@@ -15699,7 +15732,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_uniform_pdf", "expected prob_uniform_pdf(x,a,b)"});
             }
-            return std::to_string(uniform_pdf(x, a, b)) + "\n";
+            return format_scalar(uniform_pdf(x, a, b)) + "\n";
         }
         if (fn == "prob_gamma_ppf") {
             double p = 0.0;
@@ -15711,7 +15744,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gamma_ppf", "expected prob_gamma_ppf(p,shape,scale)"});
             }
-            return std::to_string(gamma_ppf(p, shape, scale)) + "\n";
+            return format_scalar(gamma_ppf(p, shape, scale)) + "\n";
         }
         if (fn == "prob_beta_ppf") {
             double p = 0.0;
@@ -15723,7 +15756,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_beta_ppf", "expected prob_beta_ppf(p,alpha,beta)"});
             }
-            return std::to_string(beta_ppf(p, alpha, beta)) + "\n";
+            return format_scalar(beta_ppf(p, alpha, beta)) + "\n";
         }
         if (fn == "prob_f_pdf") {
             double x = 0.0;
@@ -15734,7 +15767,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_f_pdf", "expected prob_f_pdf(x,d1,d2)"});
             }
-            return std::to_string(f_pdf(x, d1, d2)) + "\n";
+            return format_scalar(f_pdf(x, d1, d2)) + "\n";
         }
         if (fn == "prob_f_ppf") {
             double p = 0.0;
@@ -15745,7 +15778,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_f_ppf", "expected prob_f_ppf(p,d1,d2)"});
             }
-            return std::to_string(f_ppf(p, d1, d2)) + "\n";
+            return format_scalar(f_ppf(p, d1, d2)) + "\n";
         }
         if (fn == "prob_lognormal_pdf") {
             double x = 0.0;
@@ -15756,7 +15789,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_lognormal_pdf", "expected prob_lognormal_pdf(x,mu,sigma)"});
             }
-            return std::to_string(lognormal_pdf(x, mu, sigma)) + "\n";
+            return format_scalar(lognormal_pdf(x, mu, sigma)) + "\n";
         }
         if (fn == "prob_lognormal_cdf") {
             double x = 0.0;
@@ -15767,7 +15800,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_lognormal_cdf", "expected prob_lognormal_cdf(x,mu,sigma)"});
             }
-            return std::to_string(lognormal_cdf(x, mu, sigma)) + "\n";
+            return format_scalar(lognormal_cdf(x, mu, sigma)) + "\n";
         }
         if (fn == "prob_lognormal_ppf") {
             double p = 0.0;
@@ -15778,7 +15811,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_lognormal_ppf", "expected prob_lognormal_ppf(p,mu,sigma)"});
             }
-            return std::to_string(lognormal_ppf(p, mu, sigma)) + "\n";
+            return format_scalar(lognormal_ppf(p, mu, sigma)) + "\n";
         }
         if (fn == "prob_weibull_pdf") {
             double x = 0.0;
@@ -15789,7 +15822,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_weibull_pdf", "expected prob_weibull_pdf(x,lambda,k)"});
             }
-            return std::to_string(weibull_pdf(x, lambda, k)) + "\n";
+            return format_scalar(weibull_pdf(x, lambda, k)) + "\n";
         }
         if (fn == "prob_weibull_cdf") {
             double x = 0.0;
@@ -15800,7 +15833,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_weibull_cdf", "expected prob_weibull_cdf(x,lambda,k)"});
             }
-            return std::to_string(weibull_cdf(x, lambda, k)) + "\n";
+            return format_scalar(weibull_cdf(x, lambda, k)) + "\n";
         }
         if (fn == "prob_weibull_ppf") {
             double p = 0.0;
@@ -15811,7 +15844,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_weibull_ppf", "expected prob_weibull_ppf(p,lambda,k)"});
             }
-            return std::to_string(weibull_ppf(p, lambda, k)) + "\n";
+            return format_scalar(weibull_ppf(p, lambda, k)) + "\n";
         }
         if (fn == "prob_laplace_pdf") {
             double x = 0.0;
@@ -15822,7 +15855,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_laplace_pdf", "expected prob_laplace_pdf(x,mu,b)"});
             }
-            return std::to_string(laplace_pdf(x, mu, b)) + "\n";
+            return format_scalar(laplace_pdf(x, mu, b)) + "\n";
         }
         if (fn == "prob_laplace_cdf") {
             double x = 0.0;
@@ -15833,7 +15866,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_laplace_cdf", "expected prob_laplace_cdf(x,mu,b)"});
             }
-            return std::to_string(laplace_cdf(x, mu, b)) + "\n";
+            return format_scalar(laplace_cdf(x, mu, b)) + "\n";
         }
         if (fn == "prob_laplace_ppf") {
             double p = 0.0;
@@ -15844,7 +15877,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_laplace_ppf", "expected prob_laplace_ppf(p,mu,b)"});
             }
-            return std::to_string(laplace_ppf(p, mu, b)) + "\n";
+            return format_scalar(laplace_ppf(p, mu, b)) + "\n";
         }
         if (fn == "prob_logistic_pdf") {
             double x = 0.0;
@@ -15855,7 +15888,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_logistic_pdf", "expected prob_logistic_pdf(x,mu,s)"});
             }
-            return std::to_string(logistic_pdf(x, mu, s)) + "\n";
+            return format_scalar(logistic_pdf(x, mu, s)) + "\n";
         }
         if (fn == "prob_logistic_cdf") {
             double x = 0.0;
@@ -15866,7 +15899,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_logistic_cdf", "expected prob_logistic_cdf(x,mu,s)"});
             }
-            return std::to_string(logistic_cdf(x, mu, s)) + "\n";
+            return format_scalar(logistic_cdf(x, mu, s)) + "\n";
         }
         if (fn == "prob_logistic_ppf") {
             double p = 0.0;
@@ -15877,7 +15910,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_logistic_ppf", "expected prob_logistic_ppf(p,mu,s)"});
             }
-            return std::to_string(logistic_ppf(p, mu, s)) + "\n";
+            return format_scalar(logistic_ppf(p, mu, s)) + "\n";
         }
         if (fn == "prob_gumbel_pdf") {
             double x = 0.0;
@@ -15888,7 +15921,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gumbel_pdf", "expected prob_gumbel_pdf(x,mu,beta)"});
             }
-            return std::to_string(gumbel_pdf(x, mu, beta)) + "\n";
+            return format_scalar(gumbel_pdf(x, mu, beta)) + "\n";
         }
         if (fn == "prob_gumbel_cdf") {
             double x = 0.0;
@@ -15899,7 +15932,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gumbel_cdf", "expected prob_gumbel_cdf(x,mu,beta)"});
             }
-            return std::to_string(gumbel_cdf(x, mu, beta)) + "\n";
+            return format_scalar(gumbel_cdf(x, mu, beta)) + "\n";
         }
         if (fn == "prob_gumbel_ppf") {
             double p = 0.0;
@@ -15910,7 +15943,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gumbel_ppf", "expected prob_gumbel_ppf(p,mu,beta)"});
             }
-            return std::to_string(gumbel_ppf(p, mu, beta)) + "\n";
+            return format_scalar(gumbel_ppf(p, mu, beta)) + "\n";
         }
         if (fn == "prob_cauchy_pdf") {
             double x = 0.0;
@@ -15921,7 +15954,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_cauchy_pdf", "expected prob_cauchy_pdf(x,x0,gamma)"});
             }
-            return std::to_string(cauchy_pdf(x, x0, gamma)) + "\n";
+            return format_scalar(cauchy_pdf(x, x0, gamma)) + "\n";
         }
         if (fn == "prob_cauchy_cdf") {
             double x = 0.0;
@@ -15932,7 +15965,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_cauchy_cdf", "expected prob_cauchy_cdf(x,x0,gamma)"});
             }
-            return std::to_string(cauchy_cdf(x, x0, gamma)) + "\n";
+            return format_scalar(cauchy_cdf(x, x0, gamma)) + "\n";
         }
         if (fn == "prob_cauchy_ppf") {
             double p = 0.0;
@@ -15943,7 +15976,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_cauchy_ppf", "expected prob_cauchy_ppf(p,x0,gamma)"});
             }
-            return std::to_string(cauchy_ppf(p, x0, gamma)) + "\n";
+            return format_scalar(cauchy_ppf(p, x0, gamma)) + "\n";
         }
         if (fn == "prob_pareto_pdf") {
             double x = 0.0;
@@ -15954,7 +15987,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pareto_pdf", "expected prob_pareto_pdf(x,x_m,alpha)"});
             }
-            return std::to_string(pareto_pdf(x, x_m, alpha)) + "\n";
+            return format_scalar(pareto_pdf(x, x_m, alpha)) + "\n";
         }
         if (fn == "prob_pareto_cdf") {
             double x = 0.0;
@@ -15965,7 +15998,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pareto_cdf", "expected prob_pareto_cdf(x,x_m,alpha)"});
             }
-            return std::to_string(pareto_cdf(x, x_m, alpha)) + "\n";
+            return format_scalar(pareto_cdf(x, x_m, alpha)) + "\n";
         }
         if (fn == "prob_pareto_ppf") {
             double p = 0.0;
@@ -15976,7 +16009,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pareto_ppf", "expected prob_pareto_ppf(p,x_m,alpha)"});
             }
-            return std::to_string(pareto_ppf(p, x_m, alpha)) + "\n";
+            return format_scalar(pareto_ppf(p, x_m, alpha)) + "\n";
         }
         if (fn == "prob_gamma_cdf") {
             double x = 0.0;
@@ -15987,7 +16020,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gamma_cdf", "expected prob_gamma_cdf(x,shape,scale)"});
             }
-            return std::to_string(gamma_cdf(x, shape, scale)) + "\n";
+            return format_scalar(gamma_cdf(x, shape, scale)) + "\n";
         }
         if (fn == "prob_beta_cdf") {
             double x = 0.0;
@@ -15998,7 +16031,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_beta_cdf", "expected prob_beta_cdf(x,alpha,beta)"});
             }
-            return std::to_string(beta_cdf(x, alpha, beta)) + "\n";
+            return format_scalar(beta_cdf(x, alpha, beta)) + "\n";
         }
         if (fn == "prob_f_cdf") {
             double x = 0.0;
@@ -16009,7 +16042,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_f_cdf", "expected prob_f_cdf(x,d1,d2)"});
             }
-            return std::to_string(f_cdf(x, d1, d2)) + "\n";
+            return format_scalar(f_cdf(x, d1, d2)) + "\n";
         }
         if (fn == "finance_bond_modified_duration") {
             double c = 0.0;
@@ -16027,7 +16060,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_bond_modified_duration",
                     "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_modified_duration(c, y, n)) + "\n";
+            return format_scalar(finance::bond_modified_duration(c, y, n)) + "\n";
         }
         if (fn == "finance_bond_convexity") {
             double c = 0.0;
@@ -16043,7 +16076,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_convexity", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_convexity(c, y, n)) + "\n";
+            return format_scalar(finance::bond_convexity(c, y, n)) + "\n";
         }
         if (fn == "finance_bond_ytm") {
             double price = 0.0;
@@ -16058,7 +16091,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!ytm) {
                 return std::unexpected(ytm.error());
             }
-            return std::to_string(*ytm) + "\n";
+            return format_scalar(*ytm) + "\n";
         }
         if (fn == "cplx_poisson_kernel") {
             double theta = 0.0;
@@ -16070,7 +16103,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "cplx_poisson_kernel", "expected cplx_poisson_kernel(theta,phi,r)"});
             }
-            return std::to_string(cplx::poisson_kernel(theta, phi, r)) + "\n";
+            return format_scalar(cplx::poisson_kernel(theta, phi, r)) + "\n";
         }
         if (fn == "finance_compound") {
             double principal = 0.0;
@@ -16087,7 +16120,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_compound", "expected non-negative integer periods n_periods"});
             }
-            return std::to_string(finance::compound(principal, rate, n)) + "\n";
+            return format_scalar(finance::compound(principal, rate, n)) + "\n";
         }
         if (fn == "finance_continuous_compound") {
             double principal = 0.0;
@@ -16100,7 +16133,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_continuous_compound",
                     "expected finance_continuous_compound(principal,rate,t)"});
             }
-            return std::to_string(finance::continuous_compound(principal, rate, t)) + "\n";
+            return format_scalar(finance::continuous_compound(principal, rate, t)) + "\n";
         }
         if (fn == "finance_capm") {
             double risk_free = 0.0;
@@ -16112,7 +16145,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_capm", "expected finance_capm(risk_free,beta,market_return)"});
             }
-            return std::to_string(finance::capm(risk_free, beta, market_return)) + "\n";
+            return format_scalar(finance::capm(risk_free, beta, market_return)) + "\n";
         }
         if (fn == "poly_bernstein") {
             double n_d = 0.0;
@@ -16134,7 +16167,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"poly_bernstein", "expected non-negative integer i"});
             }
-            return std::to_string(poly::bernstein(n, i, x)) + "\n";
+            return format_scalar(poly::bernstein(n, i, x)) + "\n";
         }
         if (fn == "finance_pv") {
             double rate = 0.0;
@@ -16150,7 +16183,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pv", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pv(rate, n, pmt)) + "\n";
+            return format_scalar(finance::pv(rate, n, pmt)) + "\n";
         }
         if (fn == "finance_fv_annuity") {
             double rate = 0.0;
@@ -16166,7 +16199,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_fv_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::fv_annuity(rate, n, pmt)) + "\n";
+            return format_scalar(finance::fv_annuity(rate, n, pmt)) + "\n";
         }
         if (fn == "finance_pmt_annuity") {
             double rate = 0.0;
@@ -16182,7 +16215,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pmt_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pmt_annuity(rate, n, pv0)) + "\n";
+            return format_scalar(finance::pmt_annuity(rate, n, pv0)) + "\n";
         }
         if (fn == "quantum_entanglement_entropy") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16214,7 +16247,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_wigner") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16238,7 +16271,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_husimi") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16263,7 +16296,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_schmidt_rank") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16295,7 +16328,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_schmidt_number") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16327,7 +16360,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_uncertainty") {
             const auto call_args = split_call_args(cmd);
@@ -16358,7 +16391,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "info_sample_entropy") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16387,7 +16420,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "finance_treynor") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16413,7 +16446,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "stats_ztest") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16438,7 +16471,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "stats_ks_norm") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16463,7 +16496,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "stats_bootstrap_mean") {
             const auto call_args = split_call_args(cmd);
@@ -16515,7 +16548,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
     }
 
@@ -16782,7 +16815,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "info_joint_entropy" || fn == "info_conditional_entropy" ||
             fn == "info_sample_entropy" || fn == "finance_treynor" ||
@@ -16845,7 +16878,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "geo_point_in_polygon") {
                     double px = 0.0;
@@ -16871,7 +16904,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "mat_at") {
                     auto index_arg = [this](const std::string& text) -> Result<double> {
@@ -16911,7 +16944,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "geo_kdtree_nearest") {
                     double qx = 0.0;
@@ -16937,7 +16970,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                     auto matrix = parse_matrix(text);
@@ -16968,7 +17001,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_treynor") {
                     double risk_free = 0.0;
@@ -16991,7 +17024,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
                     fn == "topo_vietoris_rips_betti0") {
@@ -17028,7 +17061,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 double rows_d = 0.0;
                 double cols_d = 0.0;
@@ -17051,7 +17084,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
         }
         if (fn == "geo_bezier_eval_x" || fn == "geo_bezier_eval_y" || fn == "bwt_decode_vec" ||
@@ -17097,7 +17130,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (call_args && call_args->size() == 2) {
                 auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -17149,7 +17182,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "combo_next_comb") {
                     const int n = static_cast<int>(t);
@@ -17276,49 +17309,49 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_percentile") {
                     auto value = eval_stats_percentile(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_historical_var") {
                     auto value = eval_finance_historical_var(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_historical_cvar") {
                     auto value = eval_finance_historical_cvar(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_ttest") {
                     auto value = eval_stats_ttest(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_trimmed_mean") {
                     auto value = eval_stats_trimmed_mean(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_vif" || fn == "stats_variance_inflation_factor") {
                     auto value = eval_stats_vif(*ctrl, t, fn.c_str());
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_acf") {
                     const int max_lag = static_cast<int>(t);
@@ -17415,14 +17448,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "poly_cheb_eval") {
                     auto value = eval_poly_cheb_eval(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 Result<double> value;
                 if (fn == "geo_bezier_eval_x") {
@@ -17433,7 +17466,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
         }
     }
@@ -18206,21 +18239,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_weighted_correlation") {
                     auto value = eval_stats_weighted_correlation(*arg_a_m, *arg_b_m, *arg_c_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "izaac_vrf_verify") {
                     auto value = eval_izaac_vrf_verify(*arg_a_m, *arg_b_m, *arg_c_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
             }
         }
@@ -18247,266 +18280,266 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_pidtune_kp") {
                     auto value = eval_control_pidtune_kp(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_pidtune_ki") {
                     auto value = eval_control_pidtune_ki(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_pidtune_kd") {
                     auto value = eval_control_pidtune_kd(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_impulse_final") {
                     auto value = eval_control_impulse_final(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_dcgain") {
                     auto value = eval_control_dcgain(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_phase_margin") {
                     auto value = eval_control_phase_margin(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_gain_margin") {
                     auto value = eval_control_gain_margin(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_is_stable") {
                     auto value = eval_control_is_stable(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_is_controllable") {
                     auto value = eval_control_is_controllable(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_is_observable") {
                     auto value = eval_control_is_observable(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "numthy_crt") {
                     auto value = eval_numthy_crt(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_kl_divergence") {
                     auto value = eval_info_kl_divergence(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "tensorops_inner") {
                     auto value = eval_tensorops_inner(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_portfolio_return") {
                     auto value = eval_finance_portfolio_return(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_information_ratio") {
                     auto value = eval_finance_information_ratio(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_portfolio_variance") {
                     auto value = eval_finance_portfolio_variance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_cross_entropy") {
                     auto value = eval_info_cross_entropy(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_js_divergence") {
                     auto value = eval_info_js_divergence(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_tv_distance") {
                     auto value = eval_info_tv_distance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_hellinger_dist") {
                     auto value = eval_info_hellinger_dist(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_fidelity") {
                     auto value = eval_quantum_fidelity(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_correlation") {
                     auto value = eval_stats_correlation(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "poly_resultant") {
                     auto value = eval_poly_resultant(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "graph_is_isomorphic") {
                     auto value = eval_graph_is_isomorphic(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "graph_modularity") {
                     auto value = eval_graph_modularity(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "gria_hamming_distance") {
                     auto value = eval_gria_hamming_distance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_spearman") {
                     auto value = eval_stats_spearman(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_kendall") {
                     auto value = eval_stats_kendall(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_weighted_mean") {
                     auto value = eval_stats_weighted_mean(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_weighted_variance") {
                     auto value = eval_stats_weighted_variance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_two_sample_ttest") {
                     auto value = eval_stats_two_sample_ttest(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_chi2_gof") {
                     auto value = eval_stats_chi2_gof(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_expectation_dm") {
                     auto value = eval_quantum_expectation_dm(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_expectation") {
                     auto value = eval_quantum_expectation(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_inner") {
                     auto value = eval_quantum_inner(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_trace_distance") {
                     auto value = eval_quantum_trace_distance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "ml_categorical_crossentropy") {
                     auto value = eval_ml_categorical_crossentropy(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 auto y_pred = matrix_to_ml_vec(*arg_a_m, fn.c_str());
                 if (!y_pred) {
@@ -18520,7 +18553,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!metric) {
                     return std::unexpected(metric.error());
                 }
-                return std::to_string(*metric) + "\n";
+                return format_scalar(*metric) + "\n";
             }
         }
     }
@@ -18645,7 +18678,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_jn", "expected spherical_jn(n,x)"});
             }
-            return std::to_string(spherical_jn(static_cast<int>(n), x)) + "\n";
+            return format_scalar(spherical_jn(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "spherical_yn") {
@@ -18654,7 +18687,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_yn", "expected spherical_yn(n,x)"});
             }
-            return std::to_string(spherical_yn(static_cast<int>(n), x)) + "\n";
+            return format_scalar(spherical_yn(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "bessel_h") {
@@ -18663,7 +18696,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_h", "expected bessel_h(nu,x)"});
             }
-            return std::to_string(bessel_h(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_h(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_j") {
@@ -18672,7 +18705,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_j", "expected bessel_j(nu,x)"});
             }
-            return std::to_string(bessel_j(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_j(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_j1") {
@@ -18680,7 +18713,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x)) {
                 return std::unexpected(DomainError{"bessel_j1", "expected bessel_j1(x)"});
             }
-            return std::to_string(bessel_j1(x)) + "\n";
+            return format_scalar(bessel_j1(x)) + "\n";
         }
 
         if (fn == "bessel_y0") {
@@ -18688,7 +18721,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x)) {
                 return std::unexpected(DomainError{"bessel_y0", "expected bessel_y0(x)"});
             }
-            return std::to_string(bessel_y0(x)) + "\n";
+            return format_scalar(bessel_y0(x)) + "\n";
         }
 
         if (fn == "bessel_y1") {
@@ -18696,7 +18729,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x)) {
                 return std::unexpected(DomainError{"bessel_y1", "expected bessel_y1(x)"});
             }
-            return std::to_string(bessel_y1(x)) + "\n";
+            return format_scalar(bessel_y1(x)) + "\n";
         }
 
         if (fn == "bessel_hy") {
@@ -18705,7 +18738,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_hy", "expected bessel_hy(nu,x)"});
             }
-            return std::to_string(bessel_hy(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_hy(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_l") {
@@ -18714,7 +18747,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_l", "expected bessel_l(nu,x)"});
             }
-            return std::to_string(bessel_l(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_l(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_lu") {
@@ -18723,7 +18756,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_lu", "expected bessel_lu(nu,x)"});
             }
-            return std::to_string(bessel_lu(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_lu(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "hermite_hn") {
@@ -18732,7 +18765,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"hermite_hn", "expected hermite_hn(n,x)"});
             }
-            return std::to_string(hermite_hn(static_cast<int>(n), x)) + "\n";
+            return format_scalar(hermite_hn(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "bessel_y" || fn == "special_bessel_y") {
@@ -18741,7 +18774,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected bessel_y(nu,x)"});
             }
-            return std::to_string(bessel_y(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_y(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_i" || fn == "special_bessel_i") {
@@ -18750,7 +18783,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected bessel_i(nu,x)"});
             }
-            return std::to_string(bessel_i(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_i(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_k" || fn == "special_bessel_k") {
@@ -18759,7 +18792,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected bessel_k(nu,x)"});
             }
-            return std::to_string(bessel_k(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(bessel_k(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "chebyshev_t") {
@@ -18768,7 +18801,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_t(n,x)"});
             }
-            return std::to_string(chebyshev_t(static_cast<int>(n), x)) + "\n";
+            return format_scalar(chebyshev_t(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "chebyshev_u") {
@@ -18777,7 +18810,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_u(n,x)"});
             }
-            return std::to_string(chebyshev_u(static_cast<int>(n), x)) + "\n";
+            return format_scalar(chebyshev_u(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "hermite_h") {
@@ -18786,7 +18819,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected hermite_h(n,x)"});
             }
-            return std::to_string(hermite_h(static_cast<int>(n), x)) + "\n";
+            return format_scalar(hermite_h(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "hermite_hf") {
@@ -18795,7 +18828,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected hermite_hf(n,x)"});
             }
-            return std::to_string(hermite_hf(static_cast<int>(n), x)) + "\n";
+            return format_scalar(hermite_hf(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "zeta_hurwitz") {
@@ -18804,7 +18837,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, s) || !parse_number(arg_b, a)) {
                 return std::unexpected(DomainError{fn, "expected zeta_hurwitz(s,a)"});
             }
-            return std::to_string(zeta_hurwitz(s, a)) + "\n";
+            return format_scalar(zeta_hurwitz(s, a)) + "\n";
         }
 
         if (fn == "laguerre_l") {
@@ -18813,7 +18846,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected laguerre_l(n,x)"});
             }
-            return std::to_string(laguerre_l(static_cast<int>(n), x)) + "\n";
+            return format_scalar(laguerre_l(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "legendre_q") {
@@ -18822,7 +18855,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected legendre_q(n,x)"});
             }
-            return std::to_string(legendre_q(static_cast<int>(n), x)) + "\n";
+            return format_scalar(legendre_q(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "hermite_he") {
@@ -18831,7 +18864,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected hermite_he(n,x)"});
             }
-            return std::to_string(hermite_he(static_cast<int>(n), x)) + "\n";
+            return format_scalar(hermite_he(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "chebyshev_v") {
@@ -18840,7 +18873,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_v(n,x)"});
             }
-            return std::to_string(chebyshev_v(static_cast<int>(n), x)) + "\n";
+            return format_scalar(chebyshev_v(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "chebyshev_w") {
@@ -18849,7 +18882,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_w(n,x)"});
             }
-            return std::to_string(chebyshev_w(static_cast<int>(n), x)) + "\n";
+            return format_scalar(chebyshev_w(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "mathieu_a") {
@@ -18858,7 +18891,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, q)) {
                 return std::unexpected(DomainError{fn, "expected mathieu_a(n,q)"});
             }
-            return std::to_string(mathieu_a(static_cast<int>(n), q)) + "\n";
+            return format_scalar(mathieu_a(static_cast<int>(n), q)) + "\n";
         }
 
         if (fn == "mathieu_b") {
@@ -18867,7 +18900,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, q)) {
                 return std::unexpected(DomainError{fn, "expected mathieu_b(n,q)"});
             }
-            return std::to_string(mathieu_b(static_cast<int>(n), q)) + "\n";
+            return format_scalar(mathieu_b(static_cast<int>(n), q)) + "\n";
         }
 
         if (fn == "pcf_u") {
@@ -18876,7 +18909,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected pcf_u(a,x)"});
             }
-            return std::to_string(pcf_u(a, x)) + "\n";
+            return format_scalar(pcf_u(a, x)) + "\n";
         }
 
         if (fn == "pcf_v") {
@@ -18885,7 +18918,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected pcf_v(a,x)"});
             }
-            return std::to_string(pcf_v(a, x)) + "\n";
+            return format_scalar(pcf_v(a, x)) + "\n";
         }
 
         if (fn == "pcf_w") {
@@ -18894,7 +18927,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected pcf_w(a,x)"});
             }
-            return std::to_string(pcf_w(a, x)) + "\n";
+            return format_scalar(pcf_w(a, x)) + "\n";
         }
 
         if (fn == "sph_bessel_j") {
@@ -18903,7 +18936,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected sph_bessel_j(n,x)"});
             }
-            return std::to_string(sph_bessel_j(static_cast<int>(n), x)) + "\n";
+            return format_scalar(sph_bessel_j(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "sph_bessel_y") {
@@ -18912,7 +18945,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected sph_bessel_y(n,x)"});
             }
-            return std::to_string(sph_bessel_y(static_cast<int>(n), x)) + "\n";
+            return format_scalar(sph_bessel_y(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "lambert_w" || fn == "special_lambert_w") {
@@ -18921,7 +18954,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, branch) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{fn, "expected lambert_w(branch,z)"});
             }
-            return std::to_string(lambert_w(static_cast<int>(branch), z)) + "\n";
+            return format_scalar(lambert_w(static_cast<int>(branch), z)) + "\n";
         }
 
         if (fn == "hypergeo_0f1") {
@@ -18930,7 +18963,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, b) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{fn, "expected hypergeo_0f1(b,z)"});
             }
-            return std::to_string(hypergeo_0f1(b, z)) + "\n";
+            return format_scalar(hypergeo_0f1(b, z)) + "\n";
         }
 
         if (fn == "hypergeo_1f1") {
@@ -18939,7 +18972,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{fn, "expected hypergeo_1f1(a,z)"});
             }
-            return std::to_string(hypergeo_1f1(a, z)) + "\n";
+            return format_scalar(hypergeo_1f1(a, z)) + "\n";
         }
 
         if (fn == "fem_poisson1d") {
@@ -18994,7 +19027,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_polygamma", "expected special_polygamma(n,x)"});
             }
-            return std::to_string(polygamma(static_cast<int>(n), x)) + "\n";
+            return format_scalar(polygamma(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "special_gamma_inc_reg") {
@@ -19004,7 +19037,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"special_gamma_inc_reg",
                                                      "expected special_gamma_inc_reg(a,x)"});
             }
-            return std::to_string(gamma_inc_reg(a, x)) + "\n";
+            return format_scalar(gamma_inc_reg(a, x)) + "\n";
         }
 
         if (fn == "special_gamma_inc_reg_upper") {
@@ -19015,7 +19048,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"special_gamma_inc_reg_upper",
                                   "expected special_gamma_inc_reg_upper(a,x)"});
             }
-            return std::to_string(gamma_inc_reg_upper(a, x)) + "\n";
+            return format_scalar(gamma_inc_reg_upper(a, x)) + "\n";
         }
 
         if (fn == "special_pochhammer") {
@@ -19025,7 +19058,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_pochhammer", "expected special_pochhammer(a,n)"});
             }
-            return std::to_string(pochhammer(a, static_cast<int>(n))) + "\n";
+            return format_scalar(pochhammer(a, static_cast<int>(n))) + "\n";
         }
 
         if (fn == "special_falling_factorial") {
@@ -19035,7 +19068,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"special_falling_factorial",
                                                      "expected special_falling_factorial(a,n)"});
             }
-            return std::to_string(falling_factorial(a, static_cast<int>(n))) + "\n";
+            return format_scalar(falling_factorial(a, static_cast<int>(n))) + "\n";
         }
 
         if (fn == "special_gamma_inc") {
@@ -19045,7 +19078,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"special_gamma_inc",
                                                      "expected special_gamma_inc(a,x)"});
             }
-            return std::to_string(gamma_inc(a, x)) + "\n";
+            return format_scalar(gamma_inc(a, x)) + "\n";
         }
 
         if (fn == "prob_t_pdf") {
@@ -19054,7 +19087,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x) || !parse_number(arg_b, df)) {
                 return std::unexpected(DomainError{"prob_t_pdf", "expected prob_t_pdf(x,df)"});
             }
-            return std::to_string(t_pdf(x, df)) + "\n";
+            return format_scalar(t_pdf(x, df)) + "\n";
         }
 
         if (fn == "prob_t_ppf") {
@@ -19063,7 +19096,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, p) || !parse_number(arg_b, df)) {
                 return std::unexpected(DomainError{"prob_t_ppf", "expected prob_t_ppf(p,df)"});
             }
-            return std::to_string(t_ppf(p, df)) + "\n";
+            return format_scalar(t_ppf(p, df)) + "\n";
         }
         if (fn == "prob_exp_ppf") {
             double p = 0.0;
@@ -19072,7 +19105,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_exp_ppf", "expected prob_exp_ppf(p,lambda)"});
             }
-            return std::to_string(exp_ppf(p, lambda)) + "\n";
+            return format_scalar(exp_ppf(p, lambda)) + "\n";
         }
         if (fn == "prob_chi2_ppf") {
             double p = 0.0;
@@ -19081,7 +19114,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_chi2_ppf", "expected prob_chi2_ppf(p,df)"});
             }
-            return std::to_string(chi2_ppf(p, df)) + "\n";
+            return format_scalar(chi2_ppf(p, df)) + "\n";
         }
         if (fn == "prob_rayleigh_pdf") {
             double x = 0.0;
@@ -19090,7 +19123,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_rayleigh_pdf", "expected prob_rayleigh_pdf(x,sigma)"});
             }
-            return std::to_string(rayleigh_pdf(x, sigma)) + "\n";
+            return format_scalar(rayleigh_pdf(x, sigma)) + "\n";
         }
 
         if (fn == "prob_rayleigh_cdf") {
@@ -19100,7 +19133,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_rayleigh_cdf", "expected prob_rayleigh_cdf(x,sigma)"});
             }
-            return std::to_string(rayleigh_cdf(x, sigma)) + "\n";
+            return format_scalar(rayleigh_cdf(x, sigma)) + "\n";
         }
 
         if (fn == "prob_rayleigh_ppf") {
@@ -19110,7 +19143,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_rayleigh_ppf", "expected prob_rayleigh_ppf(p,sigma)"});
             }
-            return std::to_string(rayleigh_ppf(p, sigma)) + "\n";
+            return format_scalar(rayleigh_ppf(p, sigma)) + "\n";
         }
 
 
@@ -19120,7 +19153,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_ber", "expected kelvin_ber(nu,x)"});
             }
-            return std::to_string(kelvin_ber(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(kelvin_ber(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "struve_h") {
@@ -19129,7 +19162,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_h", "expected struve_h(nu,x)"});
             }
-            return std::to_string(struve_h(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(struve_h(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_zero_jnu") {
@@ -19138,7 +19171,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, n)) {
                 return std::unexpected(DomainError{"bessel_zero_jnu", "expected bessel_zero_jnu(nu,n)"});
             }
-            return std::to_string(bessel_zero_jnu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
+            return format_scalar(bessel_zero_jnu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
         }
 
         if (fn == "spherical_in") {
@@ -19147,7 +19180,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_in", "expected spherical_in(n,x)"});
             }
-            return std::to_string(spherical_in(static_cast<int>(n), x)) + "\n";
+            return format_scalar(spherical_in(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "spherical_kn") {
@@ -19156,7 +19189,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_kn", "expected spherical_kn(n,x)"});
             }
-            return std::to_string(spherical_kn(static_cast<int>(n), x)) + "\n";
+            return format_scalar(spherical_kn(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "struve_l") {
@@ -19165,7 +19198,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_l", "expected struve_l(nu,x)"});
             }
-            return std::to_string(struve_l(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(struve_l(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "struve_k") {
@@ -19174,7 +19207,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_k", "expected struve_k(nu,x)"});
             }
-            return std::to_string(struve_k(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(struve_k(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "struve_hn") {
@@ -19183,7 +19216,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_hn", "expected struve_hn(nu,x)"});
             }
-            return std::to_string(struve_hn(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(struve_hn(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "struve_yn") {
@@ -19192,7 +19225,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_yn", "expected struve_yn(nu,x)"});
             }
-            return std::to_string(struve_yn(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(struve_yn(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "anger_j") {
@@ -19201,7 +19234,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"anger_j", "expected anger_j(nu,x)"});
             }
-            return std::to_string(anger_j(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(anger_j(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "weber_e") {
@@ -19210,7 +19243,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"weber_e", "expected weber_e(nu,x)"});
             }
-            return std::to_string(weber_e(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(weber_e(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "kelvin_bei") {
@@ -19219,7 +19252,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_bei", "expected kelvin_bei(nu,x)"});
             }
-            return std::to_string(kelvin_bei(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(kelvin_bei(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "kelvin_ker") {
@@ -19228,7 +19261,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_ker", "expected kelvin_ker(nu,x)"});
             }
-            return std::to_string(kelvin_ker(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(kelvin_ker(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "kelvin_kei") {
@@ -19237,7 +19270,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_kei", "expected kelvin_kei(nu,x)"});
             }
-            return std::to_string(kelvin_kei(static_cast<int>(nu), x)) + "\n";
+            return format_scalar(kelvin_kei(static_cast<int>(nu), x)) + "\n";
         }
 
         if (fn == "bessel_zero_ynu") {
@@ -19246,7 +19279,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, n)) {
                 return std::unexpected(DomainError{"bessel_zero_ynu", "expected bessel_zero_ynu(nu,n)"});
             }
-            return std::to_string(bessel_zero_ynu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
+            return format_scalar(bessel_zero_ynu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
         }
 
         if (fn == "jacobi_sn") {
@@ -19255,7 +19288,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_sn", "expected jacobi_sn(u,k)"});
             }
-            return std::to_string(jacobi_sn(u, k)) + "\n";
+            return format_scalar(jacobi_sn(u, k)) + "\n";
         }
 
         if (fn == "jacobi_cn") {
@@ -19264,7 +19297,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_cn", "expected jacobi_cn(u,k)"});
             }
-            return std::to_string(jacobi_cn(u, k)) + "\n";
+            return format_scalar(jacobi_cn(u, k)) + "\n";
         }
 
         if (fn == "jacobi_dn") {
@@ -19273,7 +19306,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_dn", "expected jacobi_dn(u,k)"});
             }
-            return std::to_string(jacobi_dn(u, k)) + "\n";
+            return format_scalar(jacobi_dn(u, k)) + "\n";
         }
 
         if (fn == "jacobi_am") {
@@ -19282,7 +19315,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_am", "expected jacobi_am(u,k)"});
             }
-            return std::to_string(jacobi_am(u, k)) + "\n";
+            return format_scalar(jacobi_am(u, k)) + "\n";
         }
 
         if (fn == "jacobi_sc") {
@@ -19291,7 +19324,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_sc", "expected jacobi_sc(u,k)"});
             }
-            return std::to_string(jacobi_sc(u, k)) + "\n";
+            return format_scalar(jacobi_sc(u, k)) + "\n";
         }
 
         if (fn == "jacobi_sd") {
@@ -19300,7 +19333,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_sd", "expected jacobi_sd(u,k)"});
             }
-            return std::to_string(jacobi_sd(u, k)) + "\n";
+            return format_scalar(jacobi_sd(u, k)) + "\n";
         }
 
         if (fn == "jacobi_nc") {
@@ -19309,7 +19342,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_nc", "expected jacobi_nc(u,k)"});
             }
-            return std::to_string(jacobi_nc(u, k)) + "\n";
+            return format_scalar(jacobi_nc(u, k)) + "\n";
         }
 
         if (fn == "jacobi_dc") {
@@ -19318,7 +19351,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_dc", "expected jacobi_dc(u,k)"});
             }
-            return std::to_string(jacobi_dc(u, k)) + "\n";
+            return format_scalar(jacobi_dc(u, k)) + "\n";
         }
 
         if (fn == "jacobi_nd") {
@@ -19327,7 +19360,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_nd", "expected jacobi_nd(u,k)"});
             }
-            return std::to_string(jacobi_nd(u, k)) + "\n";
+            return format_scalar(jacobi_nd(u, k)) + "\n";
         }
 
         if (fn == "jacobi_cd") {
@@ -19336,7 +19369,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_cd", "expected jacobi_cd(u,k)"});
             }
-            return std::to_string(jacobi_cd(u, k)) + "\n";
+            return format_scalar(jacobi_cd(u, k)) + "\n";
         }
 
         if (fn == "jacobi_cs") {
@@ -19345,7 +19378,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_cs", "expected jacobi_cs(u,k)"});
             }
-            return std::to_string(jacobi_cs(u, k)) + "\n";
+            return format_scalar(jacobi_cs(u, k)) + "\n";
         }
 
         if (fn == "jacobi_ns") {
@@ -19354,7 +19387,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_ns", "expected jacobi_ns(u,k)"});
             }
-            return std::to_string(jacobi_ns(u, k)) + "\n";
+            return format_scalar(jacobi_ns(u, k)) + "\n";
         }
 
         if (fn == "jacobi_ds") {
@@ -19363,7 +19396,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_ds", "expected jacobi_ds(u,k)"});
             }
-            return std::to_string(jacobi_ds(u, k)) + "\n";
+            return format_scalar(jacobi_ds(u, k)) + "\n";
         }
 
         if (fn == "ellip_pi") {
@@ -19372,7 +19405,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"ellip_pi", "expected ellip_pi(n,k)"});
             }
-            return std::to_string(ellip_pi(n, k)) + "\n";
+            return format_scalar(ellip_pi(n, k)) + "\n";
         }
 
         if (fn == "ellip_f") {
@@ -19381,7 +19414,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, phi) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"ellip_f", "expected ellip_f(phi,k)"});
             }
-            return std::to_string(ellip_f(phi, k)) + "\n";
+            return format_scalar(ellip_f(phi, k)) + "\n";
         }
 
         if (fn == "ellip_e_inc") {
@@ -19390,7 +19423,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, phi) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"ellip_e_inc", "expected ellip_e_inc(phi,k)"});
             }
-            return std::to_string(ellip_e_inc(phi, k)) + "\n";
+            return format_scalar(ellip_e_inc(phi, k)) + "\n";
         }
 
         if (fn == "theta1_prime") {
@@ -19399,7 +19432,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, z) || !parse_number(arg_b, q)) {
                 return std::unexpected(DomainError{"theta1_prime", "expected theta1_prime(z,q)"});
             }
-            return std::to_string(theta1_prime(z, q)) + "\n";
+            return format_scalar(theta1_prime(z, q)) + "\n";
         }
 
         if (fn == "theta1" || fn == "theta2" || fn == "theta3" || fn == "theta4") {
@@ -19409,15 +19442,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected " + fn + "(z,q)"});
             }
             if (fn == "theta1") {
-                return std::to_string(theta1(z, q)) + "\n";
+                return format_scalar(theta1(z, q)) + "\n";
             }
             if (fn == "theta2") {
-                return std::to_string(theta2(z, q)) + "\n";
+                return format_scalar(theta2(z, q)) + "\n";
             }
             if (fn == "theta3") {
-                return std::to_string(theta3(z, q)) + "\n";
+                return format_scalar(theta3(z, q)) + "\n";
             }
-            return std::to_string(theta4(z, q)) + "\n";
+            return format_scalar(theta4(z, q)) + "\n";
         }
 
         if (fn == "polylog") {
@@ -19426,7 +19459,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{"polylog", "expected polylog(n,z)"});
             }
-            return std::to_string(polylog(static_cast<int>(n), z)) + "\n";
+            return format_scalar(polylog(static_cast<int>(n), z)) + "\n";
         }
 
         if (fn == "debye") {
@@ -19435,7 +19468,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"debye", "expected debye(n,x)"});
             }
-            return std::to_string(debye(static_cast<int>(n), x)) + "\n";
+            return format_scalar(debye(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "beta") {
@@ -19444,7 +19477,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, b)) {
                 return std::unexpected(DomainError{"beta", "expected numeric arguments beta(a,b)"});
             }
-            return std::to_string(beta_func(a, b)) + "\n";
+            return format_scalar(beta_func(a, b)) + "\n";
         }
 
         if (fn == "prob_exp_cdf") {
@@ -19454,7 +19487,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_exp_cdf", "expected prob_exp_cdf(x,lambda)"});
             }
-            return std::to_string(exp_cdf(x, lambda)) + "\n";
+            return format_scalar(exp_cdf(x, lambda)) + "\n";
         }
 
         if (fn == "prob_pois_pdf") {
@@ -19464,7 +19497,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pois_pdf", "expected prob_pois_pdf(k,lambda)"});
             }
-            return std::to_string(pois_pdf(k, lambda)) + "\n";
+            return format_scalar(pois_pdf(k, lambda)) + "\n";
         }
 
         if (fn == "prob_pois_cdf") {
@@ -19474,7 +19507,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pois_cdf", "expected prob_pois_cdf(k,lambda)"});
             }
-            return std::to_string(pois_cdf(k, lambda)) + "\n";
+            return format_scalar(pois_cdf(k, lambda)) + "\n";
         }
 
         if (fn == "prob_exp_pdf") {
@@ -19484,7 +19517,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_exp_pdf", "expected prob_exp_pdf(x,lambda)"});
             }
-            return std::to_string(exp_pdf(x, lambda)) + "\n";
+            return format_scalar(exp_pdf(x, lambda)) + "\n";
         }
 
         if (fn == "prob_chi2_cdf") {
@@ -19494,7 +19527,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_chi2_cdf", "expected prob_chi2_cdf(x,df)"});
             }
-            return std::to_string(chi2_cdf(x, df)) + "\n";
+            return format_scalar(chi2_cdf(x, df)) + "\n";
         }
 
         if (fn == "prob_t_cdf") {
@@ -19504,7 +19537,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_t_cdf", "expected prob_t_cdf(x,df)"});
             }
-            return std::to_string(t_cdf(x, df)) + "\n";
+            return format_scalar(t_cdf(x, df)) + "\n";
         }
 
         if (fn == "prob_chi2_pdf") {
@@ -19514,7 +19547,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_chi2_pdf", "expected prob_chi2_pdf(x,df)"});
             }
-            return std::to_string(chi2_pdf(x, df)) + "\n";
+            return format_scalar(chi2_pdf(x, df)) + "\n";
         }
 
         if (fn == "combo_nchoosek") {
@@ -19528,9 +19561,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
                 return std::unexpected(DomainError{"combo_nchoosek", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::binomial(static_cast<uint32_t>(n),
-                                                  static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                       static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_binomial") {
@@ -19544,9 +19576,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
                 return std::unexpected(DomainError{"combo_binomial", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::binomial(static_cast<uint32_t>(n),
-                                                  static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                       static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_eulerian") {
@@ -19560,9 +19591,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
                 return std::unexpected(DomainError{"combo_eulerian", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::eulerian_number(static_cast<uint32_t>(n),
-                                                         static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::eulerian_number(static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "diffgeo_gaussian_curvature_sphere") {
@@ -19577,7 +19606,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "diffgeo_mean_curvature_sphere") {
@@ -19592,7 +19621,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "diffgeo_ricci_scalar_sphere") {
@@ -19607,7 +19636,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "diffgeo_einstein_scalar_sphere") {
@@ -19622,7 +19651,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "cplx_residue_inv") {
@@ -19636,7 +19665,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "boxfilter" || fn == "medfilt2" || fn == "imgaussfilt") {
@@ -19760,9 +19789,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
                 return std::unexpected(DomainError{"combo_stirling2", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::stirling2(static_cast<uint32_t>(n),
-                                                   static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::stirling2(static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_stirling1") {
@@ -19776,9 +19803,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
                 return std::unexpected(DomainError{"combo_stirling1", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::stirling1(static_cast<uint32_t>(n),
-                                                   static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::stirling1(static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_permutations") {
@@ -19793,9 +19818,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
                 return std::unexpected(DomainError{"combo_permutations", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::permutations(static_cast<uint32_t>(n),
-                                                        static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::permutations(static_cast<uint32_t>(n),
+                                                           static_cast<uint32_t>(k)));
         }
 
         if (fn == "numthy_gcd") {
@@ -19804,7 +19828,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a_d) || !parse_number(arg_b, b_d)) {
                 return std::unexpected(DomainError{"numthy_gcd", "expected numthy_gcd(a,b)"});
             }
-            return std::to_string(numthy::gcd(static_cast<uint64_t>(a_d),
+            return format_scalar(numthy::gcd(static_cast<uint64_t>(a_d),
                                               static_cast<uint64_t>(b_d))) +
                    "\n";
         }
@@ -19824,7 +19848,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "quantum_grover_optimal_iterations",
                     "expected non-negative integer n_qubits and n_marked"});
             }
-            return std::to_string(quantum::grover_optimal_iterations(n_qubits, n_marked)) + "\n";
+            return format_scalar(quantum::grover_optimal_iterations(n_qubits, n_marked)) + "\n";
         }
 
         if (fn == "numthy_lcm") {
@@ -19833,7 +19857,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a_d) || !parse_number(arg_b, b_d)) {
                 return std::unexpected(DomainError{"numthy_lcm", "expected numthy_lcm(a,b)"});
             }
-            return std::to_string(numthy::lcm(static_cast<uint64_t>(a_d),
+            return format_scalar(numthy::lcm(static_cast<uint64_t>(a_d),
                                               static_cast<uint64_t>(b_d))) +
                    "\n";
         }
@@ -19854,7 +19878,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
             }
-            return std::to_string(numthy::jordan_totient(
+            return format_scalar(numthy::jordan_totient(
                        static_cast<uint32_t>(k), static_cast<uint64_t>(n_d))) +
                    "\n";
         }
@@ -19874,9 +19898,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"combo_combinations_with_rep",
                                 "expected non-negative integer n and k"});
             }
-            return std::to_string(combo::combinations_with_rep(static_cast<uint32_t>(n),
-                                                               static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::combinations_with_rep(
+                                           static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "numthy_legendre_symbol") {
@@ -19894,7 +19917,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_legendre_symbol", "expected odd prime p"});
             }
-            return std::to_string(numthy::legendre_symbol(static_cast<int64_t>(a_d),
+            return format_scalar(numthy::legendre_symbol(static_cast<int64_t>(a_d),
                                                           static_cast<uint64_t>(p_d))) +
                    "\n";
         }
@@ -19914,7 +19937,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jacobi_symbol", "expected odd positive integer n"});
             }
-            return std::to_string(numthy::jacobi_symbol(static_cast<int64_t>(a_d),
+            return format_scalar(numthy::jacobi_symbol(static_cast<int64_t>(a_d),
                                                         static_cast<uint64_t>(n_d))) +
                    "\n";
         }
@@ -19930,7 +19953,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_kronecker_symbol", "expected integer arguments"});
             }
-            return std::to_string(numthy::kronecker_symbol(static_cast<int64_t>(a_d),
+            return format_scalar(numthy::kronecker_symbol(static_cast<int64_t>(a_d),
                                                            static_cast<int64_t>(n_d))) +
                    "\n";
         }
@@ -19946,7 +19969,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!root) {
                 return std::unexpected(root.error());
             }
-            return std::to_string(*root) + "\n";
+            return format_scalar(*root) + "\n";
         }
 
         if (fn == "numthy_mod_inv") {
@@ -19960,7 +19983,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!inv) {
                 return std::unexpected(inv.error());
             }
-            return std::to_string(*inv) + "\n";
+            return format_scalar(*inv) + "\n";
         }
 
         if (fn == "numthy_multiplicative_order") {
@@ -19975,7 +19998,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!ord) {
                 return std::unexpected(ord.error());
             }
-            return std::to_string(*ord) + "\n";
+            return format_scalar(*ord) + "\n";
         }
 
         if (fn == "numthy_extended_gcd") {
@@ -19989,7 +20012,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!g) {
                 return std::unexpected(g.error());
             }
-            return std::to_string(*g) + "\n";
+            return format_scalar(*g) + "\n";
         }
 
         if (fn == "numthy_is_primitive_root") {
@@ -20007,7 +20030,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_is_primitive_root", "expected g >= 0 and p > 0"});
             }
-            return std::to_string(numthy::is_primitive_root(static_cast<uint64_t>(g_d),
+            return format_scalar(numthy::is_primitive_root(static_cast<uint64_t>(g_d),
                                                             static_cast<uint64_t>(p_d))
                                       ? 1
                                       : 0) +
@@ -20021,7 +20044,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"cplx_joukowski", "expected cplx_joukowski(re,im)"});
             }
             const cplx::C w = cplx::joukowski(cplx::C{re, im});
-            return std::to_string(std::abs(w)) + "\n";
+            return format_scalar(std::abs(w)) + "\n";
         }
 
         if (fn == "cplx_joukowski_inv") {
@@ -20035,7 +20058,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "geo_vec2d_length") {
@@ -20045,7 +20068,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"geo_vec2d_length", "expected geo_vec2d_length(x,y)"});
             }
-            return std::to_string(geo::length(geo::Vec2D{x, y})) + "\n";
+            return format_scalar(geo::length(geo::Vec2D{x, y})) + "\n";
         }
 
         if (fn == "finance_npv") {
@@ -20068,7 +20091,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "combo_multinomial") {
@@ -20095,7 +20118,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "finance_kelly_fraction") {
@@ -20106,7 +20129,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"finance_kelly_fraction",
                                   "expected finance_kelly_fraction(win_prob,win_loss_ratio)"});
             }
-            return std::to_string(finance::kelly_fraction(win_prob, win_loss_ratio)) + "\n";
+            return format_scalar(finance::kelly_fraction(win_prob, win_loss_ratio)) + "\n";
         }
 
         if (fn == "info_shannon_hartley") {
@@ -20117,7 +20140,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"info_shannon_hartley",
                                   "expected info_shannon_hartley(bandwidth_hz,snr_linear)"});
             }
-            return std::to_string(info::shannon_hartley(bandwidth_hz, snr_linear)) + "\n";
+            return format_scalar(info::shannon_hartley(bandwidth_hz, snr_linear)) + "\n";
         }
 
         if (fn == "info_rate_distortion_gaussian") {
@@ -20128,7 +20151,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"info_rate_distortion_gaussian",
                                   "expected info_rate_distortion_gaussian(variance,distortion)"});
             }
-            return std::to_string(info::rate_distortion_gaussian(variance, distortion)) + "\n";
+            return format_scalar(info::rate_distortion_gaussian(variance, distortion)) + "\n";
         }
 
         if (fn == "info_differential_entropy_uniform") {
@@ -20139,7 +20162,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"info_differential_entropy_uniform",
                                   "expected info_differential_entropy_uniform(a,b)"});
             }
-            return std::to_string(info::differential_entropy_uniform(a, b)) + "\n";
+            return format_scalar(info::differential_entropy_uniform(a, b)) + "\n";
         }
 
         if (fn == "info_renyi_entropy") {
@@ -20163,7 +20186,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "info_tsallis_entropy") {
@@ -20187,7 +20210,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "geo_bezier_eval_x" || fn == "geo_bezier_eval_y" || fn == "bwt_decode_vec" ||
@@ -20254,7 +20277,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "combo_next_comb") {
                 const int n = static_cast<int>(t);
@@ -20381,49 +20404,49 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_percentile") {
                 auto value = eval_stats_percentile(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "finance_historical_var") {
                 auto value = eval_finance_historical_var(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "finance_historical_cvar") {
                 auto value = eval_finance_historical_cvar(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_ttest") {
                 auto value = eval_stats_ttest(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_trimmed_mean") {
                 auto value = eval_stats_trimmed_mean(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_vif" || fn == "stats_variance_inflation_factor") {
                 auto value = eval_stats_vif(*ctrl, t, fn.c_str());
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "fft_irfft") {
                 const int n = static_cast<int>(t);
@@ -20505,14 +20528,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "poly_cheb_eval") {
                 auto value = eval_poly_cheb_eval(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             Result<double> value =
                 std::unexpected(DomainError{fn.c_str(), "unsupported bezier eval call"});
@@ -20524,7 +20547,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "bigint_gcd") {
@@ -20538,7 +20561,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "sym_diff") {
@@ -20587,7 +20610,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"legendre_p", "expected legendre_p(n,x)"});
             }
-            return std::to_string(legendre_p(static_cast<int>(n), x)) + "\n";
+            return format_scalar(legendre_p(static_cast<int>(n), x)) + "\n";
         }
 
         if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "lsq" || fn == "bicgstab" ||
@@ -20867,7 +20890,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (!value) {
             return std::unexpected(value.error());
         }
-        return std::to_string(*value) + "\n";
+        return format_scalar(*value) + "\n";
     }
 
     static const std::regex unary(R"((\w+)\(([^)]+)\))", std::regex::icase);
@@ -20884,33 +20907,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric argument"});
             }
             if (fn == "special_erfinv") {
-                return std::to_string(erfinv(value)) + "\n";
+                return format_scalar(erfinv(value)) + "\n";
             }
             if (fn == "special_erfcinv") {
-                return std::to_string(erfcinv(value)) + "\n";
+                return format_scalar(erfcinv(value)) + "\n";
             }
             if (fn == "special_log_gamma") {
-                return std::to_string(log_gamma(value)) + "\n";
+                return format_scalar(log_gamma(value)) + "\n";
             }
             if (fn == "special_digamma") {
-                return std::to_string(digamma(value)) + "\n";
+                return format_scalar(digamma(value)) + "\n";
             }
             if (fn == "special_airy_ai") {
-                return std::to_string(airy_ai(value)) + "\n";
+                return format_scalar(airy_ai(value)) + "\n";
             }
             if (fn == "special_airy_bi") {
-                return std::to_string(airy_bi(value)) + "\n";
+                return format_scalar(airy_bi(value)) + "\n";
             }
             if (fn == "special_airy_aip" || fn == "airy_aip") {
-                return std::to_string(airy_aip(value)) + "\n";
+                return format_scalar(airy_aip(value)) + "\n";
             }
             if (fn == "special_airy_bip" || fn == "airy_bip") {
-                return std::to_string(airy_bip(value)) + "\n";
+                return format_scalar(airy_bip(value)) + "\n";
             }
             if (fn == "special_rgamma") {
-                return std::to_string(rgamma(value)) + "\n";
+                return format_scalar(rgamma(value)) + "\n";
             }
-            return std::to_string(trigamma(value)) + "\n";
+            return format_scalar(trigamma(value)) + "\n";
         }
 
         if (fn == "beta_dirichlet") {
@@ -20918,7 +20941,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg, s)) {
                 return std::unexpected(DomainError{"beta_dirichlet", "expected numeric s"});
             }
-            return std::to_string(beta_dirichlet(s)) + "\n";
+            return format_scalar(beta_dirichlet(s)) + "\n";
         }
 
         if (fn == "bernoulli_number") {
@@ -20927,7 +20950,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"bernoulli_number", "expected non-negative integer n"});
             }
-            return std::to_string(bernoulli_number(static_cast<int>(n))) + "\n";
+            return format_scalar(bernoulli_number(static_cast<int>(n))) + "\n";
         }
 
         if (fn == "euler_number") {
@@ -20936,7 +20959,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"euler_number", "expected non-negative integer n"});
             }
-            return std::to_string(euler_number(static_cast<int>(n))) + "\n";
+            return format_scalar(euler_number(static_cast<int>(n))) + "\n";
         }
 
         if (fn == "plot") {
@@ -20961,7 +20984,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "numthy_prime_nth") {
@@ -20970,7 +20993,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_prime_nth", "expected integer n >= 1"});
             }
-            return std::to_string(numthy::prime_nth(static_cast<uint64_t>(n_d))) + "\n";
+            return format_scalar(numthy::prime_nth(static_cast<uint64_t>(n_d))) + "\n";
         }
 
         if (fn == "numthy_factor_exp" || fn == "numthy_farey" ||
@@ -21049,7 +21072,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
-            return std::to_string(numthy::primitive_root(static_cast<int>(p))) + "\n";
+            return format_scalar(numthy::primitive_root(static_cast<int>(p))) + "\n";
         }
 
         if (fn == "numthy_von_mangoldt") {
@@ -21058,7 +21081,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_von_mangoldt", "expected non-negative integer n"});
             }
-            return std::to_string(numthy::von_mangoldt(static_cast<uint64_t>(n_d))) + "\n";
+            return format_scalar(numthy::von_mangoldt(static_cast<uint64_t>(n_d))) + "\n";
         }
 
         if (fn == "combo_factorial" || fn == "combo_catalan" || fn == "combo_bell" ||
@@ -21078,103 +21101,84 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{fn, "expected non-negative integer argument"});
             }
             if (fn == "combo_factorial") {
-                return std::to_string(
-                           combo::factorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::factorial(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_catalan") {
-                return std::to_string(
-                           combo::catalan_num(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::catalan_num(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_bell" || fn == "combo_bell_num") {
-                return std::to_string(
-                           combo::bell_num(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::bell_num(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_involutions") {
-                return std::to_string(
-                           combo::involutions(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::involutions(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_motzkin") {
-                return std::to_string(
-                           combo::motzkin_num(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::motzkin_num(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_subfactorial") {
-                return std::to_string(
-                           combo::subfactorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::subfactorial(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_double_factorial") {
-                return std::to_string(
-                           combo::double_factorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
-            }
-            if (fn == "combo_double_factorial") {
-                return std::to_string(
-                           combo::double_factorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::double_factorial(static_cast<uint32_t>(n_d)));
             }
             if (fn == "numthy_isprime") {
-                return std::to_string(numthy::isprime(static_cast<uint64_t>(n_d)) ? 1 : 0) + "\n";
+                return format_scalar(numthy::isprime(static_cast<uint64_t>(n_d)) ? 1 : 0) + "\n";
             }
             if (fn == "numthy_is_carmichael") {
-                return std::to_string(numthy::is_carmichael(static_cast<uint64_t>(n_d)) ? 1 : 0) +
+                return format_scalar(numthy::is_carmichael(static_cast<uint64_t>(n_d)) ? 1 : 0) +
                        "\n";
             }
             if (fn == "numthy_euler_phi") {
-                return std::to_string(numthy::euler_phi(static_cast<uint64_t>(n_d))) + "\n";
+                return format_scalar(numthy::euler_phi(static_cast<uint64_t>(n_d))) + "\n";
             }
             if (fn == "numthy_carmichael_lambda") {
-                return std::to_string(numthy::carmichael_lambda(static_cast<uint64_t>(n_d))) +
+                return format_scalar(numthy::carmichael_lambda(static_cast<uint64_t>(n_d))) +
                        "\n";
             }
             if (fn == "numthy_mobius") {
-                return std::to_string(
+                return format_scalar(
                            static_cast<double>(numthy::mobius(static_cast<uint64_t>(n_d)))) +
                        "\n";
             }
             if (fn == "numthy_nextprime") {
-                return std::to_string(
+                return format_scalar(
                            numthy::nextprime(static_cast<uint64_t>(n_d))) +
                        "\n";
             }
             if (fn == "numthy_prevprime") {
-                return std::to_string(
+                return format_scalar(
                            numthy::prevprime(static_cast<uint64_t>(n_d))) +
                        "\n";
             }
             if (fn == "numthy_prevprime") {
-                return std::to_string(
+                return format_scalar(
                            numthy::prevprime(static_cast<uint64_t>(n_d))) +
                        "\n";
             }
             if (fn == "numthy_liouville") {
-                return std::to_string(
+                return format_scalar(
                            static_cast<double>(numthy::liouville(static_cast<uint64_t>(n_d)))) +
                        "\n";
             }
             if (fn == "numthy_prime_pi") {
-                return std::to_string(numthy::prime_pi(static_cast<uint64_t>(n_d))) + "\n";
+                return format_scalar(numthy::prime_pi(static_cast<uint64_t>(n_d))) + "\n";
             }
             if (fn == "numthy_num_divisors") {
-                return std::to_string(
+                return format_scalar(
                            numthy::num_divisors(static_cast<uint64_t>(n_d))) +
                        "\n";
             }
             if (fn == "numthy_factor_count") {
-                return std::to_string(
+                return format_scalar(
                            numthy::factor(static_cast<uint64_t>(n_d)).size()) +
                        "\n";
             }
             if (fn == "numthy_sum_divisors") {
-                return std::to_string(
+                return format_scalar(
                            numthy::sum_divisors(static_cast<uint64_t>(n_d))) +
                        "\n";
             }
-            return std::to_string(numthy::partition(static_cast<uint32_t>(n_d))) + "\n";
+            return format_scalar(numthy::partition(static_cast<uint32_t>(n_d))) + "\n";
         }
 
         if (fn == "info_channel_capacity_bsc") {
@@ -21183,7 +21187,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"info_channel_capacity_bsc", "expected numeric p_error"});
             }
-            return std::to_string(info::channel_capacity_bsc(p_error)) + "\n";
+            return format_scalar(info::channel_capacity_bsc(p_error)) + "\n";
         }
 
         if (fn == "info_channel_capacity_bec") {
@@ -21192,7 +21196,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"info_channel_capacity_bec", "expected numeric epsilon"});
             }
-            return std::to_string(info::channel_capacity_bec(epsilon)) + "\n";
+            return format_scalar(info::channel_capacity_bec(epsilon)) + "\n";
         }
 
         if (fn == "info_differential_entropy_gaussian") {
@@ -21201,7 +21205,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"info_differential_entropy_gaussian", "expected numeric sigma"});
             }
-            return std::to_string(info::differential_entropy_gaussian(sigma)) + "\n";
+            return format_scalar(info::differential_entropy_gaussian(sigma)) + "\n";
         }
 
         if (fn == "clausen") {
@@ -21209,7 +21213,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg, theta)) {
                 return std::unexpected(DomainError{"clausen", "expected numeric theta"});
             }
-            return std::to_string(clausen(theta)) + "\n";
+            return format_scalar(clausen(theta)) + "\n";
         }
 
         if (fn == "sym_simplify") {
@@ -21233,7 +21237,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg, s)) {
                 return std::unexpected(DomainError{"eta_dirichlet", "expected numeric s"});
             }
-            return std::to_string(eta_dirichlet(s)) + "\n";
+            return format_scalar(eta_dirichlet(s)) + "\n";
         }
 
         if (fn == "erf" || fn == "erfc" || fn == "erfi" || fn == "erfcx" || fn == "dawson" ||
@@ -21428,9 +21432,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return built_out.str();
                 }
                 if (auto value = eval_scalar_expr(state_, cmd)) {
-                    std::ostringstream scalar_out;
-                    scalar_out << std::fixed << std::setprecision(6) << *value << "\n";
-                    return scalar_out.str();
+                    return format_scalar(*value) + "\n";
                 }
                 return std::unexpected(matrix.error());
             }
@@ -22071,9 +22073,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return out.str();
         }
         if (auto value = eval_scalar_expr(state_, cmd)) {
-            std::ostringstream out;
-            out << std::fixed << std::setprecision(6) << *value << "\n";
-            return out.str();
+            return format_scalar(*value) + "\n";
         }
     }
 

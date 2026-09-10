@@ -405,10 +405,34 @@ result, ODE solutions by substitution into the equation, and Mellin entries on a
 substituted to remove the singularity at each end exactly. That is what caught the
 Hankel factor of two, which no amount of asserting the expected closed form would have.
 
-Still open here, recorded so they are not lost: the REPL's own scalar output does not
-round-trip (only `sym_to_string` was fixed), and `sym_expand` does not collect like
-terms, which is why `(x+1)^3` prints as eight products and why nested powers need a
-size ceiling at all.
+Both of the items left open here are now closed. `sym_expand` collects like terms on a
+canonical polynomial form, so `((x+1)^8)^8` is the degree-64 binomial in 8 ms rather
+than a hang, and the REPL's scalar output round-trips.
+
+Chasing that second one down through the REPL turned up five more wrong answers, none
+of them symbolic:
+
+| Defect | Symptom |
+|---|---|
+| A leading unary sign applied to the whole expression | `-4 + 1` evaluated to **-5**, `-4 - 1` to **-3**; with `x = 4`, `-x + y` to **-6** |
+| The top-level operator scan did not know an exponent sign | `1e-09 * 2` was split at the minus and reported "could not parse" |
+| Every scalar printed with `printf("%f")` | `x = 0.000000001` echoed as **0.000000**; above 1e16 the same format grew a spurious `.000000` tail |
+| `save_session` wrote six significant digits | `x = 1.23456789` saved as `1.23457` and reloaded 2.1e-06 wrong, silently, for every scalar, matrix entry and plot sample |
+| `combo::binomial` overflowed its intermediate product | `C(67,33)` returned **8829174638479413** for 14226520737620288370 — a value well inside `uint64_t` |
+
+The last of those came out of asking a narrower question: the REPL was printing
+`combo`'s `UINT64_MAX` overflow sentinel as an answer, so `combo_factorial(25)` said
+**18446744073709551615**. Guarding the twenty-one call sites was the fix for that;
+checking the counts against exact arithmetic while writing the test is what showed the
+counting functions themselves were wrapping. `permutations`, `multinomial`,
+`combinations_with_rep` and the four rank/unrank functions had the same problem in
+different forms.
+
+The pattern across all fourteen: the code was wrong in a way that looked right. The
+tests that catch this class compare against an independent definition — quadrature for
+a transform, exact integer arithmetic for a count, a bit pattern rather than a printed
+form for a round trip — because a test written from the implementation's own output
+agrees with the bug.
 
 ## §11 — LaTeX and notation interchange
 

@@ -181,6 +181,61 @@ probe sweeping every S-box index plus the NIST vectors is byte-identical -- and 
 26x throughput; `docs/PERFORMANCE.md` has the measurement and the AES-NI follow-up that
 would recover it.
 
+### Numbers that could not be read back
+
+Three defects with one shape: a value that is correct inside the program and wrong by
+the time anyone can see it.
+
+- The REPL printed every scalar with `std::to_string`, which is `printf("%f")` -- six
+  decimal places and nothing else. Below about `5e-7` that prints `0.000000`, so a
+  value did not merely lose precision, it disappeared: `x = 0.000000001` echoed as
+  **0.000000**, `vars` listed it as **0.000000**, and `sym_eval("1/1000000000")` said
+  **0.000000**. At `1e16` and above the same format emitted a long integer with a
+  spurious `.000000` tail. All 480 scalar-printing sites now go through
+  `ms::format_scalar` (`include/ms/core/format.hpp`), which keeps the six-decimal
+  spelling wherever it round-trips and falls back to the shortest `%g` that `strtod`
+  maps back to the same double. Counts keep an integral overload, so
+  `combo_factorial(20)` still prints `2432902008176640000` rather than `2.4329e+18`.
+- `save_session` wrote doubles with the default ostream format, six significant digits.
+  `x = 1.23456789` was saved as `1.23457` and reloaded about `2.1e-06` wrong; the same
+  six digits truncated every matrix entry and every plot sample. The save succeeded,
+  the load succeeded, and the number was a different number. Session files now use
+  `ms::format_exact`, which always emits enough digits to round-trip -- a file is read
+  back, so exactness is the point, not readability. Short values stay short: `1` is
+  still written `1`.
+- The combinatorics module reports an unrepresentable count by returning `UINT64_MAX`,
+  and the REPL cast that to a double and printed it: `combo_factorial(25)` answered
+  **18446744073709551615** where 25! is about `1.55e25`. Twenty-one commands now test
+  for the sentinel and report `result does not fit in 64 bits`.
+
+Underneath the last of those, the counting functions were wrapping silently:
+
+- `binomial` advanced with `r = r * (n - i) / (i + 1)`. The quotient is exact but the
+  product is the result times `(i + 1)`, so it overflowed one step before the answer
+  did -- `C(67,33)` is `14226520737620288370`, comfortably inside `uint64_t`, and the
+  loop returned **8829174638479413**. It now cancels the denominator into `r` before
+  multiplying, which keeps every intermediate no larger than the result, and returns
+  the overflow sentinel when the answer genuinely does not fit.
+- `permutations` multiplied without a check: `P(21,21)` returned **14197454024290336768**
+  for `51090942171709440000`.
+- `multinomial` computed `factorial(n)` and divided down, so every `n` past 20 divided
+  the overflow sentinel by real factorials. It now walks the equivalent product of
+  binomials, which both stays exact and reaches values `n!` cannot: `30!/(10!)^3` is
+  `5550996791340` and fits.
+- `combinations_with_rep` formed `n + k - 1` in `uint32_t`, so `n = 0` wrapped to
+  4294967295 and a call with no symbols at all answered with a product over that.
+- `rank_permutation`, `rank_combination`, `unrank_permutation` and `unrank_combination`
+  used factorials and binomials past the range of a rank, so they returned or consumed
+  sentinels as if they were numbers. Each now declines.
+
+`tests/unit/combo/test_combo_overflow.cpp` checks the counts against values computed in
+exact arithmetic outside the program, and against Pascal's rule and
+`P(n,k) = C(n,k) k!` -- identities the implementation does not use. Pinning the old
+output would have agreed with the bug.
+`tests/unit/repl/test_repl_session_roundtrip.cpp` compares bit patterns rather than
+printed forms, because printed forms are what was hiding the defect, and covers
+denormals, `DBL_MAX`, and negative zero.
+
 `tests/unit/symbolic/test_symbolic_tables.cpp` checks each entry against the definition
 it comes from rather than against the implementation: antiderivatives are differentiated
 and compared with the integrand, Laplace entries are checked against a numerical

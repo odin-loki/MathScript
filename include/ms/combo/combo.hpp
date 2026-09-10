@@ -21,11 +21,14 @@ uint64_t double_factorial(uint32_t n);      // n!!; n > 33 returns UINT64_MAX
 uint64_t subfactorial(uint32_t n);          // D(n) — derangements count; n > 20 returns UINT64_MAX
 
 // --- Counting ---
-uint64_t binomial(uint32_t n, uint32_t k);  // C(n,k)
-uint64_t multinomial(uint32_t n, const std::vector<uint32_t>& ks);
-uint64_t permutations(uint32_t n, uint32_t k);   // P(n,k) = n!/(n-k)!
+// Each returns UINT64_MAX when the exact answer does not fit in 64 bits, the same
+// overflow sentinel the factorials use. Callers that show the number to a user must
+// test for it: it is 18446744073709551615, which reads as an answer.
+uint64_t binomial(uint32_t n, uint32_t k);  // C(n,k); 0 when k > n
+uint64_t multinomial(uint32_t n, const std::vector<uint32_t>& ks);  // 0 when sum(ks) != n
+uint64_t permutations(uint32_t n, uint32_t k);   // P(n,k) = n!/(n-k)!; 0 when k > n
 uint64_t combinations(uint32_t n, uint32_t k);   // alias for binomial
-uint64_t combinations_with_rep(uint32_t n, uint32_t k);  // C(n+k-1, k)
+uint64_t combinations_with_rep(uint32_t n, uint32_t k);  // C(n+k-1, k); 1 when k = 0
 
 // --- Enumeration ---
 // next/prev permutation: modifies in-place, returns false at end/start
@@ -40,6 +43,7 @@ bool prev_comb(std::vector<int>& v, int n);
 /// @note `v` must BE such a permutation. Anything else -- an out-of-range entry or a
 ///   repeat -- has no rank and returns 0; it used to index the internal used-marker
 ///   vector with the entry and read past it.
+/// @note More than 20 elements returns UINT64_MAX: 21! exceeds the range of the rank.
 uint64_t rank_permutation(const std::vector<int>& v);
 std::vector<int> unrank_permutation(int n, uint64_t rank);
 uint64_t rank_combination(const std::vector<int>& v, int n);

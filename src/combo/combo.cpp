@@ -3,6 +3,7 @@
 #include "ms/combo/combo.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <numeric>
 #include <stdexcept>
 
@@ -54,30 +55,62 @@ uint64_t subfactorial(uint32_t n) {
     return b;
 }
 
+// C(n,k) climbs through C(n,1), C(n,2), ... and the old loop wrote each step as
+// r * (n - i) / (i + 1). The quotient is exact, but the product is not: it needs one
+// more bit than the answer does, so the multiply wrapped while the answer still fitted.
+// C(67,33) is 14226520737620288370, comfortably inside uint64_t, and the loop returned
+// 8829174638479413 -- a sixteen-digit number that reads like an answer.
+//
+// Cancelling the denominator into r before the multiply keeps every intermediate no
+// larger than the result, so the only overflow left is a real one. The cancellation is
+// exact: with g = gcd(r, i) and i' = i / g, the identity r * (n - k + i) = C * i shows
+// i' divides r' * (n - k + i), and gcd(r', i') = 1 leaves i' dividing (n - k + i).
 uint64_t binomial(uint32_t n, uint32_t k) {
     if (k > n) return 0;
     if (k == 0 || k == n) return 1;
     if (k > n - k) k = n - k;
     uint64_t r = 1;
-    for (uint32_t i = 0; i < k; ++i) {
-        r = r * (n - i) / (i + 1);
+    for (uint32_t i = 1; i <= k; ++i) {
+        uint64_t num = static_cast<uint64_t>(n) - k + i;
+        uint64_t den = i;
+        const uint64_t g = std::gcd(r, den);
+        r /= g;
+        den /= g;
+        num /= den;
+        if (r > UINT64_MAX / num) return UINT64_MAX;
+        r *= num;
     }
     return r;
 }
 
+// n! / (k1! k2! ...) used to be computed as factorial(n) divided down, so every n past
+// 20 divided the overflow sentinel by real factorials and returned a number. Walking
+// the equivalent product of binomials keeps each factor exact and lets the sentinel
+// propagate instead: C(n,k1) * C(n-k1,k2) * ... telescopes to the same value.
 uint64_t multinomial(uint32_t n, const std::vector<uint32_t>& ks) {
     uint64_t sum = 0;
     for (auto k : ks) sum += k;
     if (sum != n) return 0;
-    uint64_t r = factorial(n);
-    for (auto k : ks) r /= factorial(k);
+    uint64_t r = 1;
+    uint32_t remaining = n;
+    for (auto k : ks) {
+        const uint64_t term = binomial(remaining, k);
+        if (term == UINT64_MAX) return UINT64_MAX;
+        if (term != 0 && r > UINT64_MAX / term) return UINT64_MAX;
+        r *= term;
+        remaining -= k;
+    }
     return r;
 }
 
+// P(30,30) is 30!, about 2.65e32. The bare product returned 9682165104862298112.
 uint64_t permutations(uint32_t n, uint32_t k) {
     if (k > n) return 0;
     uint64_t r = 1;
-    for (uint32_t i = n; i > n - k; --i) r *= i;
+    for (uint32_t i = n; i > n - k; --i) {
+        if (r > UINT64_MAX / i) return UINT64_MAX;
+        r *= i;
+    }
     return r;
 }
 
@@ -85,8 +118,15 @@ uint64_t combinations(uint32_t n, uint32_t k) {
     return binomial(n, k);
 }
 
+// Multisets of size k drawn from n kinds. n + k - 1 was computed in uint32_t, so n = 0
+// wrapped to 4294967295 and combinations_with_rep(0, 5) answered with a wrapped product
+// where there are no multisets at all. There is exactly one multiset of size zero.
 uint64_t combinations_with_rep(uint32_t n, uint32_t k) {
-    return binomial(n + k - 1, k);
+    if (k == 0) return 1;
+    if (n == 0) return 0;
+    const uint64_t top = static_cast<uint64_t>(n) + k - 1;
+    if (top > UINT32_MAX) return UINT64_MAX;
+    return binomial(static_cast<uint32_t>(top), k);
 }
 
 bool next_perm(std::vector<int>& v) {
@@ -133,6 +173,9 @@ bool prev_comb(std::vector<int>& v, int n) {
 // permutation has no rank, so it gets 0.
 uint64_t rank_permutation(const std::vector<int>& v) {
     int n = static_cast<int>(v.size());
+    // Ranks run to n! - 1, so past 20 elements the answer is not representable and the
+    // factorial() calls below would be multiplying by the overflow sentinel.
+    if (n > 20) return UINT64_MAX;
     std::vector<bool> seen(static_cast<std::size_t>(n), false);
     for (int x : v) {
         if (x < 0 || x >= n || seen[static_cast<std::size_t>(x)]) {
@@ -151,7 +194,11 @@ uint64_t rank_permutation(const std::vector<int>& v) {
     return rank;
 }
 
+// Empty when there is no such permutation to name: a negative size, more than 20
+// elements (21! overflows the rank, and reserving n ints for an unvalidated n is its
+// own problem), or a rank at or past n!.
 std::vector<int> unrank_permutation(int n, uint64_t rank) {
+    if (n < 0 || n > 20 || rank >= factorial(static_cast<uint32_t>(n))) return {};
     std::vector<int> v;
     v.reserve(static_cast<size_t>(n));
     std::vector<int> avail(n);
@@ -168,6 +215,12 @@ std::vector<int> unrank_permutation(int n, uint64_t rank) {
 
 uint64_t rank_combination(const std::vector<int>& v, int n) {
     int k = static_cast<int>(v.size());
+    // The rank runs to C(n,k) - 1, so if that count is not representable neither is any
+    // rank in it, and the binomial() terms summed below would be overflow sentinels.
+    if (n < 0 || k > n ||
+        binomial(static_cast<uint32_t>(n), static_cast<uint32_t>(k)) == UINT64_MAX) {
+        return UINT64_MAX;
+    }
     uint64_t rank = 0;
     for (int i = 0; i < k; ++i) {
         int vi = (i == 0) ? 0 : v[i - 1] + 1;
@@ -177,7 +230,12 @@ uint64_t rank_combination(const std::vector<int>& v, int n) {
     return rank;
 }
 
+// Empty when there is no such k-subset to name: k larger than n, a count of subsets too
+// large to be represented (so no rank in it can be), or a rank at or past that count.
 std::vector<int> unrank_combination(int n, int k, uint64_t rank) {
+    if (n < 0 || k < 0 || k > n) return {};
+    const uint64_t total = binomial(static_cast<uint32_t>(n), static_cast<uint32_t>(k));
+    if (total == UINT64_MAX || rank >= total) return {};
     std::vector<int> v;
     int start = 0;
     for (int i = k; i > 0; --i) {
@@ -310,9 +368,27 @@ std::vector<std::vector<int>> derangements(int n) {
     return result;
 }
 
+// C(n) = C(2n,n)/(n+1) is the definition, not a way to compute it: the central
+// binomial overflows three steps before the Catalan number does. C(72,36) is
+// 442512540276836779204, while C(36) is 11959798385860453492 and fits -- so
+// catalan_num(34), (35) and (36) were all wrong, inside the range the table declares
+// safe. Climbing the recurrence C(i) = C(i-1) * 2(2i-1) / (i+1) with the denominator
+// cancelled into the running value first keeps every intermediate at a Catalan number,
+// by the same divisibility argument as binomial() above.
 uint64_t catalan_num(uint32_t n) {
     if (n > kMaxCatalanN) return UINT64_MAX;
-    return binomial(2 * n, n) / (n + 1);
+    uint64_t r = 1;
+    for (uint32_t i = 1; i <= n; ++i) {
+        uint64_t num = 2 * (2ULL * i - 1);
+        uint64_t den = i + 1;
+        const uint64_t g = std::gcd(r, den);
+        r /= g;
+        den /= g;
+        num /= den;
+        if (r > UINT64_MAX / num) return UINT64_MAX;
+        r *= num;
+    }
+    return r;
 }
 
 uint64_t stirling1(uint32_t n, uint32_t k) {
