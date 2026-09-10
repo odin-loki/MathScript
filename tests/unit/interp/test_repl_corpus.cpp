@@ -52,6 +52,46 @@ namespace {
 
 namespace fs = std::filesystem;
 
+/// A path as the platform's shell wants to read it. `generic_string()` gives forward
+/// slashes, which `cmd.exe` will accept inside quotes but which nothing on Windows
+/// writes; `string()` gives the native form on each platform.
+std::string shell_path(const fs::path& path) {
+#ifdef _WIN32
+    return path.string();
+#else
+    return path.generic_string();
+#endif
+}
+
+/// The command quoted the way the platform's shell needs it.
+///
+/// On Windows `std::system` runs `cmd.exe /c <command>`, and cmd's documented rule is
+/// that unless the command holds *exactly two* quote characters, it strips the first
+/// quote and the last one. The command below holds eight -- a quoted program, a quoted
+/// script and two quoted redirect targets -- so the stripping applies and takes the
+/// closing quote off the final redirect target. cmd then finds an unterminated quote
+/// where a filename should be, says
+///
+///     The filename, directory name, or volume label syntax is incorrect.
+///
+/// and exits 1 without running anything. An extra outer pair is what that stripping is
+/// there to consume, so the inner quotes survive it.
+///
+/// This is the whole of the "Windows-only crash in the sym_* commands": every
+/// transcript came back with empty stdout, empty stderr and exit 1 because the program
+/// never ran. The exit code was the tell and was read as noise -- an access violation
+/// on Windows is 3221225477 and a stack overflow is 3221225725, and 1 is neither. cmd's
+/// message was on this test's own stderr the entire time, 5,700 lines deep in a CTest
+/// log whose API only reaches the end; re-running the failures is what brought it into
+/// view, one commit after it would have saved three cycles of guessing.
+std::string shell_command(const std::string& command) {
+#ifdef _WIN32
+    return "\"" + command + "\"";
+#else
+    return command;
+#endif
+}
+
 int system_exit_code(const std::string& command) {
     const int rc = std::system(command.c_str());
 #ifdef _WIN32
@@ -169,11 +209,11 @@ TEST(ReplCorpus, EveryTranscriptMatches) {
         const fs::path actual_out = work / (stem + ".actual.out");
         const fs::path actual_err = work / (stem + ".actual.err");
 
-        const std::string command = "\"" + std::string(MATHSCRIPTC_PATH) + "\" \"" +
-                                    script.generic_string() + "\" > \"" +
-                                    actual_out.generic_string() + "\" 2> \"" +
-                                    actual_err.generic_string() + "\"";
-        const int status = system_exit_code(command);
+        const std::string command = "\"" + shell_path(fs::path(MATHSCRIPTC_PATH)) +
+                                    "\" \"" + shell_path(script) + "\" > \"" +
+                                    shell_path(actual_out) + "\" 2> \"" +
+                                    shell_path(actual_err) + "\"";
+        const int status = system_exit_code(shell_command(command));
         const std::string got_out = normalise(read_file(actual_out));
         const std::string got_err = normalise(read_file(actual_err));
 
@@ -223,10 +263,10 @@ TEST(ReplCorpus, EveryTranscriptMatches) {
             // may be the problem.
             const bool out_exists = fs::exists(actual_out);
             const bool err_exists = fs::exists(actual_err);
-            const std::string bare =
-                "\"" + std::string(MATHSCRIPTC_PATH) + "\" \"" + script.generic_string() + "\"";
+            const std::string bare = "\"" + shell_path(fs::path(MATHSCRIPTC_PATH)) +
+                                     "\" \"" + shell_path(script) + "\"";
             std::cout << "--- re-running " << stem << ".ms unredirected ---" << std::endl;
-            const int bare_status = system_exit_code(bare);
+            const int bare_status = system_exit_code(shell_command(bare));
             std::cout << "--- unredirected exit status " << bare_status << " ---" << std::endl;
 
             ADD_FAILURE() << stem << ".ms produced no output on either stream and exited "
@@ -234,9 +274,9 @@ TEST(ReplCorpus, EveryTranscriptMatches) {
                           << "path -- it writes to stderr before returning non-zero, and "
                           << "flushes stdout after every line -- so either it died or the "
                           << "shell never ran it.\n"
-                          << "  redirect files: " << actual_out.generic_string() << " "
+                          << "  redirect files: " << shell_path(actual_out) << " "
                           << (out_exists ? "exists" : "MISSING") << ", "
-                          << actual_err.generic_string() << " "
+                          << shell_path(actual_err) << " "
                           << (err_exists ? "exists" : "MISSING") << "\n"
                           << "  a MISSING file means the shell could not create the "
                           << "redirect, so the status is the shell's and not the "

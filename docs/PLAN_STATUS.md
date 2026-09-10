@@ -272,45 +272,90 @@ not `x`. `c88f0ef`'s message says `x` -- the guard it describes is correct and t
 name in the prose is not. `docs/API.md` now states the binding on the row a user
 reads.
 
-### What the corpus found on Windows
+### What the corpus found on Windows, and what it did not
 
-The first CI run of the §8.3 transcripts failed the Windows job, and the cause was
-better than the symptom. `dispatch_errors.out` had recorded `-nan` twice, from
-`log(-1)` and `sqrt(-1)`. glibc spells it `-nan` and MSVC spells it `-nan(ind)`, so
-the transcript was pinning a libc detail rather than anything about MathScript.
+**The Windows job never ran a single transcript, and had not since the corpus was
+added.** Four CI cycles were spent on hypotheses about what the output meant when
+there was no output, and the correction is worth more than any of them.
 
-A second Windows run failed the same test for a second, unrelated reason, and the
-pair of them is the lesson: a golden transcript must contain nothing whose spelling
-the C library chooses. The other line was `gamma(20)`. A transcendental printed at
-full round-trip precision pins the last bit of whatever libm the host has, and libms
-are not required to agree there -- one ulp changes the seventeenth significant digit
-and so the string. It is now `combo_factorial(19)`, the same number by a path with no
-libm in it; the property that the REPL prints all of 19! rather than `1.21645e+17` is
-asserted with a tolerance in `test_repl_audit_fixes`, which is the right instrument
-for it.
+The test invokes `mathscriptc` through `std::system` with a command holding four
+quoted paths -- the program, the script, and two redirect targets:
 
-The rule the corpus now follows: an expected file may hold exact integers, parsed
-literals printed back, and diagnostics, and may not hold the result of a
-transcendental at full precision.
+    "...\mathscriptc.exe" "...\arithmetic.ms" > "...\arithmetic.actual.out" 2> "...\arithmetic.actual.err"
 
-**What actually cost the most was not being able to read the failure.** The test
-diagnoses a mismatch precisely -- it prints the first differing line with both sides
--- but `ctest --output-on-failure` emits that where the test ran, which for
-`test_repl_corpus` is fourth of 358, and the log API can only reach the end of a
-5,800-line log. Two Windows cycles of roughly an hour each were spent inferring a
-diff that had already been computed. The Windows and Linux test steps now re-run the
-failures after a failing run, so a failing test's output is the last thing in the
-log. That is worth more than either of the two fixes it took to find.
+On Windows `system()` runs `cmd.exe /c <command>`, and cmd's documented rule is that
+unless the command holds *exactly two* quote characters it strips the first quote and
+the last one. This one holds eight. Stripping takes the closing quote off the final
+redirect target, cmd finds an unterminated quote where a filename should be, and says
 
-The weak fix would have been to drop the two lines. The defect underneath is one of
-the audits' own: **a NaN reaching the display is a marker that prints as a value.**
-`ms::sym2::evaluate` already declined both arguments, so the REPL and the symbolic
-core disagreed about the same expression. `check_scalar_domain` now reports for
-`sqrt`, `log`, `log2`, `log10`, `log1p`, `asin`, `acos`, `acosh` and `atanh`, in both
-of the REPL's scalar evaluators. Fixing it removed the platform dependence; deleting
-the lines would have kept both problems.
+    The filename, directory name, or volume label syntax is incorrect.
 
-Making the reports reachable took a second fix, and it is the more interesting one.
+and exits **1** without running anything. That is the whole of it: empty stdout, empty
+stderr, exit 1, for every transcript, on every Windows run since the corpus existed.
+An extra outer pair of quotes is what the stripping is there to consume, and is the
+fix.
+
+Two things were in plain view and were read as noise:
+
+- **The exit code was 1.** A Windows access violation is 3221225477 and a stack
+  overflow is 3221225725. `mathscriptc` cannot return 1 without first writing to
+  standard error. So the status could not have come from the program at all, which
+  named the shell as the suspect three cycles before it was one.
+- **cmd printed the reason every time.** It went to the test's own standard error,
+  which is 5,800 lines deep in a CTest log whose API reaches only the end. Re-running
+  the failed tests after a failing run -- added for an unrelated reason -- is what put
+  it at the tail where it could be read, and it was legible on the first run after
+  that.
+
+#### What that means for the two "Windows failures" recorded here before
+
+Both were inferences from an empty transcript, not observations, and neither can have
+happened: with no output there is no line to differ. The record said otherwise and was
+wrong.
+
+- `-nan` versus MSVC's `-nan(ind)` in `dispatch_errors.out`: never observed. The fix
+  it prompted stands on its own and is not withdrawn -- **a NaN reaching the display
+  is a marker printed as a value**, `ms::sym2::evaluate` already declined both
+  `log(-1)` and `sqrt(-1)`, and the REPL and the symbolic core disagreeing about the
+  same expression is a defect whatever Windows does. `check_scalar_domain` now reports
+  for `sqrt`, `log`, `log2`, `log10`, `log1p`, `asin`, `acos`, `acosh` and `atanh` in
+  both of the REPL's scalar evaluators. Reaching those reports also required
+  distinguishing a diagnosis from a decline among the three readings of `f(x)`, which
+  is a real improvement to the resolver.
+- `gamma(20)` at full precision pinning the host libm's last bit: never observed
+  either. The rule it produced is still right and still followed -- **an expected file
+  may hold exact integers, parsed literals printed back, and diagnostics, and may not
+  hold the result of a transcendental at full precision** -- because a golden file
+  that depends on which libm ran is a golden file that will fail eventually. It is
+  `combo_factorial(19)` now, the same number by a path with no libm in it.
+
+So two good changes were made for a stated reason that was not true. Keeping the
+changes and correcting the reason is the only honest way to hold both, and the reason
+mattered: each was offered as evidence that the transcripts were running on Windows,
+which is exactly what needed testing and was never tested.
+
+#### The lesson that generalises
+
+A transcript that produced *nothing* is not a transcript that produced the wrong
+thing, and reporting it as a content difference sends the reader to the content. The
+test now separates them: empty stdout, empty stderr and a non-zero status is reported
+as its own case, with whether the redirect files exist at all -- a missing file means
+the shell could not create the redirect, so the status is the shell's -- and a re-run
+with nothing redirected, whose output lands on the test's own streams instead of in a
+file the shell may not have opened.
+
+`mathscriptc` also flushes standard output after every line now. Redirected to a
+file, `std::cout` is fully buffered, so a script runner that flushes only at exit
+loses everything it printed if it dies partway; one flush per line means the file that
+survives says how far it got. It also puts the two streams in true order, since
+`std::cerr` is unit-buffered and `std::cout` was not.
+
+#### The three readings of `f(x)`
+
+Recorded here because it came out of the same thread and is not withdrawn: making
+`check_scalar_domain`'s reports reachable took a second fix, and it is the more
+interesting one.
+
 `sqrt(-1)` reported **"unknown matrix: -1"**. The line has the shape `f(x)`, which is
 also the shape of a call on a matrix and of a matrix constructor, and three readings
 compete for it. Whichever fails last was reporting, so the useful diagnosis lost to
