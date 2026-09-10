@@ -11,61 +11,22 @@ Result<Matrix<double>> handle_numthy_pell_solve(Interpreter& interp, const Matri
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if ((assign.callee == "numthy_factor_exp" || assign.callee == "numthy_farey" ||
-                assign.callee == "numthy_stern_brocot" ||
-                assign.callee == "numthy_pell_solve" ||
-                assign.callee == "numthy_quadratic_residues") &&
-               assign.args.size() == 1) {
+    if (assign.callee == "numthy_pell_solve" && assign.args.size() == 1) {
         double n_d = 0.0;
         if (!parse_number(assign.args[0], n_d)) {
             auto n_expr = eval_scalar_expr(ctx.state(), assign.args[0]);
             if (!n_expr) {
-                return std::unexpected(DomainError{
-                    assign.callee,
-                    assign.callee == "numthy_factor_exp"
-                        ? "expected numthy_factor_exp(n)"
-                        : assign.callee == "numthy_farey"
-                              ? "expected numthy_farey(n)"
-                              : assign.callee == "numthy_stern_brocot"
-                                    ? "expected numthy_stern_brocot(n)"
-                                    : assign.callee == "numthy_pell_solve"
-                                          ? "expected numthy_pell_solve(D)"
-                                          : "expected numthy_quadratic_residues(p)"});
+                return std::unexpected(
+                    DomainError{"numthy_pell_solve", "expected numthy_pell_solve(D)"});
             }
             n_d = *n_expr;
         }
         const int n = static_cast<int>(n_d);
-        if (assign.callee == "numthy_factor_exp") {
-            if (n < 2 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_factor_exp", "expected integer n >= 2"});
-            }
-            result = eval_numthy_factor_exp(n);
-        } else if (assign.callee == "numthy_farey") {
-            if (n < 1 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_farey", "expected positive integer n"});
-            }
-            result = eval_numthy_farey(n);
-        } else if (assign.callee == "numthy_stern_brocot") {
-            if (n < 0 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_stern_brocot", "expected non-negative integer n"});
-            }
-            result = eval_numthy_stern_brocot(n);
-        } else if (assign.callee == "numthy_pell_solve") {
-            if (n < 1 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_pell_solve", "expected positive integer D"});
-            }
-            result = eval_numthy_pell_solve(n);
-        } else {
-            if (n < 3 || n_d != n) {
-                return std::unexpected(
-                    DomainError{"numthy_quadratic_residues", "expected odd prime p >= 3"});
-            }
-            result = eval_numthy_quadratic_residues(n);
+        if (n < 1 || n_d != n) {
+            return std::unexpected(
+                DomainError{"numthy_pell_solve", "expected positive integer D"});
         }
+        result = eval_numthy_pell_solve(n);
     }
 
     return result;

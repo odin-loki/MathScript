@@ -9037,18 +9037,13 @@
       "file": "src/interp/matrix_calls/numthy/numthy_factor_exp.cpp",
       "callee": "numthy_factor_exp",
       "handler": "handle_numthy_factor_exp",
-      "guard": "(assign.callee == \"numthy_factor_exp\" || assign.callee == \"numthy_farey\" || assign.callee == \"numthy_stern_brocot\" || assign.callee == \"numthy_pell_solve\" || assign.callee == \"numthy_quadratic_residues\") && assign.args.size() == 1",
+      "guard": "assign.callee == \"numthy_factor_exp\" && assign.args.size() == 1",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
         "message": "unsupported matrix call"
       },
-      "dead_guard_callees": [
-        "numthy_farey",
-        "numthy_pell_solve",
-        "numthy_quadratic_residues",
-        "numthy_stern_brocot"
-      ],
+      "dead_guard_callees": [],
       "arities": [
         1
       ],
@@ -9068,20 +9063,8 @@
           "message": "expected integer n >= 2"
         },
         {
-          "fn": "numthy_farey",
-          "message": "expected positive integer n"
-        },
-        {
-          "fn": "numthy_pell_solve",
-          "message": "expected positive integer D"
-        },
-        {
-          "fn": "numthy_quadratic_residues",
-          "message": "expected odd prime p >= 3"
-        },
-        {
-          "fn": "numthy_stern_brocot",
-          "message": "expected non-negative integer n"
+          "fn": "numthy_factor_exp",
+          "message": "expected numthy_factor_exp(n)"
         }
       ]
     },
@@ -9089,18 +9072,13 @@
       "file": "src/interp/matrix_calls/numthy/numthy_farey.cpp",
       "callee": "numthy_farey",
       "handler": "handle_numthy_farey",
-      "guard": "(assign.callee == \"numthy_factor_exp\" || assign.callee == \"numthy_farey\" || assign.callee == \"numthy_stern_brocot\" || assign.callee == \"numthy_pell_solve\" || assign.callee == \"numthy_quadratic_residues\") && assign.args.size() == 1",
+      "guard": "assign.callee == \"numthy_farey\" && assign.args.size() == 1",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
         "message": "unsupported matrix call"
       },
-      "dead_guard_callees": [
-        "numthy_factor_exp",
-        "numthy_pell_solve",
-        "numthy_quadratic_residues",
-        "numthy_stern_brocot"
-      ],
+      "dead_guard_callees": [],
       "arities": [
         1
       ],
@@ -9116,24 +9094,12 @@
           "message": "unsupported matrix call"
         },
         {
-          "fn": "numthy_factor_exp",
-          "message": "expected integer n >= 2"
+          "fn": "numthy_farey",
+          "message": "expected numthy_farey(n)"
         },
         {
           "fn": "numthy_farey",
           "message": "expected positive integer n"
-        },
-        {
-          "fn": "numthy_pell_solve",
-          "message": "expected positive integer D"
-        },
-        {
-          "fn": "numthy_quadratic_residues",
-          "message": "expected odd prime p >= 3"
-        },
-        {
-          "fn": "numthy_stern_brocot",
-          "message": "expected non-negative integer n"
         }
       ]
     },
@@ -9176,18 +9142,13 @@
       "file": "src/interp/matrix_calls/numthy/numthy_pell_solve.cpp",
       "callee": "numthy_pell_solve",
       "handler": "handle_numthy_pell_solve",
-      "guard": "(assign.callee == \"numthy_factor_exp\" || assign.callee == \"numthy_farey\" || assign.callee == \"numthy_stern_brocot\" || assign.callee == \"numthy_pell_solve\" || assign.callee == \"numthy_quadratic_residues\") && assign.args.size() == 1",
+      "guard": "assign.callee == \"numthy_pell_solve\" && assign.args.size() == 1",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
         "message": "unsupported matrix call"
       },
-      "dead_guard_callees": [
-        "numthy_factor_exp",
-        "numthy_farey",
-        "numthy_quadratic_residues",
-        "numthy_stern_brocot"
-      ],
+      "dead_guard_callees": [],
       "arities": [
         1
       ],
@@ -9203,24 +9164,12 @@
           "message": "unsupported matrix call"
         },
         {
-          "fn": "numthy_factor_exp",
-          "message": "expected integer n >= 2"
-        },
-        {
-          "fn": "numthy_farey",
-          "message": "expected positive integer n"
+          "fn": "numthy_pell_solve",
+          "message": "expected numthy_pell_solve(D)"
         },
         {
           "fn": "numthy_pell_solve",
           "message": "expected positive integer D"
-        },
-        {
-          "fn": "numthy_quadratic_residues",
-          "message": "expected odd prime p >= 3"
-        },
-        {
-          "fn": "numthy_stern_brocot",
-          "message": "expected non-negative integer n"
         }
       ]
     },
@@ -9254,18 +9203,13 @@
       "file": "src/interp/matrix_calls/numthy/numthy_quadratic_residues.cpp",
       "callee": "numthy_quadratic_residues",
       "handler": "handle_numthy_quadratic_residues",
-      "guard": "(assign.callee == \"numthy_factor_exp\" || assign.callee == \"numthy_farey\" || assign.callee == \"numthy_stern_brocot\" || assign.callee == \"numthy_pell_solve\" || assign.callee == \"numthy_quadratic_residues\") && assign.args.size() == 1",
+      "guard": "assign.callee == \"numthy_quadratic_residues\" && assign.args.size() == 1",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
         "message": "unsupported matrix call"
       },
-      "dead_guard_callees": [
-        "numthy_factor_exp",
-        "numthy_farey",
-        "numthy_pell_solve",
-        "numthy_stern_brocot"
-      ],
+      "dead_guard_callees": [],
       "arities": [
         1
       ],
@@ -9281,24 +9225,12 @@
           "message": "unsupported matrix call"
         },
         {
-          "fn": "numthy_factor_exp",
-          "message": "expected integer n >= 2"
-        },
-        {
-          "fn": "numthy_farey",
-          "message": "expected positive integer n"
-        },
-        {
-          "fn": "numthy_pell_solve",
-          "message": "expected positive integer D"
+          "fn": "numthy_quadratic_residues",
+          "message": "expected numthy_quadratic_residues(p)"
         },
         {
           "fn": "numthy_quadratic_residues",
           "message": "expected odd prime p >= 3"
-        },
-        {
-          "fn": "numthy_stern_brocot",
-          "message": "expected non-negative integer n"
         }
       ]
     },
@@ -9306,18 +9238,13 @@
       "file": "src/interp/matrix_calls/numthy/numthy_stern_brocot.cpp",
       "callee": "numthy_stern_brocot",
       "handler": "handle_numthy_stern_brocot",
-      "guard": "(assign.callee == \"numthy_factor_exp\" || assign.callee == \"numthy_farey\" || assign.callee == \"numthy_stern_brocot\" || assign.callee == \"numthy_pell_solve\" || assign.callee == \"numthy_quadratic_residues\") && assign.args.size() == 1",
+      "guard": "assign.callee == \"numthy_stern_brocot\" && assign.args.size() == 1",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
         "message": "unsupported matrix call"
       },
-      "dead_guard_callees": [
-        "numthy_factor_exp",
-        "numthy_farey",
-        "numthy_pell_solve",
-        "numthy_quadratic_residues"
-      ],
+      "dead_guard_callees": [],
       "arities": [
         1
       ],
@@ -9333,24 +9260,12 @@
           "message": "unsupported matrix call"
         },
         {
-          "fn": "numthy_factor_exp",
-          "message": "expected integer n >= 2"
-        },
-        {
-          "fn": "numthy_farey",
-          "message": "expected positive integer n"
-        },
-        {
-          "fn": "numthy_pell_solve",
-          "message": "expected positive integer D"
-        },
-        {
-          "fn": "numthy_quadratic_residues",
-          "message": "expected odd prime p >= 3"
+          "fn": "numthy_stern_brocot",
+          "message": "expected non-negative integer n"
         },
         {
           "fn": "numthy_stern_brocot",
-          "message": "expected non-negative integer n"
+          "message": "expected numthy_stern_brocot(n)"
         }
       ]
     },
