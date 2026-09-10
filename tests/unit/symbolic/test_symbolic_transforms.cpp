@@ -267,20 +267,22 @@ TEST(SymbolicTransformsTest, mellin_power_of_t) {
     expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
 }
 
-TEST(SymbolicTransformsTest, mellin_exponential_decay) {
-    const auto time_expr = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t"))));
-    const auto expected = sym_div(sym_const(1.0), sym_pow(sym_const(2.0), sym_var("s")));
-    expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
-}
+// M{t^n e^{-a t}}(s) = Gamma(s + n) / a^(s + n). These two rows answered
+// n! / a^(s + n) -- the Gamma dropped, which is right only at s = 1 where Gamma(1) = 1,
+// and these tests evaluated at s = 1, so they agreed with the error. SymOp has no Gamma
+// to state the rows correctly with, so both decline until the §10 core does.
+TEST(SymbolicTransformsTest, mellin_exponential_rows_decline_rather_than_drop_gamma) {
+    const auto decay = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t"))));
+    EXPECT_TRUE(sym_is_unsupported(sym_mellin(decay, "t", "s"), "t"));
 
-TEST(SymbolicTransformsTest, mellin_power_exponential) {
-    const auto time_expr = sym_mul(
+    const auto power_decay = sym_mul(
         sym_pow(sym_var("t"), sym_const(2.0)),
         sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("t")))));
-    const auto expected = sym_div(
-        sym_const(2.0),
-        sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0))));
-    expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
+    EXPECT_TRUE(sym_is_unsupported(sym_mellin(power_decay, "t", "s"), "t"));
+
+    // The rows whose closed form the table can state are untouched.
+    const auto rational = sym_div(sym_const(1.0), sym_add(sym_const(1.0), sym_var("t")));
+    EXPECT_FALSE(sym_is_unsupported(sym_mellin(rational, "t", "s"), "t"));
 }
 
 TEST(SymbolicTransformsTest, mellin_one_over_one_plus_t) {
@@ -304,11 +306,8 @@ TEST(SymbolicTransformsTest, imellin_power_form) {
 }
 
 TEST(SymbolicTransformsTest, mellin_imellin_roundtrip) {
-    const auto original = sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t"))));
-    const auto in_s = sym_simplify(sym_mellin(original, "t", "s"));
-    const auto recovered = sym_simplify(sym_imellin(in_s, "s", "t"));
-    expect_eval_equivalent(original, recovered, {{"t", 0.75}});
-
+    // The exponential leg of this round trip went through the two rows that dropped
+    // Gamma, so it round-tripped a formula the table should never have produced.
     const auto power = sym_pow(sym_var("t"), sym_const(1.0));
     const auto power_s = sym_simplify(sym_mellin(power, "t", "s"));
     const auto power_back = sym_simplify(sym_imellin(power_s, "s", "t"));
@@ -542,13 +541,11 @@ TEST(SymbolicTransformsTest, mellin_bare_t_and_swapped_one_plus_t) {
 }
 
 TEST(SymbolicTransformsTest, mellin_t_times_exp_and_linearity) {
+    // t*e^{-2t} went through the Gamma-dropping row; it declines now.
     const auto time_expr = sym_mul(
         sym_var("t"),
         sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))));
-    const auto expected = sym_div(
-        sym_const(1.0),
-        sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(1.0))));
-    expect_mellin_pair(time_expr, expected, {{"s", 1.0}});
+    EXPECT_TRUE(sym_is_unsupported(sym_mellin(time_expr, "t", "s"), "t"));
 
     const auto linear = sym_add(sym_neg(sym_const(2.0)), sym_var("t"));
     const auto forward = sym_simplify(sym_mellin(linear, "t", "s"));
@@ -647,15 +644,15 @@ TEST(SymbolicTransformsTest, mellin_sub_t_minus_neg_const) {
 }
 
 TEST(SymbolicTransformsTest, mellin_right_const_and_neg_scale_exp) {
+    // Both of these are the exponential row with a coefficient in front, and linearity
+    // carries the decline outward exactly as it should.
     const auto scaled = sym_mul(
         sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))),
         sym_const(3.0));
-    expect_mellin_pair(
-        scaled, sym_div(sym_const(3.0), sym_pow(sym_const(2.0), sym_var("s"))), {{"s", 1.0}});
+    EXPECT_TRUE(sym_is_unsupported(sym_mellin(scaled, "t", "s"), "t"));
 
     const auto neg_scale = sym_exp(sym_mul(sym_const(-2.0), sym_var("t")));
-    expect_mellin_pair(
-        neg_scale, sym_div(sym_const(1.0), sym_pow(sym_const(2.0), sym_var("s"))), {{"s", 1.0}});
+    EXPECT_TRUE(sym_is_unsupported(sym_mellin(neg_scale, "t", "s"), "t"));
 
     const auto left_const = sym_mul(sym_const(4.0), sym_pow(sym_var("t"), sym_const(2.0)));
     expect_mellin_pair(
@@ -663,21 +660,16 @@ TEST(SymbolicTransformsTest, mellin_right_const_and_neg_scale_exp) {
 }
 
 TEST(SymbolicTransformsTest, mellin_exp_times_t_and_tpow) {
+    // Whichever way round the product is written, it is the row that dropped Gamma.
     const auto t_on_right = sym_mul(
         sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))),
         sym_var("t"));
-    expect_mellin_pair(
-        t_on_right,
-        sym_div(sym_const(1.0), sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(1.0)))),
-        {{"s", 1.0}});
+    EXPECT_TRUE(sym_is_unsupported(sym_mellin(t_on_right, "t", "s"), "t"));
 
     const auto tpow_on_right = sym_mul(
         sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("t")))),
         sym_pow(sym_var("t"), sym_const(2.0)));
-    expect_mellin_pair(
-        tpow_on_right,
-        sym_div(sym_const(2.0), sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0)))),
-        {{"s", 1.0}});
+    EXPECT_TRUE(sym_is_unsupported(sym_mellin(tpow_on_right, "t", "s"), "t"));
 }
 
 TEST(SymbolicTransformsTest, imellin_sub_neg_and_right_const) {
@@ -696,30 +688,23 @@ TEST(SymbolicTransformsTest, imellin_sub_neg_and_right_const) {
     expect_imellin_pair(added, sym_add(sym_const(1.0), sym_var("t")), {{"t", 2.0}});
 }
 
-TEST(SymbolicTransformsTest, imellin_factorial_over_a_pow_s_plus_n) {
+// These inverted n!/a^(s+n), the shape the forward table should never have produced.
+// They go with their forward partners: inverting a wrong formula gives a function for a
+// spectrum nothing here generates.
+TEST(SymbolicTransformsTest, imellin_declines_the_shape_that_dropped_gamma) {
     const auto s_expr = sym_div(
         sym_const(2.0),
         sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0))));
-    const auto expected = sym_mul(
-        sym_pow(sym_var("t"), sym_const(2.0)),
-        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("t")))));
-    expect_imellin_pair(s_expr, expected, {{"t", 0.5}});
-}
+    EXPECT_TRUE(sym_is_unsupported(sym_imellin(s_expr, "s", "t"), "s"));
 
-TEST(SymbolicTransformsTest, imellin_a_pow_s_plus_zero_and_one) {
     const auto n0 = sym_div(
         sym_const(1.0),
         sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(0.0))));
-    expect_imellin_pair(
-        n0, sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))), {{"t", 0.75}});
+    EXPECT_TRUE(sym_is_unsupported(sym_imellin(n0, "s", "t"), "s"));
 
-    const auto n1 = sym_div(
-        sym_const(1.0),
-        sym_pow(sym_const(2.0), sym_add(sym_var("s"), sym_const(1.0))));
-    const auto expected_n1 = sym_mul(
-        sym_pow(sym_var("t"), sym_const(1.0)),
-        sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))));
-    expect_imellin_pair(n1, expected_n1, {{"t", 0.5}});
+    // The inverse rows that are right are untouched.
+    const auto over_s = sym_div(sym_const(4.0), sym_var("s"));
+    EXPECT_FALSE(sym_is_unsupported(sym_imellin(over_s, "s", "t"), "s"));
 }
 
 TEST(SymbolicTransformsTest, hankel_sub_scaled_exponentials) {

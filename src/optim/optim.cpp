@@ -373,13 +373,19 @@ OptimResult nelder_mead(FuncND f, std::vector<double> x0,
     };
 
     std::vector<size_t> idx(static_cast<size_t>(n + 1));
+    size_t iterations = 0;
+    bool converged = false;
     for (int iter = 0; iter < max_iter; ++iter) {
+        iterations = static_cast<size_t>(iter);
         // Sort
         std::iota(idx.begin(), idx.end(), 0u);
         std::sort(idx.begin(), idx.end(),
                   [&](size_t a, size_t b) { return fvals[a] < fvals[b]; });
 
-        if (fvals[idx.back()] - fvals[idx.front()] < tol) break;
+        if (fvals[idx.back()] - fvals[idx.front()] < tol) {
+            converged = true;
+            break;
+        }
 
         auto cen = centroid(idx.back());
         auto xr  = reflect(cen, simplex[idx.back()], alpha);
@@ -419,8 +425,7 @@ OptimResult nelder_mead(FuncND f, std::vector<double> x0,
     for (size_t i = 1; i < static_cast<size_t>(n + 1); ++i) {
         if (fvals[i] < fvals[best]) best = i;
     }
-    return OptimResult{simplex[best], fvals[best],
-                       static_cast<size_t>(max_iter), true};
+    return OptimResult{simplex[best], fvals[best], iterations, converged};
 }
 
 // ----------------------------------------------------------------
@@ -762,11 +767,17 @@ OptimResult adam(FuncND f, std::vector<double> x0,
     std::vector<double> m(static_cast<size_t>(n), 0.0);
     std::vector<double> v(static_cast<size_t>(n), 0.0);
 
+    size_t iterations = 0;
+    bool converged = false;
     for (int t = 1; t <= max_iter; ++t) {
+        iterations = static_cast<size_t>(t);
         auto g = grad(x);
         double gnorm = 0.0;
         for (auto gv : g) gnorm += gv * gv;
-        if (std::sqrt(gnorm) < 1e-8) break;
+        if (std::sqrt(gnorm) < 1e-8) {
+            converged = true;
+            break;
+        }
 
         double b1t = std::pow(beta1, t);
         double b2t = std::pow(beta2, t);
@@ -782,7 +793,7 @@ OptimResult adam(FuncND f, std::vector<double> x0,
                                           (std::sqrt(vhat) + eps);
         }
     }
-    return OptimResult{x, f(x), static_cast<size_t>(max_iter), true};
+    return OptimResult{x, f(x), iterations, converged};
 }
 
 // ----------------------------------------------------------------
@@ -1026,7 +1037,9 @@ OptimResult simulated_annealing(FuncND f, std::vector<double> x0,
         if (fx < f_best) { f_best = fx; x_best = x; }
         T *= cooling;
     }
-    return OptimResult{x_best, f_best, static_cast<size_t>(max_iter), true};
+    // No stopping criterion: the schedule runs to its end. `converged` reports
+    // whether a criterion fired, and none exists here, so it is false.
+    return OptimResult{x_best, f_best, static_cast<size_t>(max_iter), false};
 }
 
 // ----------------------------------------------------------------
@@ -1097,8 +1110,9 @@ OptimResult differential_evolution(FuncND f,
     for (size_t i = 1; i < static_cast<size_t>(pop); ++i) {
         if (fitness[i] < fitness[best]) best = i;
     }
+    // Fixed generation budget, no convergence test. See OptimResult::converged.
     return OptimResult{population[best], fitness[best],
-                       static_cast<size_t>(max_iter), true};
+                       static_cast<size_t>(max_iter), false};
 }
 
 // ----------------------------------------------------------------
@@ -1168,7 +1182,8 @@ OptimResult particle_swarm(FuncND f,
             }
         }
     }
-    return OptimResult{gbest, gbest_f, static_cast<size_t>(max_iter), true};
+    // Fixed iteration budget, no convergence test. See OptimResult::converged.
+    return OptimResult{gbest, gbest_f, static_cast<size_t>(max_iter), false};
 }
 
 // ----------------------------------------------------------------

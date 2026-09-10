@@ -59,19 +59,27 @@ inline std::string format_scalar(T value) {
 }
 
 /// A compact spelling for a preview: a cell in a variable list, a tooltip, a truncated
-/// matrix dump. It rounds to `decimals` places and drops the trailing zeros, which is
-/// what a preview wants -- but a preview may abbreviate a value, not erase it. At four
+/// matrix dump. It rounds to `decimals` places and, unless `trim_zeros` is false, drops
+/// the trailing zeros, which is what a preview wants -- but a preview may abbreviate a value, not erase it. At four
 /// decimals 1e-9 renders "0.0000", which trims to "0", and the reader is then looking
 /// at a cell that says the entry is zero when it is not. Where the rounded form would
 /// claim that, or where the magnitude is past what %f spells readably, this falls back
 /// to the round-tripping spelling instead.
-inline std::string format_preview(double value, int decimals = 4) {
+inline std::string format_preview(double value, int decimals = 4, bool trim_zeros = true) {
     if (!std::isfinite(value) || std::abs(value) >= 1e16) {
         return format_scalar(value);
     }
     char buffer[64];
     std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);
     std::string text(buffer);
+    if (!trim_zeros) {
+        // A column of numbers reads better with its decimals aligned, so a table keeps
+        // the padding. The rule about never printing a non-zero as zero still applies.
+        if (value != 0.0 && std::strtod(text.c_str(), nullptr) == 0.0) {
+            return format_scalar(value);
+        }
+        return text;
+    }
     // Only the digits after the point are padding. Trimming unconditionally would turn
     // a whole number into a different one -- "100" with decimals = 0 has no point to
     // stop at, and comes out "1".

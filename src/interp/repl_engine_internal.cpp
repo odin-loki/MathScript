@@ -627,18 +627,24 @@ Result<int> parse_morph_ksize(double ksize_d, const char* fn) {
     return ksize;
 }
 
-compress::Bytes matrix_to_bytes(const Matrix<double>& m) {
+// Every compress::* command in the REPL takes a vector of bytes and gives one back, so
+// a round trip has to return what it was given. This used to clamp anything outside
+// [0, 255], round anything fractional, and -- worst -- multiply the whole matrix by 255
+// whenever its largest entry was <= 1.0, on the assumption that such a matrix must be a
+// normalised image. So `rle_decode_vec(rle_encode_vec([0; 1]))` returned [0; 255]: a
+// legal byte vector under the documented contract, silently rescaled and handed back as
+// different data. It validates instead, the same test matrix_col_to_bytes already used.
+Result<compress::Bytes> matrix_to_bytes(const Matrix<double>& m, const char* fn) {
     compress::Bytes bytes;
     bytes.reserve(m.rows() * m.cols());
-    const bool scale255 = matrix_max_value(m) <= 1.0;
     for (size_t i = 0; i < m.rows(); ++i) {
         for (size_t j = 0; j < m.cols(); ++j) {
-            double v = m(i, j);
-            if (scale255) {
-                v *= 255.0;
+            const double v = m(i, j);
+            if (!(v >= 0.0) || v > 255.0 || std::floor(v) != v) {
+                return std::unexpected(
+                    DomainError{fn, "byte values must be whole numbers in [0, 255]"});
             }
-            v = std::clamp(v, 0.0, 255.0);
-            bytes.push_back(static_cast<uint8_t>(std::lround(v)));
+            bytes.push_back(static_cast<uint8_t>(v));
         }
     }
     return bytes;
@@ -656,7 +662,16 @@ Result<double> eval_bigint_string(const std::string& decimal) {
     if (decimal.empty()) {
         return std::unexpected(DomainError{"bigint", "expected decimal string literal"});
     }
-    const bignum::BigInt value(decimal);
+    // BigInt's string constructor is the defensive one: it turns anything it cannot
+    // read into zero. So bigint(" 495"), bigint("495.0") and bigint("1e3") all answered
+    // 0 -- and the round-trip check below passed, because 0 does round-trip. BigInt
+    // provides a reporting parse; the REPL should be using it.
+    auto parsed = bignum::BigInt::parse(decimal);
+    if (!parsed) {
+        return std::unexpected(
+            DomainError{"bigint", "invalid decimal literal: " + decimal});
+    }
+    const bignum::BigInt value = *parsed;
     const double as_double = value.to_double();
     if (!std::isfinite(as_double)) {
         return std::unexpected(DomainError{"bigint", "value too large for scalar double"});
@@ -741,7 +756,19 @@ Result<ml::Mat> matrix_to_ml_mat(const Matrix<double>& m, const char* fn) {
     return out;
 }
 
-Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn) {
+/// @param allow_non_positive  Whether an entry that is not > 0 can still be an edge.
+///
+/// A zero entry means "no edge", and for most of the graph commands a negative one is
+/// not meaningful either -- Dijkstra has no answer for it. But `w > 0.0` was the test
+/// for every caller, including graph_bellman_ford, whose entire reason to exist is
+/// negative weights: it never saw one, so it answered with the distances of a different
+/// graph and could not report the negative cycle it was asked about. The same held for
+/// graph_floyd_warshall and graph_min_arborescence.
+// The default is repeated here because this translation unit does not include
+// repl_engine_internal.hpp -- the declaration there is for repl_engine.cpp's benefit,
+// and the two have to agree. A TU that ever includes both will say so at once.
+Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn,
+                                          bool allow_non_positive = false) {
     if (adj.rows() != adj.cols()) {
         return std::unexpected(DomainError{fn, "expected square adjacency matrix"});
     }
@@ -750,7 +777,10 @@ Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char*
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
             const double w = adj(static_cast<size_t>(i), static_cast<size_t>(j));
-            if (w > 0.0) {
+            const bool is_edge = allow_non_positive
+                                     ? (i != j && w != 0.0 && std::isfinite(w))
+                                     : (w > 0.0);
+            if (is_edge) {
                 G.add_edge(i, j, w);
             }
         }
@@ -4362,8 +4392,11 @@ Result<compress::Bytes> matrix_col_to_bytes(const Matrix<double>& m, const char*
 }
 
 Result<double> eval_bwt_primary_index(const Matrix<double>& m) {
-    const auto bytes = matrix_to_bytes(m);
-    const compress::BWTResult result = compress::bwt(bytes);
+    auto bytes = matrix_to_bytes(m, "bwt_primary_index");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::BWTResult result = compress::bwt(*bytes);
     return static_cast<double>(result.primary_index);
 }
 
@@ -4574,7 +4607,11 @@ Result<Matrix<double>> eval_numthy_quadratic_residues(int p) {
 }
 
 Result<Matrix<double>> eval_lzw_encode_vec(const Matrix<double>& m) {
-    return codes_to_matrix_col(compress::lzw_encode(matrix_to_bytes(m)));
+    auto bytes = matrix_to_bytes(m, "lzw_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return codes_to_matrix_col(compress::lzw_encode(*bytes));
 }
 
 Result<Matrix<double>> eval_lzw_decode_vec(const Matrix<double>& codes_m) {
@@ -4596,38 +4633,59 @@ Result<Matrix<double>> eval_lzw_decode_vec(const Matrix<double>& codes_m) {
 }
 
 Result<Matrix<double>> eval_huffman_encode_vec(const Matrix<double>& m) {
-    const compress::HuffmanResult hr = compress::huffman_encode(matrix_to_bytes(m));
+    auto bytes = matrix_to_bytes(m, "huffman_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::HuffmanResult hr = compress::huffman_encode(*bytes);
     return bytes_to_matrix_col(hr.encoded);
 }
 
 Result<Matrix<double>> eval_huffman_decode_vec(const Matrix<double>& orig_m,
                                                const Matrix<double>& /*encoded_m*/) {
-    const compress::Bytes bytes = matrix_to_bytes(orig_m);
-    const compress::HuffmanResult hr = compress::huffman_encode(bytes);
-    return bytes_to_matrix_col(compress::huffman_decode(hr, bytes.size()));
+    auto bytes = matrix_to_bytes(orig_m, "huffman_decode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::HuffmanResult hr = compress::huffman_encode(*bytes);
+    return bytes_to_matrix_col(compress::huffman_decode(hr, bytes->size()));
 }
 
 Result<Matrix<double>> eval_arithmetic_encode_vec(const Matrix<double>& m) {
-    const compress::ArithmeticResult ar = compress::arithmetic_encode(matrix_to_bytes(m));
+    auto bytes = matrix_to_bytes(m, "arithmetic_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::ArithmeticResult ar = compress::arithmetic_encode(*bytes);
     return bytes_to_matrix_col(ar.encoded);
 }
 
 Result<Matrix<double>> eval_arithmetic_decode_vec(const Matrix<double>& orig_m,
                                                   const Matrix<double>& /*encoded_m*/) {
-    const compress::Bytes bytes = matrix_to_bytes(orig_m);
-    const compress::ArithmeticResult ar = compress::arithmetic_encode(bytes);
+    auto bytes = matrix_to_bytes(orig_m, "arithmetic_decode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::ArithmeticResult ar = compress::arithmetic_encode(*bytes);
     return bytes_to_matrix_col(compress::arithmetic_decode(ar));
 }
 
 Result<Matrix<double>> eval_ans_encode_vec(const Matrix<double>& m) {
-    const compress::AnsResult ar = compress::ans_encode(matrix_to_bytes(m));
+    auto bytes = matrix_to_bytes(m, "ans_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::AnsResult ar = compress::ans_encode(*bytes);
     return bytes_to_matrix_col(ar.encoded);
 }
 
 Result<Matrix<double>> eval_ans_decode_vec(const Matrix<double>& orig_m,
                                            const Matrix<double>& /*encoded_m*/) {
-    const compress::Bytes bytes = matrix_to_bytes(orig_m);
-    const compress::AnsResult ar = compress::ans_encode(bytes);
+    auto bytes = matrix_to_bytes(orig_m, "ans_decode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::AnsResult ar = compress::ans_encode(*bytes);
     return bytes_to_matrix_col(compress::ans_decode(ar));
 }
 
@@ -4748,7 +4806,11 @@ Result<double> eval_gria_settling_time(const Matrix<double>& a_m, const Matrix<d
 
 Result<Matrix<double>> eval_wavelet_compress_vec(const Matrix<double>& m,
                                                  double threshold = 0.0) {
-    return bytes_to_matrix_col(compress::wavelet_compress(matrix_to_bytes(m), threshold));
+    auto bytes = matrix_to_bytes(m, "wavelet_compress_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::wavelet_compress(*bytes, threshold));
 }
 
 Result<Matrix<double>> eval_wavelet_decompress_vec(const Matrix<double>& compressed_m) {
@@ -5148,7 +5210,11 @@ Result<double> eval_combo_rank_combination(const Matrix<double>& v_m, int n) {
 
 Result<Matrix<double>> eval_lz77_encode_vec(const Matrix<double>& m, int window = 255,
                                             int lookahead = 15) {
-    const auto tokens = compress::lz77_encode(matrix_to_bytes(m), window, lookahead);
+    auto bytes = matrix_to_bytes(m, "lz77_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const auto tokens = compress::lz77_encode(*bytes, window, lookahead);
     Matrix<double> out(tokens.size(), 3);
     for (size_t i = 0; i < tokens.size(); ++i) {
         out(i, 0) = static_cast<double>(tokens[i].offset);
@@ -11404,7 +11470,7 @@ Result<Matrix<double>> eval_quantum_bell_states() {
 }
 
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
-    auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall");
+    auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall", /*allow_non_positive=*/true);
     if (!G) {
         return std::unexpected(G.error());
     }
@@ -12337,7 +12403,7 @@ Result<Matrix<double>> eval_graph_mst_prim(const Matrix<double>& adj_m) {
 }
 
 Result<Matrix<double>> eval_graph_min_arborescence(const Matrix<double>& adj_m, int root) {
-    auto G = graph_from_adjacency(adj_m, "graph_min_arborescence");
+    auto G = graph_from_adjacency(adj_m, "graph_min_arborescence", /*allow_non_positive=*/true);
     if (!G) {
         return std::unexpected(G.error());
     }
@@ -12523,7 +12589,7 @@ Result<Matrix<double>> eval_graph_dijkstra(const Matrix<double>& adj_m, int sour
 }
 
 Result<Matrix<double>> eval_graph_bellman_ford(const Matrix<double>& adj_m, int source) {
-    auto G = graph_from_adjacency(adj_m, "graph_bellman_ford");
+    auto G = graph_from_adjacency(adj_m, "graph_bellman_ford", /*allow_non_positive=*/true);
     if (!G) {
         return std::unexpected(G.error());
     }
@@ -13406,6 +13472,12 @@ Result<Matrix<double>> eval_stats_one_way_anova(const Matrix<double>& groups_m) 
         return std::unexpected(groups.error());
     }
     const auto result = one_way_anova(*groups);
+    if (!std::isfinite(result.f_stat)) {
+        return std::unexpected(DomainError{
+            "stats_one_way_anova", "the test is not defined for these groups: fewer than two "
+                       "non-empty groups, no residual degrees of freedom, or no "
+                       "within-group variation"});
+    }
     Matrix<double> out(1, 4);
     out(0, 0) = result.f_stat;
     out(0, 1) = result.p_value;
@@ -13421,6 +13493,12 @@ Result<Matrix<double>> eval_stats_levene(const Matrix<double>& groups_m) {
         return std::unexpected(groups.error());
     }
     const auto result = levene_test(*groups);
+    if (!std::isfinite(result.f_stat)) {
+        return std::unexpected(DomainError{
+            "stats_levene", "the test is not defined for these groups: fewer than two "
+                       "non-empty groups, no residual degrees of freedom, or no "
+                       "within-group variation"});
+    }
     Matrix<double> out(1, 4);
     out(0, 0) = result.f_stat;
     out(0, 1) = result.p_value;
@@ -13863,7 +13941,11 @@ Result<Matrix<double>> eval_quantum_time_evolution_matrix(const Matrix<double>& 
 }
 
 Result<Matrix<double>> eval_run_length_encode_vec(const Matrix<double>& m) {
-  return bytes_to_matrix_col(compress::run_length_encode(matrix_to_bytes(m)));
+    auto bytes = matrix_to_bytes(m, "rle_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::run_length_encode(*bytes));
 }
 
 Result<Matrix<double>> eval_run_length_decode_vec(const Matrix<double>& m) {
@@ -14137,11 +14219,19 @@ Result<Matrix<double>> eval_quantum_bell_state(int index) {
 }
 
 Result<Matrix<double>> eval_bzip2_compress_vec(const Matrix<double>& m) {
-    return bytes_to_matrix_col(compress::bzip2_like_compress(matrix_to_bytes(m)));
+    auto bytes = matrix_to_bytes(m, "bzip2_compress_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::bzip2_like_compress(*bytes));
 }
 
 Result<Matrix<double>> eval_bzip2_decompress_vec(const Matrix<double>& c_m) {
-    const compress::Bytes bytes = matrix_to_bytes(c_m);
+    auto bytes_or_error = matrix_to_bytes(c_m, "bzip2_decompress_vec");
+    if (!bytes_or_error) {
+        return std::unexpected(bytes_or_error.error());
+    }
+    const compress::Bytes bytes = *bytes_or_error;
     if (bytes.size() < 4) {
         return std::unexpected(
             DomainError{"bzip2_decompress_vec", "expected at least 4-byte compressed vector"});
@@ -15222,7 +15312,17 @@ Result<double> eval_bigint_gcd_strings(const std::string& a, const std::string& 
     if (a.empty() || b.empty()) {
         return std::unexpected(DomainError{"bigint_gcd", "expected decimal string literals"});
     }
-    return bigint_to_scalar(bignum::bigint_gcd(bignum::BigInt(a), bignum::BigInt(b)), "bigint_gcd");
+    // Same reason as eval_bigint_string: an unreadable literal used to become 0, and
+    // gcd(0, b) is b, so bigint_gcd("12x", "18") answered 18.
+    auto left = bignum::BigInt::parse(a);
+    if (!left) {
+        return std::unexpected(DomainError{"bigint_gcd", "invalid decimal literal: " + a});
+    }
+    auto right = bignum::BigInt::parse(b);
+    if (!right) {
+        return std::unexpected(DomainError{"bigint_gcd", "invalid decimal literal: " + b});
+    }
+    return bigint_to_scalar(bignum::bigint_gcd(*left, *right), "bigint_gcd");
 }
 
 Result<SymExpr> parse_sym_quoted_expr(const std::string& quoted_arg, const char* fn) {
@@ -15281,6 +15381,29 @@ Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, cons
     return sym_to_string(result) + "\n";
 }
 
+/// Refuse a formula whose variables are not the ones the caller will bind.
+///
+/// sym_eval returns 0.0 for an unbound name, which cannot be told from an answer:
+/// `sym_eval("x*y", "x=3")` printed 0.000000, and `bfgs("(x-3)^2", [0])` reported
+/// `converged = 1` at `x_opt = 0` because the objective was the constant 9 -- the
+/// optimiser binds x0, not x, so the whole expression was a number.
+Result<void> require_bound_variables(const SymExpr& expr,
+                                     const std::vector<std::string>& bound,
+                                     const char* fn) {
+    for (const std::string& name : sym_free_variables(expr)) {
+        if (std::find(bound.begin(), bound.end(), name) == bound.end()) {
+            std::string expected;
+            for (const std::string& allowed : bound) {
+                expected += (expected.empty() ? "" : ", ") + allowed;
+            }
+            return std::unexpected(DomainError{
+                fn, "unknown variable '" + name + "'" +
+                        (expected.empty() ? "" : " (this call binds " + expected + ")")});
+        }
+    }
+    return {};
+}
+
 Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std::string& binding_arg) {
     auto expr = parse_sym_quoted_expr(expr_arg, "sym_eval");
     if (!expr) {
@@ -15299,6 +15422,9 @@ Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std
     double value = 0.0;
     if (!parse_number(value_text, value)) {
         return std::unexpected(DomainError{"sym_eval", "expected numeric value in var=value binding"});
+    }
+    if (auto bound = require_bound_variables(*expr, {var}, "sym_eval"); !bound) {
+        return std::unexpected(bound.error());
     }
     return format_scalar(sym_eval(*expr, {{var, value}})) + "\n";
 }
@@ -15475,6 +15601,14 @@ Result<std::string> eval_sym_solve_linear_strings(const std::string& eqs_arg,
 Result<std::string> format_ode_trajectory(const OdeResult& result) {
     if (result.t.size() != result.y.size()) {
         return std::unexpected(DomainError{"ode", "internal trajectory size mismatch"});
+    }
+    // An adaptive solver that ran out of its step budget covered part of the interval.
+    // Printing that partial trajectory with no marker made it read as the solution over
+    // the whole of it: ode_rk45("cos(1000*t)", 0, 0, 100) stopped at t = 17.45.
+    if (!result.complete) {
+        return std::unexpected(DomainError{
+            "ode", "step budget exhausted before t_end: the equation is too stiff or "
+                   "too oscillatory for this solver over that interval"});
     }
     Matrix<double> out(result.t.size(), 2);
     for (size_t i = 0; i < result.t.size(); ++i) {
@@ -15897,6 +16031,16 @@ Result<NdOptimInputs> parse_nd_optim_inputs(const std::string& formula_arg,
     }
     if (x0->empty()) {
         return std::unexpected(DomainError{fn, "expected non-empty initial point vector x0"});
+    }
+    // The objective is written in x0, x1, ...; anything else is a typo that would
+    // otherwise read as zero and turn the objective into a constant.
+    std::vector<std::string> bound;
+    bound.reserve(x0->size());
+    for (size_t i = 0; i < x0->size(); ++i) {
+        bound.push_back("x" + std::to_string(i));
+    }
+    if (auto checked = require_bound_variables(*expr, bound, fn); !checked) {
+        return std::unexpected(checked.error());
     }
     auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
     const size_t dim = x0->size();
@@ -16333,6 +16477,16 @@ Func1D make_scalar_formula_func(SymExpr expr) {
     return [expr_ptr](double x) { return sym_eval(*expr_ptr, build_optim_env({x})); };
 }
 
+/// The one-dimensional formula callers all bind exactly x0, so the check is the same
+/// for all of them: a root finder given "x^2 - 2" is looking for the root of the
+/// constant 0, and reports whatever bracket midpoint it happened to reach.
+Result<Func1D> make_checked_scalar_formula_func(SymExpr expr, const char* fn) {
+    if (auto checked = require_bound_variables(expr, {"x0"}, fn); !checked) {
+        return std::unexpected(checked.error());
+    }
+    return make_scalar_formula_func(std::move(expr));
+}
+
 using BracketRootSolver = double (*)(Func1D, double, double, double, int);
 
 Result<std::string> eval_bracket_root_call(const char* fn, BracketRootSolver solver,
@@ -16358,7 +16512,11 @@ Result<std::string> eval_bracket_root_call(const char* fn, BracketRootSolver sol
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto f = make_scalar_formula_func(std::move(*expr));
+    auto f_or_error = make_checked_scalar_formula_func(std::move(*expr), fn);
+    if (!f_or_error) {
+        return std::unexpected(f_or_error.error());
+    }
+    auto f = *f_or_error;
     const double x_opt = solver(f, a, b, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, f(x_opt));
 }
@@ -16385,7 +16543,11 @@ Result<std::string> eval_secant_call(const std::string& formula_arg, const std::
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto f = make_scalar_formula_func(std::move(*expr));
+    auto f_or_error = make_checked_scalar_formula_func(std::move(*expr), fn);
+    if (!f_or_error) {
+        return std::unexpected(f_or_error.error());
+    }
+    auto f = *f_or_error;
     const double x_opt = secant(f, x0, x1, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, f(x_opt));
 }
@@ -16419,9 +16581,21 @@ Result<std::string> eval_halley_call(const std::string& f_arg, const std::string
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto f = make_scalar_formula_func(std::move(*f_expr));
-    auto df = make_scalar_formula_func(std::move(*df_expr));
-    auto d2f = make_scalar_formula_func(std::move(*d2f_expr));
+    auto f_or_error = make_checked_scalar_formula_func(std::move(*f_expr), fn);
+    if (!f_or_error) {
+        return std::unexpected(f_or_error.error());
+    }
+    auto df_or_error = make_checked_scalar_formula_func(std::move(*df_expr), fn);
+    if (!df_or_error) {
+        return std::unexpected(df_or_error.error());
+    }
+    auto d2f_or_error = make_checked_scalar_formula_func(std::move(*d2f_expr), fn);
+    if (!d2f_or_error) {
+        return std::unexpected(d2f_or_error.error());
+    }
+    auto f = *f_or_error;
+    auto df = *df_or_error;
+    auto d2f = *d2f_or_error;
     const double x_opt = halley(f, df, d2f, x0, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, f(x_opt));
 }
@@ -16447,7 +16621,11 @@ Result<std::string> eval_fixed_point_call(const std::string& formula_arg, const 
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto g = make_scalar_formula_func(std::move(*expr));
+    auto g_or_error = make_checked_scalar_formula_func(std::move(*expr), fn);
+    if (!g_or_error) {
+        return std::unexpected(g_or_error.error());
+    }
+    auto g = *g_or_error;
     const double x_opt = fixed_point(g, x0, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, g(x_opt));
 }
@@ -16614,6 +16792,11 @@ std::map<std::string, double> build_vec_accel_env(double t, const std::vector<do
 Result<std::string> format_ode_trajectory_vec(const OdeResultVec& result) {
     if (result.t.size() != result.y.size()) {
         return std::unexpected(DomainError{"ode", "internal vector trajectory size mismatch"});
+    }
+    if (!result.complete) {
+        return std::unexpected(DomainError{
+            "ode", "step budget exhausted before t_end: the equation is too stiff or "
+                   "too oscillatory for this solver over that interval"});
     }
     if (result.t.empty()) {
         return std::string("traj =\n");

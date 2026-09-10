@@ -376,12 +376,15 @@ TEST(SymbolicCasTest, ilaplace_const_a2_cosine_and_numer_mismatch) {
 }
 
 TEST(SymbolicCasTest, mellin_t_squared_exp_neg_at_and_bad_reciprocal) {
+    // M{t^2 e^{-2t}}(s) is Gamma(s+2)/2^(s+2), and this row answered 2!/2^(s+2) -- the
+    // Gamma dropped, which is right only at s = 1, and this assertion evaluated at
+    // s = 1 and so agreed with it. The row declines now.
     const auto matched = sym_mellin(
         sym_mul(
             sym_pow(sym_var("t"), sym_const(2.0)),
             sym_exp(sym_mul(sym_const(-2.0), sym_var("t")))),
         "t", "s");
-    EXPECT_NEAR(sym_eval(matched, {{"s", 1.0}}), 2.0 / std::pow(2.0, 3.0), 1e-12);
+    EXPECT_TRUE(sym_is_unsupported(matched, "t"));
 
     // 2/(1+t) is linearity over the reflection row, which the matcher used to refuse
     // because it required the numerator to be exactly 1.
@@ -563,14 +566,16 @@ TEST(SymbolicCasTest, mellin_one_plus_t_and_exp_neg_both_shapes) {
         sym_div(sym_const(1.0), sym_add(sym_var("t"), sym_const(1.0))), "t", "s");
     EXPECT_NEAR(sym_eval(right_one, {{"s", 0.5}}), pi_over_sin, 1e-12);
 
-    // exp((-4)*t) vs exp(-(4*t)): both match_exp_neg_at, M{e^{-a t}} = a^{-s}.
+    // exp((-4)*t) vs exp(-(4*t)): both are the same function, and the row that used to
+    // transform them answered a^{-s} where M{e^{-a t}}(s) is Gamma(s)/a^s. Both shapes
+    // decline, and declining for both is the point: the matcher still sees them alike.
     const auto scale_neg = sym_mellin(
         sym_exp(sym_mul(sym_const(-4.0), sym_var("t"))), "t", "s");
-    EXPECT_NEAR(sym_eval(scale_neg, {{"s", 2.0}}), 1.0 / 16.0, 1e-12);
+    EXPECT_TRUE(sym_is_unsupported(scale_neg, "t"));
 
     const auto neg_product = sym_mellin(
         sym_exp(sym_neg(sym_mul(sym_const(4.0), sym_var("t")))), "t", "s");
-    EXPECT_NEAR(sym_eval(neg_product, {{"s", 2.0}}), 1.0 / 16.0, 1e-12);
+    EXPECT_TRUE(sym_is_unsupported(neg_product, "t"));
 }
 
 TEST(SymbolicCasTest, hankel_sqrt_const_first_and_ihankel_mul_numer) {
@@ -693,21 +698,23 @@ TEST(SymbolicCasTest, mellin_t_power_bare_t_exp_and_imellin_pairs) {
     const auto ta = sym_mellin(sym_pow(sym_var("t"), sym_const(2.0)), "t", "s");
     EXPECT_NEAR(sym_eval(ta, {{"s", 1.0}}), 1.0 / 3.0, 1e-12);
 
-    // Bare t * exp(-2 t) and exp(-2 t) * t: n=1 both operand orders.
+    // Bare t * exp(-2 t) and exp(-2 t) * t: n=1 in both operand orders. The row that
+    // matched these dropped the Gamma from Gamma(s+n)/a^(s+n), so all three decline --
+    // and the matcher still sees all three shapes alike, which is what these assert.
     const auto t_exp = sym_mellin(
         sym_mul(sym_var("t"), sym_exp(sym_mul(sym_const(-2.0), sym_var("t")))), "t", "s");
-    EXPECT_NEAR(sym_eval(t_exp, {{"s", 1.0}}), 1.0 / 4.0, 1e-12);
+    EXPECT_TRUE(sym_is_unsupported(t_exp, "t"));
 
     const auto exp_t = sym_mellin(
         sym_mul(sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("t")))), sym_var("t")),
         "t", "s");
-    EXPECT_NEAR(sym_eval(exp_t, {{"s", 1.0}}), 1.0 / 4.0, 1e-12);
+    EXPECT_TRUE(sym_is_unsupported(exp_t, "t"));
 
     const auto exp_pow = sym_mellin(
         sym_mul(sym_exp(sym_mul(sym_const(-2.0), sym_var("t"))),
                 sym_pow(sym_var("t"), sym_const(2.0))),
         "t", "s");
-    EXPECT_NEAR(sym_eval(exp_pow, {{"s", 1.0}}), 2.0 / 8.0, 1e-12);
+    EXPECT_TRUE(sym_is_unsupported(exp_pow, "t"));
 
     const auto other = sym_mellin(sym_var("x"), "t", "s");
     EXPECT_EQ(other.op, SymOp::Deriv);
@@ -723,11 +730,14 @@ TEST(SymbolicCasTest, mellin_t_power_bare_t_exp_and_imellin_pairs) {
         sym_div(sym_const(1.0), sym_add(sym_var("s"), sym_const(2.0))), "s", "t");
     EXPECT_NEAR(sym_eval(power, {{"t", 2.0}}), 4.0, 1e-12);
 
+    // n!/a^(s+n) was the inverse of a forward row that dropped the Gamma from
+    // Gamma(s+n)/a^(s+n). It went with its partner: inverting a formula the forward
+    // table should never produce answers for a spectrum nothing here generates.
     const auto t2exp = sym_imellin(
         sym_div(sym_const(2.0),
                 sym_pow(sym_const(3.0), sym_add(sym_var("s"), sym_const(2.0)))),
         "s", "t");
-    EXPECT_NEAR(sym_eval(t2exp, {{"t", 1.0}}), std::exp(-3.0), 1e-12);
+    EXPECT_TRUE(sym_is_unsupported(t2exp, "s"));
 }
 
 TEST(SymbolicCasTest, hankel_exp_rpow_and_ihankel_n_nonzero) {

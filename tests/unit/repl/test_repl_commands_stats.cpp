@@ -86,7 +86,7 @@ TEST(ReplCommandsTest, stats_stddev) {
     expect_ok(interp, "sd = stats_stddev([1; 2; 3; 4; 5])");
     EXPECT_NEAR(interp.state().scalars.at("sd"), std::sqrt(2.5), 1e-9);
 
-    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.58114");
+    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.581139");
 }
 
 TEST(ReplCommandsTest, stats_skewness) {
@@ -4714,7 +4714,7 @@ TEST(ReplCommandsTest, stats_var_noassign) {
 
 TEST(ReplCommandsTest, stats_stddev_noassign) {
     Interpreter interp;
-    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.58114");
+    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.581139");
     expect_error_contains(interp, "stats_stddev(no_such_matrix)", "unknown matrix");
 }
 

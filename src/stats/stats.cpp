@@ -597,6 +597,10 @@ double ks_test(std::span<const double> x,
     return dn;
 }
 
+// The degenerate exits below leave f_stat and p_value at their NaN defaults. They used
+// to be value-initialised to 0.0 and returned through the same path as a success, so
+// an input with no within-group variation reported F = 0 alongside p = 0 -- a pair no
+// F-test can produce, and one that reads as a confident null result.
 AnovaResult one_way_anova(const std::vector<std::vector<double>>& groups) {
     AnovaResult result{};
     if (groups.size() < 2) {

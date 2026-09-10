@@ -7,6 +7,8 @@
 #include <iomanip>
 #include <sstream>
 
+#include "ms/core/format.hpp"
+
 namespace ms::interp {
 
 namespace {
@@ -27,19 +29,22 @@ void append_matrix_preview(std::ostringstream& out, const Matrix<double>& m, con
             vmax = std::max(vmax, m(i, j));
         }
     }
-    out << label << " (" << m.rows() << "x" << m.cols() << ") range [" << std::fixed
-        << std::setprecision(4) << vmin << ", " << vmax << "]\n";
+    // format_preview, not setprecision(4): four decimals renders 1e-5 as "0.0000", so
+    // an imshow of a small-valued grid previewed as a matrix of zeros with a zero-width
+    // range. The compact spelling is kept wherever it is faithful and only widens where
+    // it would otherwise say zero.
+    out << label << " (" << m.rows() << "x" << m.cols() << ") range [" << format_preview(vmin, 4, false)
+        << ", " << format_preview(vmax, 4, false) << "]\n";
 
     const size_t rows = std::min(m.rows(), kMaxPreviewRows);
     const size_t cols = std::min(m.cols(), kMaxPreviewCols);
-    out << std::fixed << std::setprecision(4);
     for (size_t i = 0; i < rows; ++i) {
         out << "  ";
         for (size_t j = 0; j < cols; ++j) {
             if (j > 0) {
                 out << ' ';
             }
-            out << std::setw(8) << m(i, j);
+            out << std::setw(8) << format_preview(m(i, j), 4, false);
         }
         if (m.cols() > cols) {
             out << " ...";
@@ -49,6 +54,24 @@ void append_matrix_preview(std::ostringstream& out, const Matrix<double>& m, con
     if (m.rows() > rows) {
         out << "  ...\n";
     }
+}
+
+const char* plot_kind_label(PlotSeries::Kind kind) {
+    switch (kind) {
+    case PlotSeries::Kind::Line:
+        return "line";
+    case PlotSeries::Kind::Scatter:
+        return "scatter";
+    case PlotSeries::Kind::Bar:
+        return "bar";
+    case PlotSeries::Kind::Heatmap:
+        return "heatmap";
+    case PlotSeries::Kind::Spy:
+        return "spy";
+    case PlotSeries::Kind::Surface3D:
+        return "surface3d";
+    }
+    return "line";
 }
 
 } // namespace
@@ -104,15 +127,44 @@ std::string format_plot_preview(const PlotSeries& plot) {
         for (size_t i = 0; i < n; ++i) {
             out << "  ";
             if (!plot.x.empty()) {
-                out << plot.x[i] << " -> ";
+                out << format_preview(plot.x[i]) << " -> ";
             }
-            out << plot.y[i] << '\n';
+            out << format_preview(plot.y[i]) << '\n';
         }
         if (plot.y.size() > n) {
             out << "  ...\n";
         }
         break;
     }
+    }
+    return out.str();
+}
+
+std::string format_plot_data(const PlotSeries& plot) {
+    if (!plot.valid) {
+        return "(no plot)\n";
+    }
+    std::ostringstream out;
+    out << "kind " << plot_kind_label(plot.kind) << "\n";
+    if (plot.grid.rows() > 0 && plot.grid.cols() > 0) {
+        out << "grid " << plot.grid.rows() << " " << plot.grid.cols() << "\n";
+        for (size_t i = 0; i < plot.grid.rows(); ++i) {
+            for (size_t j = 0; j < plot.grid.cols(); ++j) {
+                if (j > 0) {
+                    out << ' ';
+                }
+                out << format_exact(plot.grid(i, j));
+            }
+            out << '\n';
+        }
+        return out.str();
+    }
+    out << "points " << plot.y.size() << "\n";
+    for (size_t i = 0; i < plot.y.size(); ++i) {
+        if (i < plot.x.size()) {
+            out << format_exact(plot.x[i]) << ' ';
+        }
+        out << format_exact(plot.y[i]) << '\n';
     }
     return out.str();
 }

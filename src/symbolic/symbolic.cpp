@@ -2353,9 +2353,10 @@ SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::strin
 // Supported Mellin rules (table-driven MVP, M{f}(s) = integral_0^inf t^{s-1} f(t) dt):
 //   c                    -> c / s
 //   t^a                  -> 1 / (s + a)
-//   exp(-a*t)            -> n! / a^{n+s} with n = 0
-//   t^n * exp(-a*t)      -> n! / a^{n+s}  (small int n)
 //   1 / (1 + t)          -> pi / sin(pi * s)
+// The two exponential rows are gone: M{t^n e^{-a t}} is Gamma(s+n)/a^(s+n), and they
+// answered n!/a^(s+n), which is that only at s = 1. SymOp has no Gamma to state them
+// with, so they decline until the §10 core does.
 // Linearity: Add, Sub, Neg, Mul with Const factor.
 // Unsupported forms return sym_deriv(expr, t) as an explicit sentinel.
 SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string& s) {
@@ -2385,13 +2386,12 @@ SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string&
             return decline_if_unsupported(
                 sym_mul(sym_const(c), sym_mellin(*expr.left, t, s)), expr, t);
         }
-        if (const auto matched = match_tpow_exp_neg(expr, t)) {
-            const int n = matched->first;
-            const double a = matched->second;
-            return sym_div(
-                sym_const(factorial_int(n)),
-                sym_pow(sym_const(a), sym_add(sym_var(s), sym_const(static_cast<double>(n)))));
-        }
+        // M{t^n e^{-a t}}(s) is Gamma(s + n) / a^(s + n), and this row used to answer
+        // n! / a^(s + n) -- the Gamma dropped, which is right only where Gamma(s+n) is
+        // n!, that is at s = 1. Under the convention this table declares two lines above
+        // its own rational and log rows, that is a wrong answer rather than a missing
+        // one. There is no Gamma in SymOp, so the row cannot be stated correctly here;
+        // it declines until the §10 core has one.
         // The shifting rule M{t^a f(t)}(s) = M{f}(s + a), which is the Mellin
         // analogue of the Laplace first shifting theorem and, like it, supplies a
         // whole column of the table from one statement.
@@ -2477,13 +2477,11 @@ SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string&
                 sym_add(sym_var(s), clone_expr(*expr.right)));
         }
         return sym_mellin_unsupported(expr, t);
-    case SymOp::Exp: {
-        double a = 0.0;
-        if (match_exp_neg_at(expr, t, a)) {
-            return sym_div(sym_const(1.0), sym_pow(sym_const(a), sym_var(s)));
-        }
+    case SymOp::Exp:
+        // M{e^{-a t}}(s) is Gamma(s) / a^s, and this row answered 1 / a^s -- the same
+        // dropped Gamma as the t^n e^{-a t} row above, right only at s = 1 where
+        // Gamma(1) = 1. It declines rather than answering.
         return sym_mellin_unsupported(expr, t);
-    }
     default:
         return sym_mellin_unsupported(expr, t);
     }
@@ -2492,8 +2490,9 @@ SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string&
 // Supported inverse Mellin rules (paired with forward table):
 //   c / s                  -> c
 //   1 / (s + a)            -> t^a
-//   n! / a^{n+s}           -> t^n * exp(-a*t)
 //   pi / sin(pi * s)       -> 1 / (1 + t)
+// The n!/a^{n+s} row is gone with its forward partner: it inverted a formula the
+// forward table should never have produced.
 // Linearity: Add, Sub, Neg, Mul with Const factor.
 // Unsupported forms return sym_deriv(expr, s) as an explicit sentinel.
 SymExpr sym_imellin(const SymExpr& expr, const std::string& s, const std::string& t) {
@@ -2552,26 +2551,11 @@ SymExpr sym_imellin(const SymExpr& expr, const std::string& s, const std::string
         if (match_add_var_plus_const(*expr.right, s, a) && numerator == 1.0) {
             return sym_pow(sym_var(t), sym_const(a));
         }
-        if (expr.right->op == SymOp::Pow && expr.right->left && expr.right->right &&
-            expr.right->left->op == SymOp::Const) {
-            const double base = expr.right->left->value;
-            if (base > 0.0 && is_bare_var(*expr.right->right, s) && numerator == 1.0) {
-                return sym_exp(sym_neg(sym_mul(sym_const(base), sym_var(t))));
-            }
-            if (expr.right->right->op == SymOp::Add && expr.right->right->left &&
-                is_bare_var(*expr.right->right->left, s) && expr.right->right->right &&
-                expr.right->right->right->op == SymOp::Const) {
-                const int n = static_cast<int>(expr.right->right->right->value);
-                if (n >= 0 && n <= kMaxMellinPower && numerator == factorial_int(n)) {
-                    SymExpr decay = sym_exp(sym_neg(sym_mul(sym_const(base), sym_var(t))));
-                    if (n == 0) {
-                        return decay;
-                    }
-                    return sym_mul(
-                        sym_pow(sym_var(t), sym_const(static_cast<double>(n))), std::move(decay));
-                }
-            }
-        }
+        // 1/a^s -> e^{-a t} and n!/a^{s+n} -> t^n e^{-a t} were the inverses of the two
+        // forward rows removed above. Those rows were wrong -- the true transform
+        // carries a Gamma(s+n) the table dropped -- so inverting them turned a formula
+        // the module should never produce back into a function, and would answer a
+        // spectrum nothing here generates. Both are gone with their partners.
         return sym_imellin_unsupported(expr, s);
     }
     default:
@@ -2831,6 +2815,32 @@ double sym_eval(const SymExpr& expr, const std::map<std::string, double>& env) {
     return 0.0;
 }
 
+namespace {
+
+void gather_free_variables(const SymExpr& expr, std::vector<std::string>& out) {
+    if (expr.op == SymOp::Var) {
+        if (std::find(out.begin(), out.end(), expr.name) == out.end()) {
+            out.push_back(expr.name);
+        }
+        return;
+    }
+    if (expr.left) {
+        gather_free_variables(*expr.left, out);
+    }
+    if (expr.right) {
+        gather_free_variables(*expr.right, out);
+    }
+}
+
+} // namespace
+
+std::vector<std::string> sym_free_variables(const SymExpr& expr) {
+    std::vector<std::string> names;
+    gather_free_variables(expr, names);
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
 std::string sym_to_string(const SymExpr& expr) {
     switch (expr.op) {
     case SymOp::Const:
@@ -3014,58 +3024,81 @@ double sym_limit(const SymExpr& expr, const std::string& var, double point) {
         }
     }
 
-    // Refinement. The step floor is deliberate, and so is keeping the best-converged
-    // sample rather than the last one: past a certain h the samples stop improving and
-    // start decaying into rounding noise, and the old loop overwrote its good estimate
-    // with that noise on every remaining iteration.
-    double best = nan;
-    double best_delta = std::numeric_limits<double>::infinity();
-    double previous = nan;
-    double h = 1e-2 * point_scale;
-    for (int step = 0; step < 10; ++step) {
-        const double left = eval_at(point - h);
-        const double right = eval_at(point + h);
-        double sample = nan;
-        if (std::isfinite(left) && std::isfinite(right)) {
-            sample = 0.5 * (left + right);
-        } else if (std::isfinite(left)) {
-            sample = left;
-        } else if (std::isfinite(right)) {
-            sample = right;
-        }
-        if (std::isfinite(sample)) {
-            if (std::isfinite(previous)) {
-                const double delta =
-                    std::abs(sample - previous) / std::max(1.0, std::abs(sample));
-                // Past the noise floor the samples stop improving and start decaying,
-                // and the decay eventually settles on a constant -- often zero, when
-                // the numerator underflows -- whose successive differences are exactly
-                // zero and therefore look like perfect convergence. Stopping as soon as
-                // the step gets markedly worse keeps the best estimate from before the
-                // floor. (1 - cos(x))/x^2 is the case that matters: its samples reach
-                // 0.4999999970 and then collapse to 0 at h = 1e-8.
-                if (std::isfinite(best_delta) && delta > 4.0 * best_delta) {
-                    break;
+    // Each side on its own, then compared.
+    //
+    // These used to be averaged before either had settled, and the average of two
+    // divergences is not a limit: 1/x at 0 has left = -1/h and right = +1/h, whose mean
+    // is exactly 0 at every h, so the samples "converged" instantly and the answer came
+    // back 0.000000. 1/x^3, 1/sin(x) and tan(x) at pi/2 were the same. Estimating the
+    // two sequences separately and requiring them to agree is the definition of a
+    // two-sided limit, and needs no threshold on how far apart they are allowed to be
+    // along the way -- which is what the averaging was implicitly guessing at.
+    //
+    // The step floor and keeping the best-converged sample rather than the last are
+    // both deliberate: past a certain h the samples stop improving and decay into
+    // rounding noise, and the decay eventually settles on a constant whose successive
+    // differences are exactly zero and therefore look like perfect convergence.
+    // (1 - cos(x))/x^2 is the case that matters -- its samples reach 0.4999999970 and
+    // then collapse to 0 at h = 1e-8.
+    struct OneSided {
+        double value = std::numeric_limits<double>::quiet_NaN();
+        bool converged = false;
+    };
+    const auto approach = [&](double side) {
+        OneSided result;
+        double best_delta = std::numeric_limits<double>::infinity();
+        double previous = std::numeric_limits<double>::quiet_NaN();
+        double h = 1e-2 * point_scale;
+        for (int step = 0; step < 10; ++step) {
+            const double sample = eval_at(point + side * h);
+            if (std::isfinite(sample)) {
+                if (std::isfinite(previous)) {
+                    const double delta =
+                        std::abs(sample - previous) / std::max(1.0, std::abs(sample));
+                    if (std::isfinite(best_delta) && delta > 4.0 * best_delta) {
+                        break;
+                    }
+                    if (delta < best_delta) {
+                        best_delta = delta;
+                        result.value = sample;
+                    }
+                    if (delta < 1e-12) {
+                        result.value = sample;
+                        result.converged = true;
+                        return result;
+                    }
                 }
-                if (delta < best_delta) {
-                    best_delta = delta;
-                    best = sample;
-                }
-                if (delta < 1e-12) {
-                    return sample;
-                }
+                previous = sample;
             }
-            previous = sample;
+            h *= 0.1;
         }
-        h *= 0.1;
+        result.converged = best_delta <= 1e-6;
+        return result;
+    };
+
+    const OneSided from_left = approach(-1.0);
+    const OneSided from_right = approach(1.0);
+    if (from_left.converged && from_right.converged) {
+        const double scale = std::max(1.0, std::abs(from_left.value));
+        if (std::abs(from_left.value - from_right.value) > 1e-6 * scale) {
+            // Both sides settle, on different values: abs(x)/x at 0 approaches -1 and
+            // +1, and has no limit.
+            return nan;
+        }
+        return 0.5 * (from_left.value + from_right.value);
     }
-    // Samples that never settled are a divergent or non-existent limit, not a number.
-    // log(x) at 0 marched off towards -infinity and the old code returned whichever
-    // value it happened to stop on.
-    if (best_delta > 1e-6) {
-        return nan;
+    // A one-sided domain is not a failure: sqrt(x) + 5 at 0 has no left side at all,
+    // and requiring both is what used to send it into the loop that fabricated a zero.
+    if (from_left.converged) {
+        return from_left.value;
     }
-    return best;
+    if (from_right.converged) {
+        return from_right.value;
+    }
+    // Neither side settled: a divergent or non-existent limit, not a number. log(x) at
+    // 0 marched off towards -infinity and the old code returned whichever value it
+    // happened to stop on.
+    return nan;
 }
 
 SymExpr sym_series(const SymExpr& expr, const std::string& var, double point, int order) {

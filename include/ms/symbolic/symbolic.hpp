@@ -181,7 +181,17 @@ SymExpr sym_dsolve_ivp(const SymExpr& general_solution, const std::string& indep
 SymExpr sym_dsolve_ivp2(const SymExpr& general_solution, const std::string& indep_var,
                         double x0, double y0, double yp0);
 SymExpr sym_substitute(const SymExpr& expr, const std::string& var, const SymExpr& replacement);
+/// @brief Numeric value of `expr` under `env`.
+/// @note An unbound variable evaluates to 0.0. That is a real limitation of the return
+///   type -- there is no channel to report it -- and it is why every caller that
+///   accepts a formula from a user should first check that the formula's variables are
+///   the ones it is going to bind. `sym_free_variables` is that check:
+///   `sym_eval("x*y", {{"x", 3}})` returned 0.000000, indistinguishable from an answer.
 double sym_eval(const SymExpr& expr, const std::map<std::string, double>& env);
+
+/// @brief Every variable name occurring in `expr`, in order, without duplicates.
+/// @note Constants that parse as values (pi, e) are not variables and do not appear.
+std::vector<std::string> sym_free_variables(const SymExpr& expr);
 std::string sym_to_string(const SymExpr& expr);
 
 struct SymParseError {

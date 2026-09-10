@@ -1326,7 +1326,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "katz_centrality:\n";
         for (size_t i = 0; i < kc->rows(); ++i) {
-            out << "  [" << i << "] " << (*kc)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*kc)(i, 0)) << "\n";
         }
     } else if (fn == "graph_adjacency_spectrum") {
         auto spec = eval_graph_adjacency_spectrum(matrix);
@@ -1335,7 +1335,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "adjacency_spectrum:\n";
         for (size_t i = 0; i < spec->rows(); ++i) {
-            out << "  [" << i << "] " << (*spec)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*spec)(i, 0)) << "\n";
         }
     } else if (fn == "graph_laplacian") {
         auto L = eval_graph_laplacian(matrix);
@@ -1358,7 +1358,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "eccentricity:\n";
         for (size_t i = 0; i < ecc->rows(); ++i) {
-            out << "  [" << i << "] " << (*ecc)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*ecc)(i, 0)) << "\n";
         }
     } else if (fn == "graph_articulation_points") {
         auto aps = eval_graph_articulation_points(matrix);
@@ -1367,7 +1367,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "articulation_points:\n";
         for (size_t i = 0; i < aps->rows(); ++i) {
-            out << "  [" << i << "] " << (*aps)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*aps)(i, 0)) << "\n";
         }
     } else if (fn == "graph_bridges") {
         auto br = eval_graph_bridges(matrix);
@@ -1395,7 +1395,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         if (!value) {
             return std::unexpected(value.error());
         }
-        out << *value << "\n";
+        out << format_scalar(*value) << "\n";
     } else if (fn == "graph_planar_embedding") {
         auto emb = eval_graph_planar_embedding(matrix);
         if (!emb) {
@@ -1822,10 +1822,24 @@ bool Interpreter::try_parse_scalar_assignment(const std::string& line, std::stri
     return parse_number(trim(cmd.substr(eq + 1)), value);
 }
 
+unsigned Interpreter::next_random_seed() {
+    // A fixed base so a session replays identically, advanced so that two calls are two
+    // draws rather than the same draw twice. The multiplier is an odd constant, which
+    // keeps successive seeds far apart in mt19937's state space -- adjacent seeds
+    // produce correlated first outputs.
+    return 0x9e3779b9u * ++random_draws_;
+}
+
 Result<std::string> Interpreter::assign_scalar(const std::string& name, double value) {
+    // Scalars and matrices live in separate maps and nothing cleared the other one, so
+    // `A = [1, 2; 3, 4]` followed by `A = 5` left both alive: the bare-name echo checks
+    // matrices first and printed the matrix, while a scalar expression using A read 5.
+    // One name, one value.
+    state_.matrices.erase(name);
     state_.scalars[name] = value;
     return name + " = " + format_scalar(value) + "\n";
 }
+
 
 bool Interpreter::try_parse_scalar_binary_assignment(const std::string& line, ScalarBinaryAssign& assign) {
     const std::string cmd = trim(line);
@@ -4959,6 +4973,7 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
         return std::unexpected(
             DomainError{"repl", "matrix too large (max 262144 elements)"});
     }
+    state_.scalars.erase(assign.target);
     state_.matrices[assign.target] = *result;
     std::ostringstream out;
     out << assign.target << " =\n";
@@ -5220,9 +5235,13 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         const Matrix<double> ytr = vector_to_column(split.first.second);
         const Matrix<double> Xte = grid_to_matrix(split.second.first);
         const Matrix<double> yte = vector_to_column(split.second.second);
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = Xtr;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = ytr;
+        state_.scalars.erase(assign.targets[2]);
         state_.matrices[assign.targets[2]] = Xte;
+        state_.scalars.erase(assign.targets[3]);
         state_.matrices[assign.targets[3]] = yte;
         out << assign.targets[0] << " =\n";
         print_matrix(out, Xtr);
@@ -5250,13 +5269,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
             return std::unexpected(factored.error());
         }
         const auto& [L, U, P] = *factored;
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = L;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = U;
         out << assign.targets[0] << " =\n";
         print_matrix(out, L);
         out << assign.targets[1] << " =\n";
         print_matrix(out, U);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = P;
             out << assign.targets[2] << " =\n";
             print_matrix(out, P);
@@ -5270,13 +5292,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
             return std::unexpected(factored.error());
         }
         const auto& [L, U, P] = *factored;
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = L;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = U;
         out << assign.targets[0] << " =\n";
         print_matrix(out, L);
         out << assign.targets[1] << " =\n";
         print_matrix(out, U);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = P;
             out << assign.targets[2] << " =\n";
             print_matrix(out, P);
@@ -5290,7 +5315,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
             return std::unexpected(factored.error());
         }
         const auto& [Q, R] = *factored;
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = Q;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = R;
         out << assign.targets[0] << " =\n";
         print_matrix(out, Q);
@@ -5304,13 +5331,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->U;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->S;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->U);
         out << assign.targets[1] << " =\n";
         print_matrix(out, decomp->S);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = decomp->V;
             out << assign.targets[2] << " =\n";
             print_matrix(out, decomp->V);
@@ -5323,7 +5353,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->values;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->vectors;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->values);
@@ -5337,7 +5369,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->values;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->vectors;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->values);
@@ -5351,13 +5385,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->L;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->D;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->L);
         out << assign.targets[1] << " =\n";
         print_matrix(out, decomp->D);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = decomp->P;
             out << assign.targets[2] << " =\n";
             print_matrix(out, decomp->P);
@@ -5370,7 +5407,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->T;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->Q;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->T);
@@ -5384,13 +5423,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->U;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->B;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->U);
         out << assign.targets[1] << " =\n";
         print_matrix(out, decomp->B);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = decomp->V;
             out << assign.targets[2] << " =\n";
             print_matrix(out, decomp->V);
@@ -5431,6 +5473,7 @@ Result<Matrix<double>> Interpreter::eval_matrix_operand(const std::string& text)
         }
         Matrix<double> result = it->second;
         if (existed) {
+            state_.scalars.erase(kTmp);
             state_.matrices[kTmp] = saved;
         } else {
             state_.matrices.erase(kTmp);
@@ -5780,11 +5823,20 @@ std::vector<std::pair<std::string, std::string>> Interpreter::list_session_objec
     return out;
 }
 
+// A session file holds data, not a script. It used to be read under the script
+// reader's limits -- 8192 bytes a line, 256kB a file -- which a single 600-element
+// vector already exceeds. These are sized for what a session can hold.
+constexpr std::uintmax_t kMaxSessionBytes = 64ULL * 1024 * 1024;
+constexpr std::size_t kMaxSessionLine = 16ULL * 1024 * 1024;
+
 Result<void> Interpreter::save_session(const std::string& path) const {
-    std::ofstream out(path);
-    if (!out) {
-        return std::unexpected(DomainError{"save", "cannot open: " + path});
-    }
+    // Built in memory and checked before anything is written. It used to stream
+    // straight to the file with no size check at all, while load_session refused any
+    // line past 8192 bytes and any file past 256kB -- so `L = linspace(0, 1, 600)`
+    // saved cleanly as a 12kB line and then could never be loaded, and the load had
+    // already cleared the live session by the time it found out. The limits below are
+    // the session reader's, which are sized for data rather than for a script.
+    std::ostringstream out;
     out << "# MathScript session\n";
     for (const auto& [name, value] : state_.scalars) {
         out << "scalar " << name << " = " << format_exact(value) << "\n";
@@ -5804,6 +5856,33 @@ Result<void> Interpreter::save_session(const std::string& path) const {
         if (state_.plot.grid.rows() > 0 && state_.plot.grid.cols() > 0) {
             out << "plot grid = " << matrix_to_line(state_.plot.grid) << "\n";
         }
+    }
+
+    const std::string text = out.str();
+    if (text.size() > kMaxSessionBytes) {
+        return std::unexpected(
+            DomainError{"save", "session is too large to write and read back"});
+    }
+    for (std::size_t start = 0; start < text.size();) {
+        const std::size_t end = text.find('\n', start);
+        const std::size_t length = (end == std::string::npos ? text.size() : end) - start;
+        if (length > kMaxSessionLine) {
+            return std::unexpected(
+                DomainError{"save", "a value is too large to write and read back"});
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+
+    std::ofstream file(path);
+    if (!file) {
+        return std::unexpected(DomainError{"save", "cannot open: " + path});
+    }
+    file << text;
+    if (!file) {
+        return std::unexpected(DomainError{"save", "cannot write: " + path});
     }
     return {};
 }
@@ -5932,19 +6011,32 @@ Result<std::string> Interpreter::run_file(const std::string& path) {
 }
 
 Result<void> Interpreter::load_session(const std::string& path) {
-    if (auto checked = check_script_file(path, "load"); !checked) {
-        return std::unexpected(checked.error());
+    std::error_code ec;
+    const auto status = std::filesystem::status(path, ec);
+    if (ec || !std::filesystem::is_regular_file(status)) {
+        return std::unexpected(DomainError{"load", "cannot open: " + path});
+    }
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec) {
+        return std::unexpected(DomainError{"load", "cannot open: " + path});
+    }
+    if (size > kMaxSessionBytes) {
+        return std::unexpected(DomainError{"load", "session too large: " + path});
     }
     std::ifstream in(path);
     if (!in) {
         return std::unexpected(DomainError{"load", "cannot open: " + path});
     }
-    reset();
+    // Parsed into a local state and swapped in only once the whole file has been read.
+    // reset() used to run first, so a malformed line halfway down left the interpreter
+    // holding whatever had been read so far and the previous session gone -- a failed
+    // load destroyed the session it failed to replace.
+    SessionState loaded{};
     PlotSeries pending_plot{};
     bool have_plot = false;
     std::string line;
     while (std::getline(in, line)) {
-        if (line.size() > kMaxScriptLine) {
+        if (line.size() > kMaxSessionLine) {
             return std::unexpected(DomainError{"load", "session line too long"});
         }
         line = trim(line);
@@ -5992,7 +6084,7 @@ Result<void> Interpreter::load_session(const std::string& path) {
             continue;
         }
         if (line.rfind("history ", 0) == 0) {
-            state_.history.push_back(unescape_history_command(trim(line.substr(8))));
+            loaded.history.push_back(unescape_history_command(trim(line.substr(8))));
             continue;
         }
         const auto eq = line.find('=');
@@ -6012,19 +6104,24 @@ Result<void> Interpreter::load_session(const std::string& path) {
             if (!parse_number(rhs, value)) {
                 return std::unexpected(DomainError{"load", "invalid scalar: " + name});
             }
-            state_.scalars[name] = value;
+            loaded.matrices.erase(name);
+            loaded.scalars[name] = value;
         } else if (kind == "matrix") {
             auto matrix = parse_matrix(rhs);
             if (!matrix) {
                 return std::unexpected(matrix.error());
             }
-            state_.matrices[name] = *matrix;
+            loaded.scalars.erase(name);
+            loaded.matrices[name] = *matrix;
         }
     }
     if (have_plot) {
         pending_plot.valid = true;
-        state_.plot = std::move(pending_plot);
+        loaded.plot = std::move(pending_plot);
     }
+    // Nothing has touched the live session until here.
+    reset();
+    state_ = std::move(loaded);
     return {};
 }
 
@@ -6058,6 +6155,35 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
     const std::string rhs = trim(cmd.substr(eq + 1));
     if (lhs.empty()) {
         return std::unexpected(DomainError{"assign", "missing variable name"});
+    }
+    // The target has to be a name, or a comma-separated list of them for the
+    // decompositions that return several (`L, U = lu(M)`). Nothing checked, so
+    // `A(1, 1) = 9` stored a variable literally called "A(1, 1)" and echoed
+    // "A(1, 1) = 9.000000", which reads as a successful element write -- while A itself
+    // was untouched and the 9 was unreachable, since no lookup can spell that name
+    // back. Element assignment is not implemented; saying so is the honest answer.
+    {
+        bool targets_are_names = true;
+        std::size_t start = 0;
+        while (start <= lhs.size()) {
+            const auto comma = lhs.find(',', start);
+            const std::string target =
+                trim(lhs.substr(start, comma == std::string::npos ? std::string::npos
+                                                                  : comma - start));
+            if (!is_identifier(target)) {
+                targets_are_names = false;
+                break;
+            }
+            if (comma == std::string::npos) {
+                break;
+            }
+            start = comma + 1;
+        }
+        if (!targets_are_names) {
+            return std::unexpected(DomainError{
+                "assign", "invalid variable name: " + lhs +
+                              " (element assignment like A(i,j) = v is not supported)"});
+        }
     }
 
     double scalar = 0.0;
@@ -6111,6 +6237,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             if (!value) {
                 return std::unexpected(value.error());
             }
+            state_.scalars.erase(axiom_matrix_call.target);
             state_.matrices[axiom_matrix_call.target] = *value;
             std::ostringstream out;
             out << axiom_matrix_call.target << " =\n";
@@ -6366,6 +6493,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!decoded) {
                     return std::unexpected(decoded.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *decoded;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6377,6 +6505,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!evolved) {
                     return std::unexpected(evolved.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *evolved;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6405,6 +6534,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!next) {
                     return std::unexpected(next.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *next;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6421,6 +6551,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!prev) {
                     return std::unexpected(prev.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *prev;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6437,6 +6568,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!smoothed) {
                     return std::unexpected(smoothed.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *smoothed;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6448,6 +6580,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *filtered;
                 return format_labeled_matrix(matrix_scalar_call.target, *filtered);
             }
@@ -6460,6 +6593,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!resampled) {
                     return std::unexpected(resampled.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *resampled;
                 return format_labeled_matrix(matrix_scalar_call.target, *resampled);
             }
@@ -6473,6 +6607,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!order) {
                     return std::unexpected(order.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *order;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6489,6 +6624,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!order) {
                     return std::unexpected(order.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *order;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6505,6 +6641,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!sub) {
                     return std::unexpected(sub.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *sub;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6548,6 +6685,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!acf_col) {
                     return std::unexpected(acf_col.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *acf_col;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6564,6 +6702,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!signal) {
                     return std::unexpected(signal.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *signal;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6575,6 +6714,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!integrated) {
                     return std::unexpected(integrated.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *integrated;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6586,6 +6726,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!shifted) {
                     return std::unexpected(shifted.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *shifted;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6597,6 +6738,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!scaled) {
                     return std::unexpected(scaled.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *scaled;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6613,6 +6755,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!powered) {
                     return std::unexpected(powered.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *powered;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6629,6 +6772,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!cheb) {
                     return std::unexpected(cheb.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *cheb;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6645,6 +6789,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!next) {
                     return std::unexpected(next.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *next;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -7042,6 +7187,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7053,6 +7199,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7064,6 +7211,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7075,6 +7223,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7086,6 +7235,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7097,6 +7247,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7108,6 +7259,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7119,6 +7271,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7130,6 +7283,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7141,6 +7295,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7152,6 +7307,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7163,6 +7319,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7174,6 +7331,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7185,6 +7343,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7196,6 +7355,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7207,6 +7367,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7218,6 +7379,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7229,6 +7391,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7240,6 +7403,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7251,6 +7415,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7262,6 +7427,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7273,6 +7439,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7284,6 +7451,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7295,6 +7463,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7306,6 +7475,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7317,6 +7487,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7328,6 +7499,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7339,6 +7511,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7350,6 +7523,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7361,6 +7535,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7372,6 +7547,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7383,6 +7559,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7394,6 +7571,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7405,6 +7583,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7416,6 +7595,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7427,6 +7607,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7438,6 +7619,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7449,6 +7631,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7460,6 +7643,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7471,6 +7655,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7482,6 +7667,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7493,6 +7679,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7504,6 +7691,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7515,6 +7703,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7526,6 +7715,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7537,6 +7727,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7548,6 +7739,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7559,6 +7751,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7570,6 +7763,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7581,6 +7775,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7592,6 +7787,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7603,6 +7799,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7614,6 +7811,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7625,6 +7823,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7640,6 +7839,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7654,6 +7854,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7665,6 +7866,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7676,6 +7878,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7687,6 +7890,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7717,6 +7921,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7728,6 +7933,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7739,6 +7945,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7750,6 +7957,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7784,6 +7992,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7795,6 +8004,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7806,6 +8016,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7817,6 +8028,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7847,6 +8059,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             if (!value) {
                 return std::unexpected(value.error());
             }
+            state_.scalars.erase(lhs);
             state_.matrices[lhs] = *value;
             std::ostringstream out;
             out << lhs << " =\n";
@@ -7863,6 +8076,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             if (!value) {
                 return std::unexpected(value.error());
             }
+            state_.scalars.erase(lhs);
             state_.matrices[lhs] = *value;
             std::ostringstream out;
             out << lhs << " =\n";
@@ -8348,6 +8562,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!w) {
                     return std::unexpected(w.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *w;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8383,6 +8598,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *filtered;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8451,6 +8667,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *filtered;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8493,6 +8710,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!coeffs) {
                     return std::unexpected(coeffs.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *coeffs;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8535,6 +8753,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!coeffs) {
                     return std::unexpected(coeffs.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *coeffs;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8563,6 +8782,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!psd) {
                     return std::unexpected(psd.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *psd;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8603,6 +8823,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!psd) {
                     return std::unexpected(psd.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *psd;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8641,6 +8862,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!zoom) {
                     return std::unexpected(zoom.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *zoom;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8681,6 +8903,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!spectrum) {
                     return std::unexpected(spectrum.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *spectrum;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8726,6 +8949,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!coh) {
                     return std::unexpected(coh.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *coh;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8770,6 +8994,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *value;
                 return format_labeled_matrix(lhs, *value);
             }
@@ -8802,6 +9027,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!resampled) {
                     return std::unexpected(resampled.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *resampled;
                 return format_labeled_matrix(lhs, *resampled);
             }
@@ -8835,6 +9061,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!smoothed) {
                     return std::unexpected(smoothed.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *smoothed;
                 return format_labeled_matrix(lhs, *smoothed);
             }
@@ -8861,6 +9088,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *filtered;
                 return format_labeled_matrix(lhs, *filtered);
             }
@@ -8886,6 +9114,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!mag) {
                     return std::unexpected(mag.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *mag;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8915,6 +9144,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!freq) {
                     return std::unexpected(freq.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *freq;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8952,6 +9182,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!path) {
                     return std::unexpected(path.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *path;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -9703,6 +9934,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!result) {
                     return std::unexpected(result.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *result;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -9715,6 +9947,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
+        state_.scalars.erase(lhs);
         state_.matrices[lhs] = *matrix;
         std::ostringstream out;
         out << lhs << " =\n";
@@ -11036,8 +11269,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (!out) {
             return std::unexpected(DomainError{"saveplot", "cannot write: " + path});
         }
-        out << format_plot_preview(state_.plot);
-        return "saved plot preview to " + path + "\n";
+        // The whole series, exactly, rather than the ten-by-sixteen rounded table the
+        // screen shows: an imshow of a grid of 1e-5 values saved as a file of zeros.
+        out << format_plot_data(state_.plot);
+        return "saved plot data to " + path + "\n";
     }
     if (lcmd == "vars") {
         std::ostringstream out;
@@ -14928,7 +15163,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "graph_bellman_ford_dist",
                     "expected graph_bellman_ford_dist(A, source, target)"});
             }
-            auto G = graph_from_adjacency(*adj_m, "graph_bellman_ford_dist");
+            auto G = graph_from_adjacency(*adj_m, "graph_bellman_ford_dist",
+                                          /*allow_non_positive=*/true);
             if (!G) {
                 return std::unexpected(G.error());
             }
@@ -21298,42 +21534,46 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg, value)) {
                 return std::unexpected(DomainError{"special", "expected numeric argument"});
             }
-            std::ostringstream out;
+            // Through the shared formatter, not a bare ostream. The default is six
+            // SIGNIFICANT digits, which is a much coarser thing than the six DECIMAL
+            // places std::to_string gives: gamma(20) printed 1.21645e+17 where the
+            // value is 121645100408832000 exactly, an answer short by a hundred
+            // billion. These sixteen were the last group still streaming raw.
+            double result = 0.0;
             if (fn == "erf") {
-                out << erf(value);
+                result = erf(value);
             } else if (fn == "erfc") {
-                out << erfc(value);
+                result = erfc(value);
             } else if (fn == "erfi") {
-                out << erfi(value);
+                result = erfi(value);
             } else if (fn == "erfcx") {
-                out << erfcx(value);
+                result = erfcx(value);
             } else if (fn == "dawson") {
-                out << dawson(value);
+                result = dawson(value);
             } else if (fn == "dawsonx") {
-                out << dawsonx(value);
+                result = dawsonx(value);
             } else if (fn == "gamma") {
-                out << gamma_func(value);
+                result = gamma_func(value);
             } else if (fn == "bessel_j0") {
-                out << bessel_j0(value);
+                result = bessel_j0(value);
             } else if (fn == "bessel_j1") {
-                out << bessel_j1(value);
+                result = bessel_j1(value);
             } else if (fn == "bessel_y0") {
-                out << bessel_y0(value);
+                result = bessel_y0(value);
             } else if (fn == "bessel_y1") {
-                out << bessel_y1(value);
+                result = bessel_y1(value);
             } else if (fn == "fresnel_c") {
-                out << fresnel_c(value);
+                result = fresnel_c(value);
             } else if (fn == "fresnel_s") {
-                out << fresnel_s(value);
+                result = fresnel_s(value);
             } else if (fn == "ellip_k") {
-                out << ellip_k(value);
+                result = ellip_k(value);
             } else if (fn == "ellip_e") {
-                out << ellip_e(value);
+                result = ellip_e(value);
             } else {
-                out << zeta(value);
+                result = zeta(value);
             }
-            out << "\n";
-            return out.str();
+            return format_scalar(result) + "\n";
         }
 
         if (fn == "gria") {
@@ -21453,13 +21693,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             std::ostringstream out;
             out << "fft magnitudes:\n";
             for (size_t i = 0; i < spectrum->size(); ++i) {
-                out << "  [" << i << "] " << std::abs((*spectrum)[i]) << "\n";
+                out << "  [" << i << "] " << format_scalar(std::abs((*spectrum)[i])) << "\n";
             }
             return out.str();
         }
 
         auto matrix = parse_matrix(arg);
         if (matrix) {
+            state_.scalars.erase("_");
             state_.matrices["_"] = *matrix;
         } else {
             matrix = resolve_matrix(arg);
@@ -21475,6 +21716,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!built) {
                         return std::unexpected(built.error());
                     }
+                    state_.scalars.erase("_");
                     state_.matrices["_"] = *built;
                     std::ostringstream built_out;
                     built_out << "_ =\n";
@@ -21494,25 +21736,25 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "trace") {
             auto result = trace(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "norm") {
             auto result = norm(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "rank") {
             auto result = rank(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "matrix_rank") {
             out << matrix_rank(*matrix) << "\n";
         } else if (fn == "mat_rows") {
@@ -21526,7 +21768,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "geo_convex_hull_area") {
             auto points = matrix_to_points2d(*matrix, "geo_convex_hull_area");
             if (!points) {
@@ -21547,331 +21789,331 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_polygon_perimeter") {
             auto value = eval_geo_polygon_perimeter(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_signed_area") {
             auto value = eval_geo_signed_area(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_moment_of_inertia") {
             auto value = eval_geo_moment_of_inertia(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_centroid_x") {
             auto value = eval_geo_centroid_x(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_centroid_y") {
             auto value = eval_geo_centroid_y(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "bwt_primary_index") {
             auto value = eval_bwt_primary_index(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "combo_rank_permutation") {
             auto value = eval_combo_rank_permutation(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "ml_vec_norm") {
             auto value = eval_ml_vec_norm(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_entropy") {
             auto value = eval_info_entropy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_lz_complexity") {
             auto value = eval_info_lz_complexity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_redundancy") {
             auto value = eval_info_redundancy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_efficiency") {
             auto value = eval_info_efficiency(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_source_coding_rate") {
             auto value = eval_info_source_coding_rate(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_mutual_info") {
             auto value = eval_info_mutual_info(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_blahut_arimoto") {
             auto value = eval_info_blahut_arimoto(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_channel_capacity") {
             auto value = eval_info_channel_capacity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_normalized_entropy") {
             auto value = eval_info_normalized_entropy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_irr") {
             auto value = eval_finance_irr(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_sharpe") {
             auto value = eval_finance_sharpe(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_sortino") {
             auto value = eval_finance_sortino(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_var") {
             auto value = eval_finance_var(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_cvar") {
             auto value = eval_finance_cvar(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_max_drawdown") {
             auto value = eval_finance_max_drawdown(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "quantum_von_neumann_entropy") {
             auto value = eval_quantum_von_neumann_entropy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "quantum_purity") {
             auto value = eval_quantum_purity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "quantum_concurrence") {
             auto value = eval_quantum_concurrence(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "tensorops_norm") {
             auto value = eval_tensorops_norm(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_diameter") {
             auto value = eval_graph_diameter(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_radius") {
             auto value = eval_graph_radius(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_algebraic_connectivity") {
             auto value = eval_graph_algebraic_connectivity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_bipartite") {
             auto value = eval_graph_is_bipartite(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_chromatic_number") {
             auto value = eval_graph_chromatic_number(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_dag") {
             auto value = eval_graph_is_dag(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "poly_discriminant") {
             auto value = eval_poly_discriminant(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_mean") {
             auto value = eval_stats_mean(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_median") {
             auto value = eval_stats_median(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_stddev") {
             auto value = eval_stats_stddev(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_skewness") {
             auto value = eval_stats_skewness(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_kurtosis") {
             auto value = eval_stats_kurtosis(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_var") {
             auto value = eval_stats_var(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_mode") {
             auto value = eval_stats_mode(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_geometric_mean") {
             auto value = eval_stats_geometric_mean(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_harmonic_mean") {
             auto value = eval_stats_harmonic_mean(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_rms") {
             auto value = eval_stats_rms(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_mad") {
             auto value = eval_stats_mad(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_iqr") {
             auto value = eval_stats_iqr(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_min_value") {
             auto value = eval_stats_min_value(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_max_value") {
             auto value = eval_stats_max_value(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "count_components") {
             auto value = eval_count_components(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_connected") {
             auto value = eval_graph_is_connected(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_strongly_connected") {
             auto value = eval_graph_is_strongly_connected(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_tree") {
             auto value = eval_graph_is_tree(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_planar") {
             auto value = eval_graph_is_planar(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_planar_heuristic") {
             auto value = eval_graph_is_planar_heuristic(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_pagerank") {
             auto G = graph_from_adjacency(*matrix, "graph_pagerank");
             if (!G) {
@@ -21880,7 +22122,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const auto scores = graph::pagerank(*G);
             out << "pagerank:\n";
             for (size_t i = 0; i < scores.size(); ++i) {
-                out << "  [" << i << "] " << scores[i] << "\n";
+                out << "  [" << i << "] " << format_scalar(scores[i]) << "\n";
             }
         } else if (fn == "graph_betweenness") {
             auto bc = eval_graph_betweenness(*matrix);
@@ -21889,7 +22131,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "betweenness:\n";
             for (size_t i = 0; i < bc->rows(); ++i) {
-                out << "  [" << i << "] " << (*bc)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*bc)(i, 0)) << "\n";
             }
         } else if (fn == "graph_closeness") {
             auto cc = eval_graph_closeness(*matrix);
@@ -21898,7 +22140,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "closeness:\n";
             for (size_t i = 0; i < cc->rows(); ++i) {
-                out << "  [" << i << "] " << (*cc)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*cc)(i, 0)) << "\n";
             }
         } else if (fn == "graph_degree_centrality") {
             auto dc = eval_graph_degree_centrality(*matrix);
@@ -21907,7 +22149,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "degree_centrality:\n";
             for (size_t i = 0; i < dc->rows(); ++i) {
-                out << "  [" << i << "] " << (*dc)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*dc)(i, 0)) << "\n";
             }
         } else if (fn == "fft_rfft") {
             auto spectrum = eval_fft_rfft(*matrix);
@@ -22079,7 +22321,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "eigenvector_centrality:\n";
             for (size_t i = 0; i < ec->rows(); ++i) {
-                out << "  [" << i << "] " << (*ec)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*ec)(i, 0)) << "\n";
             }
         }
         else {
@@ -22100,6 +22342,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!result) {
                 return std::unexpected(result.error());
             }
+            state_.scalars.erase("_");
             state_.matrices["_"] = *result;
             std::ostringstream out;
             out << "_ =\n";

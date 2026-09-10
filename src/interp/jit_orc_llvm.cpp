@@ -341,17 +341,6 @@ llvm::Value* emit_scalar_expr(ScalarEmitCtx& ctx, const std::string& expr_text) 
         return nullptr;
     }
 
-    if (expr.front() == '-') {
-        llvm::Value* inner = emit_scalar_expr(ctx, expr.substr(1));
-        if (!inner) {
-            return nullptr;
-        }
-        return ctx.builder->CreateFNeg(inner);
-    }
-    if (expr.front() == '+') {
-        return emit_scalar_expr(ctx, expr.substr(1));
-    }
-
     if (const auto call = parse_scalar_call(expr)) {
         std::vector<llvm::Value*> arg_values;
         arg_values.reserve(call->second.size());
@@ -379,6 +368,22 @@ llvm::Value* emit_scalar_expr(ScalarEmitCtx& ctx, const std::string& expr_text) 
 
     const auto op_pos = find_scalar_binop(expr);
     if (!op_pos) {
+        // A leading sign is unary only when there is no binary operator for it to bind
+        // to. This test used to come first, so `-a + b` was read as `-(a + b)` and
+        // -2 + 1 compiled to -3: the same defect the interpreter's eval_scalar_expr_impl
+        // had, in the backend that is meant to agree with it.
+        // find_scalar_binop already declines a sign with nothing before it, so by the
+        // time this runs the expression genuinely has no binary operator.
+        if (expr.front() == '-') {
+            llvm::Value* inner = emit_scalar_expr(ctx, expr.substr(1));
+            if (!inner) {
+                return nullptr;
+            }
+            return ctx.builder->CreateFNeg(inner);
+        }
+        if (expr.front() == '+') {
+            return emit_scalar_expr(ctx, expr.substr(1));
+        }
         return nullptr;
     }
 

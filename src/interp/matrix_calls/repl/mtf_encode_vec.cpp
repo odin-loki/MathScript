@@ -16,7 +16,11 @@ Result<Matrix<double>> handle_mtf_encode_vec(Interpreter& interp, const MatrixCa
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
-        result = bytes_to_matrix_col(compress::mtf_encode(matrix_to_bytes(*matrix)));
+        auto bytes = matrix_to_bytes(*matrix, "mtf_encode_vec");
+        if (!bytes) {
+            return std::unexpected(bytes.error());
+        }
+        result = bytes_to_matrix_col(compress::mtf_encode(*bytes));
     }
 
     return result;

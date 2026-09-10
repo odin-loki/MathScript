@@ -14,11 +14,21 @@ using OdeFuncVec = std::function<std::vector<double>(
 struct OdeResult {
     std::vector<double> t;
     std::vector<double> y;
+    /// Whether the integration actually reached t_end.
+    ///
+    /// The adaptive solvers stop after 50000 attempted steps whatever they have
+    /// covered, and used to return the partial trajectory with nothing to mark it:
+    /// `ode_rk45("cos(1000*t)", 0, 0, 100)` returned 33330 rows ending at
+    /// t = 17.45, which reads as a solution over [0, 100] and is a solution over
+    /// [0, 17.45]. The fixed-step solvers always reach t_end, so they set it true.
+    bool complete = true;
 };
 
 struct OdeResultVec {
     std::vector<double> t;
     std::vector<std::vector<double>> y;
+    /// See OdeResult::complete.
+    bool complete = true;
 };
 
 // Fixed-step scalar solvers

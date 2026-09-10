@@ -16,7 +16,11 @@ Result<Matrix<double>> handle_bwt_encode_vec(Interpreter& interp, const MatrixCa
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
-        result = bytes_to_matrix_col(compress::bwt(matrix_to_bytes(*matrix)).data);
+        auto bytes = matrix_to_bytes(*matrix, "bwt_encode_vec");
+        if (!bytes) {
+            return std::unexpected(bytes.error());
+        }
+        result = bytes_to_matrix_col(compress::bwt(*bytes).data);
     }
 
     return result;

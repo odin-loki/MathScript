@@ -29,15 +29,20 @@ Result<Matrix<double>> handle_rand(Interpreter& interp, const MatrixCallAssign& 
             return std::unexpected(
                 DomainError{assign.callee, kReplMatrixTooLarge});
         }
+        // A seed from the session's stream rather than the constant 0. Every call used
+        // to build a fresh mt19937 from 0, so two rand(2,2) calls in one session were
+        // the same matrix -- one sample taken twice, not a stream sampled twice. The
+        // stream still starts from a fixed point, so a session replays identically.
+        const unsigned seed = ctx.interp.next_random_seed();
         if (assign.callee == "rand") {
-            auto R = rand<double>(rows, cols, 0u);
+            auto R = rand<double>(rows, cols, seed);
             Matrix<double> stored(rows, cols);
             for (size_t i = 0; i < rows; ++i)
                 for (size_t j = 0; j < cols; ++j)
                     stored(i, j) = R(i, j);
             result = stored;
         } else {
-            auto R = randn<double>(rows, cols, 0u);
+            auto R = randn<double>(rows, cols, seed);
             Matrix<double> stored(rows, cols);
             for (size_t i = 0; i < rows; ++i)
                 for (size_t j = 0; j < cols; ++j)

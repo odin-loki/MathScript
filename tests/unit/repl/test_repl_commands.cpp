@@ -219,7 +219,7 @@ TEST(ReplCommandsTest, scatter_imshow_spy_commands) {
 
     const auto preview_path =
         (std::filesystem::temp_directory_path() / "mathscript_plot_preview.txt").string();
-    expect_contains(interp, "saveplot " + preview_path, "saved plot preview");
+    expect_contains(interp, "saveplot " + preview_path, "saved plot data");
     EXPECT_TRUE(std::filesystem::exists(preview_path));
     std::filesystem::remove(preview_path);
 

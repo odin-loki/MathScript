@@ -321,6 +321,83 @@ The rest are values that left the range of their type without saying so:
   `[RxC]` now, which is also accepted from a user -- it is the only way to write down an
   empty matrix that has columns.
 
+### The rest of the audit
+
+Twenty-two more of the 36 confirmed findings, in four groups.
+
+**Results that were not the answer.**
+
+- `sym_eval` returns 0.0 for an unbound name, which cannot be told from a value. So
+  `sym_eval("x*y", "x=3")` printed `0.000000` -- it accepts only one binding, so `y` can
+  never be bound -- and `bfgs("(x-3)^2", [0])` reported `converged = 1` at `x_opt = 0`,
+  because the optimiser binds `x0` and the objective it was given was therefore the
+  constant 9. The new `sym_free_variables` lets each caller check that a formula's
+  variables are the ones it will bind, and `sym_eval`, the N-dimensional optimisers and
+  the one-dimensional root finders all do.
+- `sym_limit` averaged its two probes without asking whether they agreed. `1/x` at 0 has
+  left `-1/h` and right `+1/h`, whose average is exactly 0 at every step, so the samples
+  "converged" instantly on a limit that does not exist. So did `1/x^3`, `1/sin(x)` and
+  `tan(x)` at pi/2. The two sides must now agree, and the spread must shrink.
+- `sym_mellin`'s two exponential rows dropped the Gamma: `M{e^{-a t}}` is
+  `Gamma(s)/a^s` and the table answered `1/a^s`, right only at `s = 1` under the
+  convention its own neighbouring rows use. `SymOp` has no Gamma to state them with, so
+  they decline until §10's core does, and the inverse rows go with them.
+- `one_way_anova` and `levene_test` returned their value-initialised `f_stat = 0` and
+  `p_value = 0` on a degenerate input -- a pair no F-test can produce, and one that
+  reads as a confident null result. Both are NaN now, and the REPL reports.
+- `graph_from_adjacency` treated any weight that was not `> 0` as no edge, for every
+  caller -- including `graph_bellman_ford`, whose entire reason to exist is negative
+  weights. It never saw one, so it answered for a different graph and could not report
+  the negative cycle it was asked about. Same for `graph_floyd_warshall` and
+  `graph_min_arborescence`.
+- `matrix_to_bytes` clamped, rounded, and multiplied the whole matrix by 255 whenever
+  its largest entry was `<= 1.0`, on the assumption that such a matrix must be a
+  normalised image. `rle_decode_vec(rle_encode_vec([0; 1]))` returned `[0; 255]`.
+- `BigInt`'s string constructor turns anything unparsable into zero, and the REPL used
+  it: `bigint(" 495")` answered 0, and `bigint_gcd("12x", "18")` answered 18, which is
+  `gcd(0, 18)`. Both use the reporting parse now.
+- The ORC JIT backend repeated the interpreter's unary-sign defect exactly: `-a + b`
+  compiled as `-(a + b)`, so `-2 + 1` was -3. Verified fixed against a real LLVM build.
+
+**Runs that reported success they had not had.**
+
+- The adaptive ODE solvers stop after 50000 attempted steps and returned the partial
+  trajectory with nothing to mark it: `ode_rk45("cos(1000*t)", 0, 0, 100, ...)` returned
+  33330 rows ending at t = 17.45, which reads as a solution over [0, 100].
+- `adam`, `nelder_mead`, `simulated_annealing`, `differential_evolution` and
+  `particle_swarm` hard-coded `converged = true` and `iterations = max_iter`.
+  `adam("(x0-1000)^2", [0], 0.001, 1)` printed `converged = 1` after one step from a
+  thousand away, and `adam("(x0-1)^2", [1], 0.001, 1000)` stopped on iteration 1 and
+  said 1000. The two with a stopping test now report it; the three that run a fixed
+  budget and test nothing report `false`, which is what "no criterion fired" means.
+
+**State the REPL lost or shadowed.**
+
+- `A(1, 2) = 5` reported success. There was no check that the assignment target is a
+  name, so it stored a variable called `"A(1, 2)"` -- unreachable, since no lookup can
+  spell that back -- and echoed it as a successful element write while `A` was
+  untouched. Element assignment is not implemented, and it says so.
+- Scalars and matrices live in separate maps and neither assignment cleared the other,
+  so `A = [1, 2; 3, 4]` followed by `A = 5` left both alive: the bare-name echo printed
+  the matrix and a scalar expression read 5.
+- `load_session` called `reset()` before parsing, so a malformed line halfway down left
+  the interpreter holding whatever had been read and the previous session gone. A failed
+  load destroyed the session it failed to replace. It parses into a local state now.
+- `save_session` enforced none of the limits `load_session` imposes, so
+  `L = linspace(0, 1, 600)` saved cleanly as a 12kB line and could never be loaded. A
+  session file holds data rather than a script, and is now sized for that.
+- `rand(m, n)` and `randn(m, n)` seeded a fresh `mt19937` with the constant 0 on every
+  call, so every random matrix in a session was the same matrix. They draw from a
+  session stream, which still starts from a fixed point so a session replays.
+
+**Numbers printed at six significant digits.** The bare special-function calls
+(`gamma(20)` printed `1.21645e+17` for `121645100408832000`), `fft`'s magnitudes, the
+graph centrality and spectrum listings, `det`/`trace`/`norm`/`rank`/`cond`, and 55 more
+`Result<double>` echoes all streamed into a default `ostringstream`. They go through
+`format_scalar`. `saveplot` wrote the ten-by-sixteen rounded preview to a file and
+called it the plot; it writes the whole series exactly, and the on-screen preview no
+longer renders a grid of 1e-5 values as zeros.
+
 ### §10 — the symbolic core, built beside the old one
 
 `ms::sym2` is the core representation §10.4 specifies, in `include/ms/sym2/expr.hpp`.

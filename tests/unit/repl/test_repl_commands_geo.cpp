@@ -253,7 +253,7 @@ TEST(ReplCommandsTest, geo_moment_of_inertia) {
     expect_ok(interp, "mi = geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])");
     EXPECT_NEAR(interp.state().scalars.at("mi"), 128.0 / 3.0, 1e-5);
 
-    expect_contains(interp, "geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])", "42.6667");
+    expect_contains(interp, "geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])", "42.666667");
 }
 
 TEST(ReplCommandsTest, geo_dist_point_seg2d) {
@@ -4021,7 +4021,7 @@ TEST(ReplCommandsTest, geo_convex_hull_area_noassign) {
 
 TEST(ReplCommandsTest, geo_moment_of_inertia_noassign) {
     Interpreter interp;
-    expect_contains(interp, "geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])", "42.6667");
+    expect_contains(interp, "geo_moment_of_inertia([0, 0; 4, 0; 4, 4; 0, 4])", "42.666667");
     expect_error_contains(interp, "geo_moment_of_inertia(no_such_matrix)", "unknown matrix");
 }
 

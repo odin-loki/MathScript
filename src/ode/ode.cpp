@@ -121,8 +121,11 @@ OdeResult ode_rk45(OdeFunc f, double t0, double y0, double t_end,
     result.t.push_back(t);
     result.y.push_back(y);
 
+    // Bounded, because an adaptive step can shrink without ever advancing. Reaching
+    // the bound is not an answer over [t0, t_end], and result.complete says so.
     const int max_steps = 50000;
-    for (int step = 0; step < max_steps && t < t_end; ++step) {
+    int step = 0;
+    for (; step < max_steps && t < t_end; ++step) {
         if (t + h > t_end) h = t_end - t;
         double k1 = f(t,              y);
         double k2 = f(t + c2*h,       y + h*a21*k1);
@@ -147,6 +150,7 @@ OdeResult ode_rk45(OdeFunc f, double t0, double y0, double t_end,
         h *= factor;
         h = std::max(h, 1e-12 * std::abs(t_end - t0));
     }
+    result.complete = (t >= t_end);
     return result;
 }
 
@@ -160,8 +164,11 @@ OdeResult ode_rk23(OdeFunc f, double t0, double y0, double t_end,
     result.y.push_back(y);
     double k1 = f(t, y);
 
+    // Bounded, because an adaptive step can shrink without ever advancing. Reaching
+    // the bound is not an answer over [t0, t_end], and result.complete says so.
     const int max_steps = 50000;
-    for (int step = 0; step < max_steps && t < t_end; ++step) {
+    int step = 0;
+    for (; step < max_steps && t < t_end; ++step) {
         if (t + h > t_end) h = t_end - t;
         double k2 = f(t + 0.5*h,    y + 0.5*h*k1);
         double k3 = f(t + 0.75*h,   y + 0.75*h*k2);
@@ -182,6 +189,7 @@ OdeResult ode_rk23(OdeFunc f, double t0, double y0, double t_end,
             std::min(5.0, std::max(0.2, 0.9 * std::pow(err_norm, -1.0/3.0))) : 5.0;
         h *= factor;
     }
+    result.complete = (t >= t_end);
     return result;
 }
 
@@ -216,8 +224,11 @@ OdeResult ode_cashkarp(OdeFunc f, double t0, double y0, double t_end,
     result.t.push_back(t);
     result.y.push_back(y);
 
+    // Bounded, because an adaptive step can shrink without ever advancing. Reaching
+    // the bound is not an answer over [t0, t_end], and result.complete says so.
     const int max_steps = 50000;
-    for (int step = 0; step < max_steps && t < t_end; ++step) {
+    int step = 0;
+    for (; step < max_steps && t < t_end; ++step) {
         if (t + h > t_end) h = t_end - t;
         double k1 = f(t,              y);
         double k2 = f(t + c2*h,       y + h*a21*k1);
@@ -241,6 +252,7 @@ OdeResult ode_cashkarp(OdeFunc f, double t0, double y0, double t_end,
         h *= factor;
         h = std::max(h, 1e-12 * std::abs(t_end - t0));
     }
+    result.complete = (t >= t_end);
     return result;
 }
 
@@ -330,8 +342,11 @@ OdeResultVec ode_rk45_vec(OdeFuncVec f, double t0,
     std::vector<double> k1, k2, k3, k4, k5, k6, k7;
     std::vector<double> y2(n), y3(n), y4(n), y5(n), y6(n), y_new(n);
 
+    // Bounded, because an adaptive step can shrink without ever advancing. Reaching
+    // the bound is not an answer over [t0, t_end], and result.complete says so.
     const int max_steps = 50000;
-    for (int step = 0; step < max_steps && t < t_end; ++step) {
+    int step = 0;
+    for (; step < max_steps && t < t_end; ++step) {
         if (t + h > t_end) {
             h = t_end - t;
         }
@@ -411,6 +426,7 @@ OdeResultVec ode_rk45_vec(OdeFuncVec f, double t0,
         h *= factor;
         h = std::max(h, 1e-12 * std::abs(t_end - t0));
     }
+    result.complete = (t >= t_end);
     return result;
 }
 

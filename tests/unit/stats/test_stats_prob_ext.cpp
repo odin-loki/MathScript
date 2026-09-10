@@ -160,13 +160,16 @@ TEST(StatsExtTest, one_way_anova_f_matches_t_squared_for_two_groups) {
 
 TEST(StatsExtTest, one_way_anova_degenerate_inputs) {
     const std::vector<std::vector<double>> one_group = {{1.0, 2.0, 3.0}};
+    // Not enough groups to compare, so there is no F to report. This used to assert
+    // the value-initialised 0.0 for both -- F = 0 with p = 0, which is not a result any
+    // F-test can produce and reads as a confident null.
     const auto too_few = one_way_anova(one_group);
-    EXPECT_DOUBLE_EQ(too_few.f_stat, 0.0);
-    EXPECT_DOUBLE_EQ(too_few.p_value, 0.0);
+    EXPECT_TRUE(std::isnan(too_few.f_stat));
+    EXPECT_TRUE(std::isnan(too_few.p_value));
 
     const std::vector<std::vector<double>> with_empty = {{1.0, 2.0}, {}};
     const auto empty_group = one_way_anova(with_empty);
-    EXPECT_DOUBLE_EQ(empty_group.f_stat, 0.0);
+    EXPECT_TRUE(std::isnan(empty_group.f_stat));
 }
 
 // ---------------------------------------------------------------------------
@@ -977,8 +980,8 @@ TEST(StatsExtTest, levene_test_delegates_to_one_way_anova) {
 TEST(StatsExtTest, levene_test_degenerate_inputs) {
     const std::vector<std::vector<double>> one_group = {{1.0, 2.0, 3.0}};
     const auto result = levene_test(one_group);
-    EXPECT_DOUBLE_EQ(result.f_stat, 0.0);
-    EXPECT_DOUBLE_EQ(result.p_value, 0.0);
+    EXPECT_TRUE(std::isnan(result.f_stat));
+    EXPECT_TRUE(std::isnan(result.p_value));
 }
 
 // ---------------------------------------------------------------------------

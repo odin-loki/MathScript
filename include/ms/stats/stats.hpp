@@ -5,6 +5,7 @@
 #include <functional>
 #include <span>
 #include <tuple>
+#include <limits>
 #include <vector>
 
 namespace ms {
@@ -83,10 +84,15 @@ double ks_test(std::span<const double> x,
 // One-way ANOVA (Analysis of Variance) across >= 2 groups. Returns the F-statistic and
 // associated p-value testing the null hypothesis that all group means are equal.
 struct AnovaResult {
-    double f_stat;
-    double p_value;
-    int df_between;   // degrees of freedom between groups (k - 1)
-    int df_within;    // degrees of freedom within groups (N - k)
+    /// NaN when the test could not be computed: fewer than two non-empty groups, no
+    /// residual degrees of freedom, or a zero within-group sum of squares. These used
+    /// to leave the value-initialised 0.0 in place, so a degenerate input came back as
+    /// F = 0 with p = 0 -- which reads as "no effect, and certainly so", when p = 0
+    /// with F = 0 is not a result any F-test can produce.
+    double f_stat = std::numeric_limits<double>::quiet_NaN();
+    double p_value = std::numeric_limits<double>::quiet_NaN();
+    int df_between = 0;   // degrees of freedom between groups (k - 1)
+    int df_within = 0;    // degrees of freedom within groups (N - k)
 };
 AnovaResult one_way_anova(const std::vector<std::vector<double>>& groups);
 
@@ -164,8 +170,10 @@ LjungBoxResult ljung_box(std::span<const double> x, int max_lag);
 // the transformed values. Robust companion to ANOVA when checking the equal-variance assumption.
 // Returns the F statistic, associated p-value, and ANOVA degrees of freedom (between/within).
 struct LeveneResult {
-    double f_stat = 0.0;
-    double p_value = 0.0;
+    /// NaN when the test could not be computed; see AnovaResult, whose values these
+    /// are copied from.
+    double f_stat = std::numeric_limits<double>::quiet_NaN();
+    double p_value = std::numeric_limits<double>::quiet_NaN();
     int df_between = 0;
     int df_within = 0;
 };

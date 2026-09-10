@@ -294,21 +294,36 @@ TEST(SymbolicLimitTest, log_at_one) {
     EXPECT_NEAR(sym_limit(sym_log(sym_var("x")), "x", 1.0), 0.0, 1e-9);
 }
 
+// Both of these used to skip themselves when the answer came back non-finite, which
+// was the author declining to assert either way about behaviour that was in fact wrong:
+// 1/x at 0 returned exactly 0.000000, because the two probes -1/h and +1/h were
+// averaged before either had settled and their mean is 0 at every h. There is no limit
+// to report, and now it says so.
 TEST(SymbolicLimitTest, reciprocal_two_sided_at_zero) {
     const double lim = sym_limit(sym_div(sym_const(1.0), sym_var("x")), "x", 0.0);
-    if (!std::isfinite(lim)) {
-        GTEST_SKIP() << "two-sided 1/x at 0 not finite";
-    }
-    EXPECT_NEAR(lim, 0.0, 1e-6);
+    EXPECT_FALSE(std::isfinite(lim)) << "1/x has no limit at 0, and 0 is not it: " << lim;
 }
 
 TEST(SymbolicLimitTest, reciprocal_square_at_zero) {
+    // 1/x^2 diverges to +infinity from both sides. Neither side settles on a value, so
+    // there is no finite limit to return.
     const auto expr = sym_div(sym_const(1.0), sym_pow(sym_var("x"), sym_const(2.0)));
     const double lim = sym_limit(expr, "x", 0.0);
-    if (!std::isfinite(lim)) {
-        GTEST_SKIP() << "1/x^2 at 0 not finite";
-    }
-    EXPECT_GT(lim, 1e6);
+    EXPECT_FALSE(std::isfinite(lim)) << lim;
+}
+
+// The two sides settle on different values, which is a different failure from neither
+// side settling and must also be reported.
+TEST(SymbolicLimitTest, sign_function_has_no_two_sided_limit) {
+    const auto expr = sym_div(sym_var("x"), sym_sqrt(sym_pow(sym_var("x"), sym_const(2.0))));
+    EXPECT_FALSE(std::isfinite(sym_limit(expr, "x", 0.0)));
+}
+
+// A one-sided domain still has a limit, and requiring both sides is what used to send
+// this into the loop that fabricated a zero.
+TEST(SymbolicLimitTest, one_sided_domain_still_has_a_limit) {
+    const auto expr = sym_add(sym_sqrt(sym_var("x")), sym_const(5.0));
+    EXPECT_NEAR(sym_limit(expr, "x", 0.0), 5.0, 1e-6);
 }
 
 TEST(SymbolicSeriesTest, truncated_cubic_drops_higher_terms) {

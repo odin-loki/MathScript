@@ -194,7 +194,11 @@ Matrix<double> rgb_image_to_matrix(const image::Image& img);
 
 Result<int> parse_morph_ksize(double ksize_d, const char* fn);
 
-compress::Bytes matrix_to_bytes(const Matrix<double>& m);
+/// Byte vector from a matrix, reporting anything that is not a byte.
+///
+/// It used to clamp, round, and rescale by 255 when the largest entry was <= 1.0 --
+/// so a legal byte vector like [0; 1] came back from a compress round trip as [0; 255].
+Result<compress::Bytes> matrix_to_bytes(const Matrix<double>& m, const char* fn);
 
 Matrix<double> bytes_to_matrix_col(const compress::Bytes& bytes);
 
@@ -210,7 +214,8 @@ Result<ml::Vec> matrix_to_ml_vec(const Matrix<double>& m, const char* fn);
 
 Result<ml::Mat> matrix_to_ml_mat(const Matrix<double>& m, const char* fn);
 
-Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn);
+Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn,
+                                          bool allow_non_positive = false);
 
 Result<graph::Graph> graph_from_adjacency_undirected(const Matrix<double>& adj, const char* fn);
 

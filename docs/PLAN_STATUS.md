@@ -448,6 +448,41 @@ a transform, exact integer arithmetic for a count, a bit pattern rather than a p
 form for a round trip — because a test written from the implementation's own output
 agrees with the bug.
 
+## The second audit
+
+A read-only sweep of the whole tree, run along eight dimensions in parallel, with every
+finding then handed to an independent verifier told to refute it: **40 claims, 36
+confirmed, 4 refuted.** All 36 are fixed.
+
+The question it asked was narrower than the first audit's and turned out to be more
+productive: not "what is missing" but "what produces a value a user would read as an
+answer and that is not one". The categories it found:
+
+| Category | Examples |
+|---|---|
+| A different function entirely | `jordan_totient` computed the Euler-totient shape; header, implementation and test all agreed with each other |
+| Overflow with no report | `binomial`'s intermediate product, `catalan_num` via the central binomial, `crt`'s modulus, `sum_divisors`, `convergents`, `lucas_sequence`, `BigInt::to_ll` |
+| A marker printed as a value | `combo` and `numthy`'s `UINT64_MAX`, `primitive_root`'s -1, `quantum_fidelity`'s 0.0, `graph_diameter` on a disconnected graph |
+| A rule that is not an identity | `sym_mellin`'s exponential rows dropped Gamma(s); `sym_limit` averaged a two-sided divergence to zero |
+| Success reported for a run that failed | the adaptive ODE step budget; `converged = 1` from five optimisers |
+| A value silently changed on the way through | `matrix_to_bytes` rescaling by 255; the compress round trips; `BigInt` turning a bad literal into 0 |
+| State lost or shadowed | `load_session` clearing the session before failing; `save_session` writing files it cannot read; `A(1,2) = 5`; scalars and matrices shadowing each other |
+| A display that erased its value | 60-odd sites at six significant digits; `saveplot` writing a rounded preview |
+
+Two of them are worth separating out, because they say something about how the rest were
+found rather than only what they were.
+
+**`jordan_totient` was wrong in three places at once.** The header stated
+`J_k(n) = n^k prod (1 - 1/p)`, the implementation computed that, and the test asserted
+`J_2(6) = 12` with a comment deriving it from the same formula. Nothing in the tree
+disagreed with anything else in the tree. The test that catches it counts the k-tuples
+J_k is defined as, which is not a formula and so cannot carry the same error.
+
+**The ORC JIT repeated the interpreter's unary-minus defect exactly.** The same
+`if (expr.front() == '-')` before the binary-operator scan, in the backend whose job is
+to agree with the interpreter. Fixing one and not the other would have left the two
+disagreeing about `-2 + 1` -- which is a worse state than both being wrong.
+
 ## §11 — LaTeX and notation interchange
 
 **Open**, and no longer blocked: §10.3's precedence-aware printer exists in
