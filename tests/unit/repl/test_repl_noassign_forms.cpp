@@ -218,6 +218,59 @@ TEST(ReplNoAssign, PlanarityAndMatchingOnAGraph) {
     expect_ok(interp, "graph_max_weight_matching_value(W)");
 }
 
+// The display chain in front of the matrix-call registry is hand-written, and for a
+// unary call whose argument resolved to a matrix it did not decline the names it had
+// never been told about -- it claimed them and reported "unknown function", so the
+// registry six lines below it was never asked. 98 matrix-returning callees worked when
+// assigned and failed when printed.
+//
+// One name per family here rather than all 98: what is being tested is that the chain
+// now asks the registry, and a list of every callee would test the registry instead
+// and would rot as callees are added. `sparse_to_dense` below is the one somebody had
+// already hand-added to the chain for this exact reason, and it stays as it was.
+TEST(ReplNoAssign, UnlistedUnaryCalleesReachTheRegistry) {
+    Interpreter interp;
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    for (const char* call : {"transpose(A)", "inv(A)", "tril(A)", "triu(A)",
+                             "poly_monic(A)", "stats_one_way_anova(A)",
+                             "quantum_dagger(A)", "geo_upper_hull(A)"}) {
+        auto result = interp.execute(call);
+        if (!result) {
+            // A handler rejecting this particular matrix is fine and is not what this
+            // test is about; being unable to find the handler is not.
+            EXPECT_EQ(format_error(result.error()).find("unknown function"),
+                      std::string::npos)
+                << call << " did not reach the registry";
+            continue;
+        }
+        EXPECT_NE(result->find("_ ="), std::string::npos)
+            << call << " printed under some other name than `_`";
+    }
+}
+
+// A value that can be read and not used is the defect the bare form had before, so the
+// no-target form has to store what it prints.
+TEST(ReplNoAssign, TheBareUnaryFormStoresWhatItPrints) {
+    Interpreter interp;
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_contains(interp, "transpose(A)", "_ =");
+    auto back = interp.execute("B = transpose(_)");
+    ASSERT_TRUE(back.has_value()) << "`_` did not survive the bare call";
+    EXPECT_NE(back->find("1.000000, 2.000000"), std::string::npos)
+        << "transposing the stored transpose did not give the original back";
+}
+
+// A name nothing answers to is still an unknown function: the registry is asked, and
+// when it declines the line the old message is the right one.
+TEST(ReplNoAssign, AnUnknownNameIsStillUnknown) {
+    Interpreter interp;
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    auto result = interp.execute("frobnicate(A)");
+    ASSERT_FALSE(result.has_value());
+    EXPECT_NE(format_error(result.error()).find("unknown function: frobnicate"),
+              std::string::npos);
+}
+
 TEST(ReplNoAssign, SparseAndComplexHelpers) {
     Interpreter interp;
     expect_ok(interp, "RI = [0; 1; 2]");

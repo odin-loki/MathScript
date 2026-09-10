@@ -225,9 +225,37 @@ were regressions; all were already true and none had a test.
   an earlier fix in the same function: the additive level must be searched *before* a
   leading sign is taken as unary, or `-4 + 1` becomes `-(4 + 1)`, while the power level
   must be searched *after* it.
-- **`transpose(A)` has no no-target form** although `matmul(A, A)` does. The CHANGELOG
-  says the registry gives every matrix-returning callee a bare form; it does not reach
-  this one.
+- **`transpose(A)` had no no-target form** although `matmul(A, A)` does. The CHANGELOG
+  says the registry gives every matrix-returning callee a bare form. **Fixed**, and
+  the count is the finding: it was not one name but **98**.
+
+  A hand-written chain of 92 `else if (fn == ...)` branches, continued in a second
+  function of 53 more because MSVC would not compile it as one, sits in front of the
+  registry fallback. Its terminal `else` did not decline a name it had never heard of;
+  it *claimed* the line and reported `unknown function`, six lines above the registry
+  that knows every matrix-returning callee there is. So the rule was: a unary call
+  whose argument resolves to a matrix reaches the registry only if somebody remembered
+  to add the name to the list by hand. `prewitt`, `scharr` and `roberts` were on it;
+  `sobel`, `sobel_x` and `sobel_y` were not. `graph_laplacian` was; `laplacian` was
+  not. `matmul(A, A)` worked only because `A, A` fails to resolve as one matrix name
+  and takes a different path entirely.
+
+  The tail returns `std::nullopt` for a name it does not know now, which is a
+  different answer from rejecting the line, and the caller asks the registry. The
+  fallback prints **and stores** under `_`, so `B = transpose(_)` works on the next
+  line. 13 more callees that take a scalar (`zeros(A)`, `eye(A)`, `fftfreq(A)`, ...)
+  stop answering `unknown function: zeros` and give the handler's own diagnosis.
+
+  Four names -- `boxfilter`, `imgaussfilt`, `laplacian_of_gaussian`, `medfilt2` --
+  turned out to be listed at arity 1 in the arity table with no arity-1 form in the
+  handler. That disagreement is a defect in those handlers and is recorded as one; the
+  bare form says `no form of this call takes a single matrix` rather than passing on
+  the registry's contentless `assign: unsupported matrix call`.
+
+  The fix adds no nesting to the 92-deep chain, deliberately: everything new sits
+  after it, at the depth of the `return` it replaces. A change that deepened that
+  chain would be paid for on the Windows runner an hour later, which is what the
+  chain was split in two to avoid.
 - **The no-target matrix form printed a result it did not store.** Recorded first as a
   labelling problem -- it said `C` where the CHANGELOG says `_` -- which understated
   it: the name was not merely wrong, nothing was stored under it or any other name, so
@@ -244,8 +272,11 @@ were regressions; all were already true and none had a test.
   is arguably still open is that the multi-output bare forms store nothing either;
   that needs a decision about what `_` should mean when a command yields three
   matrices, which is why it was not answered here.
-- **`stats_one_way_anova` and `rle_encode_vec` are unknown in the bare form** and
-  reachable only through an assignment.
+- **`stats_one_way_anova` and `rle_encode_vec` were unknown in the bare form** and
+  reachable only through an assignment. **Fixed** by the same change: they are two of
+  the 98. Both now answer with their handler's own diagnosis, which is what the
+  transcript line was written to see -- `the test is not defined for these groups` and
+  `byte values must be whole numbers in [0, 255]` rather than `unknown function`.
 - **`1 / 0` reported "could not parse"** rather than anything about division. **Fixed**:
   the bare-expression fallback discarded the evaluator's error and replaced it with a
   parse failure, so a real diagnosis was thrown away and the reader was sent looking for

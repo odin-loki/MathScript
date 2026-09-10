@@ -119,8 +119,14 @@ Result<std::string> combo_count_text(const std::string& fn, std::uint64_t count)
 } // namespace
 
 // Wave 256: unary matrix display tail (MSVC C1061).
-static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
-                                                      const Matrix<double>& matrix);
+//
+// `std::nullopt` means no branch here claimed the name -- which is different from
+// claiming it and failing, and the difference is the whole point. The chain this
+// continues is hand-written, so a name it has never heard of is a name the registry
+// may well know; rejecting the line here made 98 matrix-returning callees reachable
+// only through an assignment.
+static std::optional<Result<std::string>> format_unary_matrix_fn_tail(
+    const std::string& fn, const Matrix<double>& matrix);
 
 Result<std::string> format_cuda_lu_result(const ColMatrix<double>& matrix);
 Result<Matrix<double>> eval_cuda_add_matrices(const Matrix<double>& left, const Matrix<double>& right);
@@ -1308,8 +1314,8 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
 
 
 // Wave 256: unary matrix display tail definition (MSVC C1061).
-static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
-                                               const Matrix<double>& matrix) {
+static std::optional<Result<std::string>> format_unary_matrix_fn_tail(
+    const std::string& fn, const Matrix<double>& matrix) {
     std::ostringstream out;
     if (fn == "sparse_to_dense") {
         // is_valid_matrix_call_arity accepts sparse_to_dense(A) with arity 1, and the
@@ -1731,7 +1737,10 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         out << "D =\n";
         print_matrix(out, D);
     } else {
-        return std::unexpected(DomainError{"repl", "unknown function: " + fn});
+        // Not "unknown function". This list is hand-written and knows only the names
+        // somebody added to it; the caller asks the registry next, which knows all of
+        // them. Reporting here is what stopped it asking.
+        return std::nullopt;
     }
     return out.str();
 }
@@ -21870,6 +21879,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         }
 
         std::ostringstream out;
+        // Set only by the final `else` of the chain below, so that "one of the 92
+        // branches answered" and "nothing here knows this name" stay distinguishable
+        // after the chain has ended.
+        bool reached_display_tail = false;
+        std::optional<Result<std::string>> display_tail;
         if (fn == "det") {
             auto result = det(*matrix);
             if (!result) {
@@ -22464,9 +22478,57 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
         }
         else {
-            return format_unary_matrix_fn_tail(fn, *matrix);
+            reached_display_tail = true;
+            display_tail = format_unary_matrix_fn_tail(fn, *matrix);
         }
-        return out.str();
+        // Everything from here to the end of this block sits OUTSIDE the else-if chain
+        // above, at the depth of the `return out.str()` it replaces. That is deliberate:
+        // the chain is 92 levels deep and exists in two functions because MSVC refused
+        // it as one (C1061), so a fix that added nesting to it would be paid for on the
+        // Windows runner an hour later.
+        if (!reached_display_tail) {
+            return out.str();
+        }
+        if (display_tail) {
+            return *display_tail;
+        }
+
+        // No branch above, and none in the tail, has heard of this name. The branches
+        // are a hand-written list; the matrix-call registry is the generated one, and
+        // it knows every matrix-returning callee together with the arities each
+        // accepts. Asking it here is what gives `transpose(A)` a no-target form --
+        // and, with it, 97 other callees that worked when assigned and reported
+        // "unknown function" when printed.
+        //
+        // The result is stored under `_` as well as printed. A value that can be read
+        // and not used is the defect the six hand-written branches had before the
+        // registry fallback replaced them.
+        MatrixCallAssign unary_call{};
+        if (!try_parse_matrix_call_assignment("_ = " + cmd, unary_call)) {
+            // Either no such callee, or none at this arity. Both are "unknown function"
+            // to a user who wrote a name nothing answers to.
+            return std::unexpected(DomainError{"repl", "unknown function: " + fn});
+        }
+        auto unary_called = dispatch_matrix_call(*this, unary_call);
+        if (!unary_called) {
+            // The registry's generic decline names neither the function nor the fault.
+            // It means the arity table lists this callee at one argument and the
+            // handler implements no such form -- the two disagree, and that is a defect
+            // in the handler rather than a mystery to hand the user.
+            const auto* why = std::get_if<DomainError>(&unary_called.error());
+            if (why != nullptr && why->function == "assign" &&
+                why->reason == "unsupported matrix call") {
+                return std::unexpected(
+                    DomainError{fn, "no form of this call takes a single matrix"});
+            }
+            return std::unexpected(unary_called.error());
+        }
+        state_.scalars.erase("_");
+        state_.matrices["_"] = *unary_called;
+        std::ostringstream unary_out;
+        unary_out << "_ =\n";
+        print_matrix(unary_out, *unary_called);
+        return unary_out.str();
     }
 
     // A matrix call written without a target prints its result under `_`. The

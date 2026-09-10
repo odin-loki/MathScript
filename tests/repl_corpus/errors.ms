@@ -2,6 +2,10 @@
 #
 # stderr is golden too, so the wording of a diagnostic is part of the contract: a
 # message that stops naming what went wrong is a change a reviewer should see.
+#
+# The two below it caught: `stats_one_way_anova` and `rle_encode_vec` used to answer
+# "unknown function" in this form and work when assigned. They answer with the
+# handler's own diagnosis now, which is what the line was written to see.
 sym_eval("x*y", "x=3")
 bfgs("(x-3)^2", [0])
 bisection("x^2 - 2", 0, 2)
