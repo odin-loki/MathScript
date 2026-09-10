@@ -3,6 +3,7 @@
 #include "ms/symbolic/symbolic.hpp"
 
 #include <cmath>
+#include <limits>
 #include <functional>
 #include <optional>
 #include <algorithm>
@@ -1046,6 +1047,39 @@ namespace {
 
 constexpr int kMaxExpandExponent = 8;
 
+// Ceiling on the size of an expanded result. Expansion here multiplies out by repeated
+// distribution and nothing collects like terms, so (x+1)^3 stays as eight products
+// rather than four terms and (x+1)^8 as 256 rather than nine. Raising an already-
+// expanded sum to a further power therefore squares-and-squares again: ((x+1)^8)^8 is
+// 65 terms once collected and 256^8 products here, and sym_expand did not return from
+// it at all -- the REPL had to be killed. Declining to expand past this size gives the
+// caller the expression back instead of a hang.
+constexpr long long kMaxExpandNodes = 20000;
+
+long long count_expr_nodes(const SymExpr& expr) {
+    long long total = 1;
+    if (expr.left) {
+        total += count_expr_nodes(*expr.left);
+    }
+    if (expr.right) {
+        total += count_expr_nodes(*expr.right);
+    }
+    return total;
+}
+
+// Whether raising a base of `base_nodes` nodes to `exponent` stays inside the ceiling,
+// computed without ever forming the product.
+bool expansion_fits(long long base_nodes, int exponent) {
+    long long projected = 1;
+    for (int i = 0; i < exponent; ++i) {
+        if (base_nodes != 0 && projected > kMaxExpandNodes / base_nodes) {
+            return false;
+        }
+        projected *= base_nodes;
+    }
+    return projected <= kMaxExpandNodes;
+}
+
 bool is_small_nonneg_integer_exponent(const SymExpr& expr, int& exponent) {
     if (expr.op != SymOp::Const) {
         return false;
@@ -1080,6 +1114,9 @@ SymExpr sym_expand(SymExpr expr) {
         if (exponent == 1) {
             return sym_simplify(clone_expr(*expr.left));
         }
+        if (!expansion_fits(count_expr_nodes(*expr.left), exponent)) {
+            break;
+        }
         SymExpr result = clone_expr(*expr.left);
         for (int i = 1; i < exponent; ++i) {
             result = sym_mul(std::move(result), clone_expr(*expr.left));
@@ -1089,6 +1126,12 @@ SymExpr sym_expand(SymExpr expr) {
     case SymOp::Mul: {
         const SymExpr& left = *expr.left;
         const SymExpr& right = *expr.right;
+        // Distributing a product of two sums costs the product of their sizes.
+        const long long left_nodes = count_expr_nodes(left);
+        const long long right_nodes = count_expr_nodes(right);
+        if (right_nodes != 0 && left_nodes > kMaxExpandNodes / right_nodes) {
+            break;
+        }
         if (left.op == SymOp::Add) {
             return sym_simplify(sym_expand(sym_add(
                 sym_mul(clone_expr(*left.left), clone_expr(right)),
@@ -2619,41 +2662,97 @@ std::string sym_to_string(const SymExpr& expr) {
     return "?";
 }
 
+// A numeric two-sided probe. Returns NaN when no limit could be established, which
+// callers must check.
+//
+// The previous implementation initialised its running estimate to 0.0 and returned it
+// unconditionally, so a function undefined on one side of the point -- sqrt or log at a
+// domain edge -- fell through every iteration of the refinement loop and handed back
+// that initialiser as if it were a computed limit: sym_limit(sqrt(x) + 5, "x", 0)
+// returned 0.000000 where the answer is 5. It also drove the step to 1e-15, where
+// (1 - cos(x))/x^2 evaluates to (1 - 1)/1e-30 = 0, and returned that too.
 double sym_limit(const SymExpr& expr, const std::string& var, double point) {
     const auto eval_at = [&](double x) {
         return sym_eval(expr, {{var, x}});
     };
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double point_scale = std::max(1.0, std::abs(point));
 
     const double direct = eval_at(point);
     if (std::isfinite(direct)) {
-        const double probe = 1e-8;
-        const double left = eval_at(point - probe);
-        const double right = eval_at(point + probe);
-        if (std::isfinite(left) && std::isfinite(right) &&
-            std::abs(left - direct) < 1e-6 && std::abs(right - direct) < 1e-6) {
-            return direct;
+        // A finite value at the point, approached from at least one side, is the limit.
+        // Every operation the evaluator has is continuous wherever it is defined, so
+        // there is no removable discontinuity here to be caught out by -- and requiring
+        // BOTH sides, which is what this used to do, disqualifies every function with a
+        // one-sided domain and sent it into the loop that then fabricated a zero.
+        const double far = 1e-4 * point_scale;
+        const double near = 1e-8 * point_scale;
+        for (const double side : {-1.0, 1.0}) {
+            const double at_far = eval_at(point + side * far);
+            const double at_near = eval_at(point + side * near);
+            if (!std::isfinite(at_far) || !std::isfinite(at_near)) {
+                continue;
+            }
+            const double gap_far = std::abs(at_far - direct);
+            const double gap_near = std::abs(at_near - direct);
+            if (gap_near <= gap_far && gap_near < 1e-3 * std::max(1.0, std::abs(direct))) {
+                return direct;
+            }
         }
     }
 
-    double h = 1e-4;
-    double estimate = 0.0;
-    double prev = 0.0;
-    for (int step = 0; step < 12; ++step) {
+    // Refinement. The step floor is deliberate, and so is keeping the best-converged
+    // sample rather than the last one: past a certain h the samples stop improving and
+    // start decaying into rounding noise, and the old loop overwrote its good estimate
+    // with that noise on every remaining iteration.
+    double best = nan;
+    double best_delta = std::numeric_limits<double>::infinity();
+    double previous = nan;
+    double h = 1e-2 * point_scale;
+    for (int step = 0; step < 10; ++step) {
         const double left = eval_at(point - h);
         const double right = eval_at(point + h);
+        double sample = nan;
         if (std::isfinite(left) && std::isfinite(right)) {
-            estimate = 0.5 * (left + right);
-            if (step > 0) {
-                const double scale = std::max(1.0, std::abs(estimate));
-                if (std::abs(estimate - prev) < 1e-10 * scale) {
-                    return estimate;
+            sample = 0.5 * (left + right);
+        } else if (std::isfinite(left)) {
+            sample = left;
+        } else if (std::isfinite(right)) {
+            sample = right;
+        }
+        if (std::isfinite(sample)) {
+            if (std::isfinite(previous)) {
+                const double delta =
+                    std::abs(sample - previous) / std::max(1.0, std::abs(sample));
+                // Past the noise floor the samples stop improving and start decaying,
+                // and the decay eventually settles on a constant -- often zero, when
+                // the numerator underflows -- whose successive differences are exactly
+                // zero and therefore look like perfect convergence. Stopping as soon as
+                // the step gets markedly worse keeps the best estimate from before the
+                // floor. (1 - cos(x))/x^2 is the case that matters: its samples reach
+                // 0.4999999970 and then collapse to 0 at h = 1e-8.
+                if (std::isfinite(best_delta) && delta > 4.0 * best_delta) {
+                    break;
+                }
+                if (delta < best_delta) {
+                    best_delta = delta;
+                    best = sample;
+                }
+                if (delta < 1e-12) {
+                    return sample;
                 }
             }
-            prev = estimate;
+            previous = sample;
         }
         h *= 0.1;
     }
-    return estimate;
+    // Samples that never settled are a divergent or non-existent limit, not a number.
+    // log(x) at 0 marched off towards -infinity and the old code returned whichever
+    // value it happened to stop on.
+    if (best_delta > 1e-6) {
+        return nan;
+    }
+    return best;
 }
 
 SymExpr sym_series(const SymExpr& expr, const std::string& var, double point, int order) {

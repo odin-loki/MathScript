@@ -15297,7 +15297,15 @@ Result<std::string> eval_sym_limit_strings(const std::string& expr_arg, const st
     if (!parse_number(trim_copy(point_arg), point)) {
         return std::unexpected(DomainError{"sym_limit", "expected numeric limit point"});
     }
-    return std::to_string(sym_limit(*expr, var_text, point)) + "\n";
+    // sym_limit returns NaN when it could not obtain a finite value from either side.
+    // Printing that as a number would be the same failure the limit code used to have
+    // internally: an answer-shaped result for a question it could not answer.
+    const double value = sym_limit(*expr, var_text, point);
+    if (!std::isfinite(value)) {
+        return std::unexpected(DomainError{
+            "sym_limit", "limit does not exist or could not be determined numerically"});
+    }
+    return std::to_string(value) + "\n";
 }
 
 Result<std::string> eval_sym_series_strings(const std::string& expr_arg, const std::string& var_arg,

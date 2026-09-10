@@ -101,6 +101,25 @@ Two more silently-wrong results, and the rest of the tables:
   covers `t/(1+t)`; `(1+t)^-m` and `log(1+t)` are added. `sym_imellin` compares its
   `pi` to a tolerance matched to the six-decimal printer instead of for equality.
 
+`sym_limit` fabricated answers in two different ways, and could not report a failure at
+all. Its refinement loop initialised the running estimate to 0.0 and returned it
+unconditionally, so a function undefined on one side of the point fell through every
+iteration and got that initialiser back: `sym_limit("sqrt(x)+5", "x", 0)` returned
+`0.000000` where the answer is 5. The loop also drove the step to 1e-15, where
+`(1-cos(x))/x^2` evaluates to `(1-1)/1e-30 = 0` -- and once every sample is exactly zero
+the successive differences are exactly zero too, which reads as perfect convergence, so
+the wrong value came back confidently. It now accepts a finite value at the point when
+the function approaches it from either side, keeps the best-converged sample rather than
+the last, stops at the noise floor, and returns NaN when nothing settled; the REPL
+reports that as an error instead of printing it.
+
+`sym_expand("((x+1)^8)^8")` never returned -- the REPL had to be killed. Expansion
+multiplies out by repeated distribution and nothing collects like terms, so `(x+1)^8` is
+256 products rather than nine terms and the outer power is 256^8 of them. There is now a
+ceiling on the size of an expansion, past which it declines rather than diverging. The
+case that hung completes in 15 ms, and what comes back is partly expanded and still
+exactly equal to the input.
+
 `sym_hankel` returned a wrong number for the whole `r^n exp(-a r)` family, `n >= 1`.
 The implementation used `scale(n) * a / (k^2 + a^2)^((n+3)/2)`, which is the shape of
 the `n = 0` row with a different constant; that shape is not what differentiating

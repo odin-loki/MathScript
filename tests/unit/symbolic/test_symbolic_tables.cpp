@@ -751,3 +751,79 @@ TEST(SymbolicTables, HankelStillDeclinesWhatNeedsASpecialFunction) {
             << text << " was answered: " << sym_to_string(sym_hankel(f, "r", "k"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Limits, and the two ways the old estimator invented an answer.
+// ---------------------------------------------------------------------------
+
+TEST(SymbolicTables, LimitsWithAOneSidedDomainAreNotZero) {
+    // The refinement loop initialised its estimate to 0.0 and only assigned it when
+    // BOTH sides evaluated finite. A function undefined on one side of the point never
+    // satisfied that, fell through every iteration, and returned the initialiser:
+    // sqrt(x) + 5 at 0 came back as 0.000000 where the answer is 5.
+    struct Case {
+        const char* f;
+        double point;
+        double expected;
+    };
+    const Case cases[] = {
+        {"sqrt(x)+5", 0.0, 5.0},   {"sqrt(x)", 0.0, 0.0},      {"sqrt(x)*3+1", 0.0, 1.0},
+        {"sqrt(x-2)+7", 2.0, 7.0},
+    };
+    for (const Case& c : cases) {
+        EXPECT_NEAR(sym_limit(parse_or_die(c.f), "x", c.point), c.expected, 1e-6) << c.f;
+    }
+}
+
+TEST(SymbolicTables, LimitsSurviveCatastrophicCancellation) {
+    // The old loop drove the step to 1e-15, where (1 - cos(x))/x^2 evaluates to
+    // (1 - 1)/1e-30 = 0, and returned that. Worse, once every sample is exactly zero
+    // the successive differences are exactly zero too, which reads as perfect
+    // convergence -- so the wrong value was returned confidently.
+    struct Case {
+        const char* f;
+        double point;
+        double expected;
+    };
+    const Case cases[] = {
+        {"(1-cos(x))/x^2", 0.0, 0.5},   {"sin(x)/x", 0.0, 1.0},
+        {"(exp(x)-1)/x", 0.0, 1.0},     {"tan(x)/x", 0.0, 1.0},
+        {"(1-cos(x))/x", 0.0, 0.0},     {"(x^2-1)/(x-1)", 1.0, 2.0},
+        {"x^2", 3.0, 9.0},              {"(sin(x)-x)/x^3", 0.0, -1.0 / 6.0},
+    };
+    for (const Case& c : cases) {
+        EXPECT_NEAR(sym_limit(parse_or_die(c.f), "x", c.point), c.expected, 1e-5) << c.f;
+    }
+}
+
+TEST(SymbolicTables, DivergentLimitsReportNoValue) {
+    // log(x) at 0 marches off towards minus infinity. The old code returned whichever
+    // sample it happened to stop on -- a finite number, indistinguishable from a real
+    // limit. NaN is the honest answer, and the REPL turns it into an error.
+    for (const char* text : {"log(x)", "1/x^2"}) {
+        EXPECT_TRUE(std::isnan(sym_limit(parse_or_die(text), "x", 0.0)))
+            << text << " returned a finite value";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Expansion terminates.
+// ---------------------------------------------------------------------------
+
+TEST(SymbolicTables, ExpansionIsBoundedAndStaysEqualToItsInput) {
+    // sym_expand("((x+1)^8)^8") never returned: expansion multiplies out by repeated
+    // distribution and nothing collects like terms, so (x+1)^8 is 256 products rather
+    // than nine terms and the outer power is 256^8 of them. Past the ceiling it now
+    // declines to expand further, which leaves a partly-expanded expression -- still
+    // exactly equal to the input, which is what the caller is entitled to.
+    for (const char* text : {"((x+1)^8)^8", "((x+2)^4)^4", "(x+1)^8", "(x+1)^3",
+                             "(x+1)*(x+2)", "(x+1)^2*(x-3)"}) {
+        const SymExpr original = parse_or_die(text);
+        const SymExpr expanded = sym_expand(parse_or_die(text));
+        for (const double x : {0.3, 1.3, -0.7, 2.1}) {
+            const double want = at(original, "x", x);
+            EXPECT_NEAR(at(expanded, "x", x), want, 1e-9 * std::max(1.0, std::abs(want)))
+                << "sym_expand(" << text << ") changed the value at x=" << x;
+        }
+    }
+}
